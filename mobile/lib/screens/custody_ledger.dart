@@ -35,7 +35,7 @@ class LtCustodyScreen extends StatelessWidget {
     titleAr: 'عهدة النقل الخفيف', titleEn: 'Light Transport Custody',
     repAr: 'مندوب', repEn: 'Rep',
     missingAr: 'لا مندوبَ بهذا الرقم في الموارد البشريّة ولا في سجلّ النقل الخفيف.', missingEn: 'No rep with this number in HR or the light-transport register.',
-    roles: {'super_admin', 'b2c_manager', 'b2c_deputy', 'cfo', 'accounting_manager', 'accountant'},
+    roles: {'super_admin', 'admin', 'b2c_manager', 'b2c_deputy', 'vehicles_manager', 'cfo', 'accounting_manager', 'accountant'},
   );
   @override
   Widget build(BuildContext context) => const CustodyLedgerScreen(cfg: cfg);
@@ -48,7 +48,7 @@ class HtCustodyScreen extends StatelessWidget {
     titleAr: 'عهدة النقل الثقيل', titleEn: 'Heavy Transport Custody',
     repAr: 'موظف', repEn: 'Employee',
     missingAr: 'لا موظّفَ بهذا الرقم في الموارد البشريّة.', missingEn: 'No employee with this number in HR.',
-    roles: {'super_admin', 'location_manager', 'cfo', 'accounting_manager', 'accountant'},
+    roles: {'super_admin', 'admin', 'location_manager', 'vehicles_manager', 'cfo', 'accounting_manager', 'accountant'},
     vehicles: true,
   );
   @override

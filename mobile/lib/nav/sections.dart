@@ -540,6 +540,9 @@ List<AppSection> sectionsFor(AuthProvider auth) {
       roles: const [..._admins, 'vehicles_manager', 'vehicles_staff', 'hr_manager', 'hr_specialist', 'cfo', 'accounting_manager', 'accountant'],
       pages: [
         // Vehicles, authorizations and accidents: the screens exist (vehicles_suite) but were not in the menu.
+        // The vehicles manager holds both custody ledgers without the two sections they live in.
+        if (role == 'vehicles_manager') AppPage('عهدة النقل الثقيل', 'Heavy Transport Custody', Icons.account_balance_wallet_outlined, (c) => const HtCustodyScreen(), path: '/system/ls2/custody'),
+        if (role == 'vehicles_manager') AppPage('عهدة النقل الخفيف', 'Light Transport Custody', Icons.account_balance_wallet_outlined, (c) => const LtCustodyScreen(), path: '/system/b2c/light-transport/custody'),
         AppPage('لوحة المركبات', 'Vehicles Dashboard', Icons.dashboard_outlined, (c) => const SectionDashScreen(spec: vehiclesDashSpec), path: '/system/vehicles/dashboard'),
         AppPage('المركبات والتفويضات', 'Vehicles', Icons.directions_car_filled_outlined, (c) => const VehiclesListScreen(), path: '/system/vehicles'),
         AppPage('الحوادث', 'Accidents', Icons.car_crash_outlined, (c) => const AccidentsListScreen(), path: '/system/vehicles/accidents'),

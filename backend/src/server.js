@@ -260,7 +260,12 @@ app.use('/api/complaints', complaintRoutes);
 }
 app.use('/api/b2c', authenticate, sectionGate('B2C'), b2cRoutes);
 // Light transport: its employees, housing and operating orders, guarded by the B2C section itself.
-app.use('/api/light-transport', authenticate, sectionGate('B2C'), lightTransportRoutes);
+// Custody roles reach the custody ledger without the section; its own route list decides (authorize.strict).
+const custodyOrSection = (section, roles, prefix = '') => {
+  const gate = sectionGate(section);
+  return (req, res, next) => ((!prefix || req.path.startsWith(prefix)) && roles().includes(req.user.role) ? next() : gate(req, res, next));
+};
+app.use('/api/light-transport', authenticate, custodyOrSection('B2C', () => require('./controllers/ltCustodyController').CUSTODY_ROLES, '/custody'), lightTransportRoutes);
 app.use('/api/remote', authenticate, sectionGate('Remote'), remoteRoutes);
 app.use('/api/hr', authenticate, sectionGate('HR'), hrRoutes);
 app.use('/api/crm', authenticate, sectionGate('CRM'), crmRoutes);
@@ -284,7 +289,7 @@ app.use('/api/jp', require('./routes/jp'));
 app.use('/api/b2c-wallet', authenticate, sectionGate('B2C'), b2cWalletRoutes);
 app.use('/api/crm-vendors', authenticate, sectionGate('CRM'), crmVendorRoutes);
 // Heavy transport custody before the section router: that router limits its endpoints to section roles, and custody is also for finance roles.
-app.use('/api/ls2/custody', authenticate, sectionGate('Location Solutions'), require('./routes/htCustody'));
+app.use('/api/ls2/custody', authenticate, custodyOrSection('Location Solutions', () => require('./controllers/htCustodyController').CUSTODY_ROLES), require('./routes/htCustody'));
 app.use('/api/ls2', authenticate, sectionGate('Location Solutions'), ls2Routes);
 app.use('/api/shipment-orders', authenticate, sectionGate('Shipment Orders'), shipmentOrderRoutes);
 // The customer register is read from three sections. The same screen appears in shipment orders, operations and sales, so it belongs to no single section: pageGate opens it to anyone with one of the three pages, and editing is guarded by the route's role list (routes/customerRegistry).

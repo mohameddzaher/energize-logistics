@@ -429,6 +429,7 @@ exports.createTask = async (req, res) => {
       doc.kind === 'task' ? 'مهمّةٌ جديدةٌ أُسنِدت إليك' : 'طلبٌ جديدٌ من زميل',
       `${title} — من ${nameOf(req.user)}`, doc._id);
     await logAudit({ user: req.user._id, action: 'create', entity: 'JpTask', entityId: doc._id, changes: { after: { title, kind: doc.kind, section: w.section, assignedTo } }, ipAddress: req.ip }).catch(() => {});
+    await require('../services/itTicketJp').fromTask(doc._id, req.user._id);
     broadcast(w);
     const fresh = await POP(JpTask.findById(doc._id)).lean();
     res.status(201).json({ task: shape(fresh, req, w) });
@@ -478,6 +479,7 @@ exports.updateTask = async (req, res) => {
     if (links) t.links = links;
     await t.save();
     if (reassigned) await notify(t.assignedTo, req.user._id, 'مهمّةٌ أُسنِدت إليك', `${t.title} — من ${nameOf(req.user)}`, t._id);
+    await require('../services/itTicketJp').fromTask(t._id, req.user._id);
     broadcast(w);
     res.json({ task: shape(await POP(JpTask.findById(t._id)).lean(), req, w) });
   } catch (e) { fail(res, e, 'تعذّر التعديل'); }
@@ -507,6 +509,7 @@ exports.setDone = async (req, res) => {
     }
     await t.save();
     if (done) await notify(t.createdBy, req.user._id, 'تمّت مهمّة', `${t.title} — ${nameOf(req.user)}`, t._id);
+    await require('../services/itTicketJp').fromTask(t._id, req.user._id);
     await logAudit({ user: req.user._id, action: done ? 'complete' : 'reopen', entity: 'JpTask', entityId: t._id, changes: { after: { title: t.title, status: t.status } }, ipAddress: req.ip }).catch(() => {});
     broadcast(w);
     res.json({ task: shape(await POP(JpTask.findById(t._id)).lean(), req, w) });
@@ -697,6 +700,7 @@ exports.deleteTask = async (req, res) => {
     if (!(w.canManage || (author && t.kind === 'request'))) return res.status(403).json({ message: 'الحذفُ لمن أسند المهمّة' });
     for (const a of t.attachments) deleteStoredFile(a.fileUrl);
     await t.deleteOne();
+    await require('../services/itTicketJp').taskDeleted(t);
     await logAudit({ user: req.user._id, action: 'delete', entity: 'JpTask', entityId: t._id, changes: { before: { title: t.title, kind: t.kind, section: t.section } }, ipAddress: req.ip }).catch(() => {});
     broadcast(w);
     res.json({ deleted: true });

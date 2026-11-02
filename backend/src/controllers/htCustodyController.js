@@ -9,7 +9,7 @@ const { makeCustodyController } = require('./custodyLedgerController');
 const { FINANCE_FULL_ROLES } = require('../config/financeAuthority');
 
 // Location Solutions manager, system admin and finance roles, like the sector manager in light transport.
-const CUSTODY_ROLES = ['super_admin', 'admin', 'location_manager', ...FINANCE_FULL_ROLES];
+const CUSTODY_ROLES = ['super_admin', 'admin', 'location_manager', 'vehicles_manager', ...FINANCE_FULL_ROLES];
 
 /** Employee by ID number, matching both identity columns (see identity-number-two-columns). */
 async function findRep(idNumber) {

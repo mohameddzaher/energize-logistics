@@ -353,6 +353,7 @@ exports.createTicket = async (req, res) => {
     }
 
     const ticket = await ItTicket.create(data);
+    await require('../services/itTicketJp').fromTicket(ticket._id, req.user._id);
     emit('it:updated', { type: 'ticket', id: String(ticket._id) });
     res.status(201).json({ ticket });
   } catch (error) {
@@ -387,6 +388,7 @@ exports.updateTicket = async (req, res) => {
     }
 
     await ticket.save();
+    await require('../services/itTicketJp').fromTicket(ticket._id, req.user._id);
     emit('it:updated', { type: 'ticket', id: String(ticket._id) });
     res.json({ ticket });
   } catch (error) {
@@ -397,6 +399,7 @@ exports.updateTicket = async (req, res) => {
 exports.deleteTicket = async (req, res) => {
   try {
     await ItTicket.findByIdAndDelete(req.params.id);
+    await require('../services/itTicketJp').ticketDeleted(req.params.id);
     emit('it:updated', { type: 'ticket', id: String(req.params.id) });
     res.json({ message: 'Ticket deleted' });
   } catch (error) {
@@ -1305,4 +1308,12 @@ exports.deleteSystem = async (req, res) => {
   } catch (error) {
     res.status(500).json({ message: 'Failed to delete system' });
   }
+};
+
+// Shared with services/itTicketJp so a ticket opened from the work plan obeys the same rules.
+exports._ticketRules = {
+  today, buildSignature,
+  closedFields: (reportedAt, resolvedDate) => ({
+    resolvedDate, resolvedAt: new Date(`${resolvedDate}T00:00:00Z`), resolutionMinutes: resolutionMinutesOf(reportedAt, resolvedDate),
+  }),
 };

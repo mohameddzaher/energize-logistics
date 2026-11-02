@@ -3,6 +3,7 @@
  * A ticket is mirrored as a task in that project and a task added there becomes a ticket; edits,
  * completion and deletion follow both ways. The pair is joined by the task's `ticket` link.
  * Each side writes the other with plain updates, so a sync never triggers the reverse sync.
+ * Only pairs made here are synced (`ItTicket.jpTask`); a ticket linked to a task by hand keeps its own text.
  * Tasks outside the project, including ones linked to a ticket by hand, are left alone.
  */
 const mongoose = require('mongoose');
@@ -39,15 +40,17 @@ async function fromTicket(ticketId, actorId) {
   const done = CLOSED.has(t.status);
   const task = await JpTask.findOne(taskFilter(project._id, t._id)).lean();
   const assignee = t.assignedTo || task?.assignedTo || t.createdBy || actorId;
+  if (task && String(t.jpTask || '') !== String(task._id)) return;
   if (!task) {
     if (!assignee) return;
-    await JpTask.create({
+    const created = await JpTask.create({
       scope: 'section', section: 'it', kind: 'task', project: project._id,
       title: S(t.title).slice(0, 200), details: S(t.description).slice(0, 4000),
       assignedTo: assignee, createdBy: t.createdBy || actorId || assignee,
       status: done ? 'done' : 'open', doneAt: done ? (t.resolvedAt || new Date()) : null,
       links: [{ kind: 'ticket', ref: t._id, label: labelOf(t) }],
     });
+    await ItTicket.updateOne({ _id: t._id }, { $set: { jpTask: created._id } });
     announce();
     return;
   }
@@ -64,12 +67,11 @@ async function fromTicket(ticketId, actorId) {
   if (Object.keys(set).length) { await JpTask.updateOne({ _id: task._id }, { $set: set }); announce(); }
 }
 
-/** A deleted ticket takes its task with it. */
-async function ticketDeleted(ticketId) {
-  const project = await linkedProject();
-  if (!project) return;
+/** A deleted ticket takes its mirror task with it; a task linked by hand stays. */
+async function ticketDeleted(ticket) {
+  if (!ticket || !ticket.jpTask) return;
   const { JpTask } = models();
-  const r = await JpTask.deleteMany(taskFilter(project._id, ticketId));
+  const r = await JpTask.deleteOne({ _id: ticket.jpTask });
   if (r.deletedCount) announce();
 }
 
@@ -83,12 +85,13 @@ async function fromTask(taskId, actorId) {
   const it = require('../controllers/itController')._ticketRules;
   const link = (task.links || []).find((l) => l.kind === 'ticket');
   const ticket = link ? await ItTicket.findById(link.ref) : null;
+  if (link && (!ticket || String(ticket.jpTask || '') !== String(task._id))) return;
   const assignedTo = task.assignedTo || undefined;
   if (!ticket) {
     const created = await ItTicket.create({
       title: S(task.title), description: S(task.details), category: 'other',
       status: task.status === 'done' ? 'resolved' : 'open', assignedTo, createdBy: task.createdBy || actorId,
-      reportedAt: it.today(), signature: it.buildSignature('other', task.title),
+      reportedAt: it.today(), signature: it.buildSignature('other', task.title), jpTask: task._id,
       ...(task.status === 'done' ? it.closedFields(it.today(), it.today()) : {}),
     });
     const links = [...(task.links || []).filter((l) => l.kind !== 'ticket'), { kind: 'ticket', ref: created._id, label: labelOf(created) }];
@@ -118,7 +121,7 @@ async function taskDeleted(task) {
   if (!project || !task || String(task.project) !== String(project._id)) return;
   const link = (task.links || []).find((l) => l.kind === 'ticket');
   if (!link) return;
-  await models().ItTicket.deleteOne({ _id: link.ref });
+  await models().ItTicket.deleteOne({ _id: link.ref, jpTask: task._id });
   announce();
 }
 

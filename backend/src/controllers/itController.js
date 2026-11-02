@@ -398,8 +398,8 @@ exports.updateTicket = async (req, res) => {
 
 exports.deleteTicket = async (req, res) => {
   try {
-    await ItTicket.findByIdAndDelete(req.params.id);
-    await require('../services/itTicketJp').ticketDeleted(req.params.id);
+    const gone = await ItTicket.findByIdAndDelete(req.params.id);
+    await require('../services/itTicketJp').ticketDeleted(gone);
     emit('it:updated', { type: 'ticket', id: String(req.params.id) });
     res.json({ message: 'Ticket deleted' });
   } catch (error) {

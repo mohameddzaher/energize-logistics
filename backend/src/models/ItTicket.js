@@ -51,6 +51,8 @@ const itTicketSchema = new mongoose.Schema(
     signature: { type: String, default: '', trim: true },
 
     notes: { type: String, trim: true },
+    // Its mirror task in the IT plan's «Tickets & Issues» project (services/itTicketJp). Pairs linked by hand have none and are not synced.
+    jpTask: { type: mongoose.Schema.Types.ObjectId, ref: 'JpTask', default: null },
     createdBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
   },
   { timestamps: true }

@@ -1,17 +1,8 @@
-// مفردات عهد تقنية المعلومات: الدلاء الخمسة التي تُعرض بها العهدة، والنوع
-// القياسي الذي يُكتب لكل دلو.
-//
-// السبب في وجود هذا الملف: سجل العهد كان يخزّن خمسة عشر نوعاً مفصّلاً وستة
-// وستين اسماً حرّاً لأربعمئة صنف تقريباً — أسماء بالعربية وأخرى بالإنجليزية
-// لنفس الجهاز، وأسماء تحمل الماركة وحدها. من دون طبقة تجميع ثابتة يستحيل
-// عرض إجمالي صادق لكل فئة، ويصبح كل عدّ على الشاشة رهناً بما كتبه المُدخِل.
-//
-// الدلاء تُقرأ ولا تُكتب: النوع المفصّل يبقى كما هو في قاعدة البيانات حتى لا
-// نفقد أن هذا «ماوس» وذاك «كيبورد»، والدلو يُشتق منه وقت العرض.
+// IT custody vocabulary: the five buckets custody is displayed in, and the standard type written for each.
+// The register held about fifteen detailed types and sixty-six free names for ~400 items, so no honest category total was possible without a fixed grouping layer.
+// Buckets are read, not written: the detailed type stays in the database and the bucket is derived at display time.
 
-// شرائح الاتصال ليست من عهدة القسم — الخطوط ملك جهة أخرى — فهي مستبعدة من
-// كل قوائم تقنية المعلومات. استبعادها هنا يمنع عودتها من أي مسار جديد يُضاف
-// لاحقاً، لأن كل الشاشات تقرأ من هذه القائمة.
+// SIM cards are not department custody (the lines belong to another party), so they are excluded from all IT lists. Excluding them here keeps any new path from bringing them back, since every screen reads this list.
 const EXCLUDED_TYPES = ['vehicle', 'tool', 'sim'];
 
 const BUCKETS = [
@@ -19,22 +10,13 @@ const BUCKETS = [
     key: 'laptops',
     nameAr: 'لابتوبات',
     nameEn: 'Laptops',
-    // النوع الذي يُكتب عند إضافة صنف جديد من هذا الدلو.
+    // The type written when a new item is added from this bucket.
     canonicalType: 'laptop',
     types: ['laptop', 'desktop'],
   },
-  // ── والماوسُ دلوٌ وحدَه، والكيبوردُ وحدَه — ولا طقم ──────────────────────
-  // كانا دلوًا واحدًا «ماوس وكيبورد». وفي المستودع ماوساتٌ بلا كيبورد
-  // وكيبورداتٌ بلا ماوس (٩ ماوسات و٣٢ كيبوردًا بأنواعها المفصّلة)، فمن أراد
-  // «أضِف ماوسًا» لم يجد تصنيفًا له إلّا الذي يكتبه «ماوس وكيبورد» — فيصير
-  // الصنفُ الفردُ مكتوبًا طقمًا، ولا يُعرَف كم ماوسًا عندنا.
-  //
-  // ثمّ بقي «طقم ماوس وكيبورد» دلوًا ثالثًا مدّةً، وقرّر صاحبُ الشركة أنّ
-  // الماوسَ والكيبوردَ غيرُ مرتبطين: يُسلَّم أحدُهما ويُرَدّ ويتلف وحدَه.
-  // فقُسم كلُّ طقمٍ ماوسًا وكيبوردًا (scripts/splitKeyboardMouseSets.js) وأُلغي
-  // الدلو. والنوعُ `keyboard_mouse` يبقى مقروءًا في دلو الكيبورد — لا يُكتب
-  // جديدًا (راجع RETIRED_TYPES) — حتى إن بقي صفٌّ قديمٌ لم يُقسَم ظهر في العدّ
-  // بشارة «ماوس وكيبورد» بدل أن يختفي.
+  // Mouse is its own bucket and keyboard its own: no set.
+  // They were one 'mouse and keyboard' bucket, but the store holds mice without keyboards and keyboards without mice, so adding a mouse had no category except the one that writes 'mouse and keyboard' (a single item recorded as a set, and no way to know how many mice exist). A third 'mouse and keyboard set' bucket followed, then the decision that mouse and keyboard are unrelated: each is issued, returned and damaged alone. So every set was split into a mouse and a keyboard (scripts/splitKeyboardMouseSets.js) and the bucket removed.
+  // The type `keyboard_mouse` stays readable in the keyboard bucket and is not written for new items (see RETIRED_TYPES), so any unsplit old row still counts with a 'mouse and keyboard' badge instead of vanishing.
   {
     key: 'mice',
     nameAr: 'ماوس',
@@ -56,9 +38,7 @@ const BUCKETS = [
     canonicalType: 'phone',
     types: ['phone'],
   },
-  // ── التابلت دلوٌ وحدَه (٢٠٢٦/١٠/٢٦: «زوّد خيار تابلت») ─────────────────────
-  // كان نوعًا مخبوءًا في دلو الموبايلات، ومن يضيف من الدلو يُكتب صنفُه «موبايل»
-  // — فلا طريقَ لتسجيل تابلت. صار دلوًا يُضاف منه، ويُعَدّ وحدَه.
+  // Tablet is its own bucket. It was a hidden type inside the mobiles bucket, and adding from that bucket wrote 'mobile', so a tablet could not be registered. Now items can be added from it and it counts separately.
   {
     key: 'tablets',
     nameAr: 'تابلت',
@@ -78,23 +58,21 @@ const BUCKETS = [
     nameAr: 'أخرى',
     nameEn: 'Other',
     canonicalType: 'other',
-    // الشنط والكابلات والشواحن وما شابهها. الدلو مفتوح عمداً: أي نوع يُضاف من
-    // البيانات المرجعية ولا ينتمي لدلو معروف يسقط هنا بدل أن يختفي من العدّ.
+    // Bags, cables, chargers and the like. The bucket is open on purpose: a type added from reference data that fits no known bucket falls here instead of vanishing from the count.
     types: ['laptop_bag', 'charger', 'cable', 'headset', 'printer', 'router', 'access_card', 'accessory', 'other'],
   },
 ];
 
 const BUCKET_KEYS = BUCKETS.map((b) => b.key);
 
-// أنواعٌ تُقرأ ولا تُكتب: صفوفُها القديمة تُعرض، ولا يُنشأ بها صنفٌ جديد ولا
-// يُحوَّل إليها صنف. والقيمةُ رسالةُ الرفض.
+// Types that are read, not written: their old rows are shown, but no new item is created with them and no item is converted to them. The value is the rejection message.
 const RETIRED_TYPES = {
   keyboard_mouse: 'لم يعد «طقم ماوس وكيبورد» صنفًا — سجّل الماوس والكيبورد كلًّا وحده.',
 };
 
 /**
- * رسالةُ الرفض إن كان الطلبُ يكتب نوعًا ملغًى، وإلّا null.
- * `currentType` نوعُ الصنف قبل التعديل: تعديلُ صفٍّ قديمٍ دون تغيير نوعه مقبول.
+ * The rejection message if the request writes a retired type, else null.
+ * `currentType` is the item's type before the edit: editing an old row without changing its type is accepted.
  */
 const retiredTypeError = (type, currentType) => {
   const t = String(type || '').trim();
@@ -103,22 +81,20 @@ const retiredTypeError = (type, currentType) => {
   return RETIRED_TYPES[t];
 };
 
-// خريطة نوع ← دلو، تُبنى مرة واحدة: الاشتقاق يُستدعى لكل صف في كل تحميل.
+// Type to bucket map, built once: the derivation is called for every row on every load.
 const TYPE_TO_BUCKET = new Map();
 BUCKETS.forEach((b) => b.types.forEach((t) => TYPE_TO_BUCKET.set(t, b.key)));
 
-/** الدلو الذي ينتمي إليه نوع مفصّل. أي نوع غير معروف يُحسب ضمن «أخرى». */
+/** The bucket a detailed type belongs to. Any unknown type counts as 'other'. */
 const bucketOf = (type) => TYPE_TO_BUCKET.get(String(type || '').trim()) || 'other';
 
-/** الأنواع المفصّلة التي يغطيها دلو ما — تُستخدم للفلترة في الاستعلامات. */
+/** The detailed types a bucket covers; used for filtering in queries. */
 const typesInBucket = (bucketKey) => {
   const b = BUCKETS.find((x) => x.key === bucketKey);
   return b ? b.types.slice() : [];
 };
 
-// أسماء الأنواع بالعربية لاشتقاق اسم العرض. مصدرها assetDefaults، لكنها
-// مكرّرة هنا بالقدر اللازم فقط حتى لا يعتمد الاشتقاق على قراءة قاعدة البيانات
-// في كل حفظ.
+// Arabic type names for deriving the display name. Sourced from assetDefaults but duplicated here only as needed, so derivation does not read the database on every save.
 const TYPE_NAME_AR = {
   laptop: 'لابتوب',
   desktop: 'حاسب مكتبي',
@@ -127,7 +103,7 @@ const TYPE_NAME_AR = {
   monitor: 'شاشة',
   keyboard: 'كيبورد',
   mouse: 'ماوس',
-  keyboard_mouse: 'ماوس وكيبورد', // نوعٌ ملغًى — للصفوف القديمة وحدها
+  keyboard_mouse: 'ماوس وكيبورد', // Retired type; for old rows only.
   headset: 'سماعة رأس',
   printer: 'طابعة',
   router: 'راوتر',
@@ -140,11 +116,8 @@ const TYPE_NAME_AR = {
 };
 
 /**
- * اسم العرض مشتقّ من النوع والماركة بدل أن يُكتب باليد.
- *
- * الاسم الحرّ هو ما أنتج ستة وستين تهجئة لنفس الأجهزة — «Dell» و«لابتوب Dell»
- * و«Laptop HP» و«ASUS» كلها صفوف لنفس الفكرة. اشتقاق الاسم يجعل الصنف الواحد
- * يُكتب بطريقة واحدة مهما اختلف من يُدخله.
+ * The display name is derived from type and brand instead of being typed.
+ * Free names produced sixty-six spellings of the same devices ('Dell', 'Dell laptop', 'Laptop HP', 'ASUS' are rows for one idea). Deriving the name makes one item read one way whoever enters it.
  */
 const deriveAssetName = (type, brand) => {
   const base = TYPE_NAME_AR[String(type || '').trim()] || TYPE_NAME_AR.other;
@@ -152,14 +125,11 @@ const deriveAssetName = (type, brand) => {
   return b ? `${base} ${b}` : base;
 };
 
-/**
- * توحيد كتابة الماركة. البيانات فيها Honor وHONOR وAsus وASUS وlogitech
- * وLogitech كصفوف منفصلة، وكل تجميع حسب الماركة كان ينقسم عليها.
- */
+/** Normalizes brand spelling. The data held Honor, HONOR, Asus, ASUS, logitech and Logitech as separate rows, and every group-by-brand split on them. */
 const normalizeBrand = (brand) => {
   const b = String(brand || '').trim().replace(/\s+/g, ' ');
   if (!b) return '';
-  // الاختصارات التي تُكتب بحروف كبيرة دائماً تبقى كما هي.
+  // Acronyms that are always uppercase stay as they are.
   const UPPER = ['HP', 'MSI', 'LG', 'SMI', 'ASUS', 'AOC'];
   const hit = UPPER.find((u) => u.toLowerCase() === b.toLowerCase());
   if (hit) return hit;

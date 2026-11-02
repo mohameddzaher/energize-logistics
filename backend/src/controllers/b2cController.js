@@ -13,7 +13,7 @@ const cache = require('../utils/ttlCache');
 // Short-lived caches so re-selecting/switching months is instant instead of
 // recomputing the whole dashboard each time. Data changes via sheet-sync/manual
 // entry bust the cache (cache.clear('b2c:')), so staleness is bounded.
-const B2C_DASH_TTL = 5 * 60 * 1000; // 5 دقائق — البيانات تُزامَن ببطء، فالكاش يخفي زمن الحساب البارد
+const B2C_DASH_TTL = 5 * 60 * 1000; // 5-minute cache; data syncs slowly, so it hides the cold compute time.
 const B2C_LIST_TTL = 60 * 1000;
 const { emitToAll } = require('../websocket/socketManager');
 
@@ -24,8 +24,7 @@ const { emitToAll } = require('../websocket/socketManager');
 const pad2 = (n) => String(n).padStart(2, '0');
 const buildDateKey = (year, month, day) => `${year}-${pad2(month)}-${pad2(day)}`;
 
-// وأهلُ المال: القسمُ مفتوحٌ لهم، وما فُتح لهم يملكون فيه ما يملكه مديرُ النظام
-// (راجع config/financeAuthority) — فلا يُقرؤون «عضوًا» يرى مشاريعَه وحدَها.
+// Finance roles get the section open with the same rights as the system admin (see config/financeAuthority), so they are not treated as a member limited to their own projects.
 const isB2CHead = (user) => require('../config/financeAuthority').isFinanceFull(user?.role) || user?.role === 'b2c_manager' || user?.role === 'b2c_deputy' || user?.role === 'super_admin' || user?.role === 'admin';
 // Project managers currently have the same visibility/permissions as heads.
 const isB2CMember = (user) => isB2CHead(user) || user?.role === 'b2c_project_lead';
@@ -112,7 +111,7 @@ exports.deleteProject = async (req, res) => {
     if (!project) return res.status(404).json({ message: 'Project not found' });
     await B2CRep.updateMany({ project: project._id }, { $unset: { project: 1 } });
     await logAudit({ user: req.user._id, action: 'delete_b2c_project', entity: 'B2CProject', entityId: project._id, changes: { before: { name: project.name } }, ipAddress: req.ip });
-    cache.clear('b2c:'); // الإبطال قبل الإعلان — وإلّا أعاد المستمعون قراءة ما قبل الكتابة
+    cache.clear('b2c:'); // Invalidate before announcing, otherwise listeners re-read pre-write data.
     try { emitToAll('b2c:project:deleted', { projectId: project._id }); } catch (e) {}
     res.json({ message: 'Project deleted' });
   } catch (error) {
@@ -150,10 +149,10 @@ exports.getReps = async (req, res) => {
       return res.json({ reps: [] });
     }
 
-    // مندوبٌ صفُّه في النقل الخفيف لمؤرشَف لا يُعرَض — كأنّه حُذف.
+    // A rep whose light-transport row is archived is hidden as if deleted.
     const AH = require('../utils/archivedHidden');
     const goneLt = await AH.archivedLtRowIds(await AH.endedStaff());
-    // «غير مرتبط» — حسابٌ لا صفَّ له في سجلّ النقل الخفيف، يُراجَع بيد القسم.
+    // Unlinked: an account with no row in the light-transport registry; reviewed manually by the section.
     if (req.query.linked === 'false') filter.ltEmployee = null;
     else if (req.query.linked === 'true') filter.ltEmployee = { $ne: null };
     const reps = await B2CRep.find(goneLt.length ? AH.andAll(filter, { ltEmployee: { $nin: goneLt } }) : filter)
@@ -164,13 +163,9 @@ exports.getReps = async (req, res) => {
       .sort({ englishName: 1 })
       .lean();
 
-    // ── الاسمُ والجوالُ من صاحبهما ─────────────────────────────────────────
-    // الحسابُ المربوطُ يُعرَض باسم صاحبه في الموارد البشريّة (ثمّ في السجلّ)، لا
-    // بما كتبه الشيتُ يومًا: تعديلُ الاسم في الملفّ يظهر هنا في اللحظة. وما كتبه
-    // الشيتُ يبقى في `englishName`/`arabicName` — هو اسمُ الحساب على التطبيق.
+    // Name and phone come from their owner: a linked account shows the HR (then registry) name, not what the sheet once said. The sheet's values stay in englishName/arabicName as the app account name.
     const { personOf } = require('../utils/b2cRepLink');
-    // ومراجعةُ الحسابات (`review=1`): آخرُ طلبٍ وعددُ الأيّام — ومن لم يعمل ستّين
-    // يومًا ولا صفَّ له يُقترَح إيقافُه. اقتراحٌ يُعرَض، لا إيقافٌ يُنفَّذ.
+    // Account review (review=1): last order and days idle; a rep idle for 60 days with no registry row is suggested for suspension. A suggestion only, nothing is suspended.
     let activity = null;
     if (req.query.review === '1' && reps.length) {
       const rows = await B2CDailyOrder.aggregate([
@@ -208,9 +203,7 @@ exports.createRep = async (req, res) => {
 
     if (!englishName) return res.status(400).json({ message: 'English name is required' });
 
-    // ── يُربط بصاحبه ساعةَ إنشائه ──────────────────────────────────────────
-    // صفٌّ مختارٌ من السجلّ، أو رقمُ هويّةٍ، أو جوال، أو اسمٌ تامٌّ لا يلتبس —
-    // راجع utils/b2cRepLink. ومن لم يُعرَف صاحبُه يُنشأ «غير مرتبط» ويُراجَع.
+    // Linked to its owner at creation: chosen registry row, ID number, phone, or an unambiguous full name (see utils/b2cRepLink). An unknown owner is created as unlinked for review.
     const { linkAtCreate } = require('../utils/b2cRepLink');
     const pickedLt = mongoose.isValidObjectId(req.body.ltEmployee) ? req.body.ltEmployee : null;
     const ltEmployee = pickedLt || await linkAtCreate({ repId, arabicName, englishName, phone }, { idNumber: req.body.idNumber, phone });
@@ -222,7 +215,7 @@ exports.createRep = async (req, res) => {
       joiningDate: joiningDate || undefined,
       project: project || undefined,
       branch: branch || undefined,
-      // المشرفُ المسؤول — يقرّر مَن يرى هذا المندوبَ في شاشة تفقّد بداية الدوام.
+      // Responsible supervisor; decides who sees this rep on the start-of-duty check screen.
       supervisor: supervisor || undefined,
       monthlyTarget: monthlyTarget || 400,
       dailyTarget: dailyTarget || 15,
@@ -246,8 +239,7 @@ exports.createRep = async (req, res) => {
 exports.updateRep = async (req, res) => {
   try {
     const updates = { ...req.body };
-    // «بلا مشرف» يصل نصًّا فارغًا من القائمة، و`''` لا يُحوَّل إلى مُعرِّف —
-    // فيُردّ الحفظُ كلُّه بخطأ صبّ. والفراغُ هنا فعلٌ مقصود: يُكتب `null`.
+    // 'No supervisor' arrives as an empty string, which does not cast to an id and would fail the whole save with a cast error. The empty value is intentional and stored as null.
     for (const k of ['supervisor', 'project', 'branch', 'ltEmployee']) {
       if (updates[k] === '') updates[k] = null;
     }
@@ -410,7 +402,7 @@ exports.bulkResolveReps = async (req, res) => {
 
     let actuallyCreated = 0;
     if (toCreate.length > 0) {
-      // والحسابُ الجديد يُربط بصاحبه في السجلّ إن عُرف يقينًا — utils/b2cRepLink.
+      // A new account is linked to its registry owner when known with certainty (utils/b2cRepLink).
       try {
         const RL = require('../utils/b2cRepLink');
         const index = await RL.buildIndex();
@@ -418,7 +410,7 @@ exports.bulkResolveReps = async (req, res) => {
           const m = RL.matchRep(t.payload, index);
           if (m && m.lt) t.payload.ltEmployee = m.lt;
         }
-      } catch (_) { /* الربطُ لا يُسقط الإنشاء */ }
+      } catch (_) { /* Linking failure must not fail creation. */ }
       const docs = toCreate.map((t) => t.payload);
       try {
         const created = await B2CRep.insertMany(docs, { ordered: false });
@@ -450,7 +442,7 @@ exports.bulkResolveReps = async (req, res) => {
 
     const matched = result.filter((r) => !r.created).length;
     console.log(`[B2C bulk-resolve] incoming=${incoming.length} canonical=${canonicalByName.size} matched=${matched} created=${actuallyCreated}`);
-    cache.clear('b2c:'); // الإبطال قبل الإعلان — وإلّا أعاد المستمعون قراءة ما قبل الكتابة
+    cache.clear('b2c:'); // Invalidate before announcing, otherwise listeners re-read pre-write data.
     try { emitToAll('b2c:rep:bulk', { count: actuallyCreated }); } catch (e) {}
 
     res.json({ resolved: result, createdCount: actuallyCreated });
@@ -469,7 +461,7 @@ exports.deleteRep = async (req, res) => {
       await B2CDailyOrder.deleteMany({ rep: rep._id });
     }
     await logAudit({ user: req.user._id, action: 'delete_b2c_rep', entity: 'B2CRep', entityId: rep._id, changes: { before: { englishName: rep.englishName } }, ipAddress: req.ip });
-    cache.clear('b2c:'); // الإبطال قبل الإعلان — وإلّا أعاد المستمعون قراءة ما قبل الكتابة
+    cache.clear('b2c:'); // Invalidate before announcing, otherwise listeners re-read pre-write data.
     try { emitToAll('b2c:rep:deleted', { repId: rep._id }); } catch (e) {}
     res.json({ message: 'Rep deleted' });
   } catch (error) {
@@ -674,7 +666,7 @@ exports.reconcileReps = async (req, res) => {
     const { reconcileAllReps } = require('../services/b2cGoogleSheetSyncService');
     const result = await reconcileAllReps();
     if (result.mergedGroups > 0) {
-      cache.clear('b2c:'); // الإبطال قبل الإعلان — وإلّا أعاد المستمعون قراءة ما قبل الكتابة
+      cache.clear('b2c:'); // Invalidate before announcing, otherwise listeners re-read pre-write data.
       try { emitToAll('b2c:cleanup', result); } catch (_) {}
     }
     res.json({ ok: true, ...result });
@@ -711,14 +703,7 @@ exports.getDailyOrders = async (req, res) => {
       return res.json({ orders: [] });
     }
 
-    // ── حدٌّ وذاكرة ───────────────────────────────────────────────────────────
-    // بلا مدى تاريخ كان هذا يجلب السجلّ كلّه — ثلاثةً وأربعين ألف صفٍّ بثلاث
-    // عمليّات ربط — فيستغرق الطلب أربع ثوانٍ ونصفًا وينقلها كلَّها إلى المتصفّح.
-    // وكلُّ مستهلكٍ حقيقيّ (شاشة الإدخال اليوميّ في الموقع والتطبيق) يمرّر
-    // `dateFrom`/`dateTo` ليومٍ واحد، فلا أحد يطلب هذا الكمّ أصلًا؛ كان يُنقَل
-    // لأن لا شيء يمنعه.
-    //
-    // والحدُّ يُعلَن حين يُبلَغ: نتيجةٌ مبتورةٌ بصمت أسوأ من نتيجةٍ ناقصةٍ معلومة.
+    // Limit and memory: without a date range this fetched the whole log (about 43k rows) and sent it to the browser. Real consumers pass dateFrom/dateTo for one day. The limit is reported when reached, since a silently truncated result is worse than a known partial one.
     const MAX = Math.min(Number(req.query.limit) || 5000, 20000);
     const key = `b2c:daily:${JSON.stringify(req.query || {})}:${req.user._id}`;
     const hit = cache.get(key);
@@ -966,7 +951,7 @@ exports.deleteDailyOrder = async (req, res) => {
   try {
     const order = await B2CDailyOrder.findByIdAndDelete(req.params.id);
     if (!order) return res.status(404).json({ message: 'Entry not found' });
-    cache.clear('b2c:'); // الإبطال قبل الإعلان — وإلّا أعاد المستمعون قراءة ما قبل الكتابة
+    cache.clear('b2c:'); // Invalidate before announcing, otherwise listeners re-read pre-write data.
     try { emitToAll('b2c:order:deleted', { id: order._id }); } catch (e) {}
     res.json({ message: 'Entry deleted' });
   } catch (error) {
@@ -1011,8 +996,7 @@ exports.getDashboardSummary = async (req, res) => {
       });
     }
 
-    // المفتاح بالنطاق لا بالمستخدم: اللوحة لا تتغيّر إلّا بالنطاق والفلاتر، فأربعون
-    // مديرًا يفتحونها صباحًا يتقاسمون حسابًا واحدًا (wrap = طلعة واحدة) بدل أربعين.
+    // Cache key is the scope, not the user: the board changes only with scope and filters, so many managers share one computation (wrap = single flight).
     const scopeKey = scope.projectIds ? scope.projectIds.map(String).sort().join(',') : 'all';
     const cacheKey = `b2c:dash:${scopeKey}:${JSON.stringify(req.query || {})}`;
     const payload = await cache.wrapStale(cacheKey, B2C_DASH_TTL, 15 * 60 * 1000, () => computeDashboard(req, filter, scope));
@@ -1023,16 +1007,12 @@ exports.getDashboardSummary = async (req, res) => {
   }
 };
 
-// ترتيبٌ ثابتٌ عند التعادل: مخرجات $group بلا ترتيب، فكان مندوبان بالعدد نفسه
-// يتبادلان مكانيهما بين نداءٍ وآخر (worstRep وbottomReps ومتوسّط الأداء — جمعُ
-// كسورٍ بترتيبٍ مختلف يختلف في آخر خانة). فيُكسَر التعادل بالمعرّف دائمًا.
+// Stable tie-break: $group output is unordered, so reps with equal counts swapped places between calls (worstRep, bottomReps, average performance; summing fractions in a different order changes the last digit). Ties break by id.
 const byIdTie = (a, b) => (String(a) < String(b) ? -1 : String(a) > String(b) ? 1 : 0);
 
 async function computeDashboard(req, filter, scope) {
 
-  // ── الأداء: نحسب التجميعات داخل قاعدة البيانات (aggregation) بدل تحميل عشرات
-  // الآلاف من الصفوف إلى Node — التحميل الكامل كان ياخد ~68 ثانية ويجمّد حلقة
-  // الأحداث (single-thread) فيبطّئ النظام كله. الآن الـ DB يجمّع والنتائج صغيرة.
+  // Performance: aggregate inside the database instead of loading tens of thousands of rows into Node, which blocked the single-threaded event loop for about 68 s.
   const repDefaults = { monthlyTarget: 400, dailyTarget: 15 };
   const [repsList, projsList, branchesList] = await Promise.all([
     B2CRep.find({}, 'englishName arabicName monthlyTarget dailyTarget').lean(),
@@ -1041,26 +1021,20 @@ async function computeDashboard(req, filter, scope) {
   ]);
   const repMap2 = new Map(repsList.map((r) => [String(r._id), r]));
   const projMap2 = new Map(projsList.map((p) => [String(p._id), p]));
-  // ── مشاريعُ الشحنات (امازون: هدفٌ شهريّ ٠) لا تدخل عدَّ الطلبات ──────────────
-  // شحنةٌ ليست طلبًا، وجمعُهما يجعل «إجمالي الطلبات» رقمًا لا يُقرأ. فتُستثنى إلّا
-  // إن فُلترت بها وحدَها (صاحبُ الشركة، ٢٠٢٦/١٠/١٩ — utils/b2cEntry).
+  // Shipment projects (Amazon, monthly target 0) are excluded from order counts since a shipment is not an order, unless filtered on alone (utils/b2cEntry).
   const shipmentIds = projsList.filter((p) => Number(p.monthlyTarget) === 0).map((p) => p._id);
   if (shipmentIds.length && !filter.project) filter = { ...filter, project: { $nin: shipmentIds } };
-  // والهدفُ اليوميُّ للمندوب هدفُ مشروعه (الشهريّ ÷ ٣٠) — كما في شيت التحقيق.
+  // A rep's daily target is the project's monthly target / 30, as in the investigation sheet.
   const projDaily = (pid) => { const p = projMap2.get(String(pid)); return p && p.monthlyTarget ? p.monthlyTarget / 30 : null; };
   const branchMap2 = new Map(branchesList.map((b) => [String(b._id), b]));
 
   const workedExpr = { $and: [{ $eq: ['$worked', true] }, { $ne: ['$orders', null] }] };
   const ordersNum = { $ifNull: ['$orders', 0] };
-  // عددُ المندوبين يُحسب داخل القاعدة: كانت مجموعاتُ المعرّفات نفسُها تُنقل (٨٧٠ ك.ب
-  // لتجميع الأيام وحده) ليُعدّ طولُها فقط — والنقلُ من العنقود هو الكلفة الحقيقية.
+  // Rep counts are computed in the database; shipping the id sets just to count them was the real cost on this cluster.
   const setSize = (f) => ({ $size: { $setDifference: [f, [null]] } });
   const A = (extra) => B2CDailyOrder.aggregate([{ $match: filter }, ...extra]);
 
-  // تجميعات متوازية داخل قاعدة البيانات (أسرع من $facet على هذا العنقود، وكلها
-  // I/O لا تحجب حلقة الأحداث) بدل تحميل عشرات الآلاف من الصفوف إلى Node.
-  // قائمةُ الأشهر المتاحة كانت تُطلب بعد انتهاء البقيّة (رحلةٌ إضافيّة كاملة)،
-  // وهي مستقلّةٌ عنها — فتُطلب معها.
+  // Parallel DB aggregations (faster than $facet on this cluster, and I/O only). The available-months list is independent, so it is requested together with the rest.
   const monthScopeFilter = {};
   if (scope.projectIds && scope.projectIds.length > 0) {
     monthScopeFilter.project = { $in: scope.projectIds.map((id) => new mongoose.Types.ObjectId(String(id))) };
@@ -1068,13 +1042,11 @@ async function computeDashboard(req, filter, scope) {
   if (req.query.project) monthScopeFilter.project = new mongoose.Types.ObjectId(String(req.query.project));
   if (req.query.branch) monthScopeFilter.branch = new mongoose.Types.ObjectId(String(req.query.branch));
 
-  // تجميعُ (مندوب، شهر) يكفي للاثنين: مجموعُ المندوب هو مجموعُ أشهره، فلا
-  // يُمرّ على الصفوف مرّتين ولا يُنقل المعرّف مرّةً لكلّ شهر.
+  // One (rep, month) grouping serves both: a rep's total is the sum of their months, so rows are scanned once and ids are not shipped per month.
   const [repAgg, monthAgg, projAgg, branchAgg, dayAgg, dowAgg, bestDaysAgg, totalsAgg, monthsAggregate] = await Promise.all([
     A([
       { $group: { _id: { rep: '$rep', year: '$year', month: '$month' }, orders: { $sum: ordersNum }, workingDays: { $sum: { $cond: [workedExpr, 1, 0] } }, project: { $first: '$project' }, branch: { $first: '$branch' } } },
-      // الأشهر نصٌّ مضغوط «سنة,شهر,طلبات,أيام» لا مستندات: أسماءُ الحقول ومفاتيحُ
-      // المصفوفة كانت نصفَ حجم هذا التجميع، والحجمُ هو الزمن على هذا العنقود.
+      // Months are a packed string 'year,month,orders,days' rather than documents: field names and array keys were half the size of this aggregation, and size is time on this cluster.
       { $group: { _id: '$_id.rep', totalOrders: { $sum: '$orders' }, workingDays: { $sum: '$workingDays' }, project: { $first: '$project' }, branch: { $first: '$branch' },
         months: { $push: { $concat: [{ $toString: '$_id.year' }, ',', { $toString: '$_id.month' }, ',', { $toString: '$orders' }, ',', { $toString: '$workingDays' }] } } } },
     ]),
@@ -1091,7 +1063,7 @@ async function computeDashboard(req, filter, scope) {
       repsAboveTarget: { $sum: { $cond: [{ $gte: [ordersNum, repDefaults.dailyTarget] }, 1, 0] } } } },
       { $set: { repsActive: setSize('$repsActive'), repsNotWorked: setSize('$repsNotWorked') } }]),
     A([{ $group: { _id: { $let: { vars: { d: { $dateFromString: { dateString: { $concat: ['$dateKey', 'T00:00:00.000Z'] }, onError: null, onNull: null } } }, in: { $cond: [{ $eq: ['$$d', null] }, -1, { $subtract: [{ $dayOfWeek: '$$d' }, 1] }] } } }, totalOrders: { $sum: ordersNum }, workingCells: { $sum: { $cond: [workedExpr, 1, 0] } } } }]),
-    // _id يكسر التعادل: خمسةُ أيّامٍ من عشراتٍ بالعدد نفسه كانت تتبدّل بين نداءٍ وآخر.
+    // _id breaks ties; equal counts otherwise swapped between calls.
     B2CDailyOrder.aggregate([{ $match: { ...filter, worked: true, orders: { $gt: 0 } } }, { $sort: { orders: -1, _id: 1 } }, { $limit: 5 }, { $project: { rep: 1, project: 1, dateKey: 1, orders: 1 } }]),
     A([{ $group: { _id: null, totalOrders: { $sum: ordersNum }, totalWorkingDays: { $sum: { $cond: [workedExpr, 1, 0] } }, totalDaysOff: { $sum: { $cond: [{ $eq: ['$orders', 0] }, 1, 0] } }, totalNoDataDays: { $sum: { $cond: [{ $eq: ['$orders', null] }, 1, 0] } } } }]),
     B2CDailyOrder.aggregate([
@@ -1161,16 +1133,16 @@ async function computeDashboard(req, filter, scope) {
   const atRiskReps = workedReps.filter((r) => r.performancePercent < 60).length;
   const avgPerformance = workedReps.length > 0 ? workedReps.reduce((s, r) => s + r.performancePercent, 0) / workedReps.length : 0;
 
-  // Day-of-week breakdown (0=Sun..6=Sat) — من الـ aggregation.
+  // Day-of-week breakdown (0=Sun..6=Sat) from the aggregation.
   const dowMap = new Map(dowAgg.map((d) => [d._id, d]));
   const byDayOfWeek = Array.from({ length: 7 }, (_, i) => {
     const e = dowMap.get(i) || { totalOrders: 0, workingCells: 0 };
     return { dow: i, totalOrders: e.totalOrders, workingCells: e.workingCells, avgPerWorker: e.workingCells > 0 ? e.totalOrders / e.workingCells : 0 };
   });
 
-  // Improvers / Decliners — من تجميع (rep, month) بدل المرور على كل الصفوف.
+  // Improvers / decliners from the (rep, month) grouping instead of scanning all rows.
   const repMonthMap = new Map(); // repId -> { monthKey -> { orders, workingDays } }
-  // الأشهر مرتّبةً: الانحرافُ المعياريّ جمعُ كسورٍ، وترتيبُه يغيّر آخرَ خانة.
+  // Months sorted: standard deviation sums fractions, and order changes the last digit.
   repAgg.forEach((r) => {
     const repId = String(r._id || '');
     const mm = new Map();
@@ -1212,7 +1184,7 @@ async function computeDashboard(req, filter, scope) {
   }).filter((r) => r.monthsActive >= 2)
     .sort((a, b) => b.consistency - a.consistency).slice(0, 5);
 
-  // Best single days across all reps — من الـ aggregation (أعلى 5 صفوف).
+  // Best single days across all reps, from the aggregation (top 5 rows).
   const bestSingleDays = bestDaysAgg.map((o) => ({
     repId: o.rep,
     englishName: repMap2.get(String(o.rep))?.englishName,
@@ -1482,27 +1454,9 @@ exports.getRepEvaluations = async (req, res) => {
     const reps = await B2CRep.find(filter).populate('project', 'name code color monthlyTarget').populate('branch', 'name city');
     const repIds = reps.map((r) => r._id);
 
-    // ── والجمعُ يجري في القاعدة، لا في الذاكرة ────────────────────────────────
-    // كان هذا السطرُ `B2CDailyOrder.find({ rep: { $in: repIds } })` بلا حدٍّ ولا
-    // اختيارِ حقول: يسحب **كلَّ** طلبٍ يوميٍّ سُجِّل منذ بدء المشروع — واحدًا
-    // وخمسين ألفًا اليوم، أربعةَ عشرَ ميجابايت — في كلّ مرّةٍ تُفتَح فيها شاشةُ
-    // التقييم، ثمّ يجمعها بالجافاسكربت. والنقطةُ قيست 5.6 ثانيةٍ وهي دافئة.
-    //
-    // وأسوأُ من البطء أنّه بطءٌ يزيد كلَّ يوم: كلُّ طلبٍ جديدٍ يُسجَّل يُضاف إلى
-    // ما يُسحَب، فالشاشةُ تثقل بنموّ الشركة ولا شيءَ يقول لماذا.
-    //
-    // والمطلوبُ منها أربعةُ حقولٍ ومجموعٌ شهريّ، وهذا عملُ `$group`: يعود بصفٍّ
-    // لكلّ مندوبٍ في كلّ شهرٍ — مئاتٌ لا عشراتُ آلاف. والفهرسُ على `rep` قائم.
-    //
-    // وتُحفَظ دقيقتان من سلوك ما كان:
-    //  • الشهرُ الذي كلُّ طلباته `null` يبقى شهرًا موجودًا بمجموعٍ صفر — لأنّ
-    //    `monthsArr.length` يقسم المتوسّطَ ويدخل في حساب الثبات. فلا يُرشَّح
-    //    `orders: { $ne: null }` في `$match`؛ و`$sum` يتجاهل القيمَ غيرَ
-    //    العدديّة فيخرج المجموعُ نفسُه.
-    //  • ترتيبُ الشهور: كان ترتيبَ ورودِ المستنداتِ من القاعدة — أي ترتيبًا لا
-    //    معنى له — و`trend` يقارن «النصفَ الأوّل» بـ«النصف الأخير» منه. فكانت
-    //    «صاعد/هابط» تُحسَب على شهورٍ غيرِ مرتَّبةٍ زمنيًّا، وهي لذلك كلمةٌ بلا
-    //    مدلول. وهي الآن مرتَّبةٌ بالسنة فالشهر، فصارت تقول ما تعنيه.
+    // Summing runs in the database, not memory. The old unbounded find() pulled every daily order (about 51k rows, 14 MB) on each evaluation screen open and grew daily. A $group returns one row per rep per month.
+    // Kept behaviour: a month whose orders are all null stays a month with total 0 (monthsArr.length divides the average and feeds consistency), so no orders:{$ne:null} filter; $sum ignores non-numeric values.
+    // Months are now sorted by year then month, because trend compares first and last halves and the old arrival order was meaningless.
     const grouped = await B2CDailyOrder.aggregate([
       { $match: { rep: { $in: repIds } } },
       { $group: { _id: { rep: '$rep', y: '$year', m: '$month' }, total: { $sum: '$orders' } } },
@@ -1655,7 +1609,7 @@ exports.cleanupB2CData = async (req, res) => {
       ipAddress: req.ip,
     });
 
-    cache.clear('b2c:'); // الإبطال قبل الإعلان — وإلّا أعاد المستمعون قراءة ما قبل الكتابة
+    cache.clear('b2c:'); // Invalidate before announcing, otherwise listeners re-read pre-write data.
     try { emitToAll('b2c:cleanup', { scope }); } catch (e) {}
 
     console.log(`[B2C cleanup] scope=${scope} orders=${ordersDeleted.deletedCount} uploads=${uploadsDeleted.deletedCount} reps=${repsDeleted.deletedCount}`);

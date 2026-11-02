@@ -1,9 +1,6 @@
 /**
- * قالبُ بريد كشف الحساب — يكتبه قسمُ التحصيل من إعداداته (٢٠٢٦/١٠/٢٤).
- *
- * صفٌّ واحدٌ لكلّ قالب (`key`). يُقرأ من القاعدة في كلّ مسودّةٍ بلا ذاكرةٍ مؤقّتة،
- * فما يُعدَّل يصل أوّلَ إرسالٍ بعده. وخاناتُه بين قوسين — راجع PLACEHOLDERS في
- * controllers/collectionsMailController.
+ * Account statement email template, edited by collections in its settings.
+ * One row per template (`key`), read from the database on every draft with no cache, so edits apply on the next send. Placeholders are in brackets; see PLACEHOLDERS in controllers/collectionsMailController.
  */
 const mongoose = require('mongoose');
 
@@ -11,10 +8,9 @@ const schema = new mongoose.Schema({
   key: { type: String, required: true, unique: true, trim: true },   // 'statement'
   subject: { type: String, default: '', trim: true, maxlength: 300 },
   body: { type: String, default: '', maxlength: 8000 },
-  // التوقيع — نصٌّ وصورةٌ اختياريّة (شعارٌ أو توقيعٌ ممسوح) تُلحَق بآخر كلّ رسالة.
-  // والصورةُ تُرسَل مضمَّنةً في الرسالة (cid) فتظهر بلا تحميل صورٍ خارجيّة.
+  // Signature: text plus an optional image (logo or scanned signature) appended to every message. The image is embedded (cid) so it shows without loading external images.
   signature: { type: String, default: '', maxlength: 2000 },
-  signatureImage: { type: String, default: '' },          // data:image/...;base64 — حتى ٣٠٠ ك.ب
+  signatureImage: { type: String, default: '' },          // data:image/...;base64, up to 300 KB
   signatureImageName: { type: String, default: '' },
   updatedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User', default: null },
   updatedByName: { type: String, default: '' },

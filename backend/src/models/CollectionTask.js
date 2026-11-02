@@ -1,18 +1,7 @@
 /**
- * مهمّةُ تحصيل — «مَن يزور مَن اليوم، وماذا حدث».
- *
- * ── ما تصفه ────────────────────────────────────────────────────────────────
- * مديرُ التحصيل يكتب لكلّ موظّفٍ خطّةَ يومه: هذا العميلُ يُزار، وهذا يُتَّصل به،
- * وهذا يُرسَل له بريد. والموظّفُ نفسُه يكتب خطّتَه للغد. فيأتي الصباحُ ويعرف
- * كلٌّ ما أمامه بلا سؤال.
- *
- * وبعد الفعل يُكتب ما حدث: نتيجةُ الزيارة، وكم حُصِّل. وهو أثرٌ يُقرأ في تقييم
- * الفريق، ويُقرأ في ملفّ العميل: متى كلّمناه آخرَ مرّة وبم أجاب.
- *
- * ── يومٌ وعميلٌ وموظّف ─────────────────────────────────────────────────────
- * الوحدةُ هي (عميل × يوم): في ورقتهم عمودٌ لكلّ يومٍ تحت كلّ عميل. فالمهمّةُ
- * هنا صفٌّ بتاريخه — يُقرأ بالأسبوع كما تُقرأ الورقة، وبالموظّف كما يُقرأ
- * التقييم، وبالعميل كما يُقرأ ملفُّه.
+ * Collection task: who visits whom today, and what happened.
+ * The collections manager writes each employee's daily plan (visit, call, email) and employees write their own for tomorrow. Afterwards the outcome and amount collected are recorded, feeding team evaluation and the customer file.
+ * Unit is (customer x day), matching the sheet's column per day, so a task is a dated row readable by week, employee, or customer.
  */
 const mongoose = require('mongoose');
 
@@ -21,27 +10,26 @@ const collectionTaskSchema = new mongoose.Schema({
   partyCode: { type: String, trim: true, default: '', index: true },
   partyName: { type: String, trim: true, default: '' },
 
-  // اسمُ الموظّف كما يُكتب في الورقة، ومعرّفُه حين يُربط بحسابٍ في النظام.
-  // والمعرّفُ يُحلّ من الاسم عند الإنشاء والتعديل (utils/collectionsOfficer)،
-  // وتُفلتَر المهامُّ به مع الاسم — فلا يضيع عملُ موظّفٍ كُتب اسمُه بصيغةٍ أخرى.
+  // Employee name as written in the sheet, plus the id when linked to a system account.
+  // The id is resolved from the name on create and edit (utils/collectionsOfficer), and tasks are filtered by both, so work under another spelling is not lost.
   officerName: { type: String, trim: true, default: '', index: true },
   officer: { type: mongoose.Schema.Types.ObjectId, ref: 'User', index: true },
 
-  date: { type: String, required: true, index: true },   // YYYY-MM-DD — يومُ المهمّة
+  date: { type: String, required: true, index: true },   // YYYY-MM-DD: task day
 
-  // نوعُ التواصل المطلوب: زيارةُ مكتبٍ، أو اتّصال، أو بريد، أو تسليمُ فاتورة.
+  // Contact type requested: office visit, call, email, or invoice delivery.
   requestType: { type: String, trim: true, default: '' },
-  planned: { type: Boolean, default: true },             // «x» في الورقة
+  planned: { type: Boolean, default: true },             // "x" in the sheet
   status: { type: String, trim: true, default: '' },     // Done / …
-  collected: { type: Number, default: 0 },               // ما حُصِّل في هذه الزيارة
-  action: { type: String, trim: true, default: '' },     // ما حدث، بكلام من قام به
+  collected: { type: Number, default: 0 },               // Amount collected in this visit
+  action: { type: String, trim: true, default: '' },     // What happened, in the doer's words
   notes: { type: String, trim: true, default: '' },
 
   createdBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
   source: { type: String, trim: true, default: '' },
 }, { timestamps: true });
 
-// صفٌّ واحدٌ لكلّ (عميل × يوم × نوعِ طلب) — فلا يُستورَد اليومُ مرّتين.
+// One row per (customer x day x request type), so a day is not imported twice.
 collectionTaskSchema.index({ party: 1, date: 1, requestType: 1 }, { unique: true, sparse: true });
 collectionTaskSchema.index({ officerName: 1, date: -1 });
 collectionTaskSchema.index({ date: -1, status: 1 });

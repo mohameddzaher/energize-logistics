@@ -1,23 +1,12 @@
 /**
- * auditLabels — كلُّ ما يُقرأ في سجلّ المراجعة: اسمُ الفعل، واسمُ الكيان، واسمُ
- * الحقل، وقيمتُه.
- *
- * ── لماذا في الخادم ─────────────────────────────────────────────────────────
- * كانت هذه الخرائطُ في الواجهة، والتطبيقُ يعرض السجلَّ نفسَه بمفاتيحه الخام
- * (`update_workflow · OperationsWorkflow`). خريطتان في مكانين تفترقان عند أوّل
- * فعلٍ يُضاف، فصارت واحدةً هنا يقرأ منها الموقعُ والتطبيقُ جملةً جاهزة.
- *
- * ── وأسماءُ الحقول لا تُخترَع ───────────────────────────────────────────────
- * حقلُ الموظّف يُسمّى من `hrFields`، ووثيقةُ المركبة من `vehicleDocuments`،
- * والدورُ من `roles`، والقسمُ من `sections` — الاسمُ الذي يراه المستخدمُ في
- * شاشته هو الذي يقرؤه هنا. وأعمدةُ كشف التشغيل لا مصدرَ لها في الخادم (تُعرَّف
- * في صفحة العمليات نفسِها)، فنُقلت عناوينُها كما هي من
- * `frontend/src/app/system/operations/page.tsx`.
+ * auditLabels: readable names for audit-log actions, entities, fields and values.
+ * Kept on the server so web and mobile share one map instead of two that drift apart.
+ * Field names come from hrFields, vehicleDocuments, roles and sections; operations sheet column titles are copied from the operations page.
  */
 
-/** فعلٌ بعينه → جملتُه. */
+/** Specific action to its sentence. */
 const ACTION_AR = {
-  // قيودُ شبكة الأمان (middleware/auditTrail) — فعلٌ لم يقيّده متحكّمُه بتفصيله.
+  // Safety-net entries (middleware/auditTrail) for actions the controller did not record in detail.
   undo_collection: 'رجوع عن تحصيل',
   customs_party_attach: 'إرفاق ملف لطرف في التخليص', customs_party_detach: 'حذف مرفق طرف في التخليص',
   lt_vehicle_update: 'تعديل مركبة من قسم الأفراد',
@@ -29,12 +18,12 @@ const ACTION_AR = {
   lt_user_rental_create: 'تأجير يوزر', lt_user_rental_update: 'تعديل تأجير يوزر', lt_user_rental_end: 'إنهاء تأجير يوزر', lt_user_rental_delete: 'حذف تأجير يوزر',
   ht_custody_entry: 'قيد في عهدة النقل الثقيل', ht_custody_delete: 'حذف قيد من عهدة النقل الثقيل',
   api_create: 'إضافة / تنفيذ إجراء', api_update: 'تعديل', api_delete: 'حذف',
-  // حركاتُ أصول النقل الثقيل (الكاوتش والتيدرات والسطحات).
+  // Heavy transport asset movements (tires, tractors, trailers).
   ls2_asset_mounted: 'تركيب', ls2_asset_removed: 'إنزال', ls2_asset_transferred: 'نقل', ls2_asset_registered: 'تسجيل أصل',
   ls2_asset_updated: 'تعديل بيانات أصل', ls2_asset_retired: 'إخراج من الخدمة', ls2_asset_to_repair: 'إرسال إلى المصنع',
   ls2_asset_from_repair: 'رجوع من المصنع', ls2_asset_scrapped: 'تحويل إلى سكراب', ls2_asset_damaged: 'تسجيل تالف',
   ls2_asset_to_store: 'إنزال إلى المخزن',
-  // الدخول والحسابات
+  // Login and accounts
   login: 'تسجيل دخول',
   logout: 'تسجيل خروج',
   create_user: 'إنشاء مستخدم',
@@ -48,7 +37,7 @@ const ACTION_AR = {
   create_partner_account: 'إنشاء حساب شريك',
   update_role_permissions: 'تعديل صلاحيات دور',
 
-  // المحفظة والعهدة
+  // Wallet and custody
   wallet_transaction: 'تسجيل حركة في المحفظة',
   update_wallet_transaction: 'تعديل حركة في المحفظة',
   delete_wallet_transaction: 'حذف حركة من المحفظة',
@@ -58,7 +47,7 @@ const ACTION_AR = {
   set_opening_balance: 'ضبط الرصيد الافتتاحي',
   cash_difference_alert: 'تنبيه فرق نقدي',
 
-  // الموارد البشرية
+  // Human resources
   create_employee: 'إضافة موظف',
   update_employee: 'تعديل ملف موظف',
   update_employee_fields: 'تعديل حقول في ملف موظف',
@@ -72,7 +61,7 @@ const ACTION_AR = {
   renew_contract: 'تجديد عقد',
   data_fix: 'تصحيح بيانات',
 
-  // التشغيل والتحصيل
+  // Operations and collections
   create_workflow: 'إنشاء عملية تشغيل',
   update_workflow: 'تعديل عملية تشغيل',
   delete_workflow: 'حذف عملية تشغيل',
@@ -98,7 +87,7 @@ const ACTION_AR = {
   create_customer: 'إضافة عميل',
   update_payment: 'تعديل دفعة',
 
-  // المركبات
+  // Vehicles
   renew_vehicle_document: 'تجديد مستند مركبة',
   add_vehicle_document: 'إضافة مستند مركبة',
   update_vehicle_document: 'تعديل مستند مركبة',
@@ -119,7 +108,7 @@ const ACTION_AR = {
   add_driver_to_policy: 'ضمّ سائق لوثيقة خيانة الأمانة',
   remove_driver_from_policy: 'رفع سائق من وثيقة خيانة الأمانة',
 
-  // النقل الخفيف و b2c
+  // Light transport and b2c
   create_lt_employee: 'إضافة موظف نقل خفيف',
   update_lt_employee: 'تعديل موظف نقل خفيف',
   create_lt_order: 'إنشاء أمر تشغيل',
@@ -137,7 +126,7 @@ const ACTION_AR = {
   b2c_cleanup_all: 'تنظيف بيانات b2c',
   b2c_cleanup_orders: 'تنظيف طلبات b2c',
 
-  // الأسطول والورشة والمخزن
+  // Fleet, workshop and store
   assign_supervisor: 'إسناد مشرف لسيارة',
   pay_driver_expense: 'صرف مصروف سائق',
   unpay_driver_expense: 'تراجع عن صرف مصروف سائق',
@@ -154,7 +143,7 @@ const ACTION_AR = {
   complete: 'إكمال',
   updateStatus: 'تغيير الحالة',
 
-  // التخليص الجمركي
+  // Customs clearance
   create_customs_clearance: 'إنشاء معاملة تخليص',
   update_customs_clearance: 'تعديل معاملة تخليص',
   complete_customs_clearance: 'إنهاء معاملة تخليص',
@@ -163,7 +152,7 @@ const ACTION_AR = {
   add_customs_attachment: 'إرفاق ملف بمعاملة تخليص',
   delete_customs_attachment: 'حذف مرفق من معاملة تخليص',
 
-  // إدارية
+  // Administration
   create_branch: 'إنشاء فرع',
   create_lookup: 'إضافة قيمة لقائمة',
   update_lookup: 'تعديل قيمة في قائمة',
@@ -177,7 +166,7 @@ const ACTION_AR = {
   repair_integrity: 'إصلاح تكامل البيانات',
 };
 
-/** أفعالٌ عامّة تُقرأ مع اسم الكيان: «إنشاء · حمولة أسطول». */
+/** Generic actions, read together with the entity name. */
 const GENERIC_AR = {
   create: 'إنشاء', add: 'إضافة', update: 'تعديل', edit: 'تعديل',
   delete: 'حذف', remove: 'إزالة', assign: 'إسناد', revoke: 'إلغاء',
@@ -187,7 +176,7 @@ const GENERIC_AR = {
 };
 
 
-/** أسماءُ الكيانات — كلُّ نموذجٍ يُقيَّد عليه فعلٌ في الخادم له اسمٌ يُقرأ. */
+/** Entity names; every model that records an action on the server needs a readable name. */
 const ENTITY_LABELS = {
   User: ['مستخدم', 'User'], Customer: ['عميل', 'Customer'], Invoice: ['فاتورة', 'Invoice'],
   Payment: ['دفعة', 'Payment'], Dispute: ['نزاع', 'Dispute'], Branch: ['فرع', 'Branch'],
@@ -238,7 +227,7 @@ const humanise = (k) => String(k || '')
   .toLowerCase();
 
 const entityLabel = (e, lang = 'ar') => {
-  // قيدُ شبكة الأمان: «إجراء في <القسم>».
+  // Safety-net entry: an action in a given section.
   if (String(e || '').startsWith('Api:')) {
     const { SECTION_LABELS_AR } = require('./sections');
     const sys = String(e).slice(4);
@@ -249,7 +238,7 @@ const entityLabel = (e, lang = 'ar') => {
   return lang === 'en' ? m[1] : m[0];
 };
 
-/** ما جرى، جملةً واحدة. الفعلُ العامّ («create») يُقرأ مع كيانه. */
+/** What happened, in one sentence. A generic action such as 'create' is read together with its entity. */
 const actionLabel = (action, entity, lang = 'ar') => {
   const a = String(action || '');
   if (lang === 'en') return humanise(a);
@@ -257,12 +246,12 @@ const actionLabel = (action, entity, lang = 'ar') => {
   const ent = entity ? entityLabel(entity, 'ar') : '';
   if (GENERIC_AR[a]) return ent ? `${GENERIC_AR[a]} ${ent}` : GENERIC_AR[a];
   const [verb, ...rest] = a.split('_');
-  // فعلٌ مُركَّبٌ لم يُكتب بعد: يُقرأ بفعله وكيانه، لا ببقيّةٍ إنجليزيّة.
+  // Compound action not yet written: shown by its action and entity, not raw English.
   if (GENERIC_AR[verb]) return ent ? `${GENERIC_AR[verb]} ${ent}` : `${GENERIC_AR[verb]} ${rest.join(' ')}`.trim();
   return a.replace(/_/g, ' ');
 };
 
-// ── أعمدةُ كشف التشغيل — عناوينُ صفحة العمليات كما هي ──────────────────────
+// Operations sheet columns, titled as on the operations page.
 const WORKFLOW_FIELDS = {
   reportNumber: ['رقم الطلب', 'Report number'], reportDate: ['تاريخ الطلب', 'Report date'],
   fromLocation: ['من', 'From'], toLocation: ['إلى', 'To'], branch: ['الفرع', 'Branch'],
@@ -294,13 +283,11 @@ const WORKFLOW_FIELDS = {
 };
 
 /**
- * أسماءُ الحقول العامّة — لما لا مصدرَ له في إعدادات قسمه.
- * وما ليس هنا ولا هناك يظهر باسمه مفكوكًا («credit days»): عرضُه بالإنجليزيّة
- * أهونُ من إخفاء تغييرٍ وقع.
+ * Generic field names, for fields with no source in their section's settings.
+ * Unknown fields show their split-out raw name; showing English beats hiding a change.
  */
 const FIELD_LABELS = {
-  // ── حقولُ ما تقيّده شبكةُ الأمان (middleware/auditTrail) كما أُرسل ──────────
-  // كانت تُقرأ بأسمائها البرمجيّة: «contact time»، «current location».
+  // Fields recorded by the safety net (middleware/auditTrail) as sent; previously shown by code names such as 'contact time'.
   contactTime: ['وقت التواصل', 'Contact time'], currentLocation: ['الموقع الحالي', 'Current location'],
   fromCity: ['من مدينة', 'From city'], toCity: ['إلى مدينة', 'To city'], loadDate: ['تاريخ التحميل', 'Load date'],
   expectedArrival: ['الوصول المتوقّع', 'Expected arrival'], rentType: ['نوع الإيجار', 'Rent type'],
@@ -411,10 +398,7 @@ const FIELD_LABELS = {
   corporatePolicy: ['وثيقة تأمين الشركة', 'Corporate policy'],
 };
 
-/**
- * قيمٌ مخزَّنةٌ بالإنجليزيّة وتُقرأ بالعربيّة. مفتاحُها الحقلُ أوّلًا: `cash` نوعُ
- * سدادٍ في حقلٍ وطريقةُ دفعٍ في آخر، وكلمةٌ واحدةٌ لهما معًا تُخطئ في أحدهما.
- */
+/** Values stored in English and shown in Arabic. Keyed by field first: `cash` is a settlement type in one field and a payment method in another. */
 const SHIPMENT_STATUS_AR = {
   requesting: 'قيد الطلب', loading: 'جاري التحميل', uploaded: 'تم التحميل', on_way: 'في الطريق',
   arrived: 'وصلت', bond_sent: 'أُرسل السند', bond_received: 'استُلم السند', late: 'متأخرة',
@@ -425,7 +409,7 @@ const FIELD_VALUES_AR = {
   executionStatus: SHIPMENT_STATUS_AR,
   paymentMethod: { cash: 'كاش', late: 'آجل' },
   paymentType: { cash: 'نقدي', tax: 'ضريبي' },
-  // مراحلُ دورة التخليص — أسماؤها في config/customsStages.
+  // Customs clearance stages; names live in config/customsStages.
   stage: {
     ...require('./customsStages').CUSTOMS_STAGE_AR,
     draft: 'مسودة', submitted_to_ops: 'أُرسل إلى العمليات',

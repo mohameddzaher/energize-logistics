@@ -1,25 +1,7 @@
 /**
- * المساعد — سؤالٌ عن أيّ شيءٍ في النظام، بالدلالة لا بالتخمين.
- *
- * ── ما كان قبل ─────────────────────────────────────────────────────────────
- * قائمةُ عباراتٍ إنجليزيّةٍ تُطابَق بالنصّ («top collector»، «high risk») وتردّ
- * من جداولَ زالت — فيُجيب عن «أكبر المتأخّرين» بلا شيء، وهي إجابةٌ أسوأُ من
- * «لا أعرف»: تُقرأ «لا متأخّرات». وكان مقصورًا على أدوار المالية، ولا يعرف من
- * النظام إلّا ثلاثةَ جداول — وقد صار النظامُ سبعةً وعشرين قسمًا.
- *
- * ── وما هو الآن ────────────────────────────────────────────────────────────
- * حوارٌ موجَّه بثلاث خطوات: أيُّ قسم؟ ثمّ عمّ تسأل فيه؟ ثمّ أيُّ واحدٍ منها؟
- * والجوابُ وثيقةٌ كاملةٌ من مركز التقارير نفسِه.
- *
- * وهذا هو بيتُ القصيد: **لا يعرف المساعدُ شيئًا من عنده**. مواضيعُه هي مواضيعُ
- * التقارير (`reportSources.SUBJECTS`)، وصلاحيّاتُه صلاحيّاتُ التقارير
- * (`SUBJECT_SECTIONS`)، وجوابُه هو بناؤها. فموضوعٌ يُضاف هناك يظهر هنا في
- * اللحظة نفسِها، وحقلٌ يُضاف إلى تقريرٍ يصل إلى المساعد بلا سطرٍ واحد — ولا
- * يستطيع المساعدُ أن يقول ما لا يقوله التقرير، ولا أن يُري أحدًا ما لا يملك.
- *
- * ── والبحثُ الحرّ يبقى ──────────────────────────────────────────────────────
- * من يعرف ما يريد يكتبه: لوحةً أو اسمَ عميلٍ أو رقمَ بوليصةٍ أو رقمَ إقامة.
- * فيُبحَث في مواضيعه كلِّها معًا ويُقال: «هذه لوحةُ مركبة» — ويُفتَح جوابُها.
+ * Assistant: ask about anything in the system, answered from the reports engine rather than guessed.
+ * A guided three-step dialog (section, topic, item). The assistant knows nothing of its own: topics are the report subjects (reportSources.SUBJECTS), permissions are the report permissions (SUBJECT_SECTIONS), and the answer is the built report document, so new subjects and fields appear here automatically and it cannot show anyone more than the report would.
+ * Free search stays: type a plate, customer name, waybill or residency number and all subjects are searched together.
  */
 const { getSubject, subjectMeta, PERIOD_PRESETS } = require('../services/reportSources');
 const { SUBJECT_SECTIONS } = require('./reportController');
@@ -28,7 +10,7 @@ const { FULL_ACCESS_ROLES } = require('../config/constants');
 const { defaultAccess, SECTIONS, sectionLabel } = require('../config/sections');
 const cache = require('../utils/ttlCache');
 
-/** أيملك هذا الدورُ هذا القسم؟ (view أو edit) */
+/** Does this role own this section? (view or edit) */
 const hasSection = async (user, key) => {
   if (FULL_ACCESS_ROLES.includes(user.role)) return true;
   const override = await getOverride(user.role, key);
@@ -36,7 +18,7 @@ const hasSection = async (user, key) => {
   return access === 'view' || access === 'edit';
 };
 
-/** أيملك أيًّا من أقسام هذا الموضوع؟ — نفسُ قاعدةِ مركز التقارير حرفًا. */
+/** Does it own any of this subject's sections? Same rule as the reports center. */
 const canUseSubject = async (user, subjectKey) => {
   if (FULL_ACCESS_ROLES.includes(user.role)) return true;
   const sections = SUBJECT_SECTIONS[subjectKey];
@@ -50,11 +32,7 @@ const canUseSubject = async (user, subjectKey) => {
 
 const langOf = (req) => (req.query.lang === 'en' ? 'en' : 'ar');
 
-/**
- * الخطوةُ الأولى: الأقسامُ التي يملكها هذا المستخدم، ولكلٍّ ما يُسأل عنه فيه.
- *
- * ولا يُعرَض قسمٌ بلا مواضيع: زرٌّ يُضغَط فلا يفتح شيئًا أسوأُ من غيابه.
- */
+/** Step one: the sections this user owns, each with its askable subjects. A section with no subjects is hidden, since a button that opens nothing is worse than none. */
 exports.sections = async (req, res) => {
   try {
     const lang = langOf(req);
@@ -62,8 +40,7 @@ exports.sections = async (req, res) => {
     const allowed = await Promise.all(subjects.map((s) => canUseSubject(req.user, s.key)));
     const mine = subjects.filter((_, i) => allowed[i]);
 
-    // موضوعٌ لأقسامٍ عدّة يظهر تحت كلٍّ منها: المركبةُ يسأل عنها سجلُّ المركبات
-    // وإدارةُ الأسطول ولوكيشن سوليوشن، وكلٌّ يسأل بحقّ.
+    // A subject shared by several sections appears under each: a vehicle is asked about from the vehicle register, fleet management and location solutions.
     const bySection = new Map();
     for (const s of mine) {
       const keys = SUBJECT_SECTIONS[s.key] || ['*'];
@@ -92,7 +69,7 @@ exports.sections = async (req, res) => {
   }
 };
 
-/** الخطوةُ الثانية: أيُّ واحدٍ من هذا الموضوع؟ — نفسُ قوائم مركز التقارير. */
+/** Step two: which item of this subject; same lists as the reports center. */
 exports.options = async (req, res) => {
   try {
     const subject = getSubject(req.params.topic);
@@ -112,15 +89,7 @@ exports.options = async (req, res) => {
   }
 };
 
-/**
- * ── البحثُ الحرّ: اكتبْ ما تعرفه ─────────────────────────────────────────────
- *
- * لوحةٌ أو اسمُ عميلٍ أو رقمُ بوليصةٍ أو رقمُ إقامة — يُبحَث في مواضيعه كلِّها
- * معًا ويُقال من أيّ نوعٍ هو. ومن لا يعرف أيَّ قسمٍ يسأل فيه — وهو الغالب —
- * يجد جوابَه بلا أن يعرف بنيةَ النظام.
- *
- * والمواضيعُ تُسأل بالتوازي: ثمانيةُ أسئلةٍ متتابعةٍ تجعل الكتابةَ بطيئة.
- */
+/** Free search: type what you know (plate, customer name, waybill or residency number); all subjects are searched together and the match type is reported. Queries run in parallel because eight sequential ones make typing slow. */
 exports.search = async (req, res) => {
   try {
     const q = String(req.query.q || '').trim();
@@ -136,10 +105,7 @@ exports.search = async (req, res) => {
       } catch { return { topic: s.key, ar: s.ar, en: s.en, icon: s.icon, items: [], total: 0 }; }
     }));
 
-    // ── والترتيبُ بالمطابقة لا بالعدد ────────────────────────────────────
-    // «3449» لوحةُ شاحنةٍ عندنا، وهي أيضًا جزءٌ من سريالات ستِّ فردات كاوتش.
-    // والترتيبُ بالعدد يضع الكاوتشَ أوّلًا ويدفن ما سأل عنه السائلُ فعلًا.
-    // فيُقاس القربُ: مطابقةٌ تامّةٌ أعلى من بدايةٍ، والبدايةُ أعلى من تضمين.
+    // Rank by match quality, not count. For example 3449 is a truck plate and also part of six tire serials; count ranking would bury the plate. Exact match beats prefix, prefix beats contains.
     const fold = (v) => String(v || '').toLowerCase().replace(/\s+/g, '');
     const needle = fold(q);
     const score = (g) => Math.max(...g.items.map((it) => {
@@ -162,12 +128,7 @@ exports.search = async (req, res) => {
   }
 };
 
-/**
- * الجواب — وثيقةُ التقرير نفسُها، تُعرَض في المحادثة وتُطبَع كما هي.
- *
- * ولا يُبنى جوابٌ ثانٍ بصيغةٍ أخرى: ما يراه السائلُ هنا هو ما يخرج من الطابعة
- * ومن الهاتف، حرفًا بحرف.
- */
+/** The answer is the report document itself, shown in chat and printable as is. No second format, so the chat, printer and phone show the same content. */
 exports.answer = async (req, res) => {
   try {
     const subject = getSubject(req.params.topic);
@@ -179,9 +140,7 @@ exports.answer = async (req, res) => {
     const doc = await subject.build(id, req.query, lang, req.user);
     if (!doc) return res.status(404).json({ message: lang === 'en' ? 'Nothing found' : 'لا توجد بيانات' });
 
-    // ── وملخّصٌ يُقرأ قبل الوثيقة ────────────────────────────────────────────
-    // الوثيقةُ طويلةٌ عمدًا، والسائلُ يريد سطرَين أوّلًا. فتُستخرَج أوّلُ خاناتٍ
-    // مملوءةٍ من أوّل كتلة — وهي بالتعريف أهمُّها، إذ تبدأ كلُّ وثيقةٍ بالهويّة.
+    // Summary read before the document: it is long on purpose and users want two lines first. Takes the first filled fields of the first block, which by definition are the most important since every document starts with identity.
     const firstKv = (doc.blocks || []).find((b) => b.kind === 'kv');
     const highlights = (firstKv?.items || [])
       .filter((i) => i[1] != null && i[1] !== '')
@@ -194,7 +153,7 @@ exports.answer = async (req, res) => {
       subtitle: doc.subtitle,
       highlights,
       doc,
-      // رابطُ الوثيقة في مركز التقارير — من أراد طباعتَها أو مشاركتَها.
+      // Link to the document in the reports center, for printing or sharing.
       reportPath: `/system/reports?subject=${subject.key}&id=${encodeURIComponent(id)}`,
     });
   } catch (error) {

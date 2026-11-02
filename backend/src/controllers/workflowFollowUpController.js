@@ -1,23 +1,8 @@
 /**
- * متابعاتُ كشف التشغيل — سجلٌّ واحدٌ يُقرأ ويُكتب من ثلاث شاشات.
- *
- *   التشغيل   GET|POST /api/workflows/:id/follow-ups            DELETE …/:fuId
- *   التخليص   GET|POST /api/customs-clearance/:id/ops-reports/:reportId/follow-ups   DELETE …/:fuId
- *   التحصيل   GET|POST /api/collections-dept/reports/:reportId/follow-ups            DELETE …/:fuId
- *
- * ── ولماذا ثلاثةُ أبوابٍ لسجلٍّ واحد ────────────────────────────────────────
- * كلُّ قسمٍ يصل إلى الكشف من بابه وبحارس قسمه (`sectionGate`): موظّفُ التخليص
- * لا يُفتح له سيرُ عمل التشغيل، وموظّفُ التحصيل يقرأ الكشفَ من فاتورته. فبابٌ
- * واحدٌ تحت `/api/workflows` كان يردّ ٤٠٣ على قسم التخليص كلِّه. والقاعدةُ
- * واحدة: **مَن يرى الكشفَ من بابه يكتب عليه متابعة** — وبابُ التخليص يرى ما
- * رُبط بمعاملته وحدَه، فلا يُقرأ منه كشفٌ لا شأنَ للمعاملة به.
- *
- * والحذفُ لصاحب السطر، أو لمدير النظام والإدارة: سطرٌ كتبه زميلٌ شاهدٌ على ما
- * جرى، فلا يمحوه غيرُه.
- *
- * والخبرُ `workflow:followUps` يُبثّ بعد كلّ كتابة — لا ذاكرةَ تحمل السجلَّ أو
- * عددَه فتُمسح قبله؛ ومن أضاف عددَه إلى قراءةٍ محفوظةٍ فليمسحها في `announce`
- * قبل البثّ (راجع announce-before-invalidate).
+ * Follow-ups on an operations report: one record, read and written from three screens (operations, customs, collections).
+ * GET|POST /api/workflows/:id/follow-ups, DELETE .../:fuId
+ * GET|POST /api/customs-clearance/:id/ops-reports/:reportId/follow-ups, DELETE .../:fuId
+ * GET|POST /api/collections-dept/reports/:reportId/follow-ups, DELETE .../:fuId
  */
 const mongoose = require('mongoose');
 const WorkflowFollowUp = require('../models/WorkflowFollowUp');
@@ -47,7 +32,7 @@ const shape = (req, f) => ({
 
 const fail = (status, message, code) => Object.assign(new Error(message), { status, code });
 
-/** عددُ متابعات كلّ كشف — تجميعٌ واحد. يُرجع Map: معرّفُ الكشف → العدد. */
+/** Follow-up count per report in one aggregation. Returns a Map of report id to count. */
 async function countsFor(ids) {
   const list = [...new Set((ids || []).map(String))].filter((x) => mongoose.isValidObjectId(x));
   if (!list.length) return new Map();
@@ -58,7 +43,7 @@ async function countsFor(ids) {
   return new Map(agg.map((x) => [String(x._id), x.n]));
 }
 
-/** الخبرُ لكلّ شاشةٍ تعرض الكشف: صفحتُه، وصفحةُ معاملته، وفاتورتُه. */
+/** Event per screen that shows the report: its page, its transaction page and its invoice. */
 async function announce(wf) {
   const count = await WorkflowFollowUp.countDocuments({ workflow: wf._id });
   try {
@@ -71,11 +56,11 @@ async function announce(wf) {
       count,
       at: Date.now(),
     });
-  } catch (_) { /* البثُّ تحسينٌ لا شرط */ }
+  } catch (_) { /* Broadcast is an optimization, not a requirement. */ }
   return count;
 }
 
-// ── مَن يصل إلى الكشف من أيّ باب ───────────────────────────────────────────
+// Who can reach the report through which door
 const WF_FIELDS = '_id reportNumber invoiceNumber customsLink';
 const SCOPES = {
   operations: async (req) => {
@@ -83,7 +68,7 @@ const SCOPES = {
     if (!wf) throw fail(404, 'أمر النقل غير موجود');
     return wf;
   },
-  // بابُ التخليص يرى ما رُبط بمعاملته وحدَه.
+  // The customs door sees only reports linked to its transaction.
   customs: async (req) => {
     const { reportId, id } = req.params;
     if (!mongoose.isValidObjectId(reportId)) throw fail(400, 'معرّفُ أمر النقل غير صالح');
@@ -106,7 +91,7 @@ const send = (res, e, fallback) => {
   return res.status(500).json({ message: fallback });
 };
 
-/** الأفعالُ الثلاثة لبابٍ بعينه. */
+/** The three actions for one door. */
 function handlers(source) {
   const scope = SCOPES[source];
 
@@ -153,7 +138,7 @@ function handlers(source) {
   const remove = async (req, res) => {
     try {
       const wf = await scope(req);
-      // التحصيلُ يسمّيه `rfuId`: `fuId` هناك متابعةُ طرفٍ لا متابعةُ كشف.
+      // Collections names it `rfuId` because `fuId` there is a party follow-up, not a report follow-up.
       const fuId = req.params.fuId || req.params.rfuId;
       if (!mongoose.isValidObjectId(fuId)) return res.status(400).json({ message: 'طلبٌ غير صالح' });
       const f = await WorkflowFollowUp.findOne({ _id: fuId, workflow: wf._id }).lean();

@@ -1,14 +1,8 @@
 /**
- * إرسالُ كشف الحساب إلى العميل بالبريد — من صندوق التحصيل (صاحبُ الشركة، ٢٠٢٦/١٠/٢٤).
- *
- * في صفحتي الفواتير (الكاش والضريبيّة) يُفلتِر الموظّفُ ما يشاء — عميلًا، فاتورةً،
- * حالةً، فترة — ثمّ «إرسال للعميل»: تُفتَح مسودّةٌ فيها بريدُ العميل (كلُّ عناوينه
- * من ملفّه)، والموضوعُ والنصُّ من قالب القسم بخاناته ممتلئة، وكشفُ الحساب PDF
- * نفسُه الذي يُطبَع من الصفحة (services/invoiceStatement) ومعه Excel إن شاء.
- * يراجع ويعدّل ثمّ يرسل، فتخرج الرسالةُ من collections@ وتُنسَخ في «المرسل»،
- * وتُقيَّد متابعةً في ملفّ العميل.
- *
- * القالبُ يُقرأ من القاعدة في كلّ مسودّة — ما عُدِّل في الإعدادات يصل فورًا.
+ * Send the account statement to the customer by email from the collections mailbox.
+ * From the invoice pages the user filters, then sends: a draft opens with the customer's addresses, subject and body from the department template, the statement PDF (services/invoiceStatement) and optional Excel.
+ * It is sent from collections@, copied to Sent and logged as a follow-up on the customer.
+ * The template is read from the database per draft, so settings changes apply immediately.
  */
 const XLSX = require('xlsx');
 const CollectionsParty = require('../models/CollectionsParty');
@@ -18,7 +12,7 @@ const logAudit = require('../utils/auditLogger');
 
 const MAILBOX = process.env.COLLECTIONS_MAILBOX || 'collections@energize-logistics.com';
 
-/** الخاناتُ التي تُملأ في القالب — تُعرض في الإعدادات كما هي. */
+/** Placeholders filled into the template; shown in settings as is. */
 const PLACEHOLDERS = [
   ['{العميل}', 'اسم العميل'],
   ['{رقم_الحساب}', 'كود العميل'],
@@ -66,7 +60,7 @@ async function loadTemplate() {
 
 const fill = (text, vals) => String(text || '').replace(/\{([^{}]+)\}/g, (all, k) => (Object.prototype.hasOwnProperty.call(vals, k) ? vals[k] : all));
 
-/** طرفُ الكشف من اسمه كما في الصفوف — بالاسم المطويّ أو صيغه البديلة. */
+/** The statement party from its name as in the rows, by folded name or its alternate forms. */
 async function partyByName(name) {
   if (!name) return null;
   const key = CollectionsParty.fold(name);
@@ -74,7 +68,7 @@ async function partyByName(name) {
     .select('name code email emails').lean();
 }
 
-/** الكشفُ وما يُملأ به القالب — يقرؤه المسودّةُ والإرسالُ معًا. */
+/** The statement and the values that fill the template; used by both the draft and the send. */
 async function buildDraft(kind, query, user, lang) {
   const { buildInvoiceStatement } = require('../services/invoiceStatement');
   const built = await buildInvoiceStatement(kind, query || {}, user, lang);
@@ -119,7 +113,7 @@ exports.saveTemplate = async (req, res) => {
   } catch (e) { fail(res, e, 'تعذّر حفظ القالب'); }
 };
 
-// GET /api/collections-dept/invoices/:kind/send-draft?<فلاتر الصفحة>
+// GET /api/collections-dept/invoices/:kind/send-draft?<page filters>
 exports.draft = async (req, res) => {
   try {
     const kind = kindOf(req); if (!kind) return res.status(404).json({ message: 'Unknown invoice kind' });
@@ -168,7 +162,7 @@ exports.send = async (req, res) => {
       attachments.push({ filename: `${base}.xlsx`, content: XLSX.write(wb, { type: 'buffer', bookType: 'xlsx' }) });
     }
     const esc = (s) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
-    // ── والتوقيعُ من القالب في آخر الرسالة — نصُّه وصورتُه مضمَّنةً (cid) ──────────
+    // The template signature goes at the end of the message, text and image inlined (cid).
     const tpl = await loadTemplate();
     const sig = String(tpl.signature || '').trim();
     const sigImg = /^data:image\/([a-z+]+);base64,(.+)$/i.exec(tpl.signatureImage || '');
@@ -180,7 +174,7 @@ exports.send = async (req, res) => {
     const { sendFromMailbox } = require('../utils/mailer');
     const sent = await sendFromMailbox(MAILBOX, { fromName: 'إنرجايز - إدارة التحصيل', to, cc, subject, text: textWithSig, html, attachments });
 
-    // ── ويُقيَّد في ملفّ العميل: مَن أرسل، ومتى، وإلى مَن، وبأيّ مبلغ ──────────
+    // Logged on the customer file: who sent, when, to whom and for what amount.
     const note = `أُرسل كشف حساب (${kind === 'cash' ? 'فواتير كاش' : 'فواتير ضريبية'}) بالبريد إلى ${to.join('، ')}${cc.length ? ` — نسخة: ${cc.join('، ')}` : ''} · ${m.openCount || 0} فاتورة غير مسدّدة بـ ${money(m.openValue)} ريال`;
     if (party) {
       await require('../models/CollectionsFollowUp').create({

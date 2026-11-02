@@ -1,7 +1,4 @@
-/**
- * crmVendorController — CRM Vendors (الموردين / carriers we subcontract in 3PL).
- * Self-contained; does not touch CrmCompany or the rest of CRM.
- */
+/** crmVendorController: CRM Vendors (3PL carriers we subcontract to). Self-contained; does not touch CrmCompany or the rest of CRM. */
 const CrmVendor = require('../models/CrmVendor');
 const { emitToAll } = require('../websocket/socketManager');
 

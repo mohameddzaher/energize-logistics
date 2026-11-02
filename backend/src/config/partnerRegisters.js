@@ -1,22 +1,6 @@
 /**
- * partnerRegisters — كل سجلات العملاء والموردين في النظام في مكان واحد.
- *
- * The company never had ONE customer table. Each section grew its own, for good
- * reasons at the time: the finance `Customer` carries credit terms, the fleet's
- * `FleetCustomer` carries agreed route prices, the shipment-orders trial keeps a
- * deliberately disposable register, the CRM keeps leads, and customs work is
- * often recorded against a bare typed name.
- *
- * A portal login has to be creatable from ANY of them — "ادخل عند أي بروفايل أي
- * عميل من أي قسم واعمل من البروفايل بتاعه إنشاء إيميل". So this file is the one
- * place that knows what those registers are, what each row is called, and which
- * of our services the row implies. Everything else (the users page dropdown, the
- * profile "create login" card, the portal itself) reads it instead of
- * hard-coding a list that would rot the day a section adds a register.
- *
- * `service` is what the portal turns on for that partner — but only as a HINT:
- * the portal re-detects the real services from the actual work it finds under
- * the partner's name, so a fleet customer who also clears customs sees both.
+ * All customer and vendor registers in one place. Each section has its own register, so a portal login must be creatable from any of them. Other code reads this file instead of hard-coding the list.
+ * `service` is only a hint: the portal re-detects the real services from the work found under the partner's name.
  */
 
 // The services a portal account can surface. Each maps to a portal tab.
@@ -33,7 +17,7 @@ const SERVICES = {
 };
 
 const REGISTERS = [
-  // ── العملاء ──────────────────────────────────────────────────────────────
+  // Customers
   {
     key: 'customer',
     kind: 'customer',
@@ -99,7 +83,7 @@ const REGISTERS = [
     profilePath: () => '/system/customs',
   },
 
-  // ── الموردون ─────────────────────────────────────────────────────────────
+  // Vendors
   {
     key: 'crm_vendor',
     kind: 'vendor',

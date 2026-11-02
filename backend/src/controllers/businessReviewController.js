@@ -1,21 +1,6 @@
 /**
- * businessReviewController — اجتماعات مراجعة الأعمال.
- *
- * ── Who sees what ───────────────────────────────────────────────────────────
- *
- *   Executive (GM / admin / IT)  every meeting, every minute, every action,
- *                               every delegation.
- *   Secretary (administrator)    the same, and is the one who writes minutes
- *                               and raises actions.
- *   Department manager           meetings they were invited to (with the
- *                               minutes), the actions they own, and the
- *                               delegations they have handed out.
- *   Employee                     ONLY the delegations addressed to them. No
- *                               meeting, no minutes, no other person's work.
- *
- * The last line is the one that mattered most in the brief, and it is enforced
- * by the data model (see models/BusinessReview.js): an employee's endpoint reads
- * BrAssignment, a collection that physically contains no meeting content.
+ * businessReviewController: business review meetings. Executives and the secretary see everything; a department manager sees invited meetings, own actions and delegations handed out; an employee sees ONLY delegations addressed to them.
+ * The employee rule is enforced by the data model (models/BusinessReview.js): that endpoint reads BrAssignment, which holds no meeting content.
  */
 const { BrMeeting, BrAction, BrAssignment } = require('../models/BusinessReview');
 const { sendMongooseError, stripEmpty } = require('../utils/mongooseError');
@@ -64,7 +49,7 @@ exports.getMeta = async (req, res) => {
       .select('firstName lastName role linkedEmployee')
       .populate('linkedEmployee', 'department jobTitle')
       .sort({ firstName: 1 }).lean(), endedStaff()]);
-    // المؤرشَفُ لا يُدعى ولا يُكلَّف — كأنّه حُذف.
+    // An archived user is not invited or assigned, as if deleted.
     const users = allUsers.filter((u) => !userArchived(archSets, u));
 
     // Participants are derived from the ROLE RULE, not from a stored list — add
@@ -122,8 +107,7 @@ exports.listMeetings = async (req, res) => {
     const filter = { ...meetingScope(req.user) };
     if (req.query.cadence) filter.cadence = req.query.cadence;
     if (req.query.status) filter.status = req.query.status;
-    // الفلاتر اللي البطاقات بتوديك عليها. «مفتوحة» مش حالة واحدة، فلازم تتفهم هنا
-    // مرة واحدة بدل ما كل واجهة تبني القاعدة عندها وتختلف عن التانية.
+    // Filters the cards link to. 'Open' is not a single status, so it is defined once here instead of each UI building its own rule and drifting.
     if (req.query.bucket === 'completed') filter.status = 'completed';
     if (req.query.bucket === 'open') filter.status = { $in: OPEN_MEETING_STATUSES };
     if (req.query.bucket === 'cancelled') filter.status = 'cancelled';
@@ -133,8 +117,7 @@ exports.listMeetings = async (req, res) => {
     }
     if (req.query.from || req.query.to) {
       filter.scheduledAt = {};
-      // اجتماعاتٌ مجدولةٌ في المستقبل: «إلى» فارغةً تعني بلا حدٍّ أعلى هنا،
-      // لا «حتى الآن» — وإلّا اختفى كلُّ اجتماعٍ قادم من القائمة.
+      // Meetings scheduled in the future: an empty 'to' means no upper bound here, not 'until now'; otherwise every upcoming meeting would vanish from the list.
       if (req.query.from) filter.scheduledAt.$gte = startOfDay(req.query.from);
       if (req.query.to) filter.scheduledAt.$lte = endOfDay(req.query.to);
     }
@@ -160,9 +143,7 @@ exports.listMeetings = async (req, res) => {
       byMeeting.set(k, cur);
     }
 
-    // عدّادات البطاقات — محسوبة على النطاق كله، مش على الصفحة المفلترة. البطاقة
-    // اللي بتقول «مكتملة ٤» لازم تفضل بتقول ٤ وانت واقف على فلتر تاني، وإلا هي
-    // بتوصف الفلتر مش الشغل.
+    // Card counters are computed over the whole scope, not the filtered page. A card saying 'completed 4' must keep saying 4 while another filter is selected, otherwise it describes the filter and not the work.
     const scope = meetingScope(req.user);
     const [total, completed, open, upcoming, cancelled] = await Promise.all([
       BrMeeting.countDocuments(scope),
@@ -314,15 +295,14 @@ exports.updateMeeting = async (req, res) => {
       meeting.attendees = await buildAttendees(req.body.attendees, meeting.attendees, req.user);
     }
     if (req.body.status === 'held' && !meeting.heldAt) meeting.heldAt = new Date();
-    // «اكتمل» مش قيمة في الليستة زي غيرها — هي إعلان إن كل شغل الاجتماع خلص،
-    // فليها مسار خاص بيتأكد من ده الأول.
+    // 'Completed' is not an ordinary value in the list: it declares that all the meeting's work is done, so it has a dedicated path that verifies this first.
     if (req.body.status === 'completed') {
       return res.status(400).json({
         message: 'استخدم زر «إقفال الاجتماع» لتحديده كمكتمل — يتم التأكد أولاً من إغلاق كل البنود التنفيذية',
         code: 'USE_COMPLETE_ENDPOINT',
       });
     }
-    // رجّع اجتماع مكتمل لحالة «انعقد»؟ لازم يمرّ من نفس المسار برضه.
+    // Moving a completed meeting back to 'held' also goes through the same path.
     if (meeting.isModified('status') && meeting.status !== 'completed') {
       meeting.completedAt = null; meeting.completedBy = null; meeting.completedByName = ''; meeting.completionNote = '';
     }
@@ -336,15 +316,9 @@ exports.updateMeeting = async (req, res) => {
 };
 
 /**
- * إقفال الاجتماع — «اكتمل».
- *
- * لازم يكون واضح إن دي حاجة تانية غير «انعقد»: انعقد واقعة (الاجتماع حصل)،
- * واكتمل حُكم من الشؤون الإدارية إن كل حاجة اترتّبت عليه خلصت. اجتماع ممكن
- * يفضل «انعقد» شهور وبنوده لسه شغالة.
- *
- * وعشان كلمة «اكتمل» تفضل ليها معنى في الفلتر والتقارير، الإقفال بيترفض لو لسه
- * فيه بنود مفتوحة أو تكليفات فرعية مفتوحة — مع قول العدد بالظبط. مفيش إقفال
- * على الورق.
+ * Closing the meeting: 'completed'.
+ * This differs from 'held': held is a fact (the meeting took place), completed is the administration's judgement that everything arising from it is finished. A meeting can stay 'held' for months while its items run.
+ * So that 'completed' keeps meaning in the filter and reports, closing is rejected while items or sub-assignments are still open, and the exact count is returned. No closing on paper.
  */
 exports.completeMeeting = async (req, res) => {
   try {
@@ -377,7 +351,7 @@ exports.completeMeeting = async (req, res) => {
     }
 
     meeting.status = 'completed';
-    if (!meeting.heldAt) meeting.heldAt = new Date();   // مينفعش يكتمل من غير ما يكون حصل
+    if (!meeting.heldAt) meeting.heldAt = new Date();   // Cannot be completed without having taken place.
     meeting.completedAt = new Date();
     meeting.completedBy = req.user._id;
     meeting.completedByName = fullName(req.user);
@@ -392,7 +366,7 @@ exports.completeMeeting = async (req, res) => {
   }
 };
 
-/** إعادة فتح اجتماع مقفول — لو ظهر شغل جديد بعد الإقفال. */
+/** Reopen a closed meeting, if new work appears after closing. */
 exports.reopenMeeting = async (req, res) => {
   try {
     if (!canRunMeetings(req.user)) return deny(res, 'Only the administration can reopen a meeting');
@@ -410,7 +384,7 @@ exports.reopenMeeting = async (req, res) => {
   }
 };
 
-/** محضر الاجتماع — the secretary's record of the discussion. */
+/** Meeting minutes: the secretary's record of the discussion. */
 exports.saveMinutes = async (req, res) => {
   try {
     if (!canRunMeetings(req.user)) return deny(res, 'Only the administration can write minutes');
@@ -594,7 +568,7 @@ exports.deleteAction = async (req, res) => {
   }
 };
 
-/** كل البنود المسندة إليّ — the manager's own board. */
+/** All items assigned to me: the manager's own board. */
 exports.myActions = async (req, res) => {
   try {
     const filter = { assignee: req.user._id };
@@ -747,10 +721,7 @@ exports.delegate = async (req, res) => {
   }
 };
 
-/**
- * مهامي — what an EMPLOYEE sees. Reads BrAssignment only, so it is structurally
- * incapable of returning meeting minutes or anyone else's work.
- */
+/** My tasks: what an EMPLOYEE sees. Reads BrAssignment only, so it is structurally incapable of returning meeting minutes or anyone else's work. */
 exports.myAssignments = async (req, res) => {
   try {
     const filter = { assignee: req.user._id };

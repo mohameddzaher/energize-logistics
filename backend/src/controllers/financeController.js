@@ -1,24 +1,8 @@
 /**
- * الإدارة الماليّة — مالُ كلّ قسمٍ في موضعٍ واحد.
- *
- * ── لماذا لا تُحسب الأرقامُ هنا من جديد ──────────────────────────────────────
- * لكلّ قسمٍ لوحتُه التي يعتمدها أهلُه: المحفظةُ تحسب رصيدَ الفرع بقاعدة
- * «ختامُ اليوم افتتاحُ غده»، والتحصيلُ يحسب المستحقَّ بتاريخ التحصيل لا بتاريخ
- * الفاتورة، والتخليصُ يستثني نقلَ الساحة من الربح كي لا يُعدّ مرّتين. ولو أعاد
- * هذا القسمُ حسابَها لافترق رقمُ المدير الماليّ عن رقم القسم في أوّل قاعدةٍ
- * تتغيّر — ولا يُعرف أيُّهما الصحيح.
- *
- * فيُنادى متحكّمُ كلّ قسمٍ في العمليّة نفسِها بصلاحيّةٍ كاملة، ويُعاد تشكيلُ ما
- * يردّه بطاقاتٍ وجداول. وما لا لوحةَ له (العقود، أصول التقنية، أقساط المركبات)
- * يُجمع هنا مباشرةً من نماذجه.
- *
- * ── وما لا يُسجَّل لا يُخترَع ────────────────────────────────────────────────
- * مسيرُ الرواتب الفعليّ، وأسعارُ باقات الجوّال، وتكلفةُ التراخيص — لا تُسجَّل
- * في النظام. فتقول الصفحةُ ذلك صراحةً في ملاحظة، بدل صفرٍ يُقرأ «لا تكلفة».
- *
- * ── ويسمع فورًا ──────────────────────────────────────────────────────────────
- * كلُّ بثٍّ ماليٍّ في أيّ قسم يمسح مخزنَ هذا القسم ويبثّ `finance:changed`
- * (websocket/socketManager.financeTouch)، فتُعيد الصفحةُ القراءة.
+ * Finance management: each section's money in one place.
+ * Numbers are not recomputed here: each section dashboard has its own rules (wallet close is next day's opening, collections by collection date, clearance excludes yard transport from profit), so each controller is called in-process with full permission and its result reshaped. What has no dashboard is aggregated from its models.
+ * What is not recorded (payroll, mobile plan prices, license costs) is stated in a note, not shown as zero.
+ * Live: financial broadcasts clear this cache and emit `finance:changed` (websocket/socketManager.financeTouch).
  */
 const mongoose = require('mongoose');
 const cache = require('../utils/ttlCache');
@@ -26,7 +10,7 @@ const cache = require('../utils/ttlCache');
 const TTL = 60 * 1000;
 const RIYADH = 'Asia/Riyadh';
 
-// ── الفترة ────────────────────────────────────────────────────────────────────
+// Period
 const dayKey = (d = new Date()) => new Intl.DateTimeFormat('en-CA', {
   timeZone: RIYADH, year: 'numeric', month: '2-digit', day: '2-digit',
 }).format(d);
@@ -35,7 +19,7 @@ function periodOf(q = {}) {
   const today = dayKey();
   const to = validKey(q.to) ? q.to : today;
   const from = validKey(q.from) ? q.from : `${to.slice(0, 8)}01`;
-  // حدودُ اليوم بتوقيت الرياض (+03:00) — لا بتوقيت الخادم.
+  // Day boundaries in Riyadh time (+03:00), not server time.
   return {
     from, to,
     fromDate: new Date(`${from}T00:00:00+03:00`),
@@ -43,7 +27,7 @@ function periodOf(q = {}) {
   };
 }
 
-// ── نداءُ متحكّم قسمٍ في العمليّة نفسِها ────────────────────────────────────────
+// Calling a section's controller in the same process
 function callController(mod, handler, query, user) {
   return new Promise((resolve) => {
     const m = typeof mod === 'string' ? require(mod) : mod;
@@ -56,8 +40,7 @@ function callController(mod, handler, query, user) {
       setHeader() { return this; },
       send() { if (!done) { done = true; resolve(null); } return this; },
     };
-    // صلاحيّةٌ كاملة: بعضُ اللوحات تحجب جانبَ المورّدين عن أدوار التحصيل، والإدارةُ
-    // الماليّة ترى الجانبين. والحارسُ على هذا القسم نفسِه هو `sectionGate`.
+    // Full permission: some dashboards hide the supplier side from collections roles, while finance sees both sides. The guard on this section itself is `sectionGate`.
     const req = { user: { ...(user || {}), role: 'super_admin' }, query: query || {}, params: {}, headers: {} };
     Promise.resolve(m[handler](req, res)).catch((e) => {
       console.error(`finance: ${handler} failed`, e.message);
@@ -67,16 +50,14 @@ function callController(mod, handler, query, user) {
   });
 }
 
-// ── بناءُ الحمولة ────────────────────────────────────────────────────────────
+// Payload building
 const card = (key, ar, en, value, extra = {}) => ({ key, ar, en, value: Number.isFinite(Number(value)) ? Number(value) : 0, format: 'money', ...extra });
 const col = (key, ar, en, format = 'text') => ({ key, ar, en, format });
 const sum = (rows, f) => (rows || []).reduce((a, r) => a + (Number(typeof f === 'function' ? f(r) : r?.[f]) || 0), 0);
 const round = (n) => Math.round((Number(n) || 0) * 100) / 100;
 const NOT_CANCELLED = { executionStatus: { $nin: ['ملغي', 'ملغى', 'ملغاة', 'cancelled', 'canceled', 'Cancelled'] } };
 
-// ═══════════════════════════════════════════════════════════════════════════
-//  ماليات التشغيل
-// ═══════════════════════════════════════════════════════════════════════════
+// Operations finance
 async function operations(p, user) {
   const OperationsWorkflow = require('../models/OperationsWorkflow');
   const WalletTransaction = require('../models/WalletTransaction');
@@ -116,8 +97,7 @@ async function operations(p, user) {
       .populate('branch', 'name').populate('expenseCategory', 'name')
       .select('date type amount branch expenseCategory driverName purchaseDriverName vendorName deliveryStatementNumber purchaseDeliveryStatementNumber description itemName createdAt')
       .sort({ date: -1, createdAt: -1 }).limit(2000).lean(),
-    // كشوفٌ شراؤها أكبرُ من بيعها — أغلبُها خطأ إدخالٍ في قيمة الشراء، وقليلٌ منها
-    // خسارةٌ حقيقيّة. وسبعةٌ وأربعون كشفًا منها كانت تقلب هامشَ التشغيل كلَّه سالبًا.
+    // Sheets whose purchase exceeds their sale are mostly purchase-value entry errors, few are real losses; a handful of them used to flip the whole operating margin negative.
     OperationsWorkflow.find({ ...NOT_CANCELLED, ...inPeriod, $expr: { $gt: [{ $ifNull: ['$purchaseValue', 0] }, { $ifNull: ['$sellingValue', 0] }] } })
       .select('reportNumber reportDate username carOwner branch sellingValue purchaseValue').lean(),
   ]);
@@ -224,9 +204,7 @@ async function operations(p, user) {
   };
 }
 
-// ═══════════════════════════════════════════════════════════════════════════
-//  ماليات التحصيل
-// ═══════════════════════════════════════════════════════════════════════════
+// Collections finance
 async function collections(p, user) {
   const [dash, aging, perf] = await Promise.all([
     callController('../controllers/collectionsDeptController', 'dashboard', { from: p.from, to: p.to }, user),
@@ -301,14 +279,8 @@ async function collections(p, user) {
   };
 }
 
-// ═══════════════════════════════════════════════════════════════════════════
-//  ماليات إدارة الأسطول
-// ═══════════════════════════════════════════════════════════════════════════
-/**
- * عهدةُ النقل الثقيل في ماليات الأسطول — كعهدة النقل الخفيف في ماليّاته: وارد
- * الفترة ومصروفُها والرصيدُ القائم، وجدولٌ بالحسابات الثلاثة. والتحويلُ بين
- * حسابين والرصيدُ الافتتاحيّ ليسا واردًا ولا مصروفًا.
- */
+// Fleet management finance
+/** Heavy transport custody in fleet finance, like light transport custody in its finance: period inflow, spending and standing balance, and a table of the three accounts. A transfer between two accounts and the opening balance are neither inflow nor spending. */
 async function htCustody(p) {
   const HtCustodyEntry = require('../models/HtCustody');
   const ymd = (d) => new Date(d).toISOString().slice(0, 10);
@@ -415,9 +387,7 @@ async function fleet(p, user) {
   };
 }
 
-// ═══════════════════════════════════════════════════════════════════════════
-//  ماليات التخليص الجمركي
-// ═══════════════════════════════════════════════════════════════════════════
+// Customs clearance finance
 async function customs(p, user) {
   const CustomsClearance = require('../models/CustomsClearance');
   const ym = (k) => k.slice(0, 7);
@@ -425,8 +395,7 @@ async function customs(p, user) {
   const pk = { $add: [{ $multiply: [{ $ifNull: ['$periodYear', 0] }, 100] }, { $ifNull: ['$periodMonth', 0] }] };
   const [a, files] = await Promise.all([
     callController('../controllers/customsClearanceController', 'getAnalytics', { from: ym(p.from), to: ym(p.to) }, user),
-    // الشهرُ يُصفّى في القاعدة: كانت تُنقَل المعاملاتُ كلُّها (٢٢٠ كيلوبايت)
-    // ليُعرَض منها شهر.
+    // The month is filtered in the database; all transactions used to be transferred just to show one month.
     CustomsClearance.find({
       cancelled: { $ne: true },
       $expr: { $and: [{ $gte: [pk, ymNum(p.from)] }, { $lte: [pk, ymNum(p.to)] }] },
@@ -439,8 +408,7 @@ async function customs(p, user) {
     return k >= ym(p.from) && k <= ym(p.to);
   };
   const mine = files.filter(inRange);
-  // الإيرادُ إجماليُّ فاتورة العميل، والتكلفةُ مراحلُ السداد (utils/customsInvoice.moneyOf) —
-  // القاعدةُ نفسُها التي تحسب بها تحليلاتُ القسم.
+  // Revenue is the customer invoice total and cost is the payment stages (utils/customsInvoice.moneyOf), the same rule the section analytics use.
   const { moneyOf } = require('../utils/customsInvoice');
   for (const f of mine) f._m = moneyOf(f);
   const invoicedOf = (f) => !!f.saleInvoiceNumber || !!String(f.billing?.invoiceStatus || '').trim();
@@ -451,7 +419,7 @@ async function customs(p, user) {
     demurrage: 'الأرضيات/التأخير', inspection: 'أمر النقل', extension: 'التمديد', consolidator: 'المجمِّع',
     commissions: 'العمولات', extraFees: 'أجور إضافية', storage: 'التخزين', exitPermit: 'إذن الخروج',
   };
-  // البنودُ من مراحل السداد نفسِها (بأسمائها)، والمعاملاتُ المستوردةُ بلا مبالغَ في مراحلها من بنود تكاليفها.
+  // Lines come from the payment stages themselves (by name); imported transactions with no amounts in their stages use their cost lines.
   const itemSum = new Map();
   const addItem = (name, v) => { if (v) itemSum.set(name, (itemSum.get(name) || 0) + v); };
   for (const f of mine) {
@@ -495,13 +463,9 @@ async function customs(p, user) {
   };
 }
 
-// ═══════════════════════════════════════════════════════════════════════════
-//  ماليات النقل الخفيف — مناديب الأفراد ودرّاجاتهم
-// ═══════════════════════════════════════════════════════════════════════════
+// Light transport finance: individual reps and their bikes
 async function light(p, user) {
-  // العهدةُ تُقرأ من دفتر «عهدة النقل الخفيف» (الكاش والكارت والورشة) — وقد حلّ
-  // محلَّ عُهَد مديري المشاريع. والتحويلُ بين حسابين قيدان، فلا يُحسَب في
-  // «الوارد» و«المصروف»: هو مالٌ انتقل لا مالٌ دخل أو خرج.
+  // Custody is read from the light transport custody ledger (cash, card, workshop), which replaced project managers' custody. A transfer between two accounts is two entries, so it is not counted in inflow and spending: money moved, not money in or out.
   const LtCustodyEntry = require('../models/LtCustody');
   const { VehicleMaster } = require('../models/VehicleMaster');
   const VehicleClaim = require('../models/VehicleClaim');
@@ -515,7 +479,7 @@ async function light(p, user) {
     VehicleMaster.find({ sectorAr: /خفيف/, isActive: { $ne: false } }).select('plateNumber departmentAr registrationTypeAr insurance.premiumSar insurance.premiumStatusAr insurance.companyAr fuelCard.limitSar').lean(),
     VehicleClaim.find({ isActive: { $ne: false } }).select('claimId vehicle vehiclePlate vehiclePlateKey vehicleSectorAr accidentDate claim statusAr').lean(),
   ]);
-  // المطالبةُ تُنسب للدرّاجة بالمركبة نفسِها: سبعٌ وعشرون مطالبةً بلا قطاعٍ مكتوب.
+  // A claim is attributed to the bike by the vehicle itself, since some claims have no sector written.
   const bikeIds = new Set(bikes.map((b) => String(b._id)));
   const claims = allClaims.filter((c) => c.vehicleSectorAr === 'النقل الخفيف' || (c.vehicle && bikeIds.has(String(c.vehicle))));
   const ACC = { cash: 'الكاش', card: 'الكارت (كارت المشتريات)', workshop: 'الورشة' };
@@ -529,19 +493,14 @@ async function light(p, user) {
       totalIn: of('in'), totalOut: of('out'), balance: of('in') - of('out'),
     };
   });
-  // والرصيدُ الافتتاحيّ ليس واردَ الفترة: هو ما بدأ به الدفتر.
+  // The opening balance is not period inflow: it is what the ledger started with.
   const real = entries.filter((e) => !e.transferId && e.source !== 'opening');
   const partyOf = (e) => (e.source === 'opening' ? 'رصيد افتتاحي' : e.source === 'rep' ? `من المندوب ${e.repName || ''}` : e.direction === 'in' ? `من ${WORD[e.source] || ''}`
     : e.target === 'rep' ? `مندوب: ${e.repName || ''}` : e.target === 'company' ? 'الشركة' : `إلى ${WORD[e.target] || ''}`);
   /**
-   * ── والمشروعُ يُقرأ من سجلّ النقل الخفيف ──────────────────────────────────
-   * كان يُقرأ من `departmentAr` على المركبة، وهي خانةٌ فارغةٌ في ثمانٍ وثلاثين
-   * مركبةً من مئةٍ وإحدى وخمسين ومكتوبةٌ بصياغةٍ أخرى في الباقي («صيانه» مقابل
-   * «صيانة»). فيصير في الجدول سطرٌ اسمُه «غير محدد» فيه ثمانٍ وثلاثون مركبةً
-   * ومشروعٌ واحدٌ مقسومٌ على سطرين.
-   *
-   * والإسنادُ التشغيليُّ مكتوبٌ في سجلّ القسم (أمرُ التشغيل يكتبه)، وهو الأصدق:
-   * فيُقرأ منه بمفتاح المركبة، وتبقى خانةُ المركبة بديلًا لما لا سجلَّ له.
+   * The project is read from the light transport register
+   * It used to be read from `departmentAr` on the vehicle, which is empty for many vehicles and written in a different spelling in others (two spellings of maintenance). That produced a row named undefined holding many vehicles and one project split over two rows.
+   * Operational assignment is written in the section register (the operating order writes it) and is the more truthful source, so it is read by vehicle key, with the vehicle field as fallback for vehicles with no register entry.
    */
   const { LightTransportEmployee } = require('../models/LightTransport');
   const ltRows = await LightTransportEmployee.find({ vehicle: { $ne: null }, isActive: { $ne: false } })
@@ -593,9 +552,7 @@ async function light(p, user) {
   };
 }
 
-// ═══════════════════════════════════════════════════════════════════════════
-//  ماليات التسويق والتطوير
-// ═══════════════════════════════════════════════════════════════════════════
+// Marketing and development finance
 async function marketing(p, user) {
   const BdTender = require('../models/BdTender');
   const MarketingCampaign = require('../models/MarketingCampaign');
@@ -627,20 +584,18 @@ async function marketing(p, user) {
   };
 }
 
-// ═══════════════════════════════════════════════════════════════════════════
-//  ماليات الموارد البشرية
-// ═══════════════════════════════════════════════════════════════════════════
+// HR finance
 async function hr() {
   const Employee = require('../models/Employee');
   const Contract = require('../models/Contract');
   const Asset = require('../models/Asset');
   require('../models/Branch');
   const [employees, contracts, hrAssets] = await Promise.all([
-    // حساباتُ الدخول التلقائيّة ليست موظّفين (isHrRecord:false) — لا رواتبَ لها.
+    // Auto-created login accounts are not employees (isHrRecord:false); they have no salaries.
     Employee.find({ employmentStatus: { $ne: 'terminated' }, isHrRecord: { $ne: false } })
       .select('firstName lastName arabicName employeeNumber department jobTitle branch branchName basicSalary allowances employmentStatus')
       .populate('branch', 'name').lean(),
-    // السارِي، وإلّا المنتهي بمرور مدّته — شروطُه تبقى ما يُدفَع حتى يُجدَّد.
+    // The active one, else the one expired by elapsed term, whose terms remain what is paid until renewed.
     require('../utils/contractStatus').currentContractsByEmployee('basicSalary allowances endDate type'),
     Asset.find({ issuedBySection: 'hr' }).select('name value status telecom.package').lean(),
   ]);
@@ -696,9 +651,7 @@ async function hr() {
   };
 }
 
-// ═══════════════════════════════════════════════════════════════════════════
-//  ماليات تقنية المعلومات
-// ═══════════════════════════════════════════════════════════════════════════
+// IT finance
 async function it(p) {
   const Asset = require('../models/Asset');
   const AssetEvent = require('../models/AssetEvent');
@@ -738,9 +691,7 @@ async function it(p) {
   };
 }
 
-// ═══════════════════════════════════════════════════════════════════════════
-//  ماليات المركبات
-// ═══════════════════════════════════════════════════════════════════════════
+// Vehicle finance
 async function vehicles(p, user) {
   const { VehicleMaster, VehicleInsurancePolicy } = require('../models/VehicleMaster');
   const [vs, policies, corp, claimsRes] = await Promise.all([
@@ -805,8 +756,7 @@ const DEPARTMENTS = {
 
 async function buildDept(key, p, user) {
   const d = DEPARTMENTS[key];
-  // تُقدَّم آخرُ حمولةٍ فورًا وتُعاد في الخلف بعد المهلة (ttlCache.wrapStale):
-  // صفحاتُ الماليّة تُعاد قراءتُها مع كلّ حركةٍ في قسمها.
+  // The last payload is served immediately and rebuilt in the background after the TTL (ttlCache.wrapStale): finance pages are re-read on every movement in their section.
   return cache.wrapStale(`finance:${key}:${p.from}:${p.to}`, TTL, 15 * 60 * 1000, async () => {
     const body = await d.build(p, user);
     return { dept: key, ar: d.ar, en: d.en, period: { from: p.from, to: p.to }, generatedAt: new Date(), ...body };
@@ -824,7 +774,7 @@ exports.department = async (req, res) => {
   }
 };
 
-/** اللوحة: أهمُّ بطاقات كلّ قسم — من الحمولات نفسِها، فلا يختلف رقمٌ بين اللوحة وصفحته. */
+/** Dashboard: the main cards of each section, from the same payloads so a number never differs between the dashboard and its page. */
 const HEADLINE = {
   operations: ['selling', 'purchase', 'margin', 'walletClosing'],
   fleet: ['income', 'driverExpense', 'net', 'unpaid'],
@@ -844,7 +794,7 @@ exports.overview = async (req, res) => {
     const cardOf = (k, c) => (built[keys.indexOf(k)]?.cards || []).find((x) => x.key === c)?.value ?? null;
     res.json({
       period: { from: p.from, to: p.to },
-      // قراءةٌ مسطّحة لبطاقات الشاشة الرئيسية في التطبيق (HomeInsight).
+      // Flat read for the home screen cards in the app (HomeInsight).
       headline: { selling: cardOf('operations', 'selling'), receivable: cardOf('collections', 'ledgerOutstanding'), collected: cardOf('collections', 'collectedPeriod') },
       departments: keys.map((k, i) => ({
         key: k, ar: DEPARTMENTS[k].ar, en: DEPARTMENTS[k].en, ok: !!built[i],

@@ -1,13 +1,6 @@
 /**
- * hrTransferAlerts — تنبيهاتُ «انتظار نقل الكفالة».
- *
- * مَن أُنهيت خدمتُه بحالة «انتظار نقل الكفالة» له شهرٌ واحد (`transferDeadline`).
- * وطوالَ الشهر — وبعده إن تأخّر — تُنبَّه الموارد البشريّة مرّتين في اليوم
- * (صباحًا ومساءً بتوقيت الرياض): «أخرِجه من النظام». فإذا أُخرج ذهب إلى الأرشيف
- * وسكتت التنبيهات (صاحبُ الشركة، ٢٠٢٦/١٠/١٩).
- *
- * ولكلّ موظّفٍ نافذةٌ واحدةٌ في كلّ نصف يوم: `transferAlertKey` يُكتب ذرّيًّا
- * قبل الإرسال، فلا يرسل عاملا الخادم التنبيهَ مرّتين.
+ * hrTransferAlerts: alerts for the sponsorship-transfer-pending status.
+ * An employee ended with that status has one month (`transferDeadline`). During that month, and after it if late, HR is alerted twice a day (morning and evening, Riyadh time) to remove him from the system; once removed he is archived and alerts stop. `transferAlertKey` is written atomically before sending, so two workers never send the same alert.
  */
 const Employee = require('../models/Employee');
 const { notifySection } = require('../services/notificationService');
@@ -34,7 +27,7 @@ async function sweepOnce() {
       systemStatus: { $ne: ENG.SYSTEM_OUT }, transferAlertKey: { $ne: key },
     }).select('arabicName firstName lastName employeeNumber transferDeadline terminatedAt').lean();
     for (const e of rows) {
-      // ذرّيًّا: مَن سبق إلى النافذة يرسل، والآخرُ يجدها مكتوبةً فيسكت.
+      // Atomic: whoever claims the window sends; the other finds it written and stays silent.
       // eslint-disable-next-line no-await-in-loop
       const won = await Employee.updateOne({ _id: e._id, transferAlertKey: { $ne: key } }, { $set: { transferAlertKey: key } });
       if (!won.modifiedCount) continue;
@@ -51,7 +44,7 @@ async function sweepOnce() {
           relatedEntity: 'Employee', relatedEntityId: e._id,
         });
         sent += 1;
-      } catch (_) { /* تنبيهٌ فائت لا يوقف الجولة */ }
+      } catch (_) { /* A missed alert must not stop the round. */ }
     }
   } catch (e) {
     console.log('[hrTransferAlerts] error:', e.message);

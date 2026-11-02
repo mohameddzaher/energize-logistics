@@ -4,52 +4,31 @@ const logAudit = require('../utils/auditLogger');
 const { invalidateUserCache, revokeAccessToken } = require('../middleware/auth');
 const { COOKIE_OPTIONS } = require('../config/constants');
 
-// كم جهازًا/متصفّحًا يبقى المستخدم داخلًا عليها في وقت واحد.
+// How many devices or browsers a user can stay logged in on at once.
 const MAX_SESSIONS = 8;
 
-// ── الجلسة المنزلقة ─────────────────────────────────────────────────────────
-// كان توكن التجديد ينتهي بعد سبعة أيام **من لحظة الدخول**، لا من آخر استعمال.
-// فالموظّف الذي يعمل على النظام كل يوم يُخرَج منه فجأةً في اليوم الثامن بلا
-// سبب ظاهر — وهذا ما كان يبدو «انتهت البيانات، اعمل خروج ودخول».
-//
-// الآن: إذا تجاوز التوكن نصف عمره عند التجديد، يُصدَر بديلٌ جديد ويُترك القديم
-// صالحًا لفترة سماح قصيرة. فترة السماح ليست ترفًا: المستخدم يفتح عشرة تبويبات،
-// وكلها قد تُجدِّد في اللحظة نفسها — ولو أُبطِل القديم فورًا لخرج تسعة منها.
+// Sliding session. The refresh token used to expire 7 days after login, not after last use, so a daily user was logged out on day 8 for no visible reason. Now a token past half its life is replaced at refresh and the old one stays valid for a short grace period. The grace is needed because a user may have ten tabs refreshing at the same moment; revoking the old token immediately would log nine of them out.
 const REFRESH_DAYS = Number(process.env.JWT_REFRESH_DAYS || 30);
 const REFRESH_MS = REFRESH_DAYS * 24 * 60 * 60 * 1000;
-// مهلة بقاء التوكن القديم بعد إصدار بديله — تكفي لتبويبات تُجدِّد معًا.
+// How long the old token stays valid after its replacement is issued; enough for tabs refreshing together.
 const GRACE_MS = 5 * 60 * 1000;
 
-// ── التوكن في فترة السماح يعيش هنا، لا في مصفوفة جلسات المستخدم ──────────────
-//
-// كان يُحشر في المصفوفة مع بديله، فيشغل الجلسةُ الواحدة خانتين وتبلغ المصفوفة
-// تسعًا، فيقصّها `slice(-8)` — **فيُطرَد جهازٌ آخر**. ومع ثمانية أجهزة عاملة صار
-// كل تجديدٍ يُخرِج شخصًا لا علاقة له بالتجديد، ثم يتكرّر: سلسلةُ خروجٍ لا يفهم
-// أحدٌ سببها.
-//
-// وهنا يُقاس عمره بوقتٍ لا بحذفٍ مؤجَّل: الحذف المؤجَّل كان يُلغي القديم بعد خمس
-// دقائق حتى لو ضاع الردّ الحامل للبديل في الشبكة — فيبقى الجهاز على توكنٍ لم
-// يعد معروفًا ويُطلَب منه كلمة السرّ بلا سبب. ولو أُعيد تشغيل الخادم قبل موعد
-// الحذف بقي القديم صالحًا إلى الأبد.
-const grace = new Map(); // token → وقت انتهاء السماح
+// A token in its grace period lives here, not in the user's sessions array. It used to share the array with its replacement, so one session took two slots, the array reached nine and slice(-8) evicted another device; with eight devices every refresh logged out an unrelated person. Age is measured by time, not a deferred delete: a deferred delete invalidated the old token after five minutes even if the response carrying the new one was lost in the network, leaving the device on an unknown token, and a restart before the delete kept the old token valid forever.
+const grace = new Map(); // token to grace-expiry time
 const graceHas = (t) => {
   const exp = grace.get(t);
   if (!exp) return false;
   if (exp <= Date.now()) { grace.delete(t); return false; }
   return true;
 };
-// كنسٌ خفيف: بلا هذا تنمو الخريطة بعدد التجديدات ما دام الخادم يعمل.
+// Light sweep: without it the map grows with every refresh while the server runs.
 setInterval(() => {
   const now = Date.now();
   for (const [t, exp] of grace) if (exp <= now) grace.delete(t);
 }, 60000).unref?.();
 
 const generateAccessToken = (userId, role) => {
-  // ── معرّف عشوائيّ لكل توكن وصول ─────────────────────────────────────────────
-  // بدونه يُنتج جهازان يدخلان في الثانية نفسها توكنًا **متطابقًا حرفيًّا**:
-  // الحمولة {userId, role} والطابع الزمنيّ بالثواني، فلا شيء يفرّق بينهما.
-  // فيصير للجهازين توكنٌ واحد — وإبطالُ أحدهما عند الخروج يُخرج الآخر معه.
-  // توكن التجديد عولج بهذا من قبل، وبقي هذا بلا علاج.
+  // Random id per access token. Without it two devices logging in within the same second produce byte-identical tokens (the payload is {userId, role} plus a seconds-resolution timestamp), so both share one token and revoking one at logout logs out the other. The refresh token was already fixed this way.
   return jwt.sign(
     { userId, role, jti: require('crypto').randomBytes(9).toString('base64url') },
     process.env.JWT_ACCESS_SECRET,
@@ -58,9 +37,7 @@ const generateAccessToken = (userId, role) => {
 };
 
 const generateRefreshToken = (userId) => {
-  // معرّف جلسة عشوائي: بدونه يُنتج تسجيلا دخول في الثانية نفسها **توكنًا
-  // متطابقًا** (الحمولة {userId} والطابع الزمني بالثواني)، فيصير للجهازين توكن
-  // واحد — والخروج من أحدهما يُخرج الآخر بلا سبب ظاهر.
+  // Random session id: without it two logins in the same second produce identical tokens (payload {userId} plus a seconds timestamp), so logging out of one logs out the other.
   return jwt.sign(
     { userId, sid: require('crypto').randomBytes(9).toString('base64url') },
     process.env.JWT_REFRESH_SECRET,
@@ -68,7 +45,7 @@ const generateRefreshToken = (userId) => {
   );
 };
 
-/** هل تجاوز التوكن نصف عمره؟ عندها يُجدَّد بدل أن يُترك حتى ينتهي فجأة. */
+/** Has the token passed half its life? If so it is renewed instead of being left to expire suddenly. */
 const isStale = (decoded) => {
   if (!decoded?.exp || !decoded?.iat) return false;
   const life = (decoded.exp - decoded.iat) * 1000;
@@ -80,10 +57,7 @@ exports.login = async (req, res) => {
   try {
     const { email, password } = req.body;
 
-    // `refreshTokens` معرَّف select:false، فبدون طلبه صراحةً يصل هنا undefined —
-    // فتُحفَظ الجلسات وفيها الجديدة وحدها، وتُمحى كل جلسات الأجهزة الأخرى.
-    // كان هذا سبب «الدخول من جهاز ثانٍ يُخرج الأول»: الأول يبقى ظاهرًا ربع ساعة
-    // (عمر توكن الوصول) ثم يفشل تجديده فيُخرَج بلا سبب مفهوم.
+    // refreshTokens is select:false, so without requesting it explicitly it arrives undefined here; the saved sessions would then contain only the new one and wipe every other device's session. This caused second-device login logging out the first: the first stays visible for the access-token lifetime (15 minutes), then its refresh fails.
     const user = await User.findOne({ email }).select('+password +refreshTokens');
     if (!user) {
       return res.status(401).json({ message: 'Invalid email or password' });
@@ -105,15 +79,11 @@ exports.login = async (req, res) => {
     const accessToken = generateAccessToken(user._id, user.role);
     const refreshToken = generateRefreshToken(user._id);
 
-    // Keep this device's session ALONGSIDE any existing ones (phone + desktop +
-    // other browsers all stay logged in). Cap to the most recent MAX_SESSIONS.
-    // ── تحديثٌ ذرّيّ لا `user.save()` ───────────────────────────────────────
-    // دخولان للمستخدم نفسِه في اللحظة نفسِها (الجوّال والموقع معًا) كانا يقرآن
-    // النسخةَ نفسَها ويحفظانها، فيرفض الثاني بـVersionError ويردّ ٥٠٠. الإضافةُ في
-    // القاعدة نفسِها لا تتعارض. (ظهر في اختبار الشاشات الآليّ، ٢٠٢٦/١٠/٢٥.)
+    // Keep this device's session alongside existing ones (phone, desktop and other browsers stay logged in); capped to the most recent MAX_SESSIONS.
+    // Atomic update, not user.save(): two simultaneous logins of one user (mobile and web) read and saved the same version, so the second hit VersionError and returned 500. Pushing in the DB does not conflict.
     await User.updateOne({ _id: user._id }, {
       $push: { refreshTokens: { $each: [refreshToken], $slice: -MAX_SESSIONS } },
-      $set: { refreshToken, lastLogin: new Date() }, // refreshToken: الحقلُ القديم، يبقى متزامنًا
+      $set: { refreshToken, lastLogin: new Date() }, // refreshToken: legacy field, kept in sync
     });
     // A cached (pre-login) copy may be stale now that we've updated the user.
     invalidateUserCache(user._id);
@@ -157,9 +127,9 @@ exports.login = async (req, res) => {
         lastName: user.lastName,
         role: user.role,
         permissions,
-        // أيُّ الشاشات تُفتَح — الشريطُ الجانبيُّ يقرؤها من أوّل رسمة.
+        // Which screens open; the sidebar reads it from the first render.
         pageAccess,
-        // وما أُشِّر عليه صراحةً يسبق قوائمَ الأدوار المكتوبةَ باليد في الشريط.
+        // Explicit ticks take precedence over the hand-written role lists in the sidebar.
         pagesGranted,
         homePage,
         superAdminPowers,
@@ -219,23 +189,17 @@ exports.refresh = async (req, res) => {
       maxAge: 15 * 60 * 1000,
     });
 
-    // تجاوز نصف عمره؟ يُصدَر بديلٌ ويُترك القديم في فترة سماح — فلا يُخرَج
-    // المستخدم في اليوم الثامن، ولا تُقطَع التبويبات التي جدَّدت في اللحظة نفسها.
+    // Past half its life: issue a replacement and keep the old one in a grace period, so the user is not logged out on day 8 and tabs that refreshed together are not cut off.
     let outgoing = token;
     if (isStale(decoded)) {
       outgoing = generateRefreshToken(user._id);
-      // ذرّيّ عبر القاعدة، لا قراءةً وتعديلًا وكتابة.
-      //
-      // تبويبان يُجدِّدان في اللحظة نفسها يحملان التوكن نفسه، فكلاهما يقرأ
-      // المصفوفة ويكتبها كاملة — فتمحو كتابةُ الثاني بديلَ الأوّل، ويربح آخرُ
-      // ردٍّ يصل المتصفّح. لو كان الخاسر هو صاحب الكوكي الأخير خرج المستخدم.
-      // `$pull` ثم `$push` بـ`$slice` يجعلان الأمر عمليةً واحدة في القاعدة.
+      // Atomic in the DB, not read-modify-write. Two tabs refreshing at once carry the same token and each reads and writes the whole array, so the second write erases the first's replacement and the last response to reach the browser wins; if the loser holds the last cookie the user is logged out. $pull then $push with $slice makes it one DB operation.
       await User.updateOne({ _id: user._id }, { $pull: { refreshTokens: token } });
       await User.updateOne({ _id: user._id }, {
         $push: { refreshTokens: { $each: [outgoing], $slice: -MAX_SESSIONS } },
         $set: { refreshToken: outgoing },
       });
-      // القديم يبقى مقبولًا فترةَ السماح — في الذاكرة، لا في المصفوفة.
+      // The old token stays accepted during the grace period, in memory, not in the array.
       grace.set(token, Date.now() + GRACE_MS);
     }
 
@@ -255,17 +219,13 @@ exports.refresh = async (req, res) => {
 exports.logout = async (req, res) => {
   try {
     if (req.user) {
-      // جهازٌ واحد يخرج، والباقي يبقى داخلًا.
-      //
-      // الهاتف لا كوكيز له، فيرسل توكنه في الجسم كما يفعل في التجديد. وبقراءة
-      // الكوكي وحده كان `thisToken` غير معرَّف فيسقط الأمر إلى تفريغ المصفوفة —
-      // فخروجُ هاتفٍ واحد كان يُخرج كلّ مكتبٍ وكلّ جهازٍ للمستخدم نفسه.
+      // Log out one device only; the others stay logged in. The phone has no cookies and sends its token in the body as it does for refresh. Reading only the cookie left thisToken undefined and fell through to clearing the whole array, so one phone logout logged out every desktop and device of that user.
       const thisToken = req.cookies?.refreshToken || req.body?.refreshToken;
       const update = thisToken
         ? { $pull: { refreshTokens: thisToken }, $set: { refreshToken: null } }
         : { $set: { refreshToken: null, refreshTokens: [] } };
       await User.findByIdAndUpdate(req.user._id, update);
-      // توكن الوصول الحاليّ يُبطَل معه: بدونه يبقى مقبولًا حتى ينتهي عمره.
+      // The current access token is revoked with it; otherwise it stays accepted until it expires.
       revokeAccessToken(req.cookies?.accessToken
         || (req.headers.authorization || '').replace(/^Bearer\s+/i, ''));
       invalidateUserCache(req.user._id);
@@ -360,15 +320,14 @@ exports.updateMyProfile = async (req, res) => {
   }
 };
 
-// PATCH /api/auth/me/prefs { key, value } — تفضيلُ عرضٍ واحد في حساب المستخدم.
-// المفتاحُ قصيرٌ بنقاط (شاشة.خيار) والقيمةُ نصٌّ قصير — لا يُخزَّن هنا غيرُ ذلك.
+// PATCH /api/auth/me/prefs { key, value } - one display preference on the user's account. The key is short with dots (screen.option) and the value short text; nothing else is stored here.
 const PREF_KEY = /^[A-Za-z][\w-]{0,40}(\.[A-Za-z][\w-]{0,40}){0,3}$/;
 exports.setMyPref = async (req, res) => {
   try {
     const key = String(req.body?.key || '');
     const value = String(req.body?.value ?? '').slice(0, 80);
     if (!PREF_KEY.test(key)) return res.status(400).json({ message: 'مفتاحٌ غير صالح' });
-    // النقطةُ في مفتاح Map تُكتب ‹:› — مونغو لا يقبل النقاط في مفاتيح الوثائق.
+    // A dot in a Map key is stored as a colon: Mongo does not accept dots in document keys.
     const field = `uiPrefs.${key.replace(/\./g, ':')}`;
     await User.updateOne({ _id: req.user._id }, value ? { $set: { [field]: value } } : { $unset: { [field]: 1 } });
     invalidateUserCache(req.user._id);
@@ -390,20 +349,15 @@ exports.getMe = async (req, res) => {
       .populate('manager', 'firstName lastName email role')
       .populate('linkedEmployee', 'firstName lastName employeeNumber jobTitle');
 
-    // Effective per-section access (drives the sidebar + client-side edit gating),
-    // and per-page access beneath it — القسمُ يقول ماذا يُفعَل والصفحةُ تقول أين.
-    // راجع config/pages.js.
+    // Effective per-section access (drives the sidebar and client-side edit gating), and per-page access beneath it: section says what can be done, page says where. See config/pages.js.
     const { effectivePermissions, effectivePages, homePageFor, explicitlyGrantedPages } = require('../utils/permissions');
     const permissions = user ? await effectivePermissions(user.role) : {};
     const pageAccess = user ? await effectivePages(user.role) : {};
     const pagesGranted = user ? await explicitlyGrantedPages(user.role) : [];
     const homePage = user ? await homePageFor(user.role) : '';
-    // ── واسمُ الدور المصنوع يأتي معه ──────────────────────────────────────────
-    // الشاشاتُ تترجم الدورَ من جدولٍ في الواجهة لا يعرف ما صُنع بعد بنائها، فكان
-    // «مراجع مالي» يُعرَض `financial reviewer` تحت اسم صاحبه في كلّ شاشة.
+    // Custom role name included. Screens translate roles from a front-end table that does not know roles created after the build, so a financial reviewer showed as the raw English key under the user's name on every screen.
     const roleLabel = user ? await customRoleLabel(user.role) : null;
-    // والواجهةُ تُخفي أفعالَ مدير النظام عمّن لا يملكها — وتحتاج أن تعرف أنّ دورًا
-    // مصنوعًا أو ممنوحًا كلَّ شيءٍ يملكها. الحارسُ الحقيقيُّ في الخادم على أيّ حال.
+    // The UI hides super-admin actions from those without them and must know that a custom or fully granted role has them. The real guard is on the server regardless.
     const { hasSuperAdminPowers } = require('../utils/permissions');
     const superAdminPowers = user ? await hasSuperAdminPowers(user.role) : false;
     const out = user ? { ...user.toObject({ flattenMaps: true }), permissions, pageAccess, pagesGranted, homePage, superAdminPowers, ...(roleLabel ? { roleLabel } : {}) } : user;
@@ -414,7 +368,7 @@ exports.getMe = async (req, res) => {
   }
 };
 
-/** اسمُ الدور المصنوع بلغتيه، أو `null` إن كان دورًا معرَّفًا في الشيفرة. */
+/** Name of a custom role in both languages, or null if the role is defined in code. */
 async function customRoleLabel(role) {
   try {
     const CustomRole = require('../models/CustomRole');

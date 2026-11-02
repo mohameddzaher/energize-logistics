@@ -138,8 +138,7 @@ exports.getFleetReport = async (req, res) => {
     const [vehicles, metrics, openAlerts, services, repairs] = await Promise.all([
       Ls2Vehicle.find({}).lean(),
       periodByUnit(from, to),
-      // التنبيهات المفتوحة سبعةٌ وأربعون ألفًا، وأكثرُها على مركبةٍ واحدة ألفٌ
-      // وثلاثمئة — فسقفُ الألف كان يبتر تقرير مركبةٍ نشطة بلا أن يقول.
+      // About 47,000 open alerts exist and the busiest vehicle has about 1,300, so the old cap of 1,000 silently truncated an active vehicle's report.
       Ls2Alert.find({ status: 'open' }).sort({ severity: 1, firstSeenAt: -1 }).limit(50000).lean(),
       Ls2ServiceLog.find(serviceLogFilter(from, to)).sort({ serviceDate: -1, createdAt: -1 }).lean(),
       Ls2Repair.find(inPeriodRepairs(from, to)).sort({ repairDate: -1 }).lean(),

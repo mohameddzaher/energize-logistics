@@ -1,17 +1,7 @@
 /**
- * partnerController — إنشاء وإدارة حسابات دخول العملاء والموردين.
- *
- * Two jobs:
- *   1. Present EVERY customer/supplier the company has, from every section's own
- *      register, as one searchable list with the register's name beside each row
- *      ("شركة كذا — عميل تخليص جمركي"), so the users page can offer them in a
- *      dropdown and the profile pages can look themselves up.
- *   2. Turn any of those rows into a portal login (email + password) and manage
- *      it afterwards — reset the password, deactivate, unlink.
- *
- * The account it creates is an ordinary User with `role: 'client'` (the existing
- * external-user role, so every RBAC rule already treats it as an outsider) plus
- * `accountType` + `partner` telling the portal WHICH outsider it is.
+ * partnerController: create and manage customer and supplier login accounts.
+ * Presents every customer/supplier from every section's register as one searchable list, labelled with the register name, and turns any row into a portal login (email + password) that can be reset, deactivated or unlinked.
+ * The account is a User with role 'client' plus accountType and partner, which tell the portal which outsider it is.
  */
 const User = require('../models/User');
 const { REGISTERS, REGISTER_BY_KEY, modelFor, registerMeta, SERVICES } = require('../config/partnerRegisters');

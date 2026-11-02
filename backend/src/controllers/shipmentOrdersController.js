@@ -25,19 +25,10 @@ const { termsOfSubtype, paymentSubtypeOptions } = require('../utils/shipmentOrde
 const emit = (event, payload = {}) => { try { emitToAll(event, payload); } catch (e) {} };
 
 /**
- * تغيَّرت شحنةٌ: يُمحى المخزَّنُ **ثمّ** يُنادى على الشاشات.
- *
- * ── وإلّا تأخّر الرقمُ تغييرةً واحدةً بالضبط ────────────────────────────────
- * اللوحةُ والتحليلاتُ تُبنيان خلف `wrapStale` بستّين ثانية. والكتابةُ كانت
- * تُطلق `shipmentOrders:updated` ولا تمسّ المخزَّن: فتسمع الشاشةُ الحدثَ
- * وتُعيد الطلبَ فورًا — فتقرأ ما بُني قبل الكتابة. تُسجَّل شحنةٌ فلا يتحرّك
- * رقم، وتُسجَّل التي بعدها فتظهر الأولى. ويُقال «الأرقام غلط» ولا غلطَ فيها،
- * إنّما نودي على القارئ قبل أن يُرفَع ما كان.
- *
- * فالترتيبُ جزءٌ من الإصلاح: المحوُ قبل النداء، لا بعده.
+ * A shipment changed: clear the cache, then notify screens.
+ * Otherwise the number lags by exactly one change. The dashboard and analytics are built behind `wrapStale` with 60 seconds, and the write fired `shipmentOrders:updated` without touching the cache: the screen heard the event and re-requested at once, reading what was built before the write. So the order is part of the fix: clear before announcing, not after.
  */
-// ربطُ الشحنة بمعاملة التخليص بعد حفظها — لا يؤخّر الردّ ولا يُفشله
-// (services/customsOpsLink.afterShipmentSaved).
+// Link the shipment to the customs transaction after saving; does not delay or fail the response (services/customsOpsLink.afterShipmentSaved).
 const linkCustomsSoon = (id) => {
   if (!id) return;
   setImmediate(() => {
@@ -63,11 +54,8 @@ const rx = (s) => new RegExp(String(s).trim().replace(/[.*+?^${}()|[\]\\]/g, '\\
 
 const fullName = (u) => (u ? `${u.firstName || ''} ${u.lastName || ''}`.trim() : '');
 
-// ── مَن يعدّل الفلوسَ بعد إنشاء الشحنة (صاحبُ الشركة، ٢٠٢٦/١٠/٢٨) ────────────
-// سعرُ البيع والشراء والسلفةُ وأجرةُ السائق تُكتب عند الإنشاء ممّن ينشئ الشحنة،
-// ثمّ لا يغيّرها إلّا مديرو النظام ومديرُ التشغيل. ودورٌ آخرُ سيُضاف هنا حين
-// يُطلب — سطرٌ واحد، والشاشتان (الموقع والهاتف) تقرآن القائمةَ نفسَها من
-// /api/shipment-orders/money-editors.
+// Who edits money after a shipment is created.
+// Selling price, buying price, advance and driver fare are written at creation by whoever creates the shipment, then only system managers and the operations manager change them. Another role is a one-line addition here; the web and phone screens read the same list from /api/shipment-orders/money-editors.
 const MONEY_FIELDS = ['sellPrice', 'buyPrice', 'advanceAmount', 'driverRentPrice'];
 const MONEY_EDIT_ROLES = ['super_admin', 'admin', 'operations_manager'];
 const canEditMoney = (user) => !!user && MONEY_EDIT_ROLES.includes(user.role);
@@ -81,17 +69,13 @@ const ORDER_EDITABLE = [
   'pickupTime', 'startTime', 'arrivalTime', 'sellPrice', 'buyPrice',
   'paymentSubtype', 'driverRentType', 'paymentMethod', 'driverRentPrice', 'branch',
   'status', 'notes', 'customFields',
-  // البوليصةُ والحاويةُ (تُربطان بالتخليص) والسلفة — ٢٠٢٦/١٠/٢٦.
+  // Waybill, container (linked to customs) and advance.
   'blNumber', 'containerNumber', 'advanceAmount',
 ];
 
 /**
- * «نوع الدفع» في طلبٍ قادم — يُتحقَّق منه، وتُكتب طريقةُ الدفع منه.
- *
- * أحدُ الأنواع الأربعة أو فارغ؛ وما سواهما يُرفَض بأربعمئة لا يُحفَظ صامتًا —
- * نوعٌ مجهولٌ في طلبٍ لا يعرف أحدٌ بعده أيُحصَّل آجلًا أم نقدًا. ومتى كان
- * نوعًا كُتبت `paymentMethod` منه ولو أرسل النموذجُ غيرَها: البوليصةُ تقرؤها
- * لتطبع سعرَ النقل للنقديّ، فلا تُترك تناقضه. راجع utils/shipmentOrderPayment.
+ * Payment type on an incoming order: validated, and the payment method is written from it.
+ * One of the four types or empty; anything else is rejected with 400, not saved silently, since an unknown type leaves nobody knowing whether it is collected on credit or cash. When a type is set, `paymentMethod` is written from it even if the form sent another: the waybill reads it to print the freight price for cash, so the contradiction is not left. See utils/shipmentOrderPayment.
  */
 function applyPaymentSubtype(data) {
   if (data.paymentSubtype === undefined) return;
@@ -124,16 +108,8 @@ async function resolveInlineCustomer(req, data) {
 }
 
 /**
- * Inline fresh truck (and its supplier when that is new too) — the fleet
- * register learns from the work. Shared by create AND update.
- *
- * ── ولوحةٌ مسجّلةٌ لا تُسجَّل ثانيةً ────────────────────────────────────────
- * في السجلّ ثلاثةَ عشرَ ألفَ شاحنةٍ، فمن كتب لوحةً في الخانة الحرّة أكبرُ ظنًّا
- * أنّها موجودةٌ من أنّها جديدة — والقائمةُ لا تُعرض كلُّها فلا يراها. وكان
- * المكتوبُ يُنشئ صفًّا جديدًا بلا سؤال: صفّان للوحةٍ واحدةٍ، ولكلٍّ سائقُه
- * وسجلُّ شحناته، ولا يعرف أحدٌ أيُّهما الشاحنة. فالمكتوبُ يُبحَث عنه أوّلًا
- * بمفتاح اللوحة — فإن وُجد أُخِذ الصفُّ الموجود، ونُسب إلى المورّد إن كان
- * مجهولَ المالك، ولا يُنشأ شيء.
+ * Inline fresh truck (and its supplier when that is new too): the fleet register learns from the work. Shared by create and update.
+ * A registered plate is not registered twice. The register holds ~13k trucks, so a plate typed in the free field is more likely existing than new, and the full list is not shown. Creating a new row silently gave two rows for one plate, each with its own driver and shipment history. So the typed plate is looked up first by plate key; if found, the existing row is used and attributed to the supplier if its owner was unknown, and nothing is created.
  */
 async function resolveInlineVehicle(req, data) {
   if (data.vehicle || !req.body.newVehicle || !String(req.body.newVehicle.plate || '').trim()) return;
@@ -153,7 +129,7 @@ async function resolveInlineVehicle(req, data) {
     .findOne({ plate: flexSpaceRegex(plate) })
     .select('_id supplier ownership').lean();
   if (existing) {
-    // شاحنةُ مورّدٍ عُرف مالكُها الآن: المعرفةُ تُكتب، ولا تُنسَخ الشاحنة.
+    // A supplier's truck whose owner is now known: record the knowledge, do not copy the truck.
     if (supplierId && !existing.supplier && existing.ownership !== 'ours') {
       await ShipmentOrderVehicle.updateOne(
         { _id: existing._id }, { $set: { supplier: supplierId, ownership: 'supplier' } },
@@ -173,36 +149,21 @@ async function resolveInlineVehicle(req, data) {
     defaultDriverPhone: data.driverPhone || '',
     createdBy: req.user._id,
   });
-  // شاحنةٌ لا مورّدَ لها ولوحتُها في سجلّنا = من أسطولنا، مربوطةٌ به.
+  // A truck with no supplier whose plate is in our register belongs to our fleet and is linked to it.
   if (!supplierId) await syncVehicleMaster(veh._id);
   data.vehicle = veh._id;
   emit('shipmentOrders:fleet', {});
 }
 
 /**
- * The denormalized snapshot an order carries of its truck: display label,
- * supplier, and the truck's regular driver as a fallback. Must be refreshed
- * whenever `vehicle` changes or the list/PDF keep printing the OLD plate.
- *
- * ── والسجلُّ يتعلّم من العمل ────────────────────────────────────────────────
- * خمسةُ آلافٍ وسبعُمئةِ شاحنةٍ في السجلّ لم يُعرَف مالكُها: استُوردت من تاريخ
- * الطلبات، ولوحاتُها ظهرت مع أكثرَ من مورّدٍ أو مع مورّدٍ لا صفَّ له. ومَن
- * يحجز الحمولةَ يعرف مالكَها — هو يتّفق معه — فحين يختار المورّدَ ثمّ شاحنةً
- * مجهولةَ المالك تُكتب المعرفةُ في السجلّ مرّةً واحدةً ولا تُسأل ثانيًا.
- *
- * ولا تُكتب فوق معرفةٍ سابقة: شاحنةٌ لها مورّدٌ مسجَّلٌ تبقى له، وما كان من
- * أسطولنا لا يُنسَب إلى مورّد.
+ * The denormalized snapshot an order carries of its truck: display label, supplier, and the truck's regular driver as a fallback. Must be refreshed whenever `vehicle` changes or the list/PDF keep printing the old plate.
+ * The register learns from the work: thousands of imported trucks have no known owner. Whoever books the load knows the owner, so when he picks the supplier and then an unknown-owner truck the knowledge is written once.
+ * It never overwrites known ownership: a truck with a registered supplier stays with it, and one from our fleet is not attributed to a supplier.
  */
 /**
- * ── المورّدُ المتّفقُ معه، لا مالكُ الشاحنة ───────────────────────────────────
- *
- * صارا سؤالين منفصلين في الشاشة: المورّدُ طرفٌ في الصفقة يُختار مع العميل،
- * ومالكُ الشاحنة خبرٌ عنها يُقرأ من سجلّها. وهما يختلفان فعلًا — مورّدٌ يُخرج
- * حمولتَنا على شاحنةِ غيره.
- *
- * فيُرَدُّ هنا المختارُ إن صحّ، ويبقى مالكُ الشاحنة بديلًا عند غيابه. وكان
- * الطلبُ يأخذ مالكَ الشاحنة دائمًا ويُكتب فوق اختيارِ من حجز الحمولة: فتُحفَظ
- * الشحنةُ على مورّدٍ لم يتّفق معه أحد، ويُطالَب بما لم يَحمِل.
+ * The supplier agreed with, not the truck's owner.
+ * The screen separates them: the supplier is a party to the deal chosen with the customer, while the truck owner is a fact read from its record. They really differ (a supplier carrying our load on another's truck).
+ * So the chosen supplier is returned if valid, and the truck owner is a fallback when none was chosen. The order used to always take the truck owner, overwriting the choice of whoever booked, so the shipment was saved to a supplier nobody agreed with and billed for what he did not carry.
  */
 async function resolveSupplierChoice(req) {
   const chosen = req && req.body ? String(req.body.supplierChoice || '') : '';
@@ -213,25 +174,19 @@ async function resolveSupplierChoice(req) {
 
 async function applyVehicleSnapshot(data, req) {
   const chosenId = await resolveSupplierChoice(req);
-  // ويُكتب ولو لم تُعرَف الشاحنة: المورّدُ يُتّفق معه قبل أن يُسمّي شاحنتَه،
-  // وكانت الدالّةُ ترجع من هنا فيُحفَظ الطلبُ بلا مورّدٍ وقد اختير.
+  // Written even when the truck is unknown: the supplier is agreed before naming a truck, and the function used to return here, saving the order without the chosen supplier.
   if (chosenId) data.supplier = chosenId;
   if (!data.vehicle) return;
   const veh = await ShipmentOrderVehicle.findById(data.vehicle).lean();
   if (!veh) return;
   data.vehicleName = [veh.plate, veh.name].filter(Boolean).join(' — ');
-  // ── واللوحةُ في خانتها ───────────────────────────────────────────────────
-  // كانت تُكتب داخل `vehicleName` وحدَه («1111 ABC — مرسيدس»)، وخانةُ اللوحة
-  // تبقى فارغةً في كلّ طلبٍ يُنشأ من شاشتنا — تملؤها طلباتُ المنصّة وحدَها.
-  // فتخرج شحناتُنا من فلتر عمود «الشاحنة»، ولا تجد البوليصةُ ماركتَها ولونَها
-  // (تُطلبان باللوحة من سجلّ الشاحنات)، ولا يُطابقها تقريرٌ يبحث بلوحة.
+  // The plate goes in its own field.
+  // It used to be written only inside `vehicleName`, leaving the plate field empty for every order made from our screen (only platform orders filled it). So our shipments fell out of the truck-column filter, the waybill could not find make and colour (looked up by plate in the truck register), and plate-based reports did not match.
   data.vehiclePlate = veh.plate || '';
-  // مالكُ الشاحنة بديلٌ عند غياب الاختيار، لا بديلًا عنه.
+  // The truck owner is a fallback when no choice was made, not a replacement for it.
   if (!chosenId) data.supplier = veh.supplier || null;
-  // ── والسجلُّ يتعلّم مالكًا مجهولًا ─────────────────────────────────────
-  // خمسةُ آلافٍ وسبعُمئةِ شاحنةٍ في السجلّ لا مالكَ لها، ومن يحجز الحمولة
-  // يعرفه. فيُكتب — ولا يُكتب فوق مالكٍ معروفٍ: من اتّفق مع مورّدٍ على شاحنة
-  // غيرِه لا يُغيّر ملكيّتَها في السجلّ بذلك.
+  // The register learns an unknown owner.
+  // Thousands of registered trucks have no owner and whoever books the load knows it, so it is written. A known owner is never overwritten: agreeing with a supplier on another's truck does not change its ownership in the register.
   if (chosenId && !veh.supplier && veh.ownership !== 'ours') {
     await ShipmentOrderVehicle.updateOne(
       { _id: veh._id }, { $set: { supplier: chosenId, ownership: 'supplier' } },
@@ -243,10 +198,8 @@ async function applyVehicleSnapshot(data, req) {
 }
 
 /**
- * بوليصاتُ عدّةِ طلباتٍ في ملفٍّ واحد — POST { ids: [...] }.
- *
- * كان التحميلُ الجماعيُّ يرسم كلَّ بوليصةٍ في المتصفّح، فتتجمّد الشاشةُ مرّةً
- * لكلّ كشف. صار نداءً واحدًا يردّ ملفًّا واحدًا — راجع renderWaybillsPdf.
+ * Waybills for several orders in one file: POST { ids: [...] }.
+ * Bulk download used to render each waybill in the browser, freezing the screen once per statement. It is now one call returning one file, see renderWaybillsPdf.
  */
 exports.getWaybillsPdf = async (req, res) => {
   try {
@@ -262,19 +215,14 @@ exports.getWaybillsPdf = async (req, res) => {
     const order = new Map(ids.map((id, i) => [String(id), i]));
     orders.sort((a, b) => (order.get(String(a._id)) ?? 0) - (order.get(String(b._id)) ?? 0));
 
-    // ── والبوليصةُ تُملأ من السجلّات لا من لقطةِ الطلب وحدَها ────────────────
-    // الطلبُ يحمل لقطةً باللوحة واسم السائق، وخاناتُ «الماركة» و«اللون»
-    // و«رقم الإقامة» و«الجنسية» كانت تُطبَع فارغةً في كلّ ورقةٍ تخرج مع سائق —
-    // وهي أوراقٌ يُتحقَّق منها في البوّابات. والبياناتُ موجودةٌ عندنا: في سجلّ
-    // الشاحنات وسجلّ السوّاق. فتُقرأ منهما بنداءين لا بنداءٍ لكلّ بوليصة.
+    // The waybill is filled from the registers, not only the order snapshot.
+    // The order holds a snapshot of plate and driver name, and the make, colour, residency number and nationality fields printed empty on every sheet leaving with a driver, though gates verify those. The data exists in the truck register and the driver register, so it is read from them in two calls, not one per waybill.
     const plateKeyOf = (v) => require('../utils/plateKey').registryPlateKey(v);
     const plates = [...new Set(orders.map((o) => plateKeyOf(o.vehiclePlate)).filter(Boolean))];
     const refs = orders.map((o) => o.vehicle).filter(Boolean);
     const names = [...new Set(orders.map((o) => String(o.driverName || '').trim()).filter(Boolean))];
     const [vehRows, drvRows] = await Promise.all([
-      // والشاحناتُ تُطلَب بمفتاحها لا بسحبِ السجلّ كلِّه: كان هذا يقرأ ثلاثةَ
-      // عشرَ ألفًا ونصفًا ليُرشِّح منها ثلاثًا، في ورقةٍ تُطبَع كلَّ يوم ويكبر
-      // سجلُّها كلَّ أسبوع. راجع `plateKey` في models/ShipmentOrderVehicle.
+      // Trucks are requested by key, not by pulling the whole register: that read ~13.5k rows to filter three, on a sheet printed daily with a register that grows weekly. See `plateKey` in models/ShipmentOrderVehicle.
       plates.length || refs.length
         ? ShipmentOrderVehicle.find({ $or: [{ plateKey: { $in: plates } }, { _id: { $in: refs } }] })
           .select('_id plate plateKey brand color truckType vehicleMaster').populate('vehicleMaster', VEHICLE_MASTER_FIELDS).lean()
@@ -283,7 +231,7 @@ exports.getWaybillsPdf = async (req, res) => {
       names.length
         ? ShipmentOrderDriver.find({ name: { $in: names } }).select('name residenceNumber nationality phone employee')
           .populate('employee', EMPLOYEE_FIELDS).lean()
-          // يُطابَق بالاسم المكتوب على الطلب، ويُطبَع من الملفّ — فالاسمُ الأصليّ يبقى مفتاحًا.
+          // Matched by the name written on the order and printed from the file, so the original name stays the key.
           .then((rows) => rows.map((d) => ({ ...driverView(d), name: d.name })))
         : [],
     ]);
@@ -322,15 +270,9 @@ exports.getWaybillsPdf = async (req, res) => {
 };
 
 /**
- * ── فلترُ الأعمدة على طريقة إكسل ───────────────────────────────────────────
- *
- * الجدولُ مُصفَّحٌ في الخادم (خمسةٌ وعشرون صفًّا في الصفحة)، فبناءُ قائمة قيم
- * العمود من الصفوف الواصلة يعرض قيمَ هذه الصفحة وحدَها — ثلاثَ مدنٍ من عشرين.
- * فالقيمُ تُحسَب في الخادم بعدّادها، والتصفيةُ تجري هناك أيضًا.
- *
- * وكلُّ عمودٍ يُحسَب بعد تطبيق فلاتر **بقيّة** الأعمدة لا كلِّها: من صفّى
- * «جدة» في «من» يريد أن يرى في «إلى» ما وصلت إليه شحناتُ جدة فقط — وهذا ما
- * يفعله إكسل، ولولاه لعُرضت قيمٌ تُنتقى فيخرج الجدولُ فارغًا.
+ * Excel-style column filter.
+ * The table is paginated on the server (25 rows per page), so a value list built from arriving rows would show only that page's values; values are computed on the server with counts, and filtering happens there too.
+ * Each column is computed after the filters of the other columns, not all: otherwise selectable values would produce an empty table.
  */
 const ORDER_COLUMNS = {
   customerName: 'customerName',
@@ -348,7 +290,7 @@ const ORDER_COLUMNS = {
   agentName: 'agentName',
   driverRentType: 'driverRentType',
   paymentMethod: 'paymentMethod',
-  // ── وبقيّةُ أعمدة الجدول (٢٠٢٦/١٠/٢٧: «الكولومز فيها فلاتر الإكسيل») ──────
+  // The rest of the table columns, with Excel-style filters
   reference: 'reference',
   status: 'status',
   notes: 'notes',
@@ -356,25 +298,23 @@ const ORDER_COLUMNS = {
   cargoType: 'cargoType',
   blNumber: 'blNumber',
   containerNumber: 'containerNumber',
-  pickupDay: 'pickupTime',     // يومٌ لا لحظة — راجع COLUMN_KIND
+  pickupDay: 'pickupTime',     // A day, not an instant; see COLUMN_KIND
   buyPrice: 'buyPrice',
   sellPrice: 'sellPrice',
 };
-// الأعمدةُ غيرُ النصّيّة: التاريخُ يُجمَّع بيومه في الرياض، والرقمُ بقيمته.
+// Non-text columns: a date groups by its Riyadh day, a number by its value.
 const COLUMN_KIND = { pickupDay: 'day', buyPrice: 'number', sellPrice: 'number' };
 const RIYADH = 'Asia/Riyadh';
 
-/** `col.<key>=أ,ب` → `{ field: { $in: [...] } }`. والفارغُ يُطلَب بـ`__blank__`. */
+/** `col.<key>=a,b` becomes `{ field: { $in: [...] } }`. An empty value is requested with `__blank__`. */
 const columnFilters = (query, skipKey = null) => {
   const out = {};
   for (const [key, field] of Object.entries(ORDER_COLUMNS)) {
     if (key === skipKey) continue;
-    // ‏`col_` لا `col.`: وسيطُ express-mongo-sanitize يحذف كلَّ مفتاحٍ فيه نقطة،
-    // فكانت فلاترُ الأعمدة لا تصل الخادمَ أصلًا (٢٠٢٦/١٠/٢٧). والقديمُ مقبولٌ لسكربت.
+    // `col_` not `col.`: the express-mongo-sanitize middleware drops any key containing a dot, so column filters never reached the server. The old form is still accepted for scripts.
     const raw = query[`col_${key}`] ?? query[`col.${key}`];
     if (!raw) continue;
-    // القيمُ تصل معاملاتٍ مكرَّرة (مصفوفة). والنصُّ المفصولُ بفاصلة صيغةٌ قديمة
-    // تبقى مقبولة لرابطٍ محفوظ — وهي التي كانت تقطع اسمًا فيه فاصلة.
+    // Values arrive as repeated parameters (array). The comma-separated string is a legacy format still accepted for saved links; it is the one that cut names containing a comma.
     const vals = Array.isArray(raw) ? raw.map(String)
       : (String(raw).includes('\u0000') ? String(raw).split('\u0000') : String(raw).split(','));
     const list = vals.filter((v) => normKey(v) !== '');
@@ -395,8 +335,7 @@ const columnFilters = (query, skipKey = null) => {
       if (or.length) out.$and = [...(out.$and || []), { $or: or }];
       continue;
     }
-    // القيمةُ تُطابَق بنمطٍ يقبل فراغَها كلَّه، و«(فارغ)» تشمل الفراغَ وحدَه —
-    // فما تعدّه القائمةُ هو ما يُرجعه الاختيار. راجع utils/colFilter.
+    // A value is matched by a pattern tolerant of whitespace, and the blank label matches only empty, so what the list counts is what the selection returns. See utils/colFilter.
     const c = textIn(field, list.map((v) => (v === '__blank__' ? '' : v)));
     if (c) out[field] = c[field];
   }
@@ -441,9 +380,8 @@ exports.listOrders = async (req, res) => {
   try {
     const { q, status, customer, supplier, source, branch, from, to, page = 1, limit = 25 } = req.query;
     const filter = { ...columnFilters(req.query) };
-    // ── الحالةُ قد تكون أكثرَ من واحدة ────────────────────────────────────
-    // البطاقاتُ فوق الجدول تُنتقى بالتراكم: «أرِني المتأخّرةَ وما في الطريق
-    // معًا». فتصل مفصولةً بفاصلة.
+    // Status can be more than one.
+    // The cards above the table accumulate: show overdue and in-transit together. So it arrives comma-separated.
     const byActivity = req.query.dateBy === 'activity' && (from || to);
     const range = {};
     if (from) range.$gte = startOfDay(from);
@@ -455,17 +393,9 @@ exports.listOrders = async (req, res) => {
       if (statusKeys.length === 1) [filter.status] = statusKeys;
       else if (statusKeys.length > 1) filter.status = { $in: statusKeys };
     }
-    // ── والعميلُ يُطابَق بمرجعه أو باسمه ──────────────────────────────────
-    //
-    // ثلاثةُ طلباتٍ من سبعةٍ وثلاثين ألفًا تحمل مرجعَ عميل: الباقي جاء من
-    // منصّة التشغيل ويحمل الاسمَ لقطةً (`customerName`) بلا ربط. فكان اختيارُ
-    // عميلٍ من المصفاة يُخرج صفرَ صفوفٍ لعميلٍ له آلافُ الشحنات — يُقرأ عطبًا.
-    //
-    // والاسمُ يُطابَق مطويًّا (`flexSpaceRegex`): «شركه» و«شركة» واحدةٌ، ومسافتان
-    // كمسافة. وكذلك المورّد — وهو أسوأُ حالًا: أسماؤه تُكتب في اللقطة بصورٍ شتّى.
-    //
-    // ويُحرَس المعرّف: قيمةٌ ليست ObjectId كانت تُلقي `CastError` فيعود النداءُ
-    // ٥٠٠ — خطأُ خادمٍ عن مُدخَلٍ خاطئ.
+    // A customer matches by reference or by name: only 3 of ~37k orders carry a reference, the rest came from the operations platform with a name snapshot (`customerName`), so reference-only returned zero rows.
+    // The name matches folded (`flexSpaceRegex`); same for the supplier, whose snapshots vary more.
+    // The id is guarded: a non-ObjectId threw `CastError` and returned 500 for bad input.
     const refOrName = async (Model, id, nameField) => {
       if (!mongoose.Types.ObjectId.isValid(String(id))) return null;
       const row = await Model.findById(id).select('name').lean();
@@ -484,13 +414,11 @@ exports.listOrders = async (req, res) => {
       else return res.status(400).json({ message: 'مُعرّفُ مورّدٍ غيرُ صالح' });
     }
     if (branch) filter.branch = branch;
-    // ── من أين جاءت الشحنة؟ ───────────────────────────────────────────────
-    // شحناتُ المنصّة تحمل رقمَ كشف تخريجٍ حقيقيًّا يُحاسَب عليه، وشحناتُنا —
-    // تجريبيّةً اليوم — تحمل رقمًا يسبقه حرف. والفصلُ بينهما ليس ترتيبًا: من
-    // يقرأ تقريرًا يجب أن يعرف أهو عن عملٍ جرى أم عن تجربة.
+    // Where the shipment came from.
+    // Platform shipments carry a real settlement statement number that is billed; ours (trial for now) carry a number with a letter prefix. The split is not by order: a report reader must know whether it covers real work or a trial.
     if (source === 'system' || source === 'platform') filter.source = source;
-    // ملاحظةُ الرحلة: «أرِني ما كُتبت عليه ملاحظة» — تُطبَع في البوليصة فتُراجَع.
-    // المربوطةُ بمعاملة تخليص — بطاقةُ اللوحة تفتحها هنا، في القسم نفسِه.
+    // Trip note: show what has a note; it prints on the waybill so it gets reviewed.
+    // Linked to a customs transaction: the dashboard card opens it here in the same section.
     if (req.query.customs === 'linked') filter['customsLink.clearance'] = { $type: 'objectId' };
     const note = String(req.query.note || '').trim();
     if (note === 'yes') filter.notes = { $nin: ['', null] };
@@ -506,36 +434,28 @@ exports.listOrders = async (req, res) => {
         ] });
       }
     } else if (from || to) {
-      // ── المدى بيوم الاستلام، كاللوحة والتحليلات (٢٠٢٦/١٠/٢٧) ─────────────────
-      // كان بيوم التسجيل (`createdAt`) واللوحةُ بيوم الاستلام، فـ«هذا الشهر» رقمان
-      // لشيءٍ واحد. ويومُ التسجيل في شحنات المنصّة يومُ وصولها بالمزامنة لا يومُها.
-      // ‏`dateBy=created` يُبقي القديمَ لمن يطلبه صراحةً.
+      // The range is by receiving day, like the dashboard and analytics.
+      // It used to be by registration day (`createdAt`) while the dashboard used the receiving day, so this month gave two numbers for one thing. For platform shipments the registration day is the day sync brought it, not its own day. `dateBy=created` keeps the old behaviour for those who ask.
       const dk = req.query.dateBy === 'created' ? 'createdAt' : 'pickupTime';
       filter[dk] = {};
       if (from) filter[dk].$gte = startOfDay(from);
       if (to) filter[dk].$lte = endOfDay(to);
     }
     if (q && q.trim()) {
-      // ── البحثُ بكلّ ما يخصّ الشحنةَ وأصحابَها (٢٠٢٦/١٠/٢٦) ──────────────────
-      // «سيرش برقم إقامة السائق أو رقم أي حاجة تخص السائق أو الشحنة أو أي حد
-      // فيها». فالاسمُ يُطوى (جده/جدة، أ/ا)، والهاتفُ بآخر تسع خاناته كيفما كُتب،
-      // والرقمُ الطويلُ يُترجَم في السجلّات إلى أصحابه — إقامةُ السائق إلى اسمه
-      // وهاتفه، وهيكلُ الشاحنة إلى لوحتها، وهاتفُ العميل إلى العميل — فتُطابَق
-      // شحناتُهم (utils/relatedPeopleSearch).
+      // Search by anything belonging to the shipment and its parties.
+      // Names fold (variant spellings of the same letters), phones match by their last nine digits however written, and a long number is translated through the registers to its owners: a driver's residency number to his name and phone, a truck chassis to its plate, a customer phone to the customer, so their shipments match (utils/relatedPeopleSearch).
       const { arabicSearchRegex, westernDigits } = require('../utils/arabicSearch');
       const term = westernDigits(String(q).trim());
       const r = arabicSearchRegex(term);
       const or = [
         { customerName: r }, { driverName: r }, { driverPhone: r }, { fromCity: r }, { toCity: r },
-        // واللوحةُ في خانتها كما في اسم المركبة: من كتب لوحةً يجدها بأيّهما.
+        // The plate in its own field as well as in the vehicle name, so either finds it.
         { vehicleName: r }, { vehiclePlate: r }, { supplierName: r }, { agentName: r }, { notes: r },
         { truckType: r }, { branch: r }, { reference: r },
         { salesRepName: r }, { cargoType: r }, { addressFrom: r }, { addressTo: r }, { cancelReason: r },
         { externalRef: r }, { 'statusLog.note': r }, { 'statusLog.byName': r },
       ];
-      // A run of digits is almost always a waybill lookup — match it exactly,
-      // not as a substring of prices. ويُبحَث برقم كشف التخريج أيضًا: هو الرقمُ
-      // الذي يعرفه الفريقُ عن شحنات المنصّة.
+      // A run of digits is almost always a waybill lookup: match it exactly, not as a substring of prices. The settlement statement number is also searched, as it is the number the team knows for platform shipments.
       const n = Number(term);
       if (Number.isFinite(n)) { or.push({ waybillNumber: n }); or.push({ graduationNumber: n }); }
       const bare = term.replace(/\D/g, '');
@@ -544,11 +464,11 @@ exports.listOrders = async (req, res) => {
         or.push({ driverPhone: new RegExp(`${tail}$`) });
         const { relatedClauses } = require('../utils/relatedPeopleSearch');
         or.push(...await relatedClauses(bare, { name: ['driverName'], phone: ['driverPhone'], plate: ['vehiclePlate', 'vehicleName'] }));
-        // وهاتفُ العميل في سجلّه لا في الشحنة.
+        // The customer's phone is in his record, not on the shipment.
         const custIds = await ShipmentOrderCustomer.find({ phone: new RegExp(`${tail}$`) }).select('_id').limit(20).lean().catch(() => []);
         if (custIds.length) or.push({ customer: { $in: custIds.map((c) => c._id) } });
       }
-      // في `$and` لا `$or` مباشرةً: فلترُ «بلا ملاحظة» يكتب `$or` أيضًا، وكان البحثُ يمحوه.
+      // In `$and`, not directly `$or`: the no-note filter also writes `$or`, and search used to erase it.
       filter.$and = [...(filter.$and || []), { $or: or }];
     }
 
@@ -570,12 +490,8 @@ exports.listOrders = async (req, res) => {
         .limit(parseInt(limit))
         .lean(),
       ShipmentOrder.countDocuments(filter),
-      // Header numbers respect the SAME filter as the table — a filtered list
-      // with unfiltered totals reads as a bug.
-      // ── وأعدادُ البطاقات تحت **بقيّة** الفلاتر لا تحت الحالة ───────────
-      // من ضغط «متأخرة» يريد أن يرى كم «في الطريق» في المدّة نفسِها ليضمّها —
-      // وعدُّها تحت الحالة المختارة يُصفّر كلَّ بطاقةٍ سواها، فيبدو أنّ لا شيءَ
-      // هناك.
+      // Header numbers respect the same filter as the table: a filtered list with unfiltered totals reads as a bug.
+      // Card counts are under the other filters, not under status: someone who pressed overdue wants to see how many are in transit in the same period to add them, and counting under the chosen status would zero every other card.
       ShipmentOrder.aggregate(byActivity ? [
         { $match: statusFreeFilter },
         { $project: { status: 1, createdAt: 1, moves: { $filter: { input: { $ifNull: ['$statusLog', []] }, as: 'l', cond: { $and: [
@@ -601,8 +517,7 @@ exports.listOrders = async (req, res) => {
     const byStatus = {};
     statusAgg.forEach((r) => { byStatus[r._id] = r.n; });
 
-    // عددُ كلٍّ من المصدرين تحت **بقيّة** الفلاتر لا تحته هو: من يقف على
-    // «الخاصّ بنا» يريد أن يعرف كم في «المنصّة» بنفس الفترة والحالة، لا الكلّ.
+    // Each source's count is under the other filters, not its own: someone on ours wants to know how many the platform has in the same period and status, not the total.
     const sourceFilter = { ...filter };
     delete sourceFilter.source;
     const sourceAgg = await ShipmentOrder.aggregate([
@@ -633,11 +548,8 @@ exports.listOrders = async (req, res) => {
 // with them"), and a priced route the customer's profile does not know yet is
 // written back to it — the profile learns from the work.
 /**
- * قيمُ عمودٍ واحدٍ بعدّادها — لقائمة الفلتر.
- *
- * عمودٌ واحدٌ في النداء لا الأعمدةُ كلُّها: القائمةُ تُفتَح بالضغط على قمعِ
- * عمودٍ بعينه، وحسابُ العشرة معًا في كلّ فتحةٍ عشرةُ تجميعاتٍ لا تُقرأ.
- * و`q` تضيّق القائمةَ نفسَها حين تكون قيمُها بالمئات.
+ * One column's values with counts, for the filter list.
+ * One column per call, not all: the list opens by clicking a specific column's funnel, and computing all ten on every open is ten aggregations nobody reads. `q` narrows the list itself when it has hundreds of values.
  */
 exports.orderFilterOptions = async (req, res) => {
   try {
@@ -645,7 +557,7 @@ exports.orderFilterOptions = async (req, res) => {
     const field = ORDER_COLUMNS[key];
     if (!field) return res.status(400).json({ message: 'عمودٌ غير معروف' });
 
-    // فلاترُ بقيّةِ الأعمدة وحدَها — فما يُعرَض يقدر أن يُنتقى.
+    // Only the other columns' filters, so what is displayed can be selected.
     const base = { ...columnFilters(req.query, key) };
     const scope = await branchScope(req);
     if (scope) base.$and = [...(base.$and || []), scope];
@@ -666,7 +578,7 @@ exports.orderFilterOptions = async (req, res) => {
       }
     }
     if (req.query.source === 'system' || req.query.source === 'platform') base.source = req.query.source;
-    // العميلُ يُطابَق كما يُطابَق في الجدول — بمرجعه أو باسمه المطويّ.
+    // The customer matches as in the table: by reference or folded name.
     if (req.query.customer && mongoose.Types.ObjectId.isValid(String(req.query.customer))) {
       const c = await ShipmentOrderCustomer.findById(req.query.customer).select('name').lean();
       const or = [{ customer: req.query.customer }];
@@ -675,9 +587,7 @@ exports.orderFilterOptions = async (req, res) => {
     }
     if (req.query.branch) base.branch = req.query.branch;
 
-    // بحثُ القائمة اسمُه `search` لا `q`: `q` هو بحثُ الجدول نفسِه، ولو
-    // استُعمل الاسمان واحدًا لفلتر أحدُهما بالآخر — وهو الاسمُ المستعمَل في
-    // نظيرتها بقسم التحصيل، فلا يُسأل أحدٌ أيَّهما هنا.
+    // The list search is named `search`, not `q`: `q` is the table's own search, and using one name would let each filter the other. It matches the name used in the collections section's counterpart.
     const search = String(req.query.search || '').trim();
     const kind = COLUMN_KIND[key];
     const groupKey = kind === 'day'
@@ -688,11 +598,11 @@ exports.orderFilterOptions = async (req, res) => {
       { $group: { _id: groupKey, count: { $sum: 1 } } },
     ];
     if (search) pipeline.push(kind === 'number' ? { $match: { $expr: { $regexMatch: { input: { $toString: '$_id' }, regex: search.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') } } } } : { $match: { _id: flexSpaceRegex(search) } });
-    // التواريخُ أحدثُها أوّلًا والأرقامُ تصاعديّةً كما في إكسل؛ والنصُّ بكثرته.
+    // Dates newest first and numbers ascending as in Excel; text by frequency.
     pipeline.push(kind === 'day' ? { $sort: { _id: -1 } } : kind === 'number' ? { $sort: { _id: 1 } } : { $sort: { count: -1 } }, { $limit: 400 });
 
     const rows = await ShipmentOrder.aggregate(pipeline);
-    // ما لا يفرّقه إلّا الفراغ سطرٌ واحد — والفراغُ وحدَه «(فارغ)».
+    // Values differing only by blanks are one row, and blank alone is the empty label.
     const values = (kind ? rows.map((r) => ({ value: r._id === '' || r._id == null ? '' : String(r._id), count: r.count }))
       : mergeOptions(rows.map((r) => ({ value: r._id, count: r.count }))).sort((a, b) => b.count - a.count))
       .map((o) => ({ value: o.value === '' ? '__blank__' : o.value, count: o.count }));
@@ -743,14 +653,8 @@ async function learnRoute(customerId, route) {
 }
 
 /**
- * إنشاءُ طلبٍ واحد — جسدُ العمل، تنادِيه الشاشةُ ويناديه الإنشاءُ المتعدّد.
- *
- * ── ولماذا دالّةٌ لا معالجُ مسارٍ وحدَه ─────────────────────────────────────
- * الحمولةُ الواحدة تخرج أحيانًا على خمسِ شاحنات: العميلُ واحدٌ والمسارُ والسعرُ
- * والموعدُ واحد، ويختلف المورّدُ والشاحنةُ والسائق. فلو نُسخ منطقُ الإنشاء
- * لـ«المتعدّد» لصار في النظام طريقان لصنع طلبٍ يفترقان أوّلَ تعديل: سعرُ
- * المسار يُسجَّل في أحدهما ولا يُسجَّل في الآخر، ولقطةُ الشاحنة تُؤخذ هنا ولا
- * تُؤخذ هناك. فالجسدُ واحدٌ ويُنادى مرّاتٍ.
+ * Create one order: the body of the work, called by the screen and by multi-create.
+ * A function, not only a route handler: one load sometimes leaves on five trucks, with the same customer, route, price and date but a different supplier, truck and driver. Copying the creation logic into multi-create would give two ways to make an order that diverge at the first edit (route price recorded in one, truck snapshot taken in one). So the body is single and called repeatedly.
  */
 async function createOneOrder(req, body) {
   const inner = { ...req, body };
@@ -765,12 +669,8 @@ async function createOneOrder(req, body) {
     const c = await ShipmentOrderCustomer.findById(data.customer);
     if (c) {
       data.customerName = c.name;
-        // ── والملفُّ يتعلّم السعرَ الأحدثَ لا المسارَ الجديدَ وحدَه ──────────
-        // كان يُضاف المسارُ إن كان مجهولًا ويُترَك إن كان معروفًا — فسعرٌ
-        // اتُّفق عليه اليومَ على مسارٍ قديم لا يصل الملفَّ أبدًا، ويبقى
-        // المقترَحُ سعرَ أوّل شحنةٍ في تاريخ العميل. والمطلوبُ دائمًا آخرُ ما
-        // عُمل به. راجع utils/customerRoutes — والمدنُ تُطابَق مطويّةً فلا
-        // يصير «جده» مسارًا ثانيًا لـ«جدة».
+        // The file learns the latest price, not only the new route.
+        // It used to add a route if unknown and leave it if known, so a price agreed today on an old route never reached the file and the suggestion stayed the customer's first-ever shipment price. The wanted value is always the last one used. See utils/customerRoutes; cities match folded so a variant spelling does not become a second route.
       await learnRoute(c._id, {
         fromCity: data.fromCity,
         toCity: data.toCity,
@@ -788,7 +688,7 @@ async function createOneOrder(req, body) {
   await resolveInlineVehicle(inner, data);
   await applyVehicleSnapshot(data, inner);
 
-  // والحالةُ تُقاس على المفردات الحيّة: المكتوبةُ في الشيفرة وما زاده القسم.
+  // Status is checked against the live vocabulary: the one in code plus what the section added.
   if (data.status && !(await isValidStatus(data.status))) {
     const err = new Error(`حالةٌ غير معروفة: ${data.status}`);
     err.status = 400;
@@ -796,7 +696,7 @@ async function createOneOrder(req, body) {
   }
 
   await applySalesRep(data, body);
-  data.agentName = fullName(req.user); // المندوب — stamped, never typed
+  data.agentName = fullName(req.user); // The sales rep (Arabic label): stamped, never typed
   data.createdBy = req.user._id;
 
   const order = await ShipmentOrder.create(data);
@@ -813,11 +713,7 @@ async function createOneOrder(req, body) {
   return order;
 }
 
-/**
- * ── السيلز التشغيليّ ────────────────────────────────────────────────────────
- * مَن يصحّ أن يكون: فريقُ المبيعات وفريقُ العمليّات (مديراهما وموظّفوهما). ومَن
- * أنهت الموارد البشريّة خدمتَه لا يُختار. والاسمُ يُلتقَط من الحساب لا ممّا أُرسل.
- */
+/** Operational sales: eligible are the sales and operations teams (their managers and staff). Anyone whose service HR ended is not selectable. The name is taken from the account, not from what was sent. */
 const SALES_REP_ROLES = () => {
   const { rolesOfSection } = require('../config/roles');
   return [...rolesOfSection('Sales'), ...rolesOfSection('Operations')];
@@ -860,26 +756,10 @@ exports.createOrder = async (req, res) => {
 };
 
 /**
- * ── الحمولةُ الواحدةُ على عدّةِ شاحنات ──────────────────────────────────────
- *
- * POST /orders/batch  { ...الطلب, trucks: [ { supplier|newSupplier, vehicle|newVehicle,
- *                                             driverName, driverPhone }, … ] }
- *
- * العميلُ يطلب حمولةً تخرج على خمسِ شاحنات: العميلُ واحدٌ والمسارُ والسعرُ
- * والموعدُ والدفعُ واحد، ويختلف المورّدُ والشاحنةُ والسائق. وكان الموظّفُ يخرج
- * من النموذج ويعيد كتابةَ العشرين خانةً خمسَ مرّات — فيُخطئ في واحدةٍ منها ولا
- * يُكتشَف إلّا عند المحاسبة.
- *
- * وكلُّ شاحنةٍ **طلبٌ مستقلٌّ تمامًا**: رقمُ بوليصةٍ خاصٌّ به من العدّاد نفسِه،
- * ولقطةُ شاحنته وسائقه، وحالتُه ومتابعتُه وبوليصتُه. لا «طلبٌ أبٌ» ولا رابطٌ
- * بينها — إذ لا معنى له في العمل: كلُّ شاحنةٍ تمضي وحدَها وتصل وحدَها وتُحاسَب
- * وحدَها.
- *
- * ── وما يفشل منها يُقال باسمه ───────────────────────────────────────────────
- * تُنشأ واحدةً بعد واحدة لا معًا: العدّادُ متسلسلٌ، وتوازيها يُخرج رقمين
- * متساويين. وإن سقطت الثالثةُ فالأُولَيان قد أُنشئتا فعلًا — فلا تُمحَيان (هما
- * عملٌ صحيح) ويُقال في الردّ أيُّها نجحت وأيُّها سقطت ولماذا، فيعرف الموظّفُ ما
- * بقي عليه بدل أن يرى «فشل» فيعيد الخمسَ كلَّها.
+ * One load on several trucks.
+ * POST /orders/batch  { ...order, trucks: [ { supplier|newSupplier, vehicle|newVehicle, driverName, driverPhone }, ... ] }
+ * Shared: customer, route, price, date, payment. Each truck is a fully independent order (own waybill number from the same counter, snapshot, status, follow-up); no parent link.
+ * Created sequentially because the counter is sequential and parallelism yields duplicate numbers; earlier successes are kept on a later failure and the response says which failed and why.
  */
 exports.createOrdersBatch = async (req, res) => {
   try {
@@ -887,7 +767,7 @@ exports.createOrdersBatch = async (req, res) => {
     if (!trucks.length) return res.status(400).json({ message: 'لا شاحناتٍ في الطلب' });
     if (trucks.length > 25) return res.status(400).json({ message: 'الحدُّ الأقصى خمسٌ وعشرون شاحنةً في المرّة' });
 
-    // الحقولُ المشتركة: كلُّ ما في الجسد عدا ما يخصّ الشاحنةَ وسائقَها.
+    // Shared fields: everything in the body except what belongs to the truck and its driver.
     // A B/L and a container belong to one truck, so they are per truck too.
     const TRUCK_FIELDS = ['vehicle', 'newVehicle', 'supplier', 'supplierChoice', 'driverName', 'driverPhone', 'blNumber', 'containerNumber', 'waybillDetails'];
     const shared = { ...req.body };
@@ -926,14 +806,8 @@ exports.createOrdersBatch = async (req, res) => {
 // One order by id — the edit form's loader. Finding it by paging through the
 // list capped at 1000 silently blanked the form for older orders.
 /**
- * الطلبُ بمعرّفه — لنموذج التعديل.
- *
- * ── والشاحنةُ والمورّدُ يصلان كاملين ────────────────────────────────────────
- * القائمتان في النموذج لا تُحمَّلان كلَّهما (ثلاثةَ عشرَ ألفَ شاحنةٍ وثلاثةُ
- * آلاف مورّد) بل تُبحَث كلٌّ منهما عند الخادم. فلو وصل الطلبُ بمعرّفين
- * مجرّدين لم تعرفهما القائمةُ المعروضة، فرأى مَن يعدّل خانتين فارغتين وشاحنةً
- * مختارةً لا اسمَ لها — ثمّ حفظ فمحاها. فيُرسَلان مسمَّيين، ويبذرهما النموذج
- * في قائمتيه.
+ * Fetch an order by id, for the edit form.
+ * Truck and supplier arrive fully named. The form's two lists are not fully loaded (~13k trucks, thousands of suppliers) but searched on the server. With bare ids the displayed list would not know them, so the editor would see two empty fields and an unnamed selected truck, and saving would clear them. So they are sent named and the form seeds them into its lists.
  */
 exports.getOrder = async (req, res) => {
   try {
@@ -949,7 +823,7 @@ exports.getOrder = async (req, res) => {
   }
 };
 
-/** مَن يعدّل الفلوسَ بعد الحفظ — تقرؤه شاشتا الإنشاء/التعديل (الموقع والهاتف). */
+/** Who edits money after saving; read by the create/edit screens (web and phone). */
 exports.moneyEditors = (req, res) => res.json({ fields: MONEY_FIELDS, roles: MONEY_EDIT_ROLES, canEdit: canEditMoney(req.user) });
 
 exports.updateOrder = async (req, res) => {
@@ -959,9 +833,8 @@ exports.updateOrder = async (req, res) => {
 
     const data = pick(req.body, ORDER_EDITABLE);
 
-    // ── الفلوسُ بعد الإنشاء لمن في MONEY_EDIT_ROLES وحدَه ───────────────────
-    // النموذجُ يرسل كلَّ حقوله، فلا يُرفَض إلّا ما تغيّر فعلًا: قيمةٌ تساوي
-    // المحفوظ (أو فراغٌ يساوي فراغًا) تمرّ.
+    // Money after creation is for MONEY_EDIT_ROLES only.
+    // The form sends all its fields, so only what really changed is rejected: a value equal to the stored one (or empty equal to empty) passes.
     if (!canEditMoney(req.user)) {
       const num = (v) => (v === '' || v === null || v === undefined ? null : Number(v));
       const changed = MONEY_FIELDS.filter((f) => f in data && num(data[f]) !== num(order[f]));
@@ -987,13 +860,11 @@ exports.updateOrder = async (req, res) => {
     }
 
     await resolveInlineVehicle(req, data);
-    // Truck swapped → refresh the denormalized plate/supplier snapshot, or the
-    // list, the Excel export and the بوليصة keep printing the OLD truck.
+    // Truck swapped: refresh the denormalized plate/supplier snapshot, or the list, the Excel export and the waybill keep printing the old truck.
     if (data.vehicle && String(data.vehicle) !== String(order.vehicle)) {
       await applyVehicleSnapshot(data, req);
     } else {
-      // وتغييرُ المورّد وحدَه تعديلٌ قائمٌ بنفسِه: صار يُختار مع العميل لا مع
-      // الشاحنة، فلا يُشترَط تبديلُ شاحنةٍ ليُحفَظ.
+      // Changing only the supplier is a valid edit by itself: it is now chosen with the customer, not the truck, so swapping a truck is not required to save it.
       const chosenId = await resolveSupplierChoice(req);
       if (chosenId) data.supplier = chosenId;
     }
@@ -1012,8 +883,7 @@ exports.updateOrder = async (req, res) => {
     announceOrderChange(order._id);
     linkCustomsSoon(order._id);
 
-    // وصفُّ سير عمل التشغيل لهذه الشحنة يتبع في اللحظة نفسِها — هي شحنةٌ
-    // واحدةٌ تُقرأ في شاشتين، فلا تُقرأ بحالتين. راجع syncShipmentsById.
+    // The operations workflow row for this shipment follows at once: it is one shipment read on two screens, so it must not show two statuses. See syncShipmentsById.
     require('../services/shipmentOrderWorkflowLink').mirrorPlatformSoon(order._id, Object.keys(data));
     if (order.source === 'platform' && order.externalId && require('../services/uplClient').isConfigured()) {
       setImmediate(() => {
@@ -1028,22 +898,13 @@ exports.updateOrder = async (req, res) => {
   }
 };
 
-// The one-click lifecycle change from the list — the whole point is not having
-// to open an order to say "it arrived".
-// ── تحليلاتُ القسم ─────────────────────────────────────────────────────────
-//
-// موديلُ العمل هنا وساطة: نشتري الحمولةَ من مورّدٍ بسعرٍ ونبيعها لعميلٍ بسعر،
-// والفرقُ هو ربحُنا. فالسؤالُ الأوّل ليس «كم حملنا» بل **«كم كسبنا وممّن»**:
-// أيُّ عميلٍ يشتري أكثر، وأيُّ مورّدٍ ينفّذ أرخص، وأيُّ مسارٍ هامشُه أعلى.
-//
-// ولذلك لا تصلح تحليلاتُ إدارة الأسطول هنا: هناك السيّارةُ سيّارتُنا فالسؤالُ
-// «هل حقّقت هدفَها»، وهنا لا سيّارةَ لنا — السؤالُ «هل كان الفرقُ يستحقّ».
+// The one-click lifecycle change from the list: the point is not having to open an order to say it arrived.
+// Section analytics: the model is brokerage (buy at one price, sell at another), so the first question is who earned what: best customer, cheapest supplier, highest-margin route.
+// Fleet management analytics do not fit: there the truck is ours and the question is its target.
 
 /**
- * ── حسابُ التحليلات جسدٌ واحد ───────────────────────────────────────────────
- * تنادِيه شاشةُ التحليلات ولوحةُ القسم (في المتصفّح والهاتف). ولو نُسخ لصار
- * في النظام رقمان لربح الشهر يفترقان أوّلَ تعديلٍ في معنى «الملغاة» أو في طيّ
- * أسماء الموردين — ومن يرى رقمَين لا يثق بأيّهما.
+ * The analytics calculation is a single body.
+ * Called by the analytics screen and the section dashboard (browser and phone). Copying it would give two monthly profit numbers that diverge at the first change to what cancelled means or to supplier-name folding, and nobody trusts two numbers.
  */
 async function analyticsOf(query = {}) {
   {
@@ -1052,15 +913,14 @@ async function analyticsOf(query = {}) {
     if (from || to) {
       match.pickupTime = {};
       if (from) match.pickupTime.$gte = startOfDay(from);
-      // «إلى» مفتوحًا يعني حتى الآن — لا حتى منتصف ليل اليوم، وإلّا اختفت
-      // شحناتُ اليوم من تقرير من طلب «من أوّل الشهر».
+      // An open To means until now, not until the midnight of today, otherwise today's shipments vanish from a report requested from the start of the month.
       match.pickupTime.$lte = to ? endOfDay(to) : new Date();
     }
     if (customer) match.customer = new mongoose.Types.ObjectId(String(customer));
     if (supplier) match.supplier = new mongoose.Types.ObjectId(String(supplier));
     if (status) match.status = status;
     if (branch) match.branch = branch;
-    // الخاصُّ بنا أم المنصّة: التقريرُ عن عملٍ جرى غيرُ التقرير عن تجربة.
+    // Ours or the platform: a report about work done differs from one about a trial.
     if (source === 'system' || source === 'platform') match.source = source;
     if (q && String(q).trim()) {
       const r = rx(q);
@@ -1068,13 +928,9 @@ async function analyticsOf(query = {}) {
         { driverName: r }, { truckType: r }, { branch: r }, { reference: r }];
     }
 
-    // ── يُحسب في القاعدة لا في العقدة ────────────────────────────────────────
-    // بعد نقل ثلاثةٍ وثلاثين ألف شحنة صارت القراءةُ الكاملة تستغرق دقيقتين —
-    // ليست حسابًا بطيئًا بل نقلًا: أربعةٌ وثلاثون ألفَ صفٍّ تعبر الشبكةَ لتُجمَع
-    // هنا. والتجميعُ يجري حيث تعيش البيانات، فيعود سطرٌ لكلّ مجموعة.
-    //
-    // والملغاةُ تُستثنى من المال وتُعدّ وحدَها: لم تُنفَّذ ولم تُفوتَر، لكنّ
-    // نسبةَ الإلغاء رقمٌ يُدار.
+    // Computed in the database, not in Node.
+    // After moving ~33k shipments a full read took two minutes. The cost was transfer, not computation: ~34k rows crossing the network to be aggregated here. Aggregation runs where the data lives, returning one row per group.
+    // Cancelled shipments are excluded from money and counted separately: they were not executed or billed, but the cancellation rate is a managed number.
     const CANCELLED = 'cancelled';
     const money = { $ne: [{ $ifNull: ['$status', ''] }, CANCELLED] };
     const sellOf = { $cond: [money, { $ifNull: ['$sellPrice', 0] }, 0] };
@@ -1092,18 +948,14 @@ async function analyticsOf(query = {}) {
       { $match: { orders: { $gt: 0 } } },
       { $addFields: { margin: { $subtract: ['$sell', '$buy'] } } },
       { $sort: { margin: -1 } },
-      // سقفٌ أوسعُ قبل الطيّ: الصفُّ المقصوصُ عند المئتين قد يكون نصفَ صفٍّ
-      // آخر، فيُقصّ ثمّ يُطوى فيضيع نصفُه. يُقصُّ بعد الطيّ لا قبلَه.
+      // A wider cap before folding: a row cut at 200 may be half of another row, which would be cut and then folded, losing half. Cut after folding, not before.
       { $limit: 600 },
     ]);
 
     const r2 = (v) => Math.round((Number(v) || 0) * 100) / 100;
 
-    // ── الاسمُ الواحد صفٌّ واحد ──────────────────────────────────────────────
-    // «شركة تنشيط للخدمات اللوجستية» و«…اللوچستية» مورّدٌ واحدٌ كُتب بحرفين،
-    // فكان يُقرأ مورّدَين: ٤١٤٥ شحنةً في صفٍّ و١٧٩٧ في آخر، ولا يظهر حجمُه
-    // الحقيقيّ في أيٍّ منهما. تُطوى الفروقُ الإملائيّةُ المعتادةُ في العربيّة
-    // قبل الجمع، ويُعرض أكثرُ الكتابتين ورودًا.
+    // One name is one row.
+    // Two spellings of the same company name were one supplier read as two (4145 shipments in one row and 1797 in another, with the real size visible in neither). Common Arabic spelling differences are folded before grouping and the most frequent spelling is displayed.
     const fold = (v) => String(v || '')
       .replace(/[أإآٱ]/g, 'ا').replace(/ى/g, 'ي').replace(/ة/g, 'ه')
       .replace(/چ/g, 'ج').replace(/گ/g, 'ك').replace(/ڤ/g, 'ف').replace(/پ/g, 'ب')
@@ -1120,7 +972,7 @@ async function analyticsOf(query = {}) {
         cur._variants.push({ name: b._id, orders: b.orders });
       });
       return [...byKey.values()]
-        // الاسمُ المعروض أكثرُ الكتابتين ورودًا — لا أوّلُها صدفةً.
+        // The displayed name is the most frequent spelling, not whichever came first by chance.
         .map((b) => ({ ...b, _id: b._variants.sort((x, y) => y.orders - x.orders)[0].name }))
         .sort((x, y) => y.margin - x.margin)
         .slice(0, 200);
@@ -1137,7 +989,7 @@ async function analyticsOf(query = {}) {
       avgMargin: b.orders ? r2(b.margin / b.orders) : 0,
     }));
 
-    // ── أسبابُ الإلغاء، وترتيبُ السيلز التشغيليّ (٢٠٢٦/١٠/٢٢) ───────────────
+    // Cancellation reasons and the operational sales ranking
     const [cancelAgg, salesAgg] = await Promise.all([
       ShipmentOrder.aggregate([
         { $match: { ...match, status: CANCELLED } },
@@ -1167,7 +1019,7 @@ async function analyticsOf(query = {}) {
             live: { $sum: liveOf },
             sell: { $sum: sellOf },
             buy: { $sum: buyOf },
-            // بلا سعرٍ لا يُحسب هامش — يُقال العددُ كي لا يُقرأ الربحُ ناقصًا.
+            // No margin is computed without a price: the count is reported so profit is not read as understated.
             missingPrice: { $sum: { $cond: [{ $and: [money, { $or: [
               { $not: [{ $gt: [{ $ifNull: ['$sellPrice', 0] }, 0] }] },
               { $not: [{ $gt: [{ $ifNull: ['$buyPrice', 0] }, 0] }] },
@@ -1188,8 +1040,7 @@ async function analyticsOf(query = {}) {
           { $sort: { _id: 1 } },
         ]),
         ShipmentOrder.aggregate([{ $match: match }, { $group: { _id: '$status', n: { $sum: 1 } } }]),
-        // الشحنةُ التي بيعُها أقلُّ من شرائها ليست رقمًا في متوسّط: بوليصةٌ
-        // باسمها يُسأل عنها.
+        // A shipment sold below its purchase is not a number in an average: its waybill is named so it can be asked about.
         ShipmentOrder.aggregate([
           { $match: { ...match, status: { $ne: CANCELLED }, sellPrice: { $gt: 0 } } },
           { $addFields: { margin: { $subtract: [{ $ifNull: ['$sellPrice', 0] }, { $ifNull: ['$buyPrice', 0] }] } } },
@@ -1200,8 +1051,7 @@ async function analyticsOf(query = {}) {
         ]),
       ]);
 
-    // قوائمُ المجموعات مقصوصةٌ عند مئتين للعرض، فلا يُؤخذ طولُها عددًا:
-    // «٢٠٠ مسار» تقرأ رقمًا وهي في الحقيقة حدُّ الشاشة. تُعدُّ المميّزةُ وحدَها.
+    // Group lists are cut at 200 for display, so their length is not a count: 200 routes would be the screen limit read as a number. Only distinct ones are counted.
     const [distinctCustomers, distinctSuppliers, distinctRoutes, losingCount] = await Promise.all([
       ShipmentOrder.distinct('customerName', { ...match, status: { $ne: CANCELLED } }),
       ShipmentOrder.distinct('supplierName', { ...match, status: { $ne: CANCELLED } }),
@@ -1231,7 +1081,7 @@ async function analyticsOf(query = {}) {
         marginPct: T.sell ? r2((margin / T.sell) * 100) : 0,
         avgMargin: T.live ? r2(margin / T.live) : 0,
         avgSell: T.live ? r2(T.sell / T.live) : 0,
-        // يُعدُّ المطويُّ لا الخام: وإلّا عُدَّ المورّدُ المكتوبُ بحرفين اثنين.
+        // Count the folded name, not the raw one, or a supplier written two ways would count twice.
         customers: new Set(distinctCustomers.map(fold).filter(Boolean)).size,
         suppliers: new Set(distinctSuppliers.map(fold).filter(Boolean)).size,
         routes: distinctRoutes,
@@ -1247,9 +1097,9 @@ async function analyticsOf(query = {}) {
         key: b._id, orders: b.orders, sell: r2(b.sell), buy: r2(b.buy), margin: r2(b.sell - b.buy),
       })),
       byStatus,
-      // الملغاةُ بأسبابها — و«بلا سبب» ما أُلغي قبل أن يُشترَط السبب.
+      // Cancelled with reasons; no reason means cancelled before a reason was required.
       cancelReasons: cancelAgg.map((x) => ({ reason: x._id || 'بلا سبب مسجّل', count: x.n, pct: (T.orders - T.live) ? r2((x.n / (T.orders - T.live)) * 100) : 0 })),
-      // ترتيبُ السيلز التشغيليّ بالشحنات المنفَّذة، ومعها الملغاةُ ونسبتُها.
+      // Operational sales ranked by executed shipments, with cancelled ones and their rate.
       salesRanking: salesAgg.map((x, i) => ({
         rank: i + 1, name: x._id, shipments: x.shipments, live: x.live, cancelled: x.shipments - x.live,
         cancelRate: x.shipments ? r2(((x.shipments - x.live) / x.shipments) * 100) : 0,
@@ -1261,19 +1111,9 @@ async function analyticsOf(query = {}) {
 }
 
 /**
- * تحليلاتُ القسم — GET /api/shipment-orders/analytics
- *
- * ── واللوحةُ كانت مخزَّنةً وهذه ليست ───────────────────────────────────────
- * `getDashboard` تحت `wrapStale` لأنّ بناءها ثقيل، وهذه تنادي `analyticsOf`
- * نفسَها — الحسابَ الثقيلَ ذاتَه على سبعةٍ وثلاثين ألفَ شحنة — بلا مخزنٍ
- * البتّة. فكانت أبطأَ نقطةٍ باقيةٍ في القسم: قيست ستَّ مرّاتٍ بلا تزامنٍ
- * فأعطت 939 و 1006 و 1240 و 2004 و 2363 و 2436 جزءًا من الثانية، تتناوب
- * عاليًا وواطئًا لأنّ العاملَين اثنان ولكلٍّ منهما ذاكرتُه.
- *
- * فتُخزَّن كما تُخزَّن اللوحة، وبالمفاتيح نفسِها من الاستعلام: من يغيّر مدًى
- * أو فلترًا يبني بناءً جديدًا، ومن يفتح الشاشةَ على ما فتحها عليه غيرُه
- * يقرأ ما بُني. و`wrapStale` تُقدّم آخرَ ما بُني فورًا وتُجدّده في الخلف،
- * فلا ينتظر أحدٌ بناءً مرّتين.
+ * Section analytics: GET /api/shipment-orders/analytics
+ * The dashboard was cached but this called the same heavy `analyticsOf` (~37k shipments) with no cache, 0.9 to 2.4 s, alternating with two workers' separate memories.
+ * Now cached under `wrapStale` with the dashboard's query keys: the last build is served at once and refreshed in the background.
  */
 exports.getAnalytics = async (req, res) => {
   try {
@@ -1286,20 +1126,12 @@ exports.getAnalytics = async (req, res) => {
 };
 
 /**
- * لوحةُ القسم — GET /api/shipment-orders/dashboard
- *
- * ── أوّلُ صفحةِ القسم تجيب «كيف حالُه؟» ─────────────────────────────────────
- * كان القسمُ يُفتَح على جدولِ سبعةٍ وثلاثين ألف شحنة. فهذه لوحتُه: اليومُ
- * والشهرُ وأين تقف شحناتُه، وربحُه، والسجلُّ الذي يُحمَّل منه، وآخرُ ما سُجِّل.
- *
- * ونداءٌ واحدٌ لا أربعة: الهاتفُ يرسمها من ردٍّ واحد، والمتصفّحُ يقرأ الردَّ
- * نفسَه — فلا يختلف رقمٌ بين شاشةٍ وشاشة. والحسابُ هو حسابُ التحليلات نفسُه
- * (`analyticsOf`).
+ * Section dashboard: GET /api/shipment-orders/dashboard
+ * The section's first page answers how it is doing: today, the month, shipment states, profit, the register to download from, latest records.
+ * One call, not four, so phone and browser read the same response and no number differs between screens. The calculation is the analytics one (`analyticsOf`).
  */
-// ── فترةُ اللوحة (٢٠٢٦/١٠/٢٧) ──────────────────────────────────────────────
-// «اللوحة… أوتوماتيك وداينميك»: تُقرأ لفترةٍ يختارها الناظر — اليوم، سبعة
-// أيّام، الشهر، ثلاثون يومًا، السنة — وكلُّ رقمٍ يُقارَن بالفترة السابقة بطولها
-// نفسِه، فيُقرأ الصعودُ والهبوط لا الرقمُ وحدَه. والأيّامُ أيّامُ الرياض.
+// Dashboard period.
+// Read for a period the viewer picks (today, 7 days, month, 30 days, year), with every number compared against the previous period of the same length, so the rise or fall is read, not only the value. Days are Riyadh days.
 const DASH_PERIODS = ['today', '7d', 'month', '30d', 'year'];
 function dashRange(period) {
   const { todayKey } = require('../utils/companyDay');
@@ -1311,19 +1143,19 @@ function dashRange(period) {
   if (period === '7d') from = d(today, -6);
   else if (period === '30d') from = d(today, -29);
   else if (period === 'month') {
-    // «هذا الشهر» الشهرُ كلُّه — شحنةٌ موعدُها آخرَ الشهر من شحناته، كما في صفحة الشحنات.
+    // This month means the whole month: a shipment dated at the end of the month belongs to it, as on the shipments page.
     from = `${today.slice(0, 7)}-01`;
     const [y, m] = today.split('-').map(Number);
     to = new Date(Date.UTC(y, m, 0)).toISOString().slice(0, 10);
   } else if (period === 'year') { from = `${today.slice(0, 4)}-01-01`; to = `${today.slice(0, 4)}-12-31`; }
   const n = span(from, to);
-  // السابقةُ بطولها نفسِه — الشهرُ يُقارَن بالأيّام نفسِها من الشهر الماضي.
+  // The previous period has the same length; the month is compared with the same days of last month.
   const prevTo = d(from, -1);
   const prevFrom = d(prevTo, -(n - 1));
   return { from, to, prevFrom, prevTo, days: n };
 }
 
-/** مجاميعُ خفيفةٌ لفترةٍ — للمقارنة وحدَها (لا تحتاج تفصيلَ analyticsOf). */
+/** Light totals for a period, for comparison only (no need for the detail of analyticsOf). */
 async function dashTotals(from, to) {
   const match = { pickupTime: { $gte: startOfDay(from), $lte: endOfDay(to) } };
   const live = { $ne: [{ $ifNull: ['$status', ''] }, 'cancelled'] };
@@ -1340,7 +1172,7 @@ async function dashTotals(from, to) {
   return { orders: t.orders, live: t.live, cancelled: t.orders - t.live, sell: r2(t.sell), buy: r2(t.buy), margin: r2(t.sell - t.buy) };
 }
 
-/** ما يربط اللوحةَ ببقيّة الشركة في الفترة: يومًا بيوم، والسلف، والتخليص، والمتابعة. */
+/** What ties the dashboard to the rest of the company in the period: day by day, advances, customs, follow-up. */
 async function dashExtras(from, to) {
   const range = { $gte: startOfDay(from), $lte: endOfDay(to) };
   const match = { pickupTime: range };
@@ -1369,7 +1201,7 @@ async function dashExtras(from, to) {
         noSalesRep: { $sum: { $cond: [{ $and: [live, { $in: [{ $ifNull: ['$salesRepName', ''] }, ['']] }] }, 1, 0] } },
       } },
     ]),
-    // ملاحظاتُ المتابعة المكتوبةُ في الفترة (من قيود السجلّ ذات الملاحظة).
+    // Follow-up notes written in the period (from log entries that carry a note).
     ShipmentOrder.aggregate([
       { $match: { statusLog: { $elemMatch: { at: range, note: { $nin: ['', null] } } } } },
       { $project: { n: { $size: { $filter: { input: '$statusLog', as: 'l', cond: { $and: [
@@ -1377,7 +1209,7 @@ async function dashExtras(from, to) {
       ] } } } } } },
       { $group: { _id: null, notes: { $sum: '$n' }, shipments: { $sum: 1 } } },
     ]),
-    // والمتأخّرةُ الآن — حالةٌ قائمةٌ لا فترة.
+    // And currently overdue: an existing state, not a period.
     ShipmentOrder.countDocuments({ status: 'late' }),
     ShipmentOrderDriver.countDocuments({ isActive: { $ne: false }, driverCardExpiry: { $regex: /^\d{4}-\d{2}-\d{2}/, $lt: require('../utils/companyDay').todayKey() } }),
   ]);
@@ -1480,15 +1312,9 @@ exports.getDashboard = async (req, res) => {
     const period = DASH_PERIODS.includes(String(req.query.period)) ? String(req.query.period) : 'month';
     const R = dashRange(period);
 
-    // ── وتُقدَّم القديمةُ بينما تُجدَّد ─────────────────────────────────────
-    // بناؤها يستغرق ثانيتَين ونصفًا (سبعةٌ وثلاثون ألفَ شحنةٍ تُجمَّع في
-    // القاعدة). ومن يفتح القسمَ لا ينتظر: تُقدَّم قيمةُ آخرِ بناءٍ فورًا
-    // ويُجدَّد في الخلف — راجع utils/ttlCache.wrapStale.
-    // ── واللوحةُ الجديدةُ لا تحمل حسابَ القديمة (٢٠٢٦/١٠/٢٧) ───────────────────
-    // كلُّ فترةٍ كانت تبني معها تحليلَ الشهر واليوم (لنُسَخ التطبيق التي لا تُرسل
-    // فترة) — أربعةُ تحليلاتٍ كاملةٍ على عشرات الآلاف، خمسُ ثوانٍ لكلّ تبديلٍ يبقى
-    // فيها الرقمُ القديمُ على الشاشة فيُظَنّ أنّ الفلترَ لا يعمل. فمن أرسل فترةً
-    // يأخذ فترتَه وحدَها، والقديمُ يُبنى لمن لا يرسلها فقط.
+    // Serve the stale value while refreshing.
+    // Building takes ~2.5 seconds (~37k shipments aggregated in the database). Whoever opens the section does not wait: the last build's value is served at once and refreshed in the background, see utils/ttlCache.wrapStale.
+    // The new dashboard does not carry the old one's calculation. Each period used to build the month and day analytics too (for app versions that send no period): four full analyses over tens of thousands of rows, ~5 seconds per switch, leaving the old number on screen so the filter seemed broken. Whoever sends a period gets only that period; the old build is for those who send none.
     const legacy = !req.query.period;
     const out = await cache.wrapStale(`so:dashboard:${monthFrom}:${todayFrom}:${period}:${legacy ? 'l' : 'p'}`, 60 * 1000, 10 * 60 * 1000, async () => {
       const [month, today, fleet, recent, cur, prev, extras, insights] = await Promise.all([
@@ -1534,10 +1360,8 @@ exports.getDashboard = async (req, res) => {
   }
 };
 
-// ── عدّادُ البوالص ──────────────────────────────────────────────────────────
-// رقمُ البوليصة يُكتب على ورقٍ يُسلَّم للسائق ويُحاسَب عليه. فلا يُعاد رقمٌ صُرف
-// ولو حُذفت شحنتُه: بوليصتان بالرقم نفسِه في يدين خطأٌ لا يُصلَح لاحقًا. ولذلك
-// العدّادُ يُقدَّم ولا يُرجَع.
+// Waybill counter.
+// A waybill number is written on paper handed to the driver and billed against, so an issued number is never reused even if its shipment is deleted: two waybills with the same number in two hands is an error that cannot be fixed later. So the counter only moves forward.
 
 const Counter = require('mongoose').models.ShipmentOrderCounter
   || require('mongoose').model('ShipmentOrderCounter');
@@ -1572,15 +1396,12 @@ exports.updateCounter = async (req, res) => {
   }
 };
 
-// ── حالاتٌ لا تُقال بلا ورقة ────────────────────────────────────────────────
-// «أُرسل السند» وحدَها اليوم. وهي مجموعةٌ لا شرطٌ مكتوبٌ في مكانه، لأنّ القسم
-// يزيد حالاتٍ من إعداداته وقد تلزم الورقةُ لغيرها غدًا.
+// Statuses that cannot be set without a document.
+// Currently only the receipt-sent status. It is a set, not an inline condition, because the section adds statuses from its settings and other statuses may need the document later.
 const REQUIRE_FILE = new Set(['bond_sent']);
 
-// POST /orders/:id/note { note } — ملاحظةُ متابعة بلا تغيير حالة (٢٠٢٦/١٠/٢٦).
-// «يقدر يكتب نوت بسهولة»: تُقيَّد في سجلّ الشحنة كأيّ متابعة (مَن، متى، ماذا)،
-// ولا تُرسَل إلى منصّة التشغيل — الحالةُ لم تتغيّر فلا شيءَ هناك يُكتب. وهي غيرُ
-// «ملاحظة الرحلة» (`notes`) التي تُطبَع في البوليصة.
+// POST /orders/:id/note { note }: a follow-up note without a status change.
+// It is recorded in the shipment log like any follow-up (who, when, what) and is not sent to the operations platform, since the status did not change. It differs from the trip note (`notes`) that prints on the waybill.
 exports.addNote = async (req, res) => {
   try {
     const note = String(req.body?.note || '').trim().slice(0, 500);
@@ -1589,7 +1410,7 @@ exports.addNote = async (req, res) => {
     const byName = `${req.user.firstName || ''} ${req.user.lastName || ''}`.trim();
     const cur = await ShipmentOrder.findById(req.params.id).select('status').lean();
     if (!cur) return res.status(404).json({ message: 'Shipment order not found' });
-    // ‎$push ذرّيّ: لا يدهس متابعةً كُتبت في اللحظة نفسِها كما يفعل حفظُ الوثيقة كاملة.
+    // $push is atomic: it does not overwrite a follow-up written at the same moment, as saving the whole document would.
     const order = await ShipmentOrder.findByIdAndUpdate(req.params.id, {
       $push: { statusLog: { from: cur.status, to: cur.status, note, at: new Date(), by, byName } },
     }, { new: true });
@@ -1601,10 +1422,8 @@ exports.addNote = async (req, res) => {
   }
 };
 
-// ── تعديلُ ملاحظة المتابعة وحذفُها (٢٠٢٦/١٠/٢٦) ─────────────────────────────
-// «الملاحظة ممكن أضيف بعدها أو أعدّلها أو أمسحها». يُعدَّل قيدُ الملاحظة وحده
-// (`from === to` بلا مرفق) — قيدُ نقلةِ حالةٍ تاريخٌ لا يُعاد كتابتُه. ويعدّل
-// الملاحظةَ كاتبُها، أو مديرُ القسم.
+// Edit and delete a follow-up note.
+// Only the note entry is edited (`from === to` with no attachment): a status-transition entry is history and is not rewritten. The note's author or the section manager may edit it.
 const NOTE_MANAGERS = new Set(['super_admin', 'admin', 'shipment_orders_manager', 'operations_manager']);
 const noteEntry = async (req, res) => {
   if (!mongoose.Types.ObjectId.isValid(String(req.params.logId))) { res.status(400).json({ message: 'قيدٌ غير صالح' }); return null; }
@@ -1658,9 +1477,8 @@ exports.deleteNote = async (req, res) => {
 exports.patchStatus = async (req, res) => {
   try {
     const { status } = req.body;
-    // ── ما كان `enum` يحرسه يُحرَس هنا ──────────────────────────────────────
-    // سقط `enum` من المخطَّط كي يقبلَ ما يزيده القسمُ من إعداداته، فصار الحارسُ
-    // المفرداتِ الحيّة. وبلا هذا السطر تُكتب أيُّ كلمةٍ حالةً.
+    // What `enum` used to guard is guarded here.
+    // The `enum` was dropped from the schema so the section can add its own statuses, making the live vocabulary the guard. Without this line any word would be saved as a status.
     if (!(await isValidStatus(status))) {
       return res.status(400).json({ message: `حالةٌ غير معروفة: ${status}` });
     }
@@ -1669,10 +1487,8 @@ exports.patchStatus = async (req, res) => {
     const from = order.status;
     const note = String(req.body.note || '').trim().slice(0, 500);
 
-    // ── وحالةٌ تقول «أُرسل السند» تُثبِت السند ──────────────────────────────
-    // نقلُ الحالة إلى «أُرسل السند» قولٌ عن ورقةٍ خرجت، وعليه تقوم المطالبةُ
-    // والتحصيل. وبلا الورقة يبقى القولُ بلا سند: يُسأل عنها بعد أسبوع فتُطلَب
-    // من الموظّف، وقد نسي أيَّها أرسل. فالنقلةُ نفسُها تحمل مرفقَها.
+    // A status saying the receipt was sent requires the receipt.
+    // Moving to that status asserts a document went out, and claims and collection rely on it. Without the document the assertion has no proof: asked a week later, it is requested from an employee who forgot which he sent. So the transition itself carries its attachment.
     let file = null;
     if (req.body.dataUrl) {
       try {
@@ -1688,24 +1504,18 @@ exports.patchStatus = async (req, res) => {
       });
     }
 
-    // ── ولا تُلغى شحنةٌ بلا سبب (صاحبُ الشركة، ٢٠٢٦/١٠/٢٢) ─────────────────
+    // A shipment is not cancelled without a reason
     const cancelReason = String(req.body.cancelReason || '').trim().slice(0, 200);
     if (status === 'cancelled' && from !== 'cancelled' && !cancelReason) {
       return res.status(400).json({ code: 'CANCEL_REASON_REQUIRED', message: 'اختر سببَ الإلغاء' });
     }
 
-    // نقلةٌ بلا تغييرٍ ولا ملاحظةٍ لا تُقيَّد: السجلُّ يمتلئ بأسطرٍ لا تقول شيئًا.
+    // A transition with no change and no note is not recorded: the log would fill with lines that say nothing.
     if (from === status && !note && !file) return res.json({ order });
 
-    // ── وشحنةُ المنصّة حالتُها هناك ─────────────────────────────────────────
-    // ستّةٌ وثلاثون ألفًا من طلبات هذا القسم مرآةٌ لشحنات منصّة التشغيل
-    // (`source: 'platform'`)، والمزامنةُ تكتب حالتَها من المنصّة في كلّ مرور.
-    // فتغييرُها عندنا وحدَنا يعيش دقائقَ ثمّ تمحوه المزامنةُ — ولا يصل المنصّةَ
-    // أبدًا. والموظّفُ يرى حالتَه تعود فيظنّ النظامَ يضيّع عملَه.
-    //
-    // فتُكتب حيث تُقرأ: المنصّةُ أوّلًا، فإن رفضت لم يتغيّر عندنا شيءٌ ويُقال
-    // السبب. والمفاتيحُ واحدةٌ في الطرفين (راجع STATUS في
-    // services/shipmentOrderSyncService)، فلا ترجمةَ بينهما.
+    // A platform shipment's status lives there.
+    // ~36k of this section's orders mirror operations-platform shipments (`source: 'platform'`) and sync writes their status from the platform every pass. Changing it only here lasts minutes before sync erases it, and never reaches the platform; the employee sees it revert and thinks the system loses his work.
+    // So it is written where it is read: the platform first; if it refuses, nothing changes here and the reason is reported. Keys are the same on both sides (see STATUS in services/shipmentOrderSyncService), so there is no translation.
     if (order.source === 'platform' && order.externalId && require('../services/uplClient').isConfigured()) {
       const CORE = ['requesting', 'loading', 'uploaded', 'on_way', 'arrived',
         'bond_sent', 'bond_received', 'late', 'invoiced', 'cancelled'];
@@ -1758,10 +1568,8 @@ exports.patchStatus = async (req, res) => {
 };
 
 /**
- * مفرداتُ الحالات — GET /statuses
- *
- * تقرؤها الشاشاتُ كلُّها: بطاقاتُ القائمة، والقائمةُ المنسدلة في نموذج الإنشاء،
- * والتطبيق. فتُغيَّر التسميةُ في الإعدادات مرّةً وتتغيّر في كلّ موضعٍ معًا.
+ * Status vocabulary: GET /statuses
+ * Read by every screen: list cards, the create form dropdown and the app. A label changed once in settings changes everywhere together.
  */
 exports.listStatuses = async (req, res) => {
   try {
@@ -1790,19 +1598,15 @@ exports.deleteOrder = async (req, res) => {
 
 // ── Customers ───────────────────────────────────────────────────────────────
 
-// ── البحثُ يجد بأيّ شيء ─────────────────────────────────────────────────────
-// السجلّاتُ صارت آلافًا بعد نقلها من المنصّة: ٣٣٦٩ مورّدًا و١٣١٠٢ مركبة. وحدٌّ
-// أعمى بخمسمئة يقطع القائمة، وبحثٌ بالاسم وحدَه يعجز عمّن يُذكر برقمه أو
-// بسجلّه أو بلوحته. فالبحثُ يمرّ على كلّ ما يُعرَف به السجلّ، والحدُّ يُطلَب.
+// Search finds by anything.
+// The registers now hold thousands after the platform move (3369 suppliers, 13102 vehicles). A blind limit of 500 cuts the list, and name-only search misses one known by number, register or plate. So search covers everything the record is known by, and the limit is requested.
 const askedLimit = (v, def, max) => {
   const n = Number(v);
   return Number.isFinite(n) ? Math.min(Math.max(n, 1), max) : def;
 };
-// ── والبحثُ لا يبالي بمسافةٍ ولا بهمزة ─────────────────────────────────────
-// `rx` تهرّب الرموزَ وتبحث حرفيًّا: من نسخ اللوحةَ من أبشر بمسافتين، أو كتب
-// «احمد» وهي مخزّنةٌ «أحمد»، خرجت له شاشةٌ فارغةٌ عن صفٍّ موجود. و`flexSpaceRegex`
-// هي قاعدةُ البحث في بقيّة الأقسام — فتُستعمَل هنا كما تُستعمَل هناك.
-// Every word must match somewhere, in any order: «vxa 5744» finds plate «5744 VXA».
+// Search ignores spacing and hamza.
+// `rx` escapes symbols and searches literally: someone who copied a plate from Absher with two spaces, or typed one spelling of a name stored another way, got an empty screen for an existing row. `flexSpaceRegex` is the search rule in the other sections, so it is used here too.
+// Every word must match somewhere, in any order: reordered plate parts still find the plate.
 const anyOf = (q, fields) => {
   const words = String(q).trim().split(/\s+/).filter(Boolean);
   if (words.length < 2) return { $or: fields.map((f) => ({ [f]: flexSpaceRegex(q) })) };
@@ -1815,32 +1619,24 @@ const plateScope = (filter, q) => {
   return { ...rest, ...anyOf(q, ['plate']) };
 };
 
-// ── القوائمُ الثلاث: الحقولُ التي تُقرأ فقط، ومحفوظةٌ دقيقتين ─────────────────
-// العنقودُ يسلّم نحو ٧٠ ك.ب في الثانية، فثمنُ القائمة حجمُها لا حسابُها: ٥٠٠
-// عميلٍ كاملين ٣١٥ ك.ب ≈ ٤٫٥ ثانية، و١٠٠٠ شاحنةٍ ٤٦٣ ك.ب ≈ ٥ ثوانٍ. وحقولُ
-// الاستيراد (المالك والآيبان والسجلّ وبطاقة التشغيل…) لا تقرؤها شاشةٌ ولا
-// التطبيق — نموذجُ التعديل يرسل الحقولَ القابلة للتعديل وحدها. والحفظُ آمنٌ
-// لأنّ خطّافاتِ النماذج الثلاثة تمسح `so:registry:` مع كلّ كتابة.
+// The three lists: read-only fields, cached two minutes.
+// The cluster delivers ~70 KB/s, so a list costs its size, not its computation: 500 full customers are 315 KB (~4.5 s) and 1000 trucks 463 KB (~5 s). Import fields (owner, IBAN, register, operating card, ...) are read by no screen or app, since the edit form sends only editable fields. Caching is safe because the three models' hooks clear `so:registry:` on every write.
 const REGISTRY_TTL = 2 * 60 * 1000;
 const CUSTOMER_LIST_FIELDS = 'customerCode name phone email notes routes defaults';
-// وأوراقُه المالية تُقرأ من الصفّ: السجلُّ التجاريُّ والآيبانُ ومديرُه برقمه
-// هي ما يُطلَب عند أوّل دفعةٍ له، وكانت تُفتَح لها بطاقةٌ لكلّ مورّد.
+// Its financial papers are read from the row: commercial register, IBAN and its manager by number are what is requested at his first payment, and a card used to be opened for each supplier.
 const SUPPLIER_LIST_FIELDS = 'name type phone email notes commercialRegister taxCard iban bankName managerName managerPhone paymentTerms';
 const VEHICLE_LIST_FIELDS = 'plate name truckType brand color supplier ownership vehicleMaster defaultDriverName defaultDriverPhone operationCardNumber operationCardExpiry modelYear notes';
 const DRIVER_LIST_FIELDS = 'name phone nationality residenceNumber driverCardNumber driverCardExpiry supplier vehicle employee sponsorName notes';
 const registryKey = (kind, req, extra = '') => `so:registry:${kind}:${String(req.query.q || '')}:${req.query.limit || ''}:${extra}`;
 
-// ── ملكيّةُ الشاحنة تُطلَب صريحةً ──────────────────────────────────────────
-// `ours` لا تُعرَض في قائمة اختيار شاحنات الموردين، و`unknown` تُعرَض لأنّها
-// شاحناتُ ناقلين لم يُعرَف ناقلُها بعد — إخفاؤها يُخفي أكثرَ النصف.
+// Truck ownership is requested explicitly.
+// `ours` is not shown in the supplier-truck picker, and `unknown` is shown because those are carriers' trucks whose carrier is not yet known; hiding them hides over half.
 const ownershipFilter = (v) => {
   const k = String(v || '').trim();
   if (k === 'supplier') return { supplier: { $ne: null } };
   if (k === 'ours') return { ownership: 'ours' };
   if (k === 'unknown') return { ownership: { $ne: 'ours' }, supplier: null };
-  // `not_ours` مصفاةُ قائمةِ اختيار الشحنة: شاحناتُ الموردين ومَن لم يُعرَف
-  // مالكُه بعد. وقصرُها على المعروفِ مالكُه يحجب أكثرَ السجلّ عن الاختيار،
-  // وهي شاحناتٌ عملنا عليها فعلًا — والمجهولُ يُعرَف باختيارها لمورّده.
+  // `not_ours` is the shipment picker's filter: supplier trucks plus those with unknown owner. Limiting it to known owners hides most of the register from selection, though we did work on those trucks; an unknown owner becomes known by picking its supplier.
   if (k === 'not_ours') return { ownership: { $ne: 'ours' } };
   return null;
 };
@@ -1879,7 +1675,7 @@ exports.createCustomer = async (req, res) => {
       return res.status(400).json({ message: 'Customer name is required' });
     }
     const data = pick(req.body, CUSTOMER_EDITABLE);
-    // أسعارُ الوجهات لمدير العمليّات ومدير النظام وحدَهما — راجع customerRoutes.canEditPrices.
+    // Destination prices belong only to the operations manager and the system admin, see customerRoutes.canEditPrices.
     if (!require('../utils/customerRoutes').canEditPrices(req.user.role)) delete data.routes;
     data.createdBy = req.user._id;
     // One row per name: a removed customer comes back with its history instead of a twin.
@@ -1911,15 +1707,11 @@ exports.updateCustomer = async (req, res) => {
     const customer = await ShipmentOrderCustomer.findById(req.params.id);
     if (!customer) return res.status(404).json({ message: 'Customer not found' });
     const data = pick(req.body, CUSTOMER_EDITABLE);
-    // ── وأسعارُ الوجهات لا يكتبها إلّا صاحباها ───────────────────────────────
-    // من يعدّل العميلَ (المبيعات، موظّفو العمليّات…) يحفظ اسمَه وهاتفَه
-    // وتفضيلاتِه؛ والمساراتُ وأسعارُها تبقى كما هي مهما أُرسِل — فلا يُعتمَد
-    // على إخفاء الخانة في الشاشة.
+    // Destination prices are written only by their owners.
+    // Whoever edits the customer (sales, operations staff, ...) saves its name, phone and preferences; routes and their prices stay as they are whatever is sent, so it does not rely on the screen hiding the field.
     if (!require('../utils/customerRoutes').canEditPrices(req.user.role)) delete data.routes;
-    // ── وشرائحُ السعر لا تُمسَح بحفظ قائمة الأسعار ───────────────────────────
-    // نافذةُ «تعديل الأسعار» ترسل المساراتِ كلَّها بلا شرائحها، والشرائحُ
-    // يكتبها مديرُ العمليّات من بابٍ آخر (setRouteTiers). فتُحمَل على المسار
-    // نفسِه بمفتاحه المطويّ — ولا تُقبَل من هذا الباب أصلًا.
+    // Saving the price list does not erase price tiers.
+    // The edit-prices window sends all routes without their tiers, which the operations manager writes through another path (setRouteTiers). So they are carried onto the same route by its folded key, and are never accepted from this path.
     if (Array.isArray(data.routes)) {
       const { routeKey } = require('../utils/customerRoutes');
       const kept = new Map((customer.routes || []).map((r) => [routeKey(r.fromCity, r.toCity), r]));
@@ -1964,15 +1756,13 @@ exports.deleteCustomer = async (req, res) => {
   }
 };
 
-// ── Suppliers & vehicles (الموردون والمركبات) ───────────────────────────────
+// Suppliers and vehicles
 
 const SUPPLIER_EDITABLE = ['name', 'type', 'phone', 'email', 'notes', 'isActive'];
 const VEHICLE_EDITABLE = ['plate', 'name', 'truckType', 'brand', 'color', 'supplier', 'ownership', 'defaultDriverName', 'defaultDriverPhone', 'operationCardNumber', 'operationCardExpiry', 'modelYear', 'notes', 'isActive'];
 
-// ── والحقلان لا يتناقضان ────────────────────────────────────────────────────
-// مرجعُ المورّد والملكيّةُ خبران عن شيءٍ واحد، فلو كُتب أحدُهما وحدَه صار في
-// السجلّ شاحنةٌ لها مورّدٌ ومكتوبٌ أنّها من أسطولنا. فمن نُسب إلى مورّدٍ فهو
-// `supplier`، ومن قيل إنّه من أسطولنا فلا مورّدَ له.
+// The two fields do not contradict.
+// The supplier reference and the ownership flag are two facts about one thing; writing only one would leave a truck with a supplier marked as from our fleet. So one attributed to a supplier is `supplier`, and one said to be ours has no supplier.
 const coherentOwnership = (data) => {
   if (!('supplier' in data) && !('ownership' in data)) return data;
   if (data.ownership === 'ours') return { ...data, supplier: null };
@@ -1984,20 +1774,15 @@ const coherentOwnership = (data) => {
 };
 
 /**
- * ── شاحنتُنا مرجعٌ إلى سجلّ المركبات، وسائقُنا إلى ملفّه ───────────────────
- *
- * قاعدةُ صاحب الشركة (٢٠٢٦/١٠/٢١): «سجلٌّ واحدٌ للمركبة وللشخص، والتعديلُ يظهر
- * في كلّ مكان». فالشاحنةُ التي ليست لمورّدٍ تُحلّ بلوحتها إلى `VehicleMaster`
- * (utils/vehicleRef — عربيّ↔لاتينيّ) — وما حُلّ فهو من أسطولنا يقينًا: اللوحةُ
- * السعوديّةُ حروفًا وأرقامًا لا تتكرّر. والسائقُ يُحلّ برقم إقامته إلى ملفّه في
- * الموارد البشريّة. ويُحلّ الاثنان عند كلّ إنشاءٍ وتعديل، لا في الاستيراد وحدَه.
+ * Our truck refers to the vehicle register, and our driver to his file.
+ * Rule: one record per vehicle and per person, and an edit shows everywhere. A truck not owned by a supplier is resolved by plate to `VehicleMaster` (utils/vehicleRef, Arabic to Latin), and anything resolved is certainly ours since a Saudi plate of letters and digits does not repeat. The driver resolves by residency number to his HR file. Both resolve on every create and update, not only on import.
  */
 async function syncVehicleMaster(id) {
   const v = await ShipmentOrderVehicle.findById(id).select('plate supplier ownership vehicleMaster').lean();
   if (!v) return;
   const set = {};
   if (v.supplier || v.ownership === 'supplier') {
-    if (v.vehicleMaster) set.vehicleMaster = null; // شاحنةُ مورّدٍ ليست في سجلّنا
+    if (v.vehicleMaster) set.vehicleMaster = null; // A supplier's truck that is not in our register
   } else {
     const hit = await require('../utils/vehicleRef').resolve(v.plate);
     if (String(v.vehicleMaster || '') !== String(hit?._id || '')) set.vehicleMaster = hit ? hit._id : null;
@@ -2015,7 +1800,7 @@ async function syncDriverEmployee(id) {
   }
 }
 
-/** الشاحنةُ كما تُعرَض: هويّتُها من سجلّ المركبات إن كانت مربوطة. */
+/** The truck as displayed: its identity from the vehicle register if linked. */
 const vehicleView = (v) => {
   const m = v && v.vehicleMaster && typeof v.vehicleMaster === 'object' ? v.vehicleMaster : null;
   if (!m) return v;
@@ -2030,7 +1815,7 @@ const vehicleView = (v) => {
 };
 const VEHICLE_MASTER_FIELDS = 'plateNumber brandAr modelAr modelYear colorAr';
 
-/** السائقُ كما يُعرَض: اسمُه وجوالُه وجنسيّتُه من ملفّه إن كان موظّفَنا. */
+/** The driver as displayed: name, mobile and nationality from his file if he is our employee. */
 const driverView = (d) => {
   const e = d && d.employee && typeof d.employee === 'object' ? d.employee : null;
   if (!e) return d;
@@ -2044,10 +1829,8 @@ const driverView = (d) => {
 };
 const EMPLOYEE_FIELDS = 'firstName lastName arabicName phone nationality iqamaNumber nationalId';
 
-// ── «0» و«-» ليسا قيمة (٢٠٢٦/١٠/٢٦) ─────────────────────────────────────────
-// السجلُّ المستورَد يحملهما حيث لا شيء — فكان يُعرض «0» جوالًا وإقامةً وتاريخَ
-// بطاقة، ويُملأ جوالُ الشحنة «0». يُفرَّغان في ما تقرؤه الشاشات (الويب والتطبيق)
-// ولا تُمسّ القاعدة.
+// The values 0 and - are not values.
+// The imported register holds them where there is nothing, so 0 was displayed as a mobile, residency and card date, and the shipment mobile was filled with 0. They are blanked in what the screens (web and app) read, without touching the database.
 const blankish = (v) => /^(0+|-+|null|undefined|nan|n\/a)$/i.test(String(v ?? '').trim());
 const cleanFields = (o, keys) => {
   if (!o) return o;
@@ -2068,10 +1851,7 @@ exports.listSuppliers = async (req, res) => {
     }
     // `fresh=1` (the new-shipment form) skips the per-worker cache so a supplier edit shows at once.
     const build = async () => {
-      // How many trucks each one runs — the number the team actually asks for.
-      // والثلاثةُ مستقلّة فتُطلب معًا: ثلاث رحلاتٍ إلى العنقود في زمن واحدة.
-      // كم شاحنةً وكم سائقًا لكلٍّ — الرقمان اللذان يُسألان عن المورّد قبل
-      // أن يُفتَح ملفُّه. والأربعةُ مستقلّةٌ فتُطلب معًا: رحلةٌ واحدةٌ بزمنِها.
+      // How many trucks and drivers each one runs: the numbers asked about a supplier before opening his file. The four are independent so they are requested together: one round trip of one query's duration.
       const [suppliers, total, vCounts, dCounts] = await Promise.all([
         ShipmentOrderSupplier.find(filter)
           .select(SUPPLIER_LIST_FIELDS)
@@ -2150,14 +1930,10 @@ exports.deleteSupplier = async (req, res) => {
   }
 };
 
-// ── دمجُ مورّدَين (٢٠٢٦/١٠/٢٦) ──────────────────────────────────────────────
-// «فيه اتنين مورد بنفس الاسم (تنشيط)… دول نفس الشخص، وحّدهم وضيف بياناتهم على
-// بعض». POST /suppliers/:id/merge { from } — يبقى `:id`، ويُدمَج فيه `from`:
-//   • كلُّ خانةٍ فارغةٍ في الباقي تُملأ من المدموج؛ وما اختلف في الاثنين يبقى
-//     للباقي ويُضاف الآخرُ إلى ملاحظاته — لا تضيع قيمة.
-//   • شحناتُه وشاحناتُه وسائقوه وحساباتُ بوّابته تُنقَل إلى الباقي.
-//   • معرّفُه في المنصّة يُحفَظ في `externalIds` الباقي، فلا يعيده الاستيراد.
-//   • المدموجُ يُعطَّل ويحمل `mergedInto` — ويُقيَّد الدمجُ في سجلّ التدقيق.
+// Merge two suppliers: POST /suppliers/:id/merge { from }. `:id` stays, `from` is merged into it.
+// Empty fields in the survivor are filled from the merged one; on conflict the survivor's value stays and the other goes to its notes.
+// Shipments, trucks, drivers and portal accounts move to the survivor; the platform id goes to its `externalIds` so import does not recreate it.
+// The merged one is deactivated with `mergedInto`, and the merge is audited.
 const MERGE_FIELDS = ['type', 'phone', 'email', 'externalId', 'commercialRegister', 'taxCard', 'nationalAddress', 'bankName', 'iban',
   'ownerName', 'ownerPhone', 'managerName', 'managerPhone', 'accountantName', 'accountantPhone', 'paymentTerms',
   'agreedPriceStatement', 'contractFile'];
@@ -2205,13 +1981,13 @@ exports.mergeSupplier = async (req, res) => {
       ShipmentOrderDriverM.updateMany({ supplier: from._id }, { $set: { supplier: keep._id } }),
       User.updateMany({ 'partner.source': 'shipment_order_supplier', 'partner.refId': String(from._id) }, { $set: { 'partner.refId': String(keep._id) } }),
     ]);
-    // والشحناتُ التي تحمل اسمَ المدموج نصًّا (من المنصّة) تحمل الاسمَ الباقي إن اختلفا.
+    // Shipments carrying the merged supplier's name as text (from the platform) take the survivor's name if different.
     if (String(from.name).trim() !== String(keep.name).trim()) {
       await ShipmentOrder.updateMany({ supplierName: from.name }, { $set: { supplierName: keep.name } });
     }
     from.isActive = false;
     from.mergedInto = keep._id;
-    // معرّفُه في المنصّة انتقل إلى `externalIds` الباقي — ويُخلى هنا كي لا يطابقه الاستيراد.
+    // Its platform id moved to the survivor's `externalIds` and is cleared here so import does not match it.
     from.externalId = '';
     await from.save();
 
@@ -2265,10 +2041,9 @@ exports.listVehicles = async (req, res) => {
   }
 };
 
-// ── أعدادُ السجلّ: الصفحةُ تقول ما في القاعدة لا ما وصل إليها ────────────────
-// كانت الترويسةُ تحسب من المصفوفة الواصلة، والحدُّ ألف — فقالت «١٠٠٠ سيارة،
-// ١٠٠٠ من أسطولنا» وأسطولُنا ثمانٍ وخمسون شاحنة. العدُّ عند الخادم.
-/** ملخّصُ السجلّ — تنادِيه صفحةُ الموردين ولوحةُ القسم، فالرقمُ واحد. */
+// Register counts: the page states what is in the database, not what reached it.
+// The header used to count from the received array with a limit of 1000, so it said 1000 vehicles, 1000 of our fleet, when our fleet is 58 trucks. Counting is on the server.
+/** Register summary, called by the suppliers page and the section dashboard so the number is the same. */
 async function registrySummary() {
   {
     return cache.wrap('so:registry:summary', REGISTRY_TTL, async () => {
@@ -2293,11 +2068,8 @@ async function registrySummary() {
       const n = { supplier: 0, ours: 0, unknown: 0 };
       byOwner.forEach((r) => { n[r._id] = r.n; });
 
-      // ── ونواقصُ السجلّ تُقال ──────────────────────────────────────────────
-      // الجداولُ تُفتَح على خاناتٍ فارغةٍ كثيرةٍ فيُقرأ ذلك خرابًا، وهي ليست
-      // خرابًا: المنصّةُ التي استُورد منها لا تحمل الماركةَ ولا اللون أصلًا
-      // (صفرٌ من ثلاثةَ عشرَ ألفًا)، ومئاتُ الشاحنات لم يُعرَف مالكُها بعد.
-      // فتُقال الأعدادُ صريحةً — عملٌ ينتظر لا عيبٌ يُخفى.
+      // Register gaps are stated.
+      // Tables open with many empty cells, read as breakage, but the platform imported from carries no make or colour at all (zero of ~13k), and hundreds of trucks have no known owner yet. The counts are stated explicitly: work waiting, not a hidden defect.
       const [noBrand, supNoVehicle] = await Promise.all([
         ShipmentOrderVehicle.countDocuments({ ...live, $or: [{ brand: '' }, { brand: null }, { color: '' }, { color: null }] }),
         ShipmentOrderSupplier.aggregate([
@@ -2367,11 +2139,8 @@ exports.deleteVehicle = async (req, res) => {
   }
 };
 
-// ── السوّاق (سائقو شاحنات الناقلين) ─────────────────────────────────────────
-//
-// سجلٌّ كان ناقصًا بالكامل: السائقُ كان اسمًا على صفّ الشاحنة لا ملفًّا. وملفُّه
-// هو ما يُسأل عنه عند الإسناد: رقمُ إقامته، وبطاقةُ تشغيله ومتى تنتهي، ومَن
-// كفيلُه، وعلى أيّ شاحنةٍ هو ولأيّ مورّد.
+// Drivers of carrier trucks.
+// The register was missing entirely: a driver was a name on a truck row, not a file. His file is what is asked for at assignment: residency number, operating card and expiry, who sponsors him, and on which truck and for which supplier.
 
 const DRIVER_EDITABLE = [
   'name', 'phone', 'email', 'nationality', 'residenceNumber',
@@ -2386,9 +2155,8 @@ exports.listDrivers = async (req, res) => {
     if (q && q.trim()) {
       Object.assign(filter, anyOf(q, ['name', 'phone', 'residenceNumber', 'driverCardNumber',
         'nationality', 'sponsorName', 'companyName', 'email', 'externalId']));
-      // ── والجوّالُ كيفما كُتب (٢٠٢٦/١٠/٢٦: «لما نكتب رقم السائق يطلع عادي») ─
-      // «0501234567» و«+966501234567» و«501234567» رقمٌ واحد: يُطابَق بلا الصفر
-      // ولا مفتاح الدولة، ولو كان المكتوبُ جزءًا منه.
+      // Mobile however written.
+      // The three forms of the same Saudi mobile are one number: matched without the leading zero or country code, even if what was typed is a part of it.
       const { westernDigits } = require('../utils/arabicSearch');
       const t = westernDigits(String(q).trim());
       if (/^[\d\s+()\-]+$/.test(t)) {
@@ -2399,8 +2167,7 @@ exports.listDrivers = async (req, res) => {
         }
       }
     }
-    // بسائقِ مورّدٍ بعينه، أو بسائقِ شاحنةٍ بعينها — السؤالان اللذان تُفتَح
-    // لهما هذه القائمة من شاشةٍ أخرى.
+    // By a specific supplier's driver, or a specific truck's driver: the two questions this list is opened for from another screen.
     if (req.query.supplier) filter.supplier = req.query.supplier;
     if (req.query.vehicle) filter.vehicle = req.query.vehicle;
     const out = await cache.wrap(
@@ -2417,7 +2184,7 @@ exports.listDrivers = async (req, res) => {
             .lean(),
           ShipmentOrderDriver.countDocuments(filter),
         ]);
-        // وانتهاءُ إقامته ورخصةِ قيادته من ملفّه (utils/personDocDates).
+        // His residency and licence expiry come from his file (utils/personDocDates).
         const docs = await require('../utils/personDocDates').docDatesFor(drivers.map((d) => ({ idNumber: d.residenceNumber, employee: d.employee })));
         return { drivers: drivers.map(driverView).map(cleanDriver).map((d, i) => ({ ...d, ...docs({ idNumber: drivers[i].residenceNumber, employee: drivers[i].employee }) })), total };
       },
@@ -2431,14 +2198,11 @@ exports.listDrivers = async (req, res) => {
 exports.createDriver = async (req, res) => {
   try {
     if (!req.body.name || !String(req.body.name).trim()) return res.status(400).json({ message: 'Driver name is required' });
-    // ── «سائق جديد» من شاشة إنشاء الشحنة (`reuse`) لا يكرّر سائقًا قائمًا ────
-    // مَن كتب جوّالًا أو إقامةً مسجَّلةً يُعاد إليه السائقُ القائم ليُختار، بدل
-    // سائقٍ ثانٍ بالرقم نفسِه تتوزّع عليهما شحناتُه.
+    // New driver from the shipment creation screen (`reuse`) does not duplicate an existing one.
+    // If the typed mobile or residency is registered, the existing driver is returned to be selected, instead of a second driver with the same number splitting his shipments.
     if (req.body.reuse) {
-      // ── وبالاسم أيضًا (٢٠٢٦/١٠/٢٦: «جرّب يضيف سوّاق مرّتين وانضاف مرّتين») ──
-      // كان يُعرف بالجوال أو الإقامة وحدَهما، فسائقٌ يُكتب اسمُه مرّتين بلا جوالٍ
-      // يُسجَّل مرّتين. فالاسمُ المطويُّ (جده/جدة، أحمد/احمد، المسافات) دليلٌ ثالث،
-      // ويُردّ القائمُ مع سبب المطابقة لتسأل الشاشةُ «موجودٌ بالفعل — نختاره؟».
+      // Also by name.
+      // Identity used to be by mobile or residency only, so a driver typed twice with no mobile was registered twice. The folded name (spelling variants, spacing) is a third evidence, and the existing one is returned with the match reason so the screen asks whether to select it.
       const tail = String(req.body.phone || '').replace(/\D/g, '').slice(-9);
       const iq = String(req.body.residenceNumber || '').trim();
       const live = { isActive: { $ne: false } };
@@ -2491,7 +2255,7 @@ exports.deleteDriver = async (req, res) => {
 
 // ── Form fields (the settings page) ─────────────────────────────────────────
 
-/** فروعُ الشركة بالعربيّة كما تُكتب في الكشوف — من البيانات المرجعيّة، بترتيبها. */
+/** Company branches in Arabic as written in statements, from reference data, in their order. */
 async function companyBranchOptions() {
   return cache.wrap('so:branches', 60 * 1000, async () => {
     const Lookup = require('../models/Lookup');
@@ -2549,10 +2313,8 @@ exports.listFields = async (req, res) => {
     // Tombstoned system fields are gone from BOTH views — see the model.
     const filter = req.query.all ? { deleted: { $ne: true } } : { active: true, deleted: { $ne: true } };
     const fields = await ShipmentOrderField.find(filter).sort({ group: 1, order: 1 }).lean();
-    // ── «الفرع» فروعُنا كلُّها، لا قائمةٌ تُكتب هنا (٢٠٢٦/١٠/٢٧) ────────────────
-    // «كارد الفرع المفروض يكون فيه فروعنا كلّهم، وملهوش إضافة فرع». فخياراتُه
-    // تُقرأ من قائمة فروع الشركة نفسِها — «الفروع» في البيانات المرجعيّة
-    // (workflow_paying_branch)، وهي فرعُ كشف التشغيل والسداد — ولا تُضاف من النموذج.
+    // The branch field offers all our branches, not a list written here.
+    // Its options are read from the company's branch list itself, Branches in reference data (workflow_paying_branch), which is the statement and payment branch, and branches cannot be added from the form.
     const branch = fields.find((f) => f.key === 'branch');
     if (branch) {
       branch.options = await companyBranchOptions();
@@ -2609,9 +2371,8 @@ exports.updateField = async (req, res) => {
     const data = pick(req.body, FIELD_EDITABLE);
     // A system field's group is part of the wiring; its look and words are not.
     if (field.isSystem) delete data.group;
-    // «نوع الدفع» أربعةُ أنواعٍ بمفاتيح سير عمل التشغيل — خيارُه الخامسُ أو
-    // اسمٌ معدَّلٌ يفصل الطلبَ عن الكشف. فيُضبط شكلُه وتسميتُه وإلزامُه، لا خياراتُه.
-    if (field.key === 'branch') delete data.options; // من فروع الشركة — راجع listFields
+    // Payment type has four types keyed like the operations workflow; a fifth option or a renamed one would split the order from the statement. So its shape, label and requiredness are configurable, not its options.
+    if (field.key === 'branch') delete data.options; // From the company branches, see listFields
     if (field.key === 'paymentSubtype') {
       delete data.options;
       if (data.inputType && !['cards', 'select'].includes(data.inputType)) delete data.inputType;
@@ -2625,10 +2386,7 @@ exports.updateField = async (req, res) => {
   }
 };
 
-// The only questions that CANNOT be deleted: other logic reads their answers.
-// fromCity/toCity/sellPrice drive the per-customer route pricing and the
-// بوليصة sheet; pickupTime dates the بوليصة. Everything else — system-seeded or
-// user-added — is the section owner's to remove.
+// The only questions that cannot be deleted: other logic reads their answers. fromCity/toCity/sellPrice drive the per-customer route pricing and the waybill sheet; pickupTime dates the waybill. Everything else, system-seeded or user-added, is the section owner's to remove.
 const CORE_FIELD_KEYS = new Set(['fromCity', 'toCity', 'sellPrice', 'pickupTime']);
 
 exports.deleteField = async (req, res) => {
@@ -2665,10 +2423,10 @@ const CITIES = [
 const opts = (arr) => arr.map((a) => ({ key: a, ar: a, en: a }));
 
 const SYSTEM_FIELDS = [
-  // الاستلام والتسليم
+  // Pickup and delivery
   { key: 'fromCity', labelAr: 'من المدينة', labelEn: 'From city', group: 'pickup_delivery', inputType: 'select', options: opts(CITIES), required: true, order: 1 },
   { key: 'toCity', labelAr: 'إلى المدينة', labelEn: 'To city', group: 'pickup_delivery', inputType: 'select', options: opts(CITIES), required: true, order: 2 },
-  // تفاصيل الشحنة
+  // Shipment details
   { key: 'truckType', labelAr: 'نوع الشاحنة', labelEn: 'Truck type', group: 'shipment', inputType: 'cards', options: opts(['سطحة', 'تريلا جوانب', 'تريلا ستارة', 'براد', 'دينا', 'لوبد', 'صهريج']), required: true, order: 1 },
   { key: 'cargoType', labelAr: 'نوع الحمولة', labelEn: 'Cargo type', group: 'shipment', inputType: 'select', options: opts(['بضائع عامة', 'مواد بناء', 'حديد', 'أسمنت', 'مواد غذائية', 'أجهزة ومعدات', 'أثاث', 'كيماويات', 'أخرى']), order: 2 },
   { key: 'truckLength', labelAr: 'طول الشاحنة', labelEn: 'Truck length', group: 'shipment', inputType: 'number', order: 3 },
@@ -2676,45 +2434,33 @@ const SYSTEM_FIELDS = [
   { key: 'driverName', labelAr: 'السائق', labelEn: 'Driver', group: 'shipment', inputType: 'text', order: 5 },
   { key: 'driverPhone', labelAr: 'جوال السائق', labelEn: 'Driver phone', group: 'shipment', inputType: 'text', order: 6 },
   { key: 'vehicleName', labelAr: 'السيارة / رقم اللوحة', labelEn: 'Vehicle / plate', group: 'shipment', inputType: 'text', order: 7 },
-  // الأسعار والتوقيت
-  // تواريخُ الشحنة باليوم — راجع `inputType` في models/ShipmentOrderField.
+  // Prices and timing
+  // Shipment dates are by day, see `inputType` in models/ShipmentOrderField.
   { key: 'pickupTime', labelAr: 'تاريخ الاستلام', labelEn: 'Pickup date', group: 'pricing_time', inputType: 'date', required: true, order: 1 },
   { key: 'startTime', labelAr: 'تاريخ البداية', labelEn: 'Start date', group: 'pricing_time', inputType: 'date', order: 2 },
   { key: 'arrivalTime', labelAr: 'تاريخ الوصول', labelEn: 'Arrival date', group: 'pricing_time', inputType: 'date', order: 3 },
-  // سعرُ الشراء إجباريٌّ والبيعُ اختياريّ (٢٠٢٦/١٠/٢٦) — راجع migratePriceRequired.
-  // الشراءُ أوّلًا ثمّ البيع (٢٠٢٦/١٠/٢٦) — راجع migratePriceOrder.
+  // Buying price is required and selling optional, see migratePriceRequired.
+  // Buying comes before selling, see migratePriceOrder.
   { key: 'buyPrice', labelAr: 'سعر الشراء', labelEn: 'Buy price', group: 'pricing_time', inputType: 'number', required: true, order: 4 },
   { key: 'sellPrice', labelAr: 'سعر البيع', labelEn: 'Sell price', group: 'pricing_time', inputType: 'number', order: 5 },
-  // السلفةُ للسائق — رقمٌ اختياريّ (٢٠٢٦/١٠/٢٦).
+  // Advance to the driver: an optional number.
   { key: 'advanceAmount', labelAr: 'السلفة', labelEn: 'Advance', group: 'pricing_time', inputType: 'number', order: 6 },
-  // المدفوعات
-  // «نوع الدفع» حلّ محلَّ «نوع تأجير السائق» و«طريقة الدفع» — راجع
-  // migratePaymentSubtypeField. فلا يُبذَران في قاعدةٍ جديدة؛ والقائمان يبقيان
-  // مخفيَّين في الإعدادات لمن أراد إظهارهما.
+  // Payments
+  // Payment type replaced driver rental type and payment method, see migratePaymentSubtypeField. So the two are not seeded in a new database; they stay hidden in settings for anyone who wants to show them.
   { key: 'paymentSubtype', labelAr: 'نوع الدفع', labelEn: 'Payment type', group: 'payment', inputType: 'cards', options: paymentSubtypeOptions(), order: 1 },
-  // الفرعُ في «الاستلام والتسليم» لا في المدفوعات (٢٠٢٦/١٠/٢٦) — راجع migrateBranchGroup.
+  // The branch is in Pickup and delivery, not Payments, see migrateBranchGroup.
   { key: 'branch', labelAr: 'الفرع', labelEn: 'Branch', group: 'pickup_delivery', inputType: 'select', options: opts(['جدة', 'الرياض', 'الدمام', 'جازان']), order: 3 },
 ];
 
 /**
- * ── «نوع تأجير السائق» يصير «نوع الدفع» ─────────────────────────────────────
- *
- * قرارُ صاحب الشركة (٢٠٢٦/١٠/٢١). والنموذجُ بيانات، فالتغييرُ ترحيلٌ لصفوفه
- * يجري مرّةً واحدة — حين لا يكون صفُّ «نوع الدفع» موجودًا بعد:
- *
- *  • يُنشأ «نوع الدفع» في مكان «نوع تأجير السائق» (ترتيبُه) وبإلزامه: كان
- *    مطلوبًا فيبقى مطلوبًا، وإلّا فاختياريّ.
- *  • ويُخفى «نوع تأجير السائق» و«طريقة الدفع» (`active: false`) — لا يُحذفان:
- *    إخفاءٌ يُرجَع من إعدادات القسم، والطلباتُ القديمةُ تحمل قيمَهما وتُطبَع بها.
- *    و«طريقة الدفع» كانت تُعرَض مقروءةً تتبع نوعَ التأجير؛ وصارت تتبع نوعَ الدفع
- *    في الخادم، فخانتُها في النموذج تكرارٌ لا سؤال.
- *
- * ولا يُعاد بعدها: من أظهر أحدَهما بيده لا يُخفيه الإقلاعُ التالي.
+ * Driver rental type becomes payment type, a one-time migration run while the payment type row does not exist.
+ * Payment type is created at the old row's order, keeping its requiredness.
+ * Driver rental type and payment method are hidden (`active: false`), not deleted: reversible from settings, and old orders keep and print their values. Payment method now follows payment type on the server, so its form field is redundant.
+ * Never rerun, so a field shown by hand is not hidden again.
  */
 async function migratePaymentSubtypeField() {
   if (await ShipmentOrderField.exists({ key: 'paymentSubtype' })) {
-    // الخياراتُ الأربعةُ تُرسَّخ في كلّ إقلاع: هي مفاتيحُ سير العمل وأسماؤه،
-    // وتُقفَل في الإعدادات — راجع updateField.
+    // The four options are re-asserted at every startup: they are the workflow keys and names, and are locked in settings, see updateField.
     await ShipmentOrderField.updateOne({ key: 'paymentSubtype' }, { $set: { options: paymentSubtypeOptions() } });
     return;
   }
@@ -2737,11 +2483,8 @@ async function migratePaymentSubtypeField() {
 }
 
 /**
- * ── سعرُ الشراء إجباريّ، والبيعُ لا (صاحبُ الشركة، ٢٠٢٦/١٠/٢٦) ────────────
- * الشراءُ يُعرَف عند الحجز — هو ما اتُّفق عليه مع المورّد — والبيعُ قد يُسعَّر
- * بعدُ. والخانتان في القاعدة (`required`) تُضبطان من الإعدادات، والبذرُ لا يمسّ
- * صفًّا قائمًا — فيُقلَب الضبطُ مرّةً واحدةً بعلامةٍ في `migrations`، ثمّ يبقى
- * لمن يضبطه من الإعدادات ولا يعيده الإقلاع.
+ * Buying price required, selling not.
+ * Buying is known at booking (it is what was agreed with the supplier), while selling may be priced later. The two fields' `required` is set from settings in the database and seeding does not touch an existing row, so the setting is flipped once with a flag in `migrations`, then belongs to whoever sets it in settings and startup does not redo it.
  */
 async function migratePriceRequired() {
   const marks = mongoose.connection.collection('migrations');
@@ -2749,16 +2492,15 @@ async function migratePriceRequired() {
   if (await marks.findOne({ _id: id })) return;
   await ShipmentOrderField.updateOne({ key: 'sellPrice' }, { $set: { required: false } });
   await ShipmentOrderField.updateOne({ key: 'buyPrice' }, { $set: { required: true } });
-  // upsert لا insert: العاملان يُقلعان معًا، والإدخالُ الثاني كان يرمي «مفتاحًا مكرَّرًا».
+  // upsert, not insert: both workers start together and the second insert threw a duplicate key error.
   await marks.updateOne({ _id: id }, { $setOnInsert: { at: new Date() } }, { upsert: true });
 }
 
 /**
- * ── الفرعُ ينتقل إلى «الاستلام والتسليم» (صاحبُ الشركة، ٢٠٢٦/١٠/٢٦) ────────
- * هو فرعُ الحمولة لا فرعُ الدفع، فيُسأل عنه مع المدينتين. مجموعةُ الخانة في
- * القاعدة تُضبط من الإعدادات، فيُنقَل مرّةً بعلامةٍ ولا يعيده الإقلاع.
+ * The branch moves to Pickup and delivery.
+ * It is the load's branch, not the payment branch, so it is asked with the two cities. The field's group in the database is set from settings, so it is moved once with a flag and startup does not redo it.
  */
-/** «سعر الشراء» قبل «سعر البيع» — مرّةً بعلامة، ثمّ لمن يرتّب من الإعدادات. */
+/** Buying price before selling price: once with a flag, then belongs to whoever orders from settings. */
 async function migratePriceOrder() {
   const marks = mongoose.connection.collection('migrations');
   const id = 'so-buy-before-sell-2026-10-26';
@@ -2773,23 +2515,17 @@ async function migrateBranchGroup() {
   const id = 'so-branch-to-pickup-delivery-2026-10-26';
   if (await marks.findOne({ _id: id })) return;
   await ShipmentOrderField.updateOne({ key: 'branch' }, { $set: { group: 'pickup_delivery', order: 3 } });
-  // upsert لا insert: العاملان يُقلعان معًا، والإدخالُ الثاني كان يرمي «مفتاحًا مكرَّرًا».
+  // upsert, not insert: both workers start together and the second insert threw a duplicate key error.
   await marks.updateOne({ _id: id }, { $setOnInsert: { at: new Date() } }, { upsert: true });
 }
 
 exports.ensureShipmentOrderDefaults = async () => {
-  // Dropped by request — the addresses added typing, not information. Removing
-  // them from the seed alone would leave the old rows; removing the rows alone
-  // would let the seed resurrect them. Both, idempotently.
-  // ــ ويُحذَف «سعر تأجير السائق» معهما ــــــــــــــــــــــــــــــــــــــ
-  // طُلب رفعُه: السائقُ لا يُؤجَّر بسعرٍ منفصلٍ في هذا القسم — الشراءُ من المورّد
-  // هو الرقم، وخانةٌ ثالثةٌ إلى جانبه تُملأ بالتخمين أو تُترك فارغةً في كلّ صفّ.
+  // Dropped by request: the addresses added typing, not information. Removing them from the seed alone would leave the old rows; removing the rows alone would let the seed resurrect them. Both, idempotently.
+  // Driver rental price is removed with them: the driver is not rented at a separate price in this section, the supplier purchase is the number, and a third field beside it is filled by guess or left empty in every row.
   await ShipmentOrderField.deleteMany({ key: { $in: ['addressFrom', 'addressTo', 'driverRentPrice'] } });
 
-  // ── والمواعيدُ التي بُذرت بالساعة تُحوَّل إلى يوم ───────────────────────────
-  // بُذرت الثلاثةُ `datetime` قبل هذا التغيير، والبذرُ لا يمسّ صفًّا قائمًا —
-  // فتبقى الشاشةُ تسأل عن ساعةٍ إلى الأبد. وهذا تصحيحُ نوعِ سؤالٍ لا إلغاءُ
-  // تعديلٍ لأحد: التسميةُ والترتيبُ وما ضُبط يبقى كما هو.
+  // Dates seeded with an hour are converted to a day.
+  // The three were seeded as `datetime` before this change and seeding does not touch an existing row, so the screen would keep asking for an hour forever. This corrects a question's type and cancels nobody's edit: label, order and settings stay.
   await ShipmentOrderField.updateMany(
     { key: { $in: ['pickupTime', 'startTime', 'arrivalTime'] }, inputType: 'datetime' },
     { $set: { inputType: 'date' } },
@@ -2805,19 +2541,15 @@ exports.ensureShipmentOrderDefaults = async () => {
     const exists = await ShipmentOrderField.exists({ key: f.key });
     if (!exists) await ShipmentOrderField.create({ ...f, isSystem: true });
   }
-  // Our own fleet: the Location Solutions trucks ARE our trucks, so they show
-  // in the vehicle picker as أسطولنا from day one instead of being retyped.
-  // Read-only from Ls2Vehicle; idempotent by plate; never overwrites an edit —
-  // the trial section stays independent of ops, but our own fleet is ours.
+  // Our own fleet: the Location Solutions trucks are our trucks, so they show in the vehicle picker as our fleet from day one instead of being retyped. Read-only from Ls2Vehicle; idempotent by plate; never overwrites an edit. The trial section stays independent of ops, but our own fleet is ours.
   try {
     const Ls2Vehicle = require('../models/Ls2Vehicle');
     const live = await Ls2Vehicle.find({}).select('plate name driver').lean();
     for (const v of live) {
       const plate = String(v.plate || '').trim() || String(v.name || '').trim();
       if (!plate) continue;
-      // ── ويُبحَث عنها بمفتاح لوحتها لا بنصّها ─────────────────────────
-      // كان البحثُ بالنصّ، فإذا جاءت الشاحنةُ نفسُها من المنصّة بصيغةٍ أخرى أُنشئت
-      // ثانيةً: ثمانٍ وخمسون شاحنةً من أسطولنا مكتوبةٌ مرّتين (٢٠٢٦/١٠/٢١).
+      // Looked up by plate key, not text.
+      // The lookup used to be by text, so when the same truck came from the platform in another format it was created again: 58 trucks of our fleet were registered twice.
       const { registryPlateKey, formatPlate } = require('../utils/plateKey');
       // eslint-disable-next-line no-await-in-loop
       const exists = await ShipmentOrderVehicle.findOne({ $or: [{ plate }, { plateKey: registryPlateKey(formatPlate(plate)) || '-' }] }).select('_id').lean();
@@ -2828,7 +2560,7 @@ exports.ensureShipmentOrderDefaults = async () => {
           name: '',
           truckType: 'سطحة', // the LS2 fleet is flatbed heavy trucks
           supplier: null,
-          ownership: 'ours',  // صريحًا: الغيابُ «لا أعلم» لا «ملكُنا»
+          ownership: 'ours',  // Explicit: absence means unknown, not ours
           defaultDriverName: String(v.driver || '').trim(),
           notes: 'من لوكيشن سوليوشن',
         });
@@ -2863,14 +2595,9 @@ exports.ensureShipmentOrderDefaults = async () => {
 
 
 /**
- * خيارٌ جديد يُضاف من شاشة إنشاء الشحنة — POST /fields/:id/options
- *
- * ── لماذا من هناك ───────────────────────────────────────────────────────────
- * مدينةٌ ليست في القائمة توقف إنشاءَ الشحنة: يخرج المستخدم إلى إعدادات القسم،
- * ويفقد ما كتبه. والإضافةُ من مكانها تُبقيه في عمله — والخيارُ يُكتب في نفس
- * تعريف الحقل، فيظهر في الإعدادات ولكلّ من يفتح الشاشة (`so:fields`).
- *
- * ولا يُنشئ حقلًا ولا يحذف خيارًا: إضافةٌ فقط، ولمن يملك إنشاءَ الشحنات.
+ * A new option added from the shipment creation screen: POST /fields/:id/options
+ * A city missing from the list would force the user out to settings and lose what he typed. The option is written into the same field definition, so it appears in settings and to everyone with the screen open (`so:fields`).
+ * Add only, for those who may create shipments; it creates no field and deletes no option.
  */
 exports.addFieldOption = async (req, res) => {
   try {
@@ -2897,8 +2624,7 @@ exports.addFieldOption = async (req, res) => {
       paymentMethod: String(req.body.paymentMethod || '').trim(),
     });
     await field.save();
-    // الحدثُ نفسُه الذي تسمعه الشاشاتُ لبقيّة تغييرات النموذج — كان يُبثّ
-    // باسمٍ ثالثٍ لا يسمعه أحد، فيُضاف الخيارُ ولا يراه زميلٌ فاتحٌ للصفحة.
+    // The same event the screens hear for other form changes: it used to broadcast under a third name nobody listened to, so the option was added but a colleague with the page open did not see it.
     emit('shipmentOrders:fields', { id: String(field._id) });
     try { require('../utils/ttlCache').clear('so:'); } catch (_) { /* */ }
     res.status(201).json({ field });

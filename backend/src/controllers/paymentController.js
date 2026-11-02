@@ -323,13 +323,9 @@ exports.deletePayment = async (req, res) => {
 };
 
 /**
- * تعديل دفعةٍ مسجَّلة — والمال لا يُدهَس، يُعاد حسابه.
- *
- * تغييرُ المبلغ في الصفّ وحده يترك الفاتورةَ ورصيدَ العميل على الرقم القديم،
- * فيصير سجلٌّ يقول شيئًا وميزانٌ يقول غيره. فيُعكَس أثرُ الدفعة القديم أوّلًا
- * ثم يُطبَّق الجديد — كأنّها حُذفت وسُجِّلت من جديد، وبأثرٍ محاسبيّ واحد.
- *
- * ولا يُغيَّر العميل ولا الفاتورة: تلك دفعةٌ أخرى تمامًا، تُحذف وتُسجَّل.
+ * Edit a recorded payment by recomputing money, not overwriting it.
+ * Changing only the amount leaves the invoice and customer balance on the old figure, so the old effect is reversed and the new one applied, as if deleted and re-recorded.
+ * Customer and invoice cannot change; that is a different payment (delete and re-record).
  */
 exports.updatePayment = async (req, res) => {
   try {

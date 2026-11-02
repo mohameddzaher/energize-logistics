@@ -1,20 +1,7 @@
 /**
- * أوامرُ تشغيل النقل الخفيف — ومزامنةُ التفويض مع سجلّ المركبات.
- *
- * ── ما أمرُ التشغيل ─────────────────────────────────────────────────────────
- * «هذا الموظّفُ يعمل على هذه المركبة، في هذا المشروع، بهذا الفرع، تحت هذا
- * المشرف، ويسكن هنا.» أمرٌ واحدٌ سارٍ لكلّ موظّف. وإنشاءُ أمرٍ جديدٍ يُغلق
- * السابقَ ولا يمحوه، فتاريخُ من رَكِبَ ماذا ومتى يُقرأ إلى الوراء.
- *
- * ── ولماذا يُكتب التفويضُ في قسم المركبات ──────────────────────────────────
- * التفويضُ ورقةٌ واحدةٌ لمركبةٍ واحدة، وموضعُها `VehicleMaster.authorizedPerson`
- * — تقرأها شاشةُ التفاويض وتُبرَز عند المرور. فلو كتبها هذا القسمُ عنده وحدَه
- * لصار للمركبة الواحدة مفوَّضان: واحدٌ يقرأه قسمُ النقل الخفيف وآخرُ يقرأه قسمُ
- * المركبات — وهو غلطٌ يُكتشف عند مخالفةٍ أو حادث لا قبله.
- *
- * فالنقلُ من هنا يكتب هناك، ويُقيَّد في سجلّ تجديدات المركبة، ويبثّ
- * `vreg:updated` فتتحدّث شاشاتُ قسم المركبات في اللحظة نفسها. والعكسُ محفوظ:
- * القسمُ الآخرُ يكتب في الموضع نفسِه، فما يُقرأ هنا هو ما هناك دائمًا.
+ * Light-transport operating orders, and authorization sync with the vehicle register.
+ * An order says this employee works on this vehicle, project, branch and supervisor, and lives here; one active order per employee, and a new one closes the previous without erasing it.
+ * Authorization is written in the vehicles section (`VehicleMaster.authorizedPerson`) so a vehicle never has two authorized persons: a transfer writes there, is logged in the vehicle renewals, and broadcasts `vreg:updated`.
  */
 const mongoose = require('mongoose');
 const { LightTransportEmployee, LightTransportHousing, LightTransportOrder } = require('../models/LightTransport');
@@ -27,10 +14,7 @@ const S = (v) => String(v == null ? '' : v).trim();
 const byName = (u) => [u?.firstName, u?.lastName].filter(Boolean).join(' ');
 const D = (v) => { const d = v ? new Date(v) : null; return d && !Number.isNaN(d.getTime()) ? d : null; };
 
-/**
- * البثُّ يمسّ القسمين: هذا القسمُ وقسمُ المركبات. والذاكرةُ تُمحى قبل البثّ —
- * وإلّا قرأ المستمعون ما قبل التغيير فبقيت الشاشةُ متأخّرةً تغييرًا واحدًا.
- */
+/** The broadcast touches two sections: this one and vehicles. The cache is cleared before broadcasting, otherwise listeners read pre-change data and the screen lags by one change. */
 const emitBoth = () => require('../utils/vehicleAnnounce').announceVehicles({});
 
 exports.listOrders = async (req, res) => {
@@ -47,8 +31,7 @@ exports.listOrders = async (req, res) => {
       if (S(q.from)) filter.startDate.$gte = new Date(S(q.from));
       if (S(q.to)) filter.startDate.$lte = new Date(`${S(q.to)}T23:59:59.999Z`);
     }
-    // والبحثُ يجد بأيّ رقم — ومنها ما ليس في صفّ الأمر: الرقمُ التسلسليُّ ورقمُ
-    // التفويض في سجلّ المركبات، فيُسأل عنه هناك ويُضاف بمعرِّف المركبة.
+    // Search finds by any number, including ones not on the order row: the serial number and authorization number in the vehicle register are looked up there and added by vehicle id.
     if (S(q.q)) {
       const { arabicSearchRegex } = require('../utils/arabicSearch');
       const term = S(q.q);
@@ -62,8 +45,7 @@ exports.listOrders = async (req, res) => {
           { 'authorizedPerson.authorizationNumber': rx }],
       }).select('_id').limit(400).lean();
       const ids = vm.map((v) => v._id);
-      // واللوحةُ تُقرأ بأيّ ترتيب — «ص ب 7918» و«7918 ص ب» لوحةٌ واحدة.
-      // راجع `plateKeyOf` في lightTransportController.
+      // A plate is read in any order: both letter/digit orders are one plate. See `plateKeyOf` in lightTransportController.
       const { plateKeyOf, looksLikePlate } = require('./lightTransportController');
       if (looksLikePlate(term)) {
         const want = plateKeyOf(term);
@@ -78,30 +60,27 @@ exports.listOrders = async (req, res) => {
       filter.$or = or;
     }
     const orders = await LightTransportOrder.find(filter)
-      // ورقةُ التفويضِ الحاضرةُ تُقرأ من سجلّ المركبات لا من الأمر: الأمرُ قيدُ
-      // لحظةِ إنشائه، والورقةُ تتغيّر بعده — من هنا أو من قسم المركبات.
+      // The current authorization paper is read from the vehicle register, not the order: the order is a snapshot at creation and the paper changes afterwards, from here or from vehicles.
       .populate('vehicle', 'plateNumber registrationTypeAr serialNumber authorizedPerson')
       .populate('housing', 'name')
       .sort({ startDate: -1, createdAt: -1 }).limit(3000).lean();
 
     /**
-     * ── والورقةُ باسم غيرِ الراكب حالةٌ تُعرَض ────────────────────────────────
-     * أربعةَ عشرَ مركبةً مفوَّضةٌ لشخصٍ وقائدُها الفعليُّ آخر. وهي ليست خطأً
-     * يُصحَّح بلا سؤال — الورقةُ باسم واحدٍ والراكبُ غيرُه واقعٌ يحدث. لكنّها
-     * تُعرَض صريحةً، وإلّا لم تُكتشف إلّا عند مخالفةٍ أو حادث.
+     * A paper in a name other than the rider is a state to show.
+     * Fourteen vehicles are authorized to one person while another actually drives. It is not an error to fix silently - the paper is in one name and the rider is another, which happens. But it is shown explicitly, otherwise it is found only at a violation or accident.
      */
     const shaped = orders.map((o) => {
       const holderId = S(o.vehicle?.authorizedPerson?.iqamaNumber);
       const holderName = S(o.vehicle?.authorizedPerson?.name);
       return {
         ...o,
-        // «أُنشئ من واقع الداتا (شيت المركبات)» من الاستيراد لا يُعرَض — راجع utils/importLabels.
+        // The import label meaning created from the data (vehicle sheet) is not shown - see utils/importLabels.
         notesAr: require('../utils/importLabels').stripImportNote(o.notesAr),
         createdByName: o.createdByName === 'استيراد شيت القسم' ? '' : o.createdByName,
         authorizedNowName: holderName,
         authorizedNowId: holderId,
         authorizationNumberNow: S(o.vehicle?.authorizedPerson?.authorizationNumber),
-        // خلافٌ حقيقيٌّ: ورقةٌ باسمٍ، وراكبٌ آخرُ يعمل عليها.
+        // A real discrepancy: a paper in one name and a different rider working on it.
         authorizationMismatch: !!holderId && !!S(o.employeeIdNumber) && holderId !== S(o.employeeIdNumber),
       };
     });
@@ -123,22 +102,19 @@ exports.listOrders = async (req, res) => {
 };
 
 /**
- * ── مَن يُختار في الأمر ─────────────────────────────────────────────────────
- * الموظّفون من هذا القسم وحدَه (لا من كلّ الأقسام)، والمركباتُ من سجلّ المركبات.
- * والقائمتان تُبنيان هنا لا في المتصفّح: قائمةُ مركباتٍ كاملةٌ ثلاثُمئةٍ وستٌّ
- * وثلاثون صفًّا تُنقل في كلّ فتحةِ نافذة، والمطلوبُ منها اللوحةُ والنوع.
+ * Who can be chosen in the order.
+ * Employees from this department only (not all departments), vehicles from the vehicle register. Both lists are built here, not in the browser: the full vehicle list of 336 rows would be shipped on every dialog open, when only plate and type are needed.
  */
 exports.orderOptions = async (req, res) => {
   try {
-    // المؤرشَفُ لا يُختار في أمر تشغيل — كأنّه حُذف.
+    // An archived employee cannot be chosen in an operating order, as if deleted.
     const AH = require('../utils/archivedHidden');
     const archSets = await AH.endedStaff();
     const [employees, vehicles, housings] = await Promise.all([
       LightTransportEmployee.find(AH.andAll({ isActive: { $ne: false } }, AH.notArchivedRow(archSets)))
         .select('name idNumber jobTitleAr staffKind projectAr cityAr vehicle vehiclePlate supervisorName supervisorUser')
         .sort({ name: 1 }).lean(),
-      // النقلُ الخفيفُ دراجاتٌ ومركباتٌ خاصّة، لا شاحنات — فالقائمةُ تُضيَّق
-      // بنوع التسجيل، وإلّا ظهرت الشاحناتُ الثقيلةُ في نافذةِ مندوب توصيل.
+      // Light transport is bikes and private vehicles, not trucks; the list is narrowed by registration type, otherwise heavy trucks would show in a delivery rider's dialog.
       VehicleMaster.find({ isActive: { $ne: false }, registrationTypeCode: { $in: ['motorcycle', 'private'] } })
         .select('plateNumber serialNumber registrationTypeAr brandAr modelAr authorizedPerson')
         .sort({ plateNumber: 1 }).lean(),
@@ -155,10 +131,10 @@ exports.orderOptions = async (req, res) => {
         _id: String(v._id), plateNumber: v.plateNumber, serialNumber: v.serialNumber,
         typeAr: v.registrationTypeAr,
         brand: [v.brandAr, v.modelAr].filter(Boolean).join(' '),
-        // ومن بيده التفويضُ الآن — يُرى قبل النقل فلا يُنقل ما هو منقول.
+        // And who holds the authorization now, shown before the transfer so an already-transferred vehicle is not transferred again.
         authorizedName: v.authorizedPerson?.name || '',
         authorizedId: v.authorizedPerson?.iqamaNumber || '',
-        // والقائدُ الفعليّ (مَن عليه في هذا القسم) — هو ما يُسأل عنه عند أمر التشغيل.
+        // And the actual driver (who is on it in this department) - what is asked at operating order time.
         driverId: (() => { const d = employees.find((e) => String(e.vehicle || '') === String(v._id)); return d ? String(d._id) : ''; })(),
         driverName: (() => { const d = employees.find((e) => String(e.vehicle || '') === String(v._id)); return d ? d.name : ''; })(),
       })),
@@ -167,11 +143,8 @@ exports.orderOptions = async (req, res) => {
         rooms: (h.rooms || []).map((r) => ({ name: r.name, kind: r.kind, capacity: r.capacity })),
       })),
       /**
-       * ── المشرفون: حساباتُ الإشراف على النظام ─────────────────────────────
-       * كانت أسماءَ إداريّي القسم — أي مَن كُتب في السجلّ إداريًّا، مشرفًا كان
-       * أو ميكانيكيًّا أو عاملَ نظافة. وأمرُ التشغيل يقول «مَن يقف على هذا
-       * الرجل صباحًا»، وجوابُه حسابٌ يفتح شاشةَ التفقّد لا اسمٌ في قائمة.
-       * راجع `utils/b2cSupervisors`.
+       * Supervisors: system supervision accounts.
+       * The list used to be the department's administrators' names, i.e. anyone written as administrative, supervisor, mechanic or cleaner. An operating order says who stands over this man in the morning, and the answer is an account that opens the inspection screen, not a name in a list. See `utils/b2cSupervisors`.
        */
       supervisors: await listSupervisors(),
     });
@@ -183,14 +156,9 @@ exports.orderOptions = async (req, res) => {
 
 
 /**
- * ── نقلُ تفويضِ مركبةٍ وحدَه ────────────────────────────────────────────────
- * ليس كلُّ نقلٍ أمرَ تشغيلٍ جديدًا. والمركبةُ قد تكون مفوَّضةً لشخصٍ وقائدُها
- * الفعليُّ شخصٌ آخر — وهي حالةٌ قائمةٌ في أربعةَ عشرَ مركبةً عندنا، وليست خطأً:
- * الورقةُ باسم واحدٍ والراكبُ غيرُه. فقد يُطلَب تصحيحُ الورقة وحدَها، أو نقلُها
- * من مندوبٍ إلى مندوبٍ آخرَ يمسك المركبةَ أصلًا.
- *
- * والكتابةُ في سجلّ المركبات كما هي في أمر التشغيل — موضعُ التفويض واحدٌ لا
- * يتعدّد، وإلّا قرأ قسمٌ غيرَ ما يقرأ الآخر.
+ * Transferring a vehicle's authorization on its own.
+ * Not every transfer is a new operating order. A vehicle may be authorized to one person while another actually drives it - an existing case on fourteen vehicles, not an error: the paper is in one name and the rider is another. So correcting the paper alone may be requested, or moving it from one rider to another who already holds the vehicle.
+ * Writing to the vehicle register is the same as in the operating order: the authorization has one place, otherwise sections would read different values.
  */
 exports.moveAuthorization = async (req, res) => {
   try {
@@ -199,7 +167,7 @@ exports.moveAuthorization = async (req, res) => {
     const vehicle = await VehicleMaster.findById(S(b.vehicle));
     if (!vehicle) return res.status(404).json({ message: 'المركبةُ غير موجودة في سجلّ المركبات' });
 
-    // إلى مَن: موظّفٌ من هذا القسم، أو رفعُ التفويض بلا بديل.
+    // To whom: an employee of this department, or remove the authorization with no replacement.
     let to = null;
     if (S(b.toEmployee)) {
       if (!mongoose.isValidObjectId(S(b.toEmployee))) return res.status(400).json({ message: 'موظّفٌ غير معروف' });
@@ -225,7 +193,7 @@ exports.moveAuthorization = async (req, res) => {
       expiryDate: D(b.expiryDate) || vehicle.authorizedPerson?.expiryDate || null,
     } : { name: '', iqamaNumber: '', phone: '', authorizationNumber: '', startDate: null, expiryDate: null };
 
-    // قيدٌ في سجلّ المركبة: مَن قبلَ مَن، ومن أيّ بابٍ جاء التغيير.
+    // An entry in the vehicle's log: who took over from whom, and through which door the change came.
     vehicle.renewals = vehicle.renewals || [];
     vehicle.renewals.push({
       document: 'authorization',
@@ -240,7 +208,7 @@ exports.moveAuthorization = async (req, res) => {
     });
     await vehicle.save();
 
-    // ويُقيَّد في سجلّ الموظّفين: عند من أخذها وعند من فقدها.
+    // And in the employees' log: with whom it was taken and from whom it was lost.
     if (to) {
       to.history.push({
         kind: 'authorization', by: req.user?._id, byName: byName(req.user),
@@ -280,21 +248,14 @@ exports.createOrder = async (req, res) => {
     if (!mongoose.isValidObjectId(S(b.ltEmployee))) return res.status(400).json({ message: 'اختر الموظّف' });
     const emp = await LightTransportEmployee.findById(S(b.ltEmployee));
     if (!emp) return res.status(404).json({ message: 'الموظّف غير موجود' });
-    // ── ونقلُ المشروع بأمر التشغيل كنقله من السجلّ: لمن يملكه وحدَه ──────────
-    // (صاحبُ الشركة، ٢٠٢٦/١٠/١٩) — راجع utils/b2cEntry.canTransfer.
+    // A project transfer through an operating order is like one from the register: only by whoever owns it. See utils/b2cEntry.canTransfer.
     if (S(b.projectAr) && S(b.projectAr) !== S(emp.projectAr) && !require('../utils/b2cEntry').canTransfer(req.user)) {
       return res.status(403).json({ message: 'نقلُ المندوب إلى مشروعٍ آخر لنائب مدير قطاع الأفراد ومدير القسم والسوبر أدمن والأدمن' });
     }
 
-    // ── ولا يُشغَّل من ليس على رأس العمل ─────────────────────────────────
-    // حالةُ الموظّف في الموارد البشريّة خبرٌ قاطع؛ وأمرُ تشغيلٍ لمن ليس على
-    // رأس العمل يعني مركبةً مسجَّلةً على من ليس في العمل. وكان الشرطُ
-    // «المنتهي» وحدَه، فالموقوفُ ومن في إجازةٍ كانا يُشغَّلان — وهما ليسا على
-    // رأس العمل. فالشرطُ على الحالة الواحدة التي تصحّ: `active`.
-    //
-    // ومن عاد فعلًا ولم يُحدَّث ملفُّه بعد: القسمُ يرسل طلبًا إلى الموارد
-    // البشريّة من «طلبات الموارد البشرية» فتُصحَّح الحالةُ ثمّ يُشغَّل — راجع
-    // models/StaffStatusRequest.
+    // Someone not on duty is not assigned.
+    // The HR status of the employee is authoritative; an operating order for someone not on duty means a vehicle registered to a person not working. The condition used to be 'terminated' only, so suspended and on-leave staff could be assigned, though not on duty. The condition is now the one valid status: `active`.
+    // If he has actually returned and his file is not updated yet, the department sends a request to HR from 'HR requests', the status is corrected, then he is assigned. See models/StaffStatusRequest.
     const HR_STATUS_AR = {
       terminated: 'أُنهيت خدمتُه', suspended: 'موقوف', on_leave: 'في إجازة',
       resigned: 'استقال', retired: 'متقاعد',
@@ -313,16 +274,14 @@ exports.createOrder = async (req, res) => {
       if (!mongoose.isValidObjectId(S(b.vehicle))) return res.status(400).json({ message: 'مركبةٌ غير معروفة' });
       vehicle = await VehicleMaster.findById(S(b.vehicle));
       if (!vehicle) return res.status(404).json({ message: 'المركبةُ غير موجودة في سجلّ المركبات' });
-      // ── ومركبةٌ واحدةٌ لقائدٍ فعليٍّ واحد (صاحبُ الشركة، ٢٠٢٦/١٠/٢٠) ────────
-      // القائدُ الفعليُّ هو مَن عليه أمرُ التشغيل — لا المفوَّض (التفويضُ قد يكون
-      // باسم غيره). فإن كان على المركبة قائدٌ آخر لا يُقبل الأمرُ حتى يُقال أين
-      // يذهب: إلى مركبةٍ أخرى، أو بلا مركبة. فلا يكون للمركبة قائدان.
+      // One vehicle, one actual driver.
+      // The actual driver is whoever has the operating order, not the authorized person (the paper may be in another name). If another driver is on the vehicle, the order is not accepted until it says where he goes: another vehicle, or none. So a vehicle never has two drivers.
       const current = await LightTransportEmployee.findOne({ vehicle: vehicle._id, _id: { $ne: emp._id } })
         || await LightTransportEmployee.findOne({
           _id: (await LightTransportOrder.findOne({ vehicle: vehicle._id, status: { $in: ['active', 'hold'] }, ltEmployee: { $ne: emp._id } }).select('ltEmployee').lean())?.ltEmployee || null,
         });
       if (current) {
-        const decision = S(b.currentDriverTo); // 'none' | معرّفُ مركبة
+        const decision = S(b.currentDriverTo); // 'none' or a vehicle id
         if (!decision) {
           return res.status(409).json({
             code: 'VEHICLE_HAS_DRIVER',
@@ -339,7 +298,7 @@ exports.createOrder = async (req, res) => {
           const toTaken = await LightTransportEmployee.findOne({ vehicle: toVehicle._id, _id: { $nin: [current._id, emp._id] } }).select('name').lean();
           if (toTaken) return res.status(400).json({ message: `المركبة ${toVehicle.plateNumber} قائدُها ${toTaken.name} — اختر مركبةً بلا قائد` });
         }
-        // أمرُ القائد الحاليّ يُغلَق، ويُفتح له أمرٌ على مركبته الجديدة إن اختيرت.
+        // The current driver's order is closed, and a new order on his new vehicle is opened if one was chosen.
         await LightTransportOrder.updateMany({ ltEmployee: current._id, status: { $in: ['active', 'hold'] } },
           { $set: { status: 'ended', endDate: D(b.startDate) || new Date(), endReasonAr: `نُقلت مركبتُه ${vehicle.plateNumber} إلى ${emp.name}` } });
         if (toVehicle) {
@@ -370,13 +329,13 @@ exports.createOrder = async (req, res) => {
       }
     }
 
-    // السكنُ يُحسَب بالقواعد نفسِها التي تحسبه بها صفحةُ الموظّف — دالّةٌ واحدة.
+    // Housing is computed by the same rules as the employee page: one function.
     if (b.housing !== undefined) {
       await applyHousing(emp, b.housing, b.housingRoom, res);
       if (res.headersSent) return undefined;
     }
 
-    // الأمرُ السابقُ يُغلَق ولا يُمحى.
+    // The previous order is closed, not erased.
     const previous = await LightTransportOrder.findOne({ ltEmployee: emp._id, status: { $in: ['active', 'hold'] } });
     if (previous) {
       previous.status = 'ended';
@@ -385,10 +344,7 @@ exports.createOrder = async (req, res) => {
       await previous.save();
     }
 
-    /**
-     * المشرفُ المطلوبُ في الأمر: حسابٌ يُختار. وغيابُه يعني «كما هو على الموظّف»
-     * لا «بلا مشرف» — فأمرُ تشغيلٍ لمركبةٍ لا يُسقِط إشرافًا قائمًا.
-     */
+    /** The supervisor in the order is an account chosen. Absent means 'as on the employee', not 'no supervisor': an operating order for a vehicle must not drop existing supervision. */
     let supervisor = null;
     if (S(b.supervisorUser)) {
       supervisor = await resolveSupervisor(S(b.supervisorUser));
@@ -419,9 +375,8 @@ exports.createOrder = async (req, res) => {
       createdByName: byName(req.user),
     });
 
-    // ── الحالةُ الحاضرةُ تُكتب على الموظّف ────────────────────────────────
-    // القائمةُ تُقرأ من صفّ الموظّف لا من آخر أمر: صفٌّ واحدٌ لكلّ موظّف أسرعُ
-    // وأصدقُ في القراءة. والأمرُ هو الأثر.
+    // The current state is written on the employee.
+    // The list reads from the employee row, not the last order: one row per employee is faster and more truthful to read. The order is the trail.
     const moves = [];
     if (S(order.projectAr) !== S(emp.projectAr)) moves.push({ kind: 'project', fromValue: S(emp.projectAr), toValue: S(order.projectAr) });
     if (S(order.cityAr) !== S(emp.cityAr)) moves.push({ kind: 'city', fromValue: S(emp.cityAr), toValue: S(order.cityAr) });
@@ -440,10 +395,10 @@ exports.createOrder = async (req, res) => {
     emp.history.push({ kind: 'order', by: req.user?._id, byName: byName(req.user), toValue: order.orderNumber, note: S(b.notesAr) });
     emp.lastModifiedBy = req.user?._id;
     await emp.save();
-    // ويراه مشرفُه في تفقّد بداية الدوام من هذه اللحظة.
+    // And his supervisor sees him in the start-of-shift check from this moment.
     if (supChanged) await syncRepSupervisor(emp.name, emp.supervisorUser, { ltId: emp._id });
 
-    // ── ونقلُ التفويض يُكتب في سجلّ المركبات ──────────────────────────────
+    // An authorization transfer is written to the vehicle register
     if (vehicle && b.moveAuthorization) {
       const before = vehicle.authorizedPerson?.name || '';
       vehicle.authorizedPerson = {
@@ -455,7 +410,7 @@ exports.createOrder = async (req, res) => {
         startDate: D(b.authorizationStart) || order.startDate,
         expiryDate: D(b.authorizationEnd) || vehicle.authorizedPerson?.expiryDate || null,
       };
-      // قيدٌ في سجلّ المركبة نفسِها: مَن قبلَ مَن، ومن أيّ بابٍ جاء التغيير.
+      // An entry in the vehicle's own log: who took over from whom, and through which door the change came.
       vehicle.renewals = vehicle.renewals || [];
       vehicle.renewals.push({
         document: 'authorization',
@@ -490,10 +445,7 @@ exports.createOrder = async (req, res) => {
   }
 };
 
-/**
- * إنزالُ الموظّف عن المركبة. والمركبةُ تصير بلا راكبٍ — وهي حالةٌ تُقرأ في
- * اللوحة («مركباتٌ بلا موظّف») لا فراغٌ صامت.
- */
+/** Taking an employee off a vehicle. The vehicle becomes riderless, a state shown on the dashboard ('vehicles without an employee'), not a silent gap. */
 exports.endOrder = async (req, res) => {
   try {
     const order = await LightTransportOrder.findById(req.params.id);
@@ -515,9 +467,8 @@ exports.endOrder = async (req, res) => {
       await emp.save();
     }
 
-    // ── والتفويضُ يُرفَع أيضًا إن طُلب ───────────────────────────────────
-    // إنزالُ الراكبِ وإبقاءُ التفويض باسمه يعني مركبةً مسجَّلةً على من لا
-    // يقودها — وهي الحالةُ التي تُكتشف عند مخالفة.
+    // The authorization is lifted too if requested.
+    // Taking the rider off while leaving the authorization in his name means a vehicle registered to someone who does not drive it, which is only found at a violation.
     if (order.vehicle && req.body.releaseAuthorization) {
       const vehicle = await VehicleMaster.findById(order.vehicle);
       if (vehicle && S(vehicle.authorizedPerson?.iqamaNumber) === S(order.employeeIdNumber)) {

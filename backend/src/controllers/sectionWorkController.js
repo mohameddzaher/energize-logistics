@@ -10,7 +10,7 @@ const User = require('../models/User');
 const { emitToUser, emitToAll } = require('../websocket/socketManager');
 const { createNotification } = require('../services/notificationService');
 
-// إشعار للمكلَّف عند تعيين مهمة/شكوى له (غير المنشئ نفسه) — يظهر لحظيًا وبصوت على الموبايل.
+// Notify the assignee when a task or complaint is assigned to him (not the creator): live, with sound on mobile.
 const notifyAssignee = async (doc, req, isComplaint, label) => {
   if (!doc.assignedTo || sameId(doc.assignedTo, req.user._id)) return;
   try {
@@ -22,7 +22,7 @@ const notifyAssignee = async (doc, req, isComplaint, label) => {
       relatedEntity: isComplaint ? 'SectionComplaint' : 'SectionTask',
       relatedEntityId: doc._id,
     });
-  } catch (e) { /* الإشعار إضافة — لا يفشل الحفظ */ }
+  } catch (e) { /* The notification is an extra: it must not fail the save */ }
 };
 
 // Refresh trigger for every open tasks/complaints board — each client refetches
@@ -33,9 +33,7 @@ const broadcastWork = (section, modelName) => {
 };
 
 // Sections that may own tasks/complaints (mirror of the frontend SECTIONS list).
-// كل قسم له موظفين له مهام وشكاوى. مراجعة الأعمال مش هنا عن قصد: مالهاش أدوار
-// خاصة بيها — دي منتدى بين مديري الأقسام، و«مهامي» عندها معناها بنود الاجتماعات
-// اللي بتتقرا من مجموعة تانية خالص.
+// Every section with staff has tasks and complaints. Business review is excluded on purpose: it has no roles of its own, it is a forum between section managers, and My Tasks there means meeting items read from a different collection.
 const SECTIONS = [
   'crm', 'sales', 'accounting', 'procurement', 'hr', 'ops', 'customs',
   'marketing', 'bd', 'it', 'fleet', 'contracts', 'vehicles',
@@ -44,12 +42,8 @@ const SECTIONS = [
 ];
 
 /**
- * سلاسلُ هذه الشاشة ← مفاتيحُ الأقسام في مصفوفة الصلاحيّات.
- *
- * هنا الأقسامُ سلاسلُ صغيرةٌ في المسار (`ls2`، `fleet`)، وهناك مفاتيحُ
- * معروضةٌ (`Location Solutions`، `Fleet Management`). وهما اسمان لشيءٍ واحد،
- * فتُربَط الترجمةُ صراحةً — والمقارنةُ بلا ترجمةٍ تفشل صامتةً فتُقرأ «لا قسم»
- * وتُفتَح القائمةُ للجميع، وهو عكسُ المقصود بالضبط.
+ * This screen's section strings map to the permission matrix's section keys.
+ * Here sections are short strings in the path (`ls2`, `fleet`); there they are display keys (`Location Solutions`, `Fleet Management`). They name the same thing, so the translation is explicit: comparing without it fails silently, reads as no section and opens the list to everyone, the opposite of the intent.
  */
 const SECTION_KEY_OF = {
   crm: 'CRM', sales: 'Sales', accounting: 'Accounting', procurement: 'Procurement',
@@ -164,20 +158,13 @@ const complaints = makeHandlers(SectionComplaint, 'subject', ['subject', 'descri
 
 // People a task/complaint can be assigned to (active internal staff).
 /**
- * مَن يصحّ إسنادُ مهمّةٍ إليه في هذا القسم.
- *
- * ── ولا تُسنَد مهمّةٌ إلى من لا يفتح القسم ────────────────────────────────
- * كانت القائمةُ كلَّ من في الشركة — مئتَي اسمٍ في منسدلةٍ واحدة. وأثرُ ذلك
- * أمران: أنّ اختيارَ زميلٍ صار بحثًا في كومة، وأنّ المهمّةَ قد تُسنَد إلى من
- * لا يملك فتحَ القسم أصلًا — فتصل إليه مهمّةٌ في شاشةٍ لا يستطيع فتحها.
- *
- * فتُقرأ من مصفوفة الصلاحيّات نفسِها التي يحرس بها الخادمُ القسم: مَن له
- * «عرض» أو «تعديل» فيه فهو من فريقه هنا. وأيُّ تغييرٍ في المصفوفة ينعكس في
- * القائمة في اللحظة نفسِها بلا سطرٍ يُضاف هنا.
+ * Who a task in this section may be assigned to.
+ * The list used to be everyone in the company (~200 names in one dropdown), so picking a colleague was a search through a pile and a task could go to someone who cannot open the section, appearing on a screen he cannot open.
+ * It is now read from the same permission matrix the server uses to guard the section: anyone with view or edit is on its team here. A matrix change shows in the list at once with no line added here.
  */
 async function assignees(req, res) {
   try {
-    // المؤرشَفُ لا يُختار ولا يُسنَد إليه — كأنّه حُذف.
+    // An archived person is not selectable and cannot be assigned, as if deleted.
     const archSets = await require('../utils/endedStaff').endedStaff();
     const users = (await User.find({ isActive: true, role: { $nin: require('../config/scopedRoles').EXTERNAL_ROLES } })
       .select('firstName lastName role')
@@ -192,7 +179,7 @@ async function assignees(req, res) {
     const { FULL_ACCESS_ROLES } = require('../config/constants');
     const { defaultAccess } = require('../config/sections');
 
-    // الأدوارُ تُسأل مرّةً لا مرّةً لكلّ مستخدم: عشراتُ الأدوار ومئاتُ الناس.
+    // Roles are queried once, not once per user: dozens of roles, hundreds of people.
     const roles = [...new Set(users.map((u) => u.role))];
     const allowed = new Set();
     await Promise.all(roles.map(async (role) => {

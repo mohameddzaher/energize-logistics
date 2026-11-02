@@ -1,20 +1,13 @@
 /**
- * تفقُّد بداية الدوام — شاشةُ المشرف وسجلُّ الإدارة وتحليلُهما.
- *
- * ── القسمةُ التي يقوم عليها الملفّ ────────────────────────────────────────
- * المشرفُ يرى مندوبيه هو ويكتب فيهم (`myReps` / `submit`).
- * والإدارةُ ترى الجميعَ ولا تكتب إلّا مراجعتَها (`list` / `analytics` / `review`).
- *
- * وما يراه المشرفُ محسومٌ من `B2CRep.supervisor` لا من دورِه — فلو فتح الشاشةَ
- * مَن لا مندوبَ له لم يرَ شيئًا، ولو حاول أن يُفقّد مندوبَ غيره رُدَّ. راجع
- * `assertOwnsRep`.
+ * Start-of-duty check: supervisor screen, management log and their analysis.
+ * A supervisor sees and writes for their own reps (myReps / submit). Management sees everyone and writes only its review (list / analytics / review).
+ * Visibility comes from B2CRep.supervisor, not from the role; checking another supervisor's rep is rejected (see assertOwnsRep).
  */
 const mongoose = require('mongoose');
 const B2CDutyCheck = require('../models/B2CDutyCheck');
 const B2CRep = require('../models/B2CRep');
 const User = require('../models/User');
-// يُطلَبان ليُسجَّل مخطّطاهما: `populate('branch')` يفشل بـ MissingSchemaError
-// إن لم يُحمَّل الموديل، ولا يظهر ذلك إلّا خارج الخادم (سكربت، اختبار، عامل).
+// Required so their schemas get registered: populate('branch') fails with MissingSchemaError when the model is not loaded, which only shows outside the server (script, test, worker).
 require('../models/Branch');
 require('../models/B2CProject');
 const { saveUploadFile, deleteStoredFile } = require('../utils/fileStore');
@@ -23,28 +16,20 @@ const logAudit = require('../utils/auditLogger');
 const { createNotification } = require('../services/notificationService');
 const { emitToAll } = require('../websocket/socketManager');
 
-/** مَن يصلح أن يُسنَد إليه مندوب. */
-// أدوارُ الإشراف من موضعٍ واحد: سجلُّ النقل الخفيف يُسنِد بها، وهذه الشاشةُ
-// تقرأ بها — وقائمتان تفترقان تعني رجلًا مُسنَدًا لا يراه مشرفُه.
+/** Who can be assigned a rep. */
+// Supervision roles come from one place: the light-transport registry assigns with them and this screen reads with them. Two diverging lists would leave an assigned rep invisible to their supervisor.
 const { SUPERVISOR_ROLES } = require('../utils/b2cSupervisors');
 /**
- * ── ومديرُ المشروع يقرأ سجلَّ قسمه ──────────────────────────────────────────
- *
- * كان القارئُ للسجلّ كلِّه: مديرُ النظام ومديرُ القطاع. ومديرُ المشروع خارجَه —
- * فيرى ما سجّله بيده وما وقع على مناديبه وحدهم، ولا يرى تفقّدَ مشروعه إن قام به
- * مشرفٌ آخر. وهو الذي يُسأل عن مشروعه صباحًا.
- *
- * والتفقّدُ ليس سرًّا داخل القسم: هو أثرُ عملٍ يُراجَع. فمن يدير مشروعًا يقرأ
- * السجلَّ كما يقرؤه مديرُ القطاع. والكتابةُ تبقى محروسةً كما هي (مشرفٌ يسجّل،
- * والمراجعةُ لمن يملكها).
+ * A project manager reads their section's log.
+ * Previously only the system admin and sector manager read the whole log, so a project manager saw only their own records and their reps' records, and missed checks done by another supervisor on their project. The check is a reviewable work trace, not a secret inside the department. Writing stays guarded (a supervisor records; review belongs to its owners).
  */
 const FULL_VIEW_ROLES = ['super_admin', 'admin', 'it_manager', 'it_specialist',
   'b2c_manager', 'b2c_deputy', 'b2c_project_lead',
-  // أهلُ المال يرون القسمَ كلَّه كما يراه مديرُ النظام — لا مناديبَ مشرفٍ بعينه.
+  // Finance roles see the whole section like the system admin, not one supervisor's reps.
   ...require('../config/financeAuthority').FINANCE_FULL_ROLES];
 const canSeeAll = (u) => FULL_VIEW_ROLES.includes(u?.role || '');
 
-/** مفتاحُ اليوم بتوقيت الرياض — لا بتوقيت الخادم ولا بتوقيت متصفّح المستخدم. */
+/** Day key in Riyadh time, not server time or the user's browser time. */
 const RIYADH = 'Asia/Riyadh';
 const dayKeyOf = (d = new Date()) => {
   const p = new Intl.DateTimeFormat('en-CA', {
@@ -58,26 +43,18 @@ const partsOf = (key) => {
 };
 const validKey = (k) => /^\d{4}-\d{2}-\d{2}$/.test(String(k || ''));
 
-/** أنواعُ صور الخروج — كلُّ خروجٍ يحتاجها الثلاثة. */
-// ── ثلاثٌ تُطلَب، ورابعةٌ ليوم الخميس ──────────────────────────────────────
-// صورُ المندوب والدبّاب والبوكس شرطُ بدء الدوام — بها تُقارَن المركبةُ إن رجعت
-// مكسورة. و«المحتوى الإعلاني» غيرُها: لقطةٌ للملصق على الدبّاب تُطلَب أسبوعيًّا
-// يوم الخميس، فليست شرطًا لبدء الدوام ولا تُقبَل في غير يومها — وإلّا صارت
-// «صورةَ أيّ يوم» ولا يُعرف أسبوعُها. وتتكرّر: الملصقُ أكثرُ من وجه.
+/** Exit photo kinds; every exit needs all three. */
+// Three photos are required and a fourth is for Thursday. Rep, scooter and box photos are the start-of-duty condition, used to compare the vehicle if it returns broken. The advertising-content photo is a weekly sticker snapshot taken on Thursday; it is not a start condition and is rejected on other days, otherwise it would be 'a photo from any day' with no known week. It can repeat since the sticker has several sides.
 const REQUIRED_PHOTO_KINDS = ['rep', 'vehicle', 'box'];
 const AD_KIND = 'ad';
 const PHOTO_KINDS = [...REQUIRED_PHOTO_KINDS, AD_KIND];
 const PHOTO_KIND_AR = { rep: 'صورة المندوب', vehicle: 'صورة الدبّاب', box: 'صورة البوكس', ad: 'المحتوى الإعلاني' };
-/** الخميس = ٤ (الأحد صفر). يُقرأ من مفتاح اليوم نفسِه لا من ساعة الخادم. */
+/** Thursday = 4 (Sunday is 0); read from the day key itself, not the server clock. */
 const isThursday = (dateKey) => new Date(`${dateKey}T12:00:00Z`).getUTCDay() === 4;
 
 const populate = (q) => q
-  // ومع المندوب مشرفُه المسؤول: التقريرُ يقول مَن يُسأل عنه، و`supervisor`
-  // أدناه يقول مَن تفقّده فعلًا — سؤالان مختلفان بعد أن صار أيُّ مشرفٍ يتفقّد
-  // أيَّ مندوب.
-  //
-  // والموضوعُ صفُّ السجلّ (`ltEmployee`)، و`rep` لصفوفٍ قديمةٍ كُتبت بحساب
-  // التطبيق — يُقرآن معًا فلا ينكسر تاريخ.
+  // The rep comes with the responsible supervisor: the report says who is accountable, while `supervisor` below says who actually checked, two different questions now that any supervisor can check any rep.
+  // The subject is the registry row (`ltEmployee`), and `rep` covers old rows written with the app account; both are read so history is intact.
   .populate({ path: 'ltEmployee', select: 'name idNumber vehiclePlate vehicleTypeAr projectAr cityAr supervisorUser supervisorName dutySupervisorUser dutySupervisorName',
     populate: [
       { path: 'dutySupervisorUser', select: 'firstName lastName role' },
@@ -90,21 +67,13 @@ const populate = (q) => q
   .populate('project', 'name nameAr')
   .populate('review.by', 'firstName lastName');
 
-// ═══════════════════════════════════════════════════════════════════════════
-//  شاشةُ المشرف
-// ═══════════════════════════════════════════════════════════════════════════
+// Supervisor screen
 
 /**
- * مندوبو هذا المشرف ومعهم تفقُّدُ اليوم إن وُجد.
- *
- * يعودان معًا لا في نداءين: الشاشةُ لا تعرض «اختر مندوبًا» ثمّ تكتشف بعد
- * الضغط أنّه فُقِّد صباحًا. ومَن فُقِّد يظهر منتهيًا ومعه صورتُه.
+ * This supervisor's reps with today's check if any.
+ * Returned together, not in two calls: the screen should not offer a rep and then discover after the tap that they were already checked this morning. A checked rep shows as done with the photo.
  */
-/**
- * نوعُ المركبة كما تكتبه شاشةُ التفقّد، من نوعِ تسجيلها في سجلّ المركبات.
- * الشاشةُ تعرف ثلاثةً (دراجة/سيارة/أخرى)، والسجلُّ يكتب «دراجة نارية» و«فان»
- * و«كيا» — فالترجمةُ في موضعٍ واحد.
- */
+/** Vehicle type as the check screen writes it, from the registration type in the vehicle registry. The screen knows three (bike/car/other) while the registry writes values like motorcycle, van and a brand name, so the translation lives in one place. */
 const vehicleTypeKey = (typeAr) => {
   const v = String(typeAr || '');
   if (/دراج/.test(v)) return 'motorcycle';
@@ -113,15 +82,9 @@ const vehicleTypeKey = (typeAr) => {
 };
 
 /**
- * ── الدبّاباتُ: من سجلّ المركبات ─────────────────────────────────────────────
- *
- * التفقّدُ يقع على المندوب أو على الدبّاب. والدبّاباتُ كلُّ ما نوعُ تسجيله
- * «دراجة» في سجلّ المركبات، إلّا المسروقَ (لا يخرج من محطّة).
- *
- * والربطُ بينهما من السجلّين لا من الشاشة: راكبُ الدبّاب هو المندوبُ الذي لوحتُه
- * في سجلّ النقل الخفيف لوحةُ الدبّاب، فإن لم يكن فالمفوَّضُ عليه (برقم إقامته).
- * والمفتاحُ `registryPlateKey` — به كُتب `VehicleMaster.plateKey`، وفيه الحروفُ مع
- * الأرقام: «أ س ل 5546» و«ب س ل 5546» دبّابان لا واحد.
+ * Scooters come from the vehicle registry.
+ * A check targets the rep or the scooter. Scooters are every vehicle registered as a bike, except stolen ones (they do not leave a station).
+ * The link comes from both registries: the rider is the rep whose light-transport plate is the scooter's plate, otherwise the person authorized on it (by residence number). The key is `registryPlateKey`, which wrote VehicleMaster.plateKey and keeps letters with digits, so two plates differing only in letters are two scooters.
  */
 const { registryPlateKey } = require('../utils/plateKey');
 const bikeKey = (v) => v.plateKey || registryPlateKey(v.plateNumber) || '';
@@ -130,7 +93,7 @@ async function dutyBikes() {
   return VehicleMaster.find({ registrationTypeAr: /دراج/, sectorAr: { $ne: 'مسروق' }, isActive: { $ne: false } })
     .select('plateNumber plateKey sectorAr departmentAr cityAr authorizedPerson.name authorizedPerson.iqamaNumber').lean();
 }
-/** يبني دالّةَ «راكبُ هذا الدبّاب» من صفوف المناديب (غير قائدي السيّارات). */
+/** Builds the 'rider of this scooter' lookup from the rep rows (excluding car drivers). */
 function riderFinder(reps) {
   const byPlate = new Map();
   const byId = new Map();
@@ -143,11 +106,8 @@ function riderFinder(reps) {
     || byId.get(String(bike.authorizedPerson?.iqamaNumber || '').trim())
     || null;
 }
-/**
- * منتهي الخدمة — في سجلّ القسم أو في الموارد البشريّة — لا يُتفقَّد ولا يُعَدّ،
- * ولا يُنسَب إليه دبّاب. قاعدةُ كلّ الأقسام (راجع isEnded في lightTransportController).
- */
-// وحالةُ العمل من الموارد البشريّة متى وُجد ملف — وإلّا آخرُ ما كُتب في السجلّ.
+/** Ended service, in the section registry or in HR, is not checked, counted, or assigned a scooter. Same rule as every section (see isEnded in lightTransportController). */
+// Work status comes from HR when a file exists, otherwise the last value written in the registry.
 const endedRep = (e) => (e.employee && typeof e.employee === 'object' && e.employee.employmentStatus
   ? e.employee.employmentStatus === 'terminated'
   : e.workStatusAr === 'إنهاء خدمة');
@@ -162,23 +122,14 @@ const riderReps = async () => {
 exports.myReps = async (req, res) => {
   try {
     const dateKey = validKey(req.query.date) ? req.query.date : dayKeyOf();
-    // الإدارةُ قد تفتح الشاشةَ نيابةً عن مشرف — تُمرَّر `supervisor` صراحةً.
+    // Management may open the screen on behalf of a supervisor, so `supervisor` is passed explicitly.
     const asUser = canSeeAll(req.user) && req.query.supervisor ? req.query.supervisor : req.user._id;
     const { LightTransportEmployee } = require('../models/LightTransport');
 
     /**
-     * ── كشفُ المناديب هو سجلُّ النقل الخفيف ─────────────────────────────────
-     *
-     * لا `B2CRep`: ذلك سجلُّ حساباتِ تطبيق التوصيل، خمسُمئةٍ وثلاثةٌ وتسعون صفًّا
-     * من قديمها وجديدها، لا يعرف القسمُ أكثرَها. وكشفُ مناديبنا هو هذا: مئةٌ
-     * وسبعةٌ وخمسون مندوبًا، لكلٍّ هويّتُه ولوحتُه ومشرفُه وكفالتُه.
-     *
-     * وبه سقط كلُّ الربطِ بالاسم: المشرفُ (`supervisorUser`) واللوحةُ والهويّةُ
-     * ونوعُ المركبة كلُّها في الصفّ نفسِه — تُقرأ لا تُطابَق.
-     *
-     * والتفقّدُ للدبّابات: من مركبتُه سيّارةٌ أو فان يُرفَع — صورةُ الدبّاب
-     * والبوكس لا معنى لهما فيه، وظهورُه كلَّ صباحٍ بلا ما يُصوَّر يُعَدُّ تقصيرًا
-     * وهو لا شيءَ عليه.
+     * The rep list is the light-transport registry, not B2CRep. B2CRep holds delivery-app accounts (593 rows, old and new) that the section mostly does not know; our reps are the registry's 157, each with ID, plate, supervisor and sponsorship.
+     * This removes all name-based linking: supervisorUser, plate, ID and vehicle type are in the same row.
+     * The check is for scooters: someone on a car or van is excluded, since the scooter and box photos mean nothing for them and they would count as negligent for nothing to photograph.
      */
     const all = await LightTransportEmployee.find({ isActive: { $ne: false }, staffKind: 'rep' })
       .select('name idNumber phone vehiclePlate vehicleTypeAr projectAr cityAr supervisorUser supervisorName dutySupervisorUser dutySupervisorName workStatusAr employee')
@@ -191,8 +142,7 @@ exports.myReps = async (req, res) => {
     const rows = all.filter((e) => vehicleTypeKey(e.vehicleTypeAr) !== 'car');
     const carsExcluded = all.length - rows.length;
 
-    // تفقّداتُ اليوم كلُّها: ما وقع على مندوبٍ وما وقع على دبّاب — يُقرأ كلٌّ
-    // من الجهتين، فتفقّدُ الدبّاب يظهر على راكبه وتفقّدُ المندوب على دبّابه.
+    // All of today's checks, those on a rep and those on a scooter, read from both sides, so a scooter check shows on its rider and a rep check on their scooter.
     const [checks, bikes] = await Promise.all([
       B2CDutyCheck.find({ dateKey })
         .select('ltEmployee vehicle vehicleKey outcome checkedAt photos conditionAr hasDamage damageNotes notes vehicleType vehiclePlate supervisorName')
@@ -208,18 +158,13 @@ exports.myReps = async (req, res) => {
     const repCheck = (e) => byEmp.get(String(e._id)) || byVeh.get(registryPlateKey(e.vehiclePlate)) || null;
     const riderOf = riderFinder(rows);
 
-    // دبّاباتُ القسم — تُعرَض قائمةً لمن لا لوحةَ في صفّه بعد.
+    // The section's scooters, listed for those with no plate in their row yet.
     const vehicleOptions = all
       .filter((e) => String(e.vehiclePlate || '').trim() && vehicleTypeKey(e.vehicleTypeAr) !== 'car')
       .map((e) => ({ plate: e.vehiclePlate, typeAr: e.vehicleTypeAr || '', rider: e.name || '' }))
       .sort((a, b) => a.plate.localeCompare(b.plate, 'ar'));
 
-    /**
-     * ── و«مناديبي» هنا إشرافُ تفقّدٍ لا تشغيل ───────────────────────────────
-     * الإشرافُ التشغيليُّ مسؤوليّةُ اليوم كلِّه (مشروعُه وفرعُه وعملُه)، وهذه
-     * الشاشةُ عن ساعةٍ واحدة: مَن يقف على المحطّة صباحًا ويصوّره قبل الخروج.
-     * فالقائمةُ تُقسَم بمشرف التفقّد، وكلُّ المناديب تبقى مرئيّةً للجميع.
-     */
+    /** 'My reps' here is check supervision, not operational supervision. Operational supervision covers the whole day (project, branch, work); this screen covers one hour: who stands at the station in the morning and photographs before leaving. The list is split by check supervisor, and all reps stay visible to everyone. */
     const mineOf = (e) => String(e.dutySupervisorUser?._id || e.dutySupervisorUser || '') === String(asUser);
     res.json({
       dateKey,
@@ -231,7 +176,7 @@ exports.myReps = async (req, res) => {
         const owner = e.supervisorUser && typeof e.supervisorUser === 'object' ? e.supervisorUser : null;
         return {
           _id: String(e._id),
-          // الشاشةُ تقرأ الاسمَين، والسجلُّ يكتب اسمًا واحدًا — فيُعطى للاثنين.
+          // The screen reads two names while the registry stores one, so it is given to both.
           englishName: e.name,
           arabicName: e.name,
           repId: e.idNumber || '',
@@ -242,7 +187,7 @@ exports.myReps = async (req, res) => {
           vehicle: String(e.vehiclePlate || '').trim()
             ? { plate: e.vehiclePlate, typeAr: e.vehicleTypeAr || '', typeKey: vehicleTypeKey(e.vehicleTypeAr) }
             : null,
-          // مشرفُ التفقّد هو صاحبُ هذه الشاشة، والتشغيليُّ يُعرَض للعلم.
+          // The check supervisor owns this screen; the operational supervisor is shown for information.
           ownerName: duty ? [duty.firstName, duty.lastName].filter(Boolean).join(' ') : (e.dutySupervisorName || ''),
           opsSupervisorName: owner ? [owner.firstName, owner.lastName].filter(Boolean).join(' ') : (e.supervisorName || ''),
           hasDutySupervisor: !!(e.dutySupervisorUser),
@@ -250,7 +195,7 @@ exports.myReps = async (req, res) => {
           check: repCheck(e),
         };
       }),
-      // الدبّاباتُ — يُتفقَّد أيٌّ منها مباشرةً، ومعه راكبُه إن عُرف.
+      // Scooters: any can be checked directly, with its rider when known.
       bikes: bikes.map((b) => {
         const rider = riderOf(b);
         return {
@@ -264,10 +209,10 @@ exports.myReps = async (req, res) => {
           check: byVeh.get(bikeKey(b)) || (rider ? byEmp.get(String(rider._id)) : null) || null,
         };
       }).sort((a, b) => a.plate.localeCompare(b.plate, 'ar')),
-      // «كم أنجزتُ من رجالي» — المقياسُ الذي يُسأل عنه المشرف.
+      // 'How many of my men did I complete': the metric a supervisor is asked about.
       mineTotal: rows.filter(mineOf).length,
       mineDone: rows.filter((e) => mineOf(e) && repCheck(e)).length,
-      // ومن لا مشرفَ تفقّدٍ له لا يقع في قائمة أحد — يُقال عددُه صراحةً.
+      // A rep with no check supervisor appears in nobody's list, so the count is reported explicitly.
       unassigned: rows.filter((e) => !e.dutySupervisorUser).length,
       done: rows.filter(repCheck).length,
       total: rows.length,
@@ -276,21 +221,16 @@ exports.myReps = async (req, res) => {
 };
 
 /**
- * حارسُ المندوب — أموجودٌ ونشط، وأهو مندوبُ دبّاب؟
- *
- * ── والموضوعُ صفُّ السجلّ لا حسابُ التطبيق ──────────────────────────────────
- * يُرسَل `ltEmployee` (أو `rep` من نسخةٍ قديمة). والصفُّ يُقرأ من سجلّ النقل
- * الخفيف: فيه هويّتُه ولوحتُه ومشرفُه — فلا مطابقةَ باسمٍ ولا ربطٌ يُخمَّن.
- *
- * ولم يبقَ شرطُ «من رجالك»: يغيب مشرفٌ فيقوم زميلُه مقامَه، ومَن فعل يُثبَّت في
- * القيد (`supervisor` + `supervisorName`) والإسنادُ في السجلّ باقٍ للمسؤوليّة.
+ * Rep guard: does the rep exist, is active, and is a scooter rep.
+ * The subject is the registry row, not the app account. `ltEmployee` (or `rep` from an old client) is read from the light-transport registry, which holds ID, plate and supervisor, so no name matching or guessed link is needed.
+ * The 'one of your men' condition is gone: a colleague covers an absent supervisor, and who did it is stored on the record (`supervisor` + `supervisorName`) while the registry assignment keeps responsibility.
  */
 const assertOwnsRep = async (req, repId, ltId) => {
   const { LightTransportEmployee } = require('../models/LightTransport');
   const id = ltId || repId;
   if (!id) return { error: 400, message: 'اختر المندوب' };
 
-  // الأصلُ: صفٌّ في سجلّ النقل الخفيف.
+  // Primary: a row in the light-transport registry.
   const emp = await LightTransportEmployee.findById(id)
     .select('name idNumber vehiclePlate vehicleTypeAr projectAr cityAr isActive staffKind workStatusAr employee')
     .populate('employee', 'employmentStatus').lean();
@@ -303,7 +243,7 @@ const assertOwnsRep = async (req, repId, ltId) => {
     return { emp, rep: { _id: emp._id, englishName: emp.name, branch: null, project: null } };
   }
 
-  // ونسخةٌ قديمةٌ ترسل حسابَ التطبيق — تُقبَل حتّى تُحدَّث.
+  // An old client sends the app account; accepted until it updates.
   const rep = await B2CRep.findById(id).select('supervisor branch project englishName isActive ltEmployee').lean();
   if (!rep) return { error: 404, message: 'المندوب غير موجود' };
   if (rep.isActive === false) return { error: 400, message: 'هذا المندوب غير نشط' };
@@ -311,15 +251,9 @@ const assertOwnsRep = async (req, repId, ltId) => {
 };
 
 /**
- * تسجيلُ التفقّد.
- *
- * ── ولماذا لا تُقبَل صورةٌ بلا التقاط ────────────────────────────────────
- * الصورةُ هي الحجّة كلُّها؛ فإن جاز أن تُرفَع من الملفّات صار الصفُّ ورقةً
- * تُملأ من المكتب. ولا يُصدَّق المتصفّحُ فيما يقوله عن نفسه، لكنّ الواجهةَ لا
- * تعرض بابًا آخرَ أصلًا، والمصدرُ يُثبَّت في الصفّ فيُسأل عنه لو خالف.
- *
- * ولا يُقبَل «بدأ الدوام» بلا صورة: هذا هو الشرطُ الذي وُجدت الشاشةُ لأجله.
- * أمّا الغائبُ والممنوعُ فلا صورةَ لهما — لا مركبةَ خرجت لتُصوَّر.
+ * Recording the check.
+ * Why a photo without a capture is rejected: the photo is the whole evidence, and allowing uploads from files would turn the row into a form filled from the office. The browser's claim about itself is not trusted, but the UI offers no other path and the source is stored on the row for questions.
+ * 'Started duty' requires photos, the condition the screen exists for. Absent and blocked have none, since no vehicle left to photograph.
  */
 exports.submit = async (req, res) => {
   const saved = [];
@@ -332,10 +266,8 @@ exports.submit = async (req, res) => {
     }
 
     /**
-     * ── الدبّابُ وراكبُه: صفٌّ واحد ────────────────────────────────────────────
-     * جاء الطلبُ بدبّاب: يُعرَف راكبُه (لوحتُه في سجلّ النقل الخفيف، أو المفوَّضُ
-     * عليه) فيصير التفقّدُ تفقّدَه أيضًا. وجاء بمندوب: يُعرَف دبّابُه من لوحته.
-     * ودبّابٌ لا راكبَ له يُتفقَّد وحدَه.
+     * Scooter and rider are one row.
+     * A request with a scooter resolves its rider (plate in the registry, or the authorized person), so the check is also theirs. A request with a rep resolves the scooter from the plate. A scooter with no rider is checked alone.
      */
     const { VehicleMaster } = require('../models/VehicleMaster');
     let bike = null;
@@ -357,16 +289,7 @@ exports.submit = async (req, res) => {
     }
     const subjectName = own.emp?.name || own.rep?.englishName || (bike ? `دبّاب ${bike.plateNumber}` : '');
 
-    /**
-     * ── ومَن لم يخرج يُسأل: لماذا ────────────────────────────────────────────
-     *
-     * «بدأ الدوام» تشهد له ثلاثُ صور. أمّا «لم يحضر» و«مُنع من الخروج» فليس
-     * لهما شاهدٌ إلّا كلمةُ المشرف — ويومٌ كاملٌ من الدخل يسقط بضغطةٍ واحدةٍ لا
-     * يُعرَف سببُها. ثمّ يُسأل بعد أسبوع «إيه اللي حصل يوم كذا؟» فلا جواب.
-     *
-     * فالملاحظةُ شرطٌ لهما: مرضَ، أو عطلت دبّابُه، أو مُنع لأنّ كارتَ تشغيله
-     * منتهٍ. سطرٌ واحدٌ يُكتب مرّةً ويُقرأ في كلّ مراجعة.
-     */
+    /** Anyone who did not go out is asked why. 'Started duty' is backed by three photos; 'absent' and 'blocked' have only the supervisor's word, and a whole day of income drops with one tap and no recorded reason. So the note is required for both (sick, scooter broke down, blocked for an expired operating card): one line written once and read in every review. */
     if (outcome !== 'started' && !String(req.body.notes || '').trim()) {
       return res.status(400).json({
         code: 'NOTE_REQUIRED',
@@ -379,36 +302,31 @@ exports.submit = async (req, res) => {
     const dateKey = validKey(req.body.date) && canSeeAll(req.user) ? req.body.date : dayKeyOf();
     const { year, month, day, date } = partsOf(dateKey);
 
-    // صفُّ اليوم إن وُجد — بالمندوب أو بالدبّاب. وإن وُجد الاثنان صفّين (تُفقّد
-    // الدبّابُ وحدَه ثمّ عُرف راكبُه) يُضمّ صفُّ الدبّاب إلى صفّ المندوب.
+    // Today's row if any, by rep or by scooter. If both exist as two rows (scooter checked alone, then the rider became known), the scooter row merges into the rep row.
     const [byRep, bikeRow] = await Promise.all([
       own.emp ? B2CDutyCheck.findOne({ ltEmployee: own.emp._id, dateKey })
         : own.rep ? B2CDutyCheck.findOne({ rep: own.rep._id, dateKey }) : null,
       bike ? B2CDutyCheck.findOne({ vehicle: bike._id, dateKey }) : null,
     ]);
-    // دبّابٌ يتبادله رجلان: تُفقّد مع الأوّل، فلا يُكتب الثاني فوقه — يُسجَّل
-    // الثاني وحدَه بلا ربطٍ بالدبّاب (صفٌّ للدبّاب في اليوم، والفهرسُ يقضي بذلك).
+    // A scooter shared by two men is checked with the first; the second is recorded alone without the scooter link, since the index allows one row per scooter per day.
     const bikeTaken = !!(bikeRow && bikeRow.ltEmployee && own.emp && String(bikeRow.ltEmployee) !== String(own.emp._id));
     const byBike = bikeTaken ? null : bikeRow;
     if (bikeTaken) bike = null;
     const existing = byRep || byBike;
     const merged = byRep && byBike && String(byRep._id) !== String(byBike._id) ? byBike : null;
 
-    // بدءُ الدوام يحتاج الصورَ الثلاث: المندوب والدبّاب والبوكس. وما حُفظ
-    // صباحًا يُحسب — التصحيحُ لا يُلزم بإعادة التقاط ما التُقط.
-    // الواجهةُ القديمة (قبل التقسيم) لا ترسل `kind` — تُقبَل منها صورةٌ واحدة
-    // حتّى تُحدَّث، فلا يُحبَس المشرفون بين نشر الخادم ونشر الموقع/التطبيق.
+    // Starting duty needs all three photos: rep, scooter and box. What was saved in the morning counts, so a correction does not force retaking photos.
+    // The old UI (before the split) sends no `kind`; one photo is accepted from it until it updates, so supervisors are not locked out between the server deploy and the web/app deploy.
     const legacyClient = photos.length > 0 && photos.every((p) => !p?.kind);
     if (outcome === 'started' && legacyClient) {
-      // تكفي الصورةُ المرسلة.
+      // The single photo sent is enough.
     } else if (outcome === 'started') {
       const have = new Set([
         ...(existing?.photos || []).map((p) => p.kind || 'vehicle'),
         ...(merged?.photos || []).map((p) => p.kind || 'vehicle'),
         ...photos.map((p) => p?.kind).filter((k) => PHOTO_KINDS.includes(k)),
       ]);
-      // الصورُ الثلاث في كلّ حال — ولو لم يكن الراكبُ مفوَّضًا أو معروفًا مسبقًا:
-      // مَن يُخرج الدبّابَ اليومَ يُصوَّر (صاحبُ الشركة، ٢٠٢٦/١٠/٢٠).
+      // All three photos in every case, even when the rider is not authorized or known beforehand: whoever takes the scooter out today is photographed.
       const required = REQUIRED_PHOTO_KINDS;
       const lacking = required.filter((k) => !have.has(k));
       if (lacking.length) {
@@ -416,12 +334,12 @@ exports.submit = async (req, res) => {
       }
     }
 
-    // صورةُ المحتوى الإعلانيّ لا تُقبَل في غير الخميس — يُقال ولا تُحفَظ صامتة.
+    // The advertising-content photo is rejected on days other than Thursday, reported instead of silently saved.
     if (photos.some((p) => p?.kind === AD_KIND) && !isThursday(dateKey)) {
       return res.status(400).json({ message: 'صور المحتوى الإعلاني تُضاف يوم الخميس فقط' });
     }
 
-    // الثلاثُ المطلوبة، ومعها ما يُضاف من صور المحتوى — فحدُّها أوسع.
+    // The three required photos plus any content photos, so the limit is wider.
     for (const p of photos.slice(0, 12)) {
       const src = String(p?.dataUrl || '');
       if (!src.startsWith('data:image/')) {
@@ -440,8 +358,7 @@ exports.submit = async (req, res) => {
 
     const me = await User.findById(req.user._id).select('firstName lastName').lean();
     const doc = {
-      // الموضوعُ: صفُّ السجلّ. و`rep` يُكتب فقط إن جاء الطلبُ بحساب تطبيق
-      // (نسخةٌ قديمة) — فلا يُخلَق ربطٌ لم يُطلَب.
+      // The subject is the registry row. `rep` is written only if the request came with an app account (old client), so no unrequested link is created.
       ltEmployee: own.emp ? own.emp._id : (own.rep?.ltEmployee || null),
       rep: own.rep && !own.emp ? own.rep._id : undefined,
       vehicle: bike ? bike._id : undefined,
@@ -468,11 +385,11 @@ exports.submit = async (req, res) => {
       createdBy: req.user._id,
     };
 
-    // التصحيحُ يُعدِّل صفَّ اليوم ولا يضيف ثانيًا — راجع الفهرس الفريد.
+    // A correction updates the day's row instead of adding a second; see the unique index.
     if (merged) await B2CDutyCheck.deleteOne({ _id: merged._id });
     let check;
     if (existing) {
-      // الصورُ تُضاف ولا تُمحى: صورةُ الصباح حجّةٌ لا تُستبدَل بأخرى بعد الحادث.
+      // Photos are appended and never erased: the morning photo is evidence and is not replaced after an incident.
       doc.photos = [...(existing.photos || []), ...(merged?.photos || []), ...saved];
       Object.assign(existing, doc);
       check = await existing.save();
@@ -481,25 +398,18 @@ exports.submit = async (req, res) => {
     }
 
     /**
-     * ── وتُختار اللوحةُ مرّةً لا كلَّ يوم ──────────────────────────────────────
-     *
-     * المندوبُ الذي لا صلةَ لحسابه بصفّ السجلّ (الاسمُ التبس، فرُفضت المطابقة)
-     * يختار مشرفُه لوحتَه من قائمة دبّابات القسم. وتلك الاختيارةُ **خبرٌ**: هذا
-     * الرجلُ على هذا الدبّاب. فإن كانت اللوحةُ لصفٍّ واحدٍ في السجلّ حُفظت الصلةُ
-     * منها — فصباحُ الغد يجد اللوحةَ مملوءةً، ويُقرأ رقمُ هويّته ونوعُ مركبته معها.
-     *
-     * ولا تُكتب الصلةُ إن كانت اللوحةُ لصفّين (دبّابٌ تبادله رجلان في السجلّ):
-     * الظنُّ لا يُثبَّت. ولا تُبدَّل صلةٌ قائمة — تلك تُغيَّر من السجلّ لا من هنا.
+     * The plate is chosen once, not every day.
+     * For a rep whose account has no link to a registry row (the name was ambiguous and matching was refused), the supervisor picks the plate from the section's scooter list. That choice is a fact: this man is on this scooter. If the plate belongs to exactly one registry row, the link is saved from it, so tomorrow's screen has the plate filled and reads his ID number and vehicle type with it.
+     * The link is not written when the plate belongs to two rows (a scooter shared by two men): a guess is not stored. An existing link is not replaced; that is changed from the registry, not here.
      */
-    // والربطُ بحساب التطبيق يُحفَظ إن جاء الطلبُ منه ولوحتُه معروفةٌ في السجلّ —
-    // خدمةٌ للنسخة القديمة وحدَها؛ والشاشةُ الجديدة موضوعُها صفُّ السجلّ أصلًا.
+    // The app-account link is saved when the request came from it and its plate is known in the registry; only for the old client, since the new screen's subject is the registry row.
     if (own.rep && !own.emp && !own.rep.ltEmployee && doc.vehiclePlate) {
       try {
         const { LightTransportEmployee: LTE2 } = require('../models/LightTransport');
         const hit = await LTE2.find({ isActive: { $ne: false }, vehiclePlate: doc.vehiclePlate })
           .select('_id').limit(2).lean();
         if (hit.length === 1) await B2CRep.updateOne({ _id: own.rep._id }, { $set: { ltEmployee: hit[0]._id } });
-      } catch (e) { /* الربطُ خدمةٌ للغد، وفشلُه لا يمسّ تفقّدَ اليوم */ }
+      } catch (e) { /* Linking serves tomorrow; its failure must not affect today's check. */ }
     }
 
     await logAudit({
@@ -508,7 +418,7 @@ exports.submit = async (req, res) => {
       changes: { after: { rep: subjectName, vehicle: doc.vehiclePlate || undefined, dateKey, outcome } }, ipAddress: req.ip,
     });
 
-    // ما لا يُخرَج يُعلَم به فورًا: مركبةٌ بها تلفٌ أو مندوبٌ مُنع من العمل.
+    // What does not go out is notified immediately: a damaged vehicle or a rep blocked from work.
     if (doc.hasDamage || outcome === 'blocked') {
       const heads = await User.find({ role: { $in: ['b2c_manager', 'b2c_deputy', 'super_admin'] }, isActive: true })
         .select('_id').lean();
@@ -524,27 +434,20 @@ exports.submit = async (req, res) => {
     const out = await populate(B2CDutyCheck.findById(check._id)).lean();
     res.status(existing ? 200 : 201).json({ check: out });
   } catch (e) {
-    // ملفٌّ كُتب ثمّ فشل الحفظ لا يُترَك يتيمًا على القرص.
+    // A file written whose save then failed is removed, not left orphaned on disk.
     saved.forEach((f) => { try { deleteStoredFile(f.fileUrl); } catch (x) { /* */ } });
     if (e?.code === 11000) return res.status(409).json({ message: 'سُجِّل تفقّدٌ لهذا المندوب أو الدبّاب اليوم — افتحه من القائمة' });
     return sendMongooseError(res, e, 'تعذّر حفظ التفقّد');
   }
 };
 
-// ═══════════════════════════════════════════════════════════════════════════
-//  سجلُّ الإدارة
-// ═══════════════════════════════════════════════════════════════════════════
+// Management log
 
-/** شرطُ القراءة: الإدارةُ ترى الكلَّ، والمشرفُ يرى ما سجّله هو. */
+/** Read condition: management sees all; a supervisor sees what they recorded. */
 /**
- * ── ما يراه المشرفُ في التقرير ──────────────────────────────────────────────
- *
- * كان: ما سجّلتَه بيدك. وصار أيُّ مشرفٍ يتفقّد أيَّ مندوب، فالمقصورُ على فعله
- * وحدَه يُخفي عنه **رجالَه أنفسَهم** حين يتفقّدهم زميله — وهو أوّلُ ما يُسأل
- * عنه: «مين خرّج رجالي النهاردة؟».
- *
- * فصار يرى: ما فعله هو، وما وقع على مناديبه من أيٍّ كان. والاثنان معنى واحد:
- * ما يُسأل عنه.
+ * What a supervisor sees in the report.
+ * It used to be only what they recorded themselves. Now any supervisor can check any rep, so that scope would hide their own men when a colleague checks them, which is the first thing they are asked ('who sent out my men today?').
+ * They now see what they did and what happened to their reps by anyone; both mean what they are accountable for.
  */
 const scopeOf = async (req) => {
   if (canSeeAll(req.user)) return {};
@@ -562,7 +465,7 @@ const scopeOf = async (req) => {
 const listFilter = async (req) => {
   const q = req.query || {};
   const and = [await scopeOf(req)];
-  // يومٌ واحد، أو مدًى بين تاريخين. وغيابُ الاثنين يعني اليوم.
+  // One day, or a range between two dates; neither means today.
   if (validKey(q.from) && validKey(q.to)) and.push({ dateKey: { $gte: q.from, $lte: q.to } });
   else if (validKey(q.date)) and.push({ dateKey: q.date });
   else if (validKey(q.from)) and.push({ dateKey: { $gte: q.from } });
@@ -573,7 +476,7 @@ const listFilter = async (req) => {
   if (oid(q.supervisor)) and.push({ supervisor: oid(q.supervisor) });
   if (oid(q.branch)) and.push({ branch: oid(q.branch) });
   if (oid(q.project)) and.push({ project: oid(q.project) });
-  // «مندوبٌ بعينه» — بمعرِّف صفّ السجلّ أو بحساب التطبيق القديم.
+  // A specific rep, by registry row id or by the old app account.
   if (oid(q.rep)) and.push({ $or: [{ ltEmployee: oid(q.rep) }, { rep: oid(q.rep) }] });
   if (['started', 'absent', 'blocked'].includes(q.outcome)) and.push({ outcome: q.outcome });
   if (q.damage === '1') and.push({ hasDamage: true });
@@ -610,10 +513,8 @@ exports.getOne = async (req, res) => {
 };
 
 /**
- * مراجعةُ الإدارة على صفٍّ بعينه.
- *
- * وهي نصفُ الغرض من الشاشة: الصورةُ تُلتقَط ليقرأها أحدٌ ويقول «سليم» أو
- * «يُحاسَب». وبلا هذا الحقل يبقى السجلُّ أرشيفًا لا يُبنى عليه قرار.
+ * Management review of a specific row.
+ * Half the purpose of the screen: the photo is taken so someone reads it and rules it fine or accountable. Without this field the log is an archive no decision builds on.
  */
 exports.review = async (req, res) => {
   try {
@@ -625,7 +526,7 @@ exports.review = async (req, res) => {
       { new: true },
     );
     if (!row) return res.status(404).json({ message: 'غير موجود' });
-    // المشرفُ يُخبَر بما قيل عن تفقّده — وإلّا كانت المحاسبةُ بلا علم.
+    // The supervisor is told what was said about their check; otherwise accountability happens without their knowledge.
     if (verdict === 'flagged') {
       await createNotification({
         recipient: row.supervisor, type: 'system_alert',
@@ -639,19 +540,12 @@ exports.review = async (req, res) => {
   } catch (e) { return sendMongooseError(res, e, 'تعذّر حفظ المراجعة'); }
 };
 
-// ═══════════════════════════════════════════════════════════════════════════
-//  التحليل
-// ═══════════════════════════════════════════════════════════════════════════
+// Analysis
 
 /**
- * تحليلُ الالتزام — لا تحليلَ الطلبات.
- *
- * السؤالُ هنا واحد: هل وقف المشرفُ على رجاله؟ فالمقياسُ ليس عددَ التفقّدات بل
- * **نسبتُها إلى مَن كان يجب أن يُفقَّد** — عشرةُ تفقّداتٍ من عشرة التزامٌ تامّ،
- * وعشرةٌ من ثلاثين تقصير. ولا يُعرَف المقامُ من جدول التفقّد نفسِه (الصفُّ لا
- * يُكتب أصلًا لمن أُهمل)، فيُقرأ من `B2CRep`.
- *
- * والحسابُ في قاعدة البيانات لا في Node — راجع dashboard-performance.
+ * Compliance analysis, not order analysis.
+ * The question is whether the supervisor stood by their men, so the metric is the ratio of checks to who should have been checked (10 of 10 is full compliance, 10 of 30 is a shortfall), not the check count. The denominator cannot come from the check table (no row is written for the neglected), so it is read from `B2CRep`.
+ * Computed in the database, not Node; see dashboard-performance.
  */
 exports.analytics = async (req, res) => {
   try {
@@ -664,7 +558,7 @@ exports.analytics = async (req, res) => {
     if (oid(q.project)) base.project = oid(q.project);
     if (oid(q.supervisor)) base.supervisor = oid(q.supervisor);
 
-    // عددُ الأيّام في المدى — مقامُ نسبة الالتزام.
+    // Number of days in the range; the denominator of the compliance ratio.
     const days = Math.max(
       1,
       Math.round((new Date(`${to}T00:00:00Z`) - new Date(`${from}T00:00:00Z`)) / 86400000) + 1,
@@ -706,7 +600,7 @@ exports.analytics = async (req, res) => {
           damaged: { $sum: { $cond: ['$hasDamage', 1, 0] } },
           flagged: { $sum: { $cond: [{ $eq: ['$review.verdict', 'flagged'] }, 1, 0] } },
           reps: { $addToSet: '$rep' },
-          // متى يقف عادةً؟ متأخّرٌ كلَّ يومٍ سؤالٌ في ذاته.
+          // When does the supervisor usually stand? Late every day is a question in itself.
           avgHour: { $avg: { $hour: { date: '$checkedAt', timezone: RIYADH } } },
         } },
         { $project: { name: 1, checks: 1, started: 1, absent: 1, blocked: 1, damaged: 1, flagged: 1, avgHour: 1, repCount: { $size: '$reps' } } },
@@ -734,11 +628,10 @@ exports.analytics = async (req, res) => {
         { $project: { name: { $ifNull: [{ $first: '$b.name' }, '—'] }, checks: 1, damaged: 1 } },
         { $sort: { checks: -1 } },
       ]),
-      // المقام: كم مندوبًا لكلّ مشرفٍ كان يجب أن يُفقَّد كلَّ يوم — من كشف
-      // مناديبنا (سجلّ النقل الخفيف)، دبّاباتٍ لا سيّارات.
+      // Denominator: how many reps per supervisor should be checked each day, from the rep roster (light-transport registry), scooters not cars.
       (async () => {
         const { LightTransportEmployee } = require('../models/LightTransport');
-        // والمنتهي خدمتُه لا يُنتظَر تفقّدُه — فلا يدخل المقام. راجع `endedRep`.
+        // Ended-service reps are not expected to be checked, so they are out of the denominator; see `endedRep`.
         const rows = await LightTransportEmployee.find({ isActive: { $ne: false }, staffKind: 'rep', dutySupervisorUser: { $ne: null } })
           .select('dutySupervisorUser vehicleTypeAr workStatusAr employee').populate('employee', 'employmentStatus').lean();
         const by = new Map();
@@ -749,7 +642,7 @@ exports.analytics = async (req, res) => {
         }
         return [...by].map(([id, reps]) => ({ _id: id, reps }));
       })(),
-      // مَن تتكرّر مركبتُه تالفة — الرجلُ لا اليوم.
+      // Whoever's vehicle is repeatedly damaged: the person, not the day.
       B2CDutyCheck.aggregate([
         { $match: { ...base, hasDamage: true } },
         { $group: { _id: { $ifNull: ['$ltEmployee', '$rep'] }, times: { $sum: 1 }, last: { $max: '$dateKey' } } },
@@ -764,8 +657,7 @@ exports.analytics = async (req, res) => {
     const totalExpected = expected.reduce((a, b) => a + b.reps, 0) * days;
     const t = totals[0] || {};
 
-    // اسمُ المشرف يُقرأ من الحساب لا من اللقطة وحدَها — قد يكون له مندوبون
-    // ولم يُفقّد أحدًا قطّ، فلا لقطةَ اسمٍ له في الجدول أصلًا.
+    // The supervisor's name is read from the account, not only from the snapshot: they may have reps and never have checked anyone, so no name snapshot exists for them in the table.
     const supIds = [...new Set([...bySupervisor.map((x) => String(x._id)), ...expected.map((x) => String(x._id))])]
       .filter((x) => mongoose.isValidObjectId(x));
     const users = await User.find({ _id: { $in: supIds } }).select('firstName lastName').lean();
@@ -818,15 +710,11 @@ exports.analytics = async (req, res) => {
   }
 };
 
-/**
- * مَن لم يُفقَّد اليوم — القائمةُ التي لا يعرضها جدولُ التفقّد لأنّ صفَّها
- * غيرُ مكتوب. وهي أهمُّ ما تفتحه الإدارةُ صباحًا.
- */
+/** Who was not checked today: the list the check table cannot show because their row is not written. The first thing management opens in the morning. */
 exports.missing = async (req, res) => {
   try {
     const dateKey = validKey(req.query.date) ? req.query.date : dayKeyOf();
-    // «مَن لم يُتفقَّد اليوم» — من كشف مناديبنا (سجلّ النقل الخفيف) لا من حسابات
-    // التطبيق. والدبّاباتُ وحدَها: من على سيّارةٍ لا تفقّدَ عليه.
+    // 'Not checked today' comes from the rep roster (light-transport registry), not app accounts. Scooters only: someone on a car has no check.
     const { LightTransportEmployee } = require('../models/LightTransport');
     const repScope = { isActive: { $ne: false }, staffKind: 'rep', dutySupervisorUser: { $ne: null } };
     if (!canSeeAll(req.user)) repScope.dutySupervisorUser = req.user._id;
@@ -852,17 +740,15 @@ exports.missing = async (req, res) => {
   } catch (e) { res.status(500).json({ message: 'تعذّر التحميل' }); }
 };
 
-/** المشرفون الذين لهم مندوبون — تُبنى منهم قوائمُ الفلترة والإسناد. */
+/** Supervisors that have reps; filter and assignment lists are built from them. */
 exports.supervisors = async (req, res) => {
   try {
-    // المرشَّحون للإشراف: كلُّ حسابٍ نشطٍ بدورٍ من أدوار القسم — لا مَن له
-    // مندوبون فقط. كانت القائمةُ تُكمَّل في الواجهة من `/api/users`، وتلك لا
-    // يفتحها مديرُ المشروع، فكان لا يرى إلّا المشرفين الذين أُسند إليهم سابقًا.
+    // Supervisor candidates: every active account with a section role, not only those with reps. The list used to be completed in the UI from `/api/users`, which a project manager cannot open, so they saw only previously assigned supervisors.
     const [counts, users] = await Promise.all([
-      // عددُ مناديب كلِّ مشرف — من كشف القسم لا من حسابات التطبيق.
+      // Rep count per supervisor, from the section roster, not app accounts.
       (async () => {
         const { LightTransportEmployee } = require('../models/LightTransport');
-        // مَن على رأس العمل وحدَه، دبّاباتٍ لا سيّارات — كمقام التحليل نفسِه.
+        // Only those currently working, scooters not cars, same as the analysis denominator.
         const rows = await LightTransportEmployee.find({ isActive: { $ne: false }, staffKind: 'rep', dutySupervisorUser: { $ne: null } })
           .select('dutySupervisorUser vehicleTypeAr workStatusAr employee').populate('employee', 'employmentStatus').lean();
         const by = new Map();
@@ -878,14 +764,14 @@ exports.supervisors = async (req, res) => {
     ]);
     const repsBy = new Map(counts.map((c) => [String(c._id), c.reps]));
     const byId = new Map(users.map((u) => [String(u._id), u]));
-    // مَن له مندوبون وتغيّر دورُه يبقى ظاهرًا حتّى تُنقل مناديبه.
+    // A supervisor who has reps and changed role stays visible until the reps are moved.
     const missing = counts.map((c) => String(c._id)).filter((id) => !byId.has(id));
     if (missing.length) {
       (await User.find({ _id: { $in: missing } }).select('firstName lastName role').lean())
         .forEach((u) => byId.set(String(u._id), u));
     }
     const ORDER = { b2c_rep_supervisor: 0, b2c_inspection_supervisor: 1, b2c_project_lead: 2, b2c_deputy: 3, b2c_manager: 4 };
-    // المشرفُ المؤرشَف لا يُعرَض ولو بقي مناديبُه مسندين إليه — كأنّه حُذف.
+    // An archived supervisor is not shown even if reps are still assigned to them, as if deleted.
     const { endedStaff, userArchived } = require('../utils/endedStaff');
     const archSets = await endedStaff();
     const supervisors = [...byId.values()].filter((u) => !userArchived(archSets, u)).map((u) => ({
@@ -898,13 +784,13 @@ exports.supervisors = async (req, res) => {
   } catch (e) { res.status(500).json({ message: 'تعذّر التحميل' }); }
 };
 
-/** إسنادُ مندوبين إلى مشرف — دفعةً واحدة من شاشة المندوبين. */
+/** Assign reps to a supervisor in one batch from the reps screen. */
 exports.assign = async (req, res) => {
   try {
     const ids = (Array.isArray(req.body.reps) ? req.body.reps : []).filter((x) => mongoose.isValidObjectId(x));
     if (!ids.length) return res.status(400).json({ message: 'اختر مندوبًا واحدًا على الأقلّ' });
     const sup = req.body.supervisor;
-    // فراغٌ يعني «بلا مشرف» — وهو فعلٌ مقصودٌ لا خطأ إدخال.
+    // Empty means 'no supervisor', an intentional action and not an input error.
     if (sup && !mongoose.isValidObjectId(sup)) return res.status(400).json({ message: 'مشرف غير صالح' });
     if (sup) {
       const su = await User.findById(sup).select('role isActive').lean();

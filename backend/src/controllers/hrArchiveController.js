@@ -1,12 +1,7 @@
 /**
- * الأرشيف — مَن انتهت خدمتُه وخرج من النظام. راجع utils/hrEngagement.
- *
- * ── الترتيبُ لا يُقفَز (صاحبُ الشركة، ٢٠٢٦/١٠/١٩) ──────────────────────────
- *   إنهاءُ الخدمة أوّلًا (من ملفّ الموظّف) ← ثمّ «خروج من النظام» ← الأرشيف.
- * والفريلانسرُ لا خروجَ له: ليس على نظامنا أصلًا، فإنهاءُ خدمته يؤرشفه فورًا.
- *
- * المؤرشَفُ لا يظهر في شاشةٍ ولا رقمٍ — إلّا صفحةَ الأرشيف وكارتَها في لوحة
- * الموارد البشريّة. والأرشفةُ لا تمحو شيئًا: ملفُّه كاملٌ يُفتَح من الأرشيف.
+ * Archive: staff whose service ended and who left the system. See utils/hrEngagement.
+ * Order is fixed: terminate service, then exit system, then archive. A freelancer has no exit step, so terminating archives immediately.
+ * Archived people appear on no screen or count except the archive page and its HR dashboard card. Nothing is erased; the full file opens from the archive.
  */
 const Employee = require('../models/Employee');
 const logAudit = require('../utils/auditLogger');
@@ -21,7 +16,7 @@ const changed = () => {
   try { emitToAll('hr:employee', { at: Date.now() }); emitToAll('hr:master', { at: Date.now() }); } catch (_) { /* */ }
 };
 
-// POST /employees/:id/exit-system — يُشترط إنهاءُ الخدمة قبله.
+// POST /employees/:id/exit-system - requires service termination first.
 exports.exitSystem = async (req, res) => {
   try {
     const e = await Employee.findById(req.params.id);
@@ -51,7 +46,7 @@ exports.exitSystem = async (req, res) => {
   }
 };
 
-// POST /employees/:id/return-system — تراجعٌ عن خروجٍ خاطئ (يعود من الأرشيف).
+// POST /employees/:id/return-system - undo a wrong exit (returns from the archive).
 exports.returnSystem = async (req, res) => {
   try {
     const e = await Employee.findById(req.params.id);
@@ -68,7 +63,7 @@ exports.returnSystem = async (req, res) => {
   } catch (err) { res.status(500).json({ message: 'تعذّر الإرجاع' }); }
 };
 
-// GET /archive?q= — صفحةُ الأرشيف.
+// GET /archive?q=
 exports.list = async (req, res) => {
   try {
     const f = { isHrRecord: { $ne: false }, ...ENG.ARCHIVED };

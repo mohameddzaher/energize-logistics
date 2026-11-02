@@ -1,31 +1,18 @@
 const mongoose = require('mongoose');
 
 /**
- * نوعُ مستخدمٍ صنعه صاحبُ النظام — دورٌ لا وجودَ له في `config/roles.js`.
- *
- * ── لماذا لا يكفي ما في الشيفرة ────────────────────────────────────────────
- * `config/roles.js` هو الهيكلُ الوظيفيُّ للشركة: لكلّ قسمٍ مديرٌ وموظّف. وهو
- * صحيحٌ ولا يكفي — يجيء من يحتاج «مراجعًا يرى المالَ ولا يكتب فيه»، أو
- * «مشرفًا على المركبات وحدَها»، فلا يجد إلّا أن يُلبَس دورًا يوسّعه أكثرَ ممّا
- * يريد. فيُصنَع الدورُ من الشاشة.
- *
- * ── وكيف يعيش الاثنان معًا ──────────────────────────────────────────────────
- * المفاتيحُ المكتوبةُ في الشيفرة تبقى مرجعًا لمنطقٍ يقرؤها بالاسم (اجتماعاتُ
- * الإدارة تقرأ لاحقةَ `_manager`، والتقاريرُ لها قائمتُها). والدورُ المصنوع
- * **لا يرث شيئًا**: لا قائمةَ `authorize` قديمةً تعرفه، ولا قسمَ افتراضيًّا له.
- * فكلُّ ما يملكه يأتي من مصفوفة الصلاحيّات صراحةً — وهذا هو الأمان: دورٌ
- * جديدٌ يُولَد لا يملك شيئًا، لا يُولَد يملك كلَّ شيء.
- *
- * ولذلك تُمنَع لاحقةُ `_manager` على المفتاح: تقرؤها `businessReview` حرفيًّا
- * فتُجلس صاحبَها مع مجلس الإدارة بلا أن يقصد أحد. راجع config/roles.js.
+ * A user type created by the system owner: a role that does not exist in `config/roles.js`.
+ * That file is the company's functional structure (manager and staff per section) and cannot cover needs like a reviewer who sees money but cannot write, or a supervisor for vehicles only, so roles can be made from the screen.
+ * Coded keys remain the reference for logic that reads them by name (business review reads the `_manager` suffix; reports have their own list). A created role inherits nothing: no old `authorize` list knows it and it has no default section. Everything it has comes explicitly from the permission matrix, so a new role starts with nothing rather than everything.
+ * The `_manager` suffix is therefore forbidden on the key: businessReview reads it literally and would seat the holder with the board. See config/roles.js.
  */
 const customRoleSchema = new mongoose.Schema(
   {
-    // مفتاحٌ لاتينيٌّ صغير — هو ما يُخزَّن على المستخدم وما يُقرأ في الشيفرة.
+    // Small Latin key: what is stored on the user and read in code.
     key: { type: String, required: true, unique: true, trim: true, lowercase: true },
     nameAr: { type: String, required: true, trim: true },
     nameEn: { type: String, required: true, trim: true },
-    // وصفٌ اختياريٌّ يُقرأ في شاشة الصلاحيّات: «لماذا صُنع هذا الدور».
+    // Optional description shown on the permissions screen: why this role was made.
     description: { type: String, trim: true, default: '' },
     isActive: { type: Boolean, default: true },
     createdBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },

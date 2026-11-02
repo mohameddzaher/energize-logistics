@@ -1,46 +1,39 @@
 const mongoose = require('mongoose');
 
 /**
- * ── مراحلُ دورة التخليص ────────────────────────────────────────────────────
- * كانت إحدى عشرةَ مرحلةً على خطٍّ واحد. والدورةُ ليست خطًّا: بعد «أمر النقل»
- * تتفرّع — إمّا من الميناء إلى الساحة (فيتبعها التفريغُ والتخزين ثمّ نقلٌ ثانٍ
- * إلى العميل) وإمّا من الميناء إلى العميل مباشرةً (فلا تفريغَ ولا تخزين).
- * ومعاملةُ السيّارات لا إرجاعَ حاوياتٍ فيها أصلًا.
- *
- * فالقائمةُ هنا كلُّ ما قد يقع، و`pipelineOf` أدناه تقول ما يَلزم **هذه**
- * المعاملةَ منها وما أُغلِق عليها — ومنها تُحسَب النسبة، فلا تُعاقَب معاملةٌ
- * على مرحلةٍ ليست من طريقها.
+ * Clearance cycle stages.
+ * The cycle is not a line: after the transport order it branches, either port to yard (then unloading and storage, then a second transport to the customer) or port directly to the customer (no unloading or storage). Car transactions have no container return.
+ * This list is everything that can occur, and `pipelineOf` below says which stages this transaction needs and which are closed for it; the percentage is computed from that, so a transaction is not penalised for a stage not on its path.
  */
 const STAGES = [
-  'papers_received',        // استلام الأوراق
-  'declaration_paid',       // سداد البيان الجمركي
-  'do_requested',           // طلب فاتورة إذن التسليم
-  'do_invoice_paid',        // سداد فاتورة إذن التسليم
-  'do_linked',              // ربط إذن التسليم
-  'port_fees_paid',         // سداد أجور الموانئ
-  'unloading_fees_paid',    // سداد أجور التفريغ
-  'transport_order',        // أمر النقل
-  'transport_to_yard',      // النقل من الميناء إلى الساحة
-  'transport_to_customer',  // النقل من الميناء إلى العميل
-  'unloaded_stored',        // التفريغ والتخزين (طريقُ الساحة وحدَه)
-  'yard_to_customer',       // النقل من الساحة إلى العميل (طريقُ الساحة وحدَه)
-  'containers_returned',    // إرجاع الحاويات (لا في معاملات السيّارات)
-  'invoiced',               // إصدار الفاتورة — تُعلَّم بإصدارها لا بيد
+  'papers_received',        // Receive papers
+  'declaration_paid',       // Pay the customs declaration
+  'do_requested',           // Request the delivery-order invoice
+  'do_invoice_paid',        // Pay the delivery-order invoice
+  'do_linked',              // Link the delivery order
+  'port_fees_paid',         // Pay port fees
+  'unloading_fees_paid',    // Pay unloading fees
+  'transport_order',        // Transport order
+  'transport_to_yard',      // Transport from port to yard
+  'transport_to_customer',  // Transport from port to customer
+  'unloaded_stored',        // Unloading and storage (yard route only)
+  'yard_to_customer',       // Transport from yard to customer (yard route only)
+  'containers_returned',    // Return containers (not for car transactions)
+  'invoiced',               // Issue invoice; marked by issuing it, not by hand
 ];
-// مفتاحُ ما قبل التفريع: «نقل الحاويات إلى العميل أو الساحة». يبقى مقبولًا في
-// `stage` لأنّ معاملاتٍ قديمةً واقفةٌ عليه، ويُقرأ بمعناه الجديد في `pipelineOf`.
+// Key from before branching: "transport containers to customer or yard". Still accepted in `stage` because old transactions sit on it, and read with its new meaning in `pipelineOf`.
 const LEGACY_STAGES = ['containers_transported'];
-// الترتيبُ الخطّيُّ القديم — به تُقرأ معاملةٌ تحمل مرحلتَها الحاليّةَ بلا علامات.
+// Old linear order, used to read a transaction that has only its current stage and no marks.
 const LINEAR_V1 = [
   'papers_received', 'declaration_paid', 'do_requested', 'do_linked', 'port_fees_paid',
   'unloading_fees_paid', 'transport_order', 'containers_transported', 'unloaded_stored',
   'containers_returned', 'invoiced',
 ];
-// المراحلُ التي هي نقلٌ — لكلٍّ منها بيانُ سيّاراته (راجع containers.moves).
+// Stages that are transport; each has its own vehicle details (see containers.moves).
 const TRANSPORT_LEGS = ['transport_to_yard', 'transport_to_customer', 'yard_to_customer'];
-// مرحلتا الميناء — يُختار أحدُهما، ويُبدَّل بينهما بضغطة.
+// The two port stages: one is chosen and can be switched with a click.
 const PORT_LEGS = ['transport_to_yard', 'transport_to_customer'];
-// ومن أوّل النقل تُعلَّم المراحلُ لكلّ وحدة (حاويةٍ أو سيّارة) — راجع pipelineOf.
+// From the first transport, stages are marked per unit (container or car); see pipelineOf.
 const UNIT_STAGES = ['transport_to_yard', 'transport_to_customer', 'unloaded_stored', 'yard_to_customer', 'containers_returned'];
 const CARGO_TYPES = ['containers', 'vehicles'];
 const VEHICLE_KINDS = ['energize', 'external'];
@@ -52,18 +45,16 @@ const customsClearanceSchema = new mongoose.Schema(
     branch: { type: String, enum: ['jeddah', 'dammam'], default: 'jeddah', index: true },
     stage: { type: String, enum: [...STAGES, ...LEGACY_STAGES], default: 'papers_received', index: true },
     /**
-     * ── نوعُ المعاملة: حاوياتٌ أم سيّارات ────────────────────────────────────
-     * يُختار عند الإنشاء. والدورةُ واحدةٌ في الحالين إلّا «إرجاع الحاويات»:
-     * السيّارةُ تُسلَّم ولا يعود منها شيءٌ إلى الوكيل، فتُغلَق تلك المرحلةُ من
-     * أوّل يوم. و`containerCount` عددُ الوحدات في الحالين.
+     * Transaction kind: containers or cars.
+     * Chosen at creation. The cycle is the same except container return: a car is delivered and nothing goes back to the agent, so that stage is closed from day one. `containerCount` is the unit count in both cases.
      */
     cargoType: { type: String, enum: CARGO_TYPES, default: 'containers', index: true },
-    // أيُّ الطريقين سلكت بعد أمر النقل — يُكتب حين تُعلَّم إحدى مرحلتَي الميناء.
+    // Which route was taken after the transport order; written when one of the two port stages is marked.
     transportRoute: { type: String, enum: ['', 'yard', 'customer'], default: '' },
-    // ٢ = عُلِّمت مراحلُها بالقائمة الجديدة. وما دونه يُقرأ بقاعدة القديم.
-    // بلا قيمةٍ افتراضيّة عمدًا: الافتراضيُّ يُكتب على القديم عند قراءته.
+    // 2 = its stages were marked with the new list; lower values are read with the old rule.
+    // No default on purpose: a default would be written onto old records when read.
     pipelineVersion: { type: Number },
-    // مَن علّم أيَّ مرحلةٍ ومتى — به تُقرأ حركةُ الفريق في لوحة القسم.
+    // Who marked which stage and when, to read team activity on the department dashboard.
     stageLog: [{
       key: { type: String, default: '' },
       done: { type: Boolean, default: true },
@@ -71,95 +62,83 @@ const customsClearanceSchema = new mongoose.Schema(
       byName: { type: String, default: '' },
       at: { type: Date, default: Date.now },
     }],
-    // ── وكلُّ مرحلةٍ تُعلَّم وحدَها ─────────────────────────────────────────
-    // كانت المراحلُ المنجزةُ تُشتقّ من موضع الحاليّة: مَن اختار الثامنةَ عُدَّت
-    // السبعُ قبلها منجزةً وإن لم تجرِ واحدةٌ منها. والدورةُ لا تسير دائمًا على
-    // ترتيبها — قد يُدفَع الرسمُ قبل وصول الأوراق، وقد تُتخطّى مرحلةٌ أصلًا.
-    // فما أُنجز يُسجَّل صراحةً، و`stage` تبقى «أين هي الآن» للتقارير والفلاتر.
+    // Each stage is marked on its own.
+    // Done stages used to be derived from the current one: choosing the eighth made the seven before it done though none ran. The cycle does not always follow its order (fees can be paid before papers arrive; a stage may be skipped). So completion is recorded explicitly and `stage` stays "where it is now" for reports and filters.
     stagesDone: { type: [String], default: [], index: true },
     cancelled: { type: Boolean, default: false },
 
     // People
-    assignedTo: { type: String, trim: true },       // مخلص / معقب (free text — reps aren't always users)
+    assignedTo: { type: String, trim: true },       // Clearance agent / follower (free text, reps are not always users)
     customerName: { type: String, trim: true },
     customer: { type: mongoose.Schema.Types.ObjectId, ref: 'Customer' },
-    // ── الطرفان بمعرّفَيهما لا بنصَّيهما ───────────────────────────────────
-    // الاسمُ يبقى مخزَّنًا كما كُتب (`customerName`, `shippingAgent`) لأنّ
-    // التصديراتِ والتقاريرَ تقرؤه، ويُضاف إليه معرّفُ الملفّ: به تُجمَّع
-    // المعاملاتُ ويُفتح البروفايل، فلا يُفرِّق صيغتا كتابةٍ طرفًا واحدًا.
+    // Both parties by id, not only by text.
+    // The name stays stored as written (`customerName`, `shippingAgent`) because exports and reports read it; the profile id is added to group transactions and open the profile, so two spellings do not split one party.
     customerParty: { type: mongoose.Schema.Types.ObjectId, ref: 'CustomsParty', index: true },
     agentParty: { type: mongoose.Schema.Types.ObjectId, ref: 'CustomsParty', index: true }, // optional link
-    // الناقلُ الذي نقل الحاوية من الميناء — سجلٌّ كالعميل والوكيل، والاسمُ
-    // يبقى نصًّا لما أُدخل قبل السجلّ.
+    // Carrier that moved the container from the port: a register like customer and agent; the name stays text for data entered before the register.
     carrierParty: { type: mongoose.Schema.Types.ObjectId, ref: 'CustomsParty', index: true },
     carrierName: { type: String, trim: true, default: '' },
     shippingAgent: { type: String, trim: true },
     shippingAgentEmail: { type: String, trim: true, lowercase: true },
 
-    // Transaction data (البيانات الضرورية لعمل المعاملة على فسح)
-    blNumber: { type: String, trim: true },         // رقم البوليصة
-    invoiceNumber: { type: String, trim: true },    // رقم الفاتورة
-    invoiceDate: { type: Date },                    // تاريخ الفاتورة
-    port: { type: String, trim: true },             // اسم الميناء
+    // Transaction data (needed to run the transaction on Fasah)
+    blNumber: { type: String, trim: true },         // Bill of lading number
+    invoiceNumber: { type: String, trim: true },    // Invoice number
+    invoiceDate: { type: Date },                    // Invoice date
+    port: { type: String, trim: true },             // Port name
     invoiceType: { type: String, enum: ['C&F', 'CIF', 'FOB', ''], default: '' },
-    containerCount: { type: Number, default: 0 },   // عدد الحاويات
-    totalWeight: { type: Number, default: 0 },      // الوزن الاجمالى
-    invoiceValue: { type: Number, default: 0 },     // قيمة الفاتورة
-    currency: { type: String, trim: true },         // نوع العملة
-    exporterCompany: { type: String, trim: true },  // اسم الشركة المصدرة
-    countryOfOrigin: { type: String, trim: true },  // بلد المنشأ
-    hsCode: { type: String, trim: true },           // البند الجمركى HS
-    saberNumber: { type: String, trim: true },      // رقم شهادة سابر (ان وجدت)
+    containerCount: { type: Number, default: 0 },   // Container count
+    totalWeight: { type: Number, default: 0 },      // Gross weight
+    invoiceValue: { type: Number, default: 0 },     // Invoice value
+    currency: { type: String, trim: true },         // Currency
+    exporterCompany: { type: String, trim: true },  // Exporting company name
+    countryOfOrigin: { type: String, trim: true },  // Country of origin
+    hsCode: { type: String, trim: true },           // Customs HS code
+    saberNumber: { type: String, trim: true },      // SABER certificate number (if any)
 
-    // Required documents checklist (الأوراق المطلوبة للمعاملات)
+    // Required documents checklist for transactions
     documents: {
-      bl: { type: Boolean, default: false },               // البوليصة
-      commercialInvoice: { type: Boolean, default: false }, // الفاتورة التجارية
-      certificateOfOrigin: { type: Boolean, default: false }, // شهادة المنشأ
-      packingList: { type: Boolean, default: false },       // بيان التعبئة
-      saber: { type: Boolean, default: false },             // شهادة سابر (ان وجدت)
+      bl: { type: Boolean, default: false },               // Bill of lading
+      commercialInvoice: { type: Boolean, default: false }, // Commercial invoice
+      certificateOfOrigin: { type: Boolean, default: false }, // Certificate of origin
+      packingList: { type: Boolean, default: false },       // Packing list
+      saber: { type: Boolean, default: false },             // SABER certificate (if any)
     },
 
-    // Agent papers checklist (أوراق الوكيل)
+    // Agent papers checklist
     agentPapers: {
-      blStamped: { type: Boolean, default: false },          // البوليصة و عليها ختم التخليص + رقم المستورد
-      customerAuthorization: { type: Boolean, default: false }, // تفويض العميل للشركة
-      companyAuthorization: { type: Boolean, default: false },  // تفويض الشركة لمندوب التخليص
+      blStamped: { type: Boolean, default: false },          // Bill of lading with clearance stamp and importer number
+      customerAuthorization: { type: Boolean, default: false }, // Customer authorization to the company
+      companyAuthorization: { type: Boolean, default: false },  // Company authorization to the clearance representative
     },
 
-    // ---------------------------------------------------------------------
-    // Master-spreadsheet fields (ماستر التخليص). All additive & optional.
-    // ---------------------------------------------------------------------
+    // Master-spreadsheet fields (clearance master). All additive and optional.
 
     // Identity / period
-    legacySerial: { type: Number },                 // مسلسل (row number in the sheet)
-    periodMonth: { type: Number, min: 1, max: 12 }, // الشهر
-    periodYear: { type: Number },                   // السنة
-    city: { type: String, trim: true },             // المدينة (raw Arabic, as written)
+    legacySerial: { type: Number },                 // Serial (row number in the sheet)
+    periodMonth: { type: Number, min: 1, max: 12 }, // Month
+    periodYear: { type: Number },                   // Year
+    city: { type: String, trim: true },             // City (raw Arabic, as written)
 
     // Declaration & scheduling
-    declarationNumber: { type: String, trim: true },  // رقم البيان
-    declarationDate: { type: String, trim: true },    // تاريخ البيان (YYYY-MM-DD)
-    papersReceivedDate: { type: String, trim: true }, // تاريخ استلام الورق (YYYY-MM-DD)
-    unloadingAppointment: { type: String, trim: true }, // موعد التفريغ
-    unloadingLocation: { type: String, trim: true },    // مكان التفريغ
-    doNumber: { type: String, trim: true },             // رقم إذن التسليم (اذن التسليم in the sheet)
-    exitPermitNumber: { type: String, trim: true },     // رقم تصريح الخروج
+    declarationNumber: { type: String, trim: true },  // Declaration number
+    declarationDate: { type: String, trim: true },    // Declaration date (YYYY-MM-DD)
+    papersReceivedDate: { type: String, trim: true }, // Papers received date (YYYY-MM-DD)
+    unloadingAppointment: { type: String, trim: true }, // Unloading appointment
+    unloadingLocation: { type: String, trim: true },    // Unloading place
+    doNumber: { type: String, trim: true },             // Delivery order number (delivery-order column in the sheet)
+    exitPermitNumber: { type: String, trim: true },     // Exit permit number
 
-    // آخر موعدٍ لإرجاع الحاويات إلى الوكيل. عمودٌ في الماستر («اخر موعد ارجاع»)
-    // وهو أخطرُ تاريخٍ في المعاملة: تجاوزُه يفتح عدّاد الأرضيات، فيصير مالًا.
-    // لذلك يُخزَّن وحده لا داخل stageDates — تُقاس عليه المتأخّرات والمُشرِفة.
+    // Last date to return containers to the agent (master column).
+    // The riskiest date in a transaction: passing it starts the demurrage meter, which becomes money. Stored on its own rather than in stageDates so overdue and about-to-be-overdue are measured against it.
     returnDeadline: { type: String, trim: true, default: '' }, // YYYY-MM-DD
-    // وأكثرُ صفوف الماستر تكتب في هذه الخانة عددَ أيّام السماح (٣٥ غالبًا) لا
-    // تاريخًا. الرقمُ لا يُقحَم في خانة تاريخٍ ولا يُرمى: يُخزَّن هنا، ومنه
-    // يُشتقُّ الموعدُ متى عُرف تاريخُ التفريغ.
+    // Most master rows put the grace-day count (usually 35) in this column, not a date. The number is neither forced into a date field nor dropped: it is stored here and the deadline derived once the unloading date is known.
     returnFreeDays: { type: Number, default: 0 },
-    // تاريخُ تحمّل الأرضيات — اليومُ الذي يبدأ فيه احتسابُ الأرضيات علينا.
+    // Demurrage liability date: the day demurrage starts being charged to us.
     demurrageStartDate: { type: String, trim: true, default: '' }, // YYYY-MM-DD
 
-    // ── ما مُلئ من عقد العميل ───────────────────────────────────────────────
-    // أيُّ عقدٍ وأيُّ وجهةٍ، وما كُتب منه في الإيرادات. فإن تغيّر عددُ الحاويات
-    // أو العميلُ أُعيد الملءُ لما بقي على قيمة العقد، ولا يُدهَس ما عدّله الموظّف.
+    // Filled from the customer contract.
+    // Which contract and destination, and what was written into revenue. If the container count or customer changes the fill is redone for what remains at the contract value, without overwriting what the employee edited.
     contractPricing: {
       contract: { type: mongoose.Schema.Types.ObjectId, ref: 'CustomsContract', default: null },
       contractTitle: { type: String, trim: true, default: '' },
@@ -175,53 +154,31 @@ const customsClearanceSchema = new mongoose.Schema(
     },
 
     /**
-     * ── معاملةٌ لم يحِن وقتُها بعد ────────────────────────────────────────
-     * الشحنةُ تُعرَف قبل وصولها بأسبوع: العميلُ يُخطر، والوكيلُ يُحجَز،
-     * والأوراقُ تُجهَّز. وكان ذلك يُكتب في دفترٍ جانبيٍّ أو يُترَك للذاكرة،
-     * فتأتي الشحنةُ ولم يُحجَز لها موعد.
-     *
-     * فتُسجَّل معاملةً كاملةً بتاريخها المرتقَب، **ولا تُخلَط بالجاري**:
-     * قوائمُ العمل وأرقامُ اللوحة ومطالباتُ التحصيل كلُّها عن معاملاتٍ وقعت،
-     * فصفٌّ لم يقع بعدُ فيها يُفسد كلَّ عدّ. ولها قائمتُها وتنبيهُها، ومنها
-     * تُحوَّل بضغطةٍ إلى معاملةٍ جارية حين تصل.
+     * A transaction not yet due.
+     * A shipment is known about a week before arrival: the customer notifies, the agent is booked, papers prepared. That used to live in a side notebook or memory, so shipments arrived with no appointment booked.
+     * It is recorded as a full transaction with its expected date but kept apart from current ones: work lists, dashboard figures and collection claims are about transactions that happened, and a not-yet-real row would corrupt every count. It has its own list and alert, and converts to a current transaction with one click on arrival.
      */
     upcoming: { type: Boolean, default: false, index: true },
     expectedDate: { type: String, trim: true, default: '' }, // YYYY-MM-DD
-    // متى تحوّلت إلى معاملةٍ جارية — ومَن حوّلها.
+    // When it became a current transaction, and who converted it.
     activatedAt: { type: Date, default: null },
     activatedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User', default: null },
     activatedByName: { type: String, trim: true, default: '' },
 
     /**
-     * ── مراحلُ السداد: قائمةٌ تتكرّر، لا ثمانيَ خانة ──────────────────────
-     *
-     * كانت `stageDates`/`stageDone` أدناه ثمانيَ مفتاحٍ مكتوبةً في المخطَّط:
-     * مرحلةً واحدةً لكلٍّ، بتاريخٍ واحدٍ وبلا مرفق. وثلاثةُ أشياءَ لم تكن ممكنة:
-     *
-     *   · مرحلةٌ تاسعة — «فاتورة النقل» — تحتاج نشرةً جديدة لتوجد.
-     *   · ورقةُ السداد نفسُها. فيُكتب «سُدِّد ٣/٨» ولا إيصال، فإن سُئل بعد شهرٍ
-     *     لم يوجد إلّا تاريخٌ لا يُثبِت شيئًا.
-     *   · وأن تتكرّر المرحلة. والرسومُ تُسدَّد على دفعتين، والإرجاعُ يقع مرّتين
-     *     لحاويتين — فيُكتب الثاني فوق الأوّل ويضيع.
-     *
-     * فصارت قائمةً: كلُّ إدخالٍ مرحلةٌ بتاريخها ومرفقها، وتُضاف المرحلةُ نفسُها
-     * مرّاتٍ. والقائمةُ التي تُختار منها تُدار من إعدادات القسم
-     * (`customs_payment_stage`)، والاسمُ يُلقَط في `label` فلا يتغيّر ما مضى
-     * إن أُعيدت التسميةُ لاحقًا.
-     *
-     * و`stageDates`/`stageDone` تبقيان: صفوفُ الاستيراد القديمة فيها، ومحوُها
-     * محوٌ للتاريخ. تُنقَل مرّةً بـ`scripts/migrateCustomsStages.js` وتبقى
-     * مقروءةً لا مكتوبة.
+     * Payment stages: a repeating list, not eight fixed fields.
+     * `stageDates`/`stageDone` were eight keys in the schema, one stage each with one date and no attachment, which made impossible: a ninth stage (transport invoice) without a release; the payment paper itself (only "paid 3/8" with no receipt); and a repeating stage (fees paid in two installments, returns happening twice for two containers, so the second overwrote the first).
+     * Now each entry is a stage with date and attachment, and the same stage can be added many times. The pick list is managed from department settings (`customs_payment_stage`), and the name is captured in `label` so past entries do not change if a stage is renamed.
+     * `stageDates`/`stageDone` remain because legacy import rows hold them and deleting them deletes the date; migrated once by scripts/migrateCustomsStages.js and then read-only.
      */
     paymentStages: [
       {
-        key: { type: String, trim: true, default: '' },     // مفتاحُ المرحلة من القائمة
-        label: { type: String, trim: true, default: '' },   // لقطةُ الاسم وقتَ الإضافة
+        key: { type: String, trim: true, default: '' },     // Stage key from the list
+        label: { type: String, trim: true, default: '' },   // Name snapshot at the time of adding
         date: { type: String, default: '' },                // YYYY-MM-DD
-        amount: { type: Number, default: null },            // المبلغُ إن سُجِّل
+        amount: { type: Number, default: null },            // Amount, if recorded
         note: { type: String, trim: true, default: '' },
-        // المرفقُ يُكتب هنا وفي `attachments` معًا: هنا ليُقرأ في موضعه من
-        // المرحلة، وهناك ليُوجَد مع بقيّة ورق المعاملة في مكانٍ واحد.
+        // The attachment is written here and in `attachments`: here to read it at its stage, there to find it with the rest of the transaction papers.
         fileUrl: { type: String, default: '' },
         fileName: { type: String, trim: true, default: '' },
         mimeType: { type: String, trim: true, default: '' },
@@ -231,16 +188,9 @@ const customsClearanceSchema = new mongoose.Schema(
         addedAt: { type: Date, default: Date.now },
 
         /**
-         * ── والمدخلُ طلبُ صرفٍ إلى الإدارة الماليّة ──────────────────────
-         * حين يرفق موظّفُ التخليص فاتورةً في مرحلةٍ من مراحل السداد فهو لا
-         * يؤرّخ حدثًا مضى: هو يقول «هذا ما يجب أن يُدفَع». وكان ذلك يُقال
-         * بالهاتف أو على الواتساب، ويُعلَّم في الشاشة بعلامةٍ تُوضَع بيدٍ —
-         * فلا يُعرَف مَن طلب ولا مَن دفع ولا متى، ولا يظهر في مكانٍ يراه
-         * المحاسب.
-         *
-         * فصار المدخلُ نفسُه طلبًا له حالة: مُعلَّقٌ حتى تقرّر الماليّةُ —
-         * دفعتْ (ومعها إثباتُها)، أو أعادتْه لتصحيح (ومعها سببُها)، أو
-         * رفضتْه. والعلامةُ الخضراء لا تُوضَع بيدٍ: تُوضَع حين يُدفَع.
+         * Entry is a payment request to Finance.
+         * When a clearance employee attaches an invoice to a payment stage, he is not dating a past event but saying "this must be paid". That used to be a phone call or WhatsApp message with a hand-placed mark, so who asked, who paid and when were unknown and the accountant saw nothing.
+         * The entry is now a request with a status: pending until Finance decides: paid (with proof), returned for correction (with reason), or rejected. The green mark is set when paid, not by hand.
          */
         payStatus: {
           type: String,
@@ -252,7 +202,7 @@ const customsClearanceSchema = new mongoose.Schema(
         decidedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User', default: null },
         decidedByName: { type: String, trim: true, default: '' },
         decidedAt: { type: Date, default: null },
-        // إثباتُ الدفع — ملفٌّ أو أكثر، واختياريٌّ (تحويلٌ بنكيٌّ قد لا يُصوَّر).
+        // Proof of payment: zero or more files, optional (a bank transfer may not be photographed).
         proofFiles: [{
           fileUrl: { type: String, trim: true, default: '' },
           fileName: { type: String, trim: true, default: '' },
@@ -263,27 +213,14 @@ const customsClearanceSchema = new mongoose.Schema(
     ],
 
     /**
-     * ── إقفالُ المعاملة ──────────────────────────────────────────────────
-     * فعلٌ صريحٌ لا حالةٌ تُستنتَج. ولا يُقفَل قبل أن تكون «فاتورة النقل» لها
-     * تاريخٌ ومرفق — راجع `completeClearance`: المعاملةُ تُقفَل فتخرج من قوائم
-     * المتابعة، فإن أُقفلت بلا فاتورةِ نقلٍ خرجت وفيها مالٌ لم يُطالَب به.
+     * Closing the transaction.
+     * An explicit action, not an inferred state. It cannot close before the transport invoice has a date and attachment (see `completeClearance`): a closed transaction leaves the follow-up lists, and closing it without a transport invoice would leave it with unclaimed money.
      */
     /**
-     * ── وفاتورةُ العميل تُكتب عند الإقفال ────────────────────────────────
-     *
-     * مراحلُ السداد أعلاه **ما ندفعه**: طلباتُ صرفٍ تجيبها الإدارةُ الماليّة.
-     * وهذه **ما نفوتره**: عند إقفال المعاملة يُسأل موظّفُ التخليص عن سعر
-     * البيع لكلّ بندٍ (فاتورةُ النقل، الرسومُ الجمركيّة، حجزُ الموعد…) ومعه
-     * مرفقُه — فيُقال «سدّدنا النقلَ ١٨٠٠ ونفوتره ٢٢٠٠».
-     *
-     * وقاعدةُ الفاتورة (راجع utils/customsInvoice، والحسابُ هناك لا هنا):
-     *   بنودُ مراحل السداد بمبالغها **كما هي** بلا ضريبة — إلّا ما كان له
-     *   بندُ بيعٍ هنا، فيُؤخَذ من هنا ولا يُكرَّر.
-     *   + بنودُ البيع هذه مجموعةً × ١٫١٥
-     *   = إجماليُّ الفاتورة.
-     *
-     * ولا يُخزَّن الإجماليُّ: يُشتقّ عند القراءة من البنود نفسِها، فلا يبقى
-     * رقمٌ يصدق يومَ كُتب ويكذب بعد تعديل بند.
+     * The customer invoice is written at closing.
+     * Payment stages above are what we pay (requests answered by Finance). This is what we bill: at closing the clearance employee gives the selling price per item (transport invoice, customs fees, appointment booking ...) with its attachment, e.g. "we paid transport 1800 and bill 2200".
+     * Invoice rule (see utils/customsInvoice, where the calculation lives): payment-stage items at their amounts as-is with no tax, except those with a sale item here, which are taken from here and not repeated; plus these sale items summed x 1.15; equals invoice total.
+     * The total is not stored: it is derived on read from the items, so it never goes stale after an item edit.
      */
     saleItems: [{
       key: { type: String, trim: true, default: '' },
@@ -299,13 +236,9 @@ const customsClearanceSchema = new mongoose.Schema(
       addedAt: { type: Date, default: Date.now },
     }],
     /**
-     * ── طلبُ الفوترة (صاحبُ الشركة، ٢٠٢٦/١٠/٢٢) ─────────────────────────────
-     * التخليصُ لا يُصدر الفاتورة: يطلبها. يكتب بنودَ البيع أعلاه ويرسلها، فيصير
-     * الطلبُ «معلّقًا» عند الإدارة الماليّة (ماليات التخليص — قسمٌ خاصٌّ غيرُ
-     * مراحل السداد). والماليّةُ تفوترها في نظامها ثمّ تقول هنا «تمّت الفوترة»
-     * ومعها الفاتورةُ النهائيّة (اختياريّة) — وعندها فقط تُعَدّ المعاملةُ مفوترة
-     * (`saleInvoiceNumber`). أو تعيدها للتصحيح، أو ترفضها.
-     * ومعاملةٌ أُغلقت وطلبُها لم يُفوتَر بعد = «مغلقة لم تُفوتَر».
+     * Billing request.
+     * Clearance does not issue the invoice, it requests it. It writes the sale items above and sends them, so the request is pending with Finance (clearance finance, separate from payment stages). Finance invoices it in its own system and marks it billed here, optionally with the final invoice; only then is the transaction counted as billed (`saleInvoiceNumber`). It can also return it for correction or reject it.
+     * A closed transaction whose request is not yet billed is "closed, not billed".
      */
     invoiceRequest: {
       status: { type: String, enum: ['', 'pending', 'invoiced', 'returned', 'rejected'], default: '', index: true },
@@ -317,16 +250,16 @@ const customsClearanceSchema = new mongoose.Schema(
       decidedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User', default: null },
       decidedByName: { type: String, trim: true, default: '' },
       decisionNote: { type: String, trim: true, default: '' },
-      // الفاتورةُ النهائيّةُ كما أصدرتها الماليّة.
+      // The final invoice as issued by Finance.
       fileUrl: { type: String, default: '' },
       fileName: { type: String, trim: true, default: '' },
       mimeType: { type: String, trim: true, default: '' },
       size: { type: Number, default: 0 },
     },
-    // رقمُ الفاتورة يُكتب حين تقول الماليّةُ «تمّت الفوترة» — به تُعرَف عندها.
+    // Invoice number, written when Finance marks it billed; it is how Finance identifies it.
     saleInvoiceNumber: { type: String, trim: true, default: '', index: true },
     saleInvoiceAt: { type: Date, default: null },
-    // نسبةُ الضريبة وقتَ الإقفال — تُلقَط كي لا تتغيّر فاتورةٌ قديمةٌ بتغيّرها.
+    // Tax rate at closing, captured so an old invoice does not change when the rate does.
     saleVatRate: { type: Number, default: 0.15 },
 
     isCompleted: { type: Boolean, default: false, index: true },
@@ -334,21 +267,19 @@ const customsClearanceSchema = new mongoose.Schema(
     completedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User', default: null },
     completedByName: { type: String, trim: true, default: '' },
 
-    // Payment / milestone dates (YYYY-MM-DD strings, '' when unknown)
-    // مقروءةٌ لا مكتوبة — راجع `paymentStages` أعلاه.
+    // Payment / milestone dates (YYYY-MM-DD strings, '' when unknown). Read-only; see `paymentStages` above.
     stageDates: {
-      doInvoiceEmailed: { type: String, default: '' },   // ميل فاتورة اذن التسليم
-      doInvoicePaid: { type: String, default: '' },      // سداد فاتورة اذن التسليم
-      doLinkEmailed: { type: String, default: '' },      // ميل ربط اذن التسليم
-      dutyPaid: { type: String, default: '' },           // سداد رسوم جمركية
-      portFeesPaid: { type: String, default: '' },       // سداد الموانى
-      unloadingFeesPaid: { type: String, default: '' },  // سداد التفريغ
-      containersReturned: { type: String, default: '' }, // الارجاع
-      returnInvoiceDate: { type: String, default: '' },  // فاتورة الارجاع
+      doInvoiceEmailed: { type: String, default: '' },   // Delivery-order invoice milestone
+      doInvoicePaid: { type: String, default: '' },      // Delivery-order invoice payment
+      doLinkEmailed: { type: String, default: '' },      // Delivery-order link milestone
+      dutyPaid: { type: String, default: '' },           // Customs fees payment
+      portFeesPaid: { type: String, default: '' },       // Ports payment
+      unloadingFeesPaid: { type: String, default: '' },  // Unloading payment
+      containersReturned: { type: String, default: '' }, // Return
+      returnInvoiceDate: { type: String, default: '' },  // Return invoice
     },
 
-    // The sheet often records these milestones as "تم" with no date — keep the
-    // done/not-done signal alongside stageDates so nothing is lost.
+    // The sheet often records these milestones as "done" with no date; the done/not-done signal is kept alongside stageDates so nothing is lost.
     stageDone: {
       doInvoiceEmailed: { type: Boolean, default: false },
       doInvoicePaid: { type: Boolean, default: false },
@@ -360,96 +291,82 @@ const customsClearanceSchema = new mongoose.Schema(
       returnInvoiceDate: { type: Boolean, default: false },
     },
 
-    // Costs (المصروفات) — all SAR
+    // Costs, all SAR
     costs: {
-      deliveryOrder: { type: Number, default: 0 },      // قيمة اذن التسليم
-      customsDuty: { type: Number, default: 0 },        // الرسوم الجمركية
-      portFees: { type: Number, default: 0 },           // اجور الموانى
-      unloadingFees: { type: Number, default: 0 },      // اجور التفريغ
-      // ── النقلُ ثلاثةُ أجزاء ──────────────────────────────────────────────
-      // `transport` كان «سعر النقل من المورد» و`transportToYard` «النقل إلى
-      // الساحة»؛ صارا الجزأين الأوّلين بأسمائهما الجديدة (والقيمُ القديمة فيهما
-      // كما هي)، والجزءُ الثالث جديد. وثلاثتُها تُملأ من مراحل السداد عند الدفع.
-      transport: { type: Number, default: 0 },               // النقل من الميناء إلى العميل
-      transportToYard: { type: Number, default: 0 },         // النقل من الميناء إلى الساحة
-      transportYardToCustomer: { type: Number, default: 0 }, // النقل من الساحة إلى العميل
-      labourExpenses: { type: Number, default: 0 },          // مصاريف عمال
-      appointmentBooking: { type: Number, default: 0 }, // حجز الموعد
-      yardFees: { type: Number, default: 0 },           // اجور الساحه
-      demurrage: { type: Number, default: 0 },          // ارضيات
-      inspection: { type: Number, default: 0 },         // اجور الكشف
-      extension: { type: Number, default: 0 },          // تمديد
-      consolidator: { type: Number, default: 0 },       // الدامج
-      commissions: { type: Number, default: 0 },        // عمولات
-      extraFees: { type: Number, default: 0 },          // اجور اضافية
-      storage: { type: Number, default: 0 },            // تخزين
-      exitPermit: { type: Number, default: 0 },         // تصريح الخروج
-      total: { type: Number, default: 0 },              // اجمالى المصروفات (computed)
+      deliveryOrder: { type: Number, default: 0 },      // Delivery order value
+      customsDuty: { type: Number, default: 0 },        // Customs fees
+      portFees: { type: Number, default: 0 },           // Port charges
+      unloadingFees: { type: Number, default: 0 },      // Unloading charges
+      // Transport has three parts.
+      // `transport` was "transport price from supplier" and `transportToYard` "transport to yard"; they become the first two parts under new names (old values unchanged), and the third is new. All three are filled from payment stages when paid.
+      transport: { type: Number, default: 0 },               // Transport from port to customer
+      transportToYard: { type: Number, default: 0 },         // Transport from port to yard
+      transportYardToCustomer: { type: Number, default: 0 }, // Transport from yard to customer
+      labourExpenses: { type: Number, default: 0 },          // Labor costs
+      appointmentBooking: { type: Number, default: 0 }, // Appointment booking
+      yardFees: { type: Number, default: 0 },           // Yard fees
+      demurrage: { type: Number, default: 0 },          // Demurrage
+      inspection: { type: Number, default: 0 },         // Inspection fees
+      extension: { type: Number, default: 0 },          // Extension
+      consolidator: { type: Number, default: 0 },       // Consolidation
+      commissions: { type: Number, default: 0 },        // Commissions
+      extraFees: { type: Number, default: 0 },          // Extra fees
+      storage: { type: Number, default: 0 },            // Storage
+      exitPermit: { type: Number, default: 0 },         // Exit permit
+      total: { type: Number, default: 0 },              // Total costs (computed)
     },
 
-    // ── الإيرادات (بالريال) ────────────────────────────────────────────────
-    // في التخليص لا تُباع الرسومُ بل تُمرَّر: ما يُدفع للموانى والجمارك يُسترد
-    // من العميل كما هو (اجمالى المصروفات أعلاه)، والربحُ هو ما يُضاف فوقها.
-    // لذلك الحقولُ هنا بنودُ الهامش لا «المبيعات»: كلُّ واحدٍ منها يدخل الربح،
-    // والفاتورةُ = المصروفات + الهامش. هكذا يحسبها الماستر نفسُه:
-    //   اجمالى الفاتورة = اجمالى المصروفات + اجور التخليص + صافى التخزين
-    //                     + صافى النقل الى الساحة + فحص امنى + صافي النقل
+    // Revenue (SAR).
+    // In clearance, fees are passed through, not sold: what is paid to ports and customs is recovered from the customer as-is (total costs above) and profit is what is added on top. So these fields are margin items, not "sales": each enters profit, and invoice = costs + margin, as the master computes it:
+    // invoice total = total costs + clearance fees + net storage + net transport to yard + security inspection + net transport
     revenue: {
-      clearanceFee: { type: Number, default: 0 },        // اجور التخليص
-      transportSelling: { type: Number, default: 0 },    // سعر بيع النقل (إجمالي، لا يدخل الهامش)
-      transportNet: { type: Number, default: 0 },        // صافي النقل = سعر البيع − اجور النقل
-      transportToYardNet: { type: Number, default: 0 },  // صافى النقل الى الساحة (بالضريبة)
-      // سعرُ النقل من الميناء إلى الساحة للعميل. فارغٌ (null) في المعاملات
-      // القديمة — وعندها يبقى الصافي كما كُتب؛ ومتى كُتب السعرُ صار الصافي
-      // فرقَه عن التكلفة كجارَيه. راجع recomputeTotals.
+      clearanceFee: { type: Number, default: 0 },        // Clearance fees
+      transportSelling: { type: Number, default: 0 },    // Transport selling price (gross, not part of margin)
+      transportNet: { type: Number, default: 0 },        // Net transport = selling price - transport cost
+      transportToYardNet: { type: Number, default: 0 },  // Net transport to yard (with tax)
+      // Customer price for transport from port to yard. Null on old transactions, where the net stays as written; once the price is set, the net is its difference from cost like its neighbours. See recomputeTotals.
       transportToYardSelling: { type: Number, default: null },
-      yardToCustomerSelling: { type: Number, default: 0 },  // سعر النقل من الساحة إلى العميل
-      yardToCustomerNet: { type: Number, default: 0 },      // صافيه (محسوب)
-      yardTransportNet: { type: Number, default: 0 },    // صافي نقل الساحه (عمود مساعد، خارج الهامش)
+      yardToCustomerSelling: { type: Number, default: 0 },  // Transport price from yard to customer
+      yardToCustomerNet: { type: Number, default: 0 },      // Its net (computed)
+      yardTransportNet: { type: Number, default: 0 },    // Yard transport net (helper column, outside margin)
       // Yard price (what the yard actually charges). Null on legacy rows: their typed yardNet stays.
       yardPrice: { type: Number, default: null },
       yardNet: { type: Number, default: 0 },             // yard net = yardPrice − costs.yardFees (when the price is set)
-      storageNet: { type: Number, default: 0 },          // صافى التخزين
-      transportDailies: { type: Number, default: 0 },    // transport per-diems charged to the customer (يوميات نقل)
-      securityScan: { type: Number, default: 0 },        // فحص امنى
-      labour: { type: Number, default: 0 },              // عمال
-      totalInvoiced: { type: Number, default: 0 },       // اجمالى الفاتورة (محسوبة)
-      profit: { type: Number, default: 0 },              // اجمالى الربح (محسوبة)
+      storageNet: { type: Number, default: 0 },          // Net storage
+      transportDailies: { type: Number, default: 0 },    // Transport per-diems charged to the customer
+      securityScan: { type: Number, default: 0 },        // Security inspection
+      labour: { type: Number, default: 0 },              // Labor
+      totalInvoiced: { type: Number, default: 0 },       // Invoice total (computed)
+      profit: { type: Number, default: 0 },              // Profit total (computed)
     },
 
     // Our billing (as opposed to the supplier invoice captured above)
     billing: {
-      invoiceStatus: { type: String, default: '' },  // حالة الفاتورة — free text ('خالص', 'غير مفوتر', ...)
-      ourInvoiceNumber: { type: String, default: '' }, // رقم الفاتورة (ours)
+      invoiceStatus: { type: String, default: '' },  // Invoice status, free text (paid / not billed ...)
+      ourInvoiceNumber: { type: String, default: '' }, // Our invoice number
       invoicedAt: { type: String, default: '' },       // YYYY-MM-DD
     },
 
     // Container-level detail (Sheet2 grain)
     containers: [
       {
-        containerNumber: { type: String, trim: true }, // رقمُ الحاوية (أو هيكلِ السيّارة)
-        exitPermit: { type: Number, default: 0 },      // تصريح خروج
-        declaration: { type: String, trim: true },     // البيان
+        containerNumber: { type: String, trim: true }, // Container number (or car chassis number)
+        exitPermit: { type: Number, default: 0 },      // Exit permit
+        declaration: { type: String, trim: true },     // Declaration
         notes: { type: String, trim: true },
-        // أيَّ الطريقين سلكت هذه الوحدة، وما أُنجز من مراحلها — لكلّ وحدةٍ
-        // مراحلُها من أوّل النقل. تُكتب من `PATCH /:id/stage` وحدَه.
+        // Which route this unit took and which of its stages are done; each unit has its own stages from the first transport. Written only through `PATCH /:id/stage`.
         route: { type: String, enum: ['', 'yard', 'customer'], default: '' },
         stagesDone: { type: [String], default: [] },
-        // تاريخُ إرجاع هذه الحاوية إلى الوكيل — لكلّ حاويةٍ تاريخُها.
+        // Date this container was returned to the agent; each container has its own.
         returnDate: { type: String, trim: true, default: '' }, // YYYY-MM-DD
-        // ── وتفاصيلُ الإرجاع ─────────────────────────────────────────────────
-        // التاريخُ وحدَه لا يجيب عمّا يُسأل عنه حين يطالب الوكيلُ بغرامة: أين
-        // أُرجعت، وبأيّ إيصال، وبأيّ سيّارة. فلكلّ حاويةٍ بيانُ إرجاعها.
-        returnDepot: { type: String, trim: true, default: '' },    // مكانُ الإرجاع (الساحة / المحطة)
-        returnReceipt: { type: String, trim: true, default: '' },  // رقمُ إيصال الإرجاع (EIR)
+        // Return details.
+        // The date alone does not answer what is asked when the agent claims a penalty: where it was returned, with which receipt, in which vehicle. So each container carries its return details.
+        returnDepot: { type: String, trim: true, default: '' },    // Return place (yard / terminal)
+        returnReceipt: { type: String, trim: true, default: '' },  // Return receipt number (EIR)
         returnVehicleKind: { type: String, enum: ['', 'energize', 'external'], default: '' },
-        returnRef: { type: String, trim: true, default: '' },      // رقمُ كشف التخريج أو فاتورة السيّارة الخارجيّة
+        returnRef: { type: String, trim: true, default: '' },      // Clearance statement number or external vehicle invoice
         returnNotes: { type: String, trim: true, default: '' },
-        /**
-         * بيانُ نقلها في كلّ مرحلةِ نقل: بسيّارةِ الشركة فيُكتب رقمُ كشف
-         * التخريج (وهو `reportNumber` في سير عمل التشغيل)، أو بسيّارةٍ
-         * خارجيّةٍ فيُكتب رقمُ فاتورتها.
-         */
+        /** Transport details per transport stage: by company vehicle, recorded as the clearance statement number (`reportNumber` in the operations workflow), or by an external vehicle, recorded as its invoice number. */
         moves: [{
           _id: false,
           leg: { type: String, enum: TRANSPORT_LEGS },
@@ -460,12 +377,8 @@ const customsClearanceSchema = new mongoose.Schema(
     ],
 
     /**
-     * ── فاتورةُ النقل: تُفوتَر المعاملةُ بدونها وتُنهى بها ────────────────────
-     * كان الإقفالُ والفوترةُ فعلًا واحدًا لا يمرّ قبل فاتورة النقل، وهي تتأخّر
-     * عند الناقل أسابيع — فتبقى المعاملةُ بلا فاتورةٍ للعميل وعملُها منتهٍ.
-     * ففُصِلا: الفاتورةُ تصدر متى اكتمل العمل وتذهب إلى الماليّة، والمعاملةُ
-     * تُنهى حين تصل فاتورةُ النقل وتُرفَق. وما بينهما يُعَدّ ويُلوَّن بالأحمر
-     * في لوحة القسم حتى لا يُنسى.
+     * Transport invoice: a transaction is billed without it and finished with it.
+     * Closing and billing used to be one action that could not pass before the transport invoice, which the carrier delays by weeks, leaving a finished transaction unbilled to the customer. They are now split: the invoice goes to Finance once work is complete, and the transaction is finished when the transport invoice arrives and is attached. The gap in between is counted and shown red on the dashboard.
      */
     transportInvoice: {
       fileUrl: { type: String, default: '' },
@@ -473,26 +386,22 @@ const customsClearanceSchema = new mongoose.Schema(
       mimeType: { type: String, trim: true, default: '' },
       size: { type: Number, default: 0 },
       date: { type: String, trim: true, default: '' },
-      // نُقلت بسيّارات الشركة فلا فاتورةَ ناقلٍ تُنتظَر — يُقال صراحةً.
+      // Moved by company vehicles, so no carrier invoice is awaited; stated explicitly.
       notRequired: { type: Boolean, default: false },
       note: { type: String, trim: true, default: '' },
       receivedAt: { type: Date, default: null },
       receivedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User', default: null },
       receivedByName: { type: String, trim: true, default: '' },
     },
-    // مشتقٌّ يُحفَظ عند كلّ حفظ (راجع hasTransportInvoice) ليُفلتَر به في القاعدة.
+    // Derived and stored on every save (see hasTransportInvoice) so the database can filter on it.
     transportInvoiceReceived: { type: Boolean, default: false, index: true },
 
-    // ── مرفقاتُ المعاملة ────────────────────────────────────────────────────
-    // ورقُ التخليص هو المعاملة: البوليصة والبيان وفاتورة إذن التسليم وإيصال
-    // السداد وتصريح الخروج. كانت تُتداول على الإيميل والواتساب، فإن سُئل عنها
-    // بعد شهرٍ لم تُوجد. تُخزَّن هنا مع السجلّ نفسِه، ويُوسَم كلُّ ملفٍّ بالمرحلة
-    // التي أُنتج فيها (stage) فيُقرأ الملفُّ في موضعه من دورة الإجراءات لا في
-    // كومةٍ واحدة.
+    // Transaction attachments.
+    // Clearance papers are the transaction: bill of lading, declaration, delivery-order invoice, payment receipt, exit permit. They used to travel by email and WhatsApp and could not be found later. Stored with the record, and each file is tagged with the stage it was produced in (stage) so it reads at its place in the cycle.
     attachments: [
       {
         title: { type: String, trim: true, default: '' },
-        stage: { type: String, default: '' },   // إحدى STAGES أو '' للعامّ
+        stage: { type: String, default: '' },   // One of STAGES, or '' for general
         fileUrl: { type: String, required: true },
         fileName: { type: String, trim: true, default: '' },
         mimeType: { type: String, trim: true, default: '' },
@@ -505,10 +414,8 @@ const customsClearanceSchema = new mongoose.Schema(
 
     notes: { type: String },
 
-    // ── والملاحظةُ سطرٌ يُضاف لا خانةٌ تُدهَس ────────────────────────────────
-    // كانت `notes` خانةً واحدة: من كتب ملاحظةً اليوم محا ملاحظةَ أمس، ولا يُعرف
-    // مَن كتب ولا متى. فصار لكلّ ملاحظةٍ سطرُها بصاحبها ووقتها، وآخرُها هو ما
-    // يظهر في عمود الجدول. و`notes` تبقى لما كُتب قبل اليوم.
+    // A note is an appended line, not an overwritten field.
+    // `notes` was a single field, so today's note erased yesterday's with no author or time. Each note now has its line with author and time, and the latest shows in the table column. `notes` keeps what was written before.
     notesLog: [
       {
         text: { type: String, trim: true, required: true },
@@ -521,10 +428,8 @@ const customsClearanceSchema = new mongoose.Schema(
     createdBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
     lastModifiedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
   },
-  // `pipeline` (المراحلُ كما تَلزم هذه المعاملة ونسبتُها) تخرج مع كلّ جواب.
-  // و`revenue.profit` لا تخرج في جوابٍ ولا في بثٍّ حيّ: الربحُ للإدارة والماليّة،
-  // والمعاملةُ تُرسَل إلى كلّ من فتح شاشتَها ويُبَثّ تحديثُها للجميع. فمَن يحقّ
-  // له الرقمُ يأخذه في حقلٍ على حدة (راجع getClearance)، لا مدفونًا في الوثيقة.
+  // `pipeline` (stages as this transaction needs them, with percentage) goes out with every response.
+  // `revenue.profit` goes out in no response and no live broadcast: profit is for management and finance, while a transaction is sent to everyone who opens its screen and updates are broadcast to all. Whoever may see the figure gets it in a separate field (see getClearance), not buried in the document.
   {
     timestamps: true,
     id: false,
@@ -538,10 +443,7 @@ const customsClearanceSchema = new mongoose.Schema(
   }
 );
 
-/**
- * وصلت فاتورةُ النقل؟ ثلاثةُ أبوابٍ تُدخلها: خانتُها الخاصّة، أو إدخالُ «فاتورة
- * النقل» في مراحل السداد بمرفقه، أو بندُها في فاتورة العميل بمرفقه.
- */
+/** Has the transport invoice arrived? Three entry paths: its own field, a "transport invoice" entry in payment stages with an attachment, or its item in the customer invoice with an attachment. */
 function hasTransportInvoice(c) {
   if (!c) return false;
   const t = c.transportInvoice || {};
@@ -550,7 +452,7 @@ function hasTransportInvoice(c) {
   return (c.saleItems || []).some((x) => x && x.key === 'transportInvoice' && x.fileUrl);
 }
 
-/** لماذا أُغلِقت هذه المرحلةُ على هذه المعاملة — أو '' إن كانت من طريقها. */
+/** Why this stage is closed for this transaction, or '' if it is on its path. */
 function lockReason(key, route, cargoType) {
   if (key === 'containers_returned' && cargoType === 'vehicles') return 'معاملةُ سيّاراتٍ — لا إرجاعَ حاوياتٍ فيها';
   if (key === 'transport_to_customer' && route === 'yard') return 'اختير النقلُ من الميناء إلى الساحة';
@@ -563,22 +465,15 @@ function lockReason(key, route, cargoType) {
 }
 
 /**
- * ما عُلِّم من المراحل والطريقُ المسلوك — بقاعدةٍ واحدةٍ للجديد والقديم.
- *
- * المعاملاتُ التي عُلِّمت قبل التفريع تحمل «نقل الحاويات» مفتاحًا واحدًا، ولا
- * تحمل «سداد فاتورة إذن التسليم» أصلًا. فتُقرأ بما يدلّ عليه ما بعدها: مَن
- * فرّغ وخزّن مرّ بالساحة، ومَن ربط الإذنَ سدّد فاتورتَه. ولا يُكتب ذلك في
- * القاعدة إلّا عند أوّل تعليمٍ جديد (راجع setStage) — القراءةُ لا تُعدِّل.
+ * Marked stages and the route taken, with one rule for new and old records.
+ * Transactions marked before branching carry "transport containers" as a single key and lack "pay delivery-order invoice" entirely. They are read by what follows: whoever unloaded and stored went through the yard, whoever linked the order paid its invoice. This is written to the database only on the first new mark (see setStage); reading does not modify.
  */
 function readStages(c) {
   const done = new Set((c && c.stagesDone) || []);
   let route = (c && c.transportRoute) || '';
   if (c && !(c.pipelineVersion >= 2)) {
-    // ── وأقدمُ من ذلك: مرحلةٌ بلا علامات ───────────────────────────────────
-    // ما استُورد من الماستر (وما أُدخل قبل أن تُعلَّم المراحلُ واحدةً واحدة)
-    // يحمل مرحلتَه وحدَها و`stagesDone` فارغة. والمرحلةُ في الماستر آخرُ ما
-    // **بلغته** المعاملة («فُوترت»، «أُرجعت الحاويات») — فهي وما قبلها مُنجَز.
-    // وإلّا عُدَّت معاملةٌ بلغت الفوترةَ واقفةً عند «استلام الأوراق» بصفرٍ في المئة.
+    // Older still: a stage with no marks.
+    // Imported from the master (or entered before stages were marked one by one), a record carries only its stage and an empty `stagesDone`. The master's stage is the last one the transaction reached ("billed", "containers returned"), so it and everything before it are done. Otherwise a transaction that reached billing would sit at "receive papers" at zero percent.
     if (!done.size && c.stage && c.stage !== 'papers_received') {
       const at = LINEAR_V1.indexOf(c.stage);
       for (let i = 0; i <= at; i += 1) done.add(LINEAR_V1[i]);
@@ -595,16 +490,12 @@ function readStages(c) {
     if (done.has('transport_to_yard')) route = 'yard';
     else if (done.has('transport_to_customer')) route = 'customer';
   }
-  // الفاتورةُ الصادرةُ هي المرحلةُ نفسُها — لا علامةٌ ثانيةٌ تُنسى.
+  // The issued invoice is the stage itself, not a second mark that gets forgotten.
   if (c && c.saleInvoiceNumber) done.add('invoiced');
   return { done, route };
 }
 
-/**
- * مراحلُ المعاملة كما تَلزمها: لكلٍّ منها أمُنجزةٌ هي أم مُغلَقة، ومعها النسبة.
- * والنسبةُ على ما يَلزم وحدَه؛ وما دام الطريقُ لم يُختَر فمرحلتا الميناء خانةٌ
- * واحدة (ستُنجَز إحداهما وتُغلَق الأخرى).
- */
+/** Transaction stages as it needs them: each is done or closed, with the percentage. The percentage covers only what is needed; until the route is chosen the two port stages count as one slot (one will be done and the other closed). */
 function pipelineOf(c) {
   const { done, route, units } = readUnits(c);
   const cargoType = (c && c.cargoType) || 'containers';
@@ -612,7 +503,7 @@ function pipelineOf(c) {
     const reason = lockReason(key, r, cargoType);
     return {
       key, done: !reason && has(key), locked: !!reason, ...(reason ? { reason } : {}),
-      // الطريقُ الآخرُ ليس بابًا موصدًا: يُضغَط فيتحوّل الاختيارُ إليه (راجع setStage).
+      // The other route is not locked: clicking it switches the choice (see setStage).
       ...(reason && PORT_LEGS.includes(key) ? { switchable: true } : {}),
     };
   };
@@ -624,17 +515,14 @@ function pipelineOf(c) {
     return { done: n, total, percent: Math.min(100, Math.round((n / total) * 100)), next: next ? next.key : '' };
   };
 
-  // ── معاملةٌ بلا وحدات: المراحلُ كلُّها على المعاملة ───────────────────────
+  // Transaction with no units: all stages on the transaction.
   if (!units) {
     const steps = STAGES.map((key) => step(key, route, (k) => done.has(k)));
     return { route, cargoType, perUnit: false, steps, units: [], ...tally(steps, route) };
   }
 
-  // ── ومن أوّل النقل: لكلّ حاويةٍ مراحلُها ──────────────────────────────────
-  // ثلاثُ حاوياتٍ في بوليصةٍ واحدة لا تسير معًا دائمًا: واحدةٌ إلى العميل
-  // اليوم، واثنتان إلى الساحة، وإحداهما تُرجَع قبل أختها. فمراحلُ النقل وما
-  // بعده تُعلَّم لكلّ وحدةٍ، ومرحلةُ المعاملة هي جمعُها: «أُنجزت» حين تُنجزها
-  // كلُّ وحدةٍ تَلزمها، ومعها كم أنجزها من كم.
+  // From the first transport, each container has its own stages.
+  // Three containers on one bill of lading do not always move together: one to the customer today, two to the yard, one returned before its sibling. So transport and later stages are marked per unit, and the transaction stage is their aggregate: done when every unit that needs it has done it, with how many of how many.
   const unitViews = units.map((u, index) => {
     const steps = UNIT_STAGES.map((key) => step(key, u.route, (k) => u.done.has(k)));
     return { index, route: u.route, steps, ...tally(steps, u.route) };
@@ -654,7 +542,7 @@ function pipelineOf(c) {
     }
     return { key, perUnit: true, done: n === open.length, locked: false, unitsDone: n, unitsOf: open.length };
   });
-  // النسبة: مراحلُ المعاملة بوزنها، ومراحلُ الوحدات بمتوسّط ما أنجزته كلٌّ منها.
+  // Percentage: transaction stages by weight, unit stages by the average of what each unit completed.
   const base = steps.filter((x) => !x.perUnit);
   const baseDone = base.filter((x) => x.done).length;
   const span = Math.max(...unitViews.map((v) => v.total));
@@ -675,12 +563,8 @@ function pipelineOf(c) {
 }
 
 /**
- * وحداتُ المعاملة ومراحلُ كلٍّ منها.
- *
- * ما عُلِّم قبل أن تصير المراحلُ لكلّ وحدة (`pipelineVersion` دون ٣) مكتوبٌ على
- * المعاملة كلِّها — فيُقرأ على وحداتها جميعًا: «نُقلت الحاويات» يومَها كانت
- * تعني كلَّها. ولا يُكتب ذلك في القاعدة إلّا عند أوّل تعليمٍ لوحدة (setStage).
- * ومعاملةٌ بلا عددِ وحداتٍ تبقى مراحلُها عليها (`units: null`).
+ * Transaction units and each one's stages.
+ * Marks made before stages became per-unit (`pipelineVersion` below 3) are on the whole transaction and read onto all its units: "containers transported" then meant all of them. This is written to the database only on the first per-unit mark (setStage). A transaction with no unit count keeps its stages on itself (`units: null`).
  */
 function readUnits(c) {
   const { done, route } = readStages(c);
@@ -705,11 +589,7 @@ function readUnits(c) {
 
 customsClearanceSchema.virtual('pipeline').get(function pipelineVirtual() { return pipelineOf(this); });
 
-/**
- * صفوفُ الوحدات (حاوياتٍ أو سيّارات) بعدد المعاملة: تُزاد خاناتٌ فارغةٌ حتى
- * العدد، ويُحذَف الفارغُ الزائدُ من آخرها. وما كُتب فيه شيءٌ لا يُحذَف بتصغير
- * العدد — يبقى ويُصحَّح العددُ إليه.
- */
+/** Unit rows (containers or cars) matching the transaction count: empty slots are added up to the count and extra empty ones are removed from the end. A row with anything written is never deleted by shrinking the count; the count is corrected to it instead. */
 function syncUnits(rows, count) {
   const list = (Array.isArray(rows) ? rows : []).map((r) => ({ ...(r && r.toObject ? r.toObject() : r) }));
   const want = Math.max(0, Math.min(300, Math.round(Number(count) || 0)));
@@ -728,8 +608,7 @@ customsClearanceSchema.index({ periodYear: 1, periodMonth: 1 });
 customsClearanceSchema.index({ customerName: 1 });
 customsClearanceSchema.index({ 'billing.invoiceStatus': 1 });
 
-// بنودُ المصروفات التي يتكوّن منها costs.total — وهي وحدَها ما يُمرَّر على
-// العميل. مطابقةٌ لصيغة الماستر: اجمالى المصروفات = مجموعُ هذه الخانات.
+// Cost items that make up costs.total, the only items passed through to the customer. Matches the master formula: total costs = sum of these fields.
 const COST_KEYS = [
   'returnInvoice', 'deliveryOrder', 'customsDuty', 'portFees', 'unloadingFees',
   'inspection', 'transport', 'transportToYard', 'appointmentBooking', 'storage',
@@ -737,9 +616,7 @@ const COST_KEYS = [
   'extraFees', 'transportYardToCustomer', 'labourExpenses',
 ];
 
-// بنودُ الهامش التي يتكوّن منها revenue.profit. `transportSelling` ليس منها:
-// هو الإجمالي، وصافيه (transportNet) هو الداخلُ في الربح، فجمعُهما معًا يحسب
-// النقلَ مرّتين. وكذلك yardTransportNet — عمودٌ مساعدٌ لا يدخل صيغةَ الربح.
+// Margin items that make up revenue.profit. `transportSelling` is not one: it is the gross, and its net (transportNet) is what enters profit, so adding both counts transport twice. Likewise yardTransportNet is a helper column outside the profit formula.
 const MARGIN_KEYS = [
   'clearanceFee', 'labour', 'yardNet', 'storageNet',
   'transportToYardNet', 'securityScan', 'transportNet', 'yardToCustomerNet', 'transportDailies',
@@ -749,10 +626,8 @@ const MARGIN_KEYS = [
 const DERIVED_REVENUE = ['transportNet', 'yardToCustomerNet', 'yardNet', 'transportToYardNet'];
 
 /**
- * ── مرحلةُ السداد ← بندُ التكلفة ───────────────────────────────────────────
- * حين تقول الإدارةُ الماليّة «تمّ الدفع» على مرحلةٍ من هذه، يُكتب مجموعُ ما
- * دُفع منها في بندها من «التكاليف» — فلا يُعاد كتابةُ الرقم بيدٍ مرّةً ثانية.
- * ومرحلةٌ في هذه القائمة لا تُضاف بلا مبلغ. والمراسلاتُ (الميلات) ليست منها.
+ * Payment stage to cost item.
+ * When Finance marks a stage of these as paid, the sum paid for it is written into its cost item, so the number is not retyped by hand. A stage in this list is not added without an amount. Correspondence milestones are not part of it.
  */
 const STAGE_COST = {
   doInvoicePaid: 'deliveryOrder',
@@ -771,15 +646,10 @@ const STAGE_COST = {
   labourExpenses: 'labourExpenses',
 };
 
-// أجزاءُ فاتورة النقل الثلاثة — وأيٌّ منها بمرفقه يقوم مقامَ «فاتورة النقل»
-// القديمة في إنهاء المعاملة (راجع hasTransportInvoice).
+// The three transport-invoice parts; any of them with an attachment stands in for the old "transport invoice" when finishing a transaction (see hasTransportInvoice).
 const TRANSPORT_STAGE_KEYS = ['transportInvoice', 'transportPortToCustomer', 'transportPortToYard', 'transportYardToCustomer'];
 
-/**
- * يكتب في بند التكلفة مجموعَ المدفوع من مراحله. ولا يمسّ بندًا لا مبلغَ مدفوعًا
- * فيه قطّ: المعاملاتُ القديمة كُتبت تكاليفُها بيدٍ ومراحلُها بلا مبالغ، فتصفيرُها
- * محوٌ لما كُتب. يُعيد قائمةَ البنود التي تغيّرت.
- */
+/** Writes the sum paid from its stages into the cost item. Leaves an item that never had a paid amount untouched: old transactions have hand-written costs and stages without amounts, so zeroing them would erase what was written. Returns the list of items that changed. */
 // Stages that carry no money (emails, retired steps). Any other stage key without
 // its own cost line — e.g. one added later from section settings — lands in extraFees.
 const NON_COST_STAGES = new Set(['doInvoiceEmailed', 'doLinkEmailed', 'containersReturned', 'returnInvoiceDate', 'transportInvoice']);
@@ -810,29 +680,17 @@ const n = (v) => {
 const r2 = (x) => Math.round(x * 100) / 100;
 
 /**
- * يعيد اشتقاق الأرقام الثلاثة المحسوبة على أيّ كائنٍ أو مستند:
- *   costs.total          = مجموع بنود المصروفات
- *   revenue.profit       = مجموع بنود الهامش
- *   revenue.totalInvoiced = المصروفات + الهامش
- *
- * الفاتورةُ محسوبةٌ لا مُدخلة: عمودُها في الماستر صيغةٌ لا رقمٌ مكتوب، فلو
- * قُرئ رقمًا وأُدخل يدويًّا انفصل عن بنوده وصار الربحُ خبرًا لا حسابًا.
- * وكلُّ بندٍ غيرِ رقميّ يساوي صفرًا لا NaN، كي لا تُسمَّم الجملةُ كلُّها.
- * يستعمله pre('save') ومسارُ التحديث في المتحكّم والمستورِد، فلا تنزلق
- * الأرقامُ المشتقّة عن مدخلاتها في أيّ مسار.
+ * Re-derives the computed figures on any object or document: costs.total = sum of cost items; revenue.profit = sum of margin items; revenue.totalInvoiced = costs + margin.
+ * The invoice is computed, not entered (its master column is a formula); non-numeric items count as zero, not NaN. Used by pre("save") and the controller and importer update paths so derived figures never drift.
  */
 function recomputeTotals(doc) {
   if (!doc) return doc;
   if (!doc.costs) doc.costs = {};
   if (!doc.revenue) doc.revenue = {};
-  // ── وصافي النقل فرقٌ لا خانةٌ تُملأ ───────────────────────────────────────
-  // كان رقمين يكتبهما الموظّف بيده: «سعر بيع النقل» و«صافي النقل». وهما ليسا
-  // مستقلَّين — الثاني هو الأوّل ناقصَ ما ندفعه للناقل (`costs.transport`).
-  // فكتابتُهما معًا تفتح بابَ اختلافهما: صافٍ لا يساوي الفرق، وربحٌ مبنيٌّ
-  // على رقمٍ كُتب سهوًا. والقاعدةُ واحدة: نأخذ من العميل ٢٠٠٠ وندفع للناقل
-  // ١٥٠٠، فربحُنا من النقل ٥٠٠ — يُحسب حيث تُحسب بقيّةُ الأرقام المشتقّة.
+  // Net transport is a difference, not a field to fill.
+  // It used to be two hand-typed numbers (transport selling price and net transport), but the second is the first minus what we pay the carrier (`costs.transport`); writing both allows them to disagree, and profit built on a mistyped number. Rule: charging the customer 2000 and paying the carrier 1500 gives transport profit 500, computed where the other derived figures are.
   doc.revenue.transportNet = r2(n(doc.revenue.transportSelling) - n(doc.costs.transport));
-  // والجزآن الآخران على القاعدة نفسِها: سعرُ العميل ناقصَ ما ندفعه.
+  // The other two parts follow the same rule: customer price minus what we pay.
   doc.revenue.yardToCustomerNet = r2(n(doc.revenue.yardToCustomerSelling) - n(doc.costs.transportYardToCustomer));
   // An empty price counts as 0, so clearing it moves the net too (legacy rows got their price backfilled).
   doc.revenue.transportToYardNet = r2(n(doc.revenue.transportToYardSelling) - n(doc.costs.transportToYard));
@@ -854,7 +712,7 @@ customsClearanceSchema.pre('save', function (next) {
   this.transportInvoiceReceived = hasTransportInvoice(this);
   if (this.isNew) {
     this.pipelineVersion = 2;
-    // المعاملةُ تُنشأ بعدد وحداتها، فتُفتَح لها خاناتُها من أوّل يوم.
+    // A transaction is created with its unit count so its slots exist from day one.
     const rows = syncUnits(this.containers, this.containerCount);
     if (rows.length !== (this.containers || []).length) this.containers = rows;
   }
@@ -862,12 +720,8 @@ customsClearanceSchema.pre('save', function (next) {
 });
 
 /**
- * الشهرُ والسنة يُملآن لكلّ معاملة — لا لمستورَدات الماستر وحدها.
- *
- * كانا عمودين من شيت الماستر لا يملؤهما شيءٌ في النظام، والتحليلاتُ والتقريرُ
- * الماليّ وفلاترُ السنة والشهر كلُّها تقرأ بهما — فكلُّ معاملةٍ أُنشئت هنا
- * بعد الاستيراد غائبةٌ عنها. فالفارغُ يُملأ من أوّل تاريخٍ معروف: استلامُ
- * الورق، ثمّ البيان، ثمّ الإنشاء (بتوقيت الرياض). وما كُتب بيدٍ لا يُمسّ.
+ * Month and year are filled for every transaction, not only master imports.
+ * They were master-sheet columns that nothing in the system filled, yet analytics, the financial report and the year/month filters read them, so transactions created after the import were missing from them. An empty value is filled from the first known date: papers received, then declaration, then creation (Riyadh time). Hand-written values are left alone.
  */
 function periodFrom(doc) {
   const s = String(doc.papersReceivedDate || doc.declarationDate || '').slice(0, 10);
@@ -908,16 +762,13 @@ customsClearanceSchema.pre('save', async function (next) {
 
 customsClearanceSchema.statics.STAGES = STAGES;
 
-// ── كلُّ كتابةٍ تمسح ذاكرةَ القسم كلَّها، لا القائمةَ وحدَها ─────────────────
-// كانت تمسح `customs:list` فقط، فتبقى لوحةُ القسم (`customs:dash:`) والتحليلاتُ
-// (`customs:analytics:`) على أرقام ما قبل الكتابة نصفَ دقيقةٍ أو دقيقة — والشاشةُ
-// تُحدَّث بالحدث فتقرأ الذاكرةَ القديمة. والخطّافُ يعمل قبل أن يُبثّ الحدث.
+// Every write clears the whole department cache, not only the list.
+// It used to clear just `customs:list`, leaving the department dashboard (`customs:dash:`) and analytics (`customs:analytics:`) on pre-write numbers for half a minute to a minute, while the screen refreshes on the event and reads the stale cache. The hook runs before the event is broadcast.
 const bustCustomsList = () => { try { require('../utils/ttlCache').clear('customs:'); } catch (e) { /* noop */ } };
 customsClearanceSchema.post('save', bustCustomsList);
 customsClearanceSchema.post(/^find.*[UD]/, bustCustomsList); // findOneAndUpdate / findOneAndDelete / findByIdAndUpdate|Delete
-// ── وكشوفُ التشغيل المرتبطة تتبع كلَّ حفظ ──────────────────────────────────
-// رقمُ كشفٍ في خانة نقلٍ، أو بوليصةٌ وحاويةٌ تغيّرت، أو معاملةٌ حُذفت: يُعاد
-// ربطُ ما يتأثّر في الخلف (طابورٌ لا ينتظره الحفظ). راجع services/customsOpsLink.
+// Linked operations statements follow every save.
+// A statement number in a transport field, or a changed bill of lading or container, or a deleted transaction, re-links what is affected in the background (a queue the save does not wait for). See services/customsOpsLink.
 const relinkOps = (doc) => { try { if (doc && doc._id) require('../services/customsOpsLink').queueClearance(doc._id); } catch (e) { /* noop */ } };
 customsClearanceSchema.post('save', relinkOps);
 customsClearanceSchema.post(/^find.*[UD]/, relinkOps);

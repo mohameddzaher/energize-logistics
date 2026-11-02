@@ -1,21 +1,17 @@
 /**
- * عهدةُ النقل الثقيل — الكاش وكارت المشتريات والورشة. راجع models/HtCustody.
- *
- * الدفترُ نفسُه دفترُ النقل الخفيف (custodyLedgerController)، ويزيد عليه أنّ
- * الواردَ والصادرَ يُنسبان — اختيارًا — إلى سيّارةٍ من أسطول لوكيشن سوليوشن.
- *
- * والمتحمِّلُ هنا موظّفٌ أو سائقٌ يُعرَف برقم هويّته من الموارد البشريّة وحدَها:
- * سجلُّ النقل الخفيف لمناديب الأفراد، ولا شأنَ له بسائقي الشاحنات.
+ * Heavy-transport custody: cash, purchase card and workshop. See models/HtCustody.
+ * Same ledger as light transport (custodyLedgerController), plus entries may optionally link to a vehicle in the Location Solutions fleet.
+ * The holder is an employee or driver identified by ID number from HR only, not the light-transport rider register.
  */
 const HtCustodyEntry = require('../models/HtCustody');
 const Employee = require('../models/Employee');
 const { makeCustodyController } = require('./custodyLedgerController');
 const { FINANCE_FULL_ROLES } = require('../config/financeAuthority');
 
-// مديرُ لوكيشن سوليوشن ومديرُ النظام وأهلُ المال — كمدير القطاع في الخفيف.
+// Location Solutions manager, system admin and finance roles, like the sector manager in light transport.
 const CUSTODY_ROLES = ['super_admin', 'admin', 'location_manager', ...FINANCE_FULL_ROLES];
 
-/** الموظّفُ برقم هويّته — بعمودَي الهويّة معًا (راجع identity-number-two-columns). */
+/** Employee by ID number, matching both identity columns (see identity-number-two-columns). */
 async function findRep(idNumber) {
   const id = String(idNumber || '').replace(/\s+/g, '').trim();
   if (!id) return null;

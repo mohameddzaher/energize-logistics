@@ -2,33 +2,18 @@ const Notification = require('../models/Notification');
 const { effectivePermissions } = require('../utils/permissions');
 
 /**
- * ── ما يراه المستخدم: ما وُجِّه إليه، وما وُجِّه إلى قسمٍ يملكه ───────────────
- *
- * كان الجرس يقرأ `recipient` وحدَه، فكلُّ خبرٍ يخصّ قسمًا كان يُكتب صفًّا لكلّ
- * شخصٍ في قائمةِ مستلمين مكتوبةٍ بيدٍ عند كلّ موضع. ومن لم يُذكر في القائمة لم
- * يصله شيء: ثمانيةٌ وثلاثون مستخدمًا نشِطًا بلا إشعارٍ واحد — مناديبُ التشغيل
- * وموظّفو التحصيل ومشرفو B2C ومديرو المركبات والجمارك.
- *
- * فالوجهةُ صارت القسمَ نفسَه، والقارئُ يُحدَّد بما فُتح له: **المصفوفةُ التي
- * تقرّر أيَّ الشاشات يفتح هي التي تقرّر أيَّ الأخبار يرى**. فمن مُنح قسمًا رآه
- * بلا أن يُضاف إلى قائمة، ومن أُغلق عنه لم يره — ولا قائمةَ تُنسى.
+ * What a user sees: what is addressed to them, and what is addressed to a section they own.
+ * The bell used to read only `recipient`, so each section-wide item was written as a row per person in a hand-written recipient list at every call site. Anyone not listed got nothing (38 active users had no notification at all: operations reps, collections staff, B2C supervisors, vehicle and customs managers).
+ * The destination is now the section itself, and the reader is determined by what the permission matrix opened for them: the matrix that decides which screens open also decides which items are seen. A granted section is seen without being added to a list, a closed one is not, and no list can be forgotten.
  */
-//
-// ── ثمّ صار القارئُ يُحدَّد بموقعه لا بما فُتح له (٢٠٢٦-١٠) ──────────────────
-// المصفوفةُ تفتح القسمَ لمن يعمل فيه ولمن يحتاج شاشاتِه — فكان المحاسبُ يرى
-// أخبارَ التشغيل لأنّ له شاشةً فيه. والمطلوبُ أبسط:
-//
-//   مديرُ النظام   كلَّ ما يُفعَل في النظام.
-//   مديرُ القسم    كلَّ ما يدور في قسمه — أخبارَه وأفعالَ فريقه.
-//   الموظّف        ما وُجِّه إليه هو وحدَه.
-//
-// فإشعارُ القسم (ومنه أخبارُ الأفعال — راجع services/activityFeed) يراه مديرُه
-// ومديرُ النظام؛ والموظّفُ يصله ما كُتب باسمه: مهمّةٌ أُسنِدت، طلبٌ رُدّ عليه.
+// The reader is determined by role, not by what the matrix opens (an accountant saw operations news because of a screen there):
+// system admin: everything; section manager: everything in their section; employee: only what is addressed to them.
+// Section notifications (including action feeds; see services/activityFeed) go to the manager and system admin.
 const { SECTION_ROLES } = require('../config/roles');
-// من يدير قسمًا وليس دورُه دورَ مديره — المديرُ الماليُّ فوق مدير الحسابات.
+// Someone who manages a section without having its manager role: the finance manager sits above the accounts manager.
 const EXTRA_MANAGED = { cfo: ['Accounting'] };
 
-/** نطاقُ القارئ: `all` لمدير النظام، وإلّا الأقسامُ التي يديرها. */
+/** Reader scope: `all` for the system admin, otherwise the sections they manage. */
 const scopeOf = async (user) => {
   const role = user?.role;
   if (require('../config/constants').isTopRole(role)) return { all: true, sections: [] };
@@ -37,21 +22,18 @@ const scopeOf = async (user) => {
 };
 const sectionsOf = scopeOf;
 
-/** صفوفُ الأقسام التي يراها هذا القارئ — ولا يُعرَض عليه خبرُ ما فعله هو. */
+/** Section rows this reader sees; their own actions are not shown to them. */
 const sectionClause = (userId, scope) => {
   if (scope.all) return [{ section: { $ne: null }, actor: { $ne: userId } }];
   return scope.sections.length ? [{ section: { $in: scope.sections }, actor: { $ne: userId } }] : [];
 };
 
-/** شرطُ «يخصّني»: موجَّهٌ إليّ، أو إلى قسمٍ أديره. */
+/** Concerns-me condition: addressed to me, or to a section I manage. */
 const mineFilter = (userId, scope) => ({
   $or: [{ recipient: userId }, ...sectionClause(userId, scope)],
 });
 
-/**
- * «غيرُ مقروء» يختلف بين الاثنين: الشخصيُّ له `isRead`، وإشعارُ القسم صفٌّ
- * واحدٌ يراه كثيرون فلا تسعه رايةٌ واحدة — يُقرأ من `readBy`.
- */
+/** Unread differs between the two kinds: a personal one has `isRead`, while a section notification is one row seen by many, which a single flag cannot hold, so it is read from `readBy`. */
 const unreadFilter = (userId, scope) => ({
   $or: [
     { recipient: userId, isRead: false },
@@ -73,8 +55,7 @@ exports.getNotifications = async (req, res) => {
       Notification.countDocuments(unreadFilter(uid, sections)),
     ]);
 
-    // والشاشةُ تقرأ `isRead` واحدةً مهما كان نوعُ الإشعار — فتُشتقّ للقسميّ من
-    // `readBy` بدل أن تتعلّم الشاشةُ الفرق.
+    // The screen reads a single `isRead` whatever the notification type, so it is derived from `readBy` for section ones instead of teaching the screen the difference.
     const notifications = rows.map((n) => ({
       ...n,
       isRead: n.recipient ? !!n.isRead : (n.readBy || []).some((x) => String(x) === String(uid)),
@@ -95,7 +76,7 @@ exports.markAsRead = async (req, res) => {
     if (!n) return res.status(404).json({ message: 'Notification not found' });
 
     if (n.recipient) { n.isRead = true; n.readAt = new Date(); }
-    // القسميُّ: يُضاف القارئُ ولا يُقلَب لغيره.
+    // Section type: the reader is added and never flipped for others.
     else if (!(n.readBy || []).some((x) => String(x) === String(uid))) n.readBy.push(uid);
     await n.save();
 

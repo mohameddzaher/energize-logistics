@@ -30,11 +30,7 @@ let timer = null;
 let running = false;
 let tickCount = 0;
 
-// ── لا يُكتب ما لم يتغيّر (٢٠٢٦/١٠/٢٤) ─────────────────────────────────────
-// كلُّ دورةٍ (١٥ ث) كانت تعيد كتابةَ الشاحنات السبعَ والخمسين وتنبيهاتِها
-// وعدّاداتِها ولو كانت واقفةً لم يتغيّر فيها شيء — قرابةَ اثنتي عشرةَ كتابةً في
-// الثانية تتضخّم بها نسخُ القاعدة واحتياطيُّها. فما تغيّر يُكتب فورًا كما كان،
-// وما لم يتغيّر يُجدَّد وقتُ «آخر رصد» فيه مرّةً في الدقيقة لا أربعًا.
+// Unchanged data is not written. Each 15s cycle used to rewrite all 57 trucks with their alerts and counters even when idle, bloating the DB and its backups. Changes are written immediately; unchanged rows only refresh the last-seen time once a minute.
 const REFRESH_MS = 60 * 1000;
 const lastVehicleWrite = new Map(); // unitId → { sig, at }
 const lastOdoWrite = new Map();     // unitId|day → 'odo|hours|plate'
@@ -68,11 +64,7 @@ function detectSensorChange(tel, vehicleDoc, status, now) {
   const notice = vehicleDoc?.sensorChangeNotice || null;
   if (notice && new Date(notice.expiresAt) <= now) out.sensorChangeNotice = null;
 
-  // ── والقراءة المحمولة لا تُغذّي الكاشف ───────────────────────────────────
-  // الكاشف يقيس **تغيّرًا** في عدد ما يبثّ. وقراءةٌ محمولةٌ من نبضةٍ سابقة تعيد
-  // الرقمَ نفسه مهما تغيّر الواقع — فلو ركّبت الورشةُ حسّاسًا جديدًا وقت حملِ
-  // القراءة لبقي الأساس ثابتًا ولم يُلاحَظ التركيب. ولو انقطع حسّاسٌ لبقي
-  // الأساس ثابتًا ولم يُلاحَظ الانقطاع. الصمتُ في الحالتين خطأ.
+  // Carried-over readings do not feed the detector. It measures a change in the number of channels reported, and a carried reading repeats the same number whatever reality does, so a new sensor install or a sensor loss would go unnoticed.
   if (status === 'offline' || !tel.ignition || !slots.length || tel.tiresCarriedOver) return out;
   const reporting = slots.filter((t) => t.tempC != null || (t.pressurePsi != null && t.pressurePsi > 10)).length;
   const prev = vehicleDoc?.tireReporting || null;
@@ -142,18 +134,8 @@ async function tick() {
       openByUnit.get(a.unitId).push(a);
     }
 
-    // ── استرجاع قراءةٍ من السجلّ لمن لا قراءة له إطلاقًا ──────────────────────
-    //
-    // الحملُ من النبضة السابقة لا ينفع مركبةً مخزونُها صفرٌ أصلًا: لا شيء
-    // يُحمَل. وهذه المركبات موجودة — ثلاثٌ تبثّ اثنتي عشرة قناةً في اليوم ونحن
-    // نعرض لها صفرًا، لأن رسالتها الأخيرة **دائمًا** رسالة موقع: الجهاز يرسل
-    // المواقع كثيرًا والإطارات قليلًا، فنادرًا ما تصادف النبضةُ رسالةَ إطارات.
-    //
-    // فيُقرأ لها السجلّ مباشرةً — لكن لهذه وحدها: قراءةُ السجلّ لثمانٍ وخمسين
-    // وحدةً كلَّ عشرين ثانية تُثقل المزوّد بلا داعٍ، وأكثر الأسطول لا يحتاجها.
-    // ومرّةً كل خمس نبضات، فالمركبة التي لا تبثّ إطارات لن تبدأ فجأةً.
-    // عدد الإطارات المركَّبة لكلّ لوحة من سجلّ الورشة — استعلامٌ واحد لا
-    // استعلامٌ لكلّ مركبة. يُستعمل مرجعًا حين يكذب الأساس المحفوظ.
+    // Fallback to the history log for vehicles with no reading at all. Carrying over from the previous pulse cannot help a vehicle whose stock is zero, and the last message is almost always a position message (devices send positions often, tires rarely).
+    // The log is read only for these vehicles, once every five pulses, to avoid loading the provider. Also: installed tire count per plate from the workshop register, one query rather than one per vehicle, used as a reference when the saved baseline is wrong.
     const mountedByKey = new Map();
     try {
       const Ls2TireAsset = require('../models/Ls2TireAsset');
@@ -162,65 +144,41 @@ async function tick() {
         { $group: { _id: '$plateKey', n: { $sum: 1 } } },
       ]);
       for (const a of agg) mountedByKey.set(a._id, a.n);
-    } catch (e) { /* غيابُه يُرجعنا إلى الأساس وحده، لا يُعطّل النبض */ }
+    } catch (e) { /* If unavailable, fall back to the baseline alone; the pulse is not blocked. */ }
 
     const needsBackfill = [];
     for (const unit of units) {
       const t = normalize(unit);
       if (!t) continue;
-      // ── متى يُقرَأ السجلّ؟ حين ينقص عمّا عُرف لهذه المركبة، لا عن رقمٍ ثابت ──
-      // «أقلّ من اثنتي عشرة» رقمٌ مكتوب، وبعض الشاحنات ستُّ قنواتٍ مشروعة (رأسٌ
-      // بلا تيدر) — فتُستدعى لها السجلّ كلَّ مرّةٍ بلا فائدة، وتُثقل المزوّد أبدًا.
-      //
-      // `tireReporting.baseline` هو ما استقرّ بثُّه لهذه المركبة بعينها. فالنقصُ
-      // عنه هو الشذوذ الذي يستحقّ مراجعة السجلّ؛ وما لا أساس له بعد يُقرأ مرّةً
-      // ليُبنى أساسُه.
+      // When to read the log: when the count drops below what is known for this vehicle, not below a fixed number. A fixed 12 would trigger pointless reads for trucks that legitimately report 6 channels (head without trailer). `tireReporting.baseline` is what this vehicle has settled on; a drop below it is the anomaly worth checking, and a vehicle with no baseline is read once to build it.
       const doc = vById.get(t.unitId);
       const have = Math.max((t.tires || []).length, (doc && doc.tires ? doc.tires.length : 0));
-      // والأساس لا يُوثَق به وحده: يتجمّد على ما كان وقت تسجيله. مركبةٌ سُجّل
-      // أساسُها صفرًا يوم لم تكن تبثّ شيئًا يصير «واحدٌ ≥ صفر» فيمنع الاسترجاع
-      // إلى الأبد — فتبقى معطوبةً لأن أوّل قراءةٍ لها كانت معطوبة.
-      //
-      // فيُقاس إلى ما هو أكبر: أساسُها المستقرّ، أو ما يقوله سجلّ الورشة عن عدد
-      // إطاراتها المركَّبة. وأيّهما أكبر هو ما ينبغي أن يصل.
+      // The baseline cannot be trusted alone: it freezes at what it was when recorded. A vehicle whose baseline was recorded as zero would make "one >= zero" block recovery forever. So compare against the larger of its stable baseline and the installed tire count from the workshop register.
       const baseline = doc?.tireReporting?.baseline || 0;
-      // المفتاح يُشتقّ من اللوحة لا يُقرأ من اللقطة: لقطةُ المركبة لا تحمل
-      // `plateKey` أصلًا، فالقراءة منها تعطي `undefined` ويسقط الربط بسجلّ
-      // الورشة في صمت — وهو المرجع الوحيد حين يكون الأساس صفرًا كاذبًا.
-      //
-      // و`plateKey` لا `vehiclePlateKey`: سجلّ الورشة يحفظ أرقام اللوحة وحدها
-      // («٢٧٠٨»)، و`vehiclePlateKey` تُرجع null لكلّ لوحات هذا القسم — فتُنتج
-      // مفتاحًا فارغًا يطابق الفارغ في القاعدة، أي مطابقةً كاذبة لا ربطًا.
+      // The key is derived from the plate, not read from the snapshot: the vehicle snapshot has no `plateKey`, so reading it gives `undefined` and the workshop link silently fails.
+      // Use `plateKey`, not `vehiclePlateKey`: the workshop register stores digits only, and `vehiclePlateKey` returns null for this section's plates, producing an empty key that falsely matches empty values.
       const key = ls2PlateKey(t.plate || '');
       const expected = Math.max(baseline, mountedByKey.get(key) || 0);
-      if (expected > 0 && have >= expected) continue;   // ليس ناقصًا عمّا يُنتظَر منه
-      if (expected === 0 && have > 0) continue;         // لا مرجع بعد، ومعه شيء
+      if (expected > 0 && have >= expected) continue;   // Not below what is expected of it
+      if (expected === 0 && have > 0) continue;         // No reference yet, and it has a reading
       needsBackfill.push(t.unitId);
     }
     const backfilled = new Map();
     if (needsBackfill.length && tickCount % 5 === 0) {
       const to = Math.floor(Date.now() / 1000);
-      // ── لماذا ثمانٍ وأربعون ساعة لا ستّ ────────────────────────────────────
-      // الستّ كانت تكفي لالتقاط رسالة إطاراتٍ من جهازٍ يبثّها متقطّعةً. لكنّ
-      // العطل الحقيقيّ أطول: شاحنةٌ كانت تبثّ اثنتي عشرة قناةً حتى قبل يومين ثمّ
-      // سقطت إلى واحدةٍ فاسدة وبقيت — فنافذةُ ستّ ساعاتٍ لا ترى منها إلا العطل،
-      // وتخلص إلى أن هذا حالُها الطبيعيّ.
-      //
-      // ويومان حدٌّ مقصود: أبعدُ منهما يعني إظهار قراءةٍ عمرها أيّام على أنها
-      // الحالة — وذلك كذبٌ آخر. ما انقطع أكثر من يومين يستحقّ أن يظهر منقطعًا.
+      // Why 48 hours, not 6: six hours caught intermittent tire messages, but real faults last longer (a truck dropping from 12 channels to one corrupt one would look normal in a 6h window). Two days is a deliberate upper bound: older readings would be shown as the current state, which is another kind of wrong. Anything silent beyond two days should show as disconnected.
       const from = to - 48 * 3600;
       for (const id of needsBackfill) {
         try {
-          // النافذة ستُّ ساعاتٍ ومعدّلُ أنشط مركبةٍ ~٢١٠ رسالةً فيها، فدفعةٌ
-          // واحدة تكفيها بفارقٍ كبير — ولا داعيَ لترقيمٍ يُثقل المزوّد كلّ نبضة.
+          // The window is six hours and the busiest vehicle sends about 210 messages in it, so one batch is enough by a wide margin; pagination would only load the provider on every pulse.
           const r = await client.loadMessages(id, from, to, 5000);
           const msgs = (r && r.messages) || [];
-          // الأحدث أوّلًا: نريد آخر قراءةٍ لا أوّلها.
+          // Newest first: we want the latest reading, not the first.
           for (let i = msgs.length - 1; i >= 0; i--) {
             const tires = extractTires(msgs[i].p || {});
             if (tires.length) { backfilled.set(id, tires); break; }
           }
-        } catch (e) { /* وحدةٌ تعذّرت لا توقف البقيّة */ }
+        } catch (e) { /* A failed unit does not stop the rest. */ }
       }
     }
 
@@ -238,26 +196,9 @@ async function tick() {
       if (!tel) continue;
       const vehicleDoc = vById.get(tel.unitId) || null;
 
-      // ── قراءات الإطارات لا تُمحى لأن آخر رسالةٍ خلت منها ──────────────────
-      //
-      // الجهاز لا يضع قراءات الإطارات في كلّ رسالة: رسالةُ موقعٍ تصل بخمس
-      // وأربعين قناةً ليس فيها إطارٌ واحد، ثم تأتي رسالةُ إطاراتٍ بعدها. والنبض
-      // يقرأ الرسالة الأخيرة وحدها — فإن صادفها من النوع الأوّل خزّن صفرًا، فتظهر
-      // شاحنةٌ حسّاساتُها كلُّها سليمةٌ وكأنّ لا حسّاس عليها.
-      //
-      // قِيس ذلك: ثلاث شاحنات تبثّ اثنتي عشرة قناةً كاملةً خلال ثمانٍ وأربعين
-      // ساعة، ونحن نعرض صفرًا وواحدًا — لأن رسالتها الأخيرة كانت رسالة موقع.
-      //
-      // فالقراءة الأخيرة المعروفة تبقى حتى تحلّ محلَّها قراءةٌ أحدث. وغيابُ
-      // القراءة عن رسالةٍ ليس نفيًا لوجود الحسّاس؛ النفيُ أن تصل رسالة إطاراتٍ
-      // ناقصةً منها.
-      // ── «أقلّ ممّا وصل» يُعامَل كـ«لم يصل» ──────────────────────────────────
-      // الرسالة قد تحمل قناةً واحدةً بقيمٍ فاسدة (حرارة ١٧٧٤°) بينما الجهاز
-      // يبثّ اثنتي عشرة قناةً سليمة في رسائل أخرى. والشرط «إن كانت فارغة» لا
-      // يُنقذ ذلك: واحدةٌ ليست فارغة، فتُخزَّن الواحدة وتُمحى الإحدى عشرة.
-      //
-      // قِيس: شاحنةٌ يصلها اثنتا عشرة قناةً في ثلاثة أيام ونعرض لها واحدة.
-      // فالمقارنة صارت بالعدد لا بالوجود: ما نملكه أكثرَ ممّا وصل الآن يبقى.
+      // Tire readings are not erased because the latest message lacks them. The device does not include tire data in every message: a position message can carry 45 channels with no tire, followed later by a tire message. The pulse reads only the latest message, so a position message would store zero and show a truck as having no sensors.
+      // The last known reading is kept until a newer one replaces it; a message without tire data does not mean the sensor is absent, only a tire message arriving incomplete does.
+      // A count lower than what was received is treated as not received: one message may carry a single corrupt channel (e.g. 1774 degrees) while the device reports 12 good channels elsewhere. Comparing by presence would store the single channel and erase the other 11, so the comparison is by count: if we hold more than what arrived, keep ours.
       const carried = vehicleDoc && Array.isArray(vehicleDoc.tires) ? vehicleDoc.tires : [];
       const fresh = tel.tires || [];
       const fromLog = backfilled.get(tel.unitId);
@@ -281,7 +222,7 @@ async function tick() {
         tel.maxTirePressurePsi = vehicleDoc.maxTirePressurePsi;
         tel.minTirePressurePsi = vehicleDoc.minTirePressurePsi;
         tel.tireFaults = vehicleDoc.tireFaults;
-        // ويُعلَم أنها محفوظةٌ لا طازجة، فلا يُبنى تنبيهُ حرارةٍ على رقمٍ قديم.
+        // Flagged as retained, not fresh, so no temperature alert is built on an old number.
         tel.tiresCarriedOver = true;
       }
       const { conditions, status, alertLevel, maintenance } = evaluate(tel, vehicleDoc, settings, deferByUnit.get(tel.unitId) || []);
@@ -398,7 +339,7 @@ async function tick() {
             firstSeenAt: now, lastSeenAt: now,
           };
           alertOps.push({ insertOne: { document: doc } });
-          // التنبيهُ الجديد يصل مَن يتصرّف فيه — راجع services/ls2Notify.
+          // The new alert reaches whoever acts on it; see services/ls2Notify.
           openedNow.push(doc);
         }
       }
@@ -413,7 +354,7 @@ async function tick() {
     if (vehicleOps.length) await Ls2Vehicle.bulkWrite(vehicleOps, { ordered: false });
     if (driverOps.length) await Ls2DriverAssignment.bulkWrite(driverOps, { ordered: false });
     if (alertOps.length) await Ls2Alert.bulkWrite(alertOps, { ordered: false });
-    // الإشعارُ بعد الكتابة لا قبلها، ولا يُفشل الدورةَ إن تعثّر.
+    // Notify after the write, not before, and a failure must not fail the cycle.
     if (openedNow.length) {
       try { await require('../services/ls2Notify').notifyNewAlerts(openedNow); }
       catch (e) { console.error('[ls2] notify alerts', e.message); }
@@ -437,7 +378,7 @@ async function tick() {
     // Slow identity sync (first tick, then every ~30 min).
     if (tickCount % IDENTITY_EVERY_TICKS === 0) {
       syncIdentity().catch((e) => { if (process.env.NODE_ENV !== 'production') console.log('[ls2Poll] identity sync error:', e.message); });
-      // وكلُّ شاحنةٍ جديدة تأخذ سطحتَها في سجلّ الأصول — راجع services/ls2FleetRegister.
+      // Each new truck gets its trailer entry in the assets register; see services/ls2FleetRegister.
       require('../services/ls2FleetRegister').ensureFlatbeds()
         .then((c) => { if (c.length) console.log(`[ls2Poll] added ${c.length} new truck(s) to the asset register: ${c.map((f) => f.plate).join(', ')}`); })
         .catch((e) => console.log('[ls2Poll] ensureFlatbeds error:', e.message));

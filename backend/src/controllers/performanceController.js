@@ -1,15 +1,7 @@
 /**
- * Performance (KPI) evaluation — تقييم الأداء.
- *
- * Who sees whom:
- *   • super_admin / admin / it_manager → the whole company, and
- *     super_admin alone may edit the forms, the weights, the bands and the tiers.
- *   • a section manager → the employees of the HR department(s) his section
- *     owns, and nobody else's. One rule (config/performanceDepartments) decides
- *     the list, the permission to grade and the per-department numbers.
- *
- * The score itself is computed in ONE place (config/performanceConfig.computeScore)
- * so the live preview, the saved record and the PDF can never disagree.
+ * Performance (KPI) evaluation.
+ * super_admin / admin / it_manager see the whole company; only super_admin edits forms, weights, bands and tiers. A section manager sees only the HR departments his section owns (config/performanceDepartments).
+ * The score is computed in one place (config/performanceConfig.computeScore) so preview, saved record and PDF agree.
  */
 const Employee = require('../models/Employee');
 const { sendMongooseError, describeMongooseError } = require('../utils/mongooseError');
@@ -88,23 +80,11 @@ function parsePeriod(q) {
 
 // ---- Who can this user grade? ---------------------------------------------
 /**
- * ── الملاكُ كما تراه صفحاتُ التقييم: حساباتُ النظام ─────────────────────────
- *
- * من يُقيَّم ومن يقيِّم يُعرَفان من **حسابات النظام** لا من خانة القسم في ملفّ
- * الموارد البشريّة (قرارُ صاحب الشركة): الحسابُ الذي دورُه مديرُ قسمٍ يقيّم،
- * والحساباتُ التي دورُها موظّفُ ذلك القسم تُقيَّم — كما في config/roles.
- *
- * فمن لا حسابَ له (سائقٌ، مندوب) لا يدخل تقييمَ الأقسام، ومن نُقل دورُه من
- * قسمٍ إلى قسم انتقل معه في اللحظة نفسِها، بلا تعديلٍ في ملفّه.
- *
- * كلُّ موظّفٍ في الملاك عليه:
- *   section   قسمُ النظام الذي ينتمي إليه دورُه
- *   manager   أهو مديرُ ذلك القسم
- *   dept      القسمُ كما يُعرَض ويُجمَع: قسمُ النظام باسمه العربيّ
- *   hrDept    قسمُه في ملفّه — يُختار به نموذجُ التقييم إن وُجد له نموذج
+ * The roster comes from system accounts, not the HR file's department: a section-manager role evaluates, that section's staff roles are evaluated (config/roles). Accountless people (drivers, reps) are excluded; a role moved between sections moves with it.
+ * Per employee: section (role's section), manager (bool), dept (display/grouping name), hrDept (HR-file department, picks the form).
  */
 const EMP_FIELDS = 'arabicName firstName lastName jobTitle department employeeNumber photo user directManager isHrRecord employmentStatus';
-// من يدير فوق الأقسام — يقيّمه مديرُ النظام مع مديري الأقسام.
+// Whoever manages above sections is evaluated by the system admin together with section managers.
 const ABOVE_SECTIONS = ['cfo', 'moderator'];
 const sectionDept = (section) => {
   const { sectionLabel } = require('../config/sections');
@@ -118,8 +98,7 @@ async function loadOrg() {
     User.find({ isActive: { $ne: false } }, { _id: 1, role: 1 }).lean(),
   ]);
   const roleOf = new Map(users.map((u) => [String(u._id), canonicalRole(u.role)]));
-  // حسابٌ واحدٌ قد يكون له ملفّان (ملفُّ الموارد وملفٌّ وُلد مع الحساب): يُؤخذ
-  // ملفُّ الموارد البشريّة، فلا يُعَدّ الشخصُ مرّتين.
+  // One account can have two files (the HR file and one created with the account): the HR file wins so the person is not counted twice.
   const byUser = new Map();
   for (const e of linked) {
     const k = String(e.user);
@@ -128,11 +107,7 @@ async function loadOrg() {
   }
   const out = [];
   const owner = new Map();
-  // ── ومن يقيّمهم مديرُ النظام: مديرو الأقسام بحساباتهم ────────────────────
-  // الحسابُ الذي دورُه مديرُ قسمٍ في config/roles — لا من كُتب «مديرًا مباشرًا»
-  // في ملفّ أحد، ولا من في اسم دوره «lead» وهو موظّفٌ في فريق مديره (كان
-  // مديرُ المشروع يظهر هنا وفي فريق مدير قطاعه معًا). ومعهم من يدير فوق
-  // الأقسام وليس في فريق أحد: المديرُ الماليّ والمشرفُ العامّ.
+  // The system admin evaluates section managers by account: accounts whose role is a section manager in config/roles. Not people named direct manager in someone's file, and not roles named lead who are staff in their manager's team. Also included: those who manage above sections and are in nobody's team (finance manager, general supervisor).
   const managers = [];
   for (const e of byUser.values()) {
     const role = roleOf.get(String(e.user));
@@ -149,9 +124,9 @@ async function loadOrg() {
   for (const e of byUser.values()) {
     const role = roleOf.get(String(e.user));
     const section = role ? sectionOfRole(role) : null;
-    // حسابٌ معطَّل، أو دورٌ لا قسمَ له (الإدارةُ العليا، «موظّف») — خارجَ الأقسام.
+    // Disabled account, or a role with no section (top management, plain employee): outside the sections.
     if (!section) continue;
-    // «سعودة» و«مواءمة» لا تقييمَ لهم — راجع config/performanceDepartments.isKpiExempt.
+    // Two departments are exempt from evaluation, see config/performanceDepartments.isKpiExempt.
     if (D.isKpiExempt(e.department)) continue;
     e.section = section;
     e.manager = D.managerRolesOf(section).includes(role);
@@ -163,7 +138,7 @@ async function loadOrg() {
   return { index, employees: out, roleOf, owner, managers };
 }
 
-/** الموظّفُ المقروءُ وحدَه يُحمَّل ما يُحمَّله الملاك: قسمُ حسابه وقسمُ ملفّه. */
+/** A single read employee gets the same section and HR-file department that the roster assigns. */
 async function decorate(employee, index) {
   const u = employee.user ? await User.findOne({ _id: employee.user, isActive: { $ne: false } }).select('role').lean() : null;
   const section = u ? sectionOfRole(canonicalRole(u.role)) : null;
@@ -173,53 +148,41 @@ async function decorate(employee, index) {
   return employee;
 }
 
-/**
- * فريقُ قسمٍ من أقسام النظام: حساباتُ موظّفيه — إلّا مديرَه. المديرُ يقيّمه
- * مديرُ النظام من الصفحة المركزيّة، وإلّا قيَّم نفسَه.
- */
+/** A section's team: its staff accounts except its manager, who is evaluated by the system admin from the central page (otherwise he would evaluate himself). */
 function sectionTeam(org, sectionKey) {
   return org.employees.filter((e) => e.section === sectionKey && !e.manager);
 }
 
-/**
- * مَن يحقّ لهذا المستخدم تقييمُه (لغير أصحاب الاطّلاع الكامل): مديرُ القسم
- * يقيّم حساباتِ موظّفي قسمه، ولا أحدَ غيرُه يقيّم.
- */
+/** Who this user may evaluate (for non-full-access users): a section manager evaluates his section's staff accounts; nobody else evaluates. */
 function evaluableBy(org, user) {
   const section = D.sectionOfManagerRole(canonicalRole(user.role));
   return section ? sectionTeam(org, section) : [];
 }
 
 /**
- * scope: 'managers' (default for super-admin on the central page)
- *        | 'all' (full-access only — the whole company)
- * department: optional narrowing by HR department (any spelling of it).
+ * scope: 'managers' (default for super-admin on the central page) | 'all' (full-access only, whole company)
+ * department: optional narrowing by HR department (any spelling).
  * section: the system section whose KPI page this is.
- *
- * كلُّ موظّفٍ في الناتج عليه `dept` — قسمُه المعتمد.
+ * Every employee in the result carries `dept`, his canonical department.
  */
 async function visibleEmployees(user, { scope, department, section } = {}, org) {
   org = org || await loadOrg();
   let list;
 
   if (isFull(user.role)) {
-    // ── صفحةُ قسمٍ بعينه ─────────────────────────────────────────────────
-    // مديرُ النظام يرى فيها فريقَ القسم نفسَه الذي يراه مديرُه، لا قائمةَ
-    // المديرين.
+    // A specific section's page: the system admin sees the same section team as its manager, not the managers list.
     if (section && !scope) {
       list = sectionTeam(org, section);
     } else {
       const effective = scope || (canOverride(user.role) ? 'managers' : 'all');
       if (effective === 'managers') {
-        // مديرو الأقسام بحساباتهم — راجع loadOrg.
+        // Section managers by account, see loadOrg.
         list = org.managers;
       } else list = org.employees;
     }
   } else {
     list = evaluableBy(org, user);
-    // وصفحةُ قسمٍ ليس قسمَه لا تُريه فريقَ غيره: القائمةُ هي ما يحقّ له
-    // تقييمُه. (كانت تردّ فريقَ القسم المطلوب لأيّ حسابٍ يكتب اسمَه في الرابط
-    // — ومعه درجاتُ الفريق — ثمّ يرفض الخادمُ فتحَ أيّ بطاقةٍ منها.)
+    // A section page that is not the caller's own does not show another team: the list is only who he may evaluate. Previously it returned the requested team, with scores, to any account that typed the name in the URL, and then the server refused to open any card.
     if (section) {
       const ids = new Set(sectionTeam(org, section).map((e) => String(e._id)));
       list = list.filter((e) => ids.has(String(e._id)));
@@ -227,7 +190,7 @@ async function visibleEmployees(user, { scope, department, section } = {}, org) 
   }
 
   if (department) {
-    // القسمُ يُطلَب بمفتاحه أو باسمه كما عُرض.
+    // The department is requested by its key or its displayed name.
     const want = D.resolveDepartment(department, org.index).key;
     list = list.filter((e) => e.dept.key === department || e.dept.label === department || e.dept.key === want);
   }
@@ -235,7 +198,7 @@ async function visibleEmployees(user, { scope, department, section } = {}, org) 
   return list.filter((e) => String(e.user || '') !== String(user._id));
 }
 
-// الأقسامُ الممثَّلة في قائمة، بعدد موظّفيها — «بدون قسم» آخرًا.
+// Departments present in the list with employee counts; the no-department group is last.
 function groupsOf(list, org) {
   const { sectionLabel } = require('../config/sections');
   const m = new Map();
@@ -271,13 +234,10 @@ function writeGuard(existing, user) {
   };
 }
 
-// Pick the form that applies to an employee: an exact job-title match wins over
-// the department-wide fallback. القسمُ يُطابَق بمفتاحه المعتمد لا بحروفه: نموذجٌ
-// كُتب لـ«تخليص جمركي» يخدم «التخليص الجمركي».
+// Pick the form that applies to an employee: an exact job-title match wins over the department-wide fallback. Departments match by canonical key, not spelling, so a form written for one spelling serves its variants.
 const sameDept = (a, b) => D.deptFold(a) === D.deptFold(b);
 function templateFor(employee, templates, index) {
-  // النموذجُ يُختار بقسم الموظّف في ملفّه؛ فإن لم يكن لذلك القسم نموذجٌ (أو
-  // لا قسمَ في ملفّه) فبنموذج قسم النظام الذي ينتمي إليه حسابُه.
+  // The form is chosen by the employee's HR-file department; if that department has no form (or none is set), use the form of the system section his account belongs to.
   const hr = employee.hrDept || D.resolveDepartment(employee.department, index);
   const pick = (key) => templates.filter((t) => t.active && D.resolveDepartment(t.department, index).key === key);
   let inDept = pick(hr.key);
@@ -292,7 +252,7 @@ function templateFor(employee, templates, index) {
   return byTitle || inDept.find((t) => !(t.jobTitles || []).length) || inDept[0] || null;
 }
 
-// طبقةُ القسم محفوظةٌ باسمه كما كُتب يومَ الحفظ — فتُقرأ بأيّ صورةٍ من صوره.
+// The department layer is stored under the name as written when saved, so match it in any of its spellings.
 function departmentTier(settings, ...names) {
   const tiers = settings.departmentTiers || {};
   for (const n of names) if (n && tiers[n] != null) return tiers[n];
@@ -309,11 +269,10 @@ const tierOf = (template, settings) => {
 exports.getSettings = async (req, res) => {
   try {
     const s = await PerfSettings.getOrCreate();
-    // الأقسامُ التي فيها موظّفون فعلًا، بأسمائها المعتمدة — ومعها أقسامُ النماذج
-    // القائمة، كي لا يختفي من القائمة قسمٌ له نموذج.
+    // Departments that actually have employees, by canonical name, plus the departments of existing forms so a department with a form never disappears from the list.
     const [org, tplDepts] = await Promise.all([loadOrg(), PerfTemplate.distinct('department')]);
     const names = new Map();
-    // أقسامُ النظام التي فيها حسابات، وأقسامُ ملفّات أصحابها (لها تُكتب النماذج).
+    // System sections with accounts, and the departments of their owners' HR files (forms are written for those).
     for (const e of org.employees) {
       names.set(e.dept.key, e.dept.label);
       if (e.hrDept && !e.hrDept.none) names.set(e.hrDept.key, e.hrDept.label);
@@ -457,7 +416,7 @@ exports.getTeam = async (req, res) => {
       return {
         _id: e._id,
         name: e.arabicName || `${e.firstName || ''} ${e.lastName || ''}`.trim(),
-        // القسمُ باسمه المعتمد، ومفتاحُه لتجميع البطاقات تحته.
+        // The canonical department name and its key for grouping cards under it.
         jobTitle: e.jobTitle || '', department: e.dept.label, departmentEn: e.dept.labelEn,
         departmentKey: e.dept.key,
         employeeNumber: e.employeeNumber || '', photo: e.photo || '',
@@ -493,7 +452,7 @@ exports.getTeam = async (req, res) => {
     };
     res.json({
       period, periodKey, periodLabel: periodLabel(period), members, summary, settings,
-      // الأقسامُ الممثَّلة في القائمة — تُعرَض البطاقاتُ تحتها في الويب والجوّال.
+      // Departments present in the list; cards are shown under them on web and mobile.
       groups: groupsOf(employees, org),
     });
   } catch (e) { fail(res, e, 'Failed to load team'); }
@@ -511,7 +470,7 @@ exports.listEvaluations = async (req, res) => {
       q.employee = { $in: allowed.map((e) => e._id) };
     }
     let evaluations = await PerfEvaluation.find(q).sort({ updatedAt: -1 }).limit(1000).lean();
-    // القسمُ المحفوظ على التقييم لقطةٌ نصّيّة؛ يُفلتَر بمفتاحه المعتمد.
+    // The department saved on an evaluation is a text snapshot; filter by its canonical key.
     if (req.query.department) {
       const index = await D.loadIndex();
       const want = D.resolveDepartment(req.query.department, index).key;
@@ -646,7 +605,7 @@ exports.saveEvaluation = async (req, res) => {
     const doc = {
       template: template._id, employee: employee._id,
       employeeName: employee.arabicName || `${employee.firstName || ''} ${employee.lastName || ''}`.trim(),
-      // يُحفَظ القسمُ باسمه المعتمد، فيتّفق التقييمُ مع القوائم والأرقام.
+      // Save the canonical department name so the evaluation agrees with lists and numbers.
       department: employee.dept.none ? '' : employee.dept.label, jobTitle: employee.jobTitle || '',
       evaluator: req.user._id,
       evaluatorName: body.evaluatorName || `${req.user.firstName || ''} ${req.user.lastName || ''}`.trim(),
@@ -817,10 +776,8 @@ exports.getOverview = async (req, res) => {
     const { employees } = org;
     const { sectionLabel } = require('../config/sections');
 
-    // ── القسمُ هنا هو القسمُ في القوائم ──────────────────────────────────
-    // الملاكُ من loadOrg نفسِها، والتقييمُ يُنسَب إلى قسم صاحبه **الآن** في
-    // ملفّه — لا إلى النصّ المحفوظ عليه يومَ كُتب — فما يُعَدّ تحت قسمٍ هو ما
-    // يُعرَض تحته. ومن غادر الملاكَ يُقرأ قسمُه من لقطة تقييمه.
+    // The department here is the department in the lists.
+    // The roster comes from loadOrg, and an evaluation is attributed to its owner's current department in his file, not the text saved on it, so what is counted under a department is what is displayed under it. Someone who left the roster has his department read from the evaluation snapshot.
     const deptOfEmp = new Map(employees.map((e) => [String(e._id), e.dept]));
     const deptOfEval = (v) => deptOfEmp.get(String(v.employee)) || D.resolveDepartment(v.department, org.index);
     const submitted = evals.filter((e) => e.status === 'submitted');
@@ -832,7 +789,7 @@ exports.getOverview = async (req, res) => {
     };
     for (const e of employees) bucket(e.dept).headcount += 1;
     for (const v of submitted) {
-      // تقييمٌ قديمٌ لمن صار بلا تقييم لا يصنع صفَّ قسمٍ في النظرة الشاملة.
+      // An old evaluation of someone who now has none does not create a department row in the overview.
       if (!deptOfEmp.has(String(v.employee)) && D.isKpiExempt(v.department)) continue;
       bucket(deptOfEval(v)).rows.push(v);
     }
@@ -844,7 +801,7 @@ exports.getOverview = async (req, res) => {
         department: dept.label,
         departmentEn: dept.labelEn,
         departmentKey: dept.key,
-        // صفحةُ القسم التي يُقيَّم منها — فارغٌ لقسمٍ لا تملكه صفحة.
+        // The section page an evaluation is made from; empty for a department no page owns.
         section, sectionAr: section ? sectionLabel(section, 'ar') : '',
         headcount,
         evaluated: rows.length,

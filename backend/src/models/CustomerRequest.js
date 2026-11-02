@@ -1,9 +1,6 @@
 const mongoose = require('mongoose');
 
-/**
- * A request a customer sends from the portal, answered by Operations
- * («التواصل مع العملاء») in the system or by email from a company mailbox.
- */
+/** A request a customer sends from the portal, answered by Operations (customer communication) in the system or by email from a company mailbox. */
 const itemSchema = new mongoose.Schema({
   text: { type: String, trim: true, default: '' },
   // Optional reference the point is about.

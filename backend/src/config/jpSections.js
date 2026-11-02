@@ -1,12 +1,7 @@
 /**
- * jpSections — الأقسامُ التي لها خطّةُ عملٍ (JP)، ومن يديرها ومن يعمل فيها.
- *
- * المفتاحُ هو سلسلةُ القسم في المسار (`fleet`، `ls2`)، و`roleSection` هو مفتاحُه
- * في config/roles.js — ومنه يُعرَف المديرُ والموظّفون، فلا تُكتب قائمةُ أدوارٍ
- * ثانيةٌ هنا تشيخ وحدَها. قسمٌ يُضاف في roles.js يكفيه سطرٌ واحدٌ هنا.
- *
- * `extraManagers`: من يدير القسمَ وليس دورُه دورَ مديره — المديرُ الماليُّ فوق
- * مدير الحسابات، فيرى خطّةَ قسمه ولوحتَها ويُسند فيها.
+ * jpSections: sections that have a work plan (JP), who manages it and who works in it.
+ * The key is the section slug in the path; `roleSection` is its key in config/roles.js, from which manager and staff are known, so no second role list ages here.
+ * `extraManagers`: people who manage the section without its manager role (e.g. the finance manager above the accounts manager).
  */
 const { SECTION_ROLES } = require('./roles');
 
@@ -35,16 +30,16 @@ const JP_SECTIONS = {
 
 for (const [slug, s] of Object.entries(JP_SECTIONS)) {
   const def = SECTION_ROLES.find((x) => x.section === s.roleSection);
-  // قسمٌ بلا أدوارٍ لا مديرَ له ولا فريق — خطّتُه تُفتَح فلا يدخلها أحد.
+  // A section with no roles has no manager or team: its plan opens but nobody can enter.
   if (!def) throw new Error(`jpSections: «${slug}» يشير إلى قسمٍ غير معرَّف في roles.js (${s.roleSection})`);
   s.slug = slug;
   s.managerRoles = [def.manager.key, ...(s.extraManagers || [])];
-  // والمتدرّبُ من الفريق متى فُتحت له صفحةُ الخطّة: يُسنَد إليه ويكتب طلبًا.
+  // A trainee counts as team once the plan page is opened to them: tasks can be assigned to them and they can write a request.
   s.staffRoles = [...def.staff.map((x) => x.key), def.trainee.key];
   s.memberRoles = [...s.managerRoles, ...s.staffRoles];
 }
 
-/** القسمُ الذي ينتمي إليه دورٌ ما — لفتح الإشعار على خطّة صاحبه. */
+/** The section a role belongs to; used to open a notification on its owner's plan. */
 const sectionOfRole = (role) => Object.values(JP_SECTIONS).find((s) => s.memberRoles.includes(role)) || null;
 
 module.exports = { JP_SECTIONS, sectionOfRole };

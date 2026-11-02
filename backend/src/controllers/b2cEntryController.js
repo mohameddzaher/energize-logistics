@@ -1,13 +1,8 @@
 /**
- * مدخلات أوردرات المناديب — جدولٌ كالشيت: المندوب، ورقمُ إقامته، ومشروعُه،
- * وخانةُ اليوم. راجع utils/b2cEntry للقواعد (المندوبُ صفُّه في سجلّ النقل الخفيف،
- * ومديرُ المشروع يرى مشاريعَه، والهدفُ من المشروع).
- *
- *   GET  /api/b2c/entry?date=&from=&to=      الجدولُ والكروتُ وملخّصُ التحقيق
- *   PUT  /api/b2c/entry                      { lt, dateKey, orders }
- *   GET  /api/b2c/entry/managers             المشرفون ومديرو المشاريع ومشاريعُهم
- *   PUT  /api/b2c/entry/managers/:userId     { projects: [nameAr] }
- *   POST /api/light-transport/employees/:id/transfer-project   { projectAr, note }
+ * Rep order entry: a sheet-like table (rep, residence number, project, day cell); rules in utils/b2cEntry.
+ * GET /api/b2c/entry?date=&from=&to=
+ * PUT /api/b2c/entry
+ * POST /api/light-transport/employees/:id/transfer-project
  */
 const mongoose = require('mongoose');
 const E = require('../utils/b2cEntry');
@@ -17,9 +12,9 @@ const logAudit = require('../utils/auditLogger');
 const { emitToAll } = require('../websocket/socketManager');
 
 const S = (v) => String(v ?? '').trim();
-// حالةُ العمل بالقاعدة الواحدة (الموارد البشريّة ثمّ حالةُ اليوم في القسم) — utils/b2cBoard.
+// Work status by the single rule (HR, then the day's section status); see utils/b2cBoard.
 const statusOf = (r) => require('../utils/b2cBoard').shownStatus(r);
-/** كفالة · فري لانسر · يوزرات — مَن له ملفٌّ من ملفّه (رقم السجل التجاري). */
+/** Sponsorship, freelancer, user accounts: whoever has a file, derived from the file (commercial register number). */
 const kindOf = (r) => {
   if (/يوزر/.test(S(r.contractTypeAr))) return 'يوزرات';
   if (r.employee) { const e = ENG.engagementOf(r.employee); if (e === 'sponsored') return 'كفالة'; if (e === 'freelance') return 'فري لانسر'; }
@@ -30,7 +25,7 @@ const kindOf = (r) => {
 const riyadhToday = () => new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Riyadh' }).format(new Date());
 const emit = (ev, p = {}) => { try { emitToAll(ev, p); } catch (_) { /* */ } };
 
-/** صفوفُ المناديب في نطاق المستخدم — مع حساباتِ طلباتهم. */
+/** Rep rows within the user's scope, with their order accounts. */
 async function repRows(scope) {
   const { LightTransportEmployee } = require('../models/LightTransport');
   const P = await E.projects();
@@ -72,7 +67,7 @@ exports.list = async (req, res) => {
       const a = agg.get(String(r._id)) || { total: 0, days: new Set(), day: null };
       const status = statusOf(r);
       const ended = status === E.ENDED || r.isActive === false;
-      if (ended && !a.total && a.day == null) continue; // منتهٍ بلا طلباتٍ في الفترة — لا صفَّ له
+      if (ended && !a.total && a.day == null) continue; // Ended with no orders in the period: no row.
       const proj = P.of(r.projectAr);
       const workedDays = a.days.size;
       const ev = E.evaluate({ total: a.total, workedDays, project: proj });
@@ -86,9 +81,7 @@ exports.list = async (req, res) => {
     }
     out.sort((x, y) => (x.projectAr.localeCompare(y.projectAr, 'ar')) || (y.total - x.total));
 
-    // ── أمازون: حضورٌ لا أوردرات ────────────────────────────────────────────
-    // صفُّ مشروعٍ بلا هدف أوردرات يُدخَل فيه الحضورُ (حاضرٌ ما لم يُعلَّم غائبًا).
-    // راجع b2cAttendanceController.
+    // Amazon: attendance, not orders. A project row with no orders target takes attendance (present unless marked absent). See b2cAttendanceController.
     {
       const A = require('./b2cAttendanceController');
       const attProj = await A.attendanceProjects();
@@ -99,10 +92,7 @@ exports.list = async (req, res) => {
         r.mode = isAtt(r.projectAr) ? 'attendance' : 'orders';
         if (r.mode === 'attendance') r.present = !absent.has(String(r.lt)) && r.status !== 'إجازة';
       }
-      // ── وتقييمُ أمازون بأيّام الحضور لا بالأوردرات ───────────────────────────
-      // هدفُ أمازون أن يعمل المندوبُ «أيّامَ» المشروع في الشهر (٢٦ في صفحة
-      // المشاريع)، لا أن يسلّم عددًا. فالمحقَّقُ أيّامُ حضوره في الفترة (كلُّ يومٍ
-      // انقضى ناقصَ ما عُلِّم فيه غائبًا)، والهدفُ نصيبُ الفترة من أيّام الشهر.
+      // Amazon is evaluated by attendance days, not orders. The target is that the rep works the project's days per month (26 on the projects page), not that they deliver a count. Achieved = attendance days in the period (each elapsed day minus those marked absent); target = the period's share of the month's days.
       if (attIds.length) {
         const B2CAttendance = require('../models/B2CAttendance');
         const end = to < riyadhToday() ? to : riyadhToday();
@@ -132,7 +122,7 @@ exports.list = async (req, res) => {
       }
     }
 
-    // ── الكروت — كالشيت ────────────────────────────────────────────────────
+    // Cards, as in the sheet.
     const working = out.filter((r) => !r.ended);
     const count = (rows, f) => rows.filter(f).length;
     const kinds = ['كفالة', 'فري لانسر', 'يوزرات'];
@@ -145,11 +135,11 @@ exports.list = async (req, res) => {
       })),
       dayTotal: out.reduce((s, r) => s + (r.orders || 0), 0),
       dayEntered: count(out, (r) => r.orders != null),
-      // أيّامُ حضور أمازون ليست أوردرات — لا تدخل مجموعَها.
+      // Amazon attendance days are not orders and do not enter their total.
       periodTotal: out.reduce((s, r) => s + (r.mode === 'attendance' ? 0 : r.total), 0),
       onLeave: count(out, (r) => r.status === 'إجازة'),
     };
-    // ملخّصُ التحقيق حسب المشرف والمشروع.
+    // Investigation summary by supervisor and project.
     const sum = new Map();
     for (const r of working) {
       const k = `${r.supervisorName || '—'}|${r.projectAr}`;
@@ -163,15 +153,11 @@ exports.list = async (req, res) => {
     const tot = summary.reduce((t, s) => ({ reps: t.reps + s.reps, achieved: t.achieved + s.achieved, near: t.near + s.near, far: t.far + s.far, shipments: t.shipments + s.shipments, total: t.total + s.total }), { reps: 0, achieved: 0, near: 0, far: 0, shipments: 0, total: 0 });
     tot.rate = (tot.achieved + tot.near + tot.far) ? tot.achieved / (tot.achieved + tot.near + tot.far) : null;
 
-    // ── صفحةُ الإدخال لا تحمل التقرير ─────────────────────────────────────────
-    // صاحبُ الشركة (٢٠٢٦/١٠/١٩): مَن يُدخل الأوردرات يرى المندوبَ ورقمَ إقامته
-    // ومشروعَه وخانةَ اليوم لا غير. والإجماليّاتُ والأهدافُ والتقييمُ والمشرفون تقريرٌ
-    // للوحة B2C (`report=1`) — لمن يقرأ اللوحةَ وحدَه.
+    // The entry page does not carry the report. Whoever enters orders sees only the rep, residence number, project and the day cell. Totals, targets, evaluation and supervisors are a report for the B2C board (`report=1`), for those who read the board only.
     const REPORT_ROLES = ['super_admin', 'admin', 'b2c_manager', 'b2c_deputy', 'b2c_project_lead'];
     const report = req.query.report === '1' && (REPORT_ROLES.includes(req.user?.role) || E.isEntryHead(req.user));
     if (!report) {
-      // ترتيبُ المناديب كما رتّبه مسؤولو القسم لشيت المشروع (٢٠٢٦/١٠/٢١) — فيُدخِل
-      // مَن يُدخل هنا بالترتيب الذي في الشيت، ومَن ليس في الترتيب بعدهم بالاسم.
+      // Rep order as arranged by the section managers for the project sheet, so entry here follows the sheet's order; reps outside the order follow by name.
       const { B2CSheetOrder } = require('../models/B2COrderSheet');
       const pos = new Map();
       for (const o of await B2CSheetOrder.find({}).select('order').lean()) {
@@ -216,10 +202,9 @@ exports.save = async (req, res) => {
     const B2CDailyOrder = require('../models/B2CDailyOrder');
     const [y, m, d] = dateKey.split('-').map(Number);
     const before = await B2CDailyOrder.findOne({ rep: rep._id, dateKey }).lean();
-    // يومٌ مضى قبل نقل المندوب يُكتب على مشروعه ذلك اليوم (سجلُّ نقله) لا على مشروعه
-    // اليوم — فيظهر في شيت المشروع الذي كان فيه، كما يُكتب من الشيت.
+    // A day before the rep's transfer is written to their project that day (transfer log), not today's project, so it appears in the sheet of the project they were in, as when written from the sheet.
     const dayProject = (await E.projects()).of(E.projectTimeline(lt)(dateKey));
-    // ورقمُ اليوم واحدٌ للرجل: ما في حساباته الأخرى ذلك اليوم يُمحى (آخرُ تعديلٍ هو المعتمد).
+    // The day's number is one per man: his figures in other accounts that day are cleared (the latest edit wins).
     await E.clearOtherAccounts(lt, rep._id, dateKey);
     const entry = await B2CDailyOrder.findOneAndUpdate(
       { rep: rep._id, dateKey },
@@ -240,7 +225,7 @@ exports.save = async (req, res) => {
   }
 };
 
-/** المشرفون ومديرو المشاريع — ومشاريعُ كلٍّ منهم. */
+/** Supervisors and project managers, with each one's projects. */
 exports.managers = async (req, res) => {
   try {
     const { listSupervisors } = require('../utils/b2cSupervisors');
@@ -283,10 +268,7 @@ exports.setManagerProjects = async (req, res) => {
   } catch (e) { res.status(500).json({ message: 'تعذّر حفظ مشاريع المشرف' }); }
 };
 
-/**
- * نقلُ مشروع — من سجلّ المندوب، وممّن يملكه وحدَه. ومن يومه تُكتب طلباتُه على
- * مشروعه الجديد (حسابُ طلباته يتبعه — utils/b2cEntry.syncRepOf عبر hook السجلّ).
- */
+/** Project transfer: from the rep's registry record, by whoever owns it only. From that day the rep's orders are written to the new project (the order account follows via utils/b2cEntry.syncRepOf through the registry hook). */
 exports.transferProject = async (req, res) => {
   try {
     if (!E.canTransfer(req.user)) return res.status(403).json({ message: 'نقلُ المشروع لنائب مدير قطاع الأفراد ومدير القسم والسوبر أدمن والأدمن' });
@@ -317,11 +299,8 @@ exports.transferProject = async (req, res) => {
 };
 
 /**
- * أوردراتُ المندوب موزّعةً على مشاريعه — لملفّه (صاحبُ الشركة، ٢٠٢٦/١٠/١٩).
- *
- * المندوبُ قد يعمل في أكثرَ من مشروعٍ في الشهر الواحد. والأوردرُ يحمل مشروعَه يومَ
- * كُتب، فلا يتحرّك ماضيه إذا نُقل: كيتا من ١ إلى ١٢ ثمّ نينجا من ١٣. فيُقرأ هنا من
- * الأوردرات نفسِها — لكلّ شهرٍ مشاريعُه، ولكلّ مشروعٍ أوّلُ يومٍ وآخرُه وأيّامُه ومجموعُه.
+ * A rep's orders split across their projects, for their profile.
+ * A rep can work on more than one project in a month. An order carries its project from the day it was written, so the past does not move on transfer (for example Keeta 1-12, then Ninja from 13). So it is read from the orders themselves: per month its projects, per project first day, last day, days and total.
  */
 exports.repOrders = async (req, res) => {
   try {

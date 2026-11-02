@@ -1,20 +1,7 @@
 /**
- * خطّةُ العمل (JP) — مهامُّ القسم ومشروعاتُه، ولوحةُ مديره.
- *
- * ── من يفعل ماذا ───────────────────────────────────────────────────────────
- *
- *   المدير     يُسند **مهمّةً** إلى أيٍّ من فريقه، وينشئ المشروعات، ويرى كلَّ
- *              ما في خطّة قسمه، ويعدّل ويحذف، ويفتح اللوحة.
- *   الموظّف    يرى ما أُسنِد إليه وما كتبه هو. يكتب **طلبًا** لنفسه أو لزميلٍ
- *              في قسمه، ويعدّل طلبَه ويحذفه. ويُتمّ ما أُسنِد إليه إن شاء.
- *   المُسنَد إليه  يقول «تمّ» ويرفق ما يثبته — أو لا يقول: الإتمامُ اختياريّ.
- *
- * وفي نطاق الإدارة (`management`) المعنى نفسُه درجةً أعلى: مديرُ النظام هو
- * «المدير»، ومديرو الأقسام هم «الفريق».
- *
- * ── والصلاحيّةُ تُحسَب هنا لا في الشاشة ────────────────────────────────────
- * `who()` تجيب عن كلّ طلبٍ: أهو مديرٌ في هذا النطاق أم عضوٌ أم غريب. وكلُّ
- * قراءةٍ وكتابةٍ تمرّ بها — فإخفاءُ زرٍّ في الشاشة لا يكون هو الحارس.
+ * Work plan (JP): department tasks and projects, and the manager dashboard.
+ * Manager assigns tasks to the team, creates projects, sees the whole plan; an employee sees what is assigned to or written by them, writes requests, and may complete assigned tasks. In the management scope the system admin is the manager and department managers are the team.
+ * Permission is computed server-side by `who()` on every read and write; hiding a button is not the guard.
  */
 const mongoose = require('mongoose');
 const { JpProject, JpTask, ACTIONS } = require('../models/JpModels');
@@ -28,7 +15,7 @@ const { emitToAll } = require('../websocket/socketManager');
 const logAudit = require('../utils/auditLogger');
 const { endedStaff, userEnded, userArchived } = require('../utils/endedStaff');
 
-// السوبر أدمن والأدمن يريان السيستمَ كلَّه بصلاحيّاتٍ كاملة (صاحبُ الشركة، ٢٠٢٦/١٠/٢٧).
+// Super admin and admin see the whole system with full permissions.
 const TOP_ROLES = ['super_admin', 'admin'];
 const sameId = (a, b) => !!a && !!b && String(a._id || a) === String(b._id || b);
 const nameOf = (u) => (u ? [u.firstName, u.lastName].filter(Boolean).join(' ').trim() || u.email || '' : '');
@@ -44,9 +31,9 @@ const assigneeFields = (picked, team) => {
 };
 
 /**
- * موقعُ السائل من النطاق المطلوب. يردّ `null` إن كان النطاقُ نفسُه غيرَ معروف.
- *   canManage  مديرُ هذا النطاق (أو الإدارةُ العليا)
- *   isMember   من فريقه — يُسنَد إليه ويكتب طلبات
+ * The caller's position in the requested scope; returns `null` if the scope is unknown.
+ * canManage  manager of this scope (or top management)
+ * isMember   on its team: can be assigned and writes requests
  */
 function who(req, src = {}) {
   const scope = src.scope === 'management' ? 'management' : 'section';
@@ -131,7 +118,7 @@ async function teamOf(w, { wide = false, assign = false } = {}) {
   return [...accounts, ...noLogin].sort((a, b) => (Number(b.inSection) - Number(a.inSection)) || a.name.localeCompare(b.name, 'ar'));
 }
 
-/** ما يراه السائل: المديرُ كلَّ النطاق، وغيرُه ما أُسنِد إليه أو كتبه. */
+/** What the caller sees: a manager sees the whole scope, anyone else what is assigned to or written by them. */
 const visible = (req, w) => {
   const f = { scope: w.scope, section: w.section };
   if (!w.canManage) f.$or = [{ assignedTo: req.user._id }, { createdBy: req.user._id }];
@@ -143,7 +130,7 @@ const POP = (q) => q
   .populate('createdBy', 'firstName lastName role')
   .populate('project', 'name status');
 
-/** الحالةُ كما تُقرأ: تمّت، أو تأخّرت، أو قائمة. تُشتقّ من الموعد لا تُخزَّن. */
+/** Status as read: done, overdue or open. Derived from the deadline, not stored. */
 const stateOf = (t, now = Date.now()) => {
   if (t.status === 'done') return 'done';
   if (t.deadlineAt && new Date(t.deadlineAt).getTime() < now) return 'overdue';
@@ -153,7 +140,7 @@ const stateOf = (t, now = Date.now()) => {
 const shape = (t, req, w) => {
   const mine = sameId(t.assignedTo, req.user._id);
   const author = sameId(t.createdBy, req.user._id);
-  // أصلُ المهمّة في خطّة الإدارة لا يراه إلّا مديرُ القسم.
+  // A task's origin in the management plan is visible only to the department manager.
   const { parentTask, ...rest } = t;
   return {
     ...rest,
@@ -163,12 +150,12 @@ const shape = (t, req, w) => {
     onTime: t.status === 'done' && t.deadlineAt ? new Date(t.doneAt) <= new Date(t.deadlineAt) : null,
     assignedToName: assigneeName(t),
     createdByName: nameOf(t.createdBy),
-    // الوقتُ حتى الآن مع ما يجري في المؤقّت.
+    // Time so far, including what the running timer has accumulated.
     spentNow: Math.round(((Number(t.spentMinutes) || 0) + (t.timerStartedAt ? (Date.now() - new Date(t.timerStartedAt).getTime()) / 60000 : 0)) * 10) / 10,
-    // ما يجوز لهذا السائل على هذه المهمّة — تقرؤه الشاشةُ ولا تخمّنه.
+    // What this caller may do on this task; the screen reads it and does not guess.
     can: {
       complete: mine || w.canManage,
-      // المؤقّتُ لمن يعمل على المهمّة؛ وتصحيحُ الوقت للمدير.
+      // The timer is for whoever works on the task; time correction is for the manager.
       track: mine,
       adjust: w.canManage,
       edit: w.canManage || (author && (t.kind === 'request' || mine)),
@@ -179,11 +166,10 @@ const shape = (t, req, w) => {
   };
 };
 
-// لوحةُ قسم التخليص تعدّ مهامَّ الخطّة على معاملاتها وتحفظ أرقامَها نصفَ دقيقة —
-// فتُمسَح قبل البثّ، وإلّا قرأت الشاشةُ التي سمعت الحدثَ ما قبل التعديل.
+// The customs department dashboard counts plan tasks on its transactions and caches the figures for 30 seconds, so the cache is cleared before the broadcast; otherwise the screen that heard the event reads pre-edit values.
 const broadcast = (w) => {
-  if (w.section === 'customs') { try { require('../utils/ttlCache').clear('customs:dash'); } catch (_) { /* زيادة */ } }
-  try { emitToAll('jp:changed', { scope: w.scope, section: w.section }); } catch (_) { /* زيادة */ }
+  if (w.section === 'customs') { try { require('../utils/ttlCache').clear('customs:dash'); } catch (_) { /* extra */ } }
+  try { emitToAll('jp:changed', { scope: w.scope, section: w.section }); } catch (_) { /* extra */ }
 };
 
 const notify = async (recipient, actor, title, message, id) => {
@@ -193,15 +179,13 @@ const notify = async (recipient, actor, title, message, id) => {
       recipient: recipient._id || recipient, type: 'task_assigned', title, message,
       relatedEntity: 'JpTask', relatedEntityId: id,
     });
-  } catch (_) { /* الإشعارُ زيادة — لا يُفشل الحفظ */ }
+  } catch (_) { /* The notification is extra and must not fail the save. */ }
 };
 
 /**
- * الموعد من جسم الطلب → لحظةٌ واحدة.
- *   { deadlineKind: 'date',  deadlineDate: 'YYYY-MM-DD' }  آخرُ ذلك اليوم بتوقيت الرياض
- *   { deadlineKind: 'hours', deadlineHours: 2 }            الآن + ساعتان
- *   { deadlineKind: '' }                                   بلا موعد
- * يردّ `undefined` إن لم يُرسَل الموعدُ أصلًا (فلا يُمسّ عند التعديل).
+ * Deadline from the request body, resolved to one instant.
+ * date: end of that day in Riyadh time; hours: now + deadlineHours; empty kind: no deadline.
+ * Returns `undefined` if no deadline was sent (left untouched on edit).
  */
 function readDeadline(body) {
   if (body.deadlineKind === undefined) return undefined;
@@ -219,11 +203,11 @@ function readDeadline(body) {
   return { deadlineKind: '', deadlineHours: null, deadlineAt: null };
 }
 
-// ── يومُ العمل والوقتُ المتوقّع (صاحبُ الشركة، ٢٠٢٦/١٠/٢٢) ────────────────────
+// Work day and expected time
 const DAY_RX = /^\d{4}-\d{2}-\d{2}$/;
 const riyadhDay = (d) => new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Riyadh' }).format(new Date(d));
 const dayStart = (ymd) => new Date(`${ymd}T00:00:00.000+03:00`);
-/** { workDate?, expectedMinutes? } من جسم الطلب — `undefined` للحقل غير المُرسَل. */
+/** { workDate?, expectedMinutes? } from the request body; `undefined` for a field not sent. */
 function readPlan(body) {
   const out = {};
   if (body.workDate !== undefined) {
@@ -243,7 +227,7 @@ function readPlan(body) {
   return out;
 }
 
-/** يُغلق مؤقّتًا يعمل: يكتب الفترةَ سطرًا في سجلّ الوقت. */
+/** Closes a running timer: writes the interval as a line in the time log. */
 function closeTimer(t, user, at = new Date()) {
   if (!t.timerStartedAt) return 0;
   const start = new Date(t.timerStartedAt);
@@ -254,12 +238,12 @@ function closeTimer(t, user, at = new Date()) {
 }
 
 /**
- * ── بماذا تُربَط المهمّة ────────────────────────────────────────────────────
- * لكلّ قسمٍ أنواعُه — معاملةٌ، شحنةٌ، موظّفٌ، مركبةٌ… — في config/jpLinks.js.
+ * What a task links to.
+ * Each department has its own kinds (transaction, shipment, employee, vehicle...) in config/jpLinks.js.
  */
 const jpLinks = require('../config/jpLinks');
 
-/** روابطُ المهمّة من جسم الطلب — `undefined` إن لم تُرسَل (فلا تُمسّ عند التعديل). */
+/** Task links from the request body; `undefined` if not sent (left untouched on edit). */
 async function readLinks(body, w) {
   if (body.links === undefined) return undefined;
   const kinds = w.scope === 'section' ? jpLinks.kindsFor(w.section) : [];
@@ -279,9 +263,7 @@ const fail = (res, e, fallback) => res.status(e?.name === 'ValidationError' || e
   .json({ message: e?.status === 400 || e?.name === 'ValidationError' ? e.message : fallback });
 const bad = (msg) => Object.assign(new Error(msg), { status: 400 });
 
-// ═══════════════════════════════════════════════════════════════════════════
-//  من أنا في هذه الخطّة
-// ═══════════════════════════════════════════════════════════════════════════
+// Who am I in this plan
 // GET /api/jp/me?scope=&section=
 exports.me = async (req, res) => {
   try {
@@ -296,19 +278,19 @@ exports.me = async (req, res) => {
       scope: w.scope, section: w.section, canManage: w.canManage,
       sectionAr: w.def ? w.def.ar : 'الإدارة العليا', sectionEn: w.def ? w.def.en : 'Top management',
       me: req.user._id,
-      // الموظّفُ يُسند إلى نفسه وزملائه؛ والمديرُ إلى الفريق كلِّه.
+      // An employee assigns to themself and colleagues; a manager to the whole team.
       team,
       projects,
       actions: ACTIONS.filter(Boolean),
-      // ما يصحّ ربطُ المهمّة به في هذا القسم — فارغةٌ لقسمٍ بلا روابط.
+      // What a task can be linked to in this section; empty for a section without links.
       linkKinds: w.scope === 'section' ? jpLinks.kindsFor(w.section) : [],
-      // كلمةُ كلّ نوعٍ وقالبُ رابطه — تقرؤها الواجهتان بدل قائمةٍ عندهما.
+      // The label of each kind and its link template; both front ends read it instead of keeping their own list.
       linkMeta: w.scope === 'section' ? jpLinks.metaFor(w.section) : {},
     });
   } catch (e) { fail(res, e, 'تعذّر تحميل الخطّة'); }
 };
 
-// GET /api/jp/link-options?scope=section&section=&kind=&q= — ما يُختار للربط، بالبحث.
+// GET /api/jp/link-options?scope=section&section=&kind=&q= - searchable choices for linking.
 exports.linkOptions = async (req, res) => {
   try {
     const w = who(req, req.query);
@@ -320,7 +302,7 @@ exports.linkOptions = async (req, res) => {
   } catch (e) { fail(res, e, 'تعذّر البحث'); }
 };
 
-// GET /api/jp/home — أين خطّةُ هذا المستخدم (يفتحها الإشعار).
+// GET /api/jp/home - where this user's plan lives (opened by the notification).
 exports.home = (req, res) => {
   const role = req.user?.role;
   if (TOP_ROLES.includes(role)) return res.json({ path: '/system/management-jp' });
@@ -329,9 +311,7 @@ exports.home = (req, res) => {
   res.json({ path: null });
 };
 
-// ═══════════════════════════════════════════════════════════════════════════
-//  المهامّ
-// ═══════════════════════════════════════════════════════════════════════════
+// Tasks
 // GET /api/jp/tasks?scope=&section=&box=mine|sent|all&status=&project=&assignee=&kind=
 exports.listTasks = async (req, res) => {
   try {
@@ -342,7 +322,7 @@ exports.listTasks = async (req, res) => {
     const f = visible(req, w);
     const and = [];
     const { box, status, project, assignee, kind, linkKind, linkRef } = req.query;
-    // مهامُّ معاملةٍ بعينها أو طرفٍ بعينه — تُقرأ في صفحته بقاعدة الرؤية نفسِها.
+    // Tasks of a given transaction or party, read on its page with the same visibility rule.
     if (linkRef && mongoose.isValidObjectId(linkRef)) {
       and.push({ links: { $elemMatch: { ref: new mongoose.Types.ObjectId(String(linkRef)), ...(linkKind ? { kind: String(linkKind) } : {}) } } });
     }
@@ -360,13 +340,13 @@ exports.listTasks = async (req, res) => {
     if (and.length) f.$and = and;
 
     const rows = await POP(JpTask.find(f)).sort({ status: 1, deadlineAt: 1, createdAt: -1 }).limit(1000).lean();
-    // المفتوحُ أوّلًا بأقرب موعد، وما لا موعدَ له بعده، والمنجَزُ آخرًا بأحدثه.
+    // Open first by nearest deadline, then those without a deadline, then done ones, newest first.
     const rank = (t) => (t.status === 'done' ? 2 : t.deadlineAt ? 0 : 1);
     rows.sort((a, b) => rank(a) - rank(b)
       || (rank(a) === 0 ? new Date(a.deadlineAt) - new Date(b.deadlineAt) : 0)
       || (rank(a) === 2 ? new Date(b.doneAt || 0) - new Date(a.doneAt || 0) : new Date(b.createdAt) - new Date(a.createdAt)));
 
-    // العدّاداتُ على ما يراه السائل كلِّه — لا على ما بقي بعد الفلتر.
+    // Counters cover everything the caller can see, not what remains after filtering.
     const all = await JpTask.find(visible(req, w)).select('status deadlineAt assignedTo createdBy kind').lean();
     const t0 = Date.now();
     const counts = { all: all.length, open: 0, overdue: 0, done: 0, mine: 0, sent: 0 };
@@ -376,7 +356,7 @@ exports.listTasks = async (req, res) => {
       if (sameId(t.assignedTo, req.user._id) && t.status !== 'done') counts.mine += 1;
       if (sameId(t.createdBy, req.user._id) && !sameId(t.assignedTo, req.user._id) && t.status !== 'done') counts.sent += 1;
     }
-    // في خطّة الإدارة: أين وصلت كلُّ مهمّةٍ أسندها مديرُها إلى فريقه.
+    // In the management plan: where each task its manager assigned to the team stands.
     let handed = new Map();
     if (w.scope === 'management' && rows.length) {
       const kids = await JpTask.find({ parentTask: { $in: rows.map((t) => t._id) } })
@@ -393,7 +373,7 @@ exports.listTasks = async (req, res) => {
         ...shape(t, req, w),
         ...(w.scope === 'management' ? {
           handedTo: handed.get(String(t._id)) || [],
-          // من أُسنِدت إليه وله قسمٌ يديره يستطيع أن يُنزلها إلى فريقه.
+          // Whoever is assigned and manages a department can hand it down to their team.
           canHandDown: sameId(t.assignedTo, req.user._id) && !!mySection && mySection.managerRoles.includes(req.user.role),
         } : {}),
       })),
@@ -414,7 +394,7 @@ exports.createTask = async (req, res) => {
     if (!title) throw bad('اكتب ما المطلوب');
     const team = await teamOf(w, { wide: w.top, assign: true });
     const assignedTo = req.body.assignedTo || (w.top ? null : req.user._id);
-    // الإسنادُ داخل الفريق وحدَه — لا يُسنَد إلى موظّفِ قسمٍ آخر من هذه الخطّة.
+    // Assignment stays inside the team; no assigning to another department's employee from this plan.
     if (!assignedTo || !(team.some((m) => sameId(m._id, assignedTo)) || sameId(assignedTo, req.user._id))) {
       throw bad('اختر من يُسنَد إليه من فريق القسم');
     }
@@ -433,8 +413,7 @@ exports.createTask = async (req, res) => {
     const doc = await JpTask.create({
       links, ...plan,
       scope: w.scope, section: w.section,
-      // المديرُ يكلِّف، وغيرُه يطلب — يحدّده من كتب لا ما أُرسِل. والموظّفُ الذي
-      // يُسند إلى نفسه يقول «أعمل على هذه» (٢٠٢٦/١٠/٢٢): مهمّتُه لا طلبٌ لأحد.
+      // A manager assigns, anyone else requests; decided by who wrote it, not by what was sent. An employee assigning to themself means 'I am working on this': it is their task, not a request to anyone.
       kind: w.canManage || sameId(assignedTo, req.user._id) ? 'task' : 'request',
       project, title, details: String(req.body.details || '').trim(), action,
       contact: String(req.body.contact || '').trim(),
@@ -456,7 +435,7 @@ exports.createTask = async (req, res) => {
   } catch (e) { fail(res, e, 'تعذّر إنشاء المهمّة'); }
 };
 
-/** المهمّةُ وموقعُ السائل منها، أو ردٌّ بالرفض. */
+/** The task and the caller's position on it, or a rejection reply. */
 async function loadTask(req, res) {
   const t = await JpTask.findById(req.params.id);
   if (!t) { res.status(404).json({ message: 'المهمّة غير موجودة' }); return null; }
@@ -466,7 +445,7 @@ async function loadTask(req, res) {
   return { t, w, mine: sameId(t.assignedTo, req.user._id), author: sameId(t.createdBy, req.user._id) };
 }
 
-// PATCH /api/jp/tasks/:id — تعديلُ النصّ والإسناد والموعد
+// PATCH /api/jp/tasks/:id - edit text, assignment and deadline
 exports.updateTask = async (req, res) => {
   try {
     const got = await loadTask(req, res); if (!got) return;
@@ -512,7 +491,7 @@ exports.setDone = async (req, res) => {
     if (!(mine || w.canManage)) return res.status(403).json({ message: 'الإتمامُ لمن أُسنِدت إليه المهمّة' });
     const done = req.body.done !== false;
     if (done) {
-      // «تمّ» يُوقف المؤقّتَ إن كان يعمل — الوقتُ حتى هذه اللحظة محسوب.
+      // Done stops a running timer; time up to this moment is counted.
       closeTimer(t, req.user);
       t.progress = 'todo';
       t.status = 'done'; t.doneAt = new Date(); t.doneBy = req.user._id;
@@ -523,7 +502,7 @@ exports.setDone = async (req, res) => {
         t.attachments.push({ ...stored, phase: 'done', uploadedBy: req.user._id, uploadedByName: nameOf(req.user) });
       }
     } else {
-      // رجع عن الإتمام: تعود مفتوحةً وتبقى مرفقاتُها.
+      // Completion reverted: it reopens and its attachments stay.
       t.status = 'open'; t.doneAt = null; t.doneBy = null; t.doneNote = '';
     }
     await t.save();
@@ -535,9 +514,8 @@ exports.setDone = async (req, res) => {
 };
 
 /**
- * POST /api/jp/tasks/:id/progress — { action: 'start' | 'pause' }
- * «بدأتُ» يشغّل المؤقّت (ومؤقّتٌ واحدٌ للموظّف: ما كان يعمل على غيرها يُوقَف)،
- * و«أوقفتُ» يكتب الفترةَ في سجلّ الوقت. و«تمّ» من /done يُوقفه كذلك.
+ * POST /api/jp/tasks/:id/progress - { action: 'start' | 'pause' }
+ * Start runs the timer (one timer per employee: whatever else was running stops); pause writes the interval to the time log. Done from /done stops it too.
  */
 exports.progress = async (req, res) => {
   try {
@@ -563,7 +541,7 @@ exports.progress = async (req, res) => {
   } catch (e) { fail(res, e, 'تعذّر الحفظ'); }
 };
 
-/** POST /api/jp/tasks/:id/time — { minutes (±), day: 'YYYY-MM-DD', note } — تصحيحُ المدير. */
+/** POST /api/jp/tasks/:id/time - { minutes (+/-), day: 'YYYY-MM-DD', note } - manager correction. */
 exports.adjustTime = async (req, res) => {
   try {
     const got = await loadTask(req, res); if (!got) return;
@@ -583,10 +561,8 @@ exports.adjustTime = async (req, res) => {
 
 /**
  * GET /api/jp/daily?scope=&section=&from=YYYY-MM-DD&to=&assignee=&title=&status=
- * «كلُّ واحدٍ في اليوم يعمل على ماذا، وكم أخذ» (صاحبُ الشركة، ٢٠٢٦/١٠/٢٢).
- * صفٌّ لكلّ مهمّةٍ في كلّ يوم: ما خُطِّط له ذلك اليوم (`workDate`)، وما عُمل فيه
- * (فترةُ مؤقّتٍ تُقسَم على أيّامها، وتصحيحُ المدير على يومه)، وما تمّ فيه.
- * المديرُ يرى فريقَه، والموظّفُ نفسَه.
+ * What each person worked on per day and how long it took. One row per task per day: what was planned for that day (`workDate`), what was worked (a timer interval split across its days, and manager corrections on their day) and what was completed.
+ * A manager sees the team, an employee sees themself.
  */
 exports.daily = async (req, res) => {
   try {
@@ -648,7 +624,7 @@ exports.daily = async (req, res) => {
       }
     }
     rows.sort((a, b) => b.day.localeCompare(a.day) || a.assignedToName.localeCompare(b.assignedToName, 'ar') || b.minutes - a.minutes);
-    // لكلّ موظّفٍ في المدى: مهامُّه، وما تمّ، ودقائقُه، وما خُطِّط له من وقت.
+    // Per employee in the range: tasks, completed, minutes, and planned time.
     const people = new Map();
     for (const r of rows) {
       const k = r.assignedTo || r.assignedToName || '—';
@@ -673,7 +649,7 @@ exports.addAttachment = async (req, res) => {
     const got = await loadTask(req, res); if (!got) return;
     const { t, w, mine } = got;
     const stored = saveUploadFile(req.body.dataUrl, 'jp', req.body.fileName);
-    // ما يرفعه المنفِّذُ دليلُ إتمام، وما يرفعه غيرُه من أصل التكليف.
+    // What the assignee uploads is completion proof; what anyone else uploads belongs to the original assignment.
     t.attachments.push({ ...stored, phase: mine && !got.author ? 'done' : 'brief', uploadedBy: req.user._id, uploadedByName: nameOf(req.user) });
     await t.save();
     broadcast(w);
@@ -690,7 +666,7 @@ exports.addComment = async (req, res) => {
     if (!text) throw bad('اكتب التعليق');
     t.comments.push({ by: req.user._id, byName: nameOf(req.user), text });
     await t.save();
-    // يُخبَر الطرفُ الآخر: من أُسنِدت إليه إن علّق غيرُه، ومن أسندها إن علّق هو.
+    // The other party is notified: the assignee if someone else commented, the assigner if the assignee did.
     await notify(mine ? t.createdBy : t.assignedTo, req.user._id, 'تعليقٌ على مهمّة', `${t.title} — ${nameOf(req.user)}: ${text.slice(0, 120)}`, t._id);
     broadcast(w);
     res.status(201).json({ task: shape(await POP(JpTask.findById(t._id)).lean(), req, w) });
@@ -727,22 +703,15 @@ exports.deleteTask = async (req, res) => {
   } catch (e) { fail(res, e, 'تعذّر الحذف'); }
 };
 
-// ═══════════════════════════════════════════════════════════════════════════
-//  الإنزال — مديرُ القسم يُسند ما كُلِّف به إلى فريقه
-// ═══════════════════════════════════════════════════════════════════════════
-/**
- * ما أسندته الإدارةُ العليا إلى مدير القسم يُنزله إلى موظّفٍ عنده. والناتجُ
- * مهمّةُ قسمٍ عاديّةٌ **كاتبُها المدير**: الموظّفُ يراها من مديره كأيّ مهمّةٍ
- * أخرى، ولا شيءَ فيها يقول من أين جاءت. والأصلُ يبقى على المدير أمام الإدارة —
- * هو المسؤولُ عنه، ويُتمّه حين يرى أنّ العملَ تمّ.
- */
+// Hand-down - a department manager assigns what was assigned to them to their team
+/** What top management assigns to a department manager can be handed down to an employee. The result is an ordinary department task written by the manager: the employee sees it from the manager like any other and nothing says where it came from. The original stays with the manager before management, who is responsible and completes it when the work is done. */
 async function handDownOne(parent, def, assignee, req, sectionProject = null) {
   const child = await JpTask.create({
     scope: 'section', section: def.slug, kind: 'task', project: sectionProject,
     title: parent.title, details: parent.details, action: parent.action, contact: parent.contact,
     assignedTo: assignee, createdBy: req.user._id,
     deadlineKind: parent.deadlineAt ? 'date' : '', deadlineHours: null, deadlineAt: parent.deadlineAt,
-    // مرفقاتُ التكليف تنزل معه — الملفُّ نفسُه، باسم المدير.
+    // Assignment attachments go down with it: the same file, under the manager's name.
     attachments: (parent.attachments || []).filter((a) => a.phase === 'brief').map((a) => ({
       fileUrl: a.fileUrl, fileName: a.fileName, mimeType: a.mimeType, size: a.size, phase: 'brief',
       uploadedBy: req.user._id, uploadedByName: nameOf(req.user),
@@ -753,7 +722,7 @@ async function handDownOne(parent, def, assignee, req, sectionProject = null) {
   return child;
 }
 
-/** قسمُ المدير وفريقُه، أو رفض. */
+/** The manager's department and team, or a rejection. */
 async function myTeamFor(req, res, assignee) {
   const def = sectionOfRole(req.user.role);
   if (!def || !def.managerRoles.includes(req.user.role)) { res.status(403).json({ message: 'الإنزالُ لمدير القسم' }); return null; }
@@ -778,7 +747,7 @@ exports.handDown = async (req, res) => {
   } catch (e) { fail(res, e, 'تعذّر الإسناد'); }
 };
 
-// POST /api/jp/projects/:id/hand-down — { assignedTo } : مهامّي المفتوحةُ في المشروع كلُّها
+// POST /api/jp/projects/:id/hand-down - { assignedTo } : all my open tasks in the project
 exports.handDownProject = async (req, res) => {
   try {
     const p = await JpProject.findById(req.params.id);
@@ -786,13 +755,13 @@ exports.handDownProject = async (req, res) => {
     const def = await myTeamFor(req, res, req.body.assignedTo); if (!def) return;
     const mine = await JpTask.find({ project: p._id, scope: 'management', assignedTo: req.user._id, status: 'open' });
     if (!mine.length) return res.status(400).json({ message: 'لا مهامَّ مفتوحةً لك في هذا المشروع' });
-    // مشروعُ القسم يُنشأ مرّةً ويُعاد استعمالُه إن نزلت منه مهامُّ من قبل.
+    // The department project is created once and reused if tasks were handed down from it before.
     const sp = await JpProject.findOne({ scope: 'section', section: def.slug, parentProject: p._id })
       || await JpProject.create({ scope: 'section', section: def.slug, name: p.name, description: p.description, startDate: p.startDate, endDate: p.endDate, createdBy: req.user._id, parentProject: p._id });
     const done = new Set((await JpTask.find({ parentTask: { $in: mine.map((t) => t._id) } }).select('parentTask').lean()).map((k) => String(k.parentTask)));
     let created = 0;
     for (const t of mine) {
-      if (done.has(String(t._id))) continue;      // نزلت من قبل — لا تُكرَّر
+      if (done.has(String(t._id))) continue;      // Already handed down; not duplicated.
       await handDownOne(t, def, req.body.assignedTo, req, sp._id); created += 1;
     }
     broadcast({ scope: 'section', section: def.slug });
@@ -801,9 +770,7 @@ exports.handDownProject = async (req, res) => {
   } catch (e) { fail(res, e, 'تعذّر الإسناد'); }
 };
 
-// ═══════════════════════════════════════════════════════════════════════════
-//  المشروعات — للمدير
-// ═══════════════════════════════════════════════════════════════════════════
+// Projects - manager only
 const day = (v) => (v && /^\d{4}-\d{2}-\d{2}/.test(String(v)) ? new Date(`${String(v).slice(0, 10)}T00:00:00.000+03:00`) : null);
 
 // GET /api/jp/projects?scope=&section=
@@ -813,7 +780,7 @@ exports.listProjects = async (req, res) => {
     if (!w) return res.status(404).json({ message: 'قسمٌ غير معروف' });
     if (!w.isMember) return res.status(403).json({ message: 'خطّةُ العمل لفريق القسم ومديره' });
     const projects = await JpProject.find({ scope: w.scope, section: w.section }).sort({ status: 1, createdAt: -1 }).lean();
-    // تقدّمُ المشروع على ما يراه السائل من مهامّه.
+    // Project progress, over the tasks the caller can see.
     const tasks = await JpTask.find({ ...visible(req, w), project: { $in: projects.map((p) => p._id) } }).select('project status deadlineAt').lean();
     const now = Date.now();
     const by = new Map();
@@ -868,14 +835,14 @@ exports.updateProject = async (req, res) => {
   } catch (e) { fail(res, e, 'تعذّر التعديل'); }
 };
 
-// DELETE /api/jp/projects/:id — المهامُّ تبقى وتخرج من المشروع
+// DELETE /api/jp/projects/:id - tasks stay and leave the project
 exports.deleteProject = async (req, res) => {
   try {
     const p = await JpProject.findById(req.params.id);
     if (!p) return res.status(404).json({ message: 'المشروع غير موجود' });
     const w = who(req, { scope: p.scope, section: p.section });
     if (!w || !w.canManage) return res.status(403).json({ message: 'المشروعاتُ يحذفها مديرُ القسم' });
-    // حذفُ المشروع لا يمحو عملَ الناس: مهامُّه تبقى بلا مشروع.
+    // Deleting a project does not erase people's work: its tasks remain without a project.
     await JpTask.updateMany({ project: p._id }, { $set: { project: null } });
     await p.deleteOne();
     broadcast(w);
@@ -883,9 +850,7 @@ exports.deleteProject = async (req, res) => {
   } catch (e) { fail(res, e, 'تعذّر الحذف'); }
 };
 
-// ═══════════════════════════════════════════════════════════════════════════
-//  اللوحة — للمدير وحدَه
-// ═══════════════════════════════════════════════════════════════════════════
+// Dashboard - manager only
 // GET /api/jp/dashboard?scope=&section=&from=&to=
 exports.dashboard = async (req, res) => {
   try {
@@ -900,16 +865,9 @@ exports.dashboard = async (req, res) => {
       if (from) f.createdAt.$gte = from;
       if (to) f.createdAt.$lt = new Date(to.getTime() + 86400000);
     }
-    // ── فلاترُ اللوحة: موظّفٌ، مشروعٌ، نوعٌ، طريقةُ تواصل ─────────────────────
-    // تُطبَّق على كلّ شيءٍ في اللوحة — البطاقاتُ والجداولُ والقائمة — فلا يُقرأ
-    // رقمٌ على الفريق كلِّه فوق قائمةِ موظّفٍ واحد.
-    //
-    // ── إلّا الجدولَ الذي يُضغَط فيصير فلترًا ───────────────────────────────────
-    // اسمُ الموظّف في جدول الفريق واسمُ المشروع في المشروعات يُضغَطان فيفلتران
-    // اللوحة. فكان الجدولُ نفسُه يُعَدّ بعد فلتره: يُضغَط اسمٌ فيصير كلُّ مَن سواه
-    // أصفارًا ويُعاد ترتيبُ الجدول تحت اليد. فجدولُ الفريق يُعَدّ بكلّ الفلاتر
-    // **عدا الموظّف**، والمشروعاتُ **عدا المشروع** (عدٌّ بالأوجه)؛ وما سواهما
-    // بالفلاتر كلِّها. لذلك يُطبَّق الاثنان هنا في الذاكرة لا في الاستعلام.
+    // Dashboard filters: employee, project, kind, contact method.
+    // Applied to everything on the dashboard (cards, tables, list) so no whole-team figure sits above one employee's list.
+    // Exception: the tables that become filters when clicked. The employee name in the team table and the project name in projects filter the dashboard; counting those tables after their own filter would zero everyone else on a click and reorder the table under the cursor. So the team table counts with all filters except employee, and projects with all except project (faceted counts); everything else uses all filters. That is why both are applied in memory, not in the query.
     const { assignee, project: projectQ, kind: kindQ, action: actionQ } = req.query;
     const idOf = (x) => String((x && x._id) || x || '');
     const assigneeOk = assignee && mongoose.isValidObjectId(assignee)
@@ -956,14 +914,14 @@ exports.dashboard = async (req, res) => {
       if (t.doneAt) { const dk = dayKey(t.doneAt); if (daily.has(dk)) daily.get(dk).done += 1; }
     }
 
-    // جدولُ الفريق: بكلّ الفلاتر عدا الموظّف — راجع أعلاه.
+    // Team table: all filters except employee, see above.
     for (const t of allTasks) {
       if (!projectOk(t)) continue;
       const s = stateOf(t, now);
       const onTime = s === 'done' && t.deadlineAt ? new Date(t.doneAt) <= new Date(t.deadlineAt) : null;
       const aid = assigneeKey(t);
-      // من خرج من الفريق تبقى مهامُّه معدودةً باسمه — لا تسقط من الإجمالي.
-      // An active person assigned from outside the section's roles (e.g. a super_admin in IT) is a member, not «former».
+      // Someone who left the team keeps their tasks counted under their name; they do not drop out of the total.
+      // An active person assigned from outside the section's roles (e.g. a super_admin in IT) is a member, not 'former'.
       if (!members.has(aid)) members.set(aid, { _id: aid, name: assigneeName(t) || '—', role: t.assignedTo?.role || '', roleAr: LABELS_AR[t.assignedTo?.role] || '', roleEn: LABELS_EN[t.assignedTo?.role] || '', former: !activeIds.has(aid), ...blank() });
       const m = members.get(aid);
       m.assigned += 1;
@@ -973,7 +931,7 @@ exports.dashboard = async (req, res) => {
       const cid = String(t.createdBy?._id || t.createdBy);
       if (t.kind === 'request' && members.has(cid)) members.get(cid).requestsMade += 1;
     }
-    // والمشروعاتُ: بكلّ الفلاتر عدا المشروع.
+    // Projects: all filters except project.
     for (const t of allTasks) {
       if (!assigneeOk(t)) continue;
       const s = stateOf(t, now);
@@ -999,7 +957,7 @@ exports.dashboard = async (req, res) => {
         avgHours: m.hoursN ? Math.round((m.hoursSum / m.hoursN) * 10) / 10 : null,
         hoursSum: undefined, hoursN: undefined,
       })).sort((a, b) => b.open - a.open || b.assigned - a.assigned),
-      // من لا مهمّةَ مفتوحةً عليه — أوّلُ من يُسنَد إليه.
+      // Someone with no open task is first in line for assignment.
       idle: [...members.values()].filter((m) => !m.former && m.open === 0).map((m) => ({ _id: m._id, name: m.name, roleAr: m.roleAr, roleEn: m.roleEn })),
       projects: [
         ...projects.map((p) => { const e = byProject.get(String(p._id)) || { total: 0, done: 0, overdue: 0, people: new Set() }; return { _id: p._id, name: p.name, status: p.status, startDate: p.startDate, endDate: p.endDate, total: e.total, done: e.done, overdue: e.overdue, people: e.people.size, progress: pct(e.done, e.total) }; }),
@@ -1010,8 +968,7 @@ exports.dashboard = async (req, res) => {
       overdue: tasks.filter((t) => stateOf(t, now) === 'overdue').sort((a, b) => new Date(a.deadlineAt) - new Date(b.deadlineAt)).slice(0, 50).map(slim),
       dueSoon: tasks.filter((t) => stateOf(t, now) === 'open' && t.deadlineAt && new Date(t.deadlineAt).getTime() - now <= 24 * HOUR).sort((a, b) => new Date(a.deadlineAt) - new Date(b.deadlineAt)).slice(0, 50).map(slim),
       recentDone: tasks.filter((t) => t.status === 'done').sort((a, b) => new Date(b.doneAt) - new Date(a.doneAt)).slice(0, 20).map(slim),
-      // القائمةُ كلُّها تحت الفلاتر — وفلترُ الحالة يُطبَّق في الشاشة عليها، فتبقى
-      // البطاقاتُ تعدّ الحالاتِ كلَّها ويُختار منها.
+      // The whole list is under the filters; the status filter is applied in the screen on top of it, so cards still count every status and one can be picked.
       tasks: tasks.slice().sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt)).slice(0, 500).map((t) => ({
         ...slim(t), action: t.action || '', comments: (t.comments || []).length,
         dueSoon: stateOf(t, now) === 'open' && !!t.deadlineAt && new Date(t.deadlineAt).getTime() - now <= 24 * HOUR,

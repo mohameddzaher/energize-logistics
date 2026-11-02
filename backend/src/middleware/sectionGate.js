@@ -24,9 +24,7 @@ const hrSelfServiceExempt = (req) => {
   const p = req.path || '';
   if (p.startsWith('/me') || p.startsWith('/team')) return true;
   if (req.method === 'GET' && p === '/leave-types') return true;
-  // صندوقُ موافقات الإجازات وعدّادُه، والإجازةُ الواحدة (لملفّ PDF): المتحكّمُ
-  // يبني الاستعلامَ من محطّات القارئ ويتحقّق من صاحب الطلب. كانت خارج هذه
-  // القائمة، فمديرُ قسمٍ حُفظ له HR «لا شيء» لم يرَ طلبات فريقه أصلًا.
+  // Leave approval inbox and its counter, and a single leave (for the PDF): the controller builds the query from the reader's stages and checks the requester. These were outside this list, so a department manager saved with HR "none" never saw their team's requests.
   if (req.method === 'GET' && /^\/leaves\/inbox(\/count)?$/.test(p)) return true;
   if (req.method === 'GET' && /^\/leaves\/[0-9a-f]{24}$/i.test(p)) return true;
   if (/^\/leaves\/[^/]+\/decision$/.test(p)) return true;
@@ -42,36 +40,22 @@ const sectionGate = (sectionKey) => {
     try {
       if (!req.user) return res.status(401).json({ message: 'Authentication required' });
       if (FULL_ACCESS_ROLES.includes(req.user.role)) { req.sectionAccess = 'edit'; return next(); }
-      // ── والاستثناءُ يرفع المنعَ، ولا يمنع الختم ─────────────────────────
-      // هذه المساراتُ مُستثناةٌ ليقرأ كلُّ موظّفٍ ملفَّه وإجازاتَه وإن لم يكن من
-      // الموارد البشريّة. وكان الاستثناءُ يُخرِج الطلبَ من الحارس كلِّه بلا ختم،
-      // فيصل المتحكِّمَ بلا `sectionAccess` — والمتحكِّمُ يقرأ الختمَ ليعرف مَن
-      // مُنح القسمَ من مصفوفة الصلاحيّات. فمن كانت صلاحيّتُه بالمنح لا بدوره
-      // (مدير مالي مُنح «الموارد البشرية: تعديل») يُقرأ غريبًا عن القسم: القائمةُ
-      // تفتح له والبحثُ يجد الموظّف، ثمّ يضغط عليه فيُقال «لا توجد بيانات».
-      // وقع ذلك على البرودكشن: `GET /employees` ٢٠٠ و`GET /employees/:id` ٤٠٣
-      // للدور نفسِه في اللحظة نفسِها.
-      //
-      // فالمنحُ يُختَم إن وُجد، والمنعُ لا يقع أبدًا على هذه المسارات.
+      // An exemption lifts the denial but does not skip the stamp. These paths are exempt so every employee can read their own file and leaves without being in HR. The exemption used to skip the guard entirely, so the controller received no `sectionAccess`, and it reads the stamp to know who was granted the section from the matrix. Someone whose access came from a grant rather than a role (a finance manager granted HR edit) was read as foreign to the section: the list opened and search found the employee, but opening him said "no data". Seen in production: `GET /employees` 200 and `GET /employees/:id` 403 for the same role at the same moment.
+      // So a grant is stamped if present, and denial never applies on these paths.
       if (exempt && exempt(req)) {
         try {
           const g = await getOverride(req.user.role, sectionKey);
           const a = g == null ? liftFinance(req.user.role, defaultAccess(req.user.role, sectionKey)) : g;
           if (a === 'view' || a === 'edit') req.sectionAccess = a;
-        } catch (e) { /* الاستثناءُ يمضي بلا ختم */ }
+        } catch (e) { /* The exemption passes without a stamp. */ }
         return next();
       }
 
       let access = await getOverride(req.user.role, sectionKey); // 'none'|'view'|'edit'|null
       if (access == null) {
-        // مفيش override محفوظ → نستعمل الوصول الافتراضي للقسم. ده اللي بيخلّي
-        // «مدير القسم وموظفوه ليهم قسمهم» (config/roles.js) تشتغل فعلاً على الـ
-        // API، مش تفضل تزيّن الشريط الجانبي بس: من غيره كان الدور الجديد يفتح
-        // القسم في القائمة وياخد 403 من كل endpoint جواه.
+        // No saved override, so use the section's default access. This is what makes "section manager and staff have their section" (config/roles.js) work on the API and not only decorate the sidebar; without it a new role would open the section in the menu and get 403 from every endpoint inside.
         const fallback = liftFinance(req.user.role, defaultAccess(req.user.role, sectionKey));
-        // **زيادة بس، مش تضييق**: لو الافتراضي 'none' ما بنرفضش هنا — سايبين
-        // قوائم authorize القديمة تقرّر زي ما كانت. كده مفيش حد بيخسر وصول
-        // كان عنده.
+        // Only widens, never narrows: if the default is 'none' we do not reject here and leave the old authorize lists to decide as before, so nobody loses access they had.
         if (fallback === 'none') return next();
         access = fallback;
       }
@@ -88,26 +72,15 @@ const sectionGate = (sectionKey) => {
       next(); // fail-open
     }
   };
-  // الحارسُ يقول عن نفسِه — يقرؤه مولّدُ التوثيق من الراوتر. راجع `services/apiDocs`.
+  // The guard describes itself; the docs generator reads it from the router. See `services/apiDocs`.
   guard.__section = (section && section.key) || sectionKey;
   return guard;
 };
 
 /**
- * ── يمنح ولا يمنع ───────────────────────────────────────────────────────────
- *
- * بعضُ السجلّات يكتب فيها أكثرُ من قسم: «الموردون» يكتبها التشغيلُ والمشتريات،
- * و«السائقون» يكتبها التشغيل. فلا تُحرَس بقسمٍ واحد — حراستُها بقسم التشغيل
- * تمنع المشترياتِ من عملها اليوميّ.
- *
- * وفي الوقت نفسِه، الدورُ المصنوعُ الممنوحُ «تعديلَ التشغيل» كان يُردّ عنها:
- * `authorize` يقرأ قائمةَ أدوارٍ لا اسمَ له فيها، و`req.sectionAccess` لا
- * يُختَم لأنّ المسارَ بلا حارس. فالنتيجةُ أسوأُ ما يكون: الزرُّ يظهر والحفظُ
- * يُرفَض.
- *
- * فهذا وسيطٌ يختم الصلاحيّةَ ولا يرفض أحدًا: من مُنح «تعديلًا» في أحد الأقسام
- * المذكورة مرّ، ومن لا فقائمةُ `authorize` تقرّر كما كانت. لا أحدَ يخسر وصولًا،
- * ومن مُنح يصل.
+ * Grants but never denies. Some records are written by more than one section (suppliers by operations and purchasing, drivers by operations), so one section cannot guard them.
+ * A custom role granted operations edit was rejected because `authorize` reads a role list without it and the route stamps no `req.sectionAccess`: the button showed and saving was refused.
+ * This stamps access and rejects nobody: edit in a listed section passes, otherwise the `authorize` list decides as before.
  */
 const stampSection = (...sectionKeys) => async (req, res, next) => {
   try {
@@ -119,8 +92,7 @@ const stampSection = (...sectionKeys) => async (req, res, next) => {
       if (saved === 'edit') { best = 'edit'; break; }
       if (saved === 'view' && best !== 'edit') best = 'view';
     }
-    // وبلا مصفوفةٍ محفوظة: الافتراضُ، كما في `sectionGate` — يمنح ولا يمنع. وإلّا
-    // فدورٌ افتراضُه «تعديل» (فريقُ البيانات) يُردّ عن سجلٍّ مشترك لم يُحفظ له فيه شيء.
+    // With no saved matrix, the default applies as in `sectionGate`: it grants and never denies. Otherwise a role whose default is edit (the data team) would be rejected from a shared record it has nothing saved for.
     if (!best) {
       for (const key of sectionKeys) {
         const k = getSection(key)?.key || key;
@@ -133,21 +105,13 @@ const stampSection = (...sectionKeys) => async (req, res, next) => {
     if (best) req.sectionAccess = best;
     return next();
   } catch (e) {
-    return next(); // الختمُ تيسيرٌ لا شرط
+    return next(); // The stamp is a convenience, not a requirement.
   }
 };
 
 /**
- * ── وما لا يُقرأ إلّا من القسم نفسِه ──────────────────────────────────────
- *
- * `sectionGate` يمرّر الدورَ الذي لا مصفوفةَ محفوظةً له وافتراضُه «لا شيء»
- * (كي لا يُقفَل أحدٌ عن قراءةٍ مشتركة: قائمةُ المعاملات والأطراف يقرؤها التشغيلُ
- * والتحصيلُ وخطّةُ العمل). وبهذا قرأ ثلاثةٌ وأربعون دورًا تسعيرَ عقود التخليص
- * وفاتورتَه وبطاقةَ أطرافه بالـ API مباشرةً (فحصُ QA، ٢٠٢٦/١٠/٢٧) — وهي لا تُعرَض
- * إلّا في صفحة المعاملة داخل القسم.
- *
- * فهذا يُركَّب على مسارٍ بعينه بعد `sectionGate`: يمرّ من خُتم له القسمُ (رؤيةً
- * أو تعديلًا) ومديرو النظام، ويُردّ ما سواه — بلا سقوطٍ إلى قوائم الأدوار.
+ * What only the section itself may read. `sectionGate` lets through a role with no saved matrix whose default is none, so nobody is locked out of shared reads (the transactions and parties lists are read by operations, collections and the work plan). Because of that, 43 roles read customs-clearance contract pricing, its invoice and the parties card directly through the API (QA check), although they are shown only on the transaction page inside the section.
+ * This is mounted on a specific route after `sectionGate`: whoever has the section stamped (view or edit) and system admins pass, everything else is rejected, with no fallback to role lists.
  */
 const requireSectionAccess = (sectionKey) => {
   const guard = (req, res, next) => {

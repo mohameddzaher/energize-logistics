@@ -17,11 +17,11 @@ const tireSensors = require('../services/ls2TireSensors');
 const { attachRegistry } = require('../services/ls2VehicleLink');
 const cfg = require('../config/ls2Config');
 const cache = require('../utils/ttlCache');
-// كتابةٌ هنا تمسح ذاكرةَ القسم كلِّه — ومعها ملخّصُ الأصول والمخزن (راجع utils/ls2Touch).
+// A write here clears the whole section's cache, including the assets and store summary (see utils/ls2Touch).
 const clearLs2All = () => { cache.clear('ls2:'); require('../utils/ls2Touch').clearLs2Derived(); };
 const { emitToAll } = require('../websocket/socketManager');
 
-const CACHE_TTL = 15000; // = دورة التحديث (poll) 15ث — البيانات لا تتغيّر أسرع من كده
+const CACHE_TTL = 15000; // Equals the poll cycle (15s); data does not change faster.
 
 function fail(res, error, fallback) {
   // An explicit status wins; a rejected value or duplicate is the client's input
@@ -78,9 +78,7 @@ async function mileageByUnit(from, to) {
       { $sort: { unitId: 1, date: 1 } },
       { $group: { _id: '$unitId', odo: { $last: '$odometerKm' }, date: { $last: '$date' } } },
     ]),
-    // Earliest snapshot within the range — the fallback baseline when a unit has no
-    // history before `from` (measure from its first reading inside the window).
-    // مستقلٌّ عن الاثنين فيجري معهما: رحلةٌ واحدة إلى القاعدة لا اثنتان.
+    // Earliest snapshot within the range: the fallback baseline when a unit has no history before `from` (measured from its first reading inside the window). Independent of the other two, so it runs alongside them in one database round trip.
     Ls2OdometerDaily.aggregate([
       { $match: { date: { $gte: from, $lte: to } } },
       { $sort: { unitId: 1, date: 1 } },
@@ -114,10 +112,9 @@ exports.getDashboard = async (req, res) => {
     const to = req.query.to || today;
     const from = req.query.from || `${today.slice(0, 7)}-01`;
     const cacheKey = `ls2:dash:${from}:${to}`;
-    // طلعةٌ واحدة: عشرون فاتحًا للّوحة معًا ينتظرون حسابًا واحدًا بدل عشرين.
+    // Single flight: twenty simultaneous dashboard openers wait on one computation instead of twenty.
     const payload = await cache.wrap(cacheKey, CACHE_TTL, async () => {
-      // الأربعة مستقلّة فتجري معًا، وكلٌّ بالحقول التي تقرؤها اللوحة وحدها: مستندُ
-      // المركبة الكامل (الحسّاسات والفترات) كان ٢٢٧ كيلوبايت يُقرأ منها ١٣.
+      // The four queries are independent and run together, each projecting only the fields the dashboard reads (the full vehicle document with sensors and periods was 227 KB, of which 13 KB is read).
       const [settings, vehiclesRaw, openAlerts, mileMap] = await Promise.all([
         Ls2Settings.getOrCreate(),
         Ls2Vehicle.find({}).select('unitId plate driver status maxTireTempC coolantC odometerKm maintenanceStatus kmToService nextServiceKm').lean(),
@@ -253,19 +250,9 @@ exports.getMileage = async (req, res) => {
 };
 
 /**
- * ── صفُّ القائمة: ما تقرؤه الشاشات لا ما يخزّنه المستند ─────────────────────
- * مستندُ المركبة الكامل ٧ ك.ب: فيه خطّةُ الخدمة مرّتين (`serviceIntervals`
- * و`maintenance.intervals` نسخةٌ منها)، وقراءةُ كلّ فردةِ كاوتش، وحقولُ
- * الاستطلاع الداخليّة. والقائمةُ تُعرَض في جدولٍ لا يقرأ من ذلك شيئًا — فكانت
- * ٣٩٨ ك.ب على الهاتف تُحلَّل كلُّها ليُرسَم منها عمودٌ أو عمودان.
- *
- * فالصفُّ هنا هو الحقولُ التي تظهر في الجدول أو في تصديره أو يُفلتَر بها،
- * وما تحتاجه شاشةٌ واحدة يُطلَب بـ`include=` صريحةً — لا يُحمَّل على الجميع:
- *   intervals → خطّةُ الخدمة (السجل، الصيانة، الإعدادات)
- *   tires     → قراءةُ كلّ فردة (صفحة الكاوتش وحدَها)
- *   profile   → بطاقةُ الهويّة كاملةً (السجل وحدَه؛ وإلّا فالماركة والسنة والشاسيه)
- * وتفصيلُ حسّاسات الكاوتش (المواضعُ الناقصة والقنواتُ المعطوبة، ٤٦ ك.ب)
- * يُطلَب لشاحنةٍ واحدةٍ عند فتح نافذتها: `/vehicles/:id/tire-sensors`.
+ * List row: only what the screens read, not the full ~7 KB vehicle document (duplicate service plan, every tire reading, internal poll fields).
+ * Screen-specific data is requested with `include=`: intervals (service plan), tires (tire page), profile (full identity card).
+ * Per-truck tire sensor detail is fetched on open: `/vehicles/:id/tire-sensors`.
  */
 const LIST_SCALARS = [
   '_id', 'unitId', 'name', 'plate', 'driver',
@@ -277,9 +264,9 @@ const LIST_SCALARS = [
   'kmToService', 'nextServiceKm', 'nextServiceName',
   'upcomingKm', 'upcomingServiceKm', 'upcomingServiceName',
 ];
-// الهويّةُ المختصرة: الماركةُ والسنةُ تُعرضان تحت اللوحة، والشاسيهُ يُبحَث به.
+// Short identity: make and year display under the plate, and the chassis number is searchable.
 const LIST_PROFILE = ['vin', 'brand', 'modelYear'];
-// الأرقامُ الثلاثة «٧ / ٥ / ٢» وسياقُها العدديّ — بلا المصفوفتين الطويلتين.
+// The three coverage counts and their numeric context, without the two long arrays.
 const SENSOR_SUMMARY = [
   'withSensor', 'withoutSensor', 'spare', 'spareWithSensor', 'silent',
   'ground', 'registered', 'unregistered', 'fitted', 'reporting', 'faulty', 'layout', 'label',
@@ -291,7 +278,7 @@ const pick = (src, keys) => {
 };
 function listRow(v, cov, include) {
   const row = pick(v, LIST_SCALARS);
-  // الموضعُ للرابط إلى الخريطة — بلا الارتفاع الذي لا يُعرَض.
+  // Position for the map link, without the unused elevation.
   row.position = v.position ? pick(v.position, ['lat', 'lng', 'speed', 'course']) : null;
   row.profile = include.has('profile') ? (v.profile || null) : pick(v.profile || {}, LIST_PROFILE);
   row.tireSensors = include.has('sensorDetail') ? cov : pick(cov, SENSOR_SUMMARY);
@@ -306,19 +293,12 @@ exports.listVehicles = async (req, res) => {
     const { status, alertLevel, maintenance: maintFilter, q } = req.query;
     const include = new Set(String(req.query.include || '').split(',').map((s) => s.trim()).filter(Boolean));
 
-    // ── الأسطولُ كلُّه قراءةٌ واحدة، والفلترُ في الذاكرة ──────────────────────
-    // ٥٨ مركبةً بـ٢٠٠ ك.ب — قراءتُها من العنقود ٢٫٤ ثانية مهما ضاق الفلتر،
-    // لأنّ الثمنَ نقلُ البايتات لا البحث. وكان لكلّ فلترٍ مفتاحٌ في الذاكرة،
-    // فتسعُ صفحاتٍ تطلب القائمةَ بفلاترَ مختلفة تدفع كلٌّ منها الثانيتين. الآن
-    // مفتاحٌ واحد (والتجديدُ كلّ ١٥ ثانية كما يجدّد المستطلِع)، والفلترُ يطابق
-    // ما كانت القاعدة تفعله حرفًا بحرف.
-    // وخريطةُ الكاوتش تُقرأ معها بالتوازي لا بعدها: كانتا ثانيتين متتاليتين.
+    // The whole fleet is one read and the filter runs in memory. Reading 58 vehicles (about 200 KB) from the cluster costs about 2.4s however narrow the filter, since the cost is byte transfer, not search. Per-filter cache keys made each distinct filter pay it, so there is one key (refreshed every 15s like the poller) and the filter reproduces the database query's behavior exactly. The tire map is read in parallel with it, not after.
     const [allVehicles] = await Promise.all([
       cache.wrap('ls2:vehicles:all', 15000, () => Ls2Vehicle.find({}).lean()),
       tireSensors.loadLayoutMap(),
     ]);
-    // مهرَّبٌ ومقصوص: نصُّ البحث يصير تعبيرًا نمطيًّا، فنصٌّ خبيثٌ واحد يشغل
-    // العامل دهرًا.
+    // Escaped and truncated: search text becomes a regular expression, so a malicious string could tie up the worker.
     const rx = q ? new RegExp(String(q).trim().slice(0, 120).replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i') : null;
     const rxHit = (v) => typeof v === 'string' && rx.test(v);
     const rawVehicles = allVehicles.filter((v) => {
@@ -330,15 +310,10 @@ exports.listVehicles = async (req, res) => {
       if (maintFilter === 'due_or_overdue' && v.maintenanceStatus === 'ok') return false;
       return true;
     });
-    // تغطية حسّاسات الكاوتش تُحسب هنا لا في المتصفّح: الشاشتان وتطبيق الهاتف
-    // تقرأ الرقم نفسه من مصدرٍ واحد، فلا يختلف «٧ / ٥ / ٢» من شاشةٍ لأخرى.
+    // Tire sensor coverage is computed here, not in the browser, so both screens and the mobile app read one source and the three counts never differ between screens.
     const withCov = await tireSensors.attachToVehicles(rawVehicles);
     let vehicles = withCov.map((v) => listRow(v, v.tireSensors, include));
-    // ── الهويّةُ من سجلّ المركبات ─────────────────────────────────────────────
-    // اللوحةُ والماركةُ والسنةُ والشاسيه والقطاعُ والمستندات من السجلّ، وما في
-    // `profile` «حسب الجهاز». تُقرأ خارج الذاكرة المؤقّتة: تعديلٌ في السجلّ يظهر
-    // في الطلب التالي (services/ls2VehicleLink).
-    // والمقارنةُ بملفّ الجهاز كاملًا لا بالمقتطَف الذي يُرسَل في الصفّ.
+    // Identity comes from the vehicle register: plate, make, year, chassis, sector and documents come from the register, while `profile` is device-reported. Read outside the cache so register edits show on the next request (services/ls2VehicleLink). Compared against the full device profile, not the excerpt sent in the row.
     const reg = await attachRegistry(withCov.map((v) => ({ vehicleMaster: v.vehicleMaster || null, profile: v.profile })));
     vehicles = vehicles.map((r, i) => ({ ...r, vehicleMaster: withCov[i].vehicleMaster || null, registry: reg[i].registry, conflicts: reg[i].conflicts }));
 
@@ -349,16 +324,12 @@ exports.listVehicles = async (req, res) => {
       const t = to || cairoDate();
       const f = from || `${t.slice(0, 7)}-01`;
       const mileMap = await mileageByUnit(f, t);
-      // الفترةُ نفسُها مرّةً واحدة في الجواب لا في كلّ صفٍّ: ٥٨ نسخةً من
-      // تاريخين لا يقرؤهما أحد.
+      // The period appears once in the response, not in every row (58 copies of two dates nobody reads).
       period = { from: f, to: t };
       vehicles = vehicles.map((v) => ({ ...v, periodKm: mileMap.get(v.unitId)?.km ?? 0 }));
     }
 
-    // ── وأين هي الآن؟ ──────────────────────────────────────────────────────
-    // سؤالُ مسؤول الصيانة الذي يلي «صيانتُها تأخّرت»: أهي في الطريق إلى
-    // الدمام أم فرّغت ووصلت الرياض؟ يُقرأ من حمولات إدارة الأسطول الحيّة
-    // ويُجمَع على مفتاح اللوحة — راجع utils/fleetWhereabouts.
+    // Where is it now? The maintenance manager's follow-up to a late service: en route to Dammam, or unloaded and arrived in Riyadh. Read from live fleet-management loads and grouped by plate key; see utils/fleetWhereabouts.
     if (include.has('whereabouts')) {
       const { liveTripsByPlateKey, IDLE } = require('../utils/fleetWhereabouts');
       const { vehiclePlateKey } = require('../utils/plateKey');
@@ -378,7 +349,7 @@ exports.listVehicles = async (req, res) => {
 // ---- Single vehicle (+ its alerts + service history) ----------------------
 exports.getVehicle = async (req, res) => {
   try {
-    // ورابطُ مهمّة JP يحمل معرّفَ السجلّ لا رقمَ الوحدة — فيُقبَل الاثنان، والصفحةُ تنتقل إلى رقم الوحدة.
+    // A JP task link carries the record id, not the unit number, so both are accepted and the page redirects to the unit number.
     const pid = String(req.params.id);
     const v = await Ls2Vehicle.findOne(/^[a-f0-9]{24}$/i.test(pid) ? { _id: pid } : { unitId: Number(pid) }).lean();
     if (!v) return res.status(404).json({ message: 'Vehicle not found' });
@@ -387,7 +358,7 @@ exports.getVehicle = async (req, res) => {
       Ls2ServiceLog.find({ unitId: v.unitId }).sort({ createdAt: -1 }).limit(20).lean(),
       Ls2DriverAssignment.find({ unitId: v.unitId }).sort({ from: -1 }).limit(50).lean(),
     ]);
-    // وأين هي الآن — من حمولات إدارة الأسطول الحيّة، كما في القائمة.
+    // Where it is now, from live fleet-management loads, as in the list.
     const { liveTripsByPlateKey, IDLE } = require('../utils/fleetWhereabouts');
     const { vehiclePlateKey } = require('../utils/plateKey');
     const trips = await cache.wrap('ls2:whereabouts', 20000, liveTripsByPlateKey).catch(() => new Map());
@@ -403,11 +374,8 @@ exports.getVehicle = async (req, res) => {
 };
 
 /**
- * GET /vehicles/:id/tire-sensors — تفصيلُ التغطية لشاحنةٍ واحدة.
- *
- * المواضعُ التي لا حسّاسَ لها والقنواتُ المعطوبة كانت ترافق كلَّ صفٍّ في
- * القائمة: ٤٦ ك.ب لا تُقرأ إلّا إذا فتح أحدٌ نافذةَ شاحنةٍ واحدة. فالأرقامُ
- * الثلاثة تبقى في الصفّ، والتفصيلُ يُطلَب عند الفتح.
+ * GET /vehicles/:id/tire-sensors - coverage detail for one truck.
+ * Positions without a sensor and faulty channels used to ride on every list row (46 KB) that is read only when someone opens one truck's window. The three counts stay on the row; the detail is requested on open.
  */
 exports.getVehicleTireSensors = async (req, res) => {
   try {
@@ -527,9 +495,7 @@ exports.getVehicleTrack = async (req, res) => {
     const cached = cache.get(cacheKey);
     if (cached) return res.json(cached);
 
-    // بلا سقف: القارئ يرقّم حتى يستوفي المدى مهما طال. والسقف القديم (عشرون
-    // ألفًا) كان يكفي اليوم ويضيق مع أوّل زيادةٍ في معدّل الإرسال أو في المدى
-    // المطلوب — ويقصّ حينها بصمت، فيبدو المسار الناقص مسارًا كاملًا لشاحنةٍ وقفت.
+    // No cap: the reader paginates until the range is covered. The old 20,000 cap fit at first but silently truncated with any increase in send rate or range, making a partial track look complete for a stopped truck.
     const data = await client.loadMessages(unitId, cairoEpoch(from), cairoEpoch(to, true));
     const msgs = (data && data.messages) || [];
     let points = [];
@@ -544,8 +510,7 @@ exports.getVehicleTrack = async (req, res) => {
       const step = Math.ceil(points.length / MAX);
       points = points.filter((_, i) => i % step === 0 || i === points.length - 1);
     }
-    // القصُّ يُعلَن للشاشة لا يُدفَن في السجلّ: مسارٌ ناقصٌ يبدو مسارًا كاملًا
-    // لشاحنةٍ وقفت — والفرق بينهما قرارٌ يُتّخذ.
+    // Truncation is reported to the screen, not buried in the log: a partial track looks like a complete one for a stopped truck, and the difference drives a decision.
     const payload = { unitId, from, to, count: points.length, points };
     if (data && data.truncated) {
       payload.truncated = true;
@@ -558,11 +523,10 @@ exports.getVehicleTrack = async (req, res) => {
   }
 };
 
-// ---- تعارضات البيانات: الجهاز ↔ سجلّ المركبات ------------------------------
+// ---- Data conflicts: device vs vehicle register ----
 /**
- * GET /registry-conflicts — كلُّ شاحنةٍ يقول جهازُها غيرَ ما يقوله سجلُّ المركبات
- * في سنة الصنع أو رقم الشاسيه، وكلُّ وحدةٍ لم تُربط بمركبةٍ في السجلّ أصلًا.
- * القائمةُ لمن يصحّح السجلّ: السجلُّ هو المرجع، والجهازُ شاهدٌ عليه.
+ * GET /registry-conflicts
+ * Every truck whose device disagrees with the vehicle register on manufacture year or chassis number, plus every unit never linked to a register vehicle. For whoever corrects the register: the register is the reference and the device is a witness.
  */
 exports.registryConflicts = async (req, res) => {
   try {
@@ -627,7 +591,7 @@ exports.acknowledgeAlert = async (req, res) => {
       await Ls2Vehicle.updateOne({ unitId: a.unitId }, { $set: { sensorChangeNotice: null } });
     }
     emitToAll('ls2:alert', { at: Date.now(), acknowledged: String(a._id) });
-    // كل شاشات ls2 بتسمع ls2:updated — فنبعته كمان عشان الإقرار يظهر لحظيًا في كل مكان.
+    // All ls2 screens listen to ls2:updated, so it is also emitted so the acknowledgement shows instantly everywhere.
     emitToAll('ls2:updated', { at: Date.now(), acknowledged: String(a._id) });
     res.json(a);
   } catch (error) {
@@ -663,8 +627,7 @@ exports.markServiced = async (req, res) => {
   }
 };
 
-// Average km/day per unit over the last `days`, from the daily odometer
-// snapshots — what turns "774 km left" into "≈ يومين من الآن".
+// Average km/day per unit over the last `days`, from the daily odometer snapshots; what turns '774 km left' into 'about 2 days from now'.
 async function avgKmPerDayByUnit(unitIds, days = 14) {
   const since = addDays(cairoDate(), -days);
   const rows = await Ls2OdometerDaily.aggregate([
@@ -719,7 +682,7 @@ function openDeferrals(history, currentOdo) {
         note: c.note || '',
         deferKm: c.deferKm,
         dueAtOdometerKm: c.dueAtOdometerKm,
-        currentOdometerKm: currentOdo, // العداد الآن — بجانب "الاستحقاق عند"
+        currentOdometerKm: currentOdo, // Current odometer, shown next to the due-at value.
         remainingKm: currentOdo != null ? Math.round(c.dueAtOdometerKm - currentOdo) : null,
         intervalId: log.intervalId,
         intervalName: log.intervalName,
@@ -830,7 +793,7 @@ exports.createRepair = async (req, res) => {
     const b = req.body || {};
     if (!b.title || !String(b.title).trim()) return res.status(400).json({ message: 'A title is required' });
     const item = await Ls2Repair.create({
-      // «السائق وقتها» يدويًا إن أُدخل، وإلا سائق العربية الحالي.
+      // Driver at the time: the manually entered one if present, otherwise the vehicle's current driver.
       unitId, plate: v.plate, driver: (b.driver != null && String(b.driver).trim()) ? String(b.driver).trim() : v.driver,
       title: String(b.title).trim(),
       category: b.category || 'other',
@@ -1069,7 +1032,7 @@ exports.listDeferrals = async (req, res) => {
     }
     // Most urgent first (most overdue → soonest due).
     out.sort((a, b) => (a.remainingKm ?? 1e9) - (b.remainingKm ?? 1e9));
-    // "774 كم" تبقى "≈ يومين" — بحسب معدل مشي كل شاحنة فعليًا.
+    // '774 km' becomes 'about 2 days', based on each truck's actual driving rate.
     attachDayEstimates(out, await avgKmPerDayByUnit([...new Set(out.map((d) => d.unitId))]));
     res.json({ deferrals: out });
   } catch (error) {
@@ -1200,10 +1163,8 @@ exports.getDriver = async (req, res) => {
   }
 };
 
-// ---- Driver performance (تقييم أداء السائقين) ------------------------------
-// Scores every driver on what the trucks reported: عدد الرحلات, مدة الوصول,
-// مدة التحميل, أيام العمل, المسافة and الالتزام بالسرعة. See
-// services/ls2DriverPerformance.js for the weights and why they are what they are.
+// ---- Driver performance ----
+// Scores every driver on what the trucks reported: trip count, arrival time, loading time, working days, distance and speed compliance. See services/ls2DriverPerformance.js for the weights and their rationale.
 const perf = require('../services/ls2DriverPerformance');
 
 const periodDayCount = (from, to) =>

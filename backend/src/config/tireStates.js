@@ -1,27 +1,10 @@
 /**
- * حالات فردة الكاوتش — تعريفٌ واحد يقرأ منه الخادمُ والشاشةُ والجوّال.
- *
- * ── لماذا محورٌ واحد ─────────────────────────────────────────────────────────
- * كانت الحالة على محورين: `status` (مركّبة/على الرفّ/في المصنع…) و`condition`
- * (جديدة/مستعملة). فخانة «في المصنع» كانت تُعَدّ بالدرجة وخانة «تحت التجديد»
- * بالحالة، والاثنتان تصفان مكانًا واحدًا — فاختلطتا، وصارت الفردة التي عند
- * مصنع التجديد تُقرأ «في المصنع» وهي لم تصل إليه بعد.
- *
- * فالمكان الآن على محورٍ واحد (`status`)، والدرجة (`condition`) وصفٌ للفردة
- * لا لمكانها: جديدةٌ أو مستعملة، لا ثالث لهما.
- *
- * ── والفرق بين «تحت التجديد» و«في المصنع» ────────────────────────────────────
- * «تحت التجديد» قرارٌ اتُّخذ: نزلت الفردة وتقرّر تجديدها، وهي في عهدة الورشة.
- * «في المصنع» موضعٌ فعليّ: خرجت من الشركة وصارت عند المصنع. والفرق ليس لفظيًّا —
- * الأولى يمكن استردادها اليوم، والثانية لا تُعرف عودتُها. ودمجُهما كان يجعل
- * الورشة تعِد بفردةٍ ليست عندها.
+ * Tire states: one definition read by the server, web and mobile.
+ * Location is a single axis (status); condition (new/used) describes the tire, not where it is. Previously two axes overlapped and a tire at the retread plant read as in the factory before arriving.
+ * Under retread is a decision (tire is off and in workshop custody, recoverable today); In factory is a physical location (left the company, return unknown). They must stay separate or the workshop promises tires it does not hold.
  */
 
-/**
- * كلُّ حالةٍ: مفتاحُها، واسمُها، وهل هي «في المخزن»، ولونُها.
- * والترتيب هنا هو ترتيب البطاقات على الشاشة — سُلَّمٌ يُقرأ من المركَّب إلى
- * المنتهي، لا فرزٌ بالعدد يتغيّر كلَّ يوم.
- */
+/** Per state: key, name, whether it counts as in stock, and color. Order is the card order on screen, a ladder from mounted to finished, not a count sort. */
 const TIRE_STATES = [
   { key: 'mounted', ar: 'مركَّبة', en: 'Mounted', inStore: false, tone: 'emerald' },
   { key: 'new', ar: 'الجديد', en: 'New', inStore: true, tone: 'sky', grade: 'new' },
@@ -33,32 +16,24 @@ const TIRE_STATES = [
   { key: 'sold', ar: 'المباع', en: 'Sold', inStore: false, tone: 'zinc' },
 ];
 
-/** قيم `status` المسموح بها في النموذج (تشمل الموروثة كي لا يُرفض صفٌّ قديم). */
+/** Allowed status values in the model (includes legacy ones so old rows are not rejected). */
 const STATUS_ENUM = ['mounted', 'spare', 'under_renewal', 'at_factory', 'scrap', 'damaged', 'sold', 'retired', 'in_repair'];
 
-/**
- * الخانة التي تقع فيها الفردة — تعريفٌ واحد يستعمله العدّاد والفلتر معًا.
- * «على الرفّ» تنقسم بالدرجة: جديدة أو مستعملة، فلا خانةَ اسمُها «spare» تُعرَض.
- */
+/** The bucket a tire falls in, used by both the counter and the filter. On shelf splits by condition (new or used), so no bucket named spare is shown. */
 function tireState(tire) {
   const s = String(tire?.status || '');
   if (s === 'mounted') return 'mounted';
-  if (s === 'in_repair') return 'under_renewal';          // الاسم القديم
+  if (s === 'in_repair') return 'under_renewal';          // Old name
   if (['under_renewal', 'at_factory', 'scrap', 'damaged', 'sold'].includes(s)) return s;
-  if (s === 'retired') return 'scrap';                     // موروث
+  if (s === 'retired') return 'scrap';                     // Legacy
   return tire?.condition === 'new' ? 'new' : 'used';       // spare
 }
 
-/** هل تُعَدّ ضمن «في المخزن»؟ */
+/** Whether it counts as in stock. */
 const IN_STORE = new Set(TIRE_STATES.filter((x) => x.inStore).map((x) => x.key));
 const isInStore = (tire) => IN_STORE.has(tireState(tire));
 
-/**
- * وجهاتُ النزول من العربية — ستٌّ، لا أربع.
- * كانت «سليمة/مخزن» وجهةً واحدة، فلا يُعرف أنزلت جديدةً أم مستعملة؛ وكانت
- * «في المصنع» و«تحت التجديد» شيئًا واحدًا. وكلُّ وجهةٍ هنا تصف حالةً مختلفة
- * فعلًا، ومن يُنزل الفردة هو وحده من يعرف أيَّها.
- */
+/** Destinations when removing a tire from a vehicle: six, not four. New vs used and retread vs factory were previously merged; each destination describes a genuinely different state that only the person removing the tire knows. */
 const DISMOUNT_DESTINATIONS = [
   { key: 'new', ar: 'الجديد (على الرفّ)', en: 'New (shelf)', status: 'spare', condition: 'new', action: 'removed' },
   { key: 'used', ar: 'المستعمل (على الرفّ)', en: 'Used (shelf)', status: 'spare', condition: 'used', action: 'removed' },
@@ -68,7 +43,7 @@ const DISMOUNT_DESTINATIONS = [
   { key: 'damaged', ar: 'التالف', en: 'Damaged', status: 'damaged', action: 'damaged' },
 ];
 
-/** الفعل المسجَّل في سجلّ الحركة لكلّ حالةٍ يُنقل إليها يدويًّا. */
+/** Movement-log action recorded for each state a tire is manually moved to. */
 const STATUS_ACTION = {
   spare: 'to_store',
   under_renewal: 'to_repair',

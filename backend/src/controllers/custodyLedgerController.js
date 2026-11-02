@@ -1,20 +1,7 @@
 /**
- * دفترُ العهدة — الكاش وكارت المشتريات والورشة. مكتوبٌ مرّةً هنا، وتُبنى منه
- * عهدتان: النقلُ الخفيف (ltCustodyController) والنقلُ الثقيل (htCustodyController).
- * لو نُسخ الكودُ لافترقت العهدتان في أوّل تصحيح.
- *
- * القواعدُ هنا لا في الشاشة: أيُّ مصدرٍ يصحّ لأيّ حساب، ومَن يصرف إلى الكاش،
- * وأنّ التحويلَ قيدان. والشاشةُ تقرأ `rules` من الجواب وترسم ما يُسمَح به.
- *
- * ── ما يختلف بين العهدتين يأتي في `cfg` ──────────────────────────────────────
- *   Model        سجلُّ القيود (models/LtCustody أو models/HtCustody)
- *   key          'lt' | 'ht' — بادئةُ المخزن («ltcustody:») ومجلّدُ المرفقات
- *                وأسماءُ أفعال سجلّ التدقيق («lt_custody_entry»)
- *   event        بثُّ التغيير ('lt:custody' | 'ht:custody')
- *   roles        مَن يفتح العهدةَ ويُدخل فيها
- *   findRep      المتحمِّلُ برقم هويّته — ولكلّ عهدةٍ سجلُّها الذي يُبحث فيه
- *   repMissing   رسالةُ «لا أحدَ بهذا الرقم»
- *   vehicles     true = القيدُ يحمل سيّارةً من أسطول لوكيشن سوليوشن (اختياريّة)
+ * Custody ledger (cash, purchase card, workshop), written once and used by light transport (ltCustodyController) and heavy transport (htCustodyController) so they cannot diverge.
+ * Rules live here, not in the screen: valid sources per account, who may spend into cash, a transfer is two entries; the screen reads `rules`.
+ * cfg per custody: Model, key ('lt'|'ht': cache prefix, attachment folder, audit names), event, roles, findRep (holder by ID number), repMissing, vehicles (true = optional fleet vehicle).
  */
 const mongoose = require('mongoose');
 const { ACCOUNTS, IN_SOURCES, TO_CASH } = require('../models/custodyLedger');
@@ -28,14 +15,11 @@ const { saveUploadFile } = require('../utils/fileStore');
 const YMD = /^\d{4}-\d{2}-\d{2}$/;
 const r2 = (n) => Math.round((Number(n) || 0) * 100) / 100;
 const who = (req) => [req.user.firstName, req.user.lastName].filter(Boolean).join(' ').trim() || '';
-/**
- * تعديلُ قيدٍ مسجَّلٍ وحذفُه لمدير النظام وأهل المال وحدَهم: القيدُ مالٌ، ومن
- * يُدخِله لا يصحّحه بيده — يصحّحه من يُسأل عن الدفتر.
- */
+/** Editing and deleting a recorded entry is for the system admin and finance only: an entry is money, and whoever enters it does not correct it themselves. */
 const canManage = (user) => require('../config/constants').isTopRole(user?.role) || isFinanceFull(user?.role);
 
 const ACC_AR = { cash: 'الكاش', card: 'الكارت', workshop: 'الورشة' };
-// «opening» رصيدٌ افتتاحيّ: يُكتب بالسكربت مرّةً ولا يُختار من الشاشة.
+// opening is an opening balance: written once by script, not chosen from the screen.
 const SRC_AR = { card: 'الكارت', workshop: 'الورشة', bank: 'البنك', maintenance: 'الصيانة', rep: 'مندوب', opening: 'رصيد افتتاحي' };
 
 function makeCustodyController(cfg) {
@@ -45,7 +29,7 @@ function makeCustodyController(cfg) {
   const repWord = cfg.repWord || 'المندوب';
   const vehicles = !!cfg.vehicles;
 
-  /** يحفظ الملفّاتِ المرسَلة (base64) ويردّ سطورَها — أو يرمي رسالةً تُعرَض كما هي. */
+  /** Saves the sent base64 files and returns their lines, or throws a message shown as is. */
   function saveFiles(req, files) {
     const out = [];
     for (const f of Array.isArray(files) ? files.slice(0, 10) : []) {
@@ -61,10 +45,8 @@ function makeCustodyController(cfg) {
   };
 
   /**
-   * ── السيّارة: من أسطول لوكيشن سوليوشن ─────────────────────────────────────
-   * تُختار برقم الوحدة (Ls2Vehicle.unitId)، وتُلقَط لوحتُها واسمُها وقتَ القيد:
-   * القيدُ يبقى يُقرأ ولو تغيّر اسمُ الوحدة في المنصّة أو خرجت من الأسطول.
-   * `null` = بلا سيّارة، و`false` = رقمٌ لا وحدةَ له (يُردّ 400).
+   * Vehicle: from the Location Solutions fleet. Chosen by unit number (Ls2Vehicle.unitId); its plate and name are captured at entry time so the entry stays readable if the unit is renamed or leaves the fleet.
+   * null = no vehicle, false = a number with no unit (returns 400).
    */
   async function findVehicle(unitId) {
     if (unitId === undefined || unitId === null || String(unitId).trim() === '') return null;
@@ -73,12 +55,12 @@ function makeCustodyController(cfg) {
     const Ls2Vehicle = require('../models/Ls2Vehicle');
     const v = await Ls2Vehicle.findOne({ unitId: n }).select('unitId plate name vehicleMaster').lean();
     if (!v) return false;
-    // ومركبتُها في سجلّ المركبات — مرجعٌ لا نسخة (services/ls2VehicleLink).
+    // And its vehicle in the vehicle register: a reference, not a copy (services/ls2VehicleLink).
     return { vehicleUnitId: v.unitId, vehiclePlate: v.plate || '', vehicleName: v.name || '', vehicleMaster: v.vehicleMaster || null };
   }
   const NO_VEHICLE = { vehicleUnitId: null, vehiclePlate: '', vehicleName: '', vehicleMaster: null };
 
-  // GET /custody/vehicles — قائمةُ السيّارات للمنسدلة: الأسطولُ كلُّه، مرتَّبًا باللوحة.
+  // GET /custody/vehicles: vehicle list for the dropdown, the whole fleet ordered by plate.
   async function listVehicles(req, res) {
     try {
       const Ls2Vehicle = require('../models/Ls2Vehicle');
@@ -90,7 +72,7 @@ function makeCustodyController(cfg) {
     } catch (e) { res.status(500).json({ message: 'تعذّر تحميل السيّارات' }); }
   }
 
-  // GET /custody/rep?id=<رقم الإقامة>
+  // GET /custody/rep?id=<residence number>
   async function lookupRep(req, res) {
     try {
       const rep = await findRep(req.query.id);
@@ -99,7 +81,7 @@ function makeCustodyController(cfg) {
     } catch (e) { res.status(500).json({ message: 'تعذّر البحث برقم الهويّة' }); }
   }
 
-  /** أرصدةُ الحسابات الثلاثة — على كلّ القيود، لا على ما صفّاه الفلتر. */
+  /** Balances of the three accounts, over all entries and not just what the filter selected. */
   async function balances() {
     const agg = await Model.aggregate([
       { $group: { _id: { a: '$account', d: '$direction' }, total: { $sum: '$amount' }, n: { $sum: 1 } } },
@@ -123,9 +105,7 @@ function makeCustodyController(cfg) {
       if (['rep', 'company', 'cash'].includes(q.target)) f.target = q.target;
       if (['card', 'workshop', 'bank', 'maintenance', 'rep', 'opening'].includes(q.source)) f.source = q.source;
       if (vehicles && q.vehicle && Number.isFinite(Number(q.vehicle))) f.vehicleUnitId = Number(q.vehicle);
-      // ── ومن ملفّ السيّارة وملفّ الموظّف (صاحبُ الشركة، ٢٠٢٦/١٠/٢٥) ──────────
-      // الشاحنةُ في إدارة الأسطول تُعرَف بمركبتها في السجلّ لا برقم وحدة لوكيشن،
-      // والموظّفُ بملفّه في الموارد البشريّة — وكلاهما مرجعٌ محفوظٌ على القيد.
+      // Also from the vehicle file and the employee file: a truck in fleet management is known by its register vehicle, not a Location Solutions unit number, and the employee by their HR file. Both are references kept on the entry.
       if (vehicles && mongoose.isValidObjectId(q.vehicleMaster)) f.vehicleMaster = new mongoose.Types.ObjectId(String(q.vehicleMaster));
       if (mongoose.isValidObjectId(q.employee)) f.employee = new mongoose.Types.ObjectId(String(q.employee));
       if (YMD.test(q.from || '') || YMD.test(q.to || '')) {
@@ -143,7 +123,7 @@ function makeCustodyController(cfg) {
         Model.find(f).sort({ date: -1, createdAt: -1 }).limit(2000).lean(),
         cache.wrap(`${CACHE}balances`, 15000, balances),
       ]);
-      // مجموعُ المعروض — تحت الفلتر.
+      // Total of what is shown, under the filter.
       const shown = { in: 0, out: 0 };
       for (const e of entries) shown[e.direction] += e.amount;
       res.json({
@@ -161,7 +141,7 @@ function makeCustodyController(cfg) {
   }
 
   function describe(rows) {
-    // الصادرُ أوّلًا: «من … إلى …» تُقرأ صحيحةً بأيّ ترتيبٍ جاء به الطرفان.
+    // Outgoing first, so 'from ... to ...' reads correctly whichever order the two sides arrive in.
     const entries = [...rows].sort((a, b) => (a.direction === 'out' ? -1 : 1) - (b.direction === 'out' ? -1 : 1));
     const e = entries[0];
     const car = e.vehiclePlate || e.vehicleName ? ` — السيّارة ${e.vehiclePlate || e.vehicleName}` : '';
@@ -170,7 +150,7 @@ function makeCustodyController(cfg) {
     return `صادر ${e.amount} من ${ACC_AR[e.account]} — ${e.target === 'rep' ? `${repWord} ${e.repName} (${e.repIdNumber})` : `الشركة: ${e.detail}`}${car}`;
   }
 
-  // POST /custody — قيدٌ واحد، أو قيدان إن كان تحويلًا بين حسابين.
+  // POST /custody: one entry, or two if it is a transfer between accounts.
   async function create(req, res) {
     try {
       const b = req.body || {};
@@ -181,7 +161,7 @@ function makeCustodyController(cfg) {
       if (!(amount > 0)) return res.status(400).json({ message: 'اكتب المبلغ', fields: { amount: 'مطلوب' } });
       const date = YMD.test(String(b.date || '')) ? String(b.date) : todayKey();
       const detail = String(b.detail || '').trim().slice(0, 500);
-      // السيّارةُ اختياريّة — وتُرفَض إن كُتب رقمٌ لا وحدةَ له، لا تُسقَط صامتة.
+      // The vehicle is optional; a number with no unit is rejected, not silently dropped.
       let car = {};
       if (vehicles) {
         const v = await findVehicle(b.vehicleUnitId);
@@ -198,7 +178,7 @@ function makeCustodyController(cfg) {
         const source = String(b.source || '');
         if (!IN_SOURCES[account].includes(source)) return res.status(400).json({ message: 'مصدرُ الوارد لا يصحّ لهذا الحساب' });
         if (source === 'rep') {
-          // متحمِّلٌ يردّ مالًا إلى الكاش — يُعرَّف برقم إقامته كما في الصادر.
+          // A holder returns money to cash; identified by residence number as in outgoing.
           const r = await findRep(b.repIdNumber);
           if (!r) return res.status(400).json({ message: `اكتب رقمَ الإقامة — ${repMissing}`, fields: { repIdNumber: 'غير معروف' } });
           docs.push({
@@ -206,7 +186,7 @@ function makeCustodyController(cfg) {
             repIdNumber: r.idNumber, repName: r.name, repNationality: r.nationality, repProject: r.project, employee: r.employee,
           });
         } else if (ACCOUNTS.includes(source)) {
-          // واردٌ من حسابٍ آخر = تحويل: صادرٌ هناك وواردٌ هنا. ومالٌ انتقل لا سيّارةَ له.
+          // Incoming from another account is a transfer: outgoing there and incoming here. Money that moved has no vehicle.
           docs.push({ ...base, account: source, direction: 'out', target: account, transferId });
           docs.push({ ...base, account, direction: 'in', source, transferId });
         } else {
@@ -247,7 +227,7 @@ function makeCustodyController(cfg) {
     }
   }
 
-  // DELETE /custody/:id — وطرفُ التحويل الآخر يُحذَف معه.
+  // DELETE /custody/:id; the other side of a transfer is deleted with it.
   async function remove(req, res) {
     try {
       if (!canManage(req.user)) return res.status(403).json({ message: 'حذفُ قيدِ العهدة لمدير النظام وأهل المال' });
@@ -265,15 +245,9 @@ function makeCustodyController(cfg) {
   }
 
   /**
-   * PUT /custody/:id — تصحيحُ قيدٍ مسجَّل: المبلغُ واليومُ والبيانُ والمتحمِّلُ
-   * والسيّارةُ والمرفقات.
-   *
-   * نوعُ القيد لا يتغيّر (حسابُه واتّجاهُه ومصدرُه): قيدٌ كُتب في غير موضعه يُحذَف
-   * ويُكتب من جديد. والتحويلُ طرفان، فمبلغُه ويومُه وبيانُه تُصحَّح في الطرفين
-   * معًا — وإلّا اختلّ الرصيدان. ولا سيّارةَ على تحويل.
-   *
-   * body: { amount?, date?, detail?, repIdNumber?, vehicleUnitId? ('' يُزيلها),
-   *         files?: [{dataUrl,fileName,title}], removeAttachments?: [id] }
+   * PUT /custody/:id: correct a recorded entry: amount, day, detail, holder, vehicle and attachments.
+   * The entry type does not change (account, direction, source): an entry in the wrong place is deleted and re-entered. A transfer has two sides, so its amount, day and detail are corrected on both, otherwise the balances break. A transfer has no vehicle.
+   * body: { amount?, date?, detail?, repIdNumber?, vehicleUnitId? ('' removes it), files?: [{dataUrl,fileName,title}], removeAttachments?: [id] }
    */
   async function update(req, res) {
     try {

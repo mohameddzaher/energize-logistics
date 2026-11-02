@@ -1,10 +1,6 @@
 const mongoose = require('mongoose');
 
-// الشؤون الإدارية (السكرتارية) — a Trello-style task board, deliberately tiny:
-// four fixed columns, one assignee, a comment thread and an activity trail.
-// The people using it are non-technical, so the model carries denormalized
-// names (assigneeName, byName) — the UI must never need a second request to
-// render a card.
+// Administrative affairs (secretariat): a Trello-style task board, deliberately tiny: four fixed columns, one assignee, a comment thread and an activity trail. The users are non-technical, so the model carries denormalized names (assigneeName, byName); the UI must never need a second request to render a card.
 
 const STATUSES = ['new', 'in_progress', 'follow_up', 'done'];
 const PRIORITIES = ['low', 'normal', 'high', 'urgent'];
@@ -31,8 +27,7 @@ const adminTaskSchema = new mongoose.Schema(
         at: { type: Date, default: Date.now },
       },
     ],
-    // Human-readable فصحى lines ("نقل المهمة إلى «قيد التنفيذ»") written by the
-    // controller — the trail is for the office team, not for machines.
+    // Human-readable standard Arabic lines (e.g. moving the task to the in-progress column) written by the controller; the trail is for the office team, not for machines.
     activity: [
       {
         byName: { type: String, default: '' },

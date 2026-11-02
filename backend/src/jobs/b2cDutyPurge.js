@@ -1,18 +1,6 @@
 /**
- * سجلُّ التفقّد يُمسح بعد أربعة عشر يومًا (صاحبُ الشركة، ٢٠٢٦/١٠/٢٣).
- *
- * «التفقّد اللي يعدّي عليه ١٤ يوم يتمسح خالص — مش عاوزين نشوفه تاني ولا يتخزّن».
- * صورُ التفقّد أثقلُ ما على قرص الخادم (قرابة ١ جيجا وتزيد كلَّ يوم)، ثمّ تُضاعَف
- * في النسخ الاحتياطيّة اليوميّة الأربع عشرة. والتفقّدُ شاهدٌ على يومه: إن لم
- * يُرجَع إليه في أسبوعين فلن يُرجَع إليه.
- *
- * فيُحذف كلُّ تفقّدٍ يومُه (`dateKey`) أقدمُ من أربعة عشر يومًا بتوقيت الرياض:
- * صفُّه، وكلُّ ملفٍّ يشير إليه، وسجلُّ تدقيقه (AuditLog) — لا يبقى منه شيء.
- * ثمّ يُكنَس مجلّدُ `uploads/b2c-duty` من أيّ صورةٍ أقدمَ من ذلك لا يملكها صفّ
- * (رفعٌ انقطع قبل الحفظ). والنسخُ الاحتياطيّة تنظف وحدَها في أسبوعين، لأنّها
- * تُدار بالدوران نفسِه.
- *
- * يعمل في النسخة الأولى وحدها (server.js — runsJobs)، بعد الإقلاع ثمّ كلَّ ست ساعات.
+ * Duty-check rows older than 14 days (Riyadh time, by `dateKey`) are deleted with their files and AuditLog entries; photos are the heaviest data on the server disk and are multiplied by daily backups.
+ * The uploads/b2c-duty folder is also swept of orphan photos (uploads cut off before save). Runs on the first instance only (server.js runsJobs), after boot and every six hours.
  */
 const fs = require('fs');
 const path = require('path');
@@ -24,10 +12,10 @@ const KEEP_DAYS = 14;
 const DIR = path.join(UPLOAD_ROOT, 'b2c-duty');
 
 const riyadhDay = (d) => new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Riyadh' }).format(d);
-/** أوّلُ يومٍ يبقى: اليومُ وثلاثةَ عشرَ قبله — ما قبله يُمسح. */
+/** First day kept: today and the 13 days before it; anything older is purged. */
 const cutoffKey = (now = new Date()) => riyadhDay(new Date(now.getTime() - (KEEP_DAYS - 1) * 86400000));
 
-/** كلُّ رابطِ ملفٍّ في الصفّ أينما كان — الصور، وما قد يُضاف بعدها. */
+/** Every file link on the row, wherever it is stored: photos and any fields added later. */
 function fileUrlsOf(v, out = []) {
   if (!v || typeof v !== 'object') return out;
   if (Array.isArray(v)) { v.forEach((x) => fileUrlsOf(x, out)); return out; }
@@ -44,8 +32,7 @@ async function purge(now = new Date()) {
   for (;;) {
     const batch = await B2CDutyCheck.find({ dateKey: { $lt: cutoff } }).limit(300).lean();
     if (!batch.length) break;
-    // قفل: لا يُمسح إلّا ملفٌّ في مجلّد التفقّد — ملفّاتُ الموارد البشريّة وغيرُها
-    // لا تُمسّ ولو حمل صفُّ تفقّدٍ رابطًا إليها خطأً (صاحبُ الشركة، ٢٠٢٦/١٠/٢٤).
+    // Guard: only files inside the duty-check folder are deleted, even if a row links elsewhere (e.g. HR files).
     for (const d of batch) for (const u of fileUrlsOf(d)) {
       if (!u.startsWith('/api/uploads/b2c-duty/')) continue;
       deleteStoredFile(u); files += 1;
@@ -54,7 +41,7 @@ async function purge(now = new Date()) {
     await AuditLog.deleteMany({ entity: 'B2CDutyCheck', entityId: { $in: ids } }).catch(() => {});
     rows += (await B2CDutyCheck.deleteMany({ _id: { $in: ids } })).deletedCount || 0;
   }
-  // وما بقي في المجلّد بلا صفٍّ وقد تجاوز المدّة — يومٌ زيادةً احتياطًا لفرق التوقيت.
+  // Unowned files past the retention window; one extra day absorbs timezone skew.
   let orphans = 0;
   try {
     const limit = now.getTime() - (KEEP_DAYS + 1) * 86400000;

@@ -1,27 +1,8 @@
 /**
- * شكاوى Media Go — بلاغاتُ أعطال الشاشات على دبّاباتنا.
- *
- *   GET    /api/b2c/mediago-complaints               القائمة + العدّادات + المفردات + ما يملكه القارئ
- *   GET    /api/b2c/mediago-complaints/meta          المفرداتُ وحدها (للنموذج في التطبيق)
- *   GET    /api/b2c/mediago-complaints/motorcycles   دبّاباتُ النقل الخفيف من سجلّ المركبات (?q=)
- *   GET    /api/b2c/mediago-complaints/:id           البلاغُ كاملًا (المرفقات والسجلّ والردود)
- *   POST   /api/b2c/mediago-complaints               رفعُ بلاغ (قسمُ الأفراد)
- *   POST   /api/b2c/mediago-complaints/:id/files     إرفاقُ صورٍ أو مقاطعَ لاحقًا (قسمُ الأفراد)
- *   PATCH  /api/b2c/mediago-complaints/:id/status    تغييرُ الحالة (الطرفان — بحدود)
- *   POST   /api/b2c/mediago-complaints/:id/replies   ردٌّ في المحادثة (الطرفان)
- *   DELETE /api/b2c/mediago-complaints/:id           حذف (مدير القطاع ونائبه ومدير النظام)
- *
- * ── الطرفان ─────────────────────────────────────────────────────────────────
- * نحن نرفع البلاغ ونغلقه. وMedia Go (`mediago_account`) تقرأ كلَّ البلاغات،
- * وتقول «قيد المعالجة» ثمّ «تمّ الإصلاح»، وتردّ. ولا تُنشئ ولا تحذف ولا تعدّل
- * حقلًا من البلاغ — ولا تغيّر حالةَ بلاغٍ أُغلق. ويصل كلَّ طرفٍ إشعارٌ بما فعله
- * الآخر، ويتحدّث الطرفان حيًّا (`mediago:complaint`).
- *
- * ── حدُّ المرفقات ───────────────────────────────────────────────────────────
- * الخادمُ يقبل جسمَ طلبٍ حتى ٢٥ ميغا (server.js)، والملفُّ يُرسَل base64 فيكبر
- * الثلث. فالمرفقاتُ في الطلب الواحد لا تتجاوز ١٨ ميغا معًا: الصورةُ حتى ٨ والمقطعُ
- * حتى ١٥ — مقطعٌ قصيرٌ من الهاتف (عشرون ثانيةً تقريبًا). ومن احتاج أكثر أرفق
- * بعد الحفظ من تفصيل البلاغ (حتى خمسة ملفّاتٍ للبلاغ كلِّه).
+ * Media Go complaints: reports of screen faults on our motorcycles.
+ * GET/POST /api/b2c/mediago-complaints, GET /meta, GET /motorcycles?q=, GET /:id, POST /:id/files, PATCH /:id/status, POST /:id/replies, DELETE /:id
+ * We file and close; Media Go (`mediago_account`) reads all, sets in-progress then fixed, and replies, but cannot create, delete, edit fields or change a closed report; both talk live (`mediago:complaint`).
+ * Attachments per request total at most 18 MB (body limit 25 MB, base64 adds a third): image up to 8, clip up to 15; up to five files per report.
  */
 const mongoose = require('mongoose');
 const MediaGoComplaint = require('../models/MediaGoComplaint');
@@ -41,28 +22,25 @@ const MAX_FILES = 5;
 const MB = 1024 * 1024;
 const LIMITS = { image: 8 * MB, video: 15 * MB, request: 18 * MB };
 
-/** مَن يرفع البلاغ: رؤوسُ القسم ومديرو مشاريعه ومشرفوه — ومن مُنح القسمَ «تعديلًا». */
+/** Who files a report: section heads, their project managers and supervisors, and anyone granted edit on the section. */
 const CREATE_ROLES = ['super_admin', 'admin', 'b2c_manager', 'b2c_deputy', 'b2c_project_lead', 'b2c_rep_supervisor', 'b2c_inspection_supervisor'];
-/** والحذفُ فعلٌ لا يُستعاد: لمدير القطاع ونائبه ومدير النظام وحدَهم. */
-// والإدارةُ العليا معهم (طلبُ صاحب الشركة) — ومن يحذف يعدّل: القائمةُ نفسُها.
+/** Deletion cannot be undone: sector manager, deputy and system admin only. */
+// Top management is included too; whoever can delete can edit, so it is the same list.
 const DELETE_ROLES = ['super_admin', 'admin', 'b2c_manager', 'b2c_deputy'];
 const EDIT_ROLES = DELETE_ROLES;
-/** ما تقوله Media Go عن البلاغ — لا تفتحه من جديد ولا تغلقه. */
+/** What Media Go can say about a report: it cannot reopen or close it. */
 const PARTNER_STATUSES = ['in_progress', 'fixed'];
 
 /**
- * ── الحالةُ تمضي إلى الأمام (صاحبُ الشركة، ٢٠٢٦/١٠/٢٢) ─────────────────────
- * كانت Media Go تُرجع بلاغًا «تمّ إصلاحه» إلى «قيد المعالجة» ويبقى تاريخُ
- * الإصلاح عليه — بلاغٌ قيدَ المعالجة وله تاريخُ إصلاح. فصار لكلّ حالةٍ ما بعدها:
- *   Media Go:  جديدة → قيد المعالجة / تمّ الإصلاح · قيد المعالجة → تمّ الإصلاح. ولا رجوع.
- *   إنرجايز:  تراجع الإصلاحَ فتغلقه، أو تعيد فتحه بسببٍ مكتوب (فيُمحى تاريخُ الإصلاح
- *             ويبقى في السجلّ)، وتغلق ما شاءت.
+ * Status moves forward only. Media Go used to send a fixed report back to in-progress while keeping the fix date, leaving an in-progress report with a fix date. So each status has a defined next:
+ * Media Go: new -> in progress / fixed; in progress -> fixed. No going back.
+ * Energize: can undo a fix by closing it, or reopen with a written reason (the fix date is cleared but stays in the log), and close any.
  */
 const NEXT = {
   mediago: { new: ['in_progress', 'fixed'], in_progress: ['fixed'], fixed: [], closed: [] },
   energize: { new: ['in_progress', 'fixed', 'closed'], in_progress: ['fixed', 'closed'], fixed: ['closed', 'in_progress'], closed: ['in_progress'] },
 };
-/** رجوعٌ إلى الخلف — لا يكون إلّا بسبب. */
+/** Going backward is allowed only with a reason. */
 const isReopen = (from, to) => (from === 'fixed' || from === 'closed') && (to === 'in_progress' || to === 'new');
 const nextStatuses = (status, partner) => NEXT[partner ? 'mediago' : 'energize'][status] || [];
 
@@ -76,7 +54,7 @@ const label = (group, key, lang = 'ar') => {
   return x ? x[lang] : key || '';
 };
 
-/** ما يملكه القارئ — تقرؤه الشاشتان فلا تعرضان زرًّا يردّه الخادم. */
+/** Reader permissions: both screens read them so they never show a button the server rejects. */
 const abilities = (req) => {
   const partner = isPartner(req.user);
   return {
@@ -91,10 +69,7 @@ const abilities = (req) => {
 
 const kindOf = (mime) => (String(mime || '').startsWith('video/') ? 'video' : 'image');
 
-/**
- * يحفظ مرفقاتِ الطلب ويعيد ما يُكتب على البلاغ. يرفض قبل أن يكتب شيئًا: نوعٌ
- * غيرُ صورةٍ أو مقطع، أو ملفٌّ فوق حدّه، أو مجموعٌ فوق حدّ الطلب.
- */
+/** Saves the request's attachments and returns what is written on the report. Rejects before writing anything: a type that is not image or clip, a file over its limit, or a total over the request limit. */
 function saveFiles(list, already, user) {
   const files = Array.isArray(list) ? list.filter((f) => f && f.dataUrl) : [];
   if (!files.length) return [];
@@ -136,17 +111,17 @@ function saveFiles(list, already, user) {
   return saved;
 }
 
-// ── الإشعارُ والبثّ ─────────────────────────────────────────────────────────
+// Notification and broadcast.
 const announce = (id, action) => {
   try {
     const { emitToAll, emitToRole } = require('../websocket/socketManager');
     const payload = { id: String(id), action, at: Date.now() };
     emitToAll('mediago:complaint', payload);
     emitToRole(MEDIAGO_ROLE, 'mediago:complaint', payload);
-  } catch (_) { /* البثُّ تحسينٌ لا شرط */ }
+  } catch (_) { /* Broadcast is an enhancement, not a requirement. */ }
 };
 
-/** إلى حسابات Media Go كلِّها (عادةً حسابٌ واحد). */
+/** To all Media Go accounts (normally one). */
 async function notifyPartner({ type, title, message, id }) {
   try {
     const { createNotification } = require('../services/notificationService');
@@ -154,12 +129,10 @@ async function notifyPartner({ type, title, message, id }) {
     await Promise.all(users.map((u) => createNotification({
       recipient: u._id, type, title, message, relatedEntity: 'MediaGoComplaint', relatedEntityId: id,
     }).catch(() => null)));
-  } catch (_) { /* الإشعارُ لا يُفشل الفعل */ }
+  } catch (_) { /* A notification failure must not fail the action. */ }
 }
 
-/**
- * إلى جهتنا: إشعارُ القسم (يراه مديرُه) ورافعُ البلاغ باسمه إن لم يكن ممّن يرونه.
- */
+/** To our side: the section notification (its manager sees it) and the reporter by name if they are not among those who see it. */
 async function notifyOurSide(doc, { type, title, message }) {
   try {
     const { createNotification, notifySection } = require('../services/notificationService');
@@ -170,10 +143,10 @@ async function notifyOurSide(doc, { type, title, message }) {
         await createNotification({ recipient: creator._id, type, title, message, relatedEntity: 'MediaGoComplaint', relatedEntityId: doc._id });
       }
     }
-  } catch (_) { /* الإشعارُ لا يُفشل الفعل */ }
+  } catch (_) { /* A notification failure must not fail the action. */ }
 }
 
-// ── الصفّ كما يُعرَض ─────────────────────────────────────────────────────────
+// Row as displayed.
 const listRow = (d) => ({
   _id: d._id, ref: d.ref, seq: d.seq, vehicle: d.vehicle || null,
   motorcycleNumber: d.motorcycleNumber, plateNumber: d.plateNumber || '', serialNumber: d.serialNumber || '', project: d.project || '',
@@ -191,7 +164,7 @@ const listRow = (d) => ({
 
 const fullRow = (d, partner = false) => ({
   ...listRow(d),
-  // ما يجوز أن تصير إليه الآن — تقرؤه الشاشتان فلا تعرضان حالةً يردّها الخادم.
+  // What it may become now; both screens read it so they never offer a status the server rejects.
   nextStatuses: nextStatuses(d.status, partner),
   files: d.files || [],
   statusHistory: d.statusHistory || [],
@@ -200,7 +173,7 @@ const fullRow = (d, partner = false) => ({
 
 const dayStart = (iso) => (/^\d{4}-\d{2}-\d{2}$/.test(S(iso)) ? new Date(`${iso}T00:00:00+03:00`) : null);
 
-// ── القائمة ─────────────────────────────────────────────────────────────────
+// List.
 exports.list = async (req, res) => {
   try {
     const q = req.query || {};
@@ -213,16 +186,14 @@ exports.list = async (req, res) => {
     }
     const docs = await MediaGoComplaint.find(base).sort({ createdAt: -1 }).limit(5000).lean();
 
-    // البحثُ يقرأ ما يُكتب في البلاغ — بالعربيّة مطويّةً كما في بقيّة النظام.
+    // Search reads what is written in the report, with Arabic folded as elsewhere in the system.
     const needle = fold(q.q);
     const searched = needle
       ? docs.filter((d) => fold([d.ref, d.motorcycleNumber, d.plateNumber, d.serialNumber, d.screenNumber, d.project,
         d.issueOther, d.availabilityOther, d.createdByName, label('issue', d.issue), label('issue', d.issue, 'en')].join(' ')).includes(needle))
       : docs;
 
-    // ── العدّاداتُ لا تقفز تحت الضغطة ─────────────────────────────────────
-    // كلُّ مجموعةٍ تُعَدّ بكلّ الفلاتر إلّا فلترِها هي: بطاقاتُ الحالات تبقى
-    // كما هي حين تُختار إحداها، ومجموعُها يساوي المعروضَ قبل اختيارها.
+    // Counters must not jump on click: each group is counted with all filters except its own, so status cards stay the same when one is selected and their sum equals what was shown before selecting.
     const FIELDS = ['status', 'issue', 'location', 'availability'];
     const want = Object.fromEntries(FIELDS.map((f) => [f, S(q[f])]));
     const pass = (d, skip) => FIELDS.every((f) => f === skip || !want[f] || d[f] === want[f]);
@@ -249,9 +220,7 @@ exports.meta = async (req, res) => {
   res.json({ meta: MEDIAGO_VOCAB, can: abilities(req), limits: { maxFiles: MAX_FILES, imageMB: 8, videoMB: 15, requestMB: 18 } });
 };
 
-// ── دبّاباتُ النقل الخفيف ──────────────────────────────────────────────────
-// من سجلّ المركبات نفسِه (قطاع النقل الخفيف أو مشاريعه)، والنوعُ دراجة —
-// «دراجة آلية» في السجلّ و«دراجة نارية» في شيت القسم (راجع lightTransportController).
+// Light-transport motorcycles: from the vehicle register itself (light-transport sector or its projects), type motorcycle (registered as one label in the register and another in the section sheet; see lightTransportController).
 const LT_VEHICLE_PROJECTS = /^(كيتا|هنجرستيشن|هنقرستيشن|امازون|أمازون|نينجا)$/;
 exports.motorcycles = async (req, res) => {
   try {
@@ -293,8 +262,8 @@ exports.getOne = async (req, res) => {
   }
 };
 
-// ── رفعُ بلاغ ───────────────────────────────────────────────────────────────
-// ── حقولُ البلاغ نفسُه — يقرؤها الإنشاءُ والتعديلُ معًا ─────────────────────
+// Filing a report.
+// Report fields themselves, read by both create and edit.
 async function readFields(b) {
   const keys = (g) => MEDIAGO_VOCAB[g].map((x) => x.key);
   const issue = S(b.issue); const availability = S(b.availability);
@@ -317,14 +286,14 @@ async function readFields(b) {
       plateNumber: vehicle?.plateNumber || '', serialNumber: vehicle?.serialNumber || '', project: vehicle?.departmentAr || '',
       screenNumber: S(b.screenNumber).slice(0, 60),
       issue, issueOther: issue === 'other' ? S(b.issueOther).slice(0, 500) : '',
-      // موقعُ الصيانة إنرجايز دائمًا — لا يُقرأ من الطلب.
+      // Maintenance location is always Energize, never read from the request.
       location: 'energize',
       availability, availabilityOther: availability === 'other' ? S(b.availabilityOther).slice(0, 200) : '',
     },
   };
 }
 
-// ── تعديلُ البلاغ — مدير النظام والإدارة العليا ورأسا القسم ───────────────────
+// Editing a report: system admin, top management and the two section heads.
 const EDIT_FIELDS = ['vehicle', 'motorcycleNumber', 'plateNumber', 'serialNumber', 'project', 'screenNumber', 'issue', 'issueOther', 'location', 'availability', 'availabilityOther'];
 exports.update = async (req, res) => {
   try {
@@ -359,9 +328,7 @@ exports.create = async (req, res) => {
   if (!canCreate(req)) return res.status(403).json({ message: 'رفع البلاغات لقسم الأفراد' });
   const b = req.body || {};
   const keys = (g) => MEDIAGO_VOCAB[g].map((x) => x.key);
-  // ── موقعُ الصيانة إنرجايز دائمًا ─────────────────────────────────────────
-  // «هيرو مايل» ليست جهتَنا، فالسؤالُ أُزيل من النموذج ويُكتب الموقعُ هنا. وبقي
-  // الحقلُ في النموذج لتاريخ ما سبق، ويُعرَض للقراءة في التفصيل.
+  // Maintenance location is always Energize. The Hero Mail option is not ours, so the question was removed from the form and the location is written here. The field stays in the form model for older reports and is shown read-only in the detail.
   const issue = S(b.issue); const location = 'energize'; const availability = S(b.availability);
   const problems = [];
   if (!keys('issue').includes(issue)) problems.push('المشكلة / Issue');
@@ -369,7 +336,7 @@ exports.create = async (req, res) => {
   if (!keys('availability').includes(availability)) problems.push('وقت التوفّر / Availability');
   if (availability === 'other' && !S(b.availabilityOther)) problems.push('الوقت المناسب / Preferred time');
 
-  // ── الدبّاب: من السجلّ إن اختير، وإلّا ما كُتب ────────────────────────────
+  // Motorcycle: from the register if selected, otherwise what was typed.
   let vehicle = null;
   if (b.vehicle && mongoose.Types.ObjectId.isValid(String(b.vehicle))) {
     vehicle = await VehicleMaster.findById(b.vehicle).select('plateNumber serialNumber departmentAr').lean();
@@ -414,7 +381,7 @@ exports.create = async (req, res) => {
   }
 };
 
-// ── إرفاقٌ لاحق ─────────────────────────────────────────────────────────────
+// Later attachment.
 exports.addFiles = async (req, res) => {
   if (!canCreate(req)) return res.status(403).json({ message: 'الإرفاق لقسم الأفراد' });
   try {
@@ -433,7 +400,7 @@ exports.addFiles = async (req, res) => {
   }
 };
 
-// ── الحالة ─────────────────────────────────────────────────────────────────
+// Status.
 exports.setStatus = async (req, res) => {
   try {
     const status = S(req.body?.status);
@@ -458,13 +425,12 @@ exports.setStatus = async (req, res) => {
     const by = nameOf(req.user);
     const prev = doc.status;
     doc.status = status;
-    // تاريخُ الإصلاح لحالةِ «تمّ الإصلاح» وما بعدها وحدَها: إعادةُ الفتح تمحوه
-    // (ويبقى في السجلّ)، والإصلاحُ الثاني يكتب تاريخَه هو.
+    // The fix date applies only to the fixed state and later ones: reopening clears it (it stays in the log) and a second fix writes its own date.
     if (status === 'fixed') doc.fixedAt = new Date();
     if (status === 'closed') doc.closedAt = new Date();
     if (status === 'new' || status === 'in_progress') { doc.closedAt = null; doc.fixedAt = null; }
     doc.statusHistory.push({ status, note, by: req.user._id, byName: by, side, at: new Date() });
-    // الملاحظةُ مع الحالة تُقرأ في المحادثة أيضًا — هناك يبحث عنها الطرفُ الآخر.
+    // A note given with a status also appears in the conversation, where the other party looks for it.
     if (note) doc.replies.push({ text: note, by: req.user._id, byName: by, side, at: new Date() });
     await doc.save();
     await logAudit({ user: req.user, action: 'status_change', entity: 'MediaGoComplaint', entityId: doc._id, details: `${doc.ref}: ${prev} → ${status}` });
@@ -482,7 +448,7 @@ exports.setStatus = async (req, res) => {
   }
 };
 
-// ── الردود ─────────────────────────────────────────────────────────────────
+// Replies.
 exports.reply = async (req, res) => {
   try {
     const text = S(req.body?.text).slice(0, 2000);

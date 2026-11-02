@@ -3,9 +3,9 @@ const { sendMongooseError, stripEmpty } = require('../utils/mongooseError');
 const User = require('../models/User');
 const Employee = require('../models/Employee');
 const Contract = require('../models/Contract');
-// «حالة العقد» على الموظّف صورةٌ من عقده تُحدَّث كلّما تغيّر — راجع utils/contractStatus.
+// Employee contract status mirrors the contract and is refreshed on every change. See utils/contractStatus.
 const { syncEmployeeContractStatus, twoStatus } = require('../utils/contractStatus');
-// العقدُ ساري أو منتهي لا غير — وما لم تطله الهجرةُ يُقرأ كذلك قبل أن يخرج.
+// A contract is either active or expired; unmigrated legacy values are read that way before output.
 const asTwo = (c) => (c ? { ...c, status: twoStatus(c.status) } : c);
 const LeaveType = require('../models/LeaveType');
 const LeaveRequest = require('../models/LeaveRequest');
@@ -44,21 +44,10 @@ const syncLeaveStatus = (employeeId) => require('../utils/leaveReturn').syncEmpl
 const fullName = (u) => (u ? `${u.firstName || ''} ${u.lastName || ''}`.trim() : '');
 
 /**
- * إبطال ذاكرة الموظفين بعد أي كتابة عليهم.
- *
- * ثلاث شاشاتٍ تقرأ الموظّف نفسه من ثلاث ذاكرات: سجلّ الموظفين (`hr:employees:`
- * لثلاثين ثانية)، ولوحة الموارد البشرية (`dash:hr:` لثلاثين)، وماستر الموارد
- * البشرية كلُّه (`hrm:` لستّين). ولم تكن الكتابةُ تُبطل واحدةً منها — رغم أنّ
- * التعليق فوق ذاكرة السجلّ يَعِد بذلك — فالموظّف يُعدَّل أو يُحذف ثم يعود في
- * القائمة كما كان لدقيقة، فيُعاد التعديل مرّةً ثانية ظنًّا أنّه لم يُحفظ.
- *
- * ومعها بثٌّ لـ`hr:master`: صفحات الماستر لا تسمع `hr:employee` (وهو موجَّهٌ إلى
- * موظفي الموارد البشرية أنفسهم لا إلى الجميع)، فكانت تبقى على أرقامها القديمة
- * حتى يُحدِّثها أحدٌ بيده. وهذا ما تفعله `emit()` في hrMasterController بالضبط،
- * فالكتابتان تصيران متكافئتين أيًّا كان بابُ التعديل.
+ * Invalidate employee caches after any employee write.
+ * Three screens read the same employee from three caches (hr:employees:, dash:hr:, hrm:), and writes cleared none, so edits reappeared stale for up to a minute. Also broadcast hr:master, since master pages do not hear hr:employee; this matches emit() in hrMasterController.
  */
-// تُصدَّر: مَن يكتب ملفَّ موظّفٍ من خارج هذا المتحكِّم (سجلّ النقل الخفيف) يمسح
-// الذاكراتِ نفسَها ويبثّ الأحداثَ نفسَها — لا نسخةً منها تفترق.
+// Exported so writers outside this controller (light transport register) clear the same caches and emit the same events.
 exports._bustEmployeeCaches = () => bustEmployeeCaches();
 const bustEmployeeCaches = () => {
   try {
@@ -66,12 +55,10 @@ const bustEmployeeCaches = () => {
     cache.clear('hr:employees:');
     cache.clear('dash:hr:');
     cache.clear('hrm:');
-    // الأسطولُ يقرأ اسمَ السائق وحالتَه من الملفّ (utils/fleetIdentity).
+    // Fleet reads the driver name and status from this file (utils/fleetIdentity).
     cache.clear('fleet:');
   } catch (e) {}
-  // الثلاثةُ معًا: الانتهاءاتُ والماستر تسمع `hr:master`، وملفُّ الموظّف وقائمتُه
-  // `hr:employee`، وصفحةُ العقود `hr:contract` — وكتابةٌ واحدةٌ تغيّر ما تعرضه
-  // الثلاث. فمن جدّد عقدًا رأى زميلُه ملفَّ الموظّف والانتهاءاتِ يتغيّران معًا.
+  // All three events: expiries and master hear hr:master, the employee file and list hear hr:employee, the contracts page hears hr:contract. One write changes what all three show.
   for (const ev of ['hr:master', 'hr:employee', 'hr:contract']) { try { emitToAll(ev, {}); } catch (e) {} }
 };
 
@@ -79,7 +66,7 @@ const bustEmployeeCaches = () => {
 // The FULL_ACCESS roles (IT) see the same pages, so they get the same realtime
 // refreshes; leaving them out kept their screens stale until manual reload.
 const { FULL_ACCESS_ROLES } = require('../config/constants');
-// المؤرشَفُ يختفي من كلّ قائمةٍ هنا كأنّه حُذف — إلّا ملفَّه حين يُفتح من الأرشيف.
+// Archived staff disappear from every list here, except when their file is opened from the archive.
 const { endedStaff, notArchivedRef, notArchivedUserRef, andAll, withoutArchivedRef } = require('../utils/archivedHidden');
 const hrStaffIds = async () => {
   const roles = [...new Set([...HR_STAFF_ROLES, ...FULL_ACCESS_ROLES])];
@@ -89,23 +76,9 @@ const hrStaffIds = async () => {
 
 // Notify every HR staff member + emit a realtime event to each of them.
 /**
- * ── وتحديثُ الشاشة ليس خبرًا ────────────────────────────────────────────────
- *
- * `notifyHR` تفعل أمرين: تخزّن إشعارًا في الجرس، وتُطلق حدثًا حيًّا تُحدِّث به
- * الشاشاتُ المفتوحة. وكان كلُّ تغييرٍ في ملفّ موظّفٍ يفعل الاثنين — فمن رفع
- * مستندًا أرسل إشعارًا إلى ثلاثةَ عشرَ شخصًا.
- *
- * والنتيجةُ قيست على البرودكشن: سبعون ألفَ إشعار، **اثنان وتسعون بالمئة منها
- * ثلاثةُ أحداثِ مسكِ دفاتر** — «Document added» خمسةٌ وأربعون ألفًا، و«Employee
- * updated» أحدَ عشرَ ألفًا، و«Document removed» سبعةُ آلاف. وتسعةٌ وسبعون
- * بالمئة من الكلّ غيرُ مقروء: لا لأنّ أحدًا أهمل، بل لأنّ جرسًا فيه خمسةُ آلافِ
- * سطرٍ لا يُقرأ. فالضجيجُ لا يُخفي نفسَه وحدَه — يُخفي الإشعارَ الذي يلزم.
- *
- * وهذه الأحداثُ مكتوبةٌ في سجلّ المراجعة في السطر الذي يسبق الإشعارَ مباشرةً
- * (`logAudit`)، وتُقرأ في تبويب «السجلّ» في ملفّ الموظّف. فلا شيءَ يضيع.
- *
- * فصارا دالّتين: `notifyHR` لما يحتاج علمًا، و`refreshHR` لما يحتاج تحديثَ
- * شاشةٍ فقط — الحدثُ الحيُّ نفسُه بلا سطرٍ في الجرس.
+ * A screen refresh is not news.
+ * notifyHR both stores a bell notification and fires the live event. Doing both for every employee change flooded the bell (about 92% was bookkeeping events: document added/removed, employee updated), burying real notices. Those events are already in the audit log (logAudit) and the History tab.
+ * So: notifyHR for what needs attention, refreshHR for the live event only, with no bell row.
  */
 const refreshHR = async ({ relatedEntityId, event }) => {
   if (!event) return;
@@ -114,23 +87,17 @@ const refreshHR = async ({ relatedEntityId, event }) => {
 };
 
 const notifyHR = async ({ title, message, relatedEntity, relatedEntityId, event }) => {
-  // ── صفٌّ واحدٌ للقسم، لا صفٌّ لكلّ موظّفٍ فيه ─────────────────────────────
-  // كانت تُكتب نسخةٌ لكلّ واحدٍ في `hrStaffIds()` — قائمةٌ بأدوارٍ مكتوبةٍ بيد،
-  // فمن استُحدث له دورٌ في الموارد البشريّة لا يصله شيءٌ حتّى يتذكّره أحد.
-  // والآن يُوجَّه الخبرُ إلى القسم، ويراه كلُّ من فُتح له «HR» في الصلاحيّات.
+  // One row per department, not per employee: the old per-user fan-out used a hand-written role list, so new HR roles got nothing. The notice goes to the department and everyone granted HR sees it.
   const { notifySection } = require('../services/notificationService');
   await notifySection('HR', { title, message, relatedEntity, relatedEntityId }).catch(() => {});
-  // والحدثُ الحيُّ يبقى لمن يملك شاشةً مفتوحة.
+  // The live event still goes to anyone with an open screen.
   if (event) {
     const ids = await hrStaffIds();
     ids.forEach((rid) => { try { emitToUser(String(rid), event, { id: String(relatedEntityId || '') }); } catch (e) {} });
   }
 };
 
-/**
- * إخطارُ أصحاب محطّةٍ في سلسلة الإجازات — الحساباتُ أو الإدارةُ العليا.
- * ولولاه لَوصل الطلبُ إلى محطّةٍ لا يعلم أحدٌ فيها أنّه وصل، فيقف حتّى يُسأل عنه.
- */
+/** Notify the owners of a leave-chain stage (accounting or top management); otherwise a request reaches a stage nobody knows about and stalls. */
 const notifyRoles = async (roles, { title, message, relatedEntity, relatedEntityId, event }) => {
   if (!roles || !roles.length) return;
   const users = await User.find({ role: { $in: roles }, isActive: true }).select('_id').lean();
@@ -145,7 +112,7 @@ const notifyUser = async (userId, { title, message, relatedEntity, relatedEntity
   if (event) { try { emitToUser(String(userId), event, { id: String(relatedEntityId || '') }); } catch (e) {} }
 };
 
-// السارِي، وإلّا المنتهي بمرور مدّته: انقضاءُ المدّة لا يُصفِّر رصيدَ الإجازة.
+// Active contract, else one expired by time: expiry does not zero the leave balance.
 const getActiveContract = (employeeId) => require('../utils/contractStatus').currentContractOf(employeeId);
 
 // Lazily provision + link an employee profile for the current login. See the
@@ -160,27 +127,20 @@ const ensureSelfEmployee = (req) => ensureSelfEmployeeUtil(req.user);
 // balance-affecting leave → progressive accrual maths.
 const computeEmployeeBalance = async (employeeId, asOf = new Date()) => {
   const contract = await getActiveContract(employeeId);
-  // ── والرصيدُ يُعَدّ من يوم مباشرة العمل ───────────────────────────────────
-  // لا من تاريخ العقد: الورقةُ قد تُوقَّع قبل المباشرة أو بعدها بأسابيع (١٧٥
-  // عقدًا مباشرتُه قبل بدايته، و١٦ بعدها). راجع utils/leaveBalance.
+  // The balance counts from the work start date, not the contract date, since a contract can be signed weeks before or after starting. See utils/leaveBalance.
   const [emp, contractCount] = await Promise.all([
     Employee.findById(employeeId).select('actualWorkStartDate').lean(),
     Contract.countDocuments({ employee: employeeId }),
   ]);
   const accrualOpts = { workStartDate: emp?.actualWorkStartDate || '', contracts: contractCount };
-  // ── والمأخوذُ يُحسب من بداية العقد النشط لا من أوّل الزمان ────────────────
-  // ما استُهلك في عقدٍ سابقٍ حُسب هناك، وما بقي منه رُحِّل صراحةً في
-  // `carriedOverDays`. فعدُّه ثانيةً هنا خصمٌ مرّتين لإجازةٍ واحدة.
+  // Days taken count from the start of the active contract: earlier usage was settled there and the remainder is carried in carriedOverDays. Counting it again would deduct twice.
   const takenFilter = { employee: employeeId, status: 'approved' };
   if (contract && contract.startDate) takenFilter.startDate = { $gte: contract.startDate };
   const approved = await LeaveRequest.find(takenFilter)
     .populate('leaveType', 'affectsBalance')
     .select('days leaveType')
     .lean();
-  // أيُخصَم هذا من رصيده؟ الجوابُ صفةٌ في **نوع** الإجازة يُقرّرها من يعرّف
-  // النوعَ في «أنواع الإجازات» — لا خيارٌ يُعاد طرحُه عند كلّ تسجيل. فالنوعُ
-  // الواحد يُعامَل معاملةً واحدة في كلّ ملفّ، ولا يُخصَم من موظّفٍ ما لم
-  // يُخصَم من زميله في الحالة نفسِها.
+  // Whether a leave is deducted is a property of the leave type, defined once in leave types, so the same type is treated identically in every file.
   const taken = approved.reduce(
     (s, l) => s + ((l.leaveType?.affectsBalance ?? true) ? (l.days || 0) : 0),
     0
@@ -193,16 +153,12 @@ exports.listEmployees = async (req, res) => {
   try {
     if (denyNonStaff(req, res)) return;
     const { q, status } = req.query;
-    // الفلاتر المتقدّمة (جنسية، قسم، فرع، مدى تاريخ…) تُقرأ بلغة لوحة الموارد
-    // البشرية نفسها، فالفلتر الذي يعمل في الموقع يعمل هنا وفي التطبيق بلا فرق.
-    // النطاق يبقى كما كان (كل السجلات) ما لم يطلب الطالب غير ذلك، حتى لا تختفي
-    // من القائمة أسماءٌ كانت تظهر فيها.
+    // Advanced filters (nationality, department, branch, date range, ...) use the HR dashboard's own filter language, so web and app behave the same. Scope stays all records unless the caller asks otherwise, so no names vanish from the list.
     const master = require('./hrMasterController');
     const filter = master._buildFilter({ scope: 'all', ...req.query });
     if (status) filter.employmentStatus = status;
     if (q && q.trim()) {
-      // صورُ الحروف العربيّة تُطوى: «ابراهيم» تجد «إبراهيم» و«حمزة» تجد «حمزه».
-      // وكان البحثُ حرفيًّا، فيقول الموظّفُ «الاسم غير موجود» وهو موجود.
+      // Fold Arabic letter variants so searches match (alef and hamza forms, ha and ta marbuta); literal matching reported existing employees as missing.
       const rx = require('../utils/arabicSearch').arabicSearchRegex(q);
       filter.$or = [
         { firstName: rx }, { lastName: rx }, { arabicName: rx },
@@ -220,16 +176,10 @@ exports.listEmployees = async (req, res) => {
     // writes (create/update/terminate/renew) clear it so edits show immediately.
     const cache = require('../utils/ttlCache');
     const cacheKey = `hr:employees:${JSON.stringify(req.query || {})}`;
-    // ── والصلاحيةُ بختم التغيير لا بثلاثين ثانية ─────────────────────────────
-    // القائمةُ ٣٨٠ كيلوبايت ونقلُها أربعُ ثوانٍ، وكانت تنتهي كلَّ ثلاثين ثانية
-    // فيدفعها أغلبُ الفاتحين. الآن تُخدَم ما دام ختمُ الموظفين والمستخدمين
-    // والفروع (ما تُملأ منه الأسماء) لم يتغيّر — سؤالٌ واحدٌ صغير. راجع utils/changeStamp.
+    // Cache validity is keyed by a change stamp, not 30 seconds: the list is 380 KB and slow to send. It is served while the employees, users and branches stamp is unchanged. See utils/changeStamp.
     const rows = await require('../utils/changeStamp').freshWrap(cacheKey, 5 * 60 * 1000,
       [Employee, User, require('../models/Branch')], () => Employee.find(filter)
-      // حقول التواريخ كلها مطلوبة في المشروع لأن شرط المدى يُطبَّق على القيمة
-      // بعد جلبها؛ الحقل غير المجلوب يبدو «بلا تاريخ» فيسقط من كل مدى بصمت.
-      // ولذلك تُؤخَذ من مصدرها لا تُكتب هنا: كانت مكتوبةً بيدٍ، فكلُّ تاريخٍ
-      // يُضاف إلى الفلترة يبقى ساقطًا هنا حتى يتذكّره أحد — وأثرُه صامت.
+      // All date fields must be projected because the range predicate runs after fetch; an unfetched field looks undated and silently drops out of every range. They are taken from their source, not hand-listed, so a newly filterable date is not forgotten.
       .select(['firstName lastName arabicName employeeNumber jobTitle department employmentStatus leaveStatusSource leaveViolation workStatusText terminationKind',
         'phone email iqamaNumber nationalId nationality photo workLocation branchName',
         'project branch directManager user createdAt createdVia b2cOpStatus',
@@ -240,11 +190,10 @@ exports.listEmployees = async (req, res) => {
       .sort({ createdAt: -1 })
       .limit(2000)
       .lean());
-    // مدى التاريخ يُطبَّق بعد الجلب: حقول التواريخ هنا نصوص تحمل كلمات إدارية
-    // بجانب التاريخ، فمقارنتها في قاعدة البيانات تقارن نوعين مختلفين.
+    // Date range applies after fetch: these fields are strings that carry administrative words beside the date, so a DB comparison would mix types.
     const pred = master._dateRangePred(req.query);
     const employees = pred ? rows.filter(pred) : rows;
-    // كم ملفًّا أُنشئ من قسم الأفراد — رقمُ الزرّ «موظفون جدد من قسم الأفراد».
+    // Count of files created from the individuals department, shown on the new-employees button.
     const fromB2c = await Employee.countDocuments({ isHrRecord: { $ne: false }, createdVia: 'b2c', hrPending: true });
     res.json({ employees, fromB2c });
   } catch (error) {
@@ -266,14 +215,10 @@ exports.searchEmployees = async (req, res) => {
         { iqamaNumber: rx }, { nationalId: rx }, { employeeNumber: rx },
       ];
     }
-    // ── الحدُّ يُطلَب ولا يُفرَض ────────────────────────────────────────────
-    // خمسةٌ وعشرون تكفي إكمالَ كتابةٍ في خانة، ولا تكفي قائمةً منسدلةً تبحث
-    // في متصفّح المستخدم — تلك تحتاج الأسماءَ كلَّها. والمشروعُ هنا أنّ
-    // الحقولَ سبعةٌ لا خمسون: أربعُ مئةِ سطرٍ بهذا الحجم أخفُّ من عشرين سطرًا
-    // بالمستند الكامل، وهو ما كان يُجلَب فتتجمّد القائمةُ عند فتحها.
+    // The limit is opt-in. 25 suffices for typeahead but not for a dropdown that searches in the browser, which needs all names. Only seven fields are projected, so 400 rows are lighter than 20 full documents.
     const asked = Number(req.query.limit);
     const limit = Number.isFinite(asked) ? Math.min(Math.max(asked, 1), 2000) : 25;
-    // المؤرشَفُ لا يُربَط بحسابٍ ولا يظهر في منسدلة — كأنّه حُذف.
+    // Archived people are not linked to an account or shown in dropdowns, as if deleted.
     const employees = await Employee.find(require('../utils/hrEngagement').withoutArchived(filter))
       .select('firstName lastName arabicName iqamaNumber nationalId employeeNumber jobTitle department user employmentStatus')
       .sort({ firstName: 1 })
@@ -332,9 +277,7 @@ exports.getEmployee = async (req, res) => {
   }
 };
 
-// ── حالةُ الحقل تُختار من الاستمارة ──────────────────────────────────────────
-// «مطلوب» / «غير مطلوب» / «لا يوجد» / «غير نشط» قراراتٌ على الخانة الفارغة؛
-// و`clear` يرفع العلامة فتُقرأ الحالةُ من القيمة. راجع EmployeeFormModal.
+// Field state is chosen on the form: the required, not-required, none and inactive states are decisions on an empty field; clear removes the flag so the state is read from the value. See EmployeeFormModal.
 const MARKS = new Set(['required', 'not_required', 'none', 'inactive', 'cash_payroll']);
 function applyMarks(employee, marks) {
   if (!marks || typeof marks !== 'object') return;
@@ -351,25 +294,20 @@ function applyMarks(employee, marks) {
 exports.createEmployee = async (req, res) => {
   try {
     if (denyNonStaff(req, res)) return;
-    // ── الخانةُ الفارغةُ غيابٌ لا قيمة ────────────────────────────────────
-    // الشاشةُ ترسل كلَّ حقولها وأكثرُها فارغ، و`''` ليست معرّفًا ولا تاريخًا ولا
-    // خيارًا في قائمة. فكانت الاستمارةُ تُرفض لأنّ المستخدم **لم** يملأ حقلًا
-    // اختياريًّا — ويُقال له «Failed to create employee» بلا سبب.
+    // An empty field means absent, not a value. The form sends every field, mostly empty, and '' is not a valid id, date or enum choice, which made optional blanks reject the whole form.
     const body = { ...stripEmpty(req.body, Employee.schema), createdBy: req.user._id };
-    // القسمُ والجنسيّةُ والمدينةُ والمشروعُ من قوائمها وحدَها — راجع utils/hrLists.
+    // Department, nationality, city and project come only from their lists. See utils/hrLists.
     const listErr = await require('../utils/hrLists').bodyError(body)
       || await require('../utils/hrLists').categoryError(body.department, body.staffCategory);
     if (listErr) return res.status(400).json({ message: listErr });
     delete body.user; // linking is done from the Users screen, not here
-    delete body.vehiclePlate; // لقطةٌ من سجلّ المركبات — يكتبها التفويضُ وحدَه
+    delete body.vehiclePlate; // Snapshot from the vehicle register; written only by the authorization flow.
     delete body.markStatus;
     const employee = new Employee(body);
     applyMarks(employee, req.body.markStatus);
     await employee.save();
     bustEmployeeCaches();
-    // ── ومَن قسمُه النقلُ الخفيف يدخل سجلَّ قسمه ────────────────────────────
-    // الإنسانُ يُسجَّل مرّةً واحدة. وما يُطلَب مرّتين يُنسى مرّةً، فيعمل الرجلُ
-    // شهرًا ولا يظهر في سجلّ قسمه ولا في عهدةٍ ولا سكن. راجع utils/lightTransportSync.
+    // Someone whose department is light transport enters that department's register. A person is registered once; asking twice gets forgotten. See utils/lightTransportSync.
     const { syncEmployeeToLightTransport } = require('../utils/lightTransportSync');
     const ltSync = await syncEmployeeToLightTransport(employee, req.user);
     if (ltSync) { try { emitToAll('lt:updated', {}); } catch (e) { /* */ } }
@@ -378,7 +316,7 @@ exports.createEmployee = async (req, res) => {
     await notifyHR({ title: 'New employee added', message: fullName(employee), relatedEntity: 'Employee', relatedEntityId: employee._id, event: 'hr:employee' });
     res.status(201).json({ employee });
   } catch (error) {
-    // ما فشل ولماذا — لا «تعذّر الحفظ». راجع utils/mongooseError.
+    // Report what failed and why instead of a generic save error. See utils/mongooseError.
     return sendMongooseError(res, error, 'تعذّر إنشاء الموظف');
   }
 };
@@ -393,8 +331,7 @@ exports.updateEmployee = async (req, res) => {
       'firstName', 'lastName', 'arabicName', 'employeeNumber', 'gender', 'dateOfBirth', 'nationality', 'photo',
       'idType', 'iqamaNumber', 'iqamaExpiry', 'nationalId', 'passportNumber', 'passportExpiry',
       'qiwaContractNumber', 'gosiNumber', 'absherStatus', 'sponsorName', 'workPermitExpiry',
-      // `branch` الفرع الأساسي، و`branches` الفروع الإضافية التي يعمل عليها
-      // فعلًا — انظر models/Employee.
+      // `branch` is the main branch; `branches` are extra branches he actually works on. See models/Employee.
       'jobTitle', 'department', 'staffCategory', 'hireDate', 'actualWorkStartDate', 'workLocation', 'branchName', 'branch', 'branches',
       'phone', 'email', 'address', 'emergencyContactName', 'emergencyContactPhone',
       'basicSalary', 'allowances', 'directManager', 'notes',
@@ -402,13 +339,12 @@ exports.updateEmployee = async (req, res) => {
       'iban', 'bank',
       // Extra HR-sheet fields
       'fileStatus', 'absherNumber', 'companyNumber', 'originCountryNumber', 'project', 'registerNumber',
-      // «حالة العمل» و«حالة النظام» ليستا هنا: تُكتبان بإنهاء الخدمة / إعادة التفعيل /
-      // الخروج من النظام وحدَها (صاحبُ الشركة، ٢٠٢٦/١٠/١٩) — راجع utils/hrEngagement.
+      // Work status and system status are not set here; they change only through termination, reactivation and system exit. See utils/hrEngagement.
       'penaltyClause', 'iqamaProfession', 'classification',
       'insuranceCompany', 'insuranceExpiry', 'socialInsuranceStatus', 'visaExpiry',
       'lastTravelDate', 'lastReturnDate',
       // Driving / vehicle eligibility
-      // `vehiclePlate` ليس هنا: لقطةٌ من سجلّ المركبات (التفويض) لا تُكتب من الاستمارة.
+      // `vehiclePlate` is excluded: it is a snapshot from the vehicle register (authorization), not written from the form.
       'licenseNumber', 'licenseType', 'licenseExpiry',
       'driverCardNumber', 'driverCardType', 'driverCardStatus', 'driverCardExpiry', 'workCard', 'ajeerStatus', 'ajeerExpiry',
     ];
@@ -428,8 +364,7 @@ exports.updateEmployee = async (req, res) => {
     for (const f of fields) {
       if (req.body[f] === undefined) continue;
       let next = req.body[f] === '' && ['branch', 'directManager'].includes(f) ? null : req.body[f];
-      // الفروع الإضافية مصفوفة، وقد تصل نصًّا مفصولًا بفواصل من نموذج قديم.
-      // ولا يصحّ أن يتكرّر الفرع الأساسي داخلها — يبقى أساسيًّا مرةً واحدة.
+      // Extra branches are an array, but an old form may send a comma-separated string. The main branch must not repeat inside it.
       if (f === 'branches') {
         const arr = Array.isArray(next) ? next : String(next || '').split(',');
         const primary = String(req.body.branch ?? employee.branch ?? '');
@@ -447,16 +382,14 @@ exports.updateEmployee = async (req, res) => {
     }
     applyMarks(employee, req.body.markStatus);
     await employee.save();
-    // ومشروعُ موظّف B2C يُكتب في سجلّه هناك أيضًا — راجع utils/hrLists.
+    // A B2C employee's project is also written to the B2C record. See utils/hrLists.
     if ((employee.project || '') !== projectBefore) await require('../utils/hrLists').projectToB2C(employee, employee.project).catch(() => {});
-    // بطاقةُ السائق تُكتب في سجلّ المركبات (المرجع) إن عُدِّلت هنا — راجع utils/driverCardSync.
+    // The driver card is written to the vehicle register (the reference) when edited here. See utils/driverCardSync.
     if (['driverCardNumber', 'driverCardExpiry', 'driverCardType'].some((k) => req.body[k] !== undefined)) {
       try { await require('../utils/driverCardSync').pushEmployeeToCard(employee, { userId: req.user?._id, emit: false }); } catch (e) { console.error('HR profile → driver card:', e.message); }
     }
     bustEmployeeCaches();
-    // ونقلُه إلى قسم النقل الخفيف يُدخله سجلَّ ذلك القسم — كما عند الإنشاء.
-    // ولا يُخرِجه نقلُه عنه: إخراجٌ تلقائيٌّ يمحو مشروعَه وسكنَه وتاريخَ نقله
-    // لتغييرِ خانةٍ في ملفٍّ آخر. راجع utils/lightTransportSync.
+    // Moving to light transport adds him to that department's register, as on create. Moving away does not remove him, since auto-removal would wipe his project, housing and transfer history. See utils/lightTransportSync.
     if (after.department !== undefined) {
       const { syncEmployeeToLightTransport } = require('../utils/lightTransportSync');
       if (await syncEmployeeToLightTransport(employee, req.user)) {
@@ -466,7 +399,7 @@ exports.updateEmployee = async (req, res) => {
     if (Object.keys(after).length) {
       await logAudit({ user: req.user._id, action: 'update_employee', entity: 'Employee', entityId: employee._id, changes: { before, after }, ipAddress: req.ip });
     }
-    // تعديلُ ملفٍّ: تُحدَّث الشاشة، ولا يُخطَر أحد — السجلّ يحفظ ما تغيّر.
+    // File edit refreshes the screen with no notice; the audit log keeps what changed.
     await refreshHR({ relatedEntityId: employee._id, event: 'hr:employee' });
     res.json({ employee });
   } catch (error) {
@@ -476,37 +409,12 @@ exports.updateEmployee = async (req, res) => {
 };
 
 /**
- * ── ولا يُحذف موظّف ─────────────────────────────────────────────────────────
- * كان هذا البابُ يمحو السجلَّ محوًا: المستندات وملفّاتها على القرص، وسجلّ
- * التجديدات، ثمّ الموظّف نفسُه — `deleteOne` لا علامةَ ولا رجعة. ولا يوجد سببٌ
- * إداريٌّ واحدٌ يقتضيه: مَن ترك العملَ تُنهى خدمتُه، فيبقى ملفُّه وعقدُه
- * ومستنداتُه ورصيدُ إجازاته وما كان بيده من عهدةٍ ومركبة — وهي أشياءُ تُسأل
- * عنها بعد سنواتٍ: مكتبُ العمل، والتأمينات، ومطالبةٌ قديمة، وشهادةُ خبرة.
- *
- * والمحوُ يكسر ما يُشير إليه ولا يُصلَح: العهدةُ تبقى مسجَّلةً على اسمٍ لا وجودَ
- * له (وقع فعلًا — أجهزةٌ في سجلّ تقنية المعلومات باسمٍ فارغ)، والتفويضُ يُقرأ
- * لمركبةٍ بلا قائد، والراتبُ المصروفُ في شهرٍ مضى يصير قيدًا بلا صاحب.
- *
- * ولم يكن المحوُ سببَ ما اشتُكي منه أصلًا («أعمل بحثًا عن موظّفٍ فلا أجده»):
- * خمسةُ قيودِ حذفٍ في تاريخ النظام كلِّه، أربعةٌ منها سجلّاتُ اختبارٍ
- * (`zz-exit…`) وواحدٌ اسمُه «Energize Future» وليس إنسانًا. وأمّا العلّةُ فكانت
- * فلترًا باقيًا في عنوان الصفحة يُطبَّق البحثُ داخله — راجع الشاشةَ الفارغة في
- * صفحة الموظّفين.
- *
- * فالبابُ يبقى مسدودًا بجوابٍ يقول البديلَ — لا يُحذَف من الواجهة وحدَها، إذ
- * الطلبُ يُصنَع بلا واجهة.
+ * No employee deletion.
+ * Deleting erased documents, files on disk and renewals with no way back, and breaks references: custody stays on a missing name, authorizations point at a vehicle with no driver, paid salaries lose their owner. Staff who leave have their service ended, keeping contract, documents, leave balance, custody and vehicle for later audits.
+ * The route stays blocked with a reply naming the alternative; hiding it in the UI alone is not enough since requests can be made without it.
  */
 exports.deleteEmployee = async (req, res) => {
-  /**
-   * ── ويُفتَح لمدير النظام وحدَه ──────────────────────────────────────────
-   * صاحبُ الشركة طلبه (٢٠٢٦/١٠/١٣): سجلٌّ أُدخل خطأً أو مكرَّرًا لا معنى لإبقائه
-   * «منتهيَ الخدمة». فيُحذَف — لكن بيدٍ واحدة: مديرُ النظام بدوره، لا بمنحِ قسمٍ
-   * ولا بتأشيرة صفحة (المسارُ يحرسه `authorize` الذي يفتح لمن مُنح القسم،
-   * فالحارسُ هنا في المتحكّم). ولغيره الجوابُ القديم: أنهِ الخدمة.
-   *
-   * والحذفُ يُبقي أثرَه: السجلُّ كلُّه يُحفَظ في سجلّ المراجعة قبل محوه،
-   * فيُعرَف مَن حذف مَن ومتى، ويُستعاد منه إن لزم.
-   */
+  /** Open to the system admin only: a wrongly entered or duplicate record has no reason to stay as ended. The guard lives in the controller because the route's authorize opens to anyone granted the section. The full record is saved to the audit log before deletion, so it records who deleted whom and allows restore. */
   if (!require('../config/constants').isTopRole(req.user.role)) {
     return res.status(405).json({
       code: 'EMPLOYEE_DELETE_DISABLED',
@@ -518,9 +426,7 @@ exports.deleteEmployee = async (req, res) => {
     const employee = await Employee.findById(req.params.id);
     if (!employee) return res.status(404).json({ message: 'Employee not found' });
 
-    // ── ولا يُحذف مَن بيده عهدةٌ أو تفويضُ مركبة ────────────────────────────
-    // الحذفُ يمحو السجلّ فتبقى العهدةُ مسجَّلةً على اسمٍ لا وجودَ له. وقع ذلك
-    // فعلًا: حُذف سجلٌّ فبقيت أجهزتُه في سجلّ تقنية المعلومات باسمٍ فارغ.
+    // Block deletion of anyone holding custody or a vehicle authorization: deleting leaves custody on a missing name (IT register devices ended up with an empty name).
     const { employeeExitBlockers, returnEmployeeAssetsToStore } = require('../utils/employeeExit');
     const blockers = await employeeExitBlockers(employee._id);
     if (blockers.blocked && req.query.returnCustody !== 'true') {
@@ -538,7 +444,7 @@ exports.deleteEmployee = async (req, res) => {
 
     const snapshot = employee.toObject();
     const docs = await EmployeeDocument.find({ employee: employee._id }).select('fileUrl title type').lean();
-    // القيدُ قبل المحو: لو تعذّر المحوُ بقي الأثر، ولو تمّ بقيت النسخة.
+    // Write the audit entry before erasing: if the erase fails the trace remains, if it succeeds the copy remains.
     await logAudit({
       user: req.user, action: 'delete_employee', entity: 'Employee', entityId: employee._id,
       changes: { before: snapshot, details: `حُذف سجلُّ ${fullName(employee)} — ${docs.length} مستندًا`, documents: docs.map((d) => d.title || d.type || '') },
@@ -569,30 +475,24 @@ const RENEWAL_FIELDS = {
   license: { expiry: 'licenseExpiry', number: 'licenseNumber' },
   driverCard: { expiry: 'driverCardExpiry', number: 'driverCardNumber' },
   ajeer: { expiry: 'ajeerExpiry' },
-  // العقد والشهادة الصحية كانا خارج التجديد، فيُعدَّل تاريخهما يدويًّا بلا أثر
-  // يقول مَن جدّده ومن أي تاريخ — وهما أكثر ما يُسأل عنه عند المراجعة.
+  // Contract and health certificate were outside renewal, so manual date edits left no trace of who renewed and from which date, which is the most asked item in audits.
   contract: { expiry: 'contractEndDate', number: 'qiwaContractNumber' },
   healthCert: { expiry: 'healthCertExpiry', number: 'healthCertNumber' },
   other: {},
 };
 
-// مجموعة اللوحة → نوع المستند القابل للتجديد.
-//
-// اللوحة تسمّي المجموعات بأسماء عربية الأصل (`medicalInsurance`) والتجديد يسمّي
-// المستندات بأسمائه (`insurance`). بغير هذا الجسر تفتح صفحة «التأمين الطبي»
-// فلا تجد فيها تجديدًا، لأن الاسمين لا يلتقيان في أي مكان.
+// Dashboard group to renewable document type. The dashboard uses Arabic-origin group names (`medicalInsurance`) while renewal uses document names (`insurance`); without this bridge the medical insurance page finds no renewals.
 const GROUP_DOC_TYPE = {
   iqama: 'iqama',
   passport: 'passport',
   contract: 'contract',
-  // رخص العمل: اسم المجموعة واسم المستند واحدٌ هنا، ووجودُه في هذا الجسر هو ما
-  // يجعل زرَّ التجديد في صفحتها يعمل بدل أن يردّ «نوع المستند غير معروف».
+  // Work permits: group and document names are the same, and listing them here makes the renew button work instead of returning an unknown document type.
   workPermit: 'workPermit',
   medicalInsurance: 'insurance',
   healthCertificate: 'healthCert',
   driverCard: 'driverCard',
   drivingLicense: 'license',
-  // مجموعتا التأشيرات وأجير (config/hrFields) — اسمُ المجموعة اسمُ المستند.
+  // Visa and Ajeer groups (config/hrFields): the group name is the document name.
   visa: 'visa',
   ajeer: 'ajeer',
 };
@@ -638,11 +538,8 @@ exports.renewDocument = async (req, res) => {
 // End of service. Blocked while the employee still holds custody (same gate as
 // terminating a contract). Also terminates any active contract.
 /**
- * GET /employees/:id/clearance — ماذا يحمل هذا الموظّف قبل إنهاء خدمته؟
- *
- * تُسأل قبل فتح نافذة الإنهاء، فيرى المستخدم ما عليه تسويتُه قبل أن يكتب سببًا
- * وتاريخًا ثمّ يُصدَّ. والمنعُ نفسُه مُطبَّقٌ في `terminateEmployee` أيضًا — الشاشة
- * تمنع الخطأ، والخادم يمنع الالتفاف.
+ * GET /employees/:id/clearance
+ * What the employee holds before service is ended. Asked before the termination dialog so the user sees what to settle first; terminateEmployee enforces the same block, so the screen prevents the mistake and the server prevents bypass.
  */
 exports.employeeClearance = async (req, res) => {
   try {
@@ -656,22 +553,9 @@ exports.employeeClearance = async (req, res) => {
 };
 
 /**
- * POST /contracts/:id/renew — تجديدُ عقدٍ كما تُجدَّد الإقامة.
- *
- * ── ماذا يجري ───────────────────────────────────────────────────────────────
- * العقدُ القائم يُقفَل «منتهيًا» ولا يُحذَف — تسلسلُ عقود الموظّف هو تاريخُ
- * عمله. ويُنشأ عقدٌ يليه بتواريخه الجديدة، ويُقيَّد التجديدُ في سجلّ تجديدات
- * الموظّف (`EmployeeRenewal`) فيُقرأ في ملفّه بجانب تجديد الإقامة والرخصة.
- *
- * ── ورصيدُ الإجازات ─────────────────────────────────────────────────────────
- * يتراكم من بداية العقد النشط. فعقدٌ جديدٌ يعني تراكمًا من الصفر — ولو بقي
- * المأخوذُ محسوبًا لصار رصيدُ الموظّف سالبًا يومَ جُدِّد عقدُه، وهو أسوأُ ما
- * يمكن أن يراه مَن جُدِّد له.
- *
- * وأيّامُه غيرُ المستهلَكة حقٌّ له لا تسقط بالتجديد: يُحسب رصيدُه لحظةَ التجديد
- * ويُثبَّت `carriedOverDays` في العقد الجديد، فيبدأ به ويتراكم فوقه استحقاقُ
- * السنة الجديدة. ومَن أخذ خمسةَ عشرَ من ثلاثين يبدأ عامَه التالي بخمسةَ عشرَ
- * محفوظةً لا بصفر.
+ * POST /contracts/:id/renew
+ * The current contract is closed as expired, not deleted, since the contract sequence is work history. A new contract with new dates is created and the renewal is logged in EmployeeRenewal.
+ * Leave balance accrues from the start of the active contract, so a new contract restarts from zero. Unused days are the employee's right: the balance is computed at renewal and stored as carriedOverDays on the new contract.
  */
 exports.renewContract = async (req, res) => {
   try {
@@ -681,35 +565,21 @@ exports.renewContract = async (req, res) => {
 
     const {
       startDate, endDate, annualLeaveDays, notes, carryOver = true,
-      // ── والمهنةُ تُراجَع عند التجديد ──────────────────────────────────────
-      // التجديدُ هو اللحظةُ التي تتغيّر فيها المهنةُ فعلًا — يُرقّى سائقٌ أو
-      // يُنقل إلى عملٍ آخر ويُكتب ذلك في العقد الجديد. فتُقبَل هنا اختياريّةً:
-      // مَن لا يكتبها يبقى على مهنته، ومَن يكتبها لا يحتاج أن يفتح العقدَ
-      // الجديد بعد إنشائه ليصحّحه.
+      // The job title is reviewed at renewal, when it actually changes (promotion or transfer). Optional here: omitted keeps the old one, and no one has to reopen the new contract to fix it.
       contractProfession, jobTitle, contractNumber, basicSalary, allowances, type,
     } = req.body;
     if (!startDate) return res.status(400).json({ message: 'تاريخ بداية العقد الجديد مطلوب.' });
 
-    // الرصيدُ لحظةَ التجديد — يُقاس على العقد المنتهي لا على الجديد.
+    // Balance at renewal time, measured on the expired contract, not the new one.
     const { balance } = await computeEmployeeBalance(old.employee, new Date());
     const carried = carryOver ? Math.max(0, Number(balance.available) || 0) : 0;
 
-    // حالتان لا غير: القديمُ منتهٍ، والجديدُ ساري — و`renewedFrom` يحفظ التسلسل.
+    // Exactly two states: old is expired, new is active; renewedFrom keeps the chain.
     old.status = 'expired';
     old.endDate = old.endDate || startDate;
     await old.save();
 
-    // ── والعقدُ الجديد يرث شروطَ سابقِه ──────────────────────────────────
-    // كان يُكتب هنا `salary` و`contractType` — وليسا حقلين في هذا المستند
-    // أصلًا (الاسمان `basicSalary` و`type`). فيُسقطهما mongoose بلا شكوى،
-    // ويخرج العقدُ المجدَّد بلا راتبٍ ولا بدلاتٍ ولا نوعٍ ولا مدّةٍ ولا فترةِ
-    // تجربة — ولا مهنةَ ولا هويّةَ ولا سجلًّا تجاريًّا، فهذه لم تُذكر أصلًا.
-    // أي أنّ التجديد كان يُفرغ العقد ويُبقي تاريخَيه.
-    //
-    // لم يُجدَّد عقدٌ بعد فلم يقع الضرر؛ والتجديدُ الأوّل كان سيقع فيه.
-    //
-    // فالأصلُ أن يرث الجديدُ كلَّ شيءٍ من سابقِه، ولا يختلف إلّا فيما كُتب في
-    // نموذج التجديد بيد.
+    // The new contract inherits the previous terms. The old code wrote `salary` and `contractType`, which are not fields here (they are `basicSalary` and `type`); mongoose dropped them silently and the renewed contract lost salary, allowances, type, duration and probation. Inherit everything and override only what the renewal form supplied.
     const pick = (v, fallback) => (v === undefined || v === null || v === '' ? fallback : v);
     const fresh = await Contract.create({
       employee: old.employee,
@@ -747,7 +617,7 @@ exports.renewContract = async (req, res) => {
       renewedBy: req.user._id,
     });
 
-    // التجديدُ يُنشئ عقدًا ساريًا ويُخرج القديم — والحالةُ في ملفّ الموظّف تتبعه.
+    // Renewal creates an active contract and retires the old one; the employee file's status follows.
     await syncEmployeeContractStatus(old.employee);
     bustEmployeeCaches();
     await logAudit({
@@ -774,13 +644,7 @@ exports.terminateEmployee = async (req, res) => {
     const employee = await Employee.findById(req.params.id);
     if (!employee) return res.status(404).json({ message: 'Employee not found' });
 
-    // ── إخلاءُ طرفٍ لا فحصُ عهدةٍ وحدَها ──────────────────────────────────
-    // كان الشرطُ عهدةَ الأصول فقط، فأُنهيت خدمةُ موظّفٍ وهو مفوَّضٌ على مركبة —
-    // فبقيت المركبةُ باسم مَن لم يعد موظّفًا، لا مَن يُسأل عنها إن خُولفت ولا
-    // مَن يُطالَب بها إن فُقدت، وقسمُ المركبات لم يعلم أنّ الرجل غادر أصلًا.
-    //
-    // والقائمةُ تُعيد **ما يحمله** ومع كلّ بندٍ القسمُ الذي يصفّيه وما يُفعل به:
-    // المنعُ بلا عنوانٍ يوقف العمل، والمنعُ مع العنوان يوجّهه.
+    // Clearance covers more than asset custody. An employee was terminated while authorized on a vehicle, leaving it under someone who no longer works here. The list returns what he holds with the department that settles each item and what to do, since a block with no pointer stops work.
     const { checkClearance } = require('../services/employeeClearance');
     const clearance = await checkClearance(employee._id);
     if (!clearance.clear) {
@@ -792,11 +656,7 @@ exports.terminateEmployee = async (req, res) => {
       });
     }
 
-    /**
-     * ── «لا يعمل» = إنهاءُ الخدمة، ولا بدّ من حالةٍ من ثلاث ──────────────────
-     * انتظار نقل الكفالة · شركة شقيقة · خروج نهائي (صاحبُ الشركة، ٢٠٢٦/١٠/١٩).
-     * ومَن هو خارجَ النظام أو فريلانسر لا يُسأل: إنهاءُ خدمته يؤرشفه فورًا.
-     */
+    /** 'Not working' means service ended, with one of three states required: awaiting sponsorship transfer, sister company, or final exit. Staff outside the system or freelancers are not asked; ending their service archives them immediately. */
     const ENG = require('../utils/hrEngagement');
     const kind = String(req.body.kind || '');
     const archivesNow = ENG.archivesOnTermination(employee);
@@ -809,34 +669,24 @@ exports.terminateEmployee = async (req, res) => {
     employee.terminatedAt = when;
     employee.terminationReason = reason;
     employee.terminationKind = archivesNow ? (ENG.TERMINATION_KINDS[kind] ? kind : '') : kind;
-    // انتظارُ نقل الكفالة شهرٌ واحد — تُنبَّه الموارد البشريّة فيه لإخراجه من النظام.
+    // Sponsorship transfer wait is one month; HR is alerted in that window to take him out of the system.
     employee.transferDeadline = employee.terminationKind === 'transfer_pending'
       ? new Date(when.getTime() + ENG.TRANSFER_DAYS * 86400000) : null;
     employee.transferAlertKey = '';
     employee.sisterCompany = false;
     employee.workStatusText = ENG.workStatusTextOf(employee);
-    // ── وحالةُ العقد تُكتب هنا، لا تُترك لمن يفتح الملفّ بعد شهر ─────────────
-    //
-    // «حالة العقد» عمودٌ يُقرأ ليُعرَف موقفُ الموظّف، وكان يُملأ من ملفّ
-    // الاستيراد وحدَه. فمن أُنهيت خدمتُه من الشاشة بقي عمودُه فارغًا: أربعةٌ
-    // وأربعون من واحدٍ وستّين ليسوا على رأس العمل بلا حالةِ عقدٍ مكتوبة. ومن
-    // يفتح قائمةَ «ليس على رأس العمل» لا يعرف أمفسوخٌ عقدُه أم ساري.
-    //
-    // فالإنهاءُ يكتبها بنفسه. وما أرسلته الشاشةُ يُقدَّم — قائمةُ
-    // `hr_contract_status` قد تحمل صيغةً أدقَّ لهذه الحالة — وإلّا فالنصُّ
-    // المعتمَد في الملفّ منذ أوّل استيراد.
+    // Contract status is written here at termination. The column was filled only from import, so employees terminated on screen had it empty and a not-on-duty list could not show whether the contract was cancelled or active. Use the status the screen sent (the hr_contract_status list may hold a more exact value); else the standard text used since the first import.
     employee.contractStatusText = String(req.body.contractStatus || '').trim() || 'منتهي';
     await employee.save();
 
     // Terminate the active contract too so both records agree.
-    // ويُعلَّم العقدُ بأنّ إنهاءَ الخدمة أنهاه — فإعادةُ التفعيل تعيده كما كان.
+    // Mark it as ended by termination so reactivation can restore it.
     await Contract.updateMany(
       { employee: employee._id, status: 'active' },
-      // «مفسوخ» صار «منتهي» (حالتان لا غير) — والسببُ والتاريخُ في خانتيهما.
+      // Cancelled became expired (two states only); the reason and date are in their own fields.
       { $set: { status: 'expired', terminatedAt: when, terminationReason: reason, custodyReturned: true, endedByTermination: true, statusBeforeTermination: 'active' } }
     );
-    // وبعدها تُقرأ الحالةُ من العقد نفسِه — فإن كان له عقدٌ فهو الحَكَم، وما
-    // كُتب أعلاه لا يبقى إلّا لمن لا عقدَ له في النظام.
+    // Then read the status from the contract itself: if one exists it is authoritative, and the value written above stays only for people with no contract.
     if (!String(req.body.contractStatus || '').trim()) await syncEmployeeContractStatus(employee._id);
 
     bustEmployeeCaches();
@@ -844,7 +694,7 @@ exports.terminateEmployee = async (req, res) => {
     await notifyHR({ title: 'Employee terminated', message: fullName(employee), relatedEntity: 'Employee', relatedEntityId: employee._id, event: 'hr:employee' });
     try { emitToUser(String(req.user._id), 'hr:contract', { id: String(employee._id) }); } catch (e) {}
     if (employee.user) await notifyUser(employee.user, { title: 'Contract ended', message: 'Your employment has been terminated.', relatedEntity: 'Employee', relatedEntityId: employee._id, event: 'hr:employee' });
-    // مَن انتهت خدمتُه لا يبقى راكبًا في النقل الخفيف — راجع utils/ltVehicleRelease.
+    // A terminated employee must not remain assigned to a light transport vehicle. See utils/ltVehicleRelease.
     require('../utils/ltVehicleRelease').after();
     res.json({ employee });
   } catch (error) {
@@ -855,10 +705,7 @@ exports.terminateEmployee = async (req, res) => {
 
 /**
  * POST /employees/:id/work-status { status: 'working' | 'sister_company' }
- *
- * «يعمل» ↔ «شركة شقيقة» لمن لم تنتهِ خدمتُه — والحالةُ الثالثة «لا يعمل» هي
- * إنهاءُ الخدمة نفسُه (terminateEmployee). وخانةُ «حالة العمل» لا تُكتب باليد.
- * والموقوفُ القديم يُحسم هنا أيضًا: يعمل أو شركة شقيقة.
+ * Switches between working and sister company for staff whose service has not ended; 'not working' is termination itself (terminateEmployee). Work status is never written by hand. The old suspended state is resolved here too.
  */
 exports.setWorkStatus = async (req, res) => {
   try {
@@ -887,16 +734,7 @@ exports.setWorkStatus = async (req, res) => {
   }
 };
 
-/**
- * POST /api/hr/employees/:id/sponsor — تحويلُ فريلانسر (أو متدرّب) إلى كفالتنا.
- *
- * «على كفالتنا» معناه: على سجلٍّ تجاريٍّ من سجلّاتنا (صاحبُ الشركة، ٢٠٢٦/١٠/١٩).
- * فيُختار السجلّ من قائمة سجلّاتنا (`hr_register`) ويُكتب في «رقم السجل التجاري»
- * — وهو الذي يُقرأ منه النوعُ في كلّ شاشة (utils/hrEngagement). ومعه:
- *   · النوعُ «على الكفالة» وحقولُ العقد تعود مطلوبةً (utils/employmentType)؛
- *   · «داخل النظام» — مَن على سجلّنا على نظامنا؛
- *   · وصفُّه في سجلّ B2C إن كان له صفٌّ: السجلُّ ونوعُ التعاقد «كفالة».
- */
+/** POST /api/hr/employees/:id/sponsor Move a freelancer (or trainee) onto our sponsorship, meaning one of our commercial registers. The register is picked from the hr_register list and stored in the commercial register number field, which every screen reads the type from (utils/hrEngagement). Also: - type becomes sponsored and contract fields become required (utils/employmentType); - system status becomes inside the system; - the B2C record, if any, gets the register and contract type sponsorship. */
 exports.sponsorEmployee = async (req, res) => {
   try {
     if (denyNonStaff(req, res)) return;
@@ -922,7 +760,7 @@ exports.sponsorEmployee = async (req, res) => {
       const { LightTransportEmployee } = require('../models/LightTransport');
       const row = await LightTransportEmployee.findOne({ employee: employee._id });
       if (row) { row.registerNumber = register; row.contractTypeAr = 'كفالة'; row.$locals.fromHr = true; await row.save(); emitToAll('lt:updated', {}); }
-    } catch (_) { /* سجلُّ B2C لا يُسقط التحويل */ }
+    } catch (_) { /* A B2C record failure must not fail the conversion. */ }
     bustEmployeeCaches();
     require('../utils/hrLists').bust({ sponsored: String(employee._id) });
     await logAudit({ user: req.user._id, action: 'hr_sponsor', entity: 'Employee', entityId: employee._id,
@@ -949,18 +787,12 @@ exports.reactivateEmployee = async (req, res) => {
     employee.transferAlertKey = '';
     employee.sisterCompany = false;
     employee.workStatusText = require('../utils/hrEngagement').WORKING;
-    // ── ومن الأرشيف يعود داخلَ النظام ──────────────────────────────────────
-    // مَن أُخرج من النظام ثمّ أُعيد إلى الخدمة يعمل لدينا — فلا يبقى «خارج
-    // النظام» على رأس عمله. والفريلانسرُ لم يكن على النظام أصلًا فلا يُمَسّ.
+    // Returning from the archive puts him back inside the system: someone exited then reinstated works for us. A freelancer was never in the system, so he is untouched.
     const ENG = require('../utils/hrEngagement');
     const systemBefore = employee.systemStatus || '';
     if (String(systemBefore).trim() === ENG.SYSTEM_OUT && ENG.engagementOf(employee) !== 'freelance') employee.systemStatus = ENG.SYSTEM_IN;
     await employee.save();
-    /**
-     * ── والعقدُ يعود كما كان قبل الإنهاء ─────────────────────────────────────
-     * ما أنهاه إنهاءُ الخدمة (`endedByTermination`) يعود إلى حالته السابقة —
-     * إلّا إن مضى موعدُ انتهائه في أثناء ذلك فيبقى «منتهيًا» بموعده لا بالفسخ.
-     */
+    /** The contract returns to its pre-termination state. Contracts closed by termination (endedByTermination) are restored, unless their end date passed meanwhile, in which case they stay expired by date, not by cancellation. */
     const ended = await Contract.find({ employee: employee._id, endedByTermination: true });
     const today = new Date(); today.setHours(0, 0, 0, 0);
     for (const c of ended) {
@@ -1014,10 +846,10 @@ exports.uploadDocument = async (req, res) => {
       expiryDate: expiryDate || undefined, notes: notes || '',
       uploadedBy: req.user._id, ...stored,
     });
-    // مستندٌ رفعته الموارد البشريّة = علمت بالموظّف — يخرج من «جدد من قسم الأفراد».
+    // A document uploaded by HR means HR knows the employee, so he leaves the new-from-individuals list.
     if (employee.hrPending) await Employee.updateOne({ _id: employee._id }, { $set: { hrPending: false } });
     await logAudit({ user: req.user._id, action: 'add_employee_document', entity: 'Employee', entityId: employee._id, changes: { after: { title: doc.title } }, ipAddress: req.ip });
-    // رفعُ مستند: مسكُ دفاتر، وهو في السجلّ.
+    // Document upload is bookkeeping, recorded in the audit log.
     await refreshHR({ relatedEntityId: employee._id, event: 'hr:employee' });
     const populated = await EmployeeDocument.findById(doc._id).populate('uploadedBy', 'firstName lastName').lean();
     res.status(201).json({ document: populated });
@@ -1036,7 +868,7 @@ exports.updateDocument = async (req, res) => {
     await doc.save();
     await logAudit({ user: req.user._id, action: 'update_employee_document', entity: 'Employee', entityId: doc.employee, changes: { after: { title: doc.title } }, ipAddress: req.ip });
     try { emitToUser(String(req.user._id), 'hr:employee', { id: String(doc.employee) }); } catch (e) {}
-    // تعديلُ مستند: في السجلّ كذلك.
+    // Document edit is also in the audit log.
     await refreshHR({ relatedEntityId: doc.employee, event: 'hr:employee' });
     const populated = await EmployeeDocument.findById(doc._id).populate('uploadedBy', 'firstName lastName').lean();
     res.json({ document: populated });
@@ -1054,7 +886,7 @@ exports.deleteDocument = async (req, res) => {
     const employeeId = doc.employee;
     await doc.deleteOne();
     await logAudit({ user: req.user._id, action: 'delete_employee_document', entity: 'Employee', entityId: employeeId, changes: { before: { title: doc.title } }, ipAddress: req.ip });
-    // حذفُ مستند: في السجلّ كذلك.
+    // Document deletion is also in the audit log.
     await refreshHR({ relatedEntityId: employeeId, event: 'hr:employee' });
     res.json({ message: 'Document deleted' });
   } catch (error) {
@@ -1066,8 +898,7 @@ exports.deleteDocument = async (req, res) => {
 exports.getEmployeeAudit = async (req, res) => {
   try {
     if (denyNonStaff(req, res)) return;
-    // سجلُّ موظّفٍ واحد بلغ مئتين وثلاثةً وتسعين تعديلًا تحت سقف الثلاثمئة —
-      // على بُعد سبعةٍ من أن يبتر تاريخَه بصمت. والسقف يُعلن نفسه الآن.
+    // One employee's history reached 293 edits under the 300 cap, close to silent truncation; the cap now announces itself.
       const CAP = askedLimit(req.query, 2000, 20000);
       const { rows: logs, truncated } = await cappedFind(
         AuditLog.find({ entity: 'Employee', entityId: req.params.id })
@@ -1080,8 +911,8 @@ exports.getEmployeeAudit = async (req, res) => {
   }
 };
 
-// ── Contracts ────────────────────────────────────────────────────────────────
-// ── إعدادات القسم ───────────────────────────────────────────────────────────
+// Contracts
+// Department settings
 
 const HrConfig = require('../models/HrConfig');
 
@@ -1096,7 +927,7 @@ exports.getHrSettings = async (req, res) => {
     if (denyNonStaff(req, res)) return;
     const cfg = await getHrConfig();
     const saved = cfg.alerts instanceof Map ? Object.fromEntries(cfg.alerts) : (cfg.alerts || {});
-    // الافتراضيُّ تحت المحفوظ: مستندٌ أُضيف بعد آخر حفظٍ يأخذ عتبتَه ولا يبقى بلا رقم.
+    // The default sits below the saved value: a document added after the last save gets its threshold instead of none.
     res.json({ alerts: { ...HrConfig.DEFAULT_ALERTS, ...saved } });
   } catch (error) {
     res.status(500).json({ message: 'Failed to load HR settings' });
@@ -1110,8 +941,7 @@ exports.updateHrSettings = async (req, res) => {
     const incoming = req.body.alerts || {};
     for (const [k, v] of Object.entries(incoming)) {
       const n = Number(v);
-      // يومٌ واحدٌ على الأقلّ وسنةٌ على الأكثر: صفرٌ يعني «لا تنبّه أبدًا» وهو
-      // ما لا يُقصد أبدًا، وألفٌ يجعل كلَّ مستندٍ منتهيًا.
+      // At least one day and at most a year: zero would mean never alert, which is never intended, and a thousand makes every document expired.
       if (Number.isFinite(n) && n >= 1 && n <= 365) cfg.alerts.set(k, Math.round(n));
     }
     cfg.updatedBy = req.user._id;
@@ -1128,17 +958,12 @@ exports.listContracts = async (req, res) => {
     if (denyNonStaff(req, res)) return;
     const filter = {};
     if (req.query.employee) filter.employee = req.query.employee;
-    // «منتهي» يشمل ما لم تطله الهجرةُ من «مفسوخ» و«مجدَّد».
+    // Expired includes legacy cancelled and renewed values not yet migrated.
     if (req.query.status) {
       const st = twoStatus(String(req.query.status));
       filter.status = st === 'active' ? 'active' : { $in: ['expired', 'terminated', 'renewed'] };
     }
-    // ── والقسمُ يُجلَب مع الموظّف ─────────────────────────────────────────────
-    // لوحةُ الفلترة في صفحة العقود فيها «القسم» منذ البداية، وتقرؤه من
-    // `employee.department` — ولم يكن بين الأعمدة المجلوبة. فكلُّ عقدٍ قُرئ
-    // قسمُه فراغًا، وصار الفلترُ قيمةً واحدةً «—» لثلاثمئةِ عقد: موجودٌ في
-    // اللوحة ولا يُختار منه شيء. ومعه الفرعُ ووحدةُ العمل وحالةُ التوظيف.
-    // سجلُّ العقود لا يحمل المؤرشَفين؛ وعقودُ ملفٍّ بعينه (من الأرشيف) تبقى.
+    // Fetch the department with the employee. The contracts filter panel reads employee.department, which was not among fetched columns, so every contract showed an empty department and the filter had a single value. Branch, work unit and employment status are included too. The contract list excludes archived staff; contracts of a specific file opened from the archive remain.
     const contracts = await Contract.find(req.query.employee ? filter : await withoutArchivedRef(filter))
       .populate({ path: 'employee', select: 'firstName lastName arabicName iqamaNumber nationalId idType employeeNumber jobTitle department branchName project employmentStatus' })
       .sort({ createdAt: -1 })
@@ -1163,10 +988,7 @@ exports.createContract = async (req, res) => {
     }
     const contract = await Contract.create({ ...req.body, createdBy: req.user._id });
     await syncEmployeeContractStatus(employee);
-    // «حالة العقد» في ملفّ الموظّف تغيّرت للتوّ، وعدّاداتُ الماستر تقرؤها من
-    // ذاكرةٍ عمرُها دقيقة. والتجديدُ كان يمسحها وحدَه؛ والإنشاءُ والتعديلُ
-    // والفسخُ والحذفُ يكتبون الخانةَ نفسَها ولا يمسحون — فتبقى البطاقةُ على
-    // رقمها القديم حتى تنقضي الدقيقة، ولا يُبَثّ `hr:master` أصلًا.
+    // Employee contract status changed, and master counters read it from a one-minute cache. Only renewal cleared it while create, edit, cancel and delete write the same field without clearing, leaving cards stale and hr:master never broadcast.
     bustEmployeeCaches();
     await notifyHR({ title: 'Contract created', message: `Contract for employee ${employee}`, relatedEntity: 'Contract', relatedEntityId: contract._id, event: 'hr:contract' });
     res.status(201).json({ contract });
@@ -1182,15 +1004,13 @@ exports.updateContract = async (req, res) => {
     const contract = await Contract.findById(req.params.id);
     if (!contract) return res.status(404).json({ message: 'Contract not found' });
     const fields = ['type', 'startDate', 'endDate', 'durationMonths', 'annualLeaveDays', 'jobTitle', 'basicSalary', 'allowances', 'probationMonths', 'status', 'notes',
-      // حقول ملفّ العقود — تُعرَض في الجدول، فلا بدّ أن تُعدَّل من الشاشة
-      // أيضًا: ما يُقرأ ولا يُصحَّح يبقى خطأً إلى الأبد.
+      // Contract file fields are shown in the table, so they must be editable from the screen too; what can be read but not corrected stays wrong.
       'iqamaNumber', 'employeeNameAr', 'contractProfession', 'sponsorRegistration', 'annualLeaveText', 'probationText',
       'contractNumber'];
     for (const f of fields) if (req.body[f] !== undefined) contract[f] = req.body[f];
     await contract.save();
     await syncEmployeeContractStatus(contract.employee);
-    // راجع createContract: تُمحى ذاكرةُ الماستر ثمّ يُعلَن للجميع — كان الحدثُ
-    // يُرسَل إلى مَن عدّل وحدَه، فتبقى شاشةُ زميله على ما قبل التعديل.
+    // See createContract: clear the master cache, then announce to everyone. The event used to go only to the editor, leaving colleagues' screens stale.
     bustEmployeeCaches();
     try { emitToAll('hr:contract', { id: String(contract._id) }); } catch (e) {}
     res.json({ contract });
@@ -1206,10 +1026,7 @@ exports.terminateContract = async (req, res) => {
     const contract = await Contract.findById(req.params.id);
     if (!contract) return res.status(404).json({ message: 'Contract not found' });
 
-    // ── والقاعدةُ نفسُها التي تحرس الحذف ────────────────────────────────────
-    // كانت هنا عهدةٌ وحدَها وهناك لا شيء، ثمّ أُضيف تفويضُ المركبات إلى أحدهما
-    // دون الآخر — فيُمنع الموظّفُ من إنهاء الخدمة ويُسمح بحذفه. حارسان في
-    // موضعين يفترقان؛ فالسؤالُ يُجاب مرّةً ويقرؤه الاثنان.
+    // Same rule as the delete guard. Custody was checked in one place and nothing in the other, then vehicle authorization was added to only one, so an employee could be blocked from termination yet allowed to be deleted. Answer the question once and let both read it.
     const { employeeExitBlockers } = require('../utils/employeeExit');
     const gate = await employeeExitBlockers(contract.employee);
     const outstanding = gate.assets;
@@ -1220,7 +1037,7 @@ exports.terminateContract = async (req, res) => {
       });
     }
 
-    // والفسخُ يُنهي خدمةَ الموظّف أيضًا — فيُسأل عن حالة «لا يعمل» كإنهاء الخدمة.
+    // Cancellation also ends the employee's service, so the not-working state is asked as in termination.
     const ENG = require('../utils/hrEngagement');
     const empDoc = await Employee.findById(contract.employee).select('systemStatus registerNumber employmentStatus');
     const kind = String(req.body.kind || '');
@@ -1229,7 +1046,7 @@ exports.terminateContract = async (req, res) => {
       return res.status(400).json({ code: 'KIND_REQUIRED', message: 'فسخُ العقد يُنهي الخدمة — اختر حالة «لا يعمل»: انتظار نقل الكفالة، أو شركة شقيقة، أو خروج نهائي' });
     }
 
-    // الفسخُ يُنهي العقد: «منتهي»، وسببُه وتاريخُه في خانتيهما.
+    // Cancellation ends the contract as expired, with reason and date in their own fields.
     contract.status = 'expired';
     contract.endedByTermination = true;
     contract.statusBeforeTermination = 'active';
@@ -1250,11 +1067,9 @@ exports.terminateContract = async (req, res) => {
         workStatusText: ENG.workStatusTextOf({ employmentStatus: 'terminated', terminationKind: k }),
       });
     }
-    // و«حالة العقد» تُشتقّ من العقد نفسِه — لا تُكتب هنا بلفظٍ ثانٍ يفترق عمّا
-    // تعرضه صفحة العقود. راجع utils/contractStatus.
+    // Contract status is derived from the contract itself, not written here in different wording that would diverge from the contracts page. See utils/contractStatus.
     await syncEmployeeContractStatus(contract.employee);
-    // الفسخُ يُخرج الموظّفَ من «على رأس العمل» ومن عدّ الانتهاءات معًا — وهو
-    // أكثرُ ما يحرّك أرقامَ الشريط، وكان لا يمسح ذاكرتَها.
+    // Cancellation removes the employee from on-duty and from the expiry count; it moves the strip numbers most and did not clear their cache.
     bustEmployeeCaches();
     const emp = await Employee.findById(contract.employee).select('user').lean();
     await notifyHR({ title: 'Contract terminated', message: `Contract ${contract._id} terminated`, relatedEntity: 'Contract', relatedEntityId: contract._id, event: 'hr:contract' });
@@ -1273,7 +1088,7 @@ exports.deleteContract = async (req, res) => {
     if (denyNonStaff(req, res)) return;
     const contract = await Contract.findByIdAndDelete(req.params.id);
     if (!contract) return res.status(404).json({ message: 'Contract not found' });
-    // حُذف عقدٌ فقد تتغيّر الحالةُ الحاكمة — تُعاد القراءة ممّا بقي.
+    // A deleted contract may change the governing status; re-read from what remains.
     await syncEmployeeContractStatus(contract.employee);
     bustEmployeeCaches();
     try { emitToAll('hr:contract', { id: String(contract._id) }); } catch (e) {}
@@ -1347,17 +1162,12 @@ const populateLeave = (q) => q
   .populate('executiveDecision.by', 'firstName lastName');
 
 /**
- * صندوقُ الوارد: الطلباتُ الواقفةُ على هذا المستخدم الآن.
- *
- * المديرُ المباشرُ يرى طلبات فريقه فقط، والمواردُ والحساباتُ والإدارةُ ترى ما
- * وصل محطّتَها. والاستعلامُ واحدٌ (`inboxFilter`) لا حلقةٌ تقرأ ثمّ تُصفّي.
- *
- * ويصحبُ كلَّ طلبٍ `myStage`: المحطّةُ التي يملكها القارئُ فيه — تبني منها
- * الواجهةُ أزرارَها بدل أن تُخمّن الدورَ من جديد.
+ * Inbox: requests currently waiting on this user.
+ * A direct manager sees only his team's requests; HR, accounting and management see what reached their stage. One query (inboxFilter), not a read-then-filter loop. Each request carries myStage, the stage the reader owns, so the UI builds its buttons from it.
  */
 exports.listLeaveInbox = async (req, res) => {
   try {
-    // طلبُ مؤرشَفٍ لا ينتظر أحدًا — خرج من النظام.
+    // An archived employee's request waits for no one; he left the system.
     const leaves = await populateLeave(LeaveRequest.find(await withoutArchivedRef(chain.inboxFilter(req.user))))
       .select(NO_SIG).sort({ createdAt: 1 }).limit(500).lean();
     res.json({
@@ -1369,7 +1179,7 @@ exports.listLeaveInbox = async (req, res) => {
   }
 };
 
-/** كم طلبًا ينتظرني — للشارة في القائمة. لا يُحمَّل الطلبُ نفسُه. */
+/** Count of requests waiting on me, for the list badge; the requests themselves are not loaded. */
 exports.leaveInboxCount = async (req, res) => {
   try {
     res.json({ count: await LeaveRequest.countDocuments(await withoutArchivedRef(chain.inboxFilter(req.user))) });
@@ -1384,7 +1194,7 @@ exports.listLeaves = async (req, res) => {
     const filter = {};
     if (req.query.status) filter.status = req.query.status;
     if (req.query.employee) filter.employee = req.query.employee;
-    // القائمةُ العامّة بلا مؤرشَفين؛ وإجازاتُ ملفٍّ بعينه تبقى.
+    // The general list excludes archived staff; leaves of a specific file remain.
     const leaves = await populateLeave(LeaveRequest.find(req.query.employee ? filter : await withoutArchivedRef(filter))).select(NO_SIG).sort({ createdAt: -1 }).limit(1000).lean();
     res.json({ leaves });
   } catch (error) {
@@ -1507,17 +1317,10 @@ exports.listTeamLeaves = async (req, res) => {
   }
 };
 
-// ── Advance-notice policy (سياسة الإخطار المسبق) ─────────────────────────────
-// Planned leave must be filed a month ahead: nobody asks on Sunday to travel on
-// Tuesday. Types marked `requiresAdvanceNotice: false` (مرضية / طارئة / وفاة /
-// وضع) are exempt by design — you cannot plan an emergency.
-//
-// Today is taken as a plain YYYY-MM-DD so a request filed at 23:00 counts the
-// same as one filed at 08:00 the same day.
-//
-// و«اليوم» يوم الرياض لا يوم غرينتش: `toISOString()` كانت تعطي أمسِ بين منتصف
-// الليل والثالثة فجرًا، فيكسب مقدّمُ الطلب في تلك الساعات يومًا كاملًا من مهلة
-// الإشعار المسبق — وهذه المهلةُ هي التي يُقبل الطلبُ أو يُرفض بها.
+// Advance-notice policy
+// Planned leave must be filed a month ahead. Types marked `requiresAdvanceNotice: false` (sick, emergency, bereavement, maternity) are exempt by design.
+// Today is a plain YYYY-MM-DD so a request at 23:00 counts the same as at 08:00.
+// Today is the Riyadh day, not GMT: toISOString() gave yesterday between midnight and 03:00, giving those requesters a free day of notice.
 const { todayKey } = require('../utils/companyDay');
 const DAY_MS = 86400000;
 const daysUntil = (dateStr) =>
@@ -1543,11 +1346,8 @@ const evaluateAdvanceNotice = (leaveType, startDate) => {
 };
 
 /**
- * يحفظ ملفّات الطلب على القرص ويردّ بيانات ما يُخزَّن مع السجلّ.
- *
- * تصل data URLs في نفس الطلب (لا multer في هذا النظام)، وتُكتب تحت
- * `uploads/hr` — وهو مشمولٌ بالنسخ الاحتياطيّ اليوميّ كبقيّة المرفوعات. ويُرمى
- * الخطأ بنصّه كي تصل الرسالةُ إلى الشاشة لا «فشل الحفظ» مبهمًا.
+ * Save the request's files to disk and return the metadata stored with the record.
+ * Data URLs arrive in the same request (no multer here) and are written under `uploads/hr`, which the daily backup covers. Errors are thrown with their text so the screen shows the real message.
  */
 function saveLeaveFiles(files, user) {
   const out = [];
@@ -1602,7 +1402,7 @@ exports.createMyLeave = async (req, res) => {
       else employeeSignature = ((sigs.find((s) => s.isDefault) || sigs[0]) || {}).dataUrl || '';
     } catch (e) { /* no signature is fine */ }
 
-    // تقريرُ الإجازة المرضيّة يُرفَق مع طلبها لا يُرسَل على الواتساب.
+    // A sick-leave report is attached to the request, not sent over WhatsApp.
     let attachments = [];
     try { attachments = saveLeaveFiles(req.body.files, req.user); }
     catch (e) { return res.status(400).json({ message: e.message }); }
@@ -1650,15 +1450,10 @@ exports.createMyLeave = async (req, res) => {
 
 // Manager advances to HR; HR is the final authority. A rejection at any stage ends it.
 /**
- * POST /api/hr/leaves/backdated — تقييدُ إجازةٍ وقعت فعلًا (الموارد البشريّة).
- *
- * ── لماذا لا تمرّ بدورة الموافقة ────────────────────────────────────────────
- * دورةُ الموافقة تسأل: أنوافق على هذا الغياب؟ والغيابُ هنا وقع وانقضى؛ لا
- * معنى لأن يوافق عليه مديرٌ بعد شهر، ولا لأن تُطبَّق عليه مهلةُ الإخطار
- * المسبق. فتُقيَّد معتمَدةً وتُخصَم من الرصيد كأخواتها.
- *
- * وتُوسَم `backdated` باسم من قيّدها: الفرقُ بين «طلبَ فوافقتُ» و«أخبرني
- * فقيّدتُ» فرقٌ يجب أن يبقى مقروءًا في السجلّ.
+ * POST /api/hr/leaves/backdated
+ * Record a leave that already happened (HR).
+ * It skips the approval chain: the absence is past, so manager approval a month later is meaningless and the advance-notice period does not apply. It is recorded as approved and deducted from the balance like others.
+ * Marked `backdated` with the recorder's name, to keep 'requested then approved' distinct from 'told, then recorded'.
  */
 exports.createBackdatedLeave = async (req, res) => {
   try {
@@ -1676,10 +1471,10 @@ exports.createBackdatedLeave = async (req, res) => {
     const days = leaveDays(startDate, endDate);
     if (!days || days < 1) return res.status(400).json({ message: 'مدّة الإجازة غير صالحة' });
 
-    // الخصمُ من صفة النوع — تُعرَّف مرّةً في «أنواع الإجازات» وتنطبق على الجميع.
+    // Deduction follows the leave type's property, defined once in leave types and applied to everyone.
     const affects = lt.affectsBalance !== false;
 
-    // لا تُقيَّد إجازتان على نفس الأيّام: يومٌ واحدٌ لا يُخصَم مرّتين.
+    // No two leaves on the same days: a day is not deducted twice.
     const clash = await LeaveRequest.findOne({
       employee, status: { $in: ['approved', 'pending_manager', 'pending_hr'] },
       startDate: { $lte: endDate }, endDate: { $gte: startDate },
@@ -1692,8 +1487,7 @@ exports.createBackdatedLeave = async (req, res) => {
     try { attachments = saveLeaveFiles(req.body.files, req.user); }
     catch (e) { return res.status(400).json({ message: e.message }); }
 
-    // الرصيدُ يُلتقط **قبل** الخصم، كما في الطلب العاديّ، فيقرأ المراجعُ ما
-    // كان عليه الحال حين وقعت الإجازة لا بعدها.
+    // Balance is captured before the deduction, as in a normal request, so the reviewer sees the state when the leave occurred.
     const { balance } = await computeEmployeeBalance(employee);
     const now = new Date();
     // `mode: 'manual'` = a leave HR records from the register (past, current or future); otherwise back-dated.
@@ -1721,7 +1515,7 @@ exports.createBackdatedLeave = async (req, res) => {
         requested: days,
         remainingAfter: affects ? Math.round((balance.available - days) * 100) / 100 : balance.available,
       },
-      // المهلةُ المسبقة لا تنطبق على ما وقع.
+      // The advance-notice period does not apply to a leave that already happened.
       advanceNotice: { required: false, requiredDays: 0, daysAhead: 0, satisfied: true, overridden: false },
     });
 
@@ -1749,12 +1543,8 @@ exports.createBackdatedLeave = async (req, res) => {
 };
 
 /**
- * تعديلُ إجازة موظّفٍ وحذفُها — من «طلبات الإجازات» للموارد البشريّة.
- *
- * صاحبُ الطلب لا يعدّل بعد أوّل إجراء (updateMyLeave). أمّا الموارد البشريّة
- * فهي من تصحّح السجلّ: تاريخٌ كُتب خطأً، نوعٌ اختير غلطًا، أو قيدٌ رجعيٌّ
- * مكرَّر. الحالةُ ومحطّةُ السلسلة لا تُمَسّان هنا — التعديلُ تصحيحُ بيانات لا
- * قرار؛ والرصيدُ يُحسب من الإجازات المعتمدة نفسِها فيتبع التعديلَ وحده.
+ * Edit and delete an employee's leave from HR's leave requests.
+ * The requester cannot edit after the first action (updateMyLeave). HR corrects the record: wrong dates, wrong type, duplicate backdated entries. Status and chain stage are untouched; this is data correction, not a decision, and the balance follows because it is computed from approved leaves.
  */
 exports.updateLeave = async (req, res) => {
   try {
@@ -1780,7 +1570,7 @@ exports.updateLeave = async (req, res) => {
     if (!days || days < 1) return res.status(400).json({ message: 'مدّة الإجازة غير صالحة' });
     if (reason !== undefined) leave.reason = String(reason || '').trim();
 
-    // لا تُقيَّد إجازتان على نفس الأيّام — والطلبُ نفسُه لا يتداخل مع نفسه.
+    // No two leaves on the same days, and a request does not overlap itself.
     if (['approved', ...chain.OPEN_STATUSES].includes(leave.status)) {
       const clash = await LeaveRequest.findOne({
         _id: { $ne: leave._id }, employee: leave.employee,
@@ -1790,7 +1580,7 @@ exports.updateLeave = async (req, res) => {
       if (clash) return res.status(400).json({ message: `تتداخل مع إجازةٍ مسجّلة (${clash.startDate} → ${clash.endDate})` });
     }
 
-    // اللقطةُ تبقى «ما كان عليه الحال حين طُلبت»، ويُصحَّح منها ما يخصّ المدّة.
+    // The snapshot stays as it was when requested; only the duration-related parts are corrected.
     const oldDays = leave.days || 0;
     leave.days = days;
     if (leave.balanceSnapshot && typeof leave.balanceSnapshot.remainingAfter === 'number') {
@@ -1902,7 +1692,7 @@ exports.deleteLeave = async (req, res) => {
 exports.decideLeave = async (req, res) => {
   try {
     const { decision, note, signatureId } = req.body;
-    // «info» = طلبُ إيضاحٍ من صاحب الطلب، وهو ليس رفضًا — راجع leaveChain.
+    // 'info' is a request for clarification from the requester, not a rejection. See leaveChain.
     if (!['approved', 'rejected', 'info'].includes(decision)) {
       return res.status(400).json({ message: 'decision must be approved, rejected or info' });
     }
@@ -1930,11 +1720,7 @@ exports.decideLeave = async (req, res) => {
     catch (e) { return res.status(400).json({ message: e.message }); }
     const stamp = { by: req.user._id, at: new Date(), decision, note: note || '', signature, attachments: decisionFiles };
 
-    // ── البتُّ يجري في المحطّة القائمة وحدَها ───────────────────────────
-    //
-    // كان قرارُ الموارد البشريّة نهائيًّا في أيّ محطّةٍ كانت — فتُوافِق فيصير
-    // الطلبُ موافَقًا عليه دون أن تراه الحساباتُ ولا الإدارة. والسلسلةُ الآن
-    // أربعُ محطّات، وكلٌّ يبتّ في محطّته حين تصل إليه. راجع utils/leaveChain.
+    // A decision is made only at the current stage. HR's decision used to be final at any stage, so a request could be approved without accounting or management seeing it. The chain has four stages and each decides at its own. See utils/leaveChain.
     const stage = leave.currentStage;
 
     if (stage === 'employee') {
@@ -1953,9 +1739,8 @@ exports.decideLeave = async (req, res) => {
       leave.status = 'rejected';
       leave.currentStage = 'done';
     } else if (decision === 'info') {
-      // ── سؤالٌ لا رفض ──────────────────────────────────────────────────
-      // يعود الطلبُ إلى صاحبه ليردّ أو يعدّل أو يرفع مستندًا.
-      leave[chain.DECISION_FIELD[stage]] = undefined;      // لم يُبتَّ بعد
+      // A question, not a rejection: the request returns to its owner to answer, edit or attach a document.
+      leave[chain.DECISION_FIELD[stage]] = undefined;      // Not decided yet.
       leave.thread.push({
         kind: 'question', stage, by: req.user._id,
         byName: [req.user.firstName, req.user.lastName].filter(Boolean).join(' '),
@@ -1967,11 +1752,7 @@ exports.decideLeave = async (req, res) => {
     }
     await leave.save();
 
-    // ── الإخطار: صاحبُ الطلب دائمًا، وأصحابُ المحطّة التالية ──────────────
-    //
-    // وكان الموافِقُ في محطّةٍ وسطى يُخبِر صاحبَ الطلب بأنّها «اعتُمدت» — وهي
-    // لم تُعتمَد بعد، بل انتقلت. فيُخطِّط الرجلُ سفرَه على موافقةٍ ناقصة.
-    // فالرسالةُ الآن تقول أين وقف الطلبُ لا أنّه انتهى.
+    // Notify the requester always, plus the next stage's owners. A mid-chain approver used to tell the requester it was approved when it had only moved on, so he planned travel on partial approval. The message now says where the request stands.
     const STAGE_AR = { manager: 'المدير المباشر', hr: 'الموارد البشرية', finance: 'الإدارة المالية', executive: 'الإدارة العليا' };
     const ref = { relatedEntity: 'LeaveRequest', relatedEntityId: leave._id, event: 'hr:leave' };
     const period = `${leave.startDate} → ${leave.endDate}`;
@@ -1988,7 +1769,7 @@ exports.decideLeave = async (req, res) => {
     } else if (leave.status === 'rejected') {
       await notifyUser(leave.requester, { title: 'رُفض طلب الإجازة', message: `رفضت ${STAGE_AR[stage] || ''} طلبك (${period}). ${note || ''}`.trim(), ...ref });
     } else {
-      // انتقل إلى المحطّة التالية: يُخطَر صاحبُه بموضعه، ويُخطَر أهلُ المحطّة.
+      // Moved to the next stage: the requester is told where it stands and the stage owners are notified.
       const next = leave.currentStage;
       await notifyUser(leave.requester, {
         title: 'تقدّم طلب الإجازة',
@@ -2015,14 +1796,8 @@ exports.decideLeave = async (req, res) => {
 };
 
 /**
- * ردُّ صاحب الطلب على استفسار — POST /leaves/:id/reply { text, attachment }
- *
- * ── والسلسلةُ تبدأ من أوّلها ──────────────────────────────────────────────
- * الطلبُ الذي وافق عليه المديرُ أمسَ لم يعد هو الطلبَ نفسَه بعد أن عُدِّل أو
- * أُضيف إليه مستند. فتُمحى الموافقاتُ ويعود من المدير المباشر — وهو ما طُلب
- * بالنصّ: «يرجع الطلب من تاني عند المدير المباشر كأنه جديد».
- *
- * والسؤالُ والردُّ يبقيان في سجلّ الطلب، فيُقرأ بعد شهرٍ لماذا تأخّر وبم أُجيب.
+ * The requester's reply to a question - POST /leaves/:id/reply { text, attachment }
+ * The chain restarts: the approvals are cleared and the request returns to the direct manager as new, since an edited or extended request is no longer the one approved earlier. The question and reply stay in the request log.
  */
 exports.replyToLeave = async (req, res) => {
   try {
@@ -2037,9 +1812,7 @@ exports.replyToLeave = async (req, res) => {
     const text = String(req.body.text || '').trim();
     if (!text) return res.status(400).json({ message: 'اكتب ردّك' });
 
-    // المرفقُ يُكتب على القرص لا داخل المستند. فصندوقُ الوارد يقرأ عشرات
-    // الطلبات دفعةً واحدة، وقاعدةُ البيانات مخنوقةُ الإنتاجيّة أصلًا — إيصالٌ
-    // بصيغة base64 داخل المستند يجعل قراءةَ القائمة تسحب ميغابايتات.
+    // The attachment is written to disk, not inside the document: the inbox reads dozens of requests at once and a base64 receipt in the document makes the list pull megabytes on a throughput-limited database.
     let stored = null;
     if (req.body.attachment) {
       try { stored = saveEmployeeFile(req.body.attachment, req.body.attachmentName || ''); }
@@ -2086,7 +1859,7 @@ exports.cancelMyLeave = async (req, res) => {
     const leave = await LeaveRequest.findById(req.params.id);
     if (!leave) return res.status(404).json({ message: 'Leave request not found' });
     if (String(leave.requester) !== String(req.user._id)) return res.status(403).json({ message: 'Not your request' });
-    // كلُّ ما لم يُبَتّ فيه نهائيًّا يجوز لصاحبه سحبُه — بما فيه ما عاد إليه بسؤال.
+    // The owner may withdraw anything not finally decided, including requests returned with a question.
     if (!['pending_manager', 'pending_hr', 'pending_finance', 'pending_executive', 'info_requested'].includes(leave.status)) return res.status(400).json({ message: 'Only pending requests can be cancelled' });
     leave.status = 'cancelled';
     leave.currentStage = 'done';
@@ -2099,21 +1872,11 @@ exports.cancelMyLeave = async (req, res) => {
 };
 
 /**
- * ── ما دام معلَّقًا فهو ملكُ صاحبه ──────────────────────────────────────────
- *
- * الموظّف يكتب الطلب فيخطئ في تاريخٍ أو يبدو له غيرُ ذلك. وكان علاجُه الوحيد
- * إلغاءه وكتابةَ غيره — فيرى المديرُ طلبَين ملغيًّا وجديدًا ولا يعرف أيُّهما
- * المقصود.
- *
- * فيُعدَّل ويُحذف ما دام **لم يمسَّه أحد**. وأوّلُ إجراءٍ من المدير أو الموارد
- * البشرية يُقفل البابَ: الموافقةُ على تاريخٍ ثم تغييرُه بعدها تجعل الموافقة
- * على شيءٍ والمعتمَد شيئًا آخر — وهذا أخطر من ألّا يُعدَّل الطلب أصلًا.
- *
- * والقفل يُقاس بالقرار لا بالحالة وحدها: طلبٌ حالتُه «بانتظار الموارد البشرية»
- * قد وافق عليه المدير فعلًا، فتعديلُه بعد موافقته تحايلٌ عليها.
+ * While pending, it belongs to its owner.
+ * Correcting a mistake used to mean cancelling and rewriting, leaving the manager two requests. Now edit and delete are allowed while nobody has acted on it. The first action by the manager or HR locks it: changing a date after approval makes the approval cover something other than what is approved.
+ * The lock is measured by decision, not status alone: a request awaiting HR may already have manager approval.
  */
-// والمقياسُ القرارُ لا المرحلة: مَن لا مدير له يبدأ طلبُه عند الموارد البشرية
-// مباشرةً، فاشتراطُ «بانتظار المدير» كان يقفل الباب على من لم يمسّ طلبَه أحد.
+// Measure by decision, not stage: someone with no manager starts at HR, so requiring awaiting-manager locked out requests nobody had touched.
 const leaveIsUntouched = (l) => ['pending_manager', 'pending_hr'].includes(l.status)
   && !l.managerDecision?.at && !l.hrDecision?.at;
 
@@ -2130,8 +1893,7 @@ exports.updateMyLeave = async (req, res) => {
     if (leaveType) {
       const lt = await LeaveType.findById(leaveType).lean();
       if (!lt) return res.status(400).json({ message: 'نوع إجازة غير صالح' });
-      // مهلةُ الإشعار تُعاد فحصُها: تعديلُ التاريخ إلى الغد يلتفّ على القاعدة
-      // إن لم يُفحَص، فيدخل الطلبُ بموعدٍ ما كان ليُقبل لو كُتب ابتداءً.
+      // Recheck the notice period: editing the date to tomorrow would bypass the rule and admit a date that would not have been accepted originally.
       const notice = evaluateAdvanceNotice(lt, startDate || leave.startDate);
       if (!notice.satisfied && !(req.body.policyOverride === true && hrStaffReq(req))) {
         return res.status(400).json({ message: notice.message, code: 'ADVANCE_NOTICE_REQUIRED' });
@@ -2143,8 +1905,7 @@ exports.updateMyLeave = async (req, res) => {
     if (reason !== undefined) leave.reason = reason;
     if (startDate || endDate) leave.days = leaveDays(leave.startDate, leave.endDate);
 
-    // مرفقاتٌ تُضاف أو تُحذف ما دام الطلبُ لم يُمَسّ. ومن نسي التقريرَ الطبّيّ
-    // لا يُطالَب بإلغاء طلبه وكتابة غيره.
+    // Attachments can be added or removed while the request is untouched; a forgotten medical report should not force cancelling and rewriting.
     if (Array.isArray(req.body.files) && req.body.files.length) {
       try { leave.attachments.push(...saveLeaveFiles(req.body.files, req.user)); }
       catch (e) { return res.status(400).json({ message: e.message }); }
@@ -2199,7 +1960,7 @@ exports.listRequests = async (req, res) => {
     if (denyNonStaff(req, res)) return;
     const filter = {};
     if (req.query.status) filter.status = req.query.status;
-    // طلباتُ المؤرشَف تختفي: بملفّه أو بحساب دخوله.
+    // An archived employee's requests are hidden, by his file or his login account.
     const sets = await endedStaff();
     const requests = await populateRequest(HRRequest.find(andAll(filter, notArchivedRef(sets, 'employee'), notArchivedUserRef(sets, 'requester')))).sort({ updatedAt: -1 }).limit(1000).lean();
     res.json({ requests });
@@ -2251,9 +2012,7 @@ exports.replyRequest = async (req, res) => {
     if (!staff && !owner) return res.status(403).json({ message: 'No access to this request' });
 
     const { body, link, files } = req.body;
-    // ── المرفقات تُحفَظ مع الرسالة ──────────────────────────────────────────
-    // تصل كـdata URL في نفس الطلب (لا multer في هذا النظام)، وتُكتب على القرص
-    // تحت uploads/hr — وهو مشمولٌ بالنسخ الاحتياطيّ اليوميّ كبقيّة المرفوعات.
+    // Attachments are saved with the message. They arrive as a data URL in the same request (no multer here) and are written under uploads/hr, which the daily backup covers.
     const attachments = [];
     for (const f of Array.isArray(files) ? files.slice(0, 10) : []) {
       if (!f?.dataUrl) continue;
@@ -2330,7 +2089,7 @@ exports.listAssets = async (req, res) => {
     const filter = { employee: { $ne: null }, status: { $ne: 'in_stock' } };
     if (req.query.employee) filter.employee = req.query.employee;
     if (req.query.status && req.query.status !== 'in_stock') filter.status = req.query.status;
-    // عهدُ المؤرشَف لا تظهر في السجلّ العامّ؛ وعهدُ ملفٍّ بعينه تبقى.
+    // An archived employee's custody is hidden from the general register; custody of a specific file remains.
     const assets = await Asset.find(req.query.employee ? filter : await withoutArchivedRef(filter))
       .populate('employee', 'firstName lastName arabicName iqamaNumber nationalId idType employeeNumber')
       .populate('assignedBy', 'firstName lastName')
@@ -2347,14 +2106,10 @@ exports.createAsset = async (req, res) => {
   try {
     if (denyNonStaff(req, res)) return;
     if (!req.body.employee || !req.body.name) return res.status(400).json({ message: 'Employee and name are required' });
-    // الطقمُ أُلغي صنفًا في الموارد البشريّة كما في تقنية المعلومات — config/itCustody.
+    // The uniform set was removed as a category in HR, as in IT. See config/itCustody.
     const retired = require('../config/itCustody').retiredTypeError(req.body.type);
     if (retired) return res.status(400).json({ message: retired });
-    // ── عهدةُ الموارد البشريّة تُعلَّم بقسمها ───────────────────────────────
-    // كانت تُحفظ بلا قسم، والنموذجُ يبدأ بنوع «حاسب محمول» — فسُجّلت شريحةٌ
-    // باسم «SIM CARD» ونوعِ حاسب، فظهرت في عهد تقنية المعلومات (التي تُفرز
-    // بالنوع). فالشريحةُ تُعرف من اسمها إن لم يُختر نوعُها، وتُحفظ في قسم
-    // الاتصالات كخطوط موبايلي المستوردة، وغيرُها في قسم الموارد البشريّة.
+    // HR custody is tagged with its department. It used to be saved without one and the form defaults to the laptop type, so a SIM card was recorded as a laptop and showed in IT custody (which sorts by type). A SIM is recognised by name if no type is chosen and saved under communications like the imported Mobily lines; everything else goes to HR.
     const data = { ...req.body };
     if (data.type !== 'sim' && /\bsim\b|شريح|خط (جوال|موبايل)/i.test(String(data.name || ''))) data.type = 'sim';
     data.issuedBySection = data.type === 'sim' ? 'telecom' : 'hr';
@@ -2378,7 +2133,7 @@ exports.updateAsset = async (req, res) => {
     // lists it, so reaching one by id means something went wrong upstream.
     if (asset.status === 'in_stock') return res.status(404).json({ message: 'Asset not found' });
     if (denyItOwned(req, res, asset)) return;
-    // الطقمُ أُلغي صنفًا في الموارد البشريّة كما في تقنية المعلومات — config/itCustody.
+    // The uniform set was removed as a category in HR, as in IT. See config/itCustody.
     const retired = require('../config/itCustody').retiredTypeError(req.body.type, asset.type);
     if (retired) return res.status(400).json({ message: retired });
     ['name', 'type', 'serialNumber', 'brand', 'model', 'condition', 'value', 'assignedDate', 'notes'].forEach((f) => {
@@ -2441,12 +2196,8 @@ exports.deleteAsset = async (req, res) => {
   }
 };
 
-// ── HR store (مستودع الموارد البشرية) ────────────────────────────────────────
-// HR keeps its own shelf — uniforms, safety gear, access cards, office kit —
-// which has nothing to do with the IT store. Both live in the one Asset
-// collection (so a handed-out item is custody without changing collections) and
-// are kept apart by `issuedBySection`. Everything below is scoped to 'hr'; the
-// IT endpoints are scoped away from it.
+// HR store
+// HR keeps its own shelf (uniforms, safety gear, access cards, office kit), separate from the IT store. Both live in the one Asset collection so a handed-out item is custody without changing collections, and are kept apart by `issuedBySection`. Everything below is scoped to 'hr'; the IT endpoints are scoped away from it.
 const HR_STOCK_EDITABLE = [
   'name', 'type', 'serialNumber', 'brand', 'model', 'condition', 'value',
   'notes', 'quantity', 'location', 'specs',
@@ -2482,7 +2233,7 @@ exports.createStock = async (req, res) => {
     if (!req.body.name || !String(req.body.name).trim()) {
       return res.status(400).json({ message: 'Item name is required' });
     }
-    // الطقمُ أُلغي صنفًا في الموارد البشريّة كما في تقنية المعلومات — config/itCustody.
+    // The uniform set was removed as a category in HR, as in IT. See config/itCustody.
     const retired = require('../config/itCustody').retiredTypeError(req.body.type);
     if (retired) return res.status(400).json({ message: retired });
     const data = pickFields(req.body, HR_STOCK_EDITABLE);
@@ -2505,7 +2256,7 @@ exports.updateStock = async (req, res) => {
     // Scoped to the HR shelf, so this can never reach an IT store item.
     const item = await Asset.findOne({ _id: req.params.id, ...HR_STORE });
     if (!item) return res.status(404).json({ message: 'Stock item not found' });
-    // الطقمُ أُلغي صنفًا في الموارد البشريّة كما في تقنية المعلومات — config/itCustody.
+    // The uniform set was removed as a category in HR, as in IT. See config/itCustody.
     const retired = require('../config/itCustody').retiredTypeError(req.body.type, item.type);
     if (retired) return res.status(400).json({ message: retired });
     Object.assign(item, pickFields(req.body, HR_STOCK_EDITABLE));
@@ -2562,7 +2313,7 @@ exports.assignFromStock = async (req, res) => {
   }
 };
 
-// ── Company licenses & subscriptions (التراخيص والاشتراكات) ──────────────────
+// Company licenses and subscriptions
 exports.listLicenses = async (req, res) => {
   try {
     if (denyNonStaff(req, res)) return;
@@ -2582,7 +2333,7 @@ exports.listLicenses = async (req, res) => {
   }
 };
 
-// صفحةُ التراخيص تسمع `hr:license` على الموقع والتطبيق — ولم يكن يُرسَل قطّ (٢٠٢٦/١٠/٢٥).
+// The licenses page listens to `hr:license` on web and app, and the event was never emitted.
 const announceLicense = () => { try { require('../websocket/socketManager').emitToAll('hr:license', { at: Date.now() }); } catch (_) { /* */ } };
 exports.createLicense = async (req, res) => {
   try {
@@ -2629,28 +2380,15 @@ exports.deleteLicense = async (req, res) => {
 // ── Dashboard (HR staff) ─────────────────────────────────────────────────────
 const addDays = (n) => { const d = new Date(); d.setDate(d.getDate() + n); return d.toISOString().slice(0, 10); };
 
-// Build an "expiring documents" feed across every dated field on the employee so
-// HR sees ONE list of everything about to lapse (iqama, passport, license ...).
-// المستندات دي **مصدرها config/hrFields** — نفس السبعة اللي في الماستر النهائي.
-// كانت مكتوبة بالإيد وفيها حقول (التأشيرة، رخصة العمل، أجير) مش في الماستر
-// أصلاً، وبياناتها بايتة من استيرادات قديمة — فكانت الداشبورد بتعرض أكتر من ١٠٠
-// «تأشيرة منتهية» لناس محدش سألهم عن تأشيرة.
+// Build an "expiring documents" feed across every dated field on the employee so HR sees ONE list of everything about to lapse (iqama, passport, license ...).
+// The documents come from config/hrFields, the same seven as the final master. The list was hand-written and included fields (visa, work permit, Ajeer) not in the master, with stale imported data, so the dashboard showed over 100 expired visas for people nobody asked about.
 const EXPIRY_DOCS = require('../config/hrFields').DOCUMENT_GROUPS.map((g) => ({
   field: g.expiryField, type: g.key, en: g.en, ar: g.ar,
 }));
 
-// سجلات حسابات الدخول التلقائية مش موظفين — بتخرج من كل عدّاد.
-// من غير الشرط ده الداشبورد كانت بتقول ٤٣٧ موظف والماستر بيقول ٣٧٨.
-// نطاق «عدد الموظفين» — الملف الوظيفي الحالي، وهو نفسه الذي تعدّ به لوحة
-// الموارد البشرية. كانت اللوحة تقول ٣٧٨ وهذه الصفحة ٣٨٠ في القسم نفسه، والرقمان
-// معًا على شاشة واحدة يجعلان القارئ لا يصدّق أيًّا منهما. مَن خرج قبل بناء
-// الملف سجلّه محفوظ تاريخًا ولا يُعدّ مع الموظفين.
-//
-// ── ولا يُقيَّد بملفّ الاستيراد ────────────────────────────────────────────────
-// كان النطاقُ `inCurrentMaster: true` — علامةٌ لا يضعها إلّا سكربتُ الاستيراد،
-// فكلُّ موظّفٍ أُضيف في النظام بعده لا يُعدّ في اللوحة. الشيتُ مصدرُ الإدخال
-// الأوّل فقط، وبعده النظامُ هو المرجع: الموظّفُ موظّفٌ بسجلّه لا بمصدره.
-// والمؤرشَفُ خارجَ هذه اللوحة كلِّها — مكانُه صفحةُ الأرشيف (utils/hrEngagement).
+// Auto-created login account records are not employees and are excluded from every counter. Without this the dashboard and master disagreed (437 vs 378).
+// Scope of the employee count is the current job file, the same one the HR dashboard counts with; two numbers for one department on one screen make readers trust neither. Those who left before the file was built stay as history and are not counted.
+// Not restricted to the import file: the old scope `inCurrentMaster: true` is set only by the import script, so employees added in the system later were not counted. The sheet is only the first source of entry; after that the system is the reference and an employee is an employee by record, not by origin. Archived staff are outside this dashboard entirely; their place is the archive page (utils/hrEngagement).
 const HR_ONLY = { isHrRecord: { $ne: false }, ...require('../utils/hrEngagement').NOT_ARCHIVED };
 
 exports.getDashboard = async (req, res) => {
@@ -2663,15 +2401,14 @@ exports.getDashboard = async (req, res) => {
     const _hit = cache.get(_ck);
     if (_hit !== undefined) return res.json(_hit);
     const _send = res.json.bind(res);
-    // ── وفلترُ اللوحة (القسم، المدينة، حالة العمل، المشروع، الجنسية…) يحكم كلَّ
-    // رقمٍ عن الموظّفين هنا — كما يحكم النظرةَ الشاملة (`buildFilter` نفسُه).
+    // The dashboard filter (department, city, work status, project, nationality, ...) governs every employee number here, as it does the overview (same buildFilter).
     const filtered = Object.keys(req.query || {}).length > 0;
     const HRQ = filtered ? { ...HR_ONLY, $and: [require('./hrMasterController')._buildFilter({ ...req.query })] } : HR_ONLY;
     res.json = (b) => { if (res.statusCode < 300) cache.set(_ck, b, 30000); return _send(b); };
     const today = new Date().toISOString().slice(0, 10);
     const in60 = addDays(60);
     const in90 = addDays(90);
-    // والطلباتُ والعهدُ والعقودُ المنتهية بلا مؤرشَفين — كالأعداد فوقها.
+    // Requests, custody and expired contracts exclude archived staff, like the counts above them.
     const sets = await endedStaff();
     const noArch = notArchivedRef(sets, 'employee');
 
@@ -2705,17 +2442,12 @@ exports.getDashboard = async (req, res) => {
       CompanyLicense.find({}).select('name category location expiryDate').lean(),
     ]);
 
-    // ── موظّفون بلا عقدٍ مسجَّل، وآخرون عقدُهم انقضى ولم يُجدَّد ─────────────────
-    // مَن على قوّة العمل ويُطلَب له عقدٌ ولا عقدَ له في النظام أصلًا: يُعَدّ هنا حتى
-    // يُنشأ عقدُه — فيخرج من العدّ في الحال (إنشاءُ العقد يمسح ذاكرةَ اللوحة ويبثّ).
-    //
-    // والفريلانسرُ والمتدرّبُ لا عقدَ لهما أصلًا — لا «بلا عقد» ولا «عقدٌ منتهٍ».
-    // ويُقرآن من «رقم السجل» لا من `employmentType` (راجع utils/hrEngagement).
+    // Employees with no recorded contract, and others whose contract lapsed without renewal. Anyone on the workforce who needs a contract and has none is counted until it is created, which clears the count at once (creating a contract clears the dashboard cache and broadcasts).
+    // Freelancers and trainees have no contract at all, so neither no-contract nor expired applies; they are read from the commercial register number, not employmentType (utils/hrEngagement).
     const { contractRequired } = require('../utils/hrEngagement');
     const current = await require('../utils/contractStatus').currentContractsByEmployee('endDate');
     const anyContract = new Set((await Contract.distinct('employee')).map(String));
-    // وفلترُ اللوحة (القسم، المدينة، حالة العمل، المشروع، الجنسية…) يحكم هذين الرقمين
-    // أيضًا — هما عن موظّفين، فيُعَدّان على مَن تعرضه اللوحة. والتراخيصُ للشركة لا تُفلتَر.
+    // The dashboard filter also governs these two numbers, since they are about employees and count those the dashboard shows. Licenses belong to the company and are not filtered.
     const workforce = (await Employee.find({ ...HRQ, employmentStatus: { $ne: 'terminated' } })
       .select('firstName lastName arabicName employeeNumber department jobTitle employmentType registerNumber').sort({ employeeNumber: 1 }).lean())
       .filter(contractRequired);
@@ -2764,8 +2496,7 @@ exports.getDashboard = async (req, res) => {
       noContract, lapsedContracts,
       byStatus: byStatusAgg.map((r) => ({ status: r._id || 'unknown', count: r.count })),
       byDepartment: byDeptAgg.map((r) => ({ name: r._id, count: r.count })),
-      // للوحاتِ غير الموارد البشريّة (النظرةُ التنفيذيّة): مَن على رأس العمل وحدَهم.
-      // ولوحةُ الموارد البشريّة تبقى على `byDepartment` — المنتهون من عملها.
+      // For dashboards other than HR (executive view): on-duty staff only. The HR dashboard stays on `byDepartment`, which covers those who left its work.
       activeByDepartment: (await Employee.aggregate([
         { $match: { ...HRQ, employmentStatus: { $ne: 'terminated' }, department: { $nin: [null, ''] } } },
         { $group: { _id: '$department', count: { $sum: 1 } } }, { $sort: { count: -1 } }, { $limit: 12 },
@@ -2811,7 +2542,7 @@ exports.getOptions = async (req, res) => {
     if (denyNonStaff(req, res)) return;
     const Branch = require('../models/Branch');
     const [managers, branches] = await Promise.all([
-      // المديرُ المؤرشَف لا يُختار — كأنّه حُذف.
+      // An archived manager cannot be selected, as if deleted.
       endedStaff().then((sets) => User.find(andAll({ isActive: true, role: { $nin: require('../config/scopedRoles').EXTERNAL_ROLES } }, notArchivedUserRef(sets, '_id'))).select('firstName lastName email role').sort({ firstName: 1 }).lean()),
       Branch.find({}).select('name').sort({ name: 1 }).lean().catch(() => []),
     ]);
@@ -2833,11 +2564,7 @@ exports.getMyTeam = async (req, res) => {
 };
 
 
-/**
- * الطلب العامّ يُعدَّل ويُحذف ما دام مفتوحًا ولم يردّ عليه أحد.
- * وأوّلُ ردٍّ في الخيط أو تغييرٍ لحالته يُثبّته: مَن ردّ ردّ على نصٍّ بعينه،
- * وتغييرُه بعده يجعل الردّ جوابًا عن سؤالٍ لم يُطرح.
- */
+/** A general request can be edited and deleted while open and unanswered. The first reply in the thread or status change locks it: a reply answers specific text, and changing it afterwards makes the reply answer a question never asked. */
 const requestIsUntouched = (r) => r.status === 'open'
   && (r.thread || []).filter((m) => String(m.sender) !== String(r.requester)).length === 0;
 

@@ -19,11 +19,8 @@ const SO_ROLES = ['shipment_orders_manager', 'shipment_orders_staff', 'shipment_
 const VEHICLE_ROLES = ['vehicles_manager', 'vehicles_staff', 'hr_manager', 'cfo', 'accounting_manager'];
 
 /**
- * قوائم قسم المركبات: كلُّ حقلٍ ذي اختياراتٍ ثابتة صار قائمةً تُدار من إعدادات
- * القسم بدل حقلٍ حرٍّ يُكتب بألف صيغة. راجع config/vehicleDefaults.js للسبب.
- *
- * وهي تُخزَّن بالاسم العربيّ لا بالمفتاح — الحقول تحمل النصّ العربيّ منذ أوّل
- * استيراد وتقرؤه الفلاتر والتصديرات، فالمقصود حصرُ ما يُكتب لا تغييرُ ما يُخزَّن.
+ * Vehicles section lists: every field with fixed choices is now a list managed from the section settings instead of a free field typed in a thousand ways. See config/vehicleDefaults.js.
+ * Stored by Arabic name, not key: fields have held the Arabic text since the first import and filters and exports read it, so this limits what is written without changing what is stored.
  */
 const vehicleList = (type, nameAr, nameEn, seed) => ({
   type, module: 'vehicles', nameAr, nameEn, roles: VEHICLE_ROLES, storeLabel: true, seed,
@@ -31,20 +28,15 @@ const vehicleList = (type, nameAr, nameEn, seed) => ({
 
 
 const B2C_LOOKUP_ROLES = ['b2c_manager', 'b2c_deputy', 'b2c_project_lead', 'it_manager'];
-/**
- * قائمةٌ من قوائم النقل الخفيف. تُخزَّن بالاسم العربيّ لا بالمفتاح: الحقولُ
- * تحمل النصَّ العربيَّ منذ الاستيراد وتقرؤه الفلاتر والتصديرات، والمقصودُ حصرُ
- * ما يُكتب لا تغييرُ ما يُخزَّن.
- */
+/** A light transport list. Stored by Arabic name, not key: fields have held the Arabic text since import and filters and exports read it, so this limits what is written without changing what is stored. */
 const ltList = (type, nameAr, nameEn, seed) => ([{
   type, module: 'b2c', nameAr, nameEn, roles: B2C_LOOKUP_ROLES, storeLabel: true,
   seed: seed.map((name, i) => ({ key: `lt_${type}_${i}`, nameEn: name, nameAr: name, order: i + 1 })),
 }]);
 
 const REGISTRY = [
-  // نوعُ النقل الذي تُخوِّله بطاقةُ السائق — يُكتب عند الإنشاء، والمشتقُّ من
-  // مركباته يملأ الفارغ. راجع `transportTypeAr` في models/DriverCard.
-  // نوعُ بطاقة السائق — كان خانةً حرّة، فكُتبت «سنوية» و«سنويه» و«مطلوب».
+  // Transport type authorized by the driver card; written on creation, and the type derived from his vehicles fills it when empty. See `transportTypeAr` in models/DriverCard.
+  // Driver card type was a free field, so 'annual' was typed in several spellings.
   vehicleList('vehicle_driver_card_type', 'نوع بطاقة السائق', 'Driver Card Types',
     [{ key: 'annual', nameEn: 'Annual', nameAr: 'سنوية' },
       { key: 'restricted', nameEn: 'Restricted', nameAr: 'مقيدة' },
@@ -58,8 +50,7 @@ const REGISTRY = [
   vehicleList('vehicle_insurance_company', 'شركات التأمين', 'Insurance Companies', vehicleDefaults.insuranceCompanies),
   vehicleList('vehicle_premium_status', 'حالة قسط التأمين', 'Premium Statuses', vehicleDefaults.premiumStatuses),
   vehicleList('vehicle_sector', 'قطاعات المركبات', 'Vehicle Sectors', vehicleDefaults.sectors),
-  // الإدارةُ والمدينة: كانتا حقلين حرّين لا خانةَ لهما في نموذج التعديل أصلًا،
-  // فتُقرآن في الفلاتر ولا تُصحَّحان في أيّ مكان. بُذرتا بما في البيانات فعلًا.
+  // Administration and city: two free fields with no input in the edit form, so filters read them but nothing corrected them. Seeded with what the data actually holds.
   vehicleList('vehicle_department', 'إدارات المركبات', 'Vehicle Departments', [
     { key: 'heavy_transport', nameAr: 'النقل الثقيل', nameEn: 'Heavy transport' },
     { key: 'customs', nameAr: 'التخليص الجمركي', nameEn: 'Customs clearance' },
@@ -97,15 +88,13 @@ const REGISTRY = [
   vehicleList('vehicle_gps_device_status', 'حالة جهاز التتبّع', 'GPS Device Statuses', vehicleDefaults.gpsDeviceStatuses),
   vehicleList('vehicle_inspection_status', 'حالة الفحص', 'Inspection Statuses', vehicleDefaults.inspectionStatuses),
   vehicleList('vehicle_job_title', 'وظائف المفوَّضين', 'Authorised-person Job Titles', vehicleDefaults.jobTitles),
-  // جهةُ الإبلاغ عن الحادث: «نجم» أو «المرور». كانت خانةً حرّة، فكُتبت
-  // «Najm» في ستٍّ وعشرين واقعة و«المرور» في إحدى وعشرين — فلا يُعَدُّ منها
-  // شيء. راجع scripts/normalizeReportedVia.js.
+  // Accident reporting party: Najm or Traffic. It was a free field, so 'Najm' was written in twenty-six incidents and the Arabic name in twenty-one, which made them uncountable. See scripts/normalizeReportedVia.js.
   vehicleList('vehicle_reported_via', 'جهة الإبلاغ عن الحادث', 'Accident Reported Via', [
     { key: 'najm', nameAr: 'نجم', nameEn: 'Najm' },
     { key: 'traffic', nameAr: 'المرور', nameEn: 'Traffic police' },
   ]),
 
-  // ── إدارة الأسطول — قوائم منسدلة قابلة للتعديل ────────────────────────────
+  // Fleet management: editable dropdown lists.
   {
     type: 'fleet_rent_type',
     module: 'fleet',
@@ -143,18 +132,15 @@ const REGISTRY = [
       { key: 'liquids', nameEn: 'Liquids', nameAr: 'سوائل' },
     ],
   },
-  // ── ملاحظاتُ المتابعة الجاهزة ─────────────────────────────────────────────
-  // ثمانيةُ سطورٍ كانت مكتوبةً في الشيفرة: يضغط المشرفُ عليها فتُملأ خانةُ
-  // الملاحظة بلمسة. وهي أكثرُ ما يُكتب في اليوم، فلمّا نقص سطرٌ يحتاجه الفريق
-  // («في الجمرك»، «تعطّل ونُقلت الحمولة») لم يكن له سبيلٌ إلّا نشرةُ برمجيّة.
-  // صارت قائمةً كسائر القوائم: تُزاد وتُحذف وتُرتَّب من إعدادات القسم.
+  // Ready follow-up notes.
+  // Eight lines were hard-coded: the supervisor taps one to fill the note field. They are the most-written text each day, and a missing line the team needed ('at customs', 'broke down and load transferred') required a code release. Now a normal list: added, deleted and ordered from the section settings.
   {
     type: 'fleet_followup_note',
     module: 'fleet',
     nameEn: 'Follow-up Quick Notes',
     nameAr: 'ملاحظات المتابعة الجاهزة',
     roles: FLEET_ROLES,
-    storeLabel: true,   // النصُّ نفسُه هو ما يُكتب في الملاحظة، لا مفتاحٌ يرمز إليه
+    storeLabel: true,   // The text itself is what is written in the note, not a key standing for it.
     seed: [
       { key: 'to_unload', nameEn: 'On the way to the unloading site', nameAr: 'في الطريق إلى موقع التنزيل' },
       { key: 'to_load', nameEn: 'On the way to the loading site', nameAr: 'في الطريق إلى موقع التحميل' },
@@ -166,18 +152,12 @@ const REGISTRY = [
       { key: 'unloading', nameEn: 'Unloading', nameAr: 'جارٍ التفريغ' },
     ],
   },
-  // ── قوائمُ الموارد البشريّة ────────────────────────────────────────────────
-  // ما كان يُكتب بالحرّيّة في خانةٍ نصّيّة فيصير في القاعدة عشرَ صيغٍ للشيء
-  // الواحد («سائق»، «سائق شاحنة»، «سايق») — فلا يُفلتَر ولا يُعدّ.
+  // HR lists.
+  // These were free text, so one thing had ten spellings ('driver', 'truck driver', a misspelling), which cannot be filtered or counted.
   /**
-   * ── قسمُ الموظّف: قائمةٌ لا خانةٌ حرّة ──────────────────────────────────────
-   * كانت تُكتب حرًّا، فصار في ملفّات الموظّفين ثمانيةٌ وعشرون «قسمًا»: «مؤامة»
-   * و«مواءمة» للشيء الواحد، و«B2C» و«b2c» و«ادارة B2C» ثلاثةً، وواحدٌ اسمُه
-   * «سامح» — وهو اسمُ رجلٍ لا قسم. فلا يُفلتَر القسمُ ولا يُعَدّ، ويُقرأ الملاكُ
-   * موزَّعًا على أقسامٍ لا وجودَ لها.
-   *
-   * والقائمةُ أقسامُ الشركة كما يعرفها أهلُها، لا أقسامُ النظام: لكلّ قسمٍ في
-   * النظام صفحةٌ، ولكنّ الموظّفين لا يُوزَّعون على الصفحات.
+   * Employee department: a list, not a free field.
+   * It was typed freely and the employee files held twenty-eight 'departments': two spellings of the same one, three of B2C, and one that was a person's name. So department could not be filtered or counted and headcount was spread over departments that do not exist.
+   * The list is the company's departments as its people know them, not the system sections: every system section has a page, but employees are not distributed by page.
    */
   {
     type: 'hr_department',
@@ -185,18 +165,13 @@ const REGISTRY = [
     nameEn: 'Departments',
     nameAr: 'الأقسام',
     /**
-     * ── والقائمةُ يملكها المديرُ العامّ وحدَه (صاحبُ الشركة، ٢٠٢٦/١٠/١٩) ──────
-     * القسمُ يُختار من القائمة في كلّ شاشة — الماستر وملفّ الموظّف والتطبيق —
-     * ولا يُكتب. وزيادةُ قسمٍ أو حذفُه أو تغييرُ اسمه من «البيانات المرجعيّة»
-     * للسوبر أدمن فقط. والاسمُ الجديدُ يسري على ملفّات موظّفيه (utils/hrLists)،
-     * والقسمُ الذي فيه موظّفون لا يُحذَف حتّى يُنقَلوا.
+     * The general manager alone owns this list.
+     * Department is chosen from the list on every screen (master, employee file, app), not typed. Adding, deleting or renaming one is for the super admin from reference data. A new name applies to its employees' files (utils/hrLists), and a department with employees cannot be deleted until they are moved.
      */
     superOnly: true,
     roles: [],
     storeLabel: true,
-    // أقسامُ الشركة كما هي في ملفّات الموظّفين بعد توحيدها (scripts/hrDepartmentsUnify.js):
-    // MD وCEO ← الإدارة · الكافيه ← الموارد البشرية · «ادارة B2C» ← B2C ·
-    // «بدون مشروع» ← بدون قسم. والمفاتيحُ القديمةُ باقيةٌ لأنّ تقييمَ الأداء يقرؤها.
+    // Company departments as in employee files after unification (scripts/hrDepartmentsUnify.js): MD and CEO to management, cafe to HR, the 'B2C management' variant to B2C, 'no project' to no department. Old keys remain because performance evaluation reads them.
     seed: [
       { key: 'management', nameEn: 'Management', nameAr: 'الإدارة' },
       { key: 'light_transport', nameEn: 'B2C', nameAr: 'B2C' },
@@ -215,14 +190,10 @@ const REGISTRY = [
       { key: 'no_department', nameEn: 'No department', nameAr: 'بدون قسم' },
     ],
   },
+  /** Job category for B2C and heavy transport employees: exactly three; the list belongs to the super admin alone, like departments. */
   /**
-   * ── الفئةُ الوظيفيّة لموظّفي B2C والنقل الثقيل ─────────────────────────────
-   * ثلاثٌ لا غير — والقائمةُ للسوبر أدمن وحدَه كقائمة الأقسام.
-   */
-  /**
-   * ── «فري لانسر» و«تدريب» — قيمتا «رقم السجل التجاري» لغير المكفولين ──────────
-   * الخانةُ تُختار ولا تُكتب (صاحبُ الشركة، ٢٠٢٦/١٠/٢٠): سجلّاتُنا (`hr_register`)
-   * ومعها هاتان. ومنها يُعرف نوعُ الموظّف (utils/hrEngagement).
+   * Freelance and training: values of 'commercial register number' for non-sponsored staff.
+   * The field is chosen, not typed: our registers (`hr_register`) plus these two. The employee type is derived from it (utils/hrEngagement).
    */
   {
     type: 'hr_register_kind',
@@ -244,9 +215,8 @@ const REGISTRY = [
     ],
   },
   /**
-   * ── سجلّاتُنا التجاريّة ────────────────────────────────────────────────────
-   * «على كفالتنا» = على سجلٍّ منها. منها يُختار السجلُّ عند تحويل فريلانسر إلى
-   * كفالتنا (POST /employees/:id/sponsor). والسجلّاتُ يملكها السوبر أدمن.
+   * Our commercial registers.
+   * 'Sponsored by us' means on one of them. The register is chosen from here when converting a freelancer to our sponsorship (POST /employees/:id/sponsor). The super admin owns the registers.
    */
   {
     type: 'hr_register',
@@ -256,12 +226,10 @@ const REGISTRY = [
       .map((n) => ({ key: `cr_${n}`, nameEn: n, nameAr: n })),
   },
   /**
-   * ── مشاريعُ الموظّفين (غيرُ مشاريع B2C) ────────────────────────────────────
-   * مشروعُ موظّف B2C يُختار من `lt_project` ويملكه قسمُ B2C. وهذه لبقيّة الموظّفين.
-   * وخيارُ «المشروع» في ملفّ الموظّف القائمتان معًا (utils/hrLists).
+   * Employee projects (not B2C projects).
+   * A B2C employee's project is chosen from `lt_project`, owned by the B2C section; this list is for other employees. The employee file's 'project' choice is both lists together (utils/hrLists).
    */
-  // شركاتُ المحتوى الإعلانيّ — لمن تطلب Media Go التصوير (٢٠٢٦/١٠/٢٢). و`energize`
-  // شركتُنا: الطلبُ لها يُختار فيه مركباتُ النقل الخفيف (mediagoAdController).
+  // Advertising content companies Media Go shoots for. `energize` is our own company: its request selects light transport vehicles (mediagoAdController).
   {
     type: 'mediago_ad_company',
     module: 'b2c', nameEn: 'Ad content companies', nameAr: 'شركات المحتوى الإعلاني',
@@ -283,10 +251,8 @@ const REGISTRY = [
       { key: 'training', nameEn: 'Training', nameAr: 'التدريب' },
     ],
   },
-  // ── وبقيّةُ خانات ملفّ الموظّف ذاتِ الاختيارات المحدودة ────────────────────
-  // «Saudi Arabia» و«السعودية» جنسيّةٌ واحدةٌ في خانتين، و«لايوجد» و«غير مطلوب»
-  // تصنيفان لشيءٍ واحد. والبذورُ ما هو مكتوبٌ فعلًا في الملفّات — لا قائمةٌ
-  // مُتخيَّلة — فما في الشاشة هو ما في السجلّ من أوّل يوم.
+  // Other employee file fields with limited choices.
+  // 'Saudi Arabia' and 'Saudi' are one nationality in two entries, and two labels meant the same 'none'. Seeds are what is actually written in the files, not an imagined list, so the screen matches the record from day one.
   {
     type: 'hr_nationality',
     module: 'hr', nameEn: 'Nationalities', nameAr: 'الجنسيات',
@@ -345,45 +311,27 @@ const REGISTRY = [
     ],
   },
   {
-    // ── حالةُ العقد تُكتب عند الإنهاء، لا تُترك لمن يفتح الملفّ بعد شهر ──────
-    //
-    // «حالة العقد» عمودٌ في ملفّ الموارد البشريّة يُقرأ ليُعرَف موقفُ الموظّف:
-    // أساري عقدُه أم أُنهي. وكان يُملأ من ملفّ الاستيراد وحدَه، ولا يكتبه إنهاءُ
-    // الخدمة من الشاشة — فمن أُنهيت خدمتُه في النظام بقي عموده فارغًا. أربعةٌ
-    // وأربعون من واحدٍ وستّين ليسوا على رأس العمل بلا حالةِ عقدٍ مكتوبة.
-    //
-    // وهو قائمةٌ لا نصٌّ حرّ: أربعُ حالاتٍ في الملفّ كلِّه، وكتابتُها باليد
-    // تجعلها أربعين صيغةً بعد شهر فلا تُفلتَر ولا تُعَدّ. ومن نقصه خيارٌ يزيده
-    // من القائمة نفسِها فيراه كلُّ من بعده.
+    // Contract status is written on termination.
+    // 'Contract status' is an HR file column read to know whether a contract is valid or ended. It was filled only by the import and not by terminating service from the screen, so an employee terminated in the system kept an empty column.
+    // It is a list, not free text: free typing would drift into dozens of spellings and become unfilterable and uncountable. A missing option is added from the same list for everyone.
     type: 'hr_contract_status',
     module: 'hr',
     nameEn: 'Contract Status',
     nameAr: 'حالة العقد',
     roles: ['hr_manager', 'hr_specialist'],
     storeLabel: true,
-    // ── وبألفاظ صفحة العقود لا بألفاظ ملفّ الاستيراد ────────────────────────
-    // الحالةُ مكتوبةٌ على العقد نفسِه (`Contract.status`) وتقرؤها صفحةُ العقود
-    // «ساري · منتهي» — حالتان لا غير منذ ٢٠٢٦/١٠/١٩، و«مفسوخ» منتهٍ. وكان الاستيرادُ يكتب في ملفّ الموظّف «تم انهاء
-    // العقد» و«غير ساري» — المعنى واحدٌ واللفظُ لفظان، فلا يُفلتَر عليهما معًا
-    // ولا يُعَدّان واحدًا. وُحِّدت على ألفاظ صفحة العقود لأنّ العقدَ هو المستند.
-    // راجع utils/contractStatus.
+    // Uses the contracts page wording, not the import file's.
+    // Status is written on the contract itself (`Contract.status`) and the contracts page reads it: valid or ended only, and 'terminated' counts as ended. The import wrote two labels with one meaning into the employee file, which cannot be filtered or counted together. Unified on the contracts page wording because the contract is the document. See utils/contractStatus.
     seed: [
       { key: 'active', nameEn: 'Active', nameAr: 'ساري' },
       { key: 'expired', nameEn: 'Expired', nameAr: 'منتهي' },
       { key: 'none', nameEn: 'None', nameAr: 'لا يوجد' },
     ],
   },
-  // ── قوائمُ طلبات الشحنات ──────────────────────────────────────────────────
-  // القسمُ وسيطٌ: يشتري الحمولةَ من مورّدٍ ويبيعها لعميل. وهذه مفرداتُ عمله
-  // اليوميّ — تُزاد وتُحذف من إعدادات القسم لا من نشرةٍ برمجيّة.
-  // ── حالاتُ الشحنة ─────────────────────────────────────────────────────────
-  // الحالةُ مفتاحٌ لا تسمية: التحليلاتُ تعدّ على `arrived`، والتنبيهاتُ تُطلق من
-  // `late`، والمنصّةُ الخارجيّة تتكلّم بهذه المفاتيح نفسِها. فالمفاتيحُ العشرةُ
-  // عقدٌ مكتوبٌ في الشيفرة (`utils/shipmentOrderStatuses`)، ولا تُحذَف من شاشة.
-  //
-  // والذي يُضبَط من هنا: **الاسمُ الظاهر، ولونُه، وترتيبُه، وأهو مُستعمَلٌ اليوم**
-  // — ومن احتاج حالةً حادية عشرةَ أضافها فتظهر في البطاقات وفي نموذج الإنشاء بلا
-  // نشرة. راجع `statusVocabulary` في `shipmentOrdersController`.
+  // Shipment orders lists.
+  // The section is a broker: it buys a load from a supplier and sells it to a customer. These are its daily vocabulary, edited from the section settings, not by a code release.
+  // Shipment status is a key, not a label: analytics count on `arrived`, alerts fire from `late`, and the external platform uses these same keys. So the ten keys are a contract in code (`utils/shipmentOrderStatuses`) and are never removed from a screen.
+  // What is configurable here is the display name, its color, its order and whether it is in use today. An eleventh status can be added and appears in cards and the create form with no release. See `statusVocabulary` in `shipmentOrdersController`.
   {
     type: 'so_status',
     module: 'shipment_orders',
@@ -403,8 +351,7 @@ const REGISTRY = [
       { key: 'cancelled', nameEn: 'Cancelled', nameAr: 'ملغاة', color: '#dc2626', order: 10 },
     ],
   },
-  // أسبابُ إلغاء الشحنة — لا تُلغى شحنةٌ بلا سبب، والقائمةُ تُدار من إعدادات القسم
-  // ويُضاف إليها من خانة الإلغاء نفسِها (صاحبُ الشركة، ٢٠٢٦/١٠/٢٢).
+  // Shipment cancellation reasons: a shipment is never cancelled without a reason. The list is managed from the section settings and can be extended from the cancel field itself.
   {
     type: 'so_cancel_reason',
     module: 'shipment_orders',
@@ -416,7 +363,7 @@ const REGISTRY = [
       { key: 'by_driver', nameEn: 'Cancelled by the driver', nameAr: 'إلغاء من السائق' },
       { key: 'by_customer', nameEn: 'Cancelled by the customer', nameAr: 'إلغاء من العميل' },
       { key: 'by_rep', nameEn: 'Cancelled by the representative', nameAr: 'إلغاء من المندوب' },
-      // Merged from a second registration of this type, which listed «إلغاء من العميل» twice.
+      // Merged from a second registration of this type, which listed the 'cancelled by customer' label twice.
       { key: 'no_truck', nameEn: 'No truck available', nameAr: 'لا تتوفّر شاحنة' },
       { key: 'price', nameEn: 'Price not agreed', nameAr: 'لم يُتّفق على السعر' },
       { key: 'duplicate', nameEn: 'Duplicate order', nameAr: 'طلب مكرّر' },
@@ -518,10 +465,8 @@ const REGISTRY = [
     roles: ['it_manager', 'it_specialist', 'hr_manager', 'hr_specialist'],
     seed: assetDefaults.CONDITION_SEED,
   },
-  // ── وباقاتُ خطوط الجوّال قائمةٌ تُدار ──────────────────────────────────────
-  // اسمُ الباقة يُكتب كما هو في عقد المزوّد («Business Ctrl Plus 200»)، وكتابتُه
-  // حرًّا في كلّ خطٍّ تعني تسعةً وسبعين تهجئةً لبضع باقات — ثمّ لا يُعرف كم خطًّا
-  // على كلّ باقة. فهي قائمةٌ يُختار منها، ويزيدها المزوّدُ حين يزيد.
+  // Mobile line plans are a managed list.
+  // A plan name is written as in the provider contract (e.g. 'Business Ctrl Plus 200'); typing it freely on each line produced seventy-nine spellings of a few plans, with no way to count lines per plan. So it is chosen from a list, and the provider's additions are added to it.
   {
     type: 'telecom_package',
     module: 'hr',
@@ -545,13 +490,9 @@ const REGISTRY = [
       { key: 'zain', nameEn: 'Zain', nameAr: 'زين' },
     ],
   },
-  // ── الفرعُ المسدِّد ─────────────────────────────────────────────────────────
-  // كان حقلًا حرًّا يُكتب بالبد، فدخلت فيه «جد» و«جدهخ» بجانب «جده» — وهي أخطاءُ
-  // كتابةٍ تُفرِّق صفوفًا هي فرعٌ واحد، فيقول التقريرُ تسعةَ فروعٍ ولدينا سبعة.
-  // وصار قائمةً تُدار من الإعدادات: تُختار ولا تُكتب.
-  //
-  // ويُخزَّن الاسمُ العربيُّ لا المفتاح (`storeLabel`) لأنّ عشرين ألفَ صفٍّ تحمله
-  // نصًّا منذ أوّل استيراد، وتقرؤه الفلاتر والتصديرات كما هو.
+  // Paying branch.
+  // It was a free field typed by hand, so typos of the Jeddah name sat beside the correct one and split rows of one branch; the report showed nine branches when there are seven. Now a managed list, chosen not typed.
+  // The Arabic name is stored, not the key (`storeLabel`), because twenty thousand rows hold it as text since the first import and filters and exports read it as is.
   {
     type: 'workflow_paying_branch',
     module: 'operations',
@@ -567,15 +508,12 @@ const REGISTRY = [
       { key: 'sudair', nameEn: 'Sudair', nameAr: 'سدير' },
       { key: 'rabigh', nameEn: 'Rabigh', nameAr: 'رابغ' },
       { key: 'jazan', nameEn: 'Jazan', nameAr: 'جازان' },
-      // النقلُ الثقيل يُعامَل فرعًا كغيره (٢٠٢٦/١٠/٢٦) — وبدونه كانت محفظتُه تسدّد
-      // ولا يُكتب فرعُها في «الفرع المسدد». راجع utils/payingBranch.
+      // Heavy transport is treated as a branch like the others; without it its wallet paid but no branch was written to 'paying branch'. See utils/payingBranch.
       { key: 'heavy_trucks', nameEn: 'Heavy Trucks', nameAr: 'النقل الثقيل' },
     ],
   },
-  // ── وجهةُ الكشف النهائيّة ────────────────────────────────────────────────
-  // الفرعُ الذي يستقرّ عنده الكشفُ في آخره. وهو من الفروع نفسِها، لكنّه سؤالٌ
-  // آخر غيرُ «مَن سدّد»: قد يُسدَّد في فرعٍ ويستقرّ ملفُّه في غيره. فقائمتان
-  // بالقيم نفسِها لا قائمةٌ واحدةٌ لعمودين، كي يُدار كلٌّ على حدة إن افترقا.
+  // Final destination of the sheet.
+  // The branch where the sheet ends up. It uses the same branches but answers a different question than who paid: payment can happen at one branch while the file settles at another. Two lists with the same values, not one list for two columns, so each can be managed separately if they diverge.
   {
     type: 'workflow_final_destination',
     module: 'operations',
@@ -594,10 +532,8 @@ const REGISTRY = [
       { key: 'heavy_trucks', nameEn: 'Heavy Trucks', nameAr: 'النقل الثقيل' },
     ],
   },
-  // ── قوائمُ التخليص الجمركيّ ────────────────────────────────────────────────
-  // الميناءُ والعملةُ ونوعُ الفاتورة وبلدُ المنشأ كانت حقولًا حرّةً تُكتب في كلّ
-  // معاملة. والقيمُ فيها قليلةٌ ومعروفة، فالكتابةُ الحرّةُ لا تضيف خيارًا بل
-  // تضيف صيغةَ كتابةٍ أخرى للشيء نفسِه.
+  // Customs clearance lists.
+  // Port, currency, invoice type and country of origin were free fields typed on every transaction. Their values are few and known, so free typing adds no option, only another spelling of the same thing.
   ...[
     ['customs_port', 'الموانئ', 'Ports', [
       { key: 'jeddah', nameAr: 'جدة', nameEn: 'Jeddah' },
@@ -628,14 +564,9 @@ const REGISTRY = [
       { key: 'egypt', nameAr: 'مصر', nameEn: 'Egypt' },
       { key: 'germany', nameAr: 'ألمانيا', nameEn: 'Germany' },
     ]],
-    // ── مراحلُ السداد ────────────────────────────────────────────────────
-    // كانت ثمانيَ خانةٍ مكتوبةً في المخطَّط، فمن أراد مرحلةً تاسعة انتظر نشرةً
-    // جديدة. صارت قائمةً تُدار من إعدادات القسم: تُضاف المرحلةُ وتُسمّى ويُعاد
-    // ترتيبُها، ويظهر ذلك في كلّ معاملة.
-    //
-    // و`transportInvoice` مرحلةٌ لها حكمٌ خاصّ: لا تُقفَل معاملةٌ قبل أن يكون
-    // لها تاريخٌ ومرفق (راجع `completeClearance`). فمفتاحُها يُقرأ في الشيفرة،
-    // ولذلك تبقى موجودةً ولو أُعيدت تسميتُها — والاسمُ وحدَه هو ما يُعدَّل.
+    // Payment stages.
+    // There were eight fields hard-coded in the schema, so a ninth stage needed a release. Now a list managed from the section settings: a stage is added, named and reordered, and shows on every transaction.
+    // `transportInvoice` is special: a transaction cannot be closed before it has a date and an attachment (see `completeClearance`). Its key is read in code, so it stays even if renamed; only the name is editable.
     ['customs_payment_stage', 'مراحل السداد', 'Payment Stages', [
       { key: 'doInvoiceEmailed', nameAr: 'مراسلة الوكيل بطلب فاتورة إذن التسليم', nameEn: 'DO invoice emailed' },
       { key: 'doInvoicePaid', nameAr: 'سداد فاتورة إذن التسليم', nameEn: 'DO invoice paid' },
@@ -643,8 +574,7 @@ const REGISTRY = [
       { key: 'dutyPaid', nameAr: 'سداد الرسوم الجمركية', nameEn: 'Customs duty paid' },
       { key: 'portFeesPaid', nameAr: 'سداد أجور الموانئ', nameEn: 'Port fees paid' },
       { key: 'unloadingFeesPaid', nameAr: 'سداد أجور التفريغ', nameEn: 'Unloading paid' },
-      // «إرجاع الحاويات» و«فاتورة الإرجاع» أُزيلتا بطلب القسم وحلّ محلَّهما
-      // «التمديد»؛ و«فاتورة النقل» صارت ثلاثةَ أجزاء — راجع REMOVED_DEFAULTS.
+      // Container return and return invoice were removed at the section's request and replaced by extension; the transport invoice became three parts. See REMOVED_DEFAULTS.
       { key: 'extension', nameAr: 'التمديد', nameEn: 'Extension' },
       { key: 'transportPortToCustomer', nameAr: 'فاتورة النقل من الميناء إلى العميل', nameEn: 'Transport: port → customer' },
       { key: 'transportPortToYard', nameAr: 'فاتورة النقل من الميناء إلى الساحة', nameEn: 'Transport: port → yard' },
@@ -657,11 +587,8 @@ const REGISTRY = [
       { key: 'labourExpenses', nameAr: 'مصاريف عمال', nameEn: 'Labour expenses' },
     ]],
     /**
-     * ── بنودُ فاتورة العميل ─────────────────────────────────────────────────
-     * «مراحل السداد» ما **ندفعه** نحن؛ وهذه ما **نفوتره للعميل** عند إقفال
-     * المعاملة. والبندُ الواحدُ قد يكون في القائمتين بسعرين مختلفين: فاتورةُ
-     * النقل نُسدّدها ١٨٠٠ ونفوترها ٢٢٠٠ — فما كان هنا يُؤخَذ سعرُه من هنا،
-     * ولا يُكرَّر سعرُ التكلفة في الفاتورة. راجع utils/customsInvoice.
+     * Customer invoice items.
+     * Payment stages are what we pay; these are what we invoice the customer at closing. The same item can be in both lists at different prices (the transport invoice is paid at 1800 and invoiced at 2200), so an item's price is taken from here and the cost price is not repeated in the invoice. See utils/customsInvoice.
      */
     ['customs_sale_item', 'بنود فاتورة العميل', 'Customer Invoice Items', [
       { key: 'transportInvoice', nameAr: 'فاتورة النقل', nameEn: 'Transport invoice' },
@@ -678,10 +605,8 @@ const REGISTRY = [
     roles: ['customs_manager', 'customs_officer', 'operations_manager'],
     storeLabel: true, seed,
   })),
-  // ── قوائمُ قسم التحصيل ─────────────────────────────────────────────────────
-  // كلُّ قائمةٍ منسدلةٍ في القسم تُدار من إعداداته. القيمُ قليلةٌ ومعروفة،
-  // والكتابةُ الحرّة فيها لا تضيف خيارًا بل صيغةَ كتابةٍ أخرى للشيء نفسِه —
-  // فيصير «متأخر» و«متاخر» حالتين في التقرير الواحد.
+  // Collections section lists.
+  // Every dropdown in the section is managed from its settings. Values are few and known, and free typing adds no option, only another spelling of the same thing (two spellings of 'late' become two statuses in one report).
   ...[
     ['collections_party_type', 'تصنيف الطرف', 'Party Types', [
       { key: 'company', nameAr: 'شركة', nameEn: 'Company' },
@@ -705,10 +630,8 @@ const REGISTRY = [
       { key: 'under_review', nameAr: 'تحت المراجعة', nameEn: 'Under review' },
       { key: 'legal', nameAr: 'إجراء قضائي', nameEn: 'Legal action' },
     ]],
-    // ── تفصيلُ التحصيل ─────────────────────────────────────────────────────
-    // «من أين وصلنا المال؟» سؤالٌ يُسأل عن كلّ كشفٍ نقديّ: قبضه الفرعُ، أو
-    // قُبض نقدًا في الطريق، أو ذهب المحصِّلُ إلى العميل فأخذه. وهي ثلاثةٌ اليوم
-    // وقد تصير أربعة — فمكانُها قائمةٌ تُدار لا ثلاثةُ أسطرٍ في الشيفرة.
+    // Collection detail.
+    // 'How did the money reach us?' is asked for every cash sheet: the branch received it, it was collected in cash on the road, or the collector went to the customer and took it. Three today, possibly four, so it belongs in a managed list, not three lines in code.
     ['collections_detail', 'تفاصيل التحصيل', 'Collection Details', [
       { key: 'branch', nameAr: 'تحصيل فرع', nameEn: 'Branch collection' },
       { key: 'cash', nameAr: 'تحصيل كاش', nameEn: 'Cash collection' },
@@ -735,29 +658,24 @@ const REGISTRY = [
     storeLabel: true, seed,
   })),
 
-  // ── النقلُ الخفيف: كلُّ خانةٍ ذاتِ اختياراتٍ ثابتة ──────────────────────────
-  // الشيتُ كان يكتبها حرًّا فجاءت الواحدةُ بصيغتين: «كفاله» و«كفالة»، و«دراجه
-  // ناريه» و«دراجة نارية»، و«غير مستخدم» و«غيرمستخدم» بلا مسافة. وكلُّ صيغةٍ
-  // تصير في التحليل بندًا مستقلًّا، فتُقسَم الأعدادُ على بنودٍ وهميّة.
-  //
-  // والبذورُ هي القيمُ الموجودةُ فعلًا في الداتا بعد توحيدها عند الاستيراد، لا
-  // قائمةٌ مُتخيَّلة — فما في الشاشة هو ما في السجلّ من أوّل يوم.
+  // Light transport: every field with fixed choices.
+  // The sheet typed them freely so one value had two spellings (sponsorship, motorbike, 'not used' with or without a space). Each spelling becomes a separate item in analysis, splitting counts across phantom items.
+  // Seeds are the values actually in the data after unification at import, not an imagined list, so the screen matches the record from day one.
   ...ltList('lt_project', 'مشاريع النقل الخفيف', 'Light-transport Projects',
     ['كيتا', 'امازون', 'هنجرستيشن', 'نينجا', 'صيانة', '(غير محدد)']),
   ...ltList('lt_city', 'فروع النقل الخفيف', 'Light-transport Branches', ['جدة', 'مكة المكرمة']),
   ...ltList('lt_job_title', 'وظائف النقل الخفيف', 'Light-transport Job Titles',
     ['مندوب', 'مشرف', 'إداري', 'ميكانيكي', 'عامل نظافة']),
   ...ltList('lt_contract_type', 'نوع التعاقد', 'Contract Types', ['كفالة', 'فري لانسر']),
-  // ورقمُ السجلّ التجاريّ الذي يكفل الموظّف — و«خارج النظام» لمن ليس على كفالتنا.
+  // The commercial register number that sponsors the employee; 'outside the system' for those not on our sponsorship.
   ...ltList('lt_register', 'السجلات التجارية', 'Commercial Registers',
     ['7025667531', '7038387267', '7012953373', 'خارج النظام']),
   ...ltList('lt_vehicle_type', 'أنواع مركبات النقل الخفيف', 'Light-transport Vehicle Types',
     ['دراجة نارية', 'فان', 'كيا', 'كيا بيجاز']),
   ...ltList('lt_work_status', 'حالات العمل', 'Work Statuses', ['يعمل', 'إجازة', 'متوقف', 'إنهاء خدمة']),
 
-  // ── قسمُ الأفراد: تفقُّد بداية الدوام ─────────────────────────────────────
-  // حالةُ المركبة تُقال من قائمةٍ لا تُكتب حرًّا: «سليمة» و«سليم» و«تمام» ثلاثةُ
-  // نصوصٍ لشيءٍ واحد، فيصير التحليلُ ثلاثةَ أعمدةٍ لحالةٍ واحدة.
+  // Individuals section: start-of-shift check.
+  // Vehicle condition is chosen from a list, not typed: three spellings of 'sound' would become three analysis columns for one condition.
   {
     type: 'b2c_vehicle_condition',
     module: 'b2c',
@@ -773,10 +691,8 @@ const REGISTRY = [
     ],
   },
 
-  // ── قوائمُ ورشة النقل الثقيل والمخزنين ─────────────────────────────────────
-  // ماركةُ الكاوتش ومقاسُه ووحدةُ الصنف كانت خاناتٍ حرّة: «ميشلان» و«Michelin»
-  // و«ميشلين» ثلاثُ ماركاتٍ في التقرير. فصارت قوائمَ تُدار من إعدادات القسم،
-  // ويُضاف إليها من الخانة نفسِها. ومخزنُ النقل الخفيف يقرأ قائمةَ الوحدات ذاتَها.
+  // Heavy transport workshop and store lists.
+  // Tire brand, size and item unit were free fields: three spellings of Michelin were three brands in the report. Now lists managed from the section settings and extendable from the field itself. The light transport store reads the same units list.
   ...[
     ['ls2_tire_brand', 'ماركات الكاوتش', 'Tyre brands', []],
     ['ls2_tire_size', 'مقاسات الكاوتش', 'Tyre sizes', []],
@@ -791,10 +707,8 @@ const REGISTRY = [
   })),
 ];
 
-// ── عناوينُ مهامّ خطّة العمل لكلّ قسم (صاحبُ الشركة، ٢٠٢٦/١٠/٢٢) ─────────────
-// المهمّةُ تُختار من قائمة القسم بدل نصٍّ حرٍّ — فتُجمَع في اليوميّة باسمٍ واحد
-// («الاجتماع» لا «اجتماع» و«إجتماع»). ويضيف إليها فريقُ القسم من الشاشة نفسِها.
-// والبذورُ للموارد البشريّة كما أعطاها صاحبُ الشركة.
+// Work-plan task titles per section.
+// A task is chosen from the section list instead of free text, so the daily log groups it under one name (not several spellings of 'meeting'). The section team adds to it from the same screen. HR seeds are as given by the owner.
 const HR_JP_TITLES = [
   'الاجتماع', 'تحديث المنصات', 'شهادة مواءمة', 'ترخيص لوجستي', 'تصريح الدفاع المدني', 'إضافة ٤ سعوديين',
   'مقابلة وظيفية', 'عمل جدول بالسيفيات الجديدة', 'متابعة سكن العاملين', 'متابعة سكن الموظفين', 'متابعة النظافة',
@@ -803,10 +717,8 @@ const HR_JP_TITLES = [
   'تغيير المهن', 'وضع الـ 67', 'مطابقة داخل النظام وخارج النظام', 'رخص السائقين', 'مطابقة وتحليل', 'تقرير',
   'جدول الحضور', 'جدول التدريب', 'جدول الجرد والمشتريات', 'السيستم', 'متابعة المتطلبات', 'متابعة ومراجعة الأعمال',
 ];
-// ── ولكلّ قسمٍ مهامُّ عمله (٢٠٢٦/١٠/٢٣) ──────────────────────────────────────
-// «كلّ قسم حسب القسم وحسب المهام اللي بتتمّ فيه» — بذورٌ من سير عمل كلّ قسم كما
-// هو في النظام، تُعدَّل وتُزاد من إعدادات القسم (وتُضاف من خانة المهمّة نفسِها).
-// والمفاتيحُ `s1…` منفصلةٌ عن بذور الموارد `t1…` فلا يتصادمان، والبذرُ لا يعيد ما حُذف.
+// Each section has its own work tasks: seeds from each section's workflow as it is in the system, editable and extendable from the section settings (and added from the task field itself).
+// Keys `s1...` are separate from the HR seeds `t1...` so they do not collide, and seeding does not restore deleted ones.
 const SECTION_JP_TITLES = {
   operations: ['مراجعة تقارير اليوم', 'متابعة سند لم يصل', 'متابعة شحنة في الطريق', 'إدخال تقارير جديدة', 'مطابقة قيمة الشراء', 'رفع الفواتير', 'متابعة مبلغ السداد', 'تحديث حالة الطلبات', 'التنسيق مع السائقين', 'مراجعة الملغاة'],
   collections: ['متابعة فاتورة متأخّرة', 'اتصال بعميل للتحصيل', 'إرسال كشف حساب', 'تسجيل دفعة مستلمة', 'مطابقة فواتير التحصيل', 'متابعة عميل تجاوز حدّ الائتمان', 'تسليم فواتير للعميل', 'تقرير التحصيل الأسبوعي'],
@@ -850,17 +762,9 @@ const writeRolesFor = (type) => {
 const canManage = (type, role) => writeRolesFor(type).includes(role);
 
 /**
- * قوائمُ هذا الدور — ما يخصُّه وحدَه.
- *
- * ── لماذا لا تُعرض كلُّها ──────────────────────────────────────────────────
- * كانت تُعاد كاملةً موسومةً بـ`canManage`، فيفتح مديرُ الأسطول الصفحةَ فيجد
- * قوائمَ الموارد البشريّة والمشتريات والمركبات أمامه. لا يعدّلها — الخادمُ
- * يمنعه — لكنّه يراها ويقرأ فيها ما ليس من شأنه، ويبحث عن قائمته بين ما لا
- * يعنيه. وليس هذا حجبًا أمنيًّا بقدر ما هو ترتيب: القائمةُ تعيش عند قسمِها.
- *
- * فالإدارةُ العليا وتقنيةُ المعلومات يرَون الجميع — هم أصحابُ الصفحة العامّة —
- * وكلُّ دورٍ آخر يرى ما يملك تعديلَه فقط. و`all` تُبقي الباب مفتوحًا لمن
- * يحتاج القائمةَ كاملةً عمدًا.
+ * The lists of this role: only those it owns.
+ * They used to be returned in full tagged `canManage`, so a fleet manager opening the page saw HR, procurement and vehicles lists, and searched for his own among what does not concern him. He could not edit them (the server blocks it), but he could read them. This is organization more than security: a list lives with its section.
+ * Top management and IT see all, being owners of the general page; every other role sees only what it can edit. `all` keeps the door open for anyone who needs the full list on purpose.
  */
 const GLOBAL_LOOKUP_ROLES = ['super_admin', 'admin', 'it_manager', 'it_specialist'];
 
@@ -883,7 +787,7 @@ const ensureDefaultLookups = async () => {
   for (const entry of REGISTRY) {
     for (let i = 0; i < (entry.seed || []).length; i++) {
       const row = entry.seed[i];
-      // يشمل المحذوفَ بشاهدة: وجودُ الشاهدة يعني «أُزيلت قصدًا» فلا تُعاد.
+      // Includes deleted entries that have a tombstone: a tombstone means 'removed on purpose', so they are not restored.
       const exists = await Lookup.findOne({ type: entry.type, key: row.key }).select('_id deleted').lean();
       if (!exists) {
         await Lookup.create({
@@ -904,19 +808,15 @@ const ensureDefaultLookups = async () => {
 };
 
 /**
- * ── قيمٌ مبذورةٌ أُزيلت ─────────────────────────────────────────────────────
- * تُعلَّم محذوفةً (شاهدةُ قبر) فتختفي من القائمة ولا يعيدها البذر. والإدخالاتُ
- * القديمةُ التي تحملها في المعاملات تبقى مقروءةً كما هي — الاسمُ ملقوطٌ فيها.
- * لا تمسّ إلّا الصفَّ المبذور (`isSystem`) — ما أضافه المديرُ بيده بمفتاحٍ آخر يبقى.
+ * Removed seeded values.
+ * Marked deleted (tombstone) so they disappear from the list and seeding does not bring them back. Old entries that carry them in transactions stay readable as they are, since the name is captured in them. Only the seeded row (`isSystem`) is touched; anything the manager added by hand under another key stays.
  */
 const REMOVED_DEFAULTS = [
-  // بطلب قسم التخليص (٢٠٢٦-١٠-١٩): الإرجاعُ وفاتورتُه يحلّ محلَّهما «التمديد»،
-  // و«فاتورة النقل» صارت ثلاثةَ أجزاءٍ لكلٍّ منها بندُه في التكاليف.
+  // Customs section change: return and its invoice are replaced by extension, and the transport invoice became three parts, each with its own cost item.
   ['customs_payment_stage', 'containersReturned'],
   ['customs_payment_stage', 'returnInvoiceDate'],
   ['customs_payment_stage', 'transportInvoice'],
-  // so_cancel_reason was registered twice: 'customer' duplicated 'by_customer' («إلغاء من العميل»).
-  // Orders store the label, so retiring the key changes no saved shipment.
+  // so_cancel_reason was registered twice: 'customer' duplicated 'by_customer' (cancelled by customer). Orders store the label, so retiring the key changes no saved shipment.
   ['so_cancel_reason', 'customer'],
 ];
 const applyRemovedDefaults = async () => {
@@ -927,15 +827,11 @@ const applyRemovedDefaults = async () => {
 };
 
 /**
- * ── اسمٌ افتراضيٌّ صُحِّح ──────────────────────────────────────────────────
- * البذرُ لا يكتب فوق ما في القاعدة، فتصحيحُ اسمٍ في القائمة أعلاه لا يبلغ صفًّا
- * بُذِر من قبل. فيُذكَر التصحيحُ هنا: الصفُّ الذي ما زال يحمل الاسمَ القديمَ
- * **حرفًا بحرف** يأخذ الجديد (ومعه لقطاتُه — راجع services/customsLookupSync)،
- * وما غيّره مديرُ القسم بيده من الإعدادات لا يُمسّ. تُنفَّذ مرّةً ثمّ لا تجد
- * ما تغيّره.
+ * Default name corrected.
+ * Seeding does not overwrite what is in the database, so renaming above does not reach an already seeded row. The correction is listed here: a row still holding the old name exactly gets the new one (with its snapshots, see services/customsLookupSync), and anything the section manager changed by hand in settings is untouched. It runs once and then finds nothing to change.
  */
 const DEFAULT_RENAMES = [
-  // أسماءٌ عامّيّةٌ أو ناقصةٌ في مراحل سداد التخليص — بطلب صاحب الشركة: فصحى.
+  // Colloquial or incomplete names in customs payment stages, replaced with standard Arabic.
   ['customs_payment_stage', 'doInvoiceEmailed', 'ميل فاتورة إذن التسليم', 'مراسلة الوكيل بطلب فاتورة إذن التسليم'],
   ['customs_payment_stage', 'doLinkEmailed', 'ميل ربط إذن التسليم', 'مراسلة الوكيل بطلب ربط إذن التسليم'],
   ['customs_payment_stage', 'portFeesPaid', 'سداد الموانى', 'سداد أجور الموانئ'],

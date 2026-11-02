@@ -319,7 +319,7 @@ exports.listThreads = async (req, res) => {
     const [allEmps, archSets] = await Promise.all([User.find(
       ids === null ? { role: 'remote_employee' } : { _id: { $in: ids } }
     ).select('firstName lastName email').lean(), endedStaff()]);
-    // حسابُ المؤرشَف لا محادثةَ له في القائمة — كأنّه حُذف.
+    // An archived account has no conversation in the list, as if deleted.
     const employees = allEmps.filter((u) => !userArchived(archSets, u));
 
     const threads = await Promise.all(
@@ -677,9 +677,8 @@ exports.listEmployees = async (req, res) => {
 };
 
 /**
- * تعديل إعلان — الإعلان الذي فيه خطأٌ يُصحَّح لا يُحذف ويُعاد.
- * حذفُه وإعادة نشره يُرسل إشعارًا ثانيًا لكلّ الفريق عن الخبر نفسه، فيُقرأ
- * الثاني على أنّه خبرٌ جديد. ولذلك لا يُشعَر عند التعديل.
+ * Edit an announcement: one with a mistake is corrected, not deleted and reposted.
+ * Deleting and reposting sends the whole team a second notification for the same news, read as new. So no notification is sent on edit.
  */
 exports.updateAnnouncement = async (req, res) => {
   try {

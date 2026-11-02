@@ -1,16 +1,7 @@
 /**
- * النظرة التنفيذية — الشركةُ كلُّها في شاشةٍ واحدة، حيّة.
- *
- * ── لماذا أُعيد بناؤها ────────────────────────────────────────────────────────
- * كانت الصفحةُ تنادي ثماني نقاطٍ من المتصفّح، أوّلُها لوحةُ «العملاء والمالية»
- * التي تقرأ `Invoice`/`Payment` — جدولين لا يكتب فيهما أحدٌ منذ زال ذلك القسم
- * — فتعرض أصفارًا، وتُفتح بطاقاتُها على اثنتي عشرة صفحةً حُذفت. وكانت تسمع خمسةَ
- * أحداثٍ من عشرات، فلا تتحرّك لأغلب ما يجري.
- *
- * فصارت نقطةً واحدةً على الخادم تجمع كلَّ قسمٍ من مصدره الحيّ نفسِه — الأرقامُ
- * الماليّةُ من الإدارة الماليّة (نفسُ حمولتها)، والتشغيليّةُ من لوحة كلّ قسم —
- * وكلُّ بطاقةٍ تُفتح على صفحةٍ موجودة. وأيُّ حدثٍ في أيّ قسمٍ يمسح مخزنَها
- * ويبثّ `executive:changed` (websocket/socketManager).
+ * Executive overview: the whole company on one live screen.
+ * It was rebuilt because the old page called eight endpoints, the first reading `Invoice`/`Payment` which nobody writes any more, so it showed zeros and its cards opened deleted pages.
+ * One server endpoint now aggregates each section from its live source (finance numbers from finance, operations from each section dashboard); any section event clears its cache and broadcasts `executive:changed` (websocket/socketManager).
  */
 const cache = require('../utils/ttlCache');
 const finance = require('./financeController');
@@ -153,7 +144,7 @@ async function build(user) {
         kpi('طلبات إجازة معلّقة', 'Pending leaves', hr?.summary?.pendingLeaves, { href: '/system/hr/leaves' }),
         kpi('تراخيص تنتهي', 'Licences expiring', hr?.summary?.licensesExpiringCount, { tone: 'warn', href: '/system/hr/licenses' }),
       ],
-      // على رأس العمل وحدَهم — المنتهون في لوحة الموارد البشريّة لا هنا.
+      // Active staff only: ended ones appear in the HR dashboard, not here.
       chart: { kind: 'bar', ar: 'الموظفون على رأس العمل حسب القسم', data: (hr?.activeByDepartment || hr?.byDepartment || []).slice(0, 10).map((x) => ({ name: x.name, value: x.count })) },
     },
     {
@@ -192,7 +183,7 @@ async function build(user) {
   return {
     generatedAt: new Date(),
     sections,
-    // قراءةٌ مسطّحة لبطاقات الشاشة الرئيسية في التطبيق (HomeInsight).
+    // Flat read for the home screen cards in the app (HomeInsight).
     headline: {
       sheetsMonth, receivable: card(fCol, 'ledgerOutstanding'), collectedMonth: perfCollected,
       walletCollectionsToday: branches.reduce((a, b) => a + (b.totalCollections || 0), 0),
@@ -203,7 +194,7 @@ async function build(user) {
 
 exports.overview = async (req, res) => {
   try {
-    // النظرةُ التنفيذيّة تُقدَّم فورًا وتُجدَّد في الخلف — لا انتظارَ عند انتهاء المهلة.
+    // The executive overview is served immediately and refreshed in the background, with no wait when the TTL expires.
     res.json(await cache.wrapStale('exec:overview', TTL, 15 * 60 * 1000, () => build(req.user)));
   } catch (e) {
     console.error('executive overview', e);

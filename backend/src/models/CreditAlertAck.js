@@ -1,22 +1,14 @@
 /**
- * إسكاتُ تنبيهٍ — «رأيناه، ولا داعيَ لتكراره».
- *
- * ── لماذا سجلٌّ للإسكات لا حقلٌ على التنبيه ───────────────────────────────
- * التنبيهاتُ لا تُخزَّن: «اقترب من حدّه» و«يستحقّ بعد يومين» تُحسبان من الرصيد
- * والتواريخ في كلّ مرّةٍ تُفتح فيها الصفحة — وهو الصواب، فالتنبيهُ المخزَّن
- * يصدق يومَ كُتب ويكذب غدًا.
- *
- * فما يُخزَّن هو القرارُ البشريُّ وحدَه: أنّ فلانًا رأى هذا التنبيهَ بعينه
- * وأغلقه. ويُقيَّد بما يجعله يعود إذا تغيّر الحال — فإسكاتُ تنبيهِ حدٍّ عند
- * مديونيّةِ ٩٠٪ لا يُسكته حين تبلغ ١٢٠٪.
+ * Alert snooze: "seen, no need to repeat".
+ * Alerts are not stored; "near its limit" and "due in two days" are computed from balances and dates on each page open, since a stored alert is true when written and false tomorrow. Only the human decision is stored: that someone saw this specific alert and closed it. It is keyed so it returns if conditions change: snoozing a limit alert at 90% utilisation does not snooze it at 120%.
  */
 const mongoose = require('mongoose');
 
 const creditAlertAckSchema = new mongoose.Schema({
   party: { type: mongoose.Schema.Types.ObjectId, ref: 'CollectionsParty', required: true, index: true },
-  // 'limit' اقترابٌ من حدّ الائتمان · 'due' اقترابُ موعد الاستحقاق
+  // 'limit' = nearing credit limit; 'due' = nearing due date
   kind: { type: String, enum: ['limit', 'due'], required: true },
-  // ما أُسكت عليه: للحدِّ رصيدُه لحظةَ الإسكات، وللاستحقاق رقمُ الفاتورة.
+  // What was snoozed on: for limit, the balance at that moment; for due, the invoice number.
   atOutstanding: { type: Number, default: 0 },
   invoiceNumber: { type: String, trim: true, default: '' },
   note: { type: String, trim: true, default: '' },

@@ -1,31 +1,14 @@
 const mongoose = require('mongoose');
 
-// إدارة العقود — the contracts department's own registry, SEPARATE from HR
-// contracts (those are employment contracts). Four collections:
-//
-//   ContractVendor     — the 3PL supplier master list (the ماستر شيت): one row
-//                        per vendor with its contract state, fleet, rep, docs,
-//                        deep profile tables and the attached contract files.
-//   VendorUtilisation  — one row per vendor per MONTH: orders executed, fleet
-//                        capacity, utilisation %, share of Energize volume.
-//                        The analysis screens are computed from these rows, so
-//                        importing/entering a new month updates every ranking
-//                        automatically.
-//   ContractProspect   — cold-outreach log: companies contacted but not yet
-//                        contracted (تنشيط الموردين).
-//   DeptContract       — contracts of OTHER departments (fleet customers, B2C
-//                        customers, 3PL customers…): a generic register with
-//                        attachments, so every company contract lives here.
-//
-// Vendor names are Arabic free text and spelling differs between sources, so
-// every collection carries nameKey — the folded/normalised join key.
+// Contracts management: the contracts department registry, separate from HR employment contracts. Collections: ContractVendor (3PL supplier master), VendorUtilisation (one row per vendor per month; analysis screens compute from it), ContractProspect (outreach log), DeptContract (other departments contracts).
+// Vendor names are free text spelled differently across sources, so every collection carries nameKey, the folded join key.
 
 const attachmentSchema = new mongoose.Schema({
   fileUrl: { type: String, required: true },
   fileName: { type: String, default: '' },
   mimeType: { type: String, default: '' },
   size: { type: Number, default: 0 },
-  title: { type: String, default: '' },       // "عقد موقع" / "سجل تجاري" …
+  title: { type: String, default: '' },       // Contract type, e.g. site contract / commercial register
   uploadedByName: { type: String, default: '' },
   uploadedAt: { type: Date, default: Date.now },
 }, { _id: true });
@@ -34,14 +17,14 @@ const attachmentSchema = new mongoose.Schema({
 const contractVendorSchema = new mongoose.Schema({
   name: { type: String, required: true, trim: true },
   nameKey: { type: String, required: true, unique: true, index: true },
-  energizeRep: { type: String, default: '' },       // مندوب التنشيط
-  operationsRep: { type: String, default: '' },     // مندوب التشغيل
-  vendorType: { type: String, default: '' },        // ضريبي / آجل / كاش …
+  energizeRep: { type: String, default: '' },       // Outreach rep
+  operationsRep: { type: String, default: '' },     // Operations rep
+  vendorType: { type: String, default: '' },        // Tax / credit / cash ...
   contactPerson: { type: String, default: '' },
   phone: { type: String, default: '' },
   headquarters: { type: String, default: '' },
   destinations: { type: String, default: '' },
-  coverage: { type: String, default: '' },          // شاملة / جزئية (derived or manual)
+  coverage: { type: String, default: '' },          // Full / partial (derived or manual)
   fleetSize: { type: Number, default: 0 },
   vehicleTypes: { type: String, default: '' },
   avgMonthlyLoadsPerVehicle: { type: Number, default: 15 },
@@ -51,15 +34,15 @@ const contractVendorSchema = new mongoose.Schema({
   vendorSideContract: { type: Boolean, default: false },
   ourSideContract: { type: Boolean, default: false },
   documentsReceived: { type: Boolean, default: false },
-  missingDocuments: { type: String, default: '' },  // "السجل ورقم الايبان" …
+  missingDocuments: { type: String, default: '' },  // Which document, e.g. register and IBAN
   contractDate: { type: Date, default: null },
   renewalPolicy: { type: String, default: 'تلقائي ما لم يصدر إشعار بعدم الرغبة' },
   paymentTermDays: { type: Number, default: 30 },
   pricingNotes: { type: String, default: '' },
-  operationalStatus: { type: String, default: '' }, // نشط / متوقف …
+  operationalStatus: { type: String, default: '' }, // Active / stopped ...
   followUpNotes: { type: String, default: '' },
   notes: { type: String, default: '' },
-  // تقييم يدوي من مدير القسم (1..5) فوق الترتيب المحسوب من التشغيل.
+  // Manual rating by the department manager (1..5) on top of the ranking computed from operations.
   rating: { type: Number, min: 1, max: 5, default: null },
   ratingNotes: { type: String, default: '' },
   attachments: [attachmentSchema],
@@ -84,10 +67,9 @@ const vendorUtilisationSchema = new mongoose.Schema({
   fleetSize: { type: Number, default: 0 },
   expectedMonthlyCapacity: { type: Number, default: 0 },
   hasContract: { type: Boolean, default: false },
-  vendorType: { type: String, default: '' },        // آجل / كاش / خارجي …
+  vendorType: { type: String, default: '' },        // Credit / cash / external ...
   operationsRep: { type: String, default: '' },
-  // «أفراد خارجية» — the no-contract individuals bucket rides in this table as
-  // one special row per month (isExternal) so shares always add up to 100%.
+  // The no-contract external individuals bucket is stored as one special row per month (isExternal) so shares always add up to 100%.
   isExternal: { type: Boolean, default: false },
 }, { timestamps: true });
 
@@ -103,46 +85,32 @@ const contractProspectSchema = new mongoose.Schema({
   headquarters: { type: String, default: '' },
   destinations: { type: String, default: '' },
   vehicleType: { type: String, default: '' },
-  interestStatus: { type: String, default: '' },    // مهتم / غير مهتم / متابعة …
+  interestStatus: { type: String, default: '' },    // Interested / not interested / following up ...
   isInterested: { type: Boolean, default: null },
   contactDate: { type: Date, default: null },
-  assignedTo: { type: String, default: '' },        // من يتابعها
+  assignedTo: { type: String, default: '' },        // Who follows it
   notes: { type: String, default: '' },
-  // متى تحوّلت لمورد فعلي — يُختم عند الترقية فيختفي من قائمة التنشيط.
+  // When it became an actual vendor; stamped on promotion so it leaves the outreach list.
   convertedVendor: { type: mongoose.Schema.Types.ObjectId, ref: 'ContractVendor', default: null },
 }, { timestamps: true });
 
-// ---- DeptContract -----------------------------------------------------------
-// ---- ContractCustomer -------------------------------------------------------
-//
-// ── ولماذا سجلٌّ للعملاء في قسم العقود ────────────────────────────────────────
-// القسمُ كان يعرف نصفَ عمله: سجلُّ المورّدين كاملٌ بعقودهم ووثائقهم وحصصهم، وأمّا
-// العملاءُ — الطرفُ الآخر من كلّ صفقة — فلا سجلَّ لهم إلّا صفوفًا في «عقود
-// الأقسام» يبحث عنها بالاسم. فسؤالٌ يُسأل كلَّ أسبوع، «فلانٌ عقدُه موقَّعٌ وإلى
-// متى؟»، لا جوابَ له إلّا في ورقة.
-//
-// والعميلُ موجودٌ في النظام في أكثرَ من مكان (العلاقات، التحصيل، الكشوف)، ولكلّ
-// موضعٍ سؤالُه. وسؤالُ العقود واحد: **أموقَّعٌ عقدُه، وبأيّ شروط، وإلى متى، وماذا
-// يشحن معنا فعلًا؟** فالسجلُّ هنا يجيب عن الأوّلَين ويقرأ الأخيرَين من مصدرهما —
-// لا يُنسخ رقمٌ يشيخ.
-//
-// والربطُ بالاسم المطويّ (`nameKey`) كما في المورّدين: الاسمُ يُكتب بأشكالٍ في
-// الشيتات، وهو ما يجعل الصفَّ الواحد واحدًا.
+// ContractCustomer: customer register in the contracts section (vendors had one; customers were only DeptContract rows found by name).
+// It answers whether a contract is signed and on what terms, and reads shipping volume from its source instead of copying numbers that age.
+// Linked by the folded name (`nameKey`) as with vendors.
 const contractCustomerSchema = new mongoose.Schema({
   name: { type: String, required: true, trim: true },
   nameKey: { type: String, required: true, unique: true, index: true },
-  sector: { type: String, default: '' },            // القطاع: مقاولات، أغذية…
-  customerType: { type: String, default: '' },      // ضريبي / كاش / آجل
+  sector: { type: String, default: '' },            // Sector: contracting, food ...
+  customerType: { type: String, default: '' },      // Tax / cash / credit
   contactPerson: { type: String, default: '' },
   phone: { type: String, default: '' },
   email: { type: String, default: '' },
   headquarters: { type: String, default: '' },
-  energizeRep: { type: String, default: '' },       // مندوبُنا لديه
+  energizeRep: { type: String, default: '' },       // Our rep has
   crNumber: { type: String, default: '' },
   taxNumber: { type: String, default: '' },
 
-  // حالةُ العقد — توقيعان ووثائق، كما في المورّدين تمامًا. والتماثلُ مقصود: من
-  // يقرأ الشاشتين يقرأ الشيءَ نفسَه في الموضعين.
+  // Contract state: signatures and documents, identical to vendors on purpose so both screens read the same.
   customerSideContract: { type: Boolean, default: false },
   ourSideContract: { type: Boolean, default: false },
   documentsReceived: { type: Boolean, default: false },
@@ -153,7 +121,7 @@ const contractCustomerSchema = new mongoose.Schema({
   renewalPolicy: { type: String, default: 'تلقائي ما لم يصدر إشعار بعدم الرغبة' },
   paymentTermDays: { type: Number, default: 30 },
   pricingNotes: { type: String, default: '' },
-  operationalStatus: { type: String, default: '' }, // نشط / متوقف …
+  operationalStatus: { type: String, default: '' }, // Active / stopped ...
   followUpNotes: { type: String, default: '' },
   notes: { type: String, default: '' },
   attachments: [attachmentSchema],
@@ -170,13 +138,13 @@ const deptContractSchema = new mongoose.Schema({
   contactPerson: { type: String, default: '' },
   phone: { type: String, default: '' },
   email: { type: String, default: '' },
-  subject: { type: String, default: '' },           // موضوع العقد / الخدمة
+  subject: { type: String, default: '' },           // Contract subject / service
   contractDate: { type: Date, default: null },
   startDate: { type: Date, default: null },
   endDate: { type: Date, default: null },
   renewalPolicy: { type: String, default: '' },
   paymentTermDays: { type: Number, default: null },
-  value: { type: Number, default: null },           // القيمة إن وُجدت
+  value: { type: Number, default: null },           // Value, if any
   status: { type: String, enum: ['draft', 'active', 'expired', 'terminated'], default: 'active' },
   notes: { type: String, default: '' },
   attachments: [attachmentSchema],
@@ -186,7 +154,7 @@ const deptContractSchema = new mongoose.Schema({
 
 deptContractSchema.index({ department: 1, status: 1 });
 
-// ── العميلُ واحدٌ في كلّ الأقسام — رابطُه إلى شركة العلاقات الأمّ (services/customerHub) ──
+// One customer across all sections: link to the parent CRM company (services/customerHub)
 contractCustomerSchema.add({ crmCompany: { type: mongoose.Schema.Types.ObjectId, ref: 'CrmCompany', default: null, index: true } });
 // Copy of the master's customer code (utils/customerCode).
 contractCustomerSchema.add({ customerCode: require('../utils/customerCode').codeField() });

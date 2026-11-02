@@ -1,20 +1,6 @@
 /**
- * قسمُ التحصيل — العملاءُ الذين نحصّل منهم، والموردون الذين نسدّد لهم.
- *
- * ── من أين تأتي الأرقام ────────────────────────────────────────────────────
- * لا من جدولٍ ثانٍ يُملأ باليد. عملُ القسم اليوميّ هو كشوفُ سير عمل التشغيل
- * نفسُها: قيمةُ البيع مستحقٌّ على العميل، وقيمةُ الشراء مستحقٌّ للمورّد، و«تاريخ
- * التحصيل» و«تاريخ السداد» هما ما يقول أيُّهما أُغلق. فالسجلُّ هنا هو الطرف،
- * والأرقامُ تُجمَع من الكشوف — لا تُنسَخ إليها.
- *
- * ونسخُها كان سيعني رقمين لشيءٍ واحد: يُعدَّل الكشفُ فيبقى ملفُّ العميل يقول
- * القديم، ولا يُعرف أيُّهما الصحيح.
- *
- * ── ولماذا التجميعُ في القاعدة ─────────────────────────────────────────────
- * أربعةٌ وثلاثون ألفَ كشفٍ لا تُنقَل إلى العقدة لتُجمَّع فيها: العنقودُ مقيَّدُ
- * النطاق، والنقلُ هو الثمنُ لا الحساب. تُجمَّع في القاعدة فتعود ٢٧٧ صفًّا
- * للعملاء و٢١٢٩ للموردين، ويُطوى الرسمُ العربيّ فوقها في العقدة — وهي مئاتٌ
- * لا آلاف.
+ * Collections department: customers we collect from and suppliers we pay. Figures are aggregated from the operations workflow statements, not copied into a second table, so editing a statement cannot leave the party file stale.
+ * Aggregation runs in the database: about 34k statements are not moved to Node, only the 277 customer and 2129 supplier rows are folded there.
  */
 const mongoose = require('mongoose');
 const CollectionsParty = require('../models/CollectionsParty');
@@ -38,20 +24,16 @@ const {
 const CACHE_PREFIX = 'collections-dept:';
 const STATS_TTL = 60 * 1000;
 
-// الحقلُ الذي يحمل اسمَ الطرف في الكشف. العميلُ هو «اسم المستخدم» على المنصّة،
-// والموردُ هو **مالكُ السيارة** — لا اسمُ السائق: السائقُ يُستأجر والمالكُ
-// يُحاسَب، ونحن ندفع لمن يملك الشاحنة.
+// The field holding the party name in the statement. The customer is the platform 'user name'; the supplier is the vehicle owner, not the driver name: drivers are hired but the owner is paid, and we pay whoever owns the truck.
 const FIELD_OF = { customer: 'username', supplier: 'carOwner' };
 
-// اتّجاهُ المال: العميلُ يدفع لنا قيمةَ البيع، والموردُ نأخذ منه بقيمة الشراء.
+// Money direction: the customer pays us the sale value; from the supplier we take the purchase value.
 const VALUE_OF = { customer: 'sellingValue', supplier: 'purchaseValue' };
 
-// وما يقول إنّ الصفَّ أُغلق: العميلُ يُغلق بتاريخ التحصيل، والموردُ بتاريخ
-// السداد. وخلطُهما يجعل فاتورةً حُصِّلت تبدو مسدَّدةً لمورّدٍ لم يقبض شيئًا.
+// What marks a row closed: customer by collection date, supplier by payment date. Mixing them makes a collected invoice look paid to a supplier who received nothing.
 const CLOSED_BY = { customer: 'collectionDate', supplier: 'paymentDate' };
 
-// الكشفُ الملغى لم يُنفَّذ ولم يصل عنه مالٌ ولا يُدفع عنه شيء — فعدُّه في
-// المستحقّ يقيّد دَينًا لا وجودَ له. ويُستثنى من الطرفين معًا.
+// A cancelled statement was not executed and no money moved, so counting it as due records a debt that does not exist. Excluded from both sides.
 const NOT_CANCELLED = {
   executionStatus: { $nin: ['ملغي', 'ملغى', 'ملغاة', 'cancelled', 'canceled', 'Cancelled'] },
 };
@@ -61,13 +43,10 @@ const EDITABLE = [
   'accountantPhone', 'commercialRegister', 'taxNumber', 'iban', 'bankName',
   'address', 'city', 'partyType', 'paymentType', 'paymentTerms', 'creditLimit', 'status',
   'assignedTo', 'lastContactAt', 'nextFollowUpAt', 'notes', 'isActive',
-  // ── حقولُ دفتر التحصيل ──────────────────────────────────────────────────
-  // تُقرأ في سجلّ الأعمار وفي التنبيهات، فلا بدّ أن تُصحَّح من ملفّ العميل:
-  // رفعُ الحدّ الائتمانيّ ونقلُ الحساب إلى موظّفٍ آخر عملٌ يوميّ، وما يُقرأ
-  // ولا يُصحَّح يبقى خطأً إلى الأبد.
+  // Collections ledger fields. Read in the aging log and alerts, so they must be correctable from the customer file: raising the credit limit or moving the account to another employee is daily work, and what is read but not correctable stays wrong forever.
   'code', 'collectionOfficer', 'officer', 'hoLocation', 'grade', 'salesManagers',
   'department', 'region', 'creditDays', 'aliases',
-  // أكثرُ من بريد — راجع utils/partyEmails.
+  // More than one email; see utils/partyEmails.
   'emails',
 ];
 const pick = (body) => {
@@ -78,7 +57,7 @@ const pick = (body) => {
 
 const r2 = (v) => Math.round((Number(v) || 0) * 100) / 100;
 
-// مسؤولُ التحصيل الفعليّ — الموظّفُ المكتوب، وإلّا مديرُ القسم. راجع utils/collectionsOfficer.
+// Actual collections officer: the written employee, otherwise the department manager. See utils/collectionsOfficer.
 const { collectionsManager, officerCondition, effectiveOfficer, isDefaultOfficer } = require('../utils/collectionsOfficer');
 const officerView = (p, mgr) => (p.kind === 'supplier' ? {} : {
   effectiveOfficer: effectiveOfficer(p.collectionOfficer, mgr),
@@ -86,27 +65,17 @@ const officerView = (p, mgr) => (p.kind === 'supplier' ? {} : {
 });
 
 /**
- * ── مَن يقتصر على «ما لنا» ──────────────────────────────────────────────────
- *
- * قسمُ التحصيل يُحصِّل؛ وما ندفعه للموردين والصافيُ بينهما شأنُ الإدارة والمالية.
- *
- * وأُخفيت أوّلًا في الشاشة وحدَها — فبقي الخادمُ يرسل «المستحقّ علينا» وأكبرَ
- * الموردين وتقادمَهم وعمودَ الفرع، تُقرأ في أدوات المتصفّح وتخرج في أيّ تصدير.
- * والحجبُ في مكانٍ واحدٍ حجبٌ في نصف الطريق، ويُقرأ أسوأَ من غيابه: مَن رآه
- * مخفيًّا حسبه محجوبًا. فالقاعدةُ هنا، والشاشةُ تتبعها.
- *
- * وهي بالدور لا بالقسم: الإدارةُ والماليةُ ومديرُ العمليات يفتحون القسمَ نفسَه
- * ويرَون الوجهين.
+ * Who is limited to 'what is ours'.
+ * Collections collects; what we pay suppliers and the net between them is for management and finance. It was first hidden in the screen only, while the server still sent 'due from us', the top suppliers, their aging and the branch column, readable in browser tools and any export. Hiding in one place is hiding halfway, and reads worse than absence: those who see it hidden assume it is blocked. So the rule lives here and the screen follows it.
+ * It is by role, not section: management, finance and the operations manager open the same section and see both sides.
  */
 const RECEIVABLES_ONLY_ROLES = ['collections_manager', 'collections_staff'];
 const receivablesOnly = (user) => RECEIVABLES_ONLY_ROLES.includes(user?.role);
 const isKind = (k) => k === 'customer' || k === 'supplier';
 
 /**
- * أرقامُ كلّ طرفٍ من الكشوف، مفهرسةً بالاسم المطويّ.
- *
- * تُحسب مرّةً لكلّ جهةٍ وتُحفَظ دقيقةً: تفتحها الصفحةُ والملفُّ واللوحةُ في
- * الدقيقة نفسها، فحسابٌ واحدٌ يخدم الثلاثة.
+ * Each party's figures from the statements, indexed by folded name.
+ * Computed once per scope and cached for a minute: the page, the file and the board open within the same minute, so one computation serves all three.
  */
 async function statsByKind(kind) {
   return cache.wrap(`${CACHE_PREFIX}stats:${kind}`, STATS_TTL, async () => {
@@ -121,8 +90,7 @@ async function statsByKind(kind) {
           _id: `$${field}`,
           reports: { $sum: 1 },
           total: { $sum: { $ifNull: [`$${value}`, 0] } },
-          // المُغلَق: ما له تاريخٌ في عمود الإغلاق. والفارغُ ليس صفرًا هنا —
-          // «لم يُحصَّل بعد» حالةٌ لا مبلغ.
+          // Closed: has a date in the closing column. Empty is not zero here: 'not yet collected' is a state, not an amount.
           settled: { $sum: { $cond: [{ $ifNull: [`$${closed}`, false] }, { $ifNull: [`$${value}`, 0] }, 0] } },
           settledCount: { $sum: { $cond: [{ $ifNull: [`$${closed}`, false] }, 1, 0] } },
           invoiced: { $sum: { $cond: [{ $ifNull: ['$invoiceNumber', false] }, 1, 0] } },
@@ -132,8 +100,7 @@ async function statsByKind(kind) {
       },
     ]).allowDiskUse(true);
 
-    // الطيُّ بعد التجميع لا قبلَه: الطيُّ داخل القاعدة سلسلةُ `$replaceAll`
-    // تُكتب في كلّ نقطة، والصفوفُ العائدةُ مئاتٌ فطيُّها هنا أرخصُ وأوضح.
+    // Folding happens after aggregation, not before: folding inside the database is a chain of `$replaceAll` written at every point, and the returned rows are hundreds, so folding here is cheaper and clearer.
     const byKey = new Map();
     for (const row of rows) {
       const key = fold(row._id);
@@ -168,7 +135,7 @@ async function statsByKind(kind) {
       v.settled = r2(v.settled);
       v.outstanding = r2(v.total - v.settled);
       v.openReports = v.reports - v.settledCount;
-      // الاسمُ المعروض أكثرُ الكتابتين ورودًا لا أوّلُها صدفةً.
+      // The displayed name is the more frequent of the two spellings, not the first by chance.
       v.names.sort((a, b) => b.reports - a.reports);
       v.displayName = v.names[0].name;
     }
@@ -183,15 +150,9 @@ const emptyStats = () => ({
 });
 
 /**
- * ── ومالُ العميل من دفتر الفواتير، لا من كشوف التشغيل ──────────────────────
- *
- * كانت قائمةُ العملاء وملفُّ العميل يحسبان «المستحقّ لنا» من الكشوف: قيمةُ
- * البيع ناقصَ ما له تاريخُ تحصيلٍ على الكشف. وتاريخُ التحصيل لا يُكتب على
- * الكشوف (٤٨٨٠ من ٣٢ ألفًا)، وقيمةُ البيع فيها سعرُ الشراء. فكانت القائمةُ
- * تقول إنّ على العملاء ٤٥٫٣ مليونًا واللوحةُ تقول ١٩٫٩٦ — والدفترُ هو الصحيح.
- *
- * فالمالُ للعميل يُقرأ من الدفتر بالرابط، وعددُ الكشوف يبقى من التشغيل لأنّه
- * عملٌ لا مال. والموردُ على حاله: لا دفترَ له، ومالُه من الكشوف.
+ * Customer money comes from the invoice ledger, not operations statements.
+ * The customer list and file used to compute 'due to us' from statements: sale value minus what had a collection date. The collection date is not written on statements (4880 of 32k) and the sale value there holds the purchase price. The list said customers owed 45.3M while the board said 19.96M; the ledger is correct.
+ * So customer money is read from the ledger by link, while the statement count stays from operations since it is work, not money. The supplier is unchanged: no ledger, money from statements.
  */
 async function ledgerMoneyByParty() {
   return cache.wrap(`${CACHE_PREFIX}ledger-money`, STATS_TTL, async () => {
@@ -203,13 +164,11 @@ async function ledgerMoneyByParty() {
         _id: '$party',
         invoices: { $sum: 1 },
         invoiced: { $sum: { $ifNull: ['$total', 0] } },
-        // المفتوحُ بباقيه: الجزئيّةُ قائمةٌ بما لم يُقبَض منها لا بقيمتها كلِّها.
+        // Open at its remainder: a partial is listed by what was not collected, not its whole value.
         outstanding: { $sum: { $cond: [open, CollectionInvoice.remainingExpr, 0] } },
         openInvoices: { $sum: { $cond: [open, 1, 0] } },
         lastCollectedAt: { $max: '$collectionDate' },
-        // ── وكودُ الحساب كما في الدفتر ─────────────────────────────────────
-        // الكودُ مكتوبٌ على فواتير الدفتر، وسجلُّ العميل قد يكون بلا كود (بُني من
-        // أسماء كشوف التشغيل) — فيُقرأ من فواتيره (٢٠٢٦/١٠/٢٧).
+        // Account code as in the ledger. The code is written on ledger invoices, and the customer record may have none (built from operations statement names), so it is read from its invoices.
         codes: { $addToSet: '$partyCode' },
         sheetCodes: { $addToSet: '$sheetCode' },
       } },
@@ -239,14 +198,12 @@ const withStats = (party, stats, money) => {
     openInvoices: m.openInvoices,
     lastSettledAt: m.lastCollectedAt || null,
     moneySource: 'ledger',
-    // الكودُ المعروض: كودُ السجلّ، وإلّا كودُ الحساب من فواتير الدفتر.
+    // Displayed code: the record's code, otherwise the account code from ledger invoices.
     codeShown: party.code || [...new Set([...(m.codes || []), ...(m.sheetCodes || [])].map((c) => String(c || '').trim()).filter(Boolean))].sort().join(' · '),
   };
 };
 
-// ═══════════════════════════════════════════════════════════════════════════
-//  الأطراف
-// ═══════════════════════════════════════════════════════════════════════════
+// Parties
 
 exports.listParties = async (req, res) => {
   try {
@@ -261,50 +218,27 @@ exports.listParties = async (req, res) => {
     if (req.query.partyType) filter.partyType = req.query.partyType;
     if (req.query.assignedTo) filter.assignedTo = req.query.assignedTo;
 
-    // ── و«بلا مسؤول» سؤالٌ يُطرح ────────────────────────────────────────
-    //
-    // لوحةُ تقييم الفريق تعرض صفًّا اسمُه «(بلا مسؤول)» باثنَي عشرَ حسابًا
-    // ومبالغَ عليها، ولم يكن يُعرَف ما فيه — وهو أوّلُ ما يُسأل: تلك الحسابات
-    // لا يتابعها أحد.
-    //
-    // والمسؤولُ في هذا السجلّ حقلان لا حقلٌ واحد: `assignedTo` مرجعٌ إلى
-    // مستخدم، و`collectionOfficer` اسمٌ مكتوب — وعليه تقوم لوحةُ التقييم
-    // كلُّها. فالفلترُ بالمعرّف وحدَه لا يستطيع فتح صفٍّ من تلك اللوحة أبدًا،
-    // مهما كان الصفّ. فيُقبَل الاسمُ أيضًا، وهو ما تُبنى عليه الأرقام.
-    //
-    // ── ولا «بلا مسؤول» بعد اليوم ─────────────────────────────────────────
-    // ما لم يُسنَد إلى موظّفٍ فهو على مدير القسم (صاحبُ الشركة، ٢٠٢٦/١٠/٢١ —
-    // راجع utils/collectionsOfficer). فاسمُ المدير يفتح حساباتِه المكتوبةَ باسمه
-    // ومعها كلَّ حسابٍ بلا اسم، و`none` في رابطٍ محفوظٍ يُقرأ مديرًا كذلك.
+    // 'No officer' is a question that gets asked.
+    // The team evaluation board shows a row '(no officer)' with twelve accounts and amounts, and what it held was unknown; the first question is that nobody follows those accounts.
+    // The officer in this record is two fields, not one: `assignedTo` is a user reference and `collectionOfficer` is a written name, and the whole evaluation board is built on the latter. A filter by id alone can never open a row from that board, so the name is accepted too, which is what the numbers are built on.
+    // No more 'no officer': anything not assigned to an employee belongs to the department manager (see utils/collectionsOfficer). The manager's name opens their written accounts plus every nameless account, and `none` in a saved link reads as the manager too.
     const mgr = await collectionsManager();
     const officerCond = officerCondition(req.query.officer, mgr);
     if (officerCond) filter.$and = [...(filter.$and || []), officerCond];
 
-    // ── والرقمُ الذي ضُغط هو الرقمُ الذي يُفتَح ──────────────────────────
-    // لوحةُ التقييم تحسب على أصحاب أكواد الحسابات وحدَهم (`code`)، وهي
-    // الحساباتُ التي لها فواتيرُ في الدفتر. فلو فُتحت «بلا مسؤول» على السجلّ
-    // كلِّه لجاءت بأربعمئةٍ وسبعةٍ وعشرين بدل اثنَي عشر — ويظنّ القارئُ أنّ
-    // اللوحةَ كذبت عليه، وهي لم تكذب: سُئلت سؤالًا غير سؤالها.
+    // The number clicked is the number opened. The evaluation board counts only account-code holders (`code`), the accounts with ledger invoices. Opening 'no officer' on the whole registry would return 427 instead of 12, and the reader would think the board lied when it was asked a different question.
     if (req.query.hasCode === 'true') filter.code = { $gt: '' };
 
-    // البحثُ يطوي المسافاتِ وفروقَ الرسم كما في بقيّة النظام: مَن نسخ الاسم من
-    // مكانٍ آخر بمسافتين أو بهمزةٍ أخرى يجد صفَّه.
+    // Search folds spaces and spelling variants as elsewhere: someone who copied the name from another place with two spaces or a different hamza still finds the row.
     const q = String(req.query.q || '').trim();
     if (q) {
       const rx = flexSpaceRegex(q);
       filter.$or = [
         { name: rx }, { nameKey: rx },
-        // ── والاسمُ الرسميُّ في الدفتر لقبٌ عندنا، فيجب أن يُبحَث فيه ──────
-        //
-        // سجلُّ الأطراف بُني من أسماء كشوف التشغيل («مكتب عابر الحديثه»)،
-        // والاسمُ الرسميُّ في ورقة التحصيل («شركة عابر الحديثة للنقليات
-        // ( شخص واحد )») محفوظٌ لقبًا. ومَن ينسخ الاسمَ من الورقة ويبحث به
-        // يُقال له «لا نتائج» — والحسابُ موجودٌ ومسؤولُه معروف.
-        //
-        // وصفحةُ أعمار الديون كانت تبحث في الألقاب أصلًا؛ هذه وحدَها لم تكن.
+        // The official name in the ledger is an alias here, so it must be searched.
+        // The party registry was built from operations statement names, while the official name on the collection sheet is kept as an alias. Someone copying the name from the sheet and searching would get 'no results' although the account exists and its officer is known. The aging page already searched aliases; this one did not.
         { aliases: rx }, { aliasKeys: rx },
-        // وكودُ الحساب هو ما يُنسَخ من الورقة كذلك — في السجلّ، أو على فواتير
-        // الدفتر حين يكون السجلُّ بلا كود (راجع codeShown).
+        // The account code is also what gets copied from the sheet: in the record, or on ledger invoices when the record has no code (see codeShown).
         { code: rx },
         { _id: { $in: await require('../models/CollectionInvoice').distinct('party', { party: { $ne: null }, $or: [{ partyCode: rx }, { sheetCode: rx }] }) } },
         { collectionOfficer: rx },
@@ -317,8 +251,7 @@ exports.listParties = async (req, res) => {
     const page = Math.max(1, Number(req.query.page) || 1);
     const limit = Math.min(500, Math.max(1, Number(req.query.limit) || 100));
 
-    // ── «عليه مستحقّ فقط» شرطٌ على القائمة كلِّها ───────────────────────
-    // كان يُطبَّق في المتصفّح على المئة المحمَّلة، والعدّادُ يعرض عددَ الكلّ.
+    // 'Has balance only' applies to the whole list. It used to apply in the browser to the 100 loaded rows while the counter showed the count of all.
     const money = kind === 'customer' ? await ledgerMoneyByParty() : null;
     if (money && req.query.owing === 'true') {
       const owing = [...money.entries()].filter(([, m]) => m.outstanding > 0.005).map(([id]) => new mongoose.Types.ObjectId(id));
@@ -334,7 +267,7 @@ exports.listParties = async (req, res) => {
         .lean(),
       CollectionsParty.countDocuments(filter),
       statsByKind(kind),
-      // المجاميعُ على ما طابق الفلترَ كلِّه لا على الصفحة المعروضة.
+      // Totals are over everything matching the filter, not the displayed page.
       money ? CollectionsParty.find(filter).select('_id').lean() : [],
     ]);
 
@@ -351,8 +284,7 @@ exports.listParties = async (req, res) => {
     }
 
     res.json({
-      // `collectionOfficer` كما هو مكتوب (يُحرَّر في النموذج)، و`effectiveOfficer`
-      // ما يُعرَض: الموظّفُ أو المديرُ إن لم يُسنَد.
+      // `collectionOfficer` as written (edited in the form); `effectiveOfficer` is what is displayed: the employee, or the manager if unassigned.
       parties: parties.map((p) => ({ ...withStats(p, stats, money), ...officerView(p, mgr) })),
       totals,
       total,
@@ -365,7 +297,7 @@ exports.listParties = async (req, res) => {
   }
 };
 
-/** ملفُّ الطرف: بياناتُه وأرقامُه وكشوفُه وحركتُه بالشهر. */
+/** Party file: its data, figures, statements and monthly movement. */
 exports.getPartyProfile = async (req, res) => {
   try {
     if (!mongoose.isValidObjectId(req.params.id)) return res.status(400).json({ message: 'معرّف غير صالح' });
@@ -381,8 +313,7 @@ exports.getPartyProfile = async (req, res) => {
     const stats = await statsByKind(kind);
     const s = stats.get(party.nameKey || fold(party.name)) || emptyStats();
 
-    // كلُّ صيغةٍ كُتب بها اسمُه في الكشوف تخصّه: المطابقةُ بالاسم المطويّ،
-    // والكشوفُ تُقرأ بالصيغ كلِّها لا بواحدة.
+    // Every spelling of its name in the statements belongs to it: matching is by folded name, and statements are read with all variants, not one.
     const names = (s.names || []).map((n) => n.name);
     const rowFilter = names.length
       ? { [field]: { $in: names }, ...NOT_CANCELLED }
@@ -403,8 +334,7 @@ exports.getPartyProfile = async (req, res) => {
         { $match: { ...rowFilter, reportDate: { $ne: null } } },
         {
           $group: {
-            // الشهرُ بتوقيت الشركة لا بغرينتش: كشفُ ما بعد التاسعة مساءً في
-            // آخر يومٍ من الشهر يقع في الشهر التالي لو حُسب بغرينتش.
+            // Month in company time, not GMT: a statement after 9 pm on the last day of a month would fall into the next month under GMT.
             _id: { $dateToString: { date: '$reportDate', format: '%Y-%m', timezone: 'Asia/Riyadh' } },
             reports: { $sum: 1 },
             total: { $sum: { $ifNull: [`$${value}`, 0] } },
@@ -416,12 +346,7 @@ exports.getPartyProfile = async (req, res) => {
       ]),
     ]);
 
-    // ── وشغلُه معنا ليس كشوفَ التشغيل وحدَها ──────────────────────────────
-    // العميلُ يُنقَل له بشاحناتنا (إدارة الأسطول) وبشاحناتِ موردٍ (طلبات
-    // الشحنات) كما يُنقَل له على منصّة التشغيل. وملفٌّ يعرض واحدةً منها يقول
-    // «تعاملنا معه كذا مرّة» وهو رقمٌ ناقص.
-    //
-    // والمطابقةُ بكلّ صيغةٍ كُتب بها اسمُه، لا بصيغةٍ واحدة.
+    // Their work with us is not operations statements only. Goods are moved for the customer by our trucks (fleet management) and by a supplier's trucks (shipment orders) as well as on the operations platform. A file showing only one says 'we dealt with him N times' with an incomplete number. Matching uses every spelling of the name, not one.
     const nameRx = names.length
       ? names.map((n) => flexSpaceRegex(n))
       : [flexSpaceRegex(party.name)];
@@ -439,19 +364,10 @@ exports.getPartyProfile = async (req, res) => {
         .sort({ orderDate: -1 }).limit(50).lean(),
     ]);
 
-    // ── ومالُه عندنا في دفتر الفواتير لا في الكشوف ─────────────────────────
-    //
-    // كان الملفُّ يعرض كشوفَ التشغيل ويحسب منها ما له وما عليه. ودفترُ التحصيل
-    // يقول عن نفسه إنّ ستّةً في المئة فقط من فواتيره لها كشفٌ عندنا — فأربعةٌ
-    // وتسعون في المئة من مال العميل لم يكن يظهر في ملفّه أصلًا.
-    //
-    // فالفواتيرُ تُقرأ من الدفتر بالاسم المطويّ، ومعها ما حُصِّل منها وما بقي.
-    // وهو الرقمُ الذي يُطالَب به، والذي يُطبَع في كشف الحساب.
+    // Their money with us is in the invoice ledger, not the statements.
+    // The file used to show operations statements and compute owed amounts from them. The collection ledger says only 6% of its invoices have a statement here, so 94% of customer money never appeared in the file. Invoices are now read from the ledger by folded name, with what was collected and what remains: the number that is claimed and printed in the account statement.
     const CollectionInvoice = require('../models/CollectionInvoice');
-    // ── وبالرابط وحدَه، لا بالاسم ─────────────────────────────────────────
-    // كانت تُضَمّ إليها كلُّ فاتورةٍ يطابق اسمُها اسمَه بعد الطيّ. والشركةُ
-    // الواحدةُ قد يكون لها حسابان بكودَين (نقديٌّ وضريبيّ) لكلٍّ رصيدُه: فكانت
-    // ١٣٤ فاتورةً تظهر في ملفَّين، وملفُّ العميل يخالف سطرَه في أعمار الديون.
+    // By link only, not by name. It used to include every invoice whose folded name matched. One company can have two accounts with two codes (cash and tax), each with its own balance, so 134 invoices showed in two files and the customer file disagreed with its line in debt aging.
     const ledgerAll = await CollectionInvoice.find({ party: party._id, unused: { $ne: true } })
       .select('invoiceNumber partyName partyCode total collectedAmount invoiceDate deliveryDate collectionDate status kind').lean();
     const ledger = ledgerAll
@@ -459,7 +375,7 @@ exports.getPartyProfile = async (req, res) => {
 
     const { isCollected } = CollectionInvoice;
     const invoiced = ledger.reduce((a2, i) => a2 + (Number(i.total) || 0), 0);
-    // والمحصَّلُ يشمل مقبوضَ الجزئيّة — راجع CollectionInvoice.collectedOf.
+    // Collected includes the received part of a partial; see CollectionInvoice.collectedOf.
     const collectedSum = ledger.reduce((a2, i) => a2 + CollectionInvoice.collectedOf(i), 0);
     const openInvoices = ledger.filter((i) => !isCollected(i));
     const now2 = Date.now();
@@ -480,7 +396,7 @@ exports.getPartyProfile = async (req, res) => {
         ...withStats(party, stats, kind === 'customer' ? await ledgerMoneyByParty() : null),
         ...officerView(party, await collectionsManager()),
       },
-      // ── المالُ كما يقوله الدفتر ────────────────────────────────────────
+      // Money as the ledger says.
       money: {
         invoices: ledger.slice(0, 500).map((i) => ({
           invoiceNumber: i.invoiceNumber,
@@ -494,7 +410,7 @@ exports.getPartyProfile = async (req, res) => {
           collectedAmount: r2(CollectionInvoice.collectedOf(i)),
           remaining: r2(CollectionInvoice.remainingOf(i)),
           status: i.status || '',
-          // عمرُ ما لم يُحصَّل — وهو ما يُسأل عنه في المطالبة.
+          // Age of what is uncollected: what is asked about in a claim.
           ageDays: !isCollected(i) && i.invoiceDate
             ? Math.floor((now2 - new Date(i.invoiceDate).getTime()) / 86400000) : null,
         })),
@@ -504,7 +420,7 @@ exports.getPartyProfile = async (req, res) => {
           collected: r2(collectedSum),
           outstanding: r2(invoiced - collectedSum),
           openCount: openInvoices.length,
-          // أقدمُ فاتورةٍ لم تُحصَّل: عمرُ المديونيّة الحقيقيّ.
+          // Oldest uncollected invoice: the true age of the debt.
           oldestOpenDays: openInvoices.reduce((mx, i) => {
             if (!i.invoiceDate) return mx;
             const d = Math.floor((now2 - new Date(i.invoiceDate).getTime()) / 86400000);
@@ -512,7 +428,7 @@ exports.getPartyProfile = async (req, res) => {
           }, 0),
         },
       },
-      // شغلُه معنا من كلّ باب: أسطولُنا، وطلباتُ الشحنات، وكشوفُ التشغيل.
+      // Their work with us from every door: our fleet, shipment orders and operations statements.
       work: {
         fleetLoads,
         orders,
@@ -523,7 +439,7 @@ exports.getPartyProfile = async (req, res) => {
       page,
       limit,
       pages: Math.max(1, Math.ceil(reportsTotal / limit)),
-      // حركةُ العميل بالشهر من فواتير الدفتر (شهرُ الفوترة)؛ والموردُ من كشوفه.
+      // Customer monthly movement from ledger invoices (billing month); supplier from statements.
       monthly: kind === 'customer' ? ledgerMonthly : monthly.map((m) => ({
         month: m._id,
         reports: m.reports,
@@ -545,10 +461,7 @@ exports.createParty = async (req, res) => {
     if (!body.name || !String(body.name).trim()) {
       return res.status(400).json({ message: 'حقول مطلوبة ناقصة: الاسم', fields: { name: 'مطلوب' } });
     }
-    // الاسمُ المكرَّرُ يُقال باسمه: «موجود بالفعل» بلا اسمٍ يترك المستخدم يبحث.
-    // الاسمُ وحدَه لم يعد الهويّة — الشركةُ الواحدة قد تحمل حسابين (نقديًّا
-    // وضريبيًّا) بكودين. فيُمنع التكرارُ حيث لا كودَ يفرّق، ويُسمَح به حين
-    // يُكتب كودٌ صريحٌ يختلف.
+    // A duplicate name is reported by name: a bare 'already exists' leaves the user searching. Name alone is no longer the identity: one company can hold two accounts (cash and tax) with two codes. So duplicates are blocked where no code distinguishes them and allowed when an explicit different code is written.
     const wantedCode = String(req.body.code || '').trim();
     const dup = await CollectionsParty.findOne({
       kind, nameKey: fold(body.name), ...(wantedCode ? { code: { $ne: wantedCode } } : {}),
@@ -559,11 +472,7 @@ exports.createParty = async (req, res) => {
         existingId: dup._id,
       });
     }
-    // ── والكودُ يُولَّد على سياقة الدفتر ────────────────────────────────────
-    // لكلّ حسابٍ كودٌ يُعرَف به في المحاسبة وفي كلّ مراسلة: النقديُّ `C####`
-    // والضريبيُّ `1104####`. تركُه لمن يُدخل يعني صيغًا شتّى وأكوادًا مكرَّرة،
-    // فيُقرأ التاليَ في سلسلة نوعِه ويُكتب من نفسِه. ومَن كتب كودًا بيده يُترك
-    // له — الاستيرادُ والتصحيحُ يحتاجانه.
+    // The code is generated following the ledger. Each account has a code used in accounting and all correspondence: cash `C####`, tax `1104####`. Leaving it to the data-entry person means varied formats and duplicate codes, so the next one in its type's series is read and written automatically. A hand-written code is kept, since import and correction need it.
     let code = String(body.code || '').trim();
     if (!code && kind === 'customer') {
       const { nextPartyCode } = require('../utils/partyCode');
@@ -601,12 +510,7 @@ exports.updateParty = async (req, res) => {
       user: req.user._id, action: 'update_collections_party', entity: 'CollectionsParty',
       entityId: party._id, changes: { before, after: body }, ipAddress: req.ip,
     });
-    // ── ودفترُ التحصيل يُبطَل معه — قبل البثّ ─────────────────────────────
-    // سجلُّ الأعمار والتنبيهاتُ تُخزَّن دقيقةً. ورفعُ الحدّ الائتمانيّ من ملفّ
-    // العميل هو الفعلُ الذي يُطفئ تنبيهَه — فلو بقيت الذاكرةُ لظلّ التنبيهُ
-    // معلَّقًا بعد أن عولج، وهو أسوأُ من ألّا يظهر أصلًا. ومدّةُ السداد والمسؤولُ
-    // يُقرآن في لوحة التحصيل (`cdr:`)، فالمسحُ قبل البثّ لا بعده
-    // (راجع announce-before-invalidate).
+    // The collections ledger is invalidated with it, before the broadcast. The aging log and alerts are cached for a minute, and raising the credit limit from the customer file is the action that clears its alert; a stale cache would leave the alert hanging after it was handled, worse than never showing. Payment term and officer are read in the collections board (`cdr:`), so clearing is before the broadcast, not after (see announce-before-invalidate).
     try { require('./collectionsLedgerController').invalidate(); } catch (_) {}
     try { emitToAll('collections:party', { id: party._id, kind: party.kind }); } catch (_) {}
     res.json({ party: withStats(party, await statsByKind(party.kind)) });
@@ -614,11 +518,8 @@ exports.updateParty = async (req, res) => {
 };
 
 /**
- * الحذفُ يُعطِّل مَن له تاريخ.
- *
- * حذفُ طرفٍ له كشوفٌ يقطعُ كشوفَه عن ملفّه: تبقى الصفوفُ تحمل اسمَه ولا يبقى
- * ما يجمعها، فيختفي دَينٌ قائمٌ من كلّ تقرير. والتعطيلُ يُخفيه من القوائم
- * ويُبقي تاريخَه مقروءًا.
+ * Delete deactivates anyone with history.
+ * Deleting a party with statements cuts its statements off from its file: rows keep its name and nothing groups them, so a standing debt vanishes from every report. Deactivation hides it from lists and keeps its history readable.
  */
 exports.deleteParty = async (req, res) => {
   try {
@@ -652,13 +553,8 @@ exports.deleteParty = async (req, res) => {
   } catch (e) { sendMongooseError(res, e, 'تعذّر حذف الطرف'); }
 };
 
-// ═══════════════════════════════════════════════════════════════════════════
-//  المتابعات — مكالمةٌ أو وعدٌ بالسداد، مقيَّدةٌ على طرف
-// ═══════════════════════════════════════════════════════════════════════════
-//
-// كانت صفحةً تحت «العملاء والمالية» تُقيَّد على عميلٍ من ورك فلو لم يعد يجري.
-// وكلُّ ما يخصّ التحصيل موضعُه قسمُ التحصيل — وإلّا سُجّلت المتابعةُ في قسمٍ لا
-// يملكها، على طرفٍ لا يعرفه أحد.
+// Follow-ups: a call or a payment promise, attached to a party.
+// It was a page under 'customers and finance' attached to a Work Flow customer that no longer runs. Everything about collections belongs in the collections department; otherwise the follow-up is recorded in a department that does not own it, on a party nobody knows.
 
 const FU_EDITABLE = [
   'report', 'type', 'status', 'notes', 'amountCollected',
@@ -687,10 +583,8 @@ exports.listFollowUps = async (req, res) => {
 };
 
 /**
- * المتابعاتُ المستحقّة — ما حان موعدُه ولم يُقفَل.
- *
- * الوعدُ بلا موعدٍ يُسأل عنه ليس متابعة بل ملاحظة. وهذه النقطةُ هي ما يجعل
- * «قال يسدّد الخميس» بندًا يعود يوم الخميس، لا سطرًا يُنسى.
+ * Due follow-ups: those whose time has come and are not closed.
+ * A promise with no date to ask about is a note, not a follow-up. This is what makes 'said he will pay Thursday' an item that returns on Thursday instead of a forgotten line.
  */
 exports.dueFollowUps = async (req, res) => {
   try {
@@ -721,8 +615,7 @@ exports.createFollowUp = async (req, res) => {
 
     const fu = await CollectionsFollowUp.create({ ...body, party: party._id, collector: req.user._id });
 
-    // آخرُ تواصلٍ على الطرف نفسِه: يُقرأ في القائمة بلا فتح ملفّه. والمتابعةُ
-    // القادمة تُنقَل إليه كذلك، فلا يُبحَث عنها في سجلٍّ آخر.
+    // Latest contact on the party itself: read in the list without opening the file. The upcoming follow-up is carried there too, so it is not searched for in another log.
     const patch = { lastContactAt: new Date() };
     if (body.nextFollowUpAt) patch.nextFollowUpAt = body.nextFollowUpAt;
     await CollectionsParty.findByIdAndUpdate(party._id, { $set: patch });
@@ -740,7 +633,7 @@ exports.updateFollowUp = async (req, res) => {
   try {
     if (!mongoose.isValidObjectId(req.params.fuId)) return res.status(400).json({ message: 'معرّف غير صالح' });
     const body = stripEmpty(pickFu(req.body), CollectionsFollowUp.schema);
-    // الإقفالُ فعلٌ يُسجَّل بصاحبه ووقتِه، لا حقلٌ يُكتب.
+    // Closing is an action recorded with its owner and time, not a written field.
     if (req.body.close === true) { body.closedAt = new Date(); body.closedBy = req.user._id; }
     if (req.body.close === false) { body.closedAt = null; body.closedBy = null; }
 
@@ -770,61 +663,41 @@ exports.deleteFollowUp = async (req, res) => {
   } catch (e) { sendMongooseError(res, e, 'تعذّر حذف المتابعة'); }
 };
 
-// ═══════════════════════════════════════════════════════════════════════════
-//  اللوحة
-// ═══════════════════════════════════════════════════════════════════════════
+// Board
 
 /**
- * لوحةُ التحصيل: ما لنا وما علينا، ومَن أكبرُ المتأخّرين، وأين تتراكم.
- *
- * المدى اختياريّ: بلا مدًى تُقرأ الصورةُ كلُّها — وهي ما يُسأل عنه أوّلًا
- * («كم لنا عند الناس؟») لا شهرٌ بعينه.
+ * Collections board: what is ours and what is owed by us, the biggest overdue, and where it accumulates.
+ * The range is optional: without one the whole picture is read, which is what is asked first ('how much do people owe us?'), not one month.
  */
 exports.dashboard = async (req, res) => {
   try {
     const { from, to } = req.query;
-    // حدُّ اليوم بتوقيت الشركة — لا بغرينتش: بغرينتش تُفقَد أوّلُ ثلاثِ ساعاتٍ
-    // من يوم البداية وتُكسَب ثلاثٌ من اليوم التالي لآخر يوم.
+    // Day boundary in company time, not GMT: with GMT the first three hours of the start day are lost and three hours of the day after the last day are gained.
     const range = from || to ? dayRange(from, to) : null;
-    // ── وفلاترُ اللوحة هي فلاترُ الصفحات ──────────────────────────────────
-    // كانت اللوحةُ تقبل مدًى فحسب، والأسئلةُ التي تُطرح عليها أكثر: عميلٌ
-    // بعينه، ومورّدٌ بعينه، وفرعٌ، وشريحةُ عمر. ولوحةٌ لا تُفلتر تُقرأ مرّةً
-    // ثمّ يُنزل منها إلى الصفحات لتُقرأ ثانيةً.
+    // Board filters are the pages' filters. The board accepted only a range, but the questions asked of it are more: a specific customer, a specific supplier, a branch, an age band. An unfilterable board is read once and then the pages are opened to read it again.
     const extra = {};
     if (req.query.customer) extra.username = flexSpaceRegex(String(req.query.customer));
     if (req.query.supplier) extra.carOwner = flexSpaceRegex(String(req.query.supplier));
-    // والفرعُ يُطابَق بأيّ فراغٍ حوله («الدمام » في المنقول) — راجع utils/colFilter.
+    // Branch matches with any surrounding whitespace (a transferred 'Dammam ' value); see utils/colFilter.
     if (req.query.branch) extra.branch = textMatcher(String(req.query.branch));
     const dateMatch = { ...extra, ...(range ? { reportDate: range } : {}) };
 
-    // شريحةُ العمر تُقاس على تاريخ الكشف — وهي شرائحُ لا تتداخل، فمجموعُها
-    // يساوي الكلَّ ولا يُعدّ الكشفُ مرّتين.
+    // The age band is measured on the statement date. Bands do not overlap, so their sum equals the total and a statement is not counted twice.
     const ageBand = AGE_BANDS[req.query.age] ? req.query.age : null;
     if (ageBand) {
       const c = ageCondition('reportDate', ageBand).reportDate;
       dateMatch.reportDate = { ...(dateMatch.reportDate || {}), ...c };
     }
-    // ── والمدى يُدمَج، لا يُنسَخ فوقه ─────────────────────────────────────
-    // «تاريخُ الكشف موجود» و«تاريخُ الكشف داخل المدى» شرطان على الحقل نفسِه،
-    // وكتابةُ أحدهما بعد الآخر في كائنٍ واحدٍ تُلغيه — فيسقط المدى صامتًا
-    // وتُقرأ اللوحةُ المفلترةُ على البيانات كلِّها.
+    // The range is merged, not overwritten. 'Statement date exists' and 'statement date within range' are two conditions on the same field; writing one after the other into one object cancels the first, silently dropping the range and reading the filtered board over all data.
     const datedMatch = {
       ...extra,
       reportDate: { $ne: null, ...(dateMatch.reportDate || {}) },
     };
-    // المفتاحُ يحمل الفلاترَ كلَّها والدور: نتيجةٌ حُسبت لمن يرى الوجهين لا
-    // تُخدَم لمن يرى وجهًا واحدًا، ولا نتيجةُ عميلٍ لعميلٍ آخر.
+    // The key carries all filters and the role: a result computed for someone who sees both sides is not served to someone who sees one, nor one customer's result to another.
     const key = `${CACHE_PREFIX}dash:${receivablesOnly(req.user) ? 'r' : 'a'}:${JSON.stringify(req.query || {})}`;
 
-    // ── قراءةٌ واحدةٌ لا ثمانٍ ──────────────────────────────────────────────
-    // كانت اللوحةُ ثمانيَ تجميعاتٍ تمسح كشوفَ التشغيل كلَّها (٣٦ ألفًا) كلٌّ
-    // على حدة — ثماني ثوانٍ لكلّ حسابٍ جديد. والأسئلةُ كلُّها على الصفوف
-    // نفسِها وبالحقول الثمانية نفسِها، فتُقرأ الصفوفُ مرّةً وتُجاب الأسئلةُ في
-    // `$facet` واحد. وكلُّ فرعٍ فيه شرطُه وتجميعُه كما كان حرفًا بحرف.
-    //
-    // ── ولا ينتظر الفاتحُ حسابَها ───────────────────────────────────────────
-    // الصفحةُ تُعيد الجلبَ مع كلّ خبرٍ من مزامنة التشغيل. فيُقدَّم آخرُ جوابٍ
-    // فورًا، ويُعاد حسابُه في الخلف إن مضت عليه دقيقة (ttlCache.wrapStale).
+    // One read, not eight. The board was eight aggregations each scanning all operations statements (36k), about eight seconds per new account. The questions are all over the same rows and the same eight fields, so rows are read once and the questions answered in one `$facet`. Each branch keeps its condition and aggregation exactly as before.
+    // The opener does not wait for the computation: the page refetches on every operations-sync event, so the last answer is served at once and recomputed in the background if a minute has passed (ttlCache.wrapStale).
     const data = await cache.wrapStale(key, STATS_TTL, 15 * 60 * 1000, async () => {
       const onBranchRef = { v: {} };
       const facetSide = (kind) => {
@@ -855,8 +728,7 @@ exports.dashboard = async (req, res) => {
                 oldest: { $min: '$reportDate' },
               },
             },
-            // والمتساويان يُرتَّبان بالاسم — وإلّا تبدّل مَن يدخل القائمةَ عند حدِّها
-            // بين فتحةٍ وأخرى والأرقامُ هي هي.
+            // Equal values sort by name; otherwise who enters the list at its limit would change between opens although the numbers are identical.
             { $sort: { outstanding: -1, _id: 1 } },
             { $limit: 200 },
           ],
@@ -879,10 +751,7 @@ exports.dashboard = async (req, res) => {
           },
         ];
       };
-      // ── والفرعُ يُصفّي كلَّ شيءٍ إلّا جدولَ الفروع ───────────────────────────
-      // جدولُ «حسب الفرع» يعرض الفروعَ كلَّها ليُقارَن المختارُ بغيره — هكذا
-      // كان (شرطُه `branch` كان يطغى على فلتر الفرع). فيُرفَع الفرعُ من الشرط
-      // المشترك ويُضاف إلى كلِّ فرعٍ من الـfacet سوى ذلك الجدول.
+      // Branch filters everything except the branch table. The 'by branch' table shows all branches so the chosen one can be compared with the others; previously its `branch` condition overrode the branch filter. So branch is removed from the shared condition and added to every facet branch except that table.
       const { branch: branchFilter, ...baseMatch } = dateMatch;
       const onBranch = branchFilter !== undefined ? { branch: branchFilter } : {};
       onBranchRef.v = onBranch;
@@ -891,7 +760,7 @@ exports.dashboard = async (req, res) => {
 
       const [[f], partyCounts] = await Promise.all([
         OperationsWorkflow.aggregate([
-          // الشرطُ المشترك بين الأسئلة كلِّها — وما يخصّ كلَّ سؤالٍ داخل فرعه.
+          // The condition shared by all questions, with each question's own inside its branch.
           { $match: { ...NOT_CANCELLED, ...baseMatch } },
           {
             $project: {
@@ -1004,23 +873,22 @@ exports.dashboard = async (req, res) => {
   }
 };
 
-/** قيمُ فلاتر اللوحة — من الكشوف نفسِها. */
+/** Board filter values, from the statements themselves. */
 exports.dashboardFilterOptions = async (req, res) => {
   try {
     const only = receivablesOnly(req.user);
-    // ثلاثُ قراءاتٍ distinct على الكشوف كلِّها (ثلاث ثوانٍ) مع كلّ فتحٍ للّوحة،
-    // لقائمةِ أسماءٍ لا تتغيّر إلّا بعميلٍ جديد. فتُحفَظ وتُحدَّث في الخلف.
+    // Three distinct reads over all statements (three seconds) on every board open, for a name list that changes only with a new customer. So it is cached and refreshed in the background.
     const [customers, suppliers, branches] = await cache.wrapStale(`${CACHE_PREFIX}dashfilters`, 5 * 60 * 1000, 60 * 60 * 1000, () => Promise.all([
       OperationsWorkflow.distinct('username', { ...NOT_CANCELLED, username: { $nin: [null, ''] } }),
       OperationsWorkflow.distinct('carOwner', { ...NOT_CANCELLED, carOwner: { $nin: [null, ''] } }),
       OperationsWorkflow.distinct('branch', { ...NOT_CANCELLED, branch: { $nin: [null, ''] } }),
     ]))
-      // ولا تُعرَض أسماءُ الموردين لمن لا يرى ما عليهم: فلترٌ لا نتيجةَ له.
+      // Supplier names are not shown to someone who cannot see what is owed to them: a filter with no result.
       .then(([c, sup, b]) => [c, only ? [] : sup, b]);
     res.json({
       customers: [...customers].sort().slice(0, 1000),
       suppliers: [...suppliers].sort().slice(0, 1000),
-      // والصيغُ التي لا يفرّقها إلّا الفراغ فرعٌ واحد.
+      // Spellings differing only by whitespace are one branch.
       branches: [...new Set(branches.map(normKey).filter(Boolean))].sort(),
       receivablesOnly: only,
     });
@@ -1029,7 +897,7 @@ exports.dashboardFilterOptions = async (req, res) => {
   }
 };
 
-/** قيمُ الفلاتر — مبنيّةٌ من البيانات نفسِها لا مكتوبةً بالإيد. */
+/** Filter values built from the data itself, not hand-written. */
 exports.filterOptions = async (req, res) => {
   try {
     const kind = String(req.query.kind || 'customer');
@@ -1045,54 +913,27 @@ exports.filterOptions = async (req, res) => {
   }
 };
 
-// تُنادى من السكربتات بعد الاستيراد فلا تبقى الشاشة على أرقامٍ قديمة دقيقةً.
-// (كان السطرُ بلا قوسين: `cache.clear('cdr:')` يجري مرّةً عند التحميل لا عند كلّ
-//  نداء، فتبقى أرقامُ الأعمار على القديم بعد كلّ «invalidate».)
+// Called from scripts after import so the screen does not stay on old numbers for a minute.
+// The line previously lacked parentheses: `cache.clear('cdr:')` ran once at load, not on each call, so aging numbers stayed stale after every invalidate.
 exports.invalidate = () => { cache.clear(CACHE_PREFIX); cache.clear('cdr:'); };
 exports._internals = { statsByKind, FIELD_OF, VALUE_OF, CLOSED_BY, NOT_CANCELLED };
 
-// ═══════════════════════════════════════════════════════════════════════════
-//  الفواتير — من هنا يعمل قسمُ التحصيل
-// ═══════════════════════════════════════════════════════════════════════════
-//
-// ── لماذا صفحتان لا صفحةُ كشوف ─────────────────────────────────────────────
-// التحصيلُ لا يُحصِّل كشوفًا؛ يُحصِّل فواتير. والكشفُ الذي لم يُفوتَر بعد لا
-// شأنَ له بالقسم أصلًا — إلّا أن يكون نقديًّا، فالنقديُّ يُحصَّل في يومه بلا
-// فاتورة، ويُعرَف برقم كشفه.
-//
-//   · فواتيرُ الكاش    — كشوفٌ نوعُ دفعها نقديّ، اكتمل لها سدادٌ وفرعٌ ومبلغ.
-//                       العنصرُ فيها الكشف، والقيمةُ يكتبها المحصِّل بيده.
-//   · فواتيرُ الضريبي  — مجموعةٌ برقم الفاتورة لا بالكشف: الفاتورةُ الواحدة قد
-//                       تضمّ كشوفًا عدّة، والقسمُ يتعامل بها لا بها منفردة.
-//
-// ── وأعمارُ الفواتير شرائحُ لا تتداخل ──────────────────────────────────────
-// «فوق ١٥ يومًا» تعني من خمسةَ عشرَ إلى ثلاثين، لا كلَّ ما تجاوز الخمسةَ عشر.
-// الشرائحُ المتداخلة تجعل الفاتورةَ الواحدة تُعدّ في أربعة أرقام، فلا يُعرف
-// كم فاتورةً في كلّ عمرٍ حقًّا.
+// Invoices: where the collections department works. Two pages, not one statements page: cash statements are collected the same day by statement number; tax invoices are grouped by invoice number (one invoice can hold several statements).
+// Invoice ages are non-overlapping bands ('over 15 days' means 15 to 30), so each invoice is counted in exactly one band.
 /**
- * ── ورقمٌ يعني «لا فاتورة» ليس رقمَ فاتورة ─────────────────────────────────
- *
- * في البيانات ألفٌ وتسعُمئةٍ وثلاثةٌ وتسعون كشفًا مكتوبٌ في خانة فاتورتها
- * «no inv» — وهي عبارةٌ تقول إنّ الكشفَ لم يُفوتَر بعد. فلو عُدَّت رقمَ فاتورةٍ
- * لظهرت في صدر الصفحة «فاتورةٌ» فيها ألفان من الكشوف وقيمةٌ مجمَّعة، وهي لا
- * وجودَ لها — والفواتيرُ الحقيقيّةُ أرقامٌ من أربع خاناتٍ تحمل الواحدةُ نحوَ
- * ثمانيةَ عشرَ كشفًا.
- *
- * غيابُ القيمة ليس قيمة. فما يعني «لا فاتورة» يُقرأ كما لو كانت الخانةُ فارغة.
+ * A number meaning 'no invoice' is not an invoice number.
+ * The data has 1,993 statements with 'no inv' in the invoice field, a phrase meaning not yet invoiced. Counted as an invoice number it would appear at the top of the page as an 'invoice' with 2,000 statements and an aggregated value, which does not exist; real invoices are 4-digit numbers carrying about 18 statements each.
+ * Absence of a value is not a value: anything meaning 'no invoice' is read as an empty field.
  */
-// القائمةُ نفسُها التي يقرؤها اشتقاقُ نوع الدفع — في مكانٍ واحد (utils/paymentType):
-// كانت نسختان، وكان «n/a» رقمَ فاتورةٍ هناك وليس رقمًا هنا.
+// The same list the payment-type derivation reads, in one place (utils/paymentType): there were two copies, and 'n/a' was an invoice number there but not here.
 /**
- * شرطُ «رقمُ فاتورةٍ حقيقيّ».
- *
- * والمطابقةُ لا تبالي بحالة الحرف: كُتبت في البيانات «no inv» و«no Inv»، وعدُّ
- * الصيغ يدًا يُسقط ما لم يُتخيَّل منها — وقد أسقط الثانيةَ فعلًا حتى ظهرت في
- * الصفحة. فتُطابَق بتعبيرٍ واحدٍ يقبل الحالتين والفراغَ الزائد.
+ * Condition for a real invoice number.
+ * Matching ignores letter case: the data has 'no inv' and 'no Inv', and listing variants by hand misses ones nobody imagined (it did miss the second until it showed in the page). A single expression accepts both cases and extra whitespace.
  */
 const { NO_INVOICE_RX, NO_INVOICE_TOKENS } = require('../utils/paymentType');
 const REAL_INVOICE = { invoiceNumber: { $nin: [null, ''], $not: NO_INVOICE_RX } };
 
-/** أقصى ما يقرؤه كشفُ الحساب من صفوف — فوقه يُطلَب تضييقُ الفلتر. */
+/** Maximum rows an account statement reads; above it, narrowing the filter is requested. */
 const STATEMENT_ROW_CAP = 20000;
 
 const AGE_BANDS = {
@@ -1103,31 +944,24 @@ const AGE_BANDS = {
   '60_plus': [60, null],
 };
 
-/** شرطُ العمر على حقلِ تاريخٍ ما — بالأيّام منذُه حتى اليوم. */
+/** Age condition on a date field, in days from it until today. */
 function ageCondition(field, band) {
   const b = AGE_BANDS[band];
   if (!b) return {};
   const [from, to] = b;
   const now = Date.now();
   const cond = {};
-  // الأقدمُ عمرًا هو الأصغرُ تاريخًا: «مضى عليه أكثرُ من ١٥» = تاريخُه أقدمُ
-  // من (اليوم − ١٥).
-  //
-  // والشريحةُ الأحدث بلا حدٍّ أعلى: في البيانات كشوفٌ بتواريخَ مستقبليّة، وحدٌّ
-  // «أقدمُ من اليوم» كان يُسقطها من الشرائح كلِّها — فينقص المجموعُ عن الكلّ
-  // واحدًا لا يُعرف أين ذهب.
+  // Older age means smaller date: 'more than 15 days old' = date older than (today - 15).
+  // The newest band has no upper bound: the data has future-dated statements, and a bound of 'older than today' dropped them from all bands, so the sum fell short of the total by one with no known cause.
   if (from) cond.$lte = new Date(now - from * 86400000);
   if (to != null) cond.$gt = new Date(now - to * 86400000);
   return { [field]: cond };
 }
 
-/** فلاترُ الصفحتين المشتركة: عميلٌ وفرعٌ ومدًى وحالةُ التحصيل وشريحةُ العمر. */
+/** Shared filters of both pages: customer, branch, range, collection state and age band. */
 /**
- * أسماءُ عملاءِ صفحةٍ ← معرّفاتُ ملفّاتهم، باستعلامٍ واحد.
- *
- * الصفُّ يحمل اسمًا، وملفُّ العميل يُفتَح بمعرّفه. فلو تُرجم الاسمُ في الواجهة
- * لكان لكلّ ضغطةٍ طلبٌ ثانٍ ولانتظر المستخدمُ مرّتين. ويُترجَم هنا لمئة صفٍّ
- * دفعةً واحدة، بالاسم المطويّ فتلتقي صيغُ الاسم كلُّها على ملفٍّ واحد.
+ * Customer names on a page to their file ids, in one query.
+ * A row carries a name while the customer file opens by id. Translating in the UI would cost a second request per click and make the user wait twice. It is translated here for 100 rows at once, by folded name so all name spellings meet on one file.
  */
 async function partyIdsByName(names, kind = 'customer') {
   const keys = [...new Set((names || []).filter(Boolean).map((n) => fold(n)))];
@@ -1136,13 +970,9 @@ async function partyIdsByName(names, kind = 'customer') {
   return new Map(rows.map((r) => [r.nameKey, String(r._id)]));
 }
 
-/** شروطُ دفتر الفواتير من استعلام الصفحة — يقرؤها الجدولُ وقائمةُ قيم الأعمدة. */
+/** Invoice ledger conditions from the page query; read by the table and the column-values list. */
 function ledgerInvoiceMatch(query) {
-  // ── صفحةُ الضريبيّ للضريبيّ ────────────────────────────────────────────
-  // كانت تعرض الدفترَ كلَّه يومَ لم يكن فيه نقديٌّ إلّا ثلاثُ فواتير. ثمّ دخلت
-  // ورقةُ الشحنات النقديّة (١٨٣٥ شحنة) فصارت تظهر هنا «فواتيرَ ضريبيّة» وتُشتقّ
-  // لها ضريبةٌ لا وجودَ لها، ومعها ١١٨ رقمًا محجوزًا يُعَدّ «لم يُحصَّل بعد».
-  // والنوعُ اليومَ هو الورقةُ التي جاء منها الصفّ: Daily Invoice Report ضريبيّ.
+  // The tax page is for tax only. It used to show the whole ledger when cash held only three invoices. Then the cash shipments sheet (1835 shipments) arrived and appeared here as 'tax invoices' with derived tax that does not exist, plus 118 reserved numbers counted as 'not yet collected'. The type is now the sheet the row came from: Daily Invoice Report is tax.
   const f = { kind: 'tax', unused: { $ne: true } };
   if (query.customer) f.partyName = flexSpaceRegex(String(query.customer));
   if (query.q) {
@@ -1150,9 +980,8 @@ function ledgerInvoiceMatch(query) {
     const rx = exact || loose;
     f.$or = [{ invoiceNumber: rx }, { partyName: exact ? rx : loose }, { partyCode: rx }];
   }
-  // «محصَّلة» بتعريف الدفتر الواحد — راجع models/CollectionInvoice.OPEN.
-  // والحالاتُ ثلاث: «لم تُحصَّل» لا مقبوضَ فيها، و«جزئيّة» فيها مقبوضٌ دون
-  // قيمتها، و«محصَّلة» بالكامل. و`open` ما لم يكتمل (الأوليان) — للمديونيّة.
+  // 'Collected' by the single ledger definition; see models/CollectionInvoice.OPEN.
+  // Three states: 'not collected' has nothing received, 'partial' has something received below its value, 'collected' is complete. `open` is whatever is not complete (the first two), for debt.
   if (query.collected === 'yes') f.status = /collected/i;
   else if (query.collected === 'no') { f.status = { $not: /collected/i }; f.collectedAmount = { $not: { $gt: 0 } }; }
   else if (query.collected === 'partial') { f.status = { $not: /collected/i }; f.collectedAmount = { $gt: 0 }; }
@@ -1170,25 +999,19 @@ function ledgerInvoiceMatch(query) {
 }
 
 /**
- * فلاترُ الأعمدة على طريقة إكسل — لصفحتَي الفواتير.
- *
- * ── ولماذا في الخادم لا في المتصفّح ────────────────────────────────────────
- * الجدولُ مُصفَّحٌ في الخادم: مئةُ صفٍّ في الصفحة من تسعة آلاف. فبناءُ قائمة
- * القيم من الصفوف المحمَّلة يعرض قيمَ الصفحة الحاليّة وحدَها، والفلترةُ بها
- * تفلتر مئةً وتترك الباقي. فالقيمُ تُحسب في القاعدة والفلترُ يُطبَّق فيها.
- *
- * وتصل القيمُ مكرَّرةً (`cf_x=a&cf_x=b`) لا مفصولةً بفاصلة، لأنّ القيم نفسَها
- * قد تحوي فاصلةً — واسمُ عميلٍ فيه فاصلةٌ يصير عميلين.
+ * Excel-style column filters for both invoice pages.
+ * Why on the server: the table is paginated on the server (100 rows per page of 9,000), so building the value list from loaded rows shows only the current page's values, and filtering by them filters 100 and leaves the rest. Values are computed in the database and the filter applied there.
+ * Values arrive repeated (`cf_x=a&cf_x=b`), not comma-joined, because values can contain commas and a customer name with a comma would become two customers.
  */
-// ما يجوز الفلترةُ به في كلّ صفحة، ومن أيّ مجموعة يُقرأ.
+// What each page may filter by, and which collection it reads from.
 const COL_FIELDS = {
-  // الكاش: صفُّه كشفُ تشغيل.
+  // Cash: its row is an operations statement.
   cash: {
     reportNumber: 'text', username: 'text', branch: 'text', payingBranch: 'text',
     fromLocation: 'text', toLocation: 'text', collectionDetail: 'text',
     paymentDate: 'date', collectionDate: 'date', deliveryDate: 'date',
   },
-  // الضريبيّ: صفُّه فاتورةُ دفتر.
+  // Tax: its row is a ledger invoice.
   tax: {
     invoiceNumber: 'text', partyName: 'text', partyCode: 'text', status: 'text',
     invoiceDate: 'date', deliveryDate: 'date', collectionDate: 'date',
@@ -1196,16 +1019,16 @@ const COL_FIELDS = {
 };
 const RIYADH = 'Asia/Riyadh';
 
-/** «YYYY-MM-DD» بتوقيت الرياض ← مدى اليوم كلِّه بالـ UTC. */
+/** 'YYYY-MM-DD' in Riyadh time to the whole day's range in UTC. */
 function riyadhDayRange(ymd) {
   const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(String(ymd || ''));
   if (!m) return null;
-  // الرياض +03:00 ثابتةً بلا توقيتٍ صيفيّ.
+  // Riyadh is a fixed +03:00 with no daylight saving.
   const start = new Date(`${m[1]}-${m[2]}-${m[3]}T00:00:00.000+03:00`);
   return { $gte: start, $lt: new Date(start.getTime() + 86400000) };
 }
 
-/** يقرأ `cf_<field>` من الاستعلام ويبني منها شرطَ مونجو. */
+/** Reads `cf_<field>` from the query and builds a Mongo condition. */
 function columnFilters(query, kind) {
   const allowed = COL_FIELDS[kind] || {};
   const and = [];
@@ -1213,12 +1036,12 @@ function columnFilters(query, kind) {
     if (!key.startsWith('cf_')) continue;
     const field = key.slice(3);
     const type = allowed[field];
-    if (!type) continue; // عمودٌ غيرُ مسموح: يُتجاهَل ولا يُوسَّع الفلتر
+    if (!type) continue; // A column not allowed is ignored and the filter is not widened.
     const values = (Array.isArray(raw) ? raw : [raw]).map((v) => String(v));
     if (!values.length) continue;
 
     if (type === 'date') {
-      // «(فارغ)» تُرسَل نصًّا فارغًا وتعني «لا تاريخ».
+      // '(empty)' is sent as an empty string and means 'no date'.
       const or = [];
       for (const v of values) {
         if (!v) { or.push({ [field]: null }, { [field]: { $exists: false } }); continue; }
@@ -1227,9 +1050,7 @@ function columnFilters(query, kind) {
       }
       if (or.length) and.push({ $or: or });
     } else {
-      // ما تعرضه القائمةُ صيغةٌ مقروءةٌ تجمع ما لا يفرّقه إلّا الفراغ («الدمام»
-      // و«الدمام »)، فيُطابَق بنمطٍ يقبلها كلَّها — راجع utils/colFilter. وكان
-      // `$in` على النصّ، و Mongoose يقصّه، فيُرجع اختيارُ «الدمام » صفرًا.
+      // The list shows a readable form that merges what differs only by whitespace ('Dammam' and 'Dammam '), so it is matched by a pattern accepting all of them (see utils/colFilter). It used `$in` on the string and Mongoose trimmed it, so selecting 'Dammam ' returned zero.
       const c = textIn(field, values);
       if (c) and.push(c);
     }
@@ -1238,11 +1059,8 @@ function columnFilters(query, kind) {
 }
 
 /**
- * قيمُ عمودٍ واحدٍ مع عدد صفوف كلِّ قيمة — محسوبةً على المجموعة المطابقة كلِّها.
- *
- * تُحسب تحت الفلاتر القائمة عدا فلترِ العمود نفسِه: فتحُ قائمة «العميل» بعد
- * اختيار عميلٍ منها يجب أن يعرض العملاءَ كلَّهم لا المختارَ وحدَه، وإلّا لم
- * يستطع أحدٌ إضافةَ عميلٍ ثانٍ إلى اختياره.
+ * Values of one column with the row count of each value, over the whole matching set.
+ * Computed under the existing filters except the column's own: opening the 'customer' list after choosing a customer must show all customers, not only the chosen one, or nobody could add a second customer to the selection.
  */
 exports.invoiceColumnOptions = async (req, res) => {
   try {
@@ -1251,15 +1069,11 @@ exports.invoiceColumnOptions = async (req, res) => {
     const type = (COL_FIELDS[kind] || {})[field];
     if (!type) return res.status(400).json({ message: 'عمود غير معروف' });
 
-    // ── وبحثُ القائمة غيرُ بحثِ الصفحة ──────────────────────────────────
-    // `q` هو بحثُ الصفحة، ويُمرَّر إلى شروط الجدول كما هو. فلو حمل بحثَ
-    // القائمة أيضًا لفلتر الصفحةَ به: يكتب المستخدمُ حرفين داخل قائمة
-    // «العميل» فتضيق المجموعةُ المحسوبةُ عليها القيمُ إلى ما يطابق الحرفين
-    // في رقم الفاتورة أو الاسم — فتنقص القائمةُ ولا يُعرف لماذا.
+    // List search differs from page search. `q` is the page search and goes to the table conditions as is; if it also carried the list search, typing two letters inside the 'customer' list would narrow the set the values are computed on to what matches those letters in invoice number or name, and the list would shrink for no visible reason.
     const q = String(req.query.search || '').trim();
     const LIMIT = 200;
 
-    // الفلاتر القائمةُ دون فلترِ هذا العمود.
+    // The existing filters without this column's filter.
     const others = { ...req.query };
     delete others[`cf_${field}`];
 
@@ -1270,7 +1084,7 @@ exports.invoiceColumnOptions = async (req, res) => {
       match = { ...invoiceFilters(others, { ageField: 'paymentDate' }), paymentType: 'cash' };
       match.$and = [
         ...(match.$and || []),
-        // الشرطُ نفسُه الذي في cashInvoices — ومعه ما حصّلته المحفظة.
+        // The same condition as in cashInvoices, plus what the wallet collected.
         { $or: [{ reportDate: { $lt: AUTO_RULE_FROM } }, ...REVIEWED_MATCH.$or, { collectedByWallet: true }] },
         ...columnFilters(others, kind),
       ];
@@ -1290,30 +1104,19 @@ exports.invoiceColumnOptions = async (req, res) => {
 
     const pipeline = [{ $match: match }, { $group: { _id: groupId, count: { $sum: 1 } } }];
     if (q) {
-      // البحثُ داخل القائمة يجري على القيمة بعد التجميع، فيشمل التواريخَ
-      // المصوغةَ كما تُعرض.
+      // Search inside the list runs on the value after grouping, so it covers dates formatted as displayed.
       pipeline.push({ $match: { _id: { $regex: q.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), $options: 'i' } } });
     }
-    // ── والترتيبُ بالتكرار لا يصلح لعمودٍ قيمتُه فريدة ──────────────────────
-    //
-    // دفترُ الفواتير أحدَ عشرَ ألفَ صفٍّ فيها أحدَ عشرَ ألفَ رقمٍ مختلف: رقمان
-    // فقط يتكرّران (٧٦٧٩ و‍«-14»، مرّتين لكلٍّ). والترتيبُ بالتكرار يرفع هذين
-    // إلى رأس القائمة دائمًا — فمَن يختار فاتورةً يجد «٧٦٧٩» ملتصقًا بها في
-    // كلّ مرّة ويقرأها فلترًا مفروضًا عليه. وهي ليست مفروضةً: هي أعلى القائمة
-    // لأنّها الرقمُ الوحيدُ الذي تكرّر.
-    //
-    // فأعمدةُ الأرقام (الفاتورة، الكشف، المستند، كودُ الحساب) تُرتَّب بقيمتها
-    // تنازليًّا — والأرقامُ تكبر مع الزمن، فأعلى القائمة أحدثُها وهو ما يُطلَب.
-    // وتُقرأ رقمًا لا نصًّا: «10012» بعد «7679» لا قبله.
-    //
-    // وبقيّةُ الأعمدة (الحالة، الفرع، العميل) تبقى بالتكرار: قيمُها قليلةٌ
-    // متكرّرةٌ، وأكثرُها ورودًا هو ما يُبحَث عنه.
+    // Frequency ordering does not suit a column of unique values.
+    // The invoice ledger has 11,000 rows with 11,000 different numbers; only two numbers repeat (7679 and '-14', twice each). Frequency ordering always lifts those two to the top, so someone choosing an invoice finds '7679' stuck to it every time and reads it as an imposed filter. It is not imposed: it is first because it is the only repeated number.
+    // Number columns (invoice, statement, document, account code) are therefore sorted by value descending, since numbers grow with time and the newest is what is wanted, and read as numbers not text ('10012' after '7679', not before).
+    // Other columns (state, branch, customer) keep frequency order: few repeated values, and the most frequent is what is searched for.
     const ID_LIKE = new Set(['invoiceNumber', 'reportNumber', 'documentNumber', 'partyCode']);
     if (type === 'date') {
       pipeline.push({ $sort: { _id: -1 } });
     } else if (ID_LIKE.has(field)) {
       pipeline.push({ $addFields: { _num: { $convert: { input: '$_id', to: 'double', onError: null, onNull: null } } } });
-      // ما ليس رقمًا يُؤخَّر: «(فارغ)» ونصوصٌ شاذّةٌ لا تتقدّم أرقامَ الفواتير.
+      // Non-numbers go last: '(empty)' and odd strings do not precede invoice numbers.
       pipeline.push({ $sort: { _num: -1, _id: -1 } });
       pipeline.push({ $project: { _num: 0 } });
     } else {
@@ -1323,7 +1126,7 @@ exports.invoiceColumnOptions = async (req, res) => {
 
     const rows = await Model.aggregate(pipeline).allowDiskUse(true);
     const truncated = rows.length > LIMIT;
-    // والصيغُ التي لا يفرّقها إلّا الفراغ سطرٌ واحد — بالترتيب الذي جاءت به.
+    // Spellings differing only by whitespace are one line, in the order they arrived.
     const values = type === 'date'
       ? rows.slice(0, LIMIT).map((r) => ({ value: String(r._id ?? ''), count: r.count }))
       : mergeOptions(rows.slice(0, LIMIT).map((r) => ({ value: r._id, count: r.count })));
@@ -1338,25 +1141,17 @@ function invoiceFilters(query, { ageField }) {
   if (query.customer) f.username = flexSpaceRegex(String(query.customer));
   if (query.branch) f.payingBranch = textMatcher(String(query.branch));
   if (query.q) {
-    // ── الرقمُ الكامل يُطلَب كاملًا ──────────────────────────────────────────
-    // البحثُ عن «٩٧١٩» كان يُخرج ستّةَ صفوفٍ في فاتورتين: الفاتورةَ نفسَها،
-    // وكشفًا رقمُه ٩٧١٩، وسندًا رقمُه ٩٧١٩ تحت فاتورةٍ أخرى — فتبدو الفاتورةُ
-    // مكرَّرةً وهي واحدة. فإن طابق الرقمُ حقلًا كاملًا فهو المقصود؛ والتضمينُ
-    // يبقى لمن كتب جزءًا. راجع numberSearchRegex.
+    // A full number is requested in full. Searching '9719' returned six rows in two invoices: the invoice itself, a statement numbered 9719, and a voucher numbered 9719 under another invoice, so the invoice looked duplicated. If the number matches a whole field it is the intended one; containment stays for those who typed a part. See numberSearchRegex.
     const { exact, loose } = numberSearchRegex(String(query.q));
     const rx = exact || loose;
     f.$or = [{ reportNumber: rx }, { invoiceNumber: rx }, { username: exact ? rx : loose }, { documentNumber: rx }];
   }
 
-  // ── حالةُ التحصيل ───────────────────────────────────────────────────────
-  // الصفحةُ تعرض المحصَّلَ وغيرَه معًا، والسؤالُ يُطرح على الوجهين: «ما الذي
-  // بقي؟» و«كم حصّلنا؟». فالاختيارُ صريحٌ فوق الجدول لا مخبوءٌ في فلتر.
-  // والدفترُ قد يقول «محصَّل» بلا تاريخ — فالفلترُ يسأل عن الاثنين معًا.
-  // وثلاثُ حالاتٍ لا اثنتان — راجع utils/collectionState.
+  // Collection state. The page shows collected and uncollected together and asks both questions, 'what is left?' and 'how much did we collect?', so the choice is explicit above the table, not hidden in a filter. The ledger can say 'collected' with no date, so the filter asks about both. Three states, not two; see utils/collectionState.
   const stateCond = cashStateMatch(String(query.collected || ''));
   if (stateCond) f.$and = [...(f.$and || []), stateCond];
 
-  // تفصيلُ التحصيل — «أرِني ما يحصّله الفرعُ وحدَه».
+  // Collection detail: 'show me what the branch alone collects'.
   if (query.detail) f.collectionDetail = String(query.detail);
 
   const range = query.from || query.to ? dayRange(query.from, query.to) : null;
@@ -1370,26 +1165,14 @@ function invoiceFilters(query, { ageField }) {
 }
 
 /**
- * فواتيرُ الكاش — كشوفٌ نقديّة اكتمل سدادُها للمورّد.
- *
- * تصل هنا لحظةَ ما يختار موظّفُ التشغيل «كاش» ويكتب تاريخَ السداد وفرعَه
- * ومبلغَه: ذلك معناه أنّ الشحنة نُفّذت ودُفع للمورّد، فالمالُ عند العميل الآن
- * ويُطلَب في يومه.
- *
- * ولا يُعرَض «مبلغ السداد» هنا: ذاك ما دُفع للمورّد، وما يُحصَّل من العميل رقمٌ
- * آخر يكتبه المحصِّل بيده حين يقبضه.
+ * Cash invoices: cash statements whose payment to the supplier is complete.
+ * They arrive when operations staff choose 'cash' and write the payment date, branch and amount: that means the shipment was executed and the supplier paid, so the money is now with the customer and is claimed that day.
+ * 'Payment amount' is not shown here: it is what was paid to the supplier, while what is collected from the customer is another number the collector writes when received.
  */
-/**
- * عددُ مرفقات صفوف الصفحة — راجع controllers/collectionsAttachmentsController.
- * وكشفُ الحساب (`req.allRows`) يمرّ من هنا أيضًا؛ تجميعٌ على الفهرس لا يُثقله.
- */
+/** Attachment counts for the page's rows; see controllers/collectionsAttachmentsController. The account statement (`req.allRows`) passes through here too; an index aggregation is not heavy. */
 const attachmentCounts = (kind, keys) => require('./collectionsAttachmentsController').countsFor(kind, keys);
 
-/**
- * شرطُ صفحة فواتير الكاش — في دالّةٍ واحدةٍ تقرؤها الصفحةُ ولوحةُ التحصيل
- * (بطاقاتُ «آجل - كاش» و«نقدي - 3PL» و«نقدي - HT» في
- * collectionsReceivablesController)، فلا تَعُدّ اللوحةُ كشفًا لا تعرضه الصفحة.
- */
+/** Cash invoices page condition, in one function read by both the page and the collections board (the 'credit - cash', 'cash - 3PL' and 'cash - HT' cards in collectionsReceivablesController), so the board never counts a statement the page does not show. */
 function cashScreenFilter(query) {
   const { AUTO_RULE_FROM, REVIEWED_MATCH } = require('../utils/paymentType');
   const filter = {
@@ -1399,11 +1182,9 @@ function cashScreenFilter(query) {
   filter.$and = [...(filter.$and || []), {
     $or: [
       { reportDate: { $lt: AUTO_RULE_FROM } },
-      // مراجعةُ التشغيل (أو الحسابات) — راجع REVIEWED_MATCH في utils/paymentType.
+      // Operations (or accounts) review; see REVIEWED_MATCH in utils/paymentType.
       ...REVIEWED_MATCH.$or,
-      // ── إلّا ما حصّله المندوبُ في المحفظة ─────────────────────────────
-      // المالُ وصل، فلا يُنتظَر به مراجعةُ التشغيل: يظهر هنا فورًا محصَّلًا
-      // (صاحبُ الشركة، ٢٠٢٦/١٠/٢١). راجع utils/walletCollection.
+      // Except what the rep collected in the wallet. The money arrived, so it does not wait for operations review: it appears here at once as collected. See utils/walletCollection.
       { collectedByWallet: true },
     ],
   }, ...columnFilters(query, 'cash')];
@@ -1412,15 +1193,9 @@ function cashScreenFilter(query) {
 exports.cashScreenFilter = cashScreenFilter;
 
 /**
- * ── «بحثتُ عن الرقم فلم أجده» — أين هو إذن؟ (٢٠٢٦/١٠/٢٧) ─────────────────────
- *
- * صفحةُ الكاش تقرأ كشوفَ التشغيل النقديّة المراجَعة، وصفحةُ الضريبيّ تقرأ فواتيرَ
- * الدفتر الضريبيّة. فرقمٌ يقع خارج الاثنين — فاتورةٌ نقديّةٌ في الدفتر لا كشفَ
- * لها، أو كشفٌ ضريبيٌّ على الشيت، أو كشفٌ لم يراجعه التشغيلُ بعد — يُبحَث عنه
- * في الصفحتين فلا يظهر، فيُقرأ «غيرُ موجود» وهو موجود (الفاتورة 65994).
- *
- * فحين لا تجد الصفحةُ شيئًا يُقال أين الرقمُ ولماذا ليس هنا، ببابٍ إليه.
- * لا يُحسب إلّا لبحثٍ برقمٍ كاملٍ عاد فارغًا — فلا يُثقل الصفحةَ في عملها.
+ * 'I searched the number and did not find it': where is it?
+ * The cash page reads reviewed cash operations statements and the tax page reads tax ledger invoices. A number outside both (a cash ledger invoice with no statement, a tax statement on the sheet, or a statement operations has not reviewed) is searched in both pages and not found, read as 'does not exist' although it does (invoice 65994).
+ * So when the page finds nothing it says where the number is and why it is not here, with a link to it. Computed only for a full-number search that returned empty, so normal page work is not slowed.
  */
 async function locateNumber(q) {
   const n = String(q || '').trim();
@@ -1443,7 +1218,7 @@ async function locateNumber(q) {
       collected: /collected/i.test(i.status || ''),
     })),
     sheets: sheets.map((w) => {
-      // لماذا ليس الكشفُ في صفحة الكاش — بشروطها نفسِها (cashScreenFilter).
+      // Why the statement is not on the cash page, under its own conditions (cashScreenFilter).
       let why = '';
       if (cancelled.includes(w.executionStatus)) why = 'cancelled';
       else if (w.paymentType !== 'cash') why = w.paymentType === 'tax' ? 'tax' : 'noType';
@@ -1459,36 +1234,15 @@ async function locateNumber(q) {
 
 exports.cashInvoices = async (req, res) => {
   try {
-    // ── والكشفُ النقديُّ يُحصَّل سواءٌ عرفنا ما دفعناه فيه أم لا ────────────
-    //
-    // كان الشرطُ يقتضي فرعًا مسدِّدًا ومبلغَ سدادٍ أكبرَ من صفر. و«مبلغ السداد»
-    // ما دفعناه نحن للمورّد — لا ما على العميل. فاشتراطُه في صفحةِ تحصيلٍ يعني
-    // أنّ الكشفَ لا يُطالَب به حتى نكون قد سجّلنا شراءَه.
-    //
-    // والأثر: ألفٌ وثمانمئةٍ وأربعةٌ وثلاثون كشفًا نقديًّا في دفتر التحصيل،
-    // تعرض الصفحةُ منها **خمسة**. أي أنّ المحصِّل يفتح شاشتَه فلا يرى ما
-    // يُحصّله.
-    //
-    // فالشرطُ هو النوعُ وحدَه: كلُّ كشفٍ نقديٍّ قابلٌ للتحصيل، والمحصَّلُ منه
-    // يُعرَف بتاريخ تحصيله لا بغيابه من القائمة.
-    // ── ولا تصل الشاشةَ إلّا بعد مراجعة التشغيل ──────────────────────────────
-    // كان الشرطُ تاريخَ سدادٍ ونوعًا نقديًّا. وصار معهما **مراجعةُ التشغيل**:
-    // الكشفُ لا يُطالَب به العميلُ قبل أن يراجعه التشغيلُ ويقرّ أنّه تامّ.
-    //
-    // ويسري على الكشوف الجديدة وحدَها (راجع AUTO_RULE_FROM): عمودُ المراجعة
-    // فارغٌ في تسعةٍ وعشرين ألفَ كشفٍ سابق، فاشتراطُه عليها يُفرغ الشاشةَ من
-    // كلّ ما يعمل عليه القسمُ اليوم.
+    // A cash statement is collectable whether or not we know what we paid: 'payment amount' is what we paid the supplier, not what the customer owes, so the condition is the cash type alone (requiring it hid all but five of 1,834).
+    // It reaches the screen only after operations review, applied to new statements only (see AUTO_RULE_FROM) since the review column is empty on 29k earlier ones.
     const filter = cashScreenFilter(req.query);
 
     const page = Math.max(1, Number(req.query.page) || 1);
-    // `req.allRows` يضعه كشفُ الحساب (services/invoiceStatement) وحدَه حين
-    // يستدعي هذه الدالّةَ في العمليّة نفسِها: الكشفُ يطبع النتيجةَ كلَّها لا
-    // صفحتَها. ولا يُقرأ من الاستعلام، فلا يطلب أحدٌ الدفترَ كلَّه بسطرٍ في الرابط.
+    // `req.allRows` is set only by the account statement (services/invoiceStatement) when it calls this function in the same process: the statement prints the whole result, not one page. It is not read from the query, so no one can request the whole ledger with a URL line.
     const limit = req.allRows ? STATEMENT_ROW_CAP : Math.min(500, Math.max(1, Number(req.query.limit) || 100));
 
-    // ── وعدّادُ كلّ حالةٍ فوق الجدول ────────────────────────────────────────
-    // الأزرارُ الثلاثة تقول كم في كلٍّ منها تحت الفلاتر الأخرى — لا تحت
-    // اختيارها هي، وإلّا قال «لم تُحصَّل» صفرًا لمن اختار «محصَّلة».
+    // Per-state counter above the table. The three buttons show how many each holds under the other filters, not under their own selection, otherwise 'not collected' would show zero for someone who selected 'collected'.
     const stateFilter = req.allRows ? null : cashScreenFilter({ ...req.query, collected: '' });
     const [rows, total, totals, stateAgg] = await Promise.all([
       OperationsWorkflow.find(filter)
@@ -1503,13 +1257,10 @@ exports.cashInvoices = async (req, res) => {
             _id: null,
             collected: { $sum: { $ifNull: ['$collectedAmount', 0] } },
             value: { $sum: { $ifNull: ['$sellingValue', 0] } },
-            // ما بقي على غير المكتمل — الجزئيُّ بباقيه لا بقيمته كلِّها.
+            // What remains on the incomplete: a partial by its remainder, not its whole value.
             remaining: { $sum: cashRemainingExpr },
             partialCount: { $sum: { $cond: [cashPartialExpr, 1, 0] } },
-            // ── والمحصَّلُ بلا تاريخٍ محصَّل ────────────────────────────────
-            // دفترُ الكاش يقول عن تسعةٍ وتسعين كشفًا «Collected» ولا تاريخَ
-            // لها فيه. فعدُّها غيرَ محصَّلةٍ لأنّ خانةَ التاريخ فارغةٌ يجعل
-            // الشاشةَ تطالب بمالٍ وصل.
+            // Collected with no date. The cash ledger says 'Collected' for 99 statements with no date in it. Counting them uncollected because the date cell is empty makes the screen claim money that arrived.
             collectedCount: { $sum: { $cond: [cashCollectedExpr, 1, 0] } },
           },
         },
@@ -1528,8 +1279,7 @@ exports.cashInvoices = async (req, res) => {
     const now = Date.now();
     const t = totals[0] || { collected: 0, collectedCount: 0, partialCount: 0, remaining: 0 };
     const sc = stateAgg[0] || { all: 0, yes: 0, partial: 0 };
-    // عددُ مرفقات الصفحة كلِّها في تجميعٍ واحد — لا نداءٌ لكلّ صفّ.
-    // ومعاملةُ التخليص التي يخدمها الكشف — راجع services/customsOpsLink.
+    // Attachment count of the whole page in one aggregation, not a call per row. Also the customs transaction the statement serves; see services/customsOpsLink.
     const customsLinks = require('../services/customsOpsLink');
     const [partyIds, attCounts, linked] = await Promise.all([
       partyIdsByName(rows.map((w) => w.username)),
@@ -1548,26 +1298,19 @@ exports.cashInvoices = async (req, res) => {
         payingBranch: w.payingBranch || '',
         paymentDate: w.paymentDate,
         route: [w.fromLocation, w.toLocation].filter(Boolean).join(' — '),
-        // ── وما يُطالَب به يُعرَض بجانب ما قُبض ────────────────────────────
-        // كانت الصفحةُ تعرض «مبلغ التحصيل» وحدَه، وهو صفرٌ في ألفٍ وثلاثمئةٍ
-        // وسبعةٍ وثلاثين كشفًا لم يُكتب مبلغُها بعد. فيفتح المحصِّلُ شاشتَه
-        // فيرى أصفارًا ولا يعرف بكم يُطالِب.
+        // What is claimed shows beside what was received. The page showed only 'collection amount', which is zero on 1,337 statements whose amount is not yet written, so the collector saw zeros and did not know how much to claim.
         value: r2(w.sellingValue),
         collectedAmount: r2(w.collectedAmount),
-        // ── لم يُحصَّل / جزئيّ / محصَّلٌ بالكامل — وما بقي ودفعاتُه ──────────
+        // Not collected / partial / fully collected, with remainder and payments.
         collectionState: cashState(w),
         remaining: cashRemaining(w),
         payments: (w.collectionPayments || []).map(paymentView),
         collectionDate: w.collectionDate || null,
-        // «محصَّل» في الدفتر وإن لم يُعرف يومُه — تقرؤها الشاشة فتقول ذلك
-        // صراحةً بدل «لم يُحصَّل».
+        // 'Collected' in the ledger even if its day is unknown: the screen says so explicitly instead of 'not collected'.
         collectedNoDate: !w.collectionDate && w.cashCollectionStatus === 'collected',
-        // حصّلته المحفظة (قيدُ تحصيلٍ برقم الكشف) لا يدُ القسم — راجع utils/walletCollection.
+        // Collected by the wallet (a collection entry by statement number), not by the department's hand; see utils/walletCollection.
         collectedByWallet: !!w.collectedByWallet,
-        // ── والنقديُّ يُسلَّم للعميل كالضريبيّ ──────────────────────────────
-        // الفاتورةُ النقديّة تُحمَل إلى العميل ويُوقَّع عليها كغيرها، ومن يومئذٍ
-        // يُطالَب. فكان زرُّ التسليم في صفحة الضريبيّ وحدَها، فيبقى نصفُ العمل
-        // بلا تاريخٍ في النظام.
+        // Cash is delivered to the customer like tax. A cash invoice is carried to the customer and signed like any other, and is claimed from that day. The delivery button was on the tax page only, leaving half the work with no date in the system.
         deliveryDate: w.deliveryDate || null,
         collectionDetail: w.collectionDetail || '',
         ageDays: w.paymentDate ? Math.floor((now - new Date(w.paymentDate).getTime()) / 86400000) : null,
@@ -1578,8 +1321,7 @@ exports.cashInvoices = async (req, res) => {
       page,
       limit,
       pages: Math.max(1, Math.ceil(total / limit)),
-      // `pendingCount` ما لم يكتمل (لم يُحصَّل + جزئيّ) — كما كان، فلا تنكسر
-      // شاشةٌ قديمة. و`noneCount` ما لم يُقبَض منه شيء.
+      // `pendingCount` is whatever is not complete (not collected + partial), as before so no old screen breaks; `noneCount` is whatever has nothing received.
       totals: {
         value: r2(t.value), collected: r2(t.collected), remaining: r2(t.remaining),
         collectedCount: t.collectedCount, partialCount: t.partialCount || 0,
@@ -1593,47 +1335,28 @@ exports.cashInvoices = async (req, res) => {
 };
 
 /**
- * فواتيرُ الضريبي — مجموعةٌ برقم الفاتورة.
- *
- * الفاتورةُ الواحدة قد تضمّ أكثرَ من كشف، وذلك معتاد. فالصفُّ هنا فاتورةٌ لا
- * كشف، ومعه عددُ كشوفه — ومن أراد تفصيلَها فتحها.
+ * Tax invoices: grouped by invoice number.
+ * One invoice can hold more than one statement, which is normal. The row here is an invoice, not a statement, with its statement count; opening it gives the detail.
  */
 /**
- * الفواتيرُ الضريبيّة — من دفتر الفواتير، لا من الكشوف.
- *
- * ── لماذا انقلب المصدر ────────────────────────────────────────────────────
- * كانت هذه الصفحة تُجمِّع كشوفَ التشغيل على رقم الفاتورة. والفاتورةُ لا تُولَد
- * من كشف: في دفتر التحصيل ثمانيةُ آلافٍ وتسعُمئةٍ وثمانٍ وسبعون فاتورة، ولا
- * يحمل رقمَها في كشوفنا إلّا خمسُمئةٍ وثمانٍ وخمسون — ستّةٌ في المئة. فكان
- * أربعةٌ وتسعون في المئة من فواتير الشركة لا تظهر في صفحة اسمُها «الفواتير
- * الضريبيّة»: يُبحَث عن الفاتورة ١١٨٠٠ فلا تُوجد، وهي في النظام وقيمتُها
- * ٤٧١٥ ومسلَّمةٌ لصاحبها.
- *
- * فالمصدرُ الآن هو الدفتر — وهو ما يقوله نموذجُ CollectionInvoice نفسُه:
- * الفاتورةُ مستندٌ قائمٌ بنفسه، والكشفُ يُنسَب إليها حين يوجد لا العكس.
- * وتُلحَق بها كشوفُها متى وُجدت، فيبقى «كم كشفًا تحتها» و«أحُصّلت كلُّها».
+ * Tax invoices from the invoice ledger, not statements.
+ * Why the source flipped: this page grouped operations statements by invoice number. An invoice is not born from a statement: the collection ledger has 8,978 invoices, and only 558 of their numbers appear on our statements, 6%. So 94% of company invoices were missing from a page named 'tax invoices': searching invoice 11800 found nothing although it is in the system, worth 4715 and delivered to its owner.
+ * The source is now the ledger, as the CollectionInvoice model itself says: the invoice is a standalone document and the statement belongs to it when there is one. Statements are attached when present, keeping 'how many statements under it' and 'were all collected'.
  */
 exports.taxInvoices = async (req, res) => {
   try {
     const CollectionInvoice = require('../models/CollectionInvoice');
     const page = Math.max(1, Number(req.query.page) || 1);
-    // راجع `req.allRows` في cashInvoices.
+    // See `req.allRows` in cashInvoices.
     const limit = req.allRows ? STATEMENT_ROW_CAP : Math.min(500, Math.max(1, Number(req.query.limit) || 100));
 
-    // ── والدفترُ كلُّه فواتير ────────────────────────────────────────────────
-    // كان يُستبعَد ما `kind` فيه «cash»، و`kind` صفةٌ استنتجناها من شكل كود
-    // الحساب (C…) لا شيءٌ في الورقة. فسقطت ثلاثُ فواتيرَ حقيقيّةٍ من ورقة
-    // «Daily Invoice Report» — لشركة تنشيط، مسلَّمةٌ وقيمتُها سبعةُ آلافٍ
-    // وسبعُمئة — من صفحة الفواتير، ولم تظهر في صفحة الكاش لأنّ تلك تقرأ
-    // الكشوف لا الفواتير. فلا تظهر في شاشةٍ أصلًا.
-    //
-    // وكلُّ صفٍّ في تلك الورقة فاتورة، فتُعرَض كلُّها.
+    // The whole ledger is invoices. It used to exclude rows with `kind` 'cash', but `kind` is an attribute inferred from the shape of the account code (C...) and not something in the sheet. That dropped three real invoices from the 'Daily Invoice Report' sheet (for Tanshit, delivered, worth 7,700) from the invoices page, and they did not appear on the cash page either since that reads statements, so they showed on no screen. Every row of that sheet is an invoice, so all are shown.
     const f = ledgerInvoiceMatch(req.query);
-    // فلاترُ الأعمدة تُضاف فوق ما سبق — راجع columnFilters.
+    // Column filters are added on top; see columnFilters.
     const cf = columnFilters(req.query, 'tax');
     if (cf.length) f.$and = [...(f.$and || []), ...cf];
 
-    // عدّادُ كلّ حالةٍ تحت الفلاتر الأخرى — راجع الشرحَ نفسَه في cashInvoices.
+    // Per-state counter under the other filters; see the same explanation in cashInvoices.
     let sf = null;
     if (!req.allRows) {
       sf = ledgerInvoiceMatch({ ...req.query, collected: '' });
@@ -1653,7 +1376,7 @@ exports.taxInvoices = async (req, res) => {
           invoices: { $sum: 1 },
           fullyCollected: { $sum: { $cond: [collectedExpr, 1, 0] } },
           partial: { $sum: { $cond: [partialExpr, 1, 0] } },
-          // المحصَّلُ: قيمةُ المحصَّلة كلُّها، ومقبوضُ غيرها — والباقي ما سواه.
+          // Collected: the whole value of collected invoices plus what was received on others; the remainder is the rest.
           collected: { $sum: { $cond: [collectedExpr, { $ifNull: ['$total', 0] }, { $ifNull: ['$collectedAmount', 0] }] } },
         } },
       ]),
@@ -1668,7 +1391,7 @@ exports.taxInvoices = async (req, res) => {
       ]) : [],
     ]);
 
-    // كشوفُ هذه الصفحة وحدَها — لا الدفترِ كلِّه: استعلامٌ صغيرٌ على مئةِ رقم.
+    // Statements of this page only, not the whole ledger: a small query over 100 numbers.
     const nums = rows.map((r) => r.invoiceNumber).filter(Boolean);
     const repAgg = nums.length ? await OperationsWorkflow.aggregate([
       { $match: { invoiceNumber: { $in: nums }, ...NOT_CANCELLED } },
@@ -1697,9 +1420,7 @@ exports.taxInvoices = async (req, res) => {
       elsewhere,
       invoices: rows.map((i) => {
         const rep = byNo.get(i.invoiceNumber);
-        // ── والمحصَّلُ يُقرأ من الدفتر أوّلًا ────────────────────────────────
-        // الدفترُ يقول «محصَّلة» ولو لم يكن لها كشفٌ عندنا؛ وكشوفُنا تُكمِّل
-        // الصورةَ ولا تنقضها.
+        // Collected is read from the ledger first. The ledger says 'collected' even when we hold no statement for it; our statements complete the picture and do not contradict it.
         const collected = /collected/i.test(i.status || '');
         return {
           invoiceNumber: i.invoiceNumber,
@@ -1707,7 +1428,7 @@ exports.taxInvoices = async (req, res) => {
           partyId: partyIds.get(fold(i.partyName || '')) || '',
           partyCode: i.partyCode || '',
           value: r2(i.total),
-          // الصافي والضريبة يُشتقّان من الإجمالي حين لا يذكرهما الدفتر.
+          // Net and tax are derived from the total when the ledger does not state them.
           net: r2(i.total / 1.15),
           vat: r2(i.total - i.total / 1.15),
           invoiceDate: i.invoiceDate,
@@ -1717,8 +1438,7 @@ exports.taxInvoices = async (req, res) => {
           reports: rep?.reports || 0,
           collectedReports: rep?.collectedReports || 0,
           fullyCollected: collected,
-          // ── وما قُبض منها وما بقي ─────────────────────────────────────────
-          // «جزئيّة» حتى يبلغ المقبوضُ قيمتَها — راجع CollectionInvoice.stateOf.
+          // What was received and what remains. 'Partial' until the received amount reaches the value; see CollectionInvoice.stateOf.
           collectionState: CollectionInvoice.stateOf(i),
           collectedAmount: r2(CollectionInvoice.collectedOf(i)),
           remaining: r2(CollectionInvoice.remainingOf(i)),
@@ -1727,7 +1447,7 @@ exports.taxInvoices = async (req, res) => {
           status: i.status || '',
           ageDays: i.invoiceDate ? Math.floor((now - new Date(i.invoiceDate).getTime()) / 86400000) : null,
           attachments: attCounts.get(String(i.invoiceNumber || '').trim()) || 0,
-          // معاملاتُ التخليص التي تخدمها كشوفُ هذه الفاتورة.
+          // Customs transactions served by this invoice's statements.
           customs: customsLinks.customsOfInvoice(linked, i.invoiceNumber),
         };
       }),
@@ -1735,7 +1455,7 @@ exports.taxInvoices = async (req, res) => {
       page,
       limit,
       pages: Math.max(1, Math.ceil(total / limit)),
-      // `pending` ما لم يكتمل (لم تُحصَّل + جزئيّة) — كما كان. و`none` ما لم يُقبَض منه شيء.
+      // `pending` is whatever is not complete (not collected + partial), as before; `none` is whatever has nothing received.
       totals: {
         value: r2(t.value), invoices: t.invoices, fullyCollected: t.fullyCollected,
         partial: t.partial || 0, pending: t.invoices - t.fullyCollected, none: t.invoices - t.fullyCollected - (t.partial || 0),
@@ -1749,20 +1469,10 @@ exports.taxInvoices = async (req, res) => {
 };
 
 /**
- * تفصيلُ فاتورة: الفاتورةُ أوّلًا، وكشوفُها إن وُجدت.
- *
- * ── وكانت الصفحةُ تُقلب فتبيضّ ────────────────────────────────────────────
- * كانت هذه الدالّةُ تبحث في كشوف التشغيل عن الرقم، فإن لم تجد قالت «لا كشوف
- * بهذا الرقم» وردّت 404. وقائمةُ الفواتير التي جاء منها الضغطُ تُقرأ من
- * الدفتر لا من الكشوف — والدفترُ يقول عن نفسه إنّ ستّةً في المئة فقط من
- * فواتيره لها كشوفٌ عندنا. فأربعةٌ وتسعون في المئة من الضغطاتِ كانت تنتهي
- * إلى صفحةٍ بيضاء.
- *
- * والترتيبُ الصحيح هو ترتيبُ النموذج نفسِه: الفاتورةُ مستندٌ قائمٌ بذاته،
- * والكشفُ يُنسَب إليها حين يوجد. فتُقرأ الفاتورةُ من الدفتر، وتُلحَق بها
- * كشوفُها إن كانت، وتُعرض بلا كشوفٍ إن لم تكن — وذلك حالُها الطبيعيّ لا خطأ.
- *
- * ولا يُردُّ 404 إلّا حين لا يكون للرقم أثرٌ في الدفتر ولا في الكشوف.
+ * Invoice detail: the invoice first, then its statements if any.
+ * The page used to go blank. This function searched operations statements for the number and, finding none, said 'no statements with this number' and returned 404. The invoice list the click came from is read from the ledger, which says only 6% of its invoices have statements here, so 94% of clicks ended on a blank page.
+ * The right order is the model's own: the invoice is a standalone document and the statement belongs to it when present. So the invoice is read from the ledger, its statements attached if any, and shown without statements if none, which is their normal state and not an error.
+ * 404 is returned only when the number has no trace in the ledger or the statements.
  */
 exports.taxInvoiceDetail = async (req, res) => {
   try {
@@ -1779,30 +1489,23 @@ exports.taxInvoiceDetail = async (req, res) => {
 
     if (!ledger && !rows.length) return res.status(404).json({ message: 'لا فاتورة بهذا الرقم' });
 
-    // ── واسمُ العميل يصير بابًا ──────────────────────────────────────────
-    // الفاتورةُ تحمل اسمًا، وملفُّ العميل يُفتَح بمعرّفه. فيُترجَم الاسمُ هنا
-    // مرّةً بالاسم المطويّ — لا في الواجهة بطلبٍ ثانٍ لكلِّ ضغطة.
+    // The customer name becomes a link. The invoice carries a name while the customer file opens by id, so the name is translated here once by folded name, not in the UI with a second request per click.
     const customerName = ledger?.partyName || rows[0]?.username || '';
     const partyDoc = customerName
       ? await CollectionsParty.findOne({ kind: 'customer', nameKey: fold(customerName) }).select('_id').lean()
       : null;
 
     const sum = (k) => r2(rows.reduce((a, r) => a + (Number(r[k]) || 0), 0));
-    // ── والمالُ يُقرأ من الدفتر متى نطق ──────────────────────────────────
-    // الدفترُ هو ما يعمل عليه المحاسب. فإن ذكر الإجماليَّ فهو الإجماليّ،
-    // ويُشتقُّ منه الصافي والضريبة. وإن سكت — فاتورةٌ وُلدت من كشفٍ عندنا —
-    // جُمعت من كشوفها.
+    // Money is read from the ledger when it speaks. The ledger is what the accountant works on: if it states the total, that is the total, and net and tax derive from it. If it is silent (an invoice born from a statement of ours) it is summed from its statements.
     const fromLedger = ledger && Number(ledger.total) > 0;
     const value = fromLedger ? r2(ledger.total) : sum('totalInvoice');
-    // والنقديُّ لا ضريبةَ فيه: قيمتُه صافيه كلُّه.
+    // Cash carries no tax: its value is entirely net.
     const cashBook = fromLedger && ledger.kind === 'cash';
     const net = fromLedger ? (cashBook ? r2(ledger.total) : r2(ledger.total / 1.15)) : sum('netInvoice');
     const vat = fromLedger ? (cashBook ? 0 : r2(ledger.total - ledger.total / 1.15)) : sum('tax');
-    // عددُ متابعات كلّ كشف — سجلُّه الذي يكتبه التشغيلُ والتخليصُ والتحصيل.
+    // Follow-up count per statement: its log, written by operations, clearance and collections.
     const fuCounts = await require('./workflowFollowUpController').countsFor(rows.map((r) => r._id));
-    // ── وحالةُ تحصيلها كما يقرؤها التحصيلُ نفسُه (loadTarget) ────────────────
-    // كي تُحصَّل الفاتورةُ من صفحتها — والنقديّةُ التي لا كشفَ لها لا بابَ لها
-    // غيرُ هذه الصفحة.
+    // Collection state as collections itself reads it (loadTarget), so the invoice can be collected from its page; a cash invoice with no statement has no other door than this page.
     let collection = null;
     try {
       const tg = await loadTarget({ invoiceNumber: number });
@@ -1813,7 +1516,7 @@ exports.taxInvoiceDetail = async (req, res) => {
         payments: (tg.payments || []).map((p) => (p.toObject ? p.toObject() : p)),
         collectionDate: tg.doc.collectionDate || null,
       };
-    } catch (_) { /* فاتورةٌ على أوامر النقل وحدَها — تُحصَّل من صفحة الفواتير */ }
+    } catch (_) { /* An invoice on transport orders alone is collected from the invoices page. */ }
 
     res.json({
       invoiceNumber: number,
@@ -1826,10 +1529,10 @@ exports.taxInvoiceDetail = async (req, res) => {
       collectionDate: ledger?.collectionDate || null,
       status: ledger?.status || '',
       comments: ledger?.comments || '',
-      // من أين جاءت الفاتورة: من دفتر الشركة أم وُلدت من كشفٍ عندنا.
+      // Where the invoice came from: the company ledger, or born from a statement of ours.
       inLedger: !!ledger,
       collection,
-      // كلُّ كشفٍ بمعاملته، والفاتورةُ بمعاملاتها مجموعةً — راجع services/customsOpsLink.
+      // Each statement with its transaction, and the invoice with its transactions together; see services/customsOpsLink.
       reports: rows.map((r) => ({
         ...r, customsLink: undefined, customs: require('../services/customsOpsLink').linkView(r.customsLink),
         followUps: fuCounts.get(String(r._id)) || 0,
@@ -1860,25 +1563,14 @@ exports.taxInvoiceDetail = async (req, res) => {
 };
 
 /**
- * تسجيلُ التحصيل.
- *
- * ── ويُكتب على الكشوف نفسِها ───────────────────────────────────────────────
- * لا في جدولٍ ثانٍ للتحصيل. الكشفُ هو المستند، وتاريخُ تحصيله عمودٌ فيه —
- * فيراه قسمُ التشغيل في اللحظة نفسِها بلا مزامنة.
- *
- * والفاتورةُ التي تضمّ كشوفًا يُكتب تاريخُها على كشوفها كلِّها: تحصيلُ الفاتورة
- * تحصيلٌ لما فيها، وتركُ بعضِها مفتوحًا يجعلها تظهر «نصفَ محصَّلة» إلى الأبد.
+ * Recording the collection.
+ * It is written on the statements themselves, not in a second collection table. The statement is the document and its collection date is a column in it, so operations sees it at the same moment with no sync.
+ * For an invoice holding statements the date is written on all of them: collecting the invoice collects what is in it, and leaving some open makes it show 'half collected' forever.
  */
-// ── الدفتران يتحرّكان معًا ───────────────────────────────────────────────────
-//
-// الفاتورةُ مكتوبةٌ في مكانين: على كشوف التشغيل التي تحتها، وفي دفتر التحصيل
-// (`CollectionInvoice`) الذي فيه تسعةُ آلافِ فاتورةٍ ترجع إلى ٢٠٢٢ — أكثرُها
-// بلا كشفٍ عندنا أصلًا. وهما ليسا نسخةً من نسخة، بل وجهان لشيءٍ واحد.
-//
-// وكان كلٌّ يتحرّك وحدَه: الدفترُ يقول إنّ الفاتورة ٩٧١٩ سُلّمت في ١ مارس
-// وحُصّلت، وكشفُها في التشغيل خاليان. فمن فتح الكشف رأى فاتورةً لم تُسلَّم بعد.
-//
-// فكلُّ تسجيلٍ هنا يكتب في الوجهين معًا.
+// The two ledgers move together.
+// An invoice is written in two places: on the operations statements under it, and in the collection ledger (`CollectionInvoice`), which holds 9,000 invoices going back to 2022, most with no statement of ours. They are not a copy of a copy but two faces of one thing.
+// Each used to move alone: the ledger said invoice 9719 was delivered on 1 March and collected, while its operations statement was empty, so whoever opened the statement saw an invoice not yet delivered.
+// So every recording here writes to both.
 const syncInvoiceLedger = async (invoiceNumber, { deliveryDate, collectionDate }) => {
   const no = String(invoiceNumber || '').trim();
   if (!no || NO_INVOICE_RX.test(no)) return null;
@@ -1886,13 +1578,12 @@ const syncInvoiceLedger = async (invoiceNumber, { deliveryDate, collectionDate }
   const $set = {};
   if (deliveryDate !== undefined) $set.deliveryDate = deliveryDate;
   if (collectionDate !== undefined) $set.collectionDate = collectionDate;
-  // الحالةُ تتبع التواريخ لا تُكتب على حدة: «محصَّلة» أقوى من «مسلَّمة».
-  // الضريبيُّ وحدَه: رقمُ الشحنة النقديّة تسلسلٌ آخر قد يوافق رقمَ فاتورة.
+  // State follows the dates and is not written separately: 'collected' is stronger than 'delivered'. Tax only: the cash shipment number is another sequence that may coincide with an invoice number.
   const inv = await CollectionInvoice.findOne({ invoiceNumber: no, kind: 'tax' });
   if (!inv) return null;
   const collected = collectionDate !== undefined ? collectionDate : inv.collectionDate;
   const delivered = deliveryDate !== undefined ? deliveryDate : inv.deliveryDate;
-  // ورفعُ تاريخ التحصيل يردّ الفاتورةَ مفتوحة: لا تبقى «محصَّلة» بلا تاريخ.
+  // Clearing the collection date reopens the invoice, so it is not left 'collected' without a date.
   const wasCollected = /collected/i.test(String(inv.status || ''));
   $set.status = collected ? 'Collected' : (delivered ? 'Delivered' : (wasCollected ? '' : (inv.status || '')));
   await CollectionInvoice.updateOne({ _id: inv._id }, { $set });
@@ -1900,18 +1591,9 @@ const syncInvoiceLedger = async (invoiceNumber, { deliveryDate, collectionDate }
 };
 
 /**
- * ── وتاريخُ التحصيل يُكتب من صفحة التشغيل أيضًا ─────────────────────────────
- *
- * قسمُ التحصيل يسجّل من شاشتَيه فيُكتب الكشفُ والدفترُ معًا. لكنّ العمودَ نفسَه
- * مفتوحٌ في «سير عمل التشغيل»: من كتب التاريخَ هناك أو محاه غيّر الكشفَ وحدَه،
- * وبقي الدفترُ — وهو ما تقرؤه الأعمارُ واللوحةُ وملفُّ العميل — على ما كان.
- * فالشاشتان تقولان شيئين عن فاتورةٍ واحدة.
- *
- * فتُنادى هذه بعد كلّ حفظٍ في التشغيل غيّر تاريخَ التحصيل أو تسليمِ العميل:
- *   · الكاش: صفُّ الشحنة في الدفتر يتبع كشفَه مباشرةً.
- *   · الضريبيّ: الفاتورةُ تغطّي كشوفًا عدّة — «محصَّلة» حين يحمل كلُّ كشوفها
- *     تاريخًا، و«غير محصَّلة» حين يُرفَع التاريخُ عن أحدها بعد أن كانت محصَّلة.
- * `rows`: الكشوفُ بعد الحفظ؛ `changed`: ما تغيّر في كلٍّ منها.
+ * The collection date is also written from the operations page, which changes the statement only, leaving the ledger (read by aging, the board and the customer file) stale. Called after every operations save that changed the collection date or customer delivery.
+ * Cash: the ledger row follows its statement. Tax: collected when all statements carry a date, not collected when one loses its date.
+ * `rows`: statements after saving; `changed`: what changed in each.
  */
 const syncLedgerFromWorkflows = async (rows, changed = { collectionDate: true }) => {
   const list = (Array.isArray(rows) ? rows : [rows]).filter(Boolean);
@@ -1920,18 +1602,16 @@ const syncLedgerFromWorkflows = async (rows, changed = { collectionDate: true })
     ...(changed.collectionDate ? { collectionDate: w.collectionDate || null } : {}),
     ...(changed.deliveryDate ? { deliveryDate: w.deliveryDate || null } : {}),
   });
-  // الكاش: كلُّ كشفٍ وصفُّه.
+  // Cash: each statement and its row.
   for (const w of list) await syncCashLedger({ _id: w._id }, pickDates(w));
-  // الضريبيّ: مرّةً لكلّ رقم فاتورة.
+  // Tax: once per invoice number.
   const numbers = [...new Set(list.map((w) => String(w.invoiceNumber || '').trim()).filter((n) => n && !NO_INVOICE_RX.test(n)))];
   for (const no of numbers) {
     const sheets = await OperationsWorkflow.find({ invoiceNumber: no, ...NOT_CANCELLED }).select('collectionDate deliveryDate').lean();
     if (!sheets.length) continue;
     const dates = {};
     if (changed.collectionDate) {
-      // تاريخٌ مُحي من كشفٍ ← الفاتورةُ غيرُ محصَّلة. تاريخٌ كُتب ← محصَّلةٌ إن
-      // اكتملت كشوفُها. وإن كُتب على بعضها فقط فلا يُمسّ الدفتر: قد يكون محصَّلًا
-      // من مصدره (دفترُ القسم) وكشوفُه في التشغيل بلا تواريخ — وهو الغالب.
+      // A date cleared from a statement makes the invoice not collected. A date written makes it collected if all its statements are complete. If written on only some, the ledger is left alone: it may be collected at its source (the department ledger) with its operations statements having no dates, which is the common case.
       const cleared = list.some((w) => String(w.invoiceNumber || '').trim() === no && !w.collectionDate);
       if (cleared) dates.collectionDate = null;
       else if (sheets.every((x) => !!x.collectionDate)) dates.collectionDate = new Date(Math.max(...sheets.map((x) => new Date(x.collectionDate).getTime())));
@@ -1949,20 +1629,15 @@ const syncLedgerFromWorkflows = async (rows, changed = { collectionDate: true })
 exports.syncLedgerFromWorkflows = syncLedgerFromWorkflows;
 
 /**
- * ── والشحنةُ النقديّةُ لها صفٌّ في الدفتر أيضًا ─────────────────────────────
- *
- * صفحةُ الكاش تكتب التحصيلَ على كشف التشغيل، والدفترُ يحمل الشحنةَ نفسَها
- * برقم كشفها (`kind: cash`). وكان التسجيلُ يقف عند الكشف: يُحصِّل المحصِّلُ
- * الشحنةَ فتبقى في اللوحة والأعمار دَينًا قائمًا. فيُكتب في الوجهين.
+ * A cash shipment has a ledger row too.
+ * The cash page writes collection on the operations statement, and the ledger holds the same shipment under its statement number (`kind: cash`). Recording used to stop at the statement: the collector collected the shipment and it stayed in the board and aging as standing debt. So both are written.
  */
 const syncCashLedger = async (filter, { deliveryDate, collectionDate }) => {
   const CollectionInvoice = require('../models/CollectionInvoice');
   const sheets = await OperationsWorkflow.find(filter).select('reportNumber collectedAmount').lean();
   const numbers = sheets.map((w) => String(w.reportNumber || '').trim()).filter(Boolean);
   if (!numbers.length) return 0;
-  // ── والمقبوضُ يتبع الكشفَ مع التاريخ ────────────────────────────────────
-  // الشحنةُ الجزئيّة في الدفتر تُعَدّ في المديونيّة بباقيها، فلا بدّ أن يعرف
-  // الدفترُ ما قُبض منها — وإلّا عدّتها اللوحةُ بقيمتها كاملة.
+  // Received follows the statement with the date. A partial shipment in the ledger is counted as debt at its remainder, so the ledger must know what was received; otherwise the board counts it at full value.
   if (collectionDate !== undefined) {
     const ops = sheets.filter((w) => String(w.reportNumber || '').trim()).map((w) => ({
       updateMany: {
@@ -1976,7 +1651,7 @@ const syncCashLedger = async (filter, { deliveryDate, collectionDate }) => {
   if (deliveryDate !== undefined) $set.deliveryDate = deliveryDate;
   if (collectionDate !== undefined) {
     $set.collectionDate = collectionDate;
-    // رفعُ التاريخ يردّ الشحنةَ مفتوحةً، فلا تبقى حالتُها «محصَّلة» بلا تاريخ.
+    // Clearing the date reopens the shipment, so its state is not left 'collected' without a date.
     $set.status = collectionDate ? 'Collected' : '';
   }
   if (!Object.keys($set).length) return 0;
@@ -1985,15 +1660,9 @@ const syncCashLedger = async (filter, { deliveryDate, collectionDate }) => {
 };
 
 /**
- * تسجيلُ تسليم الفاتورة إلى العميل — POST /invoices/deliver
- *
- * فريقُ التحصيل يأخذ الفواتير ويذهب بها إلى العملاء، ومن يوم استلام العميل
- * تبدأ مهلتُه المتّفق عليها: مَن مهلتُه خمسةٌ وأربعون يومًا تُعَدُّ من ذلك
- * اليوم لا من يوم إصدار الفاتورة ولا من يوم وصولها الفرع.
- *
- * وهو غيرُ `branchDeliveryDate` — تسليمِ الكشف إلى الفرع، وهو عملُ التشغيل
- * ويأتي من شيت المتابعة. كانا حقلًا واحدًا فكانت المهلةُ تُحسب من تاريخٍ
- * أسبقَ من التسليم الحقيقيّ. راجع models/OperationsWorkflow.
+ * Record delivery of the invoice to the customer: POST /invoices/deliver
+ * The collections team takes invoices to customers, and the agreed term starts from the day the customer receives: a 45-day term is counted from that day, not from the invoice issue date or its arrival at the branch.
+ * This differs from `branchDeliveryDate`, delivery of the statement to the branch, which is operations work and comes from the follow-up sheet. They were one field, so the term was computed from a date earlier than the real delivery. See models/OperationsWorkflow.
  */
 exports.recordDelivery = async (req, res) => {
   try {
@@ -2031,14 +1700,9 @@ exports.recordDelivery = async (req, res) => {
 };
 
 /**
- * تفصيلُ التحصيل — PUT /invoices/detail
- *
- * من أين وصل المال: قبضه الفرعُ، أو قُبض نقدًا، أو أخذه المحصِّلُ من العميل.
- * والقيمُ من `collections_detail` في إعدادات القسم — لا تُتحقَّق هنا مقابل
- * قائمةٍ ثابتة، لأنّ القائمةَ تُعدَّل وهذا مقصودُها.
- *
- * ويُكتب بلا تاريخٍ ولا مبلغ: هو صفةُ الكشف لا حدثٌ فيه، فيُوضَع قبل التحصيل
- * وبعده سواء.
+ * Collection detail: PUT /invoices/detail
+ * Where the money came from: the branch received it, it was received in cash, or the collector took it from the customer. Values come from `collections_detail` in department settings and are not validated against a fixed list, since that list is editable by design.
+ * Written with no date or amount: it is an attribute of the statement, not an event in it, so it is set before or after collection alike.
  */
 exports.setCollectionDetail = async (req, res) => {
   try {
@@ -2065,16 +1729,9 @@ exports.setCollectionDetail = async (req, res) => {
 };
 
 /**
- * كشفٌ نقديٌّ واحد — PUT /invoices/cash/:id
- *
- * ── ولماذا يوجد ──────────────────────────────────────────────────────────
- * التطبيقُ يحفظ صفَّ أيِّ قائمةٍ بـ PUT على `<endpoint>/<id>` — هكذا صُمّم
- * `ResourceConfig`. وصفحةُ الكاش لم يكن لها هذا الطريق، فكان المحصِّلُ يكتب
- * المبلغَ في الهاتف ويضغط «حفظ» فتذهب الكتابةُ إلى طريقٍ لا وجودَ له.
- *
- * والحقولُ الثلاثةُ هي عملُ المحصِّل كلُّه على الكشف: ما قبضه، ومتى، ومتى وصلت
- * الفاتورةُ العميل، ومن أين وصل المال. وما لم يُرسَل لا يُمسّ — فالتطبيقُ قد
- * يرسل حقلًا واحدًا.
+ * A single cash statement: PUT /invoices/cash/:id
+ * Why it exists: the app saves any list row with PUT on `<endpoint>/<id>` (that is how `ResourceConfig` is designed). The cash page had no such route, so the collector wrote the amount on the phone, pressed Save, and the write went to a route that did not exist.
+ * The three fields are all the collector's work on the statement: what was received, when, when the invoice reached the customer, and where the money came from. What is not sent is untouched, since the app may send one field.
  */
 exports.updateCashInvoice = async (req, res) => {
   try {
@@ -2088,11 +1745,11 @@ exports.updateCashInvoice = async (req, res) => {
     if (has('collectionDate')) $set.collectionDate = req.body.collectionDate ? new Date(req.body.collectionDate) : null;
     if (has('deliveryDate')) $set.deliveryDate = req.body.deliveryDate ? new Date(req.body.deliveryDate) : null;
     if (has('collectionDetail')) $set.collectionDetail = String(req.body.collectionDetail || '').trim();
-    // ما كتبه المحصِّلُ بيده صار تحصيلَه، لا تحصيلَ المحفظة — فلا تعود فتكتب فوقه.
+    // What the collector wrote by hand became their collection, not the wallet's, so the wallet will not write over it again.
     if (has('collectionDate') || has('collectedAmount')) $set.collectedByWallet = false;
 
     await OperationsWorkflow.updateOne({ _id: wf._id }, { $set });
-    // والفاتورةُ في الدفتر تُحدَّث معه — الوجهان لا يتحرّك أحدُهما وحدَه.
+    // The ledger invoice is updated with it; the two never move alone.
     if ($set.deliveryDate !== undefined || $set.collectionDate !== undefined) {
       const dates = {
         ...($set.deliveryDate !== undefined ? { deliveryDate: $set.deliveryDate } : {}),
@@ -2115,10 +1772,10 @@ exports.updateCashInvoice = async (req, res) => {
   } catch (e) { sendMongooseError(res, e, 'تعذّر الحفظ'); }
 };
 
-/** اسمُ الكاتب كما يُحفَظ مع الدفعة — يبقى ولو تغيّر حسابُه بعدها. */
+/** Writer name as stored with the payment; it stays even if their account changes later. */
 const userName = (u) => (u && (u.name || u.fullName || u.username || u.email)) || '';
 
-/** الإبطالُ ثمّ الإعلان — راجع announce-before-invalidate. */
+/** Invalidate then announce; see announce-before-invalidate. */
 function afterCollectionWrite() {
   cache.clear('wf:');
   cache.clear(CACHE_PREFIX); cache.clear('cdr:');
@@ -2127,13 +1784,10 @@ function afterCollectionWrite() {
   try { emitToAll('collections:changed', { source: 'collections', field: 'collectedAmount' }); } catch (_) { /* */ }
 }
 
-/** خطأٌ يُردّ للمستخدم برمزه ورسالته. */
+/** An error returned to the user with its code and message. */
 const userError = (status, message) => Object.assign(new Error(message), { status });
 
-/**
- * يقرأ الهدف: فاتورةٌ ضريبيّةٌ برقمها (من الدفتر) أو كشفٌ نقديٌّ بمعرّفه.
- * ويردّ ما يحتاجه الحساب بصيغةٍ واحدة: القيمة، والمقبوض، وهل اكتمل، والدفعات.
- */
+/** Reads the target: a tax invoice by number (from the ledger) or a cash statement by id. Returns what the calculation needs in one shape: value, received, whether complete, and payments. */
 async function loadTarget(body) {
   const CollectionInvoice = require('../models/CollectionInvoice');
   const invoiceNumber = String(body.invoiceNumber || '').trim();
@@ -2147,17 +1801,10 @@ async function loadTarget(body) {
         payments: inv.payments || [],
       };
     }
-    // ── والفاتورةُ النقديّةُ في الدفتر برقمها أيضًا (٢٠٢٦/١٠/٢٧) ──────────────
-    // صفُّ الشحنة النقديّة في الدفتر رقمُه رقمُ كشفها. وكان التحصيلُ بالرقم
-    // يقرأ الضريبيَّ وحدَه، فالفاتورةُ النقديّةُ التي تُفتَح من ملفّ العميل أو
-    // الأعمار تقول «لا فاتورة بهذا الرقم» عند تحصيلها — وتبقى دَينًا لا يُغلَق
-    // من أيّ شاشة (الفاتورة 65994). فإن كان كشفُها عندنا حُصِّل الكشفُ وتبعه
-    // الدفتر (syncCashLedger)، وإلّا حُصِّل صفُّ الدفتر نفسُه.
+    // A cash invoice is also in the ledger by its number (2026/10/27 fix). The cash shipment's ledger row has its statement's number. Collection by number used to read tax only, so a cash invoice opened from the customer file or aging said 'no invoice with this number' on collecting, and stayed a debt no screen could close (invoice 65994). If its statement is ours, the statement is collected and the ledger follows (syncCashLedger); otherwise the ledger row itself is collected.
     const cash = await CollectionInvoice.findOne({ kind: 'cash', invoiceNumber, unused: { $ne: true } });
     if (!cash) throw userError(404, 'لا فاتورة بهذا الرقم في دفتر التحصيل');
-    // والكشفُ يُحصَّل بدلَها إن كان نقديًّا مثلَها — هو صفُّها في صفحة الكاش.
-    // أمّا كشفٌ ضريبيٌّ بالرقم نفسِه فتحت فاتورةٍ أخرى: لا يُمسّ، والدفترُ يُحصَّل
-    // بقيمته هو (والدفترُ هو المرجع — راجع collections-ledger).
+    // The statement is collected in its place if it is cash like it: it is its row on the cash page. A tax statement with the same number is under another invoice: untouched, and the ledger is collected at its own value (the ledger is the reference; see collections-ledger).
     const sheet = await OperationsWorkflow.findOne({ reportNumber: invoiceNumber, paymentType: 'cash', ...NOT_CANCELLED });
     if (sheet) return cashSheetTarget(sheet);
     return {
@@ -2179,13 +1826,9 @@ const cashSheetTarget = (wf) => ({
 });
 
 /**
- * يكتب حالةَ الهدف بعد أن تغيّرت دفعاتُه: المقبوضُ، والدفعات، واكتمالُه.
- *
- * ── والاكتمالُ يُحسب لا يُختار ─────────────────────────────────────────────
- * يبلغ المقبوضُ القيمةَ فتصير «محصَّلةً بالكامل» بتاريخ آخر دفعة — في الكشوف
- * والدفتر معًا كما يكتبهما التحصيلُ الكامل دائمًا. وينزل عنها (دفعةٌ رُفعت أو
- * صُغِّرت) فتعود جزئيّةً: يُرفع التاريخُ من الوجهين.
- * `forceFull`: التحصيلُ الكامل لكاشٍ لا قيمةَ معروفةً له — يكتمل بما قُبض.
+ * Writes the target's state after its payments changed: received, payments and completion.
+ * Completion is computed, not chosen. When received reaches the value it becomes fully collected with the date of the last payment, in statements and ledger together, as the full collection always writes them. Below it (a payment removed or reduced) it returns to partial and the date is removed from both.
+ * `forceFull`: full collection of a cash statement with no known value; it completes with what was received.
  */
 async function settleTarget(tg, { collected, payments, user, forceFull = false, date = null }) {
   const CollectionInvoice = require('../models/CollectionInvoice');
@@ -2199,13 +1842,13 @@ async function settleTarget(tg, { collected, payments, user, forceFull = false, 
   if (tg.kind === 'tax') {
     await CollectionInvoice.updateOne({ _id: tg.doc._id }, { $set: { collectedAmount: r2(collected), payments } });
     if (full || tg.full) {
-      // الكشوفُ تحت الفاتورة تتبعها — كما في التحصيل الكامل منذ البداية.
+      // Statements under the invoice follow it, as in full collection from the start.
       await OperationsWorkflow.updateMany({ invoiceNumber: tg.key, ...NOT_CANCELLED },
         { $set: { collectionDate: when, collectedByWallet: false, lastModifiedBy: user._id } });
       await syncInvoiceLedger(tg.key, { collectionDate: when });
     }
   } else if (tg.kind === 'cashLedger') {
-    // صفُّ دفترٍ بلا كشف: الحالةُ تُكتب عليه وحدَه، بلغتِه («Collected»).
+    // A ledger row with no statement: the state is written on it alone, in its own wording ('Collected').
     const $set = { collectedAmount: r2(collected), payments };
     if (full) Object.assign($set, { collectionDate: when, status: 'Collected' });
     else if (tg.full) Object.assign($set, { collectionDate: null, status: '' });
@@ -2229,13 +1872,10 @@ async function settleTarget(tg, { collected, payments, user, forceFull = false, 
 }
 
 /**
- * تحصيلٌ كاملٌ أو جزئيّ — `mode: 'full' | 'partial'`.
- *
- *   partial: مبلغٌ أكبرُ من صفرٍ وأصغرُ من الباقي؛ يُضاف دفعةً وتبقى «جزئيّة».
- *   full:    الباقي كلُّه دفعةً أخيرة، فتكتمل. وإن كانت مكتملةً من قبل فهو
- *            تعديلُ تاريخها لا دفعةٌ ثانية. والكاشُ الذي لا تُعرَف قيمتُه يكتمل
- *            بما كتبه المحصِّل (كما كان).
- * والطلبُ بلا `mode` هو الطلبُ القديم (تطبيقٌ لم يُحدَّث) — يمضي كما كان.
+ * Full or partial collection: `mode: 'full' | 'partial'`.
+ * partial: an amount above zero and below the remainder; added as a payment and the state stays partial.
+ * full:    the whole remainder as a final payment, completing it. If already complete it edits its date, not a second payment. A cash statement of unknown value completes with what the collector wrote (as before).
+ * A request without `mode` is the old request (an un-updated app) and proceeds as before.
  */
 async function recordPayment(req, res) {
   const mode = req.body.mode === 'partial' ? 'partial' : 'full';
@@ -2275,14 +1915,14 @@ async function recordPayment(req, res) {
     payments.push(entry(amount, 'partial'));
     result = await settleTarget(tg, { collected: r2(tg.collected + amount), payments, user: req.user });
   } else if (tg.full) {
-    // مكتملةٌ من قبل: تعديلُ يوم التحصيل وحدَه — لا يُقبَض الباقي مرّتين.
+    // Already complete: only the collection day is edited; the remainder is not received twice.
     result = await settleTarget(tg, { collected: tg.collected, payments, user: req.user, forceFull: true, date });
   } else if (tg.value > 0) {
     amount = Math.max(0, remaining);
     if (amount > 0) payments.push(entry(amount, 'full'));
     result = await settleTarget(tg, { collected: r2(tg.collected + amount), payments, user: req.user, forceFull: true, date });
   } else {
-    // كاشٌ بلا قيمةٍ معروفة (أو فاتورةٌ بقيمةٍ صفرٍ أو سالبة): يكتمل بما كُتب.
+    // Cash with no known value (or an invoice with zero or negative value): completes with what was written.
     amount = Number(req.body.amount ?? req.body.collectedAmount);
     if (tg.kind === 'cash' && !(Number.isFinite(amount) && amount > 0)) {
       return res.status(400).json({ message: 'مبلغ التحصيل مطلوب — لا قيمةَ مسجَّلةً لهذا أمر النقل', fields: { amount: 'مطلوب' } });
@@ -2316,12 +1956,9 @@ async function recordPayment(req, res) {
 }
 
 /**
- * تعديلُ دفعةٍ أو رفعُها — PUT /invoices/payments   POST /invoices/payments/remove
+ * Edit or remove a payment: PUT /invoices/payments   POST /invoices/payments/remove
  * { invoiceNumber | id, paymentId, amount?, date?, note?, reason? }
- *
- * الدفعةُ تُسجَّل خطأً كما يُسجَّل التحصيلُ كلُّه: مبلغٌ زائد، أو يومٌ آخر، أو
- * شيكٌ رُدّ. فتُصحَّح وحدَها بلا رفعِ ما سواها، ويُعاد حسابُ الحالة: ينزل
- * المجموعُ عن القيمة فتعود جزئيّة، ويبلغها فتكتمل. وبابُها بابُ «لم تُحصَّل».
+ * A payment can be recorded wrongly like any collection: an excess amount, another day, a returned cheque. It is corrected alone without removing the others, and the state recomputed: below the value it returns to partial, reaching it completes. Its door is the 'not collected' door.
  */
 async function changePayment(req, res, remove) {
   const tg = await loadTarget(req.body);
@@ -2342,7 +1979,7 @@ async function changePayment(req, res, remove) {
       const a = Number(req.body.amount);
       if (!Number.isFinite(a) || a <= 0) return res.status(400).json({ message: 'اكتب المبلغ رقمًا أكبرَ من صفر', fields: { amount: 'أكبر من صفر' } });
       collected = r2(collected - (Number(p.amount) || 0) + a);
-      // لا يُقبَض أكثرُ من القيمة: الزائدُ خطأٌ في الكتابة لا تحصيل.
+      // More than the value is not received: the excess is a typing error, not a collection.
       if (tg.value > 0 && collected > tg.value + EPS) {
         return res.status(400).json({ message: `المجموع بعد التعديل (${collected.toLocaleString('en-US')}) يتجاوز القيمة (${tg.value.toLocaleString('en-US')})`, fields: { amount: 'يتجاوز القيمة' } });
       }
@@ -2357,7 +1994,7 @@ async function changePayment(req, res, remove) {
   }
   if (collected < 0) collected = 0;
 
-  // مكتملةٌ بلا قيمةٍ معروفة تبقى مكتملةً ما بقي فيها مقبوض.
+  // Complete with no known value stays complete while it holds a received amount.
   const keepFull = tg.full && !(tg.value > 0) && collected > 0;
   const result = await settleTarget(tg, { collected, payments, user: req.user, forceFull: keepFull });
   afterCollectionWrite();
@@ -2436,14 +2073,13 @@ exports.recordCollection = async (req, res) => {
       ? { invoiceNumber, ...NOT_CANCELLED }
       : { _id: { $in: ids } };
 
-    // `collectedByWallet: false` — التحصيلُ الآن تحصيلُ القسم، والمحفظةُ لا تمسّه بعدها.
+    // `collectedByWallet: false`: the collection is now the department's and the wallet no longer touches it.
     const $set = { collectionDate: new Date(collectionDate), collectedByWallet: false, lastModifiedBy: req.user._id };
-    // المبلغُ للكاش: الفاتورةُ الضريبيّة قيمتُها مكتوبةٌ فيها، والنقديُّ يقبضه
-    // المحصِّل فيكتب ما قبض.
+    // Amount for cash: a tax invoice's value is written in it, while cash is received by the collector, who writes what they received.
     if (collectedAmount !== undefined && collectedAmount !== '') $set.collectedAmount = Number(collectedAmount) || 0;
 
     const r = await OperationsWorkflow.updateMany(filter, { $set });
-    // والدفترُ الآخر معه — راجع syncInvoiceLedger.
+    // The other ledger moves with it; see syncInvoiceLedger.
     await syncInvoiceLedger(invoiceNumber, { collectionDate: $set.collectionDate });
     if (!invoiceNumber) await syncCashLedger(filter, { collectionDate: $set.collectionDate });
     cache.clear('wf:');
@@ -2469,15 +2105,9 @@ exports.recordCollection = async (req, res) => {
 };
 
 /**
- * «لم تُحصَّل» — POST /invoices/uncollect   { invoiceNumber | ids, reason }
- *
- * يُسجَّل التحصيلُ أحيانًا على ما لم يُقبَض: شيكٌ رُدّ، أو وعدٌ قُيِّد قبضًا، أو
- * ضغطةٌ على الصفّ الخطأ. وكان تصحيحُه غيرَ ممكنٍ من شاشة التحصيل — فتبقى
- * الفاتورةُ «محصَّلةً» خارجةً من الأعمار والمطالبات ومالُها عند العميل.
- *
- * فيُرفَع التحصيلُ عنها: التاريخُ والمبلغُ من الكشوف (وهي ما تقرؤه صفحةُ سير
- * عمل التشغيل)، والحالةُ في دفتر التحصيل — الوجهان معًا كما يُسجَّلان معًا.
- * والسببُ اختياريٌّ (صاحبُ الشركة، ٢٠٢٦/١٠/٢٠) — ويُقيَّد إن كُتب، ومعه ما كان مسجَّلًا.
+ * 'Not collected': POST /invoices/uncollect   { invoiceNumber | ids, reason }
+ * Collection is sometimes recorded on what was not received: a returned cheque, a promise recorded as receipt, or a tap on the wrong row. It could not be corrected from the collection screen, leaving the invoice 'collected', out of aging and claims, with its money still with the customer.
+ * So collection is removed: date and amount from the statements (what the operations workflow page reads) and the state in the collection ledger, both together as they are recorded together. The reason is optional and is recorded if written, with what had been recorded.
  */
 exports.undoCollection = async (req, res) => {
   try {
@@ -2487,9 +2117,7 @@ exports.undoCollection = async (req, res) => {
     if (!invoiceNumber && !ids.length) return res.status(400).json({ message: 'حدِّد فاتورةً أو أوامر نقل' });
     const CollectionInvoice = require('../models/CollectionInvoice');
 
-    // ── والفاتورةُ النقديّةُ برقمها (راجع loadTarget) ─────────────────────────
-    // كشفُها عندنا ← يُرجَع عن تحصيل الكشف ويتبعه الدفتر. ولا كشفَ لها ← يُرفَع
-    // التحصيلُ عن صفّ الدفتر نفسِه.
+    // A cash invoice by number (see loadTarget). If its statement is ours, the statement's collection is reversed and the ledger follows; with no statement, the collection is removed from the ledger row itself.
     if (invoiceNumber && !(await CollectionInvoice.exists({ kind: 'tax', invoiceNumber }))) {
       const cash = await CollectionInvoice.findOne({ kind: 'cash', invoiceNumber, unused: { $ne: true } }).lean();
       if (cash) {
@@ -2522,9 +2150,7 @@ exports.undoCollection = async (req, res) => {
         || /collected/i.test(String(ledgerBefore.status || ''))));
     if (!wasCollected) return res.status(400).json({ message: 'ليست مسجَّلةً محصَّلةً أصلًا — لا شيءَ يُرجَع عنه' });
 
-    // والدفعاتُ كلُّها معه: «لم تُحصَّل» تعني لا مقبوضَ فيها — لا جزئيّةً بقيت.
-    // و`cashCollectionStatus` معها: الدفترُ النقديُّ المستورَدُ يقول «collected» بلا
-    // تاريخ، وبقاؤه يُبقي الكشفَ محصَّلًا بعد «لم تُحصَّل» (cashIsCollected).
+    // All payments go with it: 'not collected' means nothing received, not a leftover partial. `cashCollectionStatus` too: the imported cash ledger says 'collected' with no date, and keeping it would leave the statement collected after 'not collected' (cashIsCollected).
     const r = await OperationsWorkflow.updateMany(filter, { $set: { collectionDate: null, collectedAmount: 0, collectionPayments: [], collectedByWallet: false, cashCollectionStatus: '', lastModifiedBy: req.user._id } });
     if (invoiceNumber) await CollectionInvoice.updateOne({ invoiceNumber, kind: 'tax' }, { $set: { collectedAmount: 0, payments: [] } });
     await syncInvoiceLedger(invoiceNumber, { collectionDate: null });
@@ -2554,18 +2180,14 @@ exports.undoCollection = async (req, res) => {
   } catch (e) { sendMongooseError(res, e, 'تعذّر الرجوع عن التحصيل'); }
 };
 
-/** قيمُ فلاتر صفحتَي الفواتير — مبنيّةٌ من البيانات نفسِها. */
+/** Filter values of both invoice pages, built from the data itself. */
 exports.invoiceFilterOptions = async (req, res) => {
   try {
     const kind = req.query.kind === 'cash' ? 'cash' : 'tax';
     const base = kind === 'cash'
       ? { paymentType: 'cash', ...NOT_CANCELLED }
       : { ...REAL_INVOICE, paymentType: 'tax', ...NOT_CANCELLED };
-    // ── وقائمةُ العملاء تتبع مصدرَ الصفحة ────────────────────────────────────
-    // الضريبيّةُ صارت تُقرأ من دفتر الفواتير، وفيه ثمانيةُ آلافٍ من الفواتير
-    // لأصحابٍ لا كشفَ لهم عندنا. فقائمةٌ مبنيّةٌ على أسماء الكشوف تعرض ستّةً في
-    // المئة من عملاء الصفحة، فيبحث المستخدمُ عن عميلٍ يراه في الجدول ولا يجده
-    // في الفلتر.
+    // The customer list follows the page's source. The tax page is now read from the invoice ledger, which holds 8,000 invoices for owners with no statement here. A list built from statement names shows 6% of the page's customers, so the user searches for a customer seen in the table and cannot find them in the filter.
     const CollectionInvoice = require('../models/CollectionInvoice');
     const [customers, branches] = await Promise.all([
       kind === 'cash'
@@ -2584,17 +2206,10 @@ exports.STATEMENT_ROW_CAP = STATEMENT_ROW_CAP;
 exports.NO_INVOICE_TOKENS = NO_INVOICE_TOKENS;
 
 /**
- * تعديلُ قيمة فاتورةٍ ضريبيّة — PUT /invoices/tax/:invoiceNumber/amount { total, reason? }
- *
- * الدفترُ يحمل إجماليَّ الفاتورة كما جاء من ورقة التحصيل أو من كشوفها. وتُصحَّح
- * القيمةُ هنا (مثلًا تسويةٌ بالسالب)، فتُقفَل على ما كُتب (`totalLocked`): لا
- * يعيد حسابَها مجموعُ الكشوف بعد ذلك. ويُقيَّد التعديلُ بالقيمتين وكاتبه.
+ * Edit a tax invoice value: PUT /invoices/tax/:invoiceNumber/amount { total, reason? }
+ * The ledger holds the invoice total as it came from the collection sheet or its statements. The value is corrected here (for example a negative settlement) and then locked on what was written (`totalLocked`): the statement sum no longer recomputes it. The edit is recorded with both values and its writer.
  */
-/**
- * مَن يصحّح قيمةَ فاتورة — قائمتُه وحدَها تقرّر (`authorize.strict` في المسار):
- * لا منحُ قسمٍ ولا تأشيرةُ صفحة. ومرآتُها في الواجهة `AMOUNT_EDIT_ROLES` في
- * frontend/src/lib/collections.ts وفي التطبيق `collectionsAmountEditRoles`.
- */
+/** Who corrects an invoice value: only this list decides (`authorize.strict` on the route), with no section grant or page permission. Mirrored in the UI as `AMOUNT_EDIT_ROLES` in frontend/src/lib/collections.ts and in the app as `collectionsAmountEditRoles`. */
 exports.AMOUNT_EDIT_ROLES = ['super_admin', 'admin', 'collections_manager', 'cfo', 'accounting_manager'];
 
 exports.updateTaxInvoiceAmount = async (req, res) => {
@@ -2622,12 +2237,8 @@ exports.updateTaxInvoiceAmount = async (req, res) => {
 };
 
 /**
- * كشفُ حسابٍ لما على شاشة الفواتير — `GET /invoices/:kind/statement`.
- *
- * يأخذ استعلامَ الشاشة كما هو (ومعه فلاترُ الأعمدة المحلّيّة `lf_*` والتحديدُ
- * `sel` والأعمدةُ الظاهرة `cols`) ويُخرج PDF على ترويسة الشركة. وهو GET عمدًا:
- * من له «عرض» القسم يُصدر الكشف، و sectionGate يمنع غيرَ GET عن صاحب العرض.
- * و`?format=json` يردّ المستندَ وأرقامَ التحقّق بدل الملفّ.
+ * Account statement for what is on the invoices screen: `GET /invoices/:kind/statement`.
+ * Takes the screen's query as is (with local column filters `lf_*`, selection `sel` and visible columns `cols`) and produces a PDF on company letterhead. GET on purpose: whoever has 'view' on the section issues the statement, and sectionGate blocks non-GET for view-only holders. `?format=json` returns the document and verification numbers instead of the file.
  */
 exports.invoiceStatement = async (req, res) => {
   try {

@@ -38,23 +38,9 @@ const generalLimiter = rateLimit({
   skip: isExempt,
 });
 
-// ── حدّ الدخول ───────────────────────────────────────────────────────────────
-//
-// كان ثلاثين محاولةً لكل ربع ساعة **لكل عنوان IP**، والدخولُ الناجح يُحسب فيها.
-// والمكتب كلّه يخرج إلى الإنترنت من عنوانٍ واحد — فصباحُ الأحد بخمسين موظفًا
-// يستهلك الحدّ عند الحادي والثلاثين، ويقرأ الباقون «حاولت كثيرًا» وهم لم
-// يحاولوا مرّة. قفلُ شركةٍ كاملة بسبب نجاحها في الدخول.
-//
-// القاعدة الآن: **الناجح لا يُحسب**. الحدّ للفشل وحده — وهو ما يُحمى منه أصلًا.
-// وطبقتان لأن التهديدين مختلفان:
-//
-//   • على الحساب الواحد: عشر محاولات فاشلة تكفي لإيقاف تخمين كلمة سرّ بعينها،
-//     وتُقاس بالبريد لا بالعنوان حتى لا يُنقَذ المهاجم بتبديل شبكته.
-//   • على العنوان الواحد: مئةُ فشلٍ تكفي لإيقاف مَن يجرّب حسابات كثيرة من مكان
-//     واحد، وتبقى بعيدةً جدًّا عن مكتبٍ يعمل فيه الناس.
-//
-// وما لا يوقفه هذان (هجومٌ موزَّع على شبكاتٍ كثيرة) يوقفه قفلُ الحساب نفسه
-// (User.isLocked) — لا رفعُ هذه الأرقام حتى تُعطِّل العمل.
+// Login rate limit: failures only, successful logins are not counted. The old limit (30 per 15 minutes per IP) locked a whole office that shares one IP on a busy morning.
+// Per account: ten failed attempts, keyed by email not IP so switching network does not help. Per IP: a hundred failures, far above what an office produces.
+// Distributed attacks are stopped by account lockout (User.isLocked), not by raising these numbers.
 const authLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
   max: 100,
@@ -64,7 +50,7 @@ const authLimiter = rateLimit({
   skipSuccessfulRequests: true,
 });
 
-/** حدٌّ على الحساب نفسه — يلاحق البريد أينما ذهب المهاجم. */
+/** Limit on the account itself; follows the email wherever the attacker goes. */
 const accountAuthLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
   max: 10,
@@ -74,8 +60,7 @@ const accountAuthLimiter = rateLimit({
   skipSuccessfulRequests: true,
   keyGenerator: (req) => {
     const email = String(req.body?.email || '').trim().toLowerCase();
-    // بلا بريدٍ في الطلب لا حساب يُحمى، فيُترك للحدّ الآخر بدل أن يشترك كلّ
-    // مَن أرسل طلبًا ناقصًا في مفتاحٍ واحد فيقفل بعضُهم بعضًا.
+    // With no email in the request there is no account to protect; leave it to the IP limit so incomplete requests do not all share one key and lock each other out.
     return email ? `a:${email}` : ipKeyGenerator(req.ip);
   },
 });

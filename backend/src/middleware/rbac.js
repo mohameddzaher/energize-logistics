@@ -3,18 +3,9 @@ const { canonicalRole } = require('../config/roles');
 const READ_METHODS = new Set(['GET', 'HEAD', 'OPTIONS']);
 
 /**
- * ── الاسم القديم يُقرأ باسمه الجديد ─────────────────────────────────────────
- *
- * الأدوار تُعاد تسميتها — `b2c_head` صار `b2c_manager` — وخريطةُ الأسماء
- * القديمة موجودةٌ في config/roles.js منذ ذلك الحين، ولم تكن تُستعمل في مكان.
- *
- * فحارسٌ كُتب بالاسم القديم لا يفتح لأحد: يبدو أوسعَ ممّا هو، ويُقرأ كأنّ الدور
- * يصل وهو لا يصل. وحسابٌ بقي في القاعدة على الاسم القديم يُمنع من بابٍ هو
- * صاحبُه. والحالتان صامتتان: لا خطأ في السجلّ، ولا شيء في الشاشة إلّا «لا
- * تملك صلاحية».
- *
- * فيُطبَّع الطرفان قبل المقارنة: قائمةُ الحارس ودورُ الحساب. وبهذا لا يكسر
- * تغييرُ اسمٍ بابًا نسي أحدُهم تحديثَه.
+ * Old role names are read by their new names. Roles get renamed (`b2c_head` became `b2c_manager`) and the old-name map has existed in config/roles.js without being used anywhere.
+ * A guard written with the old name opens for nobody: it looks wider than it is. An account still stored under the old name is blocked from a door it owns. Both cases are silent: no log error, only "no permission" on screen.
+ * So both sides are normalized before comparing: the guard's list and the account's role. A rename then cannot break a door nobody updated.
  */
 const build = (roles, { strict = false } = {}) => {
   const allowed = new Set(roles.map(canonicalRole));
@@ -27,14 +18,10 @@ const build = (roles, { strict = false } = {}) => {
       return next();
     }
 
-    // والأدمن يمرّ حيث يمرّ السوبر أدمن — حتى في الحرّاس الصارمة (config/constants: TOP_ROLES).
+    // Admin passes wherever super admin passes, even in strict guards (config/constants: TOP_ROLES).
     if (req.user.role === 'admin' && allowed.has('super_admin')) return next();
 
-    // ── وبابٌ لا يُفتَح بمنحٍ من المصفوفة ─────────────────────────────────────
-    // `authorize.strict` لا يقرأ ختمَ قسمٍ ولا تأشيرةَ صفحة: قائمتُه هي كلُّ
-    // شيء. وهو لمَن يملك المصفوفةَ نفسَها — من يضبط الصلاحيّاتَ يضبط صلاحيّاتَه،
-    // فلو فُتحت شاشتُه بتأشيرةٍ لمنح صاحبُها نفسَه كلَّ شيءٍ في ضغطتين. ومعها
-    // محوُ البيانات: فعلٌ لا رجعةَ فيه.
+    // A door a matrix grant cannot open. `authorize.strict` reads no section stamp and no page tick: its list is everything. It is for whoever owns the matrix itself; if their screen could be opened by a tick, the holder could grant themselves everything in two clicks. Also covers data erasure, which is irreversible.
     if (strict) return res.status(403).json({ message: 'Insufficient permissions' });
 
     // Dynamic permissions: sectionGate() stamps req.sectionAccess when the
@@ -45,30 +32,14 @@ const build = (roles, { strict = false } = {}) => {
     if (access === 'edit') return next();
     if (access === 'view' && READ_METHODS.has(req.method)) return next();
 
-    // ── وتأشيرةُ الصفحة تُقرأ كما يُقرأ ختمُ القسم ─────────────────────────
-    // `pageGate` يختم `pageGranted` إن كانت هذه النقطةُ تملكها صفحةٌ أُشِّر
-    // عليها صراحةً لهذا الدور، ولا قسمَ مُدارًا لها (هناك الحارسُ الأعلى هو
-    // القسم). وشاشاتُ تلك الأقسام — المستخدمون، سجلُّ المراجعة، الفروع،
-    // القوائمُ المرجعيّة، مركزُ التقارير، النظرةُ التنفيذيّة، تقييمُ الأداء —
-    // لا تُمنَح بغير هذا الطريق: يحرسها سطرُ أدوارٍ مكتوبٌ في كلّ مسار لا
-    // يعرف الأنواعَ المصنوعة. فكان من يُؤشَّر له عليها يفتحها ويُقال له «لا
-    // تملك صلاحيّة» ولا شيءَ يقول لماذا.
-    //
-    // والتأشيرةُ تفتح الشاشةَ وأفعالَها، كما يفتحها القسمُ بـ«تعديل»: من يؤشّر
-    // على شاشةٍ في مصفوفة الصلاحيّات يقصد أن تعمل، لا أن تُعرَض معطّلة.
-    //
-    // وبقي حدٌّ واحدٌ خارجَ هذا البابِ كلِّه: **مديرُ النظام لا يُصنَع ولا يُمسّ
-    // حسابُه إلّا من مديرِ نظام** (راجع `guardSuperAdminRole` في
-    // controllers/userController). ذاك تسليمُ النظام لا فتحُ شاشة، فلا يجوز أن
-    // يكون مربّعٌ واحدٌ طريقًا إليه.
+    // A page tick is read like the section stamp. `pageGate` stamps `pageGranted` if this endpoint belongs to a page explicitly ticked for this role and has no matrix-managed section (there the section is the top guard). Screens of such areas (users, audit log, branches, reference lists, reports center, executive overview, performance review) can only be granted this way: a roles line written in every route guards them and does not know custom types. A user ticked for them opened the screen and got "no permission" with no reason.
+    // The tick opens the screen and its actions, as a section does with edit access: ticking a screen in the permissions matrix means it should work, not be shown disabled.
+    // One limit remains outside all of this: a system admin account is created or touched only by a system admin (see `guardSuperAdminRole` in controllers/userController). That is handing over the system, not opening a screen, so one checkbox must not lead to it.
     if (req.pageGranted) return next();
 
     return res.status(403).json({ message: 'Insufficient permissions' });
   };
-  // ── والحارسُ يقول عن نفسِه ────────────────────────────────────────────────
-  // توثيقُ الـ API يُبنى من الراوتر نفسِه كي لا يبعد عنه (راجع
-  // `services/apiDocs`)، والحارسُ بعد تركيبه دالّةٌ مغلقةٌ لا يُقرأ منها شيء.
-  // فيُعلَّق عليها ما تحرسه — سطرٌ واحدٌ يجعل الوثيقةَ تقول الحقيقة.
+  // The guard describes itself. API docs are built from the router so they do not drift, and a mounted guard is a closed function that exposes nothing, so what it guards is attached to it as a property, making the docs state the truth.
   guard.__roles = [...allowed];
   if (strict) guard.__strict = true;
   return guard;
@@ -76,7 +47,7 @@ const build = (roles, { strict = false } = {}) => {
 
 const authorize = (...roles) => build(roles);
 
-/** قائمتُه وحدَها تقرّر — لا ختمَ قسمٍ ولا تأشيرةَ صفحةٍ تفتحه. */
+/** Its list alone decides; no section stamp or page tick opens it. */
 authorize.strict = (...roles) => build(roles, { strict: true });
 
 module.exports = authorize;

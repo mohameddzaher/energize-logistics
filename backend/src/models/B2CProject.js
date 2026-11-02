@@ -3,11 +3,10 @@ const mongoose = require('mongoose');
 const b2cProjectSchema = new mongoose.Schema(
   {
     name: { type: String, required: true, unique: true, trim: true },
-    // ── اسمُه في سجلّ النقل الخفيف (`LightTransportEmployee.projectAr`) ─────────
-    // كيتا · هنجرستيشن · نينجا · امازون. به يُربط مشروعُ المندوب في سجلّه بمشروع
-    // طلباته، فنقلُ المندوب ينقل طلباتِه من يومها (utils/b2cEntry).
+    // Project name in the light-transport register (`LightTransportEmployee.projectAr`): Keeta, HungerStation, Ninja, Amazon.
+    // Links a rep's project to the order project, so moving a rep moves their orders from that day (utils/b2cEntry).
     nameAr: { type: String, trim: true, index: true },
-    // امازون يُحسَب بالشحنات ولا هدفَ له (هدفٌ شهريّ ٠).
+    // Amazon is counted by shipments and has no target (monthly target 0).
     unitAr: { type: String, trim: true, default: 'طلب' },
     code: { type: String, unique: true, sparse: true, uppercase: true, trim: true },
     description: { type: String, trim: true },

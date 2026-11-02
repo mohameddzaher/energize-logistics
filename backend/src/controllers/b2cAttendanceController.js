@@ -1,13 +1,8 @@
 /**
- * متابعةُ مناديب أمازون — الحضور.
- *
- *   GET /api/b2c/attendance?date=YYYY-MM-DD    مناديبُ أمازون وحضورُ اليوم وغيابُ الشهر
- *   PUT /api/b2c/attendance                    { lt, dateKey, present }
- *
- * تُفتح لمدير القسم ونائبه والإدارة (isEntryHead)، ولمن أُسند إليه مشروعُ أمازون
- * («مشاريع المشرفين») — ولا تُفتح لمديري المشاريع الأخرى.
- *
- * والحضورُ هو الأصل: يُكتب الغيابُ وحدَه (راجع models/B2CAttendance).
+ * Amazon rep attendance.
+ * GET /api/b2c/attendance?date=YYYY-MM-DD
+ * PUT /api/b2c/attendance
+ * Open to the section head, deputy, management (isEntryHead) and users assigned the Amazon project. Presence is the default; only absence is stored (see models/B2CAttendance).
  */
 const mongoose = require('mongoose');
 const E = require('../utils/b2cEntry');
@@ -18,21 +13,21 @@ const cache = require('../utils/ttlCache');
 const S = (v) => String(v ?? '').trim();
 const riyadhToday = () => new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Riyadh' }).format(new Date());
 
-/** مشاريعُ الحضور: ما لا هدفَ أوردراتٍ له (أمازون). */
+/** Attendance projects: those with no orders target (Amazon). */
 async function attendanceProjects() {
   const P = await E.projects();
   return P.rows.filter((p) => !p.monthlyTarget).map((p) => S(p.nameAr || p.name));
 }
 const isAttendanceProject = async (projectAr) => (await attendanceProjects()).some((n) => E.fold(n) === E.fold(projectAr));
 
-/** مشاريعُ الحضور التي يملكها المستخدم — [] = لا شيء. */
+/** Attendance projects owned by the user; [] means none. */
 async function allowedFor(user) {
   const all = await attendanceProjects();
   const scope = await E.scopeOf(user);
   return scope === null ? all : all.filter((n) => E.inScope(scope, n));
 }
 
-/** غيابُ مجموعةِ مناديب في يومٍ واحد: Map(lt → true). */
+/** Absences of a set of reps on one day: Map(lt -> true). */
 async function absentOn(ltIds, dateKey) {
   const rows = await B2CAttendance.find({ lt: { $in: ltIds }, dateKey, present: false }).select('lt').lean();
   return new Set(rows.map((r) => String(r.lt)));
@@ -64,7 +59,7 @@ exports.list = async (req, res) => {
     const rows = lts.map((r) => ({
       lt: r._id, idNumber: /^NOID-/.test(S(r.idNumber)) ? '' : S(r.idNumber), name: S(r.name), projectAr: S(r.projectAr),
       supervisorName: S(r.supervisorName), status: r.status,
-      // في إجازةٍ = غائبٌ بعذرٍ معروف؛ ويبقى قابلًا للتعديل.
+      // On leave counts as absent with a known excuse; stays editable.
       present: !absent.has(String(r._id)) && r.status !== 'إجازة',
       onLeave: r.status === 'إجازة',
       monthAbsences: absMonth.get(String(r._id)) || 0,

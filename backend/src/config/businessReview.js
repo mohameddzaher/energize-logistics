@@ -1,31 +1,14 @@
 /**
- * businessReview — قواعد اجتماعات مراجعة الأعمال.
- *
- * The section is a standing forum: department managers sit with the GM and the
- * administration on a fixed cadence, the secretary writes the minutes, and the
- * decisions become ACTIONS with an owner and a due date.
- *
- * ── The rule that had to survive the future ─────────────────────────────────
- * The brief was explicit: this must keep working when a new role type or a new
- * department is added. So nothing here is a frozen list of names.
- *
- *   • Who is a manager?  Any role whose key ends in `_manager`, plus a short
- *     list of department heads that are named differently. Add `logistics_manager`
- *     to the User enum tomorrow and that person is a participant today — no
- *     change here.
- *   • What are the departments?  Read from config/sections.js, which is already
- *     the single source of truth for the permission matrix. A new section appears
- *     in the meeting's department picker automatically.
- *
- * The only hard-coded tiers are the two that are genuinely about authority, not
- * about org shape: the executive tier and the secretariat.
+ * businessReview: rules for business review meetings (managers, GM and administration meet on a fixed cadence; decisions become ACTIONS with an owner and due date).
+ * No frozen name lists: managers are roles ending in `_manager` plus a short list of differently named heads; departments are read from config/sections.js.
+ * Only the executive tier and the secretariat are hard-coded.
  */
 const { FULL_ACCESS_ROLES } = require('./constants');
 const { SECTION_KEYS } = require('./sections');
 
 // ── Cadences ────────────────────────────────────────────────────────────────
 const CADENCES = [
-  // اجتماعات يومية بتحصل عادي — ممكن كل يوم وممكن لأ، فهي دورة مش التزام.
+  // Daily meetings that may or may not happen each day: a cycle, not a commitment.
   { key: 'daily', ar: 'يومي', en: 'Daily', days: 1 },
   { key: 'weekly', ar: 'أسبوعي', en: 'Weekly', days: 7 },
   { key: 'monthly', ar: 'شهري', en: 'Monthly', days: 30 },
@@ -33,17 +16,15 @@ const CADENCES = [
   { key: 'semi_annual', ar: 'نصف سنوي', en: 'Semi-annual', days: 182 },
   { key: 'annual', ar: 'سنوي', en: 'Annual', days: 365 },
   { key: 'ad_hoc', ar: 'استثنائي', en: 'Ad-hoc', days: null },
-  // اجتماع اتعمل في اللحظة من غير جدولة — بيتسجّل عشان قراره ما يضيعش.
+  // Meeting held on the spot without scheduling; recorded so its decision is not lost.
   { key: 'instant', ar: 'لحظي', en: 'Instant', days: null },
 ];
 const CADENCE_KEYS = CADENCES.map((c) => c.key);
 
-// دورة حياة الاجتماع. «انعقد» و«اكتمل» حاجتين مختلفتين خالص:
-//   انعقد  = الاجتماع حصل فعلاً (واقعة).
-//   اكتمل  = الشؤون الإدارية بتقول إن كل حاجة ليها علاقة بالاجتماع خلصت —
-//            كل البنود التنفيذية اتقفلت ومفيش حاجة معلّقة (حُكم).
-// اجتماع ممكن يفضل منعقد شهور والبنود بتاعته لسه شغالة؛ ساعتها هو «انعقد» مش
-// «اكتمل». عشان كده اكتمل مرحلة لوحدها مش مرادف للانعقاد.
+// Meeting lifecycle. 'Held' and 'completed' are different:
+// held = the meeting actually took place (a fact).
+// completed = administration confirms everything related is done and all action items are closed (a judgement).
+// A meeting can stay held for months while its items run, so completed is its own stage.
 const MEETING_STATUSES = [
   { key: 'scheduled', ar: 'مجدول', en: 'Scheduled', color: '#0ea5e9' },
   { key: 'in_progress', ar: 'منعقد الآن', en: 'In progress', color: '#f59e0b' },
@@ -53,9 +34,9 @@ const MEETING_STATUSES = [
 ];
 const MEETING_STATUS_KEYS = MEETING_STATUSES.map((s) => s.key);
 
-// الاجتماع حصل فعلاً (سواء اتقفل ولا لسه) — للعدّادات اللي معناها «انعقد».
+// The meeting took place (closed or not); for counters meaning 'held'.
 const HELD_MEETING_STATUSES = ['held', 'completed'];
-// لسه مفتوح: فيه شغل ممكن يتعمل عليه. الملغي مش مفتوح ولا مكتمل.
+// Still open: work can be done on it. Cancelled is neither open nor completed.
 const OPEN_MEETING_STATUSES = ['scheduled', 'in_progress', 'held'];
 
 const ACTION_STATUSES = [
@@ -82,19 +63,11 @@ const EXECUTIVE_ROLES = [...new Set([...FULL_ACCESS_ROLES, 'admin', 'moderator']
 
 // The secretariat: runs the meetings, writes the minutes, records the actions.
 // asmaa@energize.com sits here via the `administrator` role.
-// الشؤون الإدارية: بتجدول الاجتماعات وتكتب المحاضر وتسجّل البنود — المدير
-// والموظف الاتنين، لأن الشغل ده بيتعمل فعلاً على المستويين.
+// Both manager and staff are included because both levels do this work.
 const SECRETARY_ROLES = ['administration_manager', 'administration_staff'];
 
-// Department heads whose role key does NOT end in `_manager`. Everything that
-// does end in `_manager` is picked up automatically — that is the whole point.
-// بعد ما اتظبط الهيكل الوظيفي (config/roles.js) كل مدير قسم بقى اسمه بينتهي
-// بـ `_manager`، فالقائمة دي فضيت تقريبًا. فاضل `moderator` وهو دور إشرافي عام
-// مش تبع قسم.
-//
-// اللي كان هنا وطلع غلط: `operations_staff` (كان اسمه `operations`) كان بيتحسب
-// مدير وهو موظف، و`b2c_project_manager` كان بينتهي بـ `_manager` فكان بيتحسب
-// مدير كمان. الاتنين اتظبطوا من الأساس بدل ما يتعالجوا باستثناءات هنا.
+// Department heads whose role key does NOT end in `_manager`. Everything ending in `_manager` is picked up automatically.
+// After the org structure fix (config/roles.js) the list is nearly empty; `moderator` remains as a general supervisory role not tied to a department.
 const EXTRA_MANAGER_ROLES = ['moderator', 'cfo'];
 
 /** Is this role a department head who belongs in the room? */

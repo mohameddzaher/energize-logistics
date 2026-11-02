@@ -12,25 +12,18 @@ const OBJECT_ID = /^[0-9a-f]{24}$/i;
 const isId = (v) => OBJECT_ID.test(String(v || ''));
 const oid = (v) => new mongoose.Types.ObjectId(String(v));
 
-/** خطأٌ في الفلتر نفسِه — يُردّ بسببه لا بجدولٍ فارغٍ يُظنّ جوابًا. */
+/** A filter error itself: rejected with its reason instead of an empty table that reads as an answer. */
 class FilterError extends Error {}
 
 /**
- * ── يومٌ واحد، أو مدًى — بتوقيت الشركة ──────────────────────────────────────
- *
- * `date=YYYY-MM-DD` يومٌ بحدَّيه، و`dateFrom`/`dateTo` مدًى، وأيُّ واحدٍ منهما
- * وحدَه يعمل كما يُتوقَّع.
- *
- * وكان الحدُّ يُبنى `new Date('2026-10-09T00:00:00.000')` بلا منطقة — فيُقرأ
- * بتوقيت **الخادم**. والخادمُ على غرينتش: «يوم ٩ أكتوبر» كان يبدأ الثالثةَ
- * فجرًا بالرياض وينتهي الثالثةَ فجرَ العاشر، فيسقط ما جرى بعد منتصف الليل
- * ويدخل مكانَه أوّلُ اليوم التالي. راجع utils/companyDay.
+ * A single day, or a range, in company time. date=YYYY-MM-DD is a whole day; dateFrom/dateTo is a range; either bound alone works.
+ * Bounds were built with new Date('...T00:00:00.000') without a zone, which is read in server time; the server is on GMT, so a day started at 3 a.m. Riyadh and dropped post-midnight events. See utils/companyDay.
  */
 const dayBounds = (from, to) => {
   let a = from ? String(from).slice(0, 10) : '';
   let b = to ? String(to).slice(0, 10) : '';
   if ((a && !YMD.test(a)) || (b && !YMD.test(b))) throw new FilterError('تاريخ غير صالح');
-  // مدًى مقلوبٌ يُعدَّل ولا يُردّ فارغًا: من كتب «من ١٠ إلى ٥» يقصد ما بينهما.
+  // An inverted range is swapped rather than returned empty.
   if (a && b && a > b) [a, b] = [b, a];
   const range = {};
   if (a) range.$gte = startOfDay(a);
@@ -38,24 +31,17 @@ const dayBounds = (from, to) => {
   return range;
 };
 
-/**
- * شرطُ الاستعلام من فلاتر الشاشة. `skip` أسماءُ فلاترَ تُهمَل — تُبنى بها
- * قوائمُ الخيارات: قائمةُ كلِّ فلترٍ تُحسَب بكلِّ الفلاتر **سواه**.
- */
+/** Query condition from the screen filters. `skip` names filters to ignore, used to build option lists: each filter's list is computed with all filters except itself. */
 async function buildFilter(q, skip = []) {
   const on = (k) => !skip.includes(k) && q[k] !== undefined && q[k] !== null && String(q[k]) !== '';
   const filter = {};
 
-  // ── القسمُ أوّلًا، والكيانُ تفصيلٌ داخله ─────────────────────────────────
-  // واختيارُ كيانٍ صريحٍ يَغلِب قسمَه: من اختار «حركة عهدة» يريدها وحدَها لا
-  // قسمَ العهدة كلَّه. ولو جُمع الشرطان لأعطى الاختياران المتّسقان نتيجةً
-  // صحيحةً والمتعارضان فراغًا لا يُفهَم سببُه.
+  // Section first, entity is a detail inside it. An explicit entity choice wins over its section: someone picking one entity wants only it. Combining both conditions would give empty results for conflicting choices with no visible reason.
   if (on('entity')) {
     filter.entity = String(q.entity);
   } else if (on('section')) {
     if (q.section === 'other') {
-      // «أخرى» ليست قائمةً تُعَدّ — هي كلُّ ما ليس في القائمة، بما يشمل
-      // كيانًا أُضيف في الخادم أمسِ ولم يُصنَّف بعد.
+      // Other is not a counted list: it is everything not in the list, including an entity added to the server yesterday and not yet classified.
       const known = SECTIONS.flatMap((s) => entitiesOfSection(s.key));
       filter.entity = { $nin: known };
     } else {
@@ -63,24 +49,14 @@ async function buildFilter(q, skip = []) {
     }
   }
 
-  // ── الفعلُ بمفتاحه كاملًا ────────────────────────────────────────────────
-  // كان بحثًا نصّيًّا في المفتاح الإنجليزيّ (`update_workflow`) والشاشةُ تعرض
-  // الفعلَ بالعربيّة: من كتب «تعديل» كما يقرؤها لم يجد شيئًا. وكان النصُّ
-  // يُمرَّر تعبيرًا نمطيًّا كما هو، فقوسٌ واحدٌ يُسقط الطلب. فصار اختيارًا من
-  // قائمة الأفعال الواقعة فعلًا، ومطابقةً تامّة.
+  // Action by its full key. It used to be a text search on the English key (update_workflow) while the screen shows Arabic, so searching the displayed word found nothing, and the text went into a regex unescaped so one bracket broke the request. Now a pick from actually occurring actions with an exact match.
   if (on('action')) {
     const list = String(q.action).split(',').map((s) => s.trim()).filter(Boolean);
     filter.action = list.length === 1 ? list[0] : { $in: list };
   }
 
-  // ── الشخص ────────────────────────────────────────────────────────────────
-  // `system` هو النظامُ نفسُه (الإقفالُ التلقائيّ): قيودٌ بلا فاعلٍ لم يكن
-  // إليها سبيلٌ من هذا الفلتر.
-  //
-  // و`unnamed` حساباتٌ حُذفت قبل أن يبدأ السجلُّ يلتقط اسمَ الفاعل: أكثرُ من
-  // ألفِ حسابِ اختبارٍ أُنشئ وحُذف، لا يُعرَف من كلٍّ منها إلّا معرّفُه. تُجمَع
-  // في خيارٍ واحدٍ بدل ألفِ سطرٍ بلا اسم — ولا تُخفى: أفعالُها في السجلّ.
-  let users = null; // null = الكلّ
+  // Person. system is the system itself (auto-close): entries with no actor were unreachable by this filter. unnamed is accounts deleted before the log captured the actor name (over a thousand test accounts known only by id); grouped into one option instead of a thousand nameless rows, and not hidden since their actions are in the log.
+  let users = null; // null = all
   let systemOnly = false;
   let unnamedOnly = false;
   if (on('user')) {
@@ -90,24 +66,18 @@ async function buildFilter(q, skip = []) {
     else throw new FilterError('مستخدم غير صالح');
   }
 
-  // ── الفرعُ يُقرأ من فاعله ────────────────────────────────────────────────
-  // القيدُ لا يحمل فرعًا — وهو صحيح: الفعلُ يقع على كيانٍ قد لا يخصّ فرعًا
-  // أصلًا (دورُ صلاحيّة، إعدادُ نظام). لكنّ **مَن فعله** ينتمي إلى فرع،
-  // وهذا هو السؤال المقصود: «ماذا فعل ناسُ جدّة؟».
+  // Branch is read from the actor. An entry has no branch because the action may target an entity with none (a permission role, a system setting), but the actor belongs to a branch, and that is the question: what did this branch's people do?
   if (on('branch')) {
-    // `none` مَن لا فرعَ له — الإدارةُ ومديرو النظام، ولهم نصفُ السجلّ. وبلا
-    // هذا الخيار لا يبلغهم فلترُ الفرع من أيّ باب.
+    // none is actors with no branch (management and system admins, half the log). Without it the branch filter would never reach them.
     if (q.branch !== 'none' && !isId(q.branch)) throw new FilterError('فرع غير صالح');
     const cond = q.branch === 'none' ? { branch: null } : { branch: q.branch };
     const ids = (await User.find(cond).select('_id').lean()).map((u) => String(u._id));
-    // ومع اختيارِ شخصٍ بعينه يتقاطع الشرطان لا يتجاوران: شخصٌ من فرعٍ آخرَ
-    // مع فرعِ جدّة جوابُه «لا شيء»، لا «كلُّ ما فعله». والنظامُ لا فرعَ له.
+    // With a specific person chosen, the conditions intersect: a person from another branch combined with this branch gives nothing, not everything they did. The system has no branch.
     users = users ? users.filter((u) => ids.includes(u)) : ids;
     if (systemOnly || unnamedOnly) { systemOnly = false; unnamedOnly = false; users = []; }
   }
   if (unnamedOnly) {
-    // «بلا اسم» صفةُ الحساب لا القيد: حسابٌ التُقط اسمُه في قيدٍ واحدٍ يُعرَف
-    // به في قيوده كلِّها — وهو التعريفُ نفسُه الذي تُعَدّ به القائمة.
+    // Unnamed is a property of the account, not the entry: an account whose name was captured in one entry is known by it in all entries, the same definition used to count the list.
     const live = await User.distinct('_id');
     const rows = await AuditLog.aggregate([
       { $match: { user: { $nin: [...live, null] } } },
@@ -116,7 +86,7 @@ async function buildFilter(q, skip = []) {
     ]);
     filter.user = { $in: rows.map((r) => r._id) };
   } else
-  if (systemOnly) filter.user = null; // يطابق الغائبَ والفارغ
+  if (systemOnly) filter.user = null; // Matches missing and empty
   else if (users) filter.user = users.length === 1 ? oid(users[0]) : { $in: users.map(oid) };
 
   if (!skip.includes('date')) {
@@ -128,7 +98,7 @@ async function buildFilter(q, skip = []) {
   return filter;
 }
 
-/** كلُّ ما يشبه معرّفًا داخليًّا في `changes` — يُسأل عن أصحابه مرّةً للصفحة كلِّها. */
+/** Everything in `changes` that looks like an internal id, looked up once for the whole page. */
 function collectIds(v, into, depth = 0) {
   if (v == null || depth > 3) return;
   if (typeof v === 'string') { if (OBJECT_ID.test(v)) into.add(v); return; }
@@ -139,12 +109,7 @@ function collectIds(v, into, depth = 0) {
 
 const fullName = (u) => `${u.firstName || ''} ${u.lastName || ''}`.trim();
 
-/**
- * ── المعرّفُ يُقرأ اسمًا ─────────────────────────────────────────────────────
- * `branch: 6a0acb7f… ← 69cceb1c…` لا يقول شيئًا. فمعرّفاتُ الصفحة تُجمَع ويُسأل
- * عنها في الفروع والمستخدمين والموظّفين — ثلاثةُ استعلاماتٍ للصفحة لا لكلّ صفّ.
- * وما لم يُعرَف صاحبُه يُقال عنه «تغيّر» بلا رقم.
- */
+/** Ids are shown as names. A raw branch id change says nothing, so page ids are collected and looked up in branches, users and employees (three queries per page, not per row). An unknown owner is reported as changed, without the id. */
 async function resolveRefs(logs) {
   const ids = new Set();
   for (const l of logs) collectIds(l.changes, ids);
@@ -163,12 +128,7 @@ async function resolveRefs(logs) {
   return refs;
 }
 
-/**
- * ── على أيِّ سجلٍّ وقع الفعل ──────────────────────────────────────────────────
- * العمودُ كان يعرض `entityId` — أربعةً وعشرين حرفًا لا يعرفها أحد. والسؤالُ
- * «كشفُ مَن؟ ملفُّ مَن؟». فيُقرأ اسمُ السجلّ من جدوله حيث يُعرَف الجدول.
- * وسجلٌّ حُذف بعد الفعل لا يُعثَر عليه — فيبقى ما التقطه القيدُ نفسُه.
- */
+/** Which record the action hit. The column showed a 24-character entityId nobody recognizes; the record name is read from its collection where known. A record deleted after the action is not found, so what the entry captured itself is kept. */
 const SUBJECT_SOURCES = {
   Employee: ['Employee', 'arabicName firstName lastName', (d) => d.arabicName || fullName(d)],
   User: ['User', 'firstName lastName email', (d) => fullName(d) || d.email],
@@ -195,7 +155,7 @@ async function resolveSubjects(logs) {
       const Model = require(`../models/${file}`);
       const docs = await Model.find({ _id: { $in: [...set].map(oid) } }).select(select).lean();
       for (const d of docs) out[`${entity}:${d._id}`] = name(d) || '';
-    } catch (e) { /* الاسمُ زيادةٌ على القيد لا شرطٌ لعرضه */ }
+    } catch (e) { /* The name is extra on the entry, not required to display it. */ }
   }));
   return out;
 }
@@ -209,8 +169,7 @@ exports.getAuditLogs = async (req, res) => {
 
     const [logs, total] = await Promise.all([
       AuditLog.find(filter)
-        // و`_id` يفصل بين قيودٍ كُتبت في اللحظة نفسِها (استيرادٌ جماعيّ) —
-        // وبلا فاصلٍ ثابتٍ يتكرّر صفٌّ في صفحتين ويغيب آخر.
+        // _id separates entries written at the same instant (bulk import); without a stable tiebreak a row repeats across pages and another goes missing.
         .sort({ createdAt: -1, _id: -1 })
         .skip((page - 1) * limit)
         .limit(limit)
@@ -218,16 +177,14 @@ exports.getAuditLogs = async (req, res) => {
       AuditLog.countDocuments(filter),
     ]);
 
-    // الفاعلون يُقرؤون باستعلامٍ واحدٍ لا بـ`populate`: هي تمحو المرجعَ حين يُحذَف
-    // الحساب، فيضيع المعرّفُ الذي يُفلتَر به تاريخُ صاحبه.
+    // Actors are read in one query, not populate: populate clears the reference when the account is deleted, losing the id that filters its history.
     const actorIds = [...new Set(logs.map((l) => l.user && String(l.user)).filter(Boolean))];
     const [refs, subjects, actors] = await Promise.all([
       resolveRefs(logs), resolveSubjects(logs),
       User.find({ _id: { $in: actorIds } }).select('firstName lastName email role branch').lean(),
     ]);
     const actorById = Object.fromEntries(actors.map((u) => [String(u._id), u]));
-    // التفصيلُ الكامل لصفحة الشاشة وحدَها؛ التصديرُ يكفيه السطرُ المقروء، ولقطةُ
-    // كلِّ كشفٍ في عشرات الآلاف من الصفوف حمولةٌ لا يقرؤها أحد.
+    // Full detail only for the screen page; export needs just the readable line, and a snapshot of every entry across tens of thousands of rows is a payload nobody reads.
     const withDetail = limit <= 200;
 
     const shaped = logs.map((l) => {
@@ -237,21 +194,17 @@ exports.getAuditLogs = async (req, res) => {
         userName: l.userName || '', userEmail: l.userEmail || '',
         user: (l.user && actorById[String(l.user)]) || null,
       };
-      // ── الفاعلُ يُقرأ من اللقطة حين يُحذَف حسابُه ────────────────────────
-      // `populate` تعود فارغةً لمستخدمٍ محذوف، فتقرأ الشاشةُ الفعلَ منسوبًا إلى
-      // «النظام». فيُكمَّل من اللقطة المحفوظة ساعةَ الفعل، ويُعلَّم أنّ حسابَه
-      // أُزيل — فلا يُنسَب فعلُ إنسانٍ إلى آلة.
+      // Actor from the snapshot when the account is deleted. populate returns empty for a deleted user, so the screen would attribute the action to the system; it is completed from the snapshot kept at action time and flagged as removed, so a human action is never attributed to a machine.
       if (!o.user && l.user) {
         o.user = {
           _id: String(l.user), firstName: l.userName || l.userEmail || (lang === 'en' ? 'Deleted account (no name recorded)' : 'حساب محذوف (لم يُسجَّل اسمه)'), lastName: '', email: l.userEmail || '', deleted: true,
           unnamed: !l.userName && !l.userEmail,
         };
       }
-      // واسمُ الفاعل جاهزٌ في حقلٍ واحد — التطبيقُ يعرضه كما هو.
+      // Actor name is ready in one field; the app shows it as is.
       o.userName = o.user ? (fullName(o.user) || o.user.email || o.userName) : (lang === 'en' ? 'System' : 'النظام');
 
-      // القسمُ يُحسَب هنا لا في الواجهة: الخريطةُ واحدةٌ يقرؤها الفلترُ والعمود،
-      // فلا يقع صفٌّ في قسمٍ عند الفلترة وفي آخرَ عند العرض.
+      // Section is computed here, not in the UI: one map is read by both the filter and the column, so a row cannot be in one section when filtering and another when displaying.
       o.section = sectionOf(l.entity);
       const sec = SECTIONS.find((s) => s.key === o.section);
       o.sectionLabel = sec ? sec[lang] : o.section;
@@ -277,19 +230,8 @@ exports.getAuditLogs = async (req, res) => {
 };
 
 /**
- * مفرداتُ الفلاتر — وكلُّ قائمةٍ تتبع ما اختير في غيرها.
- *
- * ── العلّة ──────────────────────────────────────────────────────────────────
- * كانت الأعدادُ تُحسَب مرّةً على السجلّ كلِّه: يُختار «أمس» ثمّ يُقرأ أمام
- * «الموارد البشرية» ٦٬٦٩٠ — وهو عددُ القسم منذ بدأ السجلّ، لا عددُه أمس.
- * فيُفتَح القسمُ على جدولٍ فيه ثلاثةُ صفوف.
- *
- * ── القاعدة ─────────────────────────────────────────────────────────────────
- * قائمةُ كلِّ فلترٍ تُحسَب بكلِّ الفلاتر الأخرى سواه، وبما هو أعلى منه:
- *   القسم   ← الشخص والفرع والزمن
- *   الكيان  ← ما سبق + القسم
- *   الفعل   ← ما سبق + الكيان
- *   الشخص   ← الفرع والزمن والقسم والكيان والفعل
+ * Filter vocabularies: each list is computed with all other filters and those above it, so counts follow the current selection instead of the whole log.
+ * Order: section (person, branch, time); entity (+ section); action (+ entity); person (branch, time, section, entity, action).
  */
 exports.getAuditOptions = async (req, res) => {
   try {
@@ -304,20 +246,16 @@ exports.getAuditOptions = async (req, res) => {
         { $match: base },
         { $group: { _id: { e: '$entity', a: '$action' }, count: { $sum: 1 } } },
       ]),
-      // الفاعلون من القيود نفسِها بلقطة أسمائهم — فمن حُذف حسابُه يبقى في
-      // القائمة باسمه، ويبقى تاريخُه مقروءًا.
+      // Actors come from the entries with their name snapshot, so a person whose account was deleted stays in the list by name and their history stays readable.
       AuditLog.aggregate([
         { $match: userScope },
         { $group: { _id: '$user', count: { $sum: 1 }, name: { $max: '$userName' }, email: { $max: '$userEmail' } } },
       ]),
-      // والفروعُ كاملةً: الفلترُ يسأل «مَن في هذا الفرع فعل شيئًا؟»، وفرعٌ لم
-      // يفعل أحدٌ فيه شيئًا جوابٌ صحيحٌ لا خيارٌ يُخفى.
+      // All branches are listed: the filter asks whether anyone in this branch did something, and no activity is a valid answer, not an option to hide.
       Branch.find({}).select('name').sort({ name: 1 }).lean(),
     ]);
 
-    // ── الأقسام: كلُّها، بعددها ────────────────────────────────────────────
-    // قسمٌ بلا قيودٍ يُعرَض بصفره: القائمةُ تقول أيضًا «هذا القسمُ لم يُقيَّد
-    // فيه شيء»، وإخفاؤه يُقرأ «هذا القسمُ ليس في السجلّ أصلًا».
+    // Sections: all of them, with counts. A section with no entries shows zero, which tells the user nothing was recorded there; hiding it would read as not being in the log at all.
     const sectionCounts = {};
     const entityCounts = {};
     for (const p of pairs) {
@@ -330,12 +268,12 @@ exports.getAuditOptions = async (req, res) => {
       .filter((s) => s.key !== 'other' || sectionCounts.other)
       .map((s) => ({ key: s.key, ar: s.ar, en: s.en, count: sectionCounts[s.key] || 0 }));
 
-    // ── الكيانات: كلُّها مع قسمها — الواجهةُ تعرض ما في القسم المختار ──────
+    // Entities: all, with their section; the UI shows those in the chosen section.
     const entities = Object.entries(entityCounts)
       .map(([key, count]) => ({ key, section: sectionOf(key), count, label: entityLabel(key, lang) }))
       .sort((a, b) => b.count - a.count);
 
-    // ── الأفعال: داخل القسم والكيان المختارَين ─────────────────────────────
+    // Actions: within the chosen section and entity.
     const inSection = (e) => {
       if (q.entity) return e === q.entity;
       if (q.section) return sectionOf(e) === q.section;
@@ -352,12 +290,12 @@ exports.getAuditOptions = async (req, res) => {
       .map(([key, v]) => ({
         key,
         count: v.count,
-        // الفعلُ العامّ («create») يُسمّى مع كيانه متى كان كيانُه واحدًا.
+        // A generic action (create) is named with its entity when the entity is unique.
         label: actionLabel(key, v.entities.size === 1 ? [...v.entities][0] : '', lang),
       }))
       .sort((a, b) => b.count - a.count);
 
-    // ── الأشخاص ────────────────────────────────────────────────────────────
+    // People
     const ids = actorRows.map((r) => r._id).filter(Boolean);
     const live = await User.find({ _id: { $in: ids } }).select('firstName lastName email role branch').lean();
     const liveById = Object.fromEntries(live.map((u) => [String(u._id), u]));

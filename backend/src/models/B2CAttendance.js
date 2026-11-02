@@ -1,9 +1,6 @@
 /**
- * حضورُ مناديب أمازون — أمازون لا أوردرات لها، بل تسجيلُ حضور.
- *
- * والأغلبُ يحضر كلَّ يوم، فالحضورُ هو الأصل ولا يُكتب: يُكتب **الغيابُ** وحدَه.
- * مديرُ المشروع يعلّم مَن لم يحضر، والباقون حاضرون — بدل أن يعلّم الجميعَ كلَّ
- * يوم (صاحبُ الشركة، ٢٠٢٦/١٠/٢٠). وإعادةُ المندوب «حاضرًا» تحذف صفَّه.
+ * Attendance of Amazon riders. Amazon has no orders, only attendance records.
+ * Most riders attend every day, so presence is the default and is not stored; only absence is. The project manager marks who did not attend and the rest are present, instead of marking everyone daily. Marking a rider present again deletes his row.
  */
 const mongoose = require('mongoose');
 

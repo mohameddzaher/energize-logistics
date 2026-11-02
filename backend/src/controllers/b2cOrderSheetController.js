@@ -1,12 +1,8 @@
 /**
- * شيتاتُ الأوردرات — ربطُ ملفّ جوجل شيت لكلّ مشروع (services/b2cOrderSheetSync).
- *
- *   GET    /api/b2c/order-sheets              الملفّاتُ المربوطة وحالُ آخر قراءة
- *   POST   /api/b2c/order-sheets              { projectAr, url }
- *   DELETE /api/b2c/order-sheets/:id
- *   POST   /api/b2c/order-sheets/:id/sync     قراءةٌ الآن
- *
- * للمسؤولين عن القسم وحدَهم (isEntryHead) — الربطُ يكتب في أوردرات المشروع كلِّه.
+ * Order sheets: a Google Sheet linked per project (services/b2cOrderSheetSync). For section managers only (isEntryHead), since linking writes the whole project's orders.
+ * GET /api/b2c/order-sheets
+ * POST /api/b2c/order-sheets
+ * POST /api/b2c/order-sheets/:id/sync
  */
 const mongoose = require('mongoose');
 const E = require('../utils/b2cEntry');
@@ -33,7 +29,7 @@ exports.list = async (req, res) => {
 
 const sheetsApp = () => require('./b2cSheetAppController');
 
-/** بريدُ جوجل لمسؤولي القسم — محرّرو الحماية في الشيتات الثلاثة. */
+/** Google emails of the section managers, who are the protection editors on the three sheets. */
 exports.setHeads = async (req, res) => {
   try {
     if (guard(req, res)) return;
@@ -60,7 +56,7 @@ exports.create = async (req, res) => {
       { upsert: true, new: true },
     );
     await logAudit({ user: req.user._id, action: 'b2c_order_sheet_link', entity: 'B2COrderSheet', entityId: doc._id, changes: { after: { projectAr: proj.nameAr, sheetId } }, ipAddress: req.ip }).catch(() => {});
-    // قراءةٌ أولى فورًا — فيُعرف في الحال إن كان الرابطُ مشارَكًا.
+    // First read happens immediately, so it is known right away whether the link is shared.
     try { await sync.syncSheet(doc); } catch (e) { doc.lastError = String(e.message).slice(0, 300); doc.lastSyncAt = new Date(); await doc.save(); }
     res.status(201).json({ sheet: await B2COrderSheet.findById(doc._id).lean() });
   } catch (e) {
@@ -94,8 +90,8 @@ exports.syncNow = async (req, res) => {
 };
 
 /**
- * GET /api/b2c/order-sheets/script — سكربتُ جوجل جاهزًا بمفتاحه.
- * يُلصَق في script.google.com ويُشغَّل `setup` مرّةً. لمدير القسم ونائبه وحدَهم.
+ * GET /api/b2c/order-sheets/script
+ * The Google script ready with its key. Pasted into script.google.com and `setup` run once. For the section manager and deputy only.
  */
 exports.script = async (req, res) => {
   if (guard(req, res)) return;

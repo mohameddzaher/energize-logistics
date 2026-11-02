@@ -1,32 +1,7 @@
 /**
- * مرفقاتُ فواتير التحصيل — ورقُ الفاتورة يعيش مع الفاتورة.
- *
- *   GET    /api/collections-dept/attachments/:kind/counts?keys=…   عددُ مرفقات صفوفٍ بعينها
- *   GET    /api/collections-dept/attachments/:kind/:key            ملفّاتُ فاتورةٍ واحدة
- *   POST   /api/collections-dept/attachments/:kind/:key            إرفاقُ ملفٍّ أو أكثر
- *   DELETE /api/collections-dept/attachments/:kind/:key/:fileId    حذفُ ملفٍّ واحد
- *
- * `kind` = tax (المفتاحُ رقمُ الفاتورة في الدفتر) أو cash (المفتاحُ معرّفُ الكشف
- * النقديّ في سير العمل) — راجع models/CollectionAttachment.
- *
- * ── ما يُرفَع ───────────────────────────────────────────────────────────────
- * صورٌ وPDF وWord وExcel — ما يُرفَق بفاتورةٍ فعلًا: نسخةٌ موقَّعة، إيصالُ
- * استلام، كشفُ حسابٍ من العميل، صورةُ شيك. والملفُّ حتى ١٠ ميغا.
- *
- * والخادمُ يقبل جسمَ طلبٍ حتى ٢٥ ميغا (server.js)، والملفُّ يُرسَل base64 فيكبر
- * الثلث. فالطلبُ الواحدُ لا يتجاوز ١٨ ميغا من الملفّات معًا ولا عشرةَ ملفّات —
- * والشاشتان تقسمان ما يُختار على طلباتٍ بهذا الحدّ، فلا يصطدم به المستخدم.
- *
- * ── مَن يفعل ماذا ───────────────────────────────────────────────────────────
- * مَن يقرأ صفحاتِ الفواتير يرى المرفقاتِ وينزّلها، ومَن يكتب فيها يرفع.
- * والحذفُ لمن رفع الملفَّ، أو لمدير التحصيل ومدير النظام والإدارة: ملفٌّ رفعه
- * زميلٌ دليلٌ على فاتورة، فلا يمحوه موظّفٌ آخر.
- *
- * ── والعددُ حيّ ──────────────────────────────────────────────────────────────
- * بعد كلّ رفعٍ أو حذفٍ يُبثّ `collections:attachments`، فيتحدّث العدّادُ عند
- * كلّ من فتح الصفحة. وقائمتا الفواتير تُقرآن حيّتين؛ ولوحةُ التحصيل تحمل العددَ
- * في ذاكرتها (`cdr:` — بطاقةُ «بلا مرفق»)، فتُمسح في `announce` قبل `emitToAll`.
- * ومن أضاف ذاكرةً أخرى تحمل العدد فليمسحها هناك أيضًا.
+ * Collections invoice attachments: invoice paperwork lives with the invoice. `kind` = tax (key is the invoice number) or cash (key is the cash statement id); see models/CollectionAttachment.
+ * GET/POST /api/collections-dept/attachments/:kind/:key, DELETE .../:fileId
+ * Up to 10 MB per file and 18 MB per request (25 MB body limit, base64 adds a third). Each change broadcasts `collections:attachments`; the board's `cdr:` cache is cleared in `announce` before emitToAll.
  */
 const mongoose = require('mongoose');
 const CollectionAttachment = require('../models/CollectionAttachment');
@@ -42,11 +17,10 @@ const KINDS = ['tax', 'cash'];
 const MB = 1024 * 1024;
 const LIMITS = { file: 10 * MB, request: 18 * MB, perRequest: 10, perInvoice: 50 };
 
-/** مَن يحذف ملفًّا لم يرفعه. */
+/** Who may delete a file they did not upload. */
 const DELETE_ANY_ROLES = ['super_admin', 'admin', 'collections_manager'];
 
-// الأنواعُ المقبولة — والامتدادُ يُترجَم إلى نوعه حين لا يقوله المتصفّح أو
-// الهاتف (ملفّاتُ Excel وHEIC تصل كثيرًا بلا نوع أو «octet-stream»).
+// Accepted types; the extension is mapped to a type when the browser or phone omits it (Excel and HEIC often arrive with no type or 'octet-stream').
 const MIME_BY_EXT = {
   jpg: 'image/jpeg', jpeg: 'image/jpeg', png: 'image/png', webp: 'image/webp', gif: 'image/gif', heic: 'image/heic',
   pdf: 'application/pdf',
@@ -66,7 +40,7 @@ const keyOf = (kind, raw) => {
   return k;
 };
 
-/** هل للفاتورة وجود؟ — لا يُرفَق ملفٌّ بمفتاحٍ لا يقابله شيء. */
+/** Does the invoice exist? A file is not attached to a key that matches nothing. */
 async function invoiceExists(kind, key) {
   if (kind === 'cash') return !!(await OperationsWorkflow.exists({ _id: key, paymentType: 'cash' }));
   const CollectionInvoice = require('../models/CollectionInvoice');
@@ -74,10 +48,7 @@ async function invoiceExists(kind, key) {
   return !!(await OperationsWorkflow.exists({ invoiceNumber: key }));
 }
 
-/**
- * عددُ مرفقات كلّ مفتاح — تجميعٌ واحدٌ لصفحةٍ كاملة، تقرؤه قائمتا الفواتير.
- * يُرجع Map: المفتاح → العدد (والغائبُ صفر).
- */
+/** Attachment count per key: one aggregation for a whole page, read by both invoice lists. Returns a Map of key to count (absent is zero). */
 async function countsFor(kind, keys) {
   const list = [...new Set((keys || []).map((k) => S(k)).filter(Boolean))];
   if (!list.length) return new Map();
@@ -88,7 +59,7 @@ async function countsFor(kind, keys) {
   return new Map(agg.map((x) => [x._id, x.n]));
 }
 
-/** يكتب في صفحات الفواتير؟ — بالقاعدة نفسِها التي يمرّ بها `authorize`. */
+/** Can write on the invoice pages, by the same rule `authorize` uses. */
 const canWrite = (req, editRoles) => editRoles.map(canonicalRole).includes(canonicalRole(req.user?.role))
   || req.sectionAccess === 'edit' || !!req.pageGranted;
 const canDeleteAny = (req) => DELETE_ANY_ROLES.includes(canonicalRole(req.user?.role));
@@ -108,20 +79,16 @@ const shape = (req, f) => ({
 
 const announce = async (kind, key) => {
   const count = await CollectionAttachment.countDocuments({ kind, key });
-  // لوحةُ التحصيل تعدّ «آجل - فاتورة بلا مرفق» من ذاكرةٍ مؤقّتة (`cdr:`) —
-  // تُمسح قبل البثّ، وإلّا قرأت اللوحةُ القديمَ حين تستجيب له.
+  // The collections board counts 'credit - invoice without attachment' from a cache (`cdr:`), cleared before the broadcast; otherwise the board would read stale data when it responds.
   try { require('../utils/ttlCache').clear('cdr:'); } catch (_) { /* */ }
   try {
     const { emitToAll } = require('../websocket/socketManager');
     emitToAll('collections:attachments', { kind, key, count, at: Date.now() });
-  } catch (_) { /* البثُّ تحسينٌ لا شرط */ }
+  } catch (_) { /* Broadcast is an optimization, not a requirement. */ }
   return count;
 };
 
-/**
- * يتحقّق من ملفّات الطلب كلِّها قبل أن يكتب واحدًا: نوعٌ غيرُ مقبول، أو ملفٌّ
- * فوق ١٠ ميغا، أو مجموعٌ فوق حدّ الطلب — فيُردّ الطلبُ كلُّه ولا يبقى نصفُه.
- */
+/** Validates all request files before writing any: unaccepted type, file over 10 MB, or total over the request limit rejects the whole request, never half. */
 function parseFiles(list, already) {
   const files = Array.isArray(list) ? list.filter((f) => f && typeof f.dataUrl === 'string' && f.dataUrl) : [];
   if (!files.length) throw fail(400, 'لم يُرسَل ملف', 'No file sent');
@@ -137,7 +104,7 @@ function parseFiles(list, already) {
     const m = /^data:([^;,]*)(;base64)?,/.exec(f.dataUrl);
     if (!m || !m[2]) throw fail(400, `ملفٌّ غير صالح: ${name || '—'}`, `Invalid file data: ${name || '—'}`);
     let mime = S(m[1]).toLowerCase();
-    // نوعٌ لم يُقَل → من الامتداد.
+    // Type not given: derive from the extension.
     if (!ALLOWED.has(mime)) {
       const ext = name.includes('.') ? name.split('.').pop().toLowerCase() : '';
       if ((!mime || mime === 'application/octet-stream') && MIME_BY_EXT[ext]) mime = MIME_BY_EXT[ext];
@@ -156,7 +123,7 @@ function parseFiles(list, already) {
   });
 }
 
-// ── القراءة ─────────────────────────────────────────────────────────────────
+// Reads
 
 exports.counts = async (req, res) => {
   try {
@@ -188,7 +155,7 @@ exports.list = (editRoles) => async (req, res) => {
   }
 };
 
-// ── الكتابة ─────────────────────────────────────────────────────────────────
+// Writes
 
 exports.upload = async (req, res) => {
   const saved = [];
@@ -233,7 +200,7 @@ exports.upload = async (req, res) => {
       count,
     });
   } catch (e) {
-    // ما كُتب على القرص ولم يُسجَّل في القاعدة يُمحى — لا ملفّاتٌ يتيمة.
+    // A file written to disk but not recorded in the database is removed, so no orphan files.
     saved.forEach((x) => deleteStoredFile(x.fileUrl));
     res.status(500).json({ message: 'تعذّر رفع المرفقات', error: e.message });
   }

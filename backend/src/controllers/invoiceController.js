@@ -165,16 +165,14 @@ exports.updateInvoice = async (req, res) => {
     if (amount !== undefined && req.user.role !== 'employee') {
       const next = Number(amount);
       if (!Number.isFinite(next) || next <= 0) return res.status(400).json({ message: 'قيمة الفاتورة يجب أن تكون رقمًا أكبر من صفر' });
-      // ولا تنزل القيمة تحت ما سُدِّد فعلًا: فاتورةٌ قيمتُها أقلّ ممّا قُبض
-      // منها تعطي رصيدًا سالبًا يُقرأ دائنًا للعميل وهو ليس كذلك.
+      // Never lower the value below what was already paid: an invoice worth less than collected gives a negative balance that reads as customer credit.
       if (next < invoice.paidAmount) {
         return res.status(400).json({ message: `القيمة أقلّ ممّا سُدِّد فعلًا (${invoice.paidAmount}). احذف الدفعة أوّلًا أو صحّحها.` });
       }
       const diff = next - invoice.amount;
       invoice.amount = next;
       invoice.balance = next - invoice.paidAmount;
-      // والحالة تُشتقّ من الرصيد لا تبقى على قديمها: تخفيضُ القيمة إلى ما سُدِّد
-      // يجعلها مسدَّدةً، وكان الصفّ يبقى «جزئيًّا» ورصيدُه صفر.
+      // Status is derived from the balance, not left stale: lowering the value to the paid amount makes it fully paid; the row used to stay partial with a zero balance.
       if (!['frozen', 'disputed', 'refunded'].includes(invoice.status)) {
         invoice.status = invoice.balance <= 0 ? 'paid' : invoice.paidAmount > 0 ? 'partial' : 'pending';
       }
@@ -376,8 +374,7 @@ exports.deleteInvoice = async (req, res) => {
     const Dispute = require('../models/Dispute');
     await Payment.deleteMany({ invoice: invoice._id });
     await Dispute.deleteMany({ invoice: invoice._id });
-    // ولا متابعاتٍ تُحذف معها: صارت تُقيَّد على طرفٍ في قسم التحصيل وعلى
-    // كشفٍ من كشوف التشغيل، لا على فاتورة.
+    // No follow-ups are deleted with it: they are now attached to a collections-section party and an operations statement, not to an invoice.
 
     await Invoice.findByIdAndDelete(invoice._id);
 

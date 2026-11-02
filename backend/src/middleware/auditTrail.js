@@ -1,37 +1,23 @@
 /**
- * شبكةُ أمان سجلّ المراجعة — كلُّ كتابةٍ ناجحةٍ في قسمٍ تُقيَّد، ولو نسيها متحكّمُها.
- *
- * ── العلّة ──────────────────────────────────────────────────────────────────
- * القيدُ كان يُكتب حيث تذكّر صاحبُ المتحكّم أن يكتبه. فقسمٌ كاملٌ (النقل الثقيل:
- * الصيانة والإصلاحات وتسجيل الخدمة والإعدادات) لم يكن يقيّد شيئًا، وسُئل السجلُّ
- * «ماذا فعل فلانٌ في القسم هذا الشهر؟» فأجاب بسطرٍ واحدٍ عمّن عمل فيه يوميًّا.
- * وسجلٌّ ناقصٌ لا يُعرَف نقصُه أسوأُ من لا سجلّ: يُقرأ غيابُ الفعل دليلًا على
- * أنّه لم يقع.
- *
- * ── والحلُّ في مكانٍ واحد ──────────────────────────────────────────────────
- * بعد كلّ طلبِ كتابةٍ (POST/PUT/PATCH/DELETE) نجح في قسمٍ معروف: إن لم يكتب
- * متحكّمُه قيدًا (راجع utils/auditContext) كُتب هنا قيدٌ عامّ — مَن، وفي أيّ قسم،
- * وأيُّ مسار، وما أرسل. المتحكّمُ الذي يقيّد بتفصيله يبقى قيدُه هو المقروء؛
- * وهذه تضمن ألّا يمرّ فعلٌ بلا أثر، اليومَ وفي كلّ مسارٍ يُضاف غدًا.
- *
- * ولا تُقيَّد القراءةُ ولا ما ليس فعلًا: البحثُ والتصديرُ والمعاينةُ وتعليمُ
- * الإشعار مقروءًا تُرسَل بـPOST وليست تغييرًا.
+ * Audit safety net: every successful write in a known section is recorded, even if its controller forgot (a whole section once recorded nothing, and a missing action reads as proof it did not happen).
+ * After any POST/PUT/PATCH/DELETE that succeeded, if the controller wrote no entry (see utils/auditContext) a generic one is written: who, section, path and what was sent. Detailed controller entries stay the ones read.
+ * Reads and non-actions (search, export, preview, mark-read) are not recorded.
  */
 const ctx = require('../utils/auditContext');
 const logAudit = require('../utils/auditLogger');
 const { SECTIONS } = require('../config/sections');
 
 const WRITE = new Set(['POST', 'PUT', 'PATCH', 'DELETE']);
-// أطولُ بادئةٍ تطابق تحسم — كما في بقيّة حرّاس الأقسام.
+// The longest matching prefix wins, as in the other section guards.
 const PREFIXES = SECTIONS.flatMap((s) => (s.apiPrefixes || []).map((p) => [p, s.key]))
   .sort((a, b) => b[0].length - a[0].length);
 const sectionOfPath = (path) => { const hit = PREFIXES.find(([p]) => path === p || path.startsWith(`${p}/`)); return hit ? hit[1] : null; };
-// ما يُرسَل بفعلِ كتابةٍ وليس تغييرًا.
+// Sent via a write method but not a change.
 const NOT_A_CHANGE = /\/(search|export|exports|preview|query|filters?|check|validate|verify|lookup|refresh|ping|read|seen|mark-read|webhook|reports?)(\/|$)/i;
 const SECRET = /pass|token|secret|otp|pin/i;
 const HEAVY = /dataurl|file|image|photo|base64|attachment/i;
 
-/** ما أُرسل — مختصَرًا: بلا أسرارٍ ولا ملفّات، وكلُّ قيمةٍ بطولٍ يُقرأ. */
+/** What was sent, shortened: no secrets or files, and each value capped to a readable length. */
 function summarise(body, depth = 0) {
   if (body === null || body === undefined) return body;
   if (typeof body === 'string') return body.length > 120 ? `${body.slice(0, 120)}…` : body;
@@ -58,7 +44,7 @@ module.exports = function auditTrail(req, res, next) {
       const path = (req.originalUrl || '').split('?')[0];
       const section = sectionOfPath(path);
       if (!section || NOT_A_CHANGE.test(path)) return;
-      // بعضُ المتحكّمات تردّ ثمّ تقيّد (الجوابُ قبل الذيول) — فيُمهَل القيدُ لحظةً.
+      // Some controllers respond and then record (reply before the tail), so the entry is given a moment.
       setTimeout(() => {
         if (store.audited) return;
         const route = `${req.baseUrl || ''}${(req.route && req.route.path) || ''}` || path;

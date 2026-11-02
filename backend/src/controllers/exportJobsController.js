@@ -1,19 +1,6 @@
 /**
- * التصديرُ الكبير يُبنى في الخلفيّة ويصل صاحبَه بإشعار.
- *
- * ── العلّة ──────────────────────────────────────────────────────────────────
- * «كلُّ الكشوف» ستّةٌ وثلاثون ألفَ صفٍّ واثنان وعشرون ميجابايت: نصفُ دقيقةٍ
- * يقفُ فيها الموظّفُ أمام صفحةٍ لا تستجيب، وإن أغلقها أو تعثّرت شبكتُه ضاع
- * العملُ وأُعيد من أوّله. وقبل ذلك كان يوقف الخادمَ عن خدمة البقيّة — عولج
- * بنقل الكتابة إلى خيطٍ عامل (utils/xlsxBuilder) — وبقي الانتظارُ نفسُه.
- *
- * فصار طلبًا: يُسجَّل، ويُردّ على صاحبه في اللحظة «جارٍ التجهيز»، ويُبنى الملفُّ
- * في الخادم ثمّ يصله إشعارٌ فيه رابطُه. ويبقى الملفُّ يومًا كاملًا فينزّله متى
- * شاء ومن أيّ جهاز.
- *
- * ── وطلبٌ واحدٌ في كلّ مرّة ─────────────────────────────────────────────────
- * البناءُ حسابٌ ثقيل. فلو ضغط عشرةٌ «تصدير» في دقيقةٍ بُنيت عشرةُ ملفّاتٍ معًا
- * فخنقت الخادم. فالطلباتُ تُصفّ وتُنفَّذ واحدًا بعد واحد.
+ * Large exports are built in the background and the requester is notified: a full export is tens of thousands of rows and takes long, and a closed page or dropped network lost the work. The request is recorded, answered at once as in preparation, built on the server, and a notification with the link arrives. The file stays one day.
+ * One request at a time: building is heavy computation, so requests are queued and run sequentially.
  */
 const fs = require('fs');
 const path = require('path');
@@ -24,10 +11,7 @@ const { emitToAll } = require('../websocket/socketManager');
 const DIR = path.join(__dirname, '..', '..', 'uploads', 'exports');
 const ensureDir = () => { try { fs.mkdirSync(DIR, { recursive: true }); } catch (_) { /* */ } };
 
-/**
- * ما يمكن تصديرُه. المفتاحُ يأتي من المتصفّح، والدالّةُ هنا — فلا يُشتقّ من
- * الطلب مسارٌ ولا اسمُ ملفّ.
- */
+/** What can be exported. The key comes from the browser and the function lives here, so no path or file name is derived from the request. */
 const RUNNERS = {
   workflows: {
     ar: 'سير عمل التشغيل',
@@ -75,7 +59,7 @@ async function pump() {
           message: `${runner.ar} — ${job.rows.toLocaleString('en-US')} صفًّا. اضغط لتنزيله.`,
           relatedEntity: 'ExportJob',
           relatedEntityId: job._id,
-        }).catch(() => { /* الملفُّ جاهزٌ وإن لم يصل الإشعار */ });
+        }).catch(() => { /* The file is ready even if the notification did not arrive */ });
       } catch (e) {
         job.status = 'failed';
         job.error = String(e.message || e).slice(0, 300);
@@ -95,7 +79,7 @@ exports.create = async (req, res) => {
   try {
     const kind = String(req.body.kind || '');
     if (!RUNNERS[kind]) return res.status(400).json({ message: 'نوعُ تصديرٍ غير معروف' });
-    // ولا يُكدِّس أحدٌ طلباتٍ على نفسه: طلبُه الجاري يُعاد إليه كما هو.
+    // Nobody stacks requests on themselves: their running request is returned as is.
     const open = await ExportJob.findOne({ requestedBy: req.user._id, kind, status: { $in: ['queued', 'running'] } }).lean();
     if (open) return res.status(200).json({ job: shape(open), queued: true });
 
@@ -106,7 +90,7 @@ exports.create = async (req, res) => {
       requestedByName: [req.user.firstName, req.user.lastName].filter(Boolean).join(' '),
       role: req.user.role,
     });
-    pump().catch(() => { /* السجلُّ يحمل الخطأ */ });
+    pump().catch(() => { /* The record carries the error */ });
     res.status(202).json({ job: shape(job) });
   } catch (e) {
     console.error('export create:', e);
@@ -125,7 +109,7 @@ exports.status = async (req, res) => {
   }
 };
 
-// GET /api/exports/jobs — آخرُ طلباتِ هذا المستخدم
+// GET /api/exports/jobs - this user's latest requests
 exports.list = async (req, res) => {
   try {
     const jobs = await ExportJob.find({ requestedBy: req.user._id }).sort({ createdAt: -1 }).limit(20).lean();
@@ -153,7 +137,7 @@ exports.download = async (req, res) => {
   }
 };
 
-/** صاحبُ الطلب وحدَه — والملفُّ قد يحمل مالًا لا يراه غيرُه. */
+/** Requester only: the file may contain money others must not see. */
 const mine = (job, user) => String(job.requestedBy) === String(user._id);
 
 const shape = (j) => ({
@@ -169,10 +153,8 @@ const shape = (j) => ({
 });
 
 /**
- * ── وما قطعه النشرُ يُستأنف ────────────────────────────────────────────────
- * الوظيفةُ تُبنى في ذاكرة العامل، والنشرُ يعيد تشغيلَه. فطلبٌ بدأ قبل النشر
- * بثوانٍ يبقى «جاريًا» إلى الأبد ولا يصل صاحبَه شيء (وقع فعلًا في أوّل تجربة).
- * فتُعاد الجاريةُ إلى الطابور عند الإقلاع، ويُعاد تشغيلُ الطابور.
+ * Jobs cut by a deploy are resumed
+ * A job is built in worker memory and a deploy restarts the worker, so a request that started seconds before a deploy would stay running forever with nothing delivered. Running jobs are put back in the queue at boot, and the queue is restarted.
  */
 exports.resumeInterrupted = async () => {
   try {
@@ -181,17 +163,17 @@ exports.resumeInterrupted = async () => {
       { $set: { status: 'queued', startedAt: null } },
     );
     if (stuck.modifiedCount) console.log(`[export] requeued ${stuck.modifiedCount} interrupted job(s)`);
-    pump().catch(() => { /* السجلُّ يحمل الخطأ */ });
+    pump().catch(() => { /* The record carries the error */ });
   } catch (e) { console.error('[export] resume:', e.message); }
 };
 
-/** حذفُ ما انتهت صلاحيّتُه — ملفًّا وسجلًّا. تُنادى من مهامّ الإقلاع. */
+/** Delete expired ones, file and record. Called from boot tasks. */
 exports.startExportCleanup = () => {
   const sweep = async () => {
     try {
       const old = await ExportJob.find({ expiresAt: { $lte: new Date() } }).lean();
       for (const j of old) {
-        if (j.filePath) { try { fs.unlinkSync(j.filePath); } catch (_) { /* قد يكون مُسِح */ } }
+        if (j.filePath) { try { fs.unlinkSync(j.filePath); } catch (_) { /* May already be cleaned up */ } }
       }
       if (old.length) await ExportJob.deleteMany({ _id: { $in: old.map((j) => j._id) } });
     } catch (e) { console.error('[export] cleanup:', e.message); }

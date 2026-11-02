@@ -1,11 +1,8 @@
 /**
- * b2cWalletController — custody (عهدة) wallets for B2C project managers.
- * Self-contained; touches nothing else in B2C.
- *
+ * b2cWalletController: custody wallets for B2C project managers. Self-contained; touches nothing else in B2C.
  * Visibility:
- *   - A project manager sees/records ONLY their own wallet.
- *   - Managers (super_admin / admin / b2c_head) can grant custody to any PM and
- *     audit every wallet + full history.
+ * - A project manager sees and records only their own wallet.
+ * - Managers (super_admin / admin / b2c_head) can grant custody to any PM and audit every wallet and full history.
  */
 const mongoose = require('mongoose');
 const { startOfDay, endOfDay } = require('../utils/companyDay');
@@ -29,9 +26,7 @@ async function balanceOf(pmId) {
 const popEntry = (q) => q.populate('createdBy', 'firstName lastName role').populate('projectManager', 'firstName lastName');
 
 const escapeRegex = (s) => String(s).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-// (كانت هنا `endOfDay` تركّب نصًّا بلا منطقة، فيُقرأ بتوقيت الخادم — بينما
-//  `new Date('2026-01-01')` للطرف الآخر تُقرأ بغرينتش. طرفانِ بتوقيتين في
-//  مِصفاةٍ واحدة. صارا من تقويم الشركة.)
+// An earlier endOfDay built a string without a timezone, read in server time, while new Date('2026-01-01') on the other end is read in GMT: two bounds on different timezones in one filter. Both now come from the company calendar.
 
 // GET /managers — every project manager + their balance (managers only).
 exports.managers = async (req, res) => {

@@ -1,14 +1,7 @@
 /**
- * jpLinks — بماذا تُربَط مهمّةُ خطّة العمل في كلّ قسم (صاحبُ الشركة، ٢٠٢٦/١٠/٢٣).
- *
- * «JP خاصّ بكلّ قسم… يتعمل من جوّا شحنة، من جوّا معاملة، من أيّ حتّة».
- * فالمهمّةُ تُربَط بما تخصّه — معاملةٌ في التخليص، شحنةٌ في الطلبات، تقريرٌ في
- * التشغيل، موظّفٌ في الموارد، مركبةٌ في المركبات… — وتُضاف من صفحته نفسِها،
- * وتظهر هناك، وفي خطّة القسم ولوحته في اللحظة (jp:changed).
- *
- * لكلّ نوع: كلمتُه، ونموذجُه، وكيف يُقرأ اسمُه، وبماذا يُبحث، وأين يُفتح —
- * والأقسامُ التي تربط به. والواجهتان تقرآن الكلمةَ والرابطَ من هنا
- * (GET /api/jp/me → linkKinds + linkMeta)، فلا تُكتب قائمةٌ ثانيةٌ تشيخ.
+ * jpLinks: what a work-plan task is linked to in each section (a clearance transaction, shipment order, report, employee, vehicle...). It is added from that page and appears there and in the section plan live (jp:changed).
+ * Per kind: its word, model, name reader, search, where it opens, and the sections that link to it.
+ * Both clients read the word and link from GET /api/jp/me (linkKinds + linkMeta), so no second list ages.
  */
 const mongoose = require('mongoose');
 
@@ -122,10 +115,10 @@ const KINDS = {
   },
 };
 
-/** أنواعُ الربط لقسمٍ ما، بترتيبها هنا. */
+/** Link kinds for a section, in the order defined here. */
 const kindsFor = (section) => Object.keys(KINDS).filter((k) => KINDS[k].sections.includes(section));
 
-/** اسمُ ما رُبط به — `null` إن لم يوجد. */
+/** Name of the linked item; `null` if not found. */
 async function labelOf(kind, id) {
   const k = KINDS[kind];
   if (!k || !mongoose.isValidObjectId(id)) return null;
@@ -133,7 +126,7 @@ async function labelOf(kind, id) {
   return d ? (k.label(d) || '—') : null;
 }
 
-/** بحثٌ في نوعٍ — أحدثُ خمسين (أو حتى ٢٠٠ لقائمة الهاتف)، أو ما طابق النصّ. */
+/** Search within a kind: the latest fifty (up to 200 for the phone list), or those matching the text. */
 async function searchKind(kind, q, limit = 50) {
   const k = KINDS[kind];
   if (!k) return [];
@@ -142,7 +135,7 @@ async function searchKind(kind, q, limit = 50) {
   return rows.map((d) => ({ value: String(d._id), label: k.label(d) || '—' }));
 }
 
-/** ما تقرؤه الواجهتان عن كلّ نوع: كلمتُه وقالبُ رابطه. */
+/** What both clients read per kind: its word and link template. */
 const metaFor = (section) => Object.fromEntries(kindsFor(section).map((k) => [k, {
   ar: KINDS[k].ar, en: KINDS[k].en, href: KINDS[k].href(':id'),
 }]));

@@ -1,20 +1,8 @@
 /**
- * المحتوى الإعلانيّ — طلباتُ Media Go لتصوير إعلاناتها على مركباتنا (راجع models/MediaGoAdRequest).
- *
- *   GET    /api/b2c/mediago-ads                         القائمة + العدّادات + المفردات + ما يملكه القارئ
- *   GET    /api/b2c/mediago-ads/meta                    المفرداتُ وشركاتُ الإعلان
- *   GET    /api/b2c/mediago-ads/vehicles?q=             مركباتُ النقل الخفيف (للطرفين)
- *   POST   /api/b2c/mediago-ads                         طلبٌ جديد (Media Go، ومَن في القسم نيابةً عنها)
- *   GET    /api/b2c/mediago-ads/:id                     الطلبُ كاملًا
- *   POST   /api/b2c/mediago-ads/:id/items/:itemId/files ملفّاتُ تحقّق مركبة (نحن)
- *   DELETE /api/b2c/mediago-ads/:id/items/:itemId/files/:fileId
- *   PATCH  /api/b2c/mediago-ads/:id/items/:itemId       جاهزة/غير جاهزة، نوعُ التصوير، ملاحظة (نحن)
- *   POST   /api/b2c/mediago-ads/:id/files               ملفّاتُ طلبٍ بلا مركبات (نحن)
- *   DELETE /api/b2c/mediago-ads/:id/files/:fileId
- *   POST   /api/b2c/mediago-ads/:id/deliver             «تمّ» — يصل Media Go (نحن، وكلُّ مركبةٍ جاهزة)
- *   PATCH  /api/b2c/mediago-ads/:id/status              إغلاقٌ أو إعادةُ فتح (نحن) · إلغاءٌ قبل التسليم (Media Go)
- *   POST   /api/b2c/mediago-ads/:id/replies             ملاحظةٌ في المحادثة (الطرفان)
- *   DELETE /api/b2c/mediago-ads/:id                     حذف (رؤوسُ القسم)
+ * Ad content: Media Go requests to photograph their ads on our vehicles (see models/MediaGoAdRequest).
+ * GET/POST /api/b2c/mediago-ads, GET /meta, GET /vehicles?q=, GET /:id
+ * POST/DELETE /:id/items/:itemId/files, PATCH /:id/items/:itemId, POST/DELETE /:id/files
+ * POST /:id/deliver, PATCH /:id/status (close/reopen by us, cancel before delivery by Media Go), POST /:id/replies, DELETE /:id
  */
 const mongoose = require('mongoose');
 const MediaGoAdRequest = require('../models/MediaGoAdRequest');
@@ -35,11 +23,11 @@ const LIMITS = { image: 8 * MB, video: 15 * MB, request: 18 * MB };
 const MAX_VIDEO_SEC = 15;
 const MAX_FILES_PER_ITEM = 10;
 
-/** رؤوسُ القسم ومشرفوه — يصوّرون ويسلّمون ويغلقون. */
+/** Section heads and supervisors: they photograph, deliver and close. */
 const OUR_ROLES = ['super_admin', 'admin', 'b2c_manager', 'b2c_deputy', 'b2c_project_lead', 'b2c_rep_supervisor', 'b2c_inspection_supervisor'];
 const DELETE_ROLES = ['super_admin', 'admin', 'b2c_manager', 'b2c_deputy'];
 const COMPANY_TYPE = 'mediago_ad_company';
-/** شركتُنا — الطلبُ لها يُختار فيه مركباتُنا. */
+/** Our company: requests addressed to it select our vehicles. */
 const OUR_COMPANY_KEY = 'energize';
 
 const AMAZON = /ا?م[اآ]زون|أمازون|amazon/i;
@@ -71,14 +59,14 @@ const abilities = (req) => {
   };
 };
 
-/** البثُّ إلى الطرفين — Media Go لا يصلها البثُّ العامّ فيُرسَل إلى دورها. */
+/** Broadcast to both parties; Media Go does not get the general broadcast, so it is sent to its role. */
 const announce = (id, action) => {
   try {
     const { emitToAll, emitToRole } = require('../websocket/socketManager');
     const payload = { id: String(id), action, at: Date.now() };
     emitToAll('mediago:ad', payload);
     emitToRole(MEDIAGO_ROLE, 'mediago:ad', payload);
-  } catch (_) { /* تحسين */ }
+  } catch (_) { /* Enhancement */ }
 };
 async function notifyPartner({ title, message, id }) {
   try {
@@ -97,7 +85,7 @@ async function notifyOurSide({ title, message, id }) {
 }
 
 const kindOf = (mime) => (String(mime || '').startsWith('video/') ? 'video' : 'image');
-/** يحفظ ملفّاتِ تحقّق — صورًا (حتى ٨ ميغا) أو مقاطعَ (١٥ ثانيةً و١٥ ميغا على الأكثر). */
+/** Saves verification files: images (up to 8 MB) or clips (at most 15 seconds and 15 MB). */
 function saveFiles(list, user, want) {
   const files = Array.isArray(list) ? list.filter((f) => f && f.dataUrl) : [];
   if (!files.length) throw bad('لا ملفات / No files');
@@ -132,7 +120,7 @@ function saveFiles(list, user, want) {
   return saved;
 }
 
-// ── الصفّ كما يُعرَض ─────────────────────────────────────────────────────────
+// Row as displayed.
 const listRow = (d) => {
   const items = d.items || [];
   const cover = (items.flatMap((i) => i.files || []).concat(d.files || [])).find((f) => f.kind === 'image');
@@ -149,14 +137,14 @@ const listRow = (d) => {
 };
 const fullRow = (d, partner = false) => ({
   ...listRow(d),
-  // Media Go ترى رقمَ المركبة وحدَه — لا مشروعَها ولا تسلسليَّها (٢٠٢٦/١٠/٢٢).
+  // Media Go sees only the vehicle number, not its project or serial.
   items: (d.items || []).map((i) => (partner ? { ...i, serialNumber: '', project: '' } : i)),
   files: d.files || [], statusHistory: d.statusHistory || [], replies: d.replies || [],
 });
 
 const dayStart = (iso) => (/^\d{4}-\d{2}-\d{2}$/.test(S(iso)) ? new Date(`${iso}T00:00:00+03:00`) : null);
 
-// ── القائمة ─────────────────────────────────────────────────────────────────
+// List.
 exports.list = async (req, res) => {
   try {
     const q = req.query || {};
@@ -169,7 +157,7 @@ exports.list = async (req, res) => {
       .sort({ createdAt: -1 }).lean();
     const needle = fold(q.q);
     const searched = needle ? rows.filter((d) => fold([d.ref, d.adName, d.company, d.note, ...(d.items || []).map((i) => i.plateNumber)].join(' ')).includes(needle)) : rows;
-    // العددُ بجانب كلّ قيمةٍ بكلّ الفلاتر عدا فلترها — كفلاتر الأقسام.
+    // Each value's count applies all filters except its own, like the section filters.
     const FIELDS = ['status', 'company', 'mediaType', 'location'];
     const pick = Object.fromEntries(FIELDS.map((f) => [f, S(q[f]).split(',').map(S).filter(Boolean)]));
     const pass = (d, skip) => FIELDS.every((f) => f === skip || !pick[f].length || pick[f].includes(S(d[f])));
@@ -188,25 +176,24 @@ exports.meta = async (req, res) => {
   catch (e) { res.status(500).json({ message: e.message }); }
 };
 
-/** مركباتُ النقل الخفيف — يختار منها الطرفان. (بلا أسماء السائقين لـ Media Go.) */
+/** Light-transport vehicles, chosen from by both parties (without driver names for Media Go). */
 exports.vehicles = async (req, res) => {
   try {
     const q = S(req.query.q).slice(0, 40);
-    // مركباتُ أمازون لا تُعرَض لطلبات الإعلان — قاعدةٌ (صاحبُ الشركة، ٢٠٢٦/١٠/٢٢).
-    // والباقي كلُّه، مفوَّضًا أو غيرَ مفوَّض.
+    // Amazon vehicles are never offered for ad requests (company rule). All others are included, authorized or not.
     const and = [{ isActive: { $ne: false } }, { sectorAr: /خفيف/ }, { departmentAr: { $not: AMAZON } }];
     const partner = isPartner(req.user);
     if (q) {
       const rx = new RegExp(esc(q).replace(/\s+/g, '\\s*'), 'i');
       const digits = q.replace(/\D/g, '');
-      // وبحثُ Media Go برقم المركبة وحدَه — فلا يكشف البحثُ بالمشروع ما أخفيناه.
+      // Media Go searches by vehicle number only, so searching by project cannot reveal what is hidden.
       const by = partner ? [{ plateNumber: rx }] : [{ plateNumber: rx }, { serialNumber: rx }, { departmentAr: rx }];
       and.push({ $or: [...by, ...(digits ? [{ plateDigits: new RegExp(esc(digits)) }] : [])] });
     }
     const rows = await VehicleMaster.find({ $and: and })
       .select('plateNumber serialNumber departmentAr cityAr registrationTypeAr')
       .sort({ plateNumber: 1 }).limit(q ? 60 : 600).lean();
-    // وMedia Go ترى رقمَ المركبة وحدَه — لا مشروعَها ولا تسلسليَّها ولا نوعَها.
+    // Media Go sees only the vehicle number, not its project, serial or type.
     res.json({ items: rows.map((v) => (partner
       ? { _id: v._id, plateNumber: v.plateNumber || v.serialNumber || '' }
       : { _id: v._id, plateNumber: v.plateNumber || '', serialNumber: v.serialNumber || '', project: v.departmentAr || '', city: v.cityAr || '', type: v.registrationTypeAr || '' })) });
@@ -258,7 +245,7 @@ exports.getOne = async (req, res) => {
   } catch (e) { res.status(500).json({ message: e.message }); }
 };
 
-/** طلبٌ يُصوَّر الآن: لا يُرفع إلى مسلَّمٍ أو مغلقٍ أو ملغى. */
+/** A request being photographed now: it cannot be uploaded to once delivered, closed or cancelled. */
 async function loadOpen(req) {
   const doc = await MediaGoAdRequest.findById(req.params.id);
   if (!doc) throw bad('الطلب غير موجود / Request not found', 404);
@@ -277,7 +264,7 @@ exports.addItemFiles = async (req, res) => {
     const doc = await loadOpen(req);
     const item = doc.items.id(req.params.itemId);
     if (!item) throw bad('المركبة غير موجودة في الطلب', 404);
-    // النوعُ نوعُ الطلب — طُلبت صورٌ فصورٌ، أو فيديو ففيديو (٢٠٢٦/١٠/٢٢).
+    // File type follows the request type: images requested means images, video requested means video.
     const saved = saveFiles(req.body.files, req.user, doc.mediaType);
     if (item.files.length + saved.length > MAX_FILES_PER_ITEM) { saved.forEach((x) => deleteStoredFile(x.fileUrl)); throw bad(`الحدّ ${MAX_FILES_PER_ITEM} ملفّات للمركبة`); }
     item.files.push(...saved);
@@ -304,7 +291,7 @@ exports.removeItemFile = async (req, res) => {
   } catch (e) { res.status(e.status || 400).json({ message: e.message }); }
 };
 
-/** «جاهزة» بعد المراجعة — ولا تكون جاهزةً بلا ملفّ. ونوعُ التصوير وملاحظةُ المركبة. */
+/** Ready after review, and never ready without a file. Also shoot type and the vehicle note. */
 exports.updateItem = async (req, res) => {
   try {
     if (!abilities(req).shoot) return res.status(403).json({ message: 'لقسم الأفراد / Our side only' });
@@ -351,7 +338,7 @@ exports.removeFile = async (req, res) => {
   } catch (e) { res.status(e.status || 400).json({ message: e.message }); }
 };
 
-/** «تمّ» — كلُّ مركبةٍ جاهزة (أو للطلب ملفّاتُه)، فيصل Media Go. */
+/** Done: every vehicle is ready (or the request has its files), then it reaches Media Go. */
 exports.deliver = async (req, res) => {
   try {
     if (!abilities(req).deliver) return res.status(403).json({ message: 'التسليم لقسم الأفراد / Our side only' });
@@ -372,9 +359,7 @@ exports.deliver = async (req, res) => {
   } catch (e) { res.status(e.status || 400).json({ message: e.message }); }
 };
 
-/**
- * الحالة: نحن نغلق المسلَّمَ ونعيد فتحَه (بسبب)، وMedia Go تلغي طلبَها قبل أن يُسلَّم.
- */
+/** Status: we close a delivered request and reopen it (with a reason); Media Go cancels its request before delivery. */
 exports.setStatus = async (req, res) => {
   try {
     const status = S(req.body?.status); const note = S(req.body?.note).slice(0, 500);

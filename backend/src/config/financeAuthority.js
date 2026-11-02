@@ -1,22 +1,12 @@
 /**
- * financeAuthority — أهلُ المال يملكون في دفاتره ما يملكه مديرُ النظام.
- *
- * ── القرار ─────────────────────────────────────────────────────────────────
- * المحفظةُ ولوحتُها، وصفحةُ التشغيل والتشغيلُ الخاصّ، ومخزنُ النقل الثقيل
- * والنقلُ الخفيف: كلُّ ما يفعله مديرُ النظام فيها (تعديلُ قيدٍ مسجَّلٍ وحذفُه
- * ونقلُه، وإعادةُ فتح يومٍ أُقفل، والكتابةُ في يومٍ مقفل، وحذفُ كشفٍ وفرضُ
- * مرحلته) يفعله **المحاسبُ ومديرُ الحسابات والمديرُ الماليّ** — هم من يُسأل عن
- * الدفتر إن اختلف، ومن لا يملك تصحيحَه لا يصحّ أن يُسأل عنه.
- *
- * وهو قرارٌ على هذه الصفحات وحدَها: لا يجعلهم مديري نظامٍ في غيرها (المستخدمون،
- * الصلاحيّات، تصفيرُ المحافظ كلِّها). فلا يُوسَّع `hasSuperAdminPowers` — تلك
- * تُقرأ في النظام كلِّه — بل يُسأل هنا سؤالٌ أضيق.
+ * financeAuthority: finance staff (accountant, accounts manager, finance manager) hold the admin's powers in their ledgers: wallet, operations page and private operations, heavy transport store and light transport (edit, delete or move entries, reopen or write into a closed day, delete a sheet, force its stage).
+ * This covers those pages only, so `hasSuperAdminPowers` (read system-wide) is not widened; a narrower check is used here.
  */
 const FINANCE_FULL_ROLES = ['cfo', 'accounting_manager', 'accountant'];
 
 const isFinanceFull = (role) => FINANCE_FULL_ROLES.includes(role);
 
-/** مديرُ النظام (أو من مُنح صلاحيّاتِه كاملةً)، أو أحدُ أهل المال. */
+/** System admin (or anyone granted full powers), or a finance person. */
 const hasFinancePowers = async (role) => {
   if (!role) return false;
   if (require('./constants').isTopRole(role) || isFinanceFull(role)) return true;

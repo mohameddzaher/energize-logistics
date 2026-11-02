@@ -1,16 +1,13 @@
 /**
- * النماذجُ والخطاباتُ الرسميّة — مكتبةُ أوراق القسم.
- *
- * القراءةُ لكلّ موظّفٍ داخليّ: من يحتاج «نموذج طلب إجازة» يأخذه بنفسه، ولا
- * يسأل الموارد البشريّة عن ورقةٍ لا سرَّ فيها. والرفعُ والحذفُ للقسم وحدَه.
- * راجع models/HrFormTemplate لسببِ وجودها سجلًّا مستقلًّا.
+ * Official forms and letters: the department's library of papers.
+ * Any internal employee can read, so someone needing a leave request form takes it without asking HR for a non-secret paper. Upload and delete are for the department only. See models/HrFormTemplate for why it is its own record.
  */
 const HrFormTemplate = require('../models/HrFormTemplate');
 const { saveUploadFile } = require('../utils/fileStore');
 const logAudit = require('../utils/auditLogger');
 const { emitToAll } = require('../websocket/socketManager');
 
-const emit = () => { try { emitToAll('hr:forms', {}); } catch (e) { /* الحدثُ زيادة */ } };
+const emit = () => { try { emitToAll('hr:forms', {}); } catch (e) { /* The event is an extra. */ } };
 
 const CATEGORIES = [
   { key: 'forms', ar: 'نماذج', en: 'Forms' },
@@ -30,10 +27,7 @@ exports.list = async (req, res) => {
       const rx = new RegExp(String(req.query.q).trim().slice(0, 80).replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i');
       f.$or = [{ title: rx }, { titleEn: rx }, { description: rx }, { fileName: rx }];
     }
-    // ── أعدادُ التصنيفات بلا فلتر التصنيف ─────────────────────────────────────
-    // كانت تُعَدّ على ما بعد التصنيف المختار: يُضغَط «خطابات» فيصير كلُّ تصنيفٍ
-    // سواه صفرًا و«الكل» عددَ الخطابات. فتُعَدّ بالبحث والأرشيف وحدَهما، و«الكل»
-    // (`total`) مجموعُها — وهو ما يفتحه ضغطُه. والقائمةُ وحدَها بالتصنيف.
+    // Category counts exclude the category filter. They used to be counted after the chosen category, so clicking letters zeroed every other category and made All equal the letters count. Count by search and archive only, with All (`total`) as their sum, which is what clicking it opens; only the list uses the category.
     const cat = req.query.category ? String(req.query.category) : '';
     const pool = await HrFormTemplate.find(f).sort({ category: 1, title: 1 }).lean();
     const items = cat ? pool.filter((i) => i.category === cat) : pool;
@@ -82,8 +76,8 @@ exports.create = async (req, res) => {
 };
 
 /**
- * PUT /api/hr/forms/:id — تسميتُه ووصفُه، أو **استبدالُ ملفّه**.
- * واستبدالُ الملفّ يرفع رقمَ النسخة: من يقرأ «نسخة ٣» يعرف أنّ ما عنده أقدم.
+ * PUT /api/hr/forms/:id - rename and describe it, or replace its file.
+ * Replacing the file bumps the version number, so a reader of version 3 knows theirs is older.
  */
 exports.update = async (req, res) => {
   try {
@@ -119,8 +113,8 @@ exports.update = async (req, res) => {
 };
 
 /**
- * DELETE /api/hr/forms/:id — يُؤرشَف لا يُمحى.
- * من وقّع على نسخةٍ قديمةٍ يحتاج أن يجدها، و`?purge=1` لصاحب النظام وحدَه.
+ * DELETE /api/hr/forms/:id - archives, does not erase.
+ * Someone who signed an old version needs to find it; `?purge=1` is for the system owner only.
  */
 exports.remove = async (req, res) => {
   try {
@@ -144,7 +138,7 @@ exports.remove = async (req, res) => {
   }
 };
 
-/** POST /api/hr/forms/:id/downloaded — يعدّ التنزيل. لا يُعيد الملفّ: المسارُ عامٌّ ثابت. */
+/** POST /api/hr/forms/:id/downloaded - counts the download. It does not return the file: the path is public and fixed. */
 exports.countDownload = async (req, res) => {
   try {
     await HrFormTemplate.updateOne({ _id: req.params.id }, { $inc: { downloads: 1 }, $set: { lastDownloadAt: new Date() } });

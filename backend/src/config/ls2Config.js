@@ -1,17 +1,7 @@
 /**
- * ls2Config — static configuration for the Location Solutions (Wialon) telemetry
- * integration (قسم لوكيشن سوليوشن).
- *
- * Location Solutions is a white-label Wialon GPS/telemetry platform. Our 57 heavy
- * trucks carry LS2 sensors (per-axle tire pressure/temperature, fuel, engine
- * coolant, weight, RPM, odometer, engine hours). We poll the Wialon Remote API,
- * decode the raw sensor stream into clean values, evaluate alerts (high tire
- * temp/pressure, hot engine, low fuel, overload, speeding, maintenance-due) and
- * mirror the latest snapshot into Mongo — kept live over socket.io.
- *
- * IMPORTANT: the endpoint is /wialon/ajax.html (NOT the /lsx/... the public docs
- * mention — that 404s). Auth is token → session: `token/login` returns an `eid`
- * session id used as `sid` on every later call.
+ * ls2Config: static configuration for the Location Solutions (Wialon) telemetry integration. Our 57 heavy trucks carry LS2 sensors (tire pressure/temperature, fuel, coolant, weight, RPM, odometer, engine hours); we poll the Wialon Remote API, decode, evaluate alerts and mirror the latest snapshot into Mongo, live over socket.io.
+ * IMPORTANT: the endpoint is /wialon/ajax.html (NOT the /lsx/... the public docs mention, which 404s).
+ * Auth is token to session: `token/login` returns an `eid` used as `sid` on every later call.
  */
 
 // The Wialon Remote API base. Every call is an HTTP POST form (svc, params, sid).

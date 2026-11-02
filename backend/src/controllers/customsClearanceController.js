@@ -26,11 +26,10 @@ const EDITABLE = [
   'declarationNumber', 'declarationDate', 'papersReceivedDate',
   'unloadingAppointment', 'unloadingLocation', 'doNumber', 'exitPermitNumber',
   'returnDeadline', 'returnFreeDays', 'demurrageStartDate',
-  // (المراحلُ لا تُكتب من هنا: لها قواعدُ — طريقان يتنافيان ومراحلُ تُغلَق —
-  //  فتمرّ من `setStage` وحدَها. راجع PATCH /:id/stage.)
-  // ربطُ المعاملة بملفَّي العميل والوكيل.
+  // Stages are not written here: they have rules (two mutually exclusive paths, stages that close), so they go through `setStage` only. See PATCH /:id/stage.
+  // Links the transaction to the customer and agent files.
   'customerParty', 'agentParty',
-  // المعاملةُ القادمة: علمُها وتاريخُها المرتقَب.
+  // Upcoming transaction: its flag and expected date.
   'upcoming', 'expectedDate',
 ];
 
@@ -42,16 +41,14 @@ const NESTED = {
   stageDates: ['doInvoiceEmailed', 'doInvoicePaid', 'doLinkEmailed', 'dutyPaid', 'portFeesPaid', 'unloadingFeesPaid', 'containersReturned', 'returnInvoiceDate'],
   stageDone: ['doInvoiceEmailed', 'doInvoicePaid', 'doLinkEmailed', 'dutyPaid', 'portFeesPaid', 'unloadingFeesPaid', 'containersReturned', 'returnInvoiceDate'],
   costs: COST_KEYS,
-  // totalInvoiced/profit مشتقّتان — لا تُقبلان من العميل مهما أرسل. ومثلُهما
-  // `transportNet`: صارت فرقَ سعرِ النقل عن سعر المورد (recomputeTotals)،
-  // فقبولُها من الشاشة يفتح بابَ رقمٍ يخالف بنودَه.
+  // totalInvoiced/profit are derived and never accepted from the client. Same for `transportNet`: it is now the difference between transport price and supplier price (recomputeTotals), so accepting it would allow a number that contradicts its line items.
   revenue: [...MARGIN_KEYS.filter((k) => !DERIVED_REVENUE.includes(k)), 'transportSelling', 'yardTransportNet',
     'transportToYardSelling', 'yardToCustomerSelling', 'yardPrice'],
   billing: ['invoiceStatus', 'ourInvoiceNumber', 'invoicedAt'],
 };
 
 const NUMERIC_NESTED = new Set(['costs', 'revenue']);
-// خاناتٌ فراغُها معنًى لا صفر: «لم يُكتب السعرُ بعد» (راجع recomputeTotals).
+// Fields where empty means something, not zero: price not yet entered (see recomputeTotals).
 const NULLABLE_NESTED = new Set(['revenue.transportToYardSelling', 'revenue.yardPrice']);
 
 /**
@@ -86,8 +83,7 @@ function pick(body, existing) {
     out.containers = body.containers
       .filter((r) => r && typeof r === 'object')
       .map((r, i) => ({
-        // مراحلُ الوحدة وطريقُها لا تُكتب من هنا (لها `PATCH /:id/stage`): يُحفَظ
-        // ما في القاعدة لهذه الخانة أيًّا كان ما أرسلته الشاشة.
+        // Unit stages and their path are not written here (they use `PATCH /:id/stage`): keep the stored value for this field whatever the screen sent.
         route: (existing && existing.containers && existing.containers[i] && existing.containers[i].route) || '',
         stagesDone: (existing && existing.containers && existing.containers[i] && existing.containers[i].stagesDone) || [],
         containerNumber: String(r.containerNumber || '').trim().slice(0, 60),
@@ -100,7 +96,7 @@ function pick(body, existing) {
         returnVehicleKind: VEHICLE_KINDS.includes(r.returnVehicleKind) ? r.returnVehicleKind : '',
         returnRef: String(r.returnRef || '').trim().slice(0, 80),
         returnNotes: String(r.returnNotes || '').trim().slice(0, 500),
-        // بيانٌ واحدٌ لكلّ مرحلةِ نقل — الأخيرُ يغلب إن تكرّر المفتاح.
+        // One statement per transport stage; the last wins if the key repeats.
         moves: TRANSPORT_LEGS.map((leg) => (Array.isArray(r.moves) ? r.moves : []).filter((m) => m && m.leg === leg).pop())
           .filter(Boolean)
           .map((m) => ({
@@ -111,9 +107,8 @@ function pick(body, existing) {
           .filter((m) => m.vehicleKind || m.ref),
       }));
   }
-  // ── والخاناتُ بعدد الوحدات ───────────────────────────────────────────────
-  // العددُ يُكتب عند الإنشاء ويُعدَّل بعده؛ وفي الحالين تُفتَح لكلّ حاويةٍ
-  // خانتُها. وما كُتب فيه رقمٌ لا يسقط بتصغير العدد (راجع syncUnits).
+  // Slots match the number of units
+  // The count is set on create and editable later; either way one slot is opened per container. A slot with a number written in it is not dropped when the count shrinks (see syncUnits).
   if (out.containerCount !== undefined || out.containers) {
     const count = out.containerCount !== undefined
       ? out.containerCount
@@ -135,73 +130,41 @@ function pick(body, existing) {
 }
 
 /**
- * ── وما لا يُعرَض ولا يُصدَّر ولا يُبحَث فيه لا يُنقَل ──────────────────────
- *
- * كانت القائمةُ تستثني الثقيلَ المعروف (المرفقات والحاويات ومراحل السداد)
- * وتأخذ ما بقي كلَّه — فبلغت حمولتُها **٤٥٥ كيلوبايت** لمئتين وثمانٍ وستّين
- * معاملة. وأثقلُ ما فيها لا يُقرأ في الجدول أصلًا: `costs` و`revenue` كاملين
- * (١٢٦ كيلوبايت ولا يُقرأ منهما إلّا أربعةُ أرقام)، و`stageDates` و`agentPapers`
- * (٦٥ كيلوبايت لا تُقرأ حرفًا).
- *
- * والوصلةُ إلى العنقود هي الثمنُ كلُّه لا الحساب (راجع dashboard-performance):
- * ستُّ ثوانٍ تنتظرها الشاشةُ عند كلّ فتحةٍ بعد انقضاء الذاكرة.
- *
- * فتُذكَر الحقولُ بأسمائها: ما يعرضه الجدول، وما يخرج في إكسل، وما يُبحَث فيه
- * (البحثُ يجري على هذه القائمة نفسِها في الذاكرة — فحقلٌ يسقط من هنا يسقط من
- * البحث بلا أن يُقال).
- *
- * ── وما يُبحَث فيه يُقرأ ولا يُرسَل ──────────────────────────────────────────
- * بقي بعد ذلك ٢٣٠ كيلوبايت لمئتين وإحدى وسبعين معاملة، وثُلثُها حقولٌ لا تُرسَم
- * في جدولٍ ولا تخرج في إكسل: إنّما تُقرأ ليصحَّ البحثُ عليها (رقمُ الفاتورة،
- * سابر، البند، الرقمُ القديم، موقعُ التفريغ…). والبحثُ يجري **في الخادم** على
- * الصفوف المحفوظة في الذاكرة، فلا حاجةَ أن تعبر الشبكةَ إلى الهاتف أصلًا:
- * تُقرأ من العنقود، وتبقى في الذاكرة المؤقّتة، ويُسقطها `toWire` قبل الإرسال.
- * فالبحثُ باقٍ كما كان، والحمولةُ تنقص ثلثًا.
+ * Fields not displayed, exported or searched are not sent; the cluster round trip is the whole cost (see dashboard-performance).
+ * Fields are named explicitly: what the table shows, what Excel exports and what is searched (search runs in memory on this same list, so a field dropped here silently leaves search).
+ * Search-only fields are read from the cluster and cached, and `toWire` drops them before sending.
  */
-// ما تقرؤه الشاشتان: جدولُ الويب وأعمدةُ إكسل وسطرُ الهاتف وفلاترُهما.
+// What both screens read: web table, Excel columns, mobile line and their filters.
 const DISPLAY_FIELDS = [
   'refNumber', 'blNumber', 'customerName', 'shippingAgent', 'port', 'stage', 'branch', 'city',
   'containerCount', 'declarationNumber', 'periodYear', 'periodMonth', 'createdAt',
-  // عمودا الجدول: رقمُ البيان وتاريخُ التفريغ (موعدُ التفريغ في المعاملة).
+  // Table columns: declaration number and unloading date (the transaction's unloading appointment).
   'unloadingAppointment',
   'cancelled', 'isCompleted', 'returnDeadline', 'returnFreeDays',
   'customerParty', 'agentParty',
-  // نوعُ المعاملة، ورقمُ فاتورة العميل — به تُقرأ «حالة الفاتورة» في الجدول.
+  // Transaction type and customer invoice number; the table's invoice status is read from it.
   'cargoType', 'saleInvoiceNumber',
-  // سطرُ الهاتف يعرض الشركةَ المصدّرة ويبحث فيها (configs.dart · customsCfg).
+  // The mobile line shows and searches the exporting company (configs.dart, customsCfg).
   'exporterCompany',
-  // ── وصندوقُ بحثِ الويب يعمل في المتصفّح ────────────────────────────────
-  // شاشةُ الويب لا ترسل `search` إلى الخادم: تُصفّي الصفوفَ التي عندها. فما
-  // يقرؤه صندوقُها لا يكفي أن يكون في القراءة — لا بدّ أن يصل. ورقمُ فاتورة
-  // الوكيل منها، وثمنُه لا شيء (مذكورٌ في صفَّين من مئتين وإحدى وسبعين).
+  // The web search box runs in the browser
+  // The web screen does not send `search` to the server; it filters its own rows. So a field the box reads must actually reach the client. The agent invoice number is one of them and costs almost nothing.
   'invoiceNumber',
 ];
-// تُرسَل بعد انتقاءٍ داخليّ — لا الوثيقةُ الفرعيّة كلُّها (راجع toWire).
+// Sent after an internal pick, not the whole subdocument (see toWire).
 const DISPLAY_NESTED = ['invoiceRequest.status', 'billing.invoiceStatus', 'billing.ourInvoiceNumber', 'stageDone.containersReturned',
   'costs.total', 'revenue.clearanceFee', 'revenue.totalInvoiced', 'revenue.profit'];
-// (كانت هنا قائمةُ «تُقرأ للبحث وحدَه». البحثُ صار له فهرسُه — راجع
-//  SEARCH_INDEX_FIELDS أسفل — فلا يُقرأ في القائمة إلّا ما يُعرَض أو يُحسَب منه.)
-// تُقرأ ليُحسَب منها ولا تُرسَل: منها نسبةُ المراحل وهل تنتظر فاتورةَ النقل.
+// Search has its own index (see SEARCH_INDEX_FIELDS below), so the list reads only what is displayed or computed from.
+// Read for computation but not sent: stage percentage and whether it awaits the transport invoice.
 const DERIVE_ONLY = ['papersReceivedDate', 'declarationDate', 'stagesDone', 'transportRoute', 'pipelineVersion', 'stageDone.doInvoicePaid', 'transportInvoiceReceived',
   'containers.route', 'containers.stagesDone',
-  // أرقامُ الحاويات (أو السيّارات) — يُبحَث بها ويُرسَل منها سطرٌ واحد (راجع toWire).
+  // Container (or vehicle) numbers: searched, and only one line is sent (see toWire).
   'containers.containerNumber'];
 const LIST_FIELDS = [...DISPLAY_FIELDS, ...DISPLAY_NESTED, ...DERIVE_ONLY, 'notesLog'].join(' ');
 
 /**
- * ── البحثُ بأيّ شيءٍ مكتوبٍ على المعاملة ────────────────────────────────────
- * صاحبُ الشركة: «البحث يقبل كلّ حاجة — رقم الحاوية، رقم البوليصة… في كلّ
- * صفحات التخليص». والورقةُ التي في يد الموظّف قد تحمل أيَّ رقم: البيان، إذنَ
- * التسليم، تصريحَ الخروج، سابر، إيصالَ إرجاع الحاوية، رقمَ فاتورتنا أو فاتورة
- * الوكيل — والمعاملةُ هي المجهول.
- *
- * فللبحث فهرسٌ واحدٌ تقرؤه الشاشاتُ كلُّها (القائمة، ولوحةُ القسم، وصفحاتُ
- * العملاء والوكلاء والناقلين، والهاتف): لكلّ معاملةٍ سطرٌ مطويٌّ واحد من كلّ
- * نصٍّ فيها، ويُسأل «هل يحتوي». والطيُّ (searchKey) يُسقط المسافاتِ والشرطات
- * ويوحّد صورَ الحروف العربيّة والأرقامَ العربيّة — فـ«MSKU 123 4567»
- * و«msku-1234567» رقمٌ واحد، و«مؤسسة» و«موسسه» اسمٌ واحد.
- *
- * ومَن أضاف حقلًا نصّيًّا إلى المعاملة فليُضِفه هنا وفي `searchValuesOf`.
+ * Search by anything written on the transaction (container, bill of lading, declaration, delivery order, exit permit, invoice numbers...).
+ * One index serves all screens: each transaction has one folded line of all its text, queried by containment. Folding (searchKey) drops spaces and dashes and unifies Arabic letter forms and digits.
+ * Add any new text field to the transaction here and in `searchValuesOf`.
  */
 const SEARCH_INDEX_FIELDS = [
   'refNumber', 'blNumber', 'customerName', 'shippingAgent', 'shippingAgentEmail', 'carrierName',
@@ -210,17 +173,17 @@ const SEARCH_INDEX_FIELDS = [
   'port', 'city', 'branch', 'declarationNumber', 'doNumber', 'exitPermitNumber', 'saberNumber', 'hsCode',
   'exporterCompany', 'countryOfOrigin', 'currency', 'invoiceType', 'legacySerial', 'notes', 'assignedTo',
   'unloadingLocation', 'contractPricing.contractTitle', 'contractPricing.routeFrom', 'contractPricing.routeTo',
-  // الحاوياتُ (أو السيّارات): رقمُها وبيانُها وإرجاعُها ورقمُ كشف كلّ نقلة.
+  // Containers (or vehicles): number, statement, return, and each trip's manifest number.
   'containers.containerNumber', 'containers.declaration', 'containers.notes', 'containers.returnDepot',
   'containers.returnReceipt', 'containers.returnRef', 'containers.returnNotes', 'containers.moves.ref',
-  // طلباتُ الصرف وبنودُ البيع وفاتورةُ النقل والمرفقاتُ والملاحظاتُ كلُّها.
+  // All payment requests, sale lines, transport invoice, attachments and notes.
   'paymentStages.label', 'paymentStages.note', 'paymentStages.decisionNote', 'paymentStages.fileName',
   'saleItems.label', 'saleItems.note', 'transportInvoice.note', 'transportInvoice.fileName',
   'attachments.title', 'attachments.fileName', 'notesLog.text', 'notesLog.byName',
 ].join(' ');
 const BRANCH_NAMES = { jeddah: 'جدة Jeddah', dammam: 'الدمام Dammam' };
 
-/** كلُّ نصٍّ يُبحَث فيه من المعاملة — وأسماءُ أطرافها كما في سجلّ الأطراف. */
+/** Every searchable text of the transaction, plus its parties' names as in the parties register. */
 function searchValuesOf(c, partyName = () => '') {
   const list = (a) => (Array.isArray(a) ? a : []);
   return [
@@ -242,10 +205,10 @@ function searchValuesOf(c, partyName = () => '') {
   ];
 }
 
-// فاصلٌ لا يُكتب في صندوق بحث: لا يطابق نصٌّ آخرَ حقلٍ وأوّلَ الذي يليه.
+// Separator that cannot be typed in a search box, so text cannot match across the end of one field and the start of the next.
 const SEP = '\u0001';
 
-/** الفهرسُ نفسُه — يُبنى مرّةً لكلّ ثلاثين ثانية، ويُمحى مع كلّ كتابةٍ في القسم. */
+/** The index itself: built once per 30 seconds and cleared on every write in the section. */
 const searchIndex = () => cache.wrap('customs:search-index', 30000, async () => {
   const [rows, parties] = await Promise.all([
     CustomsClearance.find({}).select(SEARCH_INDEX_FIELDS).lean(),
@@ -263,9 +226,8 @@ const searchIndex = () => cache.wrap('customs:search-index', 30000, async () => 
 });
 
 /**
- * المعاملاتُ التي يطابقها نصُّ البحث. يطابق النصُّ كاملًا مطويًّا («MSKU 123
- * 4567» = «MSKU1234567»)، أو كلُّ كلمةٍ فيه على حدة («ميرسك جدة»: وكيلٌ وفرع).
- * `null` إن لم يكن في النصّ ما يُبحث به.
+ * Transactions matching the search text. Matches the whole folded text ("MSKU 123 4567" = "MSKU1234567") or each word separately (agent and branch).
+ * `null` if the text has nothing to search by.
  */
 async function searchClearances(text) {
   const raw = String(text || '').trim().slice(0, 120);
@@ -278,21 +240,16 @@ async function searchClearances(text) {
 exports._search = { searchValuesOf, searchClearances, SEARCH_INDEX_FIELDS };
 
 /**
- * ── الأرباحُ للإدارة لا للفريق ─────────────────────────────────────────────
- * صاحبُ الشركة قالها: التحليلاتُ والأرباحُ شأنٌ إداريٌّ لا يخصّ فريقَ القسم.
- * فمديرُ النظام ومديرُ القسم يريان الربحَ والهامش، وغيرُهما لا يصله الرقمُ
- * أصلًا — يُحذَف هنا في الخادم، لا يُخفى في الشاشة.
+ * Profit is for management, not the team
+ * Analytics and profit are management matters. System admin and section manager see profit and margin; for others the number is removed on the server, not hidden in the screen.
  */
 const MONEY_ROLES = ['super_admin', 'admin', 'customs_manager'];
 const seesMoney = (req) => MONEY_ROLES.includes(req.user && req.user.role);
-// ربحُ المعاملة الواحدة: للإدارة، وللماليّة التي تراجعها من شاشتها.
+// Profit of a single transaction: for management, and for finance, which reviews it from its own screen.
 const PROFIT_ROLES = [...MONEY_ROLES, 'cfo', 'accounting_manager', 'accountant'];
 /**
- * ── تاريخُ المعاملة ────────────────────────────────────────────────────────
- * فلاترُ اليوم والشهر والفترة تُقاس عليه. و`createdAt` لا يصلح له: ما استُورد
- * من الماستر أُدخل كلُّه في يومٍ واحد، فكان فلترُ التاريخ يُخرجه كلَّه أو يُبقيه
- * كلَّه. فالتاريخُ ما يعرفه العمل: استلامُ الورق، ثمّ البيان، ثمّ أوّلُ شهرها
- * في الماستر، ثمّ يومُ إدخالها (بتوقيت الرياض).
+ * Transaction date
+ * Day, month and period filters are measured on it. `createdAt` is unsuitable: records imported from the master were all entered on one day, so a date filter dropped all or kept all. The date is what the business knows: paper receipt, then declaration, then first of its month in the master, then entry day (Riyadh time).
  */
 const txDateOf = (c) => {
   for (const v of [c.papersReceivedDate, c.declarationDate]) {
@@ -303,18 +260,13 @@ const txDateOf = (c) => {
   return c.createdAt ? new Date(new Date(c.createdAt).getTime() + 3 * 3600000).toISOString().slice(0, 10) : '';
 };
 
-/** فُوترت ولم تُنهَ: تنتظر فاتورةَ النقل. */
-// لم يعد الإقفالُ ينتظر فاتورةَ نقلٍ في مراحل السداد (٢٠٢٦/١٠/٢٢): أُرسل الطلبُ ببنوده
-// فأُقفلت. فلا معاملةَ «بانتظار فاتورة النقل» بعد اليوم إلّا ما قد يبقى من قبل.
+/** Invoiced but not closed: awaiting the transport invoice. */
+// Closing no longer waits for a transport invoice in the payment stages: the request is sent with its lines and then closed. So no transaction is awaiting a transport invoice except leftovers from before.
 const awaitsTransportInvoice = (c) => (!!c.saleInvoiceNumber || c.invoiceRequest?.status === 'pending') && !c.isCompleted && !c.cancelled;
 
 /**
- * صفُّ القائمة كما يعبر الشبكة.
- *
- * ولا يُرسَل فراغ: `"carrierName":""` في مئتين وإحدى وسبعين صفًّا نقلٌ لا يُقرأ،
- * ومثلُه `"lastNote":null` و`"returnDeadline":""`. وكلُّ قارئٍ لها في الشاشتين
- * يقرؤها بـ`?.` أو `|| ''` — فالغائبُ والفارغُ عنده سواء. أمّا الصفرُ والـ
- * `false` فيُرسَلان: «٠ حاوية» رقمٌ يُقرأ، و«غير مقفولة» حالةٌ تُرسَم.
+ * A list row as it crosses the network.
+ * Empty values are not sent (`"carrierName":""`, `"lastNote":null`, `"returnDeadline":""`); readers use `?.` or `|| ''`, so absent and empty are the same. Zero and `false` are sent: a count of 0 containers and a not-closed state are meaningful.
  */
 function toWire(r, money = true) {
   const out = { _id: r._id };
@@ -329,10 +281,10 @@ function toWire(r, money = true) {
       ...(money ? { profit: r.revenue.profit } : {}),
     };
   }
-  // النسبةُ والمرحلةُ التاليةُ محسوبتان بقاعدة المعاملة نفسِها (pipelineOf).
+  // Percentage and next stage are computed by the transaction's own rule (pipelineOf).
   const p = pipelineOf(r);
   out.pipeline = { percent: p.percent, done: p.done, total: p.total, next: p.next };
-  // تاريخُ المعاملة الذي تُفلتَر به (راجع txDateOf)، وهل فُوترت — ولو قبل النظام.
+  // The transaction date used for filtering (see txDateOf), and whether it was invoiced, even before the system.
   out.date = txDateOf(r);
   if (r.saleInvoiceNumber || p.steps.some((x) => x.key === 'invoiced' && x.done)) out.invoiced = true;
   if (awaitsTransportInvoice(r)) out.awaitingTransportInvoice = true;
@@ -340,12 +292,11 @@ function toWire(r, money = true) {
   if (r.billing && r.billing.invoiceStatus) billing.invoiceStatus = r.billing.invoiceStatus;
   if (r.billing && r.billing.ourInvoiceNumber) billing.ourInvoiceNumber = r.billing.ourInvoiceNumber;
   if (Object.keys(billing).length) out.billing = billing;
-  // «أُرجعت» علمٌ يُرفع لا حالةٌ تُنقل: الشاشةُ تقرأ `stageDone?.containersReturned`.
+  // Returned is a raised flag, not a state moved to: the screen reads `stageDone?.containersReturned`.
   if ((r.stageDone && r.stageDone.containersReturned) || (r.stagesDone || []).includes('containers_returned')) out.stageDone = { containersReturned: true };
   if (r.lastNote) out.lastNote = r.lastNote;
   out.notesCount = r.notesCount;
-  // أرقامُ الوحدات سطرًا واحدًا: صندوقُ البحث في الويب يصفّي في المتصفّح، فلا
-  // يجد حاويةً لم تصله. كانت «البحث بالحاوية لا يعمل».
+  // Unit numbers on one line: the web search box filters in the browser, so it would not find a container that never reached it.
   const nums = (r.containers || []).map((x) => String((x && x.containerNumber) || '').trim()).filter(Boolean);
   if (nums.length) out.containerNumbers = nums.join(' ');
   return out;
@@ -355,11 +306,8 @@ exports.getClearances = async (req, res) => {
   try {
     const q = req.query || {};
     const filter = {};
-    // ── الفلاتر ─────────────────────────────────────────────────────────────
-    // كانت أربعةً: الفرعُ والمرحلةُ والفترةُ وحالةُ الفوترة. وما يُسأل عنه في
-    // العمل أكثر: عميلٌ بعينه، وكيلٌ بعينه، ميناءٌ، عملةٌ، بلدُ منشأ، مدًى
-    // زمنيّ، ومَن مسؤولٌ عنها — وكلُّها أعمدةٌ موجودةٌ في الجدول تُقرأ ولا
-    // يُفلتَر بها، فيُصدَّر الكلُّ ويُفلتَر في إكسل.
+    // Filters
+    // There used to be four: branch, stage, period, billing status. The business asks for more: a specific customer, agent, port, currency, origin country, date range and owner. All are table columns that were read but not filterable, which forced exporting everything and filtering in Excel.
     const eq = {
       branch: 'branch', stage: 'stage', invoiceStatus: 'billing.invoiceStatus',
       port: 'port', currency: 'currency', invoiceType: 'invoiceType', city: 'city',
@@ -367,39 +315,35 @@ exports.getClearances = async (req, res) => {
       customerParty: 'customerParty', agentParty: 'agentParty',
     };
     for (const [k, path] of Object.entries(eq)) if (q[k]) filter[path] = q[k];
-    // ما سبق الحقلَ بلا نوعٍ وهو حاويات — فالحاوياتُ «ليست سيّارات» لا «تساوي حاويات».
+    // Records before the field existed have no type and are containers, so containers means "not vehicles" rather than "equals containers".
     if (CARGO_TYPES.includes(q.cargoType)) filter.cargoType = q.cargoType === 'vehicles' ? 'vehicles' : { $ne: 'vehicles' };
-    // ── والقادمةُ لا تُخلَط بالجارية ─────────────────────────────────────
-    // كلُّ ما يُقرأ في هذه الشاشة معاملاتٌ وقعت: عددُها، وربحُها، وما تأخّر
-    // منها. فصفٌّ لم يصل بعدُ يُفسد كلَّ عدٍّ فيها. ولها قائمتُها: `upcoming=true`.
+    // Upcoming transactions are not mixed with current ones
+    // Everything on this screen is about transactions that happened: counts, profit, delays. A row not yet arrived would corrupt every count. They have their own list: `upcoming=true`.
     filter.upcoming = q.upcoming === 'true' ? true : { $ne: true };
     if (q.active === 'true') filter.cancelled = { $ne: true };
     if (q.cancelled === 'true') filter.cancelled = true;
-    // الشهرُ يُقبل رقمًا أو «YYYY-MM»، وما لا يُفهَم يُهمَل — راجع utils/period.
+    // Month is accepted as a number or "YYYY-MM"; unparseable values are ignored (see utils/period).
     const yq = parseYear(q.year); if (yq) filter.periodYear = yq;
     const mq = parseMonth(q.month);
     if (mq.month) filter.periodMonth = mq.month;
     if (mq.year && !yq) filter.periodYear = mq.year;
-    // مدًى زمنيٌّ بتوقيت الشركة — راجع utils/companyDay.
+    // Date range in company time (see utils/companyDay).
     if (q.from || q.to) {
       const { startOfDay, endOfDay } = require('../utils/companyDay');
       filter.createdAt = {};
       if (q.from) filter.createdAt.$gte = startOfDay(q.from);
       filter.createdAt.$lte = q.to ? endOfDay(q.to) : new Date();
     }
-    // «لم تُفوتَر بعد» سؤالٌ ماليٌّ يُطرح كلَّ أسبوع، وكان يحتاج تصديرًا ليُجاب.
+    // Not yet invoiced is a finance question asked weekly that previously needed an export.
     if (q.uninvoiced === 'true') {
       filter.$and = [...(filter.$and || []), {
         $or: [{ 'billing.invoiceStatus': { $ne: 'invoiced' } }, { 'billing.invoiceStatus': { $exists: false } }],
       }];
     }
 
-    // ── نصُّ البحث: `search` من الويب، و`q` من الهاتف (serverSearch) ────────
+    // Search text: `search` from web, `q` from mobile (serverSearch)
     const search = String(q.search || q.q || '').trim();
-    // `ids=1`: المعرّفاتُ المطابقة وحدَها، بلا صفوف. تقرؤها الشاشاتُ التي تصفّي
-    // في المتصفّح (القائمة، لوحةُ القسم، صفحاتُ الأطراف) فتبقى فلاترُها وعدّاداتُها
-    // كما هي ويتّسع بحثُها لكلّ ما في المعاملة. ولا يُقيَّد بالقادمة ولا بغيرها:
-    // كلُّ شاشةٍ تقاطعه مع ما عندها.
+    // `ids=1`: only the matching ids, no rows. Used by screens that filter in the browser (list, section dashboard, party pages) so their filters and counters stay and search covers everything in the transaction. Not restricted to upcoming or otherwise: each screen intersects it with its own set.
     if (q.ids === '1' || q.ids === 'true') {
       const hits = (await searchClearances(search)) || [];
       return res.json({ ids: hits.map((h) => h.id), parties: [...new Set(hits.flatMap((h) => h.parties))] });
@@ -407,15 +351,12 @@ exports.getClearances = async (req, res) => {
 
     const SKIP = new Set(['search', 'q', 'limit']);
     const ck = `customs:list:${JSON.stringify(Object.keys(q).sort().reduce((o, k) => (SKIP.has(k) ? o : (o[k] = q[k], o)), {}))}`;
-    // نستبعد الحقول الثقيلة من القائمة — المرفقاتُ وحدَها قد تبلغ أربعين سطرًا
-    // في المعاملة الواحدة، والقائمةُ لا تعرض منها شيئًا. تُحمَّل عند فتح
-    // المعاملة فقط. يقلّل النقل بشكل كبير على Atlas المُقيَّد.
+    // Heavy fields are excluded from the list: attachments alone can reach forty lines per transaction and the list shows none of them. They load only when the transaction opens. This greatly reduces transfer on the constrained Atlas tier.
     let list = await cache.wrap(ck, 30000, async () => {
       const rows = await CustomsClearance.find(filter)
         .select(LIST_FIELDS).sort({ createdAt: -1 }).lean();
-      // ── آخرُ ملاحظةٍ فقط تُرسَل ──────────────────────────────────────────
-      // الجدولُ يعرض الأخيرةَ لا السجلَّ كلَّه، ونقلُ عشر ملاحظاتٍ لكلّ صفٍّ
-      // على وصلةٍ مقيَّدة نقلٌ لا يُعرَض. والسجلُّ يُقرأ في المعاملة.
+      // Only the last note is sent
+      // The table shows the last one, not the whole log; sending ten notes per row over a constrained link is wasted transfer. The log is read in the transaction.
       return rows.map((r) => {
         const log = r.notesLog || [];
         const last = log.length ? log[log.length - 1] : null;
@@ -424,9 +365,8 @@ exports.getClearances = async (req, res) => {
       });
     });
 
-    // ── والبحثُ بأيّ اسمٍ أو أيّ رقم ─────────────────────────────────────────
-    // من الفهرس — راجع SEARCH_INDEX_FIELDS. ويُطبَّق قبل الإرسال، فالعددُ عددُ
-    // ما طابق لا عددُ القائمة.
+    // Search by any name or number
+    // From the index (see SEARCH_INDEX_FIELDS). Applied before sending, so the count is the number matched, not the list size.
     if (search) {
       const hits = await searchClearances(search);
       if (hits) {
@@ -443,7 +383,7 @@ exports.getClearances = async (req, res) => {
   }
 };
 
-/** قيمُ كلّ فلترٍ مع عددِ صفوفه — تُبنى من المجموعة لا تُكتب يدًا. */
+/** Values of each filter with their row counts: built from the collection, not hand-written. */
 exports.getFilterOptions = async (req, res) => {
   try {
     const hit = cache.get('customs:filters');
@@ -477,12 +417,11 @@ exports.getClearance = async (req, res) => {
   try {
     const clearance = await CustomsClearance.findById(req.params.id).populate('customer', 'name');
     if (!clearance) return res.status(404).json({ message: 'Clearance not found' });
-    // الوثيقةُ تخرج بلا ربحها (راجع toJSON في النموذج)، ومَن يحقّ له يأخذه هنا.
+    // The document leaves without its profit (see toJSON in the model); whoever is entitled gets it here.
     const profit = PROFIT_ROLES.includes(req.user.role) ? Number(clearance.revenue && clearance.revenue.profit) || 0 : undefined;
     res.json({ clearance, ...(profit !== undefined ? { profit } : {}) });
   } catch (error) {
-    // معرّف مش صالح = «مش موجود»، مش عطل سيرفر. رابط قديم أو مقطوع كان بيرجع
-    // 500 وكأن السيستم واقع.
+    // An invalid id means not found, not a server fault; a stale or truncated link used to return 500 as if the system were down.
     if (error.name === 'CastError') return res.status(404).json({ message: 'Clearance not found' });
     res.status(500).json({ message: 'Failed to load clearance' });
   }
@@ -493,7 +432,7 @@ exports.createClearance = async (req, res) => {
     const data = pick(req.body, null);
     data.createdBy = req.user._id;
     await attachPartyFields(data);
-    // أسعارُ عقد العميل تملأ الإيرادات من أوّل لحظة (وتبقى قابلةً للتعديل).
+    // Customer contract prices fill revenue from the start (and remain editable).
     if (data.customerParty) {
       const contract = await contractPricing.activeCustomerContract(data.customerParty).catch(() => null);
       if (contract) contractPricing.fillRevenue(data, {}, contract);
@@ -501,7 +440,7 @@ exports.createClearance = async (req, res) => {
     const clearance = await CustomsClearance.create(data);
 
     await logAudit({ user: req.user._id, action: 'create_customs_clearance', entity: 'CustomsClearance', entityId: clearance._id, changes: { after: { refNumber: clearance.refNumber } }, ipAddress: req.ip });
-    // تُمسَح الذاكرةُ قبل البثّ: مَن يسمع الحدثَ يقرأ فورًا (راجع announce-before-invalidate).
+    // Clear the cache before broadcasting: whoever hears the event reads immediately (see announce-before-invalidate).
     cache.clear('customs:');
     try { emitToAll('customs:created', { clearance }); } catch (e) {}
 
@@ -512,11 +451,8 @@ exports.createClearance = async (req, res) => {
 };
 
 /**
- * حين يُختار العميلُ أو الوكيلُ من ملفّه، يُنسَخ اسمُه إلى المعاملة — والبريدُ
- * معه إن كان للوكيل بريد.
- *
- * الاسمُ يبقى مخزَّنًا نصًّا لأنّ التصديراتِ والتقاريرَ تقرؤه، والبريدُ كان
- * يُكتب في كلّ معاملةٍ من الذاكرة فيُخطئ حرفٌ فيُرسَل الطلبُ إلى لا أحد.
+ * When a customer or agent is chosen from their file, the name is copied into the transaction, with the email if the agent has one.
+ * The name stays stored as text because exports and reports read it. The email used to be typed in each transaction from memory, so one wrong letter sent the request to nobody.
  */
 async function attachPartyFields(data) {
   if (data.customerParty) {
@@ -527,7 +463,7 @@ async function attachPartyFields(data) {
     const p = await CustomsParty.findById(data.agentParty).select('name email').lean();
     if (p) {
       data.shippingAgent = p.name;
-      // لا يُمحى بريدٌ مكتوبٌ يدويًّا إن كان ملفُّ الوكيل بلا بريد.
+      // A manually typed email is not erased if the agent file has none.
       if (p.email) data.shippingAgentEmail = p.email;
     }
   }
@@ -537,19 +473,16 @@ exports.updateClearance = async (req, res) => {
   try {
     const existing = await CustomsClearance.findById(req.params.id).lean();
     if (!existing) return res.status(404).json({ message: 'Clearance not found' });
-    // ── تطبيقٌ قديمٌ يغيّر المرحلةَ من هنا ───────────────────────────────────
-    // المراحلُ صارت تُعلَّم من `PATCH /:id/stage` بقواعدها، و`stage` هنا لا
-    // تُكتب. فنسخةٌ قديمةٌ من التطبيق كانت ستُجاب «تمّ» ولم يُكتب شيء — وذلك
-    // أسوأُ من الرفض. فيُقال لها صراحةً. (شاشةُ الويب لا ترسل `stage` أصلًا.)
+    // Old app changes the stage from here
+    // Stages are now marked through `PATCH /:id/stage` with their rules, and `stage` is not written here. An old app version would be told "done" with nothing written, which is worse than rejecting, so it is rejected explicitly. (The web screen never sends `stage`.)
     if (req.body.stage !== undefined && req.body.stage !== existing.stage) {
       return res.status(400).json({ message: 'المراحلُ تُعلَّم من شاشتها الجديدة — حدِّث التطبيق إلى آخر نسخة.', code: 'STAGE_VIA_ENDPOINT' });
     }
     const data = pick(req.body, existing);
     data.lastModifiedBy = req.user._id;
     await attachPartyFields(data);
-    // ── تغيّر العميلُ أو عددُ الحاويات؟ فأسعارُ العقد تتبعه ────────────────────
-    // أجورُ التخليص للحاوية، فحاويةٌ زائدةٌ أجرةٌ زائدة. ولا يُكتب إلّا فيما بقي
-    // على قيمة العقد — ما عدّله الموظّفُ بيده يبقى (راجع fillRevenue).
+    // Customer or container count changed: contract prices follow
+    // Clearance fees are per container, so an extra container is an extra fee. Only values still equal to the contract are overwritten; manual edits stay (see fillRevenue).
     const partyChanged = data.customerParty !== undefined && String(data.customerParty || '') !== String(existing.customerParty || '');
     const countChanged = data.containerCount !== undefined && Number(data.containerCount) !== Number(existing.containerCount || 0);
     if (partyChanged || countChanged) {
@@ -584,17 +517,15 @@ exports.updateClearance = async (req, res) => {
  */
 exports.getAnalytics = async (req, res) => {
   try {
-    // الأرباحُ والتحليلاتُ للإدارة وحدَها — ولا يفتحها ختمُ قسمٍ ولا تأشيرةُ صفحة.
+    // Profit and analytics are for management only; neither a section stamp nor a page grant opens them.
     if (!seesMoney(req)) return res.status(403).json({ message: 'تحليلاتُ القسم لمدير النظام ومدير القسم', code: 'CUSTOMS_ANALYTICS_MANAGERS' });
     const q = req.query || {};
     const { year, from, to } = q;
-    // والقادمةُ خارجَ الأرقام: لم تقع بعدُ فلا إيرادَ لها ولا تكلفة.
+    // Upcoming transactions are excluded from the numbers: they have not happened, so no revenue or cost.
     const filter = { cancelled: { $ne: true }, upcoming: { $ne: true } };
     if (year) filter.periodYear = Number(year);
-    // ── التحليلاتُ تقبل ما تقبله القائمة ────────────────────────────────────
-    // كانت تقبل السنةَ والمدى وحدَها، فمن أراد «ربحُنا مع هذا العميل في هذا
-    // الميناء» صدّر وحسب بنفسه. والأسئلةُ التي تُطرح على الجدول هي التي تُطرح
-    // على التحليل — فالفلاترُ واحدة.
+    // Analytics accept what the list accepts
+    // It accepted only year and range, so a question like profit with this customer at this port meant exporting and computing by hand. Questions asked of the table are asked of the analysis, so filters are the same.
     const eq = {
       branch: 'branch', stage: 'stage', port: 'port', currency: 'currency',
       invoiceType: 'invoiceType', city: 'city', countryOfOrigin: 'countryOfOrigin',
@@ -602,7 +533,7 @@ exports.getAnalytics = async (req, res) => {
       invoiceStatus: 'billing.invoiceStatus',
     };
     for (const [k, path] of Object.entries(eq)) if (q[k]) filter[path] = q[k];
-    // نوعُ المعاملة وحالتُها — يُسأل بهما كما يُسأل بالعميل والميناء.
+    // Transaction type and status, queried like customer and port.
     if (CARGO_TYPES.includes(q.cargoType)) filter.cargoType = q.cargoType === 'vehicles' ? 'vehicles' : { $ne: 'vehicles' };
     if (q.state === 'closed' || q.state === 'closedInvoiced' || q.state === 'closedNotInvoiced') filter.isCompleted = true;
     if (q.state === 'open') filter.isCompleted = { $ne: true };
@@ -610,22 +541,13 @@ exports.getAnalytics = async (req, res) => {
     if (mq2.month) filter.periodMonth = mq2.month;
     if (mq2.year && !year) filter.periodYear = mq2.year;
 
-    // ── ولا يُنقَل من الحقل إلّا ما يُجمَع ────────────────────────────────
-    // كانت تُقرأ `costs` و`revenue` و`billing` كاملةً — وهي أثقلُ ثلاثةِ حقولٍ
-    // في السجلّ (مئةٌ وستّةٌ وعشرون كيلوبايت من مئتين)، والحسابُ لا يمسّ منها
-    // إلّا ثلاثةَ أرقامٍ وحالةَ الفوترة. والوصلةُ إلى العنقود هي الثمنُ كلُّه
-    // لا الحساب — راجع dashboard-performance.
-    //
-    // ── وتُحفَظ دقيقةً ────────────────────────────────────────────────────
-    // اللوحةُ تُقرأ ولا تُكتب، وتُفتح مع كلّ فتحةٍ للصفحة ومع كلّ تحديثٍ حيّ.
-    // وكانت تُحسب من أوّلها في كلّ مرّة: ثلاثُ ثوانٍ ينتظرها كلُّ من يفتح.
-    // والكتابةُ في القسم تمسح `customs:` فلا تُقرأ أرقامٌ سبقت التعديل.
+    // Only what is aggregated is read from `costs`, `revenue` and `billing`, the heaviest fields; the cluster round trip is the whole cost (see dashboard-performance).
+    // Cached for a minute: the dashboard is read-only and opens on every page open and live update. Writes in the section clear `customs:`, so stale numbers are not read.
     const ak = `customs:analytics:${JSON.stringify(q)}`;
     const hit = cache.get(ak);
     if (hit !== undefined) return res.json(hit);
 
-    // والمدى يُصفّى في القاعدة أيضًا — لا تُنقَل سنتان ليُعرَض شهر. والتصفيةُ
-    // في الذاكرة بعده تبقى كما هي: هي التي تحكم، وهذه تُخفّف الحمولةَ فقط.
+    // The range is also filtered in the database, so two years are not transferred to show one month. The in-memory filter afterwards remains authoritative; this one only reduces the payload.
     if (from || to) {
       const lo0 = from ? Number(String(from).slice(0, 4)) * 100 + Number(String(from).slice(5, 7) || 1) : 0;
       const hi0 = to ? Number(String(to).slice(0, 4)) * 100 + Number(String(to).slice(5, 7) || 12) : 999999;
@@ -637,9 +559,9 @@ exports.getAnalytics = async (req, res) => {
         + 'cargoType isCompleted saleInvoiceNumber stagesDone transportRoute pipelineVersion stageDone.doInvoicePaid containers.route containers.stagesDone '
         + require('../utils/customsInvoice').MONEY_SELECT)
       .lean();
-    // الإيرادُ والتكلفةُ والربحُ لكلّ معاملة — بقاعدةٍ واحدة مع «ماليات التخليص» (utils/customsInvoice.moneyOf).
+    // Revenue, cost and profit per transaction, with one rule shared with the clearance finance view (utils/customsInvoice.moneyOf).
     for (const r of list) r._m = require('../utils/customsInvoice').moneyOf(r);
-    // ── الفلاترُ السريعة — كلوحة القسم (٢٠٢٦/١٠/٢٢) ─────────────────────────
+    // Quick filters, like the section dashboard
     const invOf = (r) => !!r.saleInvoiceNumber || !!String((r.billing && r.billing.invoiceStatus) || '').trim()
       || pipelineOf(r).steps.some((x) => x.key === 'invoiced' && x.done);
     const STATE_AR = { open: 'مفتوحة', closedInvoiced: 'مغلقة مفوترة', closedNotInvoiced: 'مغلقة لم تُفوتَر' };
@@ -654,7 +576,7 @@ exports.getAnalytics = async (req, res) => {
       { key: 'qMonth', get: (r) => (r.periodYear && r.periodMonth ? `${r.periodYear}-${String(r.periodMonth).padStart(2, '0')}` : '') },
     ], q);
     list = quick.list;
-    // المغلقةُ قسمان: مفوترة · لم تُفوتَر — بتعريف «مفوترة» نفسِه في اللوحة.
+    // Closed has two kinds: invoiced and not invoiced, with the same definition of invoiced as the dashboard.
     if (q.state === 'closedInvoiced' || q.state === 'closedNotInvoiced') {
       const inv = (r) => !!r.saleInvoiceNumber || !!String((r.billing && r.billing.invoiceStatus) || '').trim()
         || pipelineOf(r).steps.some((x) => x.key === 'invoiced' && x.done);
@@ -724,9 +646,8 @@ exports.getAnalytics = async (req, res) => {
       }))
       .sort((a, b) => (a.year - b.year) || (a.month - b.month));
 
-    // ── أين يذهب المالُ ومن أين يأتي ────────────────────────────────────────
-    // «التكلفة ٣ ملايين» لا تقول شيئًا للإدارة حتى تُفصَّل: أيُّ بندٍ يأكلها.
-    // و«الربح» كذلك: أجورُ التخليص أم فرقُ النقل أم التخزين.
+    // Where money goes and where it comes from
+    // A total cost tells management nothing until broken down: which line eats it. Same for profit: clearance fees, transport difference or storage.
     const breakdown = (keys, of) => keys
       .map((key) => ({ key, amount: round(list.reduce((a, r) => a + num(of(r)[key]), 0)), deals: list.filter((r) => num(of(r)[key]) !== 0).length }))
       .filter((x) => x.amount !== 0).sort((a, b) => Math.abs(b.amount) - Math.abs(a.amount));
@@ -738,7 +659,7 @@ exports.getAnalytics = async (req, res) => {
     const openRows = list.filter((r) => !r.isCompleted);
     const notInvoicedRows = list.filter((r) => !isInvoiced(r));
     const byCust = finish(group(list, (r) => r.customerName), totalContainers).sort((a, b) => b.profit - a.profit);
-    // الربحُ من المفوتَرة وحدَها (moneyOf): التي لم تُفوتَر تكلفتُها قائمةٌ وإيرادُها لم يأتِ.
+    // Profit counts invoiced transactions only (moneyOf): for uninvoiced ones the cost exists but the revenue has not arrived.
     const profitAll = list.reduce((a, r) => a + r._m.profit, 0);
     const billedNet = list.filter((r) => !r._m.pending).reduce((a, r) => a + r._m.revenue - r._m.vat, 0);
     const share = (n) => (profitAll > 0 ? byCust.slice(0, n).reduce((a, b) => a + Math.max(0, b.profit), 0) / profitAll : 0);
@@ -760,7 +681,7 @@ exports.getAnalytics = async (req, res) => {
         costPerContainer: totalContainers ? round(totalCosts / totalContainers) : 0,
         avgProfit: list.length ? round(profitAll / list.length) : 0,
         losing: list.filter((r) => isInvoiced(r) && r._m.profit < 0).length,
-        // كم من الربح يصنعه أكبرُ عميلٍ وأكبرُ خمسة — تركّزٌ يُعرَف قبل أن يُفاجِئ.
+        // How much profit the largest customer and the top five produce: concentration, known before it surprises.
         top1Share: share(1), top5Share: share(5),
       },
       totals: {
@@ -786,13 +707,12 @@ exports.getAnalytics = async (req, res) => {
       byCustomer: finish(group(list, (r) => r.customerName), totalContainers),
       byAgent: finish(group(list, (r) => r.shippingAgent), totalContainers),
       byCity: finish(group(list, (r) => r.city || (r.branch === 'dammam' ? 'الدمام' : 'جدة')), totalContainers),
-      // أبعادٌ أخرى تُسأل ولم تكن تُجمَع: أين نعمل (الميناء)، وأين تتعثّر
-      // المعاملاتُ (المرحلة)، وأيُّ فرعٍ يحمل أكثر.
+      // Other dimensions that are asked about but were not aggregated: where we work (port), where transactions stall (stage), and which branch carries more.
       byPort: finish(group(list, (r) => r.port), totalContainers),
       byStage: finish(group(list, (r) => r.stage), totalContainers),
       byBranch: finish(group(list, (r) => (r.branch === 'dammam' ? 'الدمام' : 'جدة')), totalContainers),
       byMonth,
-      // أعلى المعاملات ربحًا وأدناها — الرقمُ المجمَّع لا يقول أيَّ صفقةٍ صنعته.
+      // Highest and lowest profit transactions: the aggregate does not say which deal produced it.
       topDeals: list.map((r) => ({
         refNumber: r.refNumber, blNumber: r.blNumber, customerName: r.customerName,
         shippingAgent: r.shippingAgent, port: r.port, containers: num(r.containerCount),
@@ -829,11 +749,8 @@ exports.deleteClearance = async (req, res) => {
   }
 };
 
-// ---------------------------------------------------------------- المرفقات
-//
-// ورقُ المعاملة يُرفَع مع المعاملة نفسِها، ويُوسَم بالمرحلة التي أُنتج فيها،
-// فيُقرأ في موضعه من دورة الإجراءات. الرفعُ base64 في نفس الطلب — لا multer،
-// كما في بقيّة النظام.
+// Attachments
+// Transaction papers are uploaded with the transaction and tagged with the stage that produced them, so they are read in place in the procedure cycle. Upload is base64 in the same request, no multer, as elsewhere in the system.
 
 const { saveUploadFile, deleteStoredFile } = require('../utils/fileStore');
 const { STAGES } = require('../models/CustomsClearance');
@@ -901,10 +818,7 @@ exports.updateAttachment = async (req, res) => {
   }
 };
 
-/**
- * ملفٌّ واحدٌ على القرص قد يُذكَر في أكثر من موضع (مرفقاتُ المعاملة، إدخالُ
- * مرحلةِ سداد، بندُ فاتورة). فلا يُمحى من القرص ما دام مذكورًا في أحدها.
- */
+/** One file on disk may be referenced in several places (transaction attachments, a payment stage entry, an invoice line). It is not deleted from disk while any of them still references it. */
 const fileStillUsed = (clearance, url) => !!url && (
   (clearance.attachments || []).some((a) => a.fileUrl === url)
   || (clearance.paymentStages || []).some((p) => p.fileUrl === url || (p.proofFiles || []).some((f) => f.fileUrl === url))
@@ -915,12 +829,8 @@ const dropIfUnused = (clearance, urls) => {
 };
 
 /**
- * حذفُ مرفق — ومعه ما يشير إليه.
- *
- * كان الملفُّ يُحذَف من «مرفقات المعاملة» ويبقى إدخالُه في «مراحل السداد»
- * يشير إلى ملفٍّ لم يعد موجودًا (والعكس: يُحذَف الإدخالُ وتبقى ورقتُه في
- * المرفقات). وهما وجهان لشيءٍ واحد: فحذفُ أحدهما حذفٌ للآخر. والشاشةُ تقول
- * ذلك قبل الضغط.
+ * Delete an attachment along with what points to it.
+ * Deleting from the transaction attachments used to leave its payment-stage entry pointing at a missing file (and the reverse: deleting the entry left its paper in attachments). They are two faces of one thing, so deleting one deletes the other. The screen says so before confirming.
  */
 exports.deleteAttachment = async (req, res) => {
   try {
@@ -932,14 +842,14 @@ exports.deleteAttachment = async (req, res) => {
     const url = att.fileUrl;
     const name = att.title || att.fileName;
     att.deleteOne();
-    // وكلُّ ذكرٍ آخرَ للملفّ نفسِه في المرفقات.
+    // And every other reference to the same file in attachments.
     for (const other of clearance.attachments.filter((a) => a.fileUrl === url)) other.deleteOne();
     const removedStages = [];
     for (const p of [...(clearance.paymentStages || [])]) {
       if (p.fileUrl === url) { removedStages.push(p.label || p.key); p.deleteOne(); continue; }
       if ((p.proofFiles || []).some((f) => f.fileUrl === url)) p.proofFiles = p.proofFiles.filter((f) => f.fileUrl !== url);
     }
-    // بندُ الفاتورة يبقى بسعره — يُرفَع عنه مرفقُه وحدَه.
+    // The invoice line stays with its price; only its attachment is removed.
     for (const x of clearance.saleItems || []) {
       if (x.fileUrl === url) Object.assign(x, { fileUrl: '', fileName: '', mimeType: '', size: 0 });
     }
@@ -960,17 +870,12 @@ exports.deleteAttachment = async (req, res) => {
   }
 };
 
-// ═══════════════════════════════════════════════════════════════════════════
-//  أطرافُ التخليص — العملاءُ ووكلاءُ الشحن
-// ═══════════════════════════════════════════════════════════════════════════
+// Clearance parties: customers and shipping agents
 const CustomsParty = require('../models/CustomsParty');
 const CustomsContract = require('../models/CustomsContract');
 const { fold: foldName } = require('../models/CustomsParty');
 
-/**
- * بحثٌ لا يبالي بالمسافات ولا بالشرطات ولا بفروق الرسم العربيّ — كما في بقيّة
- * النظام. «050-123 4567» و«0501234567» رقمٌ واحد، و«أ» تجد «ا» والعكس.
- */
+/** Search ignores spaces, dashes and Arabic letter-form differences, as elsewhere in the system. "050-123 4567" and "0501234567" are the same number, and one alef form finds the other. */
 const partyRx = (s) => {
   const bare = searchKey(s);
   if (!bare) return null;
@@ -979,14 +884,14 @@ const partyRx = (s) => {
   return new RegExp(parts.join('[\\s\\-_./\\\\,:#ـ]*'), 'i');
 };
 
-// ── ثلاثةُ أدوار، وحقلٌ في المعاملة لكلٍّ ──────────────────────────────────
-// العميلُ صاحبُ البضاعة، والوكيلُ يخلّصها، والناقلُ ينقلها. راجع CustomsParty.
+// Three roles, each with its own field on the transaction
+// The customer owns the goods, the agent clears them, the carrier moves them. See CustomsParty.
 const PARTY_KINDS = ['customer', 'agent', 'carrier'];
 const partyField = (kind) => (kind === 'agent' ? 'agentParty' : kind === 'carrier' ? 'carrierParty' : 'customerParty');
 
 exports.listParties = async (req, res) => {
   try {
-    // `kind=all` — الأطرافُ كلُّها بأدوارها، لاختيار صاحب العقد من قائمةٍ واحدة.
+    // `kind=all`: all parties with their roles, to pick a contract owner from one list.
     const all = req.query.kind === 'all';
     const kind = PARTY_KINDS.includes(req.query.kind) ? req.query.kind : 'customer';
     const filter = all ? {} : { kind };
@@ -994,11 +899,10 @@ exports.listParties = async (req, res) => {
     const q = String(req.query.q || '').trim();
     if (q) {
       const rx = partyRx(q);
-      // يُبحَث بالاسم وبكلّ رقمٍ في الملفّ — «أيّ اسمٍ أو أيّ رقم».
+      // Searched by name and by every number in the file: any name or any number.
       filter.$or = [{ customerCode: rx }, { name: rx }, { email: rx }, { phone: rx }, { contactPerson: rx },
         { commercialRegister: rx }, { taxNumber: rx }, { city: rx }];
-      // `deep=1` (صفحةُ الأطراف): ويُوجَد الطرفُ بما في معاملاته كذلك — رقمِ حاويةٍ
-      // أو بوليصةٍ أو بيان. ولا يُطلب في قوائم الاختيار: هناك يُكتب الاسم.
+      // `deep=1` (parties page): also finds a party by what is in its transactions (container, bill of lading or declaration number). Not requested in pick lists, where the name is typed.
       if (req.query.deep === '1') {
         const hits = (await searchClearances(q)) || [];
         const ids = [...new Set(hits.flatMap((h) => h.parties))];
@@ -1007,9 +911,9 @@ exports.listParties = async (req, res) => {
     }
     const parties = await CustomsParty.find(filter).sort({ name: 1 }).lean();
 
-    // مع كلّ طرفٍ حجمُه: القائمةُ بلا أرقامٍ أسماءٌ لا تُقارَن.
+    // Each party comes with its volume: a list without numbers is names that cannot be compared.
     const ids = parties.map((p) => p._id);
-    if (all) return res.json({ parties });          // القائمةُ للاختيار، بلا أرقامٍ تُحسب
+    if (all) return res.json({ parties });          // List for picking, without computed numbers
     const field = partyField(kind);
     const agg = await CustomsClearance.aggregate([
       { $match: { [field]: { $in: ids }, cancelled: { $ne: true } } },
@@ -1025,7 +929,7 @@ exports.listParties = async (req, res) => {
     const stats = new Map(agg.map((a) => [String(a._id), a]));
     const money = seesMoney(req);
     res.json({
-      // الربحُ للإدارة وحدَها — راجع MONEY_ROLES.
+      // Profit is for management only (see MONEY_ROLES).
       money,
       parties: parties.map((p) => {
         const s = stats.get(String(p._id)) || {};
@@ -1042,10 +946,7 @@ exports.listParties = async (req, res) => {
   }
 };
 
-/**
- * جهاتُ التواصل من جسم الطلب: تُنظَّف وتُسقط الفارغة، والأولى تُنسَخ في الحقول
- * القديمة (email/phone/contactPerson) التي تقرؤها قوالبُ البريد وما سبق.
- */
+/** Contacts from the request body: cleaned, empty ones dropped, and the first is copied into the legacy fields (email/phone/contactPerson) that email templates and older code read. */
 function mirrorContacts(body) {
   if (!Array.isArray(body.contacts)) return body;
   const S = (v) => String(v ?? '').trim();
@@ -1073,13 +974,12 @@ exports.createParty = async (req, res) => {
 
 exports.updateParty = async (req, res) => {
   try {
-    // المرفقاتُ لها نقاطُها — لا تُكتب من هنا فوق ما رُفع.
+    // Attachments have their own endpoints; they are not overwritten from here.
     const { kind, _id, __v, attachments, ...raw } = req.body;
     const body = mirrorContacts(raw);
     const party = await CustomsParty.findByIdAndUpdate(req.params.id, { $set: body }, { new: true });
     if (!party) return res.status(404).json({ message: 'غير موجود' });
-    // الاسمُ مخزَّنٌ نصًّا في المعاملات أيضًا (تقرؤه التصديرات) — يُحدَّث معه
-    // وإلّا عُرض الاسمُ القديم في الجدول والجديدُ في الملفّ.
+    // The name is also stored as text in transactions (exports read it), so it is updated too; otherwise the table shows the old name and the file the new one.
     const field = party.kind === 'agent' ? 'shippingAgent' : 'customerName';
     const link = party.kind === 'agent' ? 'agentParty' : 'customerParty';
     await CustomsClearance.updateMany({ [link]: party._id }, { $set: { [field]: party.name } });
@@ -1096,8 +996,7 @@ exports.deleteParty = async (req, res) => {
     if (!party) return res.status(404).json({ message: 'غير موجود' });
     const link = party.kind === 'agent' ? 'agentParty' : 'customerParty';
     const used = await CustomsClearance.countDocuments({ [link]: party._id });
-    // لا يُحذَف مَن له تاريخ: حذفُه يقطع معاملاتِه عن ملفّها. يُعطَّل فيختفي من
-    // القوائم ويبقى تاريخُه مقروءًا.
+    // A party with history is not deleted: deleting would cut its transactions from their file. It is deactivated, so it leaves lists while its history stays readable.
     if (used > 0) {
       party.isActive = false;
       await party.save();
@@ -1112,7 +1011,7 @@ exports.deleteParty = async (req, res) => {
   }
 };
 
-/** ملفُّ طرفٍ واحد: بياناتُه، وأرقامُه، وكلُّ معاملاته. */
+/** One party's file: its data, numbers and all its transactions. */
 exports.getPartyProfile = async (req, res) => {
   try {
     const party = await CustomsParty.findById(req.params.id).lean();
@@ -1131,7 +1030,7 @@ exports.getPartyProfile = async (req, res) => {
     const profit = sum((d) => d._m.profit);
     const cost = sum((d) => d._m.cost);
 
-    // بالشهر — ليُقرأ النموّ لا المجموعُ وحدَه.
+    // By month, so growth can be read and not only the total.
     const byMonth = {};
     live.forEach((d) => {
       const k = d.periodYear && d.periodMonth
@@ -1166,7 +1065,7 @@ exports.getPartyProfile = async (req, res) => {
         } : {}),
         firstDealAt: deals.length ? deals[deals.length - 1].createdAt : null,
         lastDealAt: deals.length ? deals[0].createdAt : null,
-        // ما لم يُفوتَر بعد — أوّلُ ما يُسأل عنه في ملفّ عميل.
+        // What is not yet invoiced: the first question about a customer file.
         uninvoiced: live.filter((d) => (d.billing?.invoiceStatus || 'not_invoiced') !== 'invoiced').length,
       },
       byMonth: Object.values(byMonth).sort((a, b) => a.key.localeCompare(b.key))
@@ -1174,11 +1073,11 @@ exports.getPartyProfile = async (req, res) => {
       byStage: tally((d) => d.stage),
       byPort: tally((d) => d.port),
       byCounterparty: tally((d) => (party.kind === 'customer' ? d.shippingAgent : d.customerName)),
-      // عقودُنا معه — تُقرأ في ملفّه لا في شاشةٍ أخرى. راجع CustomsContract.
+      // Our contracts with the party, read in its file and not in another screen. See CustomsContract.
       contracts: await CustomsContract.find({ party: party._id }).sort({ createdAt: -1 }).lean(),
       deals: deals.map((d) => {
         const p = pipelineOf(d);
-        // مالُ المعاملة (`_m`) للإدارة وحدَها، ومراحلُ السداد وبنودُ البيع قُرئت للحساب فلا تُرسَل.
+        // Transaction money (`_m`) is for management only; payment stages and sale lines were read for the computation and are not sent.
         const { _m, paymentStages, saleItems, ...rest } = d;
         const out = { ...rest, pipeline: { percent: p.percent, next: p.next }, ...(money ? { money: _m } : {}) };
         if (!money && out.revenue) out.revenue = { ...out.revenue, profit: undefined, transportNet: undefined };
@@ -1191,13 +1090,11 @@ exports.getPartyProfile = async (req, res) => {
   }
 };
 
-// ═══════════════════════════════════════════════════════════════════════════
-//  إعداداتُ القسم · المعاملاتُ القادمة · طلباتُ الصرف
-// ═══════════════════════════════════════════════════════════════════════════
+// Section settings, upcoming transactions, payment requests
 
 const CustomsSettings = require('../models/CustomsSettings');
 
-/** إعداداتُ القسم — رقمُ أيّام التنبيه اليوم. */
+/** Section settings: currently the alert days number. */
 exports.getSettings = async (req, res) => {
   try {
     res.json({ settings: await CustomsSettings.get() });
@@ -1226,21 +1123,16 @@ exports.updateSettings = async (req, res) => {
 };
 
 /**
- * ── شارةُ المعاملات القادمة ────────────────────────────────────────────────
- * عددُ ما اقترب موعدُه — والمدّةُ من إعدادات القسم لا من رقمٍ في الشيفرة، فمن
- * غيّرها إلى ثلاثة أيّامٍ رأى أثرَها في النداء التالي بلا نشر.
- *
- * وما فات موعدُه يبقى في العدّ: معاملةٌ حان وقتُها ولم تُحوَّل هي أحقُّ بالتنبيه
- * من معاملةٍ بعد يومين.
+ * Upcoming transactions badge
+ * Count of those whose date is near. The window comes from section settings, not a number in code, so changing it to three days takes effect on the next call without a deploy.
+ * Overdue ones stay in the count: a transaction whose time came and was not converted deserves the alert more than one two days away.
  */
 exports.upcomingAlerts = async (req, res) => {
   try {
     const { upcomingAlertDays } = await CustomsSettings.get();
     const days = Number.isFinite(Number(upcomingAlertDays)) ? Number(upcomingAlertDays) : 2;
-    // ── اليومُ بتوقيت الشركة لا بتوقيت الخادم ────────────────────────────
-    // `todayKey` تردّ «YYYY-MM-DD» بالرياض، وهو نفسُ شكلِ `expectedDate`
-    // المخزَّن — فالمقارنةُ نصّيّةٌ مباشرةٌ بلا تحويلِ مناطق. راجع
-    // utils/companyDay (و`startOfDay` تأخذ مفتاحَ يومٍ لا كائنَ تاريخ).
+    // Today in company time, not server time
+    // `todayKey` returns "YYYY-MM-DD" for Riyadh, the same shape as the stored `expectedDate`, so the comparison is a direct string compare with no timezone conversion. See utils/companyDay (`startOfDay` takes a day key, not a Date).
     const { todayKey, DAY_MS, startOfDay } = require('../utils/companyDay');
     const today = todayKey();
     const until = new Date(startOfDay(today).getTime() + days * DAY_MS)
@@ -1253,10 +1145,8 @@ exports.upcomingAlerts = async (req, res) => {
     }).select('refNumber blNumber customerName shippingAgent port expectedDate containerCount branch notes')
       .sort({ expectedDate: 1 }).lean();
 
-    // ── والقادمةُ كلُّها في النافذة نفسِها ────────────────────────────────
-    // صفحةُ «المعاملات القادمة» رُفعت بطلب القسم: النافذةُ تكفي. فتحمل كلَّ
-    // قادمةٍ — لا ما اقترب وحدَه — ومع كلٍّ منها كم بقي على موعدها وأوراقُها
-    // الخمس، فتُعلَّم الأوراقُ ويُعدَّل التاريخُ من النافذة بلا فتح المعاملة.
+    // All upcoming ones in the same window
+    // The upcoming transactions page was raised at the section's request: the window is enough. It carries every upcoming one, not only near ones, each with days remaining and its five papers, so papers are marked and the date edited from the window without opening the transaction.
     const all = await CustomsClearance.find({ upcoming: true, cancelled: { $ne: true } })
       .select('refNumber blNumber customerName shippingAgent expectedDate containerCount branch notes documents')
       .sort({ expectedDate: 1 }).lean();
@@ -1267,7 +1157,7 @@ exports.upcomingAlerts = async (req, res) => {
       days,
       count: rows.length,
       today,
-      // وما فات موعدُه أحقُّ بالتنبيه ممّا لم يحِن — فيُعلَّم.
+      // Overdue ones deserve the alert more than those not yet due, so they are flagged.
       items: rows.map((r) => ({ ...r, overdue: r.expectedDate < today })),
       upcoming: all.map((r) => ({
         ...r,
@@ -1284,10 +1174,8 @@ exports.upcomingAlerts = async (req, res) => {
 };
 
 /**
- * تحويلُ معاملةٍ قادمةٍ إلى جارية — هي هي، غيّر أنّها وقعت.
- *
- * ولا تُنشأ من جديد: كلُّ ما كُتب فيها (العميلُ والوكيلُ والميناءُ والحاويات)
- * كُتب مرّةً — وإعادةُ كتابته بابُ خطأٍ ونسخةٌ ثانية.
+ * Convert an upcoming transaction to current: the same record, now that it happened.
+ * It is not created anew: everything written in it (customer, agent, port, containers) was written once, and rewriting it invites errors and a second copy.
  */
 exports.activateClearance = async (req, res) => {
   try {
@@ -1313,23 +1201,12 @@ exports.activateClearance = async (req, res) => {
 };
 
 /**
- * ── طلباتُ الصرف كما تراها الإدارةُ الماليّة ───────────────────────────────
- * مدخلاتُ مراحل السداد في كلّ المعاملات، مسطَّحةً في قائمةٍ واحدة: كلُّ سطرٍ
- * يقول أيَّ معاملةٍ وأيَّ مرحلةٍ وكم ومرفقَه — فيُقرأ العملُ كلُّه في شاشةٍ
- * واحدةٍ بدل فتح المعاملات واحدةً واحدة.
+ * Payment requests as finance sees them
+ * Payment stage entries across all transactions, flattened into one list: each line says which transaction, which stage, how much and its attachment, so all the work reads on one screen instead of opening transactions one by one.
  */
 /**
- * ── والعدُّ والتصفيةُ في القاعدة لا هنا ──────────────────────────────────────
- * كانت تُحمَّل المعاملاتُ كلُّها بمراحلها كلّها (١٤٠٠ إدخالٍ، ميجابايت) في كلّ
- * فتحٍ وكلّ نقرةِ تبويبٍ وبعد كلّ قرار — سبعُ ثوانٍ تنتظرها الشاشة، ولا يُعرَض
- * منها إلّا عشرات. فصار التجميعُ في القاعدة: العدّاداتُ في مرور، والصفحةُ
- * المعروضةُ وحدَها في مرور، ولا يعبر الشبكةَ إلّا ما يُقرأ.
- *
- * ── والسجلُّ المنقول ليس دفعًا ─────────────────────────────────────────────
- * الاستيرادُ حوّل كلَّ «تم» في الماستر إلى إدخالٍ «مدفوع» بلا مبلغ (سجلّ سابق)
- * — ليُرى تاريخُ المعاملة في شاشتها. لكنّه ليس قرارًا من الماليّة، وعدُّه مع
- * المدفوع يجعل «مدفوعة: ١٤٠٣» رقمًا لا يعني شيئًا. فيُعدّ وحدَه ولا يُعرَض إلّا
- * إن طُلب.
+ * Counting and filtering happen in the database: loading all transactions with all stages on every open and decision took seconds for a few dozen displayed rows. Counters run in one pass, the displayed page in another.
+ * The carried-over log is not a payment: import turned every done in the master into a paid entry with no amount. It is not a finance decision, so it is counted separately and shown only on request.
  */
 const LEGACY_DECIDER = 'سجلّ سابق';
 
@@ -1428,11 +1305,8 @@ exports.listPaymentRequests = async (req, res) => {
 };
 
 /**
- * قرارُ الإدارة الماليّة على طلبِ صرف.
- *
- * ثلاثةُ أجوبةٍ لا واحد: دُفع (ومعه إثباتٌ اختياريّ)، أو يُعاد لتصحيحٍ (ومعه
- * سببُه)، أو يُرفَض. والسببُ اختياريٌّ في الحالتين لأنّه قد يُقال مشافهةً —
- * لكنّه يُحفَظ حيث يُقرأ: بجانب الإدخال نفسِه في شاشة التخليص، لا في بريد.
+ * Finance decision on a payment request.
+ * Three answers: paid (with optional proof), returned for correction (with a reason), or rejected. The reason is optional in both cases since it may be said verbally, but it is stored where it is read: next to the entry itself in the clearance screen, not in email.
  */
 exports.decidePaymentStage = async (req, res) => {
   try {
@@ -1462,11 +1336,10 @@ exports.decidePaymentStage = async (req, res) => {
     entry.decidedAt = new Date();
     if (stored.length) entry.proofFiles = [...(entry.proofFiles || []), ...stored];
 
-    // «تمّ الدفع» يكتب المبلغَ في بنده من التكاليف — راجع STAGE_COST.
+    // Paid writes the amount into its line in costs (see STAGE_COST).
     if (costFieldOf(entry.key)) applyPaidCosts(clearance, [entry.key], wasPaid || decision === 'paid');
 
-    // وإثباتُ الدفع يُوجَد مع ورق المعاملة كذلك — حيث يبحث عنه من لا يعرف
-    // من أيّ مرحلةٍ جاء (نفسُ قاعدة مرفق الإدخال).
+    // Payment proof is also placed with the transaction papers, where someone who does not know which stage it came from will look (same rule as the entry attachment).
     for (const f of stored) {
       clearance.attachments.push({
         ...f, title: `إثبات دفع · ${entry.label || entry.key}`, stage: '',
@@ -1478,12 +1351,11 @@ exports.decidePaymentStage = async (req, res) => {
     try { cache.clear('customs:'); cache.clear('finance:'); } catch (_) { /* */ }
     try { emitToAll('customs:updated', { clearance }); } catch (_) { /* */ }
 
-    // ── والجوابُ قبل الذيول ────────────────────────────────────────────────
-    // الإشعارُ والتدقيقُ نداءان إلى القاعدة (٩٠ مللي ثانيةٍ لكلٍّ منهما من
-    // الخادم) لا ينتظرهما المحاسبُ في شيء. فيُردّ عليه بما قرّر، ويكتملان بعد.
+    // Respond before the tail work
+    // Notification and audit are two database calls (90 ms each from the server) that the accountant should not wait on. The response returns the decision and both complete afterwards.
     res.json({ ok: true, clearanceId: String(clearance._id), entryId: String(entry._id), payStatus: decision });
 
-    // ومن طلب الصرف يُخبَر بما صار إليه طلبُه — لا يفتح الشاشة ليعرف.
+    // The requester is told what became of the request, without opening the screen.
     try {
       const { createNotification } = require('../services/notificationService');
       const label = { paid: 'تمّ الدفع', returned: 'أُعيد للتصحيح', rejected: 'رُفض' }[decision];
@@ -1510,16 +1382,11 @@ exports.decidePaymentStage = async (req, res) => {
   }
 };
 
-// ═══════════════════════════════════════════════════════════════════════════
-//  مراحلُ السداد — إدخالٌ بتاريخه ومرفقه، يتكرّر
-// ═══════════════════════════════════════════════════════════════════════════
-/**
- * المرحلةُ التي لا تُقفَل المعاملةُ بدونها. مفتاحُها يُقرأ في الشيفرة، واسمُها
- * يُعدَّل من إعدادات القسم — راجع `customs_payment_stage` في lookupTypes.
- */
+// Payment stages: an entry with its date and attachment, repeatable
+/** The stage a transaction cannot close without. Its key is read in code and its name is editable in section settings (see `customs_payment_stage` in lookupTypes). */
 const REQUIRED_STAGE_KEY = 'transportInvoice';
 
-/** المراحلُ المسموحة كما هي في إعدادات القسم الآن. */
+/** Allowed stages as currently set in section settings. */
 const allowedStages = async () => {
   const Lookup = require('../models/Lookup');
   const rows = await Lookup.find({ type: 'customs_payment_stage', deleted: { $ne: true } })
@@ -1528,17 +1395,13 @@ const allowedStages = async () => {
 };
 
 /**
- * إضافةُ إدخالِ مرحلة — تاريخٌ ومرفقٌ وربّما مبلغ.
- *
- * والمرفقُ يُكتب في مكانين: في الإدخال ليُقرأ في موضعه من المرحلة، وفي
- * `attachments` ليُوجَد مع بقيّة ورق المعاملة حيث يبحث عنه من لا يعرف من أيّ
- * مرحلةٍ جاء. وهو ملفٌّ واحدٌ على القرص، مذكورٌ مرّتين — لا نسختان.
+ * Add a stage entry: date, attachment and possibly an amount.
+ * The attachment is written in two places: in the entry, to read in place in the stage, and in `attachments`, to be found with the other transaction papers by someone who does not know which stage it came from. It is one file on disk referenced twice, not two copies.
  */
 /**
- * ── فواتيرُ النقل الثلاث في مراحل السداد طريقان لا يجتمعان (صاحبُ الشركة، ٢٠٢٦/١٠/٢٢) ──
- *   من الميناء إلى العميل  ⟂  من الميناء إلى الساحة (ثمّ من الساحة إلى العميل).
- * فإن سُجّلت الأولى لم تُسجَّل الأخريان، وإن سُجّلت «إلى الساحة» لم تُسجَّل الأولى
- * وصار «من الساحة إلى العميل» ممكنًا — ولا يكون قبلها.
+ * The three transport invoices in payment stages are two paths that never coexist:
+ * port to customer  XOR  port to yard (then yard to customer).
+ * If the first is recorded the other two are not; if "to yard" is recorded the first is not, and "yard to customer" becomes possible, never before it.
  */
 const TRANSPORT_KEYS = { direct: 'transportPortToCustomer', toYard: 'transportPortToYard', fromYard: 'transportYardToCustomer' };
 function transportBlock(clearance, key) {
@@ -1584,9 +1447,8 @@ exports.addPaymentStage = async (req, res) => {
     if (!date && !stored) {
       return res.status(400).json({ message: 'اختر تاريخًا أو ارفع ملفًّا — الإدخال الفارغ لا يُسجَّل' });
     }
-    // ── والمبلغُ إجباريٌّ لما يُدفَع ──────────────────────────────────────────
-    // المرحلةُ طلبُ صرفٍ إلى الإدارة الماليّة، ومنها يُكتب البندُ في التكاليف
-    // عند الدفع. فطلبٌ بلا مبلغٍ لا يُصرَف ولا يُكتب. (المراسلاتُ بلا مبلغ.)
+    // Amount is required for what is paid
+    // The stage is a payment request to finance, and the cost line is written from it on payment. A request without an amount cannot be paid or written. (Correspondence entries have no amount.)
     const amountNum = req.body.amount != null && req.body.amount !== '' ? Number(req.body.amount) : null;
     if (STAGE_COST[key] && !(Number.isFinite(amountNum) && amountNum > 0)) {
       return res.status(400).json({ message: 'اكتب المبلغ — مرحلةُ السداد طلبُ صرفٍ ولا تُضاف بلا مبلغ', code: 'AMOUNT_REQUIRED' });
@@ -1610,14 +1472,14 @@ exports.addPaymentStage = async (req, res) => {
       clearance.attachments.push({
         ...stored,
         title: entry.label,
-        stage: '',   // مرحلةُ السداد ليست من `STAGES` (دورةُ الإجراءات) فتبقى عامّة
+        stage: '',   // A payment stage is not one of `STAGES` (the procedure cycle), so it stays general.
         uploadedBy: req.user._id,
         uploadedByName: who,
         uploadedAt: new Date(),
       });
     }
 
-    // فاتورةُ النقل وصلت لمعاملةٍ فُوترت؟ فهي تُنهى الآن — راجع settleClosure.
+    // Transport invoice arrived for an invoiced transaction? Then it is finished now; see settleClosure.
     if (TRANSPORT_STAGE_KEYS.includes(key) && stored) settleClosure(clearance, req);
     clearance.lastModifiedBy = req.user._id;
     await clearance.save();
@@ -1635,7 +1497,7 @@ exports.addPaymentStage = async (req, res) => {
   }
 };
 
-/** تعديلُ إدخالٍ قائم — تاريخُه أو مبلغُه أو ملاحظتُه. */
+/** Edit an existing entry: its date, amount or note. */
 exports.updatePaymentStage = async (req, res) => {
   try {
     const clearance = await CustomsClearance.findById(req.params.id);
@@ -1654,12 +1516,12 @@ exports.updatePaymentStage = async (req, res) => {
         return res.status(400).json({ message: 'اكتب المبلغ — مرحلةُ السداد لا تبقى بلا مبلغ', code: 'AMOUNT_REQUIRED' });
       }
       entry.amount = a;
-      // مبلغُ مرحلةٍ مدفوعةٍ تغيّر؟ فبندُها في التكاليف يتبعه.
+      // Amount of a paid stage changed? Its cost line follows.
       if (costFieldOf(entry.key) && entry.payStatus === 'paid') applyPaidCosts(clearance, [entry.key], true);
     }
     if (req.body.note !== undefined) entry.note = String(req.body.note).trim().slice(0, 500);
 
-    // ملفٌّ جديدٌ يحلُّ محلَّ القديم، والقديمُ يُمحى من القرص لا يبقى يتيمًا.
+    // A new file replaces the old one, and the old one is deleted from disk so it is not orphaned.
     if (req.body.dataUrl) {
       let stored;
       try { stored = saveUploadFile(req.body.dataUrl, 'customs', req.body.fileName || ''); }
@@ -1675,8 +1537,7 @@ exports.updatePaymentStage = async (req, res) => {
         uploadedAt: new Date(),
       });
       if (old) {
-        // لا يُمحى من القرص إن كان مذكورًا في مرفقاتٍ أخرى — الذكرُ مرّتان
-        // لملفٍّ واحد، ومحوُه يُفرِغ السطرَ الآخر أيضًا.
+        // Not deleted from disk if referenced in other attachments: the same file is referenced twice, and deleting it would empty the other line too.
         const stillUsed = clearance.attachments.some((a) => a.fileUrl === old)
           || clearance.paymentStages.some((p) => String(p._id) !== String(entry._id) && p.fileUrl === old);
         if (!stillUsed) { try { deleteStoredFile(old); } catch (e) { /* */ } }
@@ -1694,7 +1555,7 @@ exports.updatePaymentStage = async (req, res) => {
   }
 };
 
-/** حذفُ إدخال — وورقتُه تُحذَف معه من مرفقات المعاملة (راجع deleteAttachment). */
+/** Delete an entry; its paper is removed from the transaction attachments too (see deleteAttachment). */
 exports.deletePaymentStage = async (req, res) => {
   try {
     const clearance = await CustomsClearance.findById(req.params.id);
@@ -1705,7 +1566,7 @@ exports.deletePaymentStage = async (req, res) => {
     const urls = [entry.fileUrl, ...(entry.proofFiles || []).map((f) => f.fileUrl)].filter(Boolean);
     const paidKey = entry.payStatus === 'paid' && costFieldOf(entry.key) ? entry.key : '';
     entry.deleteOne();
-    // حُذف ما دُفع؟ فبندُه في التكاليف يعود إلى مجموع ما بقي مدفوعًا.
+    // Paid entry deleted? Its cost line returns to the sum of what remains paid.
     if (paidKey) applyPaidCosts(clearance, [paidKey], true);
     for (const a of clearance.attachments.filter((x) => urls.includes(x.fileUrl))) a.deleteOne();
     clearance.lastModifiedBy = req.user._id;
@@ -1724,33 +1585,23 @@ exports.deletePaymentStage = async (req, res) => {
 };
 
 /**
- * إقفالُ المعاملة — ومعه الشرطُ الذي طُلب صراحةً.
- *
- * لا تُقفَل قبل أن تكون «فاتورة النقل» لها **تاريخٌ ومرفق** معًا. والإقفالُ
- * يُخرج المعاملةَ من قوائم المتابعة، فإقفالُها بلا فاتورةِ نقلٍ يُخرجها وفيها
- * مالٌ لم يُطالَب به — ولا يُكتشَف ذلك إلّا عند الجرد.
- *
- * والسببُ يُقال صريحًا: «ارفع فاتورة النقل واختر تاريخها» لا «غير مسموح».
+ * Close the transaction, with the explicitly requested condition: it cannot close until the transport invoice has both a date and an attachment.
+ * Closing removes it from follow-up lists, so closing without one hides unclaimed money until inventory.
+ * The error states the reason plainly.
  */
-/**
- * بنودُ فاتورة العميل المسموحة — من إعدادات القسم (`customs_sale_item`).
- * تُقرأ ولا تُكتب في الشيفرة: البنودُ تزيد بزيادة العمل، وزيادتُها إعدادٌ لا نشرة.
- */
+/** Allowed customer invoice lines, from section settings (`customs_sale_item`). Read, not hard-coded: lines grow with the business, and adding one is a setting, not a release. */
 const saleItemDefs = async () => {
   const Lookup = require('../models/Lookup');
   const rows = await Lookup.find({ type: 'customs_sale_item', isActive: { $ne: false } })
     .sort({ order: 1 }).lean().catch(() => []);
   if (rows.length) return rows.map((r) => ({ key: r.key, nameAr: r.nameAr, nameEn: r.nameEn }));
-  // ولا تُقفَل معاملةٌ لأنّ القائمةَ لم تُبذَر بعد — تُقرأ بذرةُ التعريف.
+  // A transaction is not blocked from closing because the list was not seeded yet; the definition seed is read.
   const { REGISTRY } = require('../config/lookupTypes');
   const def = (REGISTRY || []).find((x) => x.type === 'customs_sale_item');
   return (def?.seed || []).map((r) => ({ key: r.key, nameAr: r.nameAr, nameEn: r.nameEn }));
 };
 
-/**
- * رقمُ فاتورةٍ جديد — تسلسلٌ خاصٌّ بالتخليص («CUS-1001») لا يُشتبَه بغيره.
- * يُقرأ أكبرُ ما صُدِر ويُزاد؛ والرقمُ لا يُعاد استعمالُه ولا يُغيَّر بعد منحه.
- */
+/** New invoice number: a clearance-specific sequence ("CUS-1001") not confused with others. The largest issued is read and incremented; a number is never reused or changed once given. */
 const nextSaleInvoiceNumber = async () => {
   const last = await CustomsClearance.find({ saleInvoiceNumber: /^CUS-\d+$/ })
     .sort({ saleInvoiceNumber: -1 }).limit(1).select('saleInvoiceNumber').lean();
@@ -1759,8 +1610,8 @@ const nextSaleInvoiceNumber = async () => {
 };
 
 /**
- * GET /:id/invoice — فاتورةُ العميل محسوبةً من بنودها.
- * لا تُخزَّن المجاميعُ: تُشتقّ عند القراءة — راجع utils/customsInvoice.
+ * GET /:id/invoice - the customer invoice computed from its lines.
+ * Totals are not stored: they are derived on read; see utils/customsInvoice.
  */
 exports.getClearanceInvoice = async (req, res) => {
   try {
@@ -1788,8 +1639,8 @@ exports.getClearanceInvoice = async (req, res) => {
 };
 
 /**
- * GET /invoices — فواتيرُ العميل التي تنتظر الإدارةَ الماليّة.
- * القائمةُ التي تقرؤها الماليّةُ: معاملةٌ أُقفلت ولها فاتورةٌ وبنودُها ومجاميعُها.
+ * GET /invoices - customer invoices awaiting finance.
+ * The list finance reads: closed transactions that have an invoice, with its lines and totals.
  */
 exports.listClearanceInvoices = async (req, res) => {
   try {
@@ -1813,7 +1664,7 @@ exports.listClearanceInvoices = async (req, res) => {
         declarationNumber: c.declarationNumber || '', billOfLading: c.billOfLading || '',
         invoiceNumber: c.saleInvoiceNumber, invoiceAt: c.saleInvoiceAt,
         completedAt: c.completedAt, isCompleted: !!c.isCompleted, blNumber: c.blNumber || '',
-        // فُوترت ولم تصل فاتورةُ نقلها — تُلوَّن بالأحمر عند الماليّة أيضًا.
+        // Invoiced but its transport invoice has not arrived: shown red in finance too.
         awaitingTransportInvoice: awaitsTransportInvoice(c),
         lines: inv.lines.length, passThrough: inv.passThrough, billed: inv.billed, totals: inv.totals,
       };
@@ -1836,21 +1687,17 @@ exports.listClearanceInvoices = async (req, res) => {
 const whoIs = (req) => [req.user.firstName, req.user.lastName].filter(Boolean).join(' ') || req.user.name || '';
 
 /**
- * ── الإنهاءُ يتبع فاتورةَ النقل ────────────────────────────────────────────
- * معاملةٌ صدرت فاتورتُها ووصلت فاتورةُ نقلها (أو قيل إنّها لا تُنتظَر) انتهت:
- * لا يبقى فيها عملٌ ولا ورقٌ منتظَر. فتُنهى في اللحظة التي يجتمع فيها الأمران
- * — لا بضغطةٍ ثالثةٍ تُنسى فتبقى المعاملةُ مفتوحةً وهي منتهية.
- * تُنادى قبل الحفظ؛ وتردّ هل أنهتها.
+ * Finishing follows the transport invoice
+ * A transaction whose invoice was issued and whose transport invoice arrived (or is stated as not expected) is finished: no work or awaited paper remains. It finishes the moment both hold, not through a third click that gets forgotten and leaves a finished transaction open.
+ * Called before saving; returns whether it finished it.
  */
-/** هل أُرسل طلبُ فوترةٍ (أو فُوترت فعلًا)؟ — شرطُ الإقفال من جهة الفاتورة. */
+/** Has an invoicing request been sent (or actually invoiced)? The invoice-side condition for closing. */
 const invoiceSent = (c) => !!c.saleInvoiceNumber || ['pending', 'invoiced'].includes(c.invoiceRequest?.status);
 
 function settleClosure(clearance, req) {
-  // تُقفَل حين يُرسَل طلبُ الفوترة وتصل فاتورةُ النقل — ولا تنتظر جوابَ الماليّة:
-  // فإن أُقفلت قبل أن تُفوتَر فهي «مغلقة لم تُفوتَر» حتى تقول الماليّةُ كلمتَها.
+  // Closes when the invoicing request is sent and the transport invoice arrives, without waiting for finance's answer: if closed before being invoiced it is closed-not-invoiced until finance decides.
   if (clearance.isCompleted || clearance.cancelled || !invoiceSent(clearance)) return false;
-  // ولا شأنَ لمراحل السداد بالإقفال (٢٠٢٦/١٠/٢٢): يُقفَل بطلب الفوترة ببنوده الثلاثة —
-  // وفاتورةُ النقل منها — لا بمرحلة «فاتورة النقل» في السداد.
+  // Payment stages play no part in closing: it closes on the invoicing request with its three lines (the transport invoice among them), not on the transport invoice payment stage.
   clearance.isCompleted = true;
   clearance.completedAt = new Date();
   clearance.completedBy = req.user._id;
@@ -1858,7 +1705,7 @@ function settleClosure(clearance, req) {
   return true;
 }
 
-/** يكتب بنودَ فاتورة العميل من جسم الطلب. يردّ نصَّ الخطأ أو null. */
+/** Writes the customer invoice lines from the request body. Returns the error text or null. */
 async function writeSaleItems(clearance, sent, req) {
   const allowed = await saleItemDefs();
   const byKey = new Map(allowed.map((x) => [x.key, x]));
@@ -1869,7 +1716,7 @@ async function writeSaleItems(clearance, sent, req) {
     const def = byKey.get(key);
     if (!def) return `بندٌ غير معروف: «${key || '—'}»`;
     const amount = Number(raw?.amount);
-    // بندٌ بلا سعرٍ في فاتورةٍ تذهب إلى الماليّة مبلغٌ يُطالَب به ولا يُعرَف.
+    // A line without a price in an invoice going to finance is an amount claimed but unknown.
     if (!Number.isFinite(amount) || amount < 0) return `اكتب سعرَ «${def.nameAr}»`;
     const item = {
       key, label: def.nameAr || key, amount: Math.round(amount * 100) / 100,
@@ -1880,7 +1727,7 @@ async function writeSaleItems(clearance, sent, req) {
       try {
         const saved = saveUploadFile(raw.file, 'customs', raw.fileName || def.nameAr);
         Object.assign(item, { fileUrl: saved.fileUrl, fileName: saved.fileName, mimeType: saved.mimeType, size: saved.size });
-        // والمرفقُ يُوجَد مع بقيّة ورق المعاملة كذلك — مكانٌ واحدٌ لكلّ الورق.
+        // The attachment is also placed with the other transaction papers: one place for all papers.
         clearance.attachments.push({
           title: `فاتورة العميل — ${item.label}`,
           fileUrl: saved.fileUrl, fileName: saved.fileName, mimeType: saved.mimeType, size: saved.size,
@@ -1888,7 +1735,7 @@ async function writeSaleItems(clearance, sent, req) {
         });
       } catch (err) { return `مرفقُ «${def.nameAr}»: ${err.message}`; }
     } else {
-      // ما أُرفِق في إصدارٍ سابقٍ يبقى: إعادةُ الإصدار لتصحيح سعرٍ لا تُسقط الورق.
+      // What was attached in an earlier issue stays: reissuing to correct a price does not drop papers.
       const old = prev.get(key);
       const src = raw?.fileUrl ? raw : old;
       if (src?.fileUrl) {
@@ -1905,13 +1752,9 @@ async function writeSaleItems(clearance, sent, req) {
 }
 
 /**
- * PATCH /:id/invoice — إصدارُ فاتورة العميل (الفوترة).
- *
- * ── وفاتورةُ النقل ليست شرطًا ──────────────────────────────────────────────
- * كان الإصدارُ لا يمرّ قبل «فاتورة النقل» بسعرها ومرفقها. وهي تتأخّر عند
- * الناقل، فتتأخّر معها فاتورةُ العميل كلُّها. فصار: تُصدَر الفاتورةُ بما هو
- * معروف، وتذهب إلى الماليّة كأيّ فاتورة، وتبقى المعاملةُ معلَّمةً بالأحمر
- * «بانتظار فاتورة النقل» حتى تُرفَق — فتُنهى عندها.
+ * PATCH /:id/invoice - issue the customer invoice (invoicing).
+ * The transport invoice is not a precondition
+ * Issuing used to wait for the transport invoice with its price and attachment. It is delayed at the carrier, delaying the whole customer invoice. Now the invoice is issued with what is known, goes to finance like any invoice, and the transaction stays flagged red as awaiting the transport invoice until attached, when it finishes.
  */
 exports.issueInvoice = async (req, res) => {
   try {
@@ -1919,7 +1762,7 @@ exports.issueInvoice = async (req, res) => {
     if (!clearance) return res.status(404).json({ message: 'Clearance not found' });
     if (clearance.cancelled) return res.status(400).json({ message: 'المعاملةُ ملغاة — لا تُفوتَر' });
     if (clearance.upcoming) return res.status(400).json({ message: 'معاملةٌ قادمةٌ لم تبدأ — حوِّلها إلى جاريةٍ أوّلًا' });
-    // ما فوترته الماليّةُ لا يُعاد طلبُه من هنا — تصحيحُه عندها.
+    // What finance invoiced is not re-requested from here; its correction is on their side.
     if (clearance.saleInvoiceNumber) {
       return res.status(400).json({ message: `فوترتها الإدارةُ الماليّة (${clearance.saleInvoiceNumber}) — أيُّ تصحيحٍ يُطلَب منها`, code: 'ALREADY_INVOICED' });
     }
@@ -1927,9 +1770,8 @@ exports.issueInvoice = async (req, res) => {
     const sent = Array.isArray(req.body.saleItems) ? req.body.saleItems : [];
     const err = await writeSaleItems(clearance, sent, req);
     if (err) return res.status(400).json({ message: err });
-    // ── البنودُ الثلاثةُ كلُّها (صاحبُ الشركة، ٢٠٢٦/١٠/٢٢) ──────────────────
-    // فاتورةُ النقل والرسومُ الجمركيّةُ وحجزُ الموعد تُكتب كلُّها بسعر البيع؛ ولا
-    // علاقةَ لها بما في مراحل السداد — تلك ما ندفعه، وهذه ما نفوتره.
+    // All three lines
+    // Transport invoice, customs fees and appointment booking are all written at the selling price; they are unrelated to payment stages, which are what we pay while these are what we invoice.
     const defs = await saleItemDefs();
     const missing = defs.filter((d) => !clearance.saleItems.some((x) => x.key === d.key));
     if (missing.length) return res.status(400).json({ message: `اكتب سعرَ: ${missing.map((d) => d.nameAr).join('، ')}`, code: 'SALE_ITEMS_REQUIRED' });
@@ -1939,9 +1781,8 @@ exports.issueInvoice = async (req, res) => {
     }
     clearance.saleVatRate = 0.15;
 
-    // ── طلبُ فوترةٍ إلى الإدارة الماليّة، لا فاتورة ─────────────────────────
-    // (صاحبُ الشركة، ٢٠٢٦/١٠/٢٢) الماليّةُ تفوترها في نظامها وتقول هنا «تمّت
-    // الفوترة» — وعندها فقط تُعَدّ مفوترة. راجع decideInvoiceRequest.
+    // An invoicing request to finance, not an invoice
+    // Finance invoices it in its own system and says here that invoicing is done; only then is it counted as invoiced. See decideInvoiceRequest.
     const ir = clearance.invoiceRequest || {};
     const again = ['pending', 'returned', 'rejected'].includes(ir.status);
     clearance.invoiceRequest = {
@@ -1964,7 +1805,7 @@ exports.issueInvoice = async (req, res) => {
     try { emitToAll('customs:updated', { clearance }); } catch (e) {}
     res.json({ clearance, closed, requested: true, awaitingTransportInvoice: false });
 
-    // والإدارةُ الماليّةُ تُخبَر بالطلب — لا تنتظر أن تفتح الشاشة.
+    // Finance is notified of the request, without waiting for the screen to be opened.
     try {
       const User = require('../models/User');
       const { createNotification } = require('../services/notificationService');
@@ -1983,11 +1824,10 @@ exports.issueInvoice = async (req, res) => {
 };
 
 /**
- * PATCH /:id/invoice-request/decision — جوابُ الإدارة الماليّة على طلب الفوترة.
- *   { decision: 'invoiced', invoiceNumber?, file?: {dataUrl, fileName}, note? }
- *   { decision: 'returned' | 'rejected', note }
- * «تمّت الفوترة» وحدَها تجعل المعاملةَ مفوترة: رقمُ الفاتورة (من الماليّة، وإلّا
- * رقمٌ متسلسلٌ منّا)، والفاتورةُ النهائيّةُ في مرفقات المعاملة، ومرحلةُ «الفاتورة».
+ * PATCH /:id/invoice-request/decision - finance's answer on the invoicing request.
+ * { decision: 'invoiced', invoiceNumber?, file?: {dataUrl, fileName}, note? }
+ * { decision: 'returned' | 'rejected', note }
+ * Only the invoiced decision makes the transaction invoiced: the invoice number (from finance, else our sequential number), the final invoice in the transaction attachments, and the invoice stage.
  */
 exports.decideInvoiceRequest = async (req, res) => {
   try {
@@ -2065,7 +1905,7 @@ exports.decideInvoiceRequest = async (req, res) => {
   }
 };
 
-/** GET /invoice-requests?status=pending|invoiced|returned|rejected|all — طلباتُ الفوترة. */
+/** GET /invoice-requests?status=pending|invoiced|returned|rejected|all - invoicing requests. */
 exports.listInvoiceRequests = async (req, res) => {
   try {
     const status = ['pending', 'invoiced', 'returned', 'rejected', 'all'].includes(String(req.query.status)) ? String(req.query.status) : 'pending';
@@ -2098,7 +1938,7 @@ exports.listInvoiceRequests = async (req, res) => {
   }
 };
 
-/** عددُ ما ينتظر الإدارةَ الماليّة في التخليص: طلباتُ صرفٍ معلّقة + طلباتُ فوترةٍ معلّقة. */
+/** Count of items awaiting finance in clearance: pending payment requests plus pending invoicing requests. */
 exports.financePendingCount = async () => {
   const [pay] = await CustomsClearance.aggregate([
     { $match: { cancelled: { $ne: true }, 'paymentStages.payStatus': 'pending' } },
@@ -2111,10 +1951,10 @@ exports.financePendingCount = async () => {
 };
 
 /**
- * POST /:id/transport-invoice — وصلت فاتورةُ النقل (أو لا تُنتظَر).
- *   { dataUrl, fileName, date? }      تُرفَق، وتظهر في مرفقات المعاملة
- *   { notRequired: true, note? }      نُقلت بسيّارات الشركة — لا فاتورةَ ناقل
- * ومتى كانت المعاملةُ مفوترةً أُنهيت في الحال.
+ * POST /:id/transport-invoice - the transport invoice arrived (or is not expected).
+ * { dataUrl, fileName, date? }      attached and shown in transaction attachments
+ * { notRequired: true, note? }      moved with company vehicles, no carrier invoice
+ * When the transaction is already invoiced it finishes immediately.
  */
 exports.receiveTransportInvoice = async (req, res) => {
   try {
@@ -2165,7 +2005,7 @@ exports.receiveTransportInvoice = async (req, res) => {
  */
 exports.completeClearance = async (req, res) => {
   try {
-    // تطبيقٌ قديمٌ يرسل البنودَ مع الإقفال: هو إصدارُ فاتورة.
+    // An old app sends the lines with the close: that is issuing an invoice.
     if (req.body.completed !== false && Array.isArray(req.body.saleItems)) return exports.issueInvoice(req, res);
 
     const clearance = await CustomsClearance.findById(req.params.id);
@@ -2203,13 +2043,10 @@ exports.completeClearance = async (req, res) => {
 };
 
 /**
- * PATCH /:id/stage — تعليمُ مرحلةٍ أو رفعُ علامتها. { key, done }
- *
- * القواعدُ هنا لا في الشاشة — وهي ثلاث:
- *   · مرحلتا الميناء تتنافيان: تعليمُ إحداهما يختار الطريقَ ويُغلِق الأخرى.
- *   · ما ليس من طريق المعاملة مُغلَق: لا تفريغَ ولا تخزينَ لمن نقل إلى العميل
- *     مباشرةً، ولا إرجاعَ حاوياتٍ في معاملة سيّارات.
- *   · «إصدار الفاتورة» لا تُعلَّم بيد: تُعلَّم بإصدارها.
+ * PATCH /:id/stage - mark a stage or clear its flag. { key, done }
+ * Rules live here, not in the screen: the two port stages are mutually exclusive (marking one closes the other);
+ * stages not on the transaction path are locked (no unloading when moved straight to the customer, no container return for vehicles);
+ * invoice issuing is marked by issuing it, not by hand.
  */
 exports.setStage = async (req, res) => {
   try {
@@ -2229,9 +2066,8 @@ exports.setStage = async (req, res) => {
     let unitNote = '';
 
     if (UNIT_STAGES.includes(key) && read.units) {
-      // ── مرحلةُ وحدة: لحاويةٍ بعينها، أو للكلّ معًا ───────────────────────
-      // `unit`: رقمُ الخانة (من صفر) أو 'all'. وغيابُه «الكلّ» — فتطبيقٌ لا يعرف
-      // الوحداتِ يعلّم المعاملةَ كلَّها كما كان.
+      // Unit stage: for one container, or for all
+      // `unit` is the slot number (from zero) or 'all'. Absence means all, so an app unaware of units marks the whole transaction as before.
       const all = req.body.unit === undefined || req.body.unit === null || req.body.unit === 'all';
       const idx = all ? -1 : Number(req.body.unit);
       if (!all && !(Number.isInteger(idx) && idx >= 0 && idx < read.units.length)) {
@@ -2243,7 +2079,7 @@ exports.setStage = async (req, res) => {
       let applied = 0; let refusal = '';
       for (const u of targets) {
         if (on) {
-          // الطريقُ يُبدَّل بضغطة: تُرفَع علامةُ الأوّل وما بُني عليه، ويُعلَّم الثاني.
+          // The path is switched with one click: the first one's flag and what was built on it are cleared, and the second is marked.
           if (PORT_LEGS.includes(key) && u.route && lockReason(key, u.route, cargo)) {
             for (const k of ['transport_to_yard', 'transport_to_customer', 'unloaded_stored', 'yard_to_customer']) u.done.delete(k);
             u.route = '';
@@ -2261,13 +2097,13 @@ exports.setStage = async (req, res) => {
       }
       if (!applied) return res.status(400).json({ message: `هذه المرحلةُ غيرُ متاحة: ${refusal}`, code: 'STAGE_LOCKED' });
 
-      // تُكتب مراحلُ كلّ وحدةٍ في خانتها — ومعها ما كان على المعاملة كلِّها.
+      // Each unit's stages are written in its slot, along with what was on the whole transaction.
       const { todayKey } = require('../utils/companyDay');
       const rows = syncUnits(clearance.containers, Math.max(Number(clearance.containerCount) || 0, units.length));
       units.forEach((u, i) => {
         rows[i].route = u.route;
         rows[i].stagesDone = UNIT_STAGES.filter((k) => u.done.has(k));
-        // الإرجاعُ الذي عُلِّم الآن بلا تاريخٍ يُؤرَّخ بيومه.
+        // A return just marked without a date is dated today.
         if (on && key === 'containers_returned' && touched.has(u) && !rows[i].returnDate) rows[i].returnDate = todayKey();
       });
       clearance.containers = rows;
@@ -2283,7 +2119,7 @@ exports.setStage = async (req, res) => {
     } else {
       const isPortLeg = PORT_LEGS.includes(key);
       if (on) {
-        // الطريقُ يُبدَّل بضغطة — راجع ما فوق.
+        // The path is switched with one click; see above.
         if (isPortLeg && route && lockReason(key, route, cargo)) {
           for (const k of ['transport_to_yard', 'transport_to_customer', 'unloaded_stored', 'yard_to_customer']) done.delete(k);
           route = '';
@@ -2294,17 +2130,16 @@ exports.setStage = async (req, res) => {
         if (isPortLeg) route = key === 'transport_to_yard' ? 'yard' : 'customer';
       } else {
         done.delete(key);
-        // رفعُ علامةِ الطريق يفتح الاختيارَ من جديد — وما بُني عليه يسقط معه.
+        // Clearing the path flag reopens the choice, and what was built on it goes with it.
         if (isPortLeg) { route = ''; done.delete('unloaded_stored'); done.delete('yard_to_customer'); }
       }
-      // مرحلةُ المعاملة (ما قبل النقل) في معاملةٍ لها وحدات: ما على الوحدات يبقى
-      // حيث هو — مكتوبًا عليها (٣) أو موروثًا من المعاملة (دون ذلك).
+      // Transaction stage (pre-transport) on a transaction with units: what is on the units stays where it is, either written on them (3) or inherited from the transaction (fewer).
       const keepUnits = read.units && clearance.pipelineVersion !== 3;
       const legacy = keepUnits ? readStages(clearance).done : null;
       clearance.stagesDone = CustomsClearance.STAGES.filter((k) => done.has(k) || (legacy && UNIT_STAGES.includes(k) && legacy.has(k)));
       if (!read.units || keepUnits) clearance.transportRoute = keepUnits ? readStages(clearance).route : route;
       if (!(clearance.pipelineVersion >= 2)) clearance.pipelineVersion = 2;
-      // «أين هي الآن»: ما عُلِّم للتوّ، أو آخرُ ما بقي معلَّمًا إن رُفعت علامة.
+      // Where it is now: what was just marked, or the last one still marked if a flag was cleared.
       const lastDone = [...CustomsClearance.STAGES].reverse().find((k) => done.has(k) && !lockReason(k, route, cargo));
       clearance.stage = on ? key : (lastDone || 'papers_received');
     }
@@ -2318,7 +2153,7 @@ exports.setStage = async (req, res) => {
     try { emitToAll('customs:updated', { clearance }); } catch (e) {}
     res.json({ clearance });
 
-    // مَن أنشأ المعاملةَ يُخبَر بتقدّمها — إن لم يكن هو مَن علّم.
+    // The transaction's creator is notified of its progress, unless they made the mark.
     if (on && before !== clearance.stage && clearance.createdBy && String(clearance.createdBy) !== String(req.user._id)) {
       try {
         const { CUSTOMS_STAGE_AR } = require('../config/customsStages');
@@ -2327,7 +2162,7 @@ exports.setStage = async (req, res) => {
           message: `${clearance.blNumber || clearance.refNumber} — ${CUSTOMS_STAGE_AR[key] || key}`,
           relatedEntity: 'CustomsClearance', relatedEntityId: clearance._id,
         });
-      } catch (e) { /* الإشعارُ زيادة */ }
+      } catch (e) { /* Notification is extra */ }
     }
   } catch (error) {
     if (res.headersSent) return undefined;
@@ -2335,11 +2170,7 @@ exports.setStage = async (req, res) => {
   }
 };
 
-/**
- * GET /release-sheets?numbers=a,b — أيُّ أرقام كشوف التخريج موجودٌ في سير عمل
- * التشغيل. الرقمُ يُكتب في خانة الحاوية حين تُنقَل بسيّارة الشركة، وهو نفسُه
- * `reportNumber` هناك: فيُقال للموظّف في الحال أمرتبطٌ هو أم لا.
- */
+/** GET /release-sheets?numbers=a,b - which release sheet numbers exist in the operations workflow. The number is typed in the container slot when moved by a company vehicle and equals `reportNumber` there, so the employee is told at once whether it is linked. */
 exports.releaseSheets = async (req, res) => {
   try {
     const numbers = [...new Set(String(req.query.numbers || '').split(',').map((x) => x.trim()).filter(Boolean))].slice(0, 300);
@@ -2353,17 +2184,9 @@ exports.releaseSheets = async (req, res) => {
 };
 
 /**
- * GET /:id/ops-reports — «كشوف التشغيل المرتبطة».
- *
- * كلُّ كشف تخريجٍ رُبط بهذه المعاملة (من خانات النقل، أو سندُه بوليصتُها أو
- * حاويتُها، أو ربطه التشغيلُ بيده)، ومعه أين وصل في الفوترة والتحصيل. والأرقامُ
- * التي كُتبت في خانات النقل ولم يصل كشفُها بعدُ من المنصّة تُذكر وحدَها
- * (`pendingRefs`) — فلا يُظنّ أنّ النقلةَ ضاعت.
- *
- * وكلُّ كشفٍ يحمل `detail`: الكشفُ كلُّه كما يراه الدورُ في سير العمل
- * (`stripRowFor`)، ومعه عددُ متابعاته ومرفقاتِ فاتورته. والتعديلُ لا يمرّ من
- * هنا: الشاشةُ تحفظ من `PUT /api/workflows/:id` بقواعده كلِّها، و`access` يقول
- * لها أيَّ الحقول تعرض قابلةً للتعديل.
+ * GET /:id/ops-reports - linked operations reports.
+ * Every release sheet linked to this transaction (transport slots, document matching its bill of lading or container, or manual link), with invoicing and collection progress. Numbers typed in transport slots whose sheet has not arrived are listed in `pendingRefs`.
+ * Each sheet carries `detail`, as the role sees it in the workflow (`stripRowFor`). Editing goes through `PUT /api/workflows/:id`; `access` says which fields are editable.
  */
 exports.getOpsReports = async (req, res) => {
   try {
@@ -2373,22 +2196,19 @@ exports.getOpsReports = async (req, res) => {
       .select('refNumber blNumber containers.containerNumber containers.moves containers.returnRef containers.returnVehicleKind').lean();
     if (!clearance) return res.status(404).json({ message: 'المعاملة غير موجودة' });
     const wfc = require('./workflowController');
-    // الكشفُ كلُّه يُقرأ ثمّ يُحجب بقاعدة سير العمل نفسِها (`stripRowFor`) — لا
-    // بقائمةٍ تُكتب هنا فتفترق عنها.
+    // The whole sheet is read then masked by the workflow's own rule (`stripRowFor`), not a list written here that would drift from it.
     const rows = await OperationsWorkflow.find({ 'customsLink.clearance': clearance._id })
       .select(`${wfc.FULL_FIELDS.join(' ')} cashCollectionStatus sellingValueSource customsLink stage lockedBy lockedByName lockedAt updatedAt`)
       .sort({ reportDate: 1, reportNumber: 1 }).lean();
 
-    // حالُ الفاتورة الضريبيّة من دفتر التحصيل أوّلًا — هو ما يعمل عليه القسم.
+    // Tax invoice status from the collections ledger first, which is what the section works on.
     const nos = [...new Set(rows.map((r) => String(r.invoiceNumber || '').trim()).filter(Boolean))];
     const ledger = nos.length ? await CollectionInvoice.find({ invoiceNumber: { $in: nos } }).select('invoiceNumber status collectedAmount total').lean() : [];
     const ledgerOf = new Map(ledger.map((i) => [String(i.invoiceNumber).trim(), i]));
     const NO_INV = /^\s*(no\s*inv|بدون|لا\s*يوجد|-|—)\s*$/i;
 
-    // ── والمبالغُ بقاعدة سير العمل لا بقاعدة القسم ────────────────────────────
-    // كان المبلغُ هنا لأهل المال في القسم (MONEY_ROLES)، فرأى مديرُ التخليص قيمةَ
-    // البيع وهي محجوبةٌ عنه في سير العمل نفسِه (SELLING_ROLES). والكشفُ كشفٌ
-    // واحد: ما لا يراه الدورُ هناك لا يراه هنا.
+    // Amounts follow the workflow rule, not the section rule
+    // The amount used to be shown to the section's money roles (MONEY_ROLES), so the clearance manager saw the selling value while it is hidden from them in the workflow itself (SELLING_ROLES). It is one sheet: what a role cannot see there it cannot see here.
     const role = req.user.role;
     const money = wfc.canSeeMoney(role);
     const selling = wfc.canSeeSelling(role);
@@ -2413,7 +2233,7 @@ exports.getOpsReports = async (req, res) => {
       const cash = r.paymentType === 'cash';
       const led = no ? ledgerOf.get(no) : null;
       const collected = !!r.collectionDate || r.cashCollectionStatus === 'collected' || (led && /collected/i.test(led.status || ''));
-      // أربعُ حالاتٍ تُقرأ بكلمة: محصَّل · مفوتر لم يُحصَّل · نقديّ لم يُحصَّل · لم يُفوتَر.
+      // Four states read as one word: collected, invoiced not collected, cash not collected, not invoiced.
       const billing = collected ? 'collected' : cash ? 'cash_pending' : (no && !NO_INV.test(no)) ? 'invoiced' : 'not_invoiced';
       return {
         _id: String(r._id),
@@ -2439,12 +2259,12 @@ exports.getOpsReports = async (req, res) => {
         attachments: cash ? (cashAtt.get(String(r._id)) || 0) : (no ? (taxAtt.get(no) || 0) : 0),
         ...(selling ? { sellingValue: Number(r.sellingValue) || 0 } : {}),
         ...(money ? { totalInvoice: Number(r.totalInvoice) || 0 } : {}),
-        // الكشفُ كلُّه كما يراه هذا الدورُ في سير العمل — للصفّ المفتوح وللتعديل.
+        // The whole sheet as this role sees it in the workflow, for the opened row and for editing.
         detail: detailOf(r),
       };
     });
 
-    // أرقامٌ كُتبت في خانات النقل بسيّارة الشركة ولم يصل كشفُها.
+    // Numbers typed in transport slots for a company vehicle whose sheet has not arrived.
     const written = new Set();
     for (const u of clearance.containers || []) {
       for (const m of u.moves || []) if (m && m.vehicleKind === 'energize' && String(m.ref || '').trim()) written.add(String(m.ref).trim());
@@ -2452,7 +2272,7 @@ exports.getOpsReports = async (req, res) => {
     }
     const have = new Set(rows.map((r) => String(r.reportNumber || '').trim()));
     const missing = [...written].filter((n) => !have.has(n));
-    // وما وُجد منها ولم يُربط بهذه المعاملة (ربطه التشغيلُ بيده بغيرها) يُقال كذلك.
+    // Ones that exist but are not linked to this transaction (operations linked them to another by hand) are reported too.
     const elsewhere = missing.length
       ? await OperationsWorkflow.find({ reportNumber: { $in: missing } }).select('reportNumber customsLink').lean()
       : [];
@@ -2465,9 +2285,8 @@ exports.getOpsReports = async (req, res) => {
     });
 
     const count = (k) => reports.filter((r) => r.billing === k).length;
-    // ── وطلباتُ الشحن المربوطة (٢٠٢٦/١٠/٢٦) ──────────────────────────────────
-    // بالبوليصة أو الحاوية المكتوبتين في الشحنة، أو برقمها في خانة نقل الحاوية —
-    // services/customsOpsLink.resolveShipments. تُعرض للقراءة ويُفتح منها طلبُها.
+    // Linked shipment orders
+    // By the bill of lading or container written on the shipment, or by its number in the container transport slot; services/customsOpsLink.resolveShipments. Shown read-only and the order opens from them.
     const ShipmentOrder = require('../models/ShipmentOrder');
     const shipmentOrders = (await ShipmentOrder.find({ 'customsLink.clearance': clearance._id })
       .select('waybillNumber reference graduationNumber source customerName fromCity toCity status driverName vehiclePlate pickupTime blNumber containerNumber customsLink createdAt')
@@ -2491,8 +2310,7 @@ exports.getOpsReports = async (req, res) => {
           selling: Math.round(reports.reduce((a, r) => a + (r.sellingValue || 0), 0) * 100) / 100,
         } : {}),
       },
-      // ما يُعدَّل من الكشف من هنا: الحقولُ التي يقبلها `PUT /api/workflows/:id`
-      // من هذا الدور، وهل يصل إليها أصلًا (حارسُ قسم التشغيل). والحفظُ هناك.
+      // What can be edited on the sheet from here: the fields `PUT /api/workflows/:id` accepts from this role, and whether the role reaches them at all (the operations section guard). Saving happens there.
       access: { canEdit: write.canEdit, fields: write.canEdit ? write.fields : [], money, selling },
     });
   } catch (e) {
@@ -2504,26 +2322,13 @@ exports.getOpsReports = async (req, res) => {
 module.exports.REQUIRED_STAGE_KEY = REQUIRED_STAGE_KEY;
 
 
-// ═══════════════════════════════════════════════════════════════════════════
-//  لوحةُ القسم — التشغيلُ لا الأرباح
-// ═══════════════════════════════════════════════════════════════════════════
+// Section dashboard: operations, not profit
 /**
- * GET /dashboard — ما يحتاجه الفريقُ ليعمل: كم معاملةً قادمةً ومفتوحةً ومغلقة،
- * وأين تقف كلٌّ منها، ومع كم عميلٍ نعمل الآن، وما الذي ينتظر فاتورةَ نقله،
- * وحركةُ كلّ فردٍ في الفريق. **ولا رقمَ ماليًّا فيها**: الأرباحُ والإيراداتُ في
- * «تحليلات قسم التخليص» وهي للإدارة وحدَها.
- *
- * الفلاتر: customerParty, agentParty, carrierParty, branch, cargoType, member
- * (مَن أنشأ), from/to (تاريخُ الإنشاء). وكلُّ بطاقةٍ تُحسَب على ما بقي بعدها —
- * فمَن اختار عميلًا قرأ قادمَه ومفتوحَه ومغلقَه هو.
- *
- * والصفوفُ تُرسَل مع الأرقام: كلُّ بطاقةٍ تُضغَط فتُصفّي الجدولَ تحتها، بلا
- * نداءٍ ثانٍ ولا رقمٍ لا يُعرَف ممّ تكوّن.
+ * GET /dashboard - what the team needs to work: upcoming, open and closed counts, where each stands, customers, transactions awaiting transport invoice, and per-member activity. No financial number: profit is in clearance analytics, for management only.
+ * Filters: customerParty, agentParty, carrierParty, branch, cargoType, member (creator), from/to (creation date); each card is computed on what remains after them.
+ * Rows are sent with the numbers so a card click filters the table below with no second call.
  */
-/**
- * يطبّق فلاترَ سريعةً متعدّدةَ القيم على قائمةٍ في الذاكرة، ويحسب لكلّ فلترٍ قيمَه
- * وأعدادَها بكلّ الفلاتر **عدا** فلترها — كفلاتر الموارد البشريّة.
- */
+/** Applies multi-value quick filters to an in-memory list, and computes each filter's values and counts under all filters except its own, like the HR filters. */
 function applyQuick(list, defs, q) {
   const picked = Object.fromEntries(defs.map((f) => [f.key, String(q[f.key] || '').split(',').map((x) => x.trim()).filter(Boolean)]));
   const passes = (r, skip) => defs.every((f) => f.key === skip || !picked[f.key].length || picked[f.key].includes(f.get(r)));
@@ -2535,7 +2340,7 @@ function applyQuick(list, defs, q) {
   return { list: list.filter((r) => passes(r, null)), filters };
 }
 
-/** فلاترُ لوحة القسم السريعة — المفتاحُ والقيمةُ من صفّ اللوحة، والاسمُ المعروض. */
+/** Section dashboard quick filters: key and value from the dashboard row, plus the display name. */
 function dashQuickFilters() {
   const STATE = { upcoming: 'قادمة', open: 'مفتوحة', closedInvoiced: 'مغلقة مفوترة', closedNotInvoiced: 'مغلقة لم تُفوتَر', cancelled: 'ملغاة' };
   const INV = { invoiced: 'مفوترة', requested: 'طلب فوترة عند المالية', returned: 'أُعيد طلب الفوترة', rejected: 'رُفض طلب الفوترة', none: 'لم تُفوتَر' };
@@ -2573,7 +2378,7 @@ exports.getDashboard = async (req, res) => {
     if (q.branch === 'jeddah' || q.branch === 'dammam') filter.branch = q.branch;
     if (CARGO_TYPES.includes(q.cargoType)) filter.cargoType = q.cargoType === 'vehicles' ? 'vehicles' : { $ne: 'vehicles' };
     if (q.member && mongoose.isValidObjectId(q.member)) filter.createdBy = q.member;
-    // المدى يُقاس على تاريخ المعاملة (txDateOf) بعد القراءة — لا على يوم الإدخال.
+    // The range is measured on the transaction date (txDateOf) after reading, not on the entry day.
     const ymd = (v) => (/^\d{4}-\d{2}-\d{2}$/.test(String(v || '')) ? String(v) : '');
     const dFrom = ymd(q.from); const dTo = ymd(q.to);
 
@@ -2583,7 +2388,7 @@ exports.getDashboard = async (req, res) => {
       const oid = (v) => new mongoose.Types.ObjectId(String(v));
       const aggMatch = { ...filter };
       for (const k of ['customerParty', 'agentParty', 'carrierParty', 'createdBy']) if (aggMatch[k]) aggMatch[k] = oid(aggMatch[k]);
-      // فلترُ «مَن أنشأ» لا يُطبَّق على حركة الفريق: الحركةُ تُقرأ لكلّ فردٍ على حدة.
+      // The creator filter is not applied to team activity: activity is read per member.
       const actMatch = { ...aggMatch }; delete actMatch.createdBy;
       const act = (path, by, at) => CustomsClearance.aggregate([
         { $match: { ...actMatch, [`${path}.0`]: { $exists: true } } },
@@ -2601,7 +2406,7 @@ exports.getDashboard = async (req, res) => {
             + 'transportInvoiceReceived isCompleted completedAt completedBy cancelled upcoming expectedDate returnDeadline createdAt createdBy updatedAt declarationNumber port '
             + 'papersReceivedDate declarationDate periodYear periodMonth invoiceRequest.status')
           .sort({ createdAt: -1 }).lean()
-          // القادمةُ تُقاس بتاريخها المرتقَب: هو تاريخُها الوحيد.
+          // Upcoming ones are measured by their expected date, their only date.
           .then((list) => (dFrom || dTo ? list.filter((c) => {
             const d = c.upcoming ? String(c.expectedDate || '').slice(0, 10) : txDateOf(c);
             return !!d && (!dFrom || d >= dFrom) && (!dTo || d <= dTo);
@@ -2642,9 +2447,8 @@ exports.getDashboard = async (req, res) => {
         const returned = p.steps.some((s) => s.key === 'containers_returned' && s.done) || !!(c.stageDone && c.stageDone.containersReturned);
         const needsReturn = bucket === 'open' && c.cargoType !== 'vehicles' && !returned;
         const d = String(c.returnDeadline || '').slice(0, 10);
-        // ── أين كلُّ حاوية ───────────────────────────────────────────────────
-        // المعاملةُ تُعَدّ بوحداتها: كم ما زال في الميناء، وكم في الساحة، وكم
-        // سُلِّم، وكم لم يُرجَع — وكم من ذلك فات موعدُ إرجاعه.
+        // Where each container is
+        // A transaction is counted by its units: how many are still at the port, how many in the yard, how many delivered, how many not returned, and how many of those are past their return deadline.
         const U = { total: 0, atPort: 0, inYard: 0, delivered: 0, returned: 0, notReturned: 0, late: 0 };
         if (bucket === 'open') {
           for (const u of p.units || []) {
@@ -2671,10 +2475,10 @@ exports.getDashboard = async (req, res) => {
           createdAt: c.createdAt, createdBy: c.createdBy || null, createdByName: userName.get(String(c.createdBy || '')) || '',
           expectedDate: c.expectedDate || '', completedAt: c.completedAt || null,
           invoiceNumber: c.saleInvoiceNumber || '',
-          // «فُوترت» تشمل ما فُوتر قبل النظام (مرحلتُه معلَّمةٌ بلا رقمِ فاتورةٍ هنا).
+          // Invoiced includes what was invoiced before the system (stage marked, no invoice number here).
           invoiced: !!c.saleInvoiceNumber || p.steps.some((s) => s.key === 'invoiced' && s.done),
           awaitingTransportInvoice: awaitsTransportInvoice(c),
-          // طلبُ الفوترة عند الماليّة: '' · pending · invoiced · returned · rejected.
+          // Invoicing request at finance: '' · pending · invoiced · returned · rejected.
           invoiceRequest: c.invoiceRequest?.status || '',
           returnDeadline: d, unitsState: U,
           returnState: !needsReturn || !d ? '' : (d < today ? 'overdue' : d <= soon ? 'due' : ''),
@@ -2685,16 +2489,15 @@ exports.getDashboard = async (req, res) => {
         return row;
       });
 
-      // ── الفلاترُ السريعة (صاحبُ الشركة، ٢٠٢٦/١٠/٢٢) — على طريقة الموارد البشريّة ──
-      // متعدّدةُ القيم (مفصولةٌ بفاصلة)، تُطبَّق على كلّ رقمٍ في اللوحة. والعددُ بجانب
-      // كلّ قيمةٍ يُحسَب بكلّ الفلاتر **عدا** فلترها، فيُرى ما ينتقل إليه قبل اختياره.
+      // Quick filters, HR style
+      // Multi-value (comma separated), applied to every number on the dashboard. The count beside each value is computed under all filters except its own, so what it moves to is visible before choosing.
       const { list: out, filters } = applyQuick(allOut, dashQuickFilters(), q);
 
       const open = out.filter((r) => r.bucket === 'open');
       const count = (f) => out.filter(f).length;
       const customersOf = (list) => new Set(list.map((r) => String(r.customerParty || r.customerName || '')).filter(Boolean));
 
-      // أين تقف المفتوحةُ: بالمرحلة التي تنتظرها كلٌّ منها.
+      // Where open ones stand: by the stage each is waiting on.
       const stageOrder = CustomsClearance.STAGES;
       const byNext = new Map();
       for (const r of open) {
@@ -2713,16 +2516,16 @@ exports.getDashboard = async (req, res) => {
         custMap.set(k, e);
       }
 
-      // ── الفريق: ما على كلّ فردٍ الآن، وما فعله في ثلاثين يومًا ─────────────
+      // Team: what each member has now and did in thirty days
       const idx = (list) => new Map(list.map((x) => [String(x._id), x]));
       const N = idx(notes); const P = idx(pays); const S = idx(ticks);
       const monthStart = startOfDay(`${today.slice(0, 7)}-01`).getTime();
-      // الأرقامُ على المعاملات كلِّها لا على ما صفّاه فلترُ «مَن أنشأ».
+      // Numbers are over all transactions, not what the creator filter narrowed.
       const scope = filter.createdBy
         ? await CustomsClearance.find((({ createdBy, ...rest }) => rest)(filter)).select('createdBy completedBy completedAt isCompleted cancelled upcoming').lean()
           .then((all) => all.map((c) => ({ ...c, bucket: c.cancelled ? 'cancelled' : c.upcoming ? 'upcoming' : c.isCompleted ? 'closed' : 'open' })))
         : rows.map((c, i) => ({ createdBy: c.createdBy, completedBy: c.completedBy, completedAt: c.completedAt, bucket: allOut[i].bucket }));
-      // من أنهت الموارد البشريّة خدمتَه لا يُعدّ في الفريق — واسمُه يبقى على ما أنشأه.
+      // Someone whose service HR ended is not counted in the team; their name stays on what they created.
       const team = users.filter((u) => !userEnded(ended, u)).map((u) => {
         const id = String(u._id);
         const mine = tasks.filter((t) => String(t.assignedTo) === id);
@@ -2748,9 +2551,9 @@ exports.getDashboard = async (req, res) => {
           upcomingOverdue: count((r) => r.bucket === 'upcoming' && r.expectedState === 'overdue'),
           open: open.length,
           closed: count((r) => r.bucket === 'closed'),
-          // أُغلقت ولم تُفوتَر — من السجلّ القديم؛ تبقى ظاهرةً حتى تُصدَر فواتيرُها.
+          // Closed but not invoiced, from the legacy record; stays visible until their invoices are issued.
           closedNotInvoiced: count((r) => r.bucket === 'closed' && !r.invoiced),
-          // والمغلقةُ المفوترة — وحين تُصدَر فاتورةُ مغلقةٍ لم تُفوتَر تنتقل إلى هنا من نفسها.
+          // And closed invoiced ones: when the invoice of a closed-not-invoiced one is issued it moves here by itself.
           closedInvoiced: count((r) => r.bucket === 'closed' && r.invoiced),
           cancelled: count((r) => r.bucket === 'cancelled'),
           awaitingTransportInvoice: count((r) => r.awaitingTransportInvoice),
@@ -2787,9 +2590,7 @@ exports.getDashboard = async (req, res) => {
   }
 };
 
-// ═══════════════════════════════════════════════════════════════════════════
-//  الملاحظات — سطرٌ يُضاف، وآخرُه يُقرأ في الجدول
-// ═══════════════════════════════════════════════════════════════════════════
+// Notes: a line is added and the last is read in the table
 const touchCustoms = (id) => {
   try { cache.clear('customs:'); } catch (_) { /* */ }
   try { emitToAll('customs:updated', { id: String(id || '') }); } catch (_) { /* */ }
@@ -2822,7 +2623,7 @@ exports.deleteNote = async (req, res) => {
     if (!clearance) return res.status(404).json({ message: 'المعاملة غير موجودة' });
     const note = clearance.notesLog.id(req.params.noteId);
     if (!note) return res.status(404).json({ message: 'الملاحظة غير موجودة' });
-    // ملاحظةُ غيرِك لا تُحذف إلّا للمدير: هي أثرٌ لصاحبها.
+    // Another person's note is deleted only by the manager: it is a trace of its author.
     const boss = ['super_admin', 'admin', 'customs_manager'].includes(req.user.role);
     if (!boss && String(note.by || '') !== String(req.user._id)) {
       return res.status(403).json({ message: 'لا تُحذف ملاحظةُ غيرك' });
@@ -2834,13 +2635,11 @@ exports.deleteNote = async (req, res) => {
   } catch (e) { sendMongooseError(res, e, 'تعذّر حذف الملاحظة'); }
 };
 
-// ═══════════════════════════════════════════════════════════════════════════
-//  العقود — عقدُنا مع عميلٍ أو وكيلٍ أو ناقل
-// ═══════════════════════════════════════════════════════════════════════════
+// Contracts: our contract with a customer, agent or carrier
 const CONTRACT_FIELDS = ['title', 'contractNumber', 'startDate', 'endDate', 'value', 'valueBasis',
   'paymentTermDays', 'autoRenew', 'status', 'scope', 'notes'];
 
-/** أسعارُ العقد كما تُحفَظ: أرقامٌ أو فراغ، ووجهاتٌ لها اسمٌ وسعر. */
+/** Contract prices as stored: numbers or empty, and destinations with a name and price. */
 const cleanPricing = (p) => {
   if (!p || typeof p !== 'object') return undefined;
   const num = (v) => (v === null || v === undefined || v === '' || !Number.isFinite(Number(v)) ? null : Math.max(0, Number(v)));
@@ -2854,7 +2653,7 @@ const cleanPricing = (p) => {
   };
 };
 
-/** العقدُ المنتهي يُقرأ منتهيًا وإن كُتب «ساري»: التاريخُ أصدقُ من الخانة. */
+/** An expired contract reads as expired even if marked active: the date is more reliable than the field. */
 const withState = (c) => {
   const end = c.endDate ? new Date(c.endDate) : null;
   const expired = !!end && end.getTime() < Date.now();
@@ -2885,7 +2684,7 @@ exports.createContract = async (req, res) => {
   try {
     const party = await CustomsParty.findById(req.body.party).lean();
     if (!party) return res.status(400).json({ message: 'اختر الطرف' });
-    // لا عقودَ بيننا وبين وكلاء الشحن (صاحبُ الشركة، ٢٠٢٦/١٠/٢٢).
+    // There are no contracts with shipping agents.
     if (party.kind === 'agent') return res.status(400).json({ message: 'لا عقود مع وكلاء الشحن — العقود للعملاء والناقلين' });
     if (!String(req.body.title || '').trim()) return res.status(400).json({ message: 'اسم العقد مطلوب' });
     const body = stripEmpty(req.body, CustomsContract.schema);
@@ -2927,7 +2726,7 @@ exports.deleteContract = async (req, res) => {
   try {
     const doc = await CustomsContract.findById(req.params.id);
     if (!doc) return res.status(404).json({ message: 'العقد غير موجود' });
-    // الورقُ يُحذف مع صفّه، وإلّا بقي ملفٌّ لا يشير إليه شيء.
+    // Papers are deleted with their row; otherwise a file nothing refers to would remain.
     for (const a of doc.attachments || []) { try { deleteStoredFile(a.fileUrl); } catch (_) { /* */ } }
     await doc.deleteOne();
     await logAudit({ user: req.user._id, action: 'delete_customs_contract', entity: 'CustomsContract', entityId: doc._id, changes: { before: { title: doc.title, party: doc.partyName } }, ipAddress: req.ip });
@@ -2978,19 +2777,14 @@ exports.deleteContractFile = async (req, res) => {
   } catch (e) { sendMongooseError(res, e, 'تعذّر حذف الملف'); }
 };
 
-// ═══════════════════════════════════════════════════════════════════════════
-//  مرفقاتُ الأطراف — العميلُ والوكيلُ والناقل
-// ═══════════════════════════════════════════════════════════════════════════
+// Party attachments: customer, agent and carrier
 const partyCardOf = (p) => ({
   _id: p._id, kind: p.kind, name: p.name, phone: p.phone, email: p.email, contactPerson: p.contactPerson,
   commercialRegister: p.commercialRegister, taxNumber: p.taxNumber, address: p.address, city: p.city, notes: p.notes,
   attachments: p.attachments || [],
 });
 
-/**
- * GET /:id/parties-card — بطاقاتُ أطراف المعاملة (العميل والوكيل والناقل):
- * بياناتُهم ومرفقاتُهم، تُقرأ في صفحة المعاملة بلا فتح ملفّ كلٍّ منهم.
- */
+/** GET /:id/parties-card - cards of the transaction's parties (customer, agent, carrier): their data and attachments, read on the transaction page without opening each file. */
 exports.getClearanceParties = async (req, res) => {
   try {
     const c = await CustomsClearance.findById(req.params.id).select('customerParty agentParty carrierParty customerName shippingAgent carrierName').lean();
@@ -3053,7 +2847,7 @@ exports.deletePartyAttachment = async (req, res) => {
     const gone = { title: a.title, fileUrl: a.fileUrl };
     a.deleteOne();
     await party.save();
-    try { require('../utils/fileStore').deleteStoredFile(gone.fileUrl); } catch (e) { /* الملفُّ يبقى إن تعذّر حذفُه */ }
+    try { require('../utils/fileStore').deleteStoredFile(gone.fileUrl); } catch (e) { /* The file stays if deleting it fails */ }
     logAudit({ user: req.user, action: 'customs_party_detach', entity: 'CustomsParty', entityId: party._id, changes: { details: `${party.name}: ${gone.title}` }, ipAddress: req.ip }).catch(() => {});
     cache.clear('customs:');
     try { emitToAll('customs:updated', { party: String(party._id) }); } catch (e) { /* */ }
@@ -3061,10 +2855,8 @@ exports.deletePartyAttachment = async (req, res) => {
   } catch (e) { return sendMongooseError(res, e, 'تعذّر الحذف'); }
 };
 
-// ═══════════════════════════════════════════════════════════════════════════
-//  أسعارُ عقد العميل ← الإيرادات والفوترة
-// ═══════════════════════════════════════════════════════════════════════════
-/** GET /:id/contract-pricing — عقدُ العميل الساري ووجهاتُه وما يقوله لهذه المعاملة. */
+// Customer contract prices to revenue and invoicing
+/** GET /:id/contract-pricing - the customer's active contract, its destinations and what it says for this transaction. */
 exports.getContractPricing = async (req, res) => {
   try {
     const c = await CustomsClearance.findById(req.params.id).select('customerParty containerCount city contractPricing').lean();
@@ -3077,10 +2869,7 @@ exports.getContractPricing = async (req, res) => {
   }
 };
 
-/**
- * POST /:id/apply-contract { from?, to? } — «تعبئة من العقد»: يكتب أسعارَ العقد
- * في خانات الإيراد كلِّها (ولو عُدِّلت)، وباختيار الوجهة يُكتب سعرُها.
- */
+/** POST /:id/apply-contract { from?, to? } - fill from the contract: writes contract prices into all revenue slots (even if edited), and with a destination chosen its price is written. */
 exports.applyContractPricing = async (req, res) => {
   try {
     const clearance = await CustomsClearance.findById(req.params.id);

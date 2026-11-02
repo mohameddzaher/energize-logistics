@@ -104,27 +104,16 @@ exports.archiveMode = async (req, res, next) => {
 // Combined operations dashboard: header stats, full report stats, and the
 // charts/maps/tables payload — fetched in parallel, partial failures tolerated.
 /**
- * ── أرقامُ اللوحة فورًا، ثمّ تُحدَّث ───────────────────────────────────────
- * المنصّةُ خارجيّةٌ وندائاتُها الثلاثة تأخذ ثوانيَ، وكانت كلُّ فتحةٍ للصفحة —
- * وكلُّ تحديثٍ حيّ — تنتظرها، فتعرض البطاقاتُ «—» ثمّ تمتلئ، ومرّةً بعد مرّة.
- * فيُحفَظ آخرُ جوابٍ سليمٍ لكلّ فلتر (`lastGood`) ويُعاد فورًا، ويُجدَّد في
- * الخلفيّة إن كان أقدمَ من CACHE_TTL. ونداءٌ واحدٌ جارٍ لكلّ مفتاح لا أكثر،
- * ومزامنةُ الإحصاءات (jobs/opsPoll) تُسخِّن الفلترَ الافتراضيّ كلَّ دورة.
+ * Dashboard numbers return instantly from the last good answer per filter (lastGood) and refresh in the background when older than CACHE_TTL.
+ * One in-flight call per key; the stats sync (jobs/opsPoll) warms the default filter each cycle.
  */
 const lastGood = new Map();          // key → { payload, at }
 const inflight = new Map();          // key → Promise
 const dashKey = (lang, q) => `ops:dash:${lang || ''}:${q.date_from || ''}:${q.date_to || ''}:${q.branches || ''}`;
 
 /**
- * ── وبطاقاتُ الرأس لا تحبس الصفحة ──────────────────────────────────────────
- *
- * `/admins/operation-app-home` عند المنصّة يأخذ ثمانيَ ثوانٍ ليعيد كيلوبايتين
- * (قيس على الخادم: home 7.7s · stats 0.6s · charts 0.35s)، والصفحةُ كانت تنتظر
- * الثلاثةَ معًا فتنتظر أبطأَها. وهو ليس عندنا فنُصلحه.
- *
- * فيُنتظَر ثانيةً ونصفًا لا أكثر: إن تأخّر تُعرض قيمتُه السابقة وتُكمَّل الصفحةُ
- * ببقيّة أرقامها، ويُخزَّن ما يصل متأخّرًا فيجده الفاتحُ التالي حاضرًا. ولا
- * يُعرَض صفرٌ مكانَه أبدًا — إمّا آخرُ ما جاء وإمّا لا شيء.
+ * The platform's operation-app-home call takes ~8s for a tiny payload, so the page waits at most 1.5s for it.
+ * If late, show its previous value and cache the late result; never show a zero in its place.
  */
 const HOME_WAIT_MS = 1500;
 const HOME_TTL = 60 * 1000;
@@ -153,8 +142,7 @@ async function fetchDashboard(lang, q) {
   if (inflight.has(key)) return inflight.get(key);
   const run = (async () => {
     const query = { date_from: q.date_from, date_to: endOfDay(q.date_to), branches: q.branches };
-    // ── محاولةٌ ثانية قبل الاستسلام ──────────────────────────────────────
-    // المنصّة خارجيّة وشبكتُها تتعثّر، والفشلة الواحدة العابرة كانت تكفي.
+    // Retry once: the external platform's network is flaky and one transient failure was enough to fail.
     const once = () => Promise.allSettled([
       homeSoon(lang),
       upl.get('/admin/reports/stats', { query, lang }),
@@ -167,9 +155,7 @@ async function fetchDashboard(lang, q) {
       const second = (await once()).map(pick);
       home = home || second[0]; stats = stats || second[1]; charts = charts || second[2];
     }
-    // ── ولا يُخزَّن الفراغ ────────────────────────────────────────────────
-    // الردُّ الفارغ ليس جوابًا: يبقى آخرُ سليمٍ مكانه، وإلّا قرأ المستخدمُ
-    // صفرًا كاذبًا («لا شحنات») يُبنى عليه قرار.
+    // Never cache an empty reply: keep the last good one, otherwise users read a false zero (no shipments) and act on it.
     if (home || stats) {
       const payload = { home, stats, charts, fetchedAt: new Date().toISOString() };
       lastGood.set(key, { payload, at: Date.now() });
@@ -193,13 +179,13 @@ exports.getDashboard = async (req, res) => {
 
     const prev = lastGood.get(key);
     if (prev) {
-      // القديمُ يُعرض الآن، والجديدُ يصل بعد لحظةٍ عبر `ops:stats`/إعادة القراءة.
+      // Serve the stale value now; the fresh one arrives via ops:stats or a re-read.
       fetchDashboard(lang, q).catch(() => {});
       return res.json({ ...prev.payload, stale: true });
     }
     const payload = await fetchDashboard(lang, q);
     if (payload) return res.json(payload);
-    // ولا يُخفى الفشل: العلامة تجعل الشاشة تُبقي آخرَ أرقامها وتقول إنّها لم تُؤكَّد.
+    // Failure is not hidden: the flag makes the screen keep its last numbers and show they are unconfirmed.
     res.status(200).json({ home: null, stats: null, charts: null, upstreamUnavailable: true });
   } catch (error) {
     fail(res, error, 'Failed to load operations dashboard');
@@ -209,11 +195,8 @@ exports.getDashboard = async (req, res) => {
 // ---- Generic resource CRUD ------------------------------------------------
 
 /**
- * ── سعرُ البيع في شحنات المنصّة لمن يملكه وحدَه ───────────────────────────────
- * صار `selling_price` في المنصّة سعرَنا الحقيقيّ للعميل: يُكتب إليها من عمود «قيمة
- * البيع» في سير العمل (راجع pushSellingValue). وذاك العمودُ محجوبٌ عن موظّف
- * التشغيل — فلا يصله من هذا الباب أيضًا. القائمةُ نفسُها (SELLING_ROLES).
- * المخزَّنُ يبقى كاملًا، والحجبُ عند الردّ.
+ * Platform selling_price is our real customer price (written from the workflow selling-value column, see pushSellingValue). That column is hidden from operations staff, so it is hidden here too, using the same list (SELLING_ROLES).
+ * Stored data stays complete; masking happens at response time.
  */
 function stripShipmentSelling(req, data) {
   if (req.params.resource !== 'shipments') return data;
@@ -277,20 +260,17 @@ exports.update = async (req, res) => {
   if (cfg.readOnly) return res.status(405).json({ message: `${req.params.resource} is read-only` });
   try {
     const opts = cfg.form ? { form: req.body } : { body: req.body };
-    // ── اسمُ العميل قبل التعديل ───────────────────────────────────────────
-    // يُقرأ قبل الكتابة لا بعدها: بعدها لا سبيلَ لمعرفة ما كان، والقديمُ هو
-    // مفتاحُ ما كُتب به في التحصيل والكشوف. راجع utils/renameOpsCustomer.
+    // Read the customer name before writing: afterwards the old value is unknown, and it is the key used in collections and statements. See utils/renameOpsCustomer.
     let before = '';
     if (req.params.resource === 'users' && String(req.body?.name || '').trim()) {
       try {
         const cur = await upl.get(`${cfg.path}/${encodeURIComponent(req.params.id)}`, { lang: langOf(req) });
         const d = cur?.data ?? cur;
         before = String(d?.name ?? d?.data?.name ?? '').trim();
-      } catch (_) { /* التعديلُ لا يقف على قراءةٍ تعثّرت */ }
+      } catch (_) { /* An edit must not depend on a read that failed */ }
     }
     const out = await upl.patch(`${cfg.path}/${encodeURIComponent(req.params.id)}`, { ...opts, lang: langOf(req) });
-    // ── والتحصيلُ يسمع لما يحدث في التشغيل ───────────────────────────────
-    // اسمٌ صُحِّح هناك يتبعه الطرفُ هنا، والقديمُ يبقى صيغةً له فلا ينقسم دَينُه.
+    // Collections follows operations: a corrected name is followed here and the old name is kept as an alias so the debt is not split.
     if (before) {
       try {
         const { renameOpsCustomer } = require('../utils/renameOpsCustomer');
@@ -298,7 +278,7 @@ exports.update = async (req, res) => {
         if (r) console.log(`[ops] عميلٌ أُعيدت تسميتُه: «${r.from}» ← «${r.to}» · أوامر نقل: ${r.sheets}${r.merged ? ' · دُمج مع طرفٍ قائم' : ''}`);
       } catch (e) { console.error('[ops] rename → collections:', e.message); }
     }
-    // ── وما عُدِّل في عميل المنصّة يصل كلَّ أقسامه في اللحظة (services/customerHub) ──
+    // A platform customer edit reaches all its sections instantly (services/customerHub).
     if (req.params.resource === 'users' && ['email', 'phone'].some((k) => req.body && req.body[k] !== undefined)) {
       try {
         const CrmCompany = require('../models/CrmCompany');
@@ -319,7 +299,7 @@ exports.update = async (req, res) => {
     }
     broadcast(req.params.resource, 'updated', { id: req.params.id });
     res.json(out.data ?? out);
-    // وتعديلُ شحنةٍ مفردةٍ يتبعه صفُّها عندنا كما يتبع تغييرَ الحالة.
+    // Editing a single shipment updates its local row, as a status change does.
     if (req.params.resource === 'shipments') mirrorShipments([req.params.id]);
   } catch (error) {
     fail(res, error, `Failed to update ${req.params.resource}`);
@@ -356,15 +336,8 @@ exports.restore = async (req, res) => {
 
 // Bulk/inline status change: body { status, ids: [...], status_log_details? }
 /**
- * ── وما كُتب في المنصّة يُقرأ عندنا في النداء نفسِه ─────────────────────────
- *
- * كانت الحالةُ تُكتب في المنصّة ثمّ يُبَثّ الخبرُ وينتهي الأمر: صفُّ سير العمل
- * عندنا يبقى على حالته القديمة حتى يمرّ عليه الاستطلاع. فمن غيّر الحالة من
- * شاشتنا يفتح جدولَ سير العمل فيجدها لم تتغيّر — فيظنّ أنّ الضغطة ضاعت.
- *
- * فتُقرأ الشحنةُ من المنصّة بعد الكتابة مباشرةً ويُكتب صفُّها ويُبَثّ (راجع
- * services/opsWorkflowSyncService · syncShipmentsById). والردُّ لا ينتظر ذلك:
- * الكتابةُ نجحت، والمرآةُ تلحق في أجزاء من الثانية.
+ * Writes to the platform are read back in the same call.
+ * Otherwise the local workflow row keeps the old status until the next poll and the user thinks the click was lost. The shipment is re-read, saved and broadcast (see services/opsWorkflowSyncService syncShipmentsById); the response does not wait for it.
  */
 exports.updateShipmentStatus = async (req, res) => {
   try {
@@ -378,7 +351,7 @@ exports.updateShipmentStatus = async (req, res) => {
   }
 };
 
-/** يُنادى بعد كلّ كتابةٍ على شحنة — لا يُنتظَر ولا يرمي. */
+/** Called after every shipment write; not awaited and never throws. */
 function mirrorShipments(ids) {
   if (!ids || !ids.length) return;
   setImmediate(() => {
@@ -407,10 +380,7 @@ exports.webhook = async (req, res) => {
     pollStats().catch(() => {});
     pollShipments().catch(() => {});
   } catch (e) {}
-  // ── والشحنةُ المذكورةُ تُقرأ بعينها ──────────────────────────────────────
-  // الدفعُ يحمل رقمَها، فلا يُنتظَر أن تلتقطها دورةُ الاستطلاع: تُقرأ ويُكتب
-  // صفُّها في اللحظة. وبهذا يصير الوصولُ فوريًّا حقًّا — وهو ما يحتاجه
-  // التشغيل. (يُفعَّل بأن يُضبط UPL_WEBHOOK_SECRET ويُعطى للمنصّة.)
+  // The push carries the shipment number, so it is read and its row written immediately instead of waiting for the poll cycle. Enabled by setting UPL_WEBHOOK_SECRET and giving it to the platform.
   const hit = ids && ids.length ? ids : (id ? [id] : []);
   if (resource === 'shipments' && hit.length) mirrorShipments(hit);
   res.json({ ok: true });

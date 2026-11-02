@@ -1,28 +1,13 @@
 /**
- * القوائم المرجعيّة لقسم المركبات — القيم المسموح بها في الحقول ذات الاختيارات.
- *
- * ── لماذا قائمةٌ مغلقة أصلًا ─────────────────────────────────────────────────
- * الحقل الحرّ يُكتب بألف صيغة. «مرسيدس» و«MercedesBenz» و«MERCEDES» ثلاثةُ صفوف
- * لشيءٍ واحد في القاعدة، فيصير في الفلتر ثلاثةَ خيارات، وفي التحليل ثلاثَ
- * شركات، ولا يعرف أحدٌ أنّ عددها واحد. و«طرف ثالث / ضد الغير» يكفي أن يكتبها
- * أحدُهم «طرف ثالث - ضد الغير» ليخرج صفُّه من كلّ تقريرٍ عن تأمين الطرف الثالث.
- *
- * ── ولماذا تُخزَّن بالاسم العربيّ لا بالمفتاح ────────────────────────────────
- * الحقول هنا (`sectorAr`، `colorAr`، `insurance.coverageTypeAr`…) تحمل النصّ
- * العربيّ نفسه منذ أوّل استيراد، وتقرؤه الفلاتر والتصديرات والتقارير مباشرةً.
- * فتحويلها إلى مفاتيح يُبطل ذلك كلَّه دفعةً واحدة. والمقصود ليس تغييرَ ما
- * يُخزَّن، بل **حصرَ ما يُكتب** — فيبقى المخزَّن نصًّا عربيًّا، لكنّه لا يأتي
- * إلّا من هذه القائمة، ولا يُضاف إليها إلّا من إعدادات القسم.
- *
- * والمستخدم يزيد ما ينقص من داخل القائمة نفسها، فيراه كلُّ من بعده — وهذا هو
- * الفرق بين قائمةٍ تُدار وحقلٍ حرٍّ يتشعّب.
+ * Reference lists for the vehicles section: allowed values for choice fields.
+ * A free field gets written many ways (three spellings of one make become three filter options and three companies; a small change to the third-party insurance label drops a row from reports). Values are stored as the Arabic text (sectorAr, colorAr, insurance.coverageTypeAr...) because filters, exports and reports read it directly; the list restricts what may be written, and is extended only from section settings. Users add missing items from the list itself.
  */
 
-/** ما يُبنى منه صفُّ القائمة: مفتاحٌ ثابت واسمٌ عربيّ وإنجليزيّ. */
+/** Row shape: stable key plus Arabic and English names. */
 const row = (key, ar, en) => ({ key, nameAr: ar, nameEn: en || ar });
 
 module.exports = {
-  // التأمين
+  // Insurance
   coverageTypes: [
     row('third_party', 'طرف ثالث / ضد الغير', 'Third party'),
     row('comprehensive', 'شامل', 'Comprehensive'),
@@ -42,7 +27,7 @@ module.exports = {
     row('snb', 'ملكية البنك الأهلي السعودي', 'Owned by SNB'),
   ],
 
-  // التصنيف
+  // Classification
   sectors: [
     row('light', 'النقل الخفيف', 'Light transport'),
     row('heavy', 'النقل الثقيل', 'Heavy transport'),
@@ -57,9 +42,7 @@ module.exports = {
     row('private', 'خاص', 'Private'),
     row('private_transport', 'نقل خاص', 'Private transport'),
   ],
-  // ── شركتا المجموعة ────────────────────────────────────────────────────────
-  // الأسطولُ مشتركُ التشغيلِ مفصولُ الملكيّة: الرخصةُ والتأمينُ والمخالفةُ
-  // تُنسَب إلى شركةٍ بعينها. وهي قائمةٌ مُدارةٌ فتُزاد ثالثةٌ بلا شيفرة.
+  // The two group companies. Operation is shared but ownership is split: license, insurance and violation belong to a specific company. A managed list, so a third company needs no code.
   ownerCompanies: [
     row('tanshit_logistics', 'تنشيط الخدمات اللوجيستية', 'Tanshit Logistics Services'),
     row('tanshit_future', 'تنشيط المستقبل', 'Tanshit Al-Mustaqbal'),
@@ -80,10 +63,7 @@ module.exports = {
     row('orange', 'برتقالي', 'Orange'), row('blue', 'ازرق', 'Blue'), row('green', 'اخضر', 'Green'),
     row('yellow', 'اصفر', 'Yellow'),
   ],
-  /**
-   * الماركات: القائمة موحَّدةٌ بالعربيّة، وكلُّ صيغةٍ لاتينيّةٍ من الماركة نفسها
-   * تُدمَج فيها بسكربت التنظيف. فـ«مرسيدس» واحدةٌ لا ثلاث.
-   */
+  /** Makes: one canonical Arabic list; Latin spellings of the same make are merged into it by the cleanup script. */
   brands: [
     row('bajaj_boxer', 'بجاج بوكسر', 'Bajaj Boxer'), row('bajaj', 'بجي', 'Bajaj'),
     row('mercedes', 'مرسيدس', 'Mercedes-Benz'), row('cnht', 'سي ان اتش تي', 'CNHTC'),
@@ -97,7 +77,7 @@ module.exports = {
     row('landrover', 'لاند روفر', 'Land Rover'),
   ],
 
-  // شريحة الوقود
+  // Fuel chip
   fuelProviders: [row('petroapp', 'بترو اب', 'PetroApp')],
   fuelCardStatuses: [
     row('active', 'نشط', 'Active'), row('inactive', 'غير نشط', 'Inactive'),
@@ -109,7 +89,7 @@ module.exports = {
     row('limited', 'محدود', 'Limited'),
   ],
 
-  // التتبّع
+  // Tracking
   gpsProviders: [
     row('express', 'Express', 'Express'),
     row('location_solutions', 'Location solutions', 'Location Solutions'),
@@ -125,7 +105,7 @@ module.exports = {
     row('required', 'مطلوب', 'Required'), row('not_required', 'غير مطلوب', 'Not required'),
   ],
 
-  // الفحص والتفويض
+  // Inspection and authorization
   inspectionStatuses: [
     row('valid', 'ساري المفعول', 'Valid'), row('expired', 'منتهي', 'Expired'),
     row('not_required', 'غير مطلوب', 'Not required'),

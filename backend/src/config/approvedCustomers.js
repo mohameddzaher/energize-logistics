@@ -1,7 +1,4 @@
-/**
- * The correct customer names (owner's sheet «مطابقه اسماء العملاء» → «عملاء السيستم», 2026-10-29).
- * Customer pickers show these (plus customers created in the system), not raw platform accounts.
- */
+/** Approved customer names for pickers; shown instead of raw platform accounts, plus customers created in the system. */
 module.exports = [
   "روابي التسويق العالمية",
   "شركه النافع للحديد المحدوده",

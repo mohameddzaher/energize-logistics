@@ -33,8 +33,8 @@ const populateVehicle = (q) =>
     .populate('currentEmployee', EMP_FIELDS)
     .populate({ path: 'currentAuthorization', populate: { path: 'employee', select: EMP_FIELDS } });
 
-// Every vehicle mutation flows through emit() → also drop the cached dashboard.
-// الإبطالُ قبل الإعلان — وإلّا جلب المستمعُ اللوحةَ القديمةَ من الذاكرة.
+// Every vehicle mutation goes through emit(), which also clears the cached dashboard.
+// Invalidate before announcing, otherwise a listener refetches the stale cached dashboard.
 const emit = (event, payload) => { cache.clear('veh:'); try { emitToAll(event, payload); } catch (e) {} };
 
 // Sync a vehicle's denormalized pointers to its single active authorization.
@@ -45,13 +45,9 @@ const syncVehiclePointers = async (vehicleId) => {
     : { $unset: { currentAuthorization: 1, currentEmployee: 1 }, status: 'parked' });
 };
 
-// ── الورقةُ تعلو المرآة — في الكتابة وفي العرض ───────────────────────────────
-// هذا السجلُّ (`Vehicle` + `VehicleAuthorization`) مرآةٌ لسجلّ المركبات في
-// التفويض — راجع utils/vehicleAuthorization. والتفويضُ من هذه الصفحة (تُفتح من
-// ملفّ الموظّف في الموارد البشريّة) يُكتب في الورقة أوّلًا ثمّ يتبعها الإسناد،
-// ولا يُكتب الإسنادُ وحدَه إلّا لمركبةٍ قديمةٍ لا ورقةَ لها في السجلّ.
-// وفي العرض: مركبةٌ أُلغيت ورقتُها لا تُعرض «مفوَّضةً لفلان»، وإسنادٌ «ساري»
-// تخالفه الورقةُ يُعلَّم `stale` ولا يُقرأ ساريًا (حتى يُشغَّل سكربتُ المطابقة).
+// The registry paper outranks the mirror, on write and on read.
+// Vehicle and VehicleAuthorization mirror the authorization registry (utils/vehicleAuthorization): authorization is written to the paper first and the assignment follows; assignment alone is written only for a legacy vehicle with no paper.
+// On read, a vehicle whose paper was cancelled is not shown as authorized, and an active assignment contradicted by the paper is flagged `stale`.
 const VA = require('../utils/vehicleAuthorization');
 const { orderlessPlateKey } = require('../utils/plateKey');
 const { stripImportNote } = require('../utils/importLabels');
@@ -92,7 +88,7 @@ function overlayVehicle(v, reg) {
   return out;
 }
 
-/** سطرُ الإسناد للعرض: بلا عبارة الاستيراد، و«ساري» تخالفه الورقة يُعلَّم. */
+/** Assignment line for display: without the import phrase; an active one contradicted by the paper is flagged. */
 function presentAuth(a, reg) {
   const out = { ...a, notes: stripImportNote(a.notes) || undefined };
   if (a.status === 'active' && reg && !sameHolder(VA.holderOf(reg), a.employee)) out.stale = true;
@@ -105,16 +101,16 @@ function presentAuth(a, reg) {
 exports.searchEmployees = async (req, res) => {
   try {
     const { q } = req.query;
-    const filter = { isHrRecord: { $ne: false } };   // من غير سجلات الأرشيف
+    const filter = { isHrRecord: { $ne: false } };   // Excludes archive records.
     if (q && q.trim()) {
-      // «أحمد» و«احمد» اسمٌ واحد، واللوحةُ تُنسخ بمسافتين. راجع flexSpaceRegex.
+      // Name variants with different hamza are one name, and plates are copied with double spaces. See flexSpaceRegex.
       const rx = flexSpaceRegex(q);
       filter.$or = [
         { firstName: rx }, { lastName: rx }, { arabicName: rx },
         { iqamaNumber: rx }, { employeeNumber: rx }, { vehiclePlate: rx },
       ];
     }
-    // المؤرشَفُ لا يُفوَّض ولا يُختار — كأنّه حُذف.
+    // An archived person is neither authorized nor selectable, as if deleted.
     const employees = await Employee.find(require('../utils/hrEngagement').withoutArchived(filter)).select(EMP_FIELDS).sort({ firstName: 1 }).limit(50).lean();
     res.json({ employees });
   } catch (error) {
@@ -130,30 +126,25 @@ exports.listVehicles = async (req, res) => {
     if (type) filter.type = type;
     if (branch) filter.branch = branch;
     if (project) filter.project = project;
-    // Cache the populated list (search 'q' is applied in-memory below) so the
-    // whole team loading the vehicles page at once hits one query; Vehicle writes
-    // clear 'vehicles:list' via the model post-hooks.
-    // والحالةُ تُفلتَر بعد قراءة الورقة لا قبلها: «مفوَّضة» في المرآة قد تكون
-    // ملغاةً في سجلّ المركبات.
+    // Cache the populated list (search 'q' is applied in-memory below) so the whole team loading the vehicles page at once hits one query; Vehicle writes clear 'vehicles:list' via the model post-hooks.
+    // Status is filtered after reading the paper, since 'authorized' in the mirror may be cancelled in the vehicle registry.
     const ck = `vehicles:list:${type || ''}::${branch || ''}:${project || ''}`;
-    // الصلاحيةُ بختم ما تُبنى منه القائمة (المركبة والتفويض والموظف والفرع) لا
-    // بعشرين ثانية: كانت تنتهي قبل الفتحة التالية فيدفع كلُّ فاتحٍ ثلاثَ ثوانٍ.
-    // راجع utils/changeStamp.
+    // Validity is keyed to a stamp of what the list is built from (vehicle, authorization, employee, branch) rather than a 20s TTL, which expired before the next open and made each opener pay the full load.
+    // See utils/changeStamp.
     let vehicles = await require('../utils/changeStamp').freshWrap(ck, 5 * 60 * 1000,
       [Vehicle, VehicleAuthorization, Employee, require('../models/Branch')], () =>
         populateVehicle(Vehicle.find(filter)).sort({ plateNumber: 1 }).limit(5000).lean());
     const regOf = await registryIndex();
     vehicles = vehicles.map((v) => overlayVehicle(v, regOf(v)));
     if (status) vehicles = vehicles.filter((v) => v.status === status);
-    // المركبةُ تبقى؛ وحاملُها المؤرشَف لا يُعرَض اسمُه — كأنّه حُذف.
+    // The vehicle stays; an archived holder's name is not shown, as if deleted.
     const sets = await endedStaff();
     if (sets.archivedIds.size) {
       vehicles = vehicles.map((v) => (employeeArchived(sets, v.currentEmployee)
         ? { ...v, currentEmployee: null, currentAuthorization: null } : v));
     }
     if (q && q.trim()) {
-      // المطابقةُ في الذاكرة كانت `includes` حرفيّةً: مسافةٌ زائدةٌ في اللوحة أو
-      // همزةٌ ناقصةٌ في الاسم تُخرج الصفَّ من النتيجة وهو أمام عين الباحث.
+      // Literal `includes` matching dropped rows on an extra plate space or a missing hamza in the name.
       vehicles = vehicles.filter((v) => flexIncludes(q,
         v.plateNumber, v.make, v.model, v.type, v.branch, v.project, v.chassisNumber,
         v.currentEmployee && `${v.currentEmployee.firstName || ''} ${v.currentEmployee.lastName || ''} ${v.currentEmployee.arabicName || ''}`,
@@ -261,7 +252,7 @@ exports.listAuthorizations = async (req, res) => {
     if (status) filter.status = status;
     if (employee) filter.employee = employee;
     if (vehicle) filter.vehicle = vehicle;
-    // سجلُّ التفاويض بلا مؤرشَفين؛ وتفاويضُ ملفٍّ بعينه (من الأرشيف) تبقى.
+    // Authorization log excludes archived people; authorizations of one specific file (opened from the archive) are kept.
     const sets = employee ? null : await endedStaff();
     const authorizations = await VehicleAuthorization.find(sets ? andAll(filter, notArchivedRef(sets, 'employee')) : filter)
       .populate('vehicle', 'plateNumber type make model')
@@ -275,8 +266,7 @@ exports.listAuthorizations = async (req, res) => {
   }
 };
 
-// Authorize a vehicle to an employee (issue a new تفويض). Fails if the vehicle
-// already has an active authorization — use transfer for that.
+// Authorize a vehicle to an employee (issue a new authorization). Fails if the vehicle already has an active authorization; use transfer for that.
 exports.authorizeVehicle = async (req, res) => {
   try {
     const vehicle = await Vehicle.findById(req.params.id);
@@ -286,7 +276,7 @@ exports.authorizeVehicle = async (req, res) => {
     const emp = await Employee.findById(employee).select(EMP_FULL).lean();
     if (!emp) return res.status(404).json({ message: 'Employee not found' });
 
-    // للمركبة ورقةٌ في سجلّ المركبات؟ تُكتب هي، ويتبعها الإسناد.
+    // If the vehicle has a paper in the vehicle registry, write it and let the assignment follow.
     const vm = await VA.masterOfLegacy(vehicle);
     if (vm) {
       const h = VA.holderOf(vm);
@@ -393,7 +383,7 @@ exports.revokeVehicle = async (req, res) => {
       if (VA.holderOf(vm)) {
         r = await VA.setHolder(vm, null, { userId: req.user._id, byName: actorName(req), reason: revokedReason || '' });
       } else {
-        // الورقةُ ملغاةٌ أصلًا وبقي إسنادٌ مفتوح: يُغلَق ليتبعها.
+        // The paper is already cancelled but an open assignment remains: close it to match.
         r = await VA.syncLegacyFromMaster(vm.toObject(), { userId: req.user._id, reason: revokedReason || '', at: endDate });
         VA.announce(r);
         if (!r.closed) return res.status(400).json({ message: 'Vehicle has no active authorization to revoke', code: 'NOT_AUTHORIZED' });
@@ -431,8 +421,7 @@ exports.updateAuthorization = async (req, res) => {
     const fields = ['startDate', 'endDate', 'authorizationType', 'documentNumber', 'documentExpiry', 'issuedBy', 'revokedReason', 'notes'];
     for (const f of fields) if (req.body[f] !== undefined) auth[f] = req.body[f];
     await auth.save();
-    // والإسنادُ الساري مرآةُ الورقة: رقمُه ومدّتُه يُكتبان فيها أيضًا، وإلّا
-    // أعادتهما المزامنةُ التالية إلى ما في الورقة.
+    // An active assignment mirrors the paper: its number and term are written there too, or the next sync would revert them.
     if (auth.status === 'active') {
       const [vehicle, emp] = await Promise.all([
         Vehicle.findById(auth.vehicle).lean(), Employee.findById(auth.employee).select(EMP_FULL).lean(),
@@ -467,8 +456,7 @@ exports.deleteAuthorization = async (req, res) => {
     const wasActive = auth.status === 'active';
     const empId = auth.employee;
     await auth.deleteOne();
-    // حذفُ الإسناد الساري يُلغي التفويضَ في الورقة إن كانت باسم صاحبه — وإلّا
-    // أعادته المزامنةُ التالية كأنّه لم يُحذف.
+    // Deleting the active assignment cancels the paper authorization if it is in the holder's name, otherwise the next sync restores it.
     if (wasActive) {
       const [vehicle, emp] = await Promise.all([
         Vehicle.findById(vehicleId).lean(), Employee.findById(empId).select(EMP_FULL).lean(),
@@ -590,11 +578,9 @@ exports.getEmployeeHistory = async (req, res) => {
       Employee.findById(employeeId).select(EMP_FULL).lean(),
       registryIndex(),
     ]);
-    // ── «المركبة الحاليّة» من الورقة، والسجلُّ تاريخٌ ───────────────────────
-    // كان الحاليُّ أوّلَ إسنادٍ «ساري» في سجلّ الحركة — فظهر «ق أ 4723 مُفوَّضة
-    // لـ MD Rakib Hossen» وقد أُلغي تفويضُها من B2C. الآن يُسأل `currentFor`
-    // (الورقةُ هي المرجع)، والإسنادُ الذي تخالفه الورقةُ يُعلَّم `stale`.
-    // (`employee` هنا معرّفٌ لا مستند — فيُقارَن بملفّه هو، ثمّ يُعاد كما كان.)
+    // The current vehicle comes from the paper; the log is history.
+    // The first active assignment in the movement log used to be treated as current and showed vehicles authorized after the authorization was cancelled in B2C. Now `currentFor` decides (paper is authoritative) and a contradicted assignment is flagged `stale`.
+    // `employee` here is an id, not a document, so it is compared against his own file and then restored.
     const authorizations = rawAuths.map((a) => ({ ...presentAuth({ ...a, employee: holderEmp }, regOf(a.vehicle)), employee: a.employee }));
     const held = holderEmp ? await VA.currentFor(holderEmp) : [];
     const currents = held.map((h) => {
@@ -616,15 +602,9 @@ exports.getEmployeeHistory = async (req, res) => {
     });
     const current = currents[0] || null;
 
-    // ── وما هو مقيَّدٌ عليه في سجلّ المركبات ─────────────────────────────────
-    // التفاويضُ في موضعين: سجلُّ الحركة هذا، وورقةٌ مثبتةٌ على المركبة نفسِها في
-    // سجلّ المركبات. والثانيةُ هي الحجّةُ عند المرور — ولم تكن تظهر في ملفّه
-    // أصلًا.
-    //
-    // ومعها شريحةُ بترو اب. وهذه أهمُّها هنا: قد يشتري الموظّفُ سيّارتَه فتُركَّب
-    // له شريحةُ الشركة هديّةً — فلا تفويضَ لنا على السيّارة، والشريحةُ شريحتُنا
-    // وتصرف من حسابنا. فإن لم تظهر في ملفّه لم يعرف أحدٌ أنّها عنده، وبقي يصرف
-    // بها بعد رحيله. راجع services/employeeClearance — الشرطُ نفسُه هناك.
+    // What is also registered against him in the vehicle registry.
+    // Authorizations live in two places: this movement log and a paper pinned on the vehicle itself, which is what counts at a checkpoint and never showed on his file.
+    // Also the fuel card: an employee may buy his own car and keep the company card fitted, so there is no authorization but the card is ours and spends from our account. If it is not shown on his file, nobody knows he holds it. Same condition as services/employeeClearance.
     let registry = [];
     try {
       const { VehicleMaster } = require('../models/VehicleMaster');
@@ -676,8 +656,7 @@ exports.getDashboard = async (req, res) => {
     const now = today();
     const soon = new Date(); soon.setDate(soon.getDate() + 30);
     const soonStr = soon.toISOString().slice(0, 10);
-    // تفويضٌ بيد مَن انتهت خدمتُه في الموارد البشريّة لا يُعَدّ ساريًا ولا يُنبَّه
-    // بانتهائه — السجلُّ يبقى في القائمة، واللوحةُ تعدّ مَن هو على رأس العمل.
+    // An authorization held by someone whose HR service ended is not counted as active and does not alert on expiry; the record stays listed, and the dashboard counts only active staff.
     const archSets = await endedStaff();
     const { ids: endedIds } = archSets;
     const liveHolder = endedIds.size ? { employee: { $nin: [...endedIds] } } : {};

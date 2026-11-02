@@ -6,46 +6,28 @@ const VDOC = require('../config/vehicleDocuments');
 const logAudit = require('../utils/auditLogger');
 const cache = require('../utils/ttlCache');
 const { emitToAll } = require('../websocket/socketManager');
-// مفتاح **سجل المركبات** (حروف + أرقام)، لا مفتاح الأرقام الذي يستعمله النقل
-// الثقيل. الأرقام وحدها تتصادم هنا: «ل أ 1080» دراجة و«أ ص ر 1080» تريلا —
-// ومفتاح الأرقام يقيّد حادثة الدراجة على التريلا. التفصيل في utils/plateKey.
+// Key of the vehicle registry (letters plus digits), not the digits-only key used by heavy transport. Digits alone collide here: a motorbike plate and a trailer plate can share the same number and would attach the bike's accident to the trailer. See utils/plateKey.
 const { registryPlateKey: plateKey, flexSpaceRegex } = require('../utils/plateKey');
 const { endedStaff, idNumberEnded, employeeEnded, employeeArchived, idNumberArchived } = require('../utils/endedStaff');
-// بطاقةُ سائقٍ انتهت خدمتُه في الموارد البشريّة: بمرجع ملفّه إن رُبطت، وإلّا
-// برقم هويّته. تبقى في القائمة، ولا تُعَدّ في رقمٍ ولا شريحةٍ ولا انتهاء.
+// A driver card whose HR service ended: matched by file reference if linked, otherwise by ID number. It stays listed but is not counted in any number, fuel card or expiry.
 const cardEnded = (sets, c) => (c.employee ? employeeEnded(sets, c.employee) : idNumberEnded(sets, c.idNumber));
-// والمؤرشَفُ أشدّ: بطاقتُه لا تظهر صفًّا أصلًا — كأنّه حُذف (صاحبُ الشركة، ٢٠٢٦/١٠/١٩).
+// An archived person is stricter: the card is not shown as a row at all, as if deleted.
 const cardArchived = (sets, c) => (c.employee ? employeeArchived(sets, c.employee) : idNumberArchived(sets, c.idNumber));
-// المفوَّضُ على ورقة المركبة مؤرشَف؟ (برقم إقامته — لا مرجعَ ملفٍّ على الورقة)
+// Is the person authorized on the vehicle paper archived? Matched by residency number, since the paper holds no file reference.
 const holderArchived = (sets, v) => idNumberArchived(sets, v?.authorizedPerson?.iqamaNumber);
 
 /**
- * كلُّ تعديلٍ في القسم يبثّ ويُبطل الذاكرة — والتقريرُ منها.
- *
- * تقريرُ المركبة يُخزَّن ساعةً كاملةً حين تكون الفترةُ مغلقة، وذلك صحيحٌ لأرقام
- * الفترة وحدَها؛ لكنّ التقرير يحمل معها حالةَ المستندات **اليوم**: تأمينٌ ساري
- * ورخصةٌ تنتهي بعد كذا. فمن جدّد الوثيقةَ ثمّ طبع وجد الورقةَ القديمة ساعةً،
- * وهي ورقةٌ تُرسَل إلى جهةٍ خارجيّة.
- *
- * فيُمسَح تقريرُ المركبات مع كلّ كتابةٍ في القسم — إحدى عشرة عمليّةً كلُّها تمرّ
- * من هنا — ويبقى التخزينُ نافعًا لمن يفتح التقريرَ نفسَه مرّتين بلا تعديلٍ
- * بينهما. راجع `utils/ttlCache`: الإبطالُ يعبر إلى العامل الآخر أيضًا.
+ * Every change in the section broadcasts and invalidates the cache, including the report.
+ * The vehicle report is cached for an hour when its period is closed, which is right for period figures, but it also carries today's document state (valid insurance, license expiring). A user who renews a document and then prints would get the stale paper, which goes to an outside party.
+ * So the vehicle report is cleared on every write in the section (all eleven operations pass through here); caching still helps repeated opens with no edit between. See utils/ttlCache: invalidation also reaches the other worker.
  */
 /**
- * ── والقسمان يسمعان بعضَهما ──────────────────────────────────────────────────
- *
- * مركباتُ النقل الخفيف يقرؤها قسمان: هذا (سجلُّ المركبات) وقسمُ الأفراد (b2c)
- * — وهو نفسُه قسمُ النقل الخفيف. والتفويضُ يُنقَل من أيّهما، والقطاعُ يُكتب
- * هنا فيصير المركبةُ من مركباتهم.
- *
- * فكلُّ تغييرٍ هنا يُعلَن في الاثنين: يُمسَح مخزونُهما ثمّ يُرسَل حدثُهما —
- * والإبطالُ قبل الإعلان، وإلّا جاء الجلبُ على مخزونٍ لم يُمسَح فقرأ حالةً قبل
- * التعديل. ونقلُ التفويض من هناك يفعل المِثل (راجع `emitBoth`).
+ * The two sections hear each other.
+ * Light transport vehicles are read by two sections: this registry and the individuals section (b2c), which is the light transport section. Authorization can be transferred from either, and the sector is written here so the vehicle becomes theirs.
+ * Every change here is announced to both: clear their caches, then emit their event. Invalidate before announcing, otherwise the refetch reads pre-edit state. Transferring authorization from there does the same (see `emitBoth`).
  */
-// ── والقائمةُ في بابٍ واحدٍ مشترك ────────────────────────────────────────────
-// كانت هنا خمسُ بادئاتٍ، وفي أبواب الكتابة الأخرى قوائمُ غيرُها: الأسطولُ يُمسَح
-// من هنا ولا تُمسَح المركباتُ القديمة، وهناك العكس. فصارت القائمةُ والإعلانُ في
-// utils/vehicleAnnounce — يمرّ منه كلُّ بابٍ يكتب في المركبة، من أيّ قسمٍ كان.
+// The cache-key list lives in one shared place.
+// There were five prefixes here and different lists in other write paths, so the fleet was cleared from here but not the old vehicles, and the reverse elsewhere. The list and the announcement are now in utils/vehicleAnnounce, which every vehicle write path uses.
 const { announceVehicles } = require('../utils/vehicleAnnounce');
 const emit = (event, payload = {}) => {
   if (event === 'vreg:updated') return announceVehicles(payload);
@@ -53,10 +35,8 @@ const emit = (event, payload = {}) => {
   try { emitToAll(event, payload); } catch (e) {}
 };
 
-// المستندات ذات تاريخ الانتهاء — المفتاح ← مسار التاريخ + الاسم.
-// تعريف واحد للمستندات — config/vehicleDocuments.js. كان فيه نسخة تانية هنا
-// بتحسب الحالة من غير ما تعرف «غير مطلوب»، فعربية مش محتاجة فحص كانت بتتحسب
-// ناقصة فحص.
+// Documents that have an expiry date: key to date path and name.
+// Single document definition in config/vehicleDocuments.js. A second copy here computed state without knowing 'not required', so a vehicle that needs no inspection counted as missing one.
 const DOC_TYPES = VDOC.DOCUMENTS;
 
 const DAY = 86400000;
@@ -66,7 +46,7 @@ const getPath = (obj, path) => path.split('.').reduce((c, p) => (c == null ? c :
 const { textIn, mergeOptions, normKey } = require('../utils/colFilter');
 const _multi = (v) => (v == null ? [] : (Array.isArray(v) ? v : String(v).split(',')).map((x) => String(x).trim()).filter(Boolean));
 
-// مخزّن مؤقتًا — كان findOneAndUpdate (كتابة) على كل طلب = بطيء على Atlas المُقيَّد.
+// Cached: a findOneAndUpdate (write) on every request was slow on the throttled Atlas cluster.
 const getConfig = async () => {
   const hit = cache.get('vreg:config');
   if (hit !== undefined) return hit;
@@ -78,25 +58,19 @@ const getConfig = async () => {
   ALERTS = (cfg && cfg.alerts) || {};
   return cfg;
 };
-// ── عتباتُ التنبيه كما تقرؤها الفلاتر ─────────────────────────────────────────
-// «قارب على الانتهاء» في الفلتر هو «قارب على الانتهاء» في كروت اللوحة: حرجٌ أو
-// تحذيرٌ بعتبة كلّ مستندٍ من إعدادات القسم (`VDOC.stateOf`) — لا «خلال ثلاثين
-// يومًا» مكتوبةً هنا. و`buildFilter` متزامنة، فتقرأ آخرَ إعداداتٍ قُرئت؛ وكلُّ
-// نقطةٍ تبني بها تنادي `getConfig` أوّلًا.
+// Alert thresholds as the filters read them.
+// 'Nearing expiry' in the filter equals 'nearing expiry' in the dashboard cards: critical or warning by each document's threshold from section settings (`VDOC.stateOf`), not a hard-coded 30 days. `buildFilter` is synchronous, so it reads the last settings loaded; every endpoint that uses it calls `getConfig` first.
 let ALERTS = {};
 
-// حالة مستند مقابل عتبته: expired / critical(≤30) / warning(≤warnDays) / valid / none
-// غلاف رفيع حوالين VDOC.stateOf عشان الكود القديم يفضل شغّال بنفس شكل الرد.
+// Document state against its threshold: expired / critical(<=30) / warning(<=warnDays) / valid / none.
+// Thin wrapper around VDOC.stateOf so older code keeps the same response shape.
 const docStatus = (date, alert, statusCode = '') => {
   const { state, days } = VDOC.stateOf(date, statusCode, alert || {});
   return { status: state === 'not_applicable' ? 'not_required' : state === 'missing' ? 'none' : state, days };
 };
 
-// «عليها جهاز تتبّع» — تعريف واحد لا ثلاثة.
-//
-// كان الفلتر والبطاقة يسألان عن `gps.deviceId`، وهو حقل لا يُملأ من أي استيراد:
-// الأجهزة تصل بالرقم التسلسلي والطراز والمزوّد. فكانت البطاقة تقول «صفر» و٢٤٠
-// مركبة عليها أجهزة بالفعل — رقمٌ خاطئ في وجه صاحب الأسطول لا خانةٌ فارغة.
+// 'Has a tracking device': one definition, not three.
+// The filter and the card asked about `gps.deviceId`, which no import fills (devices arrive as serial number, model and provider), so the card showed zero while 240 vehicles had devices.
 const HAS_GPS = { $or: [
   { 'gps.serialImei': { $nin: [null, ''] } },
   { 'gps.deviceModel': { $nin: [null, ''] } },
@@ -104,39 +78,24 @@ const HAS_GPS = { $or: [
 ] };
 const hasGps = (v) => !!(v?.gps?.serialImei || v?.gps?.deviceModel || v?.gps?.deviceId);
 
-// ═══════════════════════════════════════════════════════════════════════════
-//  الفلاتر المشتقّة — ما ليس عمودًا في الجدول ويُسأل عنه كل يوم
-// ═══════════════════════════════════════════════════════════════════════════
+// Derived filters: what is not a table column but is asked every day.
 /**
- * الفلاتر أعلاه تسأل عن قيمة مكتوبة في خانة: «المدينة = جدّة». وهذه تسأل عمّا
- * لا يُكتب في خانة أصلًا: «أيُّ مركبةٍ ينتهي تأمينها خلال شهر؟» و«كم مركبةً
- * بلا جهاز تتبّع؟» و«أين المركبات التي قسطُها فوق خمسة آلاف؟».
- *
- * وهي أسئلة الإدارة لا أسئلة موظّف الإدخال. كانت تُجاب بتصدير الجدول إلى إكسل
- * ثم فرزه باليد، فيختلف رقمُ كل من يجرّبها.
- *
- * ── وكل شريحة تحمل شرطها مرّتين، وذلك مقصود ────────────────────────────────
- *   `cond()` شرطُ Mongo الذي يفتح صفوفها في القائمة.
- *   `test()` نفسُ الشرط منفَّذًا في الذاكرة، به يُحسب العدد المكتوب بجانبها.
- * ولولا اشتقاقُهما من تعريفٍ واحد لانفصل العدد المعروض عن الصفوف التي يفتحها
- * — وهو أسوأ عطبٍ في لوحة تحليلات: رقمٌ تضغطه فيعطيك غيرَه ولا شيء يفسّر.
- *
- * و`cond` دالّةٌ لا كائن: حدود «خلال ٣٠ يومًا» تُحسب من اليوم، ولو بُنيت مرّة
- * عند إقلاع الخادم لتجمّدت عند يوم الإقلاع وصارت تكذب بعد أسبوع من التشغيل.
+ * The filters above ask for a value stored in a field (city = Jeddah). These ask what is not stored in any field: which vehicles' insurance ends within a month, how many have no tracker, which have a premium above 5000.
+ * These are management questions; answering them by exporting to Excel and sorting gave different numbers per person.
+ * Each bucket carries its condition twice on purpose: `cond()` is the Mongo condition that opens its rows in the list, and `test()` is the same condition run in memory to compute the count next to it. Both derive from one definition so the displayed count never diverges from the rows it opens.
+ * `cond` is a function, not an object, because the 'within 30 days' bounds are computed from today; built once at boot they would freeze at the start date.
  */
 const dayStart = (n = 0) => { const d = new Date(); d.setHours(0, 0, 0, 0); d.setDate(d.getDate() + n); return d; };
 const _blank = (x) => x === null || x === undefined || x === '';
 
-// أفقُ الانتهاء: نفس القطع لكل مستند. الحدود متلاصقة غير متداخلة — «منتهٍ»
-// تنتهي بالأمس و«خلال ٣٠» تبدأ اليوم، وإلا عُدَّ ما ينتهي اليوم في الشريحتين
-// معًا فتجاوز مجموعُ الشرائح عددَ المركبات.
+// Expiry horizon: same cuts for every document. Bounds are adjacent, not overlapping: 'expired' ends yesterday and 'within 30' starts today, otherwise a document expiring today is counted in both and the bucket sum exceeds the vehicle count.
 const HORIZON_BANDS = [
   { value: 'منتهٍ', en: 'Expired', hi: -1 },
   { value: 'خلال ٣٠ يومًا', en: 'Within 30 days', lo: 0, hi: 30 },
   { value: '٣١ إلى ٦٠ يومًا', en: '31–60 days', lo: 31, hi: 60 },
   { value: '٦١ إلى ٩٠ يومًا', en: '61–90 days', lo: 61, hi: 90 },
   { value: 'أبعد من ٩٠ يومًا', en: 'Beyond 90 days', lo: 91 },
-  // «بلا تاريخ» ليست تاريخًا خارج المدى — لا يلتقطها أيُّ مدًى، وتلزمها شريحة.
+  // 'No date' is not a date out of range: no range matches it, so it needs its own bucket.
   { value: 'بلا تاريخ مسجَّل', en: 'No date on file', none: true },
 ];
 const horizonOptions = (path) => HORIZON_BANDS.map((b) => ({
@@ -155,7 +114,7 @@ const horizonOptions = (path) => HORIZON_BANDS.map((b) => ({
   },
 }));
 
-// شرائح رقمية (قسط التأمين، سقف الاستهلاك، عدد الحوادث، سنة الصنع).
+// Numeric buckets (insurance premium, consumption cap, accident count, model year).
 const numberOptions = (path, bands) => bands.map((b) => ({
   value: b.value, en: b.en,
   cond: () => (b.none
@@ -171,7 +130,7 @@ const numberOptions = (path, bands) => bands.map((b) => ({
   },
 }));
 
-/** سؤال بنعم/لا: الشريحتان متكاملتان دائمًا، فمجموعهما كلُّ المركبات. */
+/** Yes/no question: the two buckets are always complementary, so together they cover all vehicles. */
 const yesNo = (yes, no, cond, test) => ([
   { value: yes.ar, en: yes.en, cond: () => cond(), test },
   { value: no.ar, en: no.en, cond: () => ({ $nor: [cond()] }), test: (v) => !test(v) },
@@ -183,10 +142,8 @@ const HAS_AUTH = () => ({ $or: [
   { 'authorizedPerson.authorizationNumber': { $nin: [null, ''] } },
 ] });
 
-// ── حالةُ المستند بقاعدة الكروت نفسِها ───────────────────────────────────────
-// صاحبُ الشركة (٢٠٢٦/١٠/٢٢): الفلترُ والرقمُ في اللوحة جوابٌ واحد. فالمنتهي
-// والقارب يُحسبان هنا كما تحسبهما `VDOC.stateOf` في كروت المستندات: «غير مطلوب»
-// لا ينتهي مهما كان تاريخه، و«قارب» حرجٌ أو تحذيرٌ بعتبة المستند من الإعدادات.
+// Document state uses the same rule as the cards.
+// The filter and the dashboard number are one answer, so expired and nearing are computed as `VDOC.stateOf` does for the document cards: 'not required' never expires whatever its date, and 'nearing' is critical or warning by the document's threshold from settings.
 const NOT_REQ_CODE = (dt) => ({ [dt.statusPath]: { $ne: 'not_required' } });
 const dueDays = (key) => {
   const a = ALERTS[key] || {};
@@ -205,22 +162,16 @@ const hasAuthT = (v) => !!(v.authorizedPerson?.name || v.authorizedPerson?.autho
 const _year = () => new Date().getFullYear();
 
 const DERIVED_DEFS = [
-  // ── ما ينتهي ومتى، مستندًا مستندًا ──────────────────────────────────────
+  // What expires and when, document by document.
   ...DOC_TYPES.map((dt) => ({
     key: `${dt.key}Horizon`, ar: `انتهاء ${dt.ar}`, en: `${dt.en} expiry`,
     groupAr: 'آفاق الانتهاء', groupEn: 'Expiry horizons',
     select: [dt.path], options: horizonOptions(dt.path),
   })),
 
-  // ── «كم مركبةً بلا بطاقة تشغيل، ومَن هي؟» ────────────────────────────────
-  //
-  // هذا هو السؤال الذي يُسأل من الإدارة، وهو غيرُ سؤال الانتهاء تمامًا. ولا
-  // يُقرأ من التاريخ: مركبةٌ بلا تاريخٍ قد لا تحتاج المستند أصلًا (دراجةٌ
-  // ناريّة لا بطاقة تشغيل لها) وقد تحتاجه ولم يُستخرج — والفرق هو كلُّ الفرق.
-  // فخلطُهما يجعل الرقمَ الذي ينظر إليه صاحبُ الشركة يقول نقصًا لا وجود له.
-  //
-  // والوضع الإداريّ مسجَّلٌ في `statusCode` منذ الاستيراد: `required` مطلوبٌ
-  // ولم يُستخرج، و`not_required` غيرُ مطلوب. وشريحةٌ لكلٍّ، مستندًا مستندًا.
+  // How many vehicles have no operating card, and which ones.
+  // This is a management question distinct from expiry, and cannot be read from the date: a vehicle without a date may not need the document (a motorbike has no operating card) or may need it and not have it extracted, which is a real difference. Mixing them makes the number report a shortage that does not exist.
+  // The administrative state is recorded in `statusCode` since import: `required` means needed and not extracted, `not_required` means not needed. One bucket for each, per document.
   ...DOC_TYPES.map((dt) => {
     const NOT_REQ = ['not_required', 'not_in_use'];
     const ELSEWHERE = ['with_bank', 'with_aljabr', 'unknown', 'unmapped'];
@@ -256,15 +207,12 @@ const DERIVED_DEFS = [
     };
   }),
 
-  // ── والمركبة كلّها في سؤال واحد ─────────────────────────────────────────
-  // الشرائح الثلاث متنافية عمدًا: مركبةٌ فيها منتهٍ **و** قاربَ آخرُ على الانتهاء
-  // تُعدّ في «منتهٍ» وحدها. ولولا ذلك لفاق مجموع الشرائح عدد الأسطول، وهو أوّل
-  // ما يلاحظه من ينظر ويُفقده الثقة في اللوحة كلها.
+  // The whole vehicle in one question.
+  // The three buckets are mutually exclusive on purpose: a vehicle with one expired and another nearing is counted in 'expired' only. Otherwise the bucket sum exceeds the fleet size, which is the first thing a reader notices and it destroys trust in the whole dashboard.
   {
     key: 'documentHealth', ar: 'صحّة المستندات', en: 'Document health',
     groupAr: 'المستندات', groupEn: 'Documents',
-    // بقاعدة كروت المستندات — راجع `docStateT` أعلاه. وكانت «خلال ٣٠ يومًا»
-    // ثابتةً وتعدّ «غير مطلوب» منتهيًا، فيختلف الفلترُ عن الكارت فوقه.
+    // Uses the document-card rule; see `docStateT` above. A fixed 'within 30 days' used to count 'not required' as expired, so the filter disagreed with the card above it.
     select: DOC_TYPES.flatMap((dt) => [dt.path, dt.statusPath]),
     options: [
       { value: 'فيها مستند منتهٍ', en: 'Has an expired document', cond: EXPIRED_ANY, test: expiredAnyT },
@@ -281,8 +229,8 @@ const DERIVED_DEFS = [
     ],
   },
   {
-    // ── التفويض: ساري · منتهٍ · بلا تفويض ─────────────────────────────────
-    // «عليها مفوَّض» وحدَها لا تقول إن كانت الورقةُ تصلح للقيادة اليوم.
+    // Authorization: active, expired, none.
+    // 'Has an authorized person' alone does not say whether the paper is valid for driving today.
     key: 'authState', ar: 'التفويض', en: 'Authorisation',
     groupAr: 'الملكية والتفويض', groupEn: 'Ownership',
     select: ['authorizedPerson.name', 'authorizedPerson.authorizationNumber', AUTH_DOC.path, AUTH_DOC.statusPath],
@@ -312,9 +260,7 @@ const DERIVED_DEFS = [
       () => ({ 'missingItems.0': { $exists: true } }), (v) => !!(v.missingItems || []).length,
     ),
   },
-  // البند الناقص وسببُه: `buildFilter` يعرف هذين المفتاحين من قبل (وحده يجمع
-  // بينهما في `$elemMatch` حين يُطلبا معًا)، فلا يُبنى لهما شرطٌ عامّ هنا —
-  // التعريفُ هنا لعرض قيمهما وأعدادها فحسب.
+  // Missing item and its reason: `buildFilter` already knows these two keys (and alone combines them in `$elemMatch` when both are requested), so no general condition is built for them here; the definition only displays their values and counts.
   {
     key: 'missingItem', ar: 'البند الناقص', en: 'Missing item',
     groupAr: 'المستندات', groupEn: 'Documents', select: ['missingItems'], handled: true,
@@ -331,7 +277,7 @@ const DERIVED_DEFS = [
     valuesOf: (v) => [...new Set(v.logistiGaps || [])],
   },
 
-  // ── التشغيل: ما الذي على المركبة فعلًا ──────────────────────────────────
+  // Operation: what is actually on the vehicle.
   {
     key: 'gpsFitted', ar: 'جهاز التتبّع', en: 'Tracker fitted',
     groupAr: 'التشغيل', groupEn: 'Operations',
@@ -359,8 +305,7 @@ const DERIVED_DEFS = [
     ),
   },
   {
-    // سقف الاستهلاك: «مفتوح» ليس سقفًا عاليًا — هو لا سقف. عدُّه مع الأرقام
-    // يخفي المركبات التي لا حدَّ لصرفها، وهي أوّل ما يُسأل عنه في مراجعة الوقود.
+    // Consumption cap: 'open' is not a high cap, it is no cap. Counting it with the numbers hides the vehicles with unlimited spend, the first thing a fuel review asks about.
     key: 'consumptionLimit', ar: 'سقف الاستهلاك', en: 'Fuel limit',
     groupAr: 'التشغيل', groupEn: 'Operations', select: ['fuelCard.limitSar', 'fuelCard.limitStatus'],
     options: [
@@ -379,7 +324,7 @@ const DERIVED_DEFS = [
     ],
   },
 
-  // ── التأمين بالمال لا بالتاريخ ──────────────────────────────────────────
+  // Insurance by money, not by date.
   {
     key: 'insuranceValue', ar: 'قيمة القسط', en: 'Premium band',
     groupAr: 'التأمين', groupEn: 'Insurance', select: ['insurance.premiumSar', 'insurance.premiumStatusAr'],
@@ -391,7 +336,7 @@ const DERIVED_DEFS = [
         { value: 'أكثر من ٥٠٠٠ ريال', en: 'Over 5000 SAR', lo: 5001 },
       ]),
       {
-        // مركبةٌ يسدّد قسطَها المموِّل ليست «بلا قسط» — هي مؤمَّنة والرقم عنده.
+        // A vehicle whose premium is paid by the financier is not 'without premium'; it is insured and the number is held by the financier.
         value: 'يسدّده المموِّل', en: 'Paid by the financier',
         cond: () => ({ 'insurance.premiumStatusAr': { $nin: [null, ''] } }),
         test: (v) => !!v.insurance?.premiumStatusAr,
@@ -405,10 +350,9 @@ const DERIVED_DEFS = [
     ],
   },
 
-  // ── المركبة نفسها: عمرُها وسجلُّها ──────────────────────────────────────
+  // The vehicle itself: age and history.
   {
-    // سنة الصنع رقمٌ لا يُقرأ منه العمر بالعين، والعمر هو ما يُبنى عليه قرار
-    // الإحلال. والشرائح محسوبة من سنة اليوم فلا تبور مع مرور السنة.
+    // Model year is a number from which age is not readable by eye, and age is what the replacement decision is built on. Buckets are computed from the current year so they do not go stale.
     key: 'vehicleAge', ar: 'عمر المركبة', en: 'Vehicle age',
     groupAr: 'المركبة', groupEn: 'Vehicle', select: ['modelYear'],
     options: numberOptions('modelYear', [
@@ -423,8 +367,7 @@ const DERIVED_DEFS = [
     key: 'accidentBand', ar: 'سجلّ الحوادث', en: 'Accident record',
     groupAr: 'المركبة', groupEn: 'Vehicle', select: ['accidentCount'],
     options: [{
-      // «بلا حوادث» تشمل الخانة الفارغة: العدّاد يُملأ بعد ربط المطالبات،
-      // ومركبةٌ لم يُحسب لها بعدُ ليست مركبةً خارج التصنيف — هي بلا حوادث.
+      // 'No accidents' includes the empty field: the counter is filled after claims are linked, and a vehicle not yet counted is not unclassified, it has no accidents.
       value: 'بلا حوادث', en: 'No accidents',
       cond: () => ({ $or: [{ accidentCount: { $in: [null, 0] } }, { accidentCount: { $exists: false } }] }),
       test: (v) => !Number(v.accidentCount),
@@ -437,47 +380,32 @@ const DERIVED_DEFS = [
 ];
 const DERIVED_BY_KEY = new Map(DERIVED_DEFS.map((d) => [d.key, d]));
 
-// اسم الحالة العربي → رمزها. الشاشة تعرض «مطلوب» لا `required`، والفلتر يجب أن
-// يقبل ما تعرضه — ويظل يقبل الرمز نفسه فلا تنكسر روابط محفوظة.
+// Arabic state name to code. The screen shows the Arabic label, not `required`, and the filter accepts what the screen shows while still accepting the code so saved links keep working.
 const REASON_BY_LABEL = Object.fromEntries(
   Object.entries(VDOC.STATUS_LABELS).map(([code, l]) => [l.ar, code]).filter(([ar]) => ar),
 );
 
-// يبني فلتر Mongo من الـ query (متعدد القيم + بحث + نطاق سنة).
+// Builds the Mongo filter from the query (multi-value, search, year range).
 /**
- * كلُّ حقلٍ نصّيٍّ في المركبة قابلٌ للبحث — تُقرأ الحقول من المخطَّط نفسه.
- *
- * كانت قائمةً مكتوبةً بأسماء الحقول، فكلُّ حقلٍ يُضاف إلى النموذج يولد خارج
- * البحث في صمت. ورقم هوية المفوَّض كان من هؤلاء: تُدخله في الخانة فتخرج
- * الشاشة فارغةً وهو مخزَّنٌ في القاعدة — وذلك أسوأ من غياب البحث، لأنّ
- * الفراغ يُقرأ «لا يوجد» لا «لم أبحث فيه».
- *
- * والاشتقاق من المخطَّط يجعل القائمة تكبر مع النموذج بلا تذكُّرٍ من أحد.
+ * Every text field on the vehicle is searchable; fields are read from the schema itself.
+ * A hand-written field list meant each new model field was silently left out of search. The authorized person's ID number was one: typed into the box, the screen came back empty although it was stored, and empty reads as 'none' rather than 'not searched'.
+ * Deriving from the schema makes the list grow with the model.
  */
 const SEARCHABLE_PATHS = Object.entries(VehicleMaster.schema.paths)
   .filter(([path, def]) => def.instance === 'String' && !path.startsWith('_') && path !== '__v')
   .map(([path]) => path);
 
 /**
- * ── حقولٌ تُطلَب، لا وثيقةٌ كاملة ─────────────────────────────────────────────
- *
- * الرابط إلى قاعدة البيانات مقيَّدٌ عند مئة كيلوبايت في الثانية تقريبًا — قياسٌ
- * ثابتٌ مهما كان الحجم. فزمنُ الشاشة يساوي عددَ البايتات التي تجرّها، لا عدد
- * وثائقها ولا تعقيد استعلامها: المحرّك ينفّذ استعلام الأسطول كلِّه في مللي
- * ثانيةٍ واحدة، ثم تُستقبَل النتيجة في ثمانية آلاف.
- *
- * ولذلك لا تُقرأ وثيقةٌ كاملة لشاشةٍ تستعمل عشرها. هذه الحقول هي ما تحتاجه
- * فعلًا شاشاتُ النظرة الشاملة والانتهاءات وسجلّات القسم — وهي التي تقرأ
- * الأسطول كلَّه — وبها تنزل الحمولة من ستّمئة وسبعين كيلوبايت إلى نحو ثمانين.
- *
- * وما يُضاف إلى النموذج لاحقًا ولا يُضاف هنا لا يظهر في هذه الشاشات: هذا هو
- * ثمن المشروع الضيّق، ويُدفَع مرّةً واحدة مقابل شاشةٍ تفتح في ثانية بدل ثمان.
+ * Fields are requested, not whole documents.
+ * The database link is capped at roughly 100 KB/s regardless of size, so screen time equals bytes pulled, not document count or query complexity: the engine runs the fleet query in a millisecond, then the result takes seconds to receive.
+ * So a whole document is not read for a screen that uses a tenth of it. These fields are what the overview, expiry and section-register screens (which read the whole fleet) actually need; the payload drops from about 670 KB to about 80.
+ * A field added to the model later and not here will not appear on those screens; that is the cost of a narrow projection.
  */
 const DOC_PATHS = [...new Set(VDOC.DOCUMENTS.flatMap((d) => [
   d.path, d.statusPath, d.numberPath, d.startPath, ...(d.extra || []),
 ].filter(Boolean)))];
 
-/** ما تحتاجه شاشاتُ التجميع: تصنيفُ المركبة، وحالةُ كلّ مستند وتاريخُه. */
+/** What the aggregation screens need: vehicle classification, and each document's state and date. */
 const AGG_FIELDS = [...new Set([
   'plateNumber', 'plateKey', 'chassisNumber', 'serialNumber', 'sectorAr', 'sectorCode', 'registrationTypeAr',
   'ownerCompanyAr',
@@ -486,7 +414,7 @@ const AGG_FIELDS = [...new Set([
   'tamStatusAr', 'accidentCount', 'missingItems', 'logistiGaps', 'insurancePolicy',
   'isActive', 'notesAr',
   ...DOC_PATHS,
-  // حقولٌ تقرؤها سجلّات القسم في تفاصيل صفوفها.
+  // Fields the section registers read in their row details.
   'insurance.companyAr', 'insurance.coverageTypeAr', 'insurance.premiumSar', 'insurance.premiumStatusAr',
   'fuelCard.provider', 'fuelCard.cardNumber', 'fuelCard.statusAr', 'fuelCard.plateOnInvoiceAr',
   'fuelCard.consumptionTypeAr', 'fuelCard.limitSar', 'fuelCard.limitStatus',
@@ -504,31 +432,28 @@ function buildFilter(q) {
   for (const [qk, field] of Object.entries(map)) {
     const vals = _multi(q[qk]);
     if (!vals.length) continue;
-    // «—» تعني الخانة الفارغة، وهي فئةٌ حقيقية يُسأل عنها: «أي المركبات بلا
-    // مالك مسجَّل؟» سؤالُ عملٍ لا نتيجةَ خطأ، فلا يجوز أن يسقط من الفلتر.
-    // والقيمةُ تُطابَق كما تُقرأ في القائمة — بأيّ فراغٍ حولها — و«—» تشمل الفراغَ
-    // وحدَه. كان `$in` على النصّ و Mongoose يقصّه. راجع utils/colFilter.
+    // A dash means the empty field, a real category people ask about: which vehicles have no registered owner is a business question, not an error, so it cannot drop out of the filter.
+    // The value is matched as it is read in the list, with any surrounding whitespace, and the dash covers blank only. A `$in` on the text used to be trimmed by Mongoose. See utils/colFilter.
     const c = textIn(field, vals.map((x) => (x === '—' ? '' : x)));
     if (c) and.push(c);
   }
   return buildFilterRest(q, f, and);
 }
 
-// كل الفلاتر بالاسم العربي (نفس ما تعرضه التوزيعات) — أبسط وأوضح.
+// All filters use the Arabic name (the same as the distributions display): simpler and clearer.
 const FIELD_MAP = {
     sector: 'sectorAr', registrationType: 'registrationTypeAr', ownerCompany: 'ownerCompanyAr', brand: 'brandAr',
     department: 'departmentAr', city: 'cityAr', possession: 'possessionStatusAr',
     gpsDeviceStatus: 'gps.deviceStatusAr',
-    // مفاتيح سجلّات القسم — كل صفّ فيها يفتح مركباته بهذه الفلاتر
+    // Section register keys: each row opens its vehicles with these filters.
     authorizedPerson: 'authorizedPerson.name', authorizedPersonIqama: 'authorizedPerson.iqamaNumber',
     gpsProvider: 'gps.provider',
     gpsDevice: 'gps.deviceModel', fuelCard: 'fuelCard.cardNumber',
     owner: 'ownerNameAr', insuranceCompany: 'insurance.companyAr',
     coverageType: 'insurance.coverageTypeAr', fuelCardStatus: 'fuelCard.statusAr',
     inspectionStatus: 'inspection.statusAr', tamStatus: 'tamStatusAr', color: 'colorAr',
-    // ── أعمدة الماستر النهائي (أغسطس ٢٠٢٦) ───────────────────────────────
-    // حالة التشغيل أوّلها: ٧٦ مركبةً من ٣٣٥ واقفةٌ أو مسروقة، وكان الجواب
-    // مدفونًا في كلمة «غير مستخدم» مكتوبةً مكانَ اسم الإدارة.
+    // Columns of the final master sheet.
+    // Operating state comes first: a large share of the fleet is stopped or stolen, and the answer was buried in the word 'unused' written in the place of the department name.
     serviceStatus: 'serviceStatusAr',
     model: 'modelAr',
     commercialRegistration: 'commercialRegistration',
@@ -538,22 +463,17 @@ const FIELD_MAP = {
     gpsSerial: 'gps.serialImei',
     operatingCardNumber: 'operatingCard.cardNumber',
     authorizationNumber: 'authorizedPerson.authorizationNumber',
-    // توافق خلفي مع الأكواد:
+    // Backward compatibility with the codes:
     sectorCode: 'sectorCode', registrationTypeCode: 'registrationTypeCode',
     serviceStatusCode: 'serviceStatusCode',
-    // «شرائح وقود نشطة» في اللوحة تُعَدّ بالرمز (`statusCode === 'active'`) —
-    // فتُفتَح بالرمز نفسِه لا بنصٍّ قد يُكتب بأكثر من صيغة.
+    // 'Active fuel cards' on the dashboard is counted by code (`statusCode === 'active'`), so it opens by the same code rather than text that may be written in several forms.
     fuelCardStatusCode: 'fuelCard.statusCode',
 };
 
 /**
- * ── ما يُعدّ «فلترًا على المركبات» ───────────────────────────────────────────
- * كانت ثلاثُ نقاطٍ تسأل السؤالَ نفسَه بثلاث قوائم: اللوحةُ تعدّ أيَّ مفتاح،
- * والانتهاءاتُ خمسةَ مفاتيحَ فقط، والحوادثُ لا شيء. فيُخفي فلترُ «نوع التسجيل»
- * بطاقاتِ السائقين من اللوحة ويُبقيها في الانتهاءات، وتعدّ اللوحةُ حوادثَ
- * المركبات المطابقة ويفتح الرقمُ حوادثَ الأسطول كلِّه.
- *
- * فالقائمةُ هنا واحدةٌ مشتقّةٌ مِمّا يفهمه `buildFilter` نفسُه.
+ * What counts as a vehicle filter.
+ * Three places asked the same question with three lists: the dashboard counted any key, expiry only five keys, and accidents none. So a registration-type filter hid driver cards from the dashboard but kept them in expiry, and the dashboard counted the matching vehicles' accidents while the number opened the whole fleet's accidents.
+ * Now there is one list, derived from what `buildFilter` itself understands.
  */
 const VEHICLE_FILTER_KEYS = new Set([
   ...Object.keys(FIELD_MAP),
@@ -564,18 +484,17 @@ const VEHICLE_FILTER_KEYS = new Set([
 ]);
 const hasVehicleFilter = (q = {}, except = []) => Object.entries(q)
   .some(([k, v]) => VEHICLE_FILTER_KEYS.has(k) && !except.includes(k) && String(v ?? '').trim() !== '');
-/** مفاتيحُ فلتر المركبات وحدَها من استعلامٍ فيه غيرُها. */
+/** Only the vehicle-filter keys from a query that contains others. */
 const vehicleQueryOf = (q = {}) => Object.fromEntries(Object.entries(q).filter(([k]) => VEHICLE_FILTER_KEYS.has(k)));
 
 function buildFilterRest(q, f, and) {
-  // نواقص منصّة لوجستي: «أرِني المركبات التي ينقصها شرط» و«أرِني من ينقصه هذا
-  // الشرط بعينه» — سؤالان مختلفان، وكلاهما قائمة عمل.
+  // Logisti platform gaps: 'show vehicles missing a requirement' and 'show who is missing this specific requirement' are two different questions, both work lists.
   if (q.logistiGaps === '1') and.push({ 'logistiGaps.0': { $exists: true } });
   if (q.logistiGaps === '0') and.push({ 'logistiGaps.0': { $exists: false } });
   const gapItems = _multi(q.logistiGap);
   if (gapItems.length) and.push({ logistiGaps: { $in: gapItems } });
 
-  // نواقص البيانات: «أرِني من ينقصه شيء»، أو بندًا بعينه، أو بندًا بسبب بعينه.
+  // Data gaps: show who is missing anything, or a specific item, or an item for a specific reason.
   if (q.missing === '1') and.push({ 'missingItems.0': { $exists: true } });
   const mItems = _multi(q.missingItem);
   const mReasons = _multi(q.missingReason).map((x) => REASON_BY_LABEL[x] || x);
@@ -585,8 +504,7 @@ function buildFilterRest(q, f, and) {
   else if (mReasons.length) and.push({ 'missingItems.reason': { $in: mReasons } });
   if (q.insurancePolicy) and.push({ insurancePolicy: q.insurancePolicy });
 
-  // «بلا تاريخ مسجَّل» لمستند بعينه — ليس تاريخًا خارج المدى بل لا تاريخ له،
-  // فلا يلتقطه أي مدى وتلزمه فئةٌ خاصة به.
+  // 'No recorded date' for a specific document is not a date out of range but no date at all, so no range matches it and it needs its own category.
   if (q.missingDocDate) {
     const dt = DOC_TYPES.find((x) => x.key === q.missingDocDate);
     if (dt) and.push({ $or: [{ [dt.path]: null }, { [dt.path]: '' }, { [dt.path]: { $exists: false } }] });
@@ -603,13 +521,11 @@ function buildFilterRest(q, f, and) {
     and.push({ modelYear: yr });
   }
   if (q.q && String(q.q).trim()) {
-    // البحث لا يبالي بعدد المسافات: راجع flexSpaceRegex — لوحةُ الحرفين تُنسخ
-    // من أبشر بمسافتين وتُخزَّن عندنا بواحدة، فكان الموظّف يمسح مسافةً بيده
-    // ليجد ما يبحث عنه.
+    // Search ignores the number of spaces; see flexSpaceRegex. A two-letter plate is copied from Absher with two spaces and stored here with one, so staff used to delete a space by hand to find it.
     const rx = flexSpaceRegex(q.q);
     and.push({ $or: SEARCHABLE_PATHS.map((f) => ({ [f]: rx })) });
   }
-  // فلتر انتهاء مستند خلال مدة، أو منتهي، أو ضمن نطاق تاريخي.
+  // Filter for a document expiring within a period, already expired, or within a date range.
   if (q.expiringDoc && q.expiringWithin) {
     const dt = DOC_TYPES.find((x) => x.key === q.expiringDoc);
     if (dt) {
@@ -621,10 +537,9 @@ function buildFilterRest(q, f, and) {
     const dt = DOC_TYPES.find((x) => x.key === q.expiredDoc);
     if (dt) and.push({ [dt.path]: { $ne: null, $lt: new Date() } });
   }
-  // «بدون مستند»: مركبات ينقصها هذا المستند (لا تاريخ/لا رقم).
+  // 'Without document': vehicles missing this document (no date or no number).
   if (q.missingDoc) {
-    // التفويض كان غائبًا عن هذه الخريطة رغم كونه مستندًا سادسًا كامل الحقوق،
-    // فـ«أرِني المركبات بلا تفويض» كان يسقط في صمت ويفتح الأسطول كلَّه.
+    // Authorization was missing from this map although it is a full sixth document, so 'show vehicles without authorization' silently fell through and opened the whole fleet.
     const paths = { insurance: 'insurance.expiryDate', operatingCard: 'operatingCard.cardNumber', vehicleLicense: 'vehicleLicense.expiryDate', inspection: 'inspection.expiryDate', gps: 'gps.deviceId', fuelCard: 'fuelCard.cardNumber', authorization: 'authorizedPerson.authorizationNumber' };
     if (q.missingDoc === 'gps') and.push({ $nor: [HAS_GPS] });
     else {
@@ -632,20 +547,16 @@ function buildFilterRest(q, f, and) {
       if (p) and.push({ $or: [{ [p]: null }, { [p]: '' }] });
     }
   }
-  // «لديه GPS»: مركبات عليها جهاز مركّب.
+  // 'Has GPS': vehicles with a device fitted.
   if (q.hasGps === '1') and.push(HAS_GPS);
   if (q.hasGps === '0') and.push({ $nor: [HAS_GPS] });
-  // ── الفلاتر المشتقّة ──────────────────────────────────────────────────────
-  // القيم المختارة داخل الحقل الواحد **أو**، وبين الحقول **و**: «(منتهٍ أو خلال
-  // ٣٠ يومًا) و(بلا جهاز تتبّع)». وهي الطريقة الوحيدة التي تُقرأ بها اللوحة:
-  // اختيارُ قيمتين في حقلٍ واحد يوسّع، واختيارُ حقلٍ ثانٍ يضيّق.
+  // Derived filters. Selected values within one field are OR, across fields AND: '(expired or within 30 days) and (no tracker)'. This is the only way the dashboard reads: picking two values in one field widens, picking another field narrows.
   for (const d of DERIVED_DEFS) {
     if (d.handled || !d.options) continue;
     const picked = _multi(q[d.key]);
     if (!picked.length) continue;
     const conds = d.options.filter((o) => picked.includes(o.value)).map((o) => o.cond());
-    // قيمةٌ لا يعرفها التعريف (رابطٌ قديمٌ أو كتابةٌ يدوية) لا تُتجاهَل في صمت
-    // فتفتح الأسطول كلّه وكأن الفلتر مطبَّق — بل لا تطابق شيئًا.
+    // A value the definition does not know (an old link or hand-typed) is not silently ignored, which would open the whole fleet as if the filter applied; it matches nothing.
     and.push(conds.length ? { $or: conds } : { _id: { $in: [] } });
   }
 
@@ -653,8 +564,7 @@ function buildFilterRest(q, f, and) {
     const dt = DOC_TYPES.find((x) => x.key === q.expiryDoc);
     if (dt) {
       const rng = {}; if (q.expiryFrom) rng.$gte = startOfDay(q.expiryFrom);
-      // نهاية اليوم المطلوب، لا اليوم التالي — كانت الإضافة يومًا كاملًا تُدخل
-      // ما ينتهي في أول اليوم التالي في هذه الشريحة وفي التي تليها معًا.
+      // End of the requested day, not the next day: adding a full day would put what expires at the start of the next day into this bucket and the following one together.
       if (q.expiryTo) rng.$lte = endOfDay(q.expiryTo);
       and.push({ [dt.path]: rng });
     }
@@ -663,73 +573,38 @@ function buildFilterRest(q, f, and) {
   return f;
 }
 
-// ── قائمة المركبات ─────────────────────────────────────────────────────────────
+// Vehicle list.
 exports.list = async (req, res) => {
   try {
     const cacheKey = `vreg:list:${JSON.stringify(req.query || {})}`;
     const hit = cache.get(cacheKey);
     if (hit !== undefined) return res.json(hit);
 
-    await getConfig(); // عتباتُ التنبيه لفلاتر حالة المستند (راجع ALERTS)
+    await getConfig(); // Alert thresholds for the document-state filters (see ALERTS)
     const filter = buildFilter(req.query);
     const limit = Math.min(Number(req.query.limit) || 500, 2000);
     const page = Math.max(Number(req.query.page) || 1, 1);
     const sortBy = req.query.sortBy || 'plateNumber';
     const sortDir = req.query.sortDir === 'desc' ? -1 : 1;
-    // ── ما تحمله القائمة، ولماذا اتّسع ─────────────────────────────────────
-    //
-    // المشروع مختصرٌ عمدًا: `renewals` وحدها قد تكون عشرات القيود، وجلبُها
-    // لثلاثمئة مركبةٍ في كل فتحةٍ للشاشة نقلٌ لا يُقرأ. لكنّ الاختصار كان قد
-    // جاوز حدَّه: **البيانات موجودة في قاعدة البيانات ولا تصل إلى الشاشة**.
-    // رقمُ بطاقة التشغيل لمئتين وعشرين مركبة، ورقمُ وثيقة التأمين لمئتين
-    // وأربع وثمانين، ورقمُ التفويض لمئتين وإحدى وعشرين — كلّها مسجَّلة، وكلّها
-    // تسقط هنا قبل أن تُرسَل. فيفلتر المستخدم على بطاقة التشغيل فيجد الصفوف
-    // ولا يجد رقمًا في أيّ منها، فيظنّ الاستيراد ناقصًا وهو تامّ.
-    //
-    // فكلُّ حقلٍ يُعرَض في عمودٍ من أعمدة صفحات المستندات موجودٌ هنا. وهي حقولٌ
-    // نصّيةٌ قصيرة: الزيادة بضع مئات من البايتات للمركبة، والثمن الذي كانت
-    // تدفعه الشاشة قبلها هو أن تكون فارغة.
-    // `plateDigits` مع `plateLettersAr`: منهما تُبنى اللوحةُ بصيغة منصّة «تم»
-    // في التصدير — الحروفُ ثلاثةُ مواضعَ دائمًا ثمّ الرقم. وبدونهما يخرج الملفُّ
-    // باللوحة كما كُتبت، فلا تُطابِق شيئًا عند الرفع.
-    // ── القائمةُ تحمل كلَّ حقلٍ إلّا الثقيل — استثناءٌ لا قائمةُ أسماء ───────
-    //
-    // كانت قائمةً مكتوبةً بالأسماء، وكلُّ حقلٍ يُضاف إلى النموذج يولد خارجها في
-    // صمت. فـ«الشركة المالكة» تُختار في نافذة التعديل وتُحفَظ فعلًا في القاعدة،
-    // ثمّ يُعاد تحميلُ الجدول فتأتي الصفوفُ بلا `ownerCompanyAr`: العمودُ فارغ،
-    // وفلترُ العمود (إكسل) لا يجد قيمةً يعرضها، ونافذةُ التعديل — وهي تُغرَف من
-    // صفّ الجدول — تُفتَح خاليةً. فيُقرأ ذلك «لم يُحفَظ» وهو محفوظ (مركبة ٣٩٦٥،
-    // ٢٠٢٦/١٠/٢٠). والملاحظاتُ وقعت في الحفرة نفسِها من قبل.
-    //
-    // فيُستثنى ما هو ثقيلٌ حقًّا ولا يعرضه الجدول — سجلُّ التجديدات وسجلُّ
-    // الشريحة وأثرُ الاستيراد — ويصل كلُّ ما عداه. وما يُضاف إلى النموذج غدًا
-    // يصل الجدولَ بلا تذكُّرٍ من أحد.
+    // The list carries every field except the heavy ones (renewal log, fuel-card log, import trace): an exclusion, not a name list.
+    // A name list silently dropped new model fields (owner company, notes, document numbers), leaving table columns, column filters and the edit dialog empty although the data was saved.
+    // `plateDigits` with `plateLettersAr` build the plate in the Tam export format (three letter positions, then the number).
     const LIST_FIELDS = '-renewals -fuelCard.history -source_row -sourceFile -lastImportAt -__v';
     const [vehicles, total] = await Promise.all([
       VehicleMaster.find(filter).select(LIST_FIELDS).sort({ [sortBy]: sortDir }).skip((page - 1) * limit).limit(limit).lean(),
       VehicleMaster.countDocuments(filter),
     ]);
     const cfg = await getConfig();
-    // ── بطاقةُ المفوَّض تُقرأ مع صفّه ──────────────────────────────────────────
-    //
-    // «هل التفاويض ممكن تتربط مع السائق؟» — الربطُ قائمٌ برقم الإقامة، فورقةُ
-    // التفويض تحمله وبطاقةُ السائق مفتاحُها هو. وما كان ينقص أن يُقرأ: شاشةُ
-    // التفاويض تقول مَن المفوَّض ولا تقول أبطاقتُه سارية، ولا أهو مشمولٌ بخيانة
-    // الأمانة — وهما شرطا أن يقود أصلًا. فيُفوَّض على شاحنةٍ مَن بطاقتُه منتهية.
-    //
-    // إحدى وستّون بطاقةً في السجلّ كلِّه، فقراءتُها كاملةً أرخصُ من أيّ ربط.
+    // The authorized person's card is read with his row.
+    // The link already exists by residency number: the authorization paper carries it and the driver card is keyed by it. What was missing was reading it: the authorization screen said who is authorized but not whether his card is valid or whether he is covered by the fidelity policy, both conditions for driving at all, so someone with an expired card could be authorized on a truck.
+    // There are only about sixty cards in the whole registry, so reading them all is cheaper than any join.
     const cardsAll = await DriverCard.find({ isActive: { $ne: false } })
       .select('idNumber name cardNumber cardType expiryDate fidelity').lean();
     const cardById = new Map(cardsAll.map((c) => [String(c.idNumber || '').trim(), c]));
     /**
-     * ── ومركبةُ النقل الخفيف: أين تعمل ومع أيّ مشروع ────────────────────────
-     *
-     * قطاعُ النقل الخفيف هو قسمُ الأفراد (b2c)، والمدينةُ والمشروعُ يُداران
-     * هناك على الراكب لا على المركبة: تنتقل المركبةُ إلى مشروعٍ آخر بانتقال
-     * راكبها. فلو نُسخا إلى صفّ المركبة لافترقا عن أصلهما بعد أوّل نقل.
-     *
-     * فيُقرآن من سجلّ القسم وقتَ العرض — فما يُعدَّل هناك يُقرأ هنا في الحال،
-     * بلا مزامنةٍ تُنسى.
+     * Light transport vehicle: where it works and with which project.
+     * The light transport sector is the individuals section (b2c); city and project are managed there on the rider, not the vehicle, and a vehicle moves project when its rider moves. Copying them onto the vehicle row would diverge from the source after the first move.
+     * So they are read from the section record at display time; an edit there shows here immediately, with no sync to forget.
      */
     const ltVehicleIds = vehicles
       .filter((v) => String(v.sectorAr || '').includes('خفيف'))
@@ -737,14 +612,14 @@ exports.list = async (req, res) => {
     const ltByVehicle = new Map();
     if (ltVehicleIds.length) {
       const { LightTransportEmployee } = require('../models/LightTransport');
-      // راكبٌ مؤرشَف لا يُسمّى على المركبة — كأنّه حُذف.
+      // An archived rider is not named on the vehicle, as if deleted.
       const AH = require('../utils/archivedHidden');
       const riders = await LightTransportEmployee.find(AH.andAll({ vehicle: { $in: ltVehicleIds }, isActive: { $ne: false } }, AH.notArchivedRow(await endedStaff())))
         .select('vehicle name idNumber cityAr projectAr supervisorName dutySupervisorName').lean();
       for (const r of riders) ltByVehicle.set(String(r.vehicle), r);
     }
 
-    // انتهاءُ إقامة المفوَّض ورخصةِ قيادته — من ملفّه (utils/personDocDates).
+    // Authorized person's residency and driving-license expiry, from his file (utils/personDocDates).
     const personDocs = await require('../utils/personDocDates').docDatesFor(
       vehicles.map((v) => ({ idNumber: v.authorizedPerson?.iqamaNumber })));
     const withStatus = vehicles.map((v) => {
@@ -780,14 +655,14 @@ exports.list = async (req, res) => {
   } catch (e) { console.error('vreg list', e); res.status(500).json({ message: 'Failed to load vehicles' }); }
 };
 
-// يضيف حالة كل مستند + أقرب انتهاء + أدنى حالة للمركبة.
+// Adds each document's state, the nearest expiry and the vehicle's worst state.
 function decorate(v, cfg) {
   const a = cfg.alerts || {};
   const docs = {};
   for (const dt of DOC_TYPES) {
     docs[dt.key] = docStatus(getPath(v, dt.path), a[dt.key], getPath(v, dt.statusPath));
   }
-  // «غير مطلوب» مش أسوأ من «ساري» — هي مش مشكلة أصلاً، فآخر الترتيب.
+  // 'Not required' is no worse than 'valid': it is not a problem at all, so it sorts last.
   const order = { expired: 0, critical: 1, warning: 2, valid: 3, none: 4, not_required: 5 };
   let worst = 'valid'; let worstDays = null;
   for (const [k, s] of Object.entries(docs)) {
@@ -810,7 +685,7 @@ exports.getOne = async (req, res) => {
 // A bad field is the user's problem to fix, not a server fault: say WHICH field
 // and return 400. These used to fall into the generic 500 handler below, so the
 // form showed "Failed to create vehicle" with no idea what was wrong.
-/** اسمُ الحقل المكرَّر كما يقرؤه المستخدم — لا مسارُه في المخطَّط. */
+/** Duplicated field name as the user reads it, not its schema path. */
 const FIELD_AR = {
   plateNumber: 'رقم اللوحة',
   chassisNumber: 'رقم الهيكل',
@@ -821,22 +696,17 @@ const FIELD_AR = {
   'authorizedPerson.authorizationNumber': 'رقم التفويض',
 };
 
-// ── ولماذا `async` ────────────────────────────────────────────────────────────
-// فرعُ التكرار يسأل القاعدة عن المركبة الأخرى ليسمّيها في الرسالة، وكان يُرجع
-// `true` فورًا ويترك الردَّ يُرسَل في وعدٍ معلَّق — يصل في الحالة العاديّة بعد
-// تكّة، لكنّ الدالّة تكذب على من ينادِيها: تقول «تولّيتُ الردّ» قبل أن تردّ.
-// فصارت تُنتظَر، ويصير الردُّ مضمونًا قبل أن يعود النداء.
+// Why `async`.
+// The duplicate branch queries the database for the other vehicle to name it in the message. It used to return `true` immediately and let the reply be sent in a dangling promise; it normally arrived a tick later, but the function claimed it had handled the reply before replying. Now it is awaited, so the reply is guaranteed before the call returns.
 const badInput = async (e, res) => {
-  // ── التكرار يُسمّى بالحقل والقيمة ─────────────────────────────────────────
-  // «رقم اللوحة أو الهيكل مكرر» رسالةٌ تترك المستخدم يخمّن أيّهما ومَن يحمله.
-  // ومونجو يعيد الحقل والقيمة في الخطأ نفسه، فتُقرأ منه ويُبحث عن المركبة
-  // الأخرى — فيصير الردّ «هذا الرقم على المركبة الفلانية» لا «خطأ».
+  // A duplicate is named by field and value.
+  // 'Plate or chassis number is duplicated' leaves the user guessing which and who holds it. Mongo returns the field and value in the error itself, so they are read from it and the other vehicle is looked up, giving 'this number is on vehicle X' instead of a generic error.
   if (e.code === 11000) {
     const field = Object.keys(e.keyPattern || {})[0] || '';
     const value = (e.keyValue || {})[field];
     const label = FIELD_AR[field] || field || 'أحد الأرقام الفريدة';
     let other = null;
-    try { other = await VehicleMaster.findOne({ [field]: value }).select('plateNumber').lean(); } catch (_) { /* الرسالةُ العامّة تكفي */ }
+    try { other = await VehicleMaster.findOne({ [field]: value }).select('plateNumber').lean(); } catch (_) { /* The generic message is enough */ }
     res.status(400).json({
       message: other
         ? `${label} «${value}» مسجَّلٌ على المركبة ${other.plateNumber} — ولا يتكرّر على مركبتين.`
@@ -855,7 +725,7 @@ const badInput = async (e, res) => {
 
 exports.create = async (req, res) => {
   try {
-    // ومركبةٌ تُسجَّل بهجريٍّ بلا ميلاديٍّ تُولَد بلا تنبيهات — راجع utils/hijri.
+    // A vehicle registered with a Hijri date and no Gregorian one is born without alerts; see utils/hijri.
     const body = { ...req.body };
     try {
       const { fillHijriPairs } = require('../utils/hijri');
@@ -870,8 +740,8 @@ exports.create = async (req, res) => {
         const [b, f] = k.split('.');
         body[b] = { ...(body[b] || {}), [f]: val };
       }
-    } catch (e) { /* التسجيلُ يمضي */ }
-    // المفوَّضُ يُختار من الموظّفين، والقائدُ الفعليُّ مرآةٌ لا تُكتب — راجع personPatch.
+    } catch (e) { /* Registration proceeds */ }
+    // The authorized person is chosen from employees; the actual driver is a mirror and is not written. See personPatch.
     if (body.actualDriver && (String(body.actualDriver.name || '').trim() || String(body.actualDriver.idNumber || '').trim())) {
       return res.status(400).json({ message: 'القائدُ الفعليّ لا يُكتب هنا — يُختار من «مركبات النقل الخفيف» فيُربط الراكبُ بالمركبة' });
     }
@@ -886,7 +756,7 @@ exports.create = async (req, res) => {
         : { ...rest, name: '', iqamaNumber: '', phone: '' };
     }
     const v = await VehicleMaster.create({ ...body, isActive: true });
-    // مفتاحُ اللوحة يُشتقّ في الحفظ (models/VehicleMaster) — فتُعدّ حوادثُها المسجَّلة.
+    // The plate key is derived on save (models/VehicleMaster), so its recorded accidents are counted.
     await syncAccidentCount(v.plateKey);
     emit('vreg:updated', {});
     res.status(201).json({ vehicle: v });
@@ -897,38 +767,28 @@ exports.create = async (req, res) => {
   }
 };
 
-// ── تحديثٌ يدمج، لا يستبدل ───────────────────────────────────────────────────
-//
-// كان `$set: req.body` يكتب الكائنَ الفرعيَّ كاملًا: من أرسل
-// `{ operatingCard: { expiryDate } }` كان يمحو `cardNumber` و`statusCode` معه،
-// وهو ما يجعل صفحةَ عائلةٍ تُعدّل حقلين فتُتلِف حقولًا لا تعرضها أصلًا. والمشروعُ
-// في القائمة جزئيّ — لا ترجع `insurance.status` ولا `fuelCard.consumptionTypeCode` —
-// فالواجهة لا تملك أصلًا ما تعيد إرساله لتحفظه.
-//
-// ولماذا التسطيحُ هنا لا في الواجهة: `express-mongo-sanitize` يحذف كلَّ مفتاحٍ
-// فيه نقطة قبل أن يصل إلى المتحكّم، فمسارٌ منقوطٌ يُرسَل من المتصفّح يختفي في
-// صمت — يقول المستخدم «حفظت» ولا شيء تغيّر.
+// Update merges, it does not replace.
+// `$set: req.body` used to write the whole sub-object: sending `{ operatingCard: { expiryDate } }` erased `cardNumber` and `statusCode` with it, so a page editing two fields damaged fields it does not even display. The list projection is partial (it does not return `insurance.status` or `fuelCard.consumptionTypeCode`), so the client has nothing to resend to preserve them.
+// Flattening is done here, not in the client, because `express-mongo-sanitize` strips any key containing a dot before it reaches the controller, so a dotted path sent from the browser vanishes silently: the user says 'saved' and nothing changed.
 const NEVER_SET = new Set(['_id', '__v', 'createdAt', 'updatedAt', 'docStatuses', 'overallStatus', 'overallDays']);
 
 const flattenPatch = (src, prefix = '', out = {}) => {
   for (const [k, v] of Object.entries(src || {})) {
     if (!prefix && NEVER_SET.has(k)) continue;
     const path = prefix ? `${prefix}.${k}` : k;
-    // المصفوفة تُكتب كاملةً عن قصد: `logistiGaps` و`missingItems` قوائمُ تُستبدل
-    // لا حقولٌ تُدمَج، ودمجُ عناصرها بالفهرس يبقي عنصرًا حُذف.
+    // Arrays are written whole on purpose: `logistiGaps` and `missingItems` are lists that are replaced, not fields that are merged; merging items by index would keep a deleted item.
     const isPlain = v && typeof v === 'object' && !Array.isArray(v)
       && Object.getPrototypeOf(v) === Object.prototype;
     if (!isPlain) { out[path] = v; continue; }
-    // كائنٌ فارغ لا يعني «فرِّغ ما تحته» — يعني «لا شيء هنا». وكتابتُه `{}`
-    // كانت تمسح المستند كلَّه على مركبةٍ لم يُقصَد فيها تعديل.
+    // An empty object means 'nothing here', not 'clear everything under it'. Writing `{}` used to wipe the whole sub-document on a vehicle where no edit was intended.
     if (Object.keys(v).length) flattenPatch(v, path, out);
   }
   return out;
 };
 
 /**
- * ما تغيّر فعلًا بين وثيقتين على المسارات المرسَلة — للقيد وحدَه.
- * النافذةُ ترسل الصفَّ كلَّه أحيانًا، فلا يُقيَّد ما أُرسل بل ما اختلف.
+ * What actually changed between two documents on the sent paths, for the audit entry only.
+ * The dialog sometimes sends the whole row, so the entry records what differs, not what was sent.
  */
 const vehicleDiff = (before, after, paths) => {
   const get = (o, p) => p.split('.').reduce((a, k) => (a == null ? a : a[k]), o);
@@ -954,12 +814,10 @@ exports.update = async (req, res) => {
   try {
     const $set = flattenPatch(req.body);
     if (!Object.keys($set).length) return res.status(400).json({ message: 'لا حقول للتعديل' });
-    // ── والتاريخُ الهجريُّ يُخرج ميلاديَّه ────────────────────────────────
-    // كلُّ الحسابِ على الميلاديّ، فهجريٌّ مكتوبٌ بلا ميلاديٍّ = مستندٌ «بلا
-    // تاريخ» لا يظهر في انتهاءٍ ولا تنبيه. والاشتقاقُ هنا لا في الشاشة: الشاشتان
-    // اثنتان (الويب والهاتف) ومعهما الاستيراد — راجع utils/hijri.
+    // A Hijri date yields its Gregorian one.
+    // All calculation is on Gregorian, so a Hijri date without a Gregorian one is a document with no date and appears in no expiry or alert. Derivation is done here, not in the screen, because there are two screens (web and mobile) plus the import. See utils/hijri.
     const { fillHijriPairs } = require('../utils/hijri');
-    // الوثيقةُ قبل التعديل كاملةً: منها يُشتقّ الهجريّ، ومنها يُكتب ما تغيّر.
+    // The full document before the edit: the Hijri date is derived from it and what changed is written onto it.
     const before = await VehicleMaster.findById(req.params.id).select('-renewals -fuelCard.history').lean();
     if (!before) return res.status(404).json({ message: 'Vehicle not found' });
     const person = await personPatch($set, before);
@@ -977,11 +835,8 @@ exports.update = async (req, res) => {
     }
     if ($set.plateNumber) await syncAccidentCount(v.plateKey);
     emit('vreg:updated', {});
-    // ── والتعديلُ يُقيَّد حقلًا حقلًا ─────────────────────────────────────────
-    // لم يكن يُقيَّد أصلًا: `/api/vehicle-registry` خارجَ بادئات القسم في
-    // config/sections، فلا تلتقطه شبكةُ الأمان العامّة (middleware/auditTrail)
-    // ولا يكتب المتحكّمُ شيئًا. فحين قيل «حفظتُ ولم يُحفَظ» لم يكن في السجلّ ما
-    // يقول مَن حفظ ماذا ومتى. والقيدُ يحمل ما تغيّر وحده، قبلَه وبعدَه.
+    // An edit is audited field by field.
+    // It was not audited at all: `/api/vehicle-registry` is outside the section prefixes in config/sections, so the global safety net (middleware/auditTrail) does not catch it and the controller wrote nothing. When someone said 'I saved and it did not save' there was no record of who saved what and when. The entry carries only what changed, before and after.
     try {
       const after = v.toObject();
       const changes = vehicleDiff(before, after, Object.keys($set));
@@ -991,8 +846,8 @@ exports.update = async (req, res) => {
           entityId: v._id, entityKey: v.plateNumber, changes, ipAddress: req.ip,
         });
       }
-    } catch (_) { /* القيدُ لا يُفشل الحفظ */ }
-    // ويُقال ما اشتُقّ: الشاشةُ تُظهره فلا يُفاجأ أحدٌ بتاريخٍ لم يكتبه.
+    } catch (_) { /* An audit failure does not fail the save */ }
+    // Derived values are reported too: the screen shows them so nobody is surprised by a date they did not type.
     res.json({ vehicle: v, ...(Object.keys(derived).length ? { derived } : {}) });
   } catch (e) {
     if (e.bad) return res.status(400).json({ message: e.message });
@@ -1002,14 +857,10 @@ exports.update = async (req, res) => {
 };
 
 /**
- * ── خاناتُ الشخص على المركبة: تُختار ولا تُكتب (صاحبُ الشركة، ٢٠٢٦/١٠/٢٢) ────
- * المفوَّضُ يُرسَل مرجعًا (`authorizedPerson.employeeId` / `ltId`) أو رقمَ هويّة،
- * فيُحسَم بـ utils/vehiclePerson (والاسمُ وحدَه إن طابق موظّفًا واحدًا)، ويُكتب
- * بـ`setHolder` فيتبعه سجلُّ الإسناد. واسمٌ لا يطابق موظّفًا يُرفض. والجوالُ
- * من ملفّ الشخص لا من الخانة.
- * والقائدُ الفعليّ (`actualDriver`) مرآةٌ لراكب المركبة من سجلّ النقل الخفيف —
- * لا يُكتب من هنا؛ يُختار من «مركبات النقل الخفيف» (utils/ltRider).
- * يُعدّل `$set` في مكانه ويردّ `{ holderChange, holder }`.
+ * Person fields on the vehicle are selected, not typed.
+ * The authorized person is sent as a reference (`authorizedPerson.employeeId` / `ltId`) or an ID number and resolved by utils/vehiclePerson (the name alone only if it matches a single employee), then written with `setHolder` so the assignment log follows. A name matching no employee is rejected. The mobile number comes from the person's file, not the field.
+ * The actual driver (`actualDriver`) mirrors the vehicle's rider from the light transport record and is not written here; it is chosen from the light transport vehicles (utils/ltRider).
+ * Modifies `$set` in place and returns `{ holderChange, holder }`.
  */
 async function personPatch($set, before) {
   const S2 = (x) => String(x == null ? '' : x).trim();
@@ -1034,7 +885,7 @@ async function personPatch($set, before) {
   if (!refSent && !nameChanged && !idChanged) return out;
   const holder = await require('../utils/vehiclePerson').resolvePerson(input, { label: 'المفوَّض' });
   if (holder && holder.idNumber === S2(ap.iqamaNumber) && holder.name === S2(ap.name)) return out;
-  // الورقةُ كاملةً لشخصٍ آخر: رقمُها ومدّتُها ومسمّاه — ممّا أُرسل وإلّا ممّا كان.
+  // The full paper for another person: number, term and title, from what was sent, otherwise from what existed.
   const take = (f) => { const k = `authorizedPerson.${f}`; const val = $set[k] !== undefined ? $set[k] : ap[f]; delete $set[k]; return val; };
   out.holderChange = true;
   if (!holder) { for (const k of Object.keys($set)) if (k.startsWith('authorizedPerson.')) delete $set[k]; return out; }
@@ -1050,7 +901,7 @@ async function personPatch($set, before) {
 }
 exports._personPatch = personPatch;
 
-// GET /people?q= — منسدلةُ خانة المفوَّض. ما تعرضه هو ما يقبله الحفظ.
+// GET /people?q=
 exports.people = async (req, res) => {
   try {
     const people = await require('../utils/vehiclePerson').options({ scope: 'hr', q: req.query.q });
@@ -1062,16 +913,8 @@ exports.people = async (req, res) => {
 };
 
 /**
- * شريحةُ بترو اب: تركيبٌ ونزع — POST /:id/fuel-card
- *
- * ── ولماذا فعلٌ مستقلٌّ لا تعديلُ خانة ─────────────────────────────────────
- * نزعُ الشريحة شرطٌ في إخلاء طرف الموظّف: لا تُنهى خدمتُه وهي في يده. وشرطٌ
- * يُبنى على خانةٍ فارغة لا يُثبِت شيئًا — تُفرَّغ الخانةُ فيسقط الشرط، ولا يبقى
- * بعد شهرين جوابٌ لسؤال «مَن نزعها ومتى؟».
- *
- * فالفعلُ يُقيَّد: ما رقمُها، وفي يد من كانت، ومتى، وبيد من. والقيدُ هو ما
- * يُقرأ في ملفّ الموظّف وفي إخلاء طرفه.
- *
+ * Fuel card fit and remove. POST /:id/fuel-card
+ * A separate recorded action, not a field edit: removing the card is a condition of employee clearance, and a condition on an empty field proves nothing and leaves no trace of who removed it and when.
  * body: { action: 'assign'|'remove', cardNumber?, note? }
  */
 exports.fuelCardAction = async (req, res) => {
@@ -1106,10 +949,8 @@ exports.fuelCardAction = async (req, res) => {
         action: 'removed', cardNumber: had, note, byName,
         holderName: v.authorizedPerson?.name || '', holderIqama: v.authorizedPerson?.iqamaNumber || '',
       });
-      // ── ويُنزَع ما يخصّ الشريحةَ وحدَها ────────────────────────────────────
-      // اللوحةُ على الفاتورة وسقفُ الصرف صفتان لشريحةٍ لم تعد موجودة، فبقاؤهما
-      // يجعل المركبةَ تُقرأ «عليها شريحةٌ بلا رقم». ونوعُ الاستهلاك يبقى: هو
-      // صفةُ المركبة لا صفةُ الشريحة.
+      // Only what belongs to the card is removed.
+      // The plate on the invoice and the spend cap are attributes of a card that no longer exists; leaving them makes the vehicle read as 'has a card with no number'. Consumption type stays: it is a vehicle attribute, not a card attribute.
       v.fuelCard.cardNumber = '';
       v.fuelCard.plateOnInvoiceAr = '';
       v.fuelCard.limitSar = null;
@@ -1145,8 +986,8 @@ exports.remove = async (req, res) => {
   } catch (e) { res.status(500).json({ message: 'Failed to delete vehicle' }); }
 };
 
-// ── لوحة التحليلات ─────────────────────────────────────────────────────────────
-/** ملخّصُ بطاقات السائقين للوحة القسم — عددٌ لكلّ شريحةِ انتهاء. */
+// Analytics dashboard.
+/** Driver-card summary for the section dashboard: a count per expiry bucket. */
 async function driverCardSummary(alert) {
   try {
     const DriverCardModel = require('../models/DriverCard');
@@ -1158,8 +999,7 @@ async function driverCardSummary(alert) {
     ]);
     const rows = all.filter((c) => !cardEnded(ended, c));
     const left = (d) => (d ? Math.round((startOfDay(d) - today) / 86400000) : null);
-    // وثلاثُ شرائحَ لا اثنتان: «قريب» كانت ساقطةً هنا فتُحسَب مع «ساري»،
-    // فيقول الملخَّصُ إنّ البطاقةَ سارية وشاشةُ الانتهاءات تقول «قريبة».
+    // Three buckets, not two: 'upcoming' used to be dropped here and counted as valid, so the summary said the card is valid while the expiry screen said it is near.
     const out = { total: rows.length, expired: 0, critical: 0, warning: 0, upcoming: 0, valid: 0, unknown: 0 };
     for (const r of rows) {
       const st = cardState(left(r.expiryDate), alert);
@@ -1191,7 +1031,7 @@ exports.dashboard = async (req, res) => {
     const count = (fn) => vehicles.reduce((m, v) => { const k = fn(v) || '—'; m[k] = (m[k] || 0) + 1; return m; }, {});
     const toArr = (obj, extra = {}) => Object.entries(obj).map(([key, value]) => ({ key, count: value, ...(extra[key] || {}) })).sort((a, b) => b.count - a.count);
 
-    // توزيعات
+    // Distributions
     const bySector = count((v) => v.sectorAr);
     const byRegistrationType = count((v) => v.registrationTypeAr);
     const byBrand = count((v) => v.brandAr);
@@ -1204,19 +1044,14 @@ exports.dashboard = async (req, res) => {
     const byTamStatus = count((v) => v.tamStatusAr);
     const byModelYear = count((v) => (v.modelYear ? String(v.modelYear) : '—'));
 
-    // مبالغ
+    // Amounts
     const premiums = vehicles.map((v) => Number(v.insurance?.premiumSar) || 0).filter((x) => x > 0);
     const totalPremium = premiums.reduce((a, b) => a + b, 0);
     const fuelLimits = vehicles.map((v) => Number(v.fuelCard?.limitSar) || 0).filter((x) => x > 0);
     const totalFuelLimit = fuelLimits.reduce((a, b) => a + b, 0);
 
-    // حالة المستندات (buckets) لكل نوع
-    // ── وشريحةُ «قريب» واحدةٌ من الشرائح ─────────────────────────────────
-    // لم يكن لها خانةٌ هنا، و`stateOf` تُرجعها. فـ`b['upcoming']` كان
-    // `undefined += 1` أي `NaN`: تُزرَع في الكائن خانةٌ قيمتُها ليست رقمًا،
-    // ولا تُحسَب مركبةٌ واحدةٌ من هذه الشريحة في أشرطة اللوحة — فالنِّسَب
-    // تنقص بقدر الشريحة كلِّها. و`+= 1` على خانةٍ مجهولةٍ يُسكت أيَّ خطأ،
-    // فالجمعُ يُبنى بمفتاحٍ مقروءٍ لا بخانةٍ مُعدَّةٍ سلفًا.
+    // Document state buckets per type.
+    // The 'upcoming' bucket is one of them. It had no slot here while `stateOf` returns it, so `b['upcoming']` was `undefined += 1`, i.e. `NaN`: a non-numeric slot was planted in the object and no vehicle of that bucket counted in the dashboard bars, so the percentages fell short by the whole bucket. `+= 1` on an unknown slot also hides any error, so the sum is built with a readable key rather than a pre-set slot.
     const docBuckets = {};
     for (const dt of DOC_TYPES) {
       const b = { expired: 0, critical: 0, warning: 0, upcoming: 0, valid: 0, none: 0, not_required: 0 };
@@ -1228,26 +1063,24 @@ exports.dashboard = async (req, res) => {
       docBuckets[dt.key] = b;
     }
 
-    // مؤشرات علوية
+    // Top indicators
     const withGps = vehicles.filter(hasGps).length;
     const missingInsurance = vehicles.filter((v) => !v.insurance?.expiryDate).length;
     const missingOperatingCard = vehicles.filter((v) => !v.operatingCard?.cardNumber).length;
     const activeFuelCards = vehicles.filter((v) => v.fuelCard?.statusCode === 'active').length;
 
-    // إجمالي التنبيهات (منتهي + خلال العتبة) عبر كل المستندات المفعّلة
+    // Total alerts (expired + within threshold) across all enabled documents
     let expiredTotal = 0; let expiringTotal = 0;
     for (const dt of DOC_TYPES) {
       if (dt.key === 'gps' && !cfg.alerts?.gps?.enabled) continue;
       const b = docBuckets[dt.key];
       expiredTotal += b.expired;
-      // و«قريب» من التنبيهات: هي آخرُ مهلةٍ يُستخرَج فيها البديلُ بلا عَجَل،
-      // وكانت تُطرَح من الإجمالي فيُقرأ العددُ أقلَّ ممّا هو.
+      // 'Upcoming' counts as an alert: it is the last window in which a replacement is obtained without rush, and it used to be subtracted from the total so the count read lower than it is.
       expiringTotal += b.critical + b.warning + b.upcoming;
     }
 
     const body = {
-      // والعتباتُ تُرسَل مع اللوحة: أزرارُها تنتقل بها إلى القائمة، فلا
-      // ينتقل زرُّ «حرج» بثلاثين يومًا وقد ضُبط الحرجُ على عشرة.
+      // Thresholds are sent with the dashboard: its buttons navigate to the list with them, so the 'critical' button does not jump with 30 days when critical was set to 10.
       alerts: cfg.alerts,
       totals: {
         vehicles: vehicles.length,
@@ -1263,9 +1096,8 @@ exports.dashboard = async (req, res) => {
       byFuelCardStatus: toArr(byFuelCardStatus), byInspectionStatus: toArr(byInspectionStatus),
       byColor: toArr(byColor), byTamStatus: toArr(byTamStatus), byModelYear: toArr(byModelYear),
       docBuckets,
-      // ── بطاقاتُ السائقين في اللوحة ────────────────────────────────────────
-      // البطاقةُ مستندٌ ينتهي كسائر مستندات القسم، فمكانُها حيث تُقرأ حالةُ
-      // المستندات لا صفحةً وحدَها لا يفتحها إلّا من يذكرها.
+      // Driver cards on the dashboard.
+      // A card is a document that expires like the section's other documents, so it sits where document state is read, not on a page only those who remember it open.
       driverCards: await driverCardSummary(cfg.alerts?.driverCard),
     };
     cache.set(cacheKey, body, 30000);
@@ -1273,17 +1105,15 @@ exports.dashboard = async (req, res) => {
   } catch (e) { console.error('vreg dashboard', e); res.status(500).json({ message: 'Failed to load dashboard' }); }
 };
 
-// ── التنبيهات: كل مستند خلال عتبته أو منتهي ───────────────────────────────────
+// Alerts: every document within its threshold or expired.
 exports.alerts = async (req, res) => {
   try {
     const hit = cache.get('vreg:alerts');
     if (hit !== undefined) return res.json(hit);
 
-    // **نفس** حساب شاشة الانتهاءات — التنبيهات مجرد فلتر عليه، مش حساب تاني.
-    // كانت بدالة مختلفة، فالأرقام كانت بتختلف بين الشاشتين على نفس الداتا.
+    // The **same** computation as the expiry screen; alerts are only a filter over it, not a second calculation. A different function used to make the numbers differ between the two screens on the same data.
     const all = await buildExpiryRows({});
-    // «على الرادار» تدخل التنبيهات: كانت ٢٤ مستندًا تسقط من الشاشة تمامًا لأن
-    // انتهاءها بعد عتبة التحذير، فتظهر فجأةً وقد صارت حرجة.
+    // 'On the radar' enters alerts: 24 documents used to drop off the screen entirely because their expiry was beyond the warning threshold, then appeared suddenly already critical.
     const ALERT_STATES = ['expired', 'critical', 'warning', 'upcoming'];
 
     const items = all
@@ -1293,8 +1123,7 @@ exports.alerts = async (req, res) => {
         sectorAr: r.sectorAr, ownerNameAr: r.ownerNameAr,
         docType: r.docKey, docAr: r.docAr, docEn: r.docEn,
         expiryDate: r.expiryDate, daysRemaining: r.daysRemaining, status: r.state,
-        // المستند اللي تنبيهه متقفول بيفضل ظاهر ومعلّم — قبل كده كان بيختفي
-        // في صمت، فمستند منتهي فعلاً ما يبانش هنا وهو بايِن في الانتهاءات.
+        // A document whose alert is disabled stays visible and marked. It used to vanish silently, so an actually expired document was missing here yet visible in expiry.
         alertEnabled: r.alertEnabled,
       }));
 
@@ -1305,7 +1134,7 @@ exports.alerts = async (req, res) => {
     const muted = items.filter((i) => !i.alertEnabled).length;
     const body = {
       items, total: items.length, byStatus, byDoc,
-      // عشان الشاشة تقدر تقول «منهم كذا تنبيههم متقفول من الإعدادات».
+      // So the screen can say how many of them have their alert disabled in settings.
       mutedCount: muted,
     };
     cache.set('vreg:alerts', body, 30000);
@@ -1314,18 +1143,10 @@ exports.alerts = async (req, res) => {
 };
 
 /**
- * ── والعتبةُ تُعرَض مع أثرها ────────────────────────────────────────────────
- * «أقول حرج ٢٠، أحفظ، أروح صفحة تأمين المركبات ألاقي حرج ٠ وتحذير ٠ وقريب ٠ —
- * التلاتة مش مرتبطين باللي بيحصل في الإعدادات.»
- *
- * وهم مرتبطون: الأصفارُ كانت صحيحةً حرفًا بحرف — أقربُ تأمينٍ سارٍ ينتهي بعد
- * ثمانين يومًا، و«قريب» عنده يبدأ من ستّين. فلا مركبةَ في أيٍّ من الشرائح
- * الثلاث، وخمسٌ منتهيةٌ فعلًا. لكنّ الشاشةَ لم تكن تقول ذلك، ولا سبيلَ لصاحبها
- * أن يفرّق بين «العتبةُ لم تُحفَظ» و«لا شيءَ يقع في هذه الشريحة اليوم».
- *
- * فتُرَدّ مع العتبات نتيجتُها الآن: كم مستندًا في كلّ شريحةٍ بهذه الأرقام،
- * محسوبًا بالدالّة نفسِها التي تحسبه في الصفحات (`stateOf`). فيُقرأ الأثرُ في
- * موضع الضبط، ويُعرَف الصفرُ الحقيقيُّ من الصفر المريب.
+ * The threshold is shown with its effect.
+ * A user set critical to 20, saved, and found critical 0, warning 0 and upcoming 0 on the vehicle insurance page, apparently unrelated to the setting.
+ * The zeros were literally correct: the nearest valid insurance expires in eighty days and its 'upcoming' starts at sixty, so no vehicle is in any of the three buckets, while five are already expired. But the screen did not say so, and the owner could not tell 'threshold not saved' from 'nothing falls in this bucket today'.
+ * Now the result is returned with the thresholds: how many documents fall in each bucket under these numbers, computed by the same function the pages use (`stateOf`). The effect is visible where it is set, and a real zero is distinguishable from a suspicious one.
  */
 exports.getSettings = async (req, res) => {
   try {
@@ -1341,15 +1162,15 @@ exports.getSettings = async (req, res) => {
       for (const v of vehicles) bump(dt.key, docStatus(getPath(v, dt.path), alert, getPath(v, dt.statusPath)).status);
     }
 
-    // بطاقاتُ السائقين ووثائقُ الشركة: سجلّان آخران، والعتبةُ تُضبط لهما هنا.
+    // Driver cards and company documents are two other registers; their threshold is set here too.
     try {
       const cards = await require('../models/DriverCard').find({ isActive: { $ne: false } }).select('expiryDate').lean();
       for (const c of cards) bump('driverCard', cardState(cardDaysLeft(c.expiryDate), cfg.alerts?.driverCard));
-    } catch (e) { /* السجلُّ قد يكون فارغًا */ }
+    } catch (e) { /* The register may be empty */ }
     try {
       const pols = await VehicleInsurancePolicy.find({}).select('expiryDate').lean();
       for (const pl of pols) bump('corporatePolicy', VDOC.stateOf(pl.expiryDate, '', cfg.alerts?.corporatePolicy || {}).state);
-    } catch (e) { /* كذلك */ }
+    } catch (e) { /* Same */ }
 
     res.json({ config: { alerts: cfg.alerts }, counts });
   } catch (e) {
@@ -1360,11 +1181,9 @@ exports.getSettings = async (req, res) => {
 
 exports.updateSettings = async (req, res) => {
   try {
-    // بننضّف اللي جاي: أي مستند معروف بس، وأرقام موجبة، و«حرج» مايبقاش أكبر من
-    // «تنبيه» — لو حصل، التنبيه البرتقالي كان هيختفي خالص وما حدش هيلاحظ.
+    // Sanitize the input: known documents only, positive numbers, and 'critical' not greater than 'alert'; otherwise the orange alert would vanish and nobody would notice.
     const incoming = req.body.alerts || {};
-    // وبطاقةُ السائق منها: الشاشةُ تعرضها، فتُقبَل وتُحفَظ — راجع `alerts`
-    // في models/VehicleMaster.
+    // The driver card is among them: the screen shows it, so it is accepted and saved. See `alerts` in models/VehicleMaster.
     const keys = [...VDOC.DOC_KEYS, 'corporatePolicy', 'driverCard'];
     const clean = {};
     const problems = [];
@@ -1374,16 +1193,12 @@ exports.updateSettings = async (req, res) => {
       const warn = Math.max(0, Math.min(3650, Number(a.warnDays)));
       const crit = Math.max(0, Math.min(3650, Number(a.criticalDays)));
       if (!Number.isFinite(warn) || !Number.isFinite(crit)) { problems.push(k); continue; }
-      // «على الرادار» أفقٌ ثالث يقرأه `stateOf`، وكان يسقط من هنا فيُستبدل عند
-      // كل حفظٍ بقيمته الافتراضية: يضبط المستخدم أفق التأمين على ١٨٠ يومًا ثم
-      // يغيّر عتبةً أخرى فيعود الأفق ٩٠ بلا أن يمسّه أحد.
+      // 'On the radar' is a third horizon read by `stateOf`, and it used to be dropped here and replaced by its default on every save: a user sets the insurance horizon to 180 days, changes another threshold, and the horizon reverts to 90 untouched.
       const soonRaw = Number(a.soonDays);
       const soon = Number.isFinite(soonRaw) ? Math.max(0, Math.min(3650, soonRaw)) : 90;
-      // ── والقصُّ الصامت يُقرأ «لم يُحفَظ» ──────────────────────────────────
-      // القاعدةُ صحيحة: الحرجُ داخل التنبيه والرادارُ أوسعُ منه. وكان ما يخالفها
-      // يُقَصّ بلا خبر: يكتب المستخدمُ «حرج ٣٠» و«تنبيه ٢٠» فيُحفَظ الحرجُ ٢٠،
-      // فيفتح الشاشةَ فيجد رقمَه لم يتغيّر — ويقول «الإعداداتُ لا تعمل».
-      // فيُردّ الطلبُ بالسبب، ويصحّحه صاحبُه.
+      // Silent clipping reads as 'not saved'.
+      // The rule is sound: critical is inside alert and the radar is wider. But a violating input was clipped without notice: the user typed critical 30 and alert 20, critical was saved as 20, the screen reopened with the number unchanged, and they concluded settings do not work.
+      // So the request is rejected with the reason and the user corrects it.
       const label = (VDOC.getDoc(k) || {}).ar || k;
       if (crit > warn) { problems.push(`${label}: الحرج (${crit}) لا يتجاوز التنبيه (${warn})`); continue; }
       if (Number.isFinite(soonRaw) && soon < warn) { problems.push(`${label}: «على الرادار» (${soon}) لا يقلّ عن التنبيه (${warn})`); continue; }
@@ -1396,12 +1211,9 @@ exports.updateSettings = async (req, res) => {
     }
     if (problems.length) return res.status(400).json({ message: problems.join(' · ') });
 
-    // ── ويُكتب المُرسَلُ وحدَه ────────────────────────────────────────────
-    // كان `$set: { alerts: clean }` يستبدل الشجرةَ كلَّها، فكلُّ مفتاحٍ لم
-    // يُرسله المتصفّحُ يُحذَف من القاعدة. والقراءةُ بـ`.lean()` لا تُعيد
-    // الافتراضاتَ، فمفتاحٌ محذوفٌ يبقى محذوفًا ويرتدّ كلُّ من يقرأه إلى
-    // ٧/٣٠/٩٠ المكتوبة في الشِّفرة — وتُعرَض عتباتُه في الشاشة مطفأةً
-    // لا تُحرَّر. فيُكتب كلُّ مفتاحٍ في مساره وحدَه.
+    // Only what was sent is written.
+    // `$set: { alerts: clean }` replaced the whole tree, so any key the browser did not send was deleted from the database. Reading with `.lean()` does not apply defaults, so a deleted key stays deleted and every reader falls back to the 7/30/90 hard-coded in the code, and its thresholds display switched off and uneditable.
+    // So each key is written at its own path.
     const $set = { updatedBy: req.user?._id };
     for (const [k, val] of Object.entries(clean)) $set[`alerts.${k}`] = val;
     const cfg = await VehicleRegistryConfig.findOneAndUpdate(
@@ -1420,34 +1232,20 @@ exports.updateSettings = async (req, res) => {
   } catch (e) { res.status(500).json({ message: 'Failed to save settings' }); }
 };
 
-// ═══════════════════════════════════════════════════════════════════════════
-//  نظرة شاملة — كارت لكل عمود، وكله قابل للضغط
-// ═══════════════════════════════════════════════════════════════════════════
-/**
- * كل عمود في الماستر بيطلع كارت: التوزيع بقيمه، وكام «مطلوب» و«غير مطلوب»
- * و«لا يوجد». الفكرة إن صاحب الشركة يبص مرة واحدة ويعرف كل حاجة، وأي رقم
- * يدوس عليه يوديه على الصفحة المفلترة عليه — عشان كده كل مجموعة بترجع معاها
- * `filter` جاهز تبعته للـ list.
- */
-// ── الفلاتر المتاحة وقيمها، والتحليلات المشتقّة ────────────────────────────────
-//
-// نفس مبدأ الموارد البشرية: الشاشة لا تكتب قائمة الفلاتر عندها. الخادم يقول
-// «هذه هي الحقول، وهذه قيمها الموجودة فعلًا، وهذا عدد كلٍّ منها **بعد بقيّة
-// الفلاتر**» — فما يظهر في القائمة هو ما ستحصل عليه إن ضغطته، ولا يظهر خيارٌ
-// عدده صفر.
-//
-// عند حساب قيم حقلٍ ما تُطبَّق كل الفلاتر إلا هو، وإلا لبقيت القيمة المختارة
-// وحدها ظاهرةً فلا يستطيع أحد أن يضيف قيمةً ثانية إلى اختياره.
+// Overview: a card per column, all clickable.
+/** Every master column becomes a card: the distribution with its values, and how many are 'required', 'not required' and 'none'. The idea is the owner looks once and sees everything, and any number clicked opens the page filtered on it, so each group returns a ready `filter` to send to the list. */
+// Available filters, their values, and derived analytics.
+// Same principle as HR: the screen does not hold its own filter list. The server says which fields exist, which values actually exist, and the count of each **after the other filters**, so what the menu shows is what clicking it returns, and an option with zero count never appears.
+// When computing a field's values, all filters except that field are applied; otherwise only the selected value would remain visible and nobody could add a second value to the selection.
 const FILTER_DEFS = [
   { key: 'sector', field: 'sectorAr', ar: 'القطاع', en: 'Sector', groupAr: 'التصنيف', groupEn: 'Classification' },
   { key: 'department', field: 'departmentAr', ar: 'الإدارة', en: 'Department', groupAr: 'التصنيف', groupEn: 'Classification' },
   { key: 'city', field: 'cityAr', ar: 'المدينة', en: 'City', groupAr: 'التصنيف', groupEn: 'Classification' },
   { key: 'registrationType', field: 'registrationTypeAr', ar: 'نوع التسجيل', en: 'Registration type', groupAr: 'التصنيف', groupEn: 'Classification' },
-  // المجموعةُ شركتان، والأسطولُ مشتركُ التشغيلِ مفصولُ الملكيّة — فالسؤالُ
-  // «أرِني مركبات تنشيط المستقبل» سؤالُ إدارةٍ لا تصنيفُ ترف.
+  // The group is two companies, and the fleet is shared in operation but separate in ownership, so 'show the Tanshit Al-Mustaqbal vehicles' is a management question, not a luxury classification.
   { key: 'ownerCompany', field: 'ownerCompanyAr', ar: 'الشركة المالكة', en: 'Owning company', groupAr: 'التصنيف', groupEn: 'Classification' },
   { key: 'possession', field: 'possessionStatusAr', ar: 'حالة الحيازة', en: 'Possession', groupAr: 'التصنيف', groupEn: 'Classification' },
-  // حالة التشغيل: أوّل سؤالٍ تسأله الإدارة وآخرُ ما كان يجد شاشةً تجيبه.
+  // Operating state: the first question management asks, and the last that used to have a screen answering it.
   { key: 'serviceStatus', field: 'serviceStatusAr', ar: 'حالة التشغيل', en: 'Service status', groupAr: 'التصنيف', groupEn: 'Classification' },
   { key: 'brand', field: 'brandAr', ar: 'الماركة', en: 'Brand', groupAr: 'المركبة', groupEn: 'Vehicle' },
   { key: 'model', field: 'modelAr', ar: 'الطراز', en: 'Model', groupAr: 'المركبة', groupEn: 'Vehicle' },
@@ -1456,17 +1254,13 @@ const FILTER_DEFS = [
   { key: 'owner', field: 'ownerNameAr', ar: 'المالك', en: 'Owner', groupAr: 'الملكية والتفويض', groupEn: 'Ownership' },
   { key: 'commercialRegistration', field: 'commercialRegistration', ar: 'السجل التجاري', en: 'Commercial register', groupAr: 'الملكية والتفويض', groupEn: 'Ownership' },
   { key: 'authorizedPerson', field: 'authorizedPerson.name', ar: 'المفوَّض', en: 'Authorised person', groupAr: 'الملكية والتفويض', groupEn: 'Ownership' },
-  // ── ورقمُ الورقة فلترٌ كاسم حاملها ──────────────────────────────────────
-  // «هاتِ لي المركبة صاحبة هذا الرقم» هو أوّل ما يُسأل حين تصل مخالفةٌ أو
-  // فاتورة: الورقة في اليد وعليها رقمٌ، والمركبةُ هي المجهول. وكانت هذه
-  // الأرقام مقبولةً في `buildFilter` منذ البداية ولا تظهر في اللوحة، فلا
-  // يبلغها إلا من يكتب الرابط بيده.
+  // The paper's number is a filter like its holder's name.
+  // 'Give me the vehicle with this number' is the first question when a violation or invoice arrives: the paper is in hand with a number and the vehicle is the unknown. These numbers were accepted by `buildFilter` from the start but were absent from the dashboard, so only someone typing the link by hand could reach them.
   { key: 'authorizedPersonIqama', field: 'authorizedPerson.iqamaNumber', ar: 'رقم إقامة المفوَّض', en: 'Authorised person iqama', groupAr: 'الملكية والتفويض', groupEn: 'Ownership' },
   { key: 'authorizationNumber', field: 'authorizedPerson.authorizationNumber', ar: 'رقم التفويض', en: 'Authorisation number', groupAr: 'الملكية والتفويض', groupEn: 'Ownership' },
   { key: 'insuranceCompany', field: 'insurance.companyAr', ar: 'شركة التأمين', en: 'Insurer', groupAr: 'التأمين', groupEn: 'Insurance' },
   { key: 'coverageType', field: 'insurance.coverageTypeAr', ar: 'نوع التغطية', en: 'Coverage', groupAr: 'التأمين', groupEn: 'Insurance' },
-  // رقم الوثيقة فلترٌ لا زينة: وثيقةٌ واحدة تغطّي ١٩٨ مركبة، و«أرِني كل ما
-  // تغطّيه هذه الوثيقة» هو السؤال الذي يسبق كل تجديد.
+  // A document number is a real filter: one policy covers 198 vehicles, and 'show everything this policy covers' is the question that precedes every renewal.
   { key: 'insurancePolicyNumber', field: 'insurance.policyNumber', ar: 'رقم وثيقة التأمين', en: 'Policy number', groupAr: 'التأمين', groupEn: 'Insurance' },
   { key: 'premiumStatus', field: 'insurance.premiumStatusAr', ar: 'جهة سداد القسط', en: 'Premium paid by', groupAr: 'التأمين', groupEn: 'Insurance' },
   { key: 'operatingCardNumber', field: 'operatingCard.cardNumber', ar: 'رقم بطاقة التشغيل', en: 'Operating card number', groupAr: 'المستندات', groupEn: 'Documents' },
@@ -1481,25 +1275,17 @@ const FILTER_DEFS = [
   { key: 'gpsDeviceStatus', field: 'gps.deviceStatusAr', ar: 'حالة جهاز التتبّع', en: 'GPS device status', groupAr: 'التشغيل', groupEn: 'Operations' },
 ];
 
-// الحقول التي تحتاجها كل الفلاتر، مجموعةً مرّة واحدة: استعلامٌ واحدٌ يكفيها
-// جميعًا. جلبُ المستند كاملًا لثلاثمئة مركبة في كل فتحةٍ للّوحة نقلٌ لا داعي
-// له على عنقود Atlas المُقيَّد، وهو ما تُقاس به بطء هذه الشاشة.
+// The fields all filters need, as one projection: a single query covers them all. Fetching the whole document for 300 vehicles on every dashboard open is unnecessary transfer on the throttled Atlas cluster, which is what this screen's slowness is measured by.
 const FILTER_SELECT = [...new Set([
   ...FILTER_DEFS.map((d) => d.field),
   ...DERIVED_DEFS.flatMap((d) => d.select || []),
 ])].join(' ');
 
-// ── ولماذا مجموعتان لا واحدة ────────────────────────────────────────────────
-// الفلاتر المباشرة عدُّ قيمٍ، والعدُّ يجري في القاعدة: يعود سطرٌ لكلّ قيمة بدل
-// أن تعبر ثلاثُمئةِ مركبةٍ الشبكةَ لتُعَدَّ هنا. أمّا المشتقّاتُ فشروطُها دوالُّ
-// جافاسكربت (كم بقي على انتهاء الوثيقة، ما الناقص) لا تُترجَم إلى تجميع — فهي
-// وحدَها تسحب صفوفًا، وبحقولها هي فقط: أربعةَ عشرَ حقلًا لا ستّةً وأربعين.
-//
-// وكانت اللوحةُ تسحب الاتّحادَ كلَّه لكلّ فلترٍ نشط، فتسعُ ثوانٍ في كلّ فتحة.
+// Why two groups, not one.
+// Direct filters are value counts, and counting runs in the database: one row returns per value instead of 300 vehicles crossing the network to be counted here. Derived filters have JavaScript function conditions (time left on a document, what is missing) that do not translate to an aggregation, so only they pull rows, and only their own fields: 14 fields, not 46.
+// The dashboard used to pull the whole union for every active filter, nine seconds per open.
 const DERIVED_SELECT = [...new Set(DERIVED_DEFS.flatMap((d) => d.select || []))].join(' ');
-// صفوفُ المشتقّات من مرآةٍ تُحدَّث بالفرق: كلُّ كتابةٍ تمسح `vreg:` فكانت الفتحةُ
-// التالية تسحب الأسطولَ كلَّه من جديد (ثانيتان إلى ثلاث) — وكذلك كلُّ فلترٍ نشط.
-// الآن يُسأل عن المعرّفات وحدها. راجع utils/changeStamp.
+// Derived rows come from a mirror updated by diff: every write clears `vreg:`, so the next open pulled the whole fleet again (two to three seconds), as did every active filter. Now only the ids are queried. See utils/changeStamp.
 const derivedMirror = require('../utils/changeStamp').mirror(VehicleMaster, DERIVED_SELECT);
 
 const _get = (o, path) => path.split('.').reduce((a, k) => (a == null ? a : a[k]), o);
@@ -1509,7 +1295,7 @@ exports.filterOptions = async (req, res) => {
     const key = `vreg:filters:${JSON.stringify(req.query || {})}`;
     const hit = cache.get(key);
     if (hit !== undefined) return res.json(hit);
-    await getConfig(); // عتباتُ التنبيه لفلاتر حالة المستند (راجع ALERTS)
+    await getConfig(); // Alert thresholds for the document-state filters (see ALERTS)
 
     const tally = (rows, field) => {
       const counts = new Map();
@@ -1521,23 +1307,16 @@ exports.filterOptions = async (req, res) => {
       return [...counts.entries()].map(([value, count]) => ({ value, count })).sort((a, b) => b.count - a.count);
     };
 
-    // «كل الفلاتر إلا هذا الحقل» تختلف فعليًّا فقط للحقول المفلترة الآن؛ والبقيّة
-    // تشترك في المجموعة نفسها. استعلامٌ واحد لها جميعًا وواحدٌ لكل فلترٍ نشط،
-    // بدل ثمانية عشر استعلامًا في كل فتحةٍ للّوحة.
-    // الشرائح المشتقّة تُعَدّ بنفس دالّة الشرط التي تفتح صفوفها — تعريفٌ واحد
-    // للاثنين، فلا يفترق الرقم عمّا يفتحه. والقيمة التي عددُها صفر لا تُعرَض:
-    // خيارٌ تضغطه فتجد الشاشة فارغة أسوأ من غيابه.
+    // 'All filters except this field' really differs only for fields currently filtered; the rest share one group. One query for all of them plus one per active filter, instead of eighteen queries on every dashboard open.
+    // Derived buckets are counted with the same condition function that opens their rows: one definition for both, so the number never diverges from what it opens. A value whose count is zero is not shown: an option that opens an empty screen is worse than none.
     const tallyDerived = (rows, d) => {
       if (d.valuesOf) {
         const m = new Map();
-        // القيم متعددة على المركبة الواحدة (بنود النقص، شروط لوجستي): تُعَدّ
-        // المركبة في كل بندٍ ينقصها — ولذلك يفوق مجموعُ هذه الشريحة عددَ
-        // المركبات، وهو صحيح هنا وحده دون سائر الحقول.
+        // Values are multiple per vehicle (missing items, Logisti requirements): a vehicle is counted under each item it lacks, so this bucket's sum exceeds the vehicle count; that is correct here and only here.
         for (const r of rows) for (const v of d.valuesOf(r)) m.set(v, (m.get(v) || 0) + 1);
         return [...m.entries()].map(([value, count]) => ({ value, count })).sort((a, b) => b.count - a.count);
       }
-      // ترتيب الشرائح هو ترتيب التعريف لا ترتيب الأعداد: «منتهٍ» قبل «خلال ٣٠»
-      // قبل «٣١ إلى ٦٠» — سُلَّمٌ يُقرأ، وفرزُه بالعدد يُفقده معناه.
+      // Bucket order is definition order, not count order: 'expired' before 'within 30' before '31 to 60' is a readable ladder, and sorting by count destroys its meaning.
       return d.options.map((o) => ({ value: o.value, count: rows.filter(o.test).length }))
         .filter((x) => x.count > 0);
     };
@@ -1546,7 +1325,7 @@ exports.filterOptions = async (req, res) => {
     const isOn = (k) => req.query[k] != null && req.query[k] !== '';
     const active = ALL_DEFS.filter((d) => isOn(d.key));
     const passive = ALL_DEFS.filter((d) => !isOn(d.key));
-    // عدُّ القيم لكلّ حقلٍ مباشرٍ في مرورٍ واحدٍ على القاعدة.
+    // Value counts for every direct field in a single pass over the database.
     const plainTally = async (filter) => {
       const facet = {};
       FILTER_DEFS.forEach((d, i) => {
@@ -1558,9 +1337,9 @@ exports.filterOptions = async (req, res) => {
       const [r] = await VehicleMaster.aggregate([{ $match: filter }, { $facet: facet }]);
       const out = new Map();
       FILTER_DEFS.forEach((d, i) => {
-        // ما لا يفرّقه إلّا الفراغ سطرٌ واحد، والفراغُ وحدَه «—».
+        // Values differing only by blank are one row, and blank alone is the dash.
         out.set(d.key, mergeOptions(((r && r[`f${i}`]) || []).map((b) => ({ value: b._id, count: b.count })),
-          // null يصل «—» (من $ifNull) والنصُّ الفارغ ''، وهما «—» واحدة.
+          // A null arrives as the dash (from $ifNull) and the empty string '' is also the dash; they are the same dash.
           { keyOf: (v) => { const k = normKey(v); return k === '—' ? '' : k; } })
           .map((o) => ({ value: o.value === '' ? '—' : o.value, count: o.count }))
           .sort((a, b) => b.count - a.count));
@@ -1590,7 +1369,7 @@ exports.filterOptions = async (req, res) => {
         ? (perActivePlain.get(d.key) || sharedPlain.get(d.key) || [])
         : tallyDerived(perActive.get(d.key) || shared, d),
     })).filter((f) => f.values.length);
-    // ── وأسماءُ المفوَّضين المؤرشَفين لا تُعرَض خيارًا ──────────────────────
+    // Archived authorized people's names are not offered as options.
     const archSets = await endedStaff();
     if (archSets.archivedIdNumbers.size) {
       const gone = await VehicleMaster.find({ 'authorizedPerson.iqamaNumber': { $in: [...archSets.archivedIdNumbers] } })
@@ -1601,11 +1380,8 @@ exports.filterOptions = async (req, res) => {
       }
     }
     const body = { filters };
-    // ── عشرون ثانيةً كانت تعني «بارد» في كلّ مرّة ────────────────────────────
-    // اللوحةُ تُفتح مرّةً كلّ بضع دقائق، فينتهي الكاشُ قبل الفتحة التالية دائمًا
-    // ولا يستفيد منه أحد. وكلُّ كتابةٍ على السجلّ تمسح `vreg:` كاملًا (راجع
-    // `emit` أعلى الملفّ)، فطولُ المدّة لا يُبقي رقمًا قديمًا: يُبقي رقمًا صحيحًا
-    // جاهزًا. خمسُ دقائقَ تجعل الفتحةَ الثانيةَ فوريّةً لكلّ من يفتحها.
+    // Twenty seconds meant cold every time.
+    // The dashboard opens once every few minutes, so the cache expired before the next open and nobody benefited. Every write on the registry clears all of `vreg:` (see `emit` at the top of the file), so a longer TTL does not keep a stale number; it keeps a correct one ready. Five minutes makes the second open instant for everyone.
     cache.set(key, body, 5 * 60 * 1000);
     res.json(body);
   } catch (e) {
@@ -1615,10 +1391,8 @@ exports.filterOptions = async (req, res) => {
 };
 
 /**
- * التحليلات المشتقّة — آفاق انتهاء كل مستند، وأعمار المركبات.
- *
- * مع كل شريحة **الفلتر الذي يعيد إنتاجها بالضبط**، فالضغط عليها يفتح صفوفها
- * دون أن تخمّن الواجهة الشرط، ولا يفترق الرقم المعروض عن الصفوف التي يفتحها.
+ * Derived analytics: each document's expiry horizons, and vehicle ages.
+ * Each bucket carries the **filter that reproduces it exactly**, so clicking it opens its rows without the UI guessing the condition, and the displayed number never diverges from the rows it opens.
  */
 const _iso = (d) => d.toISOString().slice(0, 10);
 const _shiftDays = (n) => { const d = new Date(); d.setDate(d.getDate() + n); return _iso(d); };
@@ -1641,8 +1415,7 @@ const buildVehicleAnalytics = (vehicles) => {
       return { label: ar, labelEn: en, count, filter: f };
     };
     const items = [
-      // «منتهٍ» ينتهي بالأمس و«خلال ٣٠» تبدأ اليوم — ولولا الفصل لعُدَّ ما ينتهي
-      // اليوم في الشريحتين معًا فتجاوز مجموع الشرائح عدد المركبات.
+      // 'Expired' ends yesterday and 'within 30' starts today; without the split a document expiring today would be counted in both and the bucket sum would exceed the vehicle count.
       mk('منتهٍ', 'Expired', null, _shiftDays(-1)),
       mk('خلال ٣٠ يومًا', 'Within 30d', _shiftDays(0), _shiftDays(30)),
       mk('٣١ إلى ٦٠ يومًا', '31–60d', _shiftDays(31), _shiftDays(60)),
@@ -1654,7 +1427,7 @@ const buildVehicleAnalytics = (vehicles) => {
     out.push({ key: `hz:${dt.key}`, ar: `انتهاء ${dt.ar}`, en: `${dt.en} expiry`, kind: 'horizon', items });
   }
 
-  // أعمار المركبات — سنة الصنع رقم لا يُقرأ منه العمر بالعين.
+  // Vehicle ages: model year is a number from which age is not readable by eye.
   const year = new Date().getFullYear();
   const AGE = [
     { ar: 'أقل من ٣ سنوات', en: 'Under 3y', from: year - 2, to: null },
@@ -1681,11 +1454,8 @@ const buildVehicleAnalytics = (vehicles) => {
 };
 
 /**
- * تسخينُ لوحة الفلاتر.
- *
- * أوّلُ ضغطةٍ على «فلتر» كانت تدفع ثمنَ الاتّصال البارد وقراءةَ صفوف المشتقّات
- * معًا — والمستخدم واقفٌ ينتظر. والحالةُ الشائعة (بلا فلترٍ نشط) واحدةٌ لا
- * تتغيّر إلّا بكتابة، فتُحسب مرّةً بعد الإقلاع وتبقى جاهزة.
+ * Filter dashboard warm-up.
+ * The first click on 'filter' paid for the cold connection and the derived-row read together while the user waited. The common case (no active filter) is a single result that changes only on a write, so it is computed once after boot and kept ready.
  */
 exports.warmFilters = async () => {
   try {
@@ -1693,9 +1463,9 @@ exports.warmFilters = async () => {
     await new Promise((resolve) => {
       exports.filterOptions(fake, { json: resolve, status: () => ({ json: resolve }) });
     });
-    // ومرآةُ الانتهاءات معها: أوّلُ فتحةٍ لها كانت تدفع نقلَ الأسطول كلّه.
+    // The expiry mirror too: its first open used to pay the transfer of the whole fleet.
     await expiryMirror.sync();
-  } catch (e) { /* التسخينُ رفاهيةٌ لا شرط */ }
+  } catch (e) { /* Warm-up is a nicety, not a requirement */ }
 };
 
 exports.overview = async (req, res) => {
@@ -1704,34 +1474,22 @@ exports.overview = async (req, res) => {
     const hit = cache.get(key);
     if (hit !== undefined) return res.json(hit);
 
-    await getConfig(); // قبل buildFilter — راجع ALERTS
+    await getConfig(); // Before buildFilter; see ALERTS
     const filter = buildFilter(req.query);
     const [vehicles, cfg, allClaims, policies] = await Promise.all([
       VehicleMaster.find(filter).select(AGG_FIELDS).lean(),
       getConfig(),
-      // ── والحقولُ المطلوبةُ هي التي تُقرأ، لا أسماءٌ قريبةٌ منها ────────────
-      // كان الاختيارُ `status cost date` — وليس في النموذج حقلٌ بهذه الأسماء.
-      // فعادت كلُّ مطالبةٍ بلا `statusCode` ولا `claim` ولا `faultPercent`،
-      // و`undefined !== 'closed'` صادقٌ دائمًا: صارت كلُّ مطالبةٍ «مفتوحة».
-      // فقالت اللوحةُ ٢٥ مفتوحةً وفتحت على سبع، والمبالغُ أصفارٌ لأنّ `claim`
-      // لم يُقرأ أصلًا. تُطلَب الآن بأسمائها في النموذج.
+      // Requested fields are the ones actually read, not near-names.
+      // The projection was `status cost date`, and the model has no fields by those names, so every claim returned without `statusCode`, `claim` or `faultPercent`, and `undefined !== 'closed'` is always true: every claim counted as open. The dashboard said 25 open and opened on seven, and the amounts were zero because `claim` was never read. They are now requested by their model names.
       VehicleClaim.find({ isActive: true })
         .select('vehiclePlateKey vehiclePlate statusCode faultPercent accidentDate claim isActive').lean(),
       CorporatePolicy.find({ isActive: true }).lean(),
     ]);
 
-    // الحوادث تُقصَر على المركبات المطابقة للفلتر.
-    //
-    // كانت تُحسب على الأسطول كلّه مهما كان الفلتر، فتختار فرعًا فتقرأ فوق
-    // مركباته عددَ حوادث الشركة كلها ومبالغها — رقمٌ لا يخصّ ما تنظر إليه،
-    // ولا شيء على الشاشة يقول ذلك. الربط بمفتاح اللوحة الموحَّد لأن الحوادث
-    // تُسجَّل باللوحة لا بمعرّف المركبة.
-    // ولا يُطبَّق الربط إلا حين يكون هناك فلترٌ فعلًا.
-    //
-    // بلا فلتر كان الربط يُسقِط كلَّ حادثٍ لا مفتاح لوحةٍ له — الحوادث غير
-    // المرتبطة بمركبة، وما لم يُطابَق عند الاستيراد — فيصير الإجماليّ أقلّ من
-    // حقيقة الأسطول ولا شيء على الشاشة يقول ذلك. وهذا نفسُ العطل الذي أُصلح
-    // من أجله الربط. وما لم يُطابَق يُعلَن عددُه بدل أن يُبتلَع.
+    // Accidents are limited to the vehicles matching the filter.
+    // They used to be computed on the whole fleet whatever the filter, so choosing a branch showed the whole company's accident count and amounts above that branch's vehicles, with nothing on screen saying so. The join is on the unified plate key because accidents are recorded by plate, not by vehicle id.
+    // The join applies only when a filter is actually active.
+    // Without a filter the join dropped every accident with no plate key (accidents not linked to a vehicle, or unmatched at import), making the total lower than the fleet's truth with nothing saying so. That is the same fault the join was added to fix. The unmatched count is reported rather than swallowed.
     const filtered = Object.keys(req.query || {}).some((k) => !['scope'].includes(k) && req.query[k] !== '');
     const plateKeys = new Set(vehicles.map((v) => v.plateKey).filter(Boolean));
     const claims = filtered
@@ -1739,7 +1497,7 @@ exports.overview = async (req, res) => {
       : allClaims;
     const unmatchedClaims = filtered ? 0 : allClaims.filter((c) => !c.vehiclePlateKey).length;
 
-    // توزيع عمود: القيمة → العدد، مرتّبة، ومع كل قيمة الفلتر اللي بيوصّلها.
+    // Column distribution: value to count, sorted, each value with the filter that reaches it.
     const group = (field, valueOf) => {
       const m = new Map();
       for (const v of vehicles) {
@@ -1752,16 +1510,14 @@ exports.overview = async (req, res) => {
         .sort((a, b) => b.count - a.count);
     };
 
-    // بطاقات التصنيف — عمود بعمود.
+    // Classification cards, column by column.
     const breakdowns = [
       { key: 'sector', ar: 'القطاع', en: 'Sector', field: 'sectorAr', items: group('sectorAr', (v) => v.sectorAr) },
-      // جاءت مع تحديث ملفات القسم: الإدارة والمدينة أدقّ من القطاع وحده — «مركبات
-      // كيتا في مكة» سؤال يُسأل، وكان لا يجد بطاقةً تجيبه.
+      // Came with the section files update: department and city are more precise than the sector alone; 'Keeta vehicles in Makkah' is a real question that no card answered.
       { key: 'department', ar: 'الإدارة', en: 'Department', field: 'departmentAr', items: group('departmentAr', (v) => v.departmentAr) },
       { key: 'city', ar: 'المدينة', en: 'City', field: 'cityAr', items: group('cityAr', (v) => v.cityAr) },
       { key: 'possession', ar: 'حالة الحيازة', en: 'Possession', field: 'possessionStatusAr', items: group('possessionStatusAr', (v) => v.possessionStatusAr) },
-      // حالة التشغيل قبل أي تصنيفٍ آخر: ٧٦ مركبة من ٣٣٥ واقفةٌ أو مسروقة —
-      // ربعُ الأسطول لا يعمل، ولم تكن في الصفحة بطاقةٌ تقول ذلك.
+      // Operating state before any other classification: a quarter of the fleet is stopped or stolen, and no card on the page said so.
       { key: 'serviceStatus', ar: 'حالة التشغيل', en: 'Service status', field: 'serviceStatusAr', items: group('serviceStatusAr', (v) => v.serviceStatusAr) },
       { key: 'registrationType', ar: 'نوع التسجيل', en: 'Registration type', field: 'registrationTypeAr', items: group('registrationTypeAr', (v) => v.registrationTypeAr) },
       { key: 'ownerCompany', ar: 'الشركة المالكة', en: 'Owning company', field: 'ownerCompanyAr', items: group('ownerCompanyAr', (v) => v.ownerCompanyAr) },
@@ -1775,18 +1531,17 @@ exports.overview = async (req, res) => {
       { key: 'coverageType', ar: 'نوع التغطية', en: 'Coverage', field: 'insurance.coverageTypeAr', items: group('insurance.coverageTypeAr', (v) => v.insurance?.coverageTypeAr) },
       { key: 'fuelCardStatus', ar: 'حالة شريحة الوقود', en: 'Fuel card', field: 'fuelCard.statusAr', items: group('fuelCard.statusAr', (v) => v.fuelCard?.statusAr) },
       { key: 'consumptionType', ar: 'نوع الاستهلاك', en: 'Consumption', field: 'fuelCard.consumptionTypeAr', items: group('fuelCard.consumptionTypeAr', (v) => v.fuelCard?.consumptionTypeAr) },
-      // جهة سداد القسط: ٢٧ مركبة يسدّد قسطها المموِّل — مؤمَّنةٌ ورقمُها عنده،
-      // وكانت تُقرأ «بلا قسط» فتظهر نقصًا لا وجود له.
+      // Premium payer: vehicles whose premium the financier pays are insured with the number held by him, and used to read as 'no premium', showing a gap that does not exist.
       { key: 'premiumStatus', ar: 'جهة سداد القسط', en: 'Premium paid by', field: 'insurance.premiumStatusAr', items: group('insurance.premiumStatusAr', (v) => v.insurance?.premiumStatusAr) },
       { key: 'gpsStatus', ar: 'حالة جهاز التتبّع', en: 'GPS status', field: 'gps.status', items: group('gps.status', (v) => v.gps?.status) },
       { key: 'gpsProvider', ar: 'مزوّد التتبّع', en: 'GPS provider', field: 'gps.provider', items: group('gps.provider', (v) => v.gps?.provider) },
       { key: 'gpsDevice', ar: 'موديل جهاز التتبّع', en: 'GPS device', field: 'gps.deviceModel', items: group('gps.deviceModel', (v) => v.gps?.deviceModel) },
-      // حالة الجهاز غير حالة الاشتراك: جهاز «مسروق» اشتراكه قد يكون ساريًا.
+      // Device state differs from subscription state: a 'stolen' device may have a valid subscription.
       { key: 'gpsDeviceStatus', ar: 'حالة الجهاز', en: 'Device status', field: 'gps.deviceStatusAr', items: group('gps.deviceStatusAr', (v) => v.gps?.deviceStatusAr) },
       { key: 'inspectionStatus', ar: 'حالة الفحص', en: 'Inspection', field: 'inspection.statusAr', items: group('inspection.statusAr', (v) => v.inspection?.statusAr) },
     ];
 
-    // بطاقة لكل مستند: الحالات المحسوبة + الحالات الإدارية (مطلوب/غير مطلوب/لا يوجد).
+    // A card per document: computed states plus administrative states (required / not required / none).
     const documents = DOC_TYPES.map((dt) => {
       const states = { valid: 0, warning: 0, critical: 0, upcoming: 0, expired: 0, missing: 0, not_applicable: 0 };
       const statuses = {};
@@ -1802,7 +1557,7 @@ exports.overview = async (req, res) => {
         key: dt.key, ar: dt.ar, en: dt.en, icon: dt.icon,
         alert: cfg.alerts?.[dt.key] || {},
         states,
-        // بالاسم زي ما هو في الإكسل: مطلوب / غير مطلوب / لا يوجد / لدى البنك …
+        // By the name as in the Excel sheet: required / not required / none / with the bank, etc.
         statuses: Object.entries(statuses)
           .map(([code, count]) => ({ code, ar: VDOC.statusLabel(code, 'ar'), en: VDOC.statusLabel(code, 'en'), count }))
           .sort((a, b) => b.count - a.count),
@@ -1811,14 +1566,9 @@ exports.overview = async (req, res) => {
       };
     });
 
-    // ── وبطاقةُ السائق كارتٌ سابع ──────────────────────────────────────────
-    // اللوحةُ تعرض ستّةَ كروتٍ لأوراق المركبة، وبطاقةُ السائق ليست منها — فغابت
-    // عن اللوحة كما غابت عن شاشة الانتهاءات، وسبعٌ وخمسون بطاقةً منها أربعٌ
-    // تنتهي خلال أيّام لا يراها من يفتح النظرة الشاملة.
-    //
-    // ولا تُعرَض حين تُفلتَر اللوحةُ بشيءٍ يخصّ المركبات (قطاعٌ أو مالك): السائقُ
-    // لا ينتمي إلى قطاعِ مركبة، فكارتٌ يبقى ثابتًا بينما الباقي يتحرّك يُقرأ
-    // خطأً على أنّه تابعٌ للفلتر. راجع buildExpiryRows.
+    // The driver card is a seventh card.
+    // The dashboard shows six cards for vehicle papers and the driver card is not among them, so it was absent from the dashboard as from the expiry screen: fifty-seven cards, four expiring within days, invisible to anyone opening the overview.
+    // It is not shown when the dashboard is filtered by something vehicle-specific (sector or owner): a driver does not belong to a vehicle sector, and a card that stays constant while the rest move reads wrongly as part of the filter. See buildExpiryRows.
     if (!filtered) {
       const DriverCard = require('../models/DriverCard');
       const [allCards, ended] = await Promise.all([
@@ -1829,7 +1579,7 @@ exports.overview = async (req, res) => {
       const dcStates = { valid: 0, warning: 0, critical: 0, upcoming: 0, expired: 0, missing: 0, not_applicable: 0 };
       let dcNearest = null;
       for (const c of cards) {
-        // بلا تاريخٍ فهي «مطلوبة» — عملٌ ينتظر، وهو ما تعنيه `missing` هنا.
+        // Without a date it is 'required': pending work, which is what `missing` means here.
         const st = VDOC.stateOf(c.expiryDate || null, '', cfg.alerts?.driverCard);
         dcStates[st.state] += 1;
         if (st.days != null && st.days >= 0 && (dcNearest === null || st.days < dcNearest)) dcNearest = st.days;
@@ -1844,7 +1594,7 @@ exports.overview = async (req, res) => {
       });
     }
 
-    // أرقام فوق.
+    // Top numbers.
     const totals = {
       vehicles: vehicles.length,
       insuredPremiumSar: Math.round(vehicles.reduce((t, v) => t + (Number(v.insurance?.premiumSar) || 0), 0)),
@@ -1852,20 +1602,15 @@ exports.overview = async (req, res) => {
       activeFuelCards: vehicles.filter((v) => v.fuelCard?.statusCode === 'active').length,
       withAccidents: vehicles.filter((v) => (v.accidentCount || 0) > 0).length,
       needsAttention: documents.reduce((t, d) => t + d.needsAttention, 0),
-      // نواقص منصّة لوجستي: كم مركبة لا تستوفي شروط المنصّة، وكم شرطًا ناقصًا
-      // في المجموع. الرقم الثاني هو حجم العمل الحقيقي — مركبة واحدة قد ينقصها
-      // ثلاثة شروط.
+      // Logisti platform gaps: how many vehicles fail the platform requirements, and how many requirements are missing in total. The second number is the real workload, since one vehicle may lack three requirements.
       withLogistiGaps: vehicles.filter((v) => (v.logistiGaps || []).length > 0).length,
       logistiGapItems: vehicles.reduce((t, v) => t + (v.logistiGaps || []).length, 0),
-      // نواقص البيانات: كم مركبة ينقصها شيء، وكم بندًا في المجموع، وكم منها
-      // **عملٌ مطلوب** فعلًا. «غير مطلوب» حالة سليمة ولا تُعدّ نقصًا — خلطها
-      // بالباقي يجعل الرقم الذي ينظر إليه المدير بلا معنى.
+      // Data gaps: how many vehicles lack something, how many items in total, and how many of them are actual **work required**. 'Not required' is a healthy state and is not a gap; mixing it in makes the number the manager reads meaningless.
       withMissing: vehicles.filter((v) => (v.missingItems || []).some((x) => VDOC.isGap(x.reason))).length,
       missingItems: vehicles.reduce((t, v) => t + (v.missingItems || []).filter((x) => VDOC.isGap(x.reason)).length, 0),
     };
 
-    // النواقص مجمَّعة بالبند ثم بالسبب — «بطاقة التشغيل: ٤٤ مطلوبة و٧٢ لا يوجد»
-    // بندان مختلفان من العمل، لا رقم واحد.
+    // Gaps grouped by item then reason: 'operating card: 44 required and 72 none' are two different pieces of work, not one number.
     const missingMap = new Map();
     for (const v of vehicles) {
       for (const it of v.missingItems || []) {
@@ -1883,14 +1628,14 @@ exports.overview = async (req, res) => {
     }
     const missingBreakdown = [...missingMap.values()].sort((a, b) => b.count - a.count);
 
-    // الشروط الناقصة مرتّبة بالأكثر تكرارًا — من أين يبدأ العمل.
+    // Missing requirements sorted by frequency: where to start.
     const gapCounts = new Map();
     for (const v of vehicles) for (const g of v.logistiGaps || []) gapCounts.set(g, (gapCounts.get(g) || 0) + 1);
     const logistiGaps = [...gapCounts.entries()]
       .map(([value, count]) => ({ value, count, filter: { logistiGap: value } }))
       .sort((a, b) => b.count - a.count);
 
-    // الحوادث والمطالبات — الفلوس هي السؤال.
+    // Accidents and claims: money is the question.
     const openClaims = claims.filter((c) => c.statusCode !== 'closed');
     const claimTotals = {
       total: claims.length,
@@ -1903,7 +1648,7 @@ exports.overview = async (req, res) => {
         .map(([value, count]) => ({ value, count })).sort((a, b) => b.count - a.count),
     };
 
-    // وثائق الشركة — انتهاؤها بيوقّف الشغل كله مش عربية واحدة.
+    // Company documents: their expiry stops all work, not one vehicle.
     const corporate = policies.map((p) => {
       const st = VDOC.stateOf(p.expiryDate, '', cfg.alerts?.corporatePolicy);
       return { _id: p._id, scopeAr: p.scopeAr, companyAr: p.companyAr, expiryDate: p.expiryDate,
@@ -1920,36 +1665,23 @@ exports.overview = async (req, res) => {
   }
 };
 
-// ═══════════════════════════════════════════════════════════════════════════
-//  الانتهاءات — بفلتر مرن: «وريني اللي هينتهي خلال كام يوم»
-// ═══════════════════════════════════════════════════════════════════════════
+// Expiries with a flexible filter: show what expires within N days.
 /**
  * GET /expiring?doc=insurance&withinDays=30
- *   doc         مستند واحد أو أكتر (مفصولين بفاصلة)، فاضي = كلهم
- *   withinDays  أي رقم يكتبه المستخدم — مش قايمة ثابتة (٣٠/٦٠/٩٠)
- *   includeExpired=0  يخفي المنتهي بالفعل
- *   state       فلتر إضافي على الحالة المحسوبة
- * بيرجّع صف لكل (مركبة × مستند)، مرتّب بالأقرب انتهاءً.
+ * doc: one or more documents (comma-separated), empty = all; withinDays: any number, not a fixed list; includeExpired=0 hides expired; state: extra filter on computed state.
+ * Returns a row per (vehicle x document), nearest expiry first.
  */
-// ── مصدر واحد لحالة كل مستند ────────────────────────────────────────────────
-//
-// «الانتهاءات والتجديد» و«تنبيهات المركبات» بيردوا على نفس السؤال: أنهي مستند
-// قرب أو خلص؟ وكانوا محسوبين بدالتين مختلفتين وفلترين مختلفين، فالأرقام كانت
-// بتختلف — والمستخدم شاف ده بنفسه («الأرقام فيهم مش زي بعض»). أسوأ فرق: شاشة
-// التنبيهات كانت بتسقط أي نوع مستند تنبيهه متقفول من الإعدادات **في صمت**، فمستند
-// منتهي فعلاً ما كانش بيظهر فيها وهو ظاهر في الانتهاءات.
-//
-// الدالة دي بقت المصدر الوحيد، والشاشتين بيبنوا منها. لو المستقبل عايز يفرّق
-// بينهم، بيفرّق في **الفلتر** مش في **الحساب**.
-// ما تقرؤه صفوفُ الانتهاءات من المركبة، لا أكثر. كانت تسحب AGG_FIELDS (ستّةً
-// وسبعين حقلًا) لتقرأ منها ثمانيةَ عشر، والنقلُ هو كلُّ ثمن هذه الشاشة.
+// One source for each document's state.
+// Expiries and renewal, and vehicle alerts, answer the same question: which document is near or finished? They were computed by two functions and two filters, so numbers differed, which the user noticed. The worst difference: the alerts screen silently dropped any document type whose alert was disabled in settings, so an actually expired document was missing there but visible in expiry.
+// This function is now the single source and both screens build from it. If the future needs to differentiate them, it does so in the **filter**, not in the **calculation**.
+// What the expiry rows read from the vehicle, no more: they used to pull AGG_FIELDS (76 fields) to read 18 from them, and transfer is the entire cost of this screen.
 const EXPIRY_FIELDS = [...new Set([
   'plateNumber', 'brandAr', 'modelAr', 'chassisNumber', 'serialNumber', 'registrationTypeAr', 'ownerCompanyAr',
   'colorAr', 'sectorAr', 'ownerNameAr', 'modelYear',
   ...DOC_TYPES.flatMap((dt) => [dt.path, dt.statusPath, dt.numberPath].filter(Boolean)),
   'insurance.companyAr', 'gps.provider', 'authorizedPerson.name', 'authorizedPerson.iqamaNumber',
 ])].join(' ');
-// والمرآةُ تُحدَّث بالفرق: تجديدُ وثيقةٍ واحدة يجلب مركبتَها وحدها — راجع utils/changeStamp.
+// The mirror is updated by diff: renewing one document fetches only its vehicle. See utils/changeStamp.
 const expiryMirror = require('../utils/changeStamp').mirror(VehicleMaster, EXPIRY_FIELDS);
 
 async function buildExpiryRows(query = {}) {
@@ -1961,10 +1693,8 @@ async function buildExpiryRows(query = {}) {
       .select('name idNumber cardNumber cardType expiryDate logisticRegister employee').lean(),
     endedStaff(),
   ]);
-  // ── السائقُ وبطاقتُه على كلّ صفِّ مركبة ─────────────────────────────────
-  // كان «صاحبُ المستند» يُملأ للتفويض وحدَه، فخرج العمودُ فارغًا في تأمين
-  // المركبة واستمارتها وفحصها — وهي أكثرُ الصفوف. والسؤالُ عنها كلِّها واحد:
-  // مَن يقود هذه المركبة، وبطاقتُه كم؟ فيُقرأ المفوَّضُ ويُربط ببطاقته برقم الإقامة.
+  // The driver and his card on every vehicle row.
+  // 'Document holder' used to be filled for authorization only, so the column was empty on vehicle insurance, registration and inspection, which are most of the rows. The question is the same for all: who drives this vehicle, and what is his card? So the authorized person is read and linked to his card by residency number.
   const cardById = new Map(cards.map((c) => [String(c.idNumber || '').trim(), c]));
   const rows = [];
   const cardOf = (v) => {
@@ -1984,55 +1714,35 @@ async function buildExpiryRows(query = {}) {
         sectorAr: v.sectorAr, ownerNameAr: v.ownerNameAr, modelYear: v.modelYear,
         docKey: dt.key, docAr: dt.ar, docEn: dt.en,
         expiryDate: expiry, daysRemaining: st.days, state: st.state, statusCode,
-        // التنبيه متفعّل للنوع ده؟ بيترجّع مع الصف بدل ما الصف يختفي في صمت.
+        // Is the alert enabled for this type? Returned with the row instead of the row silently disappearing.
         alertEnabled: cfg.alerts?.[dt.key]?.enabled !== false,
-        // رقم المستند من تعريفه لا من سلسلة شروطٍ تُنسى: التفويض أُضيف مستندًا
-        // سادسًا ولم يُضَف إلى السلسلة، فظهر في شاشة الانتهاءات بلا رقمٍ يُعرَف
-        // به — ولا يُجدَّد تفويضٌ لا يُعرَف رقمه.
+        // Document number from its definition, not a chain of conditions that gets forgotten: authorization was added as a sixth document and not added to the chain, so it appeared on the expiry screen without a number to identify it, and an authorization whose number is unknown cannot be renewed.
         reference: dt.numberPath ? String(getPath(v, dt.numberPath) || '') : '',
         company: dt.key === 'insurance' ? v.insurance?.companyAr : dt.key === 'gps' ? v.gps?.provider : '',
-        // المفوَّضُ على المركبة — لكلّ مستنداتها لا للتفويض وحدَه (راجع أعلاه).
-        // والمفوَّضُ المؤرشَف لا يُسمّى — الصفُّ للمركبة وورقتِها.
+        // The authorized person on the vehicle, for all its documents and not authorization only (see above). An archived authorized person is not named; the row belongs to the vehicle and its paper.
         holder: holderArchived(ended, v) ? '' : String(v.authorizedPerson?.name || ''),
         driverCardNumber: String(cardOf(v)?.cardNumber || ''),
       });
     }
   }
 
-  // ── وبطاقةُ السائق مستندٌ ينتهي كغيره ────────────────────────────────────
-  //
-  // هي ليست ورقةً على مركبة بل على إنسان، ولذلك عاشت في صفحةٍ وحدَها وغابت عن
-  // شاشة الانتهاءات وعن اللوحة. وغيابُها ليس تنظيمًا: بطاقةٌ منتهيةٌ توقف
-  // سائقًا كما توقفه استمارةٌ منتهية، ومن يفتح «ما ينتهي خلال ثلاثين يومًا»
-  // يريد كلَّ ما سيوقفه — لا ما يوقف مركباتِه وحدَها.
-  //
-  // فتدخل صفًّا كبقيّة الصفوف: لها تاريخٌ وحالةٌ وأيّامٌ متبقّية، وعتباتُها
-  // تُضبَط من إعدادات القسم باسمِ `driverCard` كما تُضبَط عتباتُ الاستمارة.
-  // ولا لوحةَ لها — فمكانُ اللوحة اسمُ صاحبها، وهو هويّةُ الصفّ هنا.
-  //
-  // ولا تُفلتَر بفلتر المركبات (قطاعٌ أو مالكٌ أو مدينة): السائقُ ليس مركبةً،
-  // فلو فُلتِرت اللوحةُ على قطاعٍ سقطت البطاقاتُ كلُّها — والسقوطُ في صمتٍ أسوأ
-  // من الظهور. فتظهر حين لا يُفلتَر بشيءٍ يخصّ المركبات.
+  // The driver card is a document that expires like the rest.
+  // It is a paper on a person, not on a vehicle, so it lived on its own page and was absent from the expiry screen and the dashboard. That absence is not organization: an expired card stops a driver as an expired registration does, and whoever opens 'what expires within thirty days' wants everything that will stop work, not only what stops vehicles.
+  // So it enters as a row like the others: a date, a state and days remaining, with thresholds set from section settings under `driverCard` as for registration. It has no plate; the plate column shows its holder's name, which is the row identity here.
+  // It is not filtered by vehicle filters (sector, owner, city): a driver is not a vehicle, so filtering the dashboard by sector would drop all cards, and silent dropping is worse than appearing. It appears when nothing vehicle-specific is filtered.
   const vehicleFiltered = ['sector', 'owner', 'city', 'department', 'q']
     .some((k) => String(query[k] || '').trim() !== '');
   if (!vehicleFiltered) {
     for (const c of cards) {
-      // بلا رقمِ بطاقةٍ فهي «مطلوبة» لا «منتهية» — عملٌ ينتظر، وله عمودُه في
-      // صفحة بطاقات السائقين. ولا تدخل شاشةَ الانتهاءات بلا تاريخٍ تنتهي فيه.
+      // Without a card number it is 'required', not 'expired': pending work with its own column on the driver-cards page. It does not enter the expiry screen without an expiry date.
       if (!c.expiryDate) continue;
-      // ومَن انتهت خدمتُه لا تُنبَّه بطاقتُه: لن يُجدِّدها أحد.
+      // Someone whose service ended gets no card alert: nobody will renew it.
       if (cardEnded(ended, c)) continue;
       const st = VDOC.stateOf(c.expiryDate, '', cfg.alerts?.driverCard);
       rows.push({
-        // ── ولا تُحشَر بيانات السائق في خانات المركبة ──────────────────────
-        // كُتب اسمُ السائق أوّلَ مرّةٍ في `plateNumber` ليملأ عمودَ اللوحة، فقرأ
-        // من ينظر «اللوحة: محمد طاهر». والعمودُ يقول ما اسمُه يقول، وإلّا لم
-        // يعد يُقرأ. فتبقى خاناتُ المركبة فارغةً — لأنّه لا مركبةَ هنا — ويُقرأ
-        // اسمُ صاحبه من `holder`، وهو العمودُ نفسُه الذي يحمل اسمَ المفوَّض.
-        //
-        // و`rowId` هويّةُ الصفّ: كانت الشاشةُ تركّبها من `vehicleId` وهو `null`
-        // في كلّ بطاقة، فصار للسبعِ والخمسين مفتاحٌ واحد — تُرسم واحدةٌ منها
-        // ويُختار غيرُ ما يُضغَط.
+        // Driver data is not stuffed into vehicle fields.
+        // The driver's name was first written into `plateNumber` to fill the plate column, so the reader saw 'Plate: Muhammad Taher'. A column has to say what its name says or it stops being readable. The vehicle fields stay empty, since there is no vehicle here, and the name is read from `holder`, the same column that carries the authorized person's name.
+        // `rowId` is the row identity: the screen used to build it from `vehicleId`, which is `null` on every card, so all fifty-seven shared one key, one was drawn and the wrong one was selected on click.
         rowId: `dc:${c._id}`,
         vehicleId: null, driverCardId: String(c._id),
         plateNumber: '', brandAr: '', modelAr: '', modelYear: null,
@@ -2052,11 +1762,8 @@ async function buildExpiryRows(query = {}) {
 }
 
 /**
- * مستنداتُ شاشة الانتهاءات — وثائقُ المركبة وبطاقةُ السائق معها.
- *
- * `DOC_TYPES` تصف أوراقَ المركبة، وبطاقةُ السائق ورقةٌ على إنسان. وهما يلتقيان
- * في سؤالٍ واحد: «ما الذي ينتهي فيوقف العمل؟» — فيلتقيان في هذه القائمة وحدَها،
- * ولا تُخلَط بطاقةُ السائق بأوراق المركبة في مكانٍ آخر.
+ * Documents of the expiry screen: vehicle papers and the driver card.
+ * `DOC_TYPES` describes vehicle papers and the driver card is a paper on a person. They meet in one question, 'what expires and stops work?', so they meet in this list only, and the driver card is not mixed with vehicle papers anywhere else.
  */
 const EXPIRY_DOCS = [...DOC_TYPES, { key: 'driverCard', ar: 'بطاقة السائق', en: 'Driver card' }];
 
@@ -2068,7 +1775,7 @@ exports.expiring = async (req, res) => {
     const includeExpired = req.query.includeExpired !== '0';
     const states = _multi(req.query.state);
 
-    await getConfig(); // قبل buildFilter — راجع ALERTS
+    await getConfig(); // Before buildFilter; see ALERTS
     const all = await buildExpiryRows(req.query);
     const rows = [];
     for (const r of all) {
@@ -2076,14 +1783,12 @@ exports.expiring = async (req, res) => {
       const dt = { key: r.docKey };
       if (wanted.length && !wanted.includes(dt.key)) continue;
       {
-        // «غير مطلوب» مش بينتهي، و«بدون تاريخ» ملهاش مكان في شاشة انتهاءات.
+        // 'Not required' does not expire, and 'no date' has no place on an expiry screen.
         if (st.state === 'not_applicable' || st.state === 'missing') continue;
         if (!includeExpired && st.state === 'expired') continue;
-        // الفلترُ يُقارَن بالحالة كما تُعرَض لا كما تُحسَب: الشاشةُ تعرض ثلاثًا
-        // («منتهٍ · قارب على الانتهاء · ساري») والحسابُ يفرّق تحتها ثلاثَ
-        // درجاتٍ للّون. فمن ضغط «قارب على الانتهاء» يقصدها كلَّها.
+        // The filter is compared to the state as displayed, not as computed: the screen shows three (expired, nearing, valid) while the computation distinguishes three color grades below that. Whoever clicks 'nearing' means all of them.
         if (states.length && !states.includes(st.state) && !states.includes(VDOC.publicState(st.state))) continue;
-        // المنتهي بالفعل بيفضل ظاهر مهما كانت المدة — هو أصلاً فات الميعاد.
+        // An already expired document stays visible whatever the window; its date has passed.
         if (withinDays !== null && st.days > withinDays) continue;
         rows.push({
           ...r,
@@ -2092,25 +1797,21 @@ exports.expiring = async (req, res) => {
     }
     rows.sort((a, b) => (a.daysRemaining ?? 1e9) - (b.daysRemaining ?? 1e9));
 
-    // ملخّص بيتحسب على نفس الصفوف، فالرقم اللي فوق دايمًا بيوصف اللي تحت.
+    // Summary computed on the same rows, so the number above always describes what is below.
     const summary = { total: rows.length, expired: 0, critical: 0, warning: 0, valid: 0 };
     const byDoc = {};
     for (const r of rows) {
       summary[r.state] = (summary[r.state] || 0) + 1;
       byDoc[r.docKey] = (byDoc[r.docKey] || 0) + 1;
     }
-    // ── السقف يُعلن نفسه، ويُرفَع عند الطلب ────────────────────────────────────
-    // الصفوف هنا مركبةٌ × مستند، فالألفان أقربُ ممّا تبدو. وكان القصّ صامتًا:
-    // الملخّص فوق يعدّ الكلّ والملفّ ينزل بألفين، فيقرأ المصدِّر ملفًّا ناقصًا
-    // وهو يحسبه كاملًا — وهذا ما يجعل «تصدير الكلّ» وعدًا لا يُوفى.
+    // The cap announces itself and can be lifted on request.
+    // Rows here are vehicle x document, so two thousand is closer than it looks. The truncation used to be silent: the summary above counts everything while the file downloads with two thousand, so the exporter reads an incomplete file as complete, which makes 'export all' a promise not kept.
     const CAP = Math.min(Number(req.query.limit) || 2000, 50000);
     const body = {
       rows: rows.slice(0, CAP),
       summary,
-      // ── وبطاقةُ السائق سابعُ الأعمدة فوق الجدول ───────────────────────
-      // `DOC_TYPES` وثائقُ المركبة وحدَها، وبطاقةُ السائق ليست منها — لكنّها
-      // تنتهي وتُعرَض هنا كغيرها، فتُعَدّ في الشريط الذي يُقرأ فوق الجدول.
-      // ولو تُركت لظهرت صفوفُها في القائمة ولا عمودَ يقول كم هي.
+      // The driver card is a seventh column above the table.
+      // `DOC_TYPES` is vehicle papers only and the driver card is not among them, but it expires and displays here like the others, so it is counted in the strip read above the table. Otherwise its rows would appear in the list with no column saying how many there are.
       byDoc: EXPIRY_DOCS.map((d) => ({ key: d.key, ar: d.ar, en: d.en, count: byDoc[d.key] || 0 })),
       withinDays, docs: EXPIRY_DOCS.map((d) => ({ key: d.key, ar: d.ar, en: d.en })),
     };
@@ -2122,48 +1823,33 @@ exports.expiring = async (req, res) => {
   }
 };
 
-// ═══════════════════════════════════════════════════════════════════════════
-//  التجديد
-// ═══════════════════════════════════════════════════════════════════════════
+// Renewal
 /**
  * POST /:id/renew  { document, newExpiry, cost?, reference?, note? }
- *
- * بيحدّث تاريخ الانتهاء **وبيقيّد التجديد في السجل** بالتاريخ القديم والجديد
- * ومين عمله. من غير السجل، «جدّدناها امتى وبكام؟» مالهاش إجابة بعد أول تجديد.
- * وبيشيل حالة «لا يوجد/مطلوب» تلقائيًا — بقى فيه تاريخ خلاص.
+ * Updates the expiry date **and records the renewal in the log** with old and new date and who did it. Without the log, 'when did we renew it and for how much?' has no answer after the first renewal. It also clears the 'none/required' state automatically, since a date now exists.
  */
 /**
- * يطبّق تجديدًا واحدًا على مركبة: التاريخ، والرقم إن تغيّر، والقيد في السجل.
- *
- * ولماذا دالّة لا سطورٌ مكرّرة في الموضعين: التجديد المفرد والجماعي كانا
- * ينسخان الخطوات نفسها، فأيّ تعديلٍ في أحدهما — وهذا التعديل مثالُه — يترك
- * الآخر خلفه. فيجدَّد الرقم من الشاشة الفردية ولا يجدَّد من الجماعية، ولا يظهر
- * الفرق إلا بعد أن تكون مئةُ مركبةٍ قد جُدِّدت ناقصةً.
- *
- * ويرجع القيد نفسه ليقيَّد في سجل المراجعة كما قُيِّد في المركبة.
+ * Applies one renewal to a vehicle: the date, the number if changed, and the log entry.
+ * A function rather than repeated lines in two places: single and bulk renewal copied the same steps, so any change in one (this change is an example) left the other behind. The number would be renewed from the single screen and not from the bulk one, and the difference shows only after a hundred vehicles were renewed incompletely.
+ * Returns the entry itself so it is recorded in the audit log as it was recorded on the vehicle.
  */
 const applyRenewal = (v, doc, when, src = {}, byName = '') => {
   const [block, field] = doc.path.split('.');
   const previous = v[block]?.[field] || null;
   v[block][field] = when;
 
-  // ── والهجريُّ يُجدَّد مع الميلاديّ ──────────────────────────────────────
-  // رخصةُ السير والفحصُ يحملان تاريخًا هجريًّا مكتوبًا على الورقة. وكان التجديدُ
-  // يُحدّث الميلاديَّ وحدَه فيبقى الهجريُّ تاريخَ الورقةِ المنتهية: تُقرأ
-  // الشاشةُ فتجد انتهاءً بعد سنةٍ وبجانبه هجريًّا مضى — وأحدُهما كذب. ولا
-  // يُعرَف هجريُّ الورقة الجديدة إلّا منها، فيُحسَب من التاريخ الجديد: تقريبٌ
-  // متّسقٌ أهونُ من تاريخٍ يناقض جارَه.
+  // The Hijri date is renewed with the Gregorian.
+  // Registration and inspection carry a Hijri date written on the paper. Renewal used to update the Gregorian only, leaving the Hijri as the expired paper's date: the screen showed an expiry a year away next to a Hijri date already past, and one of them is wrong. The new paper's Hijri date is known only from the paper, so it is computed from the new date: a consistent approximation is better than a date that contradicts its neighbor.
   if (v[block] && Object.prototype.hasOwnProperty.call(v[block], 'expiryDateHijri')) {
     try {
       const { toHijriPlain } = require('../utils/hijri');
       const hij = toHijriPlain(when);
       if (hij) v[block].expiryDateHijri = hij;
-    } catch (e) { /* التجديدُ يمضي وإن تعذّر الاشتقاق */ }
+    } catch (e) { /* Renewal proceeds even if derivation fails */ }
   }
 
-  // ── الرقم الجديد اختياريّ، وسكوتُه يعني «هو هو» ─────────────────────────
-  // الفراغ ليس أمرًا بالمسح: من يترك الخانة فارغة لم يستخرج بطاقةً برقمٍ جديد،
-  // ولو فسّرناه محوًا لأتلف التجديدُ الجماعيُّ مئتي رقمٍ في ضربة واحدة.
+  // The new number is optional, and silence means unchanged.
+  // Blank is not a clear command: someone who leaves the field empty has not extracted a card with a new number, and reading it as erase would let a bulk renewal destroy two hundred numbers in one stroke.
   let previousNumber = '';
   let newNumber = '';
   const wanted = src.documentNumber == null ? '' : String(src.documentNumber).trim();
@@ -2174,10 +1860,8 @@ const applyRenewal = (v, doc, when, src = {}, byName = '') => {
     else previousNumber = '';
   }
 
-  // ── تاريخ البداية يُجدَّد مع النهاية ───────────────────────────────────
-  // المستند الذي له بداية (التفويض) يُستخرج من جديد ببدايةٍ جديدة. وتركُها
-  // على قيمتها القديمة يُبقي تاريخَ بدايةٍ لتفويضٍ انقضى وحلّ غيرُه — فيُقرأ
-  // أنّ السائق يقود بتفويضٍ منذ سنةٍ وهو استخرجه أمس.
+  // The start date is renewed with the end.
+  // A document that has a start (authorization) is issued anew with a new start. Leaving the old value keeps the start date of an authorization that lapsed and was replaced, so the driver reads as driving on an authorization from a year ago that he extracted yesterday.
   let previousStart = '';
   let newStart = '';
   if (doc.startPath && src.startDate) {
@@ -2192,7 +1876,7 @@ const applyRenewal = (v, doc, when, src = {}, byName = '') => {
 
   const [sBlock, sField] = doc.statusPath.split('.');
   if (v[sBlock] && ['none', 'required', 'unknown', ''].includes(v[sBlock][sField])) v[sBlock][sField] = '';
-  // المستندات اللي اتحفظت قبل ما الحقل ده يتضاف مش هيكون عندها المصفوفة أصلاً.
+  // Documents saved before this field was added will not have the array at all.
   if (!Array.isArray(v.renewals)) v.renewals = [];
   const entry = {
     document: doc.key, previousExpiry: previous, newExpiry: when,
@@ -2208,16 +1892,9 @@ const applyRenewal = (v, doc, when, src = {}, byName = '') => {
 };
 
 /**
- * تجديدُ بطاقة سائق — POST /:id/renew بـ`document: 'driverCard'`.
- *
- * ── لماذا هنا ───────────────────────────────────────────────────────────────
- * شاشةُ الانتهاءات تعرض بطاقاتِ السائقين مع مستندات المركبات في جدولٍ واحد
- * (فهي تنتهي كما تنتهي)، وزرُّ التجديد فيها واحد. وكانت البطاقةُ ترتدّ برسالة
- * «نوع المستند غير معروف»: البطاقةُ ليست من مستندات المركبة الستّة، ولا مركبةَ
- * لها أصلًا (`vehicleId: null`) فالمسارُ نفسُه كان لا يُصاب.
- *
- * فتُجدَّد هنا: التاريخُ الجديد ورقمُها إن تغيّر، ثمّ تعود لقطتُها إلى ملفّ
- * صاحبها في الموارد البشريّة — راجع utils/driverCardSync.
+ * Driver card renewal: POST /:id/renew with `document: 'driverCard'`.
+ * Why here: the expiry screen shows driver cards with vehicle documents in one table (they expire the same way) with a single renewal button. The card used to bounce with 'unknown document type': it is not one of the six vehicle documents and has no vehicle (`vehicleId: null`), so the path itself could not match.
+ * So it is renewed here: the new date and its number if changed, then its snapshot returns to the owner's HR file. See utils/driverCardSync.
  */
 async function renewDriverCard(req, res) {
   const DriverCard = require('../models/DriverCard');
@@ -2235,8 +1912,7 @@ async function renewDriverCard(req, res) {
   const num = String(req.body.documentNumber || '').trim();
   if (num) card.cardNumber = num;
   if (req.body.startDate) card.issueDate = new Date(req.body.startDate);
-  // وما سألت عنه النافذةُ يُحفَظ: التكلفةُ والإيصالُ والملاحظة كانت تُقرأ من
-  // الطلب ثمّ تُهمَل — راجع `renewals` في models/DriverCard.
+  // What the dialog asked for is saved: cost, receipt and note were read from the request and then dropped. See `renewals` in models/DriverCard.
   const cost = req.body.cost === '' || req.body.cost == null ? null : Number(req.body.cost);
   card.renewals = card.renewals || [];
   card.renewals.push({
@@ -2273,12 +1949,11 @@ exports.renew = async (req, res) => {
     const v = await VehicleMaster.findById(req.params.id);
     if (!v) return res.status(404).json({ message: 'المركبة غير موجودة' });
 
-    // تجديد لتاريخ فات معناه غالبًا غلطة كتابة — نوقفه بدل ما يتسجّل ويلخبط.
+    // Renewing to a date already past is most likely a typo; stop it rather than record it and confuse the data.
     if (newExpiry < new Date(new Date().setHours(0, 0, 0, 0))) {
       return res.status(400).json({ message: 'تاريخ الانتهاء الجديد في الماضي — راجع التاريخ' });
     }
-    // رقمٌ جديد لمستندٍ لا رقم له (رخصة السير، الفحص) طلبٌ لا معنى له: قبولُه
-    // في صمت يوهم المستخدم أن رقمًا حُفظ ولا موضع له يُحفظ فيه.
+    // A new number for a document that has no number (registration, inspection) is a meaningless request: accepting it silently makes the user think a number was saved when there is nowhere to save it.
     if (String(req.body.documentNumber || '').trim() && !doc.numberPath) {
       return res.status(400).json({ message: `${doc.ar} ليس له رقم مستقلّ يُجدَّد` });
     }
@@ -2305,35 +1980,12 @@ exports.renew = async (req, res) => {
   }
 };
 
-// ── تجديد أكتر من مستند مرة واحدة ────────────────────────────────────────────
-//
-// الطلب: «النهاردة عندي تجديد ١٥١ كارت تشغيل كلهم انتهاءهم في يوم واحد» — فبدل
-// ما يفتح مركبة مركبة، يعمل سيليكت ويقول التاريخ مرة واحدة.
-//
-// كل سطر بيمرّ على **نفس** منطق التجديد المفرد: نفس التحقق، ونفس القيد في سجل
-// المركبة، ونفس التاريخ. مش مسار تاني — عشان التجديد الجماعي والمفرد ما يختلفوش
-// في حاجة، والمراجع يلاقي نفس القيد في الحالتين.
-//
-// **الكل أو لا شيء**: لو سطر واحد غلط، مفيش مركبة واحدة بتتجدّد. تجديد نصّه
-// اتنفّذ على ١٥١ مركبة كارثة — مفيش حد هيعرف مين اتجدّد ومين لأ.
+// Renew several documents at once. Each line goes through the same single-renewal logic (validation, vehicle log entry, date), so bulk and single never differ.
+// All or nothing: if one line is wrong no vehicle is renewed, since a half-applied batch of 151 cannot be traced.
 /**
- * تجديدُ ورقةٍ مشتركةٍ دفعةً واحدة — POST /renew-shared
- *
- *   { document: 'insurance', number: 'P-W01-26-311-004248', newExpiry, newNumber?, cost?, reference?, note? }
- *
- * ── ولماذا لا يكفي «اختر ثمَّ جدِّد» ────────────────────────────────────────
- * وثيقةُ تأمينٍ واحدةٌ تغطّي مئةً وثمانيًا وتسعين مركبة. تجديدُها بتأشير مئةٍ
- * وثمانٍ وتسعين خانةً ليس تجديدًا للوثيقة: هو مئةٌ وثمانٍ وتسعون عمليّةً يدويّةً
- * لحدثٍ واحد، وأيُّ مركبةٍ تُنسى تبقى في الشاشة «منتهية» وهي مؤمَّنةٌ فعلًا.
- * وهذا هو ما كانت تفعله شاشةُ «وثائق تأمين المركبات» التي حُذفت لتكرارها، فعاد
- * الفعلُ إلى الشاشة التي تُدار منها المركبات بدل شاشةٍ ثانيةٍ لأجله وحده.
- *
- * الرقمُ هنا مشتركٌ عمدًا وهذا صحيح: هي وثيقةٌ واحدة، ورقمُها الجديد رقمُها
- * على كلّ ما تغطّيه. ولا يُقبل إلّا لمستندٍ عُلِّم `sharedNumber` — بطاقةُ
- * التشغيل رقمُها لكلّ مركبة، ورقمٌ واحدٌ عليها كلِّها تزويرٌ لا اختصار.
- *
- * ويُحدَّث معها سجلُّ الوثيقة نفسِه (`VehicleInsurancePolicy`) إن وُجد، وإلّا
- * بقي سجلُّ الوثائق يقول إنّها تنتهي في تاريخٍ مضى ومركباتُها كلُّها سارية.
+ * Renew a shared paper across all its vehicles. POST /renew-shared
+ * { document: 'insurance', number, newExpiry, newNumber?, cost?, reference?, note? }
+ * One policy covers many vehicles, so renewing one by one leaves forgotten ones 'expired'. The number is shared only for a document flagged `sharedNumber`; the policy record (`VehicleInsurancePolicy`) is updated too.
  */
 exports.renewShared = async (req, res) => {
   try {
@@ -2364,7 +2016,7 @@ exports.renewShared = async (req, res) => {
       done.push({ vehicle: v._id, plate: v.plateNumber, previousExpiry: previous });
     }
 
-    // سجلُّ الوثيقة نفسِه — إن كانت مسجَّلةً فيه.
+    // The policy record itself, if registered there.
     let policyUpdated = false;
     const policy = await VehicleInsurancePolicy.findOne({ policyNumber: number });
     if (policy) {
@@ -2408,13 +2060,12 @@ exports.renewBulk = async (req, res) => {
     const errors = [];
     const prepared = [];
 
-    // ── وبطاقاتُ السائقين تُجدَّد معها ─────────────────────────────────────
-    // شاشةُ الانتهاءات تجمعها مع مستندات المركبات في جدولٍ واحد، فيُحدَّد منها
-    // ومن غيرها ويُضغَط «تجديد». وكانت الدفعةُ كلُّها تُرَدّ بسببها.
+    // Driver cards are renewed too.
+    // The expiry screen groups them with vehicle documents in one table, so a selection mixes them and 'renew' is clicked. The whole batch used to be rejected because of them.
     const DriverCard = require('../models/DriverCard');
     const cardRows = [];
 
-    // ① التحقق على الكل قبل أي حفظ
+    // 1. Validate everything before saving anything
     for (const [i, row] of items.entries()) {
       if (String(row.document || '') === 'driverCard') {
         const when0 = row.newExpiry ? new Date(row.newExpiry) : shared;
@@ -2432,9 +2083,7 @@ exports.renewBulk = async (req, res) => {
       if (when < today) { errors.push({ line: i + 1, message: 'تاريخ الانتهاء الجديد في الماضي — راجع التاريخ' }); continue; }
       const v = await VehicleMaster.findById(row.vehicle || row.id);
       if (!v) { errors.push({ line: i + 1, message: 'المركبة غير موجودة' }); continue; }
-      // الرقم في التجديد الجماعي **سطريّ لا مشترك**: بطاقةُ كل مركبة تخرج
-      // برقمها هي، ورقمٌ واحد يُكتب على مئةٍ منها يجعل المئة نسخةً من ورقة
-      // واحدة — أسوأ من ألا يُكتب رقمٌ أصلًا.
+      // The number in bulk renewal is per line, not shared: each vehicle's card carries its own number, and one number written on a hundred of them makes a hundred copies of one paper, worse than writing no number at all.
       if (String(row.documentNumber || '').trim() && !doc.numberPath) {
         errors.push({ line: i + 1, message: `${doc.ar} ليس له رقم مستقلّ يُجدَّد` }); continue;
       }
@@ -2444,7 +2093,7 @@ exports.renewBulk = async (req, res) => {
       return res.status(400).json({ message: 'العملية اترفضت — مفيش أي مركبة اتجدّدت', errors });
     }
 
-    // ② التنفيذ — نفس خطوات التجديد المفرد بالظبط
+    // 2. Execute: exactly the single-renewal steps
     const byName = `${req.user?.firstName || ''} ${req.user?.lastName || ''}`.trim();
     const done = [];
     for (const { v, doc, when, row } of prepared) {
@@ -2460,7 +2109,7 @@ exports.renewBulk = async (req, res) => {
         previousNumber: entry.previousNumber, newNumber: entry.newNumber,
       });
     }
-    // والبطاقاتُ معها، وكلٌّ منها تعود إلى ملفّ صاحبها في الموارد البشريّة.
+    // Cards too, each returning to its owner's HR file.
     for (const { card, when, row } of cardRows) {
       const previous = card.expiryDate;
       card.expiryDate = when;
@@ -2481,7 +2130,7 @@ exports.renewBulk = async (req, res) => {
       changes: {
         bulk: true, count: done.length, newExpiry: shared,
         documents: [...new Set(done.map((d) => d.document))],
-        // كم رقمًا استُبدل فعلًا — الفرق بين «جدّدنا التواريخ» و«استخرجنا أوراقًا جديدة».
+        // How many numbers were actually replaced: the difference between 'renewed the dates' and 'extracted new papers'.
         numbersChanged: done.filter((d) => d.newNumber).length,
       },
       ipAddress: req.ip,
@@ -2498,13 +2147,9 @@ exports.renewBulk = async (req, res) => {
   }
 };
 
-// ── سجلّات القسم: المُلّاك والمفوَّضون وأجهزة التتبّع وشرائح الوقود ──────────
-//
-// كلها **تُبنى من المركبات نفسها** لا من جداول موازية. المالك ليس كيانًا مستقلًّا
-// عندنا — هو اسمٌ على مركبات؛ ولو خُزِّن مرتين لاختلف عدد مركباته بين الشاشتين
-// أول ما تُنقَل مركبة. البناء من المصدر يجعل التناقض مستحيلًا لا نادرًا.
-//
-// وكل سجلّ يحمل ما يُسأل عنه فعلًا: كم مركبة، وكم منها مستنداتها منتهية.
+// Section registers: owners, authorized people, tracking devices and fuel cards.
+// All are **built from the vehicles themselves**, not from parallel tables. An owner is not an independent entity here, it is a name on vehicles; stored twice, its vehicle count would differ between screens as soon as a vehicle moved. Building from the source makes inconsistency impossible rather than rare.
+// Each register carries what is actually asked: how many vehicles, and how many have expired documents.
 const REGISTER_DEFS = {
   owners: {
     ar: 'المُلّاك', en: 'Owners',
@@ -2542,7 +2187,7 @@ exports.registers = async (req, res) => {
     const [cfg, archSets] = await Promise.all([getConfig(), endedStaff()]);
     const vehicles = await VehicleMaster.find({ isActive: { $ne: false } }).select(AGG_FIELDS).lean();
 
-    /** حالة أسوأ مستند على المركبة — بها نعرف «كم مركبة عند هذا المالك متعثّرة». */
+    /** State of the worst document on the vehicle, used to know how many of an owner's vehicles are in trouble. */
     const worstOf = (v) => {
       let worst = 'valid';
       const rank = { expired: 4, critical: 3, warning: 2, upcoming: 1, valid: 0 };
@@ -2559,7 +2204,7 @@ exports.registers = async (req, res) => {
       for (const v of vehicles) {
         const k = def.key(v);
         if (!k) continue;
-        // سجلُّ المفوَّضين أسماءُ ناس: المؤرشَفُ لا يُدرَج فيه.
+        // The authorized-people register is names of people: archived ones are not listed.
         if (name === 'authorizedPersons' && holderArchived(archSets, v)) continue;
         if (!groups.has(k)) groups.set(k, []);
         groups.get(k).push(v);
@@ -2577,7 +2222,7 @@ exports.registers = async (req, res) => {
       };
     }
 
-    // شرائح الوقود سجلٌّ صفٌّ لكل شريحة لا تجميعة — الشريحة تخصّ مركبة واحدة.
+    // Fuel cards are a row per card, not an aggregate: a card belongs to one vehicle.
     out.fuelCards = {
       ar: 'شرائح الوقود', en: 'Fuel cards', filterKey: 'fuelCard',
       items: vehicles
@@ -2595,11 +2240,10 @@ exports.registers = async (req, res) => {
         .sort((a, b) => String(a.plateNumber).localeCompare(String(b.plateNumber), 'ar')),
     };
 
-    // وأجهزة التتبّع صفًّا صفًّا كذلك — الجهاز على مركبة بعينها بسيريال واشتراك.
+    // Tracking devices are a row per device too: a device is on a specific vehicle with a serial and subscription.
     out.gpsUnits = {
       ar: 'أجهزة التتبّع المركّبة', en: 'Installed GPS units', filterKey: 'gpsUnit',
-      // «مركّب» يعني له سيريال. المركبة التي حقلها يحمل «مطلوب» ليس عليها جهاز
-      // ينتظر تركيبه — وعدُّها ضمن الأجهزة يضخّم الرقم بمئة جهاز غير موجود.
+      // 'Installed' means it has a serial. A vehicle whose field says 'required' has no device, only one awaiting fitting, and counting it among devices inflates the number by a hundred devices that do not exist.
       items: vehicles
         .filter((v) => S(v.gps?.serialImei))
         .map((v) => {
@@ -2627,18 +2271,14 @@ exports.registers = async (req, res) => {
   }
 };
 
-// ── وثائق تأمين المركبات ────────────────────────────────────────────────────
-//
-// وثيقة واحدة تغطّي حتى ٢٣٩ مركبة. تجديدها كان يعني فتح كل مركبة على حدة —
-// وأي مركبة تُنسى تبقى في الشاشة «منتهية» وهي مؤمَّنة فعلًا. هنا تُجدَّد الوثيقة
-// مرة واحدة، ويسري التاريخ على كل مركباتها، ويُقيَّد في سجل تجديدات كلٍّ منها
-// كما لو جُدِّدت وحدها — فالمراجع يرى نفس القيد في الحالتين.
+// Vehicle insurance policies.
+// One policy covers up to 239 vehicles. Renewing it meant opening each vehicle, and any forgotten vehicle stayed 'expired' on screen though insured. Here the policy is renewed once, the date applies to all its vehicles and is recorded in each one's renewal log as if renewed alone, so a reviewer sees the same entry in both cases.
 exports.listInsurancePolicies = async (req, res) => {
   try {
     const cfg = await getConfig();
     const policies = await VehicleInsurancePolicy.find({ isActive: { $ne: false } })
       .sort({ expiryDate: 1 }).lean();
-    // عدد المركبات يُحسب من المركبات نفسها لا من رقم مخزَّن — الرقم المخزَّن يشيخ.
+    // Vehicle count is computed from the vehicles themselves, not from a stored number, which goes stale.
     const counts = await VehicleMaster.aggregate([
       { $match: { insurancePolicy: { $ne: null }, isActive: { $ne: false } } },
       { $group: { _id: '$insurancePolicy', n: { $sum: 1 } } },
@@ -2690,15 +2330,13 @@ exports.renewInsurancePolicy = async (req, res) => {
       const before = v.insurance?.expiryDate || null;
       const beforeNumber = String(v.insurance?.policyNumber || '');
       v.set('insurance.expiryDate', newExpiry);
-      // وثيقة جديدة برقم جديد؟ يتحدَّث على كل مركبة أيضًا.
+      // A new policy with a new number? It updates on every vehicle too.
       if (newNumber) v.set('insurance.policyNumber', newNumber);
       if (['none', 'required', 'unknown', ''].includes(v.insurance?.statusCode)) v.set('insurance.statusCode', '');
       if (!Array.isArray(v.renewals)) v.renewals = [];
       v.renewals.push({
         document: 'insurance', previousExpiry: before, newExpiry,
-        // الرقم القديم يُقيَّد على كل مركبة لا على الوثيقة وحدها: المطالبةُ
-        // المفتوحة بالرقم السابق تُراجَع مركبةً مركبة، ولو بقي الأثر في سجل
-        // الوثيقة فقط لوجب فتحُ شاشةٍ أخرى لمعرفة برقم أيّ وثيقةٍ كانت مؤمَّنة.
+        // The old number is recorded on every vehicle, not on the policy alone: a claim open under the previous number is reviewed vehicle by vehicle, and if the trace stayed only in the policy log another screen would be needed to know which policy number insured it.
         previousNumber: newNumber && newNumber !== beforeNumber ? beforeNumber : '',
         newNumber: newNumber && newNumber !== beforeNumber ? newNumber : '',
         cost: req.body?.cost != null && req.body?.cost !== '' ? Number(req.body.cost) : null,
@@ -2730,12 +2368,9 @@ exports.renewInsurancePolicy = async (req, res) => {
   }
 };
 
-// ── الحوادث والمطالبات ──────────────────────────────────────────────────────
-// الحادث بيتسجّل ويتعدّل ويتقفل من الشاشة. كان بيتقرا بس — يعني الجرد الأول
-// اتحمّل من الشيت وخلاص، وأي حادث بعده مالوش مكان يتكتب فيه.
-//
-// الحقول الحسابية (فجوة الاسترداد) بتتحسب هنا مش في الواجهة، عشان الشاشة
-// والتقرير وأي مسار تاني ما يختلفوش.
+// Accidents and claims.
+// An accident is recorded, edited and closed from the screen. It used to be read-only, meaning the first inventory was loaded from the sheet and any later accident had nowhere to be written.
+// Computed fields (recovery gap) are computed here, not in the UI, so the screen, the report and any other path do not differ.
 const CLAIM_FIELDS = [
   'isVehicleIncident', 'incidentSubjectAr', 'vehiclePlate', 'vehicle',
   'vehicleSectorAr', 'vehicleTypeAr', 'vehicleCategoryAr', 'vehicleBrandAr', 'ownerRegistrationAr',
@@ -2748,11 +2383,8 @@ const CLAIM_SUB = ['insurerAr', 'claimNumber', 'claimNumberStatus', 'notesAr',
   'lastNoteDate', 'lastInsurerUpdateDate', 'estimatedAmountSar', 'expectedRecoverySar'];
 
 /**
- * ── «الفرق» يُحسب عند الإقفال لا قبله ──────────────────────────────────────
- * كان اسمُه «الفجوة» ويُحسب من أوّل يوم: المقدَّرُ ناقصَ المتوقَّع استردادُه —
- * فتُقرأ المطالبةُ المفتوحةُ خسارةً وهي لم تُحصَّل بعد. وطلبُ صاحب الشركة
- * (٢٠٢٦/١٠/٢٠): الفرقُ يُعرف حين يُحصَّل المال، أي حين تُقفَل المطالبة. فهو
- * فارغٌ ما دامت مفتوحة، ويُحسب لحظةَ إقفالها.
+ * The difference is computed at closing, not before.
+ * It used to be called the gap and was computed from day one: estimated minus expected recovery, so an open claim read as a loss though not yet collected. Per the company owner, the difference is known when the money is collected, i.e. when the claim is closed. So it is empty while open and computed at the moment of closing.
  */
 const claimDifference = (doc) => {
   if (doc.statusCode !== 'closed') return null;
@@ -2763,7 +2395,7 @@ const claimDifference = (doc) => {
 };
 exports._claimDifference = claimDifference;
 
-/** يبني/يحدّث المستند من الجسم، وبيحسب الفرق (عند الإقفال). */
+/** Builds/updates the document from the body and computes the difference (at closing). */
 function applyClaim(doc, body) {
   for (const k of CLAIM_FIELDS) if (body[k] !== undefined) doc[k] = body[k] === '' ? doc[k] : body[k];
   const sub = body.claim || {};
@@ -2776,12 +2408,9 @@ function applyClaim(doc, body) {
 
 
 /**
- * ── مَن كان يقود هذه المركبة ────────────────────────────────────────────────
- * يُقترَح ولا يُفرَض: قائدُ القسم الفعليُّ أوّلًا (سجلُّ النقل الخفيف يقول مَن
- * يركبها اليوم)، ثمّ المفوَّضُ في سجلّ المركبات. وهما يختلفان في أربعةٍ وعشرين
- * مركبة — الورقةُ باسم واحدٍ والراكبُ غيرُه — فالأقربُ إلى الحقيقة مَن يركب.
- *
- * ولا يُكتب إلّا إذا كانت الخانةُ فارغة: مَن كُتب باليد أصدقُ من كلّ اشتقاق.
+ * Who was driving this vehicle.
+ * Suggested, not enforced: the section's actual driver first (the light transport record says who rides it today), then the authorized person in the vehicle registry. They differ on twenty-four vehicles (paper in one name, rider another), and the rider is closer to the truth.
+ * Written only if the field is empty: a hand-written value is more truthful than any derivation.
  */
 async function suggestDriver(doc) {
   try {
@@ -2791,7 +2420,7 @@ async function suggestDriver(doc) {
 
     const { LightTransportEmployee } = require('../models/LightTransport');
     let lt = null;
-    // ولا يُقترَح مؤرشَفٌ سائقًا — كأنّه حُذف.
+    // An archived person is not suggested as driver, as if deleted.
     const AH = require('../utils/archivedHidden');
     const archSets = await endedStaff();
     if (doc.vehicle) lt = await LightTransportEmployee.findOne(AH.andAll({ vehicle: doc.vehicle, isActive: { $ne: false } }, AH.notArchivedRow(archSets))).select('name idNumber').lean();
@@ -2813,24 +2442,15 @@ async function suggestDriver(doc) {
     }
     return false;
   } catch (e) {
-    return false;   // اقتراحٌ لا يُوقف حفظًا
+    return false;   // A suggestion does not stop a save
   }
 }
 
 /**
- * ── بحثُ الأشخاص: يُكتب رقمٌ فتُملأ الخاناتُ ─────────────────────────────────
- *
- * كلُّ شاشةٍ في هذا القسم تسأل عن شخص: مالكُ المركبة، والمفوَّض، والقائدُ
- * الفعليّ، وسائقُ الحادث، وصاحبُ البطاقة. وكانت تُكتب بالأيدي في كلّ مرّة —
- * فيُكتب الاسمُ بصيغتين والرقمُ ناقصًا رقمًا، ويُبحَث عن جوّاله في ملفٍّ آخر.
- *
- * فبحثٌ واحدٌ بالاسم أو بالهويّة أو الإقامة يردّ الشخصَ ببياناته، وتُملأ
- * الخاناتُ منه. وهو **بحثٌ لا قائمة**: لا تُعرَض أسماءُ الناس كلَّها على كلّ
- * شاشة — يُكتب ما في اليد فيُردّ عليه، ومن لا يوجد يُقال فيه «كلّم الموارد
- * البشريّة لتسجيله». والكتابةُ باليد تبقى مفتوحةً كما هي.
- *
- * والمصادرُ ثلاثةٌ بترتيب الوثوق: ملفُّ الموارد البشريّة، ثمّ سجلُّ النقل
- * الخفيف (فيه من لا ملفَّ له)، ثمّ بطاقاتُ السائقين (فيها جوالُ أبشر).
+ * People search: type a number and the fields fill.
+ * Every screen in this section asks about a person: vehicle owner, authorized person, actual driver, accident driver, card holder. They used to be typed by hand each time, producing two spellings of a name, a number missing a digit, and his mobile looked up in another file.
+ * One search by name, ID or residency returns the person with his data and the fields are filled from it. It is a **search, not a list**: all people's names are not shown on every screen; you type what you have and get a reply, and for someone not found the message says to ask HR to register him. Hand-typing stays open as it was.
+ * Three sources in order of trust: HR file, then the light transport register (it has people with no file), then driver cards (which hold the Absher mobile).
  */
 exports.personLookup = async (req, res) => {
   try {
@@ -2844,7 +2464,7 @@ exports.personLookup = async (req, res) => {
     const rx = arabicSearchRegex(q);
     const digits = q.replace(/\D/g, '');
 
-    // المؤرشَفُ لا يُقترَح في أيّ خانة — كأنّه حُذف.
+    // An archived person is not suggested in any field, as if deleted.
     const { NOT_ARCHIVED } = require('../utils/hrEngagement');
     const archSets = await endedStaff();
     const [emps, lts, cards] = await Promise.all([
@@ -2862,7 +2482,7 @@ exports.personLookup = async (req, res) => {
       }).select('name idNumber absherPhone cardNumber expiryDate transportTypeAr dateOfBirth').limit(12).lean(),
     ]);
 
-    // ويُجمَع الشخصُ من مصادره برقم هويّته: صفٌّ واحدٌ لا ثلاثة لرجلٍ واحد.
+    // A person is assembled from his sources by ID number: one row, not three, for one man.
     const byId = new Map();
     const put = (id, patch, source) => {
       const key = String(id || '').trim() || `~${patch.name}`;
@@ -2880,10 +2500,9 @@ exports.personLookup = async (req, res) => {
         departmentAr: e.department || '',
         employmentStatus: e.employmentStatus || '',
         hireDate: e.hireDate || null,
-        // تاريخُ الميلاد من ملفّه — يُعرَض تحت رقم الإقامة في التفويض وبطاقة السائق.
+        // Birth date from his file, shown under the residency number in the authorization and the driver card.
         dateOfBirth: e.dateOfBirth || '',
-        // وانتهاءُ إقامته ورخصةِ قيادته — بالميلاديّ (٢٠٢٦/١٠/٢٧). ومن سُجِّلت إقامتُه
-        // بالهجريّ وحده يُحوَّل له، فلا تُقرأ «غير مسجَّل» وهي مسجَّلة.
+        // His residency and driving-license expiry, in Gregorian. Someone whose residency is registered in Hijri only is converted, so it does not read 'not registered' when it is.
         iqamaExpiry: e.iqamaExpiry || (e.iqamaExpiryHijri ? (require('../utils/hijri').fromHijriString(e.iqamaExpiryHijri) || '') : ''),
         licenseExpiry: e.licenseExpiry || '',
         employeeId: String(e._id),
@@ -2913,21 +2532,18 @@ exports.personLookup = async (req, res) => {
   }
 };
 
-/** لوحاتُ السجلّ للاختيار — بديلُ كتابة اللوحة بالأيدي في نماذج القسم. */
+/** Register plates for selection, instead of hand-typing the plate in the section's forms. */
 exports.plateOptions = async (req, res) => {
   try {
     const [rows, archSets] = await Promise.all([VehicleMaster.find({ isActive: { $ne: false } })
       .select('plateNumber serialNumber registrationTypeAr sectorAr brandAr modelAr ownerCompanyAr authorizedPerson actualDriver')
       .sort({ plateNumber: 1 }).limit(2000).lean(), endedStaff()]);
-    // اللوحةُ تبقى للاختيار؛ واسمُ المؤرشَف عليها لا يُقترَح.
+    // The plate stays selectable; an archived person's name on it is not suggested.
     const hideA = (v) => holderArchived(archSets, v);
     const hideD = (v) => idNumberArchived(archSets, v.actualDriver?.idNumber);
     res.json({
-      // ── ونوعُ المركبة ليس نوعَ تسجيلها ──────────────────────────────────
-      // كانت القائمةُ تعرض `registrationTypeAr` تحت اسم «النوع»، وهي رخصةُ
-      // اللوحة: ثمانٍ وستّون شاحنةً كلُّها «نقل عام». فمن فتح القائمة رأى
-      // الوصفَ نفسَه بجانب كلّ شاحنةٍ ولم يميّز بينها. والنوعُ الذي يُقصَد هو
-      // الماركةُ والطراز («سينو / رأس»)، وهو المكتوبُ في سجلّ الحوادث نفسِه.
+      // Vehicle type is not its registration type.
+      // The list showed `registrationTypeAr` under the label 'type', which is the plate license: sixty-eight trucks all 'public transport'. Whoever opened the list saw the same description beside every truck and could not tell them apart. The type meant is make and model ('Sino / head'), which is what the accident register itself records.
       plates: rows.filter((v) => String(v.plateNumber || '').trim()).map((v) => ({
         _id: String(v._id),
         plate: v.plateNumber,
@@ -2952,7 +2568,7 @@ exports.createClaim = async (req, res) => {
     if (!req.body?.accidentDate && !req.body?.incidentSubjectAr && !req.body?.vehiclePlate) {
       return res.status(400).json({ message: 'اكتب على الأقل المركبة أو موضوع الواقعة أو تاريخها' });
     }
-    // الرقم بيتولّد هنا: لو اتساب للمستخدم هيتكرّر أو يتساب فاضي.
+    // The number is generated here; otherwise it would be duplicated or left blank by the user.
     const last = await VehicleClaim.findOne({ claimId: /^ACC-/ }).sort({ claimId: -1 }).select('claimId').lean();
     const n = last ? (Number(String(last.claimId).replace('ACC-', '')) || 0) + 1 : 1;
     const doc = applyClaim(new VehicleClaim({ claimId: `ACC-${String(n).padStart(3, '0')}` }), req.body);
@@ -2962,8 +2578,7 @@ exports.createClaim = async (req, res) => {
     await suggestDriver(doc);
     await doc.save();
     await syncAccidentCount(doc.vehiclePlateKey);
-    // والمطالبةُ سجلٌّ ماليٌّ يُراجَع، فكلُّ ما يُكتب فيها يُقيَّد بصاحبه ووقته:
-    // لم تكن أيُّ كتابةٍ هنا تُقيَّد، فتاريخُ المطالبة كان يبدأ من لا شيء.
+    // A claim is a reviewed financial record, so everything written to it is recorded with its author and time. No write here used to be recorded, so a claim's history started from nothing.
     logAudit({
       user: req.user, action: 'create_vehicle_claim', entity: 'VehicleClaim', entityId: doc._id,
       changes: { after: { claimId: doc.claimId, plate: doc.vehiclePlate, date: doc.accidentDate } },
@@ -2985,12 +2600,11 @@ exports.updateClaim = async (req, res) => {
     applyClaim(doc, req.body);
     doc.lastModifiedBy = req.user?._id;
     doc.lastModifiedByName = [req.user?.firstName, req.user?.lastName].filter(Boolean).join(' ');
-    // تغييرُ المركبة يُعيد اقتراحَ السائق متى كانت الخانةُ فارغة.
+    // Changing the vehicle re-suggests the driver when the field is empty.
     await suggestDriver(doc);
 
-    // ── وردُّ التأمين يُضاف ولا يُكتَب فوق سابقه ──────────────────────────
-    // شركةُ التأمين تردّ مرّاتٍ على المطالبة الواحدة، وتاريخُ المفاوضة هو ما
-    // يُحتَجّ به عند الخلاف. فما يصل هنا يُلحَق بالسجلّ ولا يمحو شيئًا.
+    // The insurer's reply is appended, not written over the previous one.
+    // The insurance company replies several times on one claim, and the negotiation history is what is cited in a dispute. What arrives here is appended to the log and erases nothing.
     const reply = req.body.newInsurerReply;
     if (reply && String(reply.text || '').trim()) {
       doc.insurerReplies.push({
@@ -3000,7 +2614,7 @@ exports.updateClaim = async (req, res) => {
         by: req.user?._id,
         byName: [req.user?.firstName, req.user?.lastName].filter(Boolean).join(' '),
       });
-      // وآخرُ ردٍّ هو تاريخُ آخرِ تحديثٍ من الشركة — يُقرأ في «المتوقّفة».
+      // The last reply is the date of the company's last update; it is read in the 'stalled' view.
       doc.claim = doc.claim || {};
       doc.claim.lastInsurerUpdateDate = new Date();
     }
@@ -3010,7 +2624,7 @@ exports.updateClaim = async (req, res) => {
     if (doc.vehiclePlateKey !== oldKey) await syncAccidentCount(doc.vehiclePlateKey);
     logAudit({
       user: req.user, action: 'update_vehicle_claim', entity: 'VehicleClaim', entityId: doc._id,
-      // الخاناتُ المُرسَلة وحدَها، لا المستندُ كلُّه: السجلُّ يُقرأ ليُعرَف ما تغيّر.
+      // Only the sent fields, not the whole document: the record is read to know what changed.
       changes: { after: Object.keys({ ...req.body, ...(req.body.claim || {}) }).filter((k) => k !== 'claim') },
       ipAddress: req.ip,
     }).catch(() => {});
@@ -3026,7 +2640,7 @@ exports.deleteClaim = async (req, res) => {
   try {
     const doc = await VehicleClaim.findById(req.params.id);
     if (!doc) return res.status(404).json({ message: 'الحادث غير موجود' });
-    // حذف ناعم: المطالبة سجل مالي، والمسح النهائي بيضيّع تاريخها.
+    // Soft delete: a claim is a financial record, and a hard delete loses its history.
     doc.isActive = false;
     await doc.save();
     await syncAccidentCount(doc.vehiclePlateKey);
@@ -3043,11 +2657,8 @@ exports.deleteClaim = async (req, res) => {
 };
 
 /**
- * ── ملفُّ المطالبة الواحدة ──────────────────────────────────────────────────
- * كان الجدولُ هو كلَّ ما للمطالبة: تُقرأ في سطرٍ عرضُه تسعةُ أعمدةٍ ثمّ تُعدَّل
- * في نافذة. فما لا يتّسع له السطرُ — الطرفُ الآخر ونسبةُ الخطأ ومصدرُ البلاغ
- * وسجلُّ ردود الشركة والورقُ كلُّه — لا يُقرأ إلّا بفتح نافذة التعديل. والمطالبةُ
- * ملفٌّ يُفتَح ويُتابَع لا سطرٌ في كشف.
+ * The file of a single claim.
+ * The table used to be everything a claim had: read in a nine-column row, then edited in a dialog. What does not fit the row (the other party, fault percentage, report source, the company's reply log, all the papers) could be read only by opening the edit dialog. A claim is a file opened and followed, not a row in a statement.
  */
 exports.getClaim = async (req, res) => {
   try {
@@ -3062,7 +2673,7 @@ exports.getClaim = async (req, res) => {
   }
 };
 
-/** سجلُّ ما جرى على هذه المطالبة — من قيود المراجعة، الأحدثُ أوّلًا. */
+/** History of what happened to this claim, from audit entries, newest first. */
 exports.getClaimAudit = async (req, res) => {
   try {
     const AuditLog = require('../models/AuditLog');
@@ -3075,9 +2686,8 @@ exports.getClaimAudit = async (req, res) => {
 };
 
 /**
- * مرفقاتُ المطالبة — دفعةً واحدةً أو ملفًّا ملفًّا، ولكلٍّ اسمٌ يكتبه صاحبُه.
- * الملفُّ يأتي في الجسم `data:` مُرمَّزًا (لا `multer` في هذا النظام) ويُفكّ
- * ويُكتب في `uploads/claims` — راجع utils/fileStore.
+ * Claim attachments, in one batch or file by file, each with a name its owner types.
+ * The file arrives in the body as an encoded `data:` URL (the system has no `multer`), is decoded and written to `uploads/claims`. See utils/fileStore.
  */
 exports.addClaimAttachments = async (req, res) => {
   try {
@@ -3086,7 +2696,7 @@ exports.addClaimAttachments = async (req, res) => {
     const incoming = Array.isArray(req.body.files) ? req.body.files : [req.body];
     if (!incoming.length) return res.status(400).json({ message: 'اختر ملفًّا' });
     doc.attachments = doc.attachments || [];
-    // وسقفٌ للعدد: مطالبةٌ بمئةِ مرفقٍ لا تُقرأ، والقرصُ ليس بلا حدّ.
+    // A cap on the count: a claim with a hundred attachments is unreadable, and the disk is not unlimited.
     if (doc.attachments.length + incoming.length > 40) {
       return res.status(400).json({ message: 'لا يُرفَق أكثر من ٤٠ ملفًّا للمطالبة' });
     }
@@ -3116,7 +2726,7 @@ exports.addClaimAttachments = async (req, res) => {
   }
 };
 
-/** الاسمُ وحدَه يُعدَّل — البايتاتُ لا تُستبدَل، فالمرفوعُ حجّةٌ لا مسوّدة. */
+/** Only the name is edited; the bytes are not replaced, since an uploaded file is evidence, not a draft. */
 exports.renameClaimAttachment = async (req, res) => {
   try {
     const doc = await VehicleClaim.findById(req.params.id);
@@ -3142,8 +2752,8 @@ exports.deleteClaimAttachment = async (req, res) => {
     const title = att.title || att.fileName;
     att.deleteOne();
     await doc.save();
-    // البايتاتُ تُحذف بعد نجاح الحفظ: لو سقط الحفظُ لبقي سجلٌّ بملفٍّ مفقود.
-    try { deleteStoredFile(url); } catch (e) { /* السجلُّ نُظِّف */ }
+    // The bytes are deleted after the save succeeds: if the save failed, a record would remain pointing to a missing file.
+    try { deleteStoredFile(url); } catch (e) { /* The record was cleaned */ }
     logAudit({
       user: req.user, action: 'delete_claim_attachment', entity: 'VehicleClaim', entityId: doc._id,
       changes: { before: { title } }, ipAddress: req.ip,
@@ -3155,7 +2765,7 @@ exports.deleteClaimAttachment = async (req, res) => {
   }
 };
 
-/** عدّاد حوادث المركبة = عدد مطالباتها الفعّالة. محسوب، مش مكتوب بالإيد. */
+/** A vehicle's accident counter equals the count of its active claims: computed, not hand-written. */
 async function syncAccidentCount(key) {
   if (!key) return;
   const n = await VehicleClaim.countDocuments({ vehiclePlateKey: key, isActive: true });
@@ -3169,8 +2779,7 @@ exports.listClaims = async (req, res) => {
     if (req.query.insurer) f['claim.insurerAr'] = req.query.insurer;
     if (req.query.vehicleId) f.vehicle = req.query.vehicleId;
     if (req.query.q && req.query.q.trim()) {
-      // نفسُ قاعدةِ البحث في سجلّ المركبات: المسافاتُ وفروقُ الرسم لا تمنع
-      // مطابقةً — كانت اللوحةُ هنا تُطلب بحرفها فلا تُوجد.
+      // Same search rule as the vehicle registry: spaces and spelling variants do not block a match. The plate used to be matched literally here and not found.
       const rx = flexSpaceRegex(req.query.q);
       f.$or = [{ vehiclePlate: rx }, { accidentNumber: rx }, { counterpartyNameAr: rx }, { 'claim.insurerAr': rx }, { incidentSubjectAr: rx }];
     }
@@ -3184,7 +2793,7 @@ exports.listClaims = async (req, res) => {
         estimatedSar: money('estimatedAmountSar'),
         expectedRecoverySar: money('expectedRecoverySar'),
         gapSar: money('recoveryGapSar'),
-        // «مر عليها كام يوم من غير رد من التأمين» — ده اللي بيكشف المطالبة النايمة.
+        // Days elapsed with no reply from the insurer: this exposes the dormant claim.
         stale: rows.filter((r) => r.statusCode !== 'closed' && r.claim?.lastInsurerUpdateDate
           && VDOC.daysLeft(r.claim.lastInsurerUpdateDate) < -30).length,
       },
@@ -3192,17 +2801,12 @@ exports.listClaims = async (req, res) => {
   } catch (e) { res.status(500).json({ message: 'تعذّر تحميل الحوادث' }); }
 };
 
-// ── وثائق التأمين على مستوى الشركة ──────────────────────────────────────────
+// Company-level insurance policies.
 
 /**
- * ── إنهاءُ العقد مع الشركة ─────────────────────────────────────────────────
- * لم يكن للوثيقة إلّا التجديد: تُمدَّد أو تبقى منتهيةً تُنبِّه كلَّ أسبوع. وما
- * يقع أحيانًا غيرُ ذلك — يُنهى العقدُ ولا يُجدَّد. فتبقى في الانتهاءات تُطالِب
- * بتجديد شيءٍ أُغلق بقرار، ويُقرأ التنبيهُ إهمالًا وهو قرار.
- *
- * فالإنهاءُ فعلٌ يُسجَّل بتاريخه وسببه ويُقيَّد في سجلّ الوثيقة كما يُقيَّد
- * التجديد — فيُقرأ إلى الوراء متى توقّفت ولماذا. والوثيقةُ تبقى في السجلّ: ما
- * انتهى يُقرأ، ولا يُمحى.
+ * Ending the contract with the company.
+ * A policy used to have only renewal: extended, or left expired alerting every week. But sometimes the contract is ended and not renewed. It then stayed in expiries demanding renewal of something closed by decision, and the alert read as neglect when it was a decision.
+ * So termination is an action recorded with its date and reason and entered in the policy log like a renewal, so it can be read back as to when and why it stopped. The policy stays in the register: what ended is read, not erased.
  */
 exports.endCorporatePolicy = async (req, res) => {
   try {
@@ -3235,7 +2839,7 @@ exports.endCorporatePolicy = async (req, res) => {
   }
 };
 
-/** وما أُنهي قد يُستأنَف — فالرجوعُ ممكنٌ ويُقيَّد أيضًا. */
+/** What was terminated may resume, so reversal is possible and is recorded too. */
 exports.reopenCorporatePolicy = async (req, res) => {
   try {
     const p = await CorporatePolicy.findById(req.params.id);
@@ -3260,10 +2864,8 @@ exports.reopenCorporatePolicy = async (req, res) => {
 
 exports.listCorporatePolicies = async (req, res) => {
   try {
-    // ── والصفحةُ كانت تقرأ بطاقاتِ السائقين كلَّها في كلّ فتحة ──────────────
-    // ثلاثُ وثائقَ، ومعها إحدى وستّون بطاقةً تُقرأ لتُحسب تغطيةُ خيانة الأمانة —
-    // فالفتحةُ الباردةُ ثانيةٌ وربع. والبطاقاتُ تتغيّر في اليوم مرّاتٍ معدودة،
-    // فتُخدَم من ذاكرةٍ قصيرةٍ تُمحى مع أيّ كتابةٍ في القسم (راجع `emit`).
+    // The page used to read all driver cards on every open.
+    // Three policies, and with them sixty-one cards were read to compute fidelity-policy coverage, so a cold open took a second and a quarter. Cards change a few times a day, so they are served from a short cache cleared on any write in the section (see `emit`).
     const ck = `vreg:corp:${JSON.stringify(req.query || {})}`;
     const hit = cache.get(ck);
     if (hit !== undefined) return res.json(hit);
@@ -3271,12 +2873,10 @@ exports.listCorporatePolicies = async (req, res) => {
       CorporatePolicy.find({ isActive: true }).sort({ expiryDate: 1 }).lean(),
       getConfig(),
     ]);
-    // ── ومَن تغطّيهم وثيقةُ خيانة الأمانة ────────────────────────────────────
-    // القائمةُ ليست منسوخةً على الوثيقة: هي في بطاقات السائقين. فتُقرأ معها
-    // ويُحسب الإجماليُّ من عدد المشمولين فعلًا — لا من عددٍ مكتوبٍ في الاسم
-    // يصدق يومَ كُتب ويكذب بعد أوّل تعيين.
+    // Who the fidelity policy covers.
+    // The list is not copied onto the policy: it lives in the driver cards. So it is read with them and the total is computed from the number actually covered, not from a number written in the name, which is true the day it was written and false after the first hire.
     const needsDrivers = rows.some((p) => p.coversDrivers);
-    // المؤرشَفُ لا يُعَدّ مشمولًا بالوثيقة ولا يُسمّى فيها.
+    // An archived person is not counted as covered by the policy and is not named in it.
     const archSets = needsDrivers ? await endedStaff() : null;
     const cards = needsDrivers
       ? (await DriverCard.find({ isActive: { $ne: false } })
@@ -3288,11 +2888,11 @@ exports.listCorporatePolicies = async (req, res) => {
     const body = {
       policies: rows.map((p) => {
         const st = VDOC.stateOf(p.expiryDate, '', cfg.alerts?.corporatePolicy);
-        // ما أُنهي بقرارٍ لا يُنبَّه عليه: حالتُه «مُنهًى» لا «منتهٍ».
+        // What was terminated by decision gets no alert: its state is 'terminated', not 'expired'.
         const out = p.endedAt
           ? { ...p, state: 'ended', daysRemaining: null }
           : { ...p, state: st.state, daysRemaining: st.days };
-        // الوثائقُ القديمة بلا موضوعٍ مكتوب: يُستنتج من تسعيرها.
+        // Old policies have no written subject: it is inferred from their pricing.
         if (!out.coverageSubject) out.coverageSubject = p.coversDrivers ? 'drivers' : 'other';
         if (out.coverageSubject === 'vehicles') {
           out.computedPremiumSar = p.premiumPerVehicleSar != null && p.vehicleCount != null
@@ -3314,8 +2914,7 @@ exports.listCorporatePolicies = async (req, res) => {
             })),
             coveredCount: covered.length,
           };
-          // الإجماليُّ المحسوب: السعرُ للرأس × عددُ المشمولين. و`premiumSar`
-          // يبقى كما هو إن كُتب يدًا — الشاشةُ تعرض الاثنين ولا تُخفي أيَّهما.
+          // Computed total: per-head price x number covered. `premiumSar` stays as is if hand-written; the screen shows both and hides neither.
           out.computedPremiumSar = p.premiumPerPersonSar != null
             ? Math.round(p.premiumPerPersonSar * covered.length * 100) / 100
             : null;
@@ -3323,23 +2922,20 @@ exports.listCorporatePolicies = async (req, res) => {
         return out;
       }),
     };
-    // ذاكرةٌ قصيرة: الوثائقُ ثلاثٌ والبطاقاتُ إحدى وستّون، وكلاهما نادرُ التغيّر.
+    // Short cache: three policies and sixty-one cards, both rarely changing.
     cache.set(ck, body, 60 * 1000);
     res.json(body);
 
   } catch (e) { console.error('listCorporatePolicies', e); res.status(500).json({ message: 'تعذّر تحميل وثائق الشركة' }); }
 };
 
-/** الحقولُ التي تُكتب على وثيقة الشركة — لا يُكتب غيرُها من الشاشة. */
+/** Fields written on a company policy; nothing else is written from the screen. */
 const CORP_FIELDS = ['scopeAr', 'policyholderAr', 'policyNumbers', 'companyAr', 'startDate',
   'expiryDate', 'premiumSar', 'premiumPerPersonSar', 'statusAr', 'notesAr', 'coversDrivers',
   'coverageSubject', 'premiumPerVehicleSar', 'vehicleCount'];
 const SUBJECTS = ['drivers', 'vehicles', 'goods', 'other'];
 
-/**
- * إنشاءُ وثيقةِ شركةٍ وتعديلُها — كانت الصفحةُ تعرض ولا تكتب إلّا التجديد،
- * فأيُّ تصحيحٍ في رقمٍ أو قسطٍ أو شركةٍ يحتاج فتحَ القاعدة.
- */
+/** Create and edit a company policy. The page used to display and write only renewal, so any correction of a number, premium or company needed database access. */
 const pickCorp = (body) => {
   const out = {};
   for (const k of CORP_FIELDS) {
@@ -3357,8 +2953,7 @@ const pickCorp = (body) => {
       out[k] = !!body[k];
     } else out[k] = String(body[k] ?? '').trim();
   }
-  // الموضوعُ يحسم الباقي: لا تبقى قائمةُ سائقين على وثيقة بضائع، ولا سعرُ رأسٍ
-  // على وثيقة سيّارات يُحسب منه إجماليٌّ لا معنى له.
+  // The subject decides the rest: no driver list stays on a goods policy, and no per-head price on a vehicles policy from which a meaningless total is computed.
   if (out.coverageSubject) {
     out.coversDrivers = out.coverageSubject === 'drivers';
     if (out.coverageSubject !== 'drivers') out.premiumPerPersonSar = null;
@@ -3394,7 +2989,7 @@ exports.updateCorporatePolicy = async (req, res) => {
 
 exports.deleteCorporatePolicy = async (req, res) => {
   try {
-    // حذفٌ ناعم: الوثيقةُ تاريخٌ، وسجلُّ تجديداتها يُقرأ بعد انتهائها.
+    // Soft delete: a policy is history, and its renewal log is read after expiry.
     const p = await CorporatePolicy.findByIdAndUpdate(req.params.id, { $set: { isActive: false } }, { new: true });
     if (!p) return res.status(404).json({ message: 'الوثيقة غير موجودة' });
     logAudit({ user: req.user, action: 'delete_corporate_policy', entity: 'CorporatePolicy', entityId: p._id, ipAddress: req.ip }).catch(() => {});
@@ -3404,10 +2999,9 @@ exports.deleteCorporatePolicy = async (req, res) => {
 };
 
 /**
- * ضمُّ سائقٍ إلى وثيقةِ خيانة الأمانة أو إخراجُه — POST /corporate-policies/:id/drivers
- *   { cardId, covered: true|false, addedDate? }
- *
- * ويُكتب في بطاقة السائق لا على الوثيقة: القائمةُ سجلٌّ واحدٌ لا نسختان.
+ * Add a driver to the fidelity policy or remove him. POST /corporate-policies/:id/drivers
+ * { cardId, covered: true|false, addedDate? }
+ * Written on the driver's card, not on the policy: the list is one record, not two copies.
  */
 exports.setPolicyDriver = async (req, res) => {
   try {
@@ -3460,19 +3054,15 @@ exports.renewCorporatePolicy = async (req, res) => {
   } catch (e) { res.status(500).json({ message: 'تعذّر تسجيل التجديد' }); }
 };
 
-/** تعريف المستندات — الواجهة بتبني منه الفلاتر والإعدادات بدل ما تكرّرها. */
+/** Document definitions: the UI builds filters and settings from them instead of repeating them. */
 exports.documentTypes = async (req, res) => {
   const cfg = await getConfig();
   res.json({
-    // `numberAr` هو ما يجعل نافذة التجديد تعرف: أهذا مستندٌ له رقمٌ يتغيّر مع
-    // التجديد فتسأل عنه، أم لا رقم له فتسكت؟ بدونه كانت الواجهة ستكتب القائمة
-    // عندها وتفترق عن الخادم أوّلَ ما يُضاف مستند.
+    // `numberAr` lets the renewal dialog know whether a document has a number that changes with renewal (so it asks for it) or none (so it stays silent). Without it the UI would keep its own list and diverge from the server as soon as a document is added.
     documents: DOC_TYPES.map((d) => ({
       key: d.key, ar: d.ar, en: d.en, icon: d.icon,
       numberAr: d.numberPath ? d.numberAr : null, numberEn: d.numberPath ? d.numberEn : null,
-      // ورقةٌ واحدةٌ تغطّي مركباتٍ كثيرة (التأمين) أم ورقةٌ لكلّ مركبة؟ عليه
-      // تتوقّف نافذةُ التجديد الجماعيّ: أتعرض رقمًا واحدًا للجميع أم رقمًا لكلّ
-      // سطر — راجع config/vehicleDocuments.
+      // One paper covering many vehicles (insurance) or a paper per vehicle? The bulk renewal dialog depends on it: show one number for all or a number per line. See config/vehicleDocuments.
       sharedNumber: !!d.sharedNumber,
       alert: cfg.alerts?.[d.key] || {},
     })),
@@ -3482,10 +3072,8 @@ exports.documentTypes = async (req, res) => {
   });
 };
 
-// ── ملفّات المركبة ──────────────────────────────────────────────────────────
-//
-// المركبة تحمل تواريخ مستنداتها وأرقامَها؛ وهذه تحمل صورَها. ومن دونها يُسأل
-// «فين صورة الرخصة؟» فيُبحث عنها في واتساب — وهذا هو الفرق بين سجلٍّ ومجلَّد.
+// Vehicle files.
+// The vehicle holds its documents' dates and numbers; this holds their images. Without it 'where is the license picture?' gets searched for in WhatsApp, which is the difference between a register and a folder.
 const VehicleDocument = require('../models/VehicleDocument');
 const { saveUploadFile, deleteStoredFile } = require('../utils/fileStore');
 
@@ -3506,8 +3094,7 @@ exports.uploadVehicleDocument = async (req, res) => {
     if (!v) return res.status(404).json({ message: 'المركبة غير موجودة' });
 
     const { title, category, expiryDate, notes, dataUrl, fileName } = req.body;
-    // الاسم مطلوبٌ ولا يُشتقّ من اسم الملفّ: «IMG_20260829.jpg» لا يقول شيئًا
-    // لمن يفتح الملفّ بعد سنة، و«صورة الرخصة» تقول كلَّ شيء.
+    // The name is required and not derived from the file name: 'IMG_20260829.jpg' says nothing to whoever opens the file a year later, while 'license photo' says everything.
     if (!String(title || '').trim()) return res.status(400).json({ message: 'اكتب اسمًا للملفّ' });
     if (!dataUrl) return res.status(400).json({ message: 'اختر ملفًّا' });
 
@@ -3539,8 +3126,7 @@ exports.updateVehicleDocument = async (req, res) => {
   try {
     const doc = await VehicleDocument.findById(req.params.docId);
     if (!doc) return res.status(404).json({ message: 'الملفّ غير موجود' });
-    // البايتات لا تُستبدَل — الملفّ الخطأ يُحذف ويُرفع غيرُه. وما يُعدَّل هنا
-    // وصفُه: اسمُه وعائلتُه وانتهاؤه وملاحظتُه.
+    // Bytes are not replaced: a wrong file is deleted and another uploaded. What is edited here is its description: name, family, expiry and note.
     for (const f of ['title', 'category', 'expiryDate', 'notes']) {
       if (req.body[f] !== undefined) doc[f] = req.body[f];
     }
@@ -3561,8 +3147,7 @@ exports.deleteVehicleDocument = async (req, res) => {
   try {
     const doc = await VehicleDocument.findById(req.params.docId);
     if (!doc) return res.status(404).json({ message: 'الملفّ غير موجود' });
-    // البايتات تُمسح مع الصفّ: ملفٌّ يبقى على القرص بلا صفٍّ يشير إليه لا
-    // يُفتح ولا يُحذف — يتراكم إلى أن يمتلئ القرص ولا يعرف أحدٌ ما هو.
+    // Bytes are removed with the row: a file left on disk with no row pointing to it can be neither opened nor deleted, and accumulates until the disk fills with nobody knowing what it is.
     deleteStoredFile(doc.fileUrl);
     const vehicleId = doc.vehicle;
     await doc.deleteOne();
@@ -3577,28 +3162,19 @@ exports.deleteVehicleDocument = async (req, res) => {
   }
 };
 
-// ═══════════════════════════════════════════════════════════════════════════
-//  بطاقاتُ السائقين — سجلٌّ في قسم المركبات
-// ═══════════════════════════════════════════════════════════════════════════
+// Driver cards: a register in the vehicles section.
 /**
- * مفتاحُ «هي هي» للّوحة الواحدة كُتبت بترتيبين.
- *
- * السجلّان يكتبان اللوحة الواحدة معكوسةً: «أ ص ي 5034» في سجلّ المركبات
- * و«5034 أ ص ي» في سجلّ الإسناد. و`registryPlateKey` يحفظ الترتيب — وهو محقٌّ
- * في ذلك، فهو يخدم البحثَ والعرض. أمّا هنا فالسؤال «أهما مركبةٌ واحدة؟»،
- * فتُرتَّب الحروفُ ألفبائيًّا وتُفصَل عن الأرقام.
- *
- * والحروفُ تبقى في المفتاح ولا تُسقَط: «ل أ 1080» دراجةٌ و«أ ص ر 1080» تريلا،
- * وإسقاطُ الحروف يجعلهما واحدة — أحدَ عشرَ تصادمًا في الملفّ الحاليّ.
+ * Same-plate key for one plate written in two orders.
+ * The two registers write the same plate reversed: letters-then-digits in the vehicle registry and digits-then-letters in the assignment log. `registryPlateKey` preserves order, rightly, since it serves search and display. Here the question is 'are they one vehicle?', so letters are sorted alphabetically and separated from the digits.
+ * The letters stay in the key and are not dropped: a motorbike plate and a trailer plate can share digits, and dropping letters merges them (eleven collisions in the current file).
  */
-// والقاعدةُ صارت في utils/plateKey (`orderlessPlateKey`) — تقرؤها خدمةُ التفويض
-// أيضًا، ونسختان منها تفترقان يومًا فيربط أحدُهما ما لا يربطه الآخر.
+// The rule moved to utils/plateKey (`orderlessPlateKey`); the authorization service reads it too, and two copies would diverge one day so that one links what the other does not.
 const samePlate = require('../utils/plateKey').orderlessPlateKey;
 
 const DriverCard = require('../models/DriverCard');
 const VehicleAuthorization = require('../models/VehicleAuthorization');
 
-/** الأيّامُ حتى تاريخٍ بتقويم الشركة — تُحسب ولا تُخزَّن. */
+/** Days until a date by the company calendar: computed, not stored. */
 const cardDaysLeft = (ymd) => {
   if (!ymd) return null;
   const { startOfDay, todayKey } = require('../utils/companyDay');
@@ -3606,13 +3182,11 @@ const cardDaysLeft = (ymd) => {
   return a && b ? Math.round((b - a) / 86400000) : null;
 };
 
-/** شريحةُ الانتهاء — نفسُ لغة بقيّة مستندات القسم. */
+/** Expiry bucket, same vocabulary as the section's other documents. */
 /**
- * ── وحالةُ البطاقة من إعدادات القسم ────────────────────────────────────────
- * كانت العتباتُ مكتوبةً هنا (٣٠/٦٠/٩٠)، فالبطاقةُ الواحدة تُقرأ «حرجة» في
- * صفحة البطاقات و«سارية» في صفحة الانتهاءات — لأنّ الثانية تحسبها بـ`stateOf`
- * من الإعدادات. جوابان لسؤالٍ واحد، وأيُّهما يُصدَّق؟
- * فصار الحسابُ واحدًا: `stateOf` نفسُها بعتبات `alerts.driverCard`.
+ * Card state from section settings.
+ * Thresholds were hard-coded here (30/60/90), so one card read 'critical' on the cards page and 'valid' on the expiry page, because the latter computes with `stateOf` from settings. Two answers to one question; which is trusted?
+ * Now the computation is single: the same `stateOf` with the `alerts.driverCard` thresholds.
  */
 const cardState = (days, alert) => {
   if (days === null) return 'unknown';
@@ -3627,15 +3201,9 @@ const cardState = (days, alert) => {
 };
 
 /**
- * ── سائقُ النقل الثقيل وغيرُه ──────────────────────────────────────────────
- * «عايز أفرّق بين سائقين النقل الثقيل والباقي» — والبطاقةُ لا تقول ذلك: هي
- * وثيقةٌ واحدةٌ في كلّ الأحوال، ولا في `DriverCard` حقلٌ لنوع المركبة. وليس
- * الفرقُ في الورقة أصلًا، بل في ما تُخوِّله: نوعُ تسجيل المركبة المفوَّضة له.
- * فثلاثُمئةٍ وستٌّ وثلاثون مركبةً في السجلّ، منها مئتان واثنتا عشرةَ دراجةً
- * آليّةً يقودها مندوبو B2C، وثمانٍ وستّون «نقل عام» — وهي الشاحنات.
- *
- * والسائقُ قد يمسك أكثر من مركبة، فيُنسب إلى أثقلِ ما يقود: من يقود شاحنةً
- * ودراجةً سائقُ نقلٍ ثقيل، لا مندوب.
+ * Heavy transport driver versus the rest.
+ * The card does not say this: it is one document in every case and `DriverCard` has no field for vehicle type. The difference is not in the paper but in what it authorizes: the registration type of the vehicle authorized to him. The registry has 336 vehicles, of which 212 are motorbikes driven by B2C reps and 68 are 'public transport', i.e. the trucks.
+ * A driver may hold more than one vehicle, and is assigned to the heaviest he drives: someone driving a truck and a bike is a heavy transport driver, not a rep.
  */
 const CLASS_OF_REG = {
   public_transport: 'heavy', private_transport: 'heavy',
@@ -3648,12 +3216,11 @@ const CLASS_RANK = { heavy: 3, light: 2, motorcycle: 1, none: 0 };
 const driverClass = (authorizations = []) => {
   let best = 'none';
   for (const a of authorizations) {
-    // الرمزُ أوّلًا، وإلّا فالنصُّ العربيُّ — بعضُ الصفوف بلا رمز.
+    // Code first, otherwise the Arabic text; some rows have no code.
     const code = String(a.registrationTypeCode || '').trim();
     let cls = CLASS_OF_REG[code];
     if (!cls) {
-      // ويُقرأ النصُّ بالعربيّة وبالإنجليزيّة: سجلُّ الإسناد القديم يكتب
-      // «النقل الثقيل» في القسم و`truck` في النوع.
+      // The text is read in Arabic and English: the old assignment log writes the Arabic heavy-transport name in the department and `truck` in the type.
       const s = String(a.registrationTypeAr || '');
       if (/دراجة|motorcycle|bike|scooter/i.test(s)) cls = 'motorcycle';
       else if (/نقل|شاحن|truck|trailer|heavy/i.test(s)) cls = 'heavy';
@@ -3672,50 +3239,30 @@ exports.listDriverCards = async (req, res) => {
     if (q.cardType) filter.cardType = q.cardType;
     if (q.active !== 'all') filter.isActive = { $ne: false };
     if (q.q && String(q.q).trim()) {
-      // «أيُّ اسمٍ أو أيُّ رقم» — كما في بقيّة القسم، بلا مبالاةٍ بالمسافات
-      // ولا بفروق الرسم.
+      // 'Any name or any number', as in the rest of the section, ignoring spaces and spelling variants.
       const rx = flexSpaceRegex(q.q);
       filter.$or = [{ name: rx }, { idNumber: rx }, { cardNumber: rx },
         { absherPhone: rx }, { logisticRegister: rx }, { cardType: rx }, { notes: rx }];
     }
     if (q.fidelity) filter['fidelity.status'] = q.fidelity === 'none' ? { $in: ['', null] } : q.fidelity;
-    // عتباتُ البطاقة من إعدادات القسم — نفسُها التي تحسب بها شاشةُ الانتهاءات.
+    // Card thresholds from section settings: the same ones the expiry screen computes with.
     const [cfg, ended] = await Promise.all([getConfig(), endedStaff()]);
     let cards = await DriverCard.find(filter)
       .populate('employee', 'firstName lastName arabicName employeeNumber employmentStatus')
       .sort({ expiryDate: 1 }).lean();
-    // بطاقةُ المؤرشَف لا تُعرَض ولا تُعَدّ — والمنتهي يبقى صفًّا (تحت).
+    // An archived person's card is neither shown nor counted; an expired one stays a row (below).
     cards = cards.filter((c) => !cardArchived(ended, c));
 
-    // ── التفاويضُ تُقرأ مع البطاقة ────────────────────────────────────────────
-    //
-    // «هل التفاويض ممكن تتربط مع السائق؟» — سؤالُ مدير المركبات. والربطُ قائمٌ
-    // في القاعدة منذ البداية: `VehicleAuthorization.employee`. لكنّه لم يكن
-    // مقروءًا من ناحية السائق قطّ: التفاويضُ تُعرَض مركبةً مركبة، فمعرفةُ ما
-    // بيد سائقٍ بعينه تعني تصفّحَ ثلاثمئة صفٍّ بحثًا عن اسمه.
-    //
-    // فبطاقةُ السائق وتفاويضُه وخيانةُ أمانته تُقرأ من سطرٍ واحد — وهي الأشياء
-    // الثلاثة التي تخصّ الشخص لا المركبة.
-    // والتفويضُ مكتوبٌ في موضعين، فيُقرآن معًا:
-    //
-    //   ١) `VehicleMaster.authorizedPerson` — ورقةُ التفويض نفسُها التي تعرضها
-    //      شاشة «التفاويض»: رقمُها ومدّتُها، مفتاحُها رقمُ الإقامة. مئتان
-    //      واثنان وأربعون مركبة، منها ثمانٍ وخمسون بيد حاملي بطاقات السائقين.
-    //   ٢) `VehicleAuthorization` — سجلُّ الإسناد بالموظّف من وحدة المركبات
-    //      الأقدم، وفيه تاريخُ التسليم والتحويل.
-    //
-    // وهما عن الشيء نفسِه من وجهين، فيُدمجان بمفتاح اللوحة المطويّ ولا تُعرَض
-    // المركبةُ الواحدة مرّتين. ولا يُوحَّد المصدران هنا: توحيدُ سجلَّين حيَّين
-    // عملٌ قائمٌ بذاته، وأمّا السؤالُ المطروح — «ما الذي بيد هذا السائق؟» —
-    // فجوابُه اجتماعُهما.
+    // Authorizations are read with the card, so one row shows what a driver holds.
+    // Authorization is written in two places, read together and merged on the folded plate key so a vehicle shows once: `VehicleMaster.authorizedPerson` (the paper, keyed by residency number) and `VehicleAuthorization` (older assignment log with handover dates).
+    // The sources are not unified here; the question is answered by their union.
     const empIds = cards.map((c) => c.employee?._id).filter(Boolean);
     const idNumbers = cards.map((c) => String(c.idNumber || '').trim()).filter(Boolean);
 
     const [auths, masterAuths] = await Promise.all([
       empIds.length
         ? VehicleAuthorization.find({ employee: { $in: empIds }, status: 'active' })
-          // سجلُّ الإسناد يشير إلى `Vehicle` القديم لا إلى سجلّ المركبات، وفيه
-          // التصنيفُ باسمين آخرين: `type` و`department` («النقل الثقيل»).
+          // The assignment log points to the old `Vehicle`, not the vehicle registry, and carries classification under two other names: `type` and `department` (heavy transport).
           .populate('vehicle', 'plateNumber type department master')
           .select('employee vehicle startDate documentExpiry').lean()
         : [],
@@ -3727,10 +3274,8 @@ exports.listDriverCards = async (req, res) => {
 
     const byEmp = new Map(); const byIqama = new Map();
     const push = (map, k, v) => { if (!map.has(k)) map.set(k, []); map.get(k).push(v); };
-    // ── والإسنادُ القديم لا يُقرأ لمركبةٍ لها ورقةٌ في السجلّ ───────────────
-    // الورقةُ هي المرجع (utils/vehicleAuthorization): إسنادٌ «ساري» على مركبةٍ
-    // أُلغيت ورقتُها أو نُقلت لغيره ليس تفويضًا — كان يظهر هنا بديلًا لمن لا
-    // ورقةَ له، فيُقرأ السائقُ مفوَّضًا على دبّابٍ أُلغي تفويضُه.
+    // Old assignments are not read for a vehicle that has a paper in the registry.
+    // The paper is authoritative (utils/vehicleAuthorization): an 'active' assignment on a vehicle whose paper was cancelled or moved to someone else is not an authorization. It used to appear here as a substitute for those with no paper, so a driver read as authorized on a bike whose authorization was cancelled.
     const regKeys = auths.length ? await require('../utils/vehicleAuthorization').registryPlateKeys() : new Set();
     for (const a of auths) {
       if (a.vehicle?.master || regKeys.has(samePlate(a.vehicle?.plateNumber))) continue;
@@ -3751,7 +3296,7 @@ exports.listDriverCards = async (req, res) => {
       push(byIqama, String(ap.iqamaNumber || '').trim(), {
         _id: String(v._id),
         source: 'registry',
-        vehicle: String(v._id),        // شاشةُ المركبة في السجلّ الحاليّ
+        vehicle: String(v._id),        // The vehicle screen in the current registry
         plateNumber: v.plateNumber || '',
         startDate: ap.startDate ? String(ap.startDate).slice(0, 10) : '',
         expiryDate: ap.expiryDate ? String(ap.expiryDate).slice(0, 10) : '',
@@ -3761,11 +3306,8 @@ exports.listDriverCards = async (req, res) => {
       });
     }
 
-    // ── والتصنيفُ من سجلّ المركبات وحدَه ──────────────────────────────────────
-    // سجلُّ الإسناد القديم يكتب القسمَ لا نوعَ التسجيل («B2C» في خانة القسم)،
-    // فسائقٌ ورقتُه ناقصةٌ يُقرأ تفويضُه منه فلا يُعرَف ما يقود. واللوحةُ هي
-    // المفتاحُ المشترك، فيُسأل عنها سجلُّ المركبات — وهو الذي يحمل نوعَ
-    // التسجيل رسميًّا — بمفتاح اللوحة المطويّ.
+    // Classification comes from the vehicle registry alone.
+    // The old assignment log writes the department, not the registration type ('B2C' in the department field), so a driver with an incomplete paper read from it would not show what he drives. The plate is the shared key, so the vehicle registry, which officially carries the registration type, is queried by the folded plate key.
     const plateKeys = [...new Set([...byIqama.values(), ...byEmp.values()].flat()
       .map((a) => samePlate(a.plateNumber)).filter(Boolean))];
     const regByPlate = new Map();
@@ -3785,17 +3327,9 @@ exports.listDriverCards = async (req, res) => {
 
     cards = cards.map((c) => {
       const days = cardDaysLeft(c.expiryDate);
-      // ── ورقةُ السجلّ أوّلًا، والإسنادُ بديلٌ لا شريك ────────────────────────
-      //
-      // السجلّان لا يتّفقان: أربعةَ عشرَ سائقًا يسمّي كلٌّ منهما له شاحنةً غير
-      // التي يسمّيها الآخر، وبعضُها تبادلٌ صريح — «٥٠٩٦» عند هذا في السجلّ
-      // و«٥٠٣٣» عند ذاك، ومقلوبةً عند الثاني. أي أنّ السائقين تبادلوا الشاحنات
-      // وسجلُّ الإسناد لم يُحدَّث.
-      //
-      // فعرضُهما معًا يقول إنّ السائق يمسك شاحنتين وهو يمسك واحدة. وورقةُ
-      // التفويض في سجلّ المركبات هي الوثيقةُ السارية — بها رقمُ التفويض
-      // ومدّتُه وهي التي تُبرَز عند المرور. فإن وُجدت فهي الجواب وحدَها،
-      // ولا يُقرأ سجلُّ الإسناد إلّا لمن لا ورقةَ له فيه.
+      // The registry paper first, the assignment a fallback and not a partner.
+      // The two registers disagree: for fourteen drivers each names a different truck than the other, some plainly swapped (5096 with this one in the registry and 5033 with that one, reversed in the other). The drivers swapped trucks and the assignment log was not updated.
+      // Showing both says a driver holds two trucks when he holds one. The authorization paper in the vehicle registry is the valid document; it carries the number and term and is what is shown at a checkpoint. If it exists it is the answer alone, and the assignment log is read only for those with no paper there.
       const fromRegistry = byIqama.get(String(c.idNumber || '').trim()) || [];
       const fromAssign = c.employee ? (byEmp.get(String(c.employee._id)) || []) : [];
       const authorizations = fromRegistry.length ? fromRegistry : fromAssign;
@@ -3804,8 +3338,7 @@ exports.listDriverCards = async (req, res) => {
         daysLeft: days,
         state: cardState(days, cfg.alerts?.driverCard),
         authorizations,
-        // ما يقودُه هذا السائق — المكتوبُ في البطاقة أوّلًا، والمشتقُّ من
-        // مركباته يملأ الفارغ. راجع `driverClass` تحت.
+        // What this driver drives: what is written on the card first, with the derived value from his vehicles filling the blank. See `driverClass` below.
         ...(() => {
           const derived = driverClass(authorizations);
           const written = S(c.transportTypeAr);
@@ -3813,49 +3346,42 @@ exports.listDriverCards = async (req, res) => {
           const code = Object.entries(CLASS_AR).find(([, ar]) => ar === written)?.[0] || derived.vehicleClass;
           return { vehicleClass: code, vehicleClassAr: written, vehicleClassEn: CLASS_EN[code] || written, vehicleClassSource: 'card' };
         })(),
-        // ولا يُخفى الخلاف: الصفُّ يقول إنّ للسجلّ الأقدم رأيًا آخر، فيُراجَع.
+        // The disagreement is not hidden: the row says the older register has another opinion, to be reviewed.
         staleAssignments: fromRegistry.length
           ? fromAssign.filter((a) => !fromRegistry.some((r) => samePlate(r.plateNumber) === samePlate(a.plateNumber)))
             .map((a) => a.plateNumber).filter(Boolean)
           : [],
       };
     });
-    // الشريحةُ تُفلتَر بعد الحساب: هي مشتقّةٌ من التاريخ لا حقلٌ في القاعدة.
+    // The bucket is filtered after computing: it is derived from the date, not a database field.
     if (q.state) cards = cards.filter((c) => c.state === q.state);
-    // وكذلك نوعُ ما يقود: مشتقٌّ من مركباته لا مكتوبٌ في بطاقته.
+    // Likewise the type of what he drives: derived from his vehicles, not written on his card.
     if (q.vehicleClass) cards = cards.filter((c) => c.vehicleClass === q.vehicleClass);
 
-    // ── والبطاقةُ تُعرَف برقمها، والفراغُ يعني «مطلوبة» ────────────────────────
-    //
-    // في السجلّ تسعةٌ وخمسون سائقًا وسبعٌ وخمسون بطاقة: اثنان لم تُستخرج
-    // بطاقتُهما بعد. وكان ذلك مكتوبًا في خانة الرقم نصًّا — كلمةُ «مطلوب» في
-    // موضع الرقم. فتُقرأ الخانةُ رقمًا فتجد كلمة، ويُعَدّ الصفُّ بطاقةً وهو
-    // ليس بطاقة، ويصير «إجمالي البطاقات ٥٩» وهي سبعٌ وخمسون.
-    //
-    // والحالُ تُشتقّ ولا تُكتب: خانةٌ فارغةٌ تعني «لم تُستخرج». فلا كلمةَ تُكتب
-    // بألف صيغة («مطلوب» و«مطلوبة» و«بدون»)، ولا رقمَ مخترَعٌ يُقرأ رقمًا.
+    // The card is identified by its number, and blank means 'required'.
+    // The registry has fifty-nine drivers and fifty-seven cards; two cards are not yet extracted. That used to be written in the number field as text, the word 'required' in the place of the number. The field read as a number found a word, the row counted as a card though not a card, and 'total cards 59' was really fifty-seven.
+    // The state is derived, not written: an empty field means 'not extracted'. So no word is written in a thousand spellings, and no invented number reads as a number.
     const NO_CARD = /^\s*(?:مطلوب(?:ة)?|بدون|لا\s*يوجد|غير\s*مستخرجة?|-|—|n\/?a|none)\s*$/i;
     const hasCard = (c) => {
       const n = String(c.cardNumber || '').trim();
       return !!n && !NO_CARD.test(n);
     };
-    // وانتهاءُ إقامته ورخصةِ قيادته من ملفّه في الموارد البشريّة (utils/personDocDates).
+    // His residency and driving-license expiry from his HR file (utils/personDocDates).
     const docs = await require('../utils/personDocDates').docDatesFor(cards);
     cards = cards.map((c) => ({ ...c, ...docs(c), hasCard: hasCard(c), ...(cardEnded(ended, c) ? { ended: true } : {}) }));
-    // وتُفلتَر بعد الاشتقاق كما تُفلتَر الشريحة.
+    // Filtered after derivation, like the bucket.
     if (q.has === 'yes') cards = cards.filter((c) => c.hasCard);
     if (q.has === 'no') cards = cards.filter((c) => !c.hasCard);
 
-    // ── ومَن انتهت خدمتُه يبقى صفًّا ولا يُعَدّ ─────────────────────────────
-    // الموارد البشريّة أنهت خدمتَه، فلا يُحسَب في سائقي القسم ولا في شرائحه.
+    // Someone whose service ended stays as a row but is not counted.
+    // HR ended his service, so he is not counted among the section's drivers or its buckets.
     const listed = cards;
     cards = listed.filter((c) => !c.ended);
     const count = (s) => cards.filter((c) => c.state === s).length;
     res.json({
       cards: listed,
       totals: {
-        // الرقمُ الأوّل سائقون لا بطاقات — هو ما يُسأل عنه: كم سائقًا عندنا،
-        // وكم منهم يحمل بطاقةً تخوّله القيادة.
+        // The first number is drivers, not cards: that is what is asked, how many drivers we have and how many of them hold a card authorizing driving.
         drivers: cards.length,
         withCard: cards.filter((c) => c.hasCard).length,
         withoutCard: cards.filter((c) => !c.hasCard).length,
@@ -3863,39 +3389,33 @@ exports.listDriverCards = async (req, res) => {
         expired: count('expired'),
         critical: count('critical'),
         warning: count('warning'),
-        // و«قريب» شريحةٌ تُعرَض وتُفلتَر، فلا تُطوى في «ساري»: كانت تُجمَع معه
-        // فيقول العددُ إنّ البطاقةَ سارية وصفحةُ الانتهاءات تقول «قريبة».
+        // 'Upcoming' is a displayed, filterable bucket and is not folded into 'valid': it used to be merged, so the count said the card is valid while the expiry page said it is near.
         upcoming: count('upcoming'),
         valid: count('valid'),
         unlinked: cards.filter((c) => !c.employee).length,
-        // خيانةُ الأمانة: «مطلوب» هو الرقمُ الذي يُقرأ — سائقٌ يعمل والوثيقةُ
-        // لا تغطّيه. و«بلا جواب» ليس صفرًا: هو سؤالٌ لم يُسأل بعد.
+        // Fidelity insurance: 'required' is the number that gets read, a working driver the policy does not cover. 'No answer' is not zero: it is a question not yet asked.
         fidelityCovered: cards.filter((c) => c.fidelity?.status === 'covered').length,
         fidelityRequired: cards.filter((c) => c.fidelity?.status === 'required').length,
         fidelityUnknown: cards.filter((c) => !c.fidelity?.status).length,
         authorized: cards.filter((c) => (c.authorizations || []).length > 0).length,
         /**
-         * ── والقسمةُ على أصحاب البطاقات لا على كلّ السائقين ──────────────────
-         * السؤالُ: «البطاقاتُ التي عندنا — كم منها نقلٌ ثقيلٌ وكم نقلٌ خفيف؟».
-         * وكان العدُّ على كلّ الصفوف، فيُقرأ فوق بطاقةٍ عددُها تسعٌ وخمسون
-         * تقسيمٌ مجموعُه ستّون — رقمان لشيءٍ واحد لا يجتمعان.
-         *
-         * والنقلُ الخفيفُ هنا يجمع الدرّاجةَ والمركبةَ الخاصّة: هما في الميدان
-         * صنفٌ واحدٌ يقابل النقلَ الثقيل، والقسمةُ الثنائيّةُ هي التي تُقرأ.
+         * Divided by cardholders, not all drivers.
+         * The question is 'of the cards we have, how many are heavy transport and how many light?'. The count was over all rows, so a split totaling sixty was read over a card total of fifty-nine, two numbers for one thing that do not reconcile.
+         * Light transport here covers the motorbike and the private vehicle: in the field they are one class against heavy transport, and the binary split is what is read.
          */
         heavy: cards.filter((c) => c.hasCard && c.vehicleClass === 'heavy').length,
         light: cards.filter((c) => c.hasCard && ['light', 'motorcycle'].includes(c.vehicleClass)).length,
         unclassified: cards.filter((c) => c.hasCard && !['heavy', 'light', 'motorcycle'].includes(c.vehicleClass)).length,
-        // وتبقى التفصيليّةُ لمن يفلتر بها من الجدول.
+        // The detailed breakdown stays for those who filter by it from the table.
         motorcycle: cards.filter((c) => c.vehicleClass === 'motorcycle').length,
         lightVehicle: cards.filter((c) => c.vehicleClass === 'light').length,
         noVehicle: cards.filter((c) => c.vehicleClass === 'none').length,
       },
-      // قيمُ الفلاتر تُبنى من السجلّ لا تُكتب يدًا.
+      // Filter values are built from the register, not hand-written.
       options: {
         logisticRegister: [...new Set(listed.map((c) => c.logisticRegister).filter(Boolean))],
         cardType: [...new Set(listed.map((c) => c.cardType).filter(Boolean))],
-        // بالرمز واسمِه معًا: الشاشةُ تعرض الاسمَ وتُرسل الرمز.
+        // Both code and name: the screen shows the name and sends the code.
         vehicleClass: ['heavy', 'light', 'motorcycle', 'none']
           .map((k) => ({ code: k, ar: CLASS_AR[k], en: CLASS_EN[k] })),
       },
@@ -3924,7 +3444,7 @@ exports.createDriverCard = async (req, res) => {
     if (dup) return res.status(409).json({ message: 'توجد بطاقةٌ بهذا الرقم' });
     data.createdBy = req.user._id;
     const card = await DriverCard.create(data);
-    // والبطاقةُ تصل ملفَّ صاحبها في الموارد البشريّة — راجع utils/driverCardSync.
+    // The card reaches its owner's HR file; see utils/driverCardSync.
     try { await require('../utils/driverCardSync').pushCardToEmployee(card); } catch (e) { console.error('driver card → HR:', e.message); }
     emit('vreg:updated', {});
     res.status(201).json({ card });
@@ -3937,10 +3457,7 @@ exports.updateDriverCard = async (req, res) => {
     data.lastModifiedBy = req.user._id;
     const card = await DriverCard.findByIdAndUpdate(req.params.id, { $set: data }, { new: true, runValidators: true });
     if (!card) return res.status(404).json({ message: 'غير موجودة' });
-    // ولقطةُ البطاقة على ملفّ الموظّف تُحدَّث معها: تقرؤها شاشاتُ الموارد
-    // البشريّة، وتركُها يجعل الرقمين مختلفين لشيءٍ واحد. وكانت تُحدَّث فقط إن
-    // كانت البطاقةُ مربوطةً بالمعرّف — وأغلبُها مربوطٌ برقم الهويّة، فجُدِّدت
-    // بطاقاتٌ في المركبات وبقيت «منتهيةً» في الموارد البشريّة.
+    // The card snapshot on the employee file is updated with it: HR screens read it, and leaving it would make two different numbers for one thing. It used to be updated only if the card was linked by id, but most are linked by ID number, so cards were renewed in vehicles and stayed 'expired' in HR.
     try { await require('../utils/driverCardSync').pushCardToEmployee(card); } catch (e) { console.error('driver card → HR:', e.message); }
     emit('vreg:updated', {});
     res.json({ card });
@@ -3957,24 +3474,11 @@ exports.deleteDriverCard = async (req, res) => {
   } catch (e) { res.status(500).json({ message: e.message || 'تعذّر الحذف' }); }
 };
 
-// ─── التفويض: إلغاءٌ وإسناد — POST /:id/authorization ────────────────────────
+// Authorization: revoke and assign. POST /:id/authorization
 /**
- * ── ولماذا فعلٌ مستقلٌّ لا تفريغُ خانات ─────────────────────────────────────
- *
- * كان إلغاءُ التفويض يُفعَل بفتح المركبة ومسحِ اسم الموظّف من خاناتها. ومن فعل
- * ذلك ظنّ أنّه ألغى التفويض — ولم يُلغِ شيئًا: التفويضُ مسجَّلٌ في **سجلَّين**،
- * ورقةٌ على المركبة (`VehicleMaster.authorizedPerson`) وإسنادٌ يربط المركبةَ
- * بالموظّف (`VehicleAuthorization`). والمسحُ يُفرّغ الورقةَ ويترك الإسنادَ
- * قائمًا، فيبقى الموظّفُ في الموارد البشريّة «مفوَّضٌ على سيّارة» وهو ليس كذلك.
- *
- * وأثرُه ليس خانةً خاطئة: التفويضُ شرطٌ في إخلاء طرف الموظّف، فمن أُلغي تفويضُه
- * هكذا لا يُخلى طرفُه حتى يُكتشَف الأمر بيد. وفي القاعدة إحدى وأربعون حالةً
- * كذلك — مركبةٌ مُسحت ورقتُها وموظّفٌ ما زال مفوَّضًا عليها.
- *
- * فالإلغاءُ فعلٌ واحدٌ يُغلق السجلَّين معًا، ويُقيَّد: مَن ألغى ومتى ولماذا.
- *
- * body: { action: 'revoke' | 'assign', reason?, name?, iqamaNumber?,
- *         authorizationNumber?, jobTitleAr?, startDate?, expiryDate? }
+ * Revoking is a separate action, not clearing fields: authorization lives in two registers, the paper (`VehicleMaster.authorizedPerson`) and the assignment (`VehicleAuthorization`), and erasing the name empties only the paper, leaving the employee 'authorized' in HR and blocking his clearance.
+ * The action closes both and records who, when and why.
+ * body: { action: 'revoke' | 'assign', reason?, name?, iqamaNumber?, authorizationNumber?, jobTitleAr?, startDate?, expiryDate? }
  */
 exports.authorizationAction = async (req, res) => {
   try {
@@ -3986,10 +3490,8 @@ exports.authorizationAction = async (req, res) => {
       return res.status(400).json({ message: 'الإجراء إمّا «إلغاء» أو «تفويض»' });
     }
     const byName = `${req.user?.firstName || ''} ${req.user?.lastName || ''}`.trim();
-    // ── السجلّان يُكتبان من موضعٍ واحد ─────────────────────────────────────
-    // الورقةُ ثمّ سجلُّ الإسناد يتبعها — utils/vehicleAuthorization. كان هذا
-    // البابُ يكتب الاثنين بيده وحدَه، وغيرُه يكتب الورقة فقط؛ فصار الكلُّ يمرّ
-    // بالخدمة نفسِها، والربطُ باللوحة فيها (مسافةٌ أو مسافتان، أيُّ ترتيب).
+    // Both registers are written from one place.
+    // The paper, then the assignment log follows (utils/vehicleAuthorization). This endpoint used to write both by hand while others wrote the paper only; now everything goes through the same service, and the plate link is in it (one space or two, any order).
     const VA = require('../utils/vehicleAuthorization');
 
     if (action === 'revoke') {
@@ -4014,9 +3516,8 @@ exports.authorizationAction = async (req, res) => {
       });
     }
 
-    // ── الإسناد: تُكتب الورقة، ويُفتَح إسنادٌ إن عُرف الموظّف ────────────────
-    // ── والمفوَّضُ يُختار من الموظّفين — utils/vehiclePerson ──────────────────
-    // مرجعٌ (`employeeId`/`ltId`) أو رقمُ هويّة؛ والاسمُ وحدَه إن طابق موظّفًا واحدًا.
+    // Assign: the paper is written, and an assignment is opened if the employee is known.
+    // The authorized person is chosen from employees (utils/vehiclePerson): a reference (`employeeId`/`ltId`) or an ID number; the name alone only if it matches a single employee.
     let holder;
     try {
       holder = await require('../utils/vehiclePerson').resolvePerson({
@@ -4033,8 +3534,8 @@ exports.authorizationAction = async (req, res) => {
       startDate: req.body?.startDate || null,
       expiryDate: req.body?.expiryDate || null,
     }, { userId: req.user?._id, byName, note: 'فُوِّضت المركبة من صفحة التفاويض' });
-    // ── والموظّفُ يُربط برقم إقامته ────────────────────────────────────────
-    // وإن لم يُعرَف بقيت الورقةُ وحدَها ويُقال ذلك صراحةً بدل أن يُظَنّ الربطُ قد تمّ.
+    // The employee is linked by residency number.
+    // If unknown, the paper stands alone and that is stated explicitly rather than letting the link be assumed done.
     const linked = !r.unlinkedHolder;
     const note = linked ? '' : (iq ? ' (لم يُعثَر على موظّفٍ بهذا الرقم، فلم يُفتح إسنادٌ في ملفّه)' : ' (بلا رقم إقامة لا يُربط بملفّ موظّف)');
 
@@ -4051,5 +3552,5 @@ exports.authorizationAction = async (req, res) => {
   }
 };
 
-// يُستعمَل من سكربت الملء الرجعيّ — راجع backfillClaimDrivers.
+// Used by the backfill script; see backfillClaimDrivers.
 module.exports.suggestDriver = suggestDriver;

@@ -1,22 +1,7 @@
 /**
- * دفترُ التحصيل — الأعمارُ والفواتيرُ والتنبيهاتُ والخطّةُ وتقييمُ الفريق.
- *
- * ── لماذا مِلَفٌّ ثانٍ بجانب `collectionsDeptController` ─────────────────────
- * الأوّلُ يقرأ كشوفَ التشغيل: ما فُوتِر عندنا وما سُدِّد. وهذا يقرأ دفترَ
- * التحصيل نفسَه — تسعةُ آلافٍ من الفواتير ترجع إلى ٢٠٢٢، أكثرُها لا كشفَ له
- * عندنا. وهما سؤالان مختلفان لا يُخلَطان في ملفّ.
- *
- * ── والأعمارُ تُحسب من تاريخ الفوترة، والاستحقاقُ من تاريخ التسليم ─────────
- * سؤالان لا واحد:
- *
- *   «كم عمرُ هذا الدين؟»    يُقاس من يوم الفوترة — وهو ما يفعله دفترُهم،
- *                            قِيس عليه فطابقت شرائحُه (١٢٠+ و٦٠+ وسنة+
- *                            في حدود واحدٍ في المئة).
- *
- *   «متى يستحقّ؟»           يُقاس من يوم **تسليم** الفاتورة للعميل: مهلةُ
- *                            الثلاثين يومًا لا تبدأ قبل أن تصله الورقة.
- *
- * وخلطُهما يجعل عميلًا مهلتُه ثلاثون يومًا يبدو متأخّرًا وهو لم يستلم بعد.
+ * Collections ledger: ageing, invoices, alerts, plan and team scoring.
+ * Kept apart from collectionsDeptController, which reads operations sheets; this reads the ledger itself (many invoices have no sheet here).
+ * Age counts from the invoicing date; due date counts from the delivery date, since the credit term starts when the customer receives the invoice.
  */
 const CollectionsParty = require('../models/CollectionsParty');
 const CollectionInvoice = require('../models/CollectionInvoice');
@@ -24,9 +9,9 @@ const CollectionTask = require('../models/CollectionTask');
 const CreditAlertAck = require('../models/CreditAlertAck');
 const PartyLinkSuggestion = require('../models/PartyLinkSuggestion');
 const cache = require('../utils/ttlCache');
-// يطوي فروقَ الرسم العربيّ والفراغات — هو نفسُه المستعمَل في صفحات الفواتير.
+// Folds Arabic spelling and whitespace variants; same helper as the invoice pages.
 const { flexSpaceRegex } = require('../utils/plateKey');
-// مسؤولُ التحصيل الفعليّ: الموظّفُ المكتوب، وإلّا مديرُ القسم — لا «بلا مسؤول».
+// Effective collections officer: the named employee, else the department manager, never unassigned.
 const {
   collectionsManager, officerCondition, effectiveOfficer, isDefaultOfficer, withManager,
 } = require('../utils/collectionsOfficer');
@@ -35,25 +20,18 @@ const CACHE_PREFIX = 'colledger:';
 const DAY = 86400000;
 
 /**
- * ── ولماذا تُخزَّن الإجاباتُ لدقيقة ────────────────────────────────────────
- * هذه شاشاتٌ تُقرأ ولا تُكتب: الأعمارُ والتنبيهاتُ والتقييمُ تُفتح كلَّ صباحٍ
- * من عدّة أجهزةٍ في الدقيقة الواحدة، ودفترُها لا يتغيّر إلّا باستيرادٍ أو
- * بتعديلٍ نادر. فحسابُها من جديدٍ لكلّ فتحةٍ عملٌ مكرَّرٌ بلا جوابٍ جديد.
- *
- * والمهلةُ قصيرةٌ عن قصد، والكتابةُ تُبطلها فورًا — فلا يرى أحدٌ رقمًا قديمًا
- * بعد أن يغيّره بيده. و«الطلعةُ الواحدة» تجعل عشرةً يفتحون معًا يكلّفون
- * حسابًا واحدًا لا عشرة.
+ * Responses are cached for a minute: read-only screens opened by many devices, and writes invalidate the cache immediately.
+ * The single-flight wrapper makes concurrent openers share one computation.
  */
 const TTL = 60000;
 const keyOf = (name, req) => {
   const q = req.query || {};
   const parts = Object.keys(q).sort().map((k) => `${k}=${[].concat(q[k]).join(',')}`);
-  // الدورُ جزءٌ من المفتاح: ما يُحجب عن قسم التحصيل لا يجوز أن يصله من ذاكرةٍ
-  // ملأها مديرٌ يرى أكثرَ منه.
+  // The role is part of the cache key so a manager's wider view never leaks to a narrower role.
   return `${CACHE_PREFIX}${name}:${req.user?.role || ''}:${parts.join('&')}`;
 };
 
-/** شرائحُ العمر كما هي في دفترهم — حدودُها شاملةٌ من الأسفل (`>=`). */
+/** Age bands as in the ledger; lower bounds are inclusive (>=). */
 const BANDS = [
   { key: '15-', label: '15-', min: 0 },
   { key: '30-', label: '30-', min: 15 },
@@ -63,13 +41,8 @@ const BANDS = [
   { key: '90+', label: '90+', min: 90 },
   { key: '120+', label: '120+', min: 120 },
   { key: '1Y+', label: '1 Year +', min: 365 },
-  // ── وشريحةٌ لما لا تاريخَ له ────────────────────────────────────────────
-  // ثلاثُ فواتيرَ مفتوحةٍ بلا تاريخِ فوترةٍ ولا تسليم، فيها إشعارُ خصمٍ
-  // بثلاثين ألفًا. لا عمرَ لها يُحسب، فكانت تدخل الإجماليَّ ولا تدخل شريحةً —
-  // فتزيد الشرائحُ على الإجمالي بثلاثين ألفًا ولا يُعرف من أين.
-  //
-  // ومالٌ لا يظهر في أيّ شريحةٍ مالٌ لا يراه أحد. فله شريحتُه: تُجمَع الشرائحُ
-  // فتساوي الإجماليَّ تمامًا، ويُرى ما ينقصه تاريخُه فيُكمَل.
+  // Extra band for invoices with no date: otherwise they count in the total but in no band, and the bands would not sum to the total.
+  // Every amount must appear in some band.
   { key: 'noDate', label: 'بلا تاريخ', min: null },
 ];
 const AGE_BANDS = BANDS.filter((b) => b.min !== null);
@@ -82,26 +55,18 @@ const bandOf = (days) => {
 const startOfToday = () => { const d = new Date(); return new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate())); };
 const daysBetween = (from, to) => (from ? Math.floor((to - new Date(from)) / DAY) : null);
 
-// «مفتوحة» تعريفٌ واحدٌ للقسم كلِّه — راجع models/CollectionInvoice.OPEN.
+// One definition of open for the whole department: see models/CollectionInvoice.OPEN.
 const OPEN = CollectionInvoice.OPEN;
 
 /**
- * قسمُ التحصيل لا يرى ما علينا — يرى ما لنا.
- * (القاعدةُ نفسُها في `collectionsDeptController`، ومكرَّرةٌ هنا عن قصدٍ لأنّ
- *  الاعتمادَ المتبادل بين المِلَفّين يجعل تغييرَ أحدِهما يكسر الآخر.)
+ * The department sees what is owed to us, not what we owe.
+ * Duplicated from collectionsDeptController on purpose, to avoid mutual coupling between the two files.
  */
 const RECEIVABLES_ONLY = ['collections_manager', 'collections_staff'];
 const receivablesOnly = (user) => RECEIVABLES_ONLY.includes(user?.role);
 
-// ── فلاترُ السجلّ ───────────────────────────────────────────────────────────
-// تُبنى في موضعٍ واحدٍ يقرؤه الجدولُ والإحصاءُ والتصدير، فلا يعرض أحدُها عددًا
-// ويعرض الآخرُ صفوفَ شرطٍ غيرِه.
-//
-// ── ومن في السجلّ: صاحبُ كودٍ، أو صاحبُ فاتورةٍ مفتوحة ─────────────────────
-// كان الشرطُ الكودَ وحدَه. وفي ورقة الشحنات النقديّة ٣٥٧ صفًّا بلا كود (المناولة
-// للشحن وحدَها عليها ٤٩١ ألفًا)، فحساباتُها بلا كود — فكانت اللوحةُ تعدّ
-// مديونيّتَها وسجلُّ الأعمار لا يراها، ويختلف الإجماليّان بـ٥٩٣ ألفًا.
-// فمن عليه فاتورةٌ مفتوحةٌ في الدفتر يدخل السجلَّ بكودٍ أو بغير كود.
+// Ledger filters, built in one place so the table, stats and export never disagree.
+// A party is in the registry if it has a code or an open invoice: cash parties often have no code and were missing from the ageing registry while counted on the dashboard.
 async function ledgerPartyBase() {
   return cache.wrap(`${CACHE_PREFIX}partybase`, TTL, async () => {
     const holders = (await CollectionInvoice.distinct('party', OPEN)).filter(Boolean);
@@ -112,10 +77,10 @@ async function ledgerPartyBase() {
 function partyFilter(q = {}, base = { kind: 'customer', code: { $gt: '' } }, mgr = null) {
   const f = { $and: [base] };
   const { officer, grade, department, hoLocation, kind, creditDays, status, region } = q;
-  // التطبيقُ يرسل البحثَ باسم `q` والموقعُ باسم `search` — يُقبَلان معًا.
+  // The app sends the search as q and the website as search; both are accepted.
   const search = q.search || q.q;
   const list = (v) => (Array.isArray(v) ? v : [v]).filter(Boolean);
-  // اسمُ المدير يفتح حساباتِه ومعها كلَّ حسابٍ لم يُسنَد — راجع utils/collectionsOfficer.
+  // The manager's name opens their own accounts plus every unassigned one: see utils/collectionsOfficer.
   const oc = officerCondition(officer, mgr);
   if (oc) f.$and.push(oc);
   if (grade) f.grade = { $in: list(grade) };
@@ -126,11 +91,7 @@ function partyFilter(q = {}, base = { kind: 'customer', code: { $gt: '' } }, mgr
   if (kind) f.paymentType = { $in: list(kind) };
   if (creditDays) f.creditDays = { $in: list(creditDays).map(Number).filter(Number.isFinite) };
   if (search) {
-    // ── والبحثُ يطوي فروقَ الرسم كما في بقيّة النظام ──────────────────────
-    // كان تعبيرًا نصّيًّا مهروبًا لا غير: مَن كتب «روابى» بالألف المقصورة أو
-    // «شركه» بالهاء لا يجد شيئًا — والاسمُ نفسُه مخزَّنٌ بالياء والتاء
-    // المربوطة. قِيس: «روابي التسويق» تردّ حسابًا، وبأشباه الحروف **صفرًا**.
-    // و`flexSpaceRegex` هي التي تبحث بها صفحاتُ الفواتير والعملاء أصلًا.
+    // Search folds spelling variants like the rest of the system, using flexSpaceRegex (as the invoice and customer pages do); a plain escaped regex missed alef-maqsura and ta-marbuta variants.
     const rx = flexSpaceRegex(String(search));
     f.$or = [{ name: rx }, { code: rx }, { collectionOfficer: rx }, { aliases: rx }];
   }
@@ -138,33 +99,17 @@ function partyFilter(q = {}, base = { kind: 'customer', code: { $gt: '' } }, mgr
 }
 
 /**
- * أعمارُ الديون لكلّ حساب — محسوبةٌ من الفواتير لا مخزَّنةً.
- *
- * لقطةُ الورقة رقمٌ يُكتب مرّةً في الشهر ويشيخ؛ والفواتيرُ هي التفصيل. قِيست
- * الاثنتان: ٢٣٧ حسابًا من ٢٥٤ تتطابقان إلى الهللة، والباقي فرقٌ بين لقطةٍ
- * ودفتر — يُعرَض ليُرى، لا يُخفى.
+ * Debt ageing per account, computed from invoices rather than stored.
+ * The sheet snapshot goes stale; differences between snapshot and ledger are shown, not hidden.
  */
 /**
- * ── والنقديُّ من الدفتر نفسِه، لا من كشوف التشغيل ───────────────────────────
- *
- * كان المستحقُّ النقديُّ يُجمَع من كشوف التشغيل ويُضاف فوق الدفتر — يومَ لم
- * تكن ورقةُ الشحنات النقديّة تدخل النظام. ثمّ دخلت (١٨٣٥ شحنةً في الدفتر)،
- * وبقيت الإضافة: فصار النقديُّ يُعَدّ مرّتين. مكتبُ الشيخ عليه في الدفتر
- * ٢١٬٥٠٠ وكان يظهر ١٠٣ آلاف، وإجماليُّ الأعمار ٢٢٫٠٥ مليونًا واللوحةُ ١٩٫٩٦.
- *
- * وقيمةُ الكشف في التشغيل هي سعرُ الشراء لا ما على العميل — راجع
- * real-selling-price. فالدفترُ وحدَه، بنوعَيه، وتتطابق الأعمارُ واللوحة.
+ * Cash comes from the ledger itself, not from operations sheets.
+ * The old add-on counted cash twice once the cash shipments sheet was imported, and the sheet value is the purchase price, not what the customer owes (see real-selling-price).
  */
 async function agingByParty(partyIds) {
   const today = startOfToday();
-  // ── والحسابُ في القاعدة لا في العقدة ────────────────────────────────────
-  // كانت تُقرأ الفواتيرُ المفتوحةُ كلُّها ثمّ تُجمَع بالجافاسكربت. قِيس ذلك
-  // على الإنتاج: سجلُّ الأعمار ٢٫٧ ثانية، والتنبيهاتُ ٤٫٩، والتقييمُ **١٥٫٤** —
-  // وصفحةُ الفريق كانت تبدو معطَّلةً لأنّ المتصفّح ينتظر خمسَ عشرةَ ثانية.
-  //
-  // والعملُ نفسُه في القاعدة يمرّ على الفهرس ولا ينقل صفًّا واحدًا إلى الشبكة
-  // إلّا المجاميع. والشريحةُ تُحسب بـ`$switch` على فرق التاريخ، فهي حسابٌ
-  // واحدٌ لا تسعةُ مقارناتٍ لكلّ صفّ.
+  // Aggregate in the database, not in Node: reading all open invoices made the ageing, alerts and scoring endpoints take seconds to over ten.
+  // The band is computed with a single $switch on the date difference.
   const rows = await CollectionInvoice.aggregate([
     { $match: { ...OPEN, party: { $in: partyIds } } },
     { $addFields: {
@@ -185,7 +130,7 @@ async function agingByParty(partyIds) {
         { case: { $gte: ['$_days', 15] }, then: '30-' },
       ], default: '15-' } },
     } },
-    // المفتوحُ بباقيه — الجزئيّةُ لا تُعَدّ بقيمتها كلِّها (CollectionInvoice.remainingExpr).
+    // Open means the remaining amount; a partial payment is not counted at full value (CollectionInvoice.remainingExpr).
     { $group: { _id: { p: '$party', b: '$_band', k: '$kind' }, sum: { $sum: CollectionInvoice.remainingExpr }, n: { $sum: 1 } } },
   ]);
 
@@ -219,7 +164,7 @@ exports.aging = async (req, res) => {
       .select('code name paymentType collectionOfficer hoLocation grade salesManagers department region creditLimit creditDays status')
       .lean();
 
-    // الدفترُ وحدَه بنوعَيه — راجع التعليق فوق agingByParty.
+    // Ledger only, both types: see the comment above agingByParty.
     const ageMap = await agingByParty(parties.map((p) => p._id));
     let rows = parties.map((p) => {
       const a = ageMap.get(String(p._id))
@@ -230,7 +175,7 @@ exports.aging = async (req, res) => {
         effectiveOfficer: effectiveOfficer(p.collectionOfficer, mgr), officerIsDefault: isDefaultOfficer(p.collectionOfficer),
       };
     });
-    // شريحةٌ بعينها: تُطبَّق بعد الجمع لا قبله، وإلّا لم تجمع الشرائحُ الإجماليَّ.
+    // A specific band is applied after grouping, otherwise the bands would not sum to the total.
     if (band && BANDS.some((b) => b.key === band)) rows = rows.filter((r) => r.bands[band] !== 0);
 
     const totals = { outstanding: 0, invoices: 0, creditLimit: 0, bands: Object.fromEntries(BANDS.map((b) => [b.key, 0])) };
@@ -247,7 +192,7 @@ exports.aging = async (req, res) => {
       return dir * ((x || 0) - (y || 0));
     });
 
-    // السقفُ يسع ما تطلبه الشاشةُ للتصدير (٥٠٠٠)؛ كان ٥٠٠ فيخرج الملفُّ بأوّل خمسمئةٍ صامتًا.
+    // Cap fits the export size the screen requests (5000); a lower cap silently truncated the file.
     const p = Math.max(1, parseInt(page, 10)); const l = Math.min(20000, Math.max(1, parseInt(limit, 10)));
     const out = { rows: rows.slice((p - 1) * l, p * l), total: rows.length, page: p, pages: Math.ceil(rows.length / l), totals, bands: BANDS };
     cache.set(cacheKey, out, TTL);
@@ -286,7 +231,7 @@ exports.agingFilters = async (req, res) => {
   } catch (e) { res.status(500).json({ message: 'تعذّر جلبُ قيم الفلاتر' }); }
 };
 
-// ── الفواتير ───────────────────────────────────────────────────────────────
+// Invoices
 function invoiceFilter(q = {}) {
   const f = {};
   const list = (v) => (Array.isArray(v) ? v : [v]).filter(Boolean);
@@ -304,22 +249,22 @@ function invoiceFilter(q = {}) {
     if (to) f[field].$lte = new Date(`${to}T23:59:59.999Z`);
   }
   if (search) {
-    // يطوي فروقَ الرسم العربيّ — راجع partyFilter أعلاه.
+    // Folds Arabic spelling variants: see partyFilter above.
     const rx = flexSpaceRegex(String(search));
     f.$or = [{ invoiceNumber: rx }, { partyName: rx }, { partyCode: rx }, { comments: rx }];
   }
   return f;
 }
 
-/** الأيّامُ الثلاثة التي يُقرأ بها عمرُ الفاتورة — تُحسب ولا تُخزَّن. */
+/** The three dates an invoice age is read from; computed, not stored. */
 function decorate(v, today, creditDaysOf) {
   const toDelivery = v.deliveryDate && v.invoiceDate ? Math.floor((new Date(v.deliveryDate) - new Date(v.invoiceDate)) / DAY) : null;
   const toCollection = v.collectionDate && v.deliveryDate ? Math.floor((new Date(v.collectionDate) - new Date(v.deliveryDate)) / DAY) : null;
   const ageDays = daysBetween(v.invoiceDate || v.deliveryDate, today);
   const cd = creditDaysOf ? creditDaysOf(v) : 0;
-  // الاستحقاقُ من التسليم — لا تبدأ المهلةُ قبل أن تصل الفاتورةُ العميلَ.
+  // Due date counts from delivery; the credit term does not start before the invoice reaches the customer.
   const dueDate = v.deliveryDate && cd ? new Date(new Date(v.deliveryDate).getTime() + cd * DAY) : null;
-  // ما حُصِّل لا يُقال عنه «متأخّر» ولا «بقي له كذا» — انتهى أمرُه.
+  // A collected invoice is neither late nor owed; it is settled.
   const isCollected = CollectionInvoice.isCollected(v);
   const daysToDue = dueDate && !isCollected ? Math.floor((dueDate - today) / DAY) : null;
   return {
@@ -335,28 +280,20 @@ function decorate(v, today, creditDaysOf) {
 }
 
 /**
- * كشوفُ التشغيل تحت كلّ فاتورة — تُقرأ لحظةَ القراءة لا من نسخةٍ محفوظة.
- *
- * ── لماذا لا تُقرأ من `reportNumbers` المحفوظة ─────────────────────────────
- * الحقلُ موجودٌ ويُملأ عند الاستيراد، لكنّ كشوفَ التشغيل تصل كلَّ دقيقةٍ من
- * منصّةِ التشغيل: كشفٌ يُكتب عليه رقمُ فاتورةٍ اليومَ لا تعرفه نسخةٌ كُتبت في
- * آخر استيراد. فتُشتقّ هنا من الكشوف نفسِها، فلا يظهر عمودُ «كشوف التشغيل»
- * متأخّرًا عمّا في ملفّ الكشف.
- *
- * والفاتورةُ تجمع كشوفًا: من ٥٥٨ فاتورةً لها كشوف، ٣٥٨ تحتها ثلاثةٌ فأكثر.
- * والباقي بلا كشوفٍ عندنا بحقّ — أكثرُ دفتر التحصيل أقدمُ من نظام التشغيل.
+ * Operations sheets under each invoice, read live rather than from the stored reportNumbers copy.
+ * Sheets arrive every minute from the operations platform, so the stored copy lags the latest import.
+ * An invoice can group several sheets; most older ledger invoices legitimately have none.
  */
 async function attachReportNumbers(rows) {
   const { invoiceNumberKey } = require('../utils/invoiceNumberKey');
   const OperationsWorkflow = require('../models/OperationsWorkflow');
-  const keys = new Map();   // مفتاحٌ مطويّ → أرقامُ الفواتير كما كُتبت
+  const keys = new Map();   // Folded key to invoice numbers as written
   for (const r of rows) {
     const k = invoiceNumberKey(r.invoiceNumber);
     if (k) keys.set(k, true);
   }
   if (!keys.size) return rows;
-  // الاستعلامُ بالأرقام كما كُتبت (فهرسٌ عليها)، والمطابقةُ بعده بالمفتاح
-  // المطويّ — فلا يفوت رقمٌ كُتب بصفرٍ بادئٍ في أحد السجلَّين.
+  // Query by the numbers as written (indexed), then match by folded key so a leading-zero variant in either record is not missed.
   const raw = rows.map((r) => String(r.invoiceNumber || '')).filter(Boolean);
   const sheets = await OperationsWorkflow.find({ invoiceNumber: { $in: raw } })
     .select('reportNumber invoiceNumber').lean();
@@ -382,10 +319,10 @@ exports.invoices = async (req, res) => {
     const { page = 1, limit = 50, band } = req.query;
     const filter = invoiceFilter(req.query);
 
-    // فلترُ الموظّف المسؤول يمرّ عبر الحساب — الفاتورةُ لا تحمل اسمَه.
+    // The officer filter goes through the account; the invoice does not carry the name.
     if (req.query.officer) {
-      // بالرابط لا بالكود: ٣٥٧ شحنةً نقديّةً في الدفتر بلا كود، وحسابُها معروف.
-      // واسمُ المدير يشمل الحساباتِ التي لم تُسنَد (راجع utils/collectionsOfficer).
+      // Filter by link, not code: some cash shipments in the ledger have no code but a known account.
+      // The manager's name also includes unassigned accounts (see utils/collectionsOfficer).
       filter.party = { $in: await CollectionsParty.distinct('_id', {
         kind: 'customer',
         ...officerCondition(req.query.officer, await collectionsManager()),
@@ -393,16 +330,16 @@ exports.invoices = async (req, res) => {
     }
 
     const today = startOfToday();
-    // السقفُ يسع ما تطلبه الشاشةُ للتصدير (٥٠٠٠)؛ كان ٥٠٠ فيخرج الملفُّ بأوّل خمسمئةٍ صامتًا.
+    // Cap fits the export size the screen requests (5000); a lower cap silently truncated the file.
     const p = Math.max(1, parseInt(page, 10)); const l = Math.min(20000, Math.max(1, parseInt(limit, 10)));
 
-    // مهلةُ السداد صفةُ الحساب، فتُقرأ مرّةً وتُلصق بفواتيره.
+    // Credit term is an account property: read once and attached to its invoices.
     const cdById = new Map((await CollectionsParty.find({ kind: 'customer', creditDays: { $gt: 0 } })
       .select('creditDays').lean()).map((x) => [String(x._id), x.creditDays || 0]));
     const creditDaysOf = (v) => cdById.get(String(v.party)) || 0;
 
     if (band && BANDS.some((b) => b.key === band)) {
-      // الشريحةُ شرطٌ على قيمةٍ محسوبة، فتُطبَّق بعد القراءة — والمجموعُ عليها لا على الصفحة.
+      // The band is a condition on a computed value, so it is applied after the read; totals cover the whole result, not the page.
       const all = await CollectionInvoice.find(filter).select('-__v').lean();
       const dec = all.map((v) => decorate(v, today, creditDaysOf)).filter((v) => v.band === band);
       const sum = dec.reduce((s, v) => s + v.total, 0);
@@ -448,35 +385,21 @@ exports.invoiceFilters = async (req, res) => {
   } catch (e) { res.status(500).json({ message: 'تعذّر جلبُ قيم الفلاتر' }); }
 };
 
-// ═══════════════════════════════════════════════════════════════════════════
-//  التنبيهات — تُحسب ولا تُخزَّن
-// ═══════════════════════════════════════════════════════════════════════════
+// Alerts: computed, never stored
 /**
- * تنبيهان لا واحد:
- *
- *   **الحدُّ الائتمانيّ** — مديونيّةُ العميل قاربت السقفَ المتّفق عليه. يُنبَّه
- *   قبل بلوغه لا بعده: بعدَه تكون الشحنةُ قد خرجت.
- *
- *   **الاستحقاق** — فاتورةٌ سُلِّمت ومهلتُها تنتهي بعد أيّام. تُقاس من يوم
- *   التسليم لا الفوترة، فمهلةُ الثلاثين لا تبدأ قبل أن تصل الورقةُ العميل.
- *
- * ولا يُخزَّن تنبيهٌ قطّ: يُحسب من الرصيد والتواريخ في كلّ فتحة. المخزَّنُ
- * وحدَه هو الإسكات — قرارٌ بشريٌّ بأنّ فلانًا رآه.
+ * Two alert kinds. Credit limit: customer debt nears the agreed ceiling, flagged before it is reached.
+ * Due date: a delivered invoice whose term ends in a few days, counted from delivery.
+ * Alerts are computed on each open; only the acknowledgement (a human decision) is stored.
  */
-const LIMIT_WARN_PCT = 80;     // «قارب» = بلغ ثمانين في المئة من سقفه
-const DUE_WARN_DAYS = 3;       // ينبَّه قبل الاستحقاق بثلاثة أيّام
+const LIMIT_WARN_PCT = 80;     // Nearing means 80 percent of the limit.
+const DUE_WARN_DAYS = 3;       // Alerts fire three days before the due date.
 
 /**
- * ── والشاشةُ تعرض خمسةً وتقول «وستُّمئةٍ غيرها» ──────────────────────────────
- * فواتيرُ الاستحقاق ستُّمئةٌ وستّةَ عشر — مئتا كيلوبايتٍ تُنقَل وتُحلَّل على
- * الهاتف ليُرسَم منها خمسةُ صفوف. فالعددُ يُحسَب على الكلّ كما كان (لا يتغيّر
- * رقمٌ يراه أحد)، والصفوفُ تُقتطَع عند `rows`.
- *
- * والقطعُ بعد الذاكرة لا قبلها: المفتاحُ لا يعرف `rows`، فمن طلب خمسةً ومن طلب
- * مئتين يقتسمان حسابًا واحدًا.
+ * The screen shows five rows and a count of the rest. Counts are computed over all rows; rows are truncated at `rows`.
+ * Truncation happens after the cache so the key does not depend on rows and callers share one computation.
  */
 const ALERT_ROWS_MAX = 1000;
-/** الأعدادُ كما هي والصفوفُ مقتطعةٌ — الجوابُ المخزَّنُ كاملٌ لا يُمسّ. */
+/** Counts stay complete and rows are truncated; the cached answer is untouched. */
 const sliceAlerts = (out, rows) => ({
   ...out,
   limit: out.limit.length > rows ? out.limit.slice(0, rows) : out.limit,
@@ -486,8 +409,7 @@ const sliceAlerts = (out, rows) => ({
 // GET /api/collections-dept/ledger/alerts
 exports.alerts = async (req, res) => {
   try {
-    // ومَن لم يطلب عددًا يأخذ الكلّ: القطعُ يُطلَب صراحةً، فلا تغيب صفوفٌ عن
-    // نداءٍ قديمٍ لا يعرف هذا الوسيط.
+    // No count requested means all rows, so an old client that does not send the parameter loses nothing.
     const { rows: rowsQ, ...rest } = req.query || {};
     const rows = Math.min(ALERT_ROWS_MAX, Math.max(1, parseInt(rowsQ, 10) || ALERT_ROWS_MAX));
     const cacheKey = keyOf('alerts', { query: rest, user: req.user });
@@ -501,10 +423,8 @@ exports.alerts = async (req, res) => {
     const parties = await CollectionsParty.find({ ...partyFilter(req.query, await ledgerPartyBase(), mgr), isActive: { $ne: false } })
       .select('code name creditLimit creditDays collectionOfficer hoLocation grade paymentType').lean();
     const ids = parties.map((p) => p._id);
-    // ── والثلاثةُ معًا لا واحدًا بعد واحد ────────────────────────────────────
-    // لا يعتمد أيٌّ منها على نتيجة الآخر، وكانت تُطلب بالتتابع — فثلاثُ رحلاتٍ
-    // إلى العنقود المشترك ثمنُها ثلاثةُ أضعاف الواحدة بلا سبب.
-    // بالرابط لا بالكود المكتوب: كودُ الفاتورة قد يكون فارغًا وحسابُها معروف.
+    // Run the three queries in parallel: none depends on another, and sequential trips to the shared cluster tripled the latency.
+    // Use the link, not the written code: an invoice code may be empty while its account is known.
     const cdByCode = new Map(parties.filter((p) => p.creditDays > 0).map((p) => [String(p._id), p]));
     const [ageMap, acks, open] = await Promise.all([
       agingByParty(ids),
@@ -513,16 +433,16 @@ exports.alerts = async (req, res) => {
         .select('invoiceNumber partyCode partyName party total deliveryDate invoiceDate').lean(),
     ]);
 
-    // ── تنبيهُ الحدّ ────────────────────────────────────────────────────────
+    // Credit limit alert
     const ackLimit = new Map(acks.filter((a) => a.kind === 'limit').map((a) => [String(a.party), a]));
     const limitAlerts = [];
     for (const p of parties) {
       if (!p.creditLimit || p.creditLimit <= 0) continue;
-      // الحدُّ يُقاس على ما على العميل كلِّه — ضريبيًّا كان أم نقديًّا.
+      // The limit is measured against the customer's whole balance, tax or cash.
       const out = ageMap.get(String(p._id))?.outstanding || 0;
       const pct = (out / p.creditLimit) * 100;
       if (pct < warnPct) continue;
-      // الإسكاتُ يسقط إذا ارتفعت المديونيّةُ بعده: «رأيتُه عند ٩٠٪» لا يُسكت ١٢٠٪.
+      // An acknowledgement lapses if debt rises afterwards: seen at 90 percent does not silence 120 percent.
       const ack = ackLimit.get(String(p._id));
       if (ack && out <= (ack.atOutstanding || 0)) continue;
       limitAlerts.push({
@@ -533,17 +453,16 @@ exports.alerts = async (req, res) => {
     }
     limitAlerts.sort((a, b) => b.pct - a.pct);
 
-    // ── تنبيهُ الاستحقاق ────────────────────────────────────────────────────
+    // Due date alert
     const ackDue = new Set(acks.filter((a) => a.kind === 'due').map((a) => `${a.party}::${a.invoiceNumber}`));
     const dueAlerts = [];
     for (const v of open) {
       const p = cdByCode.get(String(v.party)); if (!p) continue;
       const due = new Date(new Date(v.deliveryDate).getTime() + p.creditDays * DAY);
       const inDays = Math.floor((due - today) / DAY);
-      if (inDays > warnDays) continue;                       // بعيدٌ بعد
+      if (inDays > warnDays) continue;                       // Not yet due
       if (ackDue.has(`${v.party}::${v.invoiceNumber}`)) continue;
-      // `dueDate` و`severity` و`code` مشتقّاتٌ لا تُعرَض: الشاشةُ تكتب المهلةَ
-      // من `deliveryDate + creditDays`، وتلوّن من إشارة `daysToDue`.
+      // dueDate, severity and code are derived and not exposed: the screen writes the term from deliveryDate + creditDays and colours from the sign of daysToDue.
       dueAlerts.push({
         kind: 'due', party: v.party, name: v.partyName,
         officer: effectiveOfficer(p.collectionOfficer, mgr), invoiceNumber: v.invoiceNumber, total: v.total,
@@ -560,7 +479,7 @@ exports.alerts = async (req, res) => {
         limitOver: limitAlerts.filter((a) => a.over).length,
         dueSoon: dueAlerts.filter((a) => a.daysToDue >= 0).length,
         overdue: dueAlerts.filter((a) => a.daysToDue < 0).length,
-        // العددُ الكاملُ للصفوف — به تعرف الشاشةُ «وكم غيرها» بعد الاقتطاع.
+        // Full row count, so the screen can show how many more exist after truncation.
         limitTotal: limitAlerts.length,
         dueTotal: dueAlerts.length,
       },
@@ -574,14 +493,14 @@ exports.alerts = async (req, res) => {
   }
 };
 
-// POST /api/collections-dept/ledger/alerts/ack — «رأيتُه»
+// POST /api/collections-dept/ledger/alerts/ack (mark as seen)
 exports.ackAlert = async (req, res) => {
   try {
     const { party, kind, invoiceNumber = '', note = '' } = req.body || {};
     if (!party || !['limit', 'due'].includes(kind)) return res.status(400).json({ message: 'بياناتٌ ناقصة' });
     const p = await CollectionsParty.findById(party).select('_id').lean();
     if (!p) return res.status(404).json({ message: 'الحساب غير موجود' });
-    // يُقيَّد الرصيدُ لحظةَ الإسكات، فيعود التنبيهُ إن ارتفع بعده.
+    // The balance is recorded at acknowledgement time so the alert returns if it rises later.
     const at = kind === 'limit'
       ? (await agingByParty([p._id])).get(String(p._id))?.outstanding || 0 : 0;
     exports.invalidate();
@@ -595,9 +514,7 @@ exports.ackAlert = async (req, res) => {
   } catch (e) { res.status(500).json({ message: 'تعذّر إغلاق التنبيه' }); }
 };
 
-// ═══════════════════════════════════════════════════════════════════════════
-//  الخطّةُ اليوميّة
-// ═══════════════════════════════════════════════════════════════════════════
+// Daily plan
 // GET /api/collections-dept/ledger/tasks
 exports.listTasks = async (req, res) => {
   try {
@@ -628,8 +545,7 @@ exports.createTask = async (req, res) => {
       { party: p._id, date, requestType },
       { $set: {
         party: p._id, partyCode: p.code, partyName: p.name, date, requestType,
-        // مَن لم يُسمَّ له موظّفٌ يأخذ مسؤولَ الحساب — وهو الجوابُ الصحيح غالبًا؛
-        // وحسابٌ لم يُسنَد فمسؤولُه مديرُ القسم.
+        // A task with no named employee goes to the account officer, usually correct; an unassigned account's officer is the department manager.
         officerName: officerName || effectiveOfficer(p.collectionOfficer, await collectionsManager()),
         planned: true, action, status, collected: Number(collected) || 0, notes,
         createdBy: req.user._id,
@@ -661,9 +577,7 @@ exports.deleteTask = async (req, res) => {
   } catch (e) { res.status(500).json({ message: 'تعذّر حذفُ المهمّة' }); }
 };
 
-// ═══════════════════════════════════════════════════════════════════════════
-//  الفريق — مَن يتولّى مَن، وكيف يعمل
-// ═══════════════════════════════════════════════════════════════════════════
+// Team: who handles whom and how they perform
 // GET /api/collections-dept/ledger/team
 exports.team = async (req, res) => {
   try {
@@ -676,12 +590,12 @@ exports.team = async (req, res) => {
     const ageMap = await agingByParty(parties.map((p) => p._id));
     const byOfficer = new Map();
     for (const p of parties) {
-      // لا صفَّ «بلا مسؤول»: ما لم يُسنَد يُعَدّ على مدير القسم، ويُقال كم منه كذلك.
+      // No unassigned row: unassigned accounts count against the department manager, with a count of how many.
       const k = effectiveOfficer(p.collectionOfficer, mgr);
       if (!byOfficer.has(k)) byOfficer.set(k, { officer: k, isManager: !!mgr && k === mgr.name, defaulted: 0, accounts: 0, outstanding: 0, overLimit: 0, tax: 0, cash: 0 });
       const e = byOfficer.get(k);
       if (isDefaultOfficer(p.collectionOfficer)) e.defaulted += 1;
-      // الحدُّ يُقاس على ما على العميل كلِّه — ضريبيًّا كان أم نقديًّا.
+      // The limit is measured against the customer's whole balance, tax or cash.
       const out = ageMap.get(String(p._id))?.outstanding || 0;
       e.accounts += 1; e.outstanding += out;
       if (p.creditLimit > 0 && out > p.creditLimit) e.overLimit += 1;
@@ -696,13 +610,12 @@ exports.team = async (req, res) => {
   } catch (e) { res.status(500).json({ message: 'تعذّر جلبُ الفريق' }); }
 };
 
-// PUT /api/collections-dept/ledger/team/assign — مَن يتولّى هذه الحسابات
+// PUT /api/collections-dept/ledger/team/assign (who handles these accounts)
 exports.assignOfficer = async (req, res) => {
   try {
     const { parties, officer, officerUser } = req.body || {};
     if (!Array.isArray(parties) || !parties.length) return res.status(400).json({ message: 'اختر حسابًا واحدًا على الأقلّ' });
-    // الإسنادُ إلى حسابٍ لا إلى اسمٍ يُكتب: يُحلّ الاسمُ (أو المعرّفُ) إلى مستخدمه،
-    // ويبقى النصُّ للعرض — كما كُتب إن كُتب («التخليص الجمركي» مثلًا)، وإلّا اسمُ الحساب.
+    // Assignment is stored on the account, not on a typed name: the name or id is resolved to its user, and the text is kept for display (as written if given, else the account name).
     const { resolveAssignment } = require('../utils/collectionsOfficer');
     const a = await resolveAssignment({ userId: officerUser, name: officer });
     const text = String(officer || '').trim() || a.text || '';
@@ -714,9 +627,7 @@ exports.assignOfficer = async (req, res) => {
   } catch (e) { res.status(500).json({ message: 'تعذّر إسنادُ الحسابات' }); }
 };
 
-// ═══════════════════════════════════════════════════════════════════════════
-//  تقييمُ الفريق
-// ═══════════════════════════════════════════════════════════════════════════
+// Team scoring
 // GET /api/collections-dept/ledger/performance
 exports.performance = async (req, res) => {
   try {
@@ -729,28 +640,18 @@ exports.performance = async (req, res) => {
     if (to) range.$lte = new Date(`${to}T23:59:59.999Z`);
     const hasRange = !!(from || to);
 
-    // ── ويُجمَع بالرابط لا بالكود المكتوب في الورقة ─────────────────────────
-    //
-    // `partyCode` نسخةٌ من الكود كما كتبته ورقةُ الفواتير، و`party` هو الرابطُ
-    // الذي استقرّ عليه الاستيراد بعد مطابقة الاسم. وهما يفترقان: ورقةُ الأعمار
-    // وورقةُ الفواتير تختلفان في كود عشرة عملاء، وثمانيةٌ وثمانون عميلًا عرفتهم
-    // الفواتيرُ ولم تعرفهم ورقةُ الأعمار فلا كودَ لهم أصلًا.
-    //
-    // فكان الجمعُ بالكود يُسقط ٤٣٣ فاتورةً فيها ٢٫٣٩ مليونًا محصَّلةً و٦١٠ آلافٍ
-    // مفتوحة — تخرج من حساب كلِّ موظّفٍ وكأنّها لم تكن. والرابطُ يَعرف صاحبَها.
+    // Group by the link, not the code typed in the sheet. partyCode is a copy of the invoice sheet's code, while party is the link settled by name matching; they differ for some customers, and grouping by code dropped hundreds of invoices from each employee's account.
     const mgr = await collectionsManager();
     const partyQ = { kind: 'customer', ...(officerCondition(officer, mgr) || {}) };
     const parties = await CollectionsParty.find(partyQ).select('code collectionOfficer creditDays').lean();
-    // المسؤولُ الفعليّ: ما لم يُسنَد يُقيَّم على مدير القسم.
+    // Effective officer: unassigned accounts are scored against the department manager.
     const officerOf = new Map(parties.map((p) => [String(p._id), effectiveOfficer(p.collectionOfficer, mgr)]));
     const cdOf = new Map(parties.map((p) => [String(p._id), p.creditDays || 0]));
     const ids = parties.map((p) => p._id);
     const today = startOfToday();
 
-    // ── والمجاميعُ تُحسب في القاعدة ─────────────────────────────────────────
-    // كانت تسعةُ آلاف فاتورةٍ تُنقَل إلى العقدة لتُجمَع هناك: خمسَ عشرةَ ثانيةً
-    // على الإنتاج، تكفي لأن تبدو الصفحةُ معطَّلة. والمجموعُ عملُ القاعدة.
-    // والأرقامُ المحجوزةُ في التسلسل ليست عملَ أحد — راجع models/CollectionInvoice.unused.
+    // Totals are computed in the database: pulling thousands of invoices into Node took many seconds on production.
+    // Reserved sequence numbers are nobody's work (see models/CollectionInvoice.unused).
     const collectedMatch = { party: { $in: ids }, ...CollectionInvoice.COLLECTED };
     if (hasRange) collectedMatch.collectionDate = range;
     const [collected, open] = await Promise.all([
@@ -759,8 +660,7 @@ exports.performance = async (req, res) => {
         { $addFields: { _base: { $ifNull: ['$deliveryDate', '$invoiceDate'] } } },
         { $group: {
           _id: '$party', n: { $sum: 1 }, amount: { $sum: '$total' },
-          // متوسّطُ أيّام التحصيل يُحسب هنا أيضًا: ما لا تاريخَ له يُهمَل ولا
-          // يُحسب صفرًا — الصفرُ يجرّ المتوسّطَ إلى أسفلَ بلا سبب.
+          // Average collection days is computed here too: rows without a date are skipped, not counted as zero, which would drag the average down.
           days: { $avg: { $cond: [
             { $or: [{ $eq: ['$_base', null] }, { $eq: ['$collectionDate', null] }] }, null,
             { $dateDiff: { startDate: '$_base', endDate: '$collectionDate', unit: 'day' } },
@@ -770,8 +670,7 @@ exports.performance = async (req, res) => {
       CollectionInvoice.aggregate([
         { $match: { ...OPEN, party: { $in: ids } } },
         { $group: { _id: '$party', n: { $sum: 1 }, amount: { $sum: CollectionInvoice.remainingExpr },
-          // ولا يُقاس الاستحقاقُ بتاريخ التسليم وحدَه: فاتورةٌ لم تُسلَّم بعدُ لها
-          // تاريخُ إصدارٍ على أيّ حال، وإسقاطُها تُخفي دَينًا قائمًا.
+          // Not measured by delivery date alone: an undelivered invoice still has an issue date, and dropping it would hide real debt.
           overdue: { $push: { d: { $ifNull: ['$deliveryDate', '$invoiceDate'] }, t: CollectionInvoice.remainingExpr } } } },
       ]),
     ]);
@@ -791,17 +690,14 @@ exports.performance = async (req, res) => {
     for (const o of open) {
       const e = of(o._id);
       e.openCount += o.n; e.openAmount += o.amount;
-      // ── وصفرُ الأيّام ليس «بلا أجل» ────────────────────────────────────────
-      // كان `if (!cd) continue` يُخرج كلَّ حسابٍ أجلُه صفر — أي نقدًا عند
-      // التسليم — من حساب المتأخّر. فأشدُّ الشروط صرامةً كان أقلَّها تأخّرًا في
-      // الشاشة، وهو مقلوبٌ تمامًا.
+      // A zero-day term is not no term: skipping it with `if (!cd) continue` excluded cash-on-delivery accounts from the late calculation, inverting the strictest terms.
       const cd = cdOf.get(String(o._id)) || 0;
       for (const x of o.overdue) {
         if (!x.d) continue;
         const due = new Date(new Date(x.d).getTime() + cd * DAY);
         if (due >= today) { e.withinTermsAmount += x.t; continue; }
         e.overdueCount += 1; e.overdueAmount += x.t;
-        // وما جاوز الستّين يومًا بعد أجله دَينٌ يوشك أن يصير خسارة، لا تأخّرًا.
+        // More than sixty days past term is debt close to a loss, not mere lateness.
         if (due < new Date(today.getTime() - 60 * DAY)) e.agedOver60Amount += x.t;
       }
     }
@@ -809,26 +705,11 @@ exports.performance = async (req, res) => {
     const rows = [...stats.values()].map((e) => {
       const avg = e._dayDen ? Math.round(e._dayNum / e._dayDen) : null;
       delete e._dayNum; delete e._dayDen;
-      // ── نسبةُ التحصيل: ما حُصِّل ممّا **حان موعدُه** ──────────────────────
-      //
-      // كانت `المحصَّل ÷ (المحصَّل + المفتوح)`، وفيها خطآن جعلا الرقمَ يقلب
-      // الترتيب رأسًا على عقب:
-      //
-      //   ① البسطُ تاريخٌ كامل والمقامُ لحظةٌ واحدة. المحصَّلُ يجمع كلَّ ما
-      //     حُصِّل منذ ٢٠٢٢ (ما لم تُحدَّد فترة، وهو الوضعُ الافتراضيّ للشاشة)،
-      //     والمفتوحُ رصيدُ اليوم. فمن طال عهدُه أو كبرت حساباتُه ارتفعت نسبتُه
-      //     من تلقاء نفسها: ٦٣ مليونًا محصَّلةً عبر أربع سنواتٍ مقابل ٤٫٦
-      //     ملايينَ قائمةً اليومَ تعطي ٩٣٪ مهما كان حالُ المحفظة.
-      //
-      //   ② والمقامُ يحسب على الموظّف مالًا **لم يحن موعدُه بعد**. فاتورةٌ
-      //     سُلِّمت أمسِ بأجل ستّين يومًا ليست تقصيرًا، وعدُّها تقصيرًا يعاقب من
-      //     يفوتر أكثر.
-      //
-      // فصارت: ما حُصِّل ÷ (ما حُصِّل + ما تأخّر عن أجله). الطرفان ممّا استُحقّ
-      // فعلًا، والمالُ الذي في مهلته خارج الحساب لأنّه ليس دَينًا متعثّرًا.
+      // Collection rate is collected out of what has fallen due.
+      // The old collected / (collected + open) mixed all-time collections with today's balance, and counted money not yet due against the employee.
+      // Now: collected / (collected + overdue), both sides drawn from amounts actually due; money within its term is not bad debt.
       const due = e.collectedAmount + e.overdueAmount;
-      // وسلامةُ المحفظة سؤالٌ آخرُ يُقرأ بجانبه: كم ممّا في يده لم يتأخّر بعد.
-      // موظّفٌ يحصّل كثيرًا ومحفظتُه متكلّسةٌ ليس كمن يحصّل أقلَّ ودفترُه نظيف.
+      // Portfolio health is a separate question read alongside: how much of what they hold is not yet late. A heavy collector with a stale portfolio differs from a lighter one with a clean ledger.
       return {
         ...e,
         avgDaysToCollect: avg,
@@ -844,7 +725,7 @@ exports.performance = async (req, res) => {
       { $match: taskQ },
       { $group: { _id: '$officerName', total: { $sum: 1 }, done: { $sum: { $cond: [{ $eq: ['$status', 'Done'] }, 1, 0] } }, collected: { $sum: '$collected' } } },
     ]);
-    // ومهمّةٌ بلا اسم موظّفٍ على المدير كذلك — تُضَمّ إلى ما كُتب باسمه.
+    // A task with no employee name belongs to the manager too and is merged with theirs.
     const taskBy = new Map();
     for (const t of tasks) {
       const k = effectiveOfficer(t._id, mgr);
@@ -873,9 +754,7 @@ exports.performance = async (req, res) => {
   }
 };
 
-// ═══════════════════════════════════════════════════════════════════════════
-//  مراجعةُ الربط
-// ═══════════════════════════════════════════════════════════════════════════
+// Link review
 // GET /api/collections-dept/ledger/link-suggestions
 exports.linkSuggestions = async (req, res) => {
   try {
@@ -887,7 +766,7 @@ exports.linkSuggestions = async (req, res) => {
   } catch (e) { res.status(500).json({ message: 'تعذّر جلبُ الاقتراحات' }); }
 };
 
-// POST /api/collections-dept/ledger/link-suggestions/:id — قرارُ إنسان
+// POST /api/collections-dept/ledger/link-suggestions/:id (human decision)
 exports.decideLink = async (req, res) => {
   try {
     const { decision } = req.body || {};
@@ -896,10 +775,8 @@ exports.decideLink = async (req, res) => {
     if (!sug) return res.status(404).json({ message: 'الاقتراح غير موجود' });
 
     if (decision === 'linked' && sug.candidate && sug.party && String(sug.candidate) !== String(sug.party)) {
-      // ── الدمجُ ينقل ما على السجلّ القديم إلى الحساب ────────────────────
-      // اسمُ القديم يصير صيغةً أخرى للحساب، فيُقرأ به كشفُ التشغيل إليه. ثمّ
-      // يُعطَّل القديمُ ولا يُحذف: حذفُه يقطع ما يشير إليه، والتعطيلُ يُخرجه
-      // من القوائم ويُبقي أثرَه.
+      // Merge moves the old record's data to the account: its name becomes another form of the account so operations sheets resolve to it.
+      // The old record is disabled, not deleted: deletion breaks references, disabling hides it from lists and keeps the trail.
       const old = await CollectionsParty.findById(sug.candidate).select('name nameKey').lean();
       if (old) {
         await CollectionsParty.updateOne({ _id: sug.party }, {
@@ -910,8 +787,7 @@ exports.decideLink = async (req, res) => {
     }
     sug.decision = decision; sug.decidedBy = req.user._id; sug.decidedAt = new Date(); sug.decidedHow = 'manual';
     await sug.save();
-    // «حسابٌ مستقلّ» لعميلٍ من التشغيل بلا كود ⇒ يأخذ كودَه الآن بنوع حمولاته،
-    // فلا يبقى خارج الأعمار بعد أن قيل إنّه عميلٌ جديد. راجع classifyCodelessParty.
+    // A standalone account for an operations customer with no code takes its code now by its load type, so it does not stay outside the ageing. See classifyCodelessParty.
     if (decision === 'separate' && sug.candidate) {
       const cand = await CollectionsParty.findById(sug.candidate).lean();
       if (cand && !cand.code && cand.isActive !== false) {
@@ -929,5 +805,5 @@ exports.decideLink = async (req, res) => {
 
 module.exports.BANDS = BANDS;
 module.exports._internals = { partyFilter, invoiceFilter, agingByParty, decorate, bandOf, startOfToday, OPEN, receivablesOnly };
-// واللوحةُ («cdr:») تقرأ الحساباتِ نفسَها: موظّفٌ يُنقَل أو حدٌّ يُرفَع يغيّرها.
+// The dashboard (cdr: cache) reads the same accounts, so moving an employee or raising a limit changes it.
 module.exports.invalidate = () => { cache.clear(CACHE_PREFIX); cache.clear('cdr:'); };

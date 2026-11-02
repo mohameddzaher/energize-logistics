@@ -1,23 +1,8 @@
 /**
- * «التشغيل — خاصّ»: كشوفُ التشغيل نفسُها، بقيمة البيع وما تحتها من ربح.
- *
- * ── كان للسعر نسختان، وصارت واحدة ──────────────────────────────────────────
- * كانت هذه الصفحةُ تحفظ «السعرَ الحقيقيّ» في جدولٍ وحدَها (`PrivateSellingPrice`)
- * لأنّ قيمةَ البيع في الكشف كانت تأتي من المنصّة مساويةً للشراء ولا يجوز أن
- * يُكتب فيها هامشُنا. ثمّ صارت قيمةُ البيع في سير العمل تُكتب بيدٍ وتُدفَع إلى
- * المنصّة بإذن صاحب الشركة، فصار للرقم الواحد موضعان: يُصحَّح هنا فيبقى سيرُ
- * العمل والتحصيلُ على القديم، ويُصحَّح هناك فتبقى هذه الصفحةُ على القديم.
- *
- * فصار المرجعُ **عمودَ `sellingValue` في الكشف وحدَه** (صاحبُ الشركة،
- * ٢٠٢٦/١٠/٢١): هذه الصفحةُ تقرؤه كما يقرؤه سيرُ العمل، وتكتبه بالطريق نفسِه
- * (`workflowController.setSellingValue` — صلاحيّةُ العمود، والقفل، والمنصّةُ
- * أوّلًا، والذاكرةُ والبثّ). ولا يُكتب في `PrivateSellingPrice` بعد اليوم؛ ما
- * فيه يُطابَق مرّةً بسكربت (scripts/reconcilePrivateSellingPrices.js).
- *
- * ── وسعرُ مسار العميل اقتراحٌ لا قيمة ───────────────────────────────────────
- * كان الكشفُ بلا سعرٍ محفوظٍ يُعرَض هنا بسعر مساره من ملفّ العميل، فيقول
- * الجدولُ رقمًا لا يقوله الكشفُ نفسُه. فصار يُعرَض بجانب القيمة (`routePrice`)
- * ليُعتمَد بضغطة — وما يُعتمَد يُكتب في الكشف كأيّ تعديل.
+ * Operations private: the operations manifests themselves, with selling value and the profit under it.
+ * One price, not two. This page used to keep the real price in its own collection (`PrivateSellingPrice`) because the manifest's selling value came from the platform equal to the purchase and could not carry our margin. Later the workflow's selling value became hand-written and pushed to the platform with the owner's approval, leaving two places for one number: fixing it here left workflow and collections stale, and vice versa.
+ * The single reference is now the manifest's `sellingValue` column: this page reads it like the workflow and writes it by the same path (`workflowController.setSellingValue`: column permission, lock, platform first, cache and broadcast). `PrivateSellingPrice` is no longer written; its content is reconciled once by scripts/reconcilePrivateSellingPrices.js.
+ * The customer route price is a suggestion, not a value. An unpriced manifest used to display the route price from the customer file, so the table showed a number the manifest did not. It is now shown beside the value (`routePrice`) to be approved with one click, and an approved one is written to the manifest like any edit.
  */
 const OperationsWorkflow = require('../models/OperationsWorkflow');
 const ShipmentOrderCustomer = require('../models/ShipmentOrderCustomer');
@@ -26,11 +11,7 @@ const cache = require('../utils/ttlCache');
 
 const num = (v) => { const n = Number(v); return Number.isFinite(n) ? n : 0; };
 
-/**
- * الأعمدةُ التي تُقرأ في الجدول — أعمدةُ سير عمل التشغيل نفسُها، ليُرى الكشفُ
- * هنا كما يُرى هناك. وأعمدةُ المال (الفاتورة والتحصيل) تُحجب عمّن لا يملكها
- * بالقاعدة نفسِها التي تحجبها هناك (`stripMoneyFor`).
- */
+/** Columns read in the table: the operations workflow's own columns, so a manifest looks the same here and there. Money columns (invoice, collection) are hidden from those who lack them by the same rule as there (`stripMoneyFor`). */
 const LIST_FIELDS = [
   'reportNumber', 'reportDate', 'fromLocation', 'toLocation', 'branch',
   'carOwner', 'carNumber', 'ownerType', 'executionStatus', 'applicationStatus',
@@ -46,11 +27,8 @@ const LIST_FIELDS = [
 const LIST_PROJECT = Object.fromEntries(LIST_FIELDS.map((f) => [f, 1]));
 
 /**
- * فهرسُ أسعار المسارات: مفتاحُ «عميل|مسار» ← السعر.
- *
- * ── ويُحفَظ دقيقةً ولا يُبنى لكلّ نداء ─────────────────────────────────────
- * بناؤه قراءةُ العملاء كلِّهم بمساراتهم (١٧٠ كيلوبايت). وأيُّ كتابةٍ على عميلٍ
- * تمسحه (خطّافاتُ ShipmentOrderCustomer)، فلا يُقرأ سعرٌ سبق تصحيحَه.
+ * Route price index: key 'customer|route' to price.
+ * Cached for a minute rather than built per call: building it reads every customer with their routes (170 KB), and any write on a customer clears it (ShipmentOrderCustomer hooks), so a price is never read from before its correction.
  */
 async function routePriceIndex() {
   return cache.wrap('opsprivate:routes', 60000, async () => {
@@ -58,9 +36,7 @@ async function routePriceIndex() {
     const customers = await ShipmentOrderCustomer.find({ isActive: { $ne: false } })
       .select('name routes.fromCity routes.toCity routes.price routes.tiers').lean();
     const map = new Map();
-    // ── ومسارُ الشرائح يُقترَح بأعلى شريحةٍ فيه ─────────────────────────────
-    // الكشفُ سيارةٌ واحدة ولا شيءَ فيه يقول كم سيارةً طلب العميل — فلا تُعرَف
-    // شريحتُه. فيُقترَح **أعلى** سعرٍ للمسار (قرارُ صاحب الشركة).
+    // A tiered route is suggested at its highest tier. A manifest is one vehicle and nothing says how many vehicles the customer ordered, so its tier is unknown; the highest route price is suggested (owner decision).
     map.tiers = new Set();
     for (const c of customers) {
       for (const r of c.routes || []) {
@@ -75,7 +51,7 @@ async function routePriceIndex() {
   });
 }
 
-/** سعرُ مسار العميل المقترَح: `{ value, source: 'tier'|'route' }` أو `null`. */
+/** Suggested customer route price: `{ value, source: 'tier'|'route' }` or `null`. */
 function unitPrice(index, username, from, to) {
   const { fold } = require('../models/CollectionsParty');
   const k = `${fold(username || '')}|${routeKey(from, to)}`;
@@ -86,29 +62,24 @@ function unitPrice(index, username, from, to) {
 
 const r2 = (x) => Math.round(x * 100) / 100;
 
-/**
- * مصدرُ القيمة كما يُقرأ: من كتبها بيده (`manual`)، أو دفترُ التحصيل
- * (`collections_book`)، أو المنصّةُ (`platform` — وهو الفارغُ القديم أيضًا).
- */
+/** Value source as read: hand-entered (`manual`), the collections book (`collections_book`), or the platform (`platform`, which is also the old empty value). */
 const sourceOf = (w) => {
   const s = String(w.sellingValueSource || '');
   return s === 'manual' || s === 'collections_book' ? s : 'platform';
 };
 
-/** الصفُّ كما يُعرَض: قيمةُ الكشف نفسُها، وربحُها، واقتراحُ مسار العميل. */
+/** Row as displayed: the manifest's own value, its profit, and the customer route suggestion. */
 function shapeRow(w, index) {
   const sell = num(w.sellingValue);
   const buy = num(w.purchaseValue);
-  // ── وكشفٌ بلا سعرٍ لا ربحَ له ولا خسارة ──────────────────────────────────
-  // الصفرُ في خانة البيع ليس بيعًا بصفر: هو «لم يُسعَّر بعد». وطرحُه من
-  // الشراء يعطي خسارةً كاملةً في كلّ صفٍّ لم يصله سعرُه.
+  // A manifest with no price has no profit or loss. Zero in the selling field means not priced yet, not sold at zero; subtracting it from purchase would show a full loss on every row without a price.
   const profit = sell > 0 ? r2(sell - buy) : null;
   const route = index ? unitPrice(index, w.username, w.fromLocation, w.toLocation) : null;
   const source = sourceOf(w);
   return {
     ...w,
     sellingValue: sell,
-    // (يبقى الاسمُ لنسخ الجوّال القديمة — وهو القيمةُ نفسُها: لا سعرَ ثانٍ.)
+    // (The name stays for old mobile builds; it is the same value, there is no second price.)
     platformSellingValue: sell,
     priceSource: source,
     priceSaved: source !== 'platform',
@@ -119,24 +90,20 @@ function shapeRow(w, index) {
   };
 }
 
-/**
- * ── الفلترُ هو فلترُ سير عمل التشغيل حرفًا بحرف ─────────────────────────────
- * البحثُ والمدى وفلاترُ الأعمدة (`cf_<العمود>`) و«سندات لم تصل» — كلُّها من
- * `buildWorkflowFilter`. وأعمدةُ المال لا يُفلتَر بها مَن لا يراها.
- */
+/** The filter is the operations workflow's filter, verbatim: search, range, column filters (`cf_<column>`) and missing vouchers all come from `buildWorkflowFilter`. Money columns cannot be filtered by those who cannot see them. */
 function baseFilter(req) {
   const { buildWorkflowFilter, canSeeMoney } = require('./workflowController');
   const money = canSeeMoney(req.user && req.user.role);
   return { filter: buildWorkflowFilter(req.query, undefined, money), money };
 }
 
-/** «مسعَّر / غير مسعَّر» — الفلترُ الوحيدُ الذي لا تعرفه صفحةُ سير العمل. */
+/** Priced / unpriced: the only filter the workflow page does not have. */
 const pricedParam = (q) => {
   const v = String((q && q.priced) || '').trim();
   return v === 'yes' || v === 'no' ? v : '';
 };
 
-/** المسعَّر: قيمةُ بيعٍ موجبةٌ في الكشف. وغيرُه: صفرٌ أو فراغ. */
+/** Priced: a positive selling value on the manifest. Anything else: zero or empty. */
 const PRICED = { sellingValue: { $gt: 0 } };
 const withPriced = (filter, priced) => {
   if (!priced) return filter;
@@ -144,7 +111,7 @@ const withPriced = (filter, priced) => {
   return { $and: [filter, cond] };
 };
 
-/** مجاميعُ البطاقات — في القاعدة، على قسمَي «مسعَّر/غير مسعَّر». */
+/** Card totals, computed in the database over the priced/unpriced split. */
 async function priceGroups(filter) {
   const groups = await OperationsWorkflow.aggregate([
     { $match: filter },
@@ -160,7 +127,7 @@ async function priceGroups(filter) {
   return groups.map((g) => ({ priced: !!g._id, n: g.n, b: num(g.b), sell: g._id ? num(g.s) : 0 }));
 }
 
-/** يجمع المجموعات إلى أرقام البطاقات. */
+/** Sums the groups into the card numbers. */
 function summarize(groups) {
   let sell = 0; let buyPriced = 0; let buyAll = 0; let priced = 0; let unpriced = 0; let total = 0;
   for (const g of groups) {
@@ -175,17 +142,14 @@ function summarize(groups) {
     sumPurchase: r2(buyPriced),
     sumPurchaseAll: r2(buyAll),
     sumPurchaseUnpriced: r2(buyAll - buyPriced),
-    // القيمةُ واحدةٌ الآن — يبقى الاسمُ لمن يقرؤه.
+    // The value is single now; the name stays for its readers.
     sumPlatformSelling: r2(sell),
     profit: r2(sell - buyPriced),
     margin: sell ? r2(((sell - buyPriced) / sell) * 100) : 0,
   };
 }
 
-/**
- * الصفوفُ المطابقة (بفلتر «مسعَّر» إن طُلب) مرتّبةً كالجدول.
- * `skip/limit` للصفحة؛ وبلا حدٍّ للتصدير (بسقفٍ عاقل).
- */
+/** Matching rows (with the priced filter if requested) in table order. `skip/limit` for the page; no limit for export (with a sane cap). */
 async function matchingRows(filter, priced, { skip = 0, limit = 0 } = {}) {
   const f = withPriced(filter, priced);
   let q = OperationsWorkflow.find(f).select(LIST_PROJECT).sort({ createdAt: -1 });
@@ -222,35 +186,21 @@ exports.list = async (req, res) => {
   }
 };
 
-// GET /api/operations-private/stats — مجاميعُ الفلتر كلِّه لا الصفحةِ المعروضة.
-//
-// ── والربحُ يُحسب على ما سُعِّر وحدَه ─────────────────────────────────────
-// الكشفُ الذي لم يصله سعرُ بيعه بعد ليس صفقةً بلا إيراد: هو صفقةٌ لم يُكتب
-// إيرادُها. فجمعُ شرائه مع بيعٍ صفرٍ يصنع «خسارةً» لا وجودَ لها. فتُفصَل:
-// ربحٌ على المسعَّر، وشراءُ غيرِ المسعَّر يُقال وحدَه ليُعرَف حجمُ ما ينقص.
+// GET /api/operations-private/stats - totals of the whole filter, not the displayed page.
+// Profit is computed on priced manifests only. A manifest whose selling price has not arrived is a deal whose revenue is not written yet, not one without revenue; adding its purchase to a zero sale fabricates a loss. So profit is on priced rows, and the purchase of unpriced ones is reported separately to show the missing size.
 exports.stats = async (req, res) => {
   try {
     const { filter } = baseFilter(req);
     const priced = pricedParam(req.query);
-    // ── والمجاميعُ تُحفَظ كما تُحفَظ اللوحات ────────────────────────────────
-    // تجميعُ ستٍّ وثلاثين ألفَ كشفٍ على ثلاثيّ (عميل، من، إلى) يأخذ قرابةَ
-    // الثانية، وتُطلَب مع كلّ فتحةٍ وكلّ خبرٍ حيٍّ من مزامنة التشغيل. فيُقدَّم
-    // آخرُ حسابٍ فورًا ويُعاد في الخلف بعد نصف دقيقة، وتصحيحُ سعرٍ يمسحه في
-    // حينه (updatePrice) فلا يُقرأ رقمٌ سبق تصحيحَه.
+    // Totals are cached like dashboards. Aggregating 36,000 manifests by (customer, from, to) takes about a second and is requested on every open and every live event from the operations sync. The last result is served at once and recomputed in the background after 30s; a price correction clears it immediately (updatePrice), so a pre-correction number is never read.
     const key = `opsprivate:stats:${req.user.role}:${JSON.stringify(req.query || {})}`;
     const body = await cache.wrapStale(key, 30000, 10 * 60 * 1000, async () => {
       let groups = await priceGroups(filter);
       if (priced) groups = groups.filter((g) => g.priced === (priced === 'yes'));
       const out = summarize(groups);
 
-      // ── وتوزيعُ حالات الطلب، ليُفلتَر منه ──────────────────────────────────
-      // الشاشةُ كانت تعرض المالَ وحدَه، ولا سبيلَ لرؤية «ما هو في الطريق الآن»
-      // إلّا بفتح قائمة العمود. وهي البطاقاتُ نفسُها في «سير عمل التشغيل»،
-      // فتُحسَب هنا كما تُحسَب هناك: على الفلتر كلِّه لا على الصفحة المعروضة.
-      //
-      // ويُحسَب على `filter` قبل قسمة «مسعَّر/غير مسعَّر»: تلك قسمةٌ تقع على
-      // المجموعات لا على الكشوف، فخلطُها بعدّ الحالات يعطي رقمًا لا يطابق ما
-      // يفتحه الضغطُ عليه — وهو العطبُ الذي يُقرأ كذبًا في البطاقة.
+      // Order status distribution, for filtering. The screen showed money only, with no way to see what is on the road now except opening the column list. These are the same cards as in the operations workflow, computed the same way: on the whole filter, not the displayed page.
+      // It runs on `filter` before the priced/unpriced split, since that split applies to groups, not manifests; mixing it into the status counts would give a number that does not match what clicking it opens.
       const OperationsWorkflow = require('../models/OperationsWorkflow');
       const rows = await OperationsWorkflow.aggregate([
         { $match: filter },
@@ -273,23 +223,18 @@ exports.stats = async (req, res) => {
 };
 
 /**
- * GET /api/operations-private/export — كلُّ ما طابق الفلتر (أو الجدولُ كلُّه بـ
- * `scope=all`) بأسعارنا المحلولة، ملفَّ إكسل يُبنى في الخادم كما يُبنى تصديرُ
- * سير العمل: عشراتُ آلاف الصفوف لا تعبر المتصفّحَ خامًا.
- * و`format=json` يردّ الصفوفَ نفسَها (للجوّال وللتحقّق)، بسقف `EXPORT_CAP`.
+ * GET /api/operations-private/export
+ * Everything matching the filter (or the whole table with `scope=all`) with our resolved prices, as an Excel file built on the server like the workflow export; tens of thousands of rows should not cross the browser raw. `format=json` returns the same rows (for mobile and verification), capped at `EXPORT_CAP`.
  */
 const EXPORT_CAP = 60000;
-/**
- * البناءُ نفسُه لطلبِ تصديرٍ في الخلفيّة (controllers/exportJobsController) —
- * فالملفُّ واحدٌ سواءٌ نُزِّل في الحال أو جاء إشعارُه بعد حين.
- */
+/** The same build for a background export request (controllers/exportJobsController), so the file is identical whether downloaded now or notified later. */
 exports.buildExportFile = async (query = {}, user = {}) => {
   const { shaped, money } = await exportRowsFor(query, user);
   const buf = await buildPrivateWorkbook(shaped, money);
   return { buf, rows: shaped.length, name: `operations-private-${new Date().toISOString().slice(0, 10)}.xlsx` };
 };
 
-/** الصفوفُ المشكَّلةُ للتصدير — يقرؤها الردُّ المباشر وطلبُ الخلفيّة معًا. */
+/** Rows shaped for export, read by both the direct response and the background request. */
 async function exportRowsFor(query, user) {
   const all = String(query.scope || '') === 'all';
   const q = all ? {} : query;
@@ -327,7 +272,7 @@ exports.exportRows = async (req, res) => {
   }
 };
 
-/** المصنَّفُ نفسُه بأعمدته وترجماته — من موضعٍ واحدٍ لا اثنين. */
+/** The workbook itself with its columns and translations, from one place. */
 async function buildPrivateWorkbook(shaped, money) {
   {
     const { SHIPMENT_STATUS_AR } = require('../config/constants');
@@ -387,8 +332,7 @@ async function buildPrivateWorkbook(shaped, money) {
     ];
     const cols = money ? COLUMNS : COLUMNS.filter(([, , tag]) => tag !== 'money');
     const aoa = [cols.map(([h]) => h), ...shaped.map((w) => cols.map(([, get]) => get(w)))];
-    // كتابةُ المصنَّف في خيطٍ عامل — وإلّا جمَّد هذا التصديرُ كلَّ طلبٍ آخرَ
-    // على هذا العامل ثلاثين ثانية. راجع utils/xlsxBuilder.
+    // Workbook writing runs in a worker thread; otherwise this export would freeze every other request on this worker for thirty seconds. See utils/xlsxBuilder.
     const buf = await require('../utils/xlsxBuilder').buildXlsx(aoa, {
       sheetName: 'التشغيل خاص',
       cols: cols.map(([h]) => ({ wch: Math.max(h.length + 4, 14) })),
@@ -398,14 +342,9 @@ async function buildPrivateWorkbook(shaped, money) {
 }
 
 /**
- * PUT /api/operations-private/:id — قيمةُ البيع وحدَها، في الكشف نفسِه.
- *
- * بالطريق الذي يكتب به سيرُ العمل حرفًا (`setSellingValue`): صلاحيّةُ العمود
- * (مَن ليس في SELLING_ROLES يُردّ ٤٠٣ هنا كما هناك)، والقفلُ، والمنصّةُ أوّلًا
- * (رفضُها = لا حفظ)، ومصدرُ `manual` فلا تكتب المزامنةُ فوقها، والذاكرةُ تُمسح
- * قبل البثّ. فما يُكتب هنا يراه سيرُ العمل والتحصيلُ والمنصّةُ في الحال.
- *
- * ويُعلَّم ملفُّ العميل كما كان: هذا آخرُ سعرٍ عُمل به على هذا المسار.
+ * PUT /api/operations-private/:id - the selling value only, on the manifest itself.
+ * It uses the workflow's write path exactly (`setSellingValue`): column permission (anyone outside SELLING_ROLES gets 403 here as there), lock, platform first (its rejection means no save), source `manual` so the sync does not overwrite it, and the cache cleared before the broadcast. What is written here is seen at once by the workflow, collections and the platform.
+ * The customer file is also marked: this is the latest price used on this route.
  */
 exports.updatePrice = async (req, res) => {
   try {
@@ -416,10 +355,7 @@ exports.updatePrice = async (req, res) => {
     const w = out.body.workflow;
     const value = Number(w.sellingValue) || 0;
 
-    // ── والتصحيحُ يُعلِّم ملفَّ العميل ────────────────────────────────────
-    // مَن صحّح سعرَ كشفٍ إنّما يقول «هذا سعرُنا على هذا المسار اليوم» — وهو
-    // نفسُه الرقمُ الذي تقترحه هذه الصفحةُ وشاشةُ إنشاء الشحنة لما بعده.
-    // ولا يُعلِّمه إلّا من له أن يكتب سعرَ وجهة.
+    // A correction marks the customer file. Fixing a manifest's price says this is our price on this route today, the same number this page and shipment creation suggest afterwards. Only someone allowed to write a destination price marks it.
     let learned = null;
     if (!out.body.unchanged && value > 0) {
       try {
@@ -449,11 +385,7 @@ exports.updatePrice = async (req, res) => {
   }
 };
 
-/**
- * التحليلُ — بطاقاتُ لوحة مدير التشغيل ورسومُها، على نفس البيانات.
- * الحسابُ في `opsAnalyticsController` كي يكون واحدًا لهذه الصفحة وللوحة طلبات
- * الشحنات — ولا يختلف رقمٌ بين شاشتين.
- */
+/** Analytics: the operations manager dashboard cards and charts over the same data. The computation lives in `opsAnalyticsController` so this page and the shipment-orders dashboard share one result and a number never differs between screens. */
 exports.analytics = require('./opsAnalyticsController').analytics;
 exports.analyticsFilters = require('./opsAnalyticsController').filters;
 

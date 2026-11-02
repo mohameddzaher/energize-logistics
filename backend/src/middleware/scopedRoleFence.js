@@ -1,17 +1,7 @@
 /**
- * سياجُ الأدوار المحصورة — الحسابُ الخارجيُّ لا يصل إلّا ما كُتب له.
- *
- * يُركَّب على `/api/` كلِّها قبل حارس الصفحات وحرّاس الأقسام. لا يمسّ غيرَ
- * الأدوار المحصورة (config/scopedRoles)، ولا يردّ على باب عامّ: بلا توكن يمضي
- * الطلبُ إلى حارس المسار نفسِه كما كان.
- *
- * ── لماذا قائمةُ سماح ─────────────────────────────────────────────────────────
- * في النظام نقاطٌ كثيرةٌ تكتفي بأن يكون الطالبُ مسجَّلًا. ومنعُها واحدةً واحدةً
- * يعني أنّ أوّلَ نقطةٍ تُضاف بعد اليوم مفتوحةٌ للشريك حتى يتذكّرها أحد. فالقاعدةُ
- * معكوسة: ما لم يُكتب في `api` مغلق.
- *
- * والمقارنةُ على المسار بعد فكّ ترميزه، ويُرفَض ما فيه `..`: مسارٌ يبدأ ببادئةٍ
- * مسموحةٍ ثمّ يصعد منها لا يُقرأ مسموحًا.
+ * Scoped-role fence: an external account reaches only what is written for it. Mounted on all of `/api/` before the page and section guards; touches only scoped roles (config/scopedRoles) and passes public doors on to the route's own guard when there is no token.
+ * An allowlist, because many endpoints only require a logged-in caller and a blocklist would leave every new endpoint open to the partner: whatever is not listed in `api` is closed.
+ * The path is compared after decoding and anything containing `..` is rejected.
  */
 const { resolveUser } = require('./auth');
 const { scopeOf } = require('../config/scopedRoles');
@@ -24,7 +14,7 @@ const scopedRoleFence = async (req, res, next) => {
     const scope = user && scopeOf(user.role);
     if (!scope) return next();
     let path = (req.originalUrl || req.url || '').split('?')[0];
-    try { path = decodeURIComponent(path); } catch (_) { /* يبقى كما هو */ }
+    try { path = decodeURIComponent(path); } catch (_) { /* Unchanged. */ }
     const ok = !/(^|\/)\.\.?(\/|$)/.test(path) && scope.api.some((p) => within(path, p));
     if (ok) return next();
     return res.status(403).json({
@@ -32,8 +22,7 @@ const scopedRoleFence = async (req, res, next) => {
       message: 'هذا الحساب مخصّص لصفحة واحدة / This account is limited to one page',
     });
   } catch (e) {
-    // السياجُ يحرس حسابًا خارجيًّا، فعطبُه يُغلق ولا يفتح — لكن على المحصور وحدَه:
-    // لا نعرف هنا إن كان الطالبُ محصورًا، فيُترك لحرّاس المسار.
+    // The fence guards an external account, so its own failure closes rather than opens, but only for scoped users. Here we do not know whether the caller is scoped, so it is left to the route guards.
     return next();
   }
 };

@@ -1,30 +1,6 @@
 /**
- * فهرسُ صفحات النظام — الوحدةُ الأصغر في الصلاحيّات.
- *
- * ── القسمُ يقول ماذا يُفعَل، والصفحةُ تقول أين ────────────────────────────────
- * مصفوفةُ الأقسام (`config/sections.js`) تجيب عن سؤالٍ واحد: أيقرأ هذا الدورُ
- * هذا القسمَ أم يكتب فيه؟ وهو سؤالٌ صحيحٌ وناقص: قسمُ المركبات تسعَ عشرةَ
- * صفحة، ومن مُنح «تعديل» مُنحها كلَّها — سجلُّ المركبات وبترو آب وإعداداتُ
- * القسم وتقييمُ الأداء معًا. ولا سبيلَ إلى أن يُعطى موظّفٌ صفحةَ بترو آب وحدَها.
- *
- * فصار للصلاحيّة مستويان:
- *   • القسم  → `none | view | edit` — وهو **حارسُ الـ API** (راجع sectionGate).
- *   • الصفحة → مسموحةٌ أو لا — وهي **أيُّ الشاشات تُفتَح**، داخل ما منحه القسم.
- *
- * والصفحةُ لا تتجاوز قسمَها: من لا يملك القسم لا تفتح له صفحةٌ منه مهما أُشِّرت.
- *
- * ── وهي تحرس البيانات لا الشاشةَ وحدَها ──────────────────────────────────────
- * كان هذا الموضعُ يقول إنّ صلاحيّةَ الصفحة تحرس الشاشاتِ فحسب، لأنّ الصفحةَ
- * تنادي عشرَ نقاطٍ والنقطةَ تخدم خمسَ صفحاتٍ فلا انطباق. وقلبُ السؤال يحلّها:
- * لا يُسأل «أيُّ نقاطٍ لهذه الصفحة؟» بل **«أيُّ صفحاتٍ تنادي هذه النقطة؟»** —
- * فإن كانت كلُّها مغلقةً على الدور رُدَّت النقطةُ ٤٠٣.
- *
- * والخريطةُ تُستخرَج من الشيفرة لا تُكتب باليد (`scripts/genPageApis`)، ويحرسها
- * `middleware/pageGate`.
- *
- * ── والفهرسُ يُولَّد ────────────────────────────────────────────────────────────
- * من الشريط الجانبيّ نفسِه (`scripts/genPageCatalog.js`)، فالصفحةُ الجديدة تظهر
- * في شاشة الصلاحيّات من يوم وُلدت. راجع رأسَ ذلك الملفّ.
+ * Page catalogue: the smallest unit of permissions.
+ * Section access (none/view/edit) guards the API; page access decides which screens open within it. Generated from the sidebar (scripts/genPageCatalog.js); the endpoint map is generated from code (scripts/genPageApis) and enforced by middleware/pageGate.
  */
 const { pages } = require('./pages.json');
 
@@ -36,27 +12,13 @@ const byPage = new Map(PAGES.map((p) => [p.key, p]));
 const getPage = (key) => byPage.get(key) || null;
 const isPage = (key) => KEY_SET.has(key);
 
-/** صفحاتُ قسمٍ بعينه، بترتيب ظهورها في الشريط. */
+/** Pages of one section, in sidebar order. */
 const pagesOfSection = (sectionKey) => PAGES.filter((p) => p.section === sectionKey);
 
-/** الأقسامُ كما يعرفها الفهرس — تشمل غيرَ المُدارة (Main، Admin، Portal…). */
+/** Sections as the catalogue knows them, including unmanaged ones (Main, Admin, Portal). */
 const PAGE_SECTIONS = [...new Set(PAGES.map((p) => p.section))];
 
-/**
- * ── والخدمةُ الذاتيّةُ بياناتُ صاحبها لا بياناتُ قسم ─────────────────────────
- *
- * «ملفي» و«إجازاتي» و«طلباتي» و«الإعدادات» و«موافقاتُ الإجازات» ليست قسمًا
- * يُمنَح ويُسلَب: هي ما يراه كلُّ موظّفٍ عن نفسِه. والشريطُ الجانبيُّ يقول ذلك
- * صراحةً — شرطُها `isInternal(role)`: كلُّ دورٍ ليس شريكًا خارجيًّا.
- *
- * وكانت طبقةُ الصفحات تخالفه في حالةٍ واحدة: الدورُ المصنوعُ من الشاشة لا يرث
- * شيئًا، وقسمُ الخدمة الذاتيّة غيرُ مُدارٍ بالمصفوفة — فلا هو موروثٌ ولا هو
- * ممنوحٌ، فاختفى عن صاحبه. فمن صنع «متدرّبًا» لم يجد المتدرّبُ رصيدَ إجازاته
- * ولا موضعَ كلمةِ مروره، ولا شيءَ في الشاشة يقول لماذا.
- *
- * فهذه هي الاستثناءُ المكتوب: قسمٌ شخصيٌّ أصلُه مفتوحٌ لكلّ دورٍ داخليّ، ويبقى
- * إغلاقُه بالتأشير صراحةً ممكنًا كأيّ صفحةٍ أخرى.
- */
+/** Self-service pages show the user's own data, not a section. They are open to every internal role (isInternal) unless explicitly unticked, so a custom role that inherits nothing still reaches them. */
 const PERSONAL_SECTIONS = new Set(['Self Service']);
 
 module.exports = {

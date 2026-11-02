@@ -1,27 +1,10 @@
 const mongoose = require('mongoose');
 
 /**
- * صفٌّ من «تقرير الفروع» — دفترُ مدير التشغيل اليوميّ.
- *
- * ── لماذا يدخل النظامَ سجلًّا ───────────────────────────────────────────────
- * هذا التقريرُ هو الذي يُبنى عليه كلُّ تحليلٍ يُطلَب في القسم، وفيه أعمدةٌ
- * **لا وجودَ لها في كشوف التشغيل عندنا**:
- *   · سببُ عدم التحقيق (السائقُ وجد حمولةً أخرى، الحمولةُ غير جاهزة…)
- *   · نوعُ الإيجار (تحويل آجل / كاش آجل / كاش قدّام)
- *   · نوعُ المورد (مورد / سائقٌ فرديّ / شركةُ تنشيط)
- *   · مندوبُ المبيعات ومندوبُ التشغيل لكلّ حمولة
- *   · وسعرُ البيع الحقيقيّ (منصّةُ التشغيل تكتب البيعَ مساويًا للشراء)
- *
- * وكانت تُقرأ في إكسل فقط. فما لم يكن في النظام لم يكن في أيّ لوحة.
- *
- * ── وصفُّه ليس حمولةً واحدة ────────────────────────────────────────────────
- * `trips` عددُ الطلبات في الصفّ: العميلُ طلب خمسَ عربات على المسار نفسِه في
- * اليوم نفسِه، فسعرُ البيع سعرُ **العربة الواحدة** و`sellTotal` المضروبُ.
- * فمن جمع `sell` بلا ضربٍ أخطأ، ومن عدَّ الصفوفَ رحلاتٍ أخطأ.
- *
- * ── والمصدرُ يُستبدَل كاملًا ────────────────────────────────────────────────
- * الملفُّ يُحدَّث ويُعاد استيرادُه؛ ولا يكتب النظامُ في هذا السجلّ شيئًا. فلا
- * دمجَ ولا مزامنة: يُمسح ويُكتب، ومعه اسمُ الملفّ وتاريخُ الاستيراد.
+ * A row of the branches report, the operations manager's daily ledger.
+ * Stored as a record because it has columns missing from the operations statements: reason a trip was not fulfilled, rental type, supplier type, sales and operations reps per load, and the real selling price.
+ * `trips` is the order count in the row: `sell` is per vehicle and `sellTotal` is the multiplied total, so sums must multiply and rows are not trips.
+ * The source file is replaced wholesale on re-import: the collection is wiped and rewritten with file name and import date.
  */
 const branchReportRowSchema = new mongoose.Schema({
   day: { type: String, trim: true, default: '', index: true },   // YYYY-MM-DD
@@ -35,22 +18,22 @@ const branchReportRowSchema = new mongoose.Schema({
   opsRep: { type: String, trim: true, default: '', index: true },
   salesRep: { type: String, trim: true, default: '', index: true },
   rentType: { type: String, trim: true, default: '', index: true },
-  payType: { type: String, trim: true, default: '', index: true },  // دفع العميل: ضريبي/كاش
+  payType: { type: String, trim: true, default: '', index: true },  // Customer payment type: tax or cash
   fromCity: { type: String, trim: true, default: '' },
   toCity: { type: String, trim: true, default: '' },
 
-  trips: { type: Number, default: 0 },      // عدد الطلبات في الصفّ
-  achieved: { type: Number, default: 0 },   // عدد المحقق
-  failed: { type: Number, default: 0 },     // عدد غير المحقق
+  trips: { type: Number, default: 0 },      // Number of orders in the row
+  achieved: { type: Number, default: 0 },   // Number fulfilled
+  failed: { type: Number, default: 0 },     // Number not fulfilled
   failReason: { type: String, trim: true, default: '', index: true },
 
-  sell: { type: Number, default: 0 },       // سعرُ البيع للعربة الواحدة
-  buy: { type: Number, default: 0 },        // سعرُ الشراء للعربة الواحدة
-  sellTotal: { type: Number, default: 0 },  // اجمالي البيع كما في الورقة
-  buyTotal: { type: Number, default: 0 },   // اجمالي الشراء
-  gp: { type: Number, default: 0 },         // الهامش كما في الورقة
+  sell: { type: Number, default: 0 },       // Selling price per vehicle
+  buy: { type: Number, default: 0 },        // Buying price per vehicle
+  sellTotal: { type: Number, default: 0 },  // Total sales as in the sheet
+  buyTotal: { type: Number, default: 0 },   // Total purchases
+  gp: { type: Number, default: 0 },         // Margin as in the sheet
 
-  seq: { type: Number, default: 0 },        // تسلسلُ الصفّ في الورقة
+  seq: { type: Number, default: 0 },        // Row sequence in the sheet
   sourceFile: { type: String, trim: true, default: '' },
   importedAt: { type: Date, default: Date.now },
 }, { timestamps: false });

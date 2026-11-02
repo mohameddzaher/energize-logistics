@@ -1,27 +1,8 @@
 /**
- * شيتاتُ الأوردرات — يديرها سكربتُ جوجل (Apps Script) لا رابطٌ عامّ.
- *
- * طلبُ صاحب الشركة (٢٠٢٦/١٠/٢٠): الملفُّ ملكُ النظام. المناديبُ وأسماؤهم
- * ومشرفوهم ومشاريعُهم تأتي من النظام وحدَه، والمشرفُ لا يكتب في الشيت إلّا أرقامَ
- * الأوردرات في خانات الأيّام — والباقي مقفول. ومن نُقل إلى مشروعٍ آخر ظهر في
- * ملفّ مشروعه الجديد، وكُتب في خانات الأيّام التي لم يكن فيها هنا «في <المشروع>».
- *
- * فالسكربتُ (في حساب جوجل صاحب الملفّات) يطلب من هنا «تخطيطَ» كلّ شهر —
- * الصفوفَ والأرقامَ والتسميات — ويرسمه، ويرسل كلَّ رقمٍ يُكتب في خانةٍ إلى هنا في
- * لحظته. فالأرقامُ في الاتّجاهين، والآخرُ هو المعتمد.
- *
- *   GET  /api/public/b2c-sheets/layout?project=Keeta&months=2026-10,2026-11|all&token=
- *   POST /api/public/b2c-sheets/edit      { token, project, edits: [{ month, id, day, value }] }
- *   POST /api/public/b2c-sheets/register  { token, project, spreadsheetId, url }
- *   GET  /api/public/b2c-sheets/stamps?project=&token=   بصمةُ كلّ شهر (ما تغيّر يُعاد رسمُه)
- *   POST /api/public/b2c-sheets/order     { token, project, month, ids: [iqama] }
- *
- * ومسؤولو القسم (٢٠٢٦/١٠/٢١): بريدُ جوجل لهم يُحفظ هنا ويصل السكربتَ مع التخطيط،
- * فيُضافون محرّرين لحماية كلّ ورقة — يكتبون في أيّ يومٍ من أيّ شهر (والقديمةُ لهم
- * وحدَهم)، ويسحبون الصفوفَ فيُحفظ ترتيبُ المناديب (B2CSheetOrder) ويسري على النظام كلِّه.
- *
- * والمصادقةُ بمفتاحٍ يولّده الخادم (models/B2COrderSheet ← sheetsToken) ويصل السكربتَ
- * مضمَّنًا فيه حين يُحمَّل من النظام — جوجل لا يحمل جلسة.
+ * Order sheets managed by a Google Apps Script, not a public link. The system owns the file: the script requests each month's layout, draws it, and sends every typed number back at once; the latest edit wins. Section managers' emails are protection editors.
+ * GET /api/public/b2c-sheets/layout?project=Keeta&months=2026-10,2026-11|all&token=
+ * POST /api/public/b2c-sheets/edit
+ * Auth is a server-generated key (models/B2COrderSheet sheetsToken) embedded in the script, since Google carries no session.
  */
 const crypto = require('crypto');
 const E = require('../utils/b2cEntry');
@@ -55,7 +36,7 @@ async function projectOf(name) {
   return P.rows.find((x) => [x.name, x.nameAr, x.code].some((n) => n && E.fold(n) === E.fold(name))) || null;
 }
 
-/** الشهورُ المطلوبة: «all» أو قائمةٌ مفصولةٌ بفاصلة (YYYY-MM). */
+/** Requested months: 'all' or a comma-separated list (YYYY-MM). */
 function monthsOf(q) {
   const out = [];
   if (S(q) === 'all') {
@@ -66,23 +47,18 @@ function monthsOf(q) {
   return S(q).split(',').map((x) => x.trim()).filter((x) => /^\d{4}-\d{2}$/.test(x));
 }
 
-/** مشروعُ المندوب في كلّ يوم — utils/b2cEntry.projectTimeline. */
+/** The rep's project on each day; see utils/b2cEntry.projectTimeline. */
 const projectTimeline = E.projectTimeline;
 
-// ═══════════════════════════════════════════════════════════════════════════
-//  ترتيبُ المناديب وبريدُ مسؤولي القسم (صاحبُ الشركة، ٢٠٢٦/١٠/٢١)
-// ═══════════════════════════════════════════════════════════════════════════
+// Rep order and section managers' emails
 
-/** الترتيبُ المحفوظ للمشروع — معرّفاتُ صفوف السجلّ بالترتيب. */
+/** Saved order for the project: registry row ids in order. */
 async function orderOf(projectId) {
   const { B2CSheetOrder } = require('../models/B2COrderSheet');
   return B2CSheetOrder.findById(projectId).lean();
 }
 
-/**
- * دمجُ ترتيبٍ جزئيّ (مناديبُ شهرٍ واحد) في ترتيب المشروع كلِّه: مَن أُرسلوا يأخذون
- * الخاناتِ التي كانوا فيها بالترتيب الجديد، والباقون في أماكنهم، والجددُ في الآخر.
- */
+/** Merges a partial order (reps of one month) into the whole project's order: the sent reps take the slots they held, in the new order; the others stay in place; new ones go last. */
 function mergeOrder(global, part) {
   const seen = new Set();
   const P = part.map(String).filter((id) => id && !seen.has(id) && seen.add(id));
@@ -104,7 +80,7 @@ async function saveOrder(project, ltIds, { user = null, source = '' } = {}) {
   return order;
 }
 
-/** بريدُ جوجل لمسؤولي القسم — محرّرو الحماية في الشيتات. */
+/** Google emails of the section managers, protection editors on the sheets. */
 async function headEmails() {
   const { B2CSheetsKey, sheetsToken } = require('../models/B2COrderSheet');
   await sheetsToken();
@@ -123,11 +99,7 @@ async function setHeadEmails(list) {
   return emails;
 }
 
-/**
- * بصمةُ كلّ شهر — تتغيّر إذا تغيّر فيه رقمٌ (على النظام أو من الشيت)، أو تغيّر ترتيبُ
- * المشروع، أو بريدُ المسؤولين. فيعيد السكربتُ رسمَ الشهور القديمة التي تغيّرت وحدَها
- * (والشهرُ الماضي والحاليّ والقادم يُرسَم كلَّ مرّة).
- */
+/** Stamp per month; it changes if a number changes (in the system or from the sheet), the project order changes, or the managers' emails change. The script then redraws only the changed old months (last, current and next months are redrawn every time). */
 async function monthStamps(project) {
   const B2CDailyOrder = require('../models/B2CDailyOrder');
   const agg = await B2CDailyOrder.aggregate([
@@ -137,7 +109,7 @@ async function monthStamps(project) {
   const by = new Map(agg.map((a) => [a._id, a]));
   const ord = await orderOf(project._id);
   const em = await headEmails();
-  // `L4`: عمودُ «إقامة السائق الفعليّ» (٢٠٢٦/١٠/٢٥) — فتُعاد رسمُ الشهور كلُّها مرّة.
+  // `L4`: the 'actual driver residence' column was added, so all months are redrawn once.
   const tail = `L4.${ord?.updatedAt ? new Date(ord.updatedAt).getTime() : 0}.${em.at ? new Date(em.at).getTime() : 0}`;
   const out = {};
   for (const mk of monthsOf('all')) {
@@ -147,7 +119,7 @@ async function monthStamps(project) {
   return { stamps: out, headEmails: em.emails };
 }
 
-/** بياناتُ الشهور كلُّها لمشروعٍ واحد. */
+/** All month data for one project. */
 async function buildLayout(project, months) {
   const { LightTransportEmployee } = require('../models/LightTransport');
   const B2CRep = require('../models/B2CRep');
@@ -164,9 +136,7 @@ async function buildLayout(project, months) {
     .select('idNumber name projectAr supervisorName isActive workStatusAr employee hireDate history vehicle').lean())
     .filter((r) => !(r.employee && sets.archivedIds.has(String(r.employee._id))));
   const ltById = new Map(lts.map((l) => [String(l._id), l]));
-  // ── إقامةُ السائق الفعليّ — الراكبُ على مركبة المندوب (صاحبُ الشركة، ٢٠٢٦/١٠/٢٥) ──
-  // الحسابُ باسم رجلٍ وقد يركب المركبةَ غيرُه: «القائدُ الفعليّ» في سجلّ المركبات
-  // (VehicleMaster.actualDriver) هو من يُسأل عنه. عمودٌ للقراءة والنسخ في الشيت.
+  // Actual driver residence: the rider of the rep's vehicle. The account is in one man's name but another may ride the vehicle; the 'actual driver' in the vehicle registry (VehicleMaster.actualDriver) is who is accountable. A read-and-copy column in the sheet.
   const VM = require('../models/VehicleMaster').VehicleMaster;
   const vehIds = [...new Set(lts.map((l) => l.vehicle && String(l.vehicle)).filter(Boolean))];
   const actualByVeh = new Map((vehIds.length ? await VM.find({ _id: { $in: vehIds } }).select('actualDriver').lean() : [])
@@ -177,9 +147,7 @@ async function buildLayout(project, months) {
   for (const l of lts) { const k = nameKey(l.name); ltByName.set(k, ltByName.has(k) ? null : l); }
 
   const reps = await B2CRep.find({}).select('arabicName englishName repId ltEmployee').lean();
-  // الاسمُ الأوّلُ في الشيت القديم هو `englishName` (عمود الاسم — راجع b2cExcelParser)،
-  // و`arabicName` اسمٌ ثانٍ كُتب أحيانًا في عمود الحساب. كان يُقرأ الثاني أوّلًا،
-  // فخرجت الأسماءُ في الشيت الجديد غيرَ أسمائها في القديم.
+  // In the old sheet the first name is `englishName` (the name column; see b2cExcelParser), and `arabicName` is a second name sometimes written in the account column. The second used to be read first, so names in the new sheet differed from the old.
   const acc = new Map(reps.map((r) => [String(r._id), {
     name: S(r.englishName || r.arabicName), repId: S(r.repId), lt: r.ltEmployee ? String(r.ltEmployee) : null,
   }]));
@@ -205,11 +173,7 @@ async function buildLayout(project, months) {
     const inMonth = orders.filter((o) => o.dateKey.startsWith(mk));
 
     if (mk < SYNC_FROM) {
-      // ── شهرٌ للرجوع إليه: كما كان في الشيت القديم تمامًا ──────────────────
-      // صفٌّ لكلّ حسابٍ باسمه هناك، لا لكلّ رجل. كان كلُّ حسابٍ يُضمّ إلى صاحبه
-      // ويُجمع — والحسابُ الواحدُ في الشيتات القديمة كان يعمل عليه أكثرُ من سائق،
-      // فخرجت أرقامٌ لا تطابق القديمَ (صاحبُ الشركة، ٢٠٢٦/١٠/٢٢). وبياناتُ النظام
-      // تطابق الشيتاتِ القديمةَ حسابًا حسابًا — فالعرضُ بالحساب يطابقها. مقفول.
+      // A reference month, exactly as in the old sheet: a row per account by its name there, not per man. Accounts used to be merged into their owner and summed, but one old-sheet account was worked by several drivers, so the numbers did not match the old. System data matches the old sheets account by account, so showing by account matches them. Locked.
       for (const o of inMonth) {
         if (String(o.project) !== pid) continue;
         const a = acc.get(String(o.rep)); if (!a) continue;
@@ -223,7 +187,7 @@ async function buildLayout(project, months) {
         row.cells[d] = (Number(row.cells[d]) || 0) + o.orders;
       }
     } else {
-      // شهرٌ يُكتب فيه: كلُّ مَن كان في هذا المشروع يومًا من الشهر، بحسب سجلّ نقله.
+      // A writable month: everyone who was in this project on any day of the month, by transfer log.
       for (const l of lts) {
         const at = projectTimeline(l);
         const hired = l.hireDate ? riyadhDay(l.hireDate) : '';
@@ -245,25 +209,22 @@ async function buildLayout(project, months) {
         const a = acc.get(String(o.rep)); if (!a) continue;
         const d = Number(o.dateKey.slice(8, 10));
         const l = a.lt && ltById.get(a.lt);
-        // أوردرُ مشروعٍ آخر لا يُكتب في شيت هذا المشروع — كان يُضاف بحسب خطّ نقل
-        // الرجل وحده، فتظهر أوردراتُه في كيتا داخل شيت نينجا.
+        // Another project's order is not written in this project's sheet. It used to be added by the man's transport line alone, so his Keeta orders appeared inside the Ninja sheet.
         if (l && o.project && String(o.project) !== pid) continue;
         if (l) {
           const row = rows.get(`lt:${l._id}`);
-          // يومٌ في مشروعٍ آخر لا يُكتب فيه — أمّا «قبل التعيين» فرقمُ أوردراتٍ أصدقُ منه.
+          // A day in another project is not written; 'before assignment' is a truer order number than that.
           if (!row || (typeof row.cells[d] === 'string' && row.cells[d] !== 'قبل التعيين')) continue;
           if (row.cells[d] === 'قبل التعيين') row.cells[d] = 0;
           row.cells[d] = (Number(row.cells[d]) || 0) + o.orders;
         } else if (String(o.project) === pid) {
-          // حسابٌ قديمٌ بلا صاحبٍ في السجلّ — يُعرض ولا يُكتب فيه.
+          // An old account with no owner in the registry is shown but not written.
           const row = rowFor(`acc:${o.rep}`, { id: '—', name: UNKNOWN_NAME.test(a.name) ? 'غير معروف — كان مكتوبًا «ترك العمل»' : a.name, sup: '', actual: '—', editable: false });
           row.cells[d] = (Number(row.cells[d]) || 0) + o.orders;
         }
       }
     }
-    // بالمشرف فالاسم، والحساباتُ القديمةُ بلا صاحبٍ في الآخر. ومَن نُقل يبقى بخانات «في X».
-    // (ترتيبُ المناديب المحفوظ أُلغي — صاحبُ الشركة، ٢٠٢٦/١٠/٢٢.)
-    // والشهرُ القديمُ بترتيب الشيت القديم نفسِه (B2CLegacyRow)، وما لم يُعرف موضعُه بعده.
+    // Ordered by supervisor then name, old accounts with no owner last. A transferred rep keeps the 'in X' cells. (Saved rep order was dropped.) An old month follows the old sheet's own order (B2CLegacyRow), and anything whose place is unknown goes after it.
     const list = mk < SYNC_FROM
       ? [...rows.values()].sort((a, b) => (a.pos === b.pos ? 0 : a.pos < b.pos ? -1 : 1) || a.name.localeCompare(b.name, 'ar'))
       : [...rows.values()].sort((a, b) => (a.id === '—') - (b.id === '—')
@@ -287,7 +248,7 @@ exports.layout = async (req, res) => {
   }
 };
 
-/** أرقامٌ كُتبت في الشيت — تُكتب في النظام في لحظتها (آخرُ تعديلٍ هو المعتمد). */
+/** Numbers written in the sheet are written to the system at once (latest edit wins). */
 exports.edit = async (req, res) => {
   try {
     if (await guard(req, res)) return;
@@ -309,8 +270,7 @@ exports.edit = async (req, res) => {
       const dk = `${month}-${pad(day)}`;
       const r = { month, day, id: S(e.id), ok: false };
       results.push(r);
-      // الشهورُ قبل أكتوبر 2026 لا يكتب فيها إلّا مسؤولو القسم — حمايةُ أوراقها في
-      // الشيت لهم وحدَهم (بريدُهم في «شيتات جوجل»)، فما يصل منها هنا منهم.
+      // Months before October 2026 are written only by section managers: the sheet protects those tabs for them alone (their emails in the Google sheets page), so what arrives here comes from them.
       if (!/^\d{4}-\d{2}$/.test(month) || month < FIRST_MONTH || month > LAST_MONTH || !(day >= 1 && day <= 31)) { r.reason = 'month'; continue; }
       const old = month < SYNC_FROM;
       if (dk > now) { r.reason = 'future'; continue; }
@@ -318,8 +278,7 @@ exports.edit = async (req, res) => {
       const value = raw === '' || raw === null || raw === undefined ? null : Number(String(raw).replace(AR_DIGITS, (c) => String('٠١٢٣٤٥٦٧٨٩'.indexOf(c))));
       if (value !== null && (!Number.isInteger(value) || value < 0 || value > 2000)) { r.reason = 'value'; continue; }
       if (old) {
-        // الشهورُ القديمة تُعرض حسابًا حسابًا كما في الشيت القديم، وعمودُ الرقم فيها رقمُ
-        // الحساب على التطبيق (`repId`) لا الإقامة — فيُكتب في ذلك الحساب نفسِه.
+        // Old months are shown account by account as in the old sheet, and the number column holds the app account number (`repId`), not the residence, so it is written to that same account.
         const accs = await B2CRep.find({ repId: S(e.id) }).select('_id branch').lean();
         const inProj = accs.length > 1
           ? await B2CDailyOrder.distinct('rep', { rep: { $in: accs.map((a) => a._id) }, project: project._id, dateKey: { $regex: `^${month}` } })
@@ -340,7 +299,7 @@ exports.edit = async (req, res) => {
       }
       const lt = ltByKey.get(idKey(e.id));
       if (!lt) { r.reason = 'rep'; continue; }
-      // لا يُكتب يومٌ كان فيه المندوبُ في مشروعٍ آخر.
+      // A day when the rep was in another project is not written.
       if (E.fold(projectTimeline(lt)(dk)) !== E.fold(project.nameAr)) { r.reason = 'other-project'; continue; }
       const rep = await E.ensureRep(lt, null);
       await E.clearOtherAccounts(lt, rep._id, dk);
@@ -353,8 +312,7 @@ exports.edit = async (req, res) => {
         },
         { upsert: true },
       );
-      // ولقطةُ القارئ الدوريّ (b2cOrderSheetSync) تُحدَّث معه: وإلّا رأى القارئُ الخانةَ
-      // «تغيّرت» بعد دقيقة فكتبها ثانيةً — فوق ما عُدّل على النظام في تلك الدقيقة.
+      // The periodic reader's snapshot (b2cOrderSheetSync) is updated too; otherwise the reader sees the cell as 'changed' a minute later and writes it again, over what was edited in the system in that minute.
       if (sheetDoc) {
         if (value === null) await B2COrderSheetCell.deleteOne({ sheet: sheetDoc._id, lt: lt._id, dateKey: dk });
         else await B2COrderSheetCell.updateOne({ sheet: sheetDoc._id, lt: lt._id, dateKey: dk }, { $set: { value } }, { upsert: true });
@@ -374,7 +332,7 @@ exports.edit = async (req, res) => {
   }
 };
 
-/** السكربتُ يقول أين أنشأ ملفَّ كلّ مشروع — ليُعرض في «شيتات جوجل» بالنظام. */
+/** The script reports where it created each project's file, to show in the system's Google sheets page. */
 exports.register = async (req, res) => {
   try {
     if (await guard(req, res)) return;
@@ -383,7 +341,7 @@ exports.register = async (req, res) => {
     const { B2COrderSheet } = require('../models/B2COrderSheet');
     const sheetId = S(req.body.spreadsheetId);
     if (!/^[a-zA-Z0-9_-]{20,}$/.test(sheetId)) return res.status(400).json({ message: 'id' });
-    // يكتب السكربتُ الأرقامَ إلى النظام بنفسه — فلا قراءةَ بالرابط العامّ (enabled: false).
+    // The script writes numbers to the system itself, so there is no public-link reading (enabled: false).
     await B2COrderSheet.findOneAndUpdate({ sheetId },
       { $set: { projectAr: project.nameAr, url: S(req.body.url), enabled: false, lastOkAt: new Date(), lastError: '' } },
       { upsert: true });
@@ -391,7 +349,7 @@ exports.register = async (req, res) => {
   } catch (e) { res.status(500).json({ message: e.message }); }
 };
 
-/** بصماتُ الشهور كلِّها — ليعيد السكربتُ رسمَ ما تغيّر منها وحدَه. */
+/** Stamps of all months, so the script redraws only what changed. */
 exports.stamps = async (req, res) => {
   try {
     if (await guard(req, res)) return;
@@ -402,13 +360,11 @@ exports.stamps = async (req, res) => {
 };
 
 /**
- * ترتيبٌ جديدٌ من الشيت — سحبَ أحدُ مسؤولي القسم صفوفَ شهرٍ فيه. والسحبُ لا يقدر عليه
- * غيرُهم: الورقةُ محميّةٌ ومحرّروها بريدُهم وحدَه. يُرسل السكربتُ أرقامَ الإقامة بترتيبها.
- *   POST /api/public/b2c-sheets/order  { token, project, month, ids: [iqama] }
+ * New order from the sheet: a section manager dragged a month's rows. Only they can drag (the sheet is protected and its editors are their emails). The script sends residence numbers in order.
+ * POST /api/public/b2c-sheets/order
  */
 exports.order = async (req, res) => {
-  // أُلغي ترتيبُ المناديب (صاحبُ الشركة، ٢٠٢٦/١٠/٢٢). السكربتاتُ المثبَّتة قبلُ ما زالت
-  // ترسل السحبَ هنا: لا يُحفظ، والشيتُ يُعاد رسمُه من النظام في الدورة التالية.
+  // Rep ordering was removed. Scripts installed earlier still send the drag here: it is not saved, and the sheet is redrawn from the system in the next cycle.
   if (await guard(req, res)) return;
   return res.json({ ok: false, disabled: true });
   // eslint-disable-next-line no-unreachable

@@ -21,20 +21,11 @@ const toDateStr = (d) => {
 const EXPENSE_THRESHOLD = 10000;
 
 /**
- * الدفترُ نافذةٌ لها طرفان — راجع config/walletStart.
- *
- * ويُوضَع الحدُّ على القراءة كما على الكتابة: فتحُ شاشةِ يومٍ وحدَه يُنشئ
- * يوميّةً في القاعدة (`getOrCreateWallet`)، فمجرَّدُ النظر إلى يومٍ يخلقه.
- * إلى الوراء كان ذلك يُعيد أيّامًا حُذفت عمدًا، وإلى الأمام يخلق أيّامًا لم
- * تأتِ — ثلاثُ يوميّاتٍ فارغةٍ في المستقبل وُجدت في الدفتر هكذا، إحداها بعد
- * ثمانيةَ عشرَ يومًا من اليوم الذي فُتحت فيه. والغدُ داخلٌ في الحدّ لأنّ العملَ
- * يتجاوز منتصفَ الليل — راجع config/walletStart.
- *
- * يُعيد `true` إن رُدَّ الطلبُ، فينتهي المتحكّمُ عنده.
+ * The ledger is a window bounded on both ends (see config/walletStart). The bound applies to reads too, because opening a day creates its journal via getOrCreateWallet.
+ * Tomorrow is inside the bound since work crosses midnight. Returns true when the request was rejected, so the controller stops.
  */
 const denyOutsideBook = (res, date, user) => {
-  // مديرُ النظام يمرّ: الحدّان حمايةٌ من الخطأ اليوميّ لا قاعدةٌ محاسبيّة،
-  // ويبقى بعدهما تصحيحٌ حقيقيّ يحتاج بابًا — راجع config/walletStart.
+  // Super admin passes: the bounds guard against daily mistakes and are not an accounting rule; real corrections still need a way in (see config/walletStart).
   if (mayWorkOutsideBook(user)) return false;
   if (isBeforeWalletStart(date)) {
     res.status(400).json({ message: walletStartMessage(), walletStartDate: WALLET_START_DATE });
@@ -112,14 +103,8 @@ const enrichTransactionsWithOpsData = async (transactions) => {
 
 // ─── GET OR CREATE DAILY WALLET ──────────────────────────────
 /**
- * محفظةُ الفرع في يومٍ ما — تُنشأ إن لم تكن.
- *
- * كانت لكلّ موظّفٍ محفظتُه، فنقدُ الفرع الواحد موزَّعٌ على محافظَ لا تُقرأ إلّا
- * بجمعها. والنقدُ في الواقع نقدُ الفرع: يعمل عليه أكثرُ من موظّفٍ في اليوم،
- * ويُسلَّم بينهم، ويُسأل عنه الفرعُ لا الشخص. فصار المفتاحُ الفرعَ واليوم،
- * وبقيت كلُّ حركةٍ منسوبةً إلى مَن سجّلها.
- *
- * والافتتاحيُّ ختاميُّ آخر يومٍ للفرع — لا لآخر يومٍ لهذا الموظّف.
+ * Branch wallet for a given day, created if missing. Keyed by branch and day because cash belongs to the branch; each entry still records who made it.
+ * Opening balance is the branch's last closing, not the employee's.
  */
 const getOrCreateWallet = async (branchId, date) => {
   let wallet = await DailyWallet.findOne({ branch: branchId, date });
@@ -130,8 +115,7 @@ const getOrCreateWallet = async (branchId, date) => {
   try {
     wallet = await DailyWallet.create({ branch: branchId, date, openingBalance, closingBalance: openingBalance });
   } catch (e) {
-    // موظّفان يفتحان الشاشةَ في اللحظة نفسِها: الفهرسُ الفريد يمنع الثانية،
-    // فتُقرأ التي سبقت بدل أن يُردّ على أحدهما بخطأ.
+    // Two users opening the screen at once: the unique index rejects the second insert, so the first-created wallet is read instead of returning an error.
     if (e && e.code === 11000) wallet = await DailyWallet.findOne({ branch: branchId, date });
     else throw e;
   }
@@ -140,43 +124,23 @@ const getOrCreateWallet = async (branchId, date) => {
 
 // ─── RECALCULATE WALLET TOTALS ───────────────────────────────
 /**
- * ما تكتبه العهدةُ على الكشف.
- *
- * ── مرّةً واحدةً لا مرّتين ──────────────────────────────────────────────────
- * الموظّفُ يكتب رقمَ الكشف والمبلغَ في العهدة، فلا يُطلب منه أن يعيدهما في سير
- * عمل التشغيل. والفرعُ فرعُه هو — مَن دفع من عهدة فرعٍ فذلك الفرعُ هو المسدِّد،
- * ولا يُسأل عنه ثانيةً. والتاريخُ يومُ اليوميّة.
- *
- * ولا يُكتب فوق ما كُتب بيد: `$set` على الفارغ وحدَه. مَن صحّح مبلغًا أو فرعًا
- * في سير عمل التشغيل قصدًا لا تعود العهدةُ فتدهسه.
+ * What a custody entry writes onto the dispatch sheet. Entered once: report number and amount come from the custody entry, the paying branch is the wallet's branch, the date is the journal day.
+ * Uses $set on empty fields only, so manual corrections in the operations workflow are not overwritten.
  */
 async function fillReportFromWallet({ workflow, amount, date, branchId, documentNumber, role }) {
   const OperationsWorkflow = require('../models/OperationsWorkflow');
   const patch = {};
   if (!workflow.paymentAmount && amount > 0) patch.paymentAmount = amount;
   if (!workflow.paymentDate) patch.paymentDate = new Date(date);
-  // ── ورقمُ السند يصل عمودَه في الكشف ─────────────────────────────────────
-  // مَن دفع هو من يمسك السندَ لحظتَها. يكتبه في العهدة مرّةً فيصل «رقم السند»
-  // في سير عمل التشغيل — بدل أن يُكتب هنا ويُنسى هناك، أو يُبحث عنه بعد أسبوع.
-  // ولا يُكتب فوق سندٍ مكتوب: مَن صحّحه بيده يجده كما تركه.
+  // The receipt number reaches its sheet column from the custody entry. Written only when empty, so a manual correction stays as left.
   if (documentNumber && !String(workflow.documentNumber || '').trim()) {
     patch.documentNumber = String(documentNumber).trim();
   }
 
-  // ── والفرعُ المسدِّد فرعُ العهدة، لا فرعُ الموظّف ────────────────────────
-  //
-  // كان يُقرأ من `req.user.branch`. وسبعةٌ وثلاثون من اثنين وخمسين مستخدمًا
-  // نشطًا بلا فرعٍ على حسابهم أصلًا — فيمتلئ التاريخُ والمبلغُ ويبقى الفرعُ
-  // فارغًا، بلا خطأٍ يُقال. قِيس ذلك على كشوف سبتمبر: التاريخ على ٣٤ من ٣٧،
-  // والفرعُ على عشرة.
-  //
-  // والعهدةُ نفسُها تعرف فرعَها دائمًا — مئةٌ وواحدٌ وأربعون محفظةً، ولا واحدةَ
-  // بلا فرع. وهي المعنى المقصود: المالُ خرج من عهدة فرعٍ بعينه، فذلك هو الفرعُ
-  // الذي سدّد. أمّا مَن ناوَل المال فقد يكون منقولًا أو زائرًا أو بلا فرعٍ
-  // مسجّل، ولا شأنَ له بمصدر المال.
+  // The paying branch is the wallet's branch, not the user's: most active users have no branch on their account, so reading req.user.branch left the branch empty silently.
+  // The wallet always knows its branch, and the money left that branch's custody; the person handing it over may be transferred or a visitor.
   if (!workflow.payingBranch) {
-    // اسمُ الفرع لا معرّفُه، وبالعربيّة كما يكتبه الموظّف — لا `Branch.name`
-    // الإنجليزيّ. التفصيلُ في `utils/payingBranch.js`.
+    // Branch name (the Arabic one staff type), not the id and not the English Branch.name. Details in utils/payingBranch.js.
     try {
       const { payingBranchOf } = require('../utils/payingBranch');
       const name = await payingBranchOf({ branchId, role, workflow });
@@ -184,13 +148,8 @@ async function fillReportFromWallet({ workflow, amount, date, branchId, document
     } catch (e) { console.error('wallet→report branch lookup:', e.message); }
   }
 
-  // ── ولا يُستنتَج نوعُ الدفع من ملفّ العميل ───────────────────────────────
-  // كان يُقرأ من السجلّ ويُكتب هنا، على أنّ النوعَ صفةٌ ثابتةٌ في العميل. وليس
-  // كذلك: العميلُ الواحد يقول في حمولةٍ «كاش» وفي أخرى «افتحوا فاتورة» — فهو
-  // صفةُ الشحنة لا صفةُ الطرف. واستنتاجُه يكتب على الكشف ما لم يقله أحد.
-  //
-  // فالمحفظةُ تكتب ما تعرفه يقينًا (المبلغ والتاريخ والفرع)، ويبقى النوعُ
-  // لصاحب الكشف يكتبه بيده.
+  // Payment type is not inferred from the customer record: the same customer can be cash on one load and invoiced on another, so it is a shipment attribute.
+  // The wallet writes only what it knows for certain (amount, date, branch); the type is left to the sheet owner.
 
   if (!Object.keys(patch).length) return null;
   await OperationsWorkflow.updateOne({ _id: workflow._id }, { $set: patch });
@@ -199,19 +158,8 @@ async function fillReportFromWallet({ workflow, amount, date, branchId, document
 }
 
 /**
- * ── الفرقُ النقديُّ مشتَقٌّ، فيُعاد اشتقاقُه كلّما تغيّر أحدُ طرفيه ──────────
- *
- * `cashDifference` ليس رقمًا مستقلًّا: هو **الختاميُّ ناقص المعدود**. وكان
- * يُكتب مرّةً عند الإقفال ثمّ لا يُمَسّ، بينما يتغيّر الختاميُّ بعده — حركةٌ
- * تُضاف أو تُعدَّل أو تُحذف، أو تصحيحٌ في يومٍ سابق يتدحرج على الأيّام التالية.
- * فيبقى في الخانة فرقُ أمسِ منسوبًا إلى ختاميِّ اليوم.
- *
- * وأثرُه أربعةَ عشرَ يومًا في ثلاثة فروع: يومٌ فيه عجزٌ حقيقيٌّ مقدارُه عشرون
- * ألفًا يُقرأ «صفر»، ويومٌ عُدَّ وفُتح له تنبيهٌ يُقرأ بفرقٍ أقلَّ ممّا هو عليه
- * بألفٍ وأربعمئة. ومراجعةُ النقد كلُّها تُبنى على هذه الخانة.
- *
- * والذي لم يُعَدّ لا يُمَسّ: `actualCash == null` تعني «لم يعدّه أحد»، فلا فرقَ
- * له أصلًا — لا صفرٌ ولا غيرُه.
+ * The cash difference is derived (closing minus counted), so it is recomputed whenever either side changes. Writing it once at close left a stale difference after later entries or cascades.
+ * actualCash == null means nobody counted, so it has no difference (neither zero nor any value).
  */
 const r2c = (n) => Math.round((Number(n) || 0) * 100) / 100;
 const syncCashCount = (wallet) => {
@@ -229,10 +177,7 @@ const recalcWallet = async (walletId) => {
     if (t.type === 'collection') totalCollections += t.amount;
     else if (t.type === 'expense') totalExpenses += t.amount;
     else if (t.type === 'purchase') totalPurchases += t.amount;
-    // ── و«فاتورة ضريبيّة» لا تدخل الرصيد ─────────────────────────────────
-    // قيدٌ يقول «استلمتُ هذه الفاتورة بيدي»، لا أنّ مالًا دخل أو خرج. وإسقاطُه
-    // هنا مقصودٌ ومكتوب: لو تُرك للصمت لظُنّ نسيانًا فأُضيف يومًا، فاختلّ رصيدُ
-    // العهدة بمبلغٍ لم يتحرّك.
+    // The tax-invoice receipt entry records receiving the invoice by hand, with no money moving. It is skipped from the balance on purpose, so it is not mistaken for an omission and added later.
   }
 
   const wallet = await DailyWallet.findById(walletId);
@@ -240,7 +185,7 @@ const recalcWallet = async (walletId) => {
   wallet.totalExpenses = totalExpenses;
   wallet.totalPurchases = totalPurchases;
   wallet.closingBalance = wallet.openingBalance + totalCollections - totalExpenses - totalPurchases;
-  // الختاميُّ تغيّر، فالفرقُ المنسوبُ إليه يُعاد اشتقاقُه — وإلّا بقي فرقُ أمس.
+  // Closing changed, so the difference tied to it is re-derived; otherwise yesterday's difference would remain.
   syncCashCount(wallet);
   await wallet.save();
 
@@ -250,9 +195,8 @@ const recalcWallet = async (walletId) => {
   return wallet;
 };
 
-// ─── CASCADE BALANCES TO FUTURE DAYS ─────────────────────────
-// السلسلةُ تتبع الفرعَ لا الموظّف: الرصيدُ رصيدُ الفرع، فالانتقالُ من يومٍ إلى
-// ما بعده انتقالُ نقدِه هو.
+// CASCADE BALANCES TO FUTURE DAYS
+// The chain follows the branch, since the balance is the branch's.
 const cascadeBalances = async (branchId, fromDate, newClosingBalance) => {
   const futureDays = await DailyWallet.find({
     branch: branchId,
@@ -264,7 +208,7 @@ const cascadeBalances = async (branchId, fromDate, newClosingBalance) => {
     if (day.openingBalance !== prevClosing) {
       day.openingBalance = prevClosing;
       day.closingBalance = prevClosing + day.totalCollections - day.totalExpenses - day.totalPurchases;
-      // والتدحرجُ يغيّر ختاميَّ كلِّ يومٍ يمرّ عليه، فيلزمه ما يلزم الأوّل.
+      // The cascade changes each following day's closing, so it needs the same difference recomputation as the first day.
       syncCashCount(day);
       await day.save();
     }
@@ -278,10 +222,7 @@ exports.getDailyWallet = async (req, res) => {
     const date = req.query.date || toDateStr();
     if (denyOutsideBook(res, date, req.user)) return;
 
-    // ── يُختار الفرعُ لا الموظّف ────────────────────────────────────────────
-    // المحفظةُ للفرع، فالسؤالُ «أيُّ فرع» لا «أيُّ موظّف». و`userId` يبقى
-    // مقبولًا في الطلب — روابطُ محفوظةٌ ونسخُ التطبيق القديمة ترسله — فيُترجَم
-    // إلى فرع صاحبه بدل أن يُردّ الطلب.
+    // The branch is selected, not the employee, since the wallet belongs to the branch. userId is still accepted (saved links, old app builds) and translated to its owner's branch instead of rejecting the request.
     let branchId = req.query.branchId || req.query.branch;
     if (!branchId && req.query.userId) {
       const User = require('../models/User');
@@ -290,7 +231,7 @@ exports.getDailyWallet = async (req, res) => {
     }
     if (!branchId) branchId = req.user.branch;
 
-    // موظّفُ التشغيل يرى فرعَه وحدَه.
+    // An operations employee sees only their own branch.
     if (req.user.role === 'operations_staff' && String(branchId) !== String(req.user.branch)) {
       return res.status(403).json({ message: 'لا تملك صلاحية عرض محفظة فرعٍ آخر.' });
     }
@@ -306,9 +247,7 @@ exports.getDailyWallet = async (req, res) => {
       .populate('closedBy', 'firstName lastName');
 
     const rawTransactions = await WalletTransaction.find({ wallet: wallet._id })
-      // ── ومَن سجّل كلَّ حركة ────────────────────────────────────────────────
-      // المحفظةُ صارت للفرع، فالسطرُ هو ما يقول مَن فعل. وبدونه يصير النقدُ
-      // المشتركُ بلا مسؤولٍ عن أيّ حركةٍ فيه — وهو عكسُ المقصود.
+      // Records who made each entry. The wallet is shared per branch, so the line is the only place showing who acted.
       .populate('user', 'firstName lastName')
       .populate('customer', 'name kind')
       .populate('vendor', 'name')
@@ -327,22 +266,10 @@ exports.getDailyWallet = async (req, res) => {
 
 // ─── ADD TRANSACTION ─────────────────────────────────────────
 /**
- * ── ومَن يكتب في يومٍ أُقفل ────────────────────────────────────────────────
- *
- * الإقفالُ ليس زرًّا في شاشة: يُعَدُّ النقدُ ويُثبَّت رصيدُ اليوم ويُنقَل إلى
- * الغد، ويُحسَب فرقُ العدّ ويُعلَّل. وكلُّ قيدٍ يُدَسُّ في ذلك اليوم بعد إقفاله
- * يُعيد حسابَ رصيده ورصيدِ كلِّ يومٍ بعده، ويجعل فرقَ العدّ المُعلَّل رقمًا لا
- * يوافق ما عُدّ في الخزنة.
- *
- * وكان الشرطُ مكتوبًا «للمديرين وحدَهم» في التعليق، وفي القائمة **موظّفُ
- * العمليّات** — وهو أكثرُ من يسجّل. فكان الأثرُ أنّ يومًا أُقفل بالأمس تُضاف
- * إليه حركاتٌ اليوم فيتغيّر رصيدُه وحدَه، ولا يعلم من أقفله. وقد وقع: خمسُ
- * مشترياتٍ بتاريخ ٢٧ سبتمبر كُتبت في ٢٨ والدفترُ مقفل.
- *
- * فمن أراد أن يكتب في يومٍ أُقفل يطلب إعادةَ فتحه — وإعادةُ الفتح لمدير النظام
- * (راجع `maySettle`)، ويُقفَل بعدها بعدٍّ جديد. وهذا هو المقصودُ من الإقفال.
+ * Who may write into a closed day. Closing counts cash, fixes the day's balance and carries it forward; a later entry recomputes that day and all following days and breaks the explained count difference.
+ * Operations staff were in the allowed list although the comment said managers only, so closed days changed silently. Writing into a closed day requires reopening, which is super admin only (see maySettle), then closing again with a new count.
  */
-// وأهلُ المال معهم — راجع config/financeAuthority.
+// Finance roles are included (see config/financeAuthority).
 const mayWriteIntoClosedDay = (role) => ['super_admin', 'admin', 'operations_manager', ...require('../config/financeAuthority').FINANCE_FULL_ROLES].includes(role);
 const denyClosedDay = (res) => res.status(400).json({
   code: 'DAY_CLOSED',
@@ -370,15 +297,8 @@ exports.addTransaction = async (req, res) => {
     const txDate = date || toDateStr();
     if (denyOutsideBook(res, txDate, req.user)) return;
 
-    // ── استلامُ الفواتير الضريبيّة: كشوفٌ لا مبلغ ────────────────────────────
-    // القيدُ يقول «استلمتُ كشوفَ هذه الفواتير بيدي» — لا مالَ دخل ولا خرج،
-    // فلا مبلغَ يُكتب أصلًا. وكان الحقلُ معروضًا مطلوبًا بنجمة، فيقف الموظّف
-    // أمام خانةٍ لا جوابَ لها ويكتب صفرًا ليمرّ.
-    //
-    // والاستلامُ يقع على حزمةٍ: يأتي المندوبُ ومعه سبعةُ كشوفٍ فيسجّلها دفعةً.
-    // وقيدٌ لكلّ كشفٍ يعني تكرارَ التاريخ والفرع سبعَ مرّات، ومَن يملّ يترك
-    // الباقيَ بلا تسجيل.
-    // الشكلُ الجديد أزواجٌ (كشفٌ وسندُه)، والقديمُ قائمةُ أرقامٍ — كلاهما يُقبَل.
+    // Receiving tax invoices records report numbers with no amount: no money moves, so the amount is not required (staff used to type zero to pass).
+    // A receipt covers a bundle, so one request carries many reports. New shape is (report, receipt) pairs; the old shape is a list of numbers and both are accepted.
     const pairs = [];
     const seenReports = new Set();
     const addPair = (rn, dn) => {
@@ -392,15 +312,14 @@ exports.addTransaction = async (req, res) => {
         addPair(x?.reportNumber, x?.documentNumber);
       }
       for (const x of (Array.isArray(req.body.receivedReportNumbers) ? req.body.receivedReportNumbers : [])) addPair(x, '');
-      addPair(req.body.receivedDocNumber, '');   // الشكلُ الأقدم
+      addPair(req.body.receivedDocNumber, '');   // Older shape
     }
     const receivedReports = pairs.map((x) => x.reportNumber);
     if (type === 'tax_invoice' && !receivedReports.length) {
       return res.status(400).json({ message: 'اكتب رقم أمر نقل واحدًا على الأقلّ.' });
     }
 
-    // الحركةُ تُقيَّد على محفظة فرعٍ بعينه. والفرعُ من الطلب إن أُرسل — المدير
-    // يسجّل عن فرعٍ يديره — وإلّا فرعُ صاحب الحساب.
+    // The entry is posted to a specific branch's wallet: the branch from the request if sent (a manager records for a branch they run), otherwise the account's own branch.
     const txBranch = req.body.branchId || req.body.branch || req.user.branch;
     if (!txBranch) {
       return res.status(400).json({ message: 'لا يوجد فرع محدَّد لهذه الحركة.' });
@@ -411,16 +330,11 @@ exports.addTransaction = async (req, res) => {
 
     // Check if day is closed (only managers can add to closed days)
     const wallet = await getOrCreateWallet(txBranch, txDate);
-    // يومٌ أُقفل لا يُكتب فيه — راجع `mayWriteIntoClosedDay`.
+    // A closed day accepts no writes (see mayWriteIntoClosedDay).
     if (wallet.isClosed && !mayWriteIntoClosedDay(req.user.role)) return denyClosedDay(res);
 
-    // ── التحصيلُ يُقيَّد على الطرف، لا على فاتورة ──────────────────────────
-    // كان رقمُ كشف التخريج يُبحَث به عن سجلّ عميلٍ ثمّ عن فاتورةٍ في ورك فلو
-    // «العملاء والمالية» — ولا سجلّاتِ هناك أصلًا بعد حذف القسم، فكان البحثُ
-    // رحلتين إلى القاعدة تعودان فارغتين دائمًا.
-    //
-    // والطرفُ يُعرَف من الكشف نفسِه: `username` هو العميل، ويُطابَق بسجلّ
-    // التحصيل بالاسم المطويّ — وهو المرجعُ الوحيد للأطراف الآن.
+    // Collection is posted to the party, not to an invoice. The old lookup went through the removed workflow module and always came back empty.
+    // The party is identified from the sheet itself: username is the customer, matched to the collections record by folded name, the only party reference now.
     let resolvedParty = customer || null;
     const source = collectionSource || 'client';
     if (type === 'collection' && source === 'client' && !resolvedParty && deliveryStatementNumber) {
@@ -440,20 +354,12 @@ exports.addTransaction = async (req, res) => {
       }
     }
 
-    // ── المشتريات: الكشفُ يُقرأ منه ويُكتب فيه ──────────────────────────
-    //
-    // ما يدفعه الموظّفُ للمورّد **هو** سعرُ الشراء الحقيقيّ. فبدل أن يُكتب
-    // مرّتين — مرّةً في العهدة ومرّةً في الكشف — يُكتب هنا مرّةً ويصل هناك:
-    // المبلغُ إلى «مبلغ السداد»، وتاريخُ اليوميّة إلى «تاريخ السداد».
-    //
-    // ويُقارَن بقيمة الشراء القادمة من المنصّة. والاختلافُ لا يُمنع — قد يكون
-    // صحيحًا (اتُّفق على غير المسجَّل) — لكنّه يُعلَّم، فيراه المديرُ في لوحة
-    // المحفظة ويُقرّ به أو يصحّحه. ومنعُه كان سيوقف عملًا صحيحًا؛ والسكوتُ عنه
-    // كان سيمرّ فرقًا لا يعلمه أحد.
+    // Purchases read from and write to the sheet. The amount paid to the supplier is the real purchase price, so it is entered once: the amount goes to the payment amount column and the journal date to the payment date.
+    // It is compared with the platform purchase value; a mismatch is allowed (it may be legitimate) but flagged for the manager to confirm or correct.
     let purchaseInvoiceAmountVal;
     let purchaseWorkflow = null;
     let purchaseMismatch = null;
-    // قيدُ استلام الفاتورة يحمل أرقامَ كشوفٍ، ويملأ منها ما تملؤه المشتريات.
+    // An invoice-receipt entry carries report numbers and fills from them what purchases fill.
     let receivedWorkflows = [];
     if (type === 'tax_invoice' && receivedReports.length) {
       try {
@@ -463,20 +369,9 @@ exports.addTransaction = async (req, res) => {
         });
       } catch (e) { console.error('walletController silent catch:', e.message); }
     }
-    // ── المشترياتُ تُشترى لكشفٍ موجود، ومرّةً واحدة ────────────────────────
-    //
-    // شرطان يُفحصان هنا لا في الشاشة وحدَها: الشاشةُ تُساعد، والخادمُ يمنع.
-    //
-    //  ① الكشفُ يجب أن يكون موجودًا. كُتب في هذه الخانة رقمُ سيّارةٍ ورقمٌ
-    //    عاديّ فمرّا — وصار في الدفتر شراءٌ لكشفٍ لا وجودَ له، لا يُطابَق
-    //    بسعر شرائه ولا يظهر في كشف تكلفته. (في البيانات: ١٩٥٠ و٤٤٦٨٧.)
-    //
-    //  ② والكشفُ الواحد لا يُشترى مرّتين. الشراءُ حدثٌ واحدٌ للشحنة الواحدة،
-    //    وتكرارُه يعني دفعَ ثمنِها مرّتين من عهدة الفرع — ولا يُكتشَف إلّا عند
-    //    الجرد. (في البيانات: عشرةُ كشوفٍ عليها شراءان.)
-    //
-    // والرسالةُ تسمّي القيدَ السابق بتاريخه ومبلغه، فمن يراها يعرف أهو خطأٌ
-    // منه أم شراءٌ ثانٍ حقيقيّ يحتاج قرارَ مديرٍ لا محاولةً أخرى.
+    // A purchase must target an existing report, and only once. Checked on the server, since the screen only assists.
+    // 1) The report must exist: a plate number and an ordinary number once passed as report numbers. 2) A report is bought once: a repeat pays twice from branch custody and is found only at stock count.
+    // The message names the earlier entry with date and amount so the user can tell a mistake from a real second purchase.
     if (type === 'purchase') {
       const rn = String(purchaseDeliveryStatementNumber || '').trim();
       if (!rn) {
@@ -493,17 +388,8 @@ exports.addTransaction = async (req, res) => {
           fields: { purchaseDeliveryStatementNumber: 'غير موجود' },
         });
       }
-      // ── والشراءُ هو الذي يُعلن استلامَ السند، لا العكس ────────────────────
-      //
-      // كان الشراءُ يُمنَع حتّى تصير الحالةُ «استُلم السند»، والقاعدةُ معقولةٌ
-      // في ظاهرها: السدادُ لا يسبق الورقة. لكنّ الواقعَ عكسُها — الموظّفُ يستلم
-      // السندَ بيده ويدفع في اللحظة نفسِها، ثمّ يُطلَب منه أن يفتح شاشةً أخرى
-      // (أو المنصّةَ الخارجيّة) ليُعلن ما فعله قبل أن يُسمَح له بتسجيله. فيبقى
-      // الشراءُ غيرَ مسجَّلٍ حتّى يتذكّر، والعهدةُ لا تطابق ما في يده.
-      //
-      // فصار التسجيلُ هو الإعلان: مَن سجّل شراءً على كشفٍ فقد استلم سندَه —
-      // وتُكتب الحالةُ «استُلم السند» عندنا **وفي المنصّة** بعد نجاح الشراء،
-      // لا قبله. راجع ما بعد الحفظ أدناه.
+      // The purchase itself declares receipt of the bond. Requiring the status first made staff open another screen before recording a payment already made, leaving purchases unrecorded.
+      // Recording a purchase on a report means its bond was received; the status is written here and on the platform after the purchase succeeds, not before (see the post-save step below).
 
       const prior = await WalletTransaction.findOne({
         type: 'purchase',
@@ -528,8 +414,7 @@ exports.addTransaction = async (req, res) => {
 
     // Check risk flags
     const riskFlags = checkRiskFlags({ amount, type });
-    // فرقُ سعر الشراء يُعلَّم كما تُعلَّم بقيّةُ الملاحظات — بالجملة نفسِها التي
-    // يُقرأ بها في اللوحة: مَن دفع، وعلى أيّ كشف، وكم كان المسجَّل.
+    // A purchase price mismatch is flagged like other notes, with the same sentence the dashboard shows: who paid, on which report, and the recorded amount.
     if (purchaseMismatch) {
       riskFlags.push(
         `سعرُ الشراء مختلف — أمر النقل ${purchaseMismatch.reportNumber}: المسجَّل ${purchaseMismatch.expected}`
@@ -541,12 +426,11 @@ exports.addTransaction = async (req, res) => {
     const transaction = await WalletTransaction.create({
       wallet: wallet._id,
       user: req.user._id,
-      // فرعُ الحركة فرعُ العهدة التي قُيّدت فيها، لا فرعُ مَن سجّلها: المديرُ
-      // يسجّل عن فرعٍ يديره، فيُختم القيدُ بفرعه هو ويُقرأ في غير موضعه.
+      // The entry's branch is the custody branch it was recorded in, not the recorder's: a manager records for a branch they run, so stamping their own branch would be misread elsewhere.
       branch: txBranch,
       date: txDate,
       type,
-      // قيدُ الاستلام بلا مبلغ: لا يدخل الرصيدَ ولا إقفالَ اليوم.
+      // A receipt entry without an amount affects neither the balance nor the day close.
       amount: type === 'tax_invoice' ? 0 : amount,
       collectionSource: type === 'collection' ? source : undefined,
       customer: resolvedParty || undefined,
@@ -565,8 +449,7 @@ exports.addTransaction = async (req, res) => {
       purchaseBranch: purchaseBranch || undefined,
       mismatchReason: cleanMismatchReason || undefined,
       mismatchNote: cleanMismatchReason === 'other' ? (mismatchNote || undefined) : undefined,
-      // المستندُ المستلَم فاتورةٌ ضريبيّة دائمًا — لم يعد يُسأل عنه، فالزرُّ
-      // نفسُه يقول ما هو. والكشوفُ هي ما يُكتب.
+      // The received document is always a tax invoice, so it is not asked for; the button already says so. The report numbers are what gets entered.
       receivedDocType: type === 'tax_invoice' ? 'invoice' : undefined,
       receivedDocNumber: type === 'tax_invoice' ? (receivedReports[0] || undefined) : undefined,
       receivedReportNumbers: type === 'tax_invoice' ? receivedReports : undefined,
@@ -578,47 +461,27 @@ exports.addTransaction = async (req, res) => {
       flagReason: isFlagged ? riskFlags.join('; ') : undefined,
     });
 
-    // ── ولا مزامنةَ ماليّةً في مكانٍ آخر ────────────────────────────────
-    // كان تحصيلُ العهدة يقيّد `Payment` ويحدّث فاتورةً ورصيدَ عميلٍ في ورك فلو
-    // «العملاء والمالية». زال ذلك القسم، والمحفظةُ ليست دفترَ عملاء: هي عهدةُ
-    // الفرع — ما دخل وما خرج ورصيدُ اليوم. ومَن يريد «كم لنا عند هذا العميل»
-    // يقرؤه في قسم التحصيل من كشوف التشغيل نفسِها، لا من نسخةٍ تُكتب هنا.
+    // No financial sync elsewhere. Collection used to create a Payment and update an invoice and customer balance in the removed workflow module. The wallet is branch custody (in, out, day balance), not a customer ledger; receivables are read from the operations sheets in the collections section.
 
-    // ── ويصل المبلغُ إلى الكشف ────────────────────────────────────────────
-    // بعد أن تُحفَظ الحركة، لا قبلها: لو فشل الحفظُ لما صحّ أن يحمل الكشفُ
-    // سدادًا لم يُقيَّد في العهدة.
-    //
-    // ولا يُكتب فوق ما كُتب بيد: مَن صحّح المبلغَ في سير عمل التشغيل قصدًا لا
-    // تعود المحفظةُ فتدهسه. `$set` على الفارغ وحدَه.
+    // The amount reaches the sheet after the entry is saved, so a failed save never leaves a payment on the sheet that custody lacks.
+    // $set on empty fields only, so a manual correction in the operations workflow stays.
     if (type === 'purchase' && purchaseWorkflow) {
       await fillReportFromWallet({
         workflow: purchaseWorkflow,
-        // ما دفعه الموظّفُ بيده هو سعرُ الشراء الحقيقيّ.
+        // What the employee paid by hand is the real purchase price.
         amount,
         date: txDate,
-        // ── و«رقم السند» خانةٌ واحدةٌ كانت موجودةً من قبل ──────────────────
-        // `purchaseReceiptNumber` اسمُها في الخادم و«رقم السند» اسمُها على
-        // الشاشة منذ البداية — تُحفظ في العهدة ولا تخرج منها. فكانت تُكتب
-        // مرّتين: هنا وفي عمود الكشف. تصل الآن من نفسِها، ولا يُسأل عنها
-        // سؤالان.
+        // The receipt number is one pre-existing field: purchaseReceiptNumber on the server, shown as the receipt number on screen. It used to be entered twice (here and in the sheet column); it now arrives on its own.
         documentNumber: purchaseReceiptNumber,
-        // فرعُ العهدة التي خرج منها المال — لا فرعُ الحساب الذي سجّله.
+        // The branch of the custody the money left, not the branch of the recording account.
         branchId: wallet.branch || transaction.branch || req.user.branch,
         role: req.user.role,
       });
-      // والمبلغُ يُكتب ولو كانت الخانةُ مملوءة — المحفظةُ هي المرجع.
+      // The amount is written even when the field is filled, since the wallet is the reference.
       try { await require('../utils/walletPayment').syncSheetPayment(purchaseWorkflow.reportNumber); } catch (e) { console.error('wallet→sheet payment sync (create):', e.message); }
 
-      // ── والشراءُ يُعلن استلامَ السند — عندنا وفي المنصّة ──────────────────
-      //
-      // مَن دفع فقد استلم الورقة؛ فتُكتب الحالةُ بعد نجاح الشراء لا قبله.
-      // وتُدفَع إلى المنصّة لا تُكتب عندنا وحدَها: `applicationStatus` عمودٌ
-      // مرآةٌ تُعيد المزامنةُ كتابتَه، فما يُكتب هنا وحدَه يُمحى بعد دقائق بلا
-      // أثر — وهو ما كان يقع لمن يعدّله من الجدول قبل أن يُصلَح هناك.
-      //
-      // وفشلُ المنصّة لا يُسقط الشراء: المالُ خرج فعلًا والقيدُ حُفظ، والحالةُ
-      // ستصحّ في المزامنة التالية أو يصحّحها الموظّف. وإسقاطُ قيدٍ ماليٍّ لأنّ
-      // نظامًا خارجيًّا لم يردّ خطأٌ أكبرُ من حالةٍ متأخّرة.
+      // A purchase declares bond receipt, here and on the platform. The status is written after the purchase succeeds. It is pushed to the platform because applicationStatus is a mirror column that sync rewrites, so a local-only write would vanish within minutes.
+      // A platform failure does not drop the purchase: the money left and the entry is saved, and the status is fixed by the next sync or by staff.
       try {
         const { pushApplicationStatus } = require('./workflowController');
         await pushApplicationStatus(purchaseWorkflow, 'bond_received', req.user);
@@ -626,10 +489,7 @@ exports.addTransaction = async (req, res) => {
         console.error('wallet→ops bond_received:', e.message);
       }
     }
-    // ── وكلُّ كشفٍ مستلَمٍ يُختَم، لا الأوّلُ منها ─────────────────────────
-    // لا مبلغَ في هذا القيد، فيُؤخذ لكلّ كشفٍ **سعرُ شرائه هو** — وهو المطلوب:
-    // مبلغُ السداد سعرُ الشراء الحقيقيّ. وأخذُ مبلغٍ واحدٍ للحزمة كلِّها كان
-    // سيكتب سعرَ أوّلِ كشفٍ على السبعة.
+    // Every received report is stamped, not just the first. The entry has no amount, so each report takes its own purchase price; one amount for the bundle would write the first report's price on all.
     if (type === 'tax_invoice') {
       for (const wf of receivedWorkflows) {
         // eslint-disable-next-line no-await-in-loop
@@ -637,7 +497,7 @@ exports.addTransaction = async (req, res) => {
           workflow: wf,
           amount: Number(wf.purchaseValue) || 0,
           date: txDate,
-          // ولكلّ كشفٍ سندُه هو، لا سندٌ واحدٌ يُنسَخ على الحزمة.
+          // Each report has its own receipt, not one receipt copied across the bundle.
           documentNumber: pairs.find((x) => x.reportNumber === String(wf.reportNumber).trim())?.documentNumber,
           branchId: wallet.branch || transaction.branch || req.user.branch,
           role: req.user.role,
@@ -645,9 +505,7 @@ exports.addTransaction = async (req, res) => {
       }
     }
 
-    // ── والتحصيلُ على كشفٍ نقديٍّ يُحصِّله ──────────────────────────────────
-    // مَن قبض المالَ وسجّله هنا قد حصّل الكشف: يظهر «محصَّلًا» في فواتير الكاش
-    // بتاريخ القيد ومبلغه. وغيرُ النقديّ لا يُمَسّ. راجع utils/walletCollection.
+    // Collection on a cash report collects it: whoever received and recorded the money has collected the report, shown as collected in cash invoices with the entry date and amount. Non-cash reports are untouched. See utils/walletCollection.
     if (type === 'collection' && deliveryStatementNumber) {
       try {
         await require('../utils/walletCollection').syncWalletCollection(deliveryStatementNumber, { user: req.user, reason: 'قيد تحصيل في المحفظة' });
@@ -695,10 +553,7 @@ exports.addTransaction = async (req, res) => {
       }
     } catch (e) { console.error('walletController silent catch:', e.message); }
 
-    // ── ورقمٌ لم يُعرَف يُقال ────────────────────────────────────────────────
-    // القيدُ يُحفظ بكلّ ما كُتب — الكشفُ موجودٌ عند العميل وإن لم يصلنا بعد —
-    // لكنّ الرقمَ الذي لا كشفَ له عندنا يُسمّى، فربّما كُتب خطأً. والسكوتُ عنه
-    // يجعل الموظّفَ يظنّ أنّ السبعةَ خُتمت وقد خُتم منها خمسة.
+    // Unknown numbers are reported. The entry is saved with everything typed (the report may exist at the customer but not here yet), but a number with no report here is named since it may be a typo; silence would let staff think all seven were stamped when five were.
     const unknownReports = type === 'tax_invoice'
       ? receivedReports.filter((n) => !receivedWorkflows.some((w) => String(w.reportNumber).trim() === n))
       : [];
@@ -720,30 +575,17 @@ exports.addTransaction = async (req, res) => {
 // ─── DELETE TRANSACTION ──────────────────────────────────────
 
 /**
- * هل يجوز لهذا المستخدم أن يمسّ محفظةً بعينها؟
- *
- * القراءة كانت محروسة («Cannot view other wallets») والكتابةُ مفتوحة — فموظّف
- * عملياتٍ لا يُسمح له برؤية محفظة زميله كان يستطيع حذف حركةٍ منها. وحذفُ تحصيلٍ
- * يُعيد المبلغ إلى رصيد العميل ويعيد كتابة حالة الفاتورة، فالأثر مالٌ لا شاشة.
- *
- * والمديرون يمسّون أيّ محفظة؛ وغيرهم محفظتَه وحدها.
+ * Whether this user may touch a given wallet. Reads were guarded but writes were open, so a user who could not view a colleague's wallet could delete its entries; deleting a collection changes balances and invoice status.
+ * Managers may touch any wallet; others only their own.
  */
 /**
- * ── وتصحيحُ ما كُتب سلطةٌ واحدة ──────────────────────────────────────────────
- *
- * تسجيلُ حركةٍ شيءٌ، وتغييرُ حركةٍ سُجِّلت شيءٌ آخر. الأوّلُ عملُ اليوم يفعله من
- * يمسك الصندوق؛ والثاني إعادةُ كتابةِ ما وقع — يحرّك رصيدَ اليوم وكلِّ يومٍ
- * بعده، ويُعيد حسابَ فرق العدّ على أيّامٍ أُقفلت. ومثلُه إعادةُ فتح يومٍ أُقفل.
- *
- * وكانا لثلاثة أدوارٍ ولثمانيةٍ في الحذف والتعديل. فصارا لمدير النظام وحدَه:
- * هو الذي يُسأل عن الدفتر إن اختلف، ولا يُسأل عنه من لا يملك تصحيحَه.
- *
- * والإضافةُ تبقى لأهلها — من لا يستطيع أن يسجّل حركةً لا محفظةَ له أصلًا.
+ * Correcting what was recorded is a single authority. Recording is daily work by whoever holds the cash box; changing a recorded entry rewrites history, moves the day's balance and all later days, and recomputes count differences on closed days. Reopening a closed day is the same kind of act.
+ * These were open to three roles (eight for delete and edit) and are now super admin only. Adding stays with its users.
  */
-// مديرُ النظام أو دورٌ مُنح صلاحيّاتِه كاملةً — راجع utils/permissions.hasSuperAdminPowers.
+// Super admin, or a role granted full powers (see utils/permissions.hasSuperAdminPowers).
 const maySettle = async (user) => {
   if (!user) return false;
-  // ومعه المحاسبُ ومديرُ الحسابات والمديرُ الماليّ — راجع config/financeAuthority.
+  // Also accountant, accounts manager and finance manager (see config/financeAuthority).
   return require('../config/financeAuthority').hasFinancePowers(user.role);
 };
 const denySettle = (res, what) => res.status(403).json({
@@ -769,15 +611,11 @@ exports.deleteTransaction = async (req, res) => {
     const wallet = await DailyWallet.findById(transaction.wallet);
     if (!(await maySettle(req.user))) return denySettle(res, 'edit');
     if (!mayTouchWallet(req, wallet)) return denyWallet(res);
-    // ولا تُمَسّ حركةٌ سابقةٌ للبداية ولو بقيت واحدةٌ في القاعدة: تعديلُها
-    // يُعيد حساب سلسلةِ أرصدةٍ انتهت، وحذفُها يُحرّك رصيدَ أوّلِ سبتمبر المُقَرّ.
+    // An entry before the start date is not touched even if one remains in the database: editing it recomputes a finished balance chain and deleting it moves the approved September 1 balance.
     if (denyOutsideBook(res, transaction.date, req.user)) return;
     if (wallet && wallet.isClosed && !mayWriteIntoClosedDay(req.user.role)) return denyClosedDay(res);
 
-    // ── ولا عكسَ لأثرٍ لم يعد يُكتب ────────────────────────────────────────
-    // كان حذفُ التحصيل يعكس رصيدَ عميلٍ وفاتورةً في ورك فلو زال. والحركةُ
-    // نفسُها هي الأثرُ الآن، فحذفُها يعيد الرصيدَ وحدَه — وسلسلةُ الأرصدة
-    // تُبنى بعده كما تُبنى بعد أيّ حذف.
+    // No reversal of an effect that is no longer written. Deleting a collection used to reverse a customer balance and invoice in the removed workflow module; the entry itself is now the effect, so deleting it restores the balance and the chain is rebuilt as after any delete.
 
     if (transaction.type === 'expense' && transaction.vendor) {
       const vendorDoc = await Vendor.findById(transaction.vendor);
@@ -797,14 +635,14 @@ exports.deleteTransaction = async (req, res) => {
 
     await WalletTransaction.findByIdAndDelete(req.params.id);
 
-    // حُذف التحصيلُ فيُرفع عن الكشف — إلّا أن يبقى له قيدٌ آخر فيُعاد مجموعُه.
+    // Collection deleted: removed from the sheet, unless another entry still exists for it, in which case the total is recomputed.
     if (transaction.type === 'collection' && transaction.deliveryStatementNumber) {
       try {
         await require('../utils/walletCollection').syncWalletCollection(transaction.deliveryStatementNumber, { user: req.user, reason: 'حذف قيد المحفظة' });
       } catch (e) { console.error('wallet→cash collection (delete):', e.message); }
     }
 
-    // حُذف الشراءُ فلا سدادَ على الكشف — إلّا مبلغًا كُتب بيدٍ غيرَ مبلغه.
+    // Purchase deleted: no payment remains on the sheet, except an amount typed by hand that differs from the purchase amount.
     if (transaction.type === 'purchase' && transaction.purchaseDeliveryStatementNumber) {
       try {
         await require('../utils/walletPayment').syncSheetPayment(transaction.purchaseDeliveryStatementNumber, { previousAmount: transaction.amount });
@@ -836,25 +674,9 @@ exports.deleteTransaction = async (req, res) => {
 };
 
 /**
- * ── نقلُ حركةٍ من فرعٍ إلى فرع ─────────────────────────────────────────────
- *
- * تُسجَّل مشترياتٌ أو مصروفٌ أو تحصيلٌ في فرعٍ ثمّ يُكتشَف أنّها فرعٍ آخر: سُجّلت
- * على محفظة جدّة وهي من محفظة الدمام. وكان العلاجُ الوحيد: حذفُها هناك
- * وإعادةُ كتابتها هنا — فيضيع من سجّلها ومتى، ويُعاد إدخالُ كلّ حقل.
- *
- * فالنقلُ فعلٌ واحدٌ يفعل ما يجب أن يفعله: الحركةُ تُنسَب إلى يوميّة الفرع
- * الجديد **في اليوم نفسِه**، ثمّ **يُعاد حسابُ الفرعين كليهما** — فرصيدُ الفرع
- * القديم يرتفع بما خرج منه، والجديدُ ينقص بما دخل فيه، وتتدحرج الأرصدةُ على
- * أيّام كلٍّ منهما (`recalcWallet` → `cascadeBalances`). وكأنّها لم تحدث هناك
- * وحدثت هنا، كما طُلب حرفًا.
- *
- * ── وما لا يُنقَل ──────────────────────────────────────────────────────────
- * التاريخُ لا يتغيّر: النقلُ تصحيحُ **مكان**، وتغييرُ اليوم معه يخفي خطأين في
- * فعلٍ واحد. ومن أراد يومًا آخرَ فليعدّل التاريخَ بعده صريحًا.
- *
- * ── ولمديرِ النظام وحدَه ───────────────────────────────────────────────────
- * الحركةُ تُنقَل بين دفترَي عهدةٍ لرجلين مختلفين، فتتغيّر مسؤوليّةُ نقدٍ لا
- * خانةٌ في صفّ. وتُقيَّد في سجلّ المراجعة بالفرعين والمبلغ.
+ * Moving an entry between branches. Purchases, expenses or collections recorded on the wrong branch wallet used to be deleted and re-entered, losing who recorded it and when.
+ * The move books the entry to the new branch's journal on the same day, then recomputes both branches (old rises, new falls) and cascades balances (recalcWallet -> cascadeBalances).
+ * The date is unchanged: a move corrects the place, and changing the day too would hide two errors in one action. Super admin only, since responsibility for cash passes between two custody ledgers; the audit log records both branches and the amount.
  */
 exports.moveTransaction = async (req, res) => {
   try {
@@ -862,13 +684,8 @@ exports.moveTransaction = async (req, res) => {
     const transaction = await WalletTransaction.findById(req.params.id);
     if (!transaction) return res.status(404).json({ message: 'الحركة غير موجودة' });
 
-    // ── وجهةُ النقل: فرعٌ أو تاريخٌ أو كلاهما ──────────────────────────────
-    // كان النقلُ إلى فرعٍ وحدَه. والقيدُ يُسجَّل في اليوم الخطأ كما يُسجَّل في
-    // الفرع الخطأ — بل أكثر: مَن يُدخل عهدةَ أمسِ صباحًا يكتب تاريخَ اليوم بلا
-    // أن ينتبه. وكان علاجُه حذفًا وإعادةَ تسجيل، فيضيع سطرُ المراجعة الذي يقول
-    // إنّ القيدَ كان، ويُفتَح يومٌ أُقفل.
-    //
-    // فالوجهةُ الآن طرفان مستقلّان: يُرسَل ما تغيّر ويُفترض الباقي كما هو.
+    // Move destination: branch, date, or both. An entry can be on the wrong day as well as the wrong branch (yesterday's custody entered with today's date); the old fix of delete and re-enter lost the audit line and could reopen a closed day.
+    // The two parts are independent: only what changed is sent and the rest is assumed unchanged.
     const toBranchId = String(req.body?.branch || transaction.branch);
     const toDate = String(req.body?.date || transaction.date).trim();
 
@@ -884,7 +701,7 @@ exports.moveTransaction = async (req, res) => {
     }
 
     const [fromBranch, toBranch] = await Promise.all([
-      // الفرعُ له اسمٌ واحدٌ في المخطَّط (`name`) — راجع models/Branch.
+      // Branch has a single name field in the schema (see models/Branch).
       Branch.findById(transaction.branch).select('name city').lean(),
       Branch.findById(toBranchId).select('name city').lean(),
     ]);
@@ -893,14 +710,11 @@ exports.moveTransaction = async (req, res) => {
     const fromWallet = await DailyWallet.findById(transaction.wallet);
     const fromDate = transaction.date;
 
-    // ── والحدّان يُفحصان على الطرفين ────────────────────────────────────────
-    // لو فُحص المصدرُ وحدَه لصار النقلُ بابًا إلى يومٍ خارج الدفتر: يُسجَّل
-    // القيدُ في يومٍ مسموحٍ ثمّ يُنقَل إلى ما قبل بدء العهدة أو إلى الغد.
+    // Both bounds are checked on both ends. Checking only the source would make a move a way into a day outside the ledger: record on an allowed day, then move to before the custody start or to tomorrow.
     if (denyOutsideBook(res, fromDate, req.user)) return;
     if (!sameDate && denyOutsideBook(res, toDate, req.user)) return;
 
-    // ويومٌ مُقفَلٌ على أيِّ الطرفين يحتاج الصلاحيّةَ نفسَها التي يحتاجها أيُّ
-    // كتابةٍ فيه — فلا يُفتَح بابٌ جانبيٌّ إلى يومٍ أُقفل.
+    // A closed day on either end needs the same permission as any write into it, so a move is not a side door into a closed day.
     const toWallet = await getOrCreateWallet(toBranchId, toDate);
     if (((fromWallet && fromWallet.isClosed) || toWallet.isClosed) && !mayWriteIntoClosedDay(req.user.role)) {
       return denyClosedDay(res);
@@ -914,13 +728,11 @@ exports.moveTransaction = async (req, res) => {
     transaction.branch = toWallet.branch;
     transaction.wallet = toWallet._id;
     transaction.date = toDate;
-    // ولقطةُ اسم الفرع في المشتريات تتبع الحركةَ — وإلّا قرأ من يراجع فرعًا
-    // في الصفّ وفرعًا في الحساب.
+    // The branch-name snapshot on purchases follows the entry, otherwise a reviewer would read one branch on the row and another on the account.
     if (!sameBranch && transaction.type === 'purchase' && transaction.purchaseBranch) {
       transaction.purchaseBranch = toBranch.name || transaction.purchaseBranch;
     }
-    // والسطرُ يقول ما تغيّر وحدَه: «نُقلت من فرع كذا» على قيدٍ لم يبرح فرعَه
-    // يُقرأ خطأً في المراجعة.
+    // The audit line states only what changed: a 'moved from branch X' line on an entry that never left its branch would mislead a reviewer.
     const moves = [];
     if (!sameBranch) moves.push(`من فرع «${before.branchName}» إلى «${toBranch.name}»`);
     if (!sameDate) moves.push(`من تاريخ ${before.date} إلى ${toDate}`);
@@ -928,21 +740,15 @@ exports.moveTransaction = async (req, res) => {
       .filter(Boolean).join(' · ').slice(0, 1000);
     await transaction.save();
 
-    // والتاريخُ تاريخُ التحصيل على الكشف النقديّ — يتبع القيدَ إلى يومه الجديد.
+    // On a cash report the date is the collection date and follows the entry to its new day.
     if (transaction.type === 'collection' && transaction.deliveryStatementNumber && !sameDate) {
       try {
         await require('../utils/walletCollection').syncWalletCollection(transaction.deliveryStatementNumber, { user: req.user, reason: 'نقل قيد المحفظة' });
       } catch (e) { console.error('wallet→cash collection (move):', e.message); }
     }
 
-    // ── واليوميّتان تُعاد حسابُهما، بالأقدم أوّلًا ──────────────────────────
-    // الحسابُ لطرفٍ واحدٍ يترك الآخرَ بمجموعٍ لا يطابق حركاتِه — وهو عطبٌ
-    // صامتٌ لا يُكتشَف إلّا عند جردِ النقد.
-    //
-    // والترتيبُ يلزم حين يكون الفرعُ واحدًا والتاريخُ مختلفًا: اليومان ساعتئذٍ
-    // في سلسلةٍ واحدة، و`recalcWallet` يتدحرج على ما بعد يومِه. فيُبدأ بالأقدم
-    // ليمرّ تدحرجُه على الأحدث، ثمّ يُحسَب الأحدثُ بمجاميعه الصحيحة فيتدحرج
-    // هو بدوره على ما بعده. ولو عُكس لبقي يومٌ بافتتاحيٍّ من قبل النقل.
+    // Both journals are recomputed, oldest first. Recomputing only one side leaves the other with totals not matching its entries, a silent fault found only at cash count.
+    // Order matters when the branch is the same and the date differs: both days are in one chain and recalcWallet cascades to later days. The older goes first so its cascade passes through the newer, then the newer is computed with correct totals and cascades onward. Reversed, one day would keep an opening balance from before the move.
     const first = fromWallet && fromWallet.date <= toWallet.date ? fromWallet : toWallet;
     const second = first === toWallet ? fromWallet : toWallet;
     const recalced = {};
@@ -965,7 +771,7 @@ exports.moveTransaction = async (req, res) => {
       ipAddress: req.ip,
     });
 
-    // وكلُّ شاشةٍ تقرأ المحفظةَ تسمع: اليوميّتان والحركةُ ولوحةُ الفروع.
+    // Every screen reading the wallet listens: both journals, the entry and the branches board.
     try {
       if (updated.to) emitToAll('wallet:transaction', { wallet: updated.to });
       if (updated.from && String(updated.from._id) !== String(updated.to && updated.to._id)) {
@@ -990,8 +796,7 @@ exports.moveTransaction = async (req, res) => {
   }
 };
 
-// الاسمُ القديم يبقى: النسخُ المثبَّتة من التطبيق تنادي `/branch`، والتطبيقُ
-// يُوزَّع ملفًّا لا من متجر — فنسخةٌ على هاتفٍ تبقى حتّى يُحدِّثها صاحبُها.
+// The old route name is kept: installed app builds call /branch, and the app is distributed as a file rather than a store, so old versions stay until the owner updates.
 exports.moveTransactionBranch = exports.moveTransaction;
 
 // ─── UPDATE TRANSACTION ─────────────────────────────────────
@@ -999,7 +804,7 @@ exports.updateTransaction = async (req, res) => {
   try {
     const transaction = await WalletTransaction.findById(req.params.id);
     if (!transaction) return res.status(404).json({ message: 'Transaction not found' });
-    // ما كان على القيد قبل التعديل — يُصحَّح به كشفُه القديم إن نُقل إلى غيره.
+    // What the entry held before the edit; used to correct its old sheet if the entry moved to another.
     const priorSheetNumber = transaction.purchaseDeliveryStatementNumber;
     const priorAmount = transaction.amount;
     const priorCollectionSheet = transaction.type === 'collection' ? transaction.deliveryStatementNumber : null;
@@ -1007,8 +812,7 @@ exports.updateTransaction = async (req, res) => {
     const wallet = await DailyWallet.findById(transaction.wallet);
     if (!(await maySettle(req.user))) return denySettle(res, 'edit');
     if (!mayTouchWallet(req, wallet)) return denyWallet(res);
-    // ولا تُمَسّ حركةٌ سابقةٌ للبداية ولو بقيت واحدةٌ في القاعدة: تعديلُها
-    // يُعيد حساب سلسلةِ أرصدةٍ انتهت، وحذفُها يُحرّك رصيدَ أوّلِ سبتمبر المُقَرّ.
+    // An entry before the start date is not touched even if one remains in the database: editing it recomputes a finished balance chain and deleting it moves the approved September 1 balance.
     if (denyOutsideBook(res, transaction.date, req.user)) return;
     if (wallet && wallet.isClosed && !mayWriteIntoClosedDay(req.user.role)) return denyClosedDay(res);
 
@@ -1020,8 +824,8 @@ exports.updateTransaction = async (req, res) => {
     } = req.body;
     const newAmount = amount != null ? Number(amount) : transaction.amount;
 
-    // ─── REVERSE OLD FINANCIAL EFFECTS ────────────────────
-    // التحصيلُ لم يعد له أثرٌ خارج الحركة نفسِها — لا رصيدَ عميلٍ ولا فاتورة.
+    // REVERSE OLD FINANCIAL EFFECTS
+    // Collection no longer has an effect outside the entry itself: no customer balance and no invoice.
     if (transaction.type === 'expense' && transaction.vendor) {
       const vendorDoc = await Vendor.findById(transaction.vendor);
       if (vendorDoc) { vendorDoc.totalPaid = Math.max(0, vendorDoc.totalPaid - transaction.amount); await vendorDoc.save(); }
@@ -1031,10 +835,7 @@ exports.updateTransaction = async (req, res) => {
       if (driverDoc) { driverDoc.totalPaid = Math.max(0, driverDoc.totalPaid - transaction.amount); await driverDoc.save(); }
     }
 
-    // ── والتعديلُ يخضع للشرطين نفسِهما ───────────────────────────────────────
-    // نقلُ شراءٍ إلى كشفٍ آخر تعديلٌ لا إنشاء، ولو لم يُفحَص هنا لأمكن تجاوزُ
-    // المنع بخطوتين: يُسجَّل على كشفٍ سليم ثمّ يُنقَل إلى كشفٍ مشترًى سلفًا.
-    // ويُستثنى القيدُ نفسُه من فحص التكرار — وإلّا منع نفسَه.
+    // Edits face the same two conditions. Moving a purchase to another report is an edit, and unchecked it would bypass the rule in two steps (record on a valid report, then move to an already-bought one). The entry itself is excluded from the duplicate check so it does not block itself.
     if (transaction.type === 'purchase' && purchaseDeliveryStatementNumber !== undefined) {
       const rn = String(purchaseDeliveryStatementNumber || '').trim();
       if (!rn) {
@@ -1051,8 +852,7 @@ exports.updateTransaction = async (req, res) => {
           fields: { purchaseDeliveryStatementNumber: 'غير موجود' },
         });
       }
-      // والشرطُ رُفع هنا كما رُفع في التسجيل: نقلُ الشراء إلى كشفٍ إعلانٌ
-      // بأنّ سندَه في اليد، فتُكتب حالتُه بعد نجاح النقل — راجع ما بعد الحفظ.
+      // The condition is lifted here as in recording: moving a purchase to a report declares its bond in hand, so the status is written after the move succeeds (see post-save).
 
       const prior = await WalletTransaction.findOne({
         _id: { $ne: transaction._id },
@@ -1109,9 +909,7 @@ exports.updateTransaction = async (req, res) => {
 
     await transaction.save();
 
-    // ── وتحصيلُ الكشف النقديّ يتبع القيد ────────────────────────────────────
-    // عُدِّل المبلغ أو رقمُ الكشف: يتبعه الكشف، ويُرفع عن القديم إن نُقل عنه.
-    // راجع utils/walletCollection.
+    // Cash report collection follows the entry. When the amount or report number changes the report follows, and the old report is cleared if the entry moved off it. See utils/walletCollection.
     if (transaction.type === 'collection' || priorCollectionSheet) {
       try {
         await require('../utils/walletCollection').syncWalletCollection(
@@ -1121,9 +919,7 @@ exports.updateTransaction = async (req, res) => {
       } catch (e) { console.error('wallet→cash collection (update):', e.message); }
     }
 
-    // ── ومبلغُ السداد على الكشف يتبع المحفظة ──────────────────────────────
-    // عُدِّل المبلغ فيتبعه الكشف، ونُقل القيدُ إلى كشفٍ آخر فيُمسح عن القديم
-    // ويُكتب على الجديد. راجع utils/walletPayment.
+    // The payment amount on the sheet follows the wallet. An amount edit updates the report; moving the entry to another report clears the old one and writes the new. See utils/walletPayment.
     if (transaction.type === 'purchase') {
       try {
         const { syncSheetPayment } = require('../utils/walletPayment');
@@ -1133,8 +929,7 @@ exports.updateTransaction = async (req, res) => {
         }
       } catch (e) { console.error('wallet→sheet payment sync (update):', e.message); }
 
-      // والكشفُ الذي صار يحمل الشراءَ يصير «استُلم السند» — كما في التسجيل.
-      // ويُدفَع إلى المنصّة لا يُكتب عندنا وحدَه، وفشلُه لا يُسقط القيد.
+      // A report that now carries the purchase gets the bond-received status, as when recording. Pushed to the platform rather than written locally only, and a failure does not drop the entry.
       try {
         const OperationsWorkflow = require('../models/OperationsWorkflow');
         const wfNow = await OperationsWorkflow.findOne({ reportNumber: flexSpaceRegex(transaction.purchaseDeliveryStatementNumber) })
@@ -1202,7 +997,7 @@ exports.closeDay = async (req, res) => {
     const txDate = date || toDateStr();
     if (denyOutsideBook(res, txDate, req.user)) return;
 
-    // يُقفَل يومُ الفرع لا يومُ الشخص: النقدُ نقدُ الفرع، وإقفالُه إقرارٌ عنه.
+    // The branch's day is closed, not the person's: the cash is the branch's and closing is a declaration about it.
     const closeBranch = req.body.branchId || req.body.branch || req.user.branch;
     if (!closeBranch) return res.status(400).json({ message: 'لا يوجد فرع محدَّد.' });
     if (req.user.role === 'operations_staff' && String(closeBranch) !== String(req.user.branch)) {
@@ -1216,18 +1011,8 @@ exports.closeDay = async (req, res) => {
     wallet.closedAt = new Date();
     wallet.closedBy = req.user._id;
 
-    // ── ومَن لم يعدّ النقدَ لا يُكتب له عدٌّ ──────────────────────────────────
-    //
-    // كان الإقفالُ بلا عدٍّ يكتب `actualCash = closingBalance` و`فرق = 0`،
-    // فيصير «لم يعدّه أحد» و«عُدَّ فطابق الدفترَ تمامًا» شيئًا واحدًا في
-    // البيانات لا يُفرَّق بينهما. وهما نقيضان: الأوّل لا يقول شيئًا عن النقد،
-    // والثاني إقرارٌ بأنّه صحيح.
-    //
-    // وأثرُ الخلط ليس نظريًّا: يوم ١٠ سبتمبر في الرياض أُقفل بلا عدّ — سجلُّ
-    // المراجعة يحفظ الطلبَ بلا `actualCash` أصلًا — ثمّ تحرّك ختاميُّه، فصار في
-    // الخانة عدٌّ لم يقع وفرقٌ يُقرأ صفرًا وهو ألفان ومئتان.
-    //
-    // فالفراغُ يبقى فراغًا: `null` تعني «لم يُعَدّ»، وكلُّ شاشةٍ تقرؤها كذلك.
+    // No count is written for cash that was not counted. Closing without a count used to write actualCash = closingBalance and difference 0, which made 'nobody counted' and 'counted and matched exactly' the same in the data. They are opposites: the first says nothing about the cash, the second asserts it is correct.
+    // When the closing later moved, a count that never happened showed a difference of zero instead of the real amount. Empty stays empty: null means not counted, and every screen reads it so.
     const counted = actualCash !== undefined && actualCash !== null && actualCash !== '';
     wallet.actualCash = counted ? Number(actualCash) : null;
     syncCashCount(wallet);
@@ -1289,7 +1074,7 @@ exports.reopenDay = async (req, res) => {
     const { walletId } = req.params;
     const wallet = await DailyWallet.findById(walletId);
     if (!wallet) return res.status(404).json({ message: 'Wallet not found' });
-    // إعادةُ فتح يومٍ أُقفل لمدير النظام وحدَه — راجع maySettle.
+    // Reopening a closed day is super admin only (see maySettle).
     if (!(await maySettle(req.user))) return denySettle(res, 'reopen');
     if (denyOutsideBook(res, wallet.date, req.user)) return;
 
@@ -1342,13 +1127,7 @@ exports.getBranchDashboard = async (req, res) => {
         .lean(),
       WalletTransaction.find({ branch: branchId, date: dateFilter })
         .populate('user', 'firstName lastName')
-        // ── ولا يُملأ ما لم يعد في المستند ────────────────────────────────
-        // `invoice` حقلٌ زال مع قسم «العملاء والمالية»، وبقي السطرُ يملؤه —
-        // فكانت الصفحةُ ترد ٥٠٠ في كلّ فتحة: «لا يمكن ملءُ invoice، ليس في
-        // مخطّطك». ولم يُلاحَظ لأنّ من يملك فتحَها كان قليلًا.
-        //
-        // و`customer` يشير إلى سجلّ التحصيل الآن لا إلى عميلٍ قديم، فحقولُه
-        // اسمُه ونوعُه.
+        // Does not populate what the document no longer has. invoice was removed with the workflow module but the line kept populating it, so the page returned 500 on every open (not in the schema). customer now points to the collections record, so its fields are name and type.
         .populate('customer', 'name kind')
         .populate('vendor', 'name')
         .populate('driver', 'name')
@@ -1411,25 +1190,13 @@ exports.getAllBranchesDashboard = async (req, res) => {
 
     const branchIds = branches.map((b) => b._id);
 
-    // ── ولماذا لا تُقرأ يوميّاتُ اليوم وحدَها ─────────────────────────────────
-    // كانت اللوحةُ تسأل عن يوميّةٍ **بتاريخ اليوم**، ويوميّةُ اليوم لا تُنشأ
-    // إلّا حين يفتح صاحبُها صفحتَه. فالفرعُ يظهر صفرًا حتّى يفتح أحدُهم محفظتَه،
-    // ثمّ يظهر فجأةً — وقد قرأ المديرُ الصفرَ قبلها ولم يكن صفرًا.
-    //
-    // والنقدُ في يد الموظّف لا يختفي لأنّه لم يفتح شاشة: رصيدُه هو ختاميُّ آخرِ
-    // يوميّةٍ له **حتّى** ذلك التاريخ. فالحركاتُ تُقرأ من يوميّات المدى، والرصيدُ
-    // من آخر يوميّةٍ قبله أو فيه — فتُقرأ الصورةُ كاملةً بلا انتظار أحد.
+    // Why journals of today alone are not read. The board asked for the journal dated today, which is created only when its owner opens the page, so a branch showed zero until someone opened it and then jumped.
+    // Cash in an employee's hand does not vanish because the screen was not opened: the balance is the closing of the last journal up to that date. Movements are read from journals in the range and the balance from the last journal at or before it, giving the full picture without waiting.
     const hi = typeof dateFilter === 'string' ? dateFilter : dateFilter.$lte;
     const lo = typeof dateFilter === 'string' ? dateFilter : dateFilter.$gte;
 
-    // ── ورصيدُ أوّل الفترة ────────────────────────────────────────────────────
-    // «الافتتاحيُّ» لفترةٍ ليس مجموعَ افتتاحيّات أيّامها — ذلك يعدُّ المالَ
-    // نفسَه مرّةً لكلّ يوم. هو ما كان في يد الفرع **قبل** أن تبدأ: ختاميُّ آخر
-    // يومٍ يسبقها. فإن لم يسبقها يومٌ فهو افتتاحيُّ أوّل يومٍ فيها — رأسُ
-    // السلسلة نفسُه.
-    //
-    // وبه يصحّ الميزان: افتتاحيُّ الفترة + حركاتُها = ختاميُّها. وبدونه تُقرأ
-    // الحركاتُ بلا ما جرت عليه.
+    // Opening balance of a period. It is not the sum of its days' openings (that counts the same money per day) but what the branch held before the period: the closing of the last day before it. If no earlier day exists it is the first day's opening, the head of the chain.
+    // This makes the balance hold: period opening + movements = period closing.
     const opening = await DailyWallet.aggregate([
       { $match: { branch: { $in: branchIds }, date: { $lt: lo } } },
       { $sort: { date: 1 } },
@@ -1442,10 +1209,7 @@ exports.getAllBranchesDashboard = async (req, res) => {
       DailyWallet.aggregate([
         { $match: { branch: { $in: branchIds }, date: { $lte: hi } } },
         { $sort: { date: 1 } },
-        // ── آخرُ يوميّةٍ لكلّ **فرع** حتّى التاريخ ──────────────────────────
-        // كانت تُجمَّع بالمستخدم حين كانت المحفظةُ له. وقد صارت للفرع ولا
-        // مستخدمَ لها، فكان الجمعُ بالمستخدم يضع الفروعَ كلَّها في مجموعةٍ
-        // واحدةٍ مفتاحُها `null` — فيظهر فرعٌ واحدٌ والباقي أصفار.
+        // Last journal per branch up to the date. It used to group by user when the wallet was per user; now it is per branch with no user, so grouping by user put every branch in one null-keyed group and showed one branch with zeros for the rest.
         { $group: {
           _id: '$branch',
           branch: { $last: '$branch' },
@@ -1484,22 +1248,16 @@ exports.getAllBranchesDashboard = async (req, res) => {
       let totalDifference = 0;
       let closedWallets = 0;
 
-      // الحركاتُ من يوميّات المدى وحدَها: ما جرى في الفترة المطلوبة.
+      // Movements come only from journals in the range: what happened in the requested period.
       for (const w of wallets) {
         totalCollections += w.totalCollections || 0;
         totalExpenses += w.totalExpenses || 0;
         totalPurchases += w.totalPurchases || 0;
       }
-      // والرصيدُ من آخر يوميّةٍ لكلّ موظّفٍ حتّى التاريخ — سواءٌ فتح شاشتَه أم لا.
+      // Balance from each employee's last journal up to the date, whether or not they opened their screen.
       const carriedRows = carriedByBranch[branch._id.toString()] || [];
-      // ── الافتتاحيُّ يُقرأ من أوّل يومٍ في الفترة لا من اليوم الذي يسبقها ────
-      // القاعدةُ أنّ افتتاحيَّ اليوم ختاميُّ ما قبله، وهي تصحّ ما لم يُثبَّت
-      // رصيدٌ يدويًّا. ويُثبَّت حين تُجرَد الخزنةُ فيُعتمَد ما فيها فعلًا بدل ما
-      // يقوله الدفتر — فيصير ذلك اليومُ رأسًا لسلسلةٍ جديدة، ولا يُشتقّ ممّا
-      // قبله. فأخذُ ختاميّ اليوم السابق كان يُظهر ميزانًا لا يقفل.
-      //
-      // فيُقرأ افتتاحيُّ أوّل يومٍ في الفترة — وهو رأسُها أيًّا كان مصدرُه —
-      // ولا يُرجَع إلى ما قبلها إلّا حين لا يكون فيها يومٌ أصلًا.
+      // The opening is read from the first day in the period, not from the day before it. Opening equals the previous closing unless a balance was fixed manually, which happens at a cash count when the actual cash replaces the book figure and that day becomes the head of a new chain. Using the previous closing showed a balance that did not close.
+      // The first day's opening is the head whatever its source; the earlier day is used only when the period has no day.
       const inRange = (walletsByBranch[branch._id.toString()] || []).slice()
         .sort((a, b) => String(a.date).localeCompare(String(b.date)));
       const openingBalance = inRange.length
@@ -1515,11 +1273,7 @@ exports.getAllBranchesDashboard = async (req, res) => {
         }
       }
 
-      // ── وتسويةُ الجرد تُقال ولا تُخبَّأ ──────────────────────────────────
-      // «افتتاحيٌّ + حركات = ختاميّ» تصحّ ما لم يُثبَّت رصيدٌ يدويًّا داخل
-      // الفترة. ويُثبَّت حين تُجرَد الخزنةُ فيُعتمَد ما فيها فعلًا — وهو فرقٌ
-      // حقيقيٌّ لا خطأَ حساب. وإخفاؤه يجعل الأرقامَ تبدو متناقضةً بلا تفسير،
-      // فيُحسب ويُعرَض باسمه حين لا يكون صفرًا.
+      // The count settlement is reported, not hidden. opening + movements = closing holds unless a balance was fixed manually inside the period, at a cash count where actual cash is adopted; that is a real difference, not a calculation error. Hiding it makes the numbers look contradictory, so it is computed and shown by name when non-zero.
       const r2 = (x) => Math.round(x * 100) / 100;
       const netMovement = totalCollections - totalExpenses - totalPurchases;
       const adjustment = r2(totalClosingBalance - (openingBalance + netMovement));
@@ -1533,7 +1287,7 @@ exports.getAllBranchesDashboard = async (req, res) => {
         totalPurchases,
         netMovement: totalCollections - totalExpenses - totalPurchases,
         closingBalance: totalClosingBalance,
-        // محفظةُ الفرع واحدة؛ والعددُ الذي يُقرأ هو عددُ من يعمل عليها.
+        // A branch has one wallet; the count read is the number of people working on it.
         activeWallets: carriedRows.length,
         movedToday: wallets.length,
         closedWallets,
@@ -1568,7 +1322,7 @@ exports.getRiskAlerts = async (req, res) => {
       .populate('customer', 'companyName')
       .populate('vendor', 'name')
       .sort({ createdAt: -1 })
-        // محفظةٌ واحدة بلغت المئة بالفعل، فكانت تنبيهاتها تُبتَر عند حدّها.
+        // A single wallet has actually reached one hundred, so its alerts were cut off at the limit.
         .limit(2000);
 
     // Also get cash difference alerts
@@ -1605,13 +1359,8 @@ exports.lookupByReport = async (req, res) => {
 
     if (!workflow) return res.status(404).json({ message: 'Report not found' });
 
-    // Core dispatch-sheet data — always returned when the report exists. Purchases
-    // use purchaseValue/driverName/branch (no customer needed); collections use
-    // sellingValue + the linked customer's open invoices.
-    // ── ويُقال هنا إن كان الكشفُ مشترًى سلفًا ────────────────────────────────
-    // البحثُ يسبق الإدخال، فهو الموضعُ الذي يُعرَف فيه ذلك قبل ملء الاستمارة —
-    // لا بعد الضغط على «حفظ». والخادمُ يمنع على أيّ حال (راجع addTransaction)،
-    // لكنّ المنعَ بعد ملء أربع خاناتٍ عقوبةٌ لا إرشاد.
+    // Core dispatch-sheet data, always returned when the report exists. Purchases use purchaseValue/driverName/branch (no customer needed); collections use sellingValue + the linked customer's open invoices.
+    // Also reports whether the report was already bought. Lookup runs before entry, so this is known before the form is filled, not after saving. The server blocks it anyway (see addTransaction), but a block after four fields are filled is a penalty rather than guidance.
     const priorPurchase = await WalletTransaction.findOne({
       type: 'purchase',
       purchaseDeliveryStatementNumber: flexSpaceRegex(workflow.reportNumber),
@@ -1623,7 +1372,7 @@ exports.lookupByReport = async (req, res) => {
       sellingValue: workflow.sellingValue || 0,
       driverName: workflow.driverName || '',
       branch: workflow.branch || '',
-      // وحالةُ الطلب تُقال في البحث: الشرطُ يُعرَف قبل ملء الاستمارة لا بعدها.
+      // The order status is reported in the lookup: the condition is known before the form is filled, not after.
       applicationStatus: workflow.applicationStatus || '',
       bondReceived: String(workflow.applicationStatus || '').trim() === 'bond_received',
       alreadyPurchased: priorPurchase ? {
@@ -1631,25 +1380,14 @@ exports.lookupByReport = async (req, res) => {
         date: priorPurchase.date,
         by: priorPurchase.user ? `${priorPurchase.user.firstName || ''} ${priorPurchase.user.lastName || ''}`.trim() : '',
         receipt: priorPurchase.purchaseReceiptNumber || '',
-        // ── ومن عهدةِ أيِّ فرعٍ دُفع ────────────────────────────────────────
-        // الدفعُ من عهدة فرعٍ غير فرع الكشف هو الغالب لا الاستثناء: ثلاثمئةٍ
-        // وتسعٌ وأربعون عمليةً من خمسمئةٍ واثنتين وخمسين — شاحناتُ النقل الثقيل
-        // تدفع كشوفَ جدّة والدمام، وجدّةُ تدفع كشوفَ ينبع ورابغ وجازان.
-        //
-        // فاسمُ مَن دفع وحدَه لا يكفي: موظّفُ سدير يقرأ «وائل مصطفى» فلا يعرف
-        // أنّ الكشف دُفع من عهدة الرياض أصلًا، فيظنّ المنعَ عطبًا في حسابه.
-        // واسمُ العهدة هو ما يجعل الجوابَ مفهومًا ويجعل المراجعةَ ممكنة.
+        // Which branch's custody paid. Paying from a branch other than the report's branch is the common case (heavy transport trucks pay Jeddah and Dammam reports; Jeddah pays Yanbu, Rabigh and Jazan).
+        // The payer's name alone is not enough: a Sudair employee would not know the report was paid from Riyadh custody and would take the block for a fault. The custody name makes the answer understandable and review possible.
         branch: priorPurchase.branch?.name || '',
       } : null,
     };
 
-    // ── والطرفُ من سجلّ التحصيل ──────────────────────────────────────────
-    // كان يُبحَث عنه في `Customer` ثمّ تُجلَب فواتيرُه المفتوحة — وكلاهما من
-    // ورك فلو زال، فكانت الرحلتان تعودان فارغتين دائمًا. والعميلُ يُعرَف من
-    // `username` في الكشف، ويُطابَق بالاسم المطويّ في سجلّ التحصيل.
-    //
-    // ولا فواتيرَ تُعرض معه: المستحقُّ يُقرأ من الكشوف في قسم التحصيل، لا من
-    // جدولٍ ثانٍ يقول رقمًا آخر.
+    // The party comes from the collections record. It used to be looked up in Customer and then its open invoices were fetched, both from the removed workflow module, so both trips returned empty. The customer is identified from username on the sheet and matched by folded name to the collections record.
+    // No invoices are shown with it: what is owed is read from the sheets in the collections section, not from a second table giving another number.
     let customer = null;
     if (workflow.username) {
       const CollectionsParty = require('../models/CollectionsParty');
@@ -1674,7 +1412,7 @@ exports.getWalletHistory = async (req, res) => {
     const page = Math.max(1, parseInt(req.query.page, 10) || 1);
     const limit = Math.min(100, Math.max(1, parseInt(req.query.limit, 10) || 30));
 
-    // السجلُّ بالفرع: يُقرأ تاريخُ نقدِ الفرع لا تاريخُ شخصٍ فيه.
+    // History is by branch: it reads the branch's cash history, not one person's.
     const histBranch = req.query.branchId || req.query.branch
       || (userId ? (await require('../models/User').findById(userId).select('branch').lean() || {}).branch : null)
       || req.user.branch;
@@ -1725,17 +1463,8 @@ exports.getUserWalletRange = async (req, res) => {
       return res.status(403).json({ message: 'لا تملك صلاحية عرض محفظة فرعٍ آخر.' });
     }
 
-    // ── ولا تُعَدُّ أيّامٌ لم تأتِ بعد ───────────────────────────────────────
-    //
-    // إقفالُ اليوم يجهّز يوميّةَ الغد بالرصيد المنقول، وهو صحيحٌ في ذاته. لكنّ
-    // عرضَ الشهر يعدّ اليوميّات، فيقول «١٣ يومًا» في الثاني عشر من الشهر —
-    // ورقمٌ يناقض التقويمَ على الشاشة يجعل كلَّ رقمٍ بجانبه موضعَ شكّ. وكذلك
-    // «رصيد آخر يوم» كان يُقرأ من يوميّةٍ في المستقبل لا من آخر يومٍ عُمل فيه.
-    //
-    // والحدُّ هنا لا في الفلتر وحدَه: التصديرُ «الكلّ» يسأل عن 2100-12-31،
-    // فبغيره يخرج الملفُّ بأيّامٍ لم تقع.
-    // ومديرُ النظام يقرأ ما خارج النافذة كما يكتب فيه — وإلّا كتب يومًا ثمّ
-    // لم يجده في العرض الذي كتبه من أجله.
+    // Days that have not come yet are not counted. Closing a day prepares tomorrow's journal with the carried balance, which is correct, but the month view counts journals and would show 13 days on the 12th, a number contradicting the on-screen calendar; the last-day balance also read from a future journal.
+    // The bound lives here and not only in the filter, because the export 'all' asks for 2100-12-31 and would otherwise include days that did not happen. Super admin reads outside the window as they can write there, otherwise a day written would be missing from the view.
     const free = mayWorkOutsideBook(req.user);
     const from = (!free && isBeforeWalletStart(dateFrom)) ? WALLET_START_DATE : dateFrom;
     const to = (!free && isBeyondBook(dateTo)) ? lastWritableDay() : dateTo;
@@ -1747,8 +1476,7 @@ exports.getUserWalletRange = async (req, res) => {
       .sort({ date: 1 });
 
     const rawTransactions = await WalletTransaction.find(filter)
-      // مَن سجّل الحركة — المحفظةُ للفرع، فالملفُّ المصدَّرُ بلا اسمِ الفاعل
-      // يقول ماذا جرى ولا يقول من فعل.
+      // Who recorded the entry. The wallet is per branch, so an export without the actor says what happened but not who did it.
       .populate('user', 'firstName lastName')
       .populate('customer', 'name kind')
       .populate('vendor', 'name')
@@ -1758,20 +1486,9 @@ exports.getUserWalletRange = async (req, res) => {
 
     const transactions = await enrichTransactionsWithOpsData(rawTransactions);
 
-    // ── ويومُ الغدِ الفارغ ليس يومَ عمل ───────────────────────────────────────
-    //
-    // إقفالُ اليوم يجهّز يوميّةَ الغد بالرصيد المنقول — صفٌّ ينتظر، لا يومٌ جرى
-    // فيه شيء. وكارتُ «عدد الأيام» يعدّ اليوميّات، فيقول «١٢ يومًا» في الثاني
-    // عشر وليس في الدفتر إلّا أحدَ عشرَ يومًا فيها عمل. ورقمٌ يناقض التقويمَ
-    // على الشاشة يجعل كلَّ رقمٍ بجانبه موضعَ شكّ.
-    //
-    // فيُسقَط الصفُّ المنتظر: ما بعد اليوم، بلا حركةٍ ولا مبلغٍ ولا إقفال.
-    // ومتى كُتب فيه شيءٌ فعلًا — وهو مسموح، القيدُ بعد منتصف الليل قيدُ الغد —
-    // عاد يومًا كسائر الأيّام في العدّ وفي الرصيد.
-    //
-    // والحركةُ تُقرأ من الحركات المحمَّلة لا من مجاميع اليوميّة: قيدُ «استلام
-    // فاتورة ضريبيّة» لا مبلغَ له، فيومٌ ليس فيه غيرُه مجاميعُه أصفار — وهو
-    // يومُ عملٍ بلا شكّ.
+    // An empty tomorrow is not a work day. Closing prepares tomorrow's journal with the carried balance, a waiting row rather than a day with activity, and the days card counts journals (12 on the 12th when only 11 days have work); a number contradicting the calendar casts doubt on every number beside it.
+    // The waiting row is dropped: after today, with no movement, amount or close. Once something is written (allowed; an entry after midnight is tomorrow's) it counts as a normal day.
+    // Movement is read from loaded entries, not journal totals: a tax-invoice receipt entry has no amount, so a day with only that has zero totals but is certainly a work day.
     const T = todayStr();
     const datesWithWork = new Set(rawTransactions.map((t) => String(t.date)));
     const shownWallets = wallets.filter((w) => w.date <= T
@@ -1786,8 +1503,7 @@ exports.getUserWalletRange = async (req, res) => {
       closingBalance: acc.closingBalance + (w.closingBalance || 0),
     }), { totalCollections: 0, totalExpenses: 0, totalPurchases: 0, closingBalance: 0 });
 
-    // ويُعاد المدى المستعمَلُ فعلًا لا المطلوب: الشاشةُ تكتب «سبتمبر» في
-    // العنوان وتعرض ما وقع منه، فلو أعادت ما طُلب لقالت إنّها تعرض الشهر كلَّه.
+    // Returns the range actually used, not the requested one: the screen titles it with the month and shows what occurred, so returning the request would claim the whole month is shown.
     res.json({
       wallets: shownWallets,
       transactions,
@@ -1812,10 +1528,7 @@ exports.resetAllWallets = async (req, res) => {
     if (process.env.ALLOW_DATA_WIPE !== 'yes') return res.status(403).json({ code: 'WIPE_DISABLED', message: 'تصفير المحافظ مقفول.' });
     const allTransactions = await WalletTransaction.find({}).lean();
 
-    // ── ولا أثرَ ماليًّا يُعكَس خارج المحفظة ──────────────────────────────
-    // كان التصفيرُ يعكس أرصدةَ عملاءَ وفواتيرَ في ورك فلو زال، ويحذف دفعاتٍ
-    // كانت المحفظةُ تكتبها. لم يعد شيءٌ من ذلك يُكتب، فلا شيءَ يُعكَس.
-    // ويبقى ما هو خارجَ ذلك الورك فلو على حاله: المورّدُ والسائق.
+    // No financial effect is reversed outside the wallet. Zeroing used to reverse customer balances and invoices in the removed workflow module and delete payments the wallet wrote. None of that is written any more, so nothing is reversed; the supplier and driver stay as they were.
     for (const t of allTransactions) {
       if (t.type === 'expense') {
         if (t.vendor) {
@@ -1831,7 +1544,7 @@ exports.resetAllWallets = async (req, res) => {
 
     // Wipe transactions and wallets
     const txResult = await WalletTransaction.deleteMany({});
-    // والتصفيرُ يرفع كلَّ تحصيلٍ كتبته المحفظةُ على الكشوف — لا قيدَ بقي يسنده.
+    // Zeroing removes every collection the wallet wrote on sheets, since no entry remains to back it.
     try {
       await require('../utils/walletCollection').resyncAllWalletCollections({ user: req.user, reason: 'تصفير المحافظ' });
     } catch (e) { console.error('wallet→cash collection (reset):', e.message); }

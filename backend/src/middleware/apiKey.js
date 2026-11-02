@@ -1,15 +1,8 @@
 const crypto = require('crypto');
 
 /**
- * مصادقةٌ بمفتاح — للأنظمة لا للبشر.
- *
- * ── ولماذا لا تُستعمل جلسةُ مستخدم ─────────────────────────────────────────
- * الأتمتة تعمل بلا إنسانٍ يفتح متصفّحًا، وجلسةُ النظام تنتهي وتُجدَّد وتُبطَل
- * بتغيير كلمة سرّ. ووضعُ حساب موظّفٍ في سكربتٍ يعني أن السكربت يملك ما يملكه
- * الموظّف كلَّه — والأتمتة لا تحتاج إلا القراءة.
- *
- * والمقارنة ثابتة الزمن: `!==` تخرج عند أوّل محرفٍ مختلف، وفرقُ الزمن بين
- * محاولةٍ ومحاولة يكشف المفتاح محرفًا محرفًا لمن يقيسه.
+ * Key-based authentication for systems, not people. A user session expires and is revoked on password change, and an employee account in a script would grant everything the employee has while automation needs read only.
+ * The comparison is constant-time: `!==` exits at the first differing character and timing would leak the key.
  */
 function requireApiKey(envVar, label) {
   const guard = (req, res, next) => {
@@ -20,8 +13,7 @@ function requireApiKey(envVar, label) {
         code: 'API_KEY_NOT_CONFIGURED',
       });
     }
-    // الترويسة أوّلًا. ونقبله في نصّ الاستعلام لأن بعض أدوات الأتمتة لا تُرسل
-    // ترويسات، لكنّه يُسجَّل في سجلّات الوصول — فالترويسة هي الموصى بها.
+    // Header first. The query string is also accepted because some automation tools cannot send headers, but it is logged in access logs, so the header is the recommended way.
     const given = req.headers['x-api-key'] || req.query.key || '';
     const a = Buffer.from(String(given));
     const b = Buffer.from(String(expected));
@@ -32,7 +24,7 @@ function requireApiKey(envVar, label) {
     req.apiClient = label;
     return next();
   };
-  // الحارسُ يقول عن نفسِه — يقرؤه مولّدُ التوثيق. راجع `services/apiDocs`.
+  // The guard describes itself; the docs generator reads this. See `services/apiDocs`.
   guard.__apiKey = envVar;
   guard.__apiLabel = label;
   return guard;

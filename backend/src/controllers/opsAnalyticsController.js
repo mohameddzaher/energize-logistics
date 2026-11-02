@@ -1,14 +1,7 @@
 /**
- * نقطةُ التحليل — لوحةُ مدير التشغيل، حيّةً من القاعدة.
- *
- * تقرأ صفوفَ «تقرير الفروع» (راجع models/BranchReportRow) وتبني منها كلَّ
- * بطاقةٍ ورسمٍ في ورقة `Dashboard` التي يعمل بها مديرُ التشغيل — بالعناوين
- * نفسِها والترتيب نفسِه، والأرقامُ أرقامُنا (راجع utils/opsAnalytics).
- *
- * ── ولماذا نقطةٌ واحدةٌ لصفحتين ─────────────────────────────────────────────
- * تُقرأ في «التشغيل — خاصّ» وفي «لوحة طلبات الشحنات». ولو حُسبت مرّتين لاختلف
- * رقمٌ بينهما يومًا، فيُسأل أيُّهما الصحيح ولا جواب. فالحسابُ هنا، والفلترُ
- * واحدٌ، والصفحتان تعرضان ما يعود.
+ * Analytics endpoint: the operations manager dashboard, live from the database.
+ * Reads the branch-report rows (see models/BranchReportRow) and builds every card and chart of the `Dashboard` sheet the operations manager works with, with the same titles and order, using our own numbers (see utils/opsAnalytics).
+ * One endpoint for two pages: it is read by operations-private and the shipment-orders dashboard. Computing twice would eventually make a number differ with no answer to which is right. So the computation and filter are here and both pages show what returns.
  */
 const BranchReportRow = require('../models/BranchReportRow');
 const OpsTarget = require('../models/OpsTarget');
@@ -19,13 +12,10 @@ const S = (v) => String(v ?? '').trim();
 const { textIn, normKey } = require('../utils/colFilter');
 const DAY = 86400000;
 
-/** قائمةُ قيمٍ تُفلتَر بها — تُرسَل مفصولةً بفواصل. */
+/** A list of filter values, sent comma-separated. */
 const multi = (v) => S(v).split(',').map((x) => x.trim()).filter(Boolean);
 
-/**
- * المدى: الافتراضُ الشهرُ الجاري — وهو ما يُفتَح عليه القسم كلَّ صباح.
- * و`period=all|day|month|quarter|range` كما في لوحة مدير التشغيل.
- */
+/** Range: defaults to the current month, which is what the section opens on each morning. `period=all|day|month|quarter|range` as on the operations manager dashboard. */
 const resolvePeriod = (q) => {
   const today = new Date();
   const iso = (d) => d.toISOString().slice(0, 10);
@@ -45,22 +35,19 @@ const resolvePeriod = (q) => {
     return { from, to: iso(end), period: 'quarter', quarter: qn, year: y };
   }
   if (p === 'all') return { from: '', to: '', period: 'all' };
-  // الشهر: «YYYY-MM» أو الجاري.
+  // Month: 'YYYY-MM' or the current one.
   const month = /^\d{4}-\d{2}$/.test(S(q.month)) ? S(q.month) : iso(today).slice(0, 7);
   const [yy, mm] = month.split('-').map(Number);
   const end = new Date(Date.UTC(yy, mm, 0));
   return { from: `${month}-01`, to: iso(end), period: 'month', month };
 };
 
-/** GET /analytics — البطاقاتُ والرسومُ كلُّها. */
+/** GET /analytics - all cards and charts. */
 exports.analytics = async (req, res) => {
   try {
     const key = `opsan:${JSON.stringify(req.query || {})}`;
     const per = resolvePeriod(req.query);
-    // ── ولا ينتظر الفاتحُ الحسابَ مرّتين ──────────────────────────────────
-    // بناءُ اللوحة يقرأ صفوفَ السنة (خمسةَ عشرَ ألفًا) فيستغرق ثوانيَ على
-    // وصلةِ العنقود. و`wrapStale` تُقدّم آخرَ لوحةٍ بُنيت فورًا وتُجدّدها في
-    // الخلف إن مضت عليها دقيقة — فلا يرى أحدٌ شاشةً تدور إلّا أوّلَ مرّة.
+    // The opener does not wait for the computation twice. Building the dashboard reads the year's rows (about 15,000), taking seconds over the cluster link. `wrapStale` serves the last built dashboard at once and refreshes it in the background after a minute, so nobody sees a spinner except the first time.
     const body = await cache.wrapStale(key, 60 * 1000, 10 * 60 * 1000, async () => buildBody(per, req.query));
     return res.json(body);
   } catch (e) {
@@ -69,7 +56,7 @@ exports.analytics = async (req, res) => {
   }
 };
 
-/** بناءُ اللوحة — يُنادى من `analytics` خلف `wrapStale`. */
+/** Dashboard build, called from `analytics` behind `wrapStale`. */
 async function buildBody(per, query) {
   {
     const match = {};
@@ -79,20 +66,15 @@ async function buildBody(per, query) {
       ['vendorType', 'vendorType'], ['opsRep', 'opsRep'], ['salesRep', 'salesRep'],
       ['client', 'clientName'], ['vendor', 'vendorName']]) {
       const vals = multi(query[qk]);
-      // القائمةُ تعرض القيمةَ مقصوصة («الدمام»)، والصفوفُ فيها «الدمام » أيضًا —
-      // فالقيمةُ نمطٌ يقبل فراغَها كلَّه. راجع utils/colFilter.
+      // The list shows the value trimmed ('Dammam') but rows also contain 'Dammam ' with a trailing space, so the value becomes a pattern that tolerates any whitespace. See utils/colFilter.
       const c = vals.length ? textIn(field, vals) : null;
       if (c) match[field] = c[field];
     }
 
-    // ── ويُقرأ العامُ كلُّه مرّةً، لا مرّةً للفترة ومرّةً للسنة ─────────────
-    // البطاقاتُ تُقاس على الفترة، والاتّجاهُ الشهريُّ وإنجازُ السنة يُقاسان على
-    // السنة كلِّها. فتُقرأ صفوفُ السنة قراءةً واحدة (١٥ ألفَ صفٍّ صغير) ويُقسَم
-    // في العقدة — بدل استعلامين على القاعدة لكلّ فتحة.
+    // The whole year is read once, not once for the period and once for the year. Cards are measured over the period while the monthly trend and year achievement use the whole year, so the year's rows (15,000 small rows) are read once and split in the node process instead of two database queries per open.
     const year = (per.from || new Date().toISOString().slice(0, 10)).slice(0, 4);
     const yearMatch = { ...match, day: { $gte: `${year}-01-01`, $lte: `${year}-12-31` } };
-    // ومشروعٌ جزئيّ: الحسابُ لا يقرأ من الصفّ إلّا هذه الحقول، ونقلُ الباقي
-    // ثمنٌ بلا مقابل على وصلةٍ تسلّم نحوَ ٩٥ ك.ب/ث.
+    // Partial projection: the computation reads only these row fields, and transferring the rest is a cost with no benefit on a link that delivers about 95 KB/s.
     const [yearRows, target] = await Promise.all([
       BranchReportRow.find(yearMatch).select(
         'day month branch clientName vendorName vendorType opsRep salesRep rentType payType '
@@ -112,11 +94,7 @@ async function buildBody(per, query) {
       ytdTrips: yearRows.reduce((a, r) => a + (Number(r.achieved) || 0), 0),
       ytdRevenue: Math.round(yearRows.reduce((a, r) => a + (Number(r.sellTotal) || 0), 0) * 100) / 100,
     };
-    // ── والهدفُ السنويُّ يُقرأ مرّةً ويُمرَّر ───────────────────────────────
-    // كان `periodTarget` يتلقّى المستندَ نفسَه، وهو غيرُ موجودٍ قبل أن يُضبَط
-    // الهدفُ من الشاشة — فيقرأ صفرًا ويُحسَب هدفُ الفترة صفرًا، فتظهر نسبةُ
-    // الإنجاز صفرًا والفجوةُ كاملةَ المحقَّق. فيُبنى الهدفُ أوّلًا بافتراضاته،
-    // ثمّ يُشتقّ هدفُ الفترة منه.
+    // The annual target is read once and passed in. `periodTarget` used to receive the document itself, which does not exist until the target is set from the screen, so it read zero and the period target became zero: achievement showed 0% and the gap equaled the full achieved amount. So the target is built first with its defaults, then the period target derived from it.
     const annual = {
       annualTrips: target?.annualTrips ?? 36000,
       annualRevenue: target?.annualRevenue ?? 90000000,
@@ -129,7 +107,7 @@ async function buildBody(per, query) {
     };
 
     const out = buildOpsAnalytics(rows, { from: per.from, to: per.to, days, target: t });
-    // والاتّجاهُ الشهريُّ من السنة كلِّها لا من الفترة — وإلّا كان عمودًا واحدًا.
+    // The monthly trend comes from the whole year, not the period; otherwise it would be a single bar.
     out.monthly = buildOpsAnalytics(yearRows, { days: 365, target: t }).monthly;
     out.monthPeak = buildOpsAnalytics(yearRows, { days: 365, target: t }).monthPeak;
     out.source = {
@@ -144,7 +122,7 @@ async function buildBody(per, query) {
   }
 }
 
-/** GET /analytics/filters — القيمُ التي تُفلتَر بها، من البيانات نفسِها. */
+/** GET /analytics/filters - the values to filter by, from the data itself. */
 exports.filters = async (req, res) => {
   try {
     const key = 'opsan:filters';
@@ -159,7 +137,7 @@ exports.filters = async (req, res) => {
       BranchReportRow.distinct('salesRep'),
       BranchReportRow.distinct('month'),
     ]);
-    // والصيغُ التي لا يفرّقها إلّا الفراغ اسمٌ واحد — كانت «جدة» تُعرض مرّتين.
+    // Spellings that differ only by whitespace are one name; one city used to appear twice.
     const clean = (a) => [...new Set(a.map(normKey).filter(Boolean))].sort();
     const body = {
       branch: clean(branch), rentType: clean(rentType), payType: clean(payType),
@@ -173,7 +151,7 @@ exports.filters = async (req, res) => {
   }
 };
 
-/** GET/PUT /analytics/targets — هدفُ السنة، يُقرأ ويُكتب. */
+/** GET/PUT /analytics/targets - the year's target, read and written. */
 exports.getTargets = async (req, res) => {
   const doc = await OpsTarget.findOne({ key: 'ops' }).lean();
   res.json({ target: doc || { key: 'ops', annualTrips: 36000, annualRevenue: 90000000, overrides: [] } });

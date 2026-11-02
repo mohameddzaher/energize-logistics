@@ -1,27 +1,16 @@
 /**
- * عهدةُ النقل الخفيف — الكاش وكارت المشتريات والورشة. راجع models/LtCustody.
- *
- * الدفترُ نفسُه (القواعدُ والقيودُ والتحويلُ والتصحيح) مكتوبٌ مرّةً في
- * custodyLedgerController ويُبنى منه هنا وفي عهدة النقل الثقيل. وما يخصّ هذه
- * العهدة: مَن يفتحها، وأين يُبحث عن المندوب.
+ * Light-transport custody: cash, purchase card and workshop. See models/LtCustody.
+ * The ledger itself (rules, entries, transfer, correction) is written once in custodyLedgerController and built on here and in heavy-transport custody. This file holds what is specific: who can open it and where a rep is looked up.
  */
 const LtCustodyEntry = require('../models/LtCustody');
 const { LightTransportEmployee } = require('../models/LightTransport');
 const Employee = require('../models/Employee');
 const { makeCustodyController } = require('./custodyLedgerController');
-/**
- * ── مَن يفتح العهدةَ ومَن يصحّحها ───────────────────────────────────────────
- * تُفتَح لمدير القطاع ونائبه ومدير النظام وأهلِ المال (المحاسب ومدير الحسابات
- * والمدير الماليّ). وتعديلُ قيدٍ مسجَّلٍ وحذفُه لمدير النظام وأهل المال وحدَهم.
- */
+/** Who opens the custody and who corrects it: the sector manager, deputy, system admin and finance roles (accountant, accounts manager, finance manager). Editing or deleting a recorded entry is limited to the system admin and finance roles. */
 const { FINANCE_FULL_ROLES } = require('../config/financeAuthority');
 const CUSTODY_ROLES = ['super_admin', 'admin', 'b2c_manager', 'b2c_deputy', ...FINANCE_FULL_ROLES];
 
-/**
- * المندوبُ برقم هويّته: من سجلّ النقل الخفيف أوّلًا (فيه الفري لانسر الذين لا
- * ملفَّ لهم في الموارد البشريّة)، ثمّ من الموارد البشريّة بعمودَي الهويّة معًا
- * (راجع identity-number-two-columns). يردّ `null` إن لم يُعرَف.
- */
+/** Rep by ID number: first from the light-transport register (which includes freelancers with no HR file), then from HR using both identity columns (see identity-number-two-columns). Returns `null` if unknown. */
 async function findRep(idNumber) {
   const id = String(idNumber || '').replace(/\s+/g, '').trim();
   if (!id) return null;

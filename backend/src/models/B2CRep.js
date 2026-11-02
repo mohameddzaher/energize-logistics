@@ -10,26 +10,13 @@ const b2cRepSchema = new mongoose.Schema(
     project: { type: mongoose.Schema.Types.ObjectId, ref: 'B2CProject' },
     branch: { type: mongoose.Schema.Types.ObjectId, ref: 'Branch' },
     /**
-     * المشرفُ المسؤول عن هذا المندوب.
-     *
-     * الفرعُ يقول أين يعمل، ولا يقول مَن يقف عليه صباحًا. وفرعٌ واحدٌ فيه
-     * مشرفان وثلاثون مندوبًا — فلولا هذا الحقلُ لفتح كلُّ مشرفٍ قائمةَ الفرع
-     * كلِّه وبحث فيها عن رجاله، أو تفقّد رجالَ غيره.
-     *
-     * وهو صلةٌ إداريّةٌ لا صلاحيّة: مَن يُذكَر هنا يرى هؤلاء في شاشة التفقّد،
-     * ومَن لا مندوبَ له لا يرى شيئًا. راجع `controllers/b2cDutyController`.
+     * Supervisor responsible for this rep.
+     * A branch says where the rep works, not who oversees him, and one branch can hold two supervisors and thirty reps. Administrative link, not a permission: it decides who sees these reps on the duty-check screen. See controllers/b2cDutyController.
      */
     supervisor: { type: mongoose.Schema.Types.ObjectId, ref: 'User', index: true },
     /**
-     * ── صفُّه في سجلّ القسم ─────────────────────────────────────────────────
-     * هذا السجلُّ حسابُ المندوب على تطبيق التوصيل؛ وسجلُّ النقل الخفيف
-     * (`LightTransportEmployee`) ملفُّه عندنا: هويّتُه وكفالتُه وسكنُه ومركبتُه
-     * ومشرفُه. ورجلٌ واحدٌ في السجلّين.
-     *
-     * وكان المفتاحُ بينهما الاسمَ وحدَه — وسجلُّ التطبيق يكتب «MD ARSHED ALI»
-     * ويكتب غيرَه «MD ARSHED» و«محمد ارشد»، فمطابقةُ الاسم تردّ ثلاثةَ صفوفٍ
-     * أو لا تردّ شيئًا. فمتى عُرف الصفُّ مرّةً — بمطابقةٍ أو بيدِ مستخدم — كُتب
-     * هنا وانتهى الظنُّ: الإسنادُ بعدها يمشي على إشارةٍ لا على تشابهِ حروف.
+     * Row in the department register.
+     * This record is the rep's delivery-app account; the light-transport register (`LightTransportEmployee`) is our own file for him. Name matching was unreliable because the app spells one person several ways, so once a row is identified (by match or by a user) it is stored here and assignment follows this link, not name similarity.
      */
     ltEmployee: { type: mongoose.Schema.Types.ObjectId, ref: 'LightTransportEmployee', default: null, index: true },
     monthlyTarget: { type: Number, default: 400 },

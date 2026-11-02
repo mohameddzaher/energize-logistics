@@ -20,9 +20,8 @@ const TYPES = [
   { key: 'monitor', nameEn: 'Monitor', nameAr: 'شاشة' },
   { key: 'keyboard', nameEn: 'Keyboard', nameAr: 'لوحة مفاتيح' },
   { key: 'mouse', nameEn: 'Mouse', nameAr: 'فأرة' },
-  // «لوحة مفاتيح وفأرة» (keyboard_mouse) أُلغي: الماوسُ والكيبوردُ صنفان لا
-  // طقم — راجع RETIRED_TYPES في config/itCustody. لا يُبذَر في قاعدةٍ جديدة،
-  // وصفُّه في القواعد القائمة يُعطَّل بسكربت splitKeyboardMouseSets.
+  // The keyboard_mouse set type is retired: mouse and keyboard are separate items. See RETIRED_TYPES in config/itCustody.
+  // Not seeded on a new database; existing rows are disabled by the splitKeyboardMouseSets script.
   { key: 'headset', nameEn: 'Headset', nameAr: 'سماعة رأس' },
   { key: 'printer', nameEn: 'Printer', nameAr: 'طابعة' },
   { key: 'router', nameEn: 'Router', nameAr: 'موجّه شبكة' },

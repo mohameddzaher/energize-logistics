@@ -55,11 +55,8 @@ const crmStaffIds = async () => {
   return staff.map((s) => s._id);
 };
 const emitCrm = async (event, payload = {}) => {
-  // ── يُمحى المخزَّنُ ثمّ يُنادى ─────────────────────────────────────────────
-  // لوحتا العلاقات والمبيعات محفوظتان ١٢ ثانية، وكان النداءُ يسبق المحو: تعيد
-  // الشاشةُ القراءةَ فتأخذ الرقمَ القديم ولا يوقظها شيءٌ بعده. والصفقةُ مادّةُ
-  // قسم المبيعات كلِّه، فيُنادى عليه بحدثه (`sales:updated`، بلا حمولة) لكلّ
-  // من يفتحه — ومنهم العمليّاتُ والإدارة، وهم خارج قائمة أدوار العلاقات.
+  // Clear the cache, then broadcast. The relations and sales dashboards are cached 12 seconds, and broadcasting first let a screen re-read and take the stale number with nothing to wake it later.
+  // A deal is core to the whole sales section, so its event (sales:updated, no payload) goes to everyone who opens it, including operations and management, who are outside the relations role list.
   try {
     const cache = require('../utils/ttlCache');
     cache.clear('dash:crm:');
@@ -115,7 +112,7 @@ exports.getOptions = async (req, res) => {
     if (denyNonStaff(req, res)) return;
     const { activeByType } = require('./lookupController');
     const [owners, industries, sources, companyTypes, companySizes] = await Promise.all([
-      // المؤرشَفُ لا يُختار ولا يُسنَد إليه — كأنّه حُذف.
+      // An archived record cannot be chosen or assigned to, as if deleted.
       Promise.all([User.find({ role: { $in: CRM_STAFF_ROLES }, isActive: true })
         .select('firstName lastName email role').sort({ firstName: 1 }).lean(), require('../utils/endedStaff').endedStaff()])
         .then(([us, archSets]) => us.filter((u) => !require('../utils/endedStaff').userArchived(archSets, u))),

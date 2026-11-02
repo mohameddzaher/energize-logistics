@@ -1,23 +1,7 @@
 /**
- * portalController — بوابة العميل / المورد.
- *
- * What an outside partner sees when they log in with the email + password we
- * created for them. The brief was blunt: "يشوف كل رحلاته ويشوف تفاصيله كلها كاملة
- * … حسب هو نقل ثقيل ولا تخليص ولا إيه بالظبط" — so this is deliberately dynamic:
- *
- *   • The account is linked to ONE register row (see config/partnerRegisters.js),
- *     but a customer rarely lives in one register. The heavy-transport customer
- *     also has invoices; the customs customer also books trucks. So the portal
- *     resolves the partner ONCE into an "identity" — every id it owns across
- *     every register, joined by the Arabic-folded name (utils/nameKey.js) — and
- *     then queries each section with the right key.
- *
- *   • Which tabs appear is decided by what that identity actually HAS. A customer
- *     with no customs files never sees a customs tab; one who has both sees both.
- *
- * Everything here is read-only and scoped: every query is filtered by the
- * caller's own identity before it touches a collection. There is no route that
- * takes a customer id from the request.
+ * portalController: customer / supplier portal, what an outside partner sees after logging in.
+ * The account links to ONE register row (config/partnerRegisters.js), but a customer lives in several registers, so the partner is resolved once into an identity of every owned id joined by the Arabic-folded name (utils/nameKey.js). Tabs appear only for what the identity has.
+ * All read-only and scoped by the caller's own identity; no route takes a customer id from the request.
  */
 const Customer = require('../models/Customer');
 const Invoice = require('../models/Invoice');
@@ -70,11 +54,8 @@ async function resolveIdentity(partner) {
   }
   const key = partner.nameKey || nameKey(name);
 
-  // ── العميلُ كما هو في كلّ الأقسام (services/customerHub، ٢٠٢٦/١٠/٢٤) ─────────
-  // كان العميلُ يُعرَف باسمٍ واحد؛ فإن كُتب اسمُه في قسمٍ بصيغةٍ أخرى لم تظهر
-  // رحلاتُه هناك. فتُجمع أسماؤه من الأمّ وكلِّ سجلٍّ مرتبطٍ بها وصيغِ اسمه في
-  // التحصيل — مطابقةً تامّةً بعد الطيّ، لا تقريبًا (تقريبُ الأسماء يُري عميلًا
-  // رحلاتِ غيره).
+  // The customer as it exists in all sections (services/customerHub).
+  // A single name missed trips written under another spelling in another section. So names are gathered from the parent, every record linked to it, and its collections name variants, matched exactly after folding, not approximately (approximate matching would show a customer another's trips).
   let masterId = null;
   try {
     if (partner.source === 'crm_company') masterId = partner.refId;
@@ -138,14 +119,9 @@ async function resolveIdentity(partner) {
   return identity;
 }
 
-// ── Section-scoped reads ─────────────────────────────────────────────────────
-// Each register stores the customer differently: by ref, by snapshot name, or
-// both. Matching on EITHER is what makes "كل حاجة تخصه" actually complete.
-//
-// The name half can't be expressed in Mongo — the Arabic fold is a JS function —
-// so those queries pull the candidate rows and narrow them in memory, bounded by
-// a generous limit. That is one customer's lifetime of work, not a table scan of
-// anything unbounded.
+// Section-scoped reads.
+// Each register stores the customer differently: by ref, by snapshot name, or both. Matching on either makes the result complete.
+// The name half cannot be expressed in Mongo (the Arabic fold is a JS function), so those queries pull candidate rows and narrow them in memory under a generous limit: one customer's lifetime of work, not an unbounded table scan.
 const owns = (identity, nm) => (identity.keys || [identity.key]).includes(nameKey(nm));
 const byName = (rows, field, identity) => rows.filter((r) => owns(identity, r[field]));
 
@@ -158,7 +134,7 @@ async function fleetShipmentsFor(identity) {
       { customerName: { $nin: [null, ''] } },
     ],
   })
-    // بلا سعرٍ ولا أجرة (٢٠٢٦/١٠/٢٤): «يشوف رحلاته من غير أسعار».
+    // No price or fare: the customer sees trips without prices.
     .select('waybillNumber customerName customer vehiclePlate trailerType gpsType driverName driverPhone fromCity toCity status loadType rentType branch loadDate expectedArrival lastContactAt createdAt supervisorName notes customerType')
     .sort({ loadDate: -1, createdAt: -1 })
     .limit(FLEET_LIMIT)
@@ -176,9 +152,7 @@ async function shipmentOrdersFor(identity) {
   return byName(rows, 'customerName', identity);
 }
 
-/**
- * رحلاتُ المنصّة — كشوفُ التشغيل باسم العميل (أيٍّ من أسمائه)، بلا أيّ مبلغ.
- */
+/** Platform trips: operations statements under the customer's name (any of its names), with no amounts. */
 async function platformTripsFor(identity) {
   const names = identity.names && identity.names.length ? identity.names : [identity.name].filter(Boolean);
   if (!names.length) return [];
@@ -207,10 +181,8 @@ async function customsFor(identity) {
     .limit(FLEET_LIMIT)
     .lean();
   const ids = new Set(identity.financeIds);
-  // ── والعميلُ يرى مراحلَ معاملته كما هي ───────────────────────────────────
-  // الدورةُ تتفرّع (ساحةٌ أو عميلٌ مباشرة، وسيّاراتٌ بلا إرجاع)، فالمرحلةُ
-  // الحاليّةُ وحدَها لا تقول ما مضى وما بقي. فتُرسَل المراحلُ محسوبةً بقاعدة
-  // القسم نفسِها (pipelineOf) — بلا سببِ الإغلاق الداخليّ ولا الحقولِ الخام.
+  // The customer sees his transaction's stages as they are.
+  // The cycle branches (yard or direct to customer, vehicles without return), so the current stage alone does not say what is done or left. Stages are sent computed by the section's own rule (pipelineOf), without the internal close reason or raw fields.
   return rows
     .filter((r) => (r.customer && ids.has(String(r.customer))) || owns(identity, r.customerName))
     .map(({ stagesDone, transportRoute, pipelineVersion, saleInvoiceNumber, containers, ...r }) => {
@@ -251,13 +223,8 @@ async function vendorLoadsFor(identity) {
     .sort({ createdAt: -1 }).limit(FLEET_LIMIT).lean();
 }
 
-// ── One shipment list for the customer ─────────────────────────────────────
-// The customer used to see «رحلات النقل» (platform manifests) and «طلبات الشحن»
-// (our shipment orders) as two lists — and an order pulled from the platform is
-// the SAME manifest, so it showed twice. Now: one list, duplicates dropped,
-// cancelled requests left out, and only what concerns the customer — no status,
-// driver phone, quantity, branch, expected arrival or delivery date (those are
-// operations' working data, owner's rule 2026-10-28).
+// One shipment list for the customer.
+// The customer used to see platform manifests and our shipment orders as two lists, and an order pulled from the platform is the same manifest, so it showed twice. Now: one list, duplicates dropped, cancelled requests left out, and only what concerns the customer: no status, driver phone, quantity, branch, expected arrival or delivery date (operations working data).
 const CANCELLED_RX = /^(cancel+ed|ملغ[يىا]ة?|ملغاة)$/i;
 const isCancelled = (status) => CANCELLED_RX.test(String(status || '').trim());
 const ymd = (d) => (d ? new Date(d).toISOString().slice(0, 10) : '');
@@ -333,7 +300,7 @@ async function loadAllFresh(identity) {
     const loads = await vendorLoadsFor(identity);
     return { fleet: [], orders: [], customs: [], invoices: [], payments: [], vendorLoads: loads };
   }
-  // والفواتيرُ والمدفوعاتُ لا تُعرض للعميل — البوابةُ بلا أسعار (٢٠٢٦/١٠/٢٤).
+  // Invoices and payments are not shown to the customer: the portal has no prices.
   const [fleet, orders, customs, platform] = await Promise.all([
     fleetShipmentsFor(identity).catch(() => []),
     shipmentOrdersFor(identity).catch(() => []),
@@ -521,9 +488,8 @@ exports.shipments = async (req, res) => {
 };
 
 /**
- * GET /api/portal/shipments/:type/:id — one trip in full.
- * For heavy-transport loads that includes the follow-up story (كل حاجة حصلت),
- * minus anything internal (our cost, the supervisor's notes to himself).
+ * GET /api/portal/shipments/:type/:id: one trip in full.
+ * For heavy-transport loads that includes the follow-up history, minus anything internal (our cost, the supervisor's private notes).
  */
 exports.shipmentDetail = async (req, res) => {
   try {
@@ -564,7 +530,7 @@ exports.shipmentDetail = async (req, res) => {
   }
 };
 
-/** The بوليصة PDF for one of the partner's OWN heavy-transport loads. */
+/** The waybill PDF for one of the partner's own heavy-transport loads. */
 exports.waybill = async (req, res) => {
   try {
     const partner = partnerOf(req);
@@ -603,7 +569,7 @@ exports.waybill = async (req, res) => {
     shipment.rentType = nameOf('fleet_rent_type', shipment.rentType);
     shipment.paymentType = nameOf('fleet_payment_type', shipment.paymentType);
     shipment.loadType = nameOf('fleet_load_type', shipment.loadType);
-    // البوليصةُ للعميل بلا قيمة النقل ولا عهدة السائق.
+    // The customer's waybill omits the transport value and the driver's custody.
     const pdf = await renderWaybillPdf({ ...rowFromShipment(shipment), sellPrice: '', driverAdvance: '' });
     res.setHeader('Content-Type', 'application/pdf');
     res.setHeader('Content-Disposition', `inline; filename="waybill-${shipment.waybillNumber || shipment._id}.pdf"`);
@@ -657,7 +623,7 @@ exports.finance = async (req, res) => {
     const partner = partnerOf(req);
     if (!partner) return res.status(403).json({ message: 'هذا الحساب غير مرتبط بعميل أو مورد' });
     const identity = await resolveIdentity(partner);
-    // البوابةُ بلا أسعار ولا مبالغ للعميل (صاحبُ الشركة، ٢٠٢٦/١٠/٢٤).
+    // The portal shows the customer no prices or amounts.
     if (identity.kind !== 'vendor') return res.json({ invoices: [], payments: [], totals: {}, hidden: true });
     const { invoices, payments } = await financeFor(identity);
     const now = new Date();

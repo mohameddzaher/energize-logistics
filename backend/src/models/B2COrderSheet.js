@@ -1,14 +1,6 @@
 /**
- * شيتُ أوردرات مشروع — ملفُّ جوجل شيت لكلّ مشروع، فيه ورقةٌ لكلّ شهر:
- * رقمُ الإقامة، واسمُ المندوب، والمشرف، ثمّ عمودٌ لكلّ يوم.
- *
- * يُقرأ كلَّ دقيقة (services/b2cOrderSheetSync) ويُكتب ما تغيّر فيه في
- * «مدخلات الأوردرات». والقراءةُ بالرابط العامّ (من معه الرابط يستطيع العرض)،
- * باختيار صاحب الشركة (٢٠٢٦/١٠/٢٠).
- *
- * `B2COrderSheetCell` لقطةُ آخر ما قُرئ من كلّ خانة: بها يُعرَف ما **تغيّر** في
- * الشيت — فخانةٌ لم يمسّها أحدٌ لا تدهس رقمًا عُدِّل على النظام بعدها
- * (آخرُ تعديلٍ هو المعتمد).
+ * Per-project orders Google Sheet, one tab per month (residence number, rep name, supervisor, then a column per day).
+ * Read every minute by services/b2cOrderSheetSync; changes are written to the order entries. B2COrderSheetCell snapshots the last value read per cell, so untouched cells never overwrite a number edited in the system (last edit wins).
  */
 const mongoose = require('mongoose');
 
@@ -21,7 +13,7 @@ const b2cOrderSheetSchema = new mongoose.Schema({
   lastOkAt: { type: Date, default: null },
   lastError: { type: String, default: '' },
   lastChanges: { type: Number, default: 0 },
-  // صفوفٌ في الشيت برقم إقامةٍ لا يعرفه النظام — تُعرض ليُصحَّح الرقم أو يُسجَّل المندوب.
+  // Sheet rows whose residence number is unknown to the system, shown so the number can be fixed or the rep registered.
   unknownIds: [{ type: String }],
   createdBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
 }, { timestamps: true });
@@ -40,14 +32,13 @@ const B2COrderSheetCell = mongoose.models.B2COrderSheetCell || mongoose.model('B
 module.exports = { B2COrderSheet, B2COrderSheetCell };
 
 /**
- * مفتاحُ سكربت جوجل — يُولَّد في الخادم مرّةً ويُحفظ هنا، ولا يُكتب بيد أحد.
- * يصل السكربتَ مضمَّنًا فيه حين يُحمَّل من «شيتات جوجل» (لمدير القسم ونائبه).
+ * Google script key: generated once on the server and stored here, never typed by hand.
+ * Embedded in the script when it is downloaded from the Google Sheets screen (manager and deputy).
  */
 const keySchema = new mongoose.Schema({
   _id: { type: String, default: 'main' },
   token: { type: String, required: true },
-  // بريدُ جوجل لمسؤولي القسم (المدير ونائبه والإدارة) — يُضافون محرّرين للحماية في كلّ
-  // ورقة: يكتبون في أيّ خانة يومٍ في أيّ شهر، ويسحبون الصفوفَ ليرتّبوا المناديب.
+  // Google emails of the department leads (manager, deputy, admin), added as protection editors on every tab so they can write any day cell in any month and drag rows to reorder reps.
   headEmails: [{ type: String, trim: true, lowercase: true }],
   headEmailsAt: { type: Date, default: null },
 }, { timestamps: true });
@@ -67,10 +58,8 @@ async function sheetsToken() {
 module.exports.B2CSheetsKey = B2CSheetsKey;
 
 /**
- * ترتيبُ المناديب في شيت المشروع — واحدٌ للمشروع يسري على كلّ شهوره (صاحبُ الشركة،
- * ٢٠٢٦/١٠/٢١): مَن يُدخل الأوردرات يريد المناديبَ بترتيبٍ يعرفه. يغيّره مسؤولو القسم
- * من «شيتات جوجل» في النظام أو بسحب الصفوف في الشيت نفسه.
- * `order` معرّفاتُ صفوف سجلّ النقل الخفيف بالترتيب؛ ومَن ليس فيها يأتي بعدها.
+ * Rep order in a project sheet: one per project, applied to all its months.
+ * `order` holds light-transport register row ids in sequence; reps not listed come after them.
  */
 const orderSchema = new mongoose.Schema({
   _id: { type: mongoose.Schema.Types.ObjectId, ref: 'B2CProject' },
@@ -82,9 +71,8 @@ module.exports.B2CSheetOrder = mongoose.models.B2CSheetOrder || mongoose.model('
 module.exports.sheetsToken = sheetsToken;
 
 /**
- * موضعُ كلّ حسابٍ في الشيت القديم لكلّ شهرٍ قبل أكتوبر ٢٠٢٦ — فتُرسم الشهورُ القديمةُ
- * في الشيت الجديد بترتيبها هناك (صاحبُ الشركة، ٢٠٢٦/١٠/٢٢). يملؤه مرّةً
- * scripts/b2cLegacyRowOrder.js من الشيتات القديمة نفسِها؛ والشهورُ بعدها بالمشرف فالاسم.
+ * Position of each account in the legacy sheet for every month before October 2026, so old months render in their original order.
+ * Filled once by scripts/b2cLegacyRowOrder.js; later months sort by supervisor then name.
  */
 const legacyRowSchema = new mongoose.Schema({
   project: { type: mongoose.Schema.Types.ObjectId, ref: 'B2CProject', required: true },

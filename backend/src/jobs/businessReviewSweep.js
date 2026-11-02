@@ -1,16 +1,6 @@
 /**
- * businessReviewSweep — التنبيهات على البنود المتأخرة والمستحقة قريبًا.
- *
- * An action board is only worth having if being late is visible. This runs daily
- * and does two things:
- *
- *   • stamps `isOverdue` on anything past its due date that is still open, so
- *     every list and dashboard can filter on it without recomputing;
- *   • sends ONE reminder two days before the due date and ONE when it is breached
- *     — to the person who owes it, and, for a breach, to whoever asked for it.
- *
- * The `dueSoonNotifiedAt` / `overdueNotifiedAt` stamps are what keep this from
- * becoming a nightly nag that everyone learns to ignore.
+ * businessReviewSweep: reminders for overdue and soon-due items.
+ * Runs daily. It stamps `isOverdue` on open items past their due date so lists can filter on it, and sends ONE reminder two days before the due date and ONE on breach (to the owner; on breach also to the requester). The `dueSoonNotifiedAt` / `overdueNotifiedAt` stamps prevent repeat nagging.
  */
 const { BrAction, BrAssignment } = require('../models/BusinessReview');
 const { OPEN_ACTION_STATUSES } = require('../config/businessReview');
@@ -137,9 +127,7 @@ async function sweepOnce({ log = true } = {}) {
 
 function startBusinessReviewSweep() {
   if (timer) return;
-  // A first pass shortly after boot so a restart re-stamps state, then hourly —
-  // often enough that "متأخر" is true within the working day, rare enough that
-  // nobody is buried in notifications.
+  // A first pass shortly after boot so a restart re-stamps state, then hourly: often enough that "overdue" is true within the working day, rare enough not to flood notifications.
   setTimeout(() => { sweepOnce().catch(() => {}); }, 90 * 1000);
   timer = setInterval(() => { sweepOnce().catch(() => {}); }, 60 * 60 * 1000);
   console.log('Business review sweep scheduled (hourly)');

@@ -5,17 +5,8 @@ const { emitToAll } = require('../websocket/socketManager');
 const { invalidateUserCache } = require('../middleware/auth');
 
 /**
- * مديرُ النظام لا يُصنَع ولا يُمسّ حسابُه إلّا من مديرِ نظام.
- *
- * ── لماذا هنا لا في قائمةِ الحارس ───────────────────────────────────────────
- * حارسُ هذا المسار كان `super_admin` وحدَه، فكان الشرطُ مضمونًا بالصدفة. ثمّ
- * صارت تأشيرةُ الصفحة في مصفوفة الصلاحيّات تفتح الشاشةَ وأفعالَها (راجع
- * middleware/rbac): من يُؤشَّر له على «المستخدمين» ينشئ حسابًا ويعدّله — وهذا
- * هو المقصود. لكنّ **إنشاءَ مديرِ نظامٍ جديد، أو تحويلَ حسابٍ إليه، أو تعديلَ
- * حسابِ مديرِ نظامٍ قائم** ليس «استعمالَ شاشة»: هو تسليمُ النظام كلِّه، ولا
- * يجوز أن يكون مربّعٌ واحدٌ طريقًا إليه.
- *
- * فالشرطُ مكتوبٌ في المتحكّم: يُقرأ وينطبق من أيّ بابٍ جاء الطلب.
+ * Creating a system admin, promoting an account to it, or editing one is limited to system admins.
+ * The check lives in the controller so it applies whichever route grants page access (see middleware/rbac).
  */
 const guardSuperAdminRole = (req, res, { currentRole, nextRole } = {}) => {
   if (canonicalRole(req.user?.role) === 'super_admin') return false;
@@ -62,8 +53,7 @@ exports.getUsers = async (req, res) => {
     const { role, isActive, search, branch, accountType } = req.query;
     const filter = {};
 
-    // الاسم القديم يُقرأ باسمه الجديد: شاشةٌ تسأل عن `b2c_head` كانت تعود
-    // فارغةً دائمًا وتقول «لا يوجد» والمدير في القائمة أمامك.
+    // The legacy role name is read under its new name, otherwise lookups for `b2c_head` return empty.
     if (role) filter.role = canonicalRole(role);
     if (accountType) {
       // Accounts created before accountType existed have no field at all — they
@@ -93,10 +83,7 @@ exports.getUsers = async (req, res) => {
 
     res.json({ users });
   } catch (error) {
-    // ── الخطأُ يُقال ولا يُبلَع ───────────────────────────────────────────
-    // كانت الشاشةُ تقول «Failed to load users» ولا شيءَ في السجلّ، فيبقى
-    // العطلُ بلا سبب: من يفتح القائمةَ لا يعرف، ومن يقرأ السجلَّ لا يجد.
-    // وسببُه غالبًا نموذجٌ لم يُسجَّل قبل populate — سطرٌ واحدٌ يُصلحه لو عُرف.
+    // Log the error and return it; a swallowed failure (often a model not registered before populate) leaves no trace.
     console.error('getUsers error:', error);
     res.status(500).json({ message: 'Failed to load users' });
   }

@@ -1,27 +1,10 @@
 /**
- * hrFields — كل حقل في ماستر الموارد البشرية، معرَّف مرة واحدة.
- *
- * منه بيتولّد: كروت الداشبورد، صفحة كل مجموعة، الفلاتر، التعديل السريع،
- * وشاشة الانتهاءات. إضافة حقل هنا بتظهر في الأربعة لوحدها.
- *
- * ── «مطلوب» و«غير مطلوب» ────────────────────────────────────────────────────
- * دي مش زينة، دي أهم حاجة في الملف:
- *   required      ناقص و**لازم التيم يجمّعه** — ده شغل مطلوب منهم
- *   not_required  لا ينطبق على الموظف ده — مش نقص أصلاً
- *   none          لا يوجد
- *   filled        مُدخَل — في الخانة قيمةٌ مكتوبة
- * الخلط بين «مطلوب» و«غير مطلوب» بيخلّي قايمة الشغل بتاعة الموارد البشرية
- * كذب: سعودي مالوش إقامة مش «ناقص إقامة».
- *
- * الحالة دي مخزّنة في `<field>Status` على الموظف عشان تفضل بعد التعديل — أول ما
- * حد يملا الحقل بنشيلها، فالعدّاد بينقص لوحده.
+ * hrFields: every HR master field, defined once; generates dashboard cards, group pages, filters, quick edit and the expiries screen.
+ * States: required (missing, team must collect), not_required (does not apply, not a gap), none, filled (a value is written). Mixing required with not_required makes the HR worklist wrong.
+ * Stored in `<field>Status` on the employee so it survives edits; filling the field clears it.
  */
 
-/**
- * حقلٌ رقميّ: الصفرُ فراغ. أعمدةُ المبالغ في المخطَّط `default: 0`، فالصفرُ فيها
- * لم يكتبه أحد — يُقرأ null فيُعَدّ «لا يوجد» لا «مُدخَلًا» (ويوافقه
- * `filledExpr` في utils/hrCounts).
- */
+/** Numeric field: zero counts as empty. Amount columns default to 0 in the schema, so a zero there was never typed; it reads null and counts as 'none', not 'filled' (matches `filledExpr` in utils/hrCounts). */
 function numberField(key, ar, en, extra = {}) {
   return {
     key, ar, en, type: 'number', ...extra,
@@ -33,19 +16,11 @@ const GROUPS = [
   {
     key: 'identity', ar: 'الهوية والبيانات الشخصية', en: 'Identity', icon: 'user',
     fields: [
-      // الرقم الوظيفيّ قابلٌ للفلترة لأنّه يُسأل به مباشرةً: يصل الرقم في ورقةٍ
-      // أو رسالة، فيُبحث عن صاحبه. وبغير ذلك يبقى عمودًا يُقرأ ولا يُسأل عنه.
+      // The employee number is filterable because it is looked up directly: a number arrives on a paper or message and the owner is searched for.
       { key: 'employeeNumber', ar: 'الرقم الوظيفي', en: 'Employee no.', type: 'text', groupable: true },
       { key: 'arabicName', ar: 'الاسم', en: 'Name', type: 'text' },
-      // ── رقمُ الهويّة عمودان لا عمود ──────────────────────────────────────
-      //
-      // السعوديُّ رقمُه في `nationalId` والمقيمُ في `iqamaNumber` — والحقلُ
-      // هنا واحدٌ اسمُه «رقم الهوية/الإقامة»، فمن قرأ عمودًا واحدًا قرأ نصفَ
-      // الناس. وهذا ما كان: ملفُّ الموظّفة يعرض رقمَ هويّتها كاملًا، وشاشةُ
-      // الماستر تقول عنها «لا يوجد» وتعدُّها نقصًا يُطالَب به.
-      //
-      // فيُقرأ العمودان معًا، ويُكتب في العمود الذي يوافق نوعَ الهويّة — وهي
-      // القاعدةُ نفسُها التي تكتب بها استمارةُ الملفّ، فلا تفترق الشاشتان.
+      // The ID number lives in two columns: Saudis in `nationalId`, residents in `iqamaNumber`, while the field here is one 'ID/iqama number'. Reading one column reads half the people (an employee with an ID would show as 'none' and count as missing).
+      // Both columns are read, and writes go to the column matching the ID type, the same rule as the file form, so the screens agree.
       { key: 'iqamaNumber', ar: 'رقم الهوية/الإقامة', en: 'ID number', type: 'text',
         readFrom: (e) => (e?.idType === 'national_id'
           ? (e?.nationalId || e?.iqamaNumber) : (e?.iqamaNumber || e?.nationalId)),
@@ -53,7 +28,7 @@ const GROUPS = [
         alsoSearch: ['nationalId'], deps: ['idType', 'nationalId'] },
       { key: 'idType', ar: 'نوع الهوية', en: 'ID type', type: 'text', groupable: true },
       { key: 'gender', ar: 'الجنس', en: 'Gender', type: 'text', groupable: true },
-      // الجنسيّةُ والمدينةُ والمشروعُ قوائمُ مغلقة أيضًا (`strict`) — utils/hrLists.
+      // Nationality, city and project are also closed lists (`strict`), see utils/hrLists.
       { key: 'nationality', ar: 'الجنسية', en: 'Nationality', type: 'text', groupable: true, choice: true, strict: true, lookup: 'hr_nationality' },
       { key: 'dateOfBirth', ar: 'تاريخ الميلاد', en: 'Date of birth', type: 'date' },
     ],
@@ -63,7 +38,7 @@ const GROUPS = [
     fields: [
       { key: 'email', ar: 'البريد الشخصي', en: 'Personal email', type: 'text', groupable: true },
       { key: 'companyEmail', ar: 'بريد الشركة', en: 'Company email', type: 'text' },
-      // الجوالُ الشخصيّ — ويُنسَخ إلى سجلّ النقل الخفيف وورقة التفويض (utils/employeeIdentitySync).
+      // Personal mobile; copied to the light transport record and the authorization sheet (utils/employeeIdentitySync).
       { key: 'phone', ar: 'رقم الجوال', en: 'Mobile', type: 'text' },
       { key: 'absherNumber', ar: 'جوال أبشر', en: 'Absher phone', type: 'text', groupable: true },
       { key: 'absherStatus', ar: 'حالة أبشر', en: 'Absher status', type: 'text', groupable: true, choice: true },
@@ -71,8 +46,7 @@ const GROUPS = [
       { key: 'originCountryNumber', ar: 'جوال بلد الإقامة', en: 'Home-country phone', type: 'text' },
       { key: 'emergencyContactName', ar: 'اسم جهة اتصال الطوارئ', en: 'Emergency contact name', type: 'text' },
       { key: 'emergencyContactPhone', ar: 'جوال جهة اتصال الطوارئ', en: 'Emergency contact phone', type: 'text' },
-      // العنوان الوطنيّ رمزٌ مكانيّ لا نصٌّ حرّ («JDBE3757»)، فالفلترة به تجمع
-      // ساكني المبنى الواحد — وهو سؤالٌ يُسأل عند السكن المشترك والنقل.
+      // The national address is a spatial code (e.g. 'JDBE3757'), not free text, so filtering by it groups residents of one building; asked for shared housing and transport.
       { key: 'address', ar: 'العنوان الوطني', en: 'National address', type: 'text', groupable: true },
     ],
   },
@@ -80,41 +54,33 @@ const GROUPS = [
     key: 'employment', ar: 'بيانات التوظيف', en: 'Employment', icon: 'briefcase',
     fields: [
       { key: 'employerNumber', ar: 'رقم صاحب العمل', en: 'Employer no.', type: 'text' },
-      // موظّفُ B2C مشروعُه من سجلّه هناك، ويُكتب فيه (models/LightTransport، utils/hrLists).
+      // A B2C employee's project comes from the B2C record and is written there (models/LightTransport, utils/hrLists).
       { key: 'project', ar: 'المشروع', en: 'Project', type: 'text', groupable: true, choice: true, strict: true, lookup: 'hr_project' },
-      // القسمُ من قائمة الأقسام وحدَها — لا «أخرى» ولا كتابة (utils/hrLists).
+      // Department comes only from the department list, no 'other' or free typing (utils/hrLists).
       { key: 'department', ar: 'القسم', en: 'Department', type: 'text', groupable: true, choice: true, strict: true, lookup: 'hr_department' },
-      // لموظّفي B2C والنقل الثقيل وحدَهم: إداري · سائق · فني (utils/hrLists.categoryError).
+      // For B2C and heavy transport employees only: administrative, driver, technician (utils/hrLists.categoryError).
       { key: 'staffCategory', ar: 'الفئة الوظيفية', en: 'Staff category', type: 'text', groupable: true, choice: true, strict: true, lookup: 'hr_staff_category' },
-      // «الفرع» في ملفّ الاستيراد هو المدينة (جدة، مكة…) — فاسمُه في كلّ شاشةٍ «المدينة».
+      // 'Branch' in the import file is the city (Jeddah, Makkah...), so every screen calls it 'city'.
       { key: 'branchName', ar: 'المدينة', en: 'City', type: 'text', groupable: true, choice: true, strict: true, lookup: 'hr_work_location' },
-      // مكانُ العمل من قائمة المدن نفسِها (hr_work_location) — قائمةٌ مغلقة كالمدينة.
+      // Work location comes from the same city list (hr_work_location), a closed list like city.
       { key: 'workLocation', ar: 'مكان العمل', en: 'Work location', type: 'text', groupable: true, choice: true, strict: true, lookup: 'hr_work_location' },
       { key: 'directManagerName', ar: 'المدير المباشر', en: 'Line manager', type: 'text', groupable: true },
       { key: 'jobTitle', ar: 'المسمى الوظيفي', en: 'Job title', type: 'text', groupable: true },
       { key: 'sponsorName', ar: 'الكفيل', en: 'Sponsor', type: 'text', groupable: true, choice: true },
       { key: 'classification', ar: 'التصنيف', en: 'Classification', type: 'text', groupable: true, choice: true },
       { key: 'fileStatus', ar: 'حالة الملف', en: 'File status', type: 'text', groupable: true, choice: true },
-      // رقم السجلّ التجاريّ كان هنا، وانتقل إلى مجموعة «السجل والتأمينات
-      // الاجتماعية» تحت — لأنّه والتأمينات وجهان لتسجيلٍ واحد، لا حقلان.
-      // ولا يجوز أن يُذكر في مجموعتين: `getField` تُرجع أولاهما، وتُبنى منه
-      // بطاقتان وفلتران بالمفتاح نفسه فتظهر اللوحة مرّتين لشيءٍ واحد.
+      // The commercial register number lives in the 'register and social insurance' group below, since it and insurance are two faces of one registration. It must not appear in two groups: `getField` returns the first, and two cards and two filters would be built from the same key.
       { key: 'workStatusText', ar: 'حالة العمل', en: 'Work status', type: 'text', groupable: true },
       { key: 'systemStatus', ar: 'داخل النظام', en: 'In system', type: 'text', groupable: true },
       { key: 'hireDate', ar: 'تاريخ التعيين', en: 'Hire date', type: 'date' },
-      // اليومُ الأوّل فعلًا في العمل — يبقى بعد تجديد العقود (models/Employee).
+      // Actual first day at work; kept across contract renewals (models/Employee).
       { key: 'actualWorkStartDate', ar: 'تاريخ مباشرة العمل', en: 'Work start date', type: 'date' },
-      // ── المركبةُ تُقرأ ولا تُكتب ─────────────────────────────────────────────
-      // لقطةٌ من سجلّ المركبات (`VehicleMaster.authorizedPerson`) يكتبها
-      // utils/vehicleAuthorization.refreshPlateSnapshot وحدَه. فتُعرَض هنا وتُعَدّ،
-      // والخادمُ يرفض كتابتَها (`readOnly`) — التفويضُ يُغيَّر من سجلّ المركبات.
+      // Vehicle is read, not written: a snapshot of the vehicle register (`VehicleMaster.authorizedPerson`) written only by utils/vehicleAuthorization.refreshPlateSnapshot. Shown and counted here; the server rejects writes (`readOnly`). Authorization is changed from the vehicle register.
       { key: 'vehiclePlate', ar: 'المركبة (من سجل المركبات)', en: 'Vehicle (from registry)', type: 'text', readOnly: true },
       { key: 'notes', ar: 'ملاحظات', en: 'Notes', type: 'text' },
       { key: 'isOutsideKingdom', ar: 'خارج المملكة', en: 'Outside kingdom', type: 'bool', groupable: true },
-      // النوعُ بجانب المهنة في كلّ شاشة: على الكفالة أم عملٌ حرّ.
-      // ── والنوعُ يُقرأ من السجلّ التجاريّ لا يُكتب ─────────────────────────────
-      // كان خانةً مستقلّةً قلّما مُلئت، فيقول ملفُّ الفريلانسر «لا يوجد». والنوعُ
-      // صفةُ السجلّ: «فري لانسر» أو «تدريب» أو رقمُ سجلٍّ = على الكفالة (عليه).
+      // Type shown beside the profession on every screen: sponsored or freelance.
+      // The type is read from the commercial register, not written: a separate field was rarely filled, so freelancers showed 'none'. Freelance, training, or a register number means sponsored by us.
       { key: 'employmentType', ar: 'النوع', en: 'Engagement type', type: 'text', derived: true, deps: ['registerNumber'],
         readFrom: (e) => {
           const r = String(e?.registerNumber ?? '').trim();
@@ -129,30 +95,18 @@ const GROUPS = [
     ],
   },
   {
-    // ── السجل والتأمينات الاجتماعية ──────────────────────────────────────────
-    // كانت المجموعة رقمًا تأمينيًّا وحده. وملفُّ «السجل و التأمينات الاجتماعية»
-    // أظهر أنّ الثلاثة خبرٌ واحد: الموظّف مسجَّلٌ على سجلٍّ تجاريٍّ بعينه، وحالتُه
-    // في التأمينات مترتّبةٌ على ذلك التسجيل، ورقمُه التأمينيّ أثرُه. وفي الملفّ
-    // نفسه: الخمسة والخمسون الذين لا سجلَّ لهم هم بأعيانهم الخمسة والخمسون
-    // الذين تأميناتُهم «غير مطلوبة» — فصلُهما في شاشتين يجعل الجواب نصفين.
-    //
-    // والمفتاح `socialInsurance` لا `gosi`: الاسم القديم يصف واحدًا من ثلاثة.
-    // والقديم يبقى صالحًا في `getGroup` — انظر `GROUP_ALIASES`.
+    // Register and social insurance.
+    // The group was only an insurance number, but the three are one fact: the employee is registered on a specific commercial register, insurance status follows that registration, and the insurance number is its result. The employees with no register are exactly those whose insurance is 'not required', so splitting screens gives half answers.
+    // The key is `socialInsurance`, not `gosi`; the old key still works in `getGroup` (see `GROUP_ALIASES`).
     key: 'socialInsurance', ar: 'السجل والتأمينات الاجتماعية', en: 'Register & social insurance', icon: 'shield',
     fields: [
-      // ── ولماذا السجلّ التجاريّ حقلُ موظّف ────────────────────────────────────
-      // الشركة تُوظِّف على أكثر من سجلٍّ تجاريّ، والموظّف مسجَّلٌ على واحدٍ بعينه.
-      // وهو الذي تُبنى عليه أسئلةُ الجهات: «كم على السجلّ الفلانيّ؟» فبغير حقلٍ
-      // قابلٍ للفلترة كان الجواب يُعَدّ باليد من ملفٍّ خارج النظام.
-      // يُختار من «السجلات التجارية» ولا يُكتب (صاحبُ الشركة، ٢٠٢٦/١٠/٢٠) — راجع utils/hrLists.
+      // Why the commercial register is an employee field: the company hires under several registers and each employee is on one. Authorities ask 'how many on register X?', which needs a filterable field.
+      // Chosen from the commercial registers list, not typed (see utils/hrLists).
       { key: 'registerNumber', ar: 'رقم السجل التجاري', en: 'Commercial register', type: 'text', groupable: true, choice: true, strict: true, lookup: 'hr_register' },
-      // حالة التأمينات تسعُ ثلاثَ قيمٍ لا رابعَ لها («نشط»، «غير نشط»)، والثالثة
-      // ليست قيمةً بل قرارٌ إداريّ يُكتب عَلَمَ حالةٍ («غير مطلوب») — انظر تحت.
-      // وقابليّتُها للفلترة هي بيت القصيد: «مَن ليس نشطًا في التأمينات؟» سؤالٌ
-      // يُسأل شهريًّا وكان جوابه يُعَدّ باليد من ملفٍّ خارج النظام.
+      // Insurance status holds three values; the third is an administrative decision stored as a status flag ('not required'), see below.
+      // Filterable because 'who is not active in insurance?' is asked monthly.
       { key: 'socialInsuranceStatus', ar: 'حالة التأمينات', en: 'Insurance status', type: 'text', groupable: true, choice: true },
-      // الرقم التأمينيّ فريدٌ لكلّ موظّف، فلا يُعلَّم `groupable`: توزيعُه
-      // ثلاثمئةٌ وستّون سطرًا كلٌّ منها «١» — قائمةٌ لا تُقرأ ولا يُفلتَر بها.
+      // The insurance number is unique per employee, so it is not `groupable`: its distribution is hundreds of rows of 1, an unreadable list.
       { key: 'gosiNumber', ar: 'الرقم التأميني', en: 'GOSI number', type: 'text' },
     ],
   },
@@ -160,16 +114,13 @@ const GROUPS = [
     key: 'banking', ar: 'البيانات البنكية', en: 'Banking', icon: 'bank',
     fields: [
       { key: 'iban', ar: 'الآيبان', en: 'IBAN', type: 'text' },
-      // قائمةٌ لا نصٌّ حرّ، ومعها «راتب نقدي»: مَن يُصرف له نقدًا لا بنكَ له، وهو
-      // قرارٌ إداريّ يُكتب علامةً (cash_payroll) لا اسمَ بنكٍ مخترَع.
+      // A list, not free text, with a 'cash salary' option: someone paid in cash has no bank, an administrative decision recorded as a flag (cash_payroll) rather than an invented bank name.
       { key: 'bank', ar: 'البنك', en: 'Bank', type: 'text', groupable: true, choice: true, cashPayroll: true },
     ],
   },
   {
-    // ── الراتبُ والبدلات ──────────────────────────────────────────────────────
-    // لقطةٌ للعرض والتعديل — العقدُ الساري هو المرجع. والصفرُ في هذه الأعمدة
-    // قيمةُ المخطَّط الافتراضيّة لا مبلغٌ مكتوب، فيُقرأ فراغًا (`numberField`)
-    // وإلّا عُدَّ كلُّ موظّفٍ «مُدخَلًا» براتبٍ لم يكتبه أحد.
+    // Salary and allowances.
+    // A snapshot for display and editing; the active contract is the reference. Zero in these columns is the schema default, not a typed amount, so it reads as empty (`numberField`); otherwise every employee would count as 'filled'.
     key: 'compensation', ar: 'الراتب والبدلات', en: 'Salary & allowances', icon: 'wallet',
     fields: [
       numberField('basicSalary', 'الراتب الأساسي', 'Basic salary'),
@@ -183,21 +134,10 @@ const GROUPS = [
     fields: [
       { key: 'iqamaIssueDate', ar: 'تاريخ الإصدار', en: 'Issue date', type: 'date' },
       { key: 'iqamaExpiry', ar: 'تاريخ الانتهاء', en: 'Expiry', type: 'date' },
-      // ── ولا عمودَ هجريٍّ مخزَّنٍ هنا ──────────────────────────────────────
-      // كان `iqamaExpiryHijri` حقلًا نصّيًّا يُكتَب بيدٍ ويُستورَد من الشيت،
-      // ثمّ صار كلُّ تاريخٍ يولّد توأمَه الهجريَّ تلقائيًّا بالمفتاح نفسِه —
-      // فظهر عمودان بمفتاحٍ واحد: «تاريخ الانتهاء الهجري» و«الانتهاء (هجري)».
-      //
-      // والمخزَّنُ منهما خاطئ: من ٢٢١ قيمةً محفوظة، ١١٠ تسبق الصحيحةَ بثلاثة
-      // أشهرٍ ويومٍ تقريبًا — فرقٌ منتظمٌ لا يُخطئه إدخالٌ بشريّ، أثرُ تحويلٍ
-      // معطوبٍ في الاستيراد الأوّل. وقد تحقَّقنا من المحوّل: ميلاديٌّ ← هجريٌّ ←
-      // ميلاديٌّ يعود إلى اليوم نفسِه في كلّ حالة.
-      //
-      // فالعمودُ المشتقُّ وحدَه يبقى، والقيمُ المحفوظةُ تُترَك في القاعدة ولا
-      // تُقرأ. وتاريخُ الانتهاء الميلاديُّ هو الأصل: عليه تُبنى التنبيهاتُ
-      // والتجديد.
+      // No stored Hijri column here. `iqamaExpiryHijri` was a typed/imported text field, then every date generated a derived Hijri twin under the same key, producing two columns with one key.
+      // The stored values are wrong: about half precede the correct one by roughly three months and a day, a systematic error from a faulty conversion in the first import. Only the derived column remains; stored values stay in the database unread. The Gregorian expiry date is the source for alerts and renewals.
       { key: 'iqamaProfession', ar: 'المهنة في الإقامة', en: 'Iqama occupation', type: 'text', groupable: true },
-      // ملاحظةٌ لا مستند: لا تُعلَّم «مطلوبة» عند إنشاء الموظّف (`optional`).
+      // A note, not a document: not marked 'required' on employee creation (`optional`).
       { key: 'iqamaProfessionRequirements', ar: 'متطلبات المهنة في الإقامة', en: 'Occupation requirements', type: 'text', optional: true },
     ],
   },
@@ -218,35 +158,25 @@ const GROUPS = [
       { key: 'contractOccupation', ar: 'المهنة في العقد', en: 'Contract occupation', type: 'text', groupable: true },
       { key: 'contractStartDate', ar: 'بداية العقد', en: 'Start', type: 'date' },
       { key: 'contractEndDate', ar: 'نهاية العقد', en: 'End', type: 'date' },
-      // ── ولماذا نصٌّ لا رقم ───────────────────────────────────────────────────
-      // الفلترة تصل من اللوحة قيمًا نصّية، فحقلٌ رقميٌّ في القاعدة لا يطابق
-      // «٢١» أبدًا وتعود الشاشة فارغة. والرقم المُلزِم يبقى في وثيقة العقد
-      // (Contract.annualLeaveDays) وهي مرجع حساب رصيد الإجازات؛ وهذا لقطةٌ منه.
+      // Text, not number: filters arrive as text values, so a numeric database field would never match '21' and the screen would be empty. The binding number stays in the contract document (Contract.annualLeaveDays), the reference for leave balance; this is a snapshot of it.
       { key: 'annualLeaveDays', ar: 'الإجازة السنوية', en: 'Annual leave days', type: 'text', groupable: true },
-      // فترة التجربة «غير مطلوبة» في كل عقود هذا الملف. ووجودُ الحقل هو ما
-      // يجعل ذلك قرارًا مكتوبًا لا فراغًا صامتًا يُقرأ لاحقًا نقصًا في البيانات.
+      // Probation is 'not required' in all contracts of this file. Having the field makes that a written decision rather than a silent blank later read as missing data.
       { key: 'probationPeriod', ar: 'فترة التجربة', en: 'Probation', type: 'text', groupable: true },
     ],
   },
   {
-    // ── رخص العمل ──────────────────────────────────────────────────────────────
-    // مستندٌ حكوميّ له تاريخُ انتهاءٍ مستقلّ عن الإقامة، ويُغرَّم على تأخّره.
-    // كان حقلُه في الموظّف موجودًا (`workPermitExpiry`) وخارجَ هذا الملف، فلم
-    // يظهر في بطاقةٍ ولا في شاشة الانتهاءات ولا في فلتر — أي أنّ تاريخًا نملكه
-    // لم يكن أحدٌ يراه إلا بفتح سجلّ الموظّف واحدًا واحدًا.
+    // Work permits.
+    // A government document with its own expiry, separate from the iqama, and late renewal is fined. The employee field `workPermitExpiry` existed outside this file, so it showed in no card, expiries screen or filter.
     key: 'workPermit', ar: 'رخص العمل', en: 'Work permits', icon: 'license', document: true,
     expiryField: 'workPermitExpiry',
     fields: [
       { key: 'workPermitExpiry', ar: 'تاريخ الانتهاء', en: 'Expiry', type: 'date' },
-      // ولا رقمَ لرخصة العمل في ملفّ الموظّف — لا عمودَ له في المخطَّط.
+      // No work permit number in the employee file; the schema has no column for it.
     ],
   },
   {
-    // ── التأشيرات وأجير: مستندان لا يحملهما كلُّ موظّف ──────────────────────────
-    // لهما تاريخُ انتهاءٍ يُتابَع، فيدخلان شاشةَ الانتهاءات وعدّاداتِ اللوحة
-    // كبقيّة المستندات. لكنّ أكثرَ الموظّفين لا تأشيرةَ لهم ولا أجير، فلا يُعلَّم
-    // الفارغُ منهما «مطلوبًا» عند إنشاء الموظّف (`optional`) — وإلّا امتلأت قائمةُ
-    // الشغل بمن لا يحتاجهما. ومن يحتاجه يُعلَّم «مطلوبًا» بيده.
+    // Visas and Ajeer: documents not every employee has.
+    // They have a tracked expiry, so they join the expiries screen and dashboard counters. Most employees have neither, so an empty one is not marked 'required' on creation (`optional`), or the worklist would fill with people who do not need them; mark it required by hand where needed.
     key: 'visa', ar: 'التأشيرات', en: 'Visas', icon: 'passport', document: true, optional: true,
     expiryField: 'visaExpiry',
     fields: [
@@ -262,7 +192,7 @@ const GROUPS = [
     ],
   },
   {
-    // كارتُ العمل نصٌّ واحد — لا تاريخَ انتهاءٍ له في المخطَّط، فليس مستندًا يُتابَع.
+    // Work card is a single text with no expiry date in the schema, so it is not a tracked document.
     key: 'workCard', ar: 'كارت العمل', en: 'Work card', icon: 'card',
     fields: [
       { key: 'workCard', ar: 'كارت العمل', en: 'Work card', type: 'text', groupable: true },
@@ -274,7 +204,7 @@ const GROUPS = [
     fields: [
       { key: 'insuranceCompany', ar: 'شركة التأمين', en: 'Insurer', type: 'text', groupable: true, choice: true },
       { key: 'insuranceClass', ar: 'فئة التأمين', en: 'Class', type: 'text', groupable: true, choice: true },
-      // رقمُ الوثيقة والسجلُّ المسجَّل تحته (models/Employee).
+      // Document number and the register it is registered under (models/Employee).
       { key: 'medicalInsuranceNumber', ar: 'رقم وثيقة التأمين', en: 'Policy no.', type: 'text' },
       { key: 'medicalInsuranceRegister', ar: 'سجل التأمين الطبي', en: 'Insurance register', type: 'text', groupable: true, choice: true },
       { key: 'insuranceExpiry', ar: 'تاريخ الانتهاء', en: 'Expiry', type: 'date' },
@@ -295,7 +225,7 @@ const GROUPS = [
     fields: [
       { key: 'driverCardStatus', ar: 'توفّر البطاقة', en: 'Availability', type: 'text', groupable: true },
       { key: 'driverCardNumber', ar: 'رقم البطاقة', en: 'Card no.', type: 'text' },
-      // نوعُها (سنوية · مقيدة…) يُكتب في بطاقة السائق نفسِها — utils/driverCardSync.
+      // Its type (annual, restricted...) is written in the driver card itself, see utils/driverCardSync.
       { key: 'driverCardType', ar: 'نوع البطاقة', en: 'Card type', type: 'text', groupable: true, choice: true },
       { key: 'driverCardExpiry', ar: 'تاريخ الانتهاء', en: 'Expiry', type: 'date' },
     ],
@@ -310,7 +240,7 @@ const GROUPS = [
     ],
   },
   {
-    // آخرُ رحلةٍ معروفة — سفرٌ وعودة.
+    // Last known trip: departure and return.
     key: 'travel', ar: 'السفر', en: 'Travel', icon: 'plane',
     fields: [
       { key: 'lastTravelDate', ar: 'تاريخ السفر', en: 'Travel date', type: 'date' },
@@ -320,32 +250,21 @@ const GROUPS = [
 ];
 
 /**
- * ── وكلُّ تاريخٍ وجهان: ميلاديٌّ وهجريّ ──────────────────────────────────────
- *
- * الطلبُ أن يُقرأ كلُّ تاريخٍ بالتقويمين، و«مجرّد ما يُكتب أحدهما يسمع الآخر».
- * وأوّلُ ما يُفكَّر فيه عمودان في القاعدة ومزامنةٌ بينهما — وهو بابُ اختلافٍ
- * مؤكَّد: من يكتب في أحدهما باستيرادٍ أو شاشةٍ قديمةٍ يترك الآخرَ قديمًا، فيُقرأ
- * تاريخان لشيءٍ واحد.
- *
- * فالمخزَّنُ واحدٌ — الميلاديُّ كما هو — والهجريُّ **مشتقٌّ منه** بتقويم أمّ
- * القرى (راجع utils/hijri). ومن أدخل بالهجريّ تُحوَّل كتابتُه قبل الحفظ. فهما
- * متوافقان بالبناء لا بالمزامنة، ولا صفَّ واحدٌ يحتاج تحديثًا.
- *
- * واسمُ العمود يقول تقويمَه: «تاريخ انتهاء الإقامة الميلادي» و«… الهجري» —
- * فلا يُقرأ تاريخٌ ولا يُعرَف بأيّ تقويمٍ كُتب، وهو أصلُ أخطاءِ التجديد.
+ * Every date has two faces: Gregorian and Hijri.
+ * Storing both with a sync is a sure source of disagreement (a write to one through an import or old screen leaves the other stale), so the stored value is the Gregorian one and Hijri is derived from it with the Umm al-Qura calendar (see utils/hijri). A Hijri entry is converted before saving. They agree by construction, with no row needing an update.
+ * The column name states its calendar, so a date is never read without knowing which one it is, the source of renewal errors.
  */
 const HIJRI_SUFFIX = 'Hijri';
 const hijriKeyOf = (key) => `${key}${HIJRI_SUFFIX}`;
 const isHijriKey = (key) => String(key || '').endsWith(HIJRI_SUFFIX);
 const baseOfHijri = (key) => String(key || '').slice(0, -HIJRI_SUFFIX.length);
 
-// تُطبَّق على التعريف نفسِه: كلُّ حقلٍ `type: 'date'` يُسمّى ميلاديًّا ويُتبَع
-// بتوأمه الهجريّ (مشتقٌّ، غيرُ قابلٍ للفلترة — الفلترةُ بالميلاديّ هي الفلترة).
+// Applied to the definition itself: each `type: 'date'` field is named Gregorian and followed by its derived Hijri twin (not filterable; filtering uses the Gregorian one).
 for (const g of GROUPS) {
   const out = [];
   for (const f of g.fields) {
     if (f.type !== 'date' || f.hijri || isHijriKey(f.key)) { out.push(f); continue; }
-    // «تاريخ الميلاد الميلادي» لا يُقرأ — فالصياغةُ بالقوسين حيث يتكرّر الجذر.
+    // 'Gregorian birth date' is not used; the label is parenthesized where the root repeats.
     const clash = /ميلاد/.test(f.ar);
     if (!/ميلادي/.test(f.ar) || clash) f.ar = clash ? `${f.ar} (ميلادي)` : `${f.ar} الميلادي`;
     if (!/Gregorian/i.test(f.en)) f.en = `${f.en} (Gregorian)`;
@@ -357,7 +276,7 @@ for (const g of GROUPS) {
       type: 'hijri',
       hijri: true,
       of: f.key,
-      // مشتقٌّ: لا يُخزَّن ولا يُعَدّ ناقصًا — نقصُه نقصُ توأمه الميلاديّ.
+      // Derived: not stored and not counted as missing; its gap is its Gregorian twin's gap.
       derived: true,
     });
   }
@@ -366,23 +285,14 @@ for (const g of GROUPS) {
 
 const GROUP_KEYS = GROUPS.map((g) => g.key);
 /**
- * أسماءٌ قديمة لمجموعاتٍ أُعيدت تسميتها.
- *
- * `/system/hr/master/gosi` عنوانٌ محفوظٌ في مفضّلات الناس ومكتوبٌ في روابطَ
- * قديمة. وبغير هذه الخريطة يردّ الخادم «المجموعة غير معروفة» على رابطٍ كان
- * يعمل أمس، ولا شيء في الشاشة يقول لفاتحه إلى أين ذهبت صفحته.
+ * Old names for renamed groups.
+ * `/system/hr/master/gosi` is saved in bookmarks and old links. Without this map the server answers 'unknown group' on a link that worked yesterday.
  */
 const GROUP_ALIASES = { gosi: 'socialInsurance' };
 /**
- * ── «المطلوب»: مجموعةٌ افتراضيّةٌ تجمع النقصَ كلَّه ──────────────────────────
- * كارتُ «بيانات مطلوبة» في اللوحة يعدّ الناقصَ عبر المجموعات كلِّها — ستّةٌ
- * وعشرون: خمسةَ عشرَ في الجواز، وخمسةٌ في الإقامة، وخمسةٌ في العقد، وواحدٌ في
- * الاتصال. وكان الضغطُ عليه يفتح مجموعةَ «الهوية» وحدَها، وفيها صفر — فتُقرأ
- * الشاشةُ فارغةً ويُظنّ الرقمُ كذبًا وهو صحيح.
- *
- * فهذه مجموعةٌ لا وجودَ لها في المخطَّط: حقولُها كلُّ حقلٍ في النظام يقبل
- * «مطلوب». تُفتَح فتُرى الستّةُ والعشرون في مكانٍ واحد، ومعها اسمُ ما ينقص كلَّ
- * موظّف — وهو ما يُبدأ منه العمل.
+ * The 'required' group: a virtual group collecting every gap.
+ * The 'required data' dashboard card counts missing fields across all groups, but opening it showed only the 'identity' group, which has zero, so the screen looked empty and the number looked false while correct.
+ * This group has no schema entry: its fields are every system field that accepts 'required'. Opening it shows all the gaps in one place, with the names of what each employee lacks.
  */
 const REQUIRED_GROUP = {
   key: 'required',
@@ -390,11 +300,10 @@ const REQUIRED_GROUP = {
   en: 'Required fields',
   icon: 'alert',
   virtual: true,
-  // كلُّ الحقول، بلا تكرارٍ للمفتاح الواحد بين مجموعتين.
+  // All fields, with no key repeated between two groups.
   get fields() {
     const seen = new Set();
-    // والتوائمُ الهجريّة خارجَها: نقصُ الهجريّ نقصُ أصله، وبطاقتُه تعدّه مرّةً ثانية
-    // فلا يساوي مجموعُ البطاقات رقمَ «خانات مطلوبة» في اللوحة.
+    // Hijri twins are excluded: a Hijri gap is its source's gap, and its card would count it twice, so the cards would not sum to the 'required fields' dashboard number.
     return GROUPS.flatMap((g) => g.fields.map((f) => ({ ...f, groupAr: g.ar, groupKey: g.key })))
       .filter((f) => !f.derived)
       .filter((f) => (seen.has(f.key) ? false : seen.add(f.key)));
@@ -408,17 +317,9 @@ const getGroup = (key) => {
 };
 const DOCUMENT_GROUPS = GROUPS.filter((g) => g.document);
 /**
- * ── والعنوانُ الغامضُ يُقيَّد بمجموعته ──────────────────────────────────────
- *
- * «تاريخ الانتهاء» عنوانٌ واضحٌ داخل صفحة «الإقامات»، لأنّ المجموعةَ مكتوبةٌ
- * فوقه. وفي الجدول المسطَّح — الماستر — تقف المجموعاتُ كلُّها جنبًا إلى جنب،
- * فيظهر «تاريخ الانتهاء الميلادي» **سبعَ مرّات**: الإقامة والجواز ورخصة العمل
- * والتأمين والشهادة الصحيّة وبطاقة السائق ورخصة القيادة. ومن يفلتر أو يصدّر
- * لا يعرف أيُّها أيّ.
- *
- * فما تكرَّر عنوانُه يُسبَق باسم مجموعته، وما انفرد يبقى كما هو. والقاعدةُ
- * تُحسَب لا تُكتَب: مجموعةٌ تُضاف غدًا بعنوانٍ مكرَّرٍ تُقيَّد وحدَها، ولا
- * ينتظر أحدٌ أن ينتبه.
+ * Ambiguous titles are qualified by their group.
+ * 'Expiry date' is clear inside the iqama page, but in the flat master table all groups sit side by side and 'Gregorian expiry date' appears seven times (iqama, passport, work permit, insurance, health certificate, driver card, driving license), so filtering or exporting is ambiguous.
+ * Titles that repeat get the group name prefix; unique ones stay. The rule is computed, not written, so a group added later with a duplicate title is qualified automatically.
  */
 const qualifyDuplicateLabels = (fields) => {
   const countAr = new Map();
@@ -439,19 +340,18 @@ const ALL_FIELDS = qualifyDuplicateLabels(
   GROUPS.flatMap((g) => g.fields.map((f) => ({ ...f, group: g.key, groupAr: g.ar, groupEn: g.en })))
 );
 const getField = (key) => ALL_FIELDS.find((f) => f.key === key) || null;
-/** اسم حقل الحالة المقابل لأي حقل — الاتفاق: <field>Status. */
+/** Name of the status field for any field; convention: <field>Status. */
 const statusKeyOf = (fieldKey) => `${fieldKey}Status`;
 
 const STATUS_LABELS = {
   required: { ar: 'مطلوب', en: 'Required', color: '#dc2626' },
   not_required: { ar: 'غير مطلوب', en: 'Not required', color: '#64748b' },
   none: { ar: 'لا يوجد', en: 'None', color: '#94a3b8' },
-  // حالٌ للخانة لا قيمةٌ فيها — كانت «غير نشط» تُكتب اسمًا لشركة التأمين.
+  // A status of the slot, not a value in it; 'inactive' used to be written as an insurance company name.
   inactive: { ar: 'غير نشط', en: 'Inactive', color: '#b45309' },
   cash_payroll: { ar: 'راتب نقدي', en: 'Cash payroll', color: '#8b5cf6' },
   unparseable: { ar: 'تاريخ غير مقروء', en: 'Unreadable date', color: '#f59e0b' },
-  // «مُدخَل» لا «مكتمل»: الحالةُ تقول إنّ في الخانة قيمةً مكتوبة، ولا تشهد بصحّتها
-  // ولا بتمام ملفّ صاحبها. والعاميّةُ («مملي») لا تُكتب في واجهةٍ ولا في ملفٍّ مُصدَّر.
+  // 'Filled' not 'complete': the status says a value is written, not that it is correct or that the employee file is complete. Colloquial wording is not used in the UI or exports.
   filled: { ar: 'مُدخَل', en: 'Filled', color: '#16a34a' },
 };
 const statusLabel = (code, lang = 'ar') => (STATUS_LABELS[code || 'filled'] || { ar: code, en: code })[lang === 'en' ? 'en' : 'ar'];
@@ -473,10 +373,7 @@ const daysLeft = (date, now = new Date()) => {
   return Math.round((a - b) / DAY);
 };
 
-/**
- * حالة المستند النهاردة. `not_required` بترجع not_applicable مهما كان التاريخ —
- * موظف مش مطلوب منه رخصة قيادة مش «ناقص رخصة».
- */
+/** Document state today. `not_required` returns not_applicable whatever the date: an employee not required to hold a driving license is not 'missing a license'. */
 const stateOf = (expiry, statusCode, alert = {}, now = new Date()) => {
   if (statusCode === 'not_required' || statusCode === 'none') return { state: 'not_applicable', days: null };
   const days = daysLeft(expiry, now);
@@ -490,33 +387,27 @@ const stateOf = (expiry, statusCode, alert = {}, now = new Date()) => {
 };
 
 /**
- * قيمةُ الحقل على موظّفٍ بعينه.
- *
- * الحقلُ الذي له `readFrom` يُقرأ منها لا من `emp[key]` — والفرقُ ليس تجميلًا:
- * قراءةُ العمود مباشرةً تجعل صاحبَ رقمِ هويّةٍ مكتوبًا يُعَدُّ ناقصًا. وكلُّ من
- * يعرض الماستر أو يعدّ نقصَه يمرّ من هنا.
+ * A field's value on a specific employee.
+ * A field with `readFrom` is read from it, not from `emp[key]`: reading the column directly makes an employee with a written ID number count as missing. Everything that shows the master or counts its gaps goes through here.
  */
 const valueOf = (emp, key) => {
   const f = getField(key);
   return f && typeof f.readFrom === 'function' ? f.readFrom(emp) : emp?.[key];
 };
 
-/** العمودُ الذي يُكتب فيه هذا الحقل لهذا الموظّف — قد يختلف باختلافه. */
+/** The column this field is written to for this employee; may differ per employee. */
 const writeKeyOf = (emp, key) => {
   const f = getField(key);
   return f && typeof f.writeTo === 'function' ? f.writeTo(emp) : key;
 };
 
 /**
- * الأعمدةُ التي تحتاجها دوالُّ `readFrom`/`writeTo` لتعمل.
- *
- * كلُّ استعلامٍ يختار أعمدةً بعينها يجب أن يجرَّها معه، وإلّا قرأت الدالّةُ
- * `undefined` وأعادت الخطأَ نفسَه الذي جاءت لتصلحه — ولا شيء يُعلن الخطأ: صفٌّ
- * يقول «لا يوجد» فقط. فتُشتقّ القائمةُ من التعريف ولا تُكتب في كلّ استعلام.
+ * Columns the `readFrom`/`writeTo` functions need to work.
+ * Every query selecting specific columns must pull these too, or the function reads `undefined` and repeats the very error it fixes, silently (a row just says 'none'). The list is derived from the definition, not written per query.
  */
 const READ_DEPS = [...new Set(ALL_FIELDS.flatMap((f) => f.deps || []))];
 
-/** كلُّ الأعمدة التي قد تحمل هذا الحقل — للبحث والفلترة. */
+/** All columns that may hold this field; for search and filtering. */
 const searchKeysOf = (key) => {
   const f = getField(key);
   return [key, ...((f && f.alsoSearch) || [])];

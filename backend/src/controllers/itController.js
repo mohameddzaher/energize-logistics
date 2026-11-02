@@ -36,9 +36,7 @@ const pick = (body, fields) => {
 
 const rx = (s) => new RegExp(String(s).trim().replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i');
 
-// الشركة تعمل بتوقيت الرياض (UTC+3). الاعتماد على تاريخ UTC كان يقيّد أي عملية
-// تحدث بعد التاسعة مساءً على تاريخ اليوم السابق، فتظهر العهدة مُسلَّمة قبل يوم
-// من تسليمها الفعلي ويظهر البلاغ مفتوحاً قبل أن يُبلَّغ عنه.
+// The company runs on Riyadh time (UTC+3). Using the UTC date put anything after 9 pm on the previous day, so custody showed delivered a day early and a report showed open before it was reported.
 const RIYADH_OFFSET_MS = 3 * 60 * 60 * 1000;
 
 const dateInRiyadh = (t) => new Date(new Date(t).getTime() + RIYADH_OFFSET_MS).toISOString().slice(0, 10);
@@ -59,13 +57,8 @@ const buildSignature = (category, title) => {
 };
 
 /**
- * زمن الحل بالأيام الكاملة بين يوم البلاغ ويوم الحل.
- *
- * الحساب السابق كان يطرح لحظة الحفظ من منتصف ليل يوم البلاغ بتوقيت UTC، وينتج
- * عن ذلك رقمان كاذبان معاً: بلاغ يُغلق في يومه يظهر بعشر ساعات ونصف لأن منتصف
- * ليل UTC يسبق بداية دوام الرياض بثلاث ساعات، وبلاغ قديم يُدخَل اليوم كمحلول
- * يقيس المدة حتى لحظة إدخاله لا حتى لحظة إصلاحه. وتاريخ البلاغ أصلاً بلا وقت،
- * فأي رقم بالدقائق دقّة لا يملكها المصدر — واليوم الكامل هو أصدق ما يُقاس.
+ * Resolution time in whole days between the report day and the resolution day.
+ * The report date has no time of day, so minute precision is not available from the source; whole days are the honest unit and avoid UTC-midnight skew against Riyadh working hours.
  */
 const daysBetweenDates = (fromDateStr, toDateStr) => {
   if (!fromDateStr || !toDateStr) return undefined;
@@ -75,8 +68,7 @@ const daysBetweenDates = (fromDateStr, toDateStr) => {
   return Math.max(0, Math.round((b - a) / 86400000));
 };
 
-// التخزين يبقى بالدقائق لأن لوحة المعلومات وتقرير التكرار يحسبان المتوسط منه،
-// لكن القيمة صارت دائماً من مضاعفات اليوم الكامل.
+// Storage stays in minutes because the dashboard and the recurrence report average from it, but the value is always a whole-day multiple.
 const resolutionMinutesOf = (reportedAt, resolvedDate) => {
   const d = daysBetweenDates(reportedAt, resolvedDate);
   return d === undefined ? undefined : d * 1440;
@@ -84,8 +76,7 @@ const resolutionMinutesOf = (reportedAt, resolvedDate) => {
 
 const CLOSED_STATUSES = new Set(['resolved', 'closed']);
 
-// الأدوار التي يجوز إسناد بلاغ إليها. مطابقة لقائمة الصلاحيات في routes/it.js:
-// إسناد بلاغ إلى من لا يملك صلاحية تعديله يترك البلاغ بلا من يقدر على إغلاقه.
+// Roles a report may be assigned to. Matches the permission list in routes/it.js: assigning to someone who cannot edit it leaves nobody able to close it.
 const EDIT_ROLES = ['super_admin', 'admin', 'it_manager', 'it_specialist'];
 
 const TICKET_EDITABLE = [
@@ -115,22 +106,18 @@ const logEvent = async (req, asset, action, extra = {}) => {
   }
 };
 
-// `name` غير مذكور عمداً: يُشتق من النوع والماركة في المتحكّم، وقبوله من الطلب
-// يعيد فتح باب الأسماء الحرّة الذي جاءت منه ستة وستون تهجئة لأربعمئة صنف.
+// `name` is deliberately omitted: it is derived from type and brand in the controller. Accepting it from the request would reopen free-text names (many spellings per item).
 const CUSTODY_EDITABLE = [
   'employee', 'type', 'serialNumber', 'brand', 'condition',
   'value', 'assignedDate', 'notes', 'category', 'specs', 'quantity',
-  // ومَن بيده الجهازُ حين لا يكون موظّفًا — يُكتب اسمُه نصًّا.
+  // Who holds the device when not an employee; the name is stored as text.
   'holderName', 'holderKind',
-  // وتفاصيلُ خطّ الجوّال — راجع models/Asset.telecom. تُقبَل كاملةً لا حقلًا
-  // حقلًا: هي كائنٌ واحدٌ يُحرَّر في نموذجٍ واحد.
+  // Mobile line details, see models/Asset.telecom. Accepted as one whole object because it is edited in a single form.
   'telecom',
 ];
 
-// Stock items have no employee and no assignedDate — they gain both the moment
-// they are handed out via assignFromStock.
-// كما في العهدة: الاسم مشتقّ لا مُدخَل. والموديل والموقع أُسقطا لأنهما كانا
-// يُترَكان فارغين في أغلب الصفوف فيتحوّل حقلان إلى عمودين فارغين في كل تقرير.
+// Stock items have no employee and no assignedDate - they gain both the moment they are handed out via assignFromStock.
+// Name is derived, not entered, as in custody. Model and location are dropped because they were mostly left empty, giving two empty columns in every report.
 const STOCK_EDITABLE = [
   'type', 'serialNumber', 'brand', 'condition', 'value',
   'notes', 'category', 'specs', 'quantity',
@@ -141,17 +128,12 @@ const SYSTEM_EDITABLE = [
   'renewalDate', 'cost', 'costPeriod', 'credentialsNote', 'description', 'notes',
 ];
 
-// الأنواع التي يسلّمها القسم: كل ما تعرفه الدلاء الخمسة. المركبات تخص الأسطول،
-// و`tool` عهدة الموارد البشرية، وشرائح الاتصال ليست من عهدتنا — والثلاثة
-// مستبعدة من مصدر واحد في config/itCustody حتى لا تعود من شاشة نسيها أحد.
+// Types this department hands out: everything the five buckets know. Vehicles belong to the fleet, `tool` to HR custody, and SIM lines are not ours; all three are excluded from one source in config/itCustody.
 const IT_CUSTODY_TYPES = BUCKETS
   .flatMap((b) => b.types)
   .filter((t) => !EXCLUDED_TYPES.includes(t));
 
-// استعلام يُستثنى منه ما لا يخص القسم. يُستخدم في كل قراءة للأصول حتى تتطابق
-// أعداد الكروت مع أعداد الجداول — كارت يعدّ صفوفاً لا يظهرها الجدول هو خطأ.
-// وما سلّمه قسمٌ آخر لا يُعدّ عهدةَ تقنيةٍ ولو حمل نوعًا تقنيًّا — الموارد البشريّة
-// وخطوطُ الاتصال تُعلَّم بقسمها (`issuedBySection`).
+// Query that excludes what does not belong to the department. Used by every asset read so card counts match table counts. Items issued by another section (HR, phone lines) are tagged with `issuedBySection` and are not IT custody even if of a tech type.
 const OTHER_SECTIONS = ['hr', 'telecom'];
 const NOT_EXCLUDED = { type: { $nin: EXCLUDED_TYPES }, issuedBySection: { $nin: OTHER_SECTIONS } };
 
@@ -172,8 +154,7 @@ exports.getDashboard = async (req, res) => {
       ItSystem.find({}).select('name nameAr status renewalDate cost costPeriod type').lean(),
     ]);
 
-    // صف واحد قد يمثّل عدة وحدات متطابقة (كابلات، شواحن)، فالعدّ بالوحدات لا
-    // بالصفوف — صف فيه عشرون كابلاً هو عشرون كابلاً.
+    // One row can represent several identical units (cables, chargers), so count units, not rows.
     const units = (a) => Math.max(1, Number(a.quantity) || 1);
 
     const countBy = (rows, key) => {
@@ -219,16 +200,15 @@ exports.getDashboard = async (req, res) => {
     // "We're about to run out" — any IT type with fewer than 3 units on the
     // shelf, including the types that have hit zero and so never appear above.
     const LOW_STOCK_THRESHOLD = 3;
-    // النوعُ الملغى لا يُشترى ولا يُخزَّن، فلا يُنبَّه إلى نقصه.
+    // A cancelled type is neither bought nor stocked, so no shortage alert for it.
     const lowStock = IT_CUSTODY_TYPES
       .filter((key) => !RETIRED_TYPES[key])
       .map((key) => ({ key, count: stockMap.get(key) || 0 }))
       .filter((r) => r.count < LOW_STOCK_THRESHOLD)
       .sort((a, b) => a.count - b.count);
 
-    // ── ملخّص العهد: نفس الكروت ونفس الأزرار المعروضة في صفحة العهد ──────────
-    // اللوحة تقرأ نفس التجميع الذي تقرأه الصفحة حتى لا يختلف رقمان لشيء واحد
-    // على شاشتين — وهو أسرع طريق لفقدان الثقة في الاثنتين معاً.
+    // Custody summary: the same cards and buttons shown on the custody page.
+    // The dashboard reads the same aggregation as the page so one figure never differs between two screens.
     const custodyBuckets = BUCKETS.map((b) => ({ key: b.key, nameAr: b.nameAr, nameEn: b.nameEn, count: 0 }));
     const bucketIndex = new Map(custodyBuckets.map((b) => [b.key, b]));
     const custodyByStatus = { assigned: 0, in_stock: 0, returned: 0 };
@@ -242,8 +222,7 @@ exports.getDashboard = async (req, res) => {
       if (custodyByStatus[a.status] !== undefined) custodyByStatus[a.status] += n;
       const c = a.condition || 'good';
       conditionMap.set(c, (conditionMap.get(c) || 0) + n);
-      // تفصيل دلو «أخرى» — الفلتر الثاني على الشاشة يعرض ما فيه فعلاً فقط، لا
-      // كل نوع ممكن، حتى لا يختار المستخدم فلتراً نتيجته صفر.
+      // Breakdown of the 'other' bucket: the second filter shows only types actually present, so the user cannot pick a filter that returns zero.
       if (bucketOf(a.type) === 'other') otherKindMap.set(a.type, (otherKindMap.get(a.type) || 0) + n);
     });
 
@@ -367,8 +346,7 @@ exports.createTicket = async (req, res) => {
     }
 
     if (CLOSED_STATUSES.has(data.status)) {
-      // يوم الحل يُدخله المستخدم؛ لحظة الحفظ ليست لحظة الإصلاح، وأغلب البلاغات
-      // تُسجَّل بعد إغلاقها بأيام.
+      // The resolution day is user-entered; the save time is not the repair time, and most reports are logged days after closing.
       if (!data.resolvedDate) data.resolvedDate = today();
       data.resolvedAt = new Date(`${data.resolvedDate}T00:00:00Z`);
       data.resolutionMinutes = resolutionMinutesOf(data.reportedAt, data.resolvedDate);
@@ -398,8 +376,7 @@ exports.updateTicket = async (req, res) => {
 
     const nowClosed = CLOSED_STATUSES.has(ticket.status);
     if (nowClosed) {
-      // يُعاد الحساب مع كل حفظ مُغلق، لا عند الإغلاق أول مرة فقط: تصحيح تاريخ
-      // بلاغ سبق إغلاقه كان يترك زمن الحل على قيمته القديمة الخاطئة.
+      // Recomputed on every save of a closed report, not only the first close: correcting the date of an already closed report used to leave a stale resolution time.
       if (!ticket.resolvedDate) ticket.resolvedDate = today();
       ticket.resolvedAt = new Date(`${ticket.resolvedDate}T00:00:00Z`);
       ticket.resolutionMinutes = resolutionMinutesOf(ticket.reportedAt, ticket.resolvedDate);
@@ -506,11 +483,9 @@ exports.getRecurring = async (req, res) => {
   }
 };
 
-// ── Custody (العهد) — the SAME Asset collection HR uses ─────────────────────
+// Custody - the SAME Asset collection HR uses
 
-// طيّ حروف العربية المتغيّرة الرسم قبل المقارنة: «أحمد» و«احمد»، «شاشه»
-// و«شاشة». من دونه يبحث المستخدم بالاسم كما يكتبه هو فلا يجد صفّاً كُتب
-// بهمزةٍ أخرى، فيظنّ أن الصنف غير مسجَّل أصلاً فيُدخله مرة ثانية.
+// Fold Arabic letter variants before comparing (alef/hamza forms, ta marbuta vs ha). Without it a search by the name as typed misses a row saved with another spelling, and the item gets entered twice.
 const fold = (s) => String(s || '')
   .replace(/[أإآ]/g, 'ا')
   .replace(/ى/g, 'ي')
@@ -518,9 +493,7 @@ const fold = (s) => String(s || '')
   .toLowerCase()
   .trim();
 
-// النص الذي يجري عليه البحث. اسم الموظف جزء منه لأن أكثر ما يُسأل عنه في سجل
-// العهد هو «مَن يحمل هذا الجهاز» لا اسم الجهاز — وهو ما كانت الشاشة تبحث فيه
-// وحدها قبل أن ينتقل البحث إلى الخادم.
+// Search text. The employee name is included because the usual question is who holds a device, not the device name; the screen used to search on that alone before search moved to the server.
 const custodyHaystack = (a) => fold([
   a.name, a.serialNumber, a.brand, a.model, a.specs,
   a.employee && [a.employee.firstName, a.employee.lastName, a.employee.arabicName, a.employee.employeeNumber]
@@ -528,30 +501,17 @@ const custodyHaystack = (a) => fold([
 ].filter(Boolean).join(' '));
 
 /**
- * GET /custody — الصفوف المعروضة وأعدادُ الكروت والأزرار في ردٍّ واحد.
- *
- * الأعداد كانت تُحسب في الشاشة على السجل كلّه بينما الجدول تحتها مفلتر: يضغط
- * المستخدم «المستودع» فتتبدّل الصفوف ويبقى كارت «لابتوبات» على ٦٨ وتحته ستة
- * صفوف. رقمٌ لا يصف ما تحته ليس معلومة، ويسحب معه الثقة في بقيّة الأرقام.
- *
- * فصار كل شيء يُشتق هنا من تعريفٍ واحد: المطابِقات تُبنى مرّة، ومنها يخرج
- * المعروضُ وتخرج الأعداد — العدّ هو طول المجموعة التي يفتحها الضغط لا حساباً
- * موازياً لها.
- *
- * وكل عدّ تُطبَّق عليه الفلاتر كلها **إلا البُعد الذي يخصّه**: عدد كارت
- * «لابتوبات» يُحسب بعد فلتر الحالة والحالة الفنية والبحث ودون فلتر الفئة —
- * وإلا لعرضت الكروت الأربعة الأخرى صفراً بمجرّد اختيار واحدٍ منها فلا يستطيع
- * أحد أن ينتقل بينها. وهو شكل hrMasterController.filterOptions نفسه.
+ * GET /custody - displayed rows, card counts and buttons in one response.
+ * Counts used to be computed in the screen over the whole register while the table was filtered, so a card could disagree with the rows beneath it.
+ * Everything now derives from one definition: matchers are built once and both rows and counts come from them, so a count is the size of the set the click opens.
+ * Each count applies all filters except its own dimension; otherwise picking one card would zero the other four. Same shape as hrMasterController.filterOptions.
  */
 exports.listCustody = async (req, res) => {
   try {
     const { status, type, bucket, otherType, condition, employee, q, scope } = req.query;
 
-    // القراءة تتم مرّة واحدة بلا فلاتر الواجهة، ثم تُفلتَر وتُعدّ في الذاكرة:
-    // السجل بضع مئات من الصفوف، وفصلُ الفلترة عن الاستعلام هو ما يضمن أن يخرج
-    // العدّ والصفوف من نفس المطابِقات بالحرف.
-    // `scope=all` يضم المستودع، لأن زر «المستودع» وكارت كل فئة يعدّان المخزون
-    // أيضاً: عدٌّ ينقصه ثلث السجل ليس إجمالياً.
+    // Read once without the UI filters, then filter and count in memory: the register is a few hundred rows, and separating filtering from the query guarantees counts and rows come from the same matchers.
+    // `scope=all` includes the warehouse because the warehouse button and each category card count stock too.
     const base = { type: { $in: IT_CUSTODY_TYPES }, issuedBySection: { $nin: OTHER_SECTIONS } };
     if (scope !== 'all') base.status = { $ne: 'in_stock' };
     if (employee) base.employee = employee;
@@ -565,22 +525,20 @@ exports.listCustody = async (req, res) => {
       .limit(2000)
       .lean();
 
-    // المفتاح لا يحمل فلاتر الواجهة: المخزَّن هو السجل الخام، والفلترة تجري
-    // فوقه في كل طلب. وكتابات Asset تُبطل البادئة 'it:custody' من الـ hooks.
+    // The key carries no UI filters: the cached value is the raw register and filtering runs on top per request. Asset writes invalidate the 'it:custody' prefix via hooks.
     const cache = require('../utils/ttlCache');
     const rawRows = await cache.wrap(`it:custody:rows:${scope || ''}:${employee || ''}`, 20000, runQuery);
-    // عهدةُ المؤرشَف لا تُعرَض ولا تُعَدّ — كأنّه حُذف؛ وعهدُ ملفٍّ بعينه (من الأرشيف) تبقى.
+    // Custody of an archived employee is neither shown nor counted, as if deleted; custody of a specific file (from the archive) is kept.
     const { endedStaff, employeeArchived } = require('../utils/endedStaff');
     const archSets = employee ? null : await endedStaff();
     const rows = archSets ? rawRows.filter((a) => !employeeArchived(archSets, a.employee)) : rawRows;
 
     const wantedBucket = BUCKET_KEYS.includes(bucket) ? bucket : '';
-    // `otherType` هو الفلتر الثاني داخل «أخرى»، و`type` يبقى مقبولاً لأن روابط
-    // اللوحة القديمة تستعمله.
+    // `otherType` is the second filter inside 'other'; `type` stays accepted because old dashboard links use it.
     const exactType = String(otherType || type || '').trim();
     const needle = fold(q);
 
-    // مطابِق لكل بُعد على حدة — وعليها يقوم استثناءُ كل عدٍّ من فلتره هو.
+    // One matcher per dimension; each count's exclusion of its own filter is built on them.
     const byCat = (a) => (!wantedBucket || bucketOf(a.type) === wantedBucket)
       && (!exactType || a.type === exactType);
     const byState = (a) => !status || a.status === status;
@@ -591,7 +549,7 @@ exports.listCustody = async (req, res) => {
 
     const tally = (pred) => rows.reduce((n, a) => n + (pred(a) ? 1 : 0), 0);
 
-    // كروت الفئات الخمس: كل الفلاتر عدا الفئة.
+    // Five category cards: all filters except category.
     const buckets = BUCKETS.map((b) => ({
       key: b.key,
       nameAr: b.nameAr,
@@ -599,29 +557,27 @@ exports.listCustody = async (req, res) => {
       count: tally((a) => byState(a) && byCondition(a) && bySearch(a) && bucketOf(a.type) === b.key),
     }));
 
-    // أزرار الحالة الثلاثة: كل الفلاتر عدا الحالة.
-    // «مُباع» يُعَدّ كغيره: زرُّ الفلتر فوق الجدول يقرأ هذا العدّاد، وبلا مفتاحٍ
-    // له يبقى الزرُّ على صفرٍ أبدًا مهما بيع — راجع CUSTODY_STATE_KEYS.
+    // Three state buttons: all filters except state.
+    // 'Sold' is counted like the others: the filter button reads this counter and without a key it would stay zero however much is sold. See CUSTODY_STATE_KEYS.
     const byStatus = { assigned: 0, in_stock: 0, returned: 0, sold: 0 };
     rows.forEach((a) => {
       if (byCat(a) && byCondition(a) && bySearch(a) && byStatus[a.status] !== undefined) byStatus[a.status] += 1;
     });
 
-    // تفصيل «أخرى»: كل الفلاتر عدا النوع المفصّل، وداخل الدلو وحده.
+    // 'Other' breakdown: all filters except the detailed type, within the bucket only.
     const kindMap = new Map();
     rows.forEach((a) => {
       if (bucketOf(a.type) !== 'other') return;
       if (!byState(a) || !byCondition(a) || !bySearch(a)) return;
       kindMap.set(a.type, (kindMap.get(a.type) || 0) + 1);
     });
-    // النوع المختار يبقى ظاهراً ولو صار صفراً بعد فلترٍ آخر: إخفاؤه وهو مفعَّل
-    // يترك المستخدم أمام قائمة فارغة بلا زرٍّ يرفع الفلتر الذي أفرغها.
+    // The selected type stays visible even at zero after another filter; hiding it while active would leave an empty list with no way to clear the filter.
     if (exactType && bucketOf(exactType) === 'other' && !kindMap.has(exactType)) kindMap.set(exactType, 0);
     const otherKinds = typesInBucket('other')
       .filter((t) => kindMap.has(t))
       .map((t) => ({ key: t, count: kindMap.get(t) }));
 
-    // الحالات الفنية: كل الفلاتر عدا الحالة الفنية.
+    // Technical condition counts: all filters except condition.
     const condMap = new Map();
     rows.forEach((a) => {
       if (!byCat(a) || !byState(a) || !bySearch(a)) return;
@@ -638,12 +594,11 @@ exports.listCustody = async (req, res) => {
         byStatus,
         otherKinds,
         conditions,
-        // «المعروض الآن» وقيمته: كلاهما يصف الجدول الذي تحته، لا السجل كله.
+        // 'Currently shown' and its value both describe the table beneath, not the whole register.
         total: items.length,
         value: items.reduce((s, a) => s + (Number(a.value) || 0), 0),
       },
-      // إجمالي السجل يبقى معروضاً بجانب الرقم المفلتر ليُعرف من أيٍّ اقتُطع، لا
-      // ليحلّ محلّه.
+      // The register total stays shown beside the filtered number to show what it was cut from, not to replace it.
       register: {
         total: rows.length,
         assigned: rows.filter((a) => a.status === 'assigned').length,
@@ -656,10 +611,8 @@ exports.listCustody = async (req, res) => {
 
 exports.createCustody = async (req, res) => {
   try {
-    // ── يُسلَّم لموظّفٍ أو لشخصٍ مسمًّى ────────────────────────────────────
-    // كان الموظّفُ شرطًا، والجهازُ يُسلَّم أحيانًا لشخصٍ من خارج الشركة. فكان
-    // الحلُّ الوحيد أن يُسجَّل ذلك الشخصُ موظّفًا في الموارد البشريّة — فدخل
-    // سجلَّ الموظّفين اسمُ شركةٍ لا اسمُ إنسان، ثمّ حُذف فبقيت عهدتُه بلا صاحب.
+    // Handed to an employee or a named person.
+    // Employee used to be required, but devices sometimes go to someone outside the company, who then had to be created as an HR employee; that put a company name in the employee register and left custody orphaned on deletion.
     const holderName = String(req.body.holderName || '').trim();
     if (!req.body.employee && !holderName) {
       return res.status(400).json({ message: 'اختر الموظّف، أو اكتب اسم من استلمه إن لم يكن موظّفًا.' });
@@ -669,8 +622,7 @@ exports.createCustody = async (req, res) => {
     const data = pick(req.body, CUSTODY_EDITABLE);
     data.holderKind = req.body.employee ? 'employee' : 'external';
     if (!req.body.employee) data.employee = null;
-    // الاسم لم يعد يُكتب باليد — يُشتق من النوع والماركة كما في المستودع تماماً،
-    // فيخرج الصنف باسم واحد أياً كان من أدخله ومن أي شاشة.
+    // The name is no longer typed; it is derived from type and brand exactly as in the warehouse, so an item gets one name whoever enters it and from whichever screen.
     data.brand = normalizeBrand(data.brand);
     data.name = deriveAssetName(data.type, data.brand);
     if (!data.assignedDate) data.assignedDate = today();
@@ -681,9 +633,7 @@ exports.createCustody = async (req, res) => {
     data.createdBy = req.user._id;
 
     const item = await Asset.create(data);
-    // جهاز يُسلَّم مباشرة دون المرور بالرف يجب أن يُقيَّد في السجل بنفس الطريقة:
-    // من دون قيد الدخول يبدأ تاريخ الصنف من لحظة تسليمه، فلا يظهر في السجل أنه
-    // دخل ملك الشركة أصلاً ولا كيف دخل.
+    // A device handed out directly, bypassing the shelf, must be recorded the same way: without an intake entry the item's history starts at hand-over and never shows it entered company ownership.
     await logEvent(req, item, 'added_to_store', { condition: item.condition, date: item.assignedDate });
     await logEvent(req, item, 'assigned', { toEmployee: item.employee, date: item.assignedDate, condition: item.condition });
     emitCustody({ type: 'custody', id: String(item._id) });
@@ -700,8 +650,7 @@ exports.updateCustody = async (req, res) => {
     const retired = retiredTypeError(req.body.type, item.type);
     if (retired) return res.status(400).json({ message: retired });
     Object.assign(item, pick(req.body, CUSTODY_EDITABLE));
-    // الاسم مشتقّ، فلا بد أن يتبع أي تعديل على النوع أو الماركة — وإلا بقي صنف
-    // صار «شاشة Dell» معروضاً باسم «لابتوب Dell» الذي اشتُقّ له أول مرة.
+    // The name is derived, so any change of type or brand must update it; otherwise an item that became a Dell monitor would still show its original laptop name.
     item.brand = normalizeBrand(item.brand);
     item.name = deriveAssetName(item.type, item.brand);
     await item.save();
@@ -802,24 +751,13 @@ exports.transferCustody = async (req, res) => {
   }
 };
 
-// ── تالف: إجراءٌ واحد لا اثنان ─────────────────────────────────────────────
-//
-// كان في الشاشة زرّان يفعلان الشيء نفسه في نظر مَن يستعملها: «الإبلاغ عن تالف»
-// يكتب بلاغاً بسببه وقيمة الخصم لكنه يترك الصنف بعهدة الموظف كأنّ شيئاً لم
-// يقع، و«التحويل إلى تالف» ينقل الحالة إلى تالف لكنه لا يسجّل سبباً ولا خصماً.
-// فمن ضغط الأول ظنّ أنه أخرج الجهاز وهو ما زال محسوباً عهدةً قائمة، ومن ضغط
-// الثاني أخرجه بلا أثرٍ يقول لماذا ولا كم كلّف.
-//
-// صارا واحداً يفعل الاثنين: يكتب البلاغ بسببه وخصمه، وينقل الصنف إلى «تالف»
-// فيظهر تحت الزر الذي يحمل الاسم نفسه.
-//
-// والموظف يبقى مقيَّداً على الصنف عمداً — السجل يجب أن يقول من كان يحمله حين
-// تلف — ولا يُحسب عليه بعد ذلك، لأن كل بوابات الموارد البشرية (إنهاء العقد،
-// إخلاء الطرف، جرد العهدة) تسأل عن `status: 'assigned'` وحدها.
+// Faulty: one action, not two.
+// The screen had two buttons that did the same thing to the user: 'report faulty' wrote a report with reason and deduction but left the item in the employee's custody, and 'convert to faulty' changed the state without reason or deduction.
+// They are now one action that writes the report with reason and deduction and moves the item to faulty.
+// The employee stays recorded on the item on purpose (history must say who held it when it broke) but is no longer charged, because all HR gates (termination, clearance, custody inventory) check `status: 'assigned'` only.
 exports.markFaulty = async (req, res) => {
   try {
-    // بلاغٌ بلا نوع يُقرأ «تالف»: المسار القديم /retire كان يُنادى بجسمٍ فارغ،
-    // وما زالت نسخ الموبايل المثبَّتة تناديه.
+    // A report without a type reads as faulty: the old /retire path was called with an empty body and installed mobile builds still call it.
     const kind = req.body.kind || 'damaged';
     const { notes, cost, date } = req.body;
     if (!['damaged', 'lost'].includes(kind)) {
@@ -834,8 +772,7 @@ exports.markFaulty = async (req, res) => {
 
     const holder = item.employee ? String(item.employee) : null;
 
-    // التالف لا يبقى موصوفاً بأنه «جيد». أما المفقود فحالته الفنية تبقى كما
-    // كانت: هو لم يتلف — اختفى، ووصفه بالتلف ادّعاءٌ لا يعرفه أحد.
+    // Faulty items stop being described as good. A lost item keeps its technical condition: it did not break, it vanished.
     if (kind === 'damaged') item.condition = 'damaged';
     item.status = 'returned';
     item.returnedDate = date || today();
@@ -859,9 +796,7 @@ exports.markFaulty = async (req, res) => {
   }
 };
 
-// المساران القديمان صارا اسمين لمعالجٍ واحد: بقاؤهما تنفيذين منفصلين هو ما
-// أنتج زرّين لشيء واحد أصلاً، وحذف أحدهما يكسر نسخ الموبايل المثبَّتة التي
-// تناديه.
+// The two old paths are now names for one handler: separate implementations are what produced two buttons for one thing, and removing one would break installed mobile builds.
 exports.reportCustody = exports.markFaulty;
 exports.retireCustody = exports.markFaulty;
 
@@ -869,16 +804,9 @@ exports.retireCustody = exports.markFaulty;
 // they actually handed back; whatever is not ticked stays on them, and the
 // response says exactly what is still outstanding.
 /**
- * ── بيعُ صنفٍ من العهدة ─────────────────────────────────────────────────────
- *
- * الجهازُ يُباع أحيانًا — لموظّفٍ أو لشخصٍ من خارج الشركة. وكان ذلك يُسجَّل
- * «مسلَّم» أو يُحذف الصفُّ: في الأولى يبقى في عداد ما نملك وقد خرج من ملكنا،
- * وفي الثانية يختفي أثرُه فلا يُعرف أين ذهب ولا بكم.
- *
- * فله حالتُه: يخرج من المخزون ومن العهدة، ويبقى صفُّه يقول لمن بيع وبكم ومتى.
- *
+ * Selling a custody item: it leaves stock and custody, and the row records to whom, for how much and when. Recording a sale as delivered would keep it counted as owned; deleting the row would lose where it went.
  * POST /api/it/custody/:id/sell
- *   { employee?, buyerName?, price?, date?, notes? }
+ * { employee?, buyerName?, price?, date?, notes? }
  */
 exports.sellCustody = async (req, res) => {
   try {
@@ -897,7 +825,7 @@ exports.sellCustody = async (req, res) => {
     item.soldToName = req.body.employee ? '' : buyerName;
     item.soldDate = req.body.date || today();
     item.soldPrice = Number(req.body.price) || 0;
-    // ولا يبقى في يد أحدٍ بعد بيعه — وإلّا مَنَع إنهاءَ خدمة من كان يمسكه.
+    // A sold item is held by nobody, otherwise it would block termination of whoever held it.
     item.employee = null;
     item.holderKind = '';
     item.holderName = '';
@@ -916,15 +844,9 @@ exports.sellCustody = async (req, res) => {
 };
 
 /**
- * ── إرجاعُ صنفٍ مُباع إلى المخزن ───────────────────────────────────────────
- *
- * يشتري الموظّفُ الجهازَ من العهدة، ثمّ يُلغى البيعُ: يُعيد الجهازَ ويُردّ له
- * ثمنُه. وكان المُباعُ لا طريقَ له إلّا أن يبقى «مُباعًا» أو يُضاف صفٌّ جديد —
- * فيضيع أنّه الجهازُ نفسُه بسيرته وسيريالِه. فصار يرجع إلى الرفّ صفًّا واحدًا
- * بتاريخه كلِّه: البيعُ في السجلّ، وبعده حدثُ «إرجاع المبيع» بالمبلغ المردود.
- *
+ * Returning a sold item to stock: the sale is cancelled and the price refunded. The same row returns to the shelf with its full history (the sale, then a sale-return event with the refund), keeping serial and history.
  * POST /api/it/custody/:id/unsell
- *   { date?, refund?, condition?, location?, notes? }
+ * { date?, refund?, condition?, location?, notes? }
  */
 exports.unsellCustody = async (req, res) => {
   try {
@@ -944,7 +866,7 @@ exports.unsellCustody = async (req, res) => {
     item.holderKind = '';
     item.holderName = '';
     item.assignedDate = undefined;
-    // بيانُ البيع يُمحى من الصفّ — الصفُّ يقول ما هو الآن — ويبقى في السجلّ.
+    // The sale details are cleared from the row (the row shows current state) but stay in the log.
     item.soldTo = null;
     item.soldToName = '';
     item.soldDate = undefined;
@@ -969,15 +891,9 @@ exports.unsellCustody = async (req, res) => {
 
 exports.handoverCustody = async (req, res) => {
   try {
-    // ── ومصيرُ الصنف ثلاثةُ طرقٍ لا اثنان ──────────────────────────────────
-    // كان الموظّفُ يسلّم فيعود الصنفُ إلى الرفّ أو يُسجَّل تالفًا. وثالثةٌ تقع
-    // فعلًا: يشتريه ويدفع ثمنَه للحسابات. وكانت تُسجَّل «مسلَّمًا» فيبقى في
-    // عداد ما نملك وقد خرج منه.
-    //
-    // فـ`outcome` يقول أيَّ الثلاثة: `stock` (الافتراضيُّ، وهو ما كان)، أو
-    // `faulty` (وهو `retire` القديم، ويبقى مقبولًا كي لا تنكسر نداءاتٌ قائمة)،
-    // أو `sold`. والبيعُ يكتب ما يكتبه بيعُ الصنف المفرد — راجع sellCustody —
-    // فلا يفترق سجلٌّ عن سجلّ.
+    // An item has three outcomes, not two.
+    // On hand-back the item used to return to the shelf or be recorded faulty. A third happens: the employee buys it and pays accounts, which was recorded as delivered and kept it counted as owned.
+    // `outcome` selects: `stock` (default, previous behaviour), `faulty` (the old `retire`, still accepted so existing calls do not break), or `sold`. A sale writes what sellCustody writes, so the logs agree.
     const {
       employee, items, date, condition, notes, retire, outcome, price,
     } = req.body;
@@ -1002,8 +918,7 @@ exports.handoverCustody = async (req, res) => {
       if (fate === 'faulty') {
         item.status = 'returned';
       } else if (fate === 'sold') {
-        // المشتري هو المسلِّمُ نفسُه: هذا بابُ «سلّم عهدتَه»، ومن يشتري ما في
-        // يده هو صاحبُها. ولا يبقى في عهدة أحدٍ ولا على الرفّ.
+        // The buyer is the returner: this is the hand-back path and whoever buys what is in their hand owns it. It stays in nobody's custody and not on the shelf.
         item.status = 'sold';
         item.soldTo = employee;
         item.soldToName = '';
@@ -1130,10 +1045,8 @@ exports.deleteCustody = async (req, res) => {
   }
 };
 
-// ── Stock (المستودع) — same Asset collection, held by nobody ────────────────
-// One document per physical device for its whole life: it moves between
-// `in_stock` and `assigned` so its serial and history never fragment across two
-// collections. HR only ever sees the `assigned`/`returned` half.
+// Stock - same Asset collection, held by nobody
+// One document per physical device for its whole life: it moves between `in_stock` and `assigned` so its serial and history never fragment across two collections. HR only ever sees the `assigned`/`returned` half.
 
 exports.listStock = async (req, res) => {
   try {
@@ -1250,8 +1163,7 @@ exports.assignFromStock = async (req, res) => {
     item.status = 'assigned';
     item.assignedDate = req.body.assignedDate || today();
     item.assignedBy = req.user._id;
-    // الحالة الفنية لا تُسأل عند التسليم من المستودع: الصنف يحملها بالفعل من
-    // لحظة إضافته، وسؤالها ثانيةً يفتح باب حقيقتين لشيء واحد.
+    // Technical condition is not asked on hand-out from stock: the item already carries it from when it was added, and asking again allows two truths for one thing.
     if (req.body.notes) item.notes = req.body.notes;
     // The item has left the shelf — clear the leftovers from its last return.
     item.returnedDate = undefined;
@@ -1274,12 +1186,12 @@ exports.assignFromStock = async (req, res) => {
 // roles, so IT gets this read-only minimal projection instead.
 exports.listEmployees = async (req, res) => {
   try {
-    const filter = { isHrRecord: { $ne: false } };   // من غير سجلات الأرشيف
+    const filter = { isHrRecord: { $ne: false } };   // Excluding archive records.
     if (req.query.q && req.query.q.trim()) {
       const r = rx(req.query.q);
       filter.$or = [{ firstName: r }, { lastName: r }, { arabicName: r }, { employeeNumber: r }, { iqamaNumber: r }];
     }
-    // المؤرشَفُ لا تُسلَّم له عهدة ولا يُختار — كأنّه حُذف.
+    // An archived employee cannot be given custody or be selected, as if deleted.
     const employees = await Employee.find(require('../utils/hrEngagement').withoutArchived(filter))
       .select(EMP_FIELDS)
       .sort({ firstName: 1 })
@@ -1291,15 +1203,11 @@ exports.listEmployees = async (req, res) => {
   }
 };
 
-// ── قوائم نموذج البلاغ ──────────────────────────────────────────────────────
+// Report form lists
 
 /**
- * أقسام الشركة كما هي فعلاً في ملفات الموظفين.
- *
- * القسم كان حقلاً نصياً حرّاً في نموذج البلاغ، فكان «الموارد البشرية» و«الموارد
- * البشريه» و«HR» ثلاثة أقسام مختلفة في أي تقرير يجمّع حسب القسم. المصدر هنا هو
- * قيم Employee.department نفسها لا قائمة مكتوبة يدوياً، فلا يظهر قسم غير موجود
- * ولا يغيب قسم أُنشئ أمس.
+ * Company departments as they actually appear in employee files.
+ * Department was free text in the report form, so variant spellings and 'HR' counted as separate departments in grouped reports. The source is the Employee.department values themselves, not a hand-written list, so no phantom department appears and a new one is never missing.
  */
 exports.listDepartments = async (req, res) => {
   try {
@@ -1315,10 +1223,8 @@ exports.listDepartments = async (req, res) => {
 };
 
 /**
- * من يجوز إسناد حل البلاغ إليه: مديرو النظام وموظفو تقنية المعلومات.
- *
- * الاسم كان يُكتب نصاً حرّاً، فلم يكن ممكناً معرفة كم بلاغاً على أحدهم ولا فتح
- * البلاغات المسندة إليه — الإسناد إلى مستخدم حقيقي هو ما يجعل ذلك ممكناً.
+ * Who a report can be assigned to for resolution: system admins and IT staff.
+ * The name used to be free text, so the number of reports per person and a per-person view were impossible; assigning to a real user makes both possible.
  */
 exports.listAssignees = async (req, res) => {
   try {
@@ -1327,7 +1233,7 @@ exports.listAssignees = async (req, res) => {
       .sort({ firstName: 1 })
       .limit(500)
       .lean();
-    // المؤرشَفُ لا يُختار ولا يُسنَد إليه — كأنّه حُذف.
+    // An archived user is neither selectable nor assignable, as if deleted.
     const archSets = await require('../utils/endedStaff').endedStaff();
     res.json({ users: users.filter((u) => !require('../utils/endedStaff').userArchived(archSets, u)) });
   } catch (error) {
@@ -1341,9 +1247,8 @@ exports.listSystems = async (req, res) => {
   try {
     const { status, type, q } = req.query;
     const filter = {};
-    // ── حالةٌ واحدةٌ أو عدّة ──────────────────────────────────────────────
-    // بطاقةُ «متوقفة أو متعثرة» تجمع حالتين (`down` و`degraded`). وفلترٌ يقبل
-    // واحدةً يجعل الرقمَ والجدولَ يقولان شيئين مختلفين عند ضغطها.
+    // One status or several.
+    // The 'down or degraded' card combines two statuses (`down` and `degraded`); a filter accepting a single value would make the number and the table disagree on click.
     if (status) {
       const keys = String(status).split(',').map((x) => x.trim()).filter(Boolean);
       if (keys.length === 1) [filter.status] = keys; else if (keys.length) filter.status = { $in: keys };

@@ -1,25 +1,14 @@
 /**
- * متابعةُ تحصيل — مكالمةٌ أو زيارةٌ أو وعدٌ بالسداد، مقيَّدةٌ على طرفٍ بعينه.
- *
- * ── لماذا انتقلت إلى هنا ───────────────────────────────────────────────────
- * كانت «متابعات التحصيل» صفحةً تحت قسم العملاء والمالية، تُقيَّد على `Customer`
- * وتُربَط بـ`Invoice` — وكلاهما من ورك فلو لم يعد يجري. فكانت المتابعةُ تُسجَّل
- * في قسمٍ لا يملك التحصيل، على عميلٍ لا مصدرَ له، وفاتورةٍ لا تُنشَأ.
- *
- * فصارت تُقيَّد على `CollectionsParty` — الطرفُ الذي يعرفه قسمُ التحصيل — وعلى
- * `OperationsWorkflow` حين تخصّ كشفًا بعينه، وهو المستندُ الحيّ الذي منه تُقرأ
- * الأرقام. ومَن يلاحق فاتورةً يلاحق كشفًا في الحقيقة.
- *
- * ── والوعدُ بالسداد ليس ملاحظة ─────────────────────────────────────────────
- * «قال يسدّد الخميس» بندٌ له تاريخٌ ومبلغٌ ويُسأل عنه بعد الخميس. فله حقولُه،
- * ويُقرأ في «المتابعات المستحقّة» — لا يُدفَن في نصّ ملاحظة.
+ * Collection follow-up: a call, visit, or payment promise tied to a specific party.
+ * Moved here from the customers/finance section, where it was tied to `Customer` and `Invoice`, which are no longer produced. It now attaches to `CollectionsParty` and, for a specific statement, `OperationsWorkflow`, the live document the numbers come from.
+ * A payment promise is not a note: it has a date and amount and is queried in due follow-ups, so it has its own fields.
  */
 const mongoose = require('mongoose');
 
 const collectionsFollowUpSchema = new mongoose.Schema(
   {
     party: { type: mongoose.Schema.Types.ObjectId, ref: 'CollectionsParty', required: true, index: true },
-    // الكشفُ الذي تخصّه المتابعة، إن خصّت واحدًا بعينه.
+    // The statement this follow-up concerns, if one specifically.
     report: { type: mongoose.Schema.Types.ObjectId, ref: 'OperationsWorkflow' },
     collector: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true, index: true },
 
@@ -31,16 +20,16 @@ const collectionsFollowUpSchema = new mongoose.Schema(
     status: { type: String, enum: ['done', 'postponed', 'cancelled'], default: 'done' },
     notes: { type: String, required: true, trim: true },
 
-    // ما حُصِّل في هذه المتابعة — إن حُصِّل شيء.
+    // Amount collected in this follow-up, if any.
     amountCollected: { type: Number, default: 0 },
 
-    // الوعدُ ومصيرُه.
+    // The promise and its outcome.
     promiseDate: { type: Date },
     promiseAmount: { type: Number },
     promiseFulfilled: { type: Boolean },
 
     nextFollowUpAt: { type: Date, index: true },
-    // تُقفَل حين يُنجَز ما وُعد به أو يُصرَف النظرُ عنه — فلا تبقى في المستحقّ.
+    // Closed when the promise is fulfilled or dropped, so it leaves the due list.
     closedAt: { type: Date },
     closedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
   },

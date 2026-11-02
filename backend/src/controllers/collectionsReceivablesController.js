@@ -1,66 +1,8 @@
 /**
- * المديونيّة — لوحةُ قسم التحصيل كشجرةٍ تُطابق نفسَها.
- *
- * ── لماذا لوحةٌ ثانية ───────────────────────────────────────────────────────
- * اللوحةُ الأولى (`collectionsDeptController.dashboard`) مبنيّةٌ على كشوف
- * التشغيل: ما حُصّل من الكشوف وما بقي. وهي صحيحةٌ وتجيب عن سؤالٍ آخر. وسؤالُ
- * مدير التحصيل الأوّل هو: **كم علينا، ومن أيِّه في موعده ومن أيِّه خرج عن
- * موعده** — وجوابُه في دفتر الفواتير لا في الكشوف (٩٤٪ من فواتير الدفتر لا
- * كشوفَ لها عندنا؛ راجع رأسَ models/CollectionInvoice).
- *
- * ── والشجرةُ تُطابق نفسَها، وإلّا فلا تُقرأ ─────────────────────────────────
- *     الإجماليُّ = ضريبيٌّ + نقديّ
- *     الإجماليُّ = ١–١٥ + ١٦–٣٠ + ٣١–٦٠ + ٦١–٩٠ + أكثرُ من ٩٠ (+ بلا تاريخ)
- *     كلُّ شريحةِ عمر = طبيعي + متوسّط + مرتفع
- *     كلُّ نوعٍ من الأنواع الأربعة = مستحقّ + غيرُ مستحقّ
- * كلُّ عقدةٍ عددٌ وقيمة، وكلُّ عقدةٍ تُفتَح فتُرى صفوفُها — **من الصفوف نفسِها**
- * التي حسبتها (`loadBase()` ثمّ `passes()` أدناه)، فلا يُقرأ رقمٌ ويُفتَح جدولٌ
- * بغيره.
- *
- * ── ومن أيِّ يومٍ يُعَدّ العمرُ والتأخير ─────────────────────────────────────
- * مدّةُ السداد تبدأ من **تاريخ التسليم** لا من تاريخ إصدار الفاتورة — راجع
- * two-delivery-dates: `deliveryDate` في الدفتر هو تسليمُ الفاتورة للعميل.
- * وفاتورةٌ لم تُسلَّم بعدُ: يُعَدّ من إصدارها ويُقال ذلك في الصفّ. وكشفُ الكاش
- * يُعَدّ من التسليم للعميل، وإلّا من تاريخ السداد.
- *
- *   العمرُ       = الأيّامُ منذ ذلك اليوم.
- *   الاستحقاقُ   = ذلك اليوم + مدّةُ العميل (`CollectionsParty.creditDays`).
- *
- * ── والخطورةُ: طبيعي / متوسّط / مرتفع ───────────────────────────────────────
- * قاعدةُ صاحب الشركة (٢٠٢٦/١٠/٢١): لكلّ عميلٍ مدّةٌ «يسدّد خلال N يومًا».
- *
- *   طبيعي   العمرُ ≤ N
- *   متوسّط  N < العمر ≤ N + ٣٠
- *   مرتفع   العمرُ > N + ٣٠
- *
- * (مثالُه: مدّةُ ٣٠ ⇒ طبيعيٌّ حتى ٣٠، ومتوسّطٌ من ٣١ إلى ٦٠، ومرتفعٌ بعد ٦٠.)
- * وعميلٌ بلا مدّةٍ محفوظة (أكثرُ العملاء) تُقاس خطورتُه على **مدّةٍ افتراضيّة
- * ٣٠ يومًا** (`DEFAULT_TERM_DAYS`) — قرارُ صاحب الشركة — وتُعرَض اللوحةُ كم
- * فاتورةً وكم عميلًا يُقاس كذلك، ومنها تُفتَح قائمتُهم لتُكتب مُددُهم.
- *
- * والمدّةُ الافتراضيّةُ للخطورة وحدَها: «مستحقّ / غير مستحقّ» على حاله — ما لا
- * مدّةَ له مستحقٌّ الآن (`noterm`)، لا شيءَ يؤجّله.
- *
- * ── وشرائحُ العمر: خمسٌ بلا تداخل ───────────────────────────────────────────
- *   ١–١٥ (ومعها عمرُ صفرٍ — سُلِّم اليوم)، ١٦–٣٠، ٣١–٦٠، ٦١–٩٠، أكثرُ من ٩٠.
- * وما لا تاريخَ له أصلًا لا عمرَ له، فله خانتُه «بلا تاريخ» — تُجمَع الشرائحُ
- * معها فتساوي الإجماليَّ تمامًا.
- *
- * ── وأنواعُ الدفع الأربعة: مستحقٌّ وغيرُ مستحقّ ──────────────────────────────
- * صاحبُ الشركة (٢٠٢٦/١٠/٢١): أربعُ بطاقات، واحدةٌ لكلّ نوعٍ جديد («آجل -
- * فاتورة»، «آجل - كاش»، «نقدي - 3PL»، «نقدي - HT»)، كلٌّ منها نصفان:
- *
- *   مستحقّ      = تجاوز موعدَه (`late`) **أو بلا مدّةِ سدادٍ محفوظة** (`noterm`).
- *   غيرُ مستحقّ = لم يحِن موعدُه (`within`).
- *
- * و«ضريبي»/«كاش» بلا نوعٍ جديد لا تدخل البطاقاتِ الأربع (قولُ صاحب الشركة).
- * «آجل - فاتورة» من فواتير الدفتر (نوعُها من كشوفها)، والثلاثةُ النقديّة من
- * الكشوف (`cashSubtypeRows`).
- *
- * ── والفلاتر: كلُّ رقمٍ في اللوحة تحتها ──────────────────────────────────────
- * مسؤولُ التحصيل (الفعليّ — راجع utils/collectionsOfficer)، والعميل، ونوعُ الدفع
- * (الستّة)، والاستحقاق، والقضايا. تُطبَّق على الصفوف قبل أيّ عدّ، فتتبعها
- * البطاقاتُ كلُّها وتحملها كلُّ قائمةٍ تُفتَح.
+ * Receivables: collections dashboard as a self-reconciling tree, read from the invoice ledger (most invoices have no operations sheet).
+ * Invariants: total = tax + cash = sum of age bands (+ no date); band = normal + medium + high; each payment type = due + not due.
+ * Every node's rows come from the same rows that were counted (loadBase() then passes()). Age counts from delivery date, else issue (see two-delivery-dates); due = that day + creditDays.
+ * Severity: normal age <= N, medium <= N+30, high beyond; no saved term uses DEFAULT_TERM_DAYS for severity only (no term means due now, noterm).
  */
 const mongoose = require('mongoose');
 const CollectionInvoice = require('../models/CollectionInvoice');
@@ -76,11 +18,11 @@ const { collectionsManager, effectiveOfficer, isDefaultOfficer } = require('../u
 const DAY = 86400000;
 const TTL = 30 * 1000;
 
-/** مدّةُ السداد التي تُقاس عليها خطورةُ عميلٍ لا مدّةَ له — قرارُ صاحب الشركة. */
+/** Payment term used to measure severity for a customer with no saved term. */
 const DEFAULT_TERM_DAYS = 30;
-/** عرضُ خانة «متوسّط» بعد المدّة: (N، N+30]. */
+/** Width of the medium band after the term: (N, N+30]. */
 const RISK_SPAN_DAYS = 30;
-/** شرائحُ العمر — الحدُّ الأعلى شامل، والأولى تضمّ الصفرَ وما دونه. */
+/** Age bands: upper bound inclusive; the first band includes zero and below. */
 const AGE_BANDS = [
   { key: 'd1_15', max: 15, ar: '١ – ١٥ يومًا', en: '1–15 days' },
   { key: 'd16_30', max: 30, ar: '١٦ – ٣٠ يومًا', en: '16–30 days' },
@@ -107,13 +49,10 @@ const riskOf = (age, creditDays) => {
   return 'hard';
 };
 
-/** الفاتورةُ قائمةٌ ما لم تُحصَّل ولم تكن رقمًا محجوزًا. */
+/** An invoice is outstanding unless collected or a reserved number. */
 const OUTSTANDING = CollectionInvoice.OPEN;
 
-/**
- * المراحلُ المشتركة: تُضَمّ مدّةُ العميل، ثمّ يُشتقّ الاستحقاقُ والتأخير
- * والعمرُ وحالةُ الخلاف — لكلّ فاتورةٍ في الدفتر.
- */
+/** Shared pipeline stages: join the customer's term, then derive due date, lateness, age and dispute state for every ledger invoice. */
 const derive = () => [
   {
     $lookup: {
@@ -130,10 +69,10 @@ const derive = () => [
       creditDays: { $ifNull: ['$_party.creditDays', 0] },
       officer: { $ifNull: ['$_party.collectionOfficer', ''] },
       issueState: { $ifNull: ['$_party.issue.state', 'none'] },
-      // بيانُ الحالة ومنذ متى — تقرؤهما صفحةُ «القضايا» وجدولُ المديونيّة.
+      // Dispute state and since when; read by the cases page and the receivables table.
       issueNote: { $ifNull: ['$_party.issue.note', ''] },
       issueSince: { $ifNull: ['$_party.issue.since', null] },
-      // أساسُ العدّ: التسليمُ إن وُجد، وإلّا الإصدار — ويُقال أيُّهما.
+      // Counting basis: delivery date if present, else issue date, and which one is reported.
       basis: { $cond: [{ $ne: ['$deliveryDate', null] }, 'delivery', 'invoice'] },
       basisDate: { $ifNull: ['$deliveryDate', '$invoiceDate'] },
     },
@@ -162,7 +101,7 @@ const derive = () => [
   },
   {
     $addFields: {
-      // «بلا مدّة» حالةٌ ثالثةٌ لا تُخفى: لا موعدَ لها فلا تُقال «في موعدها».
+      // No term is a visible third state: with no due date it cannot be called on time.
       dueState: {
         $switch: {
           branches: [
@@ -172,7 +111,7 @@ const derive = () => [
           default: 'late',
         },
       },
-      // (شرائحُ التأخير القديمة — تبقى في الجواب لنسخ التطبيق القائمة.)
+      // Legacy lateness bands, kept in the response for already-installed app versions.
       lateBand: {
         $switch: {
           branches: [
@@ -191,32 +130,23 @@ const derive = () => [
 
 const r2 = (v) => Math.round((Number(v) || 0) * 100) / 100;
 /**
- * ما بقي على الصفّ — وهو ما تعدّه اللوحةُ مديونيّة.
- *
- * الفاتورةُ الجزئيّة قائمةٌ حتى تكتمل، لكنّ المطالَبَ به باقيها لا قيمتُها: عميلٌ
- * سدّد ستّين من مئةٍ عليه أربعون. فكلُّ مجموعِ قيمةٍ هنا يجمع هذا لا `total`.
+ * The amount left on the row, which the dashboard counts as debt.
+ * A partial invoice stays open until complete, but only its remainder is owed, so value sums use this, not total.
  */
 const owed = (r) => (Number(r.total) || 0) - (Number(r.collected) || 0);
 
-// ═══════════════════════════════════════════════════════════════════════════
-//  الأنواعُ الأربعة — من أين يُقرأ نوعُ كلّ صفّ
-// ═══════════════════════════════════════════════════════════════════════════
+// The four types: where each row's type is read from
 
 const TAX_SUBS = SUBTYPE_KEYS.filter((k) => subtypeFamily(k) === 'tax');
 const CASH_SUBS = SUBTYPE_KEYS.filter((k) => subtypeFamily(k) === 'cash');
 const CANCELLED_EXEC = ['ملغي', 'ملغى', 'ملغاة', 'cancelled', 'canceled', 'Cancelled'];
-/** «مستحق» = تجاوز موعدَه أو لا موعدَ له؛ «غير مستحق» = في موعده. */
+/** Due means past its date or with no date; not due means within its term. */
 const isDue = (dueState) => dueState !== 'within';
 
 /**
- * نوعُ فاتورة الدفتر — يُشتقّ من كشوفها ساعةَ السؤال، ولا يُنسَخ إلى الدفتر.
- *
- * الفاتورةُ وحدةُ التحصيل وقد تضمّ كشوفًا عدّة، والنوعُ صفةُ الكشف. فإن اختلفت
- * كشوفُ فاتورةٍ واحدة عُدّت تحت نوعِ **أكثرِها** — والتعادلُ يذهب إلى النوع
- * الجديد على «ضريبي» بلا نوع (يدٌ اختارته على بعضها قصدًا، والفارغُ قديمٌ لم
- * يُراجَع). والفاتورةُ التي لا كشوفَ لها عندنا (أكثرُ الدفتر) بلا نوع.
- *
- * @returns {Map<string, string>} رقمُ الفاتورة ← النوع ('' = ضريبي بلا نوع)
+ * Ledger invoice type, derived from its sheets at query time and not copied to the ledger.
+ * When an invoice's sheets differ, the most common type wins; ties go to the new type over untyped tax (a hand-picked type is deliberate, blank is stale). An invoice with no local sheets has no type.
+ * @returns {Map<string, string>} invoice number to type ('' = tax with no type)
  */
 async function subtypeOfInvoices(numbers) {
   const list = [...new Set((numbers || []).map((n) => String(n || '').trim()).filter(Boolean))];
@@ -237,11 +167,7 @@ async function subtypeOfInvoices(numbers) {
   return out;
 }
 
-/**
- * ونوعُ شحنةٍ نقديّةٍ في الدفتر — من كشفها في سير العمل إن حمل نوعًا نقديًّا.
- * رقمُ الشحنة في دفتر النقديّ هو رقمُ الكشف نفسُه. وما لا كشفَ نقديَّ له بنوعٍ
- * جديد يبقى «كاش».
- */
+/** Type of a cash shipment in the ledger, from its workflow sheet if that has a cash type. The ledger's cash shipment number is the sheet number. Without a typed cash sheet it stays plain cash. */
 async function cashSubtypeOfReports(numbers) {
   const list = [...new Set((numbers || []).map((n) => String(n || '').trim()).filter(Boolean))];
   const out = new Map();
@@ -255,16 +181,12 @@ async function cashSubtypeOfReports(numbers) {
 }
 
 /**
- * كشوفُ الكاش القائمة بأنواعها الثلاثة — من سير العمل لا من الدفتر.
- *
- * الكاشُ صفُّه كشفُ تشغيل، فيُقرأ من الكشوف: **شرطُ صفحة فواتير الكاش نفسُه**
- * (`cashScreenFilter`) وما لم يُحصَّل منه. والقيمةُ قيمةُ البيع (ما تعرضه تلك
- * الصفحة)، والمدّةُ تُعَدّ من **التسليم للعميل** إن كُتب، وإلّا من تاريخ السداد
- * — والاشتقاقُ نفسُه الذي يكتبه `derive()` للدفتر (عمر، موعد، تأخير، حالة).
+ * Outstanding cash sheets of the three types, from the workflow rather than the ledger.
+ * Uses the cash invoices page's own filter (cashScreenFilter) and what is not yet collected. Value is the selling value; the term counts from customer delivery, else payment date, derived as derive() does for the ledger.
  */
 async function cashSubtypeRows(q = {}, subs = CASH_SUBS) {
   const { cashScreenFilter } = require('./collectionsDeptController');
-  // `open`: ما لم يكتمل — والجزئيُّ منه قائمٌ بباقيه (راجع owed).
+  // open: not complete; a partial one is still open for its remainder (see owed).
   const filter = cashScreenFilter({
     collected: 'open',
     ...(q.from ? { from: q.from } : {}),
@@ -285,7 +207,7 @@ async function cashSubtypeRows(q = {}, subs = CASH_SUBS) {
     const creditDays = Number(p?.creditDays) || 0;
     const basisDate = w.deliveryDate || w.paymentDate || null;
     const dueDate = basisDate && creditDays > 0 ? new Date(new Date(basisDate).getTime() + creditDays * DAY) : null;
-    // `$dateDiff` بالأيّام يعدّ حدودَ الأيّام (UTC) — فيُحسب هنا كذلك.
+    // $dateDiff in days counts UTC day boundaries, so it is computed the same way here.
     const daysLate = dueDate ? today - Math.floor(dueDate.getTime() / DAY) : null;
     const age = basisDate ? today - Math.floor(new Date(basisDate).getTime() / DAY) : null;
     return {
@@ -307,7 +229,7 @@ async function cashSubtypeRows(q = {}, subs = CASH_SUBS) {
       issueState: p?.issue?.state || 'none',
       issueNote: p?.issue?.note || '',
       issueSince: p?.issue?.since || null,
-      // كشفٌ لم يكتمل قد يحمل دفعةً جزئيّة — تُطرَح من القيمة في كلّ مجموع (owed).
+      // An incomplete sheet may carry a partial payment, subtracted from its value in every total (owed).
       collected: r2(w.collectedAmount),
       basis: w.deliveryDate ? 'delivery' : 'payment',
       dueDate,
@@ -319,20 +241,13 @@ async function cashSubtypeRows(q = {}, subs = CASH_SUBS) {
   });
 }
 
-// ═══════════════════════════════════════════════════════════════════════════
-//  الصفوفُ مرّةً واحدة — ثمّ يُعَدّ منها كلُّ شيء
-// ═══════════════════════════════════════════════════════════════════════════
+// Rows once, then everything is counted from them
 
 /**
- * كلُّ ما تعدّه اللوحة، بلا فلاتر (إلّا مدى التاريخ):
- *   ledger — فواتيرُ الدفتر القائمة بنوعَيه (الإجماليُّ وشرائحُ العمر منها)؛
- *   cashWf — كشوفُ الكاش بأنواعها الثلاثة (بطاقاتُها).
- *
- * ── ولماذا مرّةً واحدة ────────────────────────────────────────────────────
- * القائمُ ألفٌ ونصفُ ألفِ فاتورة؛ حملُها إلى العقدة مرّةً وتصفيتُها هناك أرخصُ
- * من تجميعةٍ على القاعدة لكلّ بطاقةٍ ولكلّ فلتر — ويضمن أنّ البطاقةَ وجدولَها
- * من الصفوف نفسِها. وتُحفَظ ثلاثين ثانيةً بمفتاحٍ لا يحمل إلّا المدى، فتغييرُ
- * الفلاتر لا يعيد القراءة؛ وكلُّ كتابةٍ في القسم تمسح `cdr:` فتعبر العاملَين.
+ * Everything the dashboard counts, without filters (except the date range):
+ * ledger: open ledger invoices of both types (total and age bands);
+ * cashWf: cash sheets of the three types (their cards).
+ * Loaded once: filtering about fifteen hundred open invoices in Node is cheaper than one aggregation per card or filter, and guarantees card and table use the same rows. Cached 30 seconds under a key holding only the range; every write in the department clears cdr:, which crosses both workers.
  */
 async function loadBase(q = {}) {
   const from = String(q.from || ''); const to = String(q.to || '');
@@ -367,13 +282,13 @@ async function loadBase(q = {}) {
       cashSubtypeOfReports(cashNos),
       countsFor('tax', taxNos),
       countsFor('cash', cashWf.map((r) => String(r._id))),
-      // شحنةُ الدفتر النقديّة رقمُها رقمُ كشفها — ومنه يُفتَح الكشفُ من الجدول.
+      // A cash ledger shipment's number is its sheet number, which opens the sheet from the table.
       cashNos.length
         ? OperationsWorkflow.find({ reportNumber: { $in: [...new Set(cashNos.filter(Boolean))] } }).select('_id reportNumber').lean()
         : [],
     ]);
     const wfIdOf = new Map(wfOfCash.map((w) => [String(w.reportNumber || '').trim(), String(w._id)]));
-    // معاملةُ التخليص لكلّ صفّ: الضريبيّةُ بكشوف فاتورتها، والنقديُّ بكشفه.
+    // Clearance transaction per row: tax by its invoice's sheets, cash by its own sheet.
     const customsLinks = require('../services/customsOpsLink');
     const linked = await customsLinks.linkedIndex();
 
@@ -392,12 +307,12 @@ async function loadBase(q = {}) {
         ? customsLinks.customsOfInvoice(linked, no)
         : [customsLinks.customsOfReport(linked, no)].filter(Boolean);
       r.total = r.total || 0;
-      // القائمةُ هنا لم تكتمل — وقد يكون فيها مقبوضٌ جزئيّ يُطرَح من قيمتها.
+      // The list here is incomplete rows, which may include a partial payment subtracted from the value.
       r.collected = r2(r.collectedAmount || 0);
       r.ageBand = ageBandOf(r.age);
       r.risk = riskOf(r.age, r.creditDays);
     }
-    // الشحنةُ النقديّةُ التي في الدفتر تُعَدّ هناك — فلا تُعَدّ مرّتين في عدّادات الفلاتر.
+    // A cash shipment already in the ledger is counted there, so not twice in the filter counters.
     const ledgerCash = new Set(cashNos);
     for (const r of cashWf) {
       r.attachments = attCash.get(String(r._id)) || 0;
@@ -410,26 +325,19 @@ async function loadBase(q = {}) {
   });
 }
 
-// ═══════════════════════════════════════════════════════════════════════════
-//  الفلاتر — تُطبَّق على الصفوف قبل أيّ عدّ
-// ═══════════════════════════════════════════════════════════════════════════
+// Filters, applied to rows before any count
 
 const listOf = (v) => [].concat(v == null ? [] : v)
   .flatMap((x) => String(x).split(','))
   .map((s) => s.trim())
   .filter(Boolean);
 
-/** مفتاحُ العميل: حسابُه إن رُبط، وإلّا اسمُه مطويًّا. */
+/** Customer key: its account if linked, else its folded name. */
 const partyKey = (r) => (r.party ? String(r.party) : `n:${CollectionsParty.fold(r.partyName || '')}`);
 
 /**
- * فلاترُ اللوحة من الرابط:
- *   officer=<اسم>,<اسم>   مسؤولُ التحصيل الفعليّ (و`none` القديمة = المدير)
- *   parties=<مفتاح>,…      العميل (معرّفُ الحساب، أو `n:<الاسم مطويًّا>`)
- *   pay=tax,cash,<نوع>…    نوعُ الدفع — القيمُ الستّ
- *   dueState=within,late,noterm   الاستحقاق
- *   issue=none,negotiating,legal  القضايا
- * ومعها القديمان: `party=<معرّف>` (يُضمّ إلى العملاء) و`customer=<اسم>` (بحثٌ بالاسم).
+ * Dashboard filters from the URL: officer (legacy none = manager), parties (account id or n:<folded name>), pay (the six payment types), dueState=within,late,noterm, issue=none,negotiating,legal.
+ * Legacy: party=<id> merges into parties; customer=<name> is a name search.
  */
 function parseFilters(q = {}, mgr) {
   const officer = new Set(listOf(q.officer).map((v) => (v === 'none' ? (mgr?.name || '') : v).toLowerCase()).filter(Boolean));
@@ -445,7 +353,7 @@ function parseFilters(q = {}, mgr) {
   };
 }
 
-/** يقيس كلَّ بُعدٍ وحدَه — ومنه عدّاداتُ الفلاتر (كلٌّ تحت الأبعاد الأخرى). */
+/** Measures each dimension on its own; used for the filter counters (each under the other dimensions). */
 const DIMS = {
   officer: (r, f, mgr) => f.officer.has(effectiveOfficer(r.officer, mgr).toLowerCase()),
   parties: (r, f) => f.parties.has(partyKey(r)),
@@ -463,10 +371,7 @@ function passes(r, f, mgr, except = '') {
   return true;
 }
 
-/**
- * عقدةٌ: القيمةُ، والعدد (فواتير ضريبيّة + كشوف تخريج نقديّة — يُعرَضان منفصلين
- * لأنّهما وحدتان لا تُجمعان في الكلام)، وعددُ العملاء.
- */
+/** A node: value, count (tax invoices and cash sheets, shown separately since they are different units) and customer count. */
 function node(rows, pick = () => true) {
   let count = 0; let value = 0; let tax = 0; let cash = 0;
   const customers = new Set();
@@ -487,7 +392,7 @@ const check = (of, whole, parts) => {
 
 /**
  * GET /api/collections-dept/receivables/overview
- * ?from=&to=&officer=&parties=&pay=&dueState=&issue=   (راجع parseFilters)
+ * ?from=&to=&officer=&parties=&pay=&dueState=&issue=   (see parseFilters)
  */
 exports.overview = async (req, res) => {
   try {
@@ -507,7 +412,7 @@ exports.overview = async (req, res) => {
     const tree = {
       all: node(L),
       byKind: { tax: node(L, tax), cash: node(L, cash) },
-      // ── شرائحُ العمر، وفي كلٍّ أجزاؤها الثلاثة ─────────────────────────
+      // Age bands, each with its three parts
       ages: Object.fromEntries(BAND_KEYS.map((b) => {
         const inBand = L.filter((r) => r.ageBand === b);
         return [b, {
@@ -516,7 +421,7 @@ exports.overview = async (req, res) => {
         }];
       })),
       risk: Object.fromEntries(RISKS.map((k) => [k, node(L, (r) => r.risk === k)])),
-      // ── وما يقرؤه التطبيقُ القائم (نسخٌ وُزِّعت قبل اللوحة الجديدة) ─────
+      // Fields read by already-installed apps (copies distributed before the new dashboard)
       tax: {
         within: node(L, (r) => tax(r) && r.dueState === 'within'),
         late: node(L, (r) => tax(r) && r.dueState === 'late'),
@@ -526,8 +431,7 @@ exports.overview = async (req, res) => {
           d31_60: node(L, (r) => tax(r) && r.lateBand === 'd31_60'),
           d60_plus: node(L, (r) => tax(r) && r.lateBand === 'd60_plus'),
         },
-        // صفحةُ اللوحة القديمة تقرؤه بلا حارس — وتبقى مفتوحةً في ألسنةٍ لم
-        // تُحدَّث بعد النشر، فغيابُه يُسقطها («reading 'negotiating'»).
+        // The old dashboard page reads it without a guard and may stay open in tabs not refreshed after deploy; its absence would crash it (reading 'negotiating').
         over60: {
           negotiating: node(L, (r) => tax(r) && r.lateBand === 'd60_plus' && r.issueState === 'negotiating'),
           legal: node(L, (r) => tax(r) && r.lateBand === 'd60_plus' && r.issueState === 'legal'),
@@ -541,7 +445,7 @@ exports.overview = async (req, res) => {
       },
     };
 
-    // ── والأنواعُ الأربعة: مستحقٌّ وغيرُ مستحقّ ─────────────────────────────
+    // The four types: due and not due
     tree.subtypes = Object.fromEntries(SUBTYPE_KEYS.map((k) => {
       const mine = (subtypeFamily(k) === 'tax' ? L : W).filter((r) => r.payKind === k);
       return [k, {
@@ -551,17 +455,15 @@ exports.overview = async (req, res) => {
       }];
     }));
 
-    // ── «آجل - فاتورة» بلا مرفق ─────────────────────────────────────────
-    // الفاتورةُ التي لا صورةَ لها في النظام تُطالَب بلا دليل. ومعها «ضريبي» بلا
-    // نوعٍ جديد (أكثرُ الدفتر اليوم) سطرًا ثانيًا، كي لا يُقرأ صفرُ البطاقة
-    // «لا شيءَ ناقص» وكلُّ القديم بلا مرفق.
+    // Credit-invoice without an attachment: an invoice with no image in the system is claimed without evidence.
+    // A second line covers tax with no new type (most of the ledger), so a zero on the card is not read as nothing missing.
     const attachments = {
       of: node(L, (r) => r.payKind === 'deferred_invoice'),
       missing: node(L, (r) => r.payKind === 'deferred_invoice' && !r.attachments),
       plainTaxMissing: node(L, (r) => r.payKind === 'tax' && !r.attachments),
     };
 
-    // ── ومن يُقاس على المدّة الافتراضيّة ─────────────────────────────────
+    // Who is measured on the default term
     const onDefault = L.filter((r) => !(Number(r.creditDays) > 0));
     const dParties = new Map();
     for (const r of onDefault) {
@@ -582,9 +484,7 @@ exports.overview = async (req, res) => {
       parties: [...dParties.values()].map((g) => ({ ...g, value: r2(g.value) })).sort((a, b) => b.value - a.value),
     };
 
-    // ── والتحقّقُ يُرسَل مع الأرقام ──────────────────────────────────────
-    // «المفروض الأرقام كلها تكون صح ومتساويه» — فيُحسب الفرقُ هنا ويُعرَض في
-    // الشاشة إن وُجد، بدل أن يُكتشَف بجمعٍ باليد.
+    // Verification ships with the numbers: the difference is computed here and shown on the screen if any, instead of being found by manual summing.
     const ages = tree.ages;
     const checks = [
       check('الإجمالي = ضريبي + نقدي', tree.all, [tree.byKind.tax, tree.byKind.cash]),
@@ -597,7 +497,7 @@ exports.overview = async (req, res) => {
       }),
     ];
 
-    // أثقلُ العملاء — ومن يُفتَح يُفتَح بحسابه.
+    // Heaviest customers; opening one opens it by its account.
     const byParty = new Map();
     for (const r of L) {
       const k = partyKey(r);
@@ -619,7 +519,7 @@ exports.overview = async (req, res) => {
       .map((g) => ({ ...g, value: r2(g.value), lateValue: r2(g.lateValue), hardValue: r2(g.hardValue) }))
       .sort((a, b) => b.value - a.value);
 
-    // وبالمسؤول الفعليّ — لا صفَّ «بلا مسؤول»: ما لم يُسنَد فعلى المدير.
+    // By effective officer; no unassigned row, unassigned falls on the manager.
     const byOfficer = new Map();
     for (const r of L) {
       const k = effectiveOfficer(r.officer, mgr) || '—';
@@ -636,8 +536,7 @@ exports.overview = async (req, res) => {
       if (r.risk === 'hard') { g.hard += 1; g.hardValue += owed(r); }
     }
 
-    // ── عدّاداتُ الفلاتر: كلُّ قائمةٍ تحت الفلاتر الأخرى ───────────────────
-    // على ما تعدّه اللوحةُ كلُّه: الدفترُ، وكشوفُ الكاش بأنواعها التي ليست فيه.
+    // Filter counters: each list under the other filters, over everything the dashboard counts: the ledger plus cash sheets of the types not in it.
     const U = [...base.ledger, ...base.cashWf.filter((r) => !r.inLedger)];
     const facet = (dim, keyOf, labelOf) => {
       const m = new Map();
@@ -686,12 +585,10 @@ exports.overview = async (req, res) => {
   }
 };
 
-// ═══════════════════════════════════════════════════════════════════════════
-//  صفوفُ البطاقة — صفحةُ «تفاصيل المديونيّة» وقضاياها
-// ═══════════════════════════════════════════════════════════════════════════
+// Card rows: the receivables details page and its cases
 
 const RIYADH = 'Asia/Riyadh';
-/** يومُ الرياض «YYYY-MM-DD» — به تُفلتَر أعمدةُ التاريخ كما تُقرأ في الشاشة. */
+/** Riyadh day YYYY-MM-DD; date columns are filtered by it as displayed. */
 const ymd = (d) => {
   if (!d) return '';
   const x = new Date(d);
@@ -700,19 +597,15 @@ const ymd = (d) => {
 const ROWS_CAP = 20000;
 
 /**
- * العقدةُ من الرابط — ما يضيّق الصفوفَ فوق فلاتر اللوحة:
- *   kind=tax|cash                      نصفا الإجمالي
- *   subtype=<نوع>&due=due|notdue       نصفُ بطاقةِ نوع
- *   band=<شريحة>&risk=normal|medium|hard   خانةٌ من «عمر التأخير»
- *   attach=missing|missing_tax         «آجل - فاتورة» (أو «ضريبي») بلا مرفق
- *   term=default                       ما يُقاس على المدّة الافتراضيّة
- *   lateBand=d1_30|d31_60|d60_plus     (الشرائحُ القديمة — للروابط المحفوظة)
+ * Node from the URL, narrowing rows beyond the dashboard filters: kind=tax|cash; subtype=<type>&due=due|notdue; band=<band>&risk=normal|medium|hard;
+ * attach=missing|missing_tax (no attachment); term=default (default-term customers);
+ * lateBand=d1_30|d31_60|d60_plus (legacy bands for saved links).
  */
 function nodeOf(q = {}) {
   const subtype = SUBTYPE_KEYS.includes(String(q.subtype || '')) ? String(q.subtype) : '';
   return {
     subtype,
-    // بطاقةُ نوعٍ نقديّ: صفوفُها كشوفُ الكاش (cashSubtypeRows)؛ وما عداها الدفتر.
+    // A cash type card's rows are the cash sheets (cashSubtypeRows); everything else is the ledger.
     workflow: !!subtype && subtypeFamily(subtype) === 'cash',
     due: ['due', 'notdue'].includes(q.due) ? q.due : '',
     band: BAND_KEYS.includes(String(q.band || '')) ? String(q.band) : '',
@@ -733,11 +626,7 @@ const inNode = (r, n) => (!n.kind || r.kind === n.kind)
   && (n.attach !== 'missing_tax' || (r.payKind === 'tax' && !r.attachments))
   && (n.term !== 'default' || !(Number(r.creditDays) > 0));
 
-/**
- * أعمدةُ الجدول نصًّا — بها يُفلتَر القمعُ (`cf_<عمود>=قيمة`، مكرَّرةً لا
- * مفصولةً بفاصلة: قد تحمل القيمةُ فاصلة) ومنها تُبنى قوائمُه. والنصُّ هو ما
- * يُقرأ في الخانة، فما يُختار هو ما يُرى.
- */
+/** Table columns as text: used for the column funnel filters (cf_<column>=value, repeated rather than comma-separated since a value may contain a comma) and to build their lists. The text is what the cell shows, so what is picked is what is seen. */
 const COLS = {
   number: (r) => String(r.invoiceNumber || ''),
   customer: (r) => r.partyName || '',
@@ -766,7 +655,7 @@ const colFiltersOf = (q = {}) => {
 
 const RISK_ORDER = { normal: 1, medium: 2, hard: 3, nodate: 0 };
 const time = (d) => (d ? new Date(d).getTime() || 0 : null);
-/** الفرزُ — كلُّ عمودٍ بقيمته لا بنصّه: التاريخُ بزمنه والمبلغُ برقمه. */
+/** Sorting: each column by its value, not its text: date by time, amount by number. */
 const SORTS = {
   number: (r) => String(r.invoiceNumber || ''),
   customer: (r) => r.partyName || '',
@@ -786,8 +675,8 @@ const SORTS = {
 };
 
 /**
- * صفوفُ العقدة تحت كلِّ فلتر — اللوحةُ، والعقدةُ، والبحثُ، وقموعُ الأعمدة.
- * `exceptCol`: عمودٌ تُبنى قائمتُه فلا يُفلتَر بنفسه (كما يفعل إكسل).
+ * Node rows under every filter: dashboard, node, search and column funnels.
+ * exceptCol: the column whose list is being built is not filtered by itself (like Excel).
  */
 function selectRows(base, q, mgr, exceptCol = '') {
   const f = parseFilters(q, mgr);
@@ -810,11 +699,9 @@ const sumOf = (list, pick) => r2(list.reduce((a, r) => a + (pick(r) || 0), 0));
 
 /**
  * GET /api/collections-dept/receivables/rows
- * الصفوفُ نفسُها التي عُدّت، بالفلاتر نفسِها (parseFilters)، ثمّ بالعقدة
- * (nodeOf)، ثمّ بحثٌ `q` وقموعُ الأعمدة `cf_<عمود>`؛
- * &sort=<عمود>&dir=asc|desc&page=&limit=   (`limit=all` للتصدير — حتى ٢٠ ألفًا)
- *
- * والمجاميعُ على النتيجة كلِّها لا على الصفحة المعروضة.
+ * The same counted rows with the same filters (parseFilters), then the node (nodeOf), then search q and column funnels cf_<column>;
+ * &sort=<column>&dir=asc|desc&page=&limit=   (limit=all for export, up to 20000)
+ * Totals cover the whole result, not the page.
  */
 exports.rows = async (req, res) => {
   try {
@@ -825,7 +712,7 @@ exports.rows = async (req, res) => {
     const base = await loadBase(q);
     const list = selectRows(base, q, mgr);
 
-    // الفرزُ الافتراضيُّ: الأقدمُ أوّلًا ثمّ الأكبر — ما يُطالَب به اليوم.
+    // Default sort: oldest first, then largest: what is chased today.
     const sortKey = SORTS[q.sort] ? q.sort : '';
     if (sortKey) {
       const dir = q.dir === 'asc' ? 1 : -1;
@@ -833,7 +720,7 @@ exports.rows = async (req, res) => {
       if (sortKey === 'officer') list.forEach((r) => { r._officer = effectiveOfficer(r.officer, mgr); });
       list.sort((a, b) => {
         const x = get(a); const y = get(b);
-        // الفارغُ آخرًا في الاتّجاهين — لا يتصدّر الجدولَ صفٌّ بلا تاريخ.
+        // Empty values last in both directions, so a row with no date never tops the table.
         if (x == null && y == null) return 0;
         if (x == null) return 1;
         if (y == null) return -1;
@@ -870,7 +757,7 @@ exports.rows = async (req, res) => {
       ...(r.workflowId ? { workflowId: r.workflowId } : {}),
       ...(r.customs && r.customs.length ? { customs: r.customs } : {}),
     }));
-    // والعددُ بوحدتيه: فواتيرُ ضريبيّة وكشوفُ تخريجٍ نقديّة — قد تجتمعان في شريحة.
+    // Count in both units: tax invoices and cash sheets, which can share a band.
     const taxCount = list.filter((r) => r.kind === 'tax').length;
     res.json({
       rows, total: list.length, taxCount, cashCount: list.length - taxCount,
@@ -885,8 +772,8 @@ exports.rows = async (req, res) => {
 };
 
 /**
- * GET /api/collections-dept/receivables/column-options?col=<عمود>&cq=<بحث>&…
- * قيمُ عمودٍ واحدٍ بأعدادها — تحت كلِّ فلترٍ آخر إلّا قمعَه هو.
+ * GET /api/collections-dept/receivables/column-options?col=<column>&cq=<search>&...
+ * Values of one column with counts, under every other filter except its own funnel.
  */
 exports.columnOptions = async (req, res) => {
   try {
@@ -913,15 +800,8 @@ exports.columnOptions = async (req, res) => {
 
 /**
  * GET /api/collections-dept/receivables/cases?state=negotiating,legal&officer=&pay=&dueState=&q=&from=&to=
- *
- * ── «القضايا»: العملاءُ الذين عليهم حالةُ خلاف ─────────────────────────────
- * حالةُ الخلاف صفةُ العميل (`CollectionsParty.issue`) لا الفاتورة، فالصفحةُ
- * تُبنى على العملاء: كلُّ مَن حالتُه «تحت التفاوض» أو «قضايا» — **ولو لم تبقَ
- * عليه فاتورةٌ مفتوحة**: قضيّةٌ قائمةٌ لا تختفي لأنّ الدفترَ سُوِّي.
- *
- * والمبالغُ من صفوف الدفتر نفسِها التي تعدّها اللوحة (`loadBase`) بفلاترها،
- * فالضغطُ على عميلٍ يفتح صفحةَ المديونيّة بـ`parties=<مفتاحه>&issue=<حالته>`
- * فيُرى العددُ والقيمةُ نفساهما.
+ * Cases: customers with a dispute state. The state belongs to the customer (CollectionsParty.issue), not the invoice, so the page is built on customers: every one under negotiation or legal, even with no open invoice left, since a live case does not vanish when the ledger is settled.
+ * Amounts come from the same ledger rows the dashboard counts (loadBase) with its filters, so clicking a customer opens the receivables page with parties=<key>&issue=<state> showing identical figures.
  */
 exports.cases = async (req, res) => {
   try {
@@ -934,8 +814,7 @@ exports.cases = async (req, res) => {
       CollectionsParty.find({ 'issue.state': { $in: want } })
         .select('name code kind collectionOfficer creditDays issue').lean(),
     ]);
-    // الفلاترُ التي تخصّ الصفوف: المسؤولُ ونوعُ الدفع والاستحقاق. والحالةُ
-    // والعميلُ يُقرآن هنا لا من الرابط.
+    // Row-level filters: officer, payment type and due state. State and customer are read here, not from the URL.
     const f = parseFilters({ officer: q.officer, pay: q.pay, dueState: q.dueState }, mgr);
     const rowsFiltered = !!(f.pay.size || f.dueState.size);
     const needle = String(q.q || '').trim().toLowerCase();
@@ -966,7 +845,7 @@ exports.cases = async (req, res) => {
       if (r.age != null && (g.oldest == null || r.age > g.oldest)) g.oldest = r.age;
     }
     const parties = [...groups.values()]
-      // تحت فلترِ نوعٍ أو استحقاق: مَن لا صفَّ له فيه خارجُ السؤال.
+      // Under a type or due-state filter, a customer with no row in it is outside the question.
       .filter((g) => !rowsFiltered || g.count > 0)
       .map((g) => ({
         ...g, value: r2(g.value), lateValue: r2(g.lateValue), hardValue: r2(g.hardValue),
@@ -991,8 +870,8 @@ exports.cases = async (req, res) => {
 };
 
 /**
- * PUT /api/collections-dept/parties/:id/issue — { state, note }
- * حالةُ الخلاف قرارٌ يُكتب باسم من كتبه: «يُتفاوَض» أو «قضايا» أو «لا خلاف».
+ * PUT /api/collections-dept/parties/:id/issue  { state, note }
+ * The dispute state is a decision recorded under the author's name: negotiating, legal, or no dispute.
  */
 exports.setIssue = async (req, res) => {
   try {
@@ -1001,9 +880,7 @@ exports.setIssue = async (req, res) => {
       return res.status(400).json({ message: 'حالةٌ غير معروفة' });
     }
     const note = String(req.body?.note || '').trim();
-    // ── ولا يُقال «قضايا» بلا بيان ────────────────────────────────────────
-    // رقمٌ في خانة القضايا يتحرّك بناءً عليه عملُ القسم كلِّه، ومن يقرؤه بعد
-    // شهرٍ يسأل «أيُّ قضيّة؟». فالسببُ مكتوبٌ مع القرار.
+    // A legal state needs a reason: that count drives the department's work, and a reader later must know which case it is, so the reason is stored with the decision.
     if (state !== 'none' && !note) {
       return res.status(400).json({ message: 'اكتب بيانَ الحالة (رقمُ القضيّة أو ما اتُّفق عليه)' });
     }
@@ -1023,7 +900,7 @@ exports.setIssue = async (req, res) => {
       user: req.user?._id, action: 'update', entity: 'CollectionsParty', entityId: party._id,
       changes: { before: { issue: before }, after: { issue: state, note } }, ipAddress: req.ip,
     }).catch(() => {});
-    try { emitToAll('collections:changed', { party: String(party._id) }); } catch (e) { /* زيادة */ }
+    try { emitToAll('collections:changed', { party: String(party._id) }); } catch (e) { /* extra */ }
     res.json({ party: { _id: party._id, name: party.name, issue: party.issue } });
   } catch (e) {
     res.status(500).json({ message: 'تعذّر الحفظ' });

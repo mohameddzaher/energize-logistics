@@ -1,10 +1,5 @@
-// Default leave types seeded once on first run. Based on common Saudi labour-law
-// categories. HR can edit/add/deactivate these freely afterwards.
-//
-// Advance notice (الإخطار المسبق): planned leave must be requested a MONTH ahead
-// — you cannot ask on Sunday to travel on Tuesday. Leave nobody can plan (مرضية،
-// طارئة، وفاة، وضع) carries `requiresAdvanceNotice: false` and can be filed for
-// today. HR can change any of this per type from the leave-types page.
+// Default leave types seeded once on first run, based on common Saudi labour-law categories. HR can edit, add or deactivate them afterwards.
+// Advance notice: planned leave must be requested a month ahead. Leave nobody can plan (sick, emergency, bereavement, maternity) has `requiresAdvanceNotice: false` and can be filed for today. HR can change this per type from the leave-types page.
 const ADVANCE_NOTICE_DAYS = 30;
 
 const DEFAULT_LEAVE_TYPES = [

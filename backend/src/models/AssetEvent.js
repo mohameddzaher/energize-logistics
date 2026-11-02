@@ -25,16 +25,10 @@ const assetEventSchema = new mongoose.Schema(
         'damaged',         // reported broken while held
         'lost',            // reported missing while held
         'retired',         // out of circulation for good (dead, written off)
-        // ── والبيعُ حدثٌ بذاته لا «إخراجٌ من الخدمة» ─────────────────────────
-        // كان يُسجَّل «retired» مع الميت والمشطوب. وهما مختلفان: المشطوبُ خسارةٌ
-        // والمباعُ دخل. وسؤالُ «كم بعنا العامَ الماضي وبكم» لا جوابَ له إن كان
-        // البيعُ مخلوطًا بالتالف.
-        'sold',            // خرج من ملكنا ببيع — لموظّفٍ أو لخارجيّ
-        // ── وإرجاعُ المبيع حدثٌ آخر لا محوٌ للبيع ──────────────────────────────
-        // الموظّفُ يشتري الجهازَ ثمّ يُلغى البيعُ ويُردّ له ثمنُه، فيعود إلى
-        // المخزن. والبيعُ وقع فعلًا ويبقى في السجلّ، وهذا السطرُ بعده يقول إنّه
-        // رُدّ ومتى وبكم — فلا يُعدّ في «كم بعنا» مبيعٌ رجع.
-        'sale_returned',   // مُباعٌ رجع إلى المخزن ورُدّ ثمنُه
+        // A sale is its own event, not a retirement. It used to be logged as 'retired' together with dead and written-off items, but they differ: a write-off is a loss and a sale is income. The question of how much was sold last year and for how much has no answer if sales are mixed with scrapped items.
+        'sold',            // Left our ownership through a sale, to an employee or an outsider
+        // Returning a sold item is a separate event, not erasing the sale. An employee buys a device, then the sale is cancelled and refunded and it goes back to stock. The sale did happen and stays in the log; this line after it records that it was returned, when and for how much, so a returned sale is not counted in the sold totals.
+        'sale_returned',   // A sold item returned to stock with its price refunded
         'updated',         // details edited (kept so the trail has no silent gaps)
       ],
     },
@@ -44,7 +38,7 @@ const assetEventSchema = new mongoose.Schema(
     fromEmployee: { type: mongoose.Schema.Types.ObjectId, ref: 'Employee', default: null },
     toEmployee: { type: mongoose.Schema.Types.ObjectId, ref: 'Employee', default: null },
 
-    // مشترٍ من خارج الشركة — لا سجلَّ له عندنا، فيُكتب اسمُه.
+    // Buyer from outside the company: no record here, so the name is written.
     buyerName: { type: String, trim: true, default: '' },
     price: { type: Number, default: 0 },
 

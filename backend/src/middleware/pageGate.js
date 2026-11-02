@@ -1,22 +1,7 @@
 /**
- * حارسُ الصفحات — صلاحيّةُ الصفحة تحرس البيانات لا الشاشةَ وحدَها.
- *
- * ── ما كان ──────────────────────────────────────────────────────────────────
- * كانت صلاحيّةُ الصفحة تُخفي الرابطَ وتمنع فتحَ المسار، وتقول الشاشةُ صراحةً إنّ
- * الحارسَ على البيانات هو القسمُ وحدَه. وذلك عيبٌ مُعلَنٌ لا مُصلَح: مَن يعرف
- * نقطةَ الـ API ينادِيها من خارج الشاشة، فالإعدادُ يبدو حارسًا وليس بحارس.
- *
- * ── وما صار ─────────────────────────────────────────────────────────────────
- * الخريطةُ في `config/pageApis` تُجيب: أيُّ صفحاتٍ تنادي هذه النقطة؟ فإن كانت
- * كلُّها مغلقةً على هذا الدور رُدَّت النقطةُ ٤٠٣ — بلا حاجةٍ إلى تصديق ما يقوله
- * المتصفّح عن نفسه، وهو ما لا يُوثَق به. راجع رأسَ ذلك الملفّ لقاعدة القرار.
- *
- * ── وثلاثةُ ضماناتٍ ألّا يُغلَق بابٌ بالخطأ ───────────────────────────────────
- *   • نقطةٌ لا تعرفها الخريطةُ تمرّ كما كانت — لا نمنع ما لم نره.
- *   • صفحةٌ لم يُقرأ نداؤها ساكنًا تُوسَّع إلى قسمها، فالشكُّ يوسِّع.
- *   • وخطأٌ في الحارس نفسِه يمرّ (fail-open): عطبٌ فيه لا يوقف الشركة.
- *
- * وهو يضيّق **داخل** ما منحه القسم؛ حارسُ القسم قبله كما هو.
+ * Page guard: page permission protects the data, not only the screen. Previously it only hid the link and the route, so anyone who knew the API endpoint could call it directly.
+ * The map in `config/pageApis` says which pages call each endpoint; if all are closed to the role, the endpoint returns 403 without trusting the browser. See the head of that file for the decision rule.
+ * Safeguards: an unknown endpoint passes; a page not read statically widens to its section; an error in the guard passes (fail-open). It narrows within what the section granted; the section guard runs first.
  */
 const { decide } = require('../config/pageApis');
 const { resolveUser } = require('./auth');
@@ -27,32 +12,20 @@ const { getPage } = require('../config/pages');
 const pageGate = async (req, res, next) => {
   try {
     const user = await resolveUser(req);
-    // بلا مستخدم: حارسُ المسار نفسِه يقرّر — قد يكون بابًا عامًّا بقصد.
+    // No user: the route's own guard decides; it may be an intentionally public door.
     if (!user) return next();
     if (FULL_ACCESS_ROLES.includes(user.role)) return next();
 
-    // `req.path` هنا نسبيٌّ إلى موضع التركيب، و`originalUrl` يحمل الاستعلام.
+    // `req.path` here is relative to the mount point, and `originalUrl` carries the query.
     const path = (req.originalUrl || req.url || '').split('?')[0];
     if (!path.startsWith('/api/')) return next();
 
     const pages = await effectivePages(user.role);
     const verdict = decide(path, (key) => pages[key] !== false);
     if (!verdict || verdict.ok) {
-      // ── ومَن مُنح الشاشةَ مُنح ما تفعله ───────────────────────────────────
-      // ثلاثُ طبقاتٍ تقف أمام النداء: حارسُ القسم، وهذا الحارس، ثمّ قائمةُ
-      // الأدوار المكتوبةُ في المسار (`authorize`). والطبقةُ الثالثةُ لا تعرف
-      // الأدوارَ المصنوعة، ولا تقرأ ختمَ القسم إلّا إن كان للمسار قسمٌ مُدارٌ
-      // بالمصفوفة. والشاشاتُ التي لا قسمَ لها (المستخدمون، سجلُّ المراجعة،
-      // الفروع، القوائمُ المرجعيّة، مركزُ التقارير، النظرةُ التنفيذيّة…) لا
-      // سبيلَ إلى منحها إلّا بتأشير صفحتها — فكان يُؤشَّر عليها فتُفتَح الشاشةُ
-      // وتردّ نقاطُها «Insufficient permissions»، ولا شيءَ يقول لماذا.
-      //
-      // فيُختَم أنّ هذه النقطةَ تملكها صفحةٌ أُشِّر عليها **صراحةً** لهذا الدور،
-      // ويقرأ `authorize` الختمَ كما يقرأ ختمَ القسم. والتأشيرُ فعلُ صاحب
-      // النظام بيده، ولا يتجاوز به قسمًا مُدارًا: هناك حارسُ القسم يقرّر قبله.
-      //
-      // والختمُ لا يُوضَع على نقطةٍ لها قسمٌ مُدارٌ بالمصفوفة: هناك الحارسُ
-      // الأعلى هو القسم، و«الصفحةُ لا تتجاوز قسمَها» قاعدةٌ لا يُستثنى منها.
+      // Whoever is granted the screen is granted what it does. Three layers stand in front of a call: the section guard, this guard, then the role list written in the route (`authorize`). The third does not know custom roles and reads the section stamp only if the route has a matrix-managed section. Screens with no section (users, audit log, branches, reference lists, reports center, executive overview, ...) can only be granted by ticking their page; the screen opened but its endpoints answered "Insufficient permissions" with nothing saying why.
+      // So it stamps that this endpoint belongs to a page explicitly ticked for this role, and `authorize` reads the stamp like the section stamp. Ticking is a deliberate act by the system owner and does not override a managed section: there the section guard decides first.
+      // The stamp is not placed on an endpoint with a matrix-managed section: there the section is the top guard, and "a page does not exceed its section" has no exception.
       try {
         if (!sectionForPath(path)) {
           const granted = await explicitlyGrantedSet(user.role);
@@ -61,13 +34,11 @@ const pageGate = async (req, res, next) => {
             if (owned && owned.ok && !owned.widened) req.pageGranted = true;
           }
         }
-      } catch (e) { /* الختمُ زيادةٌ لا شرط — وغيابُه يترك القرارَ كما كان */ }
+      } catch (e) { /* The stamp is an extra, not a requirement; without it the decision is as before. */ }
       return next();
     }
 
-    // ── والرفضُ يقول أيَّ صفحةٍ يُطلَب فتحُها ──────────────────────────────
-    // «غير مصرّح» وحدَها تُقرأ عطلًا، فتُعاد المحاولةُ مرّاتٍ ثمّ يُتَّصل بالدعم.
-    // واسمُ الصفحة يجعل الطلبَ محدَّدًا: «افتحوا لي صفحة كذا».
+    // The rejection names the page being requested. A bare "not authorized" reads as a fault and leads to repeated retries and support calls; the page name makes the request specific.
     const names = verdict.pages.map((k) => getPage(k)?.ar || k);
     return res.status(403).json({
       code: 'PAGE_FORBIDDEN',
@@ -75,7 +46,7 @@ const pageGate = async (req, res, next) => {
       pages: verdict.pages,
     });
   } catch (e) {
-    // الحارسُ يضيّق، وعطبُه لا يجوز أن يوقف العمل.
+    // The guard only narrows, so its own failure must not stop work.
     return next();
   }
 };

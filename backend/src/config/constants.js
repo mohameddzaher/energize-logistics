@@ -1,11 +1,5 @@
-// Roles with unrestricted, super_admin-equivalent access to everything. The IT
-// department owns the whole system technically, so they are never gated.
-//
-// ── والأدمن كالسوبر أدمن (صاحبُ الشركة، ٢٠٢٦/١٠/٢٧) ──────────────────────────
-// «كلّ حاجة تكون ظاهرة للسوبر أدمن والأدمن — ١٠٠٪ من السيستم ولهم الصلاحيّات
-// كاملة». فالأدمن هنا (الأقسامُ والصفحاتُ كلُّها)، و`TOP_ROLES` لكلّ فحصٍ كان
-// يسأل «أهو السوبر أدمن؟» بالاسم. ويبقى حسابُ السوبر أدمن نفسُه محميًّا من
-// التعديل (userController) ومن المصفوفة (permissionController).
+// Roles with unrestricted, super_admin-equivalent access to everything. The IT department owns the whole system technically, so they are never gated.
+// Admin equals super admin: admin sees the whole system with full permissions, and `TOP_ROLES` replaces every check that asked 'is this super admin?' by name. The super admin account itself stays protected from edits (userController) and from the matrix (permissionController).
 const FULL_ACCESS_ROLES = ['super_admin', 'admin', 'it_manager', 'it_specialist'];
 const TOP_ROLES = ['super_admin', 'admin'];
 const isTopRole = (role) => TOP_ROLES.includes(String(role || ''));
@@ -19,8 +13,7 @@ const isTopRole = (role) => TOP_ROLES.includes(String(role || ''));
  * Unknown roles are not an error — a role added to the enum tomorrow is
  * title-cased into something readable rather than leaking the raw key.
  */
-// أسماء الأدوار مصدرها config/roles.js — الملف اللي بيعرّف الهيكل الوظيفي كله.
-// كانت متكرّرة هنا، فدور جديد كان لازم يتكتب في مكانين وينسى في واحد.
+// Role names come from config/roles.js, which defines the whole org structure; they were duplicated here, so a new role had to be written in two places.
 const { LABELS_AR: ROLE_LABELS_AR, LABELS_EN: ROLE_LABELS_EN } = require('./roles');
 
 const titleCase = (k) => String(k || '').split('_').filter(Boolean)
@@ -100,16 +93,8 @@ module.exports = {
     CONTRACTS_MANAGER: 'contracts_manager',
   },
 
-  // Org chart: each role's DEFAULT direct-manager role. Used to auto-suggest a
-  // manager when creating a user (the actual manager user is resolved at runtime
-  // — see utils/orgChart.js). Top roles map to null (they have no manager).
-  // This is a suggestion, never a hard requirement.
-  // مين بيتبع مين — **مشتقّة** من config/roles.js مش مكتوبة بالإيد:
-  //   موظف القسم  → مدير قسمه
-  //   مدير القسم  → الإدارة العليا (admin)
-  // القائمة اليدوية اللي كانت هنا فضلت شايلة مفاتيح قديمة بعد إعادة التسمية،
-  // وده بالظبط اللي بيخلّي موظف جديد يطلع من غير مدير. اقتراح مش إلزام —
-  // utils/orgChart.js بيحلّ المدير الفعلي وقت التشغيل.
+  // Org chart: each role's DEFAULT direct-manager role, used to auto-suggest a manager when creating a user (the actual manager user is resolved at runtime, see utils/orgChart.js). Top roles map to null.
+  // Derived from config/roles.js: section staff report to their section manager, section managers to top management (admin). A hand-written list kept stale keys after renames, leaving new staff without a manager. A suggestion, never a requirement.
   ROLE_HIERARCHY: (() => {
     const R = require('./roles');
     const h = { super_admin: null, admin: 'super_admin', moderator: 'admin', employee: 'admin', client: null, mediago_account: null };
@@ -117,18 +102,18 @@ module.exports = {
       h[s.manager.key] = 'admin';
       for (const st of s.staff) h[st.key] = s.manager.key;
     }
-    // السكرتارية بتتبع الإدارة العليا مباشرة، مش مدير قسمها.
+    // The secretariat reports directly to top management, not to a department manager.
     h.administration_staff = 'admin';
-    // المدير الماليّ فوق مدير الحسابات، ومديرُ الحسابات يتبعه لا الإدارةَ مباشرة.
-    // وإن لم يوجد مديرٌ ماليّ فالسلسلةُ تصعد إلى الإدارة العليا (orgChart).
+    // The finance manager is above the accounts manager, who reports to the finance manager, not to top management.
+    // Without a finance manager the chain goes up to top management (orgChart).
     h.cfo = 'admin';
     h.accounting_manager = 'cfo';
-    // مشرفا المناديب يتبعان مديرَ المشروع الذي يوزّع عليهما المناديب، لا مديرَ القطاع.
+    // The two rider supervisors report to the project manager who distributes riders to them, not to the sector manager.
     h.b2c_rep_supervisor = 'b2c_project_lead';
     h.b2c_inspection_supervisor = 'b2c_project_lead';
-    // ومديرو المشاريع يتبعون نائبَ مدير القطاع إن وُجد (orgChart يصعد إلى المدير إن لم يوجد).
+    // Project managers report to the sector deputy manager if one exists (orgChart goes up to the manager otherwise).
     h.b2c_project_lead = 'b2c_deputy';
-    // فريقُ البيانات: المحلّلُ ومدخلُ البيانات يتبعان مديرَ إدارة البيانات، وهو الإدارةَ العليا.
+    // Data team: the analyst and data entry report to the data management manager, who reports to top management.
     h.data_manager = 'admin';
     h.data_analyst = 'data_manager';
     h.data_entry = 'data_manager';
@@ -140,7 +125,7 @@ module.exports = {
   MARKETING_ADMIN_ROLES: ['super_admin', 'admin', 'it_manager', 'it_specialist', 'marketing_manager', 'marketing_specialist', 'bd_manager'],
   BD_STAFF_ROLES: ['super_admin', 'admin', 'it_manager', 'it_specialist', 'bd_manager', 'bd_specialist', 'sales_manager', 'crm_manager', 'operations_manager'],
   BD_ADMIN_ROLES: ['super_admin', 'admin', 'it_manager', 'it_specialist', 'bd_manager', 'bd_specialist'],
-  // قسم الشؤون الإدارية (السكرتارية) — the office task board.
+  // Administration section (secretariat): the office task board.
   ADMINISTRATION_STAFF_ROLES: ['super_admin', 'admin', 'administration_staff', 'bd_manager', 'it_manager', 'it_specialist'],
   IT_STAFF_ROLES: ['super_admin', 'admin', 'it_manager', 'it_specialist'],
   IT_ADMIN_ROLES: ['super_admin', 'admin', 'it_manager'],
@@ -164,15 +149,11 @@ module.exports = {
   CRM_STAFF_ROLES: ['super_admin', 'admin', 'it_manager', 'it_specialist', 'crm_manager', 'crm_team_lead', 'crm_specialist', 'crm_agent', 'operations_manager', 'operations_staff'],
   CRM_ADMIN_ROLES: ['super_admin', 'admin', 'it_manager', 'it_specialist', 'crm_manager', 'crm_team_lead'],
 
-  // Roles that can access the Customs Clearance section (التخليص الجمركى).
+  // Roles that can access the Customs Clearance section.
   CUSTOMS_STAFF_ROLES: ['super_admin', 'admin', 'it_manager', 'it_specialist', 'operations_manager', 'customs_manager', 'customs_officer'],
 
-  // Roles that can access the Operations Platform (قسم الأوبريشن): the live
-  // mirror of the external UPL field-ops system (B2B — Fleet Management + 3PL).
-  // READ access is broad (every internal staff role except the B2C team + the
-  // client portal) so the live ops data can be embedded across all the section
-  // dashboards. The admin tier alone can create/update/delete (writes proxied
-  // through to UPL).
+  // Roles that can access the Operations Platform: the live mirror of the external UPL field-ops system (B2B, Fleet Management + 3PL).
+  // READ is broad (every internal staff role except the B2C team and the client portal) so live ops data can be embedded in all section dashboards. Only the admin tier can create/update/delete (writes proxied to UPL).
   OPS_PLATFORM_STAFF_ROLES: [
     'super_admin', 'admin', 'it_manager', 'it_specialist', 'moderator', 'employee', 'operations_manager', 'operations_staff',
     'procurement_staff',
@@ -186,20 +167,12 @@ module.exports = {
   ],
   OPS_PLATFORM_ADMIN_ROLES: ['super_admin', 'admin', 'it_manager', 'it_specialist', 'operations_manager'],
 
-  // Roles that can access the Location Solutions section (قسم لوكيشن سوليوشن): the
-  // live Wialon GPS/telemetry mirror (sensors, tires, engine temp, maintenance
-  // alerts). READ is broad across the fleet/ops/workshop side; the admin tier
-  // (super_admin, admin, operations_manager) can acknowledge
-  // alerts, mark vehicles serviced and tune the alert thresholds.
-  // ── وصاحبُ القسم في قوائم قسمه ──────────────────────────────────────────
-  // `location_manager` و`location_staff` (config/roles.js) لم يكونا في هذه
-  // القوائم، فكان دخولُهما بمنحٍ من مصفوفة الصلاحيّات وحدَه — والمنحُ لا يُرى
-  // في الحُرّاس المكتوبة بالأسماء (إعداداتُ القسم في القائمة الجانبيّة). راجع
-  // role-structure: كلُّ قسمٍ يذكر مديرَه وموظّفَه في قوائمه.
+  // Roles that can access the Location Solutions section: the live Wialon GPS/telemetry mirror (sensors, tires, engine temp, maintenance alerts). READ is broad across the fleet/ops/workshop side; the admin tier (super_admin, admin, operations_manager) can acknowledge alerts, mark vehicles serviced and tune thresholds.
+  // The section's own roles are listed too: `location_manager` and `location_staff` (config/roles.js) were missing, so their access came only from the permission matrix grant, which name-based guards (sidebar section settings) cannot see. Each section lists its manager and staff in its lists (see role-structure).
   LS2_STAFF_ROLES: [
     'super_admin', 'admin', 'it_manager', 'it_specialist', 'moderator', 'employee', 'operations_manager', 'operations_staff',
     'procurement_staff', 'location_manager', 'location_staff',
-    // مديرُ المركبات والتفاويض يعمل في القسم (طلبُ صاحب الشركة ٢٠٢٦/١٠/١٣).
+    // The vehicles and authorizations manager works in the section.
     'vehicles_manager',
   ],
   LS2_ADMIN_ROLES: ['super_admin', 'admin', 'it_manager', 'it_specialist', 'operations_manager', 'location_manager', 'vehicles_manager'],
@@ -207,9 +180,7 @@ module.exports = {
   // data via direct link / embeds but it isn't pinned to their nav).
   LS2_SECTION_ROLES: ['super_admin', 'admin', 'it_manager', 'it_specialist', 'operations_manager', 'operations_staff', 'moderator', 'location_manager', 'location_staff'],
 
-  // Roles that can access the Vehicles & Authorizations section (المركبات
-  // والتفاويض): super admin + HR + Accounting. Delete ops are further limited to
-  // the admin tier (super_admin, admin, hr_manager, cfo, accounting_manager).
+  // Roles that can access the Vehicles & Authorizations section: super admin + HR + Accounting. Delete ops are further limited to the admin tier (super_admin, admin, hr_manager, cfo, accounting_manager).
   VEHICLE_STAFF_ROLES: ['super_admin', 'admin', 'it_manager', 'it_specialist', 'hr_manager', 'hr_specialist', 'cfo', 'accounting_manager', 'accountant'],
   VEHICLE_ADMIN_ROLES: ['super_admin', 'admin', 'it_manager', 'it_specialist', 'hr_manager', 'cfo', 'accounting_manager'],
 

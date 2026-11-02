@@ -11,34 +11,16 @@ const toDateStr = () => {
 
 /**
  * Auto-close all open wallets for the current day.
- *
- * ── ولا يُكتب عدٌّ لم يقع ────────────────────────────────────────────────────
- * كان يكتب `actualCash = closingBalance` و`cashDifference = 0` بحجّة أنّ
- * «النظامَ حسبها». وهذا يقول في البيانات إنّ النقدَ عُدَّ فطابق الدفترَ تمامًا،
- * والحقيقةُ أنّ أحدًا لم يعدّه — والفرقُ بين الأمرين هو كلُّ ما تقوم عليه
- * مراجعةُ النقد.
- *
- * وأثرُه لم يكن نظريًّا: يومٌ أُقفل تلقائيًّا ثمّ تحرّك ختاميُّه (حركةٌ تُضاف،
- * أو تصحيحٌ يتدحرج من يومٍ سابق) يبقى «معدودُه» على الرقم القديم و«فرقُه» صفرًا
- * — اثنا عشرَ يومًا في ثلاثة فروع كانت كذلك، أحدُها فرقُه الحقيقيّ عشرون ألفًا
- * وثلاثُ مئةٍ وثمانٍ وعشرون وهو يُقرأ صفرًا.
- *
- * فالخانةُ تبقى فارغة: `null` تعني «لم يُعَدّ»، وكلُّ شاشةٍ تقرؤها كذلك.
- * و`autoClosedNote` هي التي تقول لماذا أُقفل بلا عدّ.
+ * No count that did not happen is written. It used to write `actualCash = closingBalance` and `cashDifference = 0` because "the system computed it", which records that cash was counted and matched the ledger exactly when nobody counted it; that difference is what cash review rests on. A day auto-closed and then changed (a movement added, or a correction rolling forward from an earlier day) kept the old counted figure and a zero difference. Twelve days across three branches were like that, one with a real difference of 20,328 reading as zero.
+ * So the field stays empty: `null` means not counted, and every screen reads it so. `autoClosedNote` says why it was closed without a count.
  */
 const autoCloseOpenWallets = async () => {
   const today = toDateStr();
   console.log(`[Auto-Close] Running wallet auto-close — closing every open day before ${today}`);
 
   try {
-    // ── يُقفَل ما مضى، لا يومُ العمل الجاري ────────────────────────────────
-    //
-    // كان يُقفَل **اليوم** في الحادية عشرة وتسعٍ وخمسين — فمن سجّل حركةً في
-    // الدقيقة الأخيرة وجد دفترَه مقفولًا وهو ما زال في يومه. والإقفالُ يقع عند
-    // منتصف الليل: عندها ينتهي اليومُ فيُقفَل، ولا تُقتطع منه دقيقة.
-    //
-    // وكلُّ يومٍ مضى لا الأمسِ وحدَه: خادمٌ توقّف ليلةً يترك يومًا مفتوحًا إلى
-    // الأبد، وهذه الكنسةُ تُغلقه في أوّل ليلةٍ تالية بدل أن يبقى معلَّقًا.
+    // Close past days, not the current working day. It used to close today at 23:59, so someone recording a movement in the last minute found the ledger closed while still in their day. Closing happens at midnight, when the day has ended.
+    // Every past day is closed, not only yesterday: if the server was down for a night a day would stay open forever; this sweep closes it the next night.
     const openWallets = await DailyWallet.find({ date: { $lt: today }, isClosed: false });
 
     if (openWallets.length === 0) {
@@ -58,8 +40,7 @@ const autoCloseOpenWallets = async () => {
       await wallet.save();
 
       await logAudit({
-        // المحفظةُ للفرع لا لموظّف، و`wallet.user` أثرٌ قديمٌ فارغٌ في الجديد —
-        // فالفاعلُ هنا النظامُ صراحةً لا حقلٌ يُرجى أن يكون مملوءًا.
+        // The wallet belongs to the branch, not to an employee, and `wallet.user` is an empty legacy field in new ones, so the actor is explicitly the system rather than a field hoped to be filled.
         bySystem: true,
         user: wallet.user || null,
         action: 'auto_close_wallet_day',
@@ -69,7 +50,7 @@ const autoCloseOpenWallets = async () => {
           after: {
             date: wallet.date,
             closingBalance: wallet.closingBalance,
-            // لا `actualCash`: لم يُعَدّ، والقيدُ يقول ما جرى لا ما لم يجرِ.
+            // No `actualCash`: it was not counted, and the entry records what happened, not what did not.
             counted: false,
             autoClosedNote: 'Auto-closed by system at end of day',
           },
@@ -97,10 +78,7 @@ const autoCloseOpenWallets = async () => {
 
 /**
  * Schedule the auto-close job for one minute past midnight, Riyadh time.
- *
- * ولماذا بعد منتصف الليل بدقيقةٍ لا قبله بدقيقة: الإقفالُ يقع **بعد** أن ينتهي
- * اليوم، فلا يُحرَم من يعمل في آخر دقيقةٍ من تسجيل حركته. والدقيقةُ فرقُ أمانٍ
- * كي لا يقع التشغيلُ على الثانية فيقرأ تاريخَ الأمس.
+ * After midnight rather than before: closing happens after the day ends, so anyone working in the last minute can still record a movement. The minute is a safety margin so a run exactly on the second does not read yesterday's date.
  */
 const startWalletAutoCloseJob = () => {
   cron.schedule('1 0 * * *', async () => {

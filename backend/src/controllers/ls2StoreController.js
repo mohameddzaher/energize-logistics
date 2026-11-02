@@ -5,25 +5,23 @@ const { emitToAll } = require('../websocket/socketManager');
 const logAudit = require('../utils/auditLogger');
 const { resolveLs2Plate, resolveLs2Plates } = require('../services/ls2VehicleLink');
 
-// المسحُ قبل الإعلان، وللقسم كلِّه: حركةُ مخزنٍ تُقرأ في لوحة القسم وملفّ المركبة أيضًا.
+// Clear the cache before announcing, section-wide: a store movement shows on the section dashboard and vehicle file too.
 const { ISSUE_REASON_KEYS, ISSUE_REASONS } = require('../utils/storeIssueReasons');
-// الصادرُ لا يُسجَّل بلا سببه — يُقرأ في ملفّ المركبة (utils/storeIssueReasons).
+// An issue is never recorded without its reason; it is read in the vehicle file (utils/storeIssueReasons).
 const issueReasonOf = (body) => String(body?.issueReason || '').trim();
 const ISSUE_REASON_ERROR = { code: 'ISSUE_REASON_REQUIRED', message: 'اختر سبب الصرف: صيانة دورية، حادث، صيانة وقائية، عطل على الطريق، أو صيانة عامة' };
 exports.issueReasons = (req, res) => res.json({ reasons: ISSUE_REASONS });
 const emit = () => { require('../utils/ls2Touch').touchLs2({ store: true }); };
 
 /**
- * مخزنُ الطلب: الثقيلُ افتراضًا، والخفيفُ حين يُطلَب صراحةً.
- *
- * الشاشتان تنادِيان النقاطَ نفسَها بـ`?warehouse=light`، فآليّةُ المخزن واحدةٌ
- * ورصيدُ كلٍّ على حدة. والافتراضُ «ثقيل» يُبقي الروابطَ القديمةَ تعمل كما كانت.
+ * Request warehouse: heavy by default, light when explicitly requested.
+ * Both screens call the same endpoints with `?warehouse=light`, so the store mechanism is shared while balances are separate. The heavy default keeps old links working.
  */
 const whOf = (req) => (String(req.query.warehouse || req.body?.warehouse || '').trim() === 'light' ? 'light' : 'heavy');
-/** الصفوفُ القديمةُ كُتبت قبل الحقل، فغيابُه يعني «ثقيل». */
+/** Old rows were written before the field existed, so absence means heavy. */
 const whFilter = (wh) => (wh === 'light' ? { warehouse: 'light' } : { warehouse: { $ne: 'light' } });
 
-// تعريب تصنيفات القطع.
+// Localized part categories.
 const CATEGORY_AR = {
   air_system: 'نظام الهواء', lighting: 'الإضاءة', brakes: 'الفرامل', body_cabin: 'الهيكل والكابينة',
   uncategorised: 'غير مصنّف', fasteners: 'مسامير وتثبيت', engine: 'المحرك', suspension: 'التعليق (السوست)',
@@ -36,7 +34,7 @@ const ITEM_FIELDS = ['code', 'name', 'supplierItemName', 'category', 'groupAr', 
 // The light-transport store keeps no prices (owner's rule); only the heavy store requires one.
 const needsPrice = (req) => whOf(req) !== 'light';
 const pick = (body) => { const o = {}; ITEM_FIELDS.forEach((f) => { if (body[f] !== undefined) o[f] = body[f]; }); return o; };
-/** التعديلُ لا يكتب الرصيد: الرصيدُ يتغيّر بحركةٍ وحدَها. */
+/** Editing never writes the balance; the balance changes only through a movement. */
 const pickEdit = (body) => { const o = pick(body); delete o.quantity; return o; };
 
 const YMD = /^\d{4}-\d{2}-\d{2}$/;
@@ -45,10 +43,7 @@ const r2 = (n) => Math.round((Number(n) || 0) * 100) / 100;
 const foldName = (s) => String(s || '').trim().toLowerCase()
   .replace(/[أإآ]/g, 'ا').replace(/ى/g, 'ي').replace(/ة/g, 'ه').replace(/[\u064B-\u0652\u0640]/g, '').replace(/\s+/g, ' ');
 
-/**
- * الموردُ كما يصل من الشاشة: معرّفُه (اختيارٌ من القائمة) أو اسمٌ جديدٌ يُكتب في
- * الخانة نفسِها — فيُنشأ ويُختار في الطلب ذاتِه. ويردّ `null` إن لم يُذكر مورد.
- */
+/** Supplier as sent by the screen: an id (picked from the list) or a new name typed in the same field, which is created and selected in the same request. Returns `null` when no supplier is given. */
 async function resolveSupplier(req, raw, rawName) {
   const wh = whOf(req);
   const id = String(raw || '').trim();
@@ -66,10 +61,10 @@ async function resolveSupplier(req, raw, rawName) {
 }
 const actorName = (req) => (req.user ? `${req.user.firstName || ''} ${req.user.lastName || ''}`.trim() : '');
 
-// حالة الصنف: نافد (0) / منخفض (≤ الحد) / متوفر.
+// Item status: out of stock (0) / low (at or below threshold) / available.
 const statusOf = (it) => (it.quantity <= 0 ? 'out' : (it.minQuantity > 0 && it.quantity <= it.minQuantity ? 'low' : 'ok'));
 
-// ── قائمة الأصناف ────────────────────────────────────────────────────────────
+// Item list.
 exports.listItems = async (req, res) => {
   try {
     const cacheKey = `ls2store:items:${JSON.stringify(req.query || {})}`;
@@ -79,8 +74,7 @@ exports.listItems = async (req, res) => {
     const filter = { isActive: { $ne: false }, ...whFilter(whOf(req)) };
     if (req.query.category) filter.category = req.query.category;
     if (/^[0-9a-f]{24}$/i.test(String(req.query.supplier || ''))) filter.supplier = req.query.supplier;
-    // يومُ الشراء: يومٌ أو شهرٌ أو فترة. وما لا تاريخَ شراءٍ له (أصنافُ ما قبل
-    // الخانة) لا يدخل فلترًا زمنيًّا — فلا يُنسَب إلى يومٍ لم يُشترَ فيه.
+    // Purchase date: a day, month or range. Items with no purchase date (created before the field existed) are excluded from date filters so they are not attributed to a day they were not bought.
     const from = dayOf(req.query.from); const to = dayOf(req.query.to);
     if (from || to) filter.purchaseDate = { ...(from ? { $gte: from } : {}), ...(to ? { $lte: to } : { $ne: '' }) };
     if (req.query.q && req.query.q.trim()) {
@@ -100,12 +94,10 @@ exports.listItems = async (req, res) => {
   } catch (e) { console.error('ls2 store list', e); res.status(500).json({ message: 'Failed to load store' }); }
 };
 
-// ── لوحة/إحصاءات ──────────────────────────────────────────────────────────────
+// Dashboard / statistics.
 exports.dashboard = async (req, res) => {
   try {
-    // ── ومفتاحُ الحفظ يحمل المخزن ─────────────────────────────────────────
-    // كان ثابتًا، فأوّلُ مخزنٍ يُسأل عنه يملأ الحفظَ ويقرؤه الآخر: لوحةُ النقل
-    // الخفيف تعرض أرقامَ الثقيل أو بالعكس، وكلاهما صحيحُ الشكل كاذبُ المعنى.
+    // The cache key includes the warehouse. It used to be constant, so the first warehouse asked filled the cache and the other read it: the light-transport dashboard showed heavy numbers or the reverse, well-formed but wrong.
     const dashKey = `ls2store:dash:${whOf(req)}`;
     const hit = cache.get(dashKey);
     if (hit !== undefined) return res.json(hit);
@@ -131,9 +123,7 @@ exports.createItem = async (req, res) => {
   try {
     const data = pick(req.body);
     if (!String(data.name || '').trim()) return res.status(400).json({ message: 'اسم الصنف مطلوب' });
-    // ── والقطعةُ تُضاف بسعرها ─────────────────────────────────────────────
-    // صنفٌ بلا سعرٍ قيمتُه في المخزن صفر مهما كان رصيدُه — فيُجمَع المخزنُ كلُّه
-    // برقمٍ أقلَّ ممّا فيه، ولا يُعرَف كم كلّفت القطعةُ حين تُصرَف على عربيّة.
+    // The part is added with its price. An item with no price is worth zero in the store however much stock it has, so the store total is understated and the cost of a part issued to a vehicle is unknown.
     if (needsPrice(req) && !(Number(data.unitPrice) > 0)) return res.status(400).json({ message: 'اكتب سعر القطعة الواحدة', code: 'PRICE_REQUIRED' });
     const [it] = await createItems(req, [req.body]);
     emit();
@@ -142,11 +132,8 @@ exports.createItem = async (req, res) => {
 };
 
 /**
- * ينشئ الأصنافَ ومعها حركةُ واردِها الأولى.
- *
- * كان الصنفُ يُنشأ برصيده ولا حركةَ له: قطعٌ في المخزن لا يقول السجلُّ من أين
- * جاءت ولا بكم ولا متى. فالعددُ عند الإنشاء واردٌ كأيّ وارد — بمورده وسعره
- * ويوم شرائه — يُقرأ في سجلّ الحركات ويُعكَس كغيره.
+ * Creates items together with their first incoming movement.
+ * Items used to be created with a balance and no movement, so the log could not say where the stock came from, at what price or when. The initial quantity is an incoming movement like any other (supplier, price, purchase date), shown in the movement log and reversible like the rest.
  */
 async function createItems(req, rows) {
   const wh = whOf(req);
@@ -177,13 +164,8 @@ async function createItems(req, rows) {
 
 /**
  * POST /store/bulk-create { items: [...], supplier?, supplierName?, purchaseDate? }
- *
- * فاتورةُ شراءٍ واحدةٌ فيها عشرةُ أصناف: تُكتب في جدولٍ واحدٍ بموردها ويومها بدل
- * عشر استماراتٍ يُعاد فيها الموردُ والتاريخُ عشرَ مرّات. والمشترَكُ يُكتب مرّةً
- * فوق الجدول، وما كُتب في السطر يُقدَّم عليه.
- *
- * الكلُّ أو لا شيء: سطرٌ ناقصٌ يرفض الدفعةَ كلَّها بأرقام الأسطر — دفعةٌ نصفُها
- * دخل لا يعرف كاتبُها أيَّ نصف.
+ * One purchase invoice with ten items is entered in one table with its supplier and date, instead of ten forms repeating them. Shared values are written once above the table, and a value on a line takes precedence.
+ * All or nothing: one incomplete line rejects the whole batch, listing line numbers, because a half-entered batch leaves the author not knowing which half went in.
  */
 exports.createItemsBulk = async (req, res) => {
   try {
@@ -234,7 +216,7 @@ exports.deleteItem = async (req, res) => {
   catch (e) { res.status(500).json({ message: 'Failed to delete item' }); }
 };
 
-// ── حركة (وارد/صادر) ──────────────────────────────────────────────────────────
+// Movement (incoming / outgoing).
 exports.addMovement = async (req, res) => {
   try {
     const item = await Ls2StoreItem.findById(req.params.id);
@@ -248,7 +230,7 @@ exports.addMovement = async (req, res) => {
     if (type === 'out' && qty > item.quantity) {
       return res.status(400).json({ message: `الكمية المطلوبة (${qty}) أكبر من الرصيد المتاح (${item.quantity})` });
     }
-    // الواردُ يدخل بسعر قطعته: ما كُتب الآن، أو سعرُ الصنف المسجَّل إن لم يتغيّر.
+    // An incoming movement enters at its piece price: the value typed now, or the item's registered price if unchanged.
     let price = null;
     if (type === 'in') {
       price = req.body.unitPrice !== undefined && req.body.unitPrice !== '' && req.body.unitPrice !== null
@@ -257,12 +239,12 @@ exports.addMovement = async (req, res) => {
       else if (!(price > 0)) return res.status(400).json({ message: `اكتب سعر القطعة الواحدة من «${item.name}»`, code: 'PRICE_REQUIRED' });
       else item.unitPrice = price;
     }
-    // الواردُ من مورد: يُكتب على الحركة، ويصير آخرَ توريدٍ للصنف.
+    // Incoming from a supplier: recorded on the movement and becomes the item's last supply.
     const sup = type === 'in' ? await resolveSupplier(req, req.body.supplier, req.body.supplierName) : null;
     const date = dayOf(req.body.date) || todayKey();
     if (type === 'in') { if (sup) Object.assign(item, sup); item.purchaseDate = date; }
     item.quantity += type === 'in' ? qty : -qty;
-    // اللوحةُ تُكتب نصًّا كما يعرفها أهلُ الورشة، وتُحلّ إلى مركبتها في السجلّ إن عُرفت.
+    // The plate is typed as workshop staff know it and resolved to its register vehicle when known.
     const vehiclePlate = (req.body.vehiclePlate || '').trim();
     const vehicleMaster = await resolveLs2Plate(vehiclePlate, { heavy: (item.warehouse || 'heavy') === 'heavy' }).catch(() => null);
     await item.save();
@@ -277,43 +259,25 @@ exports.addMovement = async (req, res) => {
   } catch (e) { console.error('ls2 store movement', e); res.status(500).json({ message: 'Failed to record movement' }); }
 };
 
-// ── صادر لأكتر من صنف مرة واحدة ───────────────────────────────────────────────
-//
-// الطلب: «أعمل سيليكت لأكتر من صنف، وأقول الصادر ده على أنهي عربية، ويتسجّل على
-// كل اللي عملتله سيليكت». نفس الإنبوتس بتاعة الصادر المفرد بالظبط، بس بتتطبّق
-// على المجموعة.
-//
-// **قطعة واحدة من كل صنف.** ده اللي اتطلب صراحةً: الصنف اللي فيه كمية بينزل منه
-// عدد ١. اللي عايز كميات مختلفة بيستعمل الصادر المفرد — والحركتين بيدخلوا نفس
-// السجل بنفس الشكل، فالمراجع مش هيفرّق بينهم.
-//
-// **الكل أو لا شيء.** لو صنف واحد رصيده صفر، العملية كلها بترفض بقايمة بأسماء
-// الأصناف الناقصة. صادر نصّه اتنفّذ بيخلّي المخزن غلط واللي عمله مش عارف أنهي
-// صنف نزل، فيعيده كله ويطلع بدل مرتين.
+// Issue for several items in one request: the same inputs as a single issue, applied to the group.
+// One piece of each item: an item with stock decrements by 1. Different quantities use the single issue; both produce identical log entries, so an auditor cannot tell them apart.
+// All or nothing: if any item has zero balance the whole operation is rejected with the list of short items. A half-applied issue leaves the store wrong and the user not knowing which items went out, so they would retry and issue twice.
 const actor = (req) => ({
   performedBy: req.user?._id,
   performedByName: req.user ? `${req.user.firstName || ''} ${req.user.lastName || ''}`.trim() : '',
 });
 
-// ── حركة جماعية: صادر أو وارد لعدة أصناف ─────────────────────────────────────
-//
-// الطلب: «أعمل سيليكت لأكتر من صنف وأقول الصادر ده على أنهي عربية»، ثم: «العدد
-// جنب كل عنصر تلقائي ١، لكن فيه عناصر هيعمل لها صادر أكتر من ١ فيكتب عددها».
-//
-// فالكمية **لكل صنف على حدة**، وافتراضها ١. ونفس المسار يخدم الوارد أيضًا: قد
-// تدخل خمس قطع من صنف وقطعتان من آخر في نفس التوريد.
-//
-// **الكل أو لا شيء.** إن كان رصيد صنف واحد لا يكفي، لا يَنقص أي صنف والرد يحمل
-// أسماء الأصناف الناقصة. صرف نُفِّذ نصفه يترك المخزن على رقم خاطئ، ولا يعرف من
-// نفّذه أي صنف نزل — فيعيده كاملًا ويصرف ضِعف الكمية.
+// Bulk movement: issue or receipt for several items.
+// Quantity is per item and defaults to 1. The same path serves receipts too (five pieces of one item and two of another in one supply).
+// All or nothing: if any item's balance is insufficient, nothing is decremented and the response lists the short items. A half-applied issue leaves the store wrong and the user not knowing which items went out, so they would retry and issue double.
 exports.addBulkMovement = async (req, res) => {
   try {
     const type = req.body?.type === 'in' ? 'in' : req.body?.type === 'out' ? 'out' : null;
     if (!type) return res.status(400).json({ message: 'نوع الحركة غير صحيح' });
 
-    // يقبل الشكلين، ومعناهما مختلف عن قصد:
-    //   lines: أسطر صريحة كتبها المستخدم — الصنف المكرَّر فيها تُجمَع كمياته.
-    //   items: قائمة اختيار — التكرار فيها أثر انتقاء لا نيّة، فيُحسَب مرة واحدة.
+    // Accepts two shapes with deliberately different meaning:
+    // lines: explicit lines typed by the user; duplicates have their quantities summed.
+    // items: a pick list; duplicates are a selection artifact, not intent, so they count once.
     const asLines = Array.isArray(req.body?.lines);
     const raw = asLines ? req.body.lines
       : (Array.isArray(req.body?.items) ? [...new Set(req.body.items.map(String))].map((id) => ({ item: id })) : []);
@@ -328,7 +292,7 @@ exports.addBulkMovement = async (req, res) => {
     const sup = type === 'in' ? await resolveSupplier(req, req.body?.supplier, req.body?.supplierName) : null;
     const date = dayOf(req.body?.date) || todayKey();
 
-    // الصنف المكرَّر في الاختيار تُجمَع كمياته، فلا يُقاس كل سطر وحده على الرصيد.
+    // A duplicated item in the selection has quantities summed, so lines are not each checked against the balance alone.
     const wanted = new Map();
     const errors = [];
     const prices = new Map();
@@ -350,11 +314,11 @@ exports.addBulkMovement = async (req, res) => {
     for (const [id, total] of wanted) {
       const it = found.get(id);
       if (!it) { errors.push({ id, message: 'الصنف غير موجود' }); continue; }
-      // الوارد لا يُقيَّد برصيد؛ الصادر وحده هو الذي يَنقص.
+      // A receipt is not limited by balance; only issues decrease it.
       if (type === 'out' && (Number(it.quantity) || 0) < total) {
         errors.push({ id, name: it.name, message: `${it.name}: الرصيد ${it.quantity} والمطلوب ${total}` });
       }
-      // الواردُ بسعر قطعته: المكتوبُ في السطر، أو سعرُ الصنف المسجَّل.
+      // A receipt takes its piece price: the line's value or the item's registered price.
       if (type === 'in') {
         const p = prices.has(id) ? prices.get(id) : Number(it.unitPrice);
         if (it.warehouse === 'light') prices.set(id, null);
@@ -369,8 +333,7 @@ exports.addBulkMovement = async (req, res) => {
       });
     }
 
-    // مركبةُ اللوحة في السجلّ: بالأرقام وحدها في مخزن النقل الثقيل فقط (أسطولُنا
-    // فريدٌ بأرقامه)، وبالحروف في المخزنين — راجع services/ls2VehicleLink.
+    // Vehicle for the plate in the register: digits only in the heavy-transport store (our fleet is unique by digits), letters included in both stores; see services/ls2VehicleLink.
     const vmFor = {};
     for (const wh of new Set(items.map((it) => it.warehouse || 'heavy'))) {
       // eslint-disable-next-line no-await-in-loop
@@ -407,24 +370,17 @@ exports.addBulkMovement = async (req, res) => {
   }
 };
 
-// الاسم القديم — يظل عاملًا ويعني «صادر».
+// Legacy name, still accepted and meaning issue.
 exports.addBulkOut = (req, res) => exports.addBulkMovement({ ...req, body: { ...req.body, type: 'out' } }, res);
 
-// ── التراجع عن حركة ───────────────────────────────────────────────────────────
-//
-// قرار الإدارة المالية: الحركة اللي اتسجّلت متتعدّلش. مفيش endpoint بيغيّر كمية
-// أو نوع حركة قائمة، وده مقصود — لو الموظف يقدر يرجع يظبط اللي عمله، السجل
-// بيبقى رأيه في اللي حصل مش اللي حصل.
-//
-// الغلط بيتصحّح بالتراجع: حركة معاكسة بنفس الكمية، مربوطة بالأصلية
-// (reversalOf)، بسبب إجباري وباسم اللي عملها. الأصلية بتفضل في السجل مشطوبة،
-// فالمراجع بيشوف الغلطة والتصحيح مش النتيجة النهائية بس. لو الكمية الصح مختلفة،
-// بيتسجّل بعدها حركة جديدة عادية — وديه كمان بتبان باسم صاحبها.
+// Reversing a movement.
+// Finance rule: a recorded movement is never edited. No endpoint changes the quantity or type of an existing movement; if staff could rewrite their work, the log would be their opinion of what happened instead of what happened.
+// Mistakes are corrected by reversal: an opposite movement of the same quantity, linked to the original (reversalOf), with a mandatory reason and the actor's name. The original stays in the log struck through, so an auditor sees the error and the fix. If the right quantity differs, a normal new movement follows under its author's name.
 
-/** أثر الحركة على الرصيد: وارد يزوّد، صادر ينقّص. */
+/** Effect of a movement on balance: a receipt adds, an issue subtracts. */
 const effectOf = (type, qty) => (type === 'in' ? +qty : -qty);
 
-/** الحركة دي ينفع يتراجع عنها؟ */
+/** Whether this movement can be reversed. */
 const guard = (mv) => {
   if (mv.reversed) return 'تم التراجع عن هذه الحركة من قبل';
   if (mv.reversalOf) return 'هذه حركة تراجع — لا يمكن التراجع عنها؛ سجّل حركة جديدة بدلاً من ذلك';
@@ -441,7 +397,7 @@ exports.reverseMovement = async (req, res) => {
     const item = await Ls2StoreItem.findById(mv.item);
     if (!item) return res.status(404).json({ message: 'الصنف غير موجود' });
 
-    // التراجع عن «وارد» بيشيل كمية من المخزن — لو اتصرفت خلاص مينفعش.
+    // Reversing a receipt removes quantity from the store, so it fails if that stock was already issued.
     const after = item.quantity - effectOf(mv.type, mv.quantity);
     if (after < 0) {
       return res.status(400).json({
@@ -451,8 +407,7 @@ exports.reverseMovement = async (req, res) => {
 
     const who = actor(req);
     const reason = (req.body.reason || '').trim();
-    // بدون سبب مكتوب، التراجع بيبقى تعديل صامت بخطوة زيادة — وده بالظبط اللي
-    // القاعدة موجودة عشانه.
+    // Without a written reason a reversal is a silent edit with an extra step, which is what the rule exists to prevent.
     if (reason.length < 3) {
       return res.status(400).json({ message: 'اكتب سبب التراجع — يُسجَّل في السجل باسمك' });
     }
@@ -484,7 +439,7 @@ exports.reverseMovement = async (req, res) => {
   } catch (e) { console.error('ls2 store reverse', e); res.status(500).json({ message: 'تعذّر التراجع عن الحركة' }); }
 };
 
-// ── سجل الحركات ───────────────────────────────────────────────────────────────
+// Movement log.
 exports.listMovements = async (req, res) => {
   try {
     const filter = { ...whFilter(whOf(req)) };
@@ -492,7 +447,7 @@ exports.listMovements = async (req, res) => {
     if (req.query.type) filter.type = req.query.type;
     if (ISSUE_REASON_KEYS.includes(String(req.query.issueReason || ''))) filter.issueReason = req.query.issueReason;
     if (/^[0-9a-f]{24}$/i.test(String(req.query.supplier || ''))) filter.supplier = req.query.supplier;
-    // اليومُ يومُ الحركة (`date`)، وما سُجِّل قبل الخانة يُقرأ من لحظة تسجيله.
+    // The day is the movement's `date`; movements recorded before the field existed use their recording time.
     const from = dayOf(req.query.from); const to = dayOf(req.query.to);
     if (from || to) {
       const span = { ...(from ? { $gte: from } : {}), ...(to ? { $lte: to } : {}) };
@@ -505,9 +460,9 @@ exports.listMovements = async (req, res) => {
     }
     const limit = Math.min(Number(req.query.limit) || 200, 3000);
     const rows = await Ls2StoreMovement.find(filter).sort({ createdAt: -1 }).limit(limit).lean();
-    // الوحدةُ من الصنف، والقيمةُ عددٌ × سعر — للوارد الذي كُتب سعرُه.
+    // Unit comes from the item; value is quantity times price, for receipts that have a price.
     const units = new Map((await Ls2StoreItem.find({ _id: { $in: [...new Set(rows.map((m) => String(m.item)))] } }).select('unit code').lean()).map((i) => [String(i._id), i]));
-    // ولوحةُ المركبة كما في سجلّ المركبات — تُقرأ منه الآن، فتعديلُها هناك يظهر هنا.
+    // Vehicle plate as in the vehicle register, read now so edits there show here.
     const vmIds = [...new Set(rows.map((m) => m.vehicleMaster && String(m.vehicleMaster)).filter(Boolean))];
     const { VehicleMaster } = require('../models/VehicleMaster');
     const regPlate = new Map(vmIds.length ? (await VehicleMaster.find({ _id: { $in: vmIds } }).select('plateNumber').lean()).map((v) => [String(v._id), v.plateNumber]) : []);
@@ -518,15 +473,14 @@ exports.listMovements = async (req, res) => {
       unit: units.get(String(m.item))?.unit || '', itemCode: units.get(String(m.item))?.code || '',
       total: m.unitPrice != null ? r2(m.quantity * m.unitPrice) : null,
     }));
-    // الواجهة محتاجة تعرف: ده ينفع يترجع فيه؟ وده تراجع عن إيه؟ من غير ما تعيد
-    // بناء القاعدة دي في مكانين.
+    // The UI needs to know whether a movement can be reversed and what it reverses, without rebuilding this rule in two places.
     const byId = new Map(movements.map((m) => [String(m._id), m]));
     res.json({
       movements: movements.map((m) => ({
         ...m,
         canReverse: !m.reversed && !m.reversalOf,
         isReversal: !!m.reversalOf,
-        // لقطة صغيرة من الحركة الأصلية لو كانت لسه في نفس الصفحة.
+        // A small snapshot of the original movement when it is on the same page.
         originalRef: m.reversalOf
           ? (() => { const o = byId.get(String(m.reversalOf)); return o ? { type: o.type, quantity: o.quantity, at: o.createdAt } : null; })()
           : null,
@@ -535,11 +489,8 @@ exports.listMovements = async (req, res) => {
   } catch (e) { res.status(500).json({ message: 'Failed to load movements' }); }
 };
 
-// ── لوحاتٌ غير معروفة ─────────────────────────────────────────────────────────
-//
-// GET /store/unknown-plates — كلُّ لوحةٍ كُتبت على حركةٍ ولا مركبةَ لها في سجلّ
-// المركبات: كم حركةً، وآخرُ يوم. تُحلّ من جديدٍ عند كلّ طلب، فما يُضاف إلى السجلّ
-// يخرج من القائمة في الحال — والقائمةُ هي ما يحتاج تصحيحًا هنا أو هناك.
+// Unknown plates.
+// GET /store/unknown-plates - every plate written on a movement with no vehicle in the vehicle register: how many movements and the last day. Resolved again on each request, so anything added to the register leaves the list at once; the list is what needs correction here or there.
 exports.unknownPlates = async (req, res) => {
   try {
     const wh = whOf(req);
@@ -555,10 +506,8 @@ exports.unknownPlates = async (req, res) => {
   } catch (e) { res.status(500).json({ message: 'تعذّر تحميل اللوحات غير المعروفة' }); }
 };
 
-// ═══════════════════════════════════════════════════════════════════════════
-//  الموردون
-// ═══════════════════════════════════════════════════════════════════════════
-// GET /suppliers — ومع كلٍّ ما اشتُري منه: كم صنفًا، وكم توريدًا، وبكم.
+// Suppliers.
+// GET /suppliers - each with what was bought from it: how many items, how many supplies and how much.
 exports.listSuppliers = async (req, res) => {
   try {
     const wh = whOf(req);
@@ -593,7 +542,7 @@ exports.createSupplier = async (req, res) => {
     const dup = await Ls2Supplier.findOne({ nameKey, ...whFilter(wh) });
     if (dup && dup.isActive !== false) return res.status(409).json({ message: `المورد «${dup.name}» مسجَّل من قبل`, supplier: dup });
     const data = Object.fromEntries(SUPPLIER_FIELDS.filter((f) => req.body[f] !== undefined).map((f) => [f, String(req.body[f] || '').trim()]));
-    // محذوفٌ بالاسم نفسِه يُعاد بدل أن يُنشأ توأمُه — فتبقى مشترياتُه القديمةُ معه.
+    // A deleted supplier with the same name is restored instead of creating a twin, so its old purchases stay with it.
     const s = dup ? await Ls2Supplier.findByIdAndUpdate(dup._id, { $set: { ...data, isActive: true } }, { new: true })
       : await Ls2Supplier.create({ ...data, name, nameKey, warehouse: wh, createdByName: actorName(req) });
     logAudit({ user: req.user, action: 'store_supplier_create', entity: 'Ls2Supplier', entityId: s._id, changes: { after: { name: s.name } }, ipAddress: req.ip }).catch(() => {});
@@ -616,7 +565,7 @@ exports.updateSupplier = async (req, res) => {
       s.nameKey = nameKey;
     }
     await s.save();
-    // الاسمُ لقطةٌ على الصنف والحركة — تتبعه حين يُصحَّح، وإلّا بقي الجدولُ على القديم.
+    // The name is a snapshot on the item and movement; it follows when corrected, otherwise the table keeps the old one.
     if (before.name !== s.name) {
       await Promise.all([
         Ls2StoreItem.updateMany({ supplier: s._id }, { $set: { supplierName: s.name } }),
@@ -629,7 +578,7 @@ exports.updateSupplier = async (req, res) => {
   } catch (e) { console.error('ls2 supplier update', e); res.status(500).json({ message: 'تعذّر تعديل المورد' }); }
 };
 
-// الحذفُ إخفاءٌ: مشترياتُه السابقةُ تبقى باسمه في السجلّ.
+// Deletion is hiding: past purchases keep the supplier's name in the log.
 exports.deleteSupplier = async (req, res) => {
   try {
     const s = await Ls2Supplier.findOneAndUpdate({ _id: req.params.id, ...whFilter(whOf(req)) }, { $set: { isActive: false } }, { new: true });

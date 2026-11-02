@@ -1,7 +1,7 @@
 /**
- * أسماءُ مراحل دورة التخليص — للإشعارات وسجلّ المراجعة ولوحة القسم.
- * المفاتيحُ وترتيبُها في models/CustomsClearance (STAGES)؛ وهنا أسماؤها وحدَها.
- * «الحاويات» في الاسم تصير «السيّارات» في معاملة السيّارات — راجع stageLabel.
+ * Customs clearance stage names, for notifications, the audit log and the section dashboard.
+ * Keys and their order are in models/CustomsClearance (STAGES); only names are here.
+ * 'Containers' in a name becomes 'vehicles' for a vehicles transaction; see stageLabel.
  */
 const CUSTOMS_STAGE_AR = {
   papers_received: 'استلام الأوراق',
@@ -18,7 +18,7 @@ const CUSTOMS_STAGE_AR = {
   yard_to_customer: 'نقل الحاويات من الساحة إلى العميل',
   containers_returned: 'إرجاع الحاويات',
   invoiced: 'إصدار الفاتورة',
-  // مفتاحُ ما قبل تفريع النقل — باقٍ في سجلّاتٍ قديمة.
+  // Pre-split transport key; still present in old records.
   containers_transported: 'نقل الحاويات',
 };
 

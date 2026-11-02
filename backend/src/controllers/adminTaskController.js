@@ -3,9 +3,7 @@ const { sendMongooseError, describeMongooseError } = require('../utils/mongooseE
 const User = require('../models/User');
 const { emitToAll } = require('../websocket/socketManager');
 
-// الشؤون الإدارية — board controller. Every mutation appends a فصحى activity
-// line and broadcasts ONE event; clients refetch the whole board (it is small)
-// so the four columns can never drift out of sync between browsers.
+// Administration board controller. Every mutation appends a formal-Arabic activity line and broadcasts ONE event; clients refetch the whole board (it is small) so the four columns cannot drift between browsers.
 
 const STATUSES = AdminTask.STATUSES;
 const PRIORITIES = AdminTask.PRIORITIES;
@@ -47,7 +45,7 @@ exports.listAssignees = async (req, res) => {
       role: 'administration_staff',
       status: { $ne: 'inactive' },
     }).select('firstName lastName email role').sort({ firstName: 1 }).lean();
-    // المؤرشَفُ لا يُختار ولا يُسنَد إليه — كأنّه حُذف.
+    // An archived user cannot be picked or assigned, as if deleted.
     const archSets = await require('../utils/endedStaff').endedStaff();
     res.json({
       users: users.filter((u) => !require('../utils/endedStaff').userArchived(archSets, u)).map((u) => ({
@@ -73,8 +71,7 @@ exports.createTask = async (req, res) => {
       assigneeName = `${u.firstName || ''} ${u.lastName || ''}`.trim() || u.email;
     }
 
-    // New cards land at the top of «جديدة» — the fresh work is what the team
-    // opens the board to see.
+    // New cards land at the top of the new column: fresh work is what the team opens the board to see.
     const top = await AdminTask.findOne({ status: 'new' }).sort({ order: 1 }).select('order').lean();
     const by = actorName(req);
 

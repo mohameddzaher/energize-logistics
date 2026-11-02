@@ -10,64 +10,43 @@ const { createNotification } = require('../services/notificationService');
 // on the board comes from that mirror, joined by normalized plate digits.
 const Ls2Vehicle = require('../models/Ls2Vehicle');
 const { plateKey, vehiclePlateKey, canonicalPlateKey } = require('../utils/plateKey');
-// عملاء الأسطول وشركات الـCRM سجلّان مستقلّان يجمعهما الاسم المطبَّع وحده.
+// Fleet customers and CRM companies are separate registers joined only by the normalized name.
 const CrmCompany = require('../models/CrmCompany');
 const CrmActivity = require('../models/CrmActivity');
 const CrmDeal = require('../models/CrmDeal');
 const { nameKey } = require('../utils/nameKey');
 const { endedStaff, idNumberEnded, employeeEnded } = require('../utils/endedStaff');
-// المؤرشَفُ (انتهت خدمتُه وخرج من النظام) يختفي من كلّ قائمةٍ هنا كأنّه حُذف —
-// بمرجع ملفّه إن رُبط السائق، وإلّا برقم إقامته المكتوب.
+// An archived person (service ended and left the system) disappears from every list here as if deleted: by his file reference if the driver is linked, else by his written residence number.
 const { notArchivedRow } = require('../utils/archivedHidden');
 const noArchDrv = async () => notArchivedRow(await endedStaff(), 'employee', 'iqama');
-// الشاحنةُ من سجلّ المركبات والسائقُ من ملفّ الموارد البشريّة — راجع utils/fleetIdentity.
+// The truck comes from the vehicle register and the driver from the HR file; see utils/fleetIdentity.
 const FI = require('../utils/fleetIdentity');
 const vehicleRef = require('../utils/vehicleRef');
-// Live GPS → "السيارة داخل نطاق جدة الآن" (and: reached its trip's destination).
+// Live GPS gives whether the vehicle is currently inside the Jeddah zone (and whether it reached its trip's destination).
 const { cityForPoint, sameCity } = require('../utils/saCities');
 
 /**
- * ── المشرفُ يملك سياراتَه ويرى سيارات غيره ────────────────────────────────
- *
- * كان المشرفُ لا يرى إلّا سياراتَه: قائمةً ولوحةً وتحليلًا وسجلًّا. وطُلب قلبُ
- * ذلك صراحةً — «خلّي المشرفين يشوفوا سيارات بعض عادي، بس كل واحد له سياراته».
- *
- * فالفرقُ الذي يبقى هو الملكيّةُ لا الحجب: `FleetVehicle.supervisor` كما هو،
- * ويُعرَض في عمودٍ فيُعرَف صاحبُ كلِّ سيارة، ويبقى الإسنادُ بيد مدير الأسطول.
- * والذي سقط هو أن تُخفى بياناتُ زميلِه عنه — وإخفاؤها كان يكلّف أكثرَ ممّا
- * يحمي: مشرفٌ يغطّي زميلَه في يوم إجازته لا يرى ما يغطّيه.
- *
- * والكتابةُ لم تُفتَح معها: `forWrite` يُبقي التقييدَ حيث يكون التقييدُ حارسًا
- * لا حجابًا — لا يكتب أحدٌ سجلَّ سيارةِ غيره. وهو موضعان فقط
- * (`createVehicleLog` و`updateVehicleLog`).
- *
- * والسياسةُ في رايةٍ واحدة: مَن أراد ردَّها يومًا يقلب سطرًا لا خمسةَ عشرَ
- * موضعًا.
+ * A supervisor owns his vehicles and sees others': ownership is kept, hiding was dropped. `FleetVehicle.supervisor` is shown in a column and assignment stays with the fleet manager; hiding a colleague's data cost more than it protected (covering a colleague on leave).
+ * Writing is not opened: `forWrite` keeps the restriction in `createVehicleLog` and `updateVehicleLog` only.
+ * The policy is one flag, so reversing it is one line.
  */
 const SUPERVISORS_SEE_EACH_OTHER = true;
 
 const supervisorVehicleIds = async (req, { forWrite = false } = {}) => {
   if (req.user.role !== 'fleet_supervisor') return null;
-  if (!forWrite && SUPERVISORS_SEE_EACH_OTHER) return null;   // لا حجبَ على القراءة
+  if (!forWrite && SUPERVISORS_SEE_EACH_OTHER) return null;   // No restriction on reads
   const vs = await FleetVehicle.find({ supervisor: req.user._id }).select('_id').lean();
   return vs.map((v) => v._id);
 };
 
-// إدارة الأسطول — our own trucks. The booking rules that matter:
-//   · picking a vehicle answers most of the form (its drivers, trailer, GPS);
-//   · picking a driver who sits on ANOTHER truck MOVES him here — that is the
-//     easy-swap the user asked for, no drivers-page detour;
-//   · a vehicle carries at most two drivers;
-//   · everything that happens to a shipment lands in its event log.
+// Fleet management: our own trucks. Booking rules: picking a vehicle answers most of the form (drivers, trailer, GPS);
+// picking a driver who sits on ANOTHER truck MOVES him here (easy swap);
+// a vehicle carries at most two drivers; everything that happens to a shipment lands in its event log.
 
 const cache = require('../utils/ttlCache');
 const { cappedFind, askedLimit, CAP_NOTE_AR } = require('../utils/capped');
-// Every fleet mutation flows through emit() → also drop the cached board and
-// dashboard so the socket-triggered refetch returns the post-mutation state.
-//
-// والإبطالُ قبل الإعلان لا بعده: الحدثُ يوقظ كلَّ شاشةٍ مفتوحةٍ لتُعيد الجلب،
-// فإن أُعلن أوّلًا جاء الجلبُ على مخزونٍ لم يُمسَح بعد فقرأ حالةً قبل التعديل —
-// ومَن رأى ذلك رأى «تأخّرًا بتعديلٍ واحدٍ» لا خطأً في المنطق.
+// Every fleet mutation flows through emit() and also drops the cached board and dashboard so the socket-triggered refetch returns the post-mutation state.
+// Invalidate before announcing, not after: the event wakes every open screen to refetch, and if announced first the refetch reads the cache not yet cleared, showing the pre-edit state (seen as lagging one change behind, not as a logic error).
 const emit = (event, payload = {}) => {
   cache.clear('fleet:');
   try { emitToAll(event, payload); } catch (e) {}
@@ -81,14 +60,8 @@ const pick = (body, fields) => {
 
 const rx = (s) => new RegExp(String(s).trim().replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i');
 
-// بحثٌ يتسامح مع صور الكتابة العربية وأرقامها الهندية.
-//
-// لوحاتنا ومدننا وأسماء سائقينا تُكتب في المصادر بصور شتّى: «٢٧٠٨» و«2708»،
-// «أ ب ج» و«ا ب ج»، «جدة» و«جده». مطابقةُ النصّ الخام تجعل البحث يفشل بفارق
-// همزةٍ واحدة فيخرج الجدول فارغًا، فيظنّ المستخدم أن لا بيانات عنده أصلًا —
-// وهي الشكوى التي وردت عن البحث بلوحة سيارةٍ في التحليلات.
-//
-// المسافات تصير `\s*` لأن اللوحة تُكتب متلاصقةً ومتباعدةً على السواء.
+// Search tolerant of Arabic spelling variants and Indian digits: plates, cities and driver names are written in various forms across sources, and matching raw text made search return an empty table on a one-hamza difference.
+// Spaces become `\s*` because plates are written both joined and spaced.
 const arRx = (s) => {
   const west = String(s).trim().replace(/[٠-٩]/g, (d) => '٠١٢٣٤٥٦٧٨٩'.indexOf(d));
   const body = west
@@ -113,7 +86,7 @@ const logEvent = async (req, shipmentId, type, data = {}) => {
 const SHIPMENT_EDITABLE = [
   'customer', 'vehicle', 'driver', 'secondDriver',
   'loadDate', 'fromCity', 'toCity', 'status', 'expectedArrival', 'notes',
-  // حقول الحمولة/البوليصة:
+  // Load/waybill fields:
   'rentType', 'paymentType', 'loadType', 'price', 'fullRent', 'customerType',
   'driverExpense', 'driverAdvance', 'fridayBonus', 'branch',
 ];
@@ -139,12 +112,8 @@ const applyFridayBonus = async (data) => {
 };
 
 /**
- * ── وشاحنةٌ لا تبقى بثانٍ بلا أوّل ─────────────────────────────────────────
- *
- * يُدعى بعد كلِّ نزولٍ عن شاحنة. فإن خلا المقعدُ الأوّلُ وفي الثاني رجلٌ
- * رُقِّي إلى الأوّل: «السائق الثاني» رتبةٌ نسبةً إلى أوّلٍ موجود، فإذا لم
- * يوجد صارت الكلمةُ بلا معنى — وتقرأ الشاشةُ شاحنةً سائقُها الأوّلُ خالٍ
- * وسائقُها الثاني فلان، فلا يُعرَف أهو خطأٌ في البيانات أم نقصٌ في الطاقم.
+ * A truck never keeps a second driver without a first
+ * Called after every step-down from a truck. If the first seat empties while the second holds a man, he is promoted to first: second driver is a rank relative to an existing first, and without one the word is meaningless; the screen would show a truck with an empty first driver and a named second, and nobody could tell if it is bad data or a short crew.
  */
 const promoteSeats = async (vehicleId) => {
   if (!vehicleId) return;
@@ -158,14 +127,9 @@ const promoteSeats = async (vehicleId) => {
 };
 
 /**
- * Move a driver onto a vehicle, enforcing the two-seat rule. Returns a line
- * for the event log when he actually moved.
- *
- * ── والمقعدُ يُطلَب أو يُعطى أوّلَ ما يخلو ─────────────────────────────────
- * `seat` مطلوبٌ صريحًا حين يقول المستخدم «هذا سائقٌ ثانٍ على هذه الشاحنة»،
- * ومتروكٌ حين يُسنَد السائقُ بلا ترتيب — فيأخذ أوّلَ مقعدٍ خالٍ. ولو طُلب
- * مقعدٌ يشغله غيرُه، تبادلا: المستخدم طلب أن يكون هذا هو الأوّل، فالآخر
- * يصير الثاني — وهو أقربُ إلى مراده من رسالةِ خطأ.
+ * Move a driver onto a vehicle, enforcing the two-seat rule. Returns a line for the event log when he actually moved.
+ * The seat is requested or given at first free
+ * `seat` is explicit when the user says this is the second driver on this truck, and left out when assigned with no order, taking the first free seat. If the requested seat is held by another they swap: the user asked this one to be first, so the other becomes second, closer to what he meant than an error.
  */
 const seatDriver = async (driverId, vehicleId, seat = null) => {
   if (!driverId) return null;
@@ -192,13 +156,13 @@ const seatDriver = async (driverId, vehicleId, seat = null) => {
 
   const taken = new Set(mates.map((m) => m.seat || 1));
   const target = want || (taken.has(1) ? 2 : 1);
-  // تبادلُ الرتبة: مَن كان في المقعد المطلوب ينتقل إلى الآخر.
+  // Rank swap: whoever held the requested seat moves to the other.
   const holder = mates.find((m) => (m.seat || 1) === target);
   if (holder) await FleetDriver.updateOne({ _id: holder._id }, { $set: { seat: target === 1 ? 2 : 1 } });
 
   const leftBehind = sameVehicle ? null : driver.vehicle;
   driver.vehicle = vehicleId || null;
-  // المقعدُ لا معنى له بلا شاحنة، فيعود إلى الأوّل حتّى لا يُقرأ بقيّةً كاذبة.
+  // A seat means nothing without a truck, so it returns to first to avoid reading as a false remainder.
   driver.seat = vehicleId ? target : 1;
   await driver.save();
   if (leftBehind) await promoteSeats(leftBehind);
@@ -217,15 +181,14 @@ const seatDriver = async (driverId, vehicleId, seat = null) => {
 const resolveAssignments = async (req, data, existing = null) => {
   const notes = [];
   if (data.vehicle !== undefined) {
-    // الماركةُ واللونُ في اللقطة من سجلّ المركبات — ما يُطبع اليومَ هو ما في السجلّ.
+    // Make and colour in the snapshot come from the vehicle register: what prints today is what the register holds.
     const veh = data.vehicle ? await FI.vehicleIdentity(await FleetVehicle.findById(data.vehicle).lean()) : null;
     data.vehiclePlate = veh?.plate || '';
     data.trailerType = veh?.trailerType || '';
     data.gpsType = veh?.gpsType || '';
     data.vehicleBrand = veh?.brand || '';
     data.vehicleColor = veh?.color || '';
-    // مشرف الحمولة = المشرف المعيَّن على السيارة نفسها (نظام التوزيع)، فتظهر
-    // الحمولة تلقائيًا ضمن نطاق مشرفها في القوائم واللوحة والتحليلات.
+    // The load's supervisor is the one assigned to the vehicle itself (distribution system), so the load appears within its supervisor's scope in lists, dashboard and analytics.
     if (veh?.supervisor) {
       data.supervisor = veh.supervisor;
       data.supervisorName = veh.supervisorName || '';
@@ -240,12 +203,11 @@ const resolveAssignments = async (req, data, existing = null) => {
       if (key === 'driver') { data.driverPhone = ''; data.driverIqama = ''; data.driverNationality = ''; }
       continue;
     }
-    // رتبةُ الخانة في النموذج هي رتبةُ المقعد على الشاحنة: مَن اختير «السائق
-    // الأساسي» للحمولة هو السائقُ الأوّل عليها — وإلّا قالت الشاشتان قولين.
+    // The slot rank in the model is the seat rank on the truck: whoever is chosen as the load's primary driver is the first driver on it, or the two screens would disagree.
     const seated = await seatDriver(data[key], vehicleId, key === 'driver' ? 1 : 2);
     if (seated?.moved) notes.push(seated.moved);
     if (seated?.driver) {
-      // واسمُه وجوالُه وإقامتُه وجنسيّتُه من ملفّه في الموارد البشريّة إن رُبط.
+      // His name, mobile, residence and nationality come from his HR file when linked.
       seated.driver = await FI.driverIdentity(seated.driver);
       if (key === 'driver') {
         data.driverName = seated.driver.name;
@@ -260,25 +222,9 @@ const resolveAssignments = async (req, data, existing = null) => {
   return notes;
 };
 
-// ── الفترة الزمنية: مرجعٌ واحد لكل صفحات القسم ──────────────────────────────
-//
-// كانت كل شاشة تحسب مداها بنفسها: القائمة تقيس على تاريخ الإنشاء، والتحليلات
-// على تاريخ التحميل، وكلٌّ يفسّر «من/إلى» بتوقيتٍ مختلف. فيسأل المستخدم عن
-// «هذا الشهر» فيأخذ رقمين مختلفين من شاشتين، ويظنّ القسم غير مترابط.
-//
-// فصار المدى يُحسم هنا وحده: ترسل الواجهة **اسم الفترة** (preset) لا حدودها،
-// فيستحيل أن تختلف شاشتان في معنى «أمس».
-//
-// والحدود محلّية لا UTC عمدًا: «حمولات يوم السبت» تعني السبت بتوقيت الرياض.
-// و`new Date('2026-08-25')` تُفسَّر في جافاسكربت على أنها منتصف ليل UTC، فتزيح
-// اليوم ثلاث ساعات: تُسقِط أوّل حمولات اليوم وتُدخِل حمولات اليوم التالي.
-// وبلا منطقةٍ تُقرأ بتوقيت **الخادم** — وهو غرينتش عندنا، فيعود العطلُ الذي
-// يشرحه التعليقُ أعلاه من الباب الآخر. يُبنى الحدُّ من تقويم الشركة صراحةً.
-// ── حدودُ الفترات بتوقيت الرياض ────────────────────────────────────────────
-// الخادمُ يعمل بتوقيت غرينتش: `new Date(y, m, d)` عليه منتصفُ ليل غرينتش، أي
-// الثالثةُ فجرًا عندنا — فكانت حمولاتُ ما بين ١٢ و٣ فجرًا تُحسب في اليوم (أو
-// الشهر) السابق، و`?month=` (من الجوّال) يعطي نافذةَ ثلاث ساعاتٍ لا شهرًا. فكلُّ
-// حدٍّ يُبنى من مفتاح يومٍ «YYYY-MM-DD» في الرياض ثمّ startOfDay.
+// Time period: one reference for all section pages. Each screen used to compute its own range, so the same question gave different numbers; the UI now sends the period name (preset), not boundaries.
+// Boundaries are Riyadh time, not UTC: `new Date('2026-08-25')` is UTC midnight (shifts the day by three hours) and without a zone it is read in server time, which is GMT here. The server runs on GMT, so `new Date(y, m, d)` is 3 am Riyadh and loads between 12 and 3 am landed in the previous day.
+// Every boundary is built from a "YYYY-MM-DD" Riyadh day key, then startOfDay.
 const _keyShift = (ymd, n) => { const d = new Date(`${ymd}T00:00:00Z`); d.setUTCDate(d.getUTCDate() + n); return d.toISOString().slice(0, 10); };
 const _monthKeyShift = (ym, n) => { const [y, m] = ym.split('-').map(Number); const d = new Date(Date.UTC(y, m - 1 + n, 1)); return d.toISOString().slice(0, 7); };
 const _day = (ymd) => startOfDay(ymd);
@@ -290,8 +236,8 @@ const PERIOD_PRESETS = [
   'tomorrow', 'next_7', 'next_30', 'day', 'range', 'all',
 ];
 
-// ‏(preset | month=YYYY-MM | day=YYYY-MM-DD | from/to) → { start, end, preset }.
-// `end` حصريّ دائمًا (‏`$lt`)، فلا يحتاج المستدعي إلى تذكّر إضافة يوم.
+// (preset | month=YYYY-MM | day=YYYY-MM-DD | from/to) -> { start, end, preset }.
+// `end` is always exclusive (`$lt`), so callers need not remember to add a day.
 const resolvePeriod = (query = {}) => {
   const { preset, from, to, day, month } = query;
   const tk = todayKey();
@@ -306,11 +252,11 @@ const resolvePeriod = (query = {}) => {
     case 'last_7': return out(at(-6), at(1), 'last_7');
     case 'this_month': return out(_month(tm), _month(_monthKeyShift(tm, 1)), 'this_month');
     case 'last_month': return out(_month(_monthKeyShift(tm, -1)), _month(tm), 'last_month');
-    // فتراتٌ مستقبلية — تخدم شاشة «المتوقع للوصول» وحدها: ما الذي سيصل غدًا؟
+    // Future periods serve only the expected-arrival screen: what arrives tomorrow?
     case 'tomorrow': return out(at(1), at(2), 'tomorrow');
     case 'next_7': return out(today, at(7), 'next_7');
     case 'next_30': return out(today, at(30), 'next_30');
-    // «الكل»: مخرجٌ صريح من كل مدى. وجوده وحده يمنع سؤال «لماذا كل شيء صفر؟»
+    // All: an explicit way out of every range. Its existence prevents the question of why everything is zero.
     case 'all': return out(new Date(0), new Date(8640000000000000), 'all');
     default: break;
   }
@@ -325,13 +271,11 @@ const resolvePeriod = (query = {}) => {
       'range',
     );
   }
-  // الافتراضي: الشهر الحالي. تُعاد قيمته في الرد (`period.preset`) كي تعرضه
-  // الواجهة صراحةً — فلا يبقى المستخدم يبحث عن حمولةٍ خارج الشهر ولا يدري.
+  // Default: the current month. The value is returned in the response (`period.preset`) so the UI shows it explicitly, and the user does not hunt for a load outside the month unaware.
   return out(_month(tm), _month(_monthKeyShift(tm, 1)), 'this_month');
 };
 
-// تاريخ الحمولة الفعلي = تاريخ التحميل، وإن لم يُسجَّل فتاريخ الإنشاء. كل
-// عدٍّ في القسم يقيس على هذا التاريخ وحده، وإلا اختلفت القائمة عن التحليلات.
+// The load's effective date is the loading date, else the creation date. Every count in the section measures on this date alone, or the list would differ from analytics.
 const effectiveDateMatch = (start, end) => ({
   $or: [
     { loadDate: { $gte: start, $lt: end } },
@@ -339,10 +283,10 @@ const effectiveDateMatch = (start, end) => ({
   ],
 });
 
-// نفس المعنى داخل خطوط التجميع: يُستعمل في `$group` و`$sort` على مستوى الخادم.
+// The same meaning inside aggregation pipelines: used in `$group` and `$sort` on the server.
 const EFFECTIVE_DATE_EXPR = { $ifNull: ['$loadDate', '$createdAt'] };
 
-/** معرّفٌ واحدٌ من نصّ — راجع `_oids` لسبب الحاجة إليه. */
+/** A single id from text; see `_oids` for why it is needed. */
 const _oid = (v) => (mongoose.Types.ObjectId.isValid(v) ? new mongoose.Types.ObjectId(v) : v);
 
 // ── Shipments ───────────────────────────────────────────────────────────────
@@ -350,23 +294,16 @@ const _oid = (v) => (mongoose.Types.ObjectId.isValid(v) ? new mongoose.Types.Obj
 exports.listShipments = async (req, res) => {
   try {
     const { q, status, supervisor, customer, vehicle, toCity, preset, from, to, day, month, page = 1, limit = 25 } = req.query;
-    // الشروط المشتركة تُبنى منفصلةً عن «الحالة» و«الوجهة»، لأن شريط الوجهات
-    // أسفلَه يجيب سؤالًا آخر: «الرايح جدة كام سيارة» ضمن نفس الفلتر لكن **دون**
-    // حصر الوجهة أو الحالة، وإلا صار الشريط يعدّ ما رشّحه المستخدم به لا غير.
+    // Shared conditions are built separately from status and destination, because the destinations strip below answers another question: how many vehicles are heading to Jeddah within the same filter but without restricting destination or status, or the strip would count only what the user already filtered by.
     const base = [];
-    // معرّفاتٌ لا نصوص: `base` يُمرَّر إلى `aggregate` (عدّادُ الحالات وشريطُ
-    // الوجهات) لا إلى `find` وحدَه — و`aggregate` لا يحوّل النصَّ إلى معرّف.
-    // فكان الفلترُ بمشرفٍ أو عميلٍ يُظهر الصفوفَ ويُصفِّر البطاقاتَ فوقها.
+    // Ids, not strings: `base` is passed to `aggregate` (status counter and destination strip), not only to `find`, and `aggregate` does not cast strings to ids. A supervisor or customer filter used to show the rows and zero the cards above them.
     if (supervisor) base.push({ supervisor: _oid(supervisor) });
     if (customer) base.push({ customer: _oid(customer) });
     if (vehicle) base.push({ vehicle: _oid(vehicle) });
     if (req.query.excludeCancelled === '1') base.push({ status: { $ne: 'cancelled' } });
     const scope = await supervisorVehicleIds(req);
     if (scope) base.push({ vehicle: { $in: scope } });
-    // مدى التاريخ: يُطلَب باسم الفترة (اليوم/أمس/هذا الشهر…) أو بمدى صريح، ولا
-    // يُقاس إلا على تاريخ الحمولة الفعلي — وكان يُقاس على تاريخ الإنشاء وحده،
-    // فتغيب حمولةٌ سُجّلت أمس لتحميل اليوم عن سؤال «حمولات اليوم».
-    // غياب كل الوسائط يعني «بلا حصر» هنا لا «الشهر الحالي»: هذه قائمة تُتصفَّح.
+    // Date range: requested by period name (today/yesterday/this month...) or an explicit range, and measured only on the load's effective date. It used to measure on creation date alone, so a load recorded yesterday for today's loading was missing from today's loads. No parameters at all means unrestricted here, not the current month: this is a browsable list.
     const periodAsked = !!(preset || from || to || day || month);
     const period = periodAsked ? resolvePeriod({ preset, from, to, day, month }) : null;
     if (period && period.preset !== 'all') base.push(effectiveDateMatch(period.start, period.end));
@@ -381,10 +318,8 @@ exports.listShipments = async (req, res) => {
       base.push({ $or: or });
     }
     const narrow = [];
-    // ── وحالةٌ واحدةٌ أو عدّة ────────────────────────────────────────────────
-    // بطاقاتُ أعلى الشاشة تجمع حالاتٍ («قيد التنفيذ» ثلاثُ حالات، و«وصلت /
-    // مكتملة» أربع). وكان الفلترُ يقبل واحدةً فقط، فلم تكن البطاقةُ تُفتَح على
-    // صفوفها أصلًا — تُقرأ ولا تؤدّي إلى شيء.
+    // One status or several
+    // The cards on top group statuses (in progress is three statuses, arrived/complete is four). The filter used to accept a single one, so the card could not open onto its rows: it was read and led nowhere.
     if (status) {
       const keys = String(status).split(',').map((x) => x.trim()).filter(Boolean);
       if (keys.length === 1) narrow.push({ status: keys[0] });
@@ -395,14 +330,12 @@ exports.listShipments = async (req, res) => {
     const filter = all.length ? { $and: all } : {};
 
     const skip = (parseInt(page) - 1) * parseInt(limit);
-    // "الرايح جدة كام سيارة" — destinations of the loads currently in motion,
-    // under the SAME filter (minus the status/city drill-down itself).
+    // Destinations of the loads currently in motion, under the same filter (minus the status/city drill-down itself).
     const destMatch = { $and: [...base, { status: { $in: ['requesting', 'loading', 'uploaded', 'on_way', 'late'] } }] };
     const [shipments, total, statusAgg, destAgg] = await Promise.all([
       FleetShipment.find(filter).sort({ createdAt: -1 }).skip(skip).limit(parseInt(limit)).lean(),
       FleetShipment.countDocuments(filter),
-      // عدّاد الحالات يُحسب دون حصر الحالة نفسها، وإلا صفّرت بطاقاتُ الأعلى
-      // كلَّ حالةٍ عدا المختارة — والمقصود منها أن تُظهر التوزيع كي يُنتقل بينها.
+      // The status counter is computed without restricting the status itself, or the top cards would zero every status except the chosen one; their purpose is to show the distribution so one can move between them.
       FleetShipment.aggregate([
         { $match: (() => { const c = [...base, ...(toCity ? [{ toCity }] : [])]; return c.length ? { $and: c } : {}; })() },
         { $group: { _id: '$status', n: { $sum: 1 } } },
@@ -413,8 +346,7 @@ exports.listShipments = async (req, res) => {
         { $sort: { n: -1 } },
       ]),
     ]);
-    // إثراء البوليصة ببيانات السائق (الإقامة/الجوال) من سجل السائق — الحقول دي
-    // مش مخزّنة على الشحنة نفسها لكن البوليصة محتاجاها فتطلع فاضية.
+    // Enrich the waybill with driver data (residence/mobile) from the driver record: these fields are not stored on the shipment itself but the waybill needs them, so they came out empty.
     const driverIds = [...new Set(shipments.map((s) => s.driver).filter(Boolean).map(String))];
     if (driverIds.length) {
       const drivers = await FleetDriver.find({ _id: { $in: driverIds } }).select('iqama phone nationality employee').lean()
@@ -442,8 +374,7 @@ exports.listShipments = async (req, res) => {
     const byStatus = {};
     statusAgg.forEach((r) => { byStatus[r._id] = r.n; });
     const byDestination = destAgg.filter((r) => r._id).map((r) => ({ city: r._id, n: r.n }));
-    // تُعاد الفترة كما فهمها الخادم، لتعرضها الواجهة صراحةً بدل أن يبحث
-    // المستخدم عن حمولةٍ خارج المدى وهو لا يدري أن ثمّة مدًى أصلًا.
+    // The period is returned as the server understood it, so the UI shows it explicitly instead of the user looking for a load outside the range unaware that a range exists.
     res.json({ shipments, total, period, stats: { byStatus, byDestination } });
   } catch (error) {
     console.error('Error listing fleet shipments:', error);
@@ -468,27 +399,22 @@ exports.createShipment = async (req, res) => {
       const c = await FleetCustomer.findById(data.customer).select('name customerType paymentType').lean();
       if (c) {
         data.customerName = c.name;
-        // لقطة نوع العميل على الحمولة إن لم يُحدَّد صراحةً (للتقارير).
+        // Snapshot of the customer type on the load if not set explicitly (for reports).
         if (!data.customerType && c.customerType) data.customerType = c.customerType;
-        // نوع الدفع المتفق عليه مع العميل يُملأ تلقائيًّا — وما أرسلته الواجهة
-        // يفوز دائمًا: الاتفاق افتراضٌ لحمولةٍ جديدة، لا قيدٌ على هذه الحمولة.
+        // The payment type agreed with the customer is filled automatically, and what the UI sent always wins: the agreement is a default for a new load, not a constraint on this load.
         if (!data.paymentType && c.paymentType) data.paymentType = c.paymentType;
       }
     }
 
-    // بونص الجمعة: يُضاف مبلغ الإعدادات لمصروف السائق مرة واحدة عند الإنشاء.
+    // Friday bonus: the settings amount is added to the driver's expense once, at creation.
     await applyFridayBonus(data);
 
     const moveNotes = await resolveAssignments(req, data);
 
-    // ── ولا تأذنَ صيانةٍ قبل التحميل ─────────────────────────────────────────
-    // كانت شاحنةٌ فات موعدُ صيانتها تُمنَع من التحميل حتّى يوافق مديرُ الصيانة
-    // في «طلبات الأسطول». رُفع المنعُ بطلب المستخدم: التحميلُ يمضي كما كان،
-    // والشارةُ الحمراءُ على بطاقة الشاحنة وتقاريرُ الصيانة تبقى كما هي — تُعلِم
-    // ولا تحجز.
+    // No maintenance block before loading
+    // A truck overdue for maintenance used to be blocked from loading until the maintenance manager approved it in fleet requests. The block was lifted on request: loading proceeds as before, and the red badge on the truck card and the maintenance reports remain, informing without blocking.
 
-    // المشرف: يأتي من السيارة المعيَّنة (resolveAssignments أعلاه)؛ وإن لم يكن
-    // للسيارة مشرف بعد، يُختم بمنشئ الحمولة.
+    // Supervisor: comes from the assigned vehicle (resolveAssignments above); if the vehicle has none yet, the load creator is stamped.
     if (!data.supervisor) {
       data.supervisor = req.user._id;
       data.supervisorName = fullName(req.user);
@@ -533,7 +459,7 @@ exports.updateShipment = async (req, res) => {
 
     const data = pick(req.body, SHIPMENT_EDITABLE);
 
-    // An edit can switch the حمولة to a first-time customer, exactly like create.
+    // An edit can switch the load to a first-time customer, exactly like create.
     if (!data.customer && req.body.newCustomer && String(req.body.newCustomer.name || '').trim()) {
       const c = await FleetCustomer.create({
         name: String(req.body.newCustomer.name).trim(),
@@ -548,9 +474,7 @@ exports.updateShipment = async (req, res) => {
       if (c) data.customerName = c.name;
     }
 
-    // (ولا حارسَ صيانةٍ عند تبديل الشاحنة كذلك — رُفع المنعُ من الطرفين معًا.
-    //  إبقاؤه هنا وحدَه يجعل التبديلَ يُرفَض بينما الإنشاءُ على الشاحنة نفسِها
-    //  يمضي، وهو تناقضٌ لا يفسّره شيءٌ على الشاشة.)
+    // No maintenance guard on truck swap either: the block was lifted from both sides together. Keeping it only here would reject a swap while creating on the same truck passes, a contradiction nothing on the screen explains.
 
     // Replacing a driver is a SWAP: the outgoing one steps off this truck so
     // the incoming one has a seat — otherwise the two-seat rule would refuse
@@ -576,9 +500,8 @@ exports.updateShipment = async (req, res) => {
     }
     moveNotes.push(...await resolveAssignments(req, data, shipment));
 
-    // ── بونصُ الجمعة في التعديل يحرّك المبلغ كما في الإنشاء ─────────────────
-    // كان العلَمُ وحدَه يُحفظ: يُكتب «(مُضاف)» ومصروفُ السائق كما هو، ورفعُه
-    // يُبقي البونص المدفوعَ فيه. المصروفُ المعروضُ في النموذج يشمله أصلًا.
+    // Friday bonus on edit moves the amount as in create
+    // Only the flag used to be saved: it wrote the added marker while the driver's expense stayed as is, and removing it left the paid bonus in. The expense shown in the form already includes it.
     if (data.fridayBonus !== undefined && !!data.fridayBonus !== !!shipment.fridayBonus) {
       const cfg = await getFleetConfig();
       const amount = Number(cfg.fridayBonusAmount) || 0;
@@ -648,7 +571,7 @@ exports.getShipment = async (req, res) => {
       FleetEvent.find({ shipment: req.params.id }).sort({ createdAt: -1 }).limit(500).lean(),
     ]);
     if (!shipment) return res.status(404).json({ message: 'Shipment not found' });
-    // للبوليصة: املأ الحقول من السجلات لو مش متسنابة على الشحنة (شحنات قديمة).
+    // For the waybill: fill fields from the records if not stored on the shipment (older shipments).
     if (shipment.driver && typeof shipment.driver === 'object') {
       if (!shipment.driverIqama) shipment.driverIqama = shipment.driver.iqama || '';
       if (!shipment.driverNationality) shipment.driverNationality = shipment.driver.nationality || '';
@@ -664,17 +587,16 @@ exports.getShipment = async (req, res) => {
   }
 };
 
-// البوليصة كـ PDF — نفس الملف بالظبط اللي بيطلع من الويب (Puppeteer + نفس القالب
-// + نفس الترويسة) عشان الموبايل والسايت يطبعوا نفس البوليصة.
+// Waybill as PDF: exactly the same file the web produces (Puppeteer, same template, same letterhead) so mobile and site print the same waybill.
 /**
- * بوليصاتُ عدّةِ شحناتٍ في ملفٍّ واحد — POST { ids: [...] }.
- * راجع renderWaybillsPdf: نداءٌ واحدٌ بدل ثلاثين ترسيمًا في المتصفّح.
+ * Waybills of several shipments in one file - POST { ids: [...] }.
+ * See renderWaybillsPdf: one call instead of thirty renders in the browser.
  */
 exports.getWaybillsPdf = async (req, res) => {
   try {
     const ids = Array.isArray(req.body?.ids) ? req.body.ids.filter(Boolean) : [];
     if (!ids.length) return res.status(400).json({ message: 'اختر شحنةً واحدةً على الأقلّ' });
-    // حدٌّ أعلى: كلُّ بوليصةٍ ترسيمٌ في متصفّحٍ بلا واجهة، ومئتان تعني دقائق.
+    // Upper bound: each waybill is a render in a headless browser, and two hundred would take minutes.
     if (ids.length > 100) return res.status(400).json({ message: 'الحدُّ الأقصى مئةُ أمر نقل في المرّة' });
 
     const { renderWaybillsPdf, rowFromShipment } = require('../utils/waybillPdf');
@@ -684,7 +606,7 @@ exports.getWaybillsPdf = async (req, res) => {
       .lean();
     if (!shipments.length) return res.status(404).json({ message: 'لا شحنات' });
 
-    // يُحفَظ ترتيبُ الاختيار: الملفُّ يُقرأ بالترتيب الذي عُلّم به.
+    // Selection order is kept: the file reads in the order they were marked.
     const order = new Map(ids.map((id, i) => [String(id), i]));
     shipments.sort((a, b) => (order.get(String(a._id)) ?? 0) - (order.get(String(b._id)) ?? 0));
 
@@ -725,8 +647,7 @@ exports.getWaybillPdf = async (req, res) => {
       if (!shipment.vehicleBrand) shipment.vehicleBrand = shipment.vehicle.brand || '';
       if (!shipment.vehicleColor) shipment.vehicleColor = shipment.vehicle.color || '';
     }
-    // نوع الإيجار/الدفع/الحمولة مخزَّنة كمفاتيح قوائم (forward/general…) — نحوّلها
-    // إلى الاسم المعروض بلغة الطلب حتى لا تظهر بالإنجليزية في بوليصة عربية.
+    // Rental/payment/load type are stored as list keys (forward/general...); converted to the display name in the request language so they do not appear in English on an Arabic waybill.
     const Lookup = require('../models/Lookup');
     const lang = req.query.lang === 'en' ? 'en' : 'ar';
     const lut = await Lookup.find({ type: { $in: ['fleet_rent_type', 'fleet_payment_type', 'fleet_load_type'] } })
@@ -766,8 +687,7 @@ exports.deleteShipment = async (req, res) => {
   }
 };
 
-// The follow-up call: "كلمناه الساعة كذا، هو فين، وحالته إيه". Appends to the
-// story and refreshes the two list-level fields everyone scans for.
+// The follow-up call: when we called him, where he is and his status. Appends to the story and refreshes the two list-level fields everyone scans for.
 exports.addFollowUp = async (req, res) => {
   try {
     const shipment = await FleetShipment.findById(req.params.id);
@@ -795,23 +715,16 @@ exports.addFollowUp = async (req, res) => {
 
 // ── Drivers ─────────────────────────────────────────────────────────────────
 
-// `monthlyLoadsTarget` و`monthlyKmTarget`: هدفُ سائقٍ بعينه — و`null` تعني
-// «استعمل افتراضيَّ القسم»، وهي غيرُ `0` التي تعني «لا هدفَ له».
-// `iban` معه: مصاريفُ السوّاق تُحوَّل إليه، ومصدرُه ملفُّ الرجل لا سطرُ الحمولة.
+// `monthlyLoadsTarget` and `monthlyKmTarget` are one driver's target; `null` means use the section default, which differs from `0` meaning no target for him.
+// `iban` too: driver expenses are transferred to it, and its source is the man's file, not the load row.
 const DRIVER_EDITABLE = ['name', 'phone', 'iqama', 'iban', 'working', 'onSponsorship', 'nationality', 'vehicle', 'seat', 'notes', 'isActive', 'offReason', 'offNote', 'monthlyLoadsTarget', 'monthlyKmTarget'];
 
 exports.listDrivers = async (req, res) => {
   try {
     const dFilter = { isActive: { $ne: false } };
     const scope = await supervisorVehicleIds(req);
-    // ── والسائقُ بلا سيّارةٍ لا يخرج من قائمة مشرفه ──────────────────────
-    //
-    // كان النطاقُ `vehicle: { $in: مركباتُ المشرف }`. والسائقُ الذي لا سيّارةَ
-    // له لا يطابق ذلك بحال — فما إن يُنزله المشرفُ من شاحنته حتّى يختفي من
-    // قائمته كلَّها، ولا يستطيع إعادتَه إلى أيّ شاحنةٍ لأنّه لم يعد يراه.
-    // وقِيس على الإنتاج: المشرفُ يرى ثلاثين سائقًا، وبلا سيّارةٍ **صفرًا**.
-    //
-    // ومَن لا سيّارةَ له هو بالضبط مَن يُبحَث عنه عند الإسناد — فهو المخزون.
+    // A driver without a vehicle does not leave his supervisor's list. The scope used to be `vehicle: { $in: supervisor's vehicles }`, which never matches a driver with no vehicle, so stepping him down made him vanish and impossible to reassign.
+    // Someone without a vehicle is exactly who is looked for at assignment: he is the stock.
     if (scope) {
       dFilter.$or = [
         { vehicle: { $in: scope } },
@@ -824,18 +737,12 @@ exports.listDrivers = async (req, res) => {
       .sort({ name: 1 })
       .limit(1000)
       .lean();
-    // الاسمُ والجوالُ والإقامةُ والجنسيّةُ والإيبانُ وحالةُ العمل — من ملفّه متى رُبط.
+    // Name, mobile, residence, nationality, IBAN and work status come from his file when linked.
     await FI.decorateDrivers(drivers);
     drivers.forEach((d) => { d.seat = d.vehicle ? (d.seat || 1) : null; });
 
-    // ── ومَن يشاركه الشاحنة؟ ─────────────────────────────────────────────
-    //
-    // المقعدان قاعدةٌ في القسم: شاحنةٌ تحمل سائقَين على الأكثر، والخادمُ يمنع
-    // الثالث. والقائمةُ كانت تقول «السيّارة» ولا تقول **مع مَن** — فمن يسأل
-    // «مين معاه على 2708؟» يبحث باللوحة ويقابل بين صفّين بعينه.
-    //
-    // ويُحسَب هنا لا في كلّ واجهةٍ على حدة: الويبُ والهاتفُ يقرآن الحقلَ نفسَه
-    // فلا يفترق جوابُهما، ولا يُطلَب من الهاتف أن يجلب سجلَّ المركبات ليقابله.
+    // Who shares his truck? Two seats is a section rule (the server blocks a third), but the list showed the vehicle and not with whom.
+    // Computed here, not in each UI, so web and mobile read the same field and mobile need not fetch the vehicle register.
     const seats = new Map();
     for (const d of drivers) {
       const vid = d.vehicle && (d.vehicle._id || d.vehicle);
@@ -855,7 +762,7 @@ exports.listDrivers = async (req, res) => {
         : null;
       d.seatMates = mates.length;
     }
-    // وانتهاءُ إقامته ورخصةِ قيادته من ملفّه (utils/personDocDates).
+    // His residence and driving licence expiry come from his file (utils/personDocDates).
     const docs = await require('../utils/personDocDates').docDatesFor(drivers.map((d) => ({ idNumber: d.iqama, employee: d.employee })));
     for (const d of drivers) Object.assign(d, docs({ idNumber: d.iqama, employee: d.employee }));
     res.json({ drivers });
@@ -865,10 +772,8 @@ exports.listDrivers = async (req, res) => {
 };
 
 /**
- * ── ربطُ السائق بملفّه في الموارد البشريّة ─────────────────────────────────
- * الموظّفُ موجود، وغيرُ مؤرشَف، وليس سائقًا قائمًا آخرَ في الأسطول. ويُنسَخ ما
- * في الملفّ إلى النصّ المخزَّن عند الربط — احتياطٌ يبقى صحيحًا إن فُكّ الربط.
- * يرمي خطأً بـ`status` يُعاد للمستخدم كما هو.
+ * Linking a driver to his HR file
+ * The employee exists, is not archived, and is not another current driver in the fleet. What is in the file is copied into the stored text at link time as a fallback that stays correct if unlinked. Throws an error with a `status` returned to the user as is.
  */
 async function attachEmployee(driver, employeeId) {
   const Employee = require('../models/Employee');
@@ -901,8 +806,7 @@ exports.createDriver = async (req, res) => {
     delete data.vehicle;
     delete data.seat;
     const driver = new FleetDriver({ name: '—', ...data });
-    // ومَن كُتب رقمُ هويّته ولم يُختَر ملفُّه يُربط بالملفّ الذي يحمل الرقم —
-    // إن كان واحدًا بعينه ولم يُربط بسائقٍ غيره.
+    // Someone whose ID number is written but whose file was not chosen is linked to the file carrying that number, if exactly one and not linked to another driver.
     let link = employeeId;
     if (!link && data.iqama) {
       const hit = await FI.employeeByIdNumber(data.iqama);
@@ -924,10 +828,8 @@ exports.updateDriver = async (req, res) => {
     const driver = await FleetDriver.findById(req.params.id);
     if (!driver) return res.status(404).json({ message: 'Driver not found' });
     const data = pick(req.body, DRIVER_EDITABLE);
-    // ── المربوطُ بملفّه: ما يُعدَّل هنا يُكتب في ملفّه أيضًا (٢٠٢٦/١٠/٢٥) ────────
-    // كانت هذه الخاناتُ الخمسُ تُحذف من الطلب بصمت والردُّ «حُفظ» — والقائمةُ تقرأ
-    // من الموارد البشريّة، فيرى مديرُ الأسطول أنّ تعديله «لا يسمع». فصار التعديلُ
-    // يُكتب في الملفّ نفسِه (فتبقى النسختان واحدة) ويُقيَّد أنّه من الأسطول.
+    // Linked to his file: what is edited here is written to the file too
+    // These five fields used to be silently dropped from the request with a saved response, and the list reads from HR, so the fleet manager saw his edit not take. Now the edit is written to the file itself (so the two copies stay one) and recorded as made from fleet.
     let hrWritten = null;
     if (driver.employee) {
       const Employee = require('../models/Employee');
@@ -948,8 +850,7 @@ exports.updateDriver = async (req, res) => {
           hrWritten = hrSet;
           try { emitToAll('hr:employee', { id: String(emp._id) }); emitToAll('hr:master', { at: Date.now() }); } catch (_) { /* */ }
         }
-        // وحالةُ العمل: الإنهاءُ والإيقافُ والإجازةُ المعتمدة تقرّرها الموارد البشريّة —
-        // يُقال ذلك صراحةً بدل «حُفظ» لا أثرَ له.
+        // Work status: termination, suspension and approved leave are decided by HR. This is stated explicitly instead of a saved with no effect.
         if (data.working === true && ['terminated', 'suspended', 'on_leave'].includes(emp.employmentStatus)) {
           return res.status(409).json({
             code: 'HR_OWNS_STATUS',
@@ -975,7 +876,7 @@ exports.updateDriver = async (req, res) => {
     if (hrWritten) {
       logAudit({ user: req.user, action: 'update_from_fleet', entity: 'Employee', entityId: driver.employee, changes: { after: hrWritten, details: 'تعديل من صفحة سائقي الأسطول' }, ipAddress: req.ip }).catch(() => {});
     }
-    // الصفُّ كما تعرضه القائمة (بما في ملفّه) — فتتحدّث الشاشةُ بالردّ نفسِه.
+    // The row as the list shows it (with its file data) so the screen updates from the same response.
     const view = driver.toObject();
     await FI.decorateDrivers([view]);
     res.json({ driver: view, hrUpdated: !!hrWritten });
@@ -987,7 +888,7 @@ exports.updateDriver = async (req, res) => {
 
 /**
  * PATCH /api/fleet/drivers/:id/employee  { employee: id | null }
- * «ربط بموظف» — يربط السائقَ بملفّه في الموارد البشريّة أو يفكّ الربط.
+ * Link to employee: links the driver to his HR file or unlinks.
  */
 exports.setDriverEmployee = async (req, res) => {
   try {
@@ -1015,9 +916,7 @@ exports.setDriverEmployee = async (req, res) => {
 
 /**
  * GET /api/fleet/drivers/hr-candidates?driver=<id>&q=
- * مرشّحو «ربط بموظف»: موظّفو النقل الثقيل وإدارة الأسطول أوّلًا، مرتّبين بقرب
- * أسمائهم من اسم السائق المكتوب، ومَن يطابق رقمَ هويّته في الرأس. وبالبحث (`q`)
- * يُفتَّش الملفُّ كلُّه بالاسم أو رقم الهويّة أو الرقم الوظيفي.
+ * Candidates for link to employee: heavy transport and fleet management employees first, ordered by name closeness to the written driver name, with ID-number matches at the top. With search (`q`) the whole file is searched by name, ID number or employee number.
  */
 exports.driverHrCandidates = async (req, res) => {
   try {
@@ -1045,7 +944,7 @@ exports.driverHrCandidates = async (req, res) => {
       filter = { department: { $in: deps } };
     }
     const rows = await Employee.find({ $and: [filter, NOT_ARCHIVED] }).select(FI.HR_SELECT).limit(q ? 60 : 400).lean();
-    // ومَن له رقمُ الهويّة المكتوب على السائق يُضمّ ولو كان في قسمٍ آخر.
+    // Someone with the ID number written on the driver is included even from another department.
     if (driver?.iqama) {
       const hit = await Employee.find({ $and: [{ $or: [{ iqamaNumber: driver.iqama }, { nationalId: driver.iqama }] }, NOT_ARCHIVED] })
         .select(FI.HR_SELECT).lean();
@@ -1088,7 +987,7 @@ exports.deleteDriver = async (req, res) => {
       req.params.id, { isActive: false, vehicle: null, seat: 1 }, { new: true },
     );
     if (!driver) return res.status(404).json({ message: 'Driver not found' });
-    // شاحنتُه السابقةُ لا تبقى بثانٍ بلا أوّل.
+    // His previous truck does not keep a second driver without a first.
     if (before?.vehicle) await promoteSeats(before.vehicle);
     emit('fleet:drivers', {});
     emit('fleet:vehicles', {});
@@ -1108,15 +1007,14 @@ exports.listVehicles = async (req, res) => {
     const scope = await supervisorVehicleIds(req);
     if (scope) vFilter._id = { $in: scope };
     const [vehicles, drivers] = await Promise.all([
-      // الهويّةُ والمستنداتُ من سجلّ المركبات، والسائقُ من ملفّه — راجع utils/fleetIdentity.
+      // Identity and documents come from the vehicle register and the driver from his file; see utils/fleetIdentity.
       FleetVehicle.find(vFilter).sort({ plate: 1 }).limit(500).lean().then(FI.decorateVehicles),
       FleetDriver.find({ isActive: { $ne: false }, vehicle: { $ne: null }, ...(await noArchDrv()) })
         .select('name phone working vehicle seat employee iqama offReason').sort({ seat: 1, name: 1 }).lean()
         .then(FI.decorateDrivers),
     ]);
-    // ── والترتيبُ هو الرتبة ────────────────────────────────────────────────
-    // `drivers[0]` يُقرأ في ثلاث شاشاتٍ على أنّه السائقُ الأوّل — ونموذجُ
-    // الشحنة يُجلسه في خانة «السائق الأساسي». فالفرزُ بالمقعد شرطٌ لا تجميل.
+    // Order is rank
+    // `drivers[0]` is read in three screens as the first driver, and the shipment model seats him in the primary driver slot. Sorting by seat is a requirement, not cosmetics.
     const byVehicle = {};
     drivers.forEach((d) => {
       const k = String(d.vehicle);
@@ -1127,16 +1025,10 @@ exports.listVehicles = async (req, res) => {
     });
     Object.values(byVehicle).forEach((list) => list.sort((a, b) => a.seat - b.seat));
 
-    // What the dispatcher needs WHILE PICKING a truck: where it is right now
-    // (live GPS → city), what it is already carrying, and whether it entered
-    // its destination's zone. ONLY in-flight statuses make a truck "busy" here:
-    // a load marked وصلت/أُرسلت البوليصة is DONE dispatch-wise — the truck is
-    // free for the next trip and must not keep wearing its old destination.
+    // What the dispatcher needs while picking a truck: where it is right now (live GPS to city), what it is already carrying, and whether it entered its destination's zone. Only in-flight statuses make a truck busy here: a load marked arrived or waybill sent is done dispatch-wise; the truck is free for the next trip and must not keep its old destination.
     const PICKER_BUSY = ['requesting', 'loading', 'uploaded', 'on_way', 'late'];
     const [ls2, trips] = await Promise.all([
-      // حالةُ الصيانة تُقرأ مع الموقع في النداء نفسه: قرارُ «أيّ شاحنةٍ
-      // نُحمّل عليها» يحتاج الاثنين معًا — والشاحنةُ التي صيانتُها متأخّرة
-      // تُشحن اليوم وتقف في الطريق غدًا.
+      // Maintenance status is read with location in the same call: the decision of which truck to load needs both, and a truck overdue for maintenance is shipped today and stops on the road tomorrow.
       Ls2Vehicle.find({}).select('plate name unitId position status lastMessageAt maintenanceStatus kmToService nextServiceName').lean(),
       FleetShipment.find({ vehicle: { $in: vehicles.map((v) => v._id) }, status: { $in: PICKER_BUSY } })
         .sort({ createdAt: -1 })
@@ -1167,7 +1059,7 @@ exports.listVehicles = async (req, res) => {
             status: lv.maintenanceStatus || 'ok',
             kmToService: lv.kmToService ?? null,
             nextServiceName: lv.nextServiceName || '',
-            // صفحةُ العربية في لوكيشن سوليوشن عنوانُها رقمُ الوحدة.
+            // The vehicle page in the Location Solutions platform is addressed by unit number.
             unitId: lv.unitId ?? null,
           } : null,
           trip: trip && {
@@ -1184,10 +1076,8 @@ exports.listVehicles = async (req, res) => {
 };
 
 /**
- * ── الماركةُ واللونُ يُكتبان في سجلّ المركبات ─────────────────────────────
- * متى رُبطت الشاحنةُ بالسجلّ صار تعديلُ هويّتها من الأسطول تعديلًا في السجلّ
- * نفسه — عبر النموذج (`findByIdAndUpdate`) فتجري خطّافاتُه، ثمّ يُعلَن كما يُعلن
- * قسمُ المركبات. فلا تبقى نسختان تختلفان.
+ * Make and colour are written to the vehicle register
+ * Once the truck is linked to the register, editing its identity from fleet is an edit to the register itself, through the model (`findByIdAndUpdate`) so its hooks run, then announced like the vehicles section. So two diverging copies do not remain.
  */
 async function writeRegistryIdentity(vmId, body) {
   const set = {};
@@ -1204,10 +1094,7 @@ async function writeRegistryIdentity(vmId, body) {
   return true;
 }
 
-/**
- * مركبةُ السجلّ لهذه اللوحة — تُحَلّ بالمفتاح الموحَّد، وإن لم تكن في السجلّ
- * أُنشئت فيه (شاحنةٌ لنا لا تكون خارج سجلّ المركبات).
- */
+/** The register vehicle for this plate, resolved by the unified key; if absent it is created there (a truck of ours cannot be outside the vehicle register). */
 async function ensureRegistryVehicle(plate, body = {}) {
   const hit = await vehicleRef.resolve(plate);
   if (hit) return { id: hit._id, created: false };
@@ -1228,10 +1115,8 @@ exports.createVehicle = async (req, res) => {
   try {
     if (!req.body.plate || !String(req.body.plate).trim()) return res.status(400).json({ message: 'Plate is required' });
     const data = pick(req.body, VEHICLE_EDITABLE);
-    // ── شاحنةٌ واحدةٌ في الأسطول لكلّ مركبةٍ في السجلّ ──────────────────────
-    // «3966 DEA» و«3966 -DEA» كانتا صفّين لشاحنةٍ واحدة. فاللوحةُ تُقابَل
-    // بالمفتاح الموحَّد قبل الإنشاء: إن كانت موجودةً قائمةً رُفض التكرار، وإن
-    // كانت مُزالةً أُعيدت هي بدل أن يولد صفٌّ ثانٍ.
+    // One fleet truck per register vehicle
+    // Two spellings of the same plate were two rows for one truck. So the plate is matched by the unified key before create: an existing live one rejects the duplicate, and a removed one is restored instead of a second row being born.
     const key = vehicleRef.canonicalPlateKey(data.plate);
     const same = key ? (await FleetVehicle.find({}).select('plate isActive').lean())
       .find((v) => vehicleRef.canonicalPlateKey(v.plate) === key) : null;
@@ -1262,17 +1147,16 @@ exports.updateVehicle = async (req, res) => {
     if (!current) return res.status(404).json({ message: 'Vehicle not found' });
     const data = pick(req.body, VEHICLE_EDITABLE);
     if (current.vehicleMaster) {
-      // اللوحةُ هويّةُ المركبة في السجلّ: تُصحَّح هناك لا هنا.
+      // The plate is the vehicle's identity in the register: corrected there, not here.
       if (data.plate !== undefined
         && vehicleRef.canonicalPlateKey(data.plate) !== vehicleRef.canonicalPlateKey(current.plate)) {
         return res.status(400).json({ message: 'اللوحة تُعدَّل من سجل المركبات — هذه الشاحنة مربوطة به' });
       }
       delete data.plate;
       await writeRegistryIdentity(current.vehicleMaster, data);
-      // والنسخةُ على صفّ الأسطول تتبع السجلّ — وإلّا عاد القديمُ حين يُفرَّغ
-      // الحقلُ في السجلّ (العرضُ يقرأ «السجلّ أو نسخةَ الأسطول»).
+      // The copy on the fleet row follows the register, or the old value returns when the register field is emptied (display reads the register or the fleet copy).
     } else if (data.plate !== undefined) {
-      // غيرُ المربوط يُربط متى صارت لوحتُه في السجلّ.
+      // An unlinked one is linked once its plate is in the register.
       const hit = await vehicleRef.resolve(data.plate);
       if (hit && !(await FleetVehicle.exists({ vehicleMaster: hit._id, _id: { $ne: current._id } }))) data.vehicleMaster = hit._id;
     }
@@ -1288,21 +1172,10 @@ exports.updateVehicle = async (req, res) => {
 };
 
 /**
- * ── مقعدا الشاحنة يُحرَّران من صفحة الشاحنة ────────────────────────────────
- *
- * PATCH /api/fleet/vehicles/:id/drivers  { first, second }
- *
- * كان الإسنادُ من صفحة السائقين وحدَها: تُفتَح، ويُبحَث عن الرجل بين سبعين،
- * وتُختار شاحنتُه من قائمة. والسؤالُ في الواقع معكوسٌ — المشرفُ ينظر إلى
- * شاحنةٍ ويقول «مَن عليها؟ ومَن معه؟» — فيصير سؤالين في صفٍّ واحدٍ من جدول
- * الشاحنات: السائقُ الأوّل والسائقُ الثاني.
- *
- * والنداءُ واحدٌ للمقعدين عمدًا: لو كُتب كلُّ مقعدٍ بنداءٍ لاصطدم التبادل —
- * مَن نقل الأوّلَ إلى الثاني ثمّ أسند أوّلًا جديدًا يمرّ بلحظةٍ فيها رجلان
- * في مقعدٍ واحدٍ أو شاحنةٌ تُرفض لأنّ «عليها سائقان بالفعل».
- *
- * والمحذوفُ من الخانة يعني النزول: مَن كان على الشاحنة ولم يُذكَر في الطلب
- * يعود إلى المخزون (`vehicle: null`) — لا يُحذَف ولا يُنقَل إلى شاحنةٍ أخرى.
+ * Truck seats are edited from the truck page: PATCH /api/fleet/vehicles/:id/drivers  { first, second }
+ * The supervisor looks at a truck and asks who is on it, so assignment is two fields in a truck row.
+ * One call for both seats on purpose: separate writes would collide in a swap (two men in one seat or a truck rejected for already having two).
+ * Omitted from a slot means step down: he returns to stock (`vehicle: null`), not deleted and not moved.
  */
 exports.setVehicleDrivers = async (req, res) => {
   try {
@@ -1319,26 +1192,23 @@ exports.setVehicleDrivers = async (req, res) => {
       .find({ vehicle: vehicle._id, isActive: { $ne: false } }).select('name seat').lean();
     const keep = new Set([first, second].filter(Boolean));
 
-    // ── ومَن جاء من شاحنةٍ أخرى تُرقَّى مقاعدُها بعده ──────────────────────
-    // اثنان وستّون سائقًا على ثمانٍ وخمسين شاحنة، وأربعةٌ في المخزون — فإسنادُ
-    // سائقٍ ثانٍ هو في الغالب سحبُه من شاحنةِ غيره. ولو لم تُرقَّ مقاعدُ تلك
-    // الشاحنة لبقي عليها «سائقٌ ثانٍ» بلا أوّل.
+    // Someone coming from another truck has that truck's seats promoted after him
+    // Assigning a second driver is mostly pulling him from someone else's truck. Without promoting that truck's seats, it would keep a second driver with no first.
     const incoming = await FleetDriver
       .find({ _id: { $in: [first, second].filter(Boolean) } }).select('vehicle').lean();
     const vacated = incoming
       .map((d) => d.vehicle).filter((v) => v && String(v) !== String(vehicle._id));
 
-    // ١. يُنزَل من لم يُذكَر — قبل الإسناد، وإلّا رُفض الجديدُ بحجّة المقعدين.
+    // 1. Step down those not mentioned, before assigning, or the new one is rejected over the two-seat limit.
     for (const d of current) {
       if (!keep.has(String(d._id))) {
         await FleetDriver.updateOne({ _id: d._id }, { $set: { vehicle: null, seat: 1 } });
       }
     }
-    // ٢. تُفرَّغ المقاعدُ المعنيّة ثمّ تُكتب: فلا تمرّ القاعدةُ بحالةٍ فيها
-    //    رجلان في مقعدٍ واحد، ولا يُرفض إسنادٌ بسبب ترتيبِ الكتابة.
+    // 2. Clear the affected seats then write them, so the rule never sees two men in one seat and an assignment is not rejected by write order.
     if (first) await FleetDriver.updateOne({ _id: first }, { $set: { vehicle: vehicle._id, seat: 1 } });
     if (second) await FleetDriver.updateOne({ _id: second }, { $set: { vehicle: vehicle._id, seat: 2 } });
-    // ٣. وثانٍ بلا أوّلٍ يُرقَّى — هنا وفي كلّ شاحنةٍ خلا منها رجلٌ.
+    // 3. A second without a first is promoted, here and on every truck a man left.
     await promoteSeats(vehicle._id);
     for (const v of vacated) await promoteSeats(v);
 
@@ -1374,30 +1244,22 @@ const CUSTOMER_EDITABLE = [
   'paymentType', 'taxNumber', 'address', 'crmCompany',
 ];
 
-/**
- * يربط العميل بشركة الـCRM بالاسم المطبَّع، ويخزّن المفتاح.
- * السجلّان أُدخل كلٌّ منهما في قسمه ولا يجمعهما معرّف، فالاسم هو الوصلة
- * الوحيدة — و٢١٥ من ٢١٩ عميلًا في شيت المتابعة وُجدوا في الـCRM بهذه الطريقة.
- * والربط لا يُفرض: من ربطه مستخدمٌ يدويًّا يبقى على ربطه.
- */
+/** Links the customer to the CRM company by normalized name and stores the key. The two registers were entered each in its own section with no shared id, so the name is the only link; nearly all follow-up sheet customers were found in the CRM this way. The link is not forced: one a user linked manually stays. */
 async function linkCrm(doc) {
   const key = nameKey(doc.name || '');
   const patch = { nameKey: key };
   if (!doc.crmCompany && key) {
     const hit = await CrmCompany.findOne({ $or: [{ name: rx(doc.name) }, { arabicName: rx(doc.name) }] })
       .select('_id name arabicName').lean();
-    // rx يطابق جزئيًّا، فيُشترط تطابق المفتاح المطبَّع تمامًا قبل الربط.
+    // rx matches partially, so the normalized key must match exactly before linking.
     if (hit && (nameKey(hit.name) === key || nameKey(hit.arabicName) === key)) patch.crmCompany = hit._id;
   }
   return patch;
 }
 
 /**
- * صفوف العملاء مُثراةً بأرقامهم — تعريفٌ واحد تقرأ منه القائمةُ ولوحةُ الفلاتر.
- *
- * الجدول بلا أرقامٍ جردٌ لا تحليل، فتُحسب الرحلاتُ والدخلُ وآخرُ رحلة لكلّ
- * عميل في تجميعةٍ واحدة لا استعلامٍ لكلّ صفّ. وكونُ المصدر واحدًا هو ما يضمن
- * أن يكون العدد المكتوب بجانب خيار الفلتر هو عددُ ما يفتحه فعلًا.
+ * Customer rows enriched with their numbers: one definition the list and the filter panel read from.
+ * A table without numbers is an inventory, not analysis, so trips, income and last trip per customer are computed in one aggregation, not a query per row. One source guarantees the count beside a filter option equals what it actually opens.
  */
 async function customerRows(req) {
   const customers = await FleetCustomer.find().sort({ name: 1 }).limit(5000).lean();
@@ -1418,7 +1280,7 @@ async function customerRows(req) {
   ]);
   const stats = new Map(agg.map((a) => [String(a._id), a]));
 
-  // الشركات المرتبطة تُجلب دفعةً واحدة — لا استعلامَ داخل حلقة.
+  // Linked companies are fetched in one batch, no query inside a loop.
   const crmIds = customers.map((c) => c.crmCompany).filter(Boolean);
   const crm = crmIds.length
     ? new Map((await CrmCompany.find({ _id: { $in: crmIds } }).select('name arabicName status rating').lean())
@@ -1440,7 +1302,7 @@ async function customerRows(req) {
   });
 }
 
-/** تعريفُ كلّ فلترٍ مرّةً واحدة: اسمُه، وقيمتُه من الصفّ، وترتيبُ خياراته. */
+/** Each filter defined once: its name, its value from the row, and its option ordering. */
 const CUSTOMER_FILTERS = [
   { key: 'paymentType', ar: 'نوع الدفع', en: 'Payment type',
     of: (c) => (c.paymentType === 'tax' ? 'ضريبي' : c.paymentType === 'cash' ? 'كاش' : '—') },
@@ -1455,7 +1317,7 @@ const CUSTOMER_FILTERS = [
   { key: 'rating', ar: 'التقييم', en: 'Rating', of: (c) => (c.rating ? `${c.rating} ★` : 'بلا تقييم') },
 ];
 
-/** يطبّق الفلاتر المتعدّدة القيم (القيم مفصولة بفواصل) وبحثًا نصّيًّا حرًّا. */
+/** Applies multi-value filters (values comma separated) and free text search. */
 function applyCustomerFilters(rows, query) {
   let out = rows;
   for (const d of CUSTOMER_FILTERS) {
@@ -1476,7 +1338,7 @@ function applyCustomerFilters(rows, query) {
 exports.listCustomers = async (req, res) => {
   try {
     const rows = await customerRows(req);
-    // الافتراض إخفاءُ المعطَّلين — إلّا أن يُطلبوا صراحةً أو يُفلتَر بالحالة.
+    // Default hides disabled ones, unless explicitly requested or filtered by status.
     const all = req.query.includeInactive === '1' || req.query.includeInactive === 'true' || !!req.query.state;
     const base = all ? rows : rows.filter((c) => c.isActive !== false);
     res.json({ customers: applyCustomerFilters(base, req.query), total: base.length });
@@ -1486,10 +1348,7 @@ exports.listCustomers = async (req, res) => {
   }
 };
 
-/**
- * خيارات الفلاتر — وعددُ كلّ خيارٍ محسوبٌ **بعد بقيّة الفلاتر**، فما تراه هو
- * ما ستحصل عليه، ولا يُعرَض خيارٌ عددُه صفر فتضغطه فتجد الشاشة فارغة.
- */
+/** Filter options, each count computed after the other filters, so what you see is what you get and no zero-count option is shown that opens an empty screen. */
 exports.customerFilterOptions = async (req, res) => {
   try {
     const rows = await customerRows(req);
@@ -1515,7 +1374,7 @@ exports.createCustomer = async (req, res) => {
   try {
     const name = String(req.body.name || '').trim();
     if (!name) return res.status(400).json({ message: 'Customer name is required' });
-    // اسمٌ مكرَّر يُنشئ عميلَين لنفس الشركة، فتنقسم حمولاته بين ملفَّين.
+    // A duplicate name creates two customers for one company, splitting its loads over two files.
     const clash = await FleetCustomer.findOne({ nameKey: nameKey(name) }).select('_id name').lean();
     if (clash) return res.status(400).json({ message: `عميلٌ بهذا الاسم موجود: «${clash.name}»` });
 
@@ -1553,11 +1412,7 @@ exports.updateCustomer = async (req, res) => {
   }
 };
 
-/**
- * الإزالة تعطيلٌ لا حذف — حمولاته السابقة تشير إليه، وحذفُه يترك ملفَّاتٍ
- * معلَّقة. أمّا `?purge=1` فحذفٌ فعليّ يُسمح به وحده حين لا حمولة له إطلاقًا
- * (عميلٌ أُدخل خطأً)، فلا شيء ليُيتَّم.
- */
+/** Removal is deactivation, not deletion: its past loads reference it and deleting leaves dangling files. `?purge=1` is a real delete allowed only when it has no loads at all (a customer entered by mistake), so nothing is orphaned. */
 exports.deleteCustomer = async (req, res) => {
   try {
     const purge = req.query.purge === '1' || req.query.purge === 'true';
@@ -1584,7 +1439,7 @@ exports.deleteCustomer = async (req, res) => {
   }
 };
 
-/** إعادة تفعيل عميلٍ عُطِّل — لأنّ التعطيل قرارٌ يُراجَع. */
+/** Reactivate a disabled customer, because deactivation is a decision that gets reviewed. */
 exports.restoreCustomer = async (req, res) => {
   try {
     const customer = await FleetCustomer.findByIdAndUpdate(req.params.id, { isActive: true }, { new: true });
@@ -1601,7 +1456,7 @@ exports.restoreCustomer = async (req, res) => {
 exports.getDashboard = async (req, res) => {
   try {
     const now = new Date();
-    const dayStart = _day(todayKey()); // منتصفُ ليل الرياض، لا غرينتش
+    const dayStart = _day(todayKey()); // Riyadh midnight, not GMT
     const weekStart = new Date(now); weekStart.setDate(now.getDate() - 7);
     // The 3-hour cadence: an in-flight load nobody has called in 3+ hours is
     // exactly what the operations lead wants shoved in their face.
@@ -1637,9 +1492,7 @@ exports.getDashboard = async (req, res) => {
       }).select('waybillNumber customerName driverName vehiclePlate lastContactAt fromCity toCity').sort({ lastContactAt: 1 }).limit(20).lean(),
       endedStaff(),
     ]);
-    // مَن انتهت خدمتُه في الموارد البشريّة لا يُعَدّ في اللوحة — لا في السائقين
-    // ولا في مقاعد المركبات. يبقى في القائمة؛ العددُ وحدَه يُسقطه.
-    // والمربوطُ يُعرَف انتهاؤه بملفّه، وغيرُه برقم إقامته المكتوب.
+    // Someone whose service HR ended is not counted on the dashboard, neither in drivers nor in vehicle seats. He stays in the list; only the count drops him. A linked person's end is known from his file, others by their written residence number.
     const drivers = allDrivers.filter((d) => !(d.employee ? employeeEnded(ended, d.employee) : idNumberEnded(ended, d.iqama)));
 
     const byStatus = {};
@@ -1685,9 +1538,8 @@ exports.ensureFleetDefaults = async () => {
   try {
     const Ls2Vehicle = require('../models/Ls2Vehicle');
     const live = await Ls2Vehicle.find({}).select('plate name driver').lean();
-    // ── والشاحنةُ تُعرَف بمفتاحها الموحَّد لا بنصّ لوحتها ──────────────────
-    // كانت تُقابَل بالنصّ حرفًا بحرف، فلمّا كُتبت «3966 -DEA» في لوكيشن
-    // سوليوشن و«3966 DEA» هنا وُلد صفٌّ ثانٍ للشاحنة نفسها عند الإقلاع.
+    // A truck is identified by its unified key, not its plate text
+    // It used to be matched character by character, so when written with a dash in Location Solutions and without here, a second row was born for the same truck at boot.
     const known = new Map();
     for (const f of await FleetVehicle.find({}).select('plate').lean()) {
       const k = canonicalPlateKey(f.plate);
@@ -1699,9 +1551,7 @@ exports.ensureFleetDefaults = async () => {
       try {
         const key = canonicalPlateKey(plate);
         let vehId = key ? known.get(key) : null;
-        // سائقُ لوكيشن سوليوشن يُنسَخ مع شاحنته يومَ تولد هنا فقط: بعدها يُربط
-        // بملفّه ويُقرأ اسمُه الكامل من الموارد البشريّة، فلو قوبل كلَّ إقلاعٍ
-        // باسمه الأوّل («حمزه») لوُلد له صفٌّ ثانٍ.
+        // A Location Solutions driver is copied with his truck only on the day it is born here; afterwards he is linked to his file and his full name is read from HR. Matching on his first name at every boot would create a second row for him.
         const isNew = !vehId;
         if (!vehId) {
           // Upserts, not find-then-create: two processes seeding at once (server
@@ -1745,11 +1595,7 @@ exports.ensureFleetDefaults = async () => {
   }
 };
 
-// ── اللوحة الرئيسية: كل سيارة كبطاقة، مجمّعة بالمشرف، بحالة تلقائية ─────────
-// The manager's landing view: every truck as one card, grouped under its
-// supervisor, colored by its CURRENT trip (late / arrived / moving / preparing
-// / idle) with the Location Solutions maintenance state riding on each card —
-// so nobody hunts through lists to know who is late or due for service.
+// Main board: every truck as one card, grouped under its supervisor, coloured by its current trip (late / arrived / moving / preparing / idle) with the Location Solutions maintenance state on each card, so nobody hunts through lists to see who is late or due for service.
 const BOARD_ACTIVE = ['requesting', 'loading', 'uploaded', 'on_way', 'late', 'arrived', 'bond_sent'];
 const ARRIVED_FAMILY = ['arrived', 'bond_sent'];
 
@@ -1798,17 +1644,12 @@ exports.getBoard = async (req, res) => {
     const cards = vehicles.map((v) => {
       const trip = tripByVehicle.get(String(v._id)) || null;
       const m = maintByKey.get(plateKey(v.plate)) || null;
-      // أين هي الآن جغرافيًا — وهل دخلت نطاق وجهتها بالفعل؟
+      // Where it is now geographically, and has it already entered its destination zone?
       const liveCity = m?.position ? cityForPoint(m.position.lat, m.position.lng) : null;
       const atDestination = !!(trip && liveCity && !ARRIVED_FAMILY.includes(trip.status) && sameCity(liveCity, trip.toCity));
       // The card's automatic state:
-      //   late (متأخرة عن الوصول المتوقع) > arrived (وصلت موقع التنزيل) >
-      //   moving (في الطريق) > preparing (تحميل/تجهيز) > idle (بدون حمولة).
-      // ── ووصلت ليست فرّغت ──────────────────────────────────────────────
-      // كانتا حالةً واحدةً («وصلت») تضمُّ `arrived` و`bond_sent`. وهما سؤالان
-      // مختلفان على اللوحة: الواصلةُ تنتظر تفريغًا — يُسأل عنها ويُستعجَل،
-      // والمفرَّغةُ أرسلت سندَها وفرغت من الحمولة — تُجهَّز لحمولةٍ تالية. ومن
-      // جمعهما في رقمٍ واحدٍ لا يعرف أيُّهما يحتاج اتّصالًا الآن.
+      // late (past expected arrival) > arrived (at unloading site) > moving > preparing (loading/prep) > idle (no load).
+      // Arrived is not unloaded: they used to be one state covering `arrived` and `bond_sent`. They are different questions: an arrived truck awaits unloading and is chased, an unloaded one sent its bond and is being prepared for the next load. Merging them hides which needs a call now.
       let state = 'idle';
       if (trip) {
         const lateByTime = trip.expectedArrival
@@ -1848,10 +1689,8 @@ exports.getBoard = async (req, res) => {
     });
 
     const count = (st) => cards.filter((c) => c.state === st).length;
-    // ── والوجهةُ فلترٌ لا خبرٌ عابر ─────────────────────────────────────────
-    // كانت تُحسب للسائرة وحدَها، فلا تجد الواصلةَ ولا المفرَّغة. وقد صارت
-    // الوجهةُ فلترًا تُقاس عليه بطاقاتُ الأرقام فوقها («الدمام: ٩ — منها ٣ في
-    // الطريق وواحدةٌ متأخّرة»)، فتُحسب لكلّ شاحنةٍ لها حمولةٌ إلى تلك المدينة.
+    // Destination is a filter, not passing news
+    // It used to be computed for moving trucks only, missing arrived and unloaded ones. It is now a filter the number cards above are measured on (a city with its count, how many in transit, how many late), so it is computed for every truck with a load to that city.
     const byDestination = {};
     for (const c of cards) {
       if (c.trip && c.trip.toCity) {
@@ -1881,11 +1720,10 @@ exports.getBoard = async (req, res) => {
   }
 };
 
-// ── تعيين المشرفين ───────────────────────────────────────────────────────────
-// The people the manager can assign trucks to.
+// Supervisor assignment: the people the manager can assign trucks to.
 exports.listSupervisors = async (req, res) => {
   try {
-    // المؤرشَفُ لا يُختار ولا يُسنَد إليه — كأنّه حُذف.
+    // An archived person is neither picked nor assigned to, as if deleted.
     const archSets = await endedStaff();
     const users = (await User.find({ role: { $in: ['fleet_supervisor', 'fleet_manager'] }, isActive: { $ne: false } })
       .select('firstName lastName email role').lean()).filter((u) => !require('../utils/endedStaff').userArchived(archSets, u));
@@ -1896,10 +1734,8 @@ exports.listSupervisors = async (req, res) => {
   }
 };
 
-// ── والمشرفُ الجديدُ يتسلّم حمولاتِ الشاحنة المفتوحة ──────────────────────
-// المشرفُ يُنسخ على الحمولة عند إنشائها؛ فنقلُ الشاحنة كان يُبقي حمولاتِها
-// الجاريةَ تحت المشرف القديم — في فلاتره وفي إشعارات حالتها. المغلقةُ
-// (مفوترة/ملغاة) تبقى باسم من أدارها.
+// The new supervisor takes over the truck's open loads
+// The supervisor is copied onto the load at creation, so moving a truck used to leave its running loads under the old supervisor, in his filters and status notifications. Closed ones (invoiced/cancelled) stay under whoever ran them.
 const moveOpenLoads = (vehicleIds, supervisor, supervisorName) => FleetShipment.updateMany(
   { vehicle: { $in: vehicleIds }, status: { $nin: ['invoiced', 'cancelled'] } },
   { $set: { supervisor, supervisorName } },
@@ -1986,10 +1822,10 @@ exports.updateConfig = async (req, res) => {
     const cfg = await getFleetConfig();
     if (req.body.fridayBonusAmount != null) cfg.fridayBonusAmount = Number(req.body.fridayBonusAmount) || 0;
     if (req.body.defaultMonthlyTarget != null) cfg.defaultMonthlyTarget = Number(req.body.defaultMonthlyTarget) || 0;
-    // هدفُ السائق: حمولاتٌ ومسافةٌ في الشهر — الافتراضيُّ لمن لم يُخَصَّ بهدف.
+    // Driver target: loads and distance per month; the default for anyone without a specific target.
     if (req.body.defaultDriverMonthlyLoads != null) cfg.defaultDriverMonthlyLoads = Number(req.body.defaultDriverMonthlyLoads) || 0;
     if (req.body.defaultDriverMonthlyKm != null) cfg.defaultDriverMonthlyKm = Number(req.body.defaultDriverMonthlyKm) || 0;
-    // «ثلاثون ألفًا» جملةٌ ناقصةٌ ما لم يُقل: دخلًا أم بعد مصروف السائق؟
+    // A bare amount is incomplete unless it says whether it is income or after driver expense.
     if (req.body.targetBasis === 'gross' || req.body.targetBasis === 'net') cfg.targetBasis = req.body.targetBasis;
     cfg.updatedBy = req.user._id;
     await cfg.save();
@@ -2003,19 +1839,11 @@ exports.updateConfig = async (req, res) => {
 // ── Rich analytics (income, targets, rankings, trends) with many filters ────
 const _multi = (v) => (v ? String(v).split(',').map((s) => s.trim()).filter(Boolean) : []);
 /**
- * ── معرّفاتٌ لا نصوص، لأنّ `aggregate` لا يُصلِح ما يُصلحه `find` ──────────
- *
- * فلترُ السيّارة والعميل والمشرف يأتي من الرابط نصًّا. و`find` يعرف مخطَّطَه
- * فيحوّل النصَّ إلى ObjectId من نفسه، أمّا `aggregate` فيُمرّر المطابقةَ إلى
- * Mongo كما هي — والنصُّ لا يساوي المعرّف. فكانت الشاشةُ تُفلتَر بسيّارةٍ
- * فتعرض **صفوفَها** (من `find`) ومجاميعَها **أصفارًا** (من `aggregate`): عشرُ
- * حمولاتٍ في الجدول وبطاقةٌ تقول صفرًا فوقها.
- *
- * وما ليس معرّفًا صحيحًا يبقى كما هو: قيمةٌ خاطئةٌ تُطابِق لا شيءَ، وهذا
- * صحيحٌ — أمّا تحويلُها قسرًا فيُسقِط الطلبَ بخطأ.
+ * Ids, not strings, because `aggregate` does not cast what `find` casts. The vehicle, customer and supervisor filters arrive from the URL as strings; `find` casts via its schema but `aggregate` passes the match to Mongo as is, so rows showed while totals were zero.
+ * A value that is not a valid id stays as is (matches nothing), since forcing a cast would fail the request.
  */
 const _oids = (arr) => arr.map((x) => (mongoose.Types.ObjectId.isValid(x) ? new mongoose.Types.ObjectId(x) : x));
-// شهرُ اللحظة في الرياض — حدودُ الفترات منتصفُ ليل الرياض (٢١:٠٠ غرينتش من اليوم السابق).
+// Current month in Riyadh; period boundaries are Riyadh midnight (21:00 GMT of the previous day).
 const _monthIndex = (d) => { const [y, m] = dayKeyOf(d).split('-').map(Number); return y * 12 + (m - 1); };
 
 exports.getAnalytics = async (req, res) => {
@@ -2036,9 +1864,7 @@ exports.getAnalytics = async (req, res) => {
     const trailerTypes = _multi(req.query.trailerType);
     const statuses = _multi(req.query.status);
 
-    // الفترة من المرجع المشترك (resolvePeriod)، لا بحسابٍ محلّي: كان
-    // `new Date(from)` يُفسَّر UTC هنا وحدود اليوم محلّية في القائمة، فيعطي
-    // نفسُ «من/إلى» رقمين مختلفين على شاشتين متجاورتين.
+    // The period comes from the shared reference (resolvePeriod), not a local computation: `new Date(from)` used to be read as UTC here while day boundaries are local in the list, so the same from/to gave two different numbers on adjacent screens.
     const period = resolvePeriod(req.query);
     const { start, end } = period;
     const monthsInRange = period.preset === 'all'
@@ -2056,12 +1882,10 @@ exports.getAnalytics = async (req, res) => {
     if (trailerTypes.length) filter.$and.push({ trailerType: { $in: trailerTypes } });
     if (statuses.length) filter.$and.push({ status: { $in: statuses } });
     if (!includeCancelled && !statuses.length) filter.$and.push({ status: { $ne: 'cancelled' } });
-    // نفس تسامح البحث المستعمل في القائمة — لوحةٌ تُكتب «٢٧٠٨» أو «ق ن ر 2708»
-    // كانت تفشل هنا فتخرج الشاشة أصفارًا كلّها.
+    // The same search tolerance as the list: a plate typed in Indian digits or with spaced letters used to fail here and the screen came out all zeros.
     const qRx = q && q.trim() ? arRx(q) : null;
     if (qRx) {
-      // نفسُ مدى بحث «تحليل الحمولات»: اسمُ السائق الثاني والمشرفُ ورقمُ
-      // البوليصة — وإلّا أعطى نصٌّ واحدٌ نتيجتين مختلفتين في تبويبين متجاورين.
+      // The same search scope as load analysis: second driver name, supervisor and waybill number; otherwise one text gives two results in adjacent tabs.
       const or = [{ customerName: qRx }, { vehiclePlate: qRx }, { driverName: qRx }, { secondDriverName: qRx },
         { fromCity: qRx }, { toCity: qRx }, { loadType: qRx }, { supervisorName: qRx }];
       const qn = Number(String(q).trim());
@@ -2069,15 +1893,11 @@ exports.getAnalytics = async (req, res) => {
       filter.$and.push({ $or: or });
     }
 
-    if (!filter.$and.length) delete filter.$and; // ‏`$and: []` يرفضه Mongo
+    if (!filter.$and.length) delete filter.$and; // Mongo rejects `$and: []`
 
-    // سجلّ السيارات يخضع لنفس الفلاتر التي تخصّ السيارة نفسها.
-    //
-    // كان الجدول يُبنى من الأسطول كاملًا مهما ضيّق المستخدم بحثه: تبحث بلوحةِ
-    // سيارةٍ فيردّ عليك سبعٌ وخمسون صفًّا أصفارًا وسيارتُك بينها — وهذه بعينها
-    // شكوى «عملت سيرش بعربية فطلع كل حاجة صفر». والعدّادات (عدد السيارات،
-    // ودون الهدف) كانت تعدّ الأسطول كلّه لا ما رشّحه المستخدم.
-    const vFilter = { isActive: { $ne: false } }; // المحذوفةُ لا تُعدّ «دون الهدف»
+    // The vehicle table obeys the same filters that concern the vehicle itself.
+    // The table used to be built from the whole fleet however narrow the user's search: searching by one plate returned every vehicle as zero rows with yours among them, which was the complaint of a search by vehicle giving everything zero. The counters (vehicle count, below target) also counted the whole fleet and not what the user filtered.
+    const vFilter = { isActive: { $ne: false } }; // Deleted ones are not counted as below target
     if (scope) vFilter._id = { $in: scope };
     if (vehicleF.length) vFilter._id = { $in: vehicleF.filter((v) => !scope || scope.some((s) => String(s) === v)) };
     if (supervisors.length) vFilter.supervisor = { $in: supervisors };
@@ -2093,23 +1913,21 @@ exports.getAnalytics = async (req, res) => {
     // section default so every truck is still measured against a target (this is
     // exactly the "who hit 27,000" analytic the section asked for).
     const defaultTarget = Number(cfg.defaultMonthlyTarget) || 0;
-    // gross = يُقارَن بالدخل كما هو · net = بعد خصم مصروف السائق.
+    // gross = compared with income as is; net = after the driver expense is deducted.
     const targetBasis = cfg.targetBasis === 'net' ? 'net' : 'gross';
 
-    // إيجار السيارة (price) = دخل قسم الأسطول. الفرق بين «الإيجار كامل» وإيجار
-    // السيارة (عند وجوده) = حصة قسم الفروع — يُعرض منفصلًا، ولا يدخل دخل القسم.
+    // Vehicle rent (price) is the fleet section's income. The difference between full rent and vehicle rent (when present) is the branches section's share: shown separately and not part of the section income.
     const income = (s) => Number(s.price) || 0;
     const totalIncome = shipments.reduce((a, s) => a + income(s), 0);
     const totalFullRent = shipments.reduce((a, s) => a + (Number(s.fullRent) || 0), 0);
     const branchShare = shipments.reduce((a, s) => {
       const fr = Number(s.fullRent) || 0; return a + (fr > 0 ? Math.max(0, fr - income(s)) : 0);
     }, 0);
-    // مصروف السائقين ضمن الفترة — المبلغ الذي يُسلَّم للسائقين فعلًا، ويظهر
-    // مفصّلًا في شاشة «تحليل الحمولات».
+    // Driver expense within the period: the amount actually handed to drivers, shown in detail in load analysis.
     const totalDriverExpense = shipments.reduce((a, s) => a + (Number(s.driverExpense) || 0), 0);
     const tripCount = shipments.length;
 
-    // Trips by trailer type (كام سطحة/ستارة…) + by customer type.
+    // Trips by trailer type (flatbed, curtain...) and by customer type.
     const byTrailerType = {}; const byCustomerType = { heavy: { count: 0, income: 0 }, branch: { count: 0, income: 0 } };
     for (const s of shipments) {
       const t = s.trailerType || '—'; byTrailerType[t] = (byTrailerType[t] || 0) + 1;
@@ -2136,8 +1954,7 @@ exports.getAnalytics = async (req, res) => {
       }
       vehAgg.set(id, cur);
     }
-    // البحث الحرّ يضيّق الجدول أيضًا: تبقى السيارةُ التي طابق نصُّها لوحتَها،
-    // أو التي لها رحلاتٌ فعلًا ضمن النتائج — لا الأسطول كلّه.
+    // Free search also narrows the table: a vehicle stays if the text matches its plate or it has trips in the results, not the whole fleet.
     const vehicleRows = qRx
       ? [...vById.entries()].filter(([id, v]) => vehAgg.has(id) || qRx.test(v.plate || '') || qRx.test(v.name || ''))
       : [...vById.entries()];
@@ -2145,10 +1962,8 @@ exports.getAnalytics = async (req, res) => {
       const a = vehAgg.get(id) || { trips: 0, income: 0, driverExpense: 0, first: null, last: null };
       const monthlyTarget = (Number(v.monthlyTarget) || 0) || defaultTarget;
       const target = monthlyTarget * monthsInRange;
-      // ── المقياسُ يُقال مع الرقم ────────────────────────────────────────
-      // الهدفُ يُقاس بالدخل كما هو، أو بالدخل بعد مصروف السائق — حسب إعداد
-      // القسم. وبغير تصريحٍ بالمقياس يُقرأ الرقمُ على غير وجهه: سيّارةٌ تبدو
-      // محقِّقةً وهي مقصّرةٌ بآلاف.
+      // The measure is stated with the number
+      // The target is measured on income as is, or income after driver expense, per section setting. Without stating the measure the number is misread: a vehicle seems to achieve while falling short by thousands.
       const achievedValue = targetBasis === 'net'
         ? Math.round((a.income - a.driverExpense) * 100) / 100
         : a.income;
@@ -2156,14 +1971,14 @@ exports.getAnalytics = async (req, res) => {
         _id: id, plate: v.plate, name: v.name, trailerType: v.trailerType,
         supervisorName: v.supervisorName, trips: a.trips, income: a.income,
         driverExpense: Math.round((a.driverExpense || 0) * 100) / 100,
-        // «محقّقة كام لحدّ دلوقتي» — بالمقياس المعتمَد لا بالدخل دائمًا.
+        // Achieved so far, by the configured measure, not always income.
         achievedValue,
-        // وكم ينقصها؟ السؤالُ الذي يلي «غير محقّقة» مباشرةً.
+        // And how much is missing? The question right after not achieved.
         shortfall: target > 0 ? Math.max(0, Math.round((target - achievedValue) * 100) / 100) : 0,
         monthlyTarget, periodTarget: target, target,
         achievedPct: target > 0 ? Math.round((achievedValue / target) * 100) : null,
         achieved: target > 0 ? achievedValue >= target : null,
-        // «شغّالة من إمتى لإمتى» — أوّلُ حمولةٍ وآخرُها في الفترة.
+        // Working from when to when: first and last load in the period.
         firstLoadAt: a.first || null,
         lastLoadAt: a.last || null,
       };
@@ -2203,7 +2018,7 @@ exports.getAnalytics = async (req, res) => {
     const topBranchCustomers = customersOut.filter((c) => c.customerType === 'branch').slice(0, 15);
 
     // 12-month trend (income + trips) — respects scope + customerType, ignores the date window.
-    const trendStart = _month(_monthKeyShift(todayKey().slice(0, 7), -11)); // أوّلُ شهرٍ في الرياض
+    const trendStart = _month(_monthKeyShift(todayKey().slice(0, 7), -11)); // Start of month in Riyadh
     const trendFilter = { $and: [{ $or: [{ loadDate: { $gte: trendStart } }, { $and: [{ loadDate: null }, { createdAt: { $gte: trendStart } }] }] }, { status: { $ne: 'cancelled' } }] };
     if (scope) trendFilter.$and.push({ vehicle: { $in: scope } });
     if (customerTypes.length) trendFilter.$and.push({ customerType: { $in: customerTypes } });
@@ -2247,8 +2062,7 @@ exports.getCustomerProfile = async (req, res) => {
     const scope = await supervisorVehicleIds(req);
     const q = { customer: customer._id };
     if (scope) q.vehicle = { $in: scope };
-    // الحدُّ يُعلن نفسه: عميلٌ قديمٌ كثيرُ الحمولات سيتجاوز الألف يومًا، وحينها
-    // يعرض الملفّ آخرَ ألفٍ ويبدو كأنّه كلُّ تاريخه — فيُقرأ دخلُه ناقصًا.
+    // The cap announces itself: an old customer with many loads will exceed the thousand-day limit, and then the file shows the last thousand and looks like its whole history, reading its income as low.
     const { rows: shipments, truncated: shipmentsTruncated } = await cappedFind(
       FleetShipment.find(q)
         .select('waybillNumber vehiclePlate driverName fromCity toCity status price fullRent driverExpense loadType rentType paymentType customerType loadDate createdAt supervisorName')
@@ -2261,8 +2075,7 @@ exports.getCustomerProfile = async (req, res) => {
     const byStatus = {};
     for (const s of shipments) byStatus[s.status] = (byStatus[s.status] || 0) + 1;
 
-    // تجميعاتُ الملفّ: بالشهر (منحنى)، وبالمسار وبالسيارة (ترتيب). كلُّها من
-    // الصفوف المحمّلة أصلًا — لا استعلامَ إضافيّ لكلّ زاوية.
+    // File aggregations: by month (curve), by route and by vehicle (ranking). All from rows already loaded, no extra query per angle.
     const bump = (map, key, s) => {
       if (!key) return;
       const cur = map.get(key) || { key, trips: 0, income: 0 };
@@ -2272,15 +2085,14 @@ exports.getCustomerProfile = async (req, res) => {
     const months = new Map(); const routes = new Map(); const vehicles = new Map(); const pay = new Map();
     for (const s of shipments) {
       const d = s.loadDate || s.createdAt;
-      if (d) bump(months, dayKeyOf(new Date(d)).slice(0, 7), s); // شهرُ الرياض
+      if (d) bump(months, dayKeyOf(new Date(d)).slice(0, 7), s); // Riyadh month
       bump(routes, [s.fromCity, s.toCity].filter(Boolean).join(' ← '), s);
       bump(vehicles, s.vehiclePlate, s);
       bump(pay, s.paymentType || '—', s);
     }
     const top = (map, n) => [...map.values()].sort((a, b) => b.income - a.income || b.trips - a.trips).slice(0, n);
 
-    // بطاقة الـCRM: الشركة المرتبطة ونشاطُها — «مرتبط بالـCRM» يجب أن يعني
-    // شيئًا يُقرأ في الصفحة، لا وصلةً في قاعدة البيانات فقط.
+    // CRM card: the linked company and its activity. Linked to CRM must mean something readable on the page, not just a link in the database.
     let crm = null;
     if (customer.crmCompany) {
       const company = await CrmCompany.findById(customer.crmCompany)
@@ -2300,7 +2112,7 @@ exports.getCustomerProfile = async (req, res) => {
       crm,
       stats: {
         trips: shipments.length, income, fullRent,
-        // فرق «الإيجار كامل» عن الإيجار حصّةُ قسم الفروع في سيناريو 3PL.
+        // The difference between full rent and rent is the branches section's share in the 3PL scenario.
         branchShare: Math.max(0, fullRent - shipments.filter((s) => num(s.fullRent) > 0).reduce((a, s) => a + num(s.price), 0)),
         driverExpense: shipments.reduce((a, s) => a + num(s.driverExpense), 0),
         avgTripIncome: shipments.length ? Math.round(income / shipments.length) : 0,
@@ -2321,19 +2133,14 @@ exports.getCustomerProfile = async (req, res) => {
   }
 };
 
-// ── تقييم أداء السائقين — driver KPIs from the shipments they actually ran ────
-//
-// The Location Solutions section scores drivers on TELEMETRY (how they drive).
-// This scores them on the BUSINESS side of the same work: how many loads they
-// carried, what those loads earned, whether they arrived instead of going late,
-// how much they cost, and whether the follow-up calls on their trips happened.
-// The two are complementary — same person, different question.
+// Driver performance evaluation: driver KPIs from the shipments they actually ran.
+// The Location Solutions section scores drivers on telemetry (how they drive). This scores the business side of the same work: how many loads they carried, what those earned, whether they arrived instead of going late, what they cost, and whether the follow-up calls on their trips happened. The two are complementary: same person, different question.
 const DRIVER_KPI_WEIGHTS = {
-  trips: 30,       // عدد الحمولات
-  income: 25,      // الدخل المحقق
-  onTime: 25,      // نسبة الوصول في الموعد (بدل «متأخر»)
-  completion: 10,  // نسبة الحمولات المكتملة (بدل الملغاة)
-  followUp: 10,    // انتظام متابعة السائق (كل 3 ساعات)
+  trips: 30,       // Load count
+  income: 25,      // Achieved income
+  onTime: 25,      // On-time arrival rate (versus late)
+  completion: 10,  // Completed load rate (versus cancelled)
+  followUp: 10,    // Regularity of driver follow-up (every 3 hours)
 };
 const DRIVER_KPI_BANDS = [
   { min: 90, key: 'excellent', ar: 'ممتاز', en: 'Excellent', color: '#16a34a' },
@@ -2348,33 +2155,12 @@ const DONE_STATUSES = ['arrived', 'bond_sent', 'bond_received', 'invoiced'];
 const FOLLOWUP_TARGET_HOURS = 3; // the section's follow-up cadence
 
 /**
- * كم قطع كلُّ سائقٍ من الكيلومترات في الفترة — من عدّاد المركبة نفسِه.
- *
- * ── ولماذا العدّادُ لا تقديرُ المسار ───────────────────────────────────────
- * الحمولةُ تُكتب بمدينةٍ إلى مدينة، ولا جدولَ مسافاتٍ بين المدن عندنا. وتقديرُ
- * المسافة من اسمَي مدينتين رقمٌ نخترعه ثمّ نحاسب به الناس.
- *
- * ولوكيشن سوليوشن تقرأ عدّادَ كلّ مركبةٍ كلَّ يوم (`Ls2OdometerDaily`)، وهي
- * ثمانٍ وخمسون مركبةً كلُّها مطابَقةٌ بلوحاتها لمركبات الأسطول. فالمسافةُ
- * مقروءةٌ من العدّاد لا محسوبةٌ بالظنّ.
- *
- * ── وكيف تُنسَب كيلومتراتُ المركبة إلى سائق ────────────────────────────────
- * المركبةُ تمشي، والسائقُ هو مَن كان عليها. ويُعرَف ذلك من بابين:
- *
- *   • الحمولةُ تسمّي سائقَها صراحةً، فأيّامُها له — وإن كان معه سائقٌ ثانٍ
- *     تقاسما المسافةَ كما يتقاسمان بقيّةَ أرقام الحمولة.
- *   • وما بقي من الأيّام للمقعد: السائقُ المسنَد إلى المركبة اليوم هو مَن
- *     يقودها، وهذا هو نظامُ المقاعد الذي يعمل به القسم.
- *
- * وسجلُّ الحمولات حديثُ العهد — خمسٌ وعشرون حمولةً حتى اليوم — بينما مشى
- * الأسطولُ في سبتمبر وحدَه مئتَي ألفِ كيلومترٍ وثمانيةَ آلاف. فالاقتصارُ على
- * الحمولات ينسب تسعةً في المئة ويُظهر السائقين كلَّهم وكأنّهم لم يتحرّكوا.
- * ولذلك يُقرأ المقعدُ حيث تسكت الحمولة، ويُقال في الشاشة كم جاء من كلٍّ.
- *
- * وما لا حمولةَ له ولا مقعد لا يُنسَب إلى أحد.
+ * Kilometres each driver covered in the period, from the vehicle's own odometer (`Ls2OdometerDaily`, read daily by Location Solutions; vehicles match fleet vehicles by plate). There is no city distance table, so estimating a route would be an invented number.
+ * Attribution: a load names its driver so its days are his (a second driver splits it); remaining days go to the driver seated on the vehicle today.
+ * Loads alone attribute a small share, so the seat is read where loads are silent; with no load and no seat, nobody.
  */
 async function driverKmInPeriod(shipments, drivers, start, end) {
-  // مفتاحُ السائق هو مفتاحُ التجميع نفسُه في `bump`: المعرّفُ إن وُجد، وإلّا اسمُه.
+  // The driver key is the same grouping key as in `bump`: the id if present, else his name.
   const byDriver = new Map();
   const fromLoads = new Map();
   const add = (map, key, km) => map.set(key, (map.get(key) || 0) + km);
@@ -2383,7 +2169,7 @@ async function driverKmInPeriod(shipments, drivers, start, end) {
   const Ls2Vehicle = require('../models/Ls2Vehicle');
   const Ls2OdometerDaily = require('../models/Ls2OdometerDaily');
 
-  // اللوحاتُ تُكتب بمسافاتٍ مختلفة في السجلّين، فتُطبَّع قبل المطابقة.
+  // Plates are written with different spacing in the two registers, so they are normalized before matching.
   const norm = (v) => String(v || '').replace(/\s+/g, '').toUpperCase();
   const ls2 = await Ls2Vehicle.find({}).select('unitId plate').lean();
   const unitOfPlate = new Map();
@@ -2399,7 +2185,7 @@ async function driverKmInPeriod(shipments, drivers, start, end) {
     const x = new Date(d);
     return new Date(x.getTime() - x.getTimezoneOffset() * 60000).toISOString().slice(0, 10);
   };
-  // يومٌ قبل البداية: كيلومتراتُ أوّل يومٍ فرقٌ عن اليوم الذي قبله.
+  // One day before the start: the first day's kilometres are a difference from the day before.
   const fromDay = day(new Date(start.getTime() - 86400000));
   const endDay = day(new Date(end.getTime() - 1));
 
@@ -2407,26 +2193,25 @@ async function driverKmInPeriod(shipments, drivers, start, end) {
     .select('unitId date odometerKm').sort({ unitId: 1, date: 1 }).lean();
   if (!rows.length) return empty;
 
-  // وحدة → أيّامُها، ومن فروق العدّاد كيلومتراتُ كلّ يوم.
+  // Unit to its days, and each day's kilometres from odometer differences.
   const byUnit = new Map();
   for (const r of rows) {
     if (!byUnit.has(r.unitId)) byUnit.set(r.unitId, []);
     byUnit.get(r.unitId).push(r);
   }
-  const kmPerDay = new Map();                  // `plate|day` → كيلومترات ذلك اليوم
+  const kmPerDay = new Map();                  // `plate|day` to that day's kilometres
   for (const [unit, list] of byUnit) {
     const plate = plateOfUnit.get(unit);
     if (!plate) continue;
     for (let i = 1; i < list.length; i += 1) {
-      // العدّادُ لا ينقص؛ وأيُّ نقصٍ بدلُ عدّادٍ أو قراءةٌ خاطئة، فيُهمَل.
-      // وقفزةٌ فوق ثلاثة آلافِ كيلومترٍ في يومٍ ليست سفرًا بل خللُ قراءة.
+      // The odometer never decreases; any decrease is an odometer replacement or a bad reading, so it is ignored. A jump over three thousand km in a day is a reading fault, not travel.
       const d = list[i].odometerKm - list[i - 1].odometerKm;
       if (d > 0 && d < 3000) kmPerDay.set(`${plate}|${list[i].date}`, d);
     }
   }
 
-  // مَن على مقعد كلّ مركبة اليوم.
-  const seatOf = new Map();                    // plate → [مفتاحُ سائق]
+  // Who holds each vehicle's seat today.
+  const seatOf = new Map();                    // plate to [driver key]
   for (const d of drivers) {
     const plate = norm(d.vehicle && d.vehicle.plate);
     if (!plate) continue;
@@ -2434,8 +2219,8 @@ async function driverKmInPeriod(shipments, drivers, start, end) {
     seatOf.get(plate).push(String(d._id));
   }
 
-  // أيّامُ الحمولات: مَن كان على المركبة في ذلك اليوم صراحةً.
-  const loadDayDrivers = new Map();            // `plate|day` → [مفتاحُ سائق]
+  // Load days: who was explicitly on the vehicle that day.
+  const loadDayDrivers = new Map();            // `plate|day` to [driver key]
   const byPlate = new Map();
   for (const sh of shipments) {
     const p = norm(sh.vehiclePlate);
@@ -2454,8 +2239,7 @@ async function driverKmInPeriod(shipments, drivers, start, end) {
       }
       const from = day(sh.loadDate || sh.createdAt);
       const next = list[i + 1];
-      // آخرُ يومٍ لهذه الحمولة: اليومُ الذي قبل الحمولة التالية على المركبة،
-      // وإلّا نهايةُ الفترة.
+      // Last day of this load: the day before the next load on the vehicle, else the end of the period.
       const until = next
         ? day(new Date(new Date(next.loadDate || next.createdAt).getTime() - 86400000))
         : endDay;
@@ -2489,8 +2273,7 @@ exports.getDriverKpis = async (req, res) => {
     const cached = cache.get(cacheKey);
     if (cached !== undefined) return res.json(cached);
 
-    // نفس مرجع الفترة المستعمل في القائمة والتحليلات — تقييم السائق يجب أن
-    // يُحسب على الشهر ذاته الذي يقرؤه المستخدم في بقيّة الشاشات.
+    // The same period reference as the list and analytics: the driver evaluation must be computed on the same month the user reads in the other screens.
     const period = resolvePeriod(req.query);
     const { start, end } = period;
     const monthsInRange = period.preset === 'all'
@@ -2513,8 +2296,7 @@ exports.getDriverKpis = async (req, res) => {
       getFleetConfig(),
       endedStaff(),
     ]);
-    // مَن انتهت خدمتُه: صفُّه يبقى إن اشتغل في الفترة (حمولاتُه تاريخ)، لكنّه
-    // ليس من طاقم اليوم — فلا يُعَدّ عاطلًا ولا في عدد السائقين ولا الأهداف.
+    // Someone whose service ended: his row stays if he worked in the period (his loads are history), but he is not today's crew, so he is not counted idle, nor in driver counts or targets.
     const isEnded = (d) => !!d && (d.employee ? employeeEnded(ended, d.employee) : idNumberEnded(ended, d.iqama));
 
     // Follow-up compliance needs the call log, and only for in-flight loads that
@@ -2529,8 +2311,7 @@ exports.getDriverKpis = async (req, res) => {
       followUpCount.set(k, (followUpCount.get(k) || 0) + 1);
     }
 
-    // المسافةُ تُقرأ من عدّاد المركبة وتُنسَب بالحمولة ثمّ بالمقعد — راجع
-    // driverKmInPeriod.
+    // Distance is read from the vehicle odometer and attributed by load then by seat; see driverKmInPeriod.
     const kmInfo = await driverKmInPeriod(shipments, drivers, start, end);
     const kmOf = (id, name) => kmInfo.byDriver.get(id ? String(id) : `name:${name || '—'}`) || 0;
     const kmFromLoadsOf = (id, name) => kmInfo.fromLoads.get(id ? String(id) : `name:${name || '—'}`) || 0;
@@ -2584,7 +2365,7 @@ exports.getDriverKpis = async (req, res) => {
       if (hasSecond) bump(s.secondDriver, s.secondDriverName, s, true);
     }
 
-    // المسافةُ محسوبةٌ للسائق كاملةً (بالحمولة وبالمقعد)، فتُوضَع على صفّه.
+    // Distance is computed for the driver in full (by load and by seat), so it is put on his row.
     for (const [key, a] of agg) {
       a.km = kmInfo.byDriver.get(key) || 0;
       a.kmFromLoads = kmInfo.fromLoads.get(key) || 0;
@@ -2600,8 +2381,7 @@ exports.getDriverKpis = async (req, res) => {
     const clamp01 = (n) => Math.max(0, Math.min(1, Number(n) || 0));
     const r0 = (n) => Math.round(Number(n) || 0);
 
-    // هدفُ السائق: ما خُصَّ به، وإلّا افتراضيُّ القسم. و`0` تعني «لا هدفَ له»
-    // وهي غيرُ `null` التي تعني «استعمل الافتراضيّ».
+    // Driver target: his own if set, else the section default. `0` means no target for him, which differs from `null` meaning use the default.
     const defLoads = Number(cfg.defaultDriverMonthlyLoads) || 0;
     const defKm = Number(cfg.defaultDriverMonthlyKm) || 0;
     const targetLoadsOf = (d) => (d && d.monthlyLoadsTarget != null ? Number(d.monthlyLoadsTarget) : defLoads);
@@ -2612,10 +2392,10 @@ exports.getDriverKpis = async (req, res) => {
       const parts = [];
       if (tl > 0) parts.push(clamp01(a.trips / tl));
       if (tk > 0) parts.push(clamp01(a.km / tk));
-      if (!parts.length) return null;                 // لا هدفَ له، فلا تحقيق
+      if (!parts.length) return null;                 // No target, so no achievement
       return r0((parts.reduce((x, y) => x + y, 0) / parts.length) * 100);
     };
-    // «حقّق» تعني بلغ هدفيه معًا — لا أحدَهما.
+    // Achieved means reaching both targets, not either one.
     const achievedOf = (d, a, months) => {
       const tl = targetLoadsOf(d) * months;
       const tk = targetKmOf(d) * months;
@@ -2649,12 +2429,10 @@ exports.getDriverKpis = async (req, res) => {
         onSponsorship: d ? d.onSponsorship !== false : null,
         vehicle: d?.vehicle ? { _id: String(d.vehicle._id), plate: d.vehicle.plate, name: d.vehicle.name } : null,
         trips: a.trips, sharedTrips: a.shared,
-        // ── وهدفُ السائق حمولاتٌ ومسافة ──────────────────────────────────
-        // السيّارةُ تُقاس بالدخل، والسائقُ لا يملك السعر: يملك أن يشيل ويمشي.
-        // فالهدفُ ما يملكه. والتحقيقُ متوسّطُ النسبتين — من شال حمولاته كلَّها
-        // وقطع نصفَ المسافة لم يحقّق، ومن قطع المسافة بحمولةٍ واحدةٍ لم يحقّق.
+        // The driver target is loads and distance
+        // A vehicle is measured on income, but the driver does not own the price: he owns carrying and driving. So the target is what he owns. Achievement is the mean of the two ratios: someone who carried all his loads and drove half the distance did not achieve, nor did one who drove the distance with a single load.
         km: r0(a.km),
-        // كم منها جاء من حمولةٍ مسمّاة، والباقي من مقعده على المركبة.
+        // How much came from a named load, the rest from his seat on the vehicle.
         kmFromLoads: r0(a.kmFromLoads || 0),
         kmPerMonth: Math.round((a.km / monthsInRange) * 10) / 10,
         targetLoads: r0(targetLoadsOf(d) * monthsInRange),
@@ -2692,11 +2470,9 @@ exports.getDriverKpis = async (req, res) => {
         onSponsorship: d.onSponsorship !== false,
         vehicle: d.vehicle ? { _id: String(d.vehicle._id), plate: d.vehicle.plate, name: d.vehicle.name } : null,
         trips: 0, sharedTrips: 0, income: 0, fullRent: 0, expense: 0, net: 0, avgTripIncome: 0, tripsPerMonth: 0,
-        // ── ومَن لم يشتغل «دون الهدف» لا «بلا هدف» ────────────────────────
-        // كان الصفُّ يُبنى هنا بالإيد بلا خانات الهدف، فيُقرأ التحقيقُ فارغًا
-        // ويُعَدُّ صاحبُه في «بلا هدف». وهو أوّلُ من يُسأل عنه: عليه هدفٌ ولم
-        // يقطع منه شيئًا.
-        // لا حمولةَ له، ولكنّ مركبتَه مشت وهو عليها — فالمسافةُ تُحسب.
+        // Someone who did not work is below target, not no target
+        // The row used to be built by hand here without target fields, so achievement read empty and he was counted as no target, though he is the first to ask about: a target set and nothing covered.
+        // He has no load, but his vehicle moved with him on it, so the distance counts.
         km: r0(kmOf(d._id, d.name)), kmFromLoads: 0,
         kmPerMonth: Math.round((kmOf(d._id, d.name) / monthsInRange) * 10) / 10,
         targetLoads: r0(targetLoadsOf(d) * monthsInRange),
@@ -2716,7 +2492,7 @@ exports.getDriverKpis = async (req, res) => {
     }
 
     items.sort((a, b) => b.score - a.score || b.income - a.income);
-    // العدّاداتُ للطاقم الحاليّ وحدَه؛ المجاميعُ (حمولات/دخل/مسافة) تبقى كما هي.
+    // The counters are for the current crew only; totals (loads/income/distance) stay as they are.
     const roster = items.filter((i) => !i.ended);
     const active = roster.filter((i) => i.trips > 0);
     const body = {
@@ -2734,10 +2510,10 @@ exports.getDriverKpis = async (req, res) => {
         totalExpense: items.reduce((s, i) => s + i.expense, 0),
         averageScore: active.length ? Math.round(active.reduce((s, i) => s + i.score, 0) / active.length) : 0,
         lateTrips: items.reduce((s, i) => s + i.late, 0),
-        // ── ومَن حقّق ومَن لم يحقّق، عددًا ────────────────────────────────
-        // السؤالُ الأوّل في الشاشة، وكان جوابُه يُعَدُّ بالعين صفًّا صفًّا.
+        // Who achieved and who did not, as a count
+        // The first question on the screen, whose answer used to be counted by eye row by row.
         totalKm: items.reduce((s, i) => s + (i.km || 0), 0),
-        // كم من كيلومترات الأسطول وجد صاحبَه، وكم بقي بلا نسبة.
+        // How much of the fleet's kilometres found an owner, and how much stayed without a ratio.
         kmAttributed: kmInfo.attributed,
         kmUnattributed: kmInfo.unattributed,
         driversAchieved: roster.filter((i) => i.achieved === true).length,
@@ -2756,14 +2532,8 @@ exports.getDriverKpis = async (req, res) => {
   }
 };
 
-// ── المتوقع للوصول + السيارات الفاضية ───────────────────────────────────────
-//
-// السؤال الذي تجيبه هذه الشاشة حرفيًّا: «مين العربيات اللي هتوصل يوم السبت في
-// جدة؟ وإيه العربيات اللي هتكون فاضية وقتها؟». الجدولان يخرجان معًا لأن قرار
-// المشرف واحد: إن لم تكفِ الواصلةُ حمولةَ الغد، فمِن الفاضية يُكمِل.
-//
-// «فاضية» هنا لا تعني «وصلت»: تعني أن السيارة ليس عليها حمولة نشطة أصلًا — لا
-// تسير ولا تُحمِّل ولا متجهة إلى مكان. ولذلك تُحسب من غياب الحمولة لا من حالتها.
+// Expected arrival and empty vehicles: which trucks arrive on a given day in a city and which will be empty then. Both tables come out together because the supervisor's decision is one.
+// Empty means the vehicle has no active load at all (not moving, loading or headed anywhere), so it is computed from the absence of a load, not from a status.
 const ARRIVAL_ACTIVE = ['requesting', 'loading', 'uploaded', 'on_way', 'late'];
 
 exports.getArrivals = async (req, res) => {
@@ -2773,9 +2543,7 @@ exports.getArrivals = async (req, res) => {
     const cached = cache.get(cacheKey);
     if (cached !== undefined) return res.json(cached);
 
-    // الافتراضي «الأيام السبعة القادمة»: الشاشة استشرافية، ومَن يفتحها يسأل عمّا
-    // هو آتٍ لا عمّا مضى — ولو ورث الافتراضَ العامّ (الشهر الحالي) لفتحت على
-    // نصف شهرٍ ماضٍ لا معنى لوصولٍ متوقَّعٍ فيه.
+    // Default is the next seven days: the screen is forward-looking, and whoever opens it asks about what is coming, not what passed. Inheriting the general default (current month) would open on half a past month where an expected arrival means nothing.
     const period = resolvePeriod(req.query.preset || req.query.from || req.query.to || req.query.day || req.query.month
       ? req.query : { preset: 'next_7' });
     const { toCity, supervisor, q } = req.query;
@@ -2787,11 +2555,10 @@ exports.getArrivals = async (req, res) => {
       const r = arRx(q);
       base.push({ $or: [{ customerName: r }, { driverName: r }, { vehiclePlate: r }, { fromCity: r }, { toCity: r }] });
     }
-    // الوجهة تُطابَق بتسامح الكتابة العربية: «جده» و«جدة» مدينةٌ واحدة.
+    // Destination is matched with Arabic spelling tolerance: two spellings of Jeddah are one city.
     const cityClause = toCity && toCity.trim() ? [{ toCity: arRx(toCity) }] : [];
 
-    // «كل الفترات» تعني كل موعدٍ مسجَّل، لا كلَّ حمولةٍ سائرة: لولا اشتراط وجود
-    // الموعد لظهرت الحمولاتُ التي بلا موعدٍ في الجدولين معًا، فيُعدّ الشيء مرّتين.
+    // All periods means every recorded appointment, not every moving load: without requiring the appointment, loads with none would appear in both tables, counting the thing twice.
     const inWindow = period.preset === 'all'
       ? [{ expectedArrival: { $ne: null } }]
       : [{ expectedArrival: { $gte: period.start, $lt: period.end } }];
@@ -2801,8 +2568,7 @@ exports.getArrivals = async (req, res) => {
         .sort({ expectedArrival: 1 })
         .select('waybillNumber customerName customer vehicle vehiclePlate trailerType driverName driverPhone secondDriverName fromCity toCity status loadDate expectedArrival lastContactAt supervisorName supervisor price loadType')
         .limit(500).lean(),
-      // حمولاتٌ سائرة بلا وصولٍ متوقَّع مُسجَّل: لا تظهر في أيّ نافذة زمنية، وإخفاؤها
-      // يعني سيارةً تُحسب «لا واصلة ولا فاضية» — فتضيع من التخطيط تمامًا.
+      // Moving loads with no recorded expected arrival appear in no time window, and hiding them leaves a vehicle counted as neither arriving nor empty, lost from planning entirely.
       FleetShipment.find({ $and: [...base, ...cityClause, { $or: [{ expectedArrival: null }, { expectedArrival: { $exists: false } }] }] })
         .sort({ loadDate: -1, createdAt: -1 })
         .select('waybillNumber customerName customer vehicle vehiclePlate trailerType driverName driverPhone secondDriverName fromCity toCity status loadDate expectedArrival lastContactAt supervisorName supervisor price loadType')
@@ -2815,7 +2581,7 @@ exports.getArrivals = async (req, res) => {
       ]),
     ]);
 
-    // السيارات الفاضية = سجلّ الأسطول ناقصًا كل سيارةٍ عليها حمولة نشطة.
+    // Empty vehicles = the fleet register minus every vehicle with an active load.
     const busy = new Set(activeVehicleIds.filter(Boolean).map(String));
     const vFilter = { isActive: { $ne: false } };
     if (scope) vFilter._id = { $in: scope };
@@ -2823,7 +2589,7 @@ exports.getArrivals = async (req, res) => {
     const idleVehicles = allVehicles.filter((v) => !busy.has(String(v._id)));
     const idleIds = idleVehicles.map((v) => v._id);
 
-    // آخر رحلةٍ لكل سيارةٍ فاضية + سائقوها — تُحسب في الخادم لا بجرّ المجموعة كلّها.
+    // Last trip of each empty vehicle plus its drivers, computed on the server rather than pulling the whole collection.
     const [lastTrips, drivers] = await Promise.all([
       idleIds.length ? FleetShipment.aggregate([
         { $match: { vehicle: { $in: idleIds } } },
@@ -2846,12 +2612,8 @@ exports.getArrivals = async (req, res) => {
       lastTrip: lastByVehicle.get(String(v._id)) || null,
     }));
 
-    // ── و«المشغولة» كانت رقمًا لا يُفتَح ───────────────────────────────────
-    // كانت تُحسب طرحًا (الكلُّ ناقصَ الفاضية) وتُعرَض رقمًا في بطاقةٍ لا تؤدّي
-    // إلى شيء: يُقرأ «٣٩ مشغولة» ولا يُعرَف أيُّها ولا على أيّ حمولة. فتُرَدُّ
-    // الأسماءُ معها: كلُّ سيارةٍ مشغولةٍ وحمولتُها الحاليّة. وتُسأل سؤالًا
-    // واحدًا ولا تُقرأ من الجدولين فوق: هما مصفّيان بالوجهة والفترة، فلو قُرئا
-    // لظهرت سيارةٌ مشغولةٌ «بلا حمولة» لأنّ حمولتَها إلى مدينةٍ أخرى.
+    // Busy was a number that did not open
+    // It was computed by subtraction (all minus empty) and shown as a number in a card that leads nowhere: you read 39 busy with no way to know which or on what load. So the names come with it: each busy vehicle and its current load. It is asked as one query and not read from the two tables above, which are filtered by destination and period; reading them would show a busy vehicle with no load because its load is to another city.
     const busyVehicles = allVehicles.filter((v) => busy.has(String(v._id)));
     const busyIds = busyVehicles.map((v) => v._id);
     const busyTrips = busyIds.length ? await FleetShipment.aggregate([
@@ -2896,26 +2658,21 @@ exports.getArrivals = async (req, res) => {
   }
 };
 
-// ── تحليل سيارةٍ واحدة عبر فترة ─────────────────────────────────────────────
-//
-// «أضغط على السيارة فيطلع لي تحليل كامل ليها: عملت كام رحلة والسعر وكده».
-// كل رقمٍ هنا يُجمَّع في الخادم، والسجلّ المُعاد مسقوفٌ — سيارةٌ واحدة عبر سنة
-// قد تحمل مئات الحمولات، وجرُّها كلّها إلى المتصفّح ليعدّها هو خطأٌ يتكرّر.
+// Analysis of one vehicle across a period
+// Click the vehicle and get its full analysis: how many trips, price and so on. Every number is aggregated on the server and the returned log is capped: one vehicle over a year may carry hundreds of loads, and pulling them all to the browser to count there is a repeated mistake.
 exports.getVehicleAnalytics = async (req, res) => {
   try {
     const scope = await supervisorVehicleIds(req);
     const vehicle = await FleetVehicle.findById(req.params.id).lean();
     if (!vehicle) return res.status(404).json({ message: 'Vehicle not found' });
-    // المشرف لا يرى إلا سياراته: بغير هذا الشرط يصير رابطُ التحليل بابًا خلفيًّا
-    // إلى أرقام مشرفٍ آخر.
+    // A supervisor sees only his vehicles: without this condition the analysis link becomes a back door to another supervisor's numbers.
     if (scope && !scope.some((s) => String(s) === String(vehicle._id))) {
       return res.status(403).json({ message: 'Not your vehicle' });
     }
 
     const cacheKey = `fleet:vehicle-analytics:${req.params.id}:${JSON.stringify(req.query || {})}`;
     const cached = cache.get(cacheKey);
-    // الهويّةُ والمستنداتُ تُقرأ من السجلّ في كلّ طلب — لا تُخزَّن مع الأرقام،
-    // فتعديلُها في قسم المركبات يظهر هنا في اللحظة.
+    // Identity and documents are read from the register on every request, not stored with the numbers, so an edit in the vehicles section shows here at once.
     if (cached !== undefined) {
       await FI.decorateVehicles([cached.vehicle]);
       return res.json(cached);
@@ -2939,9 +2696,8 @@ exports.getVehicleAnalytics = async (req, res) => {
       driverExpense: { $sum: { $ifNull: ['$driverExpense', 0] } },
     };
 
-    // ترند اثني عشر شهرًا: يتجاهل الفترة عمدًا — السؤال «هل السيارة تتحسّن؟»
-    // لا يُجاب من داخل الشهر المختار.
-    const trendStart = _month(_monthKeyShift(todayKey().slice(0, 7), -11)); // أوّلُ شهرٍ في الرياض
+    // Twelve-month trend: deliberately ignores the period, since whether the vehicle is improving cannot be answered from within the chosen month.
+    const trendStart = _month(_monthKeyShift(todayKey().slice(0, 7), -11)); // Start of month in Riyadh
 
     const [totalsAgg, byRoute, byCustomer, byStatus, byMonth, trips, cfg, seatDrivers, currentTrip] = await Promise.all([
       FleetShipment.aggregate([{ $match: match }, { $group: { _id: null, ...sums } }]),
@@ -2976,21 +2732,14 @@ exports.getVehicleAnalytics = async (req, res) => {
     const t = totalsAgg[0] || { trips: 0, income: 0, fullRent: 0, driverExpense: 0 };
     const monthlyTarget = (Number(vehicle.monthlyTarget) || 0) || (Number(cfg.defaultMonthlyTarget) || 0);
     const periodTarget = monthlyTarget * monthsInRange;
-    // حصة قسم الفروع = فارق «الإيجار كامل» عن إيجار السيارة، ولا يُحسب إلا حين
-    // سُجِّل الإيجار الكامل فعلًا — وإلا صار كل إيجارٍ منفردٍ حصةً سالبة.
+    // Branches share = difference between full rent and vehicle rent, computed only when the full rent was actually recorded; otherwise every lone rent would become a negative share.
     const branchShare = trips.reduce((a, s) => {
       const fr = Number(s.fullRent) || 0;
       return a + (fr > 0 ? Math.max(0, fr - (Number(s.price) || 0)) : 0);
     }, 0);
 
-    // ── حالةُ الشاحنة الفنّية من لوكيشن سوليوشن ومخزن النقل الثقيل ──────────
-    //
-    // القسمان يتكلّمان عن الشاحنة نفسها: هذا يقول كم أدخلت، وذاك يقول متى
-    // صيانتها وما رُكّب عليها. وكانا شاشتين لا تلتقيان، فيُقرَّر تشغيلُ شاحنةٍ
-    // صيانتُها متأخّرة لأنّ الرقم الذي أمام المقرِّر لا يذكر الصيانة.
-    //
-    // والجمعُ بمفتاح اللوحة الرقميّ لا بالنصّ: اللوحة تُكتب هنا «1080 RXA»
-    // وهناك «1080» و«ر خ ا ١٠٨٠»، ولا تتطابق حرفيًّا أبدًا.
+    // Truck technical state from Location Solutions and the heavy transport store: the sections describe the same truck but never met, so a truck with overdue maintenance could be run.
+    // Joined by the numeric plate key, not the text, because the plate is written in different formats in each place.
     const vKey = plateKey(vehicle.plate) || vehiclePlateKey(vehicle.plate);
     let tech = null;
     if (vKey) {
@@ -3003,9 +2752,7 @@ exports.getVehicleAnalytics = async (req, res) => {
       const digitsRx = digits ? new RegExp(`(^|\\D)${digits}(\\D|$)`) : plateRx;
 
       const [ls2v, tires, services, repairs, issued] = await Promise.all([
-        // ‏`Ls2Vehicle` لا يحمل `plateKey` — كان الشرطُ يسأل عن حقلٍ غير موجود فلا
-        // يطابق إلّا بالنصّ. فتُقابَل الوحدةُ بمرجع سجلّ المركبات إن حملته، ثمّ
-        // بالمفتاح الموحَّد للّوحة، ثمّ بأرقامها (اللوحةُ هناك قد تحمل اسمَ السائق).
+        // `Ls2Vehicle` has no `plateKey`: the condition asked about a field that does not exist, so it matched only by text. So the unit is matched by the vehicle register reference if it has one, then by the plate's unified key, then by its digits (the plate there may carry the driver's name).
         Ls2Vehicle.find({})
           .select('plate name unitId maintenanceStatus kmToService nextServiceName nextServiceKm odometerKm lastMessageAt status services vehicleMaster').lean()
           .then((all) => {
@@ -3021,14 +2768,11 @@ exports.getVehicleAnalytics = async (req, res) => {
           .select('plate createdAt items note byName odometerKm').lean().catch(() => []),
         Ls2Repair.find({ plate: plateRx, status: { $ne: 'done' } }).sort({ createdAt: -1 }).limit(20)
           .select('plate category status description cost createdAt').lean().catch(() => []),
-        // ما صُرف من المخزن على هذه الشاحنة — القطع التي رُكّبت عليها فعلًا.
-        // ولوحةُ المخزن تُكتب بصيغةٍ ثالثة: «أ ص ي 5096» أو «2708» بينما هنا
-        // «5096 VXA». فالجمعُ بالأرقام وحدها، محفوفةً بحدٍّ يمنع «1082» من
-        // مطابقة «21082».
+        // What the store issued to this truck: parts actually installed on it. The store plate is written in a third format (letters plus 5096 or just 2708) while here it is "5096 VXA", so the join is by digits alone, bounded so 1082 does not match 21082.
         Ls2StoreMovement.find({ type: 'out', reversed: { $ne: true }, vehiclePlate: digitsRx })
           .sort({ createdAt: -1 }).limit(50)
           .select('itemName quantity reason issueReason createdAt performedByName').lean()
-          // وسببُ الصرف باسمه — «صيانة دورية / حادث …» يُقرأ في ملفّ المركبة.
+          // The issue reason by name (periodic maintenance / accident...) is read in the vehicle file.
           .then((rows) => rows.map((m) => ({ ...m, issueReasonLabel: require('../utils/storeIssueReasons').issueReasonLabel(m.issueReason) })))
           .catch(() => []),
       ]);
@@ -3081,12 +2825,8 @@ exports.getVehicleAnalytics = async (req, res) => {
   }
 };
 
-// ── تحليل الحمولات ──────────────────────────────────────────────────────────
-//
-// شاشةُ صرفِ مصروفِ السائقين قبل أن تكون شاشةَ تقارير: يقف المشرف عليها ليعرف
-// كم يُسلِّم لكل سائق عن حمولات اليوم. ولذلك المصروف عمودٌ في كل صفٍّ **و**
-// مجموعٌ لكل سائقٍ على حدة — والرقمان يُجمَّعان في الخادم من نفس المطابقة، فلا
-// يختلف مجموعُ الصفحة عن مجموع الصفوف حين تتجاوز الحمولاتُ سقفَ العرض.
+// Load analysis
+// This is a screen for paying out driver expenses before it is a reports screen: the supervisor stands on it to know how much to hand each driver for today's loads. So the expense is a column in every row and a total per driver, and both are aggregated on the server from the same match, so the page total never differs from the rows' total when loads exceed the display cap.
 exports.getLoadsAnalysis = async (req, res) => {
   try {
     const scope = await supervisorVehicleIds(req);
@@ -3107,7 +2847,7 @@ exports.getLoadsAnalysis = async (req, res) => {
     const and = [];
     if (period.preset !== 'all') and.push(effectiveDateMatch(start, end));
     if (scope) and.push({ vehicle: { $in: scope } });
-    // معرّفاتٌ لا نصوص: هذه المطابقةُ تُستعمل في `aggregate` أيضًا (راجع `_oids`).
+    // Ids, not strings: this match is also used in `aggregate` (see `_oids`).
     if (vehicleF.length) and.push({ vehicle: { $in: _oids(vehicleF) } });
     if (supervisors.length) and.push({ supervisor: { $in: _oids(supervisors) } });
     if (customersF.length) and.push({ customer: { $in: _oids(customersF) } });
@@ -3152,7 +2892,7 @@ exports.getLoadsAnalysis = async (req, res) => {
         { $group: { _id: { id: '$vehicle', plate: '$vehiclePlate' }, ...sums } },
         { $sort: { income: -1 } }, { $limit: 200 },
       ]),
-      // مجموع مصروف كل سائق — الرقم الذي يُصرَف به فعلًا.
+      // Total expense per driver: the number actually paid out.
       FleetShipment.aggregate([
         { $match: match },
         { $group: { _id: { id: '$driver', name: '$driverName' }, ...sums } },
@@ -3183,8 +2923,7 @@ exports.getLoadsAnalysis = async (req, res) => {
       byDriver: byDriver.map((r) => ({ _id: r._id.id ? String(r._id.id) : null, name: r._id.name || '—', loads: r.loads, income: r.income, driverExpense: r.driverExpense })),
       byStatus: Object.fromEntries(byStatus.map((r) => [r._id, r.n])),
       shipments: rows,
-      // الصفوف مسقوفة والمجاميع ليست كذلك: تُعلَن الحقيقة صراحةً بدل أن يظنّ
-      // القارئ أن ما أمامه هو كل شيء ثم يجمعه بيده فلا يوافق مجموع الشاشة.
+      // Rows are capped and totals are not: the truth is stated explicitly so the reader does not assume what is in front of him is everything and sum it by hand to a different total than the screen.
       truncated: t.loads > rows.length,
       shown: rows.length,
     };
@@ -3196,22 +2935,12 @@ exports.getLoadsAnalysis = async (req, res) => {
   }
 };
 
-// ─────────────────────────────────────────────────────────────────────────────
-// سجلّات السيارات — السجلّ الشهريّ الكامل لكلّ سيّارة
-//
-// «تسجيل متابعة» في صفحة الحمولة يجيب: أين هذه الشحنة الآن. وهذا يجيب السؤال
-// الآخر: ماذا جرى لهذه السيّارة هذا الشهر — عطلٌ وإطارٌ وسائقٌ تغيّر وستُّ
-// حمولاتٍ بينها. الأوّل سجلُّ شحنة، وهذا سجلُّ سيّارة، ولا يُقرأ أحدُهما مكان
-// الآخر.
-//
-// والسجلُّ **مركَّب لا مكتوب**: الحمولات وأحداثُها تُشتقّ من الشحنات نفسِها،
-// ويُضاف إليها ما لا مكان له إلّا هنا (عطل، صيانة، مخالفة، ملاحظة). فلو كُتبت
-// الحمولات هنا يدويًّا لتأخّر السجلُّ عن الحقيقة أوّلَ مرّةٍ ينساها أحد.
-// ─────────────────────────────────────────────────────────────────────────────
+// Vehicle logs: the full monthly log of each vehicle. A load follow-up answers where a shipment is; this answers what happened to a vehicle this month. Neither is read in place of the other.
+// The log is composed, not written: loads and events are derived from the shipments, plus what has no home except here (breakdown, maintenance, violation, note), so it cannot lag the truth.
 
 const FleetVehicleLog = require('../models/FleetVehicleLog');
 
-/** يحلّ السيّارة من معرّفٍ أو لوحة. */
+/** Resolves the vehicle from an id or plate. */
 async function resolveVehicle(idOrPlate) {
   const s = String(idOrPlate || '').trim();
   if (!s) return null;
@@ -3225,11 +2954,10 @@ async function resolveVehicle(idOrPlate) {
 }
 
 /**
- * المدى الزمنيّ من الاستعلام. يقبل أربع صيغ لأنّ السؤال يُطرح بأربع صيغ:
- *   ?month=YYYY-MM   شهرٌ كامل (الصيغة الأساسيّة — وهي وحدةُ الإقفال)
- *   ?date=YYYY-MM-DD يومٌ بعينه
- *   ?from&to         مدًى حرّ
- *   بلا شيء          الشهر الجاري
+ * Time range from the query. Accepts four forms:
+ * ?month=YYYY-MM   a whole month (the closing unit)
+ * ?date=YYYY-MM-DD a specific day
+ * ?from&to         a free range; nothing means the current month
  */
 function logRange(query) {
   const { month, date, from, to } = query || {};
@@ -3244,8 +2972,7 @@ function logRange(query) {
   }
   if (from || to) {
     const f = from ? startOfDay(from) : new Date('2000-01-01T00:00:00.000Z');
-    // «إلى» مفتوحًا يعني «حتى الآن» لا «حتى منتصف ليل اليوم» — وإلّا اختفت
-    // قيودُ اليوم نفسِه من نتيجة من طلب «من أوّل الشهر».
+    // An open `to` means until now, not until midnight today; otherwise today's entries vanish from the result of someone who asked from the start of the month.
     const tt = to ? endOfDay(to) : new Date();
     return { from: f, to: tt, monthKey: '', label: `${from || '—'} → ${to || ''}`, scope: 'range' };
   }
@@ -3256,15 +2983,14 @@ function logRange(query) {
 
 /**
  * GET /api/fleet/vehicle-logs?vehicle=<id|plate>&month=YYYY-MM
- * السجلُّ المركَّب لسيّارةٍ واحدة: قيودٌ يدويّة + حمولاتُ الفترة + أحداثُها،
- * مرتَّبةً بالزمن، ومعها ملخّصُ الشهر وحالةُ إقفاله.
+ * The composed log of one vehicle: manual entries plus the period's loads and their events, ordered by time, with the month summary and its closing state.
  */
 exports.getVehicleLog = async (req, res) => {
   try {
     const vehicle = await resolveVehicle(req.query.vehicle || req.params.vehicle);
     if (!vehicle) return res.status(404).json({ message: 'Vehicle not found' });
 
-    // المشرف لا يرى إلّا سيّاراته.
+    // A supervisor sees only his vehicles.
     const scope = await supervisorVehicleIds(req);
     if (scope && !scope.some((id) => String(id) === String(vehicle._id))) {
       return res.status(403).json({ message: 'Not your vehicle' });
@@ -3286,8 +3012,7 @@ exports.getVehicleLog = async (req, res) => {
           .sort({ loadDate: -1 }).limit(500).lean(),
       ]);
 
-      // أحداثُ تلك الحمولات — المتابعاتُ وتغيُّراتُ الحالة تنتمي إلى السيّارة
-      // كما تنتمي إلى الشحنة، والسجلُّ الشهريّ هو موضعُ قراءتها مجتمعة.
+      // Events of those loads: follow-ups and status changes belong to the vehicle as they belong to the shipment, and the monthly log is where they are read together.
       const ids = shipments.map((s) => s._id);
       const events = ids.length
         ? await FleetEvent.find({ shipment: { $in: ids }, createdAt: { $gte: range.from, $lte: range.to } })
@@ -3333,7 +3058,7 @@ exports.getVehicleLog = async (req, res) => {
           if (n) acc[k] = n;
           return acc;
         }, {}),
-        // بلا هدفٍ خاصٍّ بها → الافتراضيُّ من الإعدادات، كما في التحليلات.
+        // With no target of its own, the default from settings, as in analytics.
         target: (Number(vehicle.monthlyTarget) || 0) || (Number((await getFleetConfig()).defaultMonthlyTarget) || 0),
       };
       summary.net = money(summary.income - summary.driverExpense - summary.logCost);
@@ -3347,8 +3072,7 @@ exports.getVehicleLog = async (req, res) => {
       closed: FleetVehicleLog.isClosed(range.monthKey),
       kinds: FleetVehicleLog.LOG_KINDS.map((k) => ({ key: k, ...FleetVehicleLog.KIND_LABELS[k] })),
       ...payload,
-      // القاعدةُ نفسُها التي يحرس بها الحفظ: المشرفُ يقرأ كلَّ السيّارات ويكتب
-      // في سيّاراته وحدَها — فلا يُعرض زرٌّ يُرفض.
+      // The same rule that guards saving: a supervisor reads all vehicles and writes only his own, so a button that would be rejected is not shown.
       canWrite: await (async () => { const w = await supervisorVehicleIds(req, { forWrite: true }); return !w || w.some((id) => String(id) === String(vehicle._id)); })(),
     });
   } catch (error) {
@@ -3358,8 +3082,7 @@ exports.getVehicleLog = async (req, res) => {
 
 /**
  * GET /api/fleet/vehicle-logs/summary?month=YYYY-MM
- * صفٌّ لكلّ سيّارة: حمولاتُها ودخلُها وعددُ قيودها وأعطالُها في الفترة —
- * وهو ما تُبنى عليه صفحة «سجلّات السيارات».
+ * A row per vehicle: its loads, income, entry count and breakdowns in the period. The vehicle logs page is built on it.
  */
 exports.getVehicleLogsSummary = async (req, res) => {
   try {
@@ -3424,7 +3147,7 @@ exports.getVehicleLogsSummary = async (req, res) => {
 
 const CLOSED_OVERRIDE = ['super_admin', 'admin', 'it_manager', 'operations_manager', 'fleet_manager'];
 
-/** POST /api/fleet/vehicle-logs — قيدٌ جديد على سيّارة. */
+/** POST /api/fleet/vehicle-logs - a new entry on a vehicle. */
 exports.createVehicleLog = async (req, res) => {
   try {
     const vehicle = await resolveVehicle(req.body.vehicle);
@@ -3453,8 +3176,7 @@ exports.createVehicleLog = async (req, res) => {
     if (req.body.shipment) {
       shipment = await FleetShipment.findById(req.body.shipment).select('waybillNumber vehicle driverName').lean();
       if (shipment) {
-        // الحمولة المربوطة يجب أن تكون على هذه السيّارة — وإلّا صار القيدُ
-        // معلَّقًا على شحنةٍ لا علاقة لها بها، وهو أسوأ من ألّا يُربط.
+        // A linked load must belong to this vehicle; otherwise the entry hangs on an unrelated shipment, which is worse than not linking.
         if (String(shipment.vehicle) !== String(vehicle._id)) {
           return res.status(400).json({ message: 'هذه أمر النقل ليست على هذه السيارة' });
         }
@@ -3544,21 +3266,9 @@ exports.deleteVehicleLog = async (req, res) => {
   }
 };
 
-// ══════════════════════════════════════════════════════════════════════════════
-// حالةُ المركبات — GET /api/fleet/health
-// ══════════════════════════════════════════════════════════════════════════════
-//
-// ── ولماذا هنا وهي موجودةٌ في لوكيشن سوليوشن ────────────────────────────────
-// الشاحناتُ شاحناتُنا، ومَن يتابعها هو الأسطول. وأرقامُها الحيّة — ضغطُ الكاوتش
-// وحرارتُه وحرارةُ الماء والصيانةُ والتنبيهات — كانت في قسمٍ آخر لا يفتحه مشرفُ
-// الأسطول ولا يملكه أصلًا: يُتَّصل به بالهاتف ليُسأل «الشاحنةُ الفلانيّة سخنت؟».
-//
-// فما يخصّ شاحناتِنا يُعرَض في قسمها. والمصدرُ واحدٌ لا نسخة: تُقرأ من
-// `Ls2Vehicle` نفسِه في كلّ نداء، فما يُقرأ هنا هو ما يُقرأ هناك حرفًا بحرف.
-//
-// ── ولا يرى المشرفُ إلّا سياراته ───────────────────────────────────────────
-// `supervisorVehicleIds` هو نفسُه المستعمَل في بقيّة القسم: مشرفٌ على عشرِ
-// شاحناتٍ يفتح الشاشةَ فيجد عشرًا، لا سبعًا وخمسين يبحث بينها عن شاحناته.
+// Vehicle health - GET /api/fleet/health
+// The trucks are ours and fleet tracks them, but their live numbers (tyre pressure and temperature, coolant, maintenance, alerts) were in a section fleet supervisors do not open. The source is one, not a copy: it is read from `Ls2Vehicle` on every call.
+// A supervisor sees only his vehicles via `supervisorVehicleIds`, the same one used across the section.
 exports.getFleetHealth = async (req, res) => {
   try {
     const Ls2Alert = require('../models/Ls2Alert');
@@ -3580,8 +3290,7 @@ exports.getFleetHealth = async (req, res) => {
       FleetDriver.find({ isActive: { $ne: false }, vehicle: { $ne: null }, ...(await noArchDrv()) })
         .select('name phone working vehicle employee').lean()
         .then(FI.decorateDrivers),
-      // المفتوحةُ وحدَها: التنبيهُ المُغلَق عملٌ انتهى، وعرضُه يخلط ما يجب فعلُه
-      // اليومَ بما فُعل الأسبوعَ الماضي.
+      // Open ones only: a closed alert is finished work, and showing it mixes what must be done today with what was done last week.
       Ls2Alert.find({ status: 'open' })
         .select('unitId type severity message firstSeenAt value threshold unit').lean(),
     ]);
@@ -3605,10 +3314,8 @@ exports.getFleetHealth = async (req, res) => {
       driversByVehicle.set(k, arr);
     }
 
-    // ── وحدُّ «باردٌ» ساعتان ─────────────────────────────────────────────────
-    // الجهازُ يرسل كلَّ دقائق. فسكوتُه ساعتين ليس هدوءًا بل انقطاع — وقراءةٌ
-    // عمرُها ساعتان تُعرَض «آخرُ ما وصل» لا «الآن»، وإلّا بُني قرارٌ على رقمٍ
-    // ميّت.
+    // Cold threshold is two hours
+    // The device reports every few minutes, so two hours of silence is an outage, not calm; a two-hour-old reading is shown as last received, not now, or a decision would rest on a dead number.
     const STALE_MS = 2 * 3600 * 1000;
     const now = Date.now();
 
@@ -3624,9 +3331,8 @@ exports.getFleetHealth = async (req, res) => {
         trailerType: v.trailerType || '',
         supervisorName: v.supervisorName || '',
         drivers: driversByVehicle.get(String(v._id)) || [],
-        // ── الشاحنةُ بلا جهازٍ تُقال ولا تُخفى ──────────────────────────────
-        // إخفاؤها يجعل الشاشةَ تبدو تامّةً وهي ناقصة، فيُظنّ أنّ كلَّ شاحنةٍ
-        // مراقَبة. وهذه أوّلُ ما يُعمَل: يُركَّب لها جهاز.
+        // A truck without a device is stated, not hidden
+        // Hiding it makes the screen look complete when it is not, and every truck would be assumed monitored. It is the first thing to fix: a device gets installed.
         tracked: !!lv,
         stale,
         lastMessageAt: lv?.lastMessageAt || null,
@@ -3644,7 +3350,7 @@ exports.getFleetHealth = async (req, res) => {
           maxPressurePsi: lv?.maxTirePressurePsi ?? null,
           minPressurePsi: lv?.minTirePressurePsi ?? null,
           faults: lv?.tireFaults ?? 0,
-          // قراءةٌ محمولةٌ من نبضةٍ سابقة — تُعرَض ولا يُبنى عليها إنذار.
+          // A reading carried over from an earlier heartbeat: shown but no alarm is built on it.
           carriedOver: !!lv?.tiresCarriedOver,
           list: (lv?.tires || []).map((t) => ({
             position: t.position || '', tempC: t.tempC ?? null, pressurePsi: t.pressurePsi ?? null, fault: !!t.fault,
@@ -3664,9 +3370,8 @@ exports.getFleetHealth = async (req, res) => {
       };
     });
 
-    // ── الترتيب: ما يحتاج عملًا أوّلًا ────────────────────────────────────────
-    // الشاشةُ تُفتَح لتُقرأ من أعلاها، فالشاحنةُ التي عليها تنبيهٌ أو صيانةٌ
-    // متأخّرة تسبق التي لا شيءَ فيها. والترتيبُ بالحروف يجعل القراءةَ بحثًا.
+    // Order: what needs work first
+    // The screen is read from the top, so a truck with an alert or overdue maintenance precedes one with nothing. Alphabetical order turns reading into searching.
     const weight = (r) => (r.alerts.some((a) => a.severity === 'critical') ? 5 : r.alertCount ? 3 : 0)
       + (r.maintenance?.status === 'overdue' ? 2 : r.maintenance?.status === 'due' ? 1 : 0)
       + (r.tires.faults ? 2 : 0);
@@ -3693,32 +3398,23 @@ exports.getFleetHealth = async (req, res) => {
   }
 };
 
-// ═══════════════════════════════════════════════════════════════════════════
-//  مصاريف السوّاق — ما يُستحقّ للرجل على كلّ حمولة، وهل صُرِف
-// ═══════════════════════════════════════════════════════════════════════════
+// Driver expenses: what the man is owed per load and whether it was paid
 /**
- * الصفحةُ تجيب عن سؤالٍ واحدٍ للحسابات: مَن نحوّل له اليوم وكم؟
- *
- * ولا تُنشئ بياناتٍ جديدة: المبلغُ هو `driverExpense` الذي كُتب وقت إنشاء
- * الحمولة — وبونصُ الجمعة مضافٌ فيه أصلًا وقتَها (راجع `createShipment`)، فهو
- * «المصروف الفعلي» لا تقديرًا يُعاد حسابُه هنا. وإعادةُ حسابه كانت ستجعل الرقمَ
- * يتغيّر إن غُيِّرت قيمةُ البونص في الإعدادات بعد شهر — ورقمٌ صُرِف لا يُعاد
- * حسابُه.
- *
- * والإيبانُ يُقرأ من ملفّ السائق لا من سطر الحمولة: يُكتب مرّةً ويُصحَّح مرّةً.
- * وإيبانُ الأوّلِ وحدَه يُعرض حين يكون سائقان — هو المستلم، والثاني اسمٌ يُذكَر.
+ * The page answers one accounting question: who do we transfer to today and how much?
+ * It creates no data: the amount is `driverExpense` written at load creation, with the Friday bonus already added (see `createShipment`), so a paid number is never recomputed if the bonus setting changes.
+ * The IBAN is read from the driver's file; with two drivers only the first's IBAN shows, as recipient.
  */
 exports.getDriverExpenses = async (req, res) => {
   try {
     const q = req.query || {};
     const match = { driverExpense: { $gt: 0 } };
 
-    // يومٌ أو مدًى أو شهر — والقياسُ بتاريخ التحميل لا بلحظة إنشاء الصفّ.
+    // A day, range or month, measured on loading date and not the row creation instant.
     const monthRange = (mk) => {
       const [y, m] = String(mk).split('-').map(Number);
       if (!y || !m) return null;
       const ym = `${y}-${String(m).padStart(2, '0')}`;
-      return [_month(ym), _month(_monthKeyShift(ym, 1))]; // شهرُ الرياض
+      return [_month(ym), _month(_monthKeyShift(ym, 1))]; // Riyadh month
     };
     let from = null; let to = null;
     if (q.month && monthRange(q.month)) [from, to] = monthRange(q.month);
@@ -3742,13 +3438,11 @@ exports.getDriverExpenses = async (req, res) => {
         ...(Number.isFinite(asNum) ? [{ waybillNumber: asNum }] : []),
       ];
     }
-    // المشرفُ يقرأ الكلَّ الآن (راجع supervisorVehicleIds)، والقيدُ يبقى معرَّفًا
-    // من مكانٍ واحدٍ فلو رُدّت السياسةُ رُدَّت هنا معها.
+    // A supervisor reads everything now (see supervisorVehicleIds), and the restriction stays defined in one place, so if the policy is reversed it is reversed here with it.
     const scope = await supervisorVehicleIds(req);
     if (scope) match.vehicle = { $in: scope };
 
-    // الإيبانُ يُضَمّ في القاعدة لا في Node: ألفُ صفٍّ × نداءٌ لكلّ سائقٍ كان
-    // سيعني ألفَ استعلامٍ على وصلةٍ محدودة الإنتاجيّة.
+    // The IBAN is joined in the database, not in Node: a thousand rows times a call per driver would be a thousand queries over a throughput-limited link.
     const rows = await FleetShipment.aggregate([
       { $match: match },
       { $sort: { loadDate: -1, waybillNumber: -1 } },
@@ -3764,7 +3458,7 @@ exports.getDriverExpenses = async (req, res) => {
       } },
     ]).allowDiskUse(true);
 
-    // البطاقاتُ تُحسب على المطابق كلِّه لا على الصفحة — وهي سببُ وجودها.
+    // Cards are computed over the whole match, not the page, which is the reason they exist.
     const [sum] = await FleetShipment.aggregate([
       { $match: match },
       { $group: {
@@ -3792,10 +3486,8 @@ exports.getDriverExpenses = async (req, res) => {
 };
 
 /**
- * تعليمُ الصرف — فعلُ الحسابات.
- *
- * يقبل صفًّا أو صفوفًا: الحساباتُ تحوّل دفعةً واحدةً لعشرين سائقًا، فتعليمُها
- * صفًّا صفًّا عشرون نداءً وعشرون فرصةً لأن يُنسى واحد.
+ * Mark as paid out - the accounting action.
+ * Accepts one row or several: accounting transfers to twenty drivers in one batch, and marking row by row would be twenty calls and twenty chances to forget one.
  */
 exports.setDriverExpensePaid = async (req, res) => {
   try {
@@ -3811,7 +3503,7 @@ exports.setDriverExpensePaid = async (req, res) => {
         driverExpensePaidBy: req.user._id,
         driverExpensePaidByName: [me?.firstName, me?.lastName].filter(Boolean).join(' '),
       }
-      // ورفعُ العلامة يمحو أثرَها: «سُدِّد بواسطة فلان» تحت صفٍّ غيرِ مسدَّد كذب.
+      // Clearing the flag erases its trace: paid by someone under an unpaid row is false.
       : { driverExpensePaid: false, driverExpensePaidAt: null, driverExpensePaidBy: null, driverExpensePaidByName: '' };
     const r = await FleetShipment.updateMany({ _id: { $in: ids } }, { $set });
     await logAudit({

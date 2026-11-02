@@ -16,32 +16,22 @@ const isStaff = (u) => SALES_STAFF_ROLES.includes(u.role);
 // otherwise the grant passes the route gate but the handler still rejects it.
 const staffReq = (req) => isStaff(req.user) || grantedBySection(req);
 const isAdmin = (u) => SALES_ADMIN_ROLES.includes(u.role);
-// ── مَن يكتب الهدف ───────────────────────────────────────────────────────────
-// الهدفُ يضعه المديرُ لفريقه؛ مندوبٌ يكتب هدفَ نفسِه ليس هدفًا. وكانت الشاشةُ
-// تُظهر أزرارَ الهدف لكلّ من له «تعديلٌ» على القسم — وهو حالُ المندوب نفسِه في
-// المصفوفة — ثمّ يردّه هذا الحارسُ ٤٠٣. فالقاعدةُ واحدةٌ في الطرفين
-// (`canSetSalesTargets` في lib/finance): أدوارُ الإدارة، ومعها دورٌ من **خارج**
-// فريق القسم مُنح «تعديلَه» بيد صاحب النظام (مديرٌ أعلى يُصنَع غدًا). أمّا
-// أعضاءُ الفريق أنفسُهم فيقرؤون الأهدافَ ولا يكتبونها.
+// Who writes the target.
+// A manager sets the team's target; a rep writing his own is not a target. The screen showed target buttons to anyone with edit on the section (which includes the rep in the matrix) and this guard then returned 403. The rule is the same on both sides (`canSetSalesTargets` in lib/finance): management roles, plus a role outside the section team granted edit by the system owner (a future senior manager). Team members read targets but do not write them.
 const canSetTargets = (req) => isAdmin(req.user)
   || (req.sectionAccess === 'edit' && !isStaff(req.user));
 const denyNonStaff = (req, res) => { if (!staffReq(req)) { res.status(403).json({ message: 'Insufficient permissions' }); return true; } return false; };
 const denyNonAdmin = (req, res) => { if (!canSetTargets(req)) { res.status(403).json({ message: 'الأهدافُ يحدّدها مديرُ المبيعات', code: 'TARGETS_MANAGER_ONLY' }); return true; } return false; };
 const badId = (id, res) => { if (!mongoose.isValidObjectId(id)) { res.status(400).json({ message: 'Invalid id' }); return true; } return false; };
 const round2 = (n) => Math.round((Number(n) || 0) * 100) / 100;
-// ── يُمحى المخزَّنُ ثمّ يُنادى ───────────────────────────────────────────────
-// لوحةُ المبيعات محفوظةٌ ١٢ ثانية (`dash:sales:`). والنداءُ بلا محوٍ يُعيد
-// الشاشاتِ إلى الرقم القديم ولا يوقظها شيءٌ بعده — فيبدو الحفظُ متأخّرًا
-// خطوةً (راجع announce-before-invalidate). و`sales:updated` نداءٌ واحدٌ لكلّ ما
-// يتغيّر في القسم: يسمعه الهاتفُ (يستمع لحدثٍ واحد) والويبُ معًا.
+// Clear the cache, then broadcast.
+// The sales dashboard is cached 12 seconds (`dash:sales:`). Broadcasting without clearing sends screens back to the old number with nothing to wake them, so a save looks one step late (see announce-before-invalidate). `sales:updated` is a single event for anything changing in the section: the phone (one event listener) and the web both hear it.
 const emitSales = (event, payload = {}) => {
   try { require('../utils/ttlCache').clear('dash:sales:'); } catch (e) {}
   try { emitToAll(event, payload); emitToAll('sales:updated', {}); } catch (e) {}
 };
-// ── والشهرُ شهرُ الرياض ──────────────────────────────────────────────────────
-// كان الشهرُ يُحسَب بتوقيت الخادم (UTC)، فصفقةٌ تُكسَب في الساعات الثلاث
-// الأولى من أوّل الشهر تُحسَب على الشهر الذي قبله، و«هذا الشهر» يتأخّر ثلاثَ
-// ساعاتٍ عن التقويم الذي يقرؤه الفريق.
+// The month is the Riyadh month.
+// The month used server time (UTC), so a deal won in the first three hours of the month counted for the previous one and this month lagged the team's calendar by three hours.
 const RIYADH_MS = 3 * 60 * 60 * 1000;
 const PERIOD_RE = /^\d{4}-(0[1-9]|1[0-2])$/;
 const thisPeriod = () => new Date(Date.now() + RIYADH_MS).toISOString().slice(0, 7);
@@ -51,11 +41,8 @@ const periodRange = (period) => {
   return { start: new Date(Date.UTC(y, m - 1, 1) - RIYADH_MS), end: new Date(Date.UTC(y, m, 1) - RIYADH_MS - 1) };
 };
 /**
- * هدفُ الفريق في الشهر.
- *
- * صفُّ «الفريق كلّه» (بلا مندوب) هو هدفُ الفريق إن وُضع، وإلّا فمجموعُ أهداف
- * المناديب. وكان الاثنان يُجمَعان معًا: فريقٌ هدفُه مليونٌ موزَّعٌ على مناديبه
- * يُقرأ مليونين، ونسبةُ التحقيق نصفَ حقيقتها.
+ * Team target for the month.
+ * The whole-team row (no rep) is the team target if set, otherwise the sum of rep targets. The two used to be added together, so a team target of one million split across reps read as two million and attainment was half its true value.
  */
 const teamTargetOf = (targets) => {
   const team = targets.find((t) => !t.rep);
@@ -64,8 +51,7 @@ const teamTargetOf = (targets) => {
 };
 // A rep is anyone who can own deals: sales + the admins/managers.
 const repFilter = { role: { $in: [...SALES_STAFF_ROLES, 'crm_manager', 'crm_specialist'] }, isActive: true };
-// وقائمةُ المناديب الحاليّين لا تضمّ من أنهت الموارد البشريّة خدمتَه — حسابُه
-// يبقى مفعّلًا بعد الإنهاء، فالفلترُ وحدَه لا يكفي.
+// The current-reps list excludes anyone whose service HR ended: his account stays active after termination, so the filter alone is not enough.
 const currentReps = async (select) => {
   const [all, ended] = await Promise.all([User.find(repFilter).select(select).sort({ firstName: 1 }).lean(), endedStaff()]);
   return { reps: all.filter((r) => !userEnded(ended, r)), former: all.filter((r) => userEnded(ended, r)) };
@@ -197,7 +183,7 @@ exports.listTargets = async (req, res) => {
     const filter = {};
     if (period) filter.period = period;
     const targets = await SalesTarget.find(filter).populate('rep', 'firstName lastName email role').sort({ period: -1 }).lean();
-    // `canEdit` يقوله الخادم: الشاشةُ والهاتفُ يقرآنه فلا يُظهران زرًّا يُردّ.
+    // `canEdit` is stated by the server so the screen and phone do not show a button that would be rejected.
     res.json({ targets, canEdit: canSetTargets(req) });
   } catch (error) {
     console.error('listTargets error:', error);
@@ -210,8 +196,7 @@ exports.createTarget = async (req, res) => {
     if (denyNonAdmin(req, res)) return;
     const { rep, amountTarget, dealsTarget, notes } = req.body;
     const period = String(req.body.period || '').trim();
-    // الفترةُ تُكتب بالشهر (YYYY-MM): «2026/10» أو «10-2026» تُحفَظ ولا يقرؤها
-    // شهرٌ أبدًا — هدفٌ موجودٌ لا يظهر في لوحةٍ ولا في أداء.
+    // The period is written as a month (YYYY-MM): other formats such as 2026/10 or 10-2026 are saved but never read by any month, leaving a target that appears in no dashboard or performance view.
     if (!PERIOD_RE.test(period)) return res.status(400).json({ message: 'الفترةُ مطلوبةٌ بصيغة السنة والشهر (مثال: 2026-10)' });
     if (rep && !mongoose.isValidObjectId(rep)) return res.status(400).json({ message: 'المندوبُ غير صحيح' });
     if (Number(amountTarget) < 0 || Number(dealsTarget) < 0) return res.status(400).json({ message: 'الهدفُ لا يكون سالبًا' });
@@ -249,7 +234,7 @@ exports.updateTarget = async (req, res) => {
     for (const f of ['amountTarget', 'dealsTarget']) {
       if (req.body[f] === undefined) continue;
       const n = Number(req.body[f]);
-      // نصٌّ فارغٌ من حقل رقمٍ كان يُلقى على القاعدة فيردّ ٥٠٠ بلا سبب.
+      // An empty string from a numeric field used to reach the database and return 500 with no reason.
       if (!Number.isFinite(n) || n < 0) return res.status(400).json({ message: 'الهدفُ رقمٌ غير سالب' });
       target[f] = n;
     }
@@ -295,8 +280,7 @@ exports.getPerformance = async (req, res) => {
     const openMap = {}; open.forEach((o) => { openMap[String(o._id)] = o; });
     const tgtMap = {}; targets.forEach((t) => { if (t.rep) tgtMap[String(t.rep)] = t; });
 
-    // المنتهي لا يُعدّ مندوبًا حاليًّا — لكنّ ما كسبه في الشهر وما بقي باسمه من
-    // صفقاتٍ مفتوحة لا يسقط من المجموع: يظهر صفًّا «سابقًا» ما دام له رقم.
+    // An ended employee is not a current rep, but what he won this month and the open deals still in his name stay in the total, shown as a former row while they have a number.
     const gone = former.filter((r) => wonMap[String(r._id)] || openMap[String(r._id)]);
     const rows = [...reps, ...gone.map((r) => ({ ...r, former: true }))].map((r) => {
       const w = wonMap[String(r._id)] || { count: 0, value: 0 };

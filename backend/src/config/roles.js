@@ -1,66 +1,35 @@
 /**
- * roles — الهيكل الوظيفي للشركة: كل قسم له **مدير** و**موظف**، ومكتوب مرة واحدة.
- *
- * القاعدة اللي الملف ده بيفرضها:
- *
- *   ١. كل قسم في config/sections.js له دور مدير ودور موظف على الأقل.
- *   ٢. دور المدير **لازم** ينتهي بـ `_manager`. القاعدة دي مش تسمية جميلة وبس —
- *      `businessReview.isManagerRole` بيعتمد عليها حرفيًا عشان يعرف مين يقعد مع
- *      الإدارة. أي دور موظف بينتهي بـ `_manager` بيبقى مدير بالغلط.
- *   ٣. دور الموظف **ممنوع** ينتهي بـ `_manager`.
- *   ٤. كل دور له اسم عربي وإنجليزي واضح. مفيش مفاتيح مبهمة زي `operations`
- *      لوحدها — مين ده؟ القسم ولا الشخص؟
- *
- * الفحوصات دي بتتنفّذ تحت وقت التحميل، فأي دور جديد يكسر القاعدة بيوقّف السيرفر
- * فورًا بدل ما يعدّي ويظهر كمشكلة صلاحيات غامضة بعد شهر.
- *
- * الأسماء الوظيفية الحقيقية اتسابت زي ما هي — «محاسب» و«مخلّص جمركي» و«مندوب
- * مبيعات» أوضح بكتير من `accounting_staff`. اللي اتغيّر هو المبهم والمصنَّف غلط بس.
+ * Company role structure: each section has a manager and a staff role, defined once. Enforced at load time, so a violation stops the server:
+ * 1. Every section in config/sections.js has both roles.
+ * 2. Manager roles end in _manager (businessReview.isManagerRole relies on it); staff roles must not.
+ * 3. Every role has clear Arabic and English names.
  */
 
-// ── أدوار مش تبع قسم معيّن ──────────────────────────────────────────────────
+// Roles not tied to a section
 const GLOBAL_ROLES = [
   { key: 'super_admin', ar: 'مدير النظام', en: 'System Administrator' },
   { key: 'admin', ar: 'الإدارة العليا', en: 'Executive Management' },
   { key: 'moderator', ar: 'مشرف عام', en: 'General Supervisor' },
-  // ── المدير الماليّ فوق القسم لا فيه ─────────────────────────────────────────
-  // مديرُ الحسابات يدير «الإدارة الماليّة» يومًا بيوم، والمدير الماليّ (CFO) فوقه
-  // يرى مالَ الشركة كلَّه ويجلس مع الإدارة. ومفتاحُه `cfo` لا `*_manager`: تلك
-  // اللاحقةُ لمديري الأقسام، وهو ليس مديرَ قسمٍ واحد. يُعدّ مديرًا في مراجعة
-  // الأعمال من `EXTRA_MANAGER_ROLES`، وقسمُه الماليّ من `sections.defaultRoles`.
+  // The CFO sits above the department, not in it: sees all company finances and joins management. Key is cfo, not *_manager, since the suffix is for single-department managers. Counted as a manager in business review via EXTRA_MANAGER_ROLES; the finance section comes from sections.defaultRoles.
   { key: 'cfo', ar: 'المدير المالي', en: 'Chief Financial Officer' },
-  // ── إدارةُ البيانات ودعم القرار (صاحبُ الشركة، ٢٠٢٦/١٠/٢٢) ─────────────────
-  // فريقٌ يعمل على بيانات الأقسام كلِّها، فلا قسمَ له وحده. افتراضُه «تعديل» على
-  // كلّ قسم (`DATA_ROLES` في sections.defaultAccess) — ومديرُ النظام يضيّقه من
-  // صفحة الصلاحيّات قسمًا قسمًا، فما يُطلب فتحُه بعدها يُفتح بضغطة. وليسوا في
-  // `FULL_ACCESS_ROLES`: تلك تتجاوز المصفوفةَ فلا تُضيَّق أبدًا.
-  // ومديرُهم ينتهي بـ`_manager` عن قصد: مديرُ إدارةٍ يجلس في مراجعة الأعمال.
+  // Data and decision-support team works across all sections, so it has no section of its own. Default is edit on every section (DATA_ROLES in sections.defaultAccess); a super admin narrows it per section on the permissions page. Not in FULL_ACCESS_ROLES, which bypass the matrix and cannot be narrowed. Its manager ends in _manager on purpose (sits in business review).
   { key: 'data_manager', ar: 'مدير إدارة البيانات ودعم القرار', en: 'Data & Decision Support Manager' },
   { key: 'data_analyst', ar: 'محلل بيانات', en: 'Data Analyst' },
   { key: 'data_entry', ar: 'مدخل بيانات', en: 'Data Entry Specialist' },
   { key: 'employee', ar: 'موظف', en: 'Employee' },
-  // شريك خارجي (عميل أو مورد) — له البوابة، مش أقسام الشركة.
+  // External partner (customer or vendor): gets the portal, not company sections.
   { key: 'client', ar: 'شريك خارجي', en: 'External Partner' },
-  // ── حسابُ Media Go — شريكٌ يرى شاشةً واحدة ─────────────────────────────────
-  // شريكٌ يركّب الشاشات على دبّاباتنا، يدخل فيجد بلاغاتِ الأعطال التي رفعناها
-  // له ولا يرى غيرَها. حصرُه في config/scopedRoles.js (لا في هذه القائمة).
-  // والمفتاحُ لا ينتهي بـ`_manager` وإن كان اللقبُ «مدير حساب» — القاعدة ٢ فوق.
+  // Media Go account: a partner who sees one screen (fault reports we raised for them). Confined in config/scopedRoles.js. The key does not end in _manager despite the title (rule 2).
   { key: 'mediago_account', ar: 'مدير حساب Media Go', en: 'Media Go Account Manager' },
 ];
 
-/**
- * القسم → مديره وموظفوه.
- * `section` لازم يطابق مفتاح في config/sections.js حرفيًا.
- */
+/** Section to its manager and staff roles. `section` must match a key in config/sections.js exactly. */
 const SECTION_ROLES = [
   { section: 'Operations',
     manager: { key: 'operations_manager', ar: 'مدير العمليات', en: 'Operations Manager' },
     staff: [{ key: 'operations_staff', ar: 'موظف العمليات', en: 'Operations Team' }] },
 
-  // ── قسمُ التحصيل ────────────────────────────────────────────────────────
-  // كان التحصيلُ عملًا موزَّعًا: صفحةُ «متابعات التحصيل» تحت العملاء والمالية،
-  // وأعمدةُ الفاتورة والتحصيل داخل سير عمل التشغيل، ولا قسمَ يملكهما. فصار له
-  // قسمُه وأدوارُه: العملاءُ الذين نحصّل منهم، والموردون الذين نسدّد لهم.
+  // Collections section: collections used to be spread across a follow-up page and workflow columns with no owner; it now has its own section and roles, covering customers we collect from and vendors we pay.
   { section: 'Collections',
     manager: { key: 'collections_manager', ar: 'مدير التحصيل', en: 'Collections Manager' },
     staff: [{ key: 'collections_staff', ar: 'موظف التحصيل', en: 'Collections Officer' }] },
@@ -73,8 +42,7 @@ const SECTION_ROLES = [
     manager: { key: 'shipment_orders_manager', ar: 'مدير طلبات الشحنات', en: 'Shipment Orders Manager' },
     staff: [
       { key: 'shipment_orders_staff', ar: 'موظف طلبات الشحنات', en: 'Shipment Orders Team' },
-      // «المتابعة» (صاحبُ الشركة، ٢٠٢٦/١٠/٢٦): يتابع الشحناتِ من الجوّال — يغيّر
-      // حالتَها بتفاصيلها ويتّصل ويكتب ملاحظة. شاشتُه الشحناتُ بطاقاتٍ أوّلًا.
+      // The follow-up role: tracks shipments from mobile (changes status with details, calls, adds a note). Its screen is shipment cards first.
       { key: 'shipment_orders_followup', ar: 'المتابعة', en: 'Shipment Follow-up',
         distinct: 'يتابع الشحناتِ القائمة: يغيّر حالتَها بتفاصيلها (سببُ الإلغاء، رفعُ السند)، '
           + 'ويتّصل بالسائق ويكتب ملاحظةَ متابعة. وشاشتُه الشحناتُ بطاقاتٍ كبيرةً للجوّال أوّلًا.' },
@@ -118,27 +86,11 @@ const SECTION_ROLES = [
 
   { section: 'B2C',
     manager: { key: 'b2c_manager', ar: 'مدير قطاع الأفراد', en: 'B2C Manager' },
-    // «مدير مشروع» لقب حقيقي، بس لو المفتاح انتهى بـ `_manager` كان هيبقى عضو في
-    // اجتماعات الإدارة بالغلط — فالمفتاح `_lead` واللقب المعروض زي ما هو.
-    // ── ومشرفُ المناديب دورٌ ثالث، ثمّ صار دورين ─────────────────────────
-    // كان «المشرف» صلةً فقط (`B2CRep.supervisor`)، فلم يكن يُسنَد مندوبٌ إلّا
-    // لمدير مشروع أو مدير القطاع — ومشرفو الميدان الحقيقيّون لا حساب لهم.
-    // فصار له دور: يرى مناديبه ويفتح شاشاتَه فحسب، ولا يوزّع المناديب
-    // (يحرسه `middleware/b2cGuards` لا قائمةُ الصفحات وحدَها).
-    //
-    // ثمّ بان أنّ المشرفَ في الميدان رجلان لا رجل، وعملُهما لا يتقاطع:
-    //   • **التشغيليّ** يقف على يوم المندوب: إدخالُه اليوميّ وأوامرُ تشغيله
-    //     وأداؤه وعهدتُه ومخزنُه.
-    //   • **التفقّديّ** يقف على لحظةٍ واحدة: تفقّدُ بداية الدوام بالكاميرا
-    //     الحيّة وسجلُّه (راجع b2cDutyController) — لا يدخل يومًا ولا يصدر أمرًا.
-    // وكانا دورًا واحدًا، فمن يملك شاشةَ التفقّد يملك الإدخالَ اليوميّ معها.
-    // وكلاهما لا يوزّع المناديب.
+    // Project manager is a real title, but a _manager key would wrongly seat it in management meetings, so the key is _lead.
+    // Rep supervisor has two roles that do not overlap: operational (the rep's day: entry, orders, performance, custody, store) and inspection (start-of-duty live-camera check, b2cDutyController).
+    // Neither distributes reps (middleware/b2cGuards).
     staff: [
-      // ── نائبُ مدير القطاع ───────────────────────────────────────────────
-      // فوق مديري المشاريع وتحت مدير القطاع، وله ما للمدير في القسم: يضيف
-      // الموظّفين من سجلّ النقل الخفيف، وتُفتَح له العهدةُ ومركباتُ القسم.
-      // ومفتاحُه لا ينتهي بـ`_manager` (القاعدة ٣): صلاحيّاتُه في قسمه، ومقعدُ
-      // القسم في اجتماعات الإدارة يبقى لمديره.
+      // Sector deputy: above project managers, below the sector manager. Has the manager's rights within the section (adds staff from the light transport register; custody and section vehicles open). Key does not end in _manager (rule 3); the section's management-meeting seat stays with its manager.
       { key: 'b2c_deputy', ar: 'نائب مدير قطاع الأفراد', en: 'B2C Deputy Manager',
         distinct: 'له صلاحيّاتُ مدير القطاع في القسم كلِّه، ويعلو مديري المشاريع.' },
       { key: 'b2c_project_lead', ar: 'مدير مشروع - أفراد', en: 'B2C Project Lead' },
@@ -160,11 +112,7 @@ const SECTION_ROLES = [
     manager: { key: 'hr_manager', ar: 'مدير الموارد البشرية', en: 'HR Manager' },
     staff: [{ key: 'hr_specialist', ar: 'أخصائي موارد بشرية', en: 'HR Specialist' }] },
 
-  // كان لهذا القسم ثلاثةُ أدوار موظّفين (قائد فريق، أخصائي، مندوب) بينما لكلّ
-  // قسمٍ آخر دورٌ واحد. والفرقُ بينها لم يكن صلاحيّةً بل لقبًا — ثلاثتها ترى
-  // القسمَ نفسَه — فكان الفارقُ حَيرةً عند إنشاء المستخدم لا فائدةً بعده.
-  // صار دورًا واحدًا، والألقابُ الثلاثة تبقى في `RENAMED` فتُقرأ الحساباتُ
-  // القديمة صحيحةً وتُحوَّل.
+  // This section had three staff roles that differed only by title, not permission. Merged into one; the old titles stay in RENAMED so old accounts still resolve and migrate.
   { section: 'CRM',
     manager: { key: 'crm_manager', ar: 'مدير إدارة العلاقات', en: 'CRM Manager' },
     staff: [{ key: 'crm_specialist', ar: 'أخصائي علاقات العملاء', en: 'CRM Specialist' }] },
@@ -181,22 +129,10 @@ const SECTION_ROLES = [
     manager: { key: 'procurement_manager', ar: 'مدير المشتريات', en: 'Procurement Manager' },
     staff: [{ key: 'procurement_staff', ar: 'موظف المشتريات', en: 'Procurement Officer' }] },
 
-  // «مراجعة الأعمال» مالهاش مدير ولا موظف عن قصد: هي منتدى بيقعد فيه مديرو كل
-  // الأقسام مع الإدارة، فمفيش قسم يملكها. الوصول لها بيتحدد بالدور في القسم
-  // بتاعك، مش بدور خاص بيها.
+  // Business review intentionally has no manager or staff role: it is a forum for all section managers with management, so access follows the role in the user's own section.
 ];
 
-// ── ولكلّ قسمٍ متدرّب ──────────────────────────────────────────────────────
-//
-// دورٌ ثالثٌ في كلّ قسم: «متدرّب». ولا يخالف قاعدةَ «مدير وموظّف فقط» أدناه،
-// لأنّه يختلف عنهما في **الصلاحيّة** لا في اللقب: **لا يرث شيئًا**. الموظّفُ
-// يأخذ قسمَه كاملًا من لحظة إنشاء حسابه؛ والمتدرّبُ لا يرى إلّا ما يُفتَح له
-// من صفحة الصلاحيّات — قسمًا قسمًا وصفحةً صفحة. فسكوتُ المصفوفة عنه يعني «لا
-// شيء» (راجع utils/permissions.inheritsNothing)، كالدور المصنوع من الشاشة.
-//
-// ولذلك لا يدخل `staff`: دخولُه يمنحه القسمَ افتراضيًّا (`sections.defaultAccess`
-// تقرأ `rolesOfSection`). يُشتقّ مفتاحُه واسمُه من مدير القسم، فقسمٌ يُضاف
-// غدًا يأتي بمتدرّبه بلا سطرٍ ثانٍ.
+// Every section also has a trainee role. It differs in permission, not title: it inherits nothing and sees only what is granted on the permissions page, section by section and page by page. Matrix silence means none (utils/permissions.inheritsNothing). Not part of `staff`, since staff gets the section by default (sections.defaultAccess reads rolesOfSection). Key and name derive from the section manager.
 for (const s of SECTION_ROLES) {
   s.trainee = {
     key: s.manager.key.replace(/_manager$/, '_trainee'),
@@ -205,7 +141,7 @@ for (const s of SECTION_ROLES) {
   };
 }
 
-// ── مفاتيح جاهزة ────────────────────────────────────────────────────────────
+// Ready-made keys
 const MANAGER_ROLES = SECTION_ROLES.map((s) => s.manager.key);
 const STAFF_ROLES = SECTION_ROLES.flatMap((s) => s.staff.map((x) => x.key));
 const TRAINEE_ROLES = SECTION_ROLES.map((s) => s.trainee.key);
@@ -218,13 +154,13 @@ const ALL_ROLES = ALL_ROLE_DEFS.map((r) => r.key);
 const LABELS_AR = Object.fromEntries(ALL_ROLE_DEFS.map((r) => [r.key, r.ar]));
 const LABELS_EN = Object.fromEntries(ALL_ROLE_DEFS.map((r) => [r.key, r.en]));
 
-/** القسم اللي الدور ده تبعه، أو null للأدوار العامة. */
+/** The section this role belongs to, or null for general roles. */
 const sectionOfRole = (role) => {
   const s = SECTION_ROLES.find((x) => x.manager.key === role || x.trainee.key === role || x.staff.some((y) => y.key === role));
   return s ? s.section : null;
 };
 
-/** الأدوار (مدير + موظفين) اللي بتملك القسم ده — والمتدرّبُ ليس منها: لا يملك، يُمنَح. */
+/** Roles (manager + staff) that own this section. Trainees are excluded: they are granted access, not owners. */
 const rolesOfSection = (section) => {
   const s = SECTION_ROLES.find((x) => x.section === section);
   return s ? [s.manager.key, ...s.staff.map((y) => y.key)] : [];
@@ -234,46 +170,30 @@ const isManager = (role) => MANAGER_ROLES.includes(role);
 const isStaff = (role) => STAFF_ROLES.includes(role);
 const isTrainee = (role) => TRAINEE_ROLES.includes(role);
 
-// ── أسماء المفاتيح القديمة ──────────────────────────────────────────────────
-// اتسابت هنا عشان أي بيانات أو إعدادات قديمة تتقرا صح لو فضلت مخزّنة في مكان
-// فاتنا. scripts/migrateRoleKeys.js بيحوّل المستخدمين والصلاحيات.
+// Old role key names, kept so legacy stored data and settings still resolve. scripts/migrateRoleKeys.js converts users and permissions.
 const RENAMED = {
   operations: 'operations_staff',
   purchasing: 'procurement_staff',
   administrator: 'administration_staff',
   b2c_head: 'b2c_manager',
   b2c_project_manager: 'b2c_project_lead',
-  // «المدير المالي» كان مديرَ قسم الحسابات؛ صار المديرَ الماليَّ فوقه (cfo)، وللقسم
-  // مديرُه: مدير الحسابات (accounting_manager).
+  // The old financial manager was the accounting department manager; now cfo sits above, and the department manager is accounting_manager.
   finance_manager: 'cfo',
-  // ألقابُ CRM الثلاثة صارت دورًا واحدًا.
+  // The three CRM titles became one role.
   crm_team_lead: 'crm_specialist',
   crm_agent: 'crm_specialist',
 };
-/** يرجّع المفتاح الحالي لأي دور، حتى لو اتبعت بالاسم القديم. */
+/** Returns the current key for any role, even if given by its old name. */
 const canonicalRole = (role) => RENAMED[role] || role;
 
-// ── الفحوصات ────────────────────────────────────────────────────────────────
-// بتتنفّذ وقت التحميل: خطأ هنا يوقّف السيرفر، وده مقصود. دور صلاحياته غلط أخطر
-// بكتير من سيرفر مش قايم — السيرفر الواقع بتلاحظه في ثانية.
-// ملاحظة: الملف ده **مبيعملش require لـ sections.js**. لو عمل، تبقى دايرة:
-// roles → sections → constants → roles، وnode بيرجّع نص وحدة منهم فاضية.
-// التأكد إن كل قسم متغطّى بيحصل في sections.js نفسه (assertRolesCoverSections)،
-// وهو المكان اللي الاتنين معروفين فيه أصلاً.
+// Load-time checks: an error stops the server on purpose, since a wrong role is worse than a down server. This file must not require sections.js (circular: roles, sections, constants, roles); coverage is checked in sections.js (assertRolesCoverSections).
 (function selfCheck() {
   const problems = [];
 
   for (const s of SECTION_ROLES) {
     if (!/_manager$/.test(s.manager.key)) problems.push(`دور المدير «${s.manager.key}» لازم ينتهي بـ _manager`);
     if (!s.staff.length) problems.push(`قسم «${s.section}» مفيهوش دور موظف`);
-    // ── دوران لكلّ قسم: مدير وموظّف. لا ثالث ─────────────────────────────
-    // القاعدةُ ليست ذوقًا: كلُّ دورٍ إضافيٍّ يظهر في قائمة إنشاء المستخدم
-    // وفي صفحة الصلاحيات وفي كلّ حارسِ قسم، فيصير على من يختار أن يعرف
-    // الفرقَ بين «أخصائي» و«مندوب» — وهو فرقٌ لا وجودَ له في الصلاحيّات.
-    // ومن أراد تمييزَ الألقاب فالمسمّى الوظيفيّ في ملفّ الموظّف موضعُه،
-    // لا دورُ النظام. تُفحَص وقت التحميل فلا يمرّ دورٌ ثالثٌ صامتًا.
-    // والاستثناءُ الوحيد: دورٌ يختلف في **الصلاحيّة** لا في اللقب — ويقول
-    // لماذا في `distinct`، فلا يمرّ لقبٌ ثانٍ متخفّيًا.
+    // Two roles per section: manager and staff, no third. Each extra role shows up in the user-create list, the permissions page and every section guard, and titles do not change permissions; use the job title on the employee file instead. Checked at load time. The only exception is a role that differs in permission, with the reason stated in `distinct`.
     const plain = s.staff.filter((x) => !x.distinct);
     if (plain.length > 1) {
       problems.push(`قسم «${s.section}» فيه ${s.staff.length} أدوار موظّفين (${s.staff.map((x) => x.key).join('، ')}) — القاعدة: دور مدير ودور موظّف فقط`);
@@ -293,10 +213,7 @@ const canonicalRole = (role) => RENAMED[role] || role;
   }
 })();
 
-/**
- * كل قسم متغطّى بمدير وموظف؟ بيتنده من sections.js بعد ما الاتنين يتحمّلوا.
- * `exempt` للأقسام اللي مالهاش أدوار عن قصد (مراجعة الأعمال منتدى مشترك).
- */
+/** Checks every section has a manager and a staff role; called from sections.js after both load. `exempt` lists sections intentionally without roles (business review is a shared forum). */
 const assertRolesCoverSections = (sectionKeys, exempt = []) => {
   const covered = new Set(SECTION_ROLES.map((s) => s.section));
   const unknown = SECTION_ROLES.map((s) => s.section).filter((k) => !sectionKeys.includes(k));
@@ -307,7 +224,7 @@ const assertRolesCoverSections = (sectionKeys, exempt = []) => {
   if (problems.length) throw new Error('config/roles.js — ' + problems.join(' · '));
 };
 
-/** فريقُ البيانات — «تعديل» افتراضًا على كلّ قسم، ويضيّقه مديرُ النظام. */
+/** Data team: edit by default on every section; a super admin narrows it. */
 const DATA_ROLES = ['data_manager', 'data_analyst', 'data_entry'];
 
 module.exports = {

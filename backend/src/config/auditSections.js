@@ -1,44 +1,16 @@
 /**
- * auditSections — إلى أيّ قسمٍ ينتمي كلُّ كيانٍ في سجلّ المراجعة.
- *
- * ── المشكلة التي يحلّها ─────────────────────────────────────────────────────
- * السجلُّ يقيّد الفعلَ باسم **نموذجِ قاعدة البيانات** الذي وقع عليه:
- * `WalletTransaction` و`DailyWallet` و`OperationsWorkflow`. وهذه أسماءٌ
- * برمجيّة لا يعرفها من يفتح الشاشة، وقائمةُ الفلتر كانت خمسةً وثلاثين منها
- * مسرودةً بلا ترتيب: بعضُها مترجَمٌ وبعضُها إنجليزيٌّ خام، وأربعةٌ منها
- * (`B2C` و`B2CRep` و`B2CProject` و`B2CDutyCheck`) تبدو للقارئ شيئًا واحدًا
- * مكرَّرًا أربعَ مرّات — فيختار واحدًا ويظنّ أنّه اختار الأربعة.
- *
- * والسؤالُ الذي يُسأل فعلًا ليس «أيُّ نموذج؟» بل **«أيُّ قسم؟»**: «ماذا جرى في
- * العهدة هذا الأسبوع؟»، «مَن لمس شيئًا في الموارد البشريّة؟». فالقسمُ هو
- * الفلترُ الأوّل، والكيانُ تفصيلٌ داخله لمن أراده.
- *
- * ── وأسماءُ الأقسام ليست جديدة ──────────────────────────────────────────────
- * هي مفاتيحُ `SECTIONS` نفسُها في `sectionWorkController` — الأقسامُ التي
- * يعرفها النظامُ في قائمته وصلاحيّاته. قائمةٌ ثانيةٌ بأسماءٍ أخرى كانت ستفترق
- * عنها عند أوّل قسمٍ يُضاف.
- *
- * وكلُّ كيانٍ لا يُذكر هنا يقع في `other` — لا يختفي من القائمة. الاختفاءُ
- * الصامت في سجلِّ مراجعةٍ أسوأُ من تصنيفٍ خاطئ: من يفلتر على الأقسام كلِّها
- * ولا يرى فعلًا يظنّ أنّه لم يقع.
+ * auditSections: maps each audit-log entity to its section.
+ * The log records the database model name, which users do not recognize, and the filter list had many unordered raw names. The real question is which section, so section is the first filter and entity the detail.
+ * Section keys are the SECTIONS keys of sectionWorkController, so there is no second list to drift.
+ * An unlisted entity falls into `other` rather than vanishing; a silently hidden action is worse than a misclassified one.
  */
 
 const { SECTION_LABELS_AR, SECTION_KEYS: SYSTEM_SECTION_KEYS } = require('./sections');
 
 /**
- * القسم ← اسمُه المقروء. `other` آخرًا دائمًا: هو ما لم يُصنَّف بعد.
- *
- * ── وكلُّ قسمٍ في النظام له سطرٌ هنا ─────────────────────────────────────────
- * كانت القائمةُ خمسةَ عشرَ قسمًا والنظامُ واحدٌ وعشرون: تطويرُ الأعمال ومراجعةُ
- * الأعمال والمبيعات والمشتريات والتسويق والشؤون الإداريّة والعمل عن بُعد ومنصّة
- * الأوبريشن غائبةٌ كلُّها. وأفعالُ بعضها تُقيَّد فعلًا (`tender`، `BrMeeting`)
- * فكانت ستقع في «أخرى» يومَ تُكتب.
- *
- * `sys` مفتاحُ القسم في `config/sections` — منه يؤخذ الاسمُ العربيّ، فيقرأ
- * المستخدمُ هنا الاسمَ الذي يقرؤه في القائمة الجانبيّة.
- *
- * وثلاثةٌ لا مقابلَ لها هناك: العهدةُ النقديّة (شاشةٌ داخل العمليّات يُسأل عنها
- * وحدَها)، والمستخدمون والنظام، و«أخرى».
+ * Section to display name; `other` is always last (unclassified).
+ * Every system section has a row. `sys` is the key in config/sections, used for the Arabic name shown in the sidebar.
+ * Three have no counterpart there: cash custody (a screen inside operations), users and system, and other.
  */
 const SECTIONS = [
   { key: 'operations', sys: 'Operations', en: 'Operations' },
@@ -67,8 +39,7 @@ const SECTIONS = [
   { key: 'other', ar: 'أخرى', en: 'Other' },
 ].map((s) => ({ ...s, ar: s.ar || SECTION_LABELS_AR[s.sys] || s.en }));
 
-// قسمٌ يُضاف إلى النظام ولا يُضاف هنا كان سيغيب عن فلتر السجلّ بصمت. فيُلحَق
-// بالقائمة باسمه قبل «النظام» و«أخرى» — يظهر ناقصَ الترتيب لا غائبًا.
+// A section added to the system but not here would silently disappear from the log filter, so it is appended before system and other: shown unordered, not missing.
 {
   const covered = new Set(SECTIONS.map((s) => s.sys).filter(Boolean));
   const missing = SYSTEM_SECTION_KEYS.filter((k) => !covered.has(k));
@@ -79,59 +50,54 @@ const SECTIONS = [
 }
 
 /**
- * الكيان ← قسمُه.
- *
- * يشمل كلَّ اسمٍ يمرَّر إلى `logAudit` في الخادم، لا ما وقع في القاعدة وحدَه:
- * كيانٌ لم يُقيَّد عليه فعلٌ بعدُ سيُقيَّد غدًا، ويجب أن يجد قسمَه جاهزًا.
+ * Entity to section.
+ * Covers every name passed to `logAudit` on the server, not only those already in the database; an entity logged tomorrow needs its section ready.
  */
 const ENTITY_SECTION = {
-  // العهدة النقدية
+  // Cash custody
   WalletTransaction: 'wallet', DailyWallet: 'wallet',
-  // الموارد البشرية
+  // Human resources
   Employee: 'hr', CompanyLicense: 'hr', LeaveRequest: 'hr',
   HrFormTemplate: 'hr', StaffStatusRequest: 'hr',
-  // العمليات — والسعرُ الخاصّ عمودٌ في كشف التشغيل نفسِه، والسائقون سجلُّها
+  // Operations; private price is a column of the operations sheet and drivers are its register.
   OperationsWorkflow: 'operations', PrivateSellingPrice: 'operations', Driver: 'operations',
-  // التحصيل
+  // Collections
   CollectionsParty: 'collections', CollectionsFollowUp: 'collections', CollectionAttachment: 'collections',
-  // المركبات — السجلّ ووثائقه وبطاقات السائقين ووثائق تأمين الشركة
+  // Vehicles: register, documents, driver cards and company insurance documents.
   VehicleMaster: 'vehicles', VehicleInsurancePolicy: 'vehicles',
   VehicleRegistryConfig: 'vehicles', DriverCard: 'vehicles', CorporatePolicy: 'vehicles',
   VehicleAuthorization: 'vehicles', VehicleAccident: 'vehicles', VehicleClaim: 'vehicles',
-  // إدارة الأسطول
+  // Fleet management
   FleetShipment: 'fleet', FleetVehicle: 'fleet', FleetVehicleLog: 'fleet',
   FleetDriver: 'fleet', FleetDriverExpense: 'fleet', FleetCustomer: 'fleet', FleetRequest: 'fleet',
-  // طلبات الشحنات
+  // Shipment orders
   ShipmentOrder: 'shipment-orders',
-  // التخليص الجمركي
+  // Customs clearance
   CustomsClearance: 'customs', CustomsContract: 'customs', CustomsParty: 'customs',
-  // قطاع الأفراد — ومنه النقلُ الخفيف: شاشتُه داخل القسم وصلاحيّتُه صلاحيّتُه
+  // Individuals sector, including light transport: its screen lives inside the section and shares its permission.
   B2C: 'b2c', B2CRep: 'b2c', B2CProject: 'b2c', B2CDutyCheck: 'b2c', B2CWalletEntry: 'b2c',
   LightTransportEmployee: 'b2c', LightTransportOrder: 'b2c', LtCustodyEntry: 'b2c', LtUserRental: 'b2c',
-  // لوكيشن سوليوشن — الورشة والمستودع
+  // Location Solutions: workshop and warehouse
   WorkshopPurchaseRequest: 'ls2', WorkshopTask: 'ls2', MaintenanceRequest: 'ls2',
   InventoryItem: 'ls2', Ls2StoreMovement: 'ls2', HtCustodyEntry: 'ls2', Ls2Asset: 'ls2', Ls2StoreItem: 'ls2', Ls2Supplier: 'ls2',
-  // العقود
+  // Contracts
   Contract: 'contracts',
-  // إدارة العلاقات
+  // Relations management
   Customer: 'crm', Vendor: 'crm', CrmVendor: 'crm', Dispute: 'crm', Complaint: 'crm',
-  // الإدارة المالية
+  // Finance management
   Payment: 'accounting', Invoice: 'accounting', JournalEntry: 'accounting',
-  // تطوير الأعمال — أسماؤها صغيرةُ الحرف كما تُقيَّد في `bdController`
+  // Business development; names are lowercase as recorded in `bdController`.
   tender: 'bd', partner: 'bd', opportunity: 'bd', activity: 'bd',
-  // مراجعة الأعمال
+  // Business review
   BrMeeting: 'business-review', BrAction: 'business-review', BrAssignment: 'business-review',
-  // تقنية المعلومات
+  // Information technology
   CompanyEmail: 'it', Asset: 'it', CollectionsEmailTemplate: 'collections',
-  // المستخدمون والنظام
+  // Users and system
   User: 'system', RolePermission: 'system', CustomRole: 'system',
   Branch: 'system', Lookup: 'system', System: 'system', PartnerAccount: 'system',
 };
 
-/**
- * قيودُ شبكة الأمان (middleware/auditTrail) تُكتب بكيان `Api:<اسم القسم في النظام>`
- * — فتُنسَب إلى قسمها هنا بلا سطرٍ لكلّ قسم.
- */
+/** Safety-net entries (middleware/auditTrail) use entity `Api:<system section name>`, so they map to their section without a row per section. */
 const apiEntityOf = (key) => { const s = SECTIONS.find((x) => x.key === key); return s && s.sys ? `Api:${s.sys}` : null; };
 const sectionOfApiEntity = (entity) => {
   if (!String(entity || '').startsWith('Api:')) return null;
@@ -141,7 +107,7 @@ const sectionOfApiEntity = (entity) => {
 
 const sectionOf = (entity) => ENTITY_SECTION[entity] || sectionOfApiEntity(entity) || 'other';
 
-/** كلُّ كياناتِ قسمٍ ما — يُبنى منها شرطُ `$in` في الاستعلام. */
+/** All entities of a section; used to build the `$in` condition in queries. */
 const entitiesOfSection = (key) => [
   ...Object.keys(ENTITY_SECTION).filter((e) => ENTITY_SECTION[e] === key),
   ...(apiEntityOf(key) ? [apiEntityOf(key)] : []),

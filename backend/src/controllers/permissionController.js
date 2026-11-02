@@ -11,7 +11,7 @@ const {
 const { emitToAll } = require('../websocket/socketManager');
 const logAudit = require('../utils/auditLogger');
 
-/** كلُّ دورٍ قابلٍ للضبط: المكتوبُ في الشيفرة، وما صُنع من الشاشة. */
+/** Every configurable role: those defined in code and those created from the screen. */
 const allRoles = async () => {
   const custom = await CustomRole.find({ isActive: true }).sort({ createdAt: 1 }).lean();
   return {
@@ -33,10 +33,8 @@ exports.getPermissions = async (req, res) => {
       pages[role] = await effectivePages(role);
     }
 
-    // ── وما أُشِّر عليه صراحةً غيرُ ما وُرث ────────────────────────────────────
-    // الشاشةُ تحتاج أن تفرّق: صفحةٌ مسموحةٌ لأنّ قسمَها مسموح، وصفحةٌ مسموحةٌ
-    // لأنّ أحدًا أشّر عليها. وبلا هذا الفرق يقرأ من يضبط أنّ كلَّ شيءٍ مضبوطٌ
-    // باليد، فيتردّد في تغيير قسمٍ لأنّه يظنّ أنّ الصفحات لن تتبعه.
+    // Explicitly set differs from inherited.
+    // The screen must distinguish a page allowed because its section is allowed from one allowed because someone ticked it. Without that, the person configuring thinks everything is manual and hesitates to change a section, fearing pages will not follow.
     const explicit = {};
     const docs = await RolePermission.find({ role: { $in: keys } }).lean();
     for (const d of docs) {
@@ -77,7 +75,7 @@ exports.updateRolePermissions = async (req, res) => {
 
     const $set = { updatedBy: req.user._id };
 
-    // الأقسامُ تُرسَل كاملةً أو لا تُرسَل: إرسالُ جزءٍ منها يعني حذفَ الباقي.
+    // Sections are sent whole or not at all: sending a subset means deleting the rest.
     if (req.body?.sections) {
       const sections = {};
       for (const [key, level] of Object.entries(req.body.sections)) {
@@ -88,20 +86,12 @@ exports.updateRolePermissions = async (req, res) => {
       $set.sections = sections;
     }
 
-    // ── والصفحاتُ تُحفَظ صراحةً فقط ──────────────────────────────────────────
-    // ما يوافق قسمَه لا يُكتب: لو كُتبت الصفحاتُ كلُّها لكلّ دورٍ لصار تغييرُ
-    // قسمٍ بلا أثرٍ على صفحاته — كلُّ صفحةٍ محفوظةٌ باليد تسبق القسم. فالمحفوظُ
-    // هو الاستثناءُ وحدَه، والباقي يتبع.
-    //
-    // ── والاختصارُ هنا لا في الشاشة ────────────────────────────────────────
-    // كانت الشاشةُ تحسب «ما يوافق قسمَه» بنفسها فترسل المخالفَ وحدَه، فوقع
-    // ما لا بدّ أن يقع: اختلف حسابُها عن حساب الخادم في الأقسام غيرِ المُدارة،
-    // فضاعت تأشيراتٌ أُشِّرت بالفعل وقال الحفظُ «تمّ». فمع `pagesAll` ترسل
-    // الشاشةُ الخريطةَ كاملةً كما يراها المستخدم، ويختصرها الخادمُ بالقاعدة
-    // التي يقرؤها هو نفسُه عند المنح (`pageFollowsSection`) — فلا يفترقان.
+    // Pages are stored only when explicit.
+    // A page matching its section is not written: if all pages were written for every role, changing a section would not affect its pages, since each stored page overrides the section. Stored pages are the exceptions; the rest follow.
+    // The shortcut lives here, not in the screen. The screen computed matches itself and sent only the differences, and its result differed from the server's for unmanaged sections, losing ticks already made while save said done. With `pagesAll` the screen sends the full map and the server reduces it by the same rule it applies when granting (`pageFollowsSection`), so they cannot diverge.
     if (req.body?.pages) {
       const pages = {};
-      // المتدرّبُ كالمصنوع: لا يرث — راجع permissions.inheritsNothing.
+      // A trainee behaves like a created role: inherits nothing, see permissions.inheritsNothing.
       const custom = await require('../utils/permissions').inheritsNothing(role);
       const after = resolveSections(role, $set.sections || (await getOverrides(role)), custom);
       for (const [key, on] of Object.entries(req.body.pages)) {
@@ -145,16 +135,13 @@ exports.updateRolePermissions = async (req, res) => {
   }
 };
 
-// ── أنواعُ المستخدمين المصنوعة ───────────────────────────────────────────────
+// Created user types
 
 const KEY_RX = /^[a-z][a-z0-9_]{2,39}$/;
 
 /**
- * POST /api/admin/roles — نوعُ مستخدمٍ جديد.
- *
- * يُولَد لا يملك شيئًا: لا قائمةَ `authorize` قديمةً تعرفه ولا قسمَ افتراضيًّا
- * له (راجع `getOverride` في utils/permissions). فما يُمنَح له يُمنَح صراحةً،
- * وما نُسي يبقى مغلقًا — وهو الاتّجاه الصحيح للنسيان.
+ * POST /api/admin/roles: a new user type.
+ * It starts with nothing: no legacy `authorize` list knows it and no default section (see `getOverride` in utils/permissions). Anything granted is granted explicitly and anything forgotten stays closed, the safe direction for omissions.
  */
 exports.createCustomRole = async (req, res) => {
   try {
@@ -165,9 +152,7 @@ exports.createCustomRole = async (req, res) => {
     if (!KEY_RX.test(key)) {
       return res.status(400).json({ message: 'المفتاحُ حروفٌ لاتينيّةٌ صغيرةٌ وأرقامٌ وشرطةٌ سفليّة، يبدأ بحرفٍ وطولُه من ٣ إلى ٤٠' });
     }
-    // ── ولاحقةُ `_manager` محجوزة ──────────────────────────────────────────
-    // `businessReview.isManagerRole` تقرأ اللاحقةَ حرفيًّا، فدورٌ ينتهي بها
-    // يجلس في اجتماعات مجلس الإدارة بلا أن يقصد أحد. راجع config/roles.js.
+    // The `_manager` suffix is reserved: `businessReview.isManagerRole` reads the suffix literally, so a role ending in it would sit in board meetings unintentionally. See config/roles.js.
     if (/_manager$/.test(key)) {
       return res.status(400).json({ message: 'لاحقةُ «_manager» محجوزةٌ لمديري الأقسام المعرَّفين في النظام — اختر مفتاحًا آخر' });
     }
@@ -181,8 +166,7 @@ exports.createCustomRole = async (req, res) => {
       description: String(req.body?.description || '').trim(),
       createdBy: req.user._id,
     });
-    // يُولَد بلا صلاحيّةٍ واحدة، فيُنشأ له سجلٌّ فارغٌ صراحةً — ووجودُ السجلّ
-    // هو ما يجعل «لا شيء» قرارًا مكتوبًا لا صمتًا.
+    // It starts with no permission, so an empty record is created explicitly; the record's existence makes nothing a written decision rather than silence.
     await RolePermission.findOneAndUpdate(
       { role: key },
       { $set: { sections: {}, pages: {}, updatedBy: req.user._id } },
@@ -203,7 +187,7 @@ exports.createCustomRole = async (req, res) => {
   }
 };
 
-/** PUT /api/admin/roles/:key — تسميتُه ووصفُه. والمفتاحُ لا يُغيَّر: مكتوبٌ على مستخدميه. */
+/** PUT /api/admin/roles/:key: name and description only. The key never changes because it is stored on its users. */
 exports.updateCustomRole = async (req, res) => {
   try {
     const role = await CustomRole.findOne({ key: String(req.params.key || '').toLowerCase() });
@@ -221,10 +205,8 @@ exports.updateCustomRole = async (req, res) => {
 };
 
 /**
- * DELETE /api/admin/roles/:key — ولا يُحذَف وله أصحاب.
- *
- * حذفُ دورٍ يحمله مستخدمون يترك حساباتٍ تشير إلى دورٍ لا وجودَ له: لا تُقرأ
- * صلاحيّتُها ولا تظهر في شاشةٍ تُصلَّح منها. فيُقال بمن هو مشغولٌ ويُنقَلوا أوّلًا.
+ * DELETE /api/admin/roles/:key: refused while it has holders.
+ * Deleting a role that users hold leaves accounts pointing at a missing role whose permissions cannot be read and that appear in no screen to fix them. So it reports how many hold it and they must be moved first.
  */
 exports.deleteCustomRole = async (req, res) => {
   try {
@@ -253,7 +235,7 @@ exports.deleteCustomRole = async (req, res) => {
   }
 };
 
-/** GET /api/admin/roles — الأنواعُ المصنوعة وحدَها (يقرؤها منشئُ المستخدمين). */
+/** GET /api/admin/roles: only the created types (read by the user creator). */
 exports.listCustomRoles = async (req, res) => {
   try {
     const roles = await CustomRole.find({ isActive: true }).sort({ createdAt: 1 }).lean();

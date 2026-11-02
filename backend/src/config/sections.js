@@ -22,27 +22,13 @@
 const SECTIONS = [
   {
     key: 'Operations',
-    // ── وسيرُ عمل التشغيل من العمليات ────────────────────────────────────────
-    // كان `/api/workflows` — أكبرُ شاشةٍ في النظام — لا يملكه قسمٌ أصلًا، فلا
-    // تستطيع مصفوفةُ الصلاحيّات منحَه ولا منعَه: يحرسه سطرُ أدوارٍ مكتوبٌ في
-    // المسار وحدَه. وأثرُه أنّ نوعَ مستخدمٍ يُصنَع ويُمنَح «العمليات» كاملةً ثمّ
-    // لا يفتح سيرَ العمل — والمصفوفةُ تقول إنّه يملكه.
-    //
-    // وأُثبت قبل الإضافة أنّها لا تسلب أحدًا: الأدوارُ التي عندها «العمليات =
-    // ممنوع» محفوظةً (الموارد البشريّة، العلاقات، المبيعات) ليست في قائمة
-    // أدوار المسار أصلًا، فهي ممنوعةٌ اليوم بالفعل.
+    // Operations workflows section. The workflows API had no owning section, so the permission matrix could neither grant nor deny it; a role line in the route alone guarded it. Adding it was verified not to remove access from anyone: roles with operations denied are not in the route's role list already.
     apiPrefixes: ['/api/wallet', '/api/workflows', '/api/customer-requests'],
-    // المحاسبةُ والتحصيل معهم: العهدةُ قيدٌ ماليٌّ يُراجَع ويُقفَل، وحارسُ
-    // القسم يقف قبل قائمة المسار — فبقاؤهم خارجَه يردّهم ٤٠٣ ولو فُتحت لهم
-    // النقطةُ نفسُها.
+    // Accounting and collections are included: custody is a financial entry that is reviewed and closed, and the section guard runs before the route's role list, so leaving them out returns 403 even when the endpoint is open to them.
     defaultRoles: ['admin', 'it_manager', 'it_specialist', 'employee', 'operations_manager', 'operations_staff', 'moderator', 'procurement_manager', 'procurement_staff', 'cfo', 'accounting_manager', 'accountant', 'collections_manager', 'collections_staff'],
   },
   {
-    // قسمُ التحصيل — العملاءُ الذين نحصّل منهم والموردون الذين نسدّد لهم.
-    //
-    // البادئةُ `/api/collections-dept` وليست `/api/collections`: تلك مأخوذةٌ
-    // لمتابعات التحصيل تحت «العملاء والمالية»، ومطابقةُ express تقف عند حدّ
-    // المقطع فلا تتداخلان — لكن التسميةَ الصريحة تمنع الالتباس عند القراءة.
+    // Collections section: customers we collect from and vendors we pay. The prefix is /api/collections-dept, not /api/collections (taken by collection follow-ups under customers and finance). express matches on segment boundaries so they do not clash, but the explicit name avoids confusion.
     key: 'Collections',
     apiPrefixes: ['/api/collections-dept'],
     defaultRoles: ['admin', 'it_manager', 'it_specialist', 'operations_manager', 'cfo', 'accounting_manager'],
@@ -97,10 +83,7 @@ const SECTIONS = [
     defaultRoles: ['admin', 'it_manager', 'it_specialist'],
   },
   {
-    // اجتماعات مراجعة الأعمال — the standing forum between the department heads
-    // and the board. Broad by default because ORDINARY employees also open it,
-    // to see work delegated to them; the controller is what separates a manager's
-    // view from an employee's, not this list.
+    // Business review meetings: the standing forum between department heads and the board. Broad by default because ordinary employees also open it to see work delegated to them; the controller, not this list, separates manager and employee views.
     key: 'Business Review',
     apiPrefixes: ['/api/business-review'],
     // EVERY staff role by default. A hand-written list here locked 14 roles out
@@ -112,13 +95,13 @@ const SECTIONS = [
     defaultRoles: [],
   },
   {
-    // الشؤون الإدارية (السكرتارية) — the shared office task board.
+    // Administration (secretariat): the shared office task board.
     key: 'Administration',
     apiPrefixes: ['/api/admin-tasks'],
     defaultRoles: ['admin', 'administration_staff', 'bd_manager', 'it_manager', 'it_specialist'],
   },
   {
-    // إدارة العقود — 3PL vendor contracts + analysis, other departments' contracts.
+    // Contracts: 3PL vendor contracts and analysis, other departments' contracts.
     key: 'Contracts',
     apiPrefixes: ['/api/contracts'],
     defaultRoles: ['admin', 'contracts_manager', 'it_manager', 'it_specialist', 'operations_manager'],
@@ -154,8 +137,7 @@ const SECTIONS = [
     defaultRoles: ['admin', 'it_manager', 'sales_manager', 'sales_rep', 'operations_manager', 'operations_staff'],
   },
   {
-    // «الإدارة الماليّة». المفتاحُ الداخليّ بقي `Accounting` كي لا تُهاجَر صلاحيّاتٌ
-    // محفوظةٌ لأدوار المحاسبين؛ الاسمُ المعروض وحدَه تغيّر.
+    // Finance management. The internal key stays Accounting so stored permissions for accountant roles do not need migrating; only the displayed name changed.
     key: 'Accounting',
     apiPrefixes: ['/api/accounting', '/api/finance'],
     defaultRoles: ['admin', 'it_manager', 'cfo', 'accounting_manager', 'accountant'],
@@ -204,11 +186,7 @@ const sectionLabel = (key, lang = 'ar') =>
   (lang === 'en' ? key : (SECTION_LABELS_AR[key] || key));
 const ACCESS_LEVELS = ['none', 'view', 'edit'];
 
-// كل دور ينفع يتعيّن لمستخدم (super_admin ليه كل حاجة ضمنيًا فمستثنى من
-// التعديل). مصدرها config/roles.js — كانت مكتوبة بالإيد فكانت بتفضل ناقصة دور
-// أو اتنين بعد أي إضافة.
-// والأدوارُ المحصورة (حسابُ Media Go) خارجَ المصفوفة: صلاحيّاتُها مكتوبةٌ في
-// config/scopedRoles.js ولا يفتح لها قسمًا شيءٌ من هنا.
+// Every role that can be assigned to a user (super_admin implicitly has everything, so it is excluded from editing). Derived from config/roles.js; a hand-written list kept missing roles. Scoped roles (Media Go) are outside the matrix; see config/scopedRoles.js.
 const ALL_ROLES = require('./roles').ALL_ROLES
   .filter((r) => r !== 'super_admin' && !require('./scopedRoles').isScopedRole(r));
 
@@ -220,15 +198,13 @@ const getSection = (key) => SECTIONS.find((s) => s.key === key);
 const { FULL_ACCESS_ROLES } = require('./constants');
 const defaultAccess = (role, sectionKey) => {
   if (FULL_ACCESS_ROLES.includes(role)) return 'edit';
-  // فريقُ البيانات: كلُّ قسمٍ افتراضًا، والمصفوفةُ المحفوظةُ تضيّق (راجع config/roles).
+  // Data team: all sections by default; the saved matrix narrows it (see config/roles).
   if (require('./roles').DATA_ROLES.includes(role)) return 'edit';
-  // الدورُ المحصورُ لا قسمَ له: شاشتُه الواحدة في config/scopedRoles.js.
+  // A scoped role has no section; its single screen is in config/scopedRoles.js.
   if (require('./scopedRoles').isScopedRole(role)) return 'none';
   const s = getSection(sectionKey);
   if (!s) return 'none';
-  // مدير القسم وموظفوه بياخدوا قسمهم كامل، دايمًا. القاعدة دي فوق قوائم
-  // defaultRoles المكتوبة بالإيد: القوائم دي اتكتبت واحدة واحدة وكان بيتنسى
-  // منها ناس، وده اللي خلّى أقسام تفتح لناس والأزرار جواها مخفية عنهم.
+  // A section's manager and staff always get their whole section. This rule overrides the hand-written defaultRoles lists, which kept forgetting people and left sections open with their buttons hidden.
   if (require('./roles').rolesOfSection(sectionKey).includes(role)) return 'edit';
   // A section marked `defaultAllRoles` is open to all STAFF by default — only
   // `client` (an outside partner, who has the portal instead) is excluded. This
@@ -237,9 +213,7 @@ const defaultAccess = (role, sectionKey) => {
   return s.defaultRoles.includes(role) ? 'edit' : 'none';
 };
 
-// كل قسم لازم يكون له مدير وموظف في config/roles.js. الفحص هنا لأن ده المكان
-// اللي القايمتين معروفين فيه — «مراجعة الأعمال» مستثناة عن قصد: هي منتدى بيقعد
-// فيه مديرو كل الأقسام، مش قسم له فريق.
+// Every section needs a manager and a staff role in config/roles.js. Checked here because this is where both lists are known. Business review is exempt: a forum for all managers, not a team section.
 require('./roles').assertRolesCoverSections(SECTION_KEYS, ['Business Review']);
 
 module.exports = {

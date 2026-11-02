@@ -32,14 +32,11 @@ const FIELD_GROUPS = {
     'operationsReview',
   ],
   manual_moderator: [
-    // `paymentSubtype` يتبع `paymentType` حيث كان: مَن يختار النوعَ يختار تفصيلَه.
+    // paymentSubtype follows paymentType wherever it was: choosing the type chooses its detail.
     'paymentDate', 'payingBranch', 'paymentAmount', 'paymentType', 'paymentSubtype',
     'finalReportDestination', 'documentNumber', 'sendingDate', 'branchDeliveryDate', 'deliveryDate',
   ],
-  // ── ومراجعةُ الحسابات مجموعةٌ بذاتها ────────────────────────────────────
-  // كانت داخل `manual_moderator` فورثها كلُّ من يسجّل سدادًا. وهي إقرارُ
-  // المحاسبة بأنّ الصفَّ رُوجع — لا خطوةً في تسجيل السداد. وبقاؤها هناك يجعل
-  // مَن يكتب رقمَ السند يوقّع على مراجعة نفسِه.
+  // Accounts review is its own group. It used to sit inside manual_moderator, so everyone recording a payment inherited it. It is the accounting acknowledgment that the row was reviewed, not a step of recording payment; leaving it there made whoever enters the receipt number sign off their own review.
   accounting: [
     'accountingReview',
   ],
@@ -47,32 +44,14 @@ const FIELD_GROUPS = {
     'invoiceNumber', 'netInvoice', 'tax', 'totalInvoice',
     'invoiceDate', 'invoiceNotes', 'collectedAmount', 'collectionDate',
   ],
-  // ── وقيمةُ البيع مجموعةٌ بذاتها ─────────────────────────────────────────
-  // كانت بين أعمدة الأبلكيشن فيراها كلُّ مَن يفتح الصفحة. وهي سعرُنا للعميل:
-  // يراها ويكتبها مديرُ التشغيل والمبيعاتُ والإدارةُ وأهلُ المال والتحصيل
-  // (صاحبُ الشركة، ٢٠٢٦/١٠/٢١) — لا موظّفُ التشغيل. وتُكتب معها في المنصّة.
+  // Selling value is its own group. It used to be among the application columns, visible to anyone opening the page. It is our price to the customer, visible and writable by operations manager, sales, management, finance and collections (per the company owner), not operations staff. It is written to the platform too.
   selling: ['sellingValue'],
 };
 
 // Which roles can edit which field groups
-// ── مَن يكتب ماذا ───────────────────────────────────────────────────────────
-//
-// كانت هذه الخريطةُ مكتوبةً بأسماءِ أدوارٍ قديمة، ثمّ أُعيد بناءُ الأدوار إلى
-// مديرٍ وموظّفٍ لكلّ قسم — فصار `operations_staff` يصل إلى نقطة التعديل ولا
-// يجد لنفسه سطرًا هنا. ومَن لا سطرَ له يأخذ مصفوفةً فارغة: تُحذَف حقولُه كلُّها
-// ويُحفظ المستند بلا تغيير، ويرجع ٢٠٠. فالموظّف يكتب تاريخَ السداد ورقمَ السند
-// ويضغط «صح» فلا يتغيّر شيءٌ ولا يُقال له لماذا.
-//
-// وقسمُ العمليات هو صاحبُ هذا العمل: تسجيلُ السداد والسند والإرسال والتسليم
-// عملُه اليوميّ لا استثناء. فيأخذه مديرُه وموظّفُه.
-//
-// ── وأعمدةُ الفاتورة ليست له ──────────────────────────────────────────────
-// أُعطيت العملياتِ ضمنَ «أعطِه كلَّ شيء» حين عولج عطلُ «صح كانت تحفظ لا شيء»،
-// لا بقرارٍ في مَن يملكها. وهي مالُ الشركة: رقمُ الفاتورة وصافيها وضريبتُها
-// وإجماليها وتاريخُ تحصيلها — يملكها مَن يحاسِب ومَن يحصّل. فرُدَّت إليهم.
-//
-// ولا تُخفى عن الشاشة وتبقى مكتوبةً على الخادم: مَن يقرأ الخريطةَ يظنّها
-// محروسة، والحجبُ في مكانٍ واحدٍ حجبٌ في نصف الطريق.
+// The map used old role names; after roles were rebuilt as manager and staff per section, operations_staff had no line and got an empty array, so every field was dropped and the save returned 200 doing nothing.
+// Operations owns payment, receipt, dispatch and delivery, so its manager and staff get them. Invoice columns are company money owned by accounting and collections, not operations.
+// They stay writable on the server only where listed; hiding them on screen alone would look guarded but be half a block.
 const OPS_FIELDS = [
   ...FIELD_GROUPS.application, ...FIELD_GROUPS.operations,
   ...FIELD_GROUPS.manual_moderator,
@@ -85,63 +64,45 @@ const AMOUNT_FIELDS = ['netInvoice', 'tax', 'totalInvoice', 'invoiceDate', 'invo
 const MONEY_VIEW_ROLES = [
   'super_admin', 'admin', 'cfo', 'accounting_manager', 'accountant', 'collections_manager', 'collections_staff',
 ];
-// الكشفُ كلُّه — لمن لا حاجزَ عليه (عدا قيمة البيع: لها قائمتُها أدناه).
+// The whole sheet, for roles with no restriction (except selling value, which has its own list below).
 const ALL_FIELDS = [...OPS_FIELDS, ...MONEY_FIELDS];
 const SELLING_FIELDS = FIELD_GROUPS.selling;
-// الكشفُ كلُّه ومعه قيمةُ البيع.
+// The whole sheet including selling value.
 const FULL_FIELDS = [...ALL_FIELDS, ...SELLING_FIELDS];
 
-// ── مَن يرى قيمةَ البيع ويكتبها ─────────────────────────────────────────────
-// القائمةُ بأسمائها كما قالها صاحبُ الشركة (٢٠٢٦/١٠/٢١، آخرَ مرّة): مديرُ
-// النظام، والإدارة، والمديرُ الماليّ، ومديرُ الحسابات، ومديرُ التحصيل وفريقُه،
-// والمحاسب، ومديرُ التشغيل — و«المديرُ العامّ» إن أُنشئ له دور (`general_manager`).
-// والمبيعاتُ وتقنيةُ المعلومات خرجا منها. ومَن ليس فيها لا تصله القيمةُ من
-// الخادم أصلًا (`stripRowFor`) ولا يفلتر بها ولا تخرج في ملفّه — ولا يكتبها.
+// Who sees and writes selling value. The list is named roles as given by the company owner: super admin, management, finance manager, accounts manager, collections manager and team, accountant, operations manager, and the general manager if a role (general_manager) is created. Sales and IT were removed.
+// A role outside the list never receives the value from the server (stripRowFor), cannot filter by it, does not get it in its export, and cannot write it.
 const SELLING_ROLES = [
   'super_admin', 'admin', 'cfo', 'accounting_manager', 'accountant',
   'collections_manager', 'collections_staff', 'operations_manager', 'general_manager',
-  // فريقُ البيانات (٢٠٢٦/١٠/٢٢) — ومديرُ النظام يضيّق قسمَ التشغيل من المصفوفة.
+  // Data team; super admin narrows the operations section from the matrix.
   ...require('../config/roles').DATA_ROLES,
 ];
 
 const ROLE_FIELD_ACCESS = {
   super_admin: FULL_FIELDS,
-  // فريقُ البيانات: كلُّ الحقول، و«عرض» القسم في المصفوفة يمنع الكتابةَ قبلها.
+  // Data team: all fields, and the section's 'view' in the matrix blocks writing before it.
   ...Object.fromEntries(require('../config/roles').DATA_ROLES.map((r) => [r, FULL_FIELDS])),
   moderator: [...FIELD_GROUPS.application, ...FIELD_GROUPS.manual_moderator],
   operations_manager: [...OPS_FIELDS, ...SELLING_FIELDS],
   operations_staff: OPS_FIELDS,
-  // الإدارةُ العليا فوق المحاسبة لا دونَها.
+  // Senior management sits above accounting, not below it.
   admin: FULL_FIELDS,
-  // ── والمبيعاتُ تملك قيمةَ البيع وحدَها ─────────────────────────────────
-  // تفتح سير العمل لتسعّر الكشف، ولا تكتب في غيره ولا ترى أعمدةَ الفاتورة.
+  // Sales owns selling value only. It opens the workflow to price the report, writes nothing else and sees no invoice columns.
   employee: FIELD_GROUPS.collections,
-  // ── والمحاسبةُ تسجّل السدادَ كما تسجّل الفاتورة ──────────────────────────
-  // كانت تملك مجموعةَ الفاتورة وحدَها، فيكتب المحاسبُ تاريخَ السداد ويضغط
-  // «صح» فيُردُّ ٤٠٣ ولا يُحفظ شيء — وهو عملُه اليوميّ لا استثناء.
-  //
-  // وهي الغلطةُ نفسُها التي وقعت مع موظّف العمليات من قبل: قائمةٌ تُكتب دورًا
-  // دورًا فيُنسى فيها ما يعمله صاحبُها كلَّ يوم. ولذلك لم يعد الأمرُ قائمةً
-  // وحدَها — الشاشةُ صارت تقرأ الخريطةَ نفسَها فلا تعرض خانةً لن تُحفَظ.
+  // Accounting records payment as it records the invoice. It owned only the invoice group, so an accountant writing the payment date and saving got 403 and nothing saved, though it is daily work.
+  // This repeats the operations-staff mistake: a per-role list forgets what the role does every day. So it is no longer just a list: the screen reads the same map and shows no field that will not be saved.
   cfo: FULL_FIELDS,
   accounting_manager: FULL_FIELDS,
   accountant: FULL_FIELDS,
-  // ── وقسمُ التحصيل يكتب الكشفَ كلَّه ───────────────────────────────────────
-  // أعمدةُ المال وحدَها لا تكفيه: مَن يلاحق فاتورةً يصحّح معها اسمَ العميل
-  // ورقمَ السند والفرعَ المسدِّد ووجهةَ الكشف النهائيّة — وكلُّها خارجَ
-  // `MONEY_FIELDS`. فيصير كلَّ يومٍ يطلب من قسم العمليات تصحيحَ خانةٍ يراها
-  // أمامه، أو يُقال له «حُفِظ» ولم يُحفَظ شيء.
+  // Collections writes the whole sheet. Money columns alone are not enough: chasing an invoice also means correcting the customer name, receipt number, paying branch and final destination, all outside MONEY_FIELDS. Otherwise staff keep asking operations to fix a field they can see, or get 'saved' with nothing saved.
   collections_manager: FULL_FIELDS,
   collections_staff: FULL_FIELDS,
-  // تقنيةُ المعلومات في `FULL_ACCESS_ROLES` — بلا حاجزٍ في كلّ قسمٍ آخر،
-  // إلّا قيمةَ البيع: ليست في القائمة التي سمّاها صاحبُ الشركة.
+  // IT is in FULL_ACCESS_ROLES with no restriction in every other section, except selling value, which is not in the owner's list.
   it_manager: ALL_FIELDS,
   it_specialist: ALL_FIELDS,
 };
-// ── وسعرُ الشراء لمن يرى سعرَ البيع وحدَه (صاحبُ الشركة، ٢٠٢٦/١٠/٢٨) ────────
-// «اللي بيظهرله سعر البيع يقدر يعدّل في الاتنين، وغيرهم لا». فمَن ليس في
-// SELLING_ROLES لا يكتب `purchaseValue` (يراه ولا يعدّله) — في الخريطة هنا،
-// وفي حقول الأدوار المصنوعة (fieldsForRole)، والشاشةُ تقرأ الخريطةَ نفسَها.
+// Purchase price is for those who see selling price only (company owner): whoever is not in SELLING_ROLES cannot write purchaseValue (can see it, cannot edit). Applies to this map and to fields of created roles (fieldsForRole), and the screen reads the same map.
 const PURCHASE_FIELDS = ['purchaseValue'];
 for (const [r, f] of Object.entries(ROLE_FIELD_ACCESS)) {
   if (!SELLING_ROLES.includes(r)) ROLE_FIELD_ACCESS[r] = f.filter((x) => !PURCHASE_FIELDS.includes(x));
@@ -150,7 +111,7 @@ for (const [r, f] of Object.entries(ROLE_FIELD_ACCESS)) {
 for (const [r, f] of Object.entries(ROLE_FIELD_ACCESS)) {
   if (!MONEY_VIEW_ROLES.includes(r)) ROLE_FIELD_ACCESS[r] = ROLE_FIELD_ACCESS[r].filter((x) => !AMOUNT_FIELDS.includes(x));
 }
-// الخريطةُ والقائمةُ تقولان شيئًا واحدًا — يُفحص عند التحميل كي لا تفترقا.
+// The map and the list state the same thing; checked at load so they cannot diverge.
 for (const [r, f] of Object.entries(ROLE_FIELD_ACCESS)) {
   if (PURCHASE_FIELDS.some((x) => f.includes(x)) && !SELLING_ROLES.includes(r)) {
     throw new Error(`[workflow] سعرُ الشراء: ${r} يكتبه وليس في SELLING_ROLES`);
@@ -164,28 +125,12 @@ for (const [r, f] of Object.entries(ROLE_FIELD_ACCESS)) {
 }
 
 /**
- * ── والحجبُ يكون على الطرفين ────────────────────────────────────────────────
- *
- * إخفاءُ عمودٍ من الجدول لا يحجبه: النقطةُ ترجّع المستندَ كاملًا، فيُقرأ في
- * أدوات المتصفّح ويخرج في ملفّ الإكسل. والحجبُ في مكانٍ واحدٍ حجبٌ في نصف
- * الطريق، ويُقرأ أسوأَ من غيابه — لأنّ مَن رآه مخفيًّا يحسبه محجوبًا.
- *
- * فمن لا يملك أعمدةَ المال لا تصله أصلًا: لا في القائمة، ولا في التفاصيل، ولا
- * في التصدير. والقاعدةُ هي هي التي يفلتر بها الحفظُ — خريطةٌ واحدة.
+ * Hiding is on both ends. Hiding a column in the table does not hide it: the endpoint returns the whole document, readable in browser tools and exported to Excel. Hiding in one place is half a block and reads worse than none, since viewers assume it is blocked.
+ * A role without the money columns never receives them: not in the list, details or export. The same rule filters saving, one map.
  */
 /**
- * ── حقولُ الدورِ المصنوع تأتي من مصفوفة الصلاحيّات ──────────────────────────
- *
- * `ROLE_FIELD_ACCESS` أعلاه مكتوبٌ بمفاتيح الأدوار التي في الشيفرة. والدورُ
- * الذي يصنعه صاحبُ النظام من الشاشة ليس فيها، فيخرج من الخريطة بصفر حقول:
- * يُفتَح له قسمُ العمليات ويُمنح «تعديل» في المصفوفة، ثمّ لا يجد في سير العمل
- * خانةً واحدةً يكتب فيها — ولا رسالةَ خطأ، فيبدو أنّ الشاشة معطوبة. وقع فعلًا
- * مع «فريق العمليات» (operation_team).
- *
- * والعلّةُ أنّ «مَن يكتب» كان يُقرأ من مكانين: مصفوفةُ الصلاحيّات تفتح القسم،
- * وهذه الخريطةُ تقرّر الخانات، ولا جسرَ بينهما. فالجسرُ هنا: الدورُ المصنوعُ
- * يأخذ — في كلّ قسمٍ مُنح فيه «تعديل» — حقولَ موظّفِ ذلك القسم نفسِه. لا أكثر:
- * «عرض» لا يعطي خانةً تُكتب، وما لم يُمنَح لا يُورَّث.
+ * Fields for a created role come from the permission matrix. ROLE_FIELD_ACCESS is keyed by roles in code; a role created from the screen is not in it and got zero fields: the operations section opens and the matrix grants edit, yet the workflow has no writable cell and no error, so the screen looks broken (it happened with operation_team).
+ * Who writes was read from two places, with no bridge: the matrix opens the section and this map decides the cells. The bridge: a created role gets, in every section where it has edit, the fields of that section's own staff role. Nothing more: view gives no writable cell and what is not granted is not inherited.
  */
 const SECTION_FIELD_SOURCE = {
   Operations: 'operations_staff',
@@ -212,15 +157,14 @@ const baseFieldsForRole = async (role) => {
       for (const [section, source] of Object.entries(SECTION_FIELD_SOURCE)) {
         if (sections[section] === 'edit') for (const f of ROLE_FIELD_ACCESS[source] || []) out.add(f);
       }
-      // وقيمةُ البيع لا تُورَّث: قائمتُها أدوارٌ بأسمائها (SELLING_ROLES)، والدورُ
-      // المصنوعُ لا يراها في القائمة فلا يكتبها.
+      // Selling value is not inherited: its list is named roles (SELLING_ROLES) and a created role is not in it, so it does not write it.
       for (const f of SELLING_FIELDS) out.delete(f);
-      // وسعرُ الشراء معها: لا يكتبه إلّا مَن يرى سعرَ البيع (PURCHASE_FIELDS).
+      // Purchase price follows: only whoever sees selling price writes it (PURCHASE_FIELDS).
       for (const f of PURCHASE_FIELDS) out.delete(f);
       for (const f of AMOUNT_FIELDS) out.delete(f);
       return [...out];
     } catch (e) {
-      // تعذّرُ القراءة لا يفتح شيئًا: بلا حقولٍ حتى يُعرف الجواب.
+      // If access cannot be read, nothing is opened: no fields until the answer is known.
       console.error('[workflow] fieldsForRole:', e.message);
       return [];
     }
@@ -230,7 +174,7 @@ const baseFieldsForRole = async (role) => {
 /** May this role see invoice amounts (net invoice onward)? A named list, like SELLING_ROLES. */
 const canSeeMoney = (role) => MONEY_VIEW_ROLES.includes(role);
 
-/** يُزيل أعمدةَ المال من مستندٍ (أو مصفوفةٍ منها) لمن لا يملكها. */
+/** Removes money columns from a document (or array of them) for roles without them. */
 const stripMoney = (doc) => {
   if (!doc) return doc;
   const plain = typeof doc.toObject === 'function' ? doc.toObject() : { ...doc };
@@ -242,7 +186,7 @@ const stripMoneyFor = (role, docs) => {
   return Array.isArray(docs) ? docs.map(stripMoney) : stripMoney(docs);
 };
 
-/** هل يرى هذا الدورُ قيمةَ البيع؟ — القائمةُ بأسمائها (SELLING_ROLES). */
+/** Whether this role sees selling value; the list is named roles (SELLING_ROLES). */
 const canSeeSelling = (role) => SELLING_ROLES.includes(role);
 const stripSelling = (doc) => {
   if (!doc) return doc;
@@ -251,56 +195,30 @@ const stripSelling = (doc) => {
   delete plain.sellingValueSource;
   return plain;
 };
-/**
- * الصفُّ كما يصل هذا الدور: بلا أعمدة المال لمن لا يملكها، وبلا قيمة البيع
- * لمن ليس في قائمتها. (`stripMoneyFor` تبقى كما هي — تقرؤها الصفحةُ الخاصّة
- * وقيمةُ البيع فيها سعرٌ آخر.)
- */
+/** The row as this role receives it: without money columns for roles without them, and without selling value for roles outside its list. (stripMoneyFor stays as it is: the private page reads it, where selling value is a different price.) */
 const stripRowFor = (role, docs) => {
   const out = stripMoneyFor(role, docs);
   if (canSeeSelling(role)) return out;
   return Array.isArray(out) ? out.map(stripSelling) : stripSelling(out);
 };
 
-/**
- * ═══════════════════════════════════════════════════════════════════════════
- *  قواعدُ الفوترة — تُطبَّق على الخادم، لا على الشاشة وحدَها
- * ═══════════════════════════════════════════════════════════════════════════
- *
- * الشاشةُ تُعين المستخدمَ على الصواب؛ والخادمُ هو الذي يضمنه. وقاعدةٌ مكتوبةٌ
- * في الواجهة وحدَها تُلتَفّ عليها من أيّ نافذة: تحديثٌ جماعيّ، أو استيراد، أو
- * نداءٌ مباشر.
- */
+/** Billing rules, enforced on the server and not only on the screen. The screen helps users do the right thing; the server guarantees it, since a rule in the UI alone can be bypassed by bulk update, import or a direct call. */
 
-// ── أعمدةٌ كان القفلُ النقديُّ يُصفِّرها — وقد أُزيل ───────────────────────
-//
-// كانت هذه الأعمدةُ تُصفَّر وتُقفَل على كلّ كشفٍ نقديّ. وقد أُزيل ذلك
-// (راجع deriveCashTotals): الكشفُ النقديّ يُكتَب فيه ما يلزم كغيره.
-//
-// وتبقى القائمةُ لعملٍ واحد: كشوفٌ قديمةٌ تحمل أصفارَ القفل وفراغاتِه إلى
-// اليوم. فإن خرج كشفٌ منها من «كاش» مُسحت تلك القيمُ الموضوعةُ آليًّا — دون
-// ما كتبه إنسان. راجع فرعَ `wasCash` أدناه.
+// Columns the cash lock used to zero (the lock was removed). They were zeroed and locked on every cash report; that is gone (see deriveCashTotals), and a cash report takes what it needs like any other.
+// The list remains for one job: old reports still carry lock zeros and blanks, and when one leaves cash those auto-set values are cleared, but not what a person wrote. See the wasCash branch below.
 const CASH_LOCKED_FIELDS = [
   'finalReportDestination', 'documentNumber', 'sendingDate',
-  // التسليمان معًا: لا كشفَ يُسلَّم لفرعٍ ولا فاتورةَ تُسلَّم لعميلٍ في الكاش.
+  // The two deliveries together: in cash, no report is delivered to a branch and no invoice to a customer.
   'branchDeliveryDate', 'deliveryDate',
   'invoiceNumber', 'netInvoice', 'tax', 'totalInvoice', 'invoiceDate',
 ];
-// ما يُكتب صفرًا وما يُترك فارغًا — الرقمُ صفرٌ والتاريخُ لا صفرَ له.
+// What is written as zero and what is left empty: a number can be zero, a date cannot.
 const CASH_ZERO_NUMERIC = new Set(['netInvoice', 'tax', 'totalInvoice']);
 const VAT_RATE = 0.15;
 
 /**
- * القيمُ التي تُثبَّت على كشفٍ نقديّ.
- *
- * ── والنصُّ يُفرَّغ ولا يُكتب «0» ──────────────────────────────────────────────
- * كان القفلُ يكتب «0» في الخانات النصّيّة أيضًا، فيصير للكشف النقديّ **رقمُ
- * فاتورةٍ اسمُه «0»**. وكلُّ ما يقرأ رقمَ الفاتورة يصدّقه: صفحةُ الفواتير
- * الضريبيّة تجمع الكشوفَ على الرقم فتصنع «فاتورة 0» تضمّ كشوفًا نقديّةً
- * وضريبيّةً لعملاءَ مختلفين، ودالّةُ «عليها فاتورة» تقلب الكشفَ إلى ضريبيّ.
- *
- * والصفرُ الرقميُّ يبقى: «صافي الفاتورة صفر» جملةٌ صحيحة، أمّا «رقم الفاتورة
- * صفر» فليست رقمًا بل خانةٌ فارغةٌ تتنكّر في صورة قيمة.
+ * Values fixed on a cash report. Text is emptied, not set to '0': the lock used to write '0' into text fields too, giving cash reports an invoice number named '0'. Everything reading the invoice number believed it: the tax invoices page grouped reports on it into an 'invoice 0' mixing cash and tax reports of different customers, and the has-invoice test flipped the report to tax.
+ * A numeric zero stays: 'invoice net is zero' is valid, while 'invoice number zero' is an empty field disguised as a value.
  */
 function cashLockedValues() {
   const out = {};
@@ -308,35 +226,18 @@ function cashLockedValues() {
   return out;
 }
 
+/** Tax and total are derived from invoice net, not written. The accountant used to type all three and an error in one left the total not equal to its parts, found only at account matching a month later. Fixed formula: tax is 15 percent of net and total is their sum. */
 /**
- * الضريبةُ والإجماليّ يُشتقّان من صافي الفاتورة، ولا يُكتبان.
- *
- * كان المحاسبُ يكتب الثلاثةَ بيده، فيُخطئ في واحدٍ منها فلا يساوي الإجماليُّ
- * مجموعَ ما تحته — ولا يُكتشف إلّا عند مطابقةِ حسابٍ بعد شهر. وهي معادلةٌ
- * ثابتة: الضريبةُ خمسةَ عشرَ بالمئة من الصافي، والإجماليُّ مجموعُهما.
- */
-/**
- * ── والنقديُّ يُفوتَر بما دُفع، بلا ضريبةٍ وبلا رقمِ فاتورة ────────────────
- *
- * كان الكشفُ النقديُّ تُصفَّر أعمدتُه وتُقفَل: لا سندَ ولا فاتورةَ ولا تسليمَ
- * ولا تاريخ. والقصدُ كان صيانتَه من كتابةٍ لا معنى لها، وأثرُه أنّ الموظّفَ
- * يجد تسعةَ أعمدةٍ مقفولةً بأصفارٍ لا يستطيع تصحيحَها — وهي أعمدةٌ يحتاجها:
- * متى سُلِّمت الورقةُ للعميل، ومتى قُبض المال، وكم قُبض.
- *
- * فالقفلُ أُزيل. والكشفُ النقديّ كغيره يُكتَب فيه ما يلزم، وتبقى قاعدةٌ واحدةٌ
- * تُريح من عملٍ مكرّر: ما دُفع هو ما يُفوتَر. مبلغُ السداد يذهب إلى صافي
- * الفاتورة وإلى إجماليها معًا، والضريبةُ صفر — إذ لا ضريبةَ على نقدٍ. ورقمُ
- * الفاتورة يبقى فارغًا، فليست لها فاتورة.
- *
- * وما كتبه الموظّفُ بيده في هذه الكتابة يُحترَم: القاعدةُ تملأ الفارغَ ولا
- * تدهس القصد.
+ * Cash is invoiced at what was paid, with no tax and no invoice number. Cash reports used to have columns zeroed and locked (no receipt, invoice, delivery or date), meant to prevent meaningless writes; staff instead found nine locked zero columns they could not fix, yet they need them: when the paper was delivered, when money was received and how much.
+ * The lock is removed and a cash report is written like any other. One rule remains to save repeated work: what was paid is what is invoiced. Payment amount goes to invoice net and total together, tax is zero (no tax on cash), and the invoice number stays empty since there is no invoice.
+ * What the employee typed in the same write is respected: the rule fills blanks and never overrides intent.
  */
 function deriveCashTotals(patch, current) {
   const given = (f) => Object.prototype.hasOwnProperty.call(patch, f);
   const amount = Number(given('paymentAmount') ? patch.paymentAmount : current.paymentAmount) || 0;
   if (amount <= 0) return patch;
 
-  // لا ضريبةَ على نقد — تُكتب صفرًا صراحةً لا تُترك فارغة.
+  // No tax on cash: written as an explicit zero, not left empty.
   if (!given('tax')) patch.tax = 0;
   if (!given('netInvoice')) patch.netInvoice = amount;
   if (!given('totalInvoice')) patch.totalInvoice = amount;
@@ -354,46 +255,22 @@ function deriveInvoiceTotals(patch, current) {
 }
 
 /**
- * ── ونوعُ الدفع يُكتب بيدٍ، ولا يُستنتَج من العميل ─────────────────────────
- *
- * كان يُقرأ من ملفّ العميل ويُملأ من نفسِه، على أنّ النوعَ صفةٌ ثابتةٌ فيه.
- * وليس كذلك: العميلُ الواحد يقول في حمولةٍ «حاسبوني كاش» وفي أخرى «افتحوا
- * فاتورة». النوعُ صفةُ **الشحنة** لا صفةُ الطرف.
- *
- * فاستنتاجُه من الملفّ يكتب على الكشف ما لم يقله أحد، ويرسله إلى صفحةِ تحصيلٍ
- * ليست له — وهو خطأٌ صامتٌ لا يُكتشف إلّا حين يُطالَب عميلٌ بفاتورةٍ اتُّفق على
- * نقدِها. ومن كتبه بيده يعرف ما اتُّفق عليه في تلك الحمولة.
- *
- * والتاريخُ محفوظٌ على كلّ حال: النوعُ مكتوبٌ على الكشف نفسِه، فيُعرَف بعد سنةٍ
- * أيُّ كشوفِ هذا العميل كانت نقدًا وأيُّها فاتورة.
- *
- * (بقيت الدالّةُ محذوفةً لا معطَّلة: دالّةٌ لا تُستدعى تُعاد يومًا بلا قراءةِ
- *  سببِ إزالتها.)
+ * Payment type is written by hand and not inferred from the customer. It used to be read from the customer file and filled automatically, as if a fixed customer attribute; the same customer says 'pay me cash' on one load and 'open an invoice' on another, so it belongs to the shipment.
+ * Inferring from the file writes on the sheet what nobody said and sends it to a collections page that is not its own, a silent error found only when a customer is billed an invoice agreed to be cash. History is kept since the type is written on the sheet itself.
+ * (The function is deleted rather than disabled, so an uncalled function is not revived without reading why it was removed.)
  */
 
+/** Applies payment type rules to an incoming edit. Returns the dropped fields by name, so rejections are reported rather than swallowed. */
 /**
- * يُطبِّق قواعدَ نوع الدفع على تعديلٍ قادم.
- *
- * تُرجِع الحقولَ التي أُسقطت باسمها — فالمرفوضُ يُقال ولا يُبتلع.
- */
-/**
- * يملأ نوعَ الدفع من ملفّ العميل قبل تطبيق القواعد.
- *
- * ── لماذا هنا أيضًا وهو في المزامنة ─────────────────────────────────────────
- * المزامنةُ تملؤه للكشوف الآتية من المنصّة. وكشفٌ يُنشأ عندنا بيد موظّف، أو
- * كشفٌ قديمٌ يُكتب له تاريخُ سدادٍ اليوم، لا يمرّ عليها — فيبقى بلا نوع، ولا
- * يظهر في شاشة تحصيلٍ لا كاشًا ولا ضريبيًّا. وهذه اللحظةُ — لحظةَ كتابة تاريخ
- * السداد — هي التي يُسأل بعدها «فين الكشف؟».
- *
- * ولا يُبدَّل نوعٌ مكتوب: يُملأ الفارغُ وحدَه، ولا يُمسّ اختيارُ اليد أبدًا.
+ * Fills payment type from the customer file before applying the rules. Also done here although sync does it: sync fills reports from the platform, but a report created by hand here, or an old one given a payment date today, never passes through it and would stay typeless and appear on no collections screen. Writing the payment date is the moment when 'where is the report' gets asked.
+ * A written type is never replaced: only empty is filled, a hand choice is untouched.
  */
 async function fillPaymentTypeFromCustomer(patch, current = {}, partyTypes = null) {
   if (Object.prototype.hasOwnProperty.call(patch, 'paymentType')) return null;
-  // واختيارُ أحد الأنواع الأربعة اختيارٌ للنوع — لا يُشتقّ فوقه.
+  // Choosing one of the four types is choosing the type; nothing is derived over it.
   if (Object.prototype.hasOwnProperty.call(patch, 'paymentSubtype')) return null;
   if (String(current.paymentTypeSource || '') === 'manual') return null;
-  // ── والموحَّدُ على صفة عميله لا يُشتقّ من جديد ─────────────────────────
-  // إلّا أن تُكتب له الآن فاتورةٌ ضريبيّةٌ حقيقيّة — راجع isUnified.
+  // A unified report keeps its customer's attribute and is not re-derived, unless a real tax invoice is being written for it now (see isUnified).
   if (isUnified(current)) {
     const merged = { ...current, ...patch };
     if (!hasIssuedInvoice(merged) || String(current.paymentType || '') === 'tax') return null;
@@ -409,9 +286,7 @@ async function fillPaymentTypeFromCustomer(patch, current = {}, partyTypes = nul
     const CollectionsParty = require('../models/CollectionsParty');
     const key = CollectionsParty.fold(name);
     if (!key) return null;
-    // ── والدفعةُ الكبيرة تقرأ العملاءَ مرّةً لا لكلّ صفّ ─────────────────────
-    // `partyTypes` (مفتاحٌ مطويّ ← صفة) يُحمَّل مرّةً في التحديث الجماعيّ؛ وبدونه
-    // كانت سبعةٌ وثلاثون ألفَ كشفٍ = سبعةً وثلاثين ألفَ رحلةٍ إلى القاعدة.
+    // A large batch reads customers once, not per row. partyTypes (folded key to attribute) is loaded once in bulk update; otherwise 37,000 reports meant 37,000 database round trips.
     const party = partyTypes
       ? (partyTypes.has(key) ? { paymentType: partyTypes.get(key) } : null)
       : await CollectionsParty.findOne({ kind: 'customer', nameKey: key }).select('paymentType').lean();
@@ -420,26 +295,15 @@ async function fillPaymentTypeFromCustomer(patch, current = {}, partyTypes = nul
     if (!next || next === String(current.paymentType || '')) return null;
     patch.paymentType = next;
     patch.paymentTypeSource = 'auto';
-    // ── وعلامةٌ تقول إنّ هذا اشتقاقٌ لا اختيارُ يد ──────────────────────────
-    // `applyBillingRules` تختم كلَّ `paymentType` في التعديل بأنّه «يدويّ»، وهو
-    // صوابٌ لما يكتبه الموظّف وخطأٌ لما نشتقّه نحن: المختومُ يدويًّا لا تمسّه
-    // صفحةُ «أنواع الدفع» أبدًا، فيتجمّد الكشفُ على نوعٍ لم يختره أحد ويُعدّ في
-    // عمود «اختيار يدويّ» وهو ليس منه.
+    // A flag marking this as derived and not a hand choice. applyBillingRules stamps every paymentType in an edit as manual, right for what staff write and wrong for what we derive: a manually stamped report is never touched by the payment types page, freezing it on a type nobody chose and counting it under 'manual choice'.
     patch.__derivedPaymentType = true;
     return next;
   } catch (_) { return null; }
 }
 
 /**
- * رقمُ فاتورةٍ كُتب على كشفٍ يصنع قيدَه في دفتر الفواتير.
- *
- * ── ولماذا يلزم ────────────────────────────────────────────────────────────
- * شاشةُ الفواتير الضريبيّة تقرأ الدفتر (`CollectionInvoice`) لا الكشوف: الفاتورةُ
- * هي الوحدةُ وقد تضمّ كشوفًا. فرقمٌ يُكتب على كشفٍ اليوم لا يجد له قيدًا في
- * الدفتر — فلا يظهر في التحصيل أصلًا، والشرطُ أن يصلها **فورًا** متى كُتب رقمُه.
- *
- * فيُنشأ القيدُ عند أوّل كتابةٍ ولا يُلمَس بعدها: ما بعده — تسليمٌ وتحصيلٌ وحالة —
- * عملُ قسم التحصيل على الفاتورة نفسِها، ولا يجوز أن تدهسه كتابةٌ على كشف.
+ * An invoice number written on a report creates its entry in the invoice ledger. The tax invoices screen reads the ledger (CollectionInvoice), not the reports, since the invoice is the unit and may span reports; a number written on a report has no ledger entry and never appears in collections, so it must arrive there immediately.
+ * The entry is created at the first write and left alone afterwards: delivery, collection and status are collections work on the invoice itself and a report write must not overwrite them.
  */
 async function ensureLedgerInvoice(workflow, previousNumber = '') {
   const numbers = [workflow && workflow.invoiceNumber, previousNumber];
@@ -447,17 +311,8 @@ async function ensureLedgerInvoice(workflow, previousNumber = '') {
 }
 
 /**
- * ── والقيدُ المولودُ من كشفٍ يتبع كشوفَه ──────────────────────────────────
- *
- * كان القيدُ يُنشأ مرّةً ثمّ لا يُلمَس. فظهر في التحصيل شيئان خاطئان:
- *   · رقمٌ صُحِّح على الكشف (١٢١٣ ← غيرُه) بقي قيدُه القديمُ فاتورةً بلا كشف؛
- *   · ورقمٌ كُتب قبل مبالغه بقيت فاتورتُه صفرًا وإن اكتملت مبالغُ الكشف بعده.
- *
- * فالقيدُ الذي وُلد من كشف (`sheetCode: 'workflow'`) يُعاد حسابُه من كشوفه في
- * كلّ تعديل: مبلغُه مجموعُ إجماليّاتها، وطرفُه عميلُها، وكشوفُه أرقامُها. وإن لم
- * يبقَ تحته كشفٌ ولم يعمل عليه التحصيلُ بعدُ (لا تسليمَ ولا تحصيل) أُزيل.
- * أمّا قيدُ دفتر الشركة فلا يُلمَس إلّا طرفًا ناقصًا يُكمَّل — كما كان.
- * وما بعد الإنشاء من تسليمٍ وتحصيلٍ وحالةٍ عملُ قسم التحصيل لا يُمَسّ هنا.
+ * An entry born from a report follows its reports. It used to be created once and never touched, causing two errors in collections: a number corrected on the report left the old entry as an invoice with no report, and a number written before its amounts stayed zero after the amounts were completed.
+ * An entry with sheetCode 'workflow' is recomputed from its reports on every edit: amount is the sum of their totals, party is their customer, reports are their numbers. If no report remains and collections has not worked on it (no delivery or collection) it is removed. A company-ledger entry is touched only to fill a missing side. Delivery, collection and status after creation are collections work and untouched here.
  */
 async function syncOpsInvoices(rawNumbers) {
   const CollectionInvoice = require('../models/CollectionInvoice');
@@ -471,7 +326,7 @@ async function syncOpsInvoices(rawNumbers) {
         executionStatus: { $nin: ['ملغي', 'ملغى', 'ملغاة', 'cancelled', 'canceled', 'Cancelled'] },
       }).select('reportNumber username invoiceNumber invoiceDate netInvoice tax totalInvoice paymentType').lean();
       const taxReports = reports.filter((w) => w.paymentType !== 'cash' && hasTaxInvoice(w));
-      // الضريبيُّ وحدَه: رقمُ الشحنة النقديّة تسلسلٌ آخر قد يوافق رقمَ فاتورة.
+      // Tax only: a cash shipment number is a different sequence that may equal an invoice number.
       const existing = await CollectionInvoice.findOne({ invoiceNumber: no, kind: 'tax' });
 
       if (!taxReports.length) {
@@ -499,11 +354,11 @@ async function syncOpsInvoices(rawNumbers) {
           party: party?._id || undefined,
           partyCode: party?.code || '',
           partyName: first.username || '',
-          // يومُ كتابة رقمها إن لم يُكتب لها تاريخ — لا تاريخُ السداد ولا الكشف (راجع stampInvoiceDate).
+          // The day its number was written if it has no date: not the payment date or the report date (see stampInvoiceDate).
           invoiceDate: dates.length ? new Date(Math.min(...dates)) : new Date(`${require('../utils/companyDay').todayKey()}T00:00:00.000Z`),
           total: sum('totalInvoice'),
           reportNumbers: taxReports.map((w) => String(w.reportNumber || '')).filter(Boolean),
-          // مصدرُ القيد يُقال: قيدٌ وُلد من كشفٍ غيرُ قيدٍ جاء من دفتر الشركة.
+          // The entry's source is recorded: an entry born from a report differs from one that came from the company ledger.
           sheetCode: 'workflow',
           source: 'operations_workflow',
           status: '',
@@ -514,11 +369,7 @@ async function syncOpsInvoices(rawNumbers) {
 
       const $set = {};
       if (!existing.party && party?._id) { $set.party = party._id; $set.partyCode = party.code || ''; }
-      // ── رقمٌ محجوزٌ في الدفتر صار فاتورةً على كشوف ───────────────────────────
-      // دفترُ التحصيل يحمل أرقامًا محجوزةً في التسلسل (`unused`) لا تُعرض ولا تُعَدّ.
-      // فإن كُتب الرقمُ على كشوفٍ ضريبيّة صار فاتورةً حقيقيّة — وكان يبقى محجوزًا
-      // صفرًا مخفيًّا: ٥٨ فاتورةً (١٢١٤٦–١٢٢٠٨) لم تصل التحصيل (٢٠٢٦/١٠/٢٠). فيُفتح
-      // ويُعامَل معاملةَ ما وُلد من كشف: مبلغُه وطرفُه وكشوفُه منها.
+      // A number reserved in the ledger becomes an invoice on reports. The collections ledger holds numbers reserved in the sequence (unused) that are neither shown nor counted. When such a number is written on tax reports it becomes a real invoice; it used to stay a hidden reserved zero (58 invoices never reached collections). It is opened and treated like one born from a report: amount, party and reports from them.
       const wasReserved = existing.unused === true;
       if (wasReserved) {
         $set.unused = false;
@@ -550,16 +401,12 @@ async function syncOpsInvoices(rawNumbers) {
   return touched;
 }
 
-// الحقولُ التي إن تغيّرت على كشفٍ تغيّر بها قيدُ فاتورته.
+// Fields whose change on a report changes its invoice entry.
 const LEDGER_FIELDS = ['invoiceNumber', 'netInvoice', 'tax', 'totalInvoice', 'invoiceDate', 'paymentType', 'username', 'executionStatus'];
 
 function applyBillingRules(patch, current = {}) {
-  // ── رقمُ فاتورةٍ حقيقيّ = «آجل - فاتورة» (صاحبُ الشركة، ٢٠٢٦/١٠/٢٥) ────────
-  // «كلّ أيّ حاجة ضريبي بقت آجل - فاتورة»: والضريبيُّ يُعرَف برقم فاتورته. فكان
-  // ملفُّ الفواتير يأتي برقمٍ لكشفٍ عليه «نقدي - 3PL» أو «كاش» فيُرفض («غيِّر
-  // نوعه إلى ضريبي أوّلًا») — والرقمُ نفسُه هو التغيير: كتابتُه إصدارُ الفاتورة.
-  // فيصير الكشفُ «آجل - فاتورة» ويُقبل الرقم، من الملفّ والتعديل الفرديّ والجماعيّ.
-  // إلّا أن يختار التعديلُ نفسُه نوعًا نقديًّا بيدٍ مع الرقم: تناقضٌ يُرفض كما كان.
+  // A real invoice number means a credit-invoice type (company owner: anything tax became 'credit - invoice'). Tax is identified by its invoice number. An invoice file used to bring a number for a report marked cash-3PL or cash and be rejected ('change its type to tax first'), but the number is the change: writing it issues the invoice.
+  // The report becomes credit-invoice and the number is accepted, from the file and from single and bulk edits, unless the edit itself picks a cash type by hand together with the number: a contradiction, rejected as before.
   if (Object.prototype.hasOwnProperty.call(patch, 'invoiceNumber') && hasTaxInvoice(patch)) {
     const hasType = Object.prototype.hasOwnProperty.call(patch, 'paymentType');
     const chosen = hasType ? String(patch.paymentType || '') : '';
@@ -568,33 +415,24 @@ function applyBillingRules(patch, current = {}) {
     const effective = hasType ? (subtypeFamily(chosen) || chosen) : current.paymentType;
     if (!handPickedCash && effective !== 'tax') {
       patch.paymentType = TAX_SUBTYPE;
-      delete patch.__derivedPaymentType;   // رقمُ فاتورةٍ كتبه إنسان — اختيارُ يد
+      delete patch.__derivedPaymentType;   // An invoice number written by a person: a hand choice.
     }
   }
 
-  // ── النوعُ المختارُ يكتب عائلتَه أوّلًا ──────────────────────────────────
-  // «نقدي - 3PL» يصل هنا `paymentType` = 'cash_3pl'، فيصير النوعُ `cash_3pl`
-  // والعائلةُ `cash` — ثمّ تسري قواعدُ الكاش كلُّها على العائلة كما كانت.
-  // والانتقالُ الآليُّ إلى الضريبيّ يأخذ «آجل - فاتورة». راجع utils/paymentType.
+  // The chosen type writes its family first. 'Cash - 3PL' arrives as paymentType 'cash_3pl', so the type is cash_3pl and the family is cash, and all cash rules apply to the family as before. The automatic move to tax takes 'credit - invoice'. See utils/paymentType.
   normalizePaymentChoice(patch, current);
   const nextType = Object.prototype.hasOwnProperty.call(patch, 'paymentType')
     ? patch.paymentType
     : current.paymentType;
 
-  // ── واختيارُ اليد يُختَم بأنّه اختيارُ يد ───────────────────────────────────
-  // صفحةُ «أنواع الدفع» تشتقّ النوعَ من صفة العميل، وتمرّ على الكشوف كلَّما
-  // تغيّرت. فما لم يُميَّز ما اختاره الموظّفُ على كشفٍ بعينه لدهسه الاشتقاقُ في
-  // أوّل مرور — والعميلُ الواحد يكون كاشًا في حمولةٍ وضريبيًّا في التالية،
-  // فالاختيارُ على الكشف هو الأصدق. راجع utils/paymentType.
+  // A hand choice is stamped as a hand choice. The payment types page derives the type from the customer attribute and runs over reports whenever it changes; without marking what staff chose on a specific report, the first run overwrites it. One customer is cash on one load and tax on the next, so the choice on the report is the most accurate. See utils/paymentType.
   if (Object.prototype.hasOwnProperty.call(patch, 'paymentType')) {
-    // إلّا ما اشتققناه نحن قبل قليل — راجع fillPaymentTypeFromCustomer.
+    // Except what we just derived (see fillPaymentTypeFromCustomer).
     if (!patch.__derivedPaymentType) patch.paymentTypeSource = 'manual';
   }
   delete patch.__derivedPaymentType;
 
-  // ── الضريبةُ لا تُكتب، وإجماليُّ الضريبيّ لا يُكتب ───────────────────────────
-  // تُحسب من الصافي (deriveInvoiceTotals). فما أرسلته شاشةٌ فيهما يُسقَط — وفي
-  // الكاش يبقى الإجماليُّ مكتوبًا بيد (صاحبُ الشركة، ٢٠٢٦/١٠/٢٠).
+  // Tax is not written, and tax-report total is not written. They are computed from net (deriveInvoiceTotals), so what a screen sends in them is dropped; in cash the total stays hand-written (company owner).
   if (!Object.prototype.hasOwnProperty.call(patch, 'netInvoice')) {
     delete patch.tax;
     if (nextType !== 'cash') delete patch.totalInvoice;
@@ -602,41 +440,27 @@ function applyBillingRules(patch, current = {}) {
 
   const blocked = [];
   if (nextType === 'cash') {
-    // ── «الكاش ملهاش رقم فاتورة» ────────────────────────────────────────────
-    // قرارُ صاحب الشركة: النقديُّ يُكتب له صافٍ وتُحسب ضريبتُه، ولا رقمَ فاتورةٍ
-    // له — فرقمُ الفاتورة وحدَه دليلُ الضريبيّ (راجع hasTaxInvoice). فرقمٌ حقيقيٌّ
-    // يُكتب على كشفٍ يبقى نقديًّا (نوعُه مختارٌ بيدٍ أو موحَّد، فلم يقلبه الاشتقاق)
-    // يُرفض: إمّا أن يُغيَّر نوعُه إلى «ضريبي» أوّلًا، أو لا رقم.
+    // Cash has no invoice number. Decision of the company owner: cash gets a net and its tax is computed, but no invoice number, since the invoice number alone is the evidence of tax (see hasTaxInvoice). A real number written on a report that stays cash (type chosen by hand or unified, so derivation did not flip it) is rejected: change its type to tax first, or no number.
     if (Object.prototype.hasOwnProperty.call(patch, 'invoiceNumber') && hasTaxInvoice(patch)) {
       delete patch.invoiceNumber;
       blocked.push('invoiceNumber');
     }
-    // والصافي إن كُتب بيدٍ تُحسب منه الضريبةُ والإجماليّ كما في الضريبيّ
-    // («ويتحسب الفات»)؛ وما لم يُكتب يُملأ بما دُفع — راجع deriveCashTotals.
+    // If net is written by hand, tax and total are computed from it as for tax; if not written it is filled with what was paid (see deriveCashTotals).
     if (Object.prototype.hasOwnProperty.call(patch, 'netInvoice')) deriveInvoiceTotals(patch, current);
     deriveCashTotals(patch, current);
   } else {
-    // ── ومبلغُ التحصيل للنقديّ وحدَه ────────────────────────────────────────
-    // الضريبيُّ يُحصَّل بفاتورته وصافيها هو المبلغ، فلا معنى لخانةٍ ثانيةٍ
-    // تقول مبلغًا آخر — وإن اختلفا لم يُعرف أيُّهما الصحيح. والنقديُّ لا
-    // فاتورةَ له، فمبلغُ تحصيله يُكتب بيده.
+    // Collection amount is for cash only. Tax is collected by its invoice and its net is the amount, so a second field with another amount would leave unknown which is right. Cash has no invoice, so its collection amount is entered by hand.
     if (Object.prototype.hasOwnProperty.call(patch, 'collectedAmount') && patch.collectedAmount) {
       delete patch.collectedAmount;
       blocked.push('collectedAmount');
     }
-    // ── والخروجُ من «كاش» يفكّ ما أقفله ──────────────────────────────────
-    // كان القفلُ في اتّجاهٍ واحد: يُختار «كاش» فتُصفَّر تسعةُ أعمدة، ثمّ يُرجَع
-    // الاختيارُ فتبقى الأصفارُ مكانها — أعمدةٌ مفتوحةٌ للكتابة تقول «0» وليس
-    // فيها صفر. فيظنّ صاحبُها أنّ الكشف مفوتَرٌ بصفر، أو يمسحها تسعَ مرّات
-    // بيده.
-    //
-    // ولا يُمسح إلّا ما وضعه القفلُ نفسُه: تُقارَن كلُّ خانةٍ بقيمة القفل، فما
-    // كان صفرَ القفل عاد فارغًا، وما كتبه إنسانٌ يبقى كما كتبه.
+    // Leaving cash releases what the lock closed. The lock used to be one-way: choosing cash zeroed nine columns, and switching back left the zeros in open columns saying '0' with no real zero, so staff thought the report was invoiced at zero or cleared nine columns by hand.
+    // Only what the lock itself set is cleared: each cell is compared to the lock value, so a lock zero returns to empty and what a person wrote stays.
     const wasCash = current.paymentType === 'cash';
     if (wasCash) {
       const locked = cashLockedValues();
       for (const f of CASH_LOCKED_FIELDS) {
-        if (Object.prototype.hasOwnProperty.call(patch, f)) continue;   // كتبه المستخدمُ الآن
+        if (Object.prototype.hasOwnProperty.call(patch, f)) continue;   // Written by the user now.
         const now = current[f];
         const placeholder = locked[f];
         const isPlaceholder = placeholder === null
@@ -651,15 +475,13 @@ function applyBillingRules(patch, current = {}) {
 }
 
 // Filter update body to only include fields the role can edit
-// ── والحذفُ لا يكون صامتًا ──────────────────────────────────────────────────
-// إسقاطُ حقلٍ لا يملكه الطالبُ صحيح؛ أمّا أن يُسقَط ثمّ يُقال «حُفِظ» فليس منعًا
-// بل كذب. تُعاد المرفوضةُ بأسمائها ليقرّر المستدعي: يردُّ ٤٠٣ يسمّيها، أو يمضي.
+// Dropping is not silent. Dropping a field the requester does not own is right, but dropping it and then saying 'saved' is a lie, not a block. Rejected fields are returned by name so the caller decides: respond 403 naming them, or proceed.
 const filterFieldsByRole = (body, role, resolvedFields) => {
   const allowedFields = resolvedFields || ROLE_FIELD_ACCESS[role] || [];
   const filtered = {}; const rejected = [];
   for (const key of Object.keys(body)) {
     if (allowedFields.includes(key)) filtered[key] = body[key];
-    // الحقولُ التي يضيفها الخادمُ لنفسه ليست إدخالًا من المستخدم فلا تُحسب رفضًا.
+    // Fields the server adds itself are not user input and are not counted as rejections.
     else if (!['lastModifiedBy', 'createdBy', 'stage', '_id', '__v'].includes(key)) rejected.push(key);
   }
   Object.defineProperty(filtered, '__rejected', { value: rejected, enumerable: false });
@@ -679,17 +501,9 @@ const isLocked = (workflow, userId) => {
   return workflow.lockedBy.toString() !== userId.toString();
 };
 
-// ═══════════════════════════════════════════════════════════════════════════
-//  فلاتر الأعمدة — قيمُ العمود تُحسب في القاعدة، والتصفية تجري فيها
-// ═══════════════════════════════════════════════════════════════════════════
+// Column filters: column values are computed in the database and filtering runs there.
 
-/**
- * الأعمدة المسموح بالفلترة عليها.
- *
- * قائمةٌ بيضاء مقصودة: اسم العمود يدخل مباشرةً في مفتاح `$group` وفي شرط `$in`،
- * فلو قُبل أي اسمٍ يرسله المتصفح لأمكن استخراج قيم حقولٍ لا يعرضها الجدول أصلًا
- * — ومنها حقولٌ ماليّة محجوبة عن أكثر الأدوار.
- */
+/** Columns allowed for filtering. A deliberate whitelist: the column name goes straight into the $group key and the $in condition, so accepting any name from the browser would expose values of fields the table does not show, including money fields hidden from most roles. */
 const FILTERABLE_COLUMNS = new Set([
   'reportNumber', 'reportDate', 'fromLocation', 'toLocation', 'branch', 'carOwner',
   'carNumber', 'ownerType', 'executionStatus', 'applicationStatus', 'paymentMethod',
@@ -699,65 +513,40 @@ const FILTERABLE_COLUMNS = new Set([
   'branchDeliveryDate', 'deliveryDate',
   'accountingReview', 'invoiceNumber', 'netInvoice', 'tax', 'totalInvoice',
   'invoiceDate', 'collectionDate', 'stage',
-  // ── وأعمدةٌ كانت تُعرض بقائمةٍ ولا يقبلها الخادم ─────────────────────────
-  // «نوع الدفع» و«مبلغ السداد» و«وجهة الكشف النهائية» و«مبلغ التحصيل» و«مسؤول
-  // البيانات» أُضيفت إلى الجدول ولم تُضَف هنا، فكان كلُّ فتحٍ لقائمتها يُردّ ٤٠٠
-  // وتُعرض فارغةً بلا رسالة: «نوع الدفع لا يفلتر شيئًا».
+  // Columns that were shown with a list but rejected by the server. Payment type, payment amount, final destination, collection amount and data owner were added to the table but not here, so opening their list returned 400 and showed empty with no message ('payment type filters nothing').
   'paymentAmount', 'paymentType', 'finalReportDestination', 'collectedAmount',
-  // الحقلُ الخام (تعرضه الصفحةُ الخاصّة كما هو)، والعمودُ المعروضُ في سير العمل —
-  // الاسمُ ثمّ مسجّلُ المحفظة ثمّ مصدرُ الاستيراد. راجع utils/dataOwnerIndex.
+  // The raw field (shown as-is by the private page) and the column shown in the workflow: name, then the wallet recorder, then the import source. See utils/dataOwnerIndex.
   'paymentDateByName', 'dataOwnerShown',
-  // ── «رقم الفاتورة: موجود / فارغ / بديلٌ مثل no inv» ─────────────────────
-  // عمودٌ محسوبٌ لا حقل: شريطُ الفلترة يسأل «أيُّ الكشوف عليها فاتورة؟» ولا
-  // يستطيع ذلك فلترُ رقم الفاتورة نفسِه — قيمُه خمسُمئةِ رقمٍ لا ثلاثُ حالات.
+  // Invoice number: present / empty / placeholder such as 'no inv'. A computed column, not a field: the filter bar asks which reports have an invoice, which the invoice-number filter itself cannot answer since its values are hundreds of numbers, not three states.
   'invoiceState',
-  // ── «التخليص»: رقمُ المعاملة المرتبطة، و(فارغ) = غيرُ مرتبط ────────────
-  // عمودٌ محسوبٌ من `customsLink.refNumber` — يجيب «أيُّ كشوفٍ لها معاملة؟»
-  // و«ما كشوفُ المعاملة كذا؟» بالفلتر نفسِه.
+  // Clearance: the linked transaction number, and empty means not linked. A computed column from customsLink.refNumber, answering which reports have a transaction and which reports belong to a given transaction with the same filter.
   'customsRef',
 ]);
 
-// حالاتُ رقم الفاتورة الثلاث — شرطٌ واحدٌ تقرؤه القائمةُ والفلتر معًا.
+// The three invoice-number states: one condition read by both the list and the filter.
 const INVOICE_STATE_COND = {
   has: ISSUED_INVOICE_QUERY,
   none: { invoiceNumber: { $in: require('../utils/colFilter').BLANK_VALUES } },
   placeholder: { invoiceNumber: { $regex: NO_INVOICE_RX } },
 };
 
-// القيمة تصل من المتصفح نصًّا دائمًا، والحقل في القاعدة رقمٌ أو تاريخ. المقارنة
-// بين نوعين مختلفين في BSON لا تُطابق شيئًا أبدًا، فالفلترة على «قيمة الشراء» أو
-// «تاريخ السداد» كانت سترجع صفرًا من الصفوف بلا رسالة خطأ — لذلك يُعاد كل نوعٍ
-// إلى نوعه قبل بناء الشرط.
+// The value always arrives from the browser as text while the database field is a number or date. Comparing different BSON types never matches, so filtering on purchase value or payment date would silently return zero rows; each type is converted back before building the condition.
 const NUMERIC_COLUMNS = new Set(['purchaseValue', 'sellingValue', 'netInvoice', 'tax', 'totalInvoice', 'paymentAmount', 'collectedAmount']);
 const DATE_COLUMNS = new Set(['reportDate', 'paymentDate', 'sendingDate', 'branchDeliveryDate', 'deliveryDate', 'invoiceDate', 'collectionDate']);
 
 /**
- * أعمدة التواريخ تُجمَّع باليوم لا باللحظة.
- *
- * المخزَّن لحظةٌ بالثانية، والمعروض في الخانة يومٌ فقط؛ فالتجميع باللحظة كان يضع
- * في القائمة ثمانيةً وعشرين سطرًا مكتوبًا عليها كلّها «١٦/١٢/٢٠٢٥» لا يفرّق بينها
- * شيء، ويرفع عدد القيم المختلفة إلى ثلاثةٍ وعشرين ألفًا في عمودٍ واحد.
- *
- * والمنطقة الزمنية مثبَّتة على توقيت الرياض لأن الشركة كلّها فيه: التجميع بالتوقيت
- * العالمي يُلقي بكشوف ما بعد التاسعة مساءً في اليوم التالي، فلا يطابق اليومَ
- * المكتوب في الخانة نفسها.
+ * Date columns group by day, not by instant. The stored value is a second-precision instant but the cell shows only the day, so grouping by instant listed 28 identical-looking lines and raised distinct values to 23,000 in one column.
+ * The timezone is fixed to Riyadh time because the company is entirely there: grouping in UTC pushes reports after 9 pm into the next day, which then does not match the day written in the cell.
  */
 const TZ = 'Asia/Riyadh';
-// (كانت هنا `TZ_OFFSET = '+03:00'` مكتوبةً يدًا — صارت في `utils/companyDay`
-//  حيث تُسأل المنطقةُ عن إزاحتها بدل أن تُفترض، ويقرأها النظامُ كلُّه.)
+// TZ_OFFSET = '+03:00' used to be hand-written here; it now lives in utils/companyDay, where the zone is asked for its offset instead of assumed, and the whole system reads it.
 const DAY_MS = 24 * 60 * 60 * 1000;
 const isDayString = (v) => /^\d{4}-\d{2}-\d{2}$/.test(v);
 
-/**
- * سقف عدد القيم المُعادة في قائمة العمود الواحد.
- *
- * أعمدة مثل «رقم الكشف» و«رقم الفاتورة» فيها قيمةٌ مختلفة لكل صف — عشرات الآلاف
- * — وإرسالها كاملةً يعيد بالضبط التجمّد الذي جاء هذا الحلّ ليزيله. تُعاد الأكثر
- * تكرارًا، ويُطلب الباقي بالبحث داخل القائمة فيُنفَّذ على الخادم.
- */
+/** Cap on the number of values returned in one column list. Columns such as report number and invoice number have a distinct value per row (tens of thousands) and sending them all brings back the freeze this solution removed. The most frequent are returned and the rest are found by searching within the list, executed on the server. */
 const MAX_FILTER_VALUES = 500;
 
-/** نمطٌ يطابق القيمةَ بأيّ فراغٍ حولها أو فيها — راجع utils/colFilter. */
+/** A pattern matching the value with any whitespace around or inside it; see utils/colFilter. */
 const { textMatcher, BLANK_VALUES, normKey: colKey } = require('../utils/colFilter');
 
 const decodeColumnValue = (field, v) => {
@@ -767,14 +556,8 @@ const decodeColumnValue = (field, v) => {
 };
 
 /**
- * شروط فلاتر الأعمدة القادمة من الجدول: `cf_<العمود>` مكرَّرًا لكل قيمة مختارة.
- *
- * التكرار — لا الفصل بفاصلة — لأن القيم نفسها تحمل فواصل (أسماء ملّاك، ملاحظات
- * فواتير)، ففصلها بفاصلة كان يقطع القيمة نصفين فلا تطابق صفًّا واحدًا.
- *
- * `skipField` تستعمله قائمة القيم: قيم عمودٍ تُحسب بكل الفلاتر **إلا فلتره هو**،
- * وإلا لما ظهرت في القائمة إلا القيم التي اختارها المستخدم بالفعل فتعذّر توسيع
- * الاختيار.
+ * Conditions from table column filters: cf_<column> repeated per selected value. Repetition rather than comma separation because values themselves contain commas (owner names, invoice notes) and splitting would cut a value in two and match no row.
+ * skipField is used by the values list: a column's values are computed with all filters except its own, otherwise only the already chosen values would appear and widening the selection would be impossible.
  */
 function columnFilters(query, skipField, allowMoney = true, allowSelling = true) {
   const conds = [];
@@ -782,20 +565,17 @@ function columnFilters(query, skipField, allowMoney = true, allowSelling = true)
     if (!key.startsWith('cf_')) continue;
     const field = key.slice(3);
     if (!FILTERABLE_COLUMNS.has(field) || field === skipField) continue;
-    // والفلترةُ على عمودٍ محجوب تكشفه بالاستنتاج: «أرِني ما إجمالي فاتورته
-    // كذا» جوابٌ عن قيمةٍ لا تُعرض. تُسقَط لمن لا يملكها.
+    // Filtering on a hidden column reveals it by inference ('show those whose invoice total is X' answers about a value not shown), so it is dropped for roles without it.
     if (AMOUNT_FIELDS.includes(field) && !allowMoney) continue;
-    // وقيمةُ البيع كذلك لمن ليس في قائمتها.
+    // Likewise selling value for roles outside its list.
     if (SELLING_FIELDS.includes(field) && !allowSelling) continue;
     const raw = Array.isArray(query[key]) ? query[key] : [query[key]];
     const vals = raw.map((v) => String(v == null ? '' : v));
     if (!vals.length) continue;
-    // الخانة الفارغة فئةٌ حقيقية يُسأل عنها («الكشوف التي لم تُفوتر بعد»)، وهي في
-    // القاعدة ثلاث صور: حقلٌ غير موجود، وnull، ونصٌّ فارغ — والثلاثة يجب أن يردّها
-    // اختيارٌ واحد، وإلا بدا للمستخدم أن صفوفًا اختفت.
-    // «مسؤول البيانات» عمودٌ يُحسب من ثلاثة مصادر لا حقلٌ واحد — راجع utils/dataOwnerIndex.
+    // An empty cell is a real category users ask about ('reports not yet invoiced'), and in the database it has three forms: missing field, null and empty string. One selection must return all three, or rows appear to vanish.
+    // Data owner is a column computed from three sources, not one field; see utils/dataOwnerIndex.
     if (field === 'dataOwnerShown') { conds.push(require('../utils/dataOwnerIndex').ownerCondition(vals)); continue; }
-    // «نوع الدفع» يعرض ستَّ قيم: الأنواعَ الأربعة، و«ضريبي»/«كاش» لما بقي بلا نوع.
+    // Payment type shows six values: the four types, and tax/cash for rows that remain without a type.
     if (field === 'paymentType') { conds.push(paymentKindCondition(vals)); continue; }
     if (field === 'invoiceState') {
       const cs = vals.map((v) => INVOICE_STATE_COND[v]).filter(Boolean);
@@ -807,12 +587,9 @@ function columnFilters(query, skipField, allowMoney = true, allowSelling = true)
     const rest = vals.filter((v) => v !== '');
 
     if (DATE_COLUMNS.has(field)) {
-      // اليوم مدًى لا لحظة: `$eq` على منتصف ليل اليوم لا يطابق كشفًا سُجّل الثالثة
-      // عصرًا من اليوم نفسه، فيختفي من نتيجة فلترٍ اختاره المستخدم بالاسم.
+      // A day is a range, not an instant: $eq on midnight of the day does not match a report recorded at 3 pm that day, so it would vanish from a filter the user chose by name.
       const clauses = [];
-      // وتاريخٌ خارجَ ما يقدر مونجو أن يكتبه يومًا (سنة ٥٧٣٧١ في «تاريخ الارسال» —
-      // خطأُ إدخال) يقع في القائمة تحت «(فارغ)»، فيُرَدّ معه — وإلّا عدّته القائمةُ
-      // ولم يُرجعه الاختيار.
+      // A date outside what Mongo can write (year 57371 in the send date, an entry error) falls in the list under 'empty', so it is returned with it; otherwise the list counted it and the selection did not return it.
       if (wantsBlank) clauses.push({ [field]: { $in: ['', null] } }, { [field]: { $gte: new Date('9999-12-31T21:00:00.000Z') } });
       for (const v of rest) {
         if (isDayString(v)) {
@@ -828,15 +605,8 @@ function columnFilters(query, skipField, allowMoney = true, allowSelling = true)
       continue;
     }
 
-    // ── والنصُّ يُطابَق بلا مسافات طرفيه ──────────────────────────────────────
-    // المزامنةُ تكتب بخطّ تجميعٍ فلا يمرّ عليها `trim` في المخطّط، فيُخزَّن
-    // «الدمام » و«محمد الخولي » و«13  » كما جاءت من المنصّة — بجانب صيغها
-    // المقصوصة في صفوفٍ أخرى. والخانتان تُقرآن في الجدول شيئًا واحدًا.
-    // و Mongoose يقصّ القيمةَ في الاستعلام (`trim` يسري على الشرط أيضًا)،
-    // فكان اختيارُ «الدمام » من القائمة يبحث عن «الدمام» ويُرجع صفرًا من تسعةِ
-    // آلافٍ وثلاثِمئةٍ وواحدٍ وخمسين كشفًا. فكلُّ قيمةٍ نصّيّةٍ نمطٌ مثبَّتٌ يقبل
-    // المسافاتِ حولها (والنمطُ لا يقصّه أحد)، والقائمةُ تجمع الصيغتين سطرًا واحدًا
-    // (راجع filterOptions).
+    // Text is matched ignoring surrounding spaces. Sync writes through an aggregation pipeline, so the schema trim does not run and values such as 'Dammam ' and '13  ' are stored as received beside trimmed forms in other rows, which the table shows as one.
+    // Mongoose trims the value in the query too, so choosing 'Dammam ' from the list searched 'Dammam' and returned zero of 9,351 reports. So every text value becomes a fixed pattern allowing spaces around it (patterns are not trimmed), and the list merges both forms into one line (see filterOptions).
     const textual = !NUMERIC_COLUMNS.has(field);
     const list = rest.map((v) => decodeColumnValue(field, v)).filter((v) => v !== undefined)
       .map((v) => (textual && typeof v === 'string' ? textMatcher(v) : v));
@@ -846,10 +616,7 @@ function columnFilters(query, skipField, allowMoney = true, allowSelling = true)
   return conds;
 }
 
-/**
- * شرطُ عمود «التخليص»: أرقامُ معاملاتٍ بعينها، و'' = لا معاملةَ مرتبطة (ومنه ما
- * فكّه موظّفٌ بيده — `customsLink` موجودٌ بلا معاملة).
- */
+/** Clearance column condition: specific transaction numbers, and '' means no linked transaction (including one a person unlinked by hand: customsLink present without a transaction). */
 const LINKED = { 'customsLink.clearance': { $type: 'objectId' } };
 function customsRefCondition(vals) {
   const refs = vals.filter((v) => v !== '');
@@ -859,25 +626,12 @@ function customsRefCondition(vals) {
   return cs.length === 1 ? cs[0] : { $or: cs };
 }
 
-/**
- * إبطال قوائم القيم المخزَّنة بعد كل كتابة.
- *
- * القائمة تُخزَّن عشرين ثانية لتوحيد الطلبات المتزامنة؛ لكن حالةً جديدة أو كشفًا
- * محذوفًا لا يجوز أن ينتظر انتهاء المدة: المستخدم سيفلتر على قيمةٍ لم تعد موجودة
- * فيرى جدولًا فارغًا ويظنّ الفلتر معطوبًا.
- */
+/** Invalidates the cached value lists after every write. The list is cached for twenty seconds to merge concurrent requests, but a new status or deleted report cannot wait out the period: the user would filter on a value that no longer exists, see an empty table and think the filter is broken. */
 const bustFilterCache = () => { try { cache.clear('wf:'); } catch (e) {} };
 
 /**
- * ── ما يُرسَل إلى الجدول ────────────────────────────────────────────────────
- *
- * المستندُ يحمل نحوَ ستّين حقلًا، فيها بقايا استيراداتٍ قديمة لا يعرضها الجدول
- * ولا يقرؤها أحد (`ownerName`, `region`, `product`, `invoiceRef`, `volume`…).
- * وخمسون صفًّا كاملةً ثلاثةٌ وستّون كيلوبايت على عنقودٍ نطاقُه مئةُ كيلوبايت في
- * الثانية — فالفتحةُ الواحدة تكلّف ثانيةً ونصفًا. والاستعلامُ نفسُه صفرُ
- * ميلي ثانية: النقلُ هو الثمن كلُّه، لا الحساب.
- *
- * فتُرسَل أعمدةُ الجدول وحدَها. وما لا يُعرض لا يُنقل.
+ * What is sent to the table. A document carries about sixty fields, including leftovers of old imports that nothing displays or reads (ownerName, region, product, invoiceRef, volume). Fifty full rows are 63 KB on a cluster limited to about 100 KB per second, so one open cost 1.5 seconds. The query itself takes zero milliseconds: transfer is the whole cost.
+ * Only the table's columns are sent; what is not shown is not transferred.
  */
 const LIST_FIELDS = [
   'reportNumber', 'reportDate', 'fromLocation', 'toLocation', 'branch',
@@ -889,15 +643,14 @@ const LIST_FIELDS = [
   'driverName', 'driverPhone', 'truckType', 'truckSize', 'loadType', 'quantity',
   'representativeName', 'operationsReview',
   'paymentDate', 'payingBranch', 'paymentAmount', 'paymentType', 'paymentSubtype',
-  // مسؤولُ البيانات يُقرأ في الجدول — وبغيره يظهر بعد الحفظ ثمّ يختفي في أوّل
-  // تحديثٍ حيّ، لأنّ الصفَّ يعود من القائمة بلا هذا الحقل.
+  // Data owner is read in the table; without it it appears after saving and disappears at the first live update, since the row returns from the list without the field.
   'paymentDateByName', 'paymentDateAt',
   'finalReportDestination', 'documentNumber', 'sendingDate',
   'branchDeliveryDate', 'deliveryDate',
   'accountingReview', 'invoiceNumber', 'netInvoice', 'tax', 'totalInvoice',
   'invoiceDate', 'invoiceNotes', 'collectedAmount', 'collectionDate',
   'stage', 'lockedBy', 'lockedByName', 'lockedAt', 'externalSource', 'shipmentOrder', 'fleetShipment', 'createdAt',
-  // معاملةُ التخليص المرتبطة — نسخةٌ صغيرة (رقمٌ وبوليصةٌ وحاويات). راجع services/customsOpsLink.
+  // The linked clearance transaction as a small copy (number, bill of lading, containers). See services/customsOpsLink.
   'customsLink',
 ].join(' ');
 
@@ -905,18 +658,13 @@ const LIST_FIELDS = [
 exports.getWorkflows = async (req, res) => {
   try {
     const page = Math.max(1, parseInt(req.query.page, 10) || 1);
-    // صفوفُ الصفحة يختارها المستخدم (٢٠٢٦/١٠/٢٢) — وحدٌّ أعلى ٥٠٠.
+    // Rows per page are chosen by the user, with an upper limit of 500.
     const limit = Math.min(500, Math.max(1, parseInt(req.query.limit, 10) || 50));
-    // شرطُ البحث يُبنى في مكانٍ واحد يقرأه الجدول والإحصاءات والتصدير معًا، فلا
-    // يعرض عدّاد الصفوف رقمًا ويعرض الجدول تحته صفوف شرطٍ آخر.
+    // The search condition is built in one place read by the table, statistics and export, so the row counter never shows one number while the table shows rows of another condition.
     const filter = buildWorkflowFilter(req.query, undefined, canSeeMoney(req.user.role), canSeeSelling(req.user.role));
 
     const skip = (parseInt(page) - 1) * parseInt(limit);
-    // ── ولا يُملأ في القائمة ما لا يُقرأ فيها ──────────────────────────────
-    // كانت ثلاثةُ `populate` على كلّ صفحة: المُنشئُ وآخرُ مَن عدّل ومَن يقفل.
-    // والجدولُ لا يقرأ من الثلاثة إلّا `lockedBy._id` — وهو المعرّفُ الخام
-    // الموجودُ أصلًا. فثلاثُ رحلاتٍ إلى القاعدة في كلّ فتحةٍ وكلّ حرفِ بحث،
-    // ثمنُها ثمنُ ما لا يُعرض. والتفاصيلُ تُملأ في صفحة الكشف حيث تُقرأ.
+    // No populate for what the list does not read. There were three on every page (creator, last editor, locker) but the table reads only lockedBy._id, the raw id already present: three database trips per open and per search keystroke for nothing displayed. Details are populated on the report page where they are read.
     const [workflows, total] = await Promise.all([
       OperationsWorkflow.find(filter)
         .select(LIST_FIELDS)
@@ -927,16 +675,13 @@ exports.getWorkflows = async (req, res) => {
       OperationsWorkflow.countDocuments(filter),
     ]);
 
-    // الكشوفُ التي دفعتها المحفظة: خانةُ «مبلغ السداد» فيها تُعرض مقفولة.
+    // Reports paid by the wallet: their payment amount cell is shown locked.
     const { walletPaidMap, walletRecorderMap } = require('../utils/walletPayment');
     const nums = workflows.map((w) => w.reportNumber);
     const [walletPaid, recorders] = await Promise.all([walletPaidMap(nums), walletRecorderMap(nums)]);
     for (const w of workflows) if (walletPaid.has(String(w.reportNumber || '').trim())) w.paidFromWallet = true;
 
-    // ── ومسؤولُ البيانات يُقرأ من ثلاثة مصادرَ بترتيب ─────────────────────────
-    // من كتب تاريخَ السداد عندنا أوّلًا، فمن سجّل الشراءَ في المحفظة (هو من دفع
-    // ساعتَها)، وإلّا فالصفُّ منقولٌ من منصّة الأوبريشن ولا شخصَ عندنا كتبه —
-    // ويُقال ذلك صريحًا بدل خانةٍ فارغةٍ تُقرأ «مجهول».
+    // Data owner is read from three sources in order: who wrote the payment date here; else who recorded the purchase in the wallet (who paid then); else the row was transferred from the operations platform and nobody here wrote it, which is stated explicitly rather than an empty cell read as unknown.
     for (const w of workflows) {
       const rn = String(w.reportNumber || '').trim();
       const who = String(w.paymentDateByName || '').trim();
@@ -944,7 +689,7 @@ exports.getWorkflows = async (req, res) => {
       const rec = recorders.get(rn);
       if (rec) { w.dataOwnerShown = rec; w.dataOwnerFrom = 'wallet'; continue; }
       if (w.externalSource) {
-        // النصُّ نفسُه الذي تُبنى عليه قائمةُ الفلتر — راجع utils/dataOwnerIndex.
+        // The same text the filter list is built on; see utils/dataOwnerIndex.
         w.dataOwnerShown = require('../utils/dataOwnerIndex').importLabel(w.externalSource);
         w.dataOwnerFrom = 'import';
         continue;
@@ -965,18 +710,9 @@ exports.getWorkflows = async (req, res) => {
 // Build the same match filter getWorkflows uses (stage/date/search/pendingOnly)
 // so stats and the table always agree. Kept as a helper for the stats endpoint.
 /**
- * «فاتورة لم تصل» — تعريفٌ واحد يستعمله العدّاد والفلتر معًا.
- *
- * شرطان لا واحد:
- *
- * ١) **بلا تاريخ سداد.** كان الشرط يجمع غيابه وغيابَ رقم الفاتورة معًا، فكشفٌ
- *    سُدِّد ولم تُسجَّل فاتورته يخرج من العدّ وهو ليس منتظَرًا.
- *
- * ٢) **غير ملغًى.** والملغى لا سداد له بطبيعته — لا لأنّ الفاتورة تأخّرت بل
- *    لأنّ الشحنة لم تحدث. وعدُّه كان يقلب البطاقة رأسًا على عقب: ٥٦٤٢ في
- *    الفترة، منها ٤١٥٢ ملغًى — ولا واحدٌ من الأربعة آلاف له تاريخ سداد ولن
- *    يكون. فالرقم الذي يُقرأ «متأخّرات» كان ثلاثة أرباعه شحناتٍ ملغاة، والعمل
- *    الحقيقيّ ١٤٩٠ مدفونًا تحتها.
+ * Bond not arrived: one definition used by both the counter and the filter. Two conditions:
+ * 1) No payment date. The condition used to combine its absence with an absent invoice number, so a paid report whose invoice was not recorded dropped out of the count though not pending.
+ * 2) Not cancelled. A cancelled report has no payment by nature, since the shipment never happened; counting them inverted the card (5,642 in the period, 4,152 of them cancelled) and buried the real work of 1,490.
  */
 const CANCELLED = ['cancelled', 'canceled'];
 const PENDING_PAYMENT = {
@@ -986,11 +722,7 @@ const PENDING_PAYMENT = {
   ],
 };
 
-/**
- * Bonds not arrived **as of** a past moment: not cancelled, and no payment date
- * or a payment date after that moment — so a bond that arrived later still counts
- * as pending back then (owner, 2026-10-29: «كأني رجعت بالزمن»).
- */
+/** Bonds not arrived as of a past moment: not cancelled, and no payment date or a payment date after that moment, so a bond that arrived later still counts as pending back then (owner request for a point-in-time view). */
 const pendingAsOfMatch = (asOf) => ({
   $and: [
     { $or: [{ paymentDate: null }, { paymentDate: { $exists: false } }, { paymentDate: { $gt: asOf } }] },
@@ -1013,13 +745,7 @@ const pendingAsOfDate = (query) => {
   return to ? endOfDay(to) : new Date();
 };
 
-/**
- * ── رقمٌ يخصّ أحدَ أصحاب الكشف ───────────────────────────────────────────
- * يُستدعى قبل `buildWorkflowFilter` (وهي متزامنة): كلُّ رقمٍ من ستّ خاناتٍ فأكثر
- * في البحث يُترجَم إلى أصحابه في السجلّات — إقامةُ سائقٍ إلى اسمه وهاتفه، وهيكلُ
- * شاحنةٍ إلى لوحتها — ويُعلَّق على `req.query._related` خاصيّةً غيرَ معدودة
- * فلا تظهر في أيّ نسخٍ أو تصدير للاستعلام.
- */
+/** A number belonging to one of the report owners. Called before buildWorkflowFilter (which is synchronous): each number of six or more digits in the search is translated to its owners in the registers (a driver's residence number to name and phone, a truck chassis to its plate) and attached to req.query._related as a non-enumerable property, so it does not appear in any copy or export of the query. */
 const RELATED_FIELDS = { name: ['driverName'], phone: ['driverPhone', 'userPhone', 'ownerPhone'], plate: ['carNumber', 'plateNumber'] };
 async function primeRelatedSearch(req, res, next) {
   try {
@@ -1048,11 +774,8 @@ function buildWorkflowFilter(queryIn, skipField, allowMoney = true, allowSelling
   if (origin === 'fleet') filter.fleetShipment = { $type: 'objectId' };
   if (origin === 'orders') filter.fleetShipment = { $in: [null] };
 
-  // ── «مرتبطٌ بالتخليص» / «غيرُ مرتبط» / معاملةٌ بعينها ───────────────────
-  // شريطُ الفلترة فوق الجدول وزرُّ «كشوف التشغيل» في صفحة المعاملة يقولانها
-  // بكلمة: `customs=linked|unlinked|<معرّف المعاملة>`.
-  // ── «باستثناء الملغاة» (صاحبُ الشركة، ٢٠٢٦/١٠/٢٢) ───────────────────────
-  // زرٌّ يثبت حتى يُلغى: الأرقامُ والجدولُ والتصديرُ كلُّها بلا الكشوف الملغاة.
+  // Linked to clearance / not linked / a specific transaction. The filter bar above the table and the operations-sheets button on the transaction page both express it as one word: customs=linked|unlinked|<transaction id>.
+  // Excluding cancelled (company owner): a sticky button until removed; numbers, table and export all omit cancelled reports.
   if (String((query && query.excludeCancelled) || '') === '1') {
     // A number typed in search is a request for that one row, cancelled or not.
     const asked = require('../utils/arabicSearch').westernDigits(String((query && query.search) || '').trim());
@@ -1064,20 +787,9 @@ function buildWorkflowFilter(queryIn, skipField, allowMoney = true, allowSelling
   else if (customs === 'unlinked') filter.$and = [...(filter.$and || []), { 'customsLink.clearance': { $not: { $type: 'objectId' } } }];
   else if (mongoose.isValidObjectId(customs)) filter.$and = [...(filter.$and || []), { 'customsLink.clearance': new mongoose.Types.ObjectId(customs) }];
 
-  // ── «كشفٌ فُوتِر ضريبيًّا ولا رقمَ لفاتورته» ────────────────────────────
-  //
-  // خانةُ رقم الفاتورة تُكتب بيدٍ عندنا ولا تأتي من منصّة التشغيل، وهي فارغةٌ
-  // في ثلاثين ألفَ كشفٍ من خمسةٍ وثلاثين. وأكثرُها لم يُفوتَر بعدُ حقًّا.
-  //
-  // ── والمبلغُ وحدَه لا يكفي دليلًا ─────────────────────────────────────────
-  // كان الشرطُ «عليه صافٍ أو ضريبةٌ أو إجماليّ»، فالتقط تسعةً وأربعين كشفًا
-  // نقديًّا ليس فيها نقص: `deriveCashTotals` هي التي تكتب أرقامَها — مبلغُ
-  // السداد يُنسَخ إلى الصافي والإجماليّ والضريبةُ صفر — **وتترك رقمَ الفاتورة
-  // فارغًا عن قصد، إذ لا فاتورةَ لنقد**. فكان الكارتُ يطالب بسدّ ما ليس ثغرة.
-  //
-  // والضريبةُ هي الفاصل: `deriveInvoiceTotals` تحسبها من الصافي لكلّ فوترةٍ
-  // ضريبيّة فتكون أكبرَ من صفرٍ دائمًا، والنقديّةُ تُكتب صفرًا صراحةً. فما كان
-  // عليه ضريبةٌ ولا رقمَ له فقد فُوتِر ضريبيًّا ونُسي رقمُه — وذاك النقصُ وحدَه.
+  // A report invoiced as tax but with no invoice number. The invoice number is entered by hand here and does not come from the operations platform, so it is empty on 30,000 of 35,000 reports, most truly not yet invoiced.
+  // An amount alone is not proof. The condition used to be 'has net, tax or total', which caught 49 cash reports with no gap: deriveCashTotals writes their figures (payment amount copied to net and total, tax zero) and deliberately leaves the invoice number empty, since cash has no invoice, so the card demanded filling a non-gap.
+  // Tax is the divider: deriveInvoiceTotals computes it from net for every tax invoicing, so it is above zero, while cash is written as explicit zero. So tax with no number means invoiced as tax with the number forgotten, and that alone is the gap.
   if (invoiceGap === 'true') {
     filter.$and = [...(filter.$and || []), {
       $or: [
@@ -1085,93 +797,55 @@ function buildWorkflowFilter(queryIn, skipField, allowMoney = true, allowSelling
         { invoiceNumber: { $regex: '^\\s*(no\\s*inv|بدون|لا\\s*يوجد|-|—|ىى)\\s*$', $options: 'i' } },
       ],
     }, { tax: { $gt: 0 } },
-    // والنقديُّ قد تُحسب ضريبتُه ولا رقمَ له بالقرار (راجع hasTaxInvoice) — فليس ثغرة.
+    // Cash may have tax computed and no number by decision (see hasTaxInvoice), so it is not a gap.
     { paymentType: { $ne: 'cash' } }];
   }
-  // ── «فواتير لم تصل» = بلا تاريخ سداد، لا شيء غيره ──────────────────────────
-  // كان الشرط يجمع غيابَ تاريخ السداد **ورقمِ الفاتورة** معًا، فكشفٌ سُدِّد ولم
-  // تُسجَّل فاتورته يخرج من العدّ وهو ليس منتظَرًا، وكشفٌ لم يُسدَّد وله رقم فاتورة
-  // يخرج كذلك. والسؤال الذي تُطرَح البطاقة لأجله واحد: «أيُّ كشفٍ لم يصل سداده؟»
-  // فشرطُه واحد.
+  // Invoices not arrived means no payment date and nothing else. The condition used to combine absence of payment date and invoice number, so a paid report with no recorded invoice left the count though not pending, and an unpaid report with an invoice number left too. The card answers one question, which report's payment has not arrived, so its condition is single.
   if (pendingOnly === 'true') {
     filter.$and = [...(filter.$and || []), PENDING_PAYMENT];
-    // «سندات لم تصل — كاش / ضريبي»: القسمةُ نفسُها التي تعدّها البطاقتان
-    // (راجع PENDING_SPLIT في getWorkflowStats) — فما تقوله البطاقةُ يفتحه الجدول.
+    // Bonds not arrived, cash / tax: the same split the two cards count (see PENDING_SPLIT in getWorkflowStats), so what a card says is what the table opens.
     if (pendingKind === 'cash') filter.$and.push({ paymentType: 'cash' });
     else if (pendingKind === 'tax') filter.$and.push({ paymentType: { $ne: 'cash' } });
   }
   if (pendingAsOf === 'true') filter.$and = [...(filter.$and || []), pendingAsOfMatch(pendingAsOfDate(query))];
   if (stage) filter.stage = stage;
-  // ── الفترة تُقاس بتاريخ الكشف لا بلحظة إدخاله ─────────────────────────────
-  //
-  // كان الفلتر على `createdAt` — وهي لحظةُ كتابة الصفّ في قاعدتنا لا تاريخُ
-  // العمل. وسبعةٌ وعشرون ألفًا من ثلاثةٍ وثلاثين ألفًا أُدخلت دفعةً واحدة يوم
-  // ٣٠ يونيو، فسؤال «أرِني كشوف يناير» كان يرجع فارغًا: لا صفَّ **أُدخل** في
-  // يناير وإن كانت كشوفُه كلُّها فيه. والشاشة تعرض صفرًا فيُقرأ «لا عمل» لا
-  // «فلترتُ بالعمود الخطأ».
-  //
-  // و`reportDate` يحمل وقتًا حقيقيًّا من منصّة التشغيل، فالمدى يُبنى على اليوم
-  // كاملًا في الطرفين كي لا يسقط كشفُ الساعة الحادية عشرة ليلًا من يومه.
+  // The period is measured by report date, not by entry time. The filter used createdAt, the moment the row was written to our database and not the work date; 27,000 of 33,000 were entered in one batch, so 'show January reports' returned empty although all its reports were there. The screen showed zero, read as 'no work' and not as 'filtered on the wrong column'.
+  // reportDate carries a real time from the operations platform, so the range covers the whole day at both ends and an 11 pm report does not drop from its day.
   if (dateFrom || dateTo) {
     const range = {};
-    // ── الحدُّ بتوقيت الرياض لا غرينتش ────────────────────────────────────
-    // كان هذا السطرُ يبني منتصفَ ليلٍ بغرينتش = الثالثةَ فجرًا عندنا. فمَن
-    // اختار «من ١ يناير» كان يفقد كشوفَ الساعات الثلاث الأولى من ذلك اليوم —
-    // ٢١٢١ كشفًا من ٣٣٩١٧ تقع فيها. والملفُّ كان يناقض نفسَه: فلترُ العمود
-    // أدناه يحسب اليومَ بالرياض، فيختلف «١ يناير» عن «من ١ إلى ١ يناير».
+    // The bound is Riyadh time, not GMT. The line built midnight in GMT, which is 3 am locally, so choosing 'from January 1' lost the first three hours of that day (2,121 of 33,917 reports). It also contradicted the column filter below, which computes the day in Riyadh, making 'January 1' differ from 'January 1 to January 1'.
     if (dateFrom) range.$gte = startOfDay(dateFrom);
-    // ── «إلى» الفارغة تعني «حتى الآن» لا «بلا نهاية» ────────────────────────
-    // المدى المفتوح يُدخل كشوفًا مؤرَّخةً في المستقبل — تُكتب بالخطأ أو تأتي
-    // بتاريخٍ مقلوب — فيقرأ المستخدم عددًا أكبر ممّا حدث فعلًا. ومَن يكتب «من»
-    // وحدها يقصد «من هذا اليوم إلى الآن»، لا إلى الأبد.
+    // An empty 'to' means 'until now', not unbounded. An open range includes reports dated in the future (entered wrongly or with an inverted date) and shows a larger count than happened; a user who writes only 'from' means from that day to now, not forever.
     range.$lte = dateTo ? endOfDay(dateTo) : new Date();
-    // والكشف الذي لا تاريخ له يُقاس بلحظة إدخاله — أفضل ما يُعرف عنه.
+    // A report with no date is measured by its entry time, the best known about it.
     filter.$and = [...(filter.$and || []), { $or: [
       { reportDate: range },
       { $and: [{ $or: [{ reportDate: null }, { reportDate: { $exists: false } }] }, { createdAt: range }] },
     ] }];
   }
   if (search) {
-    // ── البحثُ يُجيب عمّا سُئل عنه، لا عمّا يحتويه ─────────────────────────
-    //
-    // كان تعبيرًا نمطيًّا واحدًا غيرَ مثبَّتٍ على سبعةَ عشرَ حقلًا — فمن كتب رقمَ
-    // كشفٍ «8730» جاءته واحدٌ وعشرون صفًّا ليس فيها ذلك الكشف: أرقامٌ وقعت داخل
-    // هاتف سائقٍ أو رقم مستند. ومن كتب «جدة» جاءه اثنان وثلاثون ألفًا — المدينةُ
-    // مكتوبةٌ في كلّ كشفٍ تقريبًا، فالبحثُ لم ينفِ شيئًا.
-    //
-    // فالحقولُ ثلاثةُ أصناف، ولكلٍّ قاعدتُه:
-    //   • أرقامُ الهويّة (كشف، مستند، فاتورة): تطابقٌ تامّ — من كتب رقمًا يريد
-    //     صاحبَه لا ما يحويه. وهو يمرّ على الفهرس فلا يمسح الجدول.
-    //   • الرموز (لوحةُ السيارة) والهواتف: احتواءٌ — يُبحَث بجزءٍ من اللوحة —
-    //     لكنّ الهاتفَ لا يُطابَق بأقلّ من ستّ خاناتٍ كي لا يصير كلُّ رقمٍ قصيرٍ
-    //     صيدًا في كلّ هاتف.
-    //   • الأسماءُ والأماكن: احتواءٌ مع طيّ صور الحروف (راجع utils/arabicSearch).
-    //
-    // والكلماتُ تُجمَع لا تُفرَّق: «اركان جدة» تعني الاثنين معًا، فكلُّ كلمةٍ
-    // شرطٌ قائم. وهذا ما يجعل الإضافةَ تُضيّق النتيجةَ كما يتوقّع من يكتبها.
+    // Search answers what was asked, not what contains it: one unanchored regex over seventeen fields made '8730' match phone digits and a city name match nearly every report.
+    // Identity numbers (report, document, invoice): exact match, using the index. Codes (plate) and phones: contains, phones only from six digits.
+    // Names and places: contains with letter-variant folding (see utils/arabicSearch).
+    // Words are combined, so each word is a required condition and adding a word narrows the result.
     const { arabicSearchRegex, westernDigits } = require('../utils/arabicSearch');
     const term = westernDigits(String(search).trim());
     const ID_EXACT = ['reportNumber', 'documentNumber', ...(allowMoney ? ['invoiceNumber'] : [])];
-    // ورقمُ معاملة التخليص وبوليصتُها تُكتب كما هي فيُوجَد كشفُها.
-    // ورقمُ الحمولة والمرجعُ ومرجعُ الفاتورة رموزٌ تُبحَث بجزئها (٢٠٢٦/١٠/٢٦: «رقم
-    // أي حاجة تخص الشحنة»).
+    // Clearance transaction number and bill of lading are written as is, so their report is found. Load number, reference and invoice reference are codes searched by part (owner request: any number related to the shipment).
     const CODE_FIELDS = ['carNumber', 'plateNumber', 'customsLink.refNumber', 'customsLink.blNumber', 'customsLink.containers', 'loadNumber', 'reference', 'invoiceRef'];
     const PHONE_FIELDS = ['driverPhone', 'userPhone', 'ownerPhone'];
-    // والملاحظاتُ خارجَ البحث السريع عمدًا: نصٌّ حرٌّ يجعل كلمةً عابرةً فيه
-    // تَجُرُّ كشوفًا لا علاقةَ لها بما يُسأل عنه. ولها فلترُ عمودها.
+    // Notes are outside quick search on purpose: free text lets a passing word pull in unrelated reports. They have their own column filter.
     const NAME_FIELDS = [
       'username', 'carOwner', 'driverName', 'branch', 'payingBranch',
       'fromLocation', 'toLocation', 'finalReportDestination',
       'truckType', 'truckSize', 'agentName', 'representativeName',
       'ownerName', 'carName', 'product',
     ];
-    // إقامةُ السائق وهيكلُ الشاحنة ليسا في الكشف — تُرجِمهما primeRelatedSearch
-    // قبلُ إلى اسمه وهاتفه ولوحتها (utils/relatedPeopleSearch).
+    // Driver residence and truck chassis are not on the report: primeRelatedSearch first translates them to the driver's name and phone and the truck's plate (utils/relatedPeopleSearch).
     const related = (query && query._related) || {};
 
     const clauseFor = (tk) => {
-      // «+966506793241» و«0506793241» و«506793241» رقمٌ واحد: تُنزع الزخرفةُ
-      // ويُطابَق آخرُ تسعِ خاناتٍ، فيُوجَد الهاتفُ كيفما كُتب.
+      // '+966506793241', '0506793241' and '506793241' are one number: decoration is stripped and the last nine digits are matched, so the phone is found however it was written.
       const bare = tk.replace(/\D/g, '');
       const numeric = /^[\d\s+()\-]+$/.test(tk) && bare.length > 0;
       const rx = arabicSearchRegex(tk);
@@ -1193,8 +867,7 @@ function buildWorkflowFilter(queryIn, skipField, allowMoney = true, allowSelling
     if (tokens.length <= 1) {
       filter.$or = clauseFor(term);
     } else {
-      // كلُّ كلمةٍ شرطٌ مستقلّ، وتُجمَع بـ`$and` — والجملةُ كاملةً تُقبَل أيضًا
-      // في حقول الأسماء (اسمٌ فيه مسافةٌ يُكتب كما هو).
+      // Each word is an independent condition combined with $and; the whole phrase is also accepted in name fields (a name containing a space is written as is).
       const whole = arabicSearchRegex(term);
       filter.$and = [
         ...(filter.$and || []),
@@ -1207,11 +880,8 @@ function buildWorkflowFilter(queryIn, skipField, allowMoney = true, allowSelling
       ];
     }
   }
-  // فلاتر الأعمدة تُطبَّق هنا لا في المتصفح: كانت الصفحة تنزّل الجدول كلّه لتفلتره
-  // محليًّا، فكان الفلتر يكلّف عشرات الآلاف من الصفوف ويجمّد التبويب.
-  //
-  // وتُضاف داخل `$and` لا على الجذر، لأن فلتر اليوم يحتاج `$or` (مدى اليوم أو
-  // خانة فارغة) وعلى الجذر `$or` واحدة يشغلها البحث فيمحو أحدهما الآخر بصمت.
+  // Column filters are applied here and not in the browser. The page used to download the whole table and filter locally, costing tens of thousands of rows and freezing the tab.
+  // They are added inside $and, not at the root, because the day filter needs an $or (day range or empty cell) and the root's single $or is used by search, so one would silently erase the other.
   const conds = columnFilters(query, skipField, allowMoney, allowSelling);
   if (conds.length) filter.$and = [...(filter.$and || []), ...conds];
   return filter;
@@ -1223,37 +893,21 @@ function buildWorkflowFilter(queryIn, skipField, allowMoney = true, allowSelling
 exports.getWorkflowStats = async (req, res) => {
   try {
     const filter = buildWorkflowFilter(req.query, undefined, canSeeMoney(req.user.role), canSeeSelling(req.user.role));
-    // نفس الشرط الذي يفلتر به الزرّ — من تعريفٍ واحد، فلا يقول العدّاد رقمًا
-    // ويفتح الزرّ غيره.
+    // The same condition that filters with the button, from one definition, so the counter and the button cannot disagree.
     const pendingMatch = { ...filter, $and: [...(filter.$and || []), PENDING_PAYMENT] };
     /**
-     * ── والرقمُ الذي يُسأل عنه بعد «سندات لم تصل» مباشرةً ────────────────────
-     *
-     * صفٌّ بلا تاريخ سداد يُعَدُّ سندًا لم يصل، وحالةُ طلبِه تقول «استُلم
-     * السند». وهذا تناقضٌ لا يُقرأ من البطاقتين منفصلتين: مجموعُ الأولى ٩٨٨
-     * ومجموعُ الحالة أربعةُ آلاف، ولا يُعرَف أيُّهما يتقاطع.
-     *
-     * وهو موضعُ العمل: السندُ وصل (قالت الحالةُ ذلك) ولم يُكتب تاريخُ سداده في
-     * الكشف — فإمّا تاريخٌ ناقصٌ يُكتب، أو حالةٌ تُصحَّح. فيُعَدُّ صريحًا.
+     * The number asked right after 'bonds not arrived'. A row with no payment date counts as bond not arrived while its order status says bond received. This contradiction cannot be read from the two cards separately: the first totals 988 and the status totals four thousand, with no way to know the intersection.
+     * This is where the work is: the bond arrived (status says so) but the payment date was not written, so either a date is missing or a status needs correction. It is counted explicitly.
      */
     const bondReceivedPending = {
       ...filter,
       $and: [...(filter.$and || []), PENDING_PAYMENT, { applicationStatus: 'bond_received' }],
     };
     /**
-     * ── «سندات لم تصل» كاشًا وضريبيًّا، ومجموعُهما الإجماليّ بالضبط ────────────
-     *
-     * قاعدةُ صاحب الشركة: البطاقتان تساويان معًا بطاقةَ الإجماليّ. والقسمةُ على
-     * `paymentType` — العمودِ نفسِه الذي تعرضه الصفحةُ «نوع الدفع» ويقرؤه التحصيل:
-     *
-     *   كاش    = نوعُ الدفع «كاش».
-     *   ضريبي  = كلُّ ما سواه: «ضريبي»، **والذي لم يُحدَّد نوعُه بعد**.
-     *
-     * والثالثُ داخلٌ في الضريبيّ لا خارجَه، لأنّ الكشفَ بلا نوعٍ ينتظر رقمَ
-     * فاتورةٍ ليصل التحصيل (`reachesCollections`: غيرُ النقديّ «بانتظار رقم
-     * الفاتورة») — فهو في طريق الضريبيّ لا الكاش. ويُقال عددُه تحت البطاقة
-     * (`pendingUntyped`) فلا يختبئ. والأرقامُ الثلاثةُ من تجميعٍ واحد، فلا
-     * يفترق المجموعُ عن الإجماليّ ولو تغيّر صفٌّ بين استعلامين.
+     * Bonds not arrived as cash and tax, summing exactly to the total (company owner rule: the two cards equal the total card). The split is on paymentType, the same column shown as payment type and read by collections:
+     * cash = payment type cash.
+     * tax = everything else: tax, and those with no type yet.
+     * The untyped are inside tax because a report without a type waits for an invoice number to reach collections (reachesCollections: non-cash 'awaiting invoice number'), so it is on the tax path. Their count is stated under the card (pendingUntyped) so they do not hide. All three numbers come from one aggregation, so the sum cannot diverge from the total even if a row changes between queries.
      */
     const PENDING_SPLIT = OperationsWorkflow.aggregate([
       { $match: pendingMatch },
@@ -1271,8 +925,7 @@ exports.getWorkflowStats = async (req, res) => {
         { $match: filter },
         { $group: { _id: null, sumPurchaseValue: { $sum: '$purchaseValue' } } },
       ]),
-      // عدّاد كل مرحلة يُحسب هنا أيضًا: كان يُحسب في المتصفح من الصفوف المحمَّلة،
-      // فيقول «مكتمل: ٤» وهو لا يرى إلا خمسين صفًّا من عشرات الآلاف.
+      // Each stage counter is computed here too. It used to be computed in the browser from loaded rows, saying 'complete: 4' while seeing only fifty of tens of thousands.
       OperationsWorkflow.aggregate([
         { $match: filter },
         { $group: { _id: '$stage', count: { $sum: 1 } } },
@@ -1280,14 +933,8 @@ exports.getWorkflowStats = async (req, res) => {
       OperationsWorkflow.countDocuments(asOfMatch),
     ]);
 
-    // ── وأعدادُ حالة الأبلكيشن ───────────────────────────────────────────────
-    // بطاقاتُ الحالات فوق الجدول كانت في صفحة شحنات المنصّة وحدَها، وهي السؤالُ
-    // الأوّل هنا أيضًا: كم في الطريق؟ وكم وصلت ولم يصل سندُها؟ وحسابُها في
-    // المتصفّح من الصفوف المحمَّلة يعدّ خمسين صفًّا من ستّةٍ وثلاثين ألفًا.
-    //
-    // وتُحسَب تحت الفلاتر القائمة عدا فلترَ الحالة نفسِه — كما يفعل إكسل: من
-    // صفّى «في الطريق» يريد أن يرى بقيّةَ الحالات لينتقل إليها، لا أصفارًا.
-    // و`skipField` هي الآليّةُ المكتوبةُ لذلك أصلًا في `buildWorkflowFilter`.
+    // Application status counts. The status cards above the table existed only on the platform shipments page, and they are the first question here too: how many on the way, how many arrived without a bond. Computing in the browser from loaded rows counts fifty of 36,000.
+    // They are computed under the existing filters except the status filter itself, as Excel does: someone filtering 'on the way' wants to see the other statuses to move to them, not zeros. skipField is the mechanism built for this in buildWorkflowFilter.
     const statusFree = buildWorkflowFilter(req.query, 'applicationStatus', canSeeMoney(req.user.role), canSeeSelling(req.user.role));
     const byStatusRows = await OperationsWorkflow.aggregate([
       { $match: statusFree },
@@ -1332,15 +979,9 @@ exports.getWorkflowStats = async (req, res) => {
 };
 
 /**
- * GET /api/workflows/filters?field=<العمود> — قيمُ عمودٍ واحد مع عدد صفوف كل قيمة.
- *
- * كانت قائمة الفلتر تُبنى من الصفوف المحمَّلة في المتصفح، وهي خمسون صفًّا، فتعرض
- * ثلاث حالاتٍ من أصل تسع؛ ثم عولج ذلك بتنزيل الجدول كلّه عند أول فلتر، فصار فتح
- * القائمة ينقل عشرات الآلاف من الصفوف ويجمّد التبويب دقيقةً كاملة. العدّ في
- * القاعدة يُرجع القيم كلّها في استعلامٍ واحد وبحجمٍ لا يُذكر.
- *
- * القيم محسوبةٌ على الفلاتر النشطة (المرحلة/البحث/المدى/بقيّة الأعمدة) لأن قائمةً
- * تعرض قيمًا لا صفوف لها بعد الفلترة تدعو المستخدم إلى اختيارٍ يُرجع جدولًا فارغًا.
+ * GET /api/workflows/filters?field=<column> - values of one column with the row count of each.
+ * The filter list used to be built from the loaded rows (fifty), showing three of nine statuses; the fix of downloading the whole table at the first filter moved tens of thousands of rows and froze the tab for a minute. Counting in the database returns all values in one small query.
+ * Values are computed under the active filters (stage, search, range, other columns), since a list showing values with no rows after filtering invites a choice that returns an empty table.
  */
 exports.filterOptions = async (req, res) => {
   try {
@@ -1348,25 +989,21 @@ exports.filterOptions = async (req, res) => {
     if (!FILTERABLE_COLUMNS.has(field)) {
       return res.status(400).json({ message: 'Unknown filter column' });
     }
-    // وقائمةُ قيمِ عمودٍ محجوبٍ تعرضه قيمةً قيمة: «اجمالى الفاتوره» تُقرأ من
-    // قائمتها كما تُقرأ من الجدول. فتُمنع لمن لا يملكه.
+    // A hidden column's value list would show its values one by one (invoice total read from the list as from the table), so it is blocked for roles without it.
     if (AMOUNT_FIELDS.includes(field) && !canSeeMoney(req.user.role)) {
       return res.status(403).json({ message: 'Insufficient permissions' });
     }
     if (SELLING_FIELDS.includes(field) && !canSeeSelling(req.user.role)) {
       return res.status(403).json({ message: 'Insufficient permissions' });
     }
-    // ── والمفتاحُ يحمل الصلاحيّة ────────────────────────────────────────
-    // الشرطُ صار يختلف باختلاف الدور (فلاترُ أعمدة المال تُسقَط لمن لا يملكها)،
-    // فمفتاحٌ لا يحمله يخدم دورًا بنتيجةٍ حُسبت لدورٍ آخر — وهي أوّلُ ثانيةٍ
-    // بعد أن يفتح محاسبٌ القائمةَ نفسَها.
+    // The key carries the permission. The condition now varies by role (money column filters are dropped for roles without them), so a key without it would serve one role a result computed for another, in the first second after an accountant opens the same list.
     const money = canSeeMoney(req.user.role);
     const selling = canSeeSelling(req.user.role);
     const key = `wf:filters:${money ? 'm' : 'x'}${selling ? 's' : 'x'}:${JSON.stringify(req.query || {})}`;
     const hit = cache.get(key);
     if (hit !== undefined) return res.json(hit);
 
-    // حالاتُ رقم الفاتورة الثلاث تُعَدّ بشرطها لا بتجميع الحقل.
+    // The three invoice-number states are counted by their condition, not by grouping the field.
     if (field === 'invoiceState') {
       const base = buildWorkflowFilter(req.query, field, money, selling);
       const states = Object.keys(INVOICE_STATE_COND);
@@ -1378,7 +1015,7 @@ exports.filterOptions = async (req, res) => {
       return res.json(body);
     }
 
-    // «التخليص» يُجمَّع برقم المعاملة، والفارغُ = غيرُ مرتبط.
+    // Clearance is grouped by transaction number, and empty means not linked.
     if (field === 'customsRef') {
       const base = buildWorkflowFilter(req.query, field, money, selling);
       const q = String(req.query.q || '').trim().toLowerCase();
@@ -1397,7 +1034,7 @@ exports.filterOptions = async (req, res) => {
       return res.json(body);
     }
 
-    // «مسؤول البيانات» يُعَدّ بالمصادر الثلاثة التي تملأ خانتَه — راجع utils/dataOwnerIndex.
+    // Data owner is counted by the three sources that fill its cell; see utils/dataOwnerIndex.
     if (field === 'dataOwnerShown') {
       const owner = require('../utils/dataOwnerIndex');
       await owner.ensure();
@@ -1415,30 +1052,20 @@ exports.filterOptions = async (req, res) => {
     }
 
     const match = buildWorkflowFilter(req.query, field, money, selling);
-    // البحث داخل القائمة يُنفَّذ هنا لا في المتصفح، لأن المتصفح لا يملك إلا القيم
-    // التي بلغت السقف: البحث عن رقم كشفٍ ليس ضمن الخمسمئة الأكثر تكرارًا كان
-    // يُرجع «لا توجد قيم» والقيمة موجودة في القاعدة.
+    // Search within the list runs here and not in the browser, because the browser holds only the values up to the cap: searching for a report number outside the 500 most frequent returned 'no values' though it exists in the database.
     const q = String(req.query.q || '').trim();
-    // (ونوعُ الدفع ستُّ قيمٍ تُقرأ أسماؤها لا مفاتيحُها — لا بحثَ فيها.)
+    // (Payment type is six values read by name, not key, so it has no search.)
     if (q && field !== 'paymentType' && !NUMERIC_COLUMNS.has(field) && !DATE_COLUMNS.has(field)) {
       const rx = { $regex: q.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), $options: 'i' };
       const prev = match[field];
-      // الشرط القائم على العمود قد يكون قيمةً مفردة (اختيار المرحلة من الشريط
-      // العلوي)؛ ونشرُ نصٍّ داخل كائن يفكّكه إلى حروف فيصير الشرط بلا معنى.
+      // The condition on a column may be a single value (stage selection from the top bar); spreading a string into an object breaks it into characters and makes the condition meaningless.
       match[field] = prev === undefined ? rx
         : (prev && typeof prev === 'object' && !(prev instanceof Date) ? { ...prev, ...rx } : { $eq: prev, ...rx });
     }
 
     const isDate = DATE_COLUMNS.has(field);
-    // ── والترتيبُ يتبع طبيعةَ العمود ──────────────────────────────────────────
-    // التواريخُ من الأحدث: مَن يفلتر بتاريخ يبحث عن أيامٍ قريبة، لا عن اليوم
-    // الذي صادف أن فيه أكبرَ عددِ كشوف.
-    //
-    // وأعمدةُ الأرقام (الكشف، المستند، الفاتورة) قيمتُها فريدةٌ لكلّ صفٍّ تقريبًا،
-    // فالترتيبُ بالتكرار يرفع إلى رأس القائمة الرقمَ الذي تكرّر مرّتين بالخطأ
-    // ويدفن سبعةً وثلاثين ألفًا سواه — ويُقرأ كأنّه فلترٌ مفروض. فتُرتَّب
-    // بقيمتها تنازليًّا: أعلى القائمة أحدثُها، وهو ما يُطلَب.
-    // (وقع هذا في دفتر الفواتير: راجع collectionsDeptController.invoiceColumnOptions.)
+    // Order follows the column's nature. Dates are newest first: whoever filters by date looks for recent days, not the day that happened to have the most reports.
+    // Number columns (report, document, invoice) have a nearly unique value per row, so ordering by frequency raises a number repeated twice by mistake to the top and buries 37,000 others, which reads as an imposed filter. They are ordered by value descending: newest at the top, as wanted. (Seen in the invoice ledger; see collectionsDeptController.invoiceColumnOptions.)
     const ID_LIKE = new Set(['reportNumber', 'documentNumber', 'invoiceNumber', 'carNumber', 'plateNumber']);
     const isIdLike = !isDate && ID_LIKE.has(field);
     const sort = isDate ? { _id: -1 } : (isIdLike ? { _num: -1, _id: -1 } : { count: -1, _id: 1 });
@@ -1446,13 +1073,13 @@ exports.filterOptions = async (req, res) => {
       { $match: match },
       {
         $group: {
-          // ونوعُ الدفع يُجمَّع بما تعرضه الخانة: النوعُ إن وُجد، وإلّا العائلة.
+          // Payment type groups by what the cell shows: the type if present, otherwise the family.
           _id: isDate ? { $dateToString: { format: '%Y-%m-%d', date: `$${field}`, timezone: TZ } }
             : (field === 'paymentType' ? PAYMENT_KIND_EXPR : `$${field}`),
           count: { $sum: 1 },
         },
       },
-      // الرقمُ يُقرأ رقمًا لا نصًّا: «10012» بعد «7679» لا قبله.
+      // The number is read as a number, not text: '10012' after '7679', not before.
       ...(isIdLike ? [{ $addFields: { _num: { $convert: { input: '$_id', to: 'double', onError: null, onNull: null } } } }] : []),
       {
         $facet: {
@@ -1462,20 +1089,17 @@ exports.filterOptions = async (req, res) => {
       },
     ]).allowDiskUse(true);
 
-    // الحقل غير الموجود وnull ينتجان المفتاح نفسه (null)، والنصّ الفارغ ينتج ''،
-    // وكلّها عند المستخدم شيءٌ واحد: «(فارغ)». دمجها هنا يمنع ظهور سطرين متطابقين
-    // في القائمة لا يفرّق بينهما شيء.
+    // A missing field and null produce the same key (null) and an empty string produces '', all of which the user sees as one thing, '(empty)'. Merging them here avoids two identical lines in the list.
     const merged = new Map();
     for (const r of (agg?.values || [])) {
       const id = r._id;
-      // والنصُّ يُجمَع مقصوصًا: «الدمام » و«الدمام» سطرٌ واحدٌ كما في الجدول، وفلترُه
-      // يطابق الصيغتين (راجع columnFilters).
+      // Text is grouped trimmed: 'Dammam ' and 'Dammam' are one line as in the table, and its filter matches both forms (see columnFilters).
       const value = id === null || id === undefined || id === ''
         ? ''
         : (id instanceof Date ? id.toISOString() : (typeof id === 'string' ? colKey(id) : String(id)));
       merged.set(value, (merged.get(value) || 0) + r.count);
     }
-    // والدمجُ لا يُفسد ترتيبَ القاعدة: يُعاد الترتيبُ بنفس القاعدة التي فوق.
+    // Merging keeps the database order: re-sorted with the same rule as above.
     const numOf = (v) => { const n = Number(String(v).replace(/[\s,]/g, '')); return Number.isFinite(n) ? n : null; };
     let values = [...merged.entries()].map(([value, count]) => ({ value, count }))
       .sort((a, b) => {
@@ -1493,8 +1117,7 @@ exports.filterOptions = async (req, res) => {
     const truncated = values.length > MAX_FILTER_VALUES;
     if (truncated) values = values.slice(0, MAX_FILTER_VALUES);
 
-    // الشكل نفسه الذي تتكلّمه فلاتر الموارد البشرية وسجلّ المركبات، حتى لا يتعلّم
-    // كل قسمٍ لغةً خاصة به: { filters: [{ key, values: [{ value, count }] }] }.
+    // The same shape used by the HR filters and the vehicle register, so each section does not learn its own: { filters: [{ key, values: [{ value, count }] }] }.
     const body = { filters: [{ key: field, values, truncated, distinct }] };
     cache.set(key, body, 20000);
     res.json(body);
@@ -1534,7 +1157,7 @@ exports.createWorkflow = async (req, res) => {
       if (chk.error) return res.status(400).json({ code: 'CUSTOMER_NOT_APPROVED', message: chk.error });
       filteredBody.username = chk.value;
     }
-    // نوعُ الدفع يقرّر شكلَ الكشف من لحظة إنشائه، لا بعد أوّل تعديل.
+    // Payment type decides the report's shape from creation, not after the first edit.
     await fillPaymentTypeFromCustomer(filteredBody, {});
     applyBillingRules(filteredBody, {});
     filteredBody.createdBy = req.user._id;
@@ -1543,24 +1166,17 @@ exports.createWorkflow = async (req, res) => {
 
     const workflow = await OperationsWorkflow.create(filteredBody);
     if (filteredBody.invoiceNumber) await ensureLedgerInvoice(workflow);
-    // كشفٌ قد ذكره التخليصُ في خانة نقلٍ قبل أن يُنشأ، أو سندُه بوليصةُ معاملة.
+    // A report that clearance already named in a transport field before it was created, or whose bond is a transaction's bill of lading.
     await require('../services/customsOpsLink').resolveReports({ _id: workflow._id })
       .catch((e) => console.error('customs link (workflow create):', e.message));
-    // كشفٌ يُنشأ في النظام لعميلٍ جديد يُدخله قسمَ التحصيل بكوده بنوع حمولته —
-    // كما تفعل مزامنةُ المنصّة. راجع ensureCollectionsParty.
+    // A report created in the system for a new customer enters that customer into the collections section with its code and load type, as platform sync does. See ensureCollectionsParty.
     if (workflow.username) {
       const { ensureCollectionsParty } = require('../utils/ensureCollectionsParty');
       ensureCollectionsParty(workflow.username, { paymentType: workflow.paymentType, source: 'operations_workflow' }).catch(() => {});
     }
 
-    // ── ولا يُنسَخ الكشفُ إلى عميلٍ وفاتورة ──────────────────────────────
-    // كان كلُّ كشفٍ يُنشئ خلفَه سجلَّ عميلٍ وفاتورةً في ورك فلو «العملاء
-    // والمالية»، ويزيد «المستحقّ» على ذلك العميل. فصار للشيء الواحد رقمان:
-    // يُعدَّل الكشفُ فيبقى المستحقُّ على القديم، ولا يُعرف أيُّهما الصحيح.
-    //
-    // والكشفُ نفسُه هو المستند: قسمُ التحصيل يقرأ منه ما لنا وما علينا مباشرةً
-    // (`collectionsDeptController`)، وملفُّ الطرف يُبنى من صفوفه. فالنسخُ لم
-    // يعد يضيف شيئًا سوى رقمٍ ثانٍ يتأخّر عن الأوّل.
+    // The report is not copied to a customer and invoice. Each report used to create a customer record and an invoice in the removed workflow module and add to that customer's receivable, giving one thing two numbers: editing the report left the receivable on the old value with no way to know which was right.
+    // The report itself is the document: collections reads what is owed to and by us from it directly (collectionsDeptController) and the party file is built from its rows. Copying added only a second number that lags the first.
 
     const populated = await OperationsWorkflow.findById(workflow._id)
       .populate('createdBy', 'firstName lastName')
@@ -1587,14 +1203,8 @@ exports.createWorkflow = async (req, res) => {
 
 // PUT /api/workflows/:id
 /**
- * ── تاريخُ الفاتورة يومُ كتابة رقمها ────────────────────────────────────────
- * حين يُكتب رقمُ الفاتورة لأوّل مرّةٍ ولا تاريخَ لها، يُكتب تاريخُها يومَ الكتابة
- * (بتوقيت الشركة) — ويبقى يُعدَّل باليد بعد ذلك كأيّ خانة.
- *
- * و«تاريخُ التسليم للعميل» غيرُه ولا يُشتقّ منه أبدًا: الفاتورةُ تُصدَر اليومَ
- * وتُسلَّم للعميل بعد أيّامٍ أو أسابيع. يكتبه المستخدمُ بيده — هنا أو في قسم
- * التحصيل — وما كُتب في أحدهما يظهر في الآخر في الحال (مزامنةُ الدفتر في الحفظ
- * وزرُّ «تسليم» في التحصيل).
+ * Invoice date is the day its number was written. When the invoice number is first written with no date, its date is set to the writing day (company time) and stays editable by hand like any cell.
+ * Customer delivery date is separate and never derived from it: the invoice is issued today and delivered days or weeks later. The user writes it by hand, here or in collections, and what is written in one appears in the other at once (ledger sync on save and the deliver button in collections).
  */
 function stampInvoiceDate(patch, current) {
   if (!Object.prototype.hasOwnProperty.call(patch, 'invoiceNumber')) return;
@@ -1609,21 +1219,10 @@ exports._stampInvoiceDate = stampInvoiceDate;
 exports._applyBillingRules = applyBillingRules;
 
 /**
- * ── قيمةُ البيع إلى منصّة التشغيل ───────────────────────────────────────────
- *
- * المنصّةُ تحمل للشحنة سعرين: `purchase_price` («Cost to company») و`selling_price`
- * («Price charged to client») — `PATCH /api/v1/admin/shipments/{id}` بـ
- * multipart/form-data، وكلُّ حقولها اختياريّة (UpdateShipmentDto). فتُرسَل
- * `selling_price` وحدَها، و**لا يُلمَس `purchase_price` أبدًا**: هو كلفتُنا،
- * ومنه تُقرأ قيمةُ الشراء هنا.
- *
- * كشفٌ ليس من المنصّة (أُنشئ عندنا أو استُورد) لا شحنةَ له هناك: يُكتب هنا
- * وحدَه، ويُقال ذلك في الردّ (`platform: false`).
+ * Selling value to the operations platform. The platform holds two prices per shipment: purchase_price (cost to company) and selling_price (price charged to client), via PATCH /api/v1/admin/shipments/{id} with multipart/form-data, all fields optional (UpdateShipmentDto). Only selling_price is sent and purchase_price is never touched: it is our cost and the purchase value here is read from it.
+ * A report not from the platform (created here or imported) has no shipment there: it is written here only, and the response says so (platform: false).
  */
-// ── ومعلَّقٌ حتّى يقرّر صاحبُ الشركة ────────────────────────────────────────
-// كتابةُ سعر البيع الحقيقيّ في المنصّة تُظهر هامشَنا لفريقها، وكانت قيمتُه
-// هناك تساوي الكلفة. فبقيت مطفأةً حتّى أذن بها صاحبُ الشركة صراحةً
-// (٢٠٢٦/١٠/٢١: «افتح الكتابة على المنصة»). والإطفاءُ = `false` هنا ونشرٌ جديد.
+// Suspended until the company owner decides. Writing the real selling price to the platform shows our margin to its team, and the value there used to equal cost, so the write stayed off until the owner approved it explicitly. Turning it off means false here and a new deploy.
 const PUSH_SELLING_TO_PLATFORM = true;
 
 async function pushSellingValue(workflow, value) {
@@ -1637,8 +1236,8 @@ async function pushSellingValue(workflow, value) {
 }
 exports._pushSellingValue = pushSellingValue;
 
-/** مَن يقرأ `sellingValue` ويحفظ ما قرأ — يُمسح قبل أيّ بثّ. */
-/** ذاكرةُ قسم التحصيل (اللوحة والشجرة والدفتر) — تُمسح قبل أيّ بثٍّ يقرؤها. */
+/** Whoever reads sellingValue and keeps what it read; cleared before any broadcast. */
+/** Cache of the collections section (dashboard, tree and ledger); cleared before any broadcast that reads it. */
 function invalidateCollectionsReaders() {
   try { require('./collectionsDeptController').invalidate(); } catch (_) { /* */ }
   try { require('./collectionsLedgerController').invalidate(); } catch (_) { /* */ }
@@ -1651,20 +1250,9 @@ function invalidateSellingReaders() {
 }
 
 /**
- * ═══════════════════════════════════════════════════════════════════════════
- *  قيمةُ البيع — طريقٌ واحدٌ لكلّ شاشة
- * ═══════════════════════════════════════════════════════════════════════════
- *
- * كانت لقيمة البيع نسختان: عمودُ `sellingValue` في الكشف، و«السعرُ الحقيقيّ»
- * في `PrivateSellingPrice` تكتبه صفحةُ «التشغيل — خاصّ» وحدَها. فيُصحَّح السعرُ
- * في إحداهما وتبقى الأخرى على القديم، ولا يُعرف أيُّهما الصحيح.
- *
- * فصار الكشفُ هو المرجعَ الوحيد (صاحبُ الشركة، ٢٠٢٦/١٠/٢١)، والكتابةُ من أيّ
- * شاشةٍ تمرّ من هنا: التحقّقُ، ثمّ المنصّة، ثمّ الحفظ، ثمّ الذاكرةُ والبثّ.
- *
- * `prepareSellingValue` — قبل الحفظ: يتحقّق ويدفع إلى المنصّة، ويُرجع خطأً
- *   بحالته إن رُفض (فلا يُحفظ شيءٌ والمنصّةُ على القديم).
- * `announceSellingValue` — بعد الحفظ: يمسح الذاكرة **قبل** البثّ ويبثّ.
+ * Selling value: one path for every screen. It had two copies: the sellingValue column on the report and the real price in PrivateSellingPrice written only by the private operations page, so correcting one left the other on the old value with no way to know which was right.
+ * The report is now the single reference (company owner), and writing from any screen goes through here: validation, then the platform, then saving, then cache and broadcast.
+ * prepareSellingValue runs before saving: validates and pushes to the platform, and returns an error with its status if rejected (nothing is saved and the platform stays on the old value). announceSellingValue runs after saving: clears the cache before the broadcast and broadcasts.
  */
 async function prepareSellingValue(workflow, raw) {
   const v = raw === '' || raw === null || raw === undefined ? 0 : Number(raw);
@@ -1694,7 +1282,7 @@ async function prepareSellingValue(workflow, raw) {
 function announceSellingValue(workflow, push) {
   invalidateSellingReaders();
   try { emitToAll('collections:changed', { source: 'workflow', field: 'sellingValue', reportNumber: workflow.reportNumber }); } catch (e) { /* */ }
-  // والصفحةُ الخاصّةُ تسمع خبرَها باسمه — تقرأ العمودَ نفسَه.
+  // The private page hears its event by name; it reads the same column.
   try { emitToAll('operationsPrivate:updated', { _id: String(workflow._id), sellingValue: workflow.sellingValue }); } catch (e) { /* */ }
   if (push && push.platform) {
     try { emitToAll('ops:shipments:changed', { resource: 'shipments', action: 'selling_price', ids: [push.shipmentId], at: Date.now() }); } catch (e) { /* */ }
@@ -1702,10 +1290,8 @@ function announceSellingValue(workflow, push) {
 }
 
 /**
- * يكتب قيمةَ البيع وحدَها على كشف — لشاشةٍ لا تعدّل غيرَها («التشغيل — خاصّ»).
- * القواعدُ هي قواعدُ `updateWorkflow` حرفًا: صلاحيّةُ الحقل (SELLING_ROLES)،
- * والقفل، والمنصّةُ أوّلًا، والمصدرُ `manual` فلا تكتب المزامنةُ فوقها.
- * يُرجع `{ status, body }` ولا يكتب الردَّ بنفسه.
+ * Writes selling value alone on a report, for a screen that edits nothing else (the private operations page). The rules are those of updateWorkflow exactly: field permission (SELLING_ROLES), the lock, the platform first, and source 'manual' so sync does not write over it.
+ * Returns { status, body } and does not write the response itself.
  */
 async function setSellingValue(id, raw, user, { ip, note } = {}) {
   if (!mongoose.isValidObjectId(id)) return { status: 400, body: { message: 'معرّف غير صالح' } };
@@ -1751,7 +1337,7 @@ async function setSellingValue(id, raw, user, { ip, note } = {}) {
 }
 exports.setSellingValue = setSellingValue;
 
-/** GET /customer-names — the approved customer names for the «العميل» picker. */
+/** GET /customer-names - the approved customer names for the customer picker. */
 exports.customerNames = async (req, res) => {
   try {
     res.json({ names: await require('../utils/approvedCustomerName').approvedNames() });
@@ -1778,15 +1364,13 @@ exports.updateWorkflow = async (req, res) => {
     const branchError = await require('../utils/branchList').applyBranchList(filteredBody, workflow);
     if (branchError) return res.status(400).json({ message: branchError });
 
-    // ── مبلغُ السداد من المحفظة لا يُكتب هنا ─────────────────────────────────
-    // كشفٌ له مشترياتٌ في المحفظة: مبلغُه ما كتبه موظّفُ العهدة. وكان فتحُ
-    // الكشف وحفظُه والخانةُ فارغة يمسحه (راجع utils/walletPayment).
+    // Payment amount from the wallet is not written here. A report with wallet purchases has the amount the custody employee wrote; opening the report and saving with the field empty used to erase it (see utils/walletPayment).
     if (Object.prototype.hasOwnProperty.call(filteredBody, 'paymentAmount')) {
       const walletAmount = await require('../utils/walletPayment').walletPurchaseAmount(workflow.reportNumber);
       if (walletAmount != null) filteredBody.paymentAmount = walletAmount;
     }
 
-    // ما لا يملكه الطالبُ يُقال له، لا يُبتلع. وإلّا ظنّ أنّه حفظ.
+    // What the requester does not own is reported, not swallowed, otherwise they would think it saved.
     const rejected = filteredBody.__rejected || [];
     if (rejected.length && !Object.keys(filteredBody).length) {
       return res.status(403).json({
@@ -1804,12 +1388,8 @@ exports.updateWorkflow = async (req, res) => {
 
     stampInvoiceDate(filteredBody, workflow);
 
-    // ── تاريخ السداد لا يُسجَّل قبل استلام السند ──────────────────────────────
-    // السداد إقرارٌ بوصول المال، ولا يصل قبل استلام سند التسليم. تسجيله قبله
-    // يجعل التقارير المالية تَعُدُّ مبلغًا لم يُقبَض.
-    //
-    // الشرط هنا لا في الشاشة وحدها: الشاشة تمنع الخطأ، والخادم يمنع الاحتيال —
-    // وأي مسار آخر (الموبايل، استيراد، طلب مباشر) يمرّ من هنا أيضًا.
+    // Payment date is not recorded before the bond is received. Payment acknowledges that money arrived, which cannot precede receipt of the delivery bond; recording it earlier makes financial reports count an amount not received.
+    // The condition is on the server and not only the screen: the screen prevents mistakes and the server prevents fraud, and any other path (mobile, import, direct call) passes through here.
     const settingPayment = Object.prototype.hasOwnProperty.call(filteredBody, 'paymentDate')
       && filteredBody.paymentDate && String(filteredBody.paymentDate).trim();
     if (settingPayment) {
@@ -1828,9 +1408,7 @@ exports.updateWorkflow = async (req, res) => {
       }
     }
 
-    // ── ومَن كتب التاريخَ يُكتب معه ────────────────────────────────────────
-    // يُسجَّل عند أوّل كتابةٍ وعند كلّ تعديلٍ للتاريخ — فالعمودُ يقول «آخرُ مَن
-    // مسّ السداد» لا «أوّلُ من كتبه». راجع paymentDateBy في النموذج.
+    // Who wrote the date is written with it. Recorded at the first write and at every date change, so the column means 'last person to touch payment', not 'first to write it'. See paymentDateBy in the model.
     if (Object.prototype.hasOwnProperty.call(filteredBody, 'paymentDate')) {
       const nextDate = filteredBody.paymentDate ? String(filteredBody.paymentDate) : '';
       const prevDate = workflow.paymentDate ? new Date(workflow.paymentDate).toISOString().slice(0, 10) : '';
@@ -1841,20 +1419,13 @@ exports.updateWorkflow = async (req, res) => {
       }
     }
 
-    // ── وقواعدُ الفوترة تُطبَّق هنا ────────────────────────────────────────
-    // كشفٌ نقديٌّ لا يُفوتَر، وصافي الفاتورة يشتقّ ضريبتَه وإجماليَّها. والشرطُ
-    // على الخادم لا على الشاشة: أيُّ نافذةٍ أخرى (تحديثٌ جماعيّ، تطبيق، نداءٌ
-    // مباشر) تمرّ من هنا كذلك.
-    // ما أرسله المستخدمُ فعلًا — يُلتقط قبل التصفير، لأنّ `applyBillingRules`
-    // تُضيف الأعمدةَ المقفولة بقيمها الصفريّة، فلو قيس عليها بعدُ لبدا الطلبُ
-    // كأنّه حمل حقولًا مسموحة ولم يُرفض شيء.
+    // Billing rules are applied here. A cash report is not invoiced, and invoice net derives its tax and total. The condition is on the server and not the screen: any other path (bulk update, app, direct call) passes through here too.
+    // What the user actually sent is captured before zeroing, because applyBillingRules adds the locked columns with zero values; measured afterwards, the request would look like it carried allowed fields and nothing was rejected.
     const sentKeys = Object.keys(filteredBody);
-    // نوعُ الدفع يُملأ من ملفّ العميل قبل تطبيق القواعد، فيُقفل الكشفُ النقديُّ
-    // في الحفظة نفسِها التي سُجّل فيها سدادُه — لا في تعديلٍ ثانٍ.
+    // Payment type is filled from the customer file before applying the rules, so a cash report is locked in the same save that recorded its payment, not in a second edit.
     await fillPaymentTypeFromCustomer(filteredBody, workflow.toObject());
     const billing = applyBillingRules(filteredBody, workflow.toObject());
-    // رقمُ فاتورةٍ على كشفٍ نقديّ يُرفض صراحةً ولو جاء مع غيره: إسقاطُه في صمتٍ
-    // وحفظُ الباقي يُقرأ «حُفظ الرقم» وهو لم يُحفظ.
+    // An invoice number on a cash report is rejected explicitly even when sent with other fields: dropping it silently and saving the rest reads as 'number saved' when it was not.
     if (billing.blocked.includes('invoiceNumber')) {
       return res.status(400).json({
         code: 'CASH_INVOICE_NUMBER',
@@ -1871,14 +1442,10 @@ exports.updateWorkflow = async (req, res) => {
       });
     }
 
-    // ── قيمةُ البيع تُكتب في منصّة التشغيل أوّلًا ثمّ هنا ──────────────────────
-    // المنصّةُ تملك `selling_price` للشحنة وتعيد كتابتَه في كلّ مزامنة. فإن كُتبت
-    // هنا وحدَها كذبت شاشتان: المنصّةُ تقول سعرًا وسيرُ العمل غيرَه. فتُدفع إليها
-    // أوّلًا (راجع pushSellingValue)، ولا يُحفظ شيءٌ إن رفضتها — فلا يُقال «حُفظ»
-    // وقد بقيت المنصّةُ على القديم.
+    // Selling value is written to the operations platform first, then here. The platform owns the shipment's selling_price and rewrites it at every sync; written here only, two screens would disagree (platform one price, workflow another). So it is pushed first (see pushSellingValue) and nothing is saved if the platform rejects, so 'saved' is never said while the platform stays on the old value.
     let sellingChanged = false;
     let sellingPush = null;
-    // (الطريقُ نفسُه الذي تكتب به «التشغيل — خاصّ» — راجع prepareSellingValue.)
+    // (The same path the private operations page writes through; see prepareSellingValue.)
     if (Object.prototype.hasOwnProperty.call(filteredBody, 'sellingValue')) {
       const prep = await prepareSellingValue(workflow, filteredBody.sellingValue);
       if (prep.error) return res.status(prep.error.status).json(prep.error.body);
@@ -1897,24 +1464,20 @@ exports.updateWorkflow = async (req, res) => {
     const before = workflow.toObject();
     const hadCollectionDate = !!workflow.collectionDate;
     Object.assign(workflow, filteredBody);
-    // ── تحصيلٌ كُتب بيدٍ هنا هو تحصيلُ يد ────────────────────────────────────
-    // مَن غيّر تاريخَ التحصيل أو مبلغَه من هذه الشاشة أخذ الكشفَ من المحفظة:
-    // لا تعود فتكتب فوقه ولا ترفعه. راجع utils/walletCollection.
+    // A collection written by hand here is a hand collection. Whoever changed the collection date or amount from this screen took the report from the wallet: the wallet does not write over it again nor lift it. See utils/walletCollection.
     if (['collectionDate', 'collectedAmount'].some((k) => filteredBody[k] !== undefined
       && String(before[k] ?? '') !== String(workflow[k] ?? ''))) {
       workflow.collectedByWallet = false;
     }
     await workflow.save();
-    // رقمُ فاتورةٍ كُتب الآن يصنع قيدَه، فتصل الشاشةَ الضريبيّة فورًا.
+    // An invoice number just written creates its ledger entry, so it reaches the tax screen at once.
     if (LEDGER_FIELDS.some((k) => filteredBody[k] !== undefined)) await ensureLedgerInvoice(workflow, before.invoiceNumber);
     if (filteredBody.username !== undefined || filteredBody.paymentType !== undefined) {
       const { ensureCollectionsParty } = require('../utils/ensureCollectionsParty');
       if (workflow.username) ensureCollectionsParty(workflow.username, { paymentType: workflow.paymentType, source: 'operations_workflow' }).catch(() => {});
     }
 
-    // ── ودفترُ التحصيل يتبع الكشف ────────────────────────────────────────
-    // تاريخُ التحصيل أو تسليمِ العميل كُتب أو مُحي من هنا: يتبعه صفُّه في دفتر
-    // التحصيل، فلا تقول شاشتا القسمين شيئين عن فاتورةٍ واحدة.
+    // The collections ledger follows the report. A collection or customer-delivery date written or cleared here is followed by its row in the collections ledger, so the two sections' screens do not say different things about one invoice.
     {
       const moved = (k) => filteredBody[k] !== undefined && String(before[k] || '') !== String(workflow[k] || '');
       const changed = { collectionDate: moved('collectionDate'), deliveryDate: moved('deliveryDate') };
@@ -1924,9 +1487,7 @@ exports.updateWorkflow = async (req, res) => {
       }
     }
 
-    // ── وتحصيلُ المحفظة يتبع نوعَ الكشف ─────────────────────────────────────
-    // صار نقديًّا وعليه قيدُ تحصيلٍ في المحفظة فيُحصَّل، وكفّ عن النقد فيُرفع ما
-    // كتبته المحفظة. وكذلك إن تغيّر رقمُه. راجع utils/walletCollection.
+    // Wallet collection follows the report's type. If it became cash and has a collection entry in the wallet it is collected; if it stopped being cash, what the wallet wrote is lifted. Likewise when its number changes. See utils/walletCollection.
     if (String(before.paymentType || '') !== String(workflow.paymentType || '')
       || String(before.reportNumber || '') !== String(workflow.reportNumber || '')) {
       await require('../utils/walletCollection')
@@ -1934,27 +1495,17 @@ exports.updateWorkflow = async (req, res) => {
         .catch((e) => console.error('wallet cash-collection (workflow update):', e.message));
     }
 
-    // ── ونوعُ الدفع يتبعه قسمُ التحصيل في الحال ────────────────────────────
-    // لوحةُ التحصيل تقسم المديونيّةَ بالأنواع الأربعة (راجع
-    // collectionsReceivablesController.subtypeCards)، وتقرأ من ذاكرةٍ مؤقّتة.
-    // فتُمسح الذاكرةُ **قبل** البثّ أدناه — وإلّا قرأ المستمعُ القديمَ وتأخّر
-    // خطوةً (announce-before-invalidate).
+    // Payment type is followed by collections immediately. The collections board splits receivables by the four types (see collectionsReceivablesController.subtypeCards) and reads a cache, so the cache is cleared before the broadcast below, otherwise the listener reads the old data and lags one step (announce-before-invalidate).
     const kindMoved = String(before.paymentType || '') !== String(workflow.paymentType || '')
       || String(before.paymentSubtype || '') !== String(workflow.paymentSubtype || '');
-    // ── وكلُّ خانةٍ تُدخل الكشفَ شاشةَ التحصيل أو تُخرجه منها (٢٠٢٦/١٠/٢٤) ──
-    // «عملتُ مراجعة التشغيل وما لقيتُ الكشف في فواتير الكاش» — لم يكن يُبَثّ لها
-    // شيء. فتغيُّرُ أيٍّ منها يمسح ذاكرةَ التحصيل ثمّ يُعلن للجميع (أدناه).
+    // Every cell that brings a report into the collections screen or removes it. Operations review wrote nothing there and the report was missing from cash invoices; no broadcast was sent for it. A change in any of them clears the collections cache then announces to everyone (below).
     const GATE_FIELDS = ['operationsReview', 'accountingReview', 'paymentDate', 'invoiceNumber', 'collectedAmount', 'collectionDate', 'cashCollectionStatus'];
     const gateMoved = kindMoved || GATE_FIELDS.some((f) => String(before[f] ?? '') !== String(workflow[f] ?? ''));
     if (gateMoved) invalidateCollectionsReaders();
 
-    // ── وتاريخُ التحصيل لا يُنشئ دفعةً في مكانٍ آخر ──────────────────────
-    // كان إثباتُ تاريخ التحصيل يقيّد `Payment` ويحدّث فاتورةً ورصيدَ عميل في
-    // ورك فلو لم يعد يجري. والتاريخُ في الكشف هو الإثبات: قسمُ التحصيل يقرأ
-    // «ما حُصِّل» من عمود التحصيل نفسِه، لا من نسخةٍ عنه.
+    // Collection date does not create a payment elsewhere. Recording a collection date used to create a Payment and update an invoice and customer balance in the removed workflow module; no longer. The date on the report is the proof: collections reads 'what was collected' from the collection column itself, not from a copy.
 
-    // ── و«رقم السند» قد يكون بوليصةَ معاملة تخليص أو حاويتَها ───────────────
-    // يُعاد ربطُ الكشف قبل جلب نسخته، فيخرج الردُّ والبثُّ بالربط الجديد.
+    // The receipt number may be a clearance transaction's bill of lading or container. The report is re-linked before its copy is fetched, so the response and the broadcast carry the new link.
     if (String(before.documentNumber || '') !== String(workflow.documentNumber || '')
       || String(before.reportNumber || '') !== String(workflow.reportNumber || '')) {
       await require('../services/customsOpsLink').resolveReports({ _id: workflow._id })
@@ -1976,20 +1527,15 @@ exports.updateWorkflow = async (req, res) => {
     });
 
     bustFilterCache();
-    // قيمةُ البيع يقرؤها التحصيلُ (مستحقُّ الكاش وأعمارُه) والصفحةُ الخاصّة ولوحاتُ
-    // المنصّة — تُمسح ذاكرتُها **قبل** البثّ، وإلّا قرأ المستمعُ القديمَ وتأخّر
-    // خطوةً (راجع announce-before-invalidate).
+    // Selling value is read by collections (cash receivable and ages), the private page and platform dashboards; their cache is cleared before the broadcast, otherwise the listener reads the old data and lags one step (see announce-before-invalidate).
     if (sellingChanged) invalidateSellingReaders();
     try { emitPerRole('workflow:updated', (r) => stripRowFor(r, populated)); } catch (e) { console.error('WebSocket emit error:', e); }
     require('../services/shipmentOrderWorkflowLink').pullSoon(workflow._id, req.user, Object.keys(filteredBody));
-    // `emitPerRole` لا يعبر إلى العامل الآخر — فخبرُ التحصيل يُبثّ للجميع.
+    // emitPerRole does not cross to the other worker, so the collections event is broadcast to everyone.
     if (gateMoved) {
       try { emitToAll('collections:changed', { source: 'workflow', field: kindMoved ? 'paymentType' : 'gate', reportNumber: workflow.reportNumber }); } catch (e) { /* */ }
     }
-    // ── وصفحةُ معاملة التخليص تعرض الكشفَ كاملًا ──────────────────────────────
-    // وتُعدِّله من مكانها. و`workflow:updated` يُبثّ لكلّ دورٍ على هذا العامل
-    // وحدَه؛ فالخبرُ للمعاملة يُبثّ للجميع — بلا صفٍّ فيه، تجلب الصفحةُ ما يحقّ لقارئها.
-    // (لا ذاكرةَ تحمل «كشوف المعاملة» فتُمسح قبله: تُقرأ من القاعدة في كلّ طلب.)
+    // The clearance transaction page shows the whole report and edits it in place. workflow:updated is broadcast per role on this worker only, so the transaction's event goes to everyone without a row; the page fetches what its reader may see. (No cache holds the transaction's reports, so nothing is cleared before it: they are read from the database every request.)
     {
       const linkedTo = [before.customsLink && before.customsLink.clearance, populated.customsLink && populated.customsLink.clearance]
         .filter(Boolean).map(String);
@@ -1999,17 +1545,15 @@ exports.updateWorkflow = async (req, res) => {
     }
     if (sellingChanged) announceSellingValue(workflow, sellingPush);
 
-    // ما رُفض يُقال حتّى حين نجح غيرُه: الحفظُ الجزئيُّ الصامتُ يترك الموظّف
-    // يظنّ أنّ الستّةَ حُفظت وقد حُفظ واحد.
-    // وردُّ الحفظ يُحجب كما تُحجب القائمة: هو نسخةُ الصفّ التي تحلّ محلَّ
-    // القديمة في الشاشة، فلو خرج كاملًا عاد المحجوبُ من باب الحفظ.
+    // What was rejected is reported even when other fields succeeded: a silent partial save leaves the employee thinking all six were saved when one was.
+    // The save response is stripped as the list is: it is the copy of the row that replaces the old one on screen, so returning it complete would bring the hidden fields back through the save.
     const out = stripRowFor(req.user.role, populated);
     const extra = {};
     if (rejected.length) {
       extra.refusedFields = rejected;
       extra.refusedMessage = `لم تُحفظ (خارج صلاحيّتك): ${rejected.join('، ')}`;
     }
-    // ويُقال أين كُتبت قيمةُ البيع: في المنصّة وهنا، أم هنا وحدَه (كشفٌ ليس منها).
+    // Reports where selling value was written: on the platform and here, or here only (a report not from it).
     if (sellingPush) extra.sellingPlatform = !!sellingPush.platform;
     if (Object.keys(extra).length) {
       return res.json(Object.assign(out.toObject ? out.toObject() : { ...out }, extra));
@@ -2047,7 +1591,7 @@ exports.updateStage = async (req, res) => {
 
     const allowed = validTransitions[workflow.stage] || [];
     // Super admin can force any transition
-    // …وأهلُ المال معه — راجع config/financeAuthority.
+    // Finance roles are included (see config/financeAuthority).
     if (!require('../config/constants').isTopRole(req.user.role) && !isFinanceFull(req.user.role) && !allowed.includes(stage)) {
       return res.status(400).json({
         message: `Cannot transition from "${workflow.stage}" to "${stage}"`,
@@ -2206,17 +1750,8 @@ exports.deleteWorkflow = async (req, res) => {
 
 // PATCH /api/workflows/:id/application-status
 /**
- * حالةُ الطلب تُغيَّر من جدول سير العمل — وتُكتب في المنصّة لا عندنا.
- *
- * ── العلّة ──────────────────────────────────────────────────────────────────
- * `applicationStatus` عمودٌ مرآةٌ: المنصّةُ تكتبه وتُعيد كتابته في كلّ مزامنة.
- * فلو كُتب عندنا وحدَه مُسح بعد دقائق بلا أثر — وهذا بالضبط ما كان يقع لمن
- * يعدّله من الجدول: يتغيّر أمام عينه ثمّ يعود.
- *
- * فالكتابةُ تذهب إلى مصدرها: `PATCH /admin/shipments/status` في المنصّة، ثمّ
- * تُقرأ الشحنةُ منها ويُكتب صفُّنا بما استقرّ هناك ويُبَثّ. فالشاشتان — جدولُ
- * سير العمل وصفحةُ الطلبات — تريان الشيءَ نفسَه في اللحظة نفسِها، والمنصّةُ
- * معهما. وكشفٌ ليس من المنصّة لا حالةَ طلبٍ له تُغيَّر من هنا.
+ * Order status is changed from the workflow table and written to the platform, not here. applicationStatus is a mirror column that the platform writes and rewrites at every sync, so a local-only write would be erased within minutes, which is what happened to anyone editing it from the table: it changed and then reverted.
+ * The write goes to its source: PATCH /admin/shipments/status on the platform, then the shipment is read back, our row is written with what settled there, and broadcast. So the workflow table and the orders page show the same thing at the same moment, and the platform with them. A report not from the platform has no order status to change here.
  */
 const UPL_STATUSES = [
   'requesting', 'loading', 'uploaded', 'on_way', 'arrived',
@@ -2224,15 +1759,8 @@ const UPL_STATUSES = [
 ];
 
 /**
- * دفعُ حالةِ الطلب إلى المنصّة ثمّ قراءةُ ما استقرّ هناك.
- *
- * ── ولماذا دالّةٌ مستقلّة ───────────────────────────────────────────────────
- * يناديها جدولُ سير العمل حين يغيّرها الموظّفُ بيده، وتنادِيها المحفظةُ حين
- * يُسجَّل شراءٌ على كشف — والشراءُ إقرارٌ بأنّ السندَ في اليد. ونسخُ المنطق
- * للثانية يعني طريقين لكتابة الحالة يفترقان: أحدُهما يدفعها إلى المنصّة
- * ويُعيد المزامنة، والآخرُ يكتبها عندنا فتُمحى في أوّل مزامنةٍ بلا أثر.
- *
- * وتُرجع ما استقرّ، أو `null` إن لم يكن الكشفُ من المنصّة أصلًا.
+ * Pushes the order status to the platform, then reads what settled there. A separate function because the workflow table calls it when staff change it by hand and the wallet calls it when a purchase is recorded on a report (a purchase declares the bond in hand). Duplicating the logic would give two ways to write the status: one pushes to the platform and re-syncs, the other writes locally and is erased by the first sync.
+ * Returns what settled, or null if the report is not from the platform at all.
  */
 /** Same move where no platform answers: a row owned by a shipment created here, or any row once the link is off. `null` otherwise. */
 async function setLocalStatus(workflow, status, actor) {
@@ -2299,7 +1827,7 @@ exports.updateApplicationStatus = async (req, res) => {
     if (!UPL_STATUSES.includes(status)) {
       return res.status(400).json({ message: `حالةٌ غير معروفة: ${status || '(فارغة)'}` });
     }
-    // ومَن يملك عمودَ الحالة في الجدول هو مَن يملك تغييرَها — الخريطةُ نفسُها.
+    // Whoever owns the status column in the table owns changing it: the same map.
     const allowed = await fieldsForRole(req.user.role);
     if (!allowed.includes('applicationStatus')) {
       return res.status(403).json({ message: 'صلاحيّتك لا تسمح بتغيير حالة الشحنة.' });
@@ -2331,7 +1859,7 @@ exports.updateApplicationStatus = async (req, res) => {
       body: { status, ids: [String(workflow.externalId)] },
     });
 
-    // ما استقرّ في المنصّة هو ما يُعرض — لا ما طلبناه.
+    // What settled on the platform is what is shown, not what was requested.
     const { syncShipmentsById } = require('../services/opsWorkflowSyncService');
     const out = await syncShipmentsById([String(workflow.externalId)]);
     const row = (out.rows || [])[0] || null;
@@ -2353,7 +1881,7 @@ exports.updateApplicationStatus = async (req, res) => {
       ipAddress: req.ip,
     });
 
-    // والردُّ يُحجَب كما تُحجَب القائمة: هو نسخةُ الصفّ التي تحلّ محلَّ القديمة.
+    // The response is stripped as the list is: it is the copy of the row that replaces the old one.
     res.json(row ? stripRowFor(req.user.role, row) : { _id: workflow._id, applicationStatus: status });
   } catch (error) {
     const status = error.status && error.status >= 400 && error.status < 600 ? error.status : 500;
@@ -2364,28 +1892,12 @@ exports.updateApplicationStatus = async (req, res) => {
 
 // POST /api/workflows/bulk-delete
 /**
- * تحديثٌ جماعيّ — حقلٌ واحدٌ على كشوفٍ كثيرة.
- *
- * فريقُ التحصيل يستلم دفعةَ سنداتٍ في اليوم الواحد بتاريخِ سدادٍ واحدٍ وفرعٍ
- * واحد، فكان يفتح مئةَ صفٍّ ويكتب التاريخَ نفسَه مئةَ مرّة. والكتابةُ المكرّرة
- * ليست بطئًا فحسب: كلُّ صفٍّ فرصةُ خطأٍ جديدة.
- *
- * وليس حلقةَ نداءاتٍ من الشاشة: مئةُ صفٍّ = مئةُ طلبٍ متوازٍ على عنقودٍ مقيَّد.
- * الطلبُ واحدٌ هنا، والقواعدُ هي هي — صلاحيّةُ الحقل، وشرطُ «لا سدادَ قبل
- * السند» — ويعود لكلّ صفٍّ سببُه إن رُفض، فلا يُقال «تمّ» ونصفُها لم يتمّ.
+ * Bulk update: one field on many reports. The collections team receives a batch of bonds in one day with one payment date and one branch, and used to open a hundred rows and write the same date a hundred times; repeated writing is also a hundred chances for an error.
+ * It is not a loop of calls from the screen (a hundred rows would be a hundred parallel requests on a constrained cluster). It is one request here under the same rules, field permission and 'no payment before the bond', and each row returns its reason if rejected, so 'done' is never said when half was not.
  */
 /**
- * ── «كلُّ نتائج الفلتر» — الشروطُ نفسُها، والعددُ الذي رآه المستخدم ──────────
- *
- * الجدولُ يعرض خمسين في الصفحة، والفلترُ قد يُخرج سبعةً وثلاثين ألفًا. فتُرسَل
- * شروطُ الجدول نفسُها (`query`) ويُستخرج منها كلُّ ما يطابق — بالدالّة التي
- * يقرأ بها الجدولُ صفوفَه، فلا يُكتب على ما لا يراه صاحبُ الفلتر.
- *
- * وكان السقفُ ألفًا، فتغييرُ نوع الدفع لعميلٍ واحدٍ كبير يستحيل إلّا بتقطيع
- * الفلتر يدويًّا. فصار السقفُ سقفَ أمانٍ لا سقفَ عمل (`ALL_MATCHING_CAP`)،
- * والشرطُ الحقيقيُّ هو **العددُ الذي أكّده المستخدم** (`expectedCount`): إن
- * طابق الفلترُ الآن أكثرَ ممّا رآه في نافذة التأكيد (مزامنةٌ أضافت كشوفًا
- * بينهما) رُفض الطلبُ بالعدد الجديد ليُؤكَّد ثانيةً — لا يُكتب على كشفٍ لم يُعرَض.
+ * All filter results: the same conditions and the count the user saw. The table shows fifty per page while the filter may return 37,000, so the table's own conditions (query) are sent and everything matching is extracted with the function the table reads rows with, so nothing is written to what the filter owner cannot see.
+ * The cap was one thousand, which made changing one large customer's payment type impossible except by cutting the filter by hand. It is now a safety cap, not a work cap (ALL_MATCHING_CAP), and the real condition is the count the user confirmed (expectedCount): if the filter now matches more than the confirmation window showed (sync added reports meanwhile), the request is rejected with the new count for re-confirmation, so no report is written that was not displayed.
  */
 const ALL_MATCHING_CAP = 60000;
 const IDS_CAP = 1000;
@@ -2429,12 +1941,9 @@ exports.bulkUpdate = async (req, res) => {
     const patch = filterFieldsByRole(req.body.fields || {}, req.user.role, await fieldsForRole(req.user.role));
     const bulkBranchError = await require('../utils/branchList').applyBranchList(patch);
     if (bulkBranchError) return res.status(400).json({ message: bulkBranchError });
-    // والقواعدُ نفسُها في الجملة: لا يكسب أحدٌ بالتحديد ما لا يملكه بالمفرد.
-    // (وتُعاد لكلّ صفٍّ على حدة أدناه، لأنّ نوعَ الدفع يختلف من كشفٍ لآخر.)
+    // The same rules apply in bulk: nobody gains by selecting many what they lack singly. (Re-applied per row below because payment type differs between reports.)
     const refused = patch.__rejected || [];
-    // ── وقيمةُ البيع لا تُكتب جماعةً ──────────────────────────────────────────
-    // كلُّ كشفٍ منها يُكتب في منصّة التشغيل نداءً بنداء (راجع pushSellingValue)،
-    // وسعرٌ واحدٌ لمئة كشفٍ لعملاءَ ومساراتٍ شتّى ليس تسعيرًا. تُعدَّل كشفًا كشفًا.
+    // Selling value is not written in bulk. Each report is written to the operations platform call by call (see pushSellingValue), and one price for a hundred reports of various customers and routes is not pricing. It is edited report by report.
     if (Object.prototype.hasOwnProperty.call(patch, 'sellingValue')) {
       delete patch.sellingValue;
       refused.push('sellingValue');
@@ -2454,33 +1963,28 @@ exports.bulkUpdate = async (req, res) => {
 
     const wantsPayment = keys.includes('paymentDate') && patch.paymentDate && String(patch.paymentDate).trim();
     const rows = await OperationsWorkflow.find({ _id: { $in: ids } })
-      // `paymentTypeSource` وما يُشتقّ منه النوع: بدونها يُقرأ كلُّ صفٍّ «غيرَ يدويّ
-      // وغيرَ موحَّد» فيُعاد اشتقاقُ ما اختارته يدٌ أو وُحِّد — راجع fillPaymentTypeFromCustomer.
+      // paymentTypeSource and what the type derives from: without them each row reads as 'not manual and not unified' and what a person chose or unified would be re-derived (see fillPaymentTypeFromCustomer).
       .select('reportNumber applicationStatus paymentType paymentSubtype paymentTypeSource paymentMethod reportDate tax netInvoice username lockedBy lockedByName lockedAt invoiceNumber').lean();
 
-    // ── والقواعدُ تُطبَّق صفًّا صفًّا ──────────────────────────────────────
-    // نوعُ الدفع يختلف من كشفٍ لآخر، فالتعديلُ الواحد لا ينتج تعديلًا واحدًا:
-    // كشفٌ نقديٌّ في الدفعة يُسقِط عنه أعمدةَ الفاتورة، وكشفٌ ضريبيٌّ يشتقّ
-    // ضريبتَه من صافيه. وتطبيقُ قاعدةٍ واحدةٍ على الجميع كان سيكتب فاتورةً
-    // على عميلِ كاش.
+    // Rules are applied row by row. Payment type differs between reports, so one edit does not produce one change: a cash report in the batch drops the invoice columns and a tax report derives its tax from its net. One rule for all would have written an invoice on a cash customer.
     const skipped = []; const perRow = [];
-    // مبلغُ السداد لكشفٍ دفعته المحفظةُ يبقى مبلغَها — راجع utils/walletPayment.
+    // Payment amount of a report the wallet paid stays the wallet's amount (see utils/walletPayment).
     const walletPaid = Object.prototype.hasOwnProperty.call(patch, 'paymentAmount')
       ? await require('../utils/walletPayment').walletPaidMap(rows.map((r) => r.reportNumber))
       : new Map();
-    // صفاتُ العملاء مرّةً للدفعة كلِّها — راجع partyTypes في fillPaymentTypeFromCustomer.
+    // Customer attributes once per batch (see partyTypes in fillPaymentTypeFromCustomer).
     let partyTypes = null;
     if (!keys.includes('paymentType') && !keys.includes('paymentSubtype') && rows.length > 50) {
       const CollectionsParty = require('../models/CollectionsParty');
       const names = [...new Set(rows.map((r) => CollectionsParty.fold(patch.username !== undefined ? patch.username : r.username || '')).filter(Boolean))];
       partyTypes = new Map();
-      // الأوّلُ لكلّ مفتاح — كما يأخذ `findOne` في المسار المفرد.
+      // First per key, as findOne takes in the single path.
       for (const p of await CollectionsParty.find({ kind: 'customer', nameKey: { $in: names } }).select('nameKey paymentType').lean()) {
         if (!partyTypes.has(p.nameKey)) partyTypes.set(p.nameKey, p.paymentType);
       }
     }
     for (const r of rows) {
-      // الصفُّ الذي يحرّره غيرُك لا يُكتب فوقه في دفعةٍ لا يراها.
+      // A row being edited by someone else is not overwritten by a batch they cannot see.
       if (isLocked(r, req.user._id)) {
         skipped.push({ reportNumber: r.reportNumber, reason: `قيد التعديل لدى ${r.lockedByName || 'مستخدم آخر'}` });
         continue;
@@ -2490,15 +1994,14 @@ exports.bulkUpdate = async (req, res) => {
         continue;
       }
       const rowPatch = { ...patch };
-      // ومَن كتب تاريخ السداد يُكتب معه في الدفعة كما في التعديل المفرد.
+      // Who wrote the payment date is recorded with it in the batch, as in the single edit.
       if (Object.prototype.hasOwnProperty.call(patch, 'paymentDate') && patch.paymentDate) {
         rowPatch.paymentDateBy = req.user._id;
         rowPatch.paymentDateByName = `${req.user.firstName || ''} ${req.user.lastName || ''}`.trim();
         rowPatch.paymentDateAt = new Date();
       }
       if (walletPaid.has(String(r.reportNumber || '').trim())) rowPatch.paymentAmount = walletPaid.get(String(r.reportNumber || '').trim());
-      // ونوعُ الدفع يُملأ لكلّ صفٍّ من ملفّ عميله — والدفعةُ الواحدة تضمّ
-      // عملاءَ شتّى، فقاعدةٌ واحدةٌ للجميع تكتب فاتورةً على عميل كاش.
+      // Payment type is filled per row from its customer file: one batch holds various customers, and one rule for all would write an invoice on a cash customer.
       await fillPaymentTypeFromCustomer(rowPatch, r, partyTypes);
       stampInvoiceDate(rowPatch, r);
       const own = applyBillingRules(rowPatch, r);
@@ -2510,7 +2013,7 @@ exports.bulkUpdate = async (req, res) => {
         skipped.push({ reportNumber: r.reportNumber, reason: 'أمر نقل نقديّ — لا فاتورة له' });
         continue;
       }
-      // تاريخُ التحصيل أو مبلغُه كُتب بيدٍ في الدفعة — الكشفُ لم يعد للمحفظة.
+      // Collection date or amount written by hand in the batch: the report no longer belongs to the wallet.
       if (['collectionDate', 'collectedAmount'].some((k) => Object.prototype.hasOwnProperty.call(own.patch, k))) {
         own.patch.collectedByWallet = false;
       }
@@ -2522,16 +2025,14 @@ exports.bulkUpdate = async (req, res) => {
 
     let updated = 0;
     if (perRow.length) {
-      // تُجمَّع الصفوفُ التي تأخذ التعديلَ نفسَه في كتابةٍ واحدة، فلا تصير
-      // مئةُ صفٍّ مئةَ رحلةٍ إلى القاعدة.
+      // Rows taking the same edit are grouped into one write, so a hundred rows are not a hundred database trips.
       const byPatch = new Map();
       for (const t of perRow) {
         const k = JSON.stringify(t.patch);
         if (!byPatch.has(k)) byPatch.set(k, { patch: t.patch, ids: [] });
         byPatch.get(k).ids.push(t._id);
       }
-      // والمعرّفاتُ تُقطَّع خمسةَ آلافٍ في الشرط الواحد — سبعةٌ وثلاثون ألفًا في
-      // `$in` واحدٍ طلبٌ ثقيلٌ على العنقود بلا داعٍ.
+      // Ids are chunked at five thousand per condition: 37,000 in a single $in is a heavy request on the cluster for no reason.
       const CHUNK = 5000;
       const ops = [];
       for (const g of byPatch.values()) {
@@ -2551,23 +2052,22 @@ exports.bulkUpdate = async (req, res) => {
         const link = require('../services/shipmentOrderWorkflowLink');
         perRow.forEach((t) => link.pullSoon(t._id, req.user, Object.keys(t.patch)));
       }
-      // «رقم السند» كُتب جماعيًّا — يُعاد ربطُ كشوفه بالتخليص (بوليصةٌ أو حاوية).
+      // Receipt number written in bulk: its reports are re-linked to clearance (bill of lading or container).
       if (keys.includes('documentNumber')) {
         await require('../services/customsOpsLink').resolveReports({ _id: { $in: perRow.map((t) => t._id) } })
           .catch((e) => console.error('customs link (workflow bulk):', e.message));
       }
-      // رقمُ فاتورةٍ كُتب جماعيًّا يصنع قيدَه في الدفتر كما يصنعه التعديلُ
-      // المفرد — وإلّا غابت هذه الفواتيرُ عن التحصيل كلِّه. راجع ensureLedgerInvoice.
+      // An invoice number written in bulk creates its ledger entry as the single edit does, otherwise these invoices would be missing from collections entirely. See ensureLedgerInvoice.
       {
         const hit = perRow.filter((t) => LEDGER_FIELDS.some((k) => Object.prototype.hasOwnProperty.call(t.patch, k)));
         if (hit.length) {
-          // الرقمُ القديمُ والجديدُ معًا: قيدُ القديم يُعاد حسابُه أو يُزال.
+          // Both the old and the new number: the old one's entry is recomputed or removed.
           const oldNo = new Map(rows.map((r) => [String(r._id), r.invoiceNumber]));
           const fresh = await OperationsWorkflow.find({ _id: { $in: hit.map((t) => t._id) } }).select('invoiceNumber').lean();
           await syncOpsInvoices([...fresh.map((w) => w.invoiceNumber), ...hit.map((t) => oldNo.get(String(t._id)))]);
         }
       }
-      // ودفترُ التحصيل يتبع ما كُتب جماعيًّا من تاريخ تحصيلٍ أو تسليم — كما في المفرد.
+      // The collections ledger follows collection or delivery dates written in bulk, as in the single edit.
       {
         const has = (k) => perRow.some((t) => Object.prototype.hasOwnProperty.call(t.patch, k));
         const changed = { collectionDate: has('collectionDate'), deliveryDate: has('deliveryDate') };
@@ -2578,12 +2078,11 @@ exports.bulkUpdate = async (req, res) => {
             .catch((e) => console.error('ledger sync (workflow bulk):', e.message));
         }
       }
-      // ونوعُ الدفع تغيّر جماعةً: تحصيلُ المحفظة يُعاد النظرُ فيه لتلك الكشوف.
+      // Payment type changed in bulk: wallet collection is reconsidered for those reports.
       {
         const retyped = perRow.filter((t) => Object.prototype.hasOwnProperty.call(t.patch, 'paymentType')
           && String(t.patch.paymentType || '') !== t.typeBefore).map((t) => t.reportNumber);
-        // ومطابقةُ المحفظة كشفًا كشفًا رحلتان لكلّ كشف؛ فإن كثرت الكشوفُ طوبقت
-        // القيودُ كلُّها مرّةً (وهي أقلُّ بكثير) في الخلف — النتيجةُ نفسُها.
+        // Matching the wallet report by report is two trips per report; when reports are many, all entries (far fewer) are matched once in the background with the same result.
         if (retyped.length > 300) {
           require('../utils/walletCollection').resyncAllWalletCollections({ user: req.user, reason: 'تغيّر نوع أمر النقل' })
             .catch((e) => console.error('wallet cash-collection (workflow bulk, all):', e.message));
@@ -2592,12 +2091,12 @@ exports.bulkUpdate = async (req, res) => {
             .catch((e) => console.error('wallet cash-collection (workflow bulk):', e.message));
         }
       }
-      // ونوعُ الدفع (عائلةً أو نوعًا) تغيّر: لوحةُ التحصيل تُمسح ذاكرتُها قبل البثّ.
+      // Payment type (family or type) changed: the collections board cache is cleared before the broadcast.
       const kindMoved = perRow.some((t) => (Object.prototype.hasOwnProperty.call(t.patch, 'paymentType')
           && String(t.patch.paymentType || '') !== t.typeBefore)
         || (Object.prototype.hasOwnProperty.call(t.patch, 'paymentSubtype')
           && String(t.patch.paymentSubtype || '') !== t.subBefore));
-      // وخاناتُ باب التحصيل كذلك (مراجعةُ التشغيل، تاريخُ السداد…) — راجع التعديلَ المفرد.
+      // Cells of the collections door too (operations review, payment date, and so on); see the single edit.
       const BULK_GATE = ['operationsReview', 'accountingReview', 'paymentDate', 'invoiceNumber', 'collectedAmount', 'collectionDate', 'cashCollectionStatus'];
       const gateMoved = kindMoved || perRow.some((t) => BULK_GATE.some((f) => Object.prototype.hasOwnProperty.call(t.patch, f)));
       if (gateMoved) invalidateCollectionsReaders();
@@ -2605,9 +2104,7 @@ exports.bulkUpdate = async (req, res) => {
       if (gateMoved) {
         try { emitToAll('collections:changed', { source: 'workflow', field: kindMoved ? 'paymentType' : 'gate', bulk: true }); } catch (e) { /* */ }
       }
-      // ── والدفعةُ تُسجَّل بكشوفها وقيمها (٢٠٢٦/١٠/٢٤) ─────────────────────
-      // كان السجلُّ يقول «خمسةَ عشرَ كشفًا · paymentType» فقط — فلا يُعرف أيُّها
-      // ولا إلى ماذا حين يُسأل «غيّرتُه فلم يتغيّر». فتُكتب الأرقامُ والقيمُ معه.
+      // A batch is recorded with its reports and values. The log used to say only 'fifteen reports - paymentType', so which reports and to what was unknown when asked 'I changed it and it did not change'. Numbers and values are written with it.
       logAudit({
         user: req.user, action: 'bulk_update', entity: 'OperationsWorkflow',
         details: `${updated} أمر نقل · ${keys.join('، ')}`, ip: req.ip,
@@ -2620,8 +2117,7 @@ exports.bulkUpdate = async (req, res) => {
       });
     }
 
-    // قائمةُ المتروك تُقصّ في الردّ (العددُ كاملٌ في `skippedCount`): عشرةُ آلاف
-    // سببٍ لا تُقرأ في نافذة، وتُثقل الردَّ بلا فائدة.
+    // The skipped list is truncated in the response (the full count is in skippedCount): ten thousand reasons cannot be read in a dialog and weigh the response down.
     res.json({
       updated,
       requested: ids.length,
@@ -2641,8 +2137,7 @@ exports.bulkUpdate = async (req, res) => {
 exports.bulkDelete = async (req, res) => {
   try {
     let { ids } = req.body;
-    // «كلُّ نتائج الفلتر» هنا كما في التحديث الجماعيّ — بالشروط نفسِها والعددِ
-    // الذي أكّده المستخدم (راجع idsForAllMatching).
+    // All filter results here as in bulk update: same conditions and the count the user confirmed (see idsForAllMatching).
     const allMatching = !!(req.body.allMatching && req.body.query && typeof req.body.query === 'object');
     if (allMatching) {
       const r = await idsForAllMatching(req.body, req.user.role);
@@ -2670,13 +2165,13 @@ exports.bulkDelete = async (req, res) => {
       action: 'bulk_delete_workflows',
       entity: 'OperationsWorkflow',
       entityId: null,
-      // المعرّفاتُ كلُّها حتى ألفٍ — وما فوقه عددُه وشرطُه، لا سجلٌّ بميغابايت.
+      // All ids up to one thousand; above that, its count and condition, not a megabyte record.
       changes: { before: { count: ids.length, ids: ids.slice(0, 1000), ...(allMatching ? { query: req.body.query } : {}) } },
       ipAddress: req.ip,
     });
 
     bustFilterCache();
-    // خبرٌ لكلّ صفٍّ معقولٌ لصفحة؛ ولآلافٍ خبرٌ واحدٌ تُعاد عليه القائمة.
+    // An event per row is reasonable for a page; for thousands, one event to which the list responds by reloading.
     if (ids.length > 200) {
       try { emitToAll('workflow:bulkImported', { bulkDelete: true, deleted: ids.length }); } catch (e) { /* */ }
     } else {
@@ -2694,33 +2189,10 @@ exports.bulkDelete = async (req, res) => {
 
 // GET /api/workflows/export
 /**
- * تصديرُ سير عمل التشغيل — يُبنى الملفُّ في الخادم ويُنزَّل جاهزًا.
- *
- * ── أين يذهب الوقتُ حقًّا ───────────────────────────────────────────────────
- * كانت الشاشةُ تطلب الجدولَ كلَّه (`limit=100000`) ثمّ تبني المصنَّفَ بنفسها،
- * فتتجمّد دقائق. ونقلُ البناءِ إلى هنا أزال التجمُّدَ ووفّر نحوَ الرُّبع — ولم
- * يحلَّ المشكلة، لأنّ الخانقَ ليس البناءَ ولا القاعدة:
- *
- *   الفرزُ داخلَ القاعدة على فهرس `createdAt`: ٤٢ ميلي‌ثانيةً لخمسةٍ وثلاثين ألفًا.
- *   وزمنُ ping من الخادم إلى العنقود: ٩ ميلي‌ثانية.
- *   ومعدّلُ النقل الفعليّ: **٠٫١ ميغابايت في الثانية**، ثابتًا مهما كبرت الدفعة.
- *
- * ذاك سقفُ عنقودٍ مشترَك (Atlas shared tier — و`hostInfo` ممنوعٌ عليه، وهي
- * علامتُه). فقراءةُ ما يلزم هذا الملفَّ تستغرق دقائقَ أيًّا كان الكودُ الذي
- * يقرؤها. ولا يُصلحه إلّا ترقيةُ العنقود.
- *
- * ── فما دام السقفُ قائمًا: يُبنى مرّةً ويُخدَم مرارًا ────────────────────────
- * «الجدولُ كلُّه بلا فلتر» طلبٌ واحدٌ لا يختلف من سائلٍ إلى آخر، ومحتواه يتغيّر
- * ببطء. فيُبنى الملفُّ ويُحفَظ على القرص، ويُخدَم من هناك في لحظة. ومَن طلبه وهو
- * قديمٌ أخذ القديمَ فورًا وبُني الجديدُ خلفَه لمن يأتي بعده — انتظارُ خمسِ دقائقَ
- * أسوأُ من ملفٍّ عمرُه ساعة، وعمرُه مكتوبٌ في ترويسة الردّ على أيّ حال.
- *
- * والمفلتَرُ لا يُخزَّن: شرطُه يختلف بين طلبٍ وآخر، وهو أصغرُ بكثير.
- *
- * ── والملفُّ هو ما على الشاشة ───────────────────────────────────────────────
- * الأعمدةُ وترجماتُها هي التي تعرضها صفحةُ سير العمل حرفًا بحرف، لا مجموعةٌ
- * ثانيةٌ تفترق عنها. و`scope=all` وحدَها تتجاوز الفلترَ — وهي خيارٌ يسمّي نفسَه
- * في القائمة، فلا يخرج الملفُّ أوسعَ ممّا طُلب.
+ * Workflow export: the file is built on the server and downloaded ready, instead of the screen requesting the whole table and building it. The bottleneck is the shared cluster transfer rate (about 0.1 MB/s), not the build or the query.
+ * The unfiltered whole-table file is built once, kept on disk and served instantly; a stale file is served at once while a new one is built behind it, and its age is in the response header.
+ * A filtered export is not stored since its condition differs per request.
+ * Columns and translations are exactly those of the workflow page; only scope=all bypasses the filter.
  */
 async function buildWorkflowWorkbook(filter, money, selling = true) {
   {
@@ -2735,7 +2207,7 @@ async function buildWorkflowWorkbook(filter, money, selling = true) {
     const st = (v) => SHIPMENT_STATUS_AR[v] || v || '';
     const yes = (v) => (v ? 'تمّت' : '');
 
-    // العمودُ وقارئُه في سطرٍ واحد، والعلامةُ الثالثةُ تعني «مالٌ لا يراه الجميع».
+    // The column and its reader in one line; the third flag means money not everyone sees.
     const COLUMNS = [
       ['رقم الطلب', (w) => w.reportNumber || ''],
       ['تاريخ الطلب', (w) => d(w.reportDate)],
@@ -2766,11 +2238,11 @@ async function buildWorkflowWorkbook(filter, money, selling = true) {
       ['مسؤول البيانات', (w) => w.paymentDateByName || ''],
       ['فرع السداد', (w) => w.payingBranch || ''],
       ['مبلغ السداد', (w) => w.paymentAmount || 0],
-      // الستُّ كما تُعرَض في الخانة — راجع paymentKindLabel.
+      // The six as shown in the cell; see paymentKindLabel.
       ['نوع الدفع', (w) => paymentKindLabel(w)],
       ['وجهة أمر النقل النهائية', (w) => w.finalReportDestination || ''],
       ['رقم المستند', (w) => w.documentNumber || ''],
-      // معاملةُ التخليص المرتبطة وبوليصتُها — راجع services/customsOpsLink.
+      // The linked clearance transaction and its bill of lading; see services/customsOpsLink.
       ['معاملة التخليص', (w) => (w.customsLink && w.customsLink.clearance ? w.customsLink.refNumber || '' : '')],
       ['البوليصة', (w) => (w.customsLink && w.customsLink.clearance ? w.customsLink.blNumber || '' : '')],
       ['الحاويات', (w) => (w.customsLink && w.customsLink.clearance ? (w.customsLink.containers || []).join('، ') : '')],
@@ -2788,14 +2260,11 @@ async function buildWorkflowWorkbook(filter, money, selling = true) {
       ['المرحلة', (w) => STAGE_AR[w.stage] || w.stage || ''],
     ];
 
-    // الملفُّ يُفتح خارج النظام حيث لا حارس، فما لا يُعرض على الشاشة لا يخرج
-    // فيه — وإلّا كان الحجبُ زينةً يلتفّ عليها زرُّ تصدير.
-    // وقيمةُ البيع لمن في قائمتها وحدَه — راجع SELLING_ROLES.
+    // The file is opened outside the system where there is no guard, so what is not shown on screen does not leave in it; otherwise hiding would be decoration bypassed by an export button. Selling value only for those in its list (see SELLING_ROLES).
     const cols = COLUMNS.filter(([, , tag]) => (tag !== 'money' || money) && (tag !== 'selling' || selling));
     const headers = cols.map(([h]) => h);
 
-    // ولا تُقرأ حقولٌ لا عمودَ لها: كان الاستعلامُ يجلب المستندَ كاملًا بما فيه
-    // ملاحظاتٌ حرّةٌ طويلةٌ لا تدخل الملفّ أصلًا.
+    // Fields with no column are not read: the query used to fetch the whole document including long free-text notes that never enter the file.
     const FIELDS = [
       'reportNumber', 'reportDate', 'fromLocation', 'toLocation', 'branch', 'carOwner',
       'carNumber', 'ownerType', 'executionStatus', 'applicationStatus', 'paymentMethod',
@@ -2808,14 +2277,9 @@ async function buildWorkflowWorkbook(filter, money, selling = true) {
       'paymentDateByName', 'paymentAmount', 'collectedAmount',
     ].join(' ');
 
-    // ── والصفوفُ تُقرأ تدفّقًا لا دفعةً واحدة ──────────────────────────────
-    // خمسةٌ وثلاثون ألفَ مستندٍ في مصفوفةٍ واحدةٍ ذروةُ ذاكرةٍ بلا داعٍ على
-    // عاملٍ يخدم غيرَه في الوقت نفسِه. تُقرأ صفًّا صفًّا وتُحوَّل فورًا إلى
-    // سطرِ الملفّ، فلا يبقى في الذاكرة إلّا ما سيُكتب.
+    // Rows are read as a stream, not in one batch. 35,000 documents in one array is a needless memory peak on a worker serving others at the same time; they are read row by row and converted at once to the file line, so only what will be written stays in memory.
     const aoa = [headers];
-    // ودفعةٌ كبيرةٌ لا مئةُ صفٍّ في كلّ رحلة: الافتراضيُّ مئةٌ وواحد، أي نحوَ
-    // ثلاثِمئةٍ وخمسين رحلةً إلى القاعدة لجدولٍ بهذا الحجم — وثمنُ الرحلة ذهابًا
-    // وإيابًا هو الغالبُ هنا لا قراءةُ القرص.
+    // A large batch, not a hundred rows per trip: the default of 101 would mean about 350 database trips for a table this size, and round-trip cost dominates here, not disk reads.
     const cursor = OperationsWorkflow.find(filter).select(FIELDS)
       .sort({ createdAt: -1 }).lean().cursor({ batchSize: 5000 });
     const unnamed = [];
@@ -2832,9 +2296,7 @@ async function buildWorkflowWorkbook(filter, money, selling = true) {
     }
     for (const u of unnamed) aoa[u.row][ownerCol] = recorders.get(String(u.rn || '').trim()) || '';
 
-    // `compression` يصغّر الملفَّ إلى نحو خُمسه — وهو فرقُ ثوانٍ على الشبكة.
-    // والكتابةُ في خيطٍ عامل: وإلّا توقّف هذا العاملُ عن خدمة الجميع طوالَها
-    // (قيس: طلبُ health أثناء تصديرةٍ أخذ أربعَ عشرةَ ثانية). راجع xlsxBuilder.
+    // compression shrinks the file to about a fifth, a difference of seconds on the network. Writing runs in a worker thread, otherwise this worker stops serving everyone for the duration (measured: a health request during an export took fourteen seconds). See xlsxBuilder.
     const buf = await require('../utils/xlsxBuilder').buildXlsx(aoa, {
       sheetName: 'العمليات',
       cols: headers.map((h) => ({ wch: Math.max(h.length + 4, 14) })),
@@ -2843,12 +2305,10 @@ async function buildWorkflowWorkbook(filter, money, selling = true) {
   }
 }
 
-// ── مخزنُ «الجدول كلّه» على القرص ───────────────────────────────────────────
-// على القرص لا في ذاكرة العامل: البرودكشن عاملان، وذاكرةٌ لكلٍّ منهما تعني
-// بناءَين ونسختين. والقرصُ مشترَكٌ بينهما.
+// The whole-table store on disk. On disk and not in worker memory: production has two workers, and a memory per worker would mean two builds and two copies. The disk is shared between them.
 const EXPORT_DIR = path.join(__dirname, '..', '..', 'uploads', 'exports');
 const ALL_TTL_MS = 60 * 60 * 1000;
-// وأربعُ نسخٍ لا اثنتان: بالمال وبدونه، وبقيمة البيع وبدونها.
+// Four copies, not two: with and without money, with and without selling value.
 const allFile = (money, selling = true) => path.join(EXPORT_DIR, `operations-all${money ? '' : '-nomoney'}${selling ? '' : '-nosell'}.xlsx`);
 let buildingAll = false;
 
@@ -2858,8 +2318,7 @@ async function refreshAllExport(money, selling = true) {
   try {
     const { buf, rows } = await buildWorkflowWorkbook({}, money, selling);
     fs.mkdirSync(EXPORT_DIR, { recursive: true });
-    // يُكتب إلى اسمٍ مؤقّتٍ ثمّ يُنقَل: من يقرأ أثناء الكتابة يقرأ ملفًّا كاملًا
-    // قديمًا لا ملفًّا نصفَه جديدٌ ونصفُه قديم.
+    // Written to a temporary name then moved, so a reader during the write gets a complete old file and not a file half new and half old.
     const tmp = `${allFile(money, selling)}.tmp`;
     fs.writeFileSync(tmp, buf);
     fs.renameSync(tmp, allFile(money, selling));
@@ -2881,32 +2340,32 @@ exports.exportWorkflows = async (req, res) => {
       res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
       res.setHeader('Content-Disposition', `attachment; filename=${name}`);
       res.setHeader('Content-Length', String(len));
-      // عمرُ الملفّ مُعلَنٌ لا مخفيّ: من أخذ نسخةً عمرُها ساعةٌ يستطيع أن يعرف.
+      // The file's age is declared and not hidden: someone who takes a one-hour-old copy can know it.
       if (ageMs != null) res.setHeader('X-Export-Age-Seconds', String(Math.round(ageMs / 1000)));
     };
 
     if (wantsAll) {
       const f = allFile(money, selling);
       let stat = null;
-      try { stat = fs.statSync(f); } catch (e) { /* لم يُبنَ بعد */ }
+      try { stat = fs.statSync(f); } catch (e) { /* Not built yet */ }
       if (stat) {
         const age = Date.now() - stat.mtimeMs;
-        // القديمُ يُسلَّم الآن ويُجدَّد خلفَه: الانتظارُ أسوأُ من ساعةٍ من العمر.
+        // The stale file is delivered now and refreshed behind it: waiting is worse than an hour of age.
         if (age > ALL_TTL_MS) refreshAllExport(money, selling).catch(() => {});
         head(stat.size, age);
         return fs.createReadStream(f).pipe(res);
       }
-      // أوّلُ مرّة: يُبنى الآن ويُحفَظ، فلا ينتظره أحدٌ بعدها.
+      // First time: built now and stored, so nobody waits for it afterwards.
       const { buf } = await buildWorkflowWorkbook({}, money, selling);
       try {
         fs.mkdirSync(EXPORT_DIR, { recursive: true });
         fs.writeFileSync(allFile(money, selling), buf);
-      } catch (e) { /* تعذّر الحفظ لا يمنع التسليم */ }
+      } catch (e) { /* Failing to store does not prevent delivery */ }
       head(buf.length, 0);
       return res.send(buf);
     }
 
-    // المفلتَرُ يُبنى لحظتَه — شرطُه يخصّ سائلَه.
+    // A filtered export is built on the spot; its condition belongs to its requester.
     const filter = buildWorkflowFilter(req.query, undefined, money, selling);
     const { buf } = await buildWorkflowWorkbook(filter, money, selling);
     head(buf.length, 0);
@@ -2917,10 +2376,7 @@ exports.exportWorkflows = async (req, res) => {
   }
 };
 
-/**
- * البناءُ نفسُه لطلبِ تصديرٍ في الخلفيّة (controllers/exportJobsController).
- * الأعمدةُ والحجبُ بالدور واحدةٌ هنا وهناك — ملفٌّ واحدٌ مهما كان طريقُه.
- */
+/** The same build for a background export request (controllers/exportJobsController). Columns and role-based hiding are identical here and there: one file whatever the path. */
 exports.buildExportFile = async (query = {}, user = {}) => {
   const money = canSeeMoney(user.role);
   const selling = canSeeSelling(user.role);
@@ -2986,12 +2442,9 @@ exports.bulkImport = async (req, res) => {
       }
     }
 
-    // ── ولا يُنسَخ إلى عملاءَ وفواتير ────────────────────────────────────
-    // كان الاستيرادُ يُنشئ خلفَ كلّ صفٍّ سجلَّ عميلٍ وفاتورةً في ورك فلو
-    // «العملاء والمالية» ويزيد المستحقَّ عليه. زال القسمُ، وصار الكشفُ هو
-    // المستندَ الوحيد: قسمُ التحصيل يقرأ منه مباشرةً.
+    // Not copied to customers and invoices. Import used to create behind each row a customer record and an invoice in the removed workflow module and add to the receivable. The section is gone and the report is the only document: collections reads from it directly.
 
-    // وما ذكره التخليصُ منها في خانات النقل، أو سندُه بوليصةُ معاملة، يُربط بها.
+    // Reports that clearance named in transport fields, or whose bond is a transaction's bill of lading, are linked to it.
     if (createdWorkflows.length) {
       await require('../services/customsOpsLink').resolveReports({ _id: { $in: createdWorkflows.map((w) => w._id) } })
         .catch((e) => console.error('customs link (bulk import):', e.message));
@@ -3013,8 +2466,7 @@ exports.bulkImport = async (req, res) => {
     });
 
     bustFilterCache();
-    // والصفوفُ في البثّ تُحجَب لكلّ دورٍ كما تُحجَب في القائمة — كانت تخرج كاملةً
-    // لكلّ مقبس، بمالها وقيمة بيعها.
+    // Rows in the broadcast are stripped per role as in the list; they used to go out complete to every socket, with money and selling value.
     try {
       emitPerRole('workflow:bulkImported', (r) => ({
         count: createdWorkflows.length,
@@ -3037,8 +2489,7 @@ exports.bulkImport = async (req, res) => {
 // GET /api/workflows/pending-by-customer/:customerId
 exports.getPendingByCustomer = async (req, res) => {
   try {
-    // الطرفُ من سجلّ التحصيل لا من `Customer`: ذاك سجلُّ ورك فلو زال، وهذا
-    // هو الذي يعرفه القسمُ ويُبنى منه ملفُّ العميل.
+    // The party comes from the collections record and not from Customer: that is a record of the removed workflow module, and this is the one the section knows and builds the customer file from.
     const CollectionsParty = require('../models/CollectionsParty');
     const party = await CollectionsParty.findById(req.params.customerId).select('name').lean();
     if (!party) {
@@ -3065,27 +2516,22 @@ exports.getPendingByCustomer = async (req, res) => {
 
 // Return field permissions info for the frontend
 exports.getFieldPermissions = async (req, res) => {
-  // `roleAccess` تبقى كما هي (شاشاتٌ تقرؤها بالمفتاح)، ويُضاف `myFields`:
-  // حقولُ قارئِ هذه الصفحة نفسِه — وهي الوحيدةُ التي تعرف الدورَ المصنوع.
+  // roleAccess stays as is (screens read it by key), and myFields is added: the fields of this page's own reader, the only one that knows a created role.
   res.json({
     groups: FIELD_GROUPS,
     roleAccess: ROLE_FIELD_ACCESS,
     myFields: await fieldsForRole(req.user.role),
     // What this reader may see, independent of what it may write.
     view: { amounts: canSeeMoney(req.user.role), selling: canSeeSelling(req.user.role) },
-    // زرُّ «ربط بمعاملة تخليص» يُعرض لمن يملكه — والخادمُ يفحصه ثانيةً.
+    // The 'link to clearance transaction' button is shown to whoever has it; the server checks it again.
     canLinkCustoms: await canLinkCustoms(req.user.role),
   });
 };
 
-// ── وشرطُ الفلترة واحدٌ لكلّ من يقرأ هذه الكشوف ────────────────────────────
-// صفحةُ «التشغيل — خاصّ» تعرض الكشوفَ نفسَها بسعر بيعنا. ولو بنت شرطَها بيدها
-// لانفصل الجدولان عند أوّل تعديلٍ هنا: صفوفٌ في شاشةٍ ليست في الأخرى، ومجموعٌ
-// لا يساوي مجموعًا. فتُصدَّر الدالّةُ ويُقرأ الشرطُ من موضعٍ واحد.
+// One filter condition for everything that reads these reports. The private operations page shows the same reports with our selling price; if it built its own condition, the two tables would split at the first edit here (rows on one screen not on the other, a total not equal to a total). So the function is exported and the condition is read from one place.
 module.exports.buildWorkflowFilter = buildWorkflowFilter;
 module.exports.primeRelatedSearch = primeRelatedSearch;
-// وحجبُ أعمدة المال واحدٌ أيضًا: الصفحةُ الخاصّة تعرض أعمدةَ الكشف كلَّها،
-// ومَن لا يملك الفاتورةَ هنا لا يملكها هناك.
+// Hiding money columns is also single: the private page shows all report columns, and whoever lacks the invoice here lacks it there.
 module.exports.canSeeMoney = canSeeMoney;
 module.exports.AMOUNT_FIELDS = AMOUNT_FIELDS;
 module.exports.MONEY_VIEW_ROLES = MONEY_VIEW_ROLES;
@@ -3093,18 +2539,11 @@ module.exports.fieldsForRole = fieldsForRole;
 module.exports.stripMoneyFor = stripMoneyFor;
 module.exports.canSeeSelling = canSeeSelling;
 module.exports.SELLING_ROLES = SELLING_ROLES;
-// والكشفُ يُعرض كاملًا في صفحة معاملة التخليص — بالحجب نفسِه وبالحقول نفسِها.
+// The report is shown whole on the clearance transaction page, with the same hiding and fields.
 module.exports.stripRowFor = stripRowFor;
 module.exports.FULL_FIELDS = FULL_FIELDS;
 
-/**
- * هل يصل هذا الدورُ إلى `PUT /api/workflows/:id` ويُقبل منه حقلٌ واحدٌ على الأقلّ؟
- *
- * شاشةٌ أخرى (صفحةُ معاملة التخليص) تعرض زرَّ «تعديل» على الكشف، وتحفظ من
- * النقطة نفسِها. فيُسأل هنا ما يسأله الطريقُ كلُّه: حارسُ قسم التشغيل
- * (`sectionGate`) بمصفوفته وافتراضه — «عرض» لا يكتب و«لا شيء» يمنع — ثمّ
- * قائمةُ الأدوار في المسار، ثمّ حقولُ الدور. فلا يظهر زرٌّ يُردّ كلَّ مرّة.
- */
+/** Whether this role reaches PUT /api/workflows/:id and has at least one field accepted. Another screen (the clearance transaction page) shows an edit button on the report and saves through the same endpoint, so it asks what the whole route asks: the operations section guard (sectionGate) with its matrix and default (view does not write, none blocks), then the route's role list, then the role's fields. So no button appears that is rejected every time. */
 async function canWriteWorkflows(role) {
   const fields = await fieldsForRole(role);
   if (!fields.length) return { canEdit: false, fields };
@@ -3116,7 +2555,7 @@ async function canWriteWorkflows(role) {
     const saved = await getOverride(role, 'Operations');
     const access = saved == null ? liftFinance(role, defaultAccess(role, 'Operations')) : saved;
     if (access === 'edit') return { canEdit: true, fields };
-    // بلا منحٍ ولا افتراض: يقرّر سطرُ الأدوار في المسار — وأدوارُ الخريطة كلُّها فيه.
+    // No grant and no default: the route's roles line decides, and all the map's roles are in it.
     if (saved == null && access === 'none') return { canEdit: !!ROLE_FIELD_ACCESS[role], fields };
     return { canEdit: false, fields };
   } catch (e) {
@@ -3126,10 +2565,8 @@ async function canWriteWorkflows(role) {
 module.exports.canWriteWorkflows = canWriteWorkflows;
 module.exports.syncOpsInvoices = syncOpsInvoices;
 
-// ═══════════════════════════════════════════════════════════════════════════
-//  فحوصُ الفواتير — GET /api/workflows/invoice-checks[/:kind]
-// ═══════════════════════════════════════════════════════════════════════════
-// أرقامُ فواتيرَ وقيمُها وأسماءُ عملائها: لمن يملك أعمدةَ المال وحدَه.
+// Invoice checks - GET /api/workflows/invoice-checks[/:kind]
+// Invoice numbers, values and customer names: only for those who have the money columns.
 exports.invoiceChecks = async (req, res) => {
   try {
     if (!canSeeMoney(req.user.role)) return res.status(403).json({ message: 'Insufficient permissions' });
@@ -3151,22 +2588,12 @@ exports.invoiceCheckList = async (req, res) => {
   }
 };
 
-// ═══════════════════════════════════════════════════════════════════════════
-//  رفعُ بيانات الفواتير من إكسل — POST /api/workflows/import-invoices
-// ═══════════════════════════════════════════════════════════════════════════
+// Upload invoice data from Excel - POST /api/workflows/import-invoices
 /**
- * ورقةُ المبيعات من النظام المحاسبيّ (مثل «مبيعات حتي 16-10.xlsx»): لكلّ كشفٍ
- * صفّ — «امر الشحن» هو رقمُ الكشف عندنا، ومعه السند ورقمُ الفاتورة وصافيها
- * وضريبتُها وإجماليُّها وتاريخُها. فيُكتب كلُّ ذلك على كشفه دفعةً واحدة بدل
- * كتابته صفًّا صفًّا (صاحبُ الشركة، ٢٠٢٦/١٠/٢٠).
- *
- *   · الأعمدةُ تُقرأ بأسمائها لا بمواضعها، و«العميل» لا يُقرأ (العميلُ من الكشف).
- *   · رقمُ كشفٍ تكرّر في الملفّ: الصفُّ الأخير هو المعتمد، وما في الملفّ يكتب
- *     فوق ما في الكشف (الأحدثُ هو الأصحّ).
- *   · كلُّ صفٍّ يمرّ بقواعد التعديل المفرد نفسِها: الصلاحيّة، والكشفُ المقفول
- *     لدى غيرك، ونوعُ الدفع (الكاش لا رقمَ فاتورةٍ له)، واشتقاقُ الضريبة.
- *   · ورقمُ الفاتورة الضريبيّ يصل التحصيلَ فورًا (syncOpsInvoices).
- *   · `apply: false` يُرجع المعاينةَ وحدَها — ما سيُكتب وما لن يُكتب ولماذا.
+ * Sales sheet from the accounting system: one row per report. The shipping order column is our report number, alongside bond, invoice number, net, tax, total and date, written to each report in one batch.
+ * Columns are read by name; the customer column is not read. For a repeated report number the last row wins and overwrites the report.
+ * Each row passes the single-edit rules (permission, lock by someone else, payment type, tax derivation); a tax invoice number reaches collections at once (syncOpsInvoices).
+ * apply: false returns a preview only: what will and will not be written and why.
  */
 exports.importInvoices = async (req, res) => {
   try {
@@ -3188,14 +2615,10 @@ exports.importInvoices = async (req, res) => {
       totalInvoice: ['المجموعالصافي', 'اجماليالفاتوره'],
       tax: ['ضريبهالبند', 'الضريبه'],
       invoiceDate: ['التاريخ', 'تاريخالفاتوره'],
-      // العميلُ لا يُكتب على الكشف (العميلُ من الكشف) — يُحفظ مع سطر الورقة
-      // ليُقارَن بعميل الكشف (بطاقة «عدم تطابق اسم العميل»).
+      // The customer is not written to the report (it comes from the report); it is kept with the sheet row to compare with the report's customer (the customer name mismatch card).
       customerName: ['العميل', 'اسمالعميل'],
     };
-    // ── وأيُّ عمودٍ باسم عمودٍ في الجدول يُكتب كذلك (صاحبُ الشركة، ٢٠٢٦/١٠/٢٢) ──
-    // «تاريخ التسليم للعميل» في الملفّ يُكتب في «تاريخ التسليم للعميل» على كشفه،
-    // وكذلك بقيّةُ الأعمدة التي تُكتب بيدٍ في الجدول — بأسمائها في الصفحة وفي السجلّ.
-    // (وما يأتي من المنصّة لا يُكتب من ملفّ؛ وقيمةُ البيع تُكتب في المنصّة معها فمن الجدول.)
+    // Any column named like a table column is written likewise (company owner). The customer delivery date in the file is written to the same column on its report, and so are the other hand-written table columns, with their page names in the log. (What comes from the platform is not written from a file; selling value is written to the platform with it, so from the table.)
     const EXTRA = [
       { field: 'paymentDate', type: 'date', names: ['تاريخ السداد', 'Payment date'] },
       { field: 'payingBranch', type: 'text', names: ['الفرع المسدد', 'الفرع المسدِّد', 'فرع السداد', 'Paying branch'] },
@@ -3209,7 +2632,7 @@ exports.importInvoices = async (req, res) => {
       { field: 'collectedAmount', type: 'num', names: ['مبلغ التحصيل', 'المبلغ المحصل', 'المبلغ المحصَّل', 'Collected amount'] },
       { field: 'collectionDate', type: 'date', names: ['تاريخ التحصيل', 'Collection date'] },
     ].map((x) => ({ ...x, keys: x.names.map((n) => fold(n).toLowerCase()) }));
-    // نوعُ الدفع بأسمائه الستّة كما تُعرض — والأربعةُ هي ما يُختار.
+    // Payment type with its six names as displayed; the four are what is chosen.
     const PAY = { 'اجل-فاتوره': 'deferred_invoice', 'اجل-كاش': 'deferred_cash', 'نقدي-3pl': 'cash_3pl', 'نقدي-ht': 'cash_ht', 'ضريبي': 'tax', 'كاش': 'cash',
       'deferred–invoice': 'deferred_invoice', 'deferred–cash': 'deferred_cash', 'cash–3pl': 'cash_3pl', 'cash–ht': 'cash_ht', 'tax': 'tax', 'cash': 'cash' };
     const payOf = (v) => { const k = fold(v).toLowerCase().replace(/[-–]/g, (c) => (c === '–' ? '–' : '-')); return PAY[k] || PAY[k.replace(/-/g, '–')] || ''; };
@@ -3223,7 +2646,7 @@ exports.importInvoices = async (req, res) => {
       const s = typeof v === 'number' ? String(Math.round(v)) : norm(v);
       return s.replace(/[٠-٩]/g, (c) => String('٠١٢٣٤٥٦٧٨٩'.indexOf(c)));
     };
-    // التاريخ رقمٌ تسلسليٌّ في إكسل — يُقرأ بأجزائه (لا cellDates: يفقد يومًا). راجع xlsx-date-epoch.
+    // The date is a serial number in Excel, read by its parts (not cellDates, which loses a day). See xlsx-date-epoch.
     const date = (v) => {
       if (v === null || v === undefined || v === '') return undefined;
       if (typeof v === 'number') {
@@ -3238,10 +2661,9 @@ exports.importInvoices = async (req, res) => {
       return undefined;
     };
 
-    // ── قراءةُ الصفوف من كلّ ورقةٍ فيها عمودُ «امر الشحن» ──
+    // Rows are read from every sheet that has the shipping order column.
     const byReport = new Map(); let fileRows = 0; const badRows = [];
-    // ── وأسطرُ الورقة كما جاءت، تُحفظ بعد التطبيق ───────────────────────────
-    // (فاتورة، كشف) — الأخيرُ يغلب كما في `byReport`. راجع services/invoiceChecksService.
+    // The sheet rows as they came are stored after applying: (invoice, report), last wins as in byReport. See services/invoiceChecksService.
     const lineMap = new Map();
     for (const name of wb.SheetNames) {
       const aoa = XLSX.utils.sheet_to_json(wb.Sheets[name], { header: 1, raw: true, defval: null, blankrows: false });
@@ -3265,14 +2687,14 @@ exports.importInvoices = async (req, res) => {
         if (at.invoiceDate >= 0 && date(r[at.invoiceDate])) patch.invoiceDate = date(r[at.invoiceDate]);
         for (const x of extraAt) {
           const v = r[x.i];
-          if (v === null || v === undefined || String(v).trim() === '') continue; // الخانةُ الفارغةُ لا تمحو
+          if (v === null || v === undefined || String(v).trim() === '') continue; // An empty cell does not erase
           if (x.type === 'date') { const d = date(v); if (d) patch[x.field] = d; }
           else if (x.type === 'num') { const n = num(v); if (n !== undefined) patch[x.field] = n; }
           else if (x.type === 'payment') { const p = payOf(v); if (p) patch.paymentType = p; }
           else { const tv = norm(v); if (tv) patch[x.field] = tv; }
         }
         if (!Object.keys(patch).length) { badRows.push({ reportNumber: rep, reason: 'لا بيانات في الصفّ تُكتب' }); continue; }
-        byReport.set(rep, { patch, sheetRow: i + 1, sheet: name }); // الأخيرُ يغلب
+        byReport.set(rep, { patch, sheetRow: i + 1, sheet: name }); // The last wins
         if (patch.invoiceNumber) {
           lineMap.set(`${patch.invoiceNumber}|${rep}`, {
             invoiceNumber: patch.invoiceNumber, reportNumber: rep,
@@ -3297,7 +2719,7 @@ exports.importInvoices = async (req, res) => {
       if (!r) { notFound.push(rep); continue; }
       if (isLocked(r, req.user._id)) { skipped.push({ reportNumber: rep, reason: `قيد التعديل لدى ${r.lockedByName || 'مستخدم آخر'}` }); continue; }
       const rowPatch = { ...item.patch };
-      // تاريخُ السداد لا يُكتب قبل استلام السند — القاعدةُ نفسُها في التعديل الجماعيّ.
+      // Payment date is not written before bond receipt: the same rule as bulk update.
       if (rowPatch.paymentDate && String(r.applicationStatus || '').trim() !== 'bond_received') {
         delete rowPatch.paymentDate;
         if (!Object.keys(rowPatch).length) { skipped.push({ reportNumber: rep, reason: 'لم يُستلم السند بعد (تاريخ السداد)' }); continue; }
@@ -3324,9 +2746,7 @@ exports.importInvoices = async (req, res) => {
       notFound, skipped, badRows,
       sample: plan.slice(0, 15).map((p) => ({ reportNumber: p.reportNumber, before: p.before, after: Object.fromEntries(Object.keys(p.before).map((k) => [k, p.patch[k]])) })),
     };
-    // ── تنبيهاتُ الرفع: الفحوصُ الثلاثةُ على أسطر هذه الورقة ────────────────
-    // في المعاينة تُقرأ الكشوفُ كما ستكون بعد التطبيق (ما سيُكتب عليها فوق ما
-    // فيها) — فلا يُنبَّه على فرقٍ يزيله التطبيقُ نفسُه.
+    // Upload warnings: the three checks on this sheet's rows. In the preview the reports are read as they will be after applying (what will be written over what they hold), so no warning is raised for a difference that applying itself removes.
     const invChecks = require('../services/invoiceChecksService');
     const lines = [...lineMap.values()];
     if (!req.body.apply) {
@@ -3335,13 +2755,13 @@ exports.importInvoices = async (req, res) => {
       return res.json({ preview: true, ...summary, checks });
     }
 
-    // ── الكتابة ──
+    // Writing
     let updated = 0;
     for (const p of plan) {
       const r = await OperationsWorkflow.updateOne({ _id: p._id }, { $set: { ...p.patch, lastModifiedBy: req.user._id } });
       updated += r.modifiedCount || 0;
     }
-    // أسطرُ الورقة تُحفظ كلُّها — ومنها ما لا كشفَ له (وهو ما تُبنى عليه بطاقتُه).
+    // All sheet rows are stored, including those with no report (which its card is built on).
     const uploadAt = new Date();
     const savedLines = await invChecks.persistLines(lines, {
       batchId: `${uploadAt.getTime().toString(36)}-${String(req.user._id).slice(-6)}`,
@@ -3351,7 +2771,7 @@ exports.importInvoices = async (req, res) => {
     cache.clear('wf:');
     const fresh = await OperationsWorkflow.find({ _id: { $in: plan.map((p) => p._id) } }).select('invoiceNumber').lean();
     await syncOpsInvoices([...fresh.map((w) => w.invoiceNumber), ...plan.map((p) => p.oldInvoice)]);
-    // والسندُ من الورقة قد يكون بوليصةَ معاملة تخليص — راجع services/customsOpsLink.
+    // The bond from the sheet may be a clearance transaction's bill of lading; see services/customsOpsLink.
     {
       const withDoc = plan.filter((p) => Object.prototype.hasOwnProperty.call(p.patch, 'documentNumber')).map((p) => p._id);
       if (withDoc.length) {
@@ -3359,7 +2779,7 @@ exports.importInvoices = async (req, res) => {
           .catch((e) => console.error('customs link (import invoices):', e.message));
       }
     }
-    // ── وما كُتب من الأعمدة الأخرى يسري أثرُه كما في التعديل الجماعيّ ────────
+    // Other columns written take effect as in bulk update.
     {
       const touched = (k) => plan.filter((p) => Object.prototype.hasOwnProperty.call(p.patch, k));
       const changed = { collectionDate: touched('collectionDate').length > 0, deliveryDate: touched('deliveryDate').length > 0 };
@@ -3388,22 +2808,16 @@ exports.importInvoices = async (req, res) => {
   }
 };
 
-// ═══════════════════════════════════════════════════════════════════════════
-//  ربطُ الكشف بمعاملة تخليص — يدويًّا
-// ═══════════════════════════════════════════════════════════════════════════
-//
-// الأدلّةُ الآليّة (خاناتُ النقل في المعاملة، و«رقم السند» = البوليصة أو الحاوية)
-// لا تغطّي كلَّ كشف: كثيرٌ من الكشوف لا سندَ عليه. فيربطه موظّفُ التشغيل بيده
-// بعد أن يبحث برقم المعاملة أو البوليصة أو الحاوية. راجع services/customsOpsLink.
+// Linking a report to a clearance transaction by hand. The automatic evidence (the transaction's transport fields, and receipt number equal to a bill of lading or container) does not cover every report: many have no bond. The operations employee links it by hand after searching by transaction number, bill of lading or container. See services/customsOpsLink.
 
-/** مَن يربط ويفكّ: مَن يكتب «رقم السند» أو «مراجعة التشغيل» في هذا الجدول. */
+/** Who links and unlinks: whoever writes the receipt number or operations review in this table. */
 async function canLinkCustoms(role) {
   if (['super_admin', 'admin', 'operations_manager'].includes(role) || isFinanceFull(role)) return true;
   const f = await fieldsForRole(role);
   return f.includes('documentNumber') || f.includes('operationsReview');
 }
 
-/** GET /api/workflows/customs-search?q= — معاملاتٌ تطابق رقمَها أو بوليصتَها أو حاويتَها. */
+/** GET /api/workflows/customs-search?q= - transactions matching its number, bill of lading or container. */
 exports.customsSearch = async (req, res) => {
   try {
     const CustomsClearance = require('../models/CustomsClearance');
@@ -3412,7 +2826,7 @@ exports.customsSearch = async (req, res) => {
     if (q.length < 2) return res.json({ clearances: [] });
     const esc = q.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
     const k = link.normKey(q);
-    // البوليصةُ والحاويةُ تُكتبان بمسافاتٍ وشرطاتٍ أو بدونها — فيُبحث بالحروف وحدها.
+    // Bill of lading and container are written with or without spaces and dashes, so the search uses letters and digits only.
     const loose = k ? k.split('').join('[\\s\\-/._]*') : '';
     const or = [{ refNumber: { $regex: esc, $options: 'i' } }, { customerName: { $regex: esc, $options: 'i' } }];
     if (loose) or.push({ blNumber: { $regex: loose, $options: 'i' } }, { 'containers.containerNumber': { $regex: loose, $options: 'i' } });
@@ -3445,7 +2859,7 @@ async function afterLinkWrite(req, wf, link, kind) {
     .populate('createdBy', 'firstName lastName')
     .populate('lastModifiedBy', 'firstName lastName')
     .populate('lockedBy', 'firstName lastName');
-  // الذاكرةُ تُمسح ثمّ يُبَثّ — داخل announce.
+  // The cache is cleared then broadcast, inside announce.
   link.announce({ reportNumbers: [wf.reportNumber], clearanceIds: kind.clearanceIds });
   try { emitPerRole('workflow:updated', (r) => stripRowFor(r, populated)); } catch (_) { /* */ }
   await logAudit({
@@ -3455,7 +2869,7 @@ async function afterLinkWrite(req, wf, link, kind) {
   return stripRowFor(req.user.role, populated);
 }
 
-/** PUT /api/workflows/:id/customs-link {clearanceId, containers?} — ربطٌ يدويّ. */
+/** PUT /api/workflows/:id/customs-link {clearanceId, containers?} - manual link. */
 exports.setCustomsLink = async (req, res) => {
   try {
     if (!(await canLinkCustoms(req.user.role))) return res.status(403).json({ message: 'صلاحيّتك لا تسمح بربط الكشف بمعاملة تخليص' });
@@ -3486,9 +2900,8 @@ exports.setCustomsLink = async (req, res) => {
 };
 
 /**
- * DELETE /api/workflows/:id/customs-link — فكُّ الربط.
- * ما كتبه قسمُ التخليص في خانة النقل لا يُفكّ من هنا: يُصحَّح في المعاملة نفسِها،
- * وإلّا عاد الربطُ في أوّل حفظٍ لها ولا يُعرف لماذا.
+ * DELETE /api/workflows/:id/customs-link - unlink.
+ * What the clearance section wrote in the transport field is not unlinked from here; it is corrected in the transaction itself, otherwise the link returns at its first save with no clue why.
  */
 exports.clearCustomsLink = async (req, res) => {
   try {
@@ -3521,7 +2934,6 @@ exports.clearCustomsLink = async (req, res) => {
   }
 };
 
-// ── للتوثيق (services/apiFieldScan): الحقولُ التي يقبلها الإنشاءُ والتعديل هي
-// القائمةُ نفسُها التي يُرشِّح بها filterFieldsByRole — مرجعٌ لا نسخة، فتتبعها.
+// For documentation (services/apiFieldScan): the fields accepted by create and update are the same list filterFieldsByRole filters with, a reference and not a copy, so it follows.
 exports.createWorkflow.__docFields = { body: ALL_FIELDS };
 exports.updateWorkflow.__docFields = { body: ALL_FIELDS };

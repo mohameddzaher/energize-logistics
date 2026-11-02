@@ -1,26 +1,23 @@
 const mongoose = require('mongoose');
 
-// CRM Vendor (مورد) — a carrier/transporter (company or individual) Energize
-// subcontracts to in 3PL operations when our own fleet is full. Kept in its OWN
-// collection (separate from CrmCompany/customers) because it has a distinct,
-// carrier-specific shape (cars, routes, contract pipeline, our rep…).
+// CRM Vendor: a carrier/transporter (company or individual) Energize subcontracts to in 3PL operations when its own fleet is full. Its own collection, separate from CrmCompany/customers, because of its carrier-specific shape (cars, routes, contract pipeline, our rep).
 const crmVendorSchema = new mongoose.Schema(
   {
     name: { type: String, required: true, trim: true },
     isNewVendor: { type: Boolean, default: false },
-    energizeRep: { type: String, trim: true },        // مندوب تنشيط (our rep handling them)
-    vendorType: { type: String, trim: true },         // ضريبي / كاش / آجل (payment type)
-    representative: { type: String, trim: true },     // ممثل المورد (their contact person)
+    energizeRep: { type: String, trim: true },        // Outreach rep (our rep handling them)
+    vendorType: { type: String, trim: true },         // Tax / cash / credit (payment type)
+    representative: { type: String, trim: true },     // Vendor representative (their contact person)
     mobile: { type: String, trim: true },
     email: { type: String, trim: true, lowercase: true },
     destinations: { type: String, trim: true },       // routes/cities they cover
     headOffice: { type: String, trim: true },         // their HQ city
     carsCount: { type: Number, default: null },
-    hasPapers: { type: Boolean, default: null },      // العقد/الأوراق متوفرة
+    hasPapers: { type: Boolean, default: null },      // Contract/papers available
     vendorSideSigned: { type: Boolean, default: null },
     ourSideSigned: { type: Boolean, default: null },
     contractDate: { type: String, trim: true },       // kept as text (mixed dd/mm/yyyy + iso in source)
-    followUpStatus: { type: String, trim: true },     // موقع / تم ارسال العقد / قيد متابعة / معلق …
+    followUpStatus: { type: String, trim: true },     // Site / contract sent / under follow-up / on hold ...
     notes: { type: String, trim: true },
 
     // The source sheet's id — used to dedup on re-seed.

@@ -5,8 +5,7 @@ const { emitToAll } = require('../websocket/socketManager');
 const cache = require('../utils/ttlCache');
 const { parseMonth, parseYear } = require('../utils/period');
 
-// إدارة العقود — controller. Every mutation broadcasts ONE event and clears the
-// dashboard cache, so the analysis screens always show what was just edited.
+// Contracts management controller. Every mutation broadcasts ONE event and clears the dashboard cache, so the analysis screens always show what was just edited.
 
 const emit = () => {
   cache.clear('contracts:');
@@ -17,8 +16,7 @@ const emit = () => {
 // everything non-letter drops. The same vendor is spelled 3+ ways across the
 // source sheets; this is what makes them one row.
 const nameKey = (s) => String(s || '')
-  // «چ ڤ گ پ» تكتبها منصّةُ التشغيل أحيانًا مكان «ج ف ك ب»: «اللوچستية» و«اللوجستية»
-  // مورّدٌ واحد، وكانا صفّين في التحليل.
+  // The operations platform sometimes writes the letters with Persian forms in place of the Arabic ones; the two spellings of one vendor name are the same vendor and were two rows in the analysis.
   .replace(/چ/g, 'ج').replace(/ڤ/g, 'ف').replace(/گ/g, 'ك').replace(/پ/g, 'ب')
   .replace(/[أإآا]/g, 'ا').replace(/ى/g, 'ي').replace(/ة/g, 'ه').replace(/ؤ/g, 'و').replace(/ئ/g, 'ي')
   .replace(/\bال/g, '')
@@ -28,23 +26,18 @@ exports.nameKey = nameKey;
 
 const actorName = (req) => `${req.user?.firstName || ''} ${req.user?.lastName || ''}`.trim();
 
-// Signed = both sides signed. The paper trail (documentsReceived) is tracked
-// separately — a signed contract with missing docs is the التنبيهات list.
+// Signed = both sides signed. The paper trail (documentsReceived) is tracked separately: a signed contract with missing docs appears in the alerts list.
 const vendorStatus = (v) => (v.vendorSideContract && v.ourSideContract ? 'signed' : (v.vendorSideContract || v.ourSideContract ? 'pending' : 'unsigned'));
 
-// «أفراد خارجية (بلا عقد)» is spelled differently across the sheets («خارجي -
-// افراد» in Q1, bare «خارجي» in April/May) — match any of them on the key.
+// The external individuals (no contract) bucket is spelled differently across the sheets (a dashed variant in Q1, a bare external label in April/May); match any of them on the folded key.
 const EXTERNAL_KEY_RX = /(افراد.*خارجي|خارجي.*افراد|^خارجي$)/;
 const isCashType = (t) => /كاش|نقد/.test(String(t || ''));
 
 // ---- Dashboard --------------------------------------------------------------
 exports.getDashboard = async (req, res) => {
   try {
-    // wrap = طلعةٌ واحدة: الفاتحون معًا ينتظرون حسابًا واحدًا لا يكرّرونه. وكلُّ
-    // كتابةٍ في القسم تمسح 'contracts:'، وجزءُ الكشوف كان يشيخ ٦٠ ثانيةً قبلًا
-    // (ذاكرة liveutil) فلا يزيد التقادمُ عمّا كان.
-    // لوحةٌ تُحسب في ثوانٍ وتُطلَب مع كلّ فتحة: يُقدَّم آخرُ حسابٍ فورًا ويُعاد
-    // في الخلف بعد دقيقة — فلا ينتظر أحدٌ انتهاءَ صلاحيّة. راجع ttlCache.wrapStale.
+    // wrap = single-flight: concurrent openers share one computation. Every write in the section clears 'contracts:', and the sheets part used to age 60 seconds (liveutil cache), so staleness does not grow.
+    // The dashboard takes seconds and is requested on every open: serve the last result at once and recompute in the background after a minute. See ttlCache.wrapStale.
     const body = await cache.wrapStale('contracts:dashboard', 60000, 15 * 60 * 1000, buildDashboard);
     res.json(body);
   } catch (e) {
@@ -52,8 +45,7 @@ exports.getDashboard = async (req, res) => {
   }
 };
 
-// الحقول التي تقرؤها اللوحة وحدها: المورّدُ الكامل يحمل profileTables والمرفقات
-// (٥٣٠ ك.ب لـ٢٠٩ مورّدين ≈ ٧ ثوانٍ نقلًا) واللوحة لا تعرض منها شيئًا.
+// Only the fields the dashboard reads: the full vendor carries profileTables and attachments (hundreds of KB for about 200 vendors, seconds to transfer) and the dashboard shows none of it.
 const DASH_VENDOR_FIELDS = 'name fleetSize headquarters energizeRep contractDate vendorSideContract ourSideContract documentsReceived missingDocuments';
 const DASH_CUSTOMER_FIELDS = 'name energizeRep customerSideContract ourSideContract documentsReceived endDate';
 
@@ -63,10 +55,9 @@ async function buildDashboard() {
     ContractVendor.find().select(DASH_VENDOR_FIELDS).lean(),
     ContractProspect.find({ convertedVendor: null }).select('isInterested').lean(),
     DeptContract.find().select('department status endDate').lean(),
-    // مجموعُ الشهر وحده — راجع liveUtilisationMonths.
+    // Month total only: see liveUtilisationMonths.
     liveUtilisationMonths().then((rows) => rows.map((r) => ({ _id: { year: r.year, month: r.month }, orders: r.orders }))),
-    // العملاءُ يُقرآن مع المورّدين: الطرفان في لوحةٍ واحدة، لا سجلٌّ لأحدهما
-    // ولوحةٌ للآخر.
+    // Customers are read with vendors: both parties in one dashboard, not a register for one and a dashboard for the other.
     require('../models/ContractModels').ContractCustomer.find().select(DASH_CUSTOMER_FIELDS).lean(),
   ]);
 
@@ -105,9 +96,7 @@ async function buildDashboard() {
       total: prospects.length,
       interested: prospects.filter((p) => p.isInterested === true).length,
     },
-    // ── والعملاء ────────────────────────────────────────────────────────
-    // ثلاثةُ أرقامٍ تُقرأ في ثانية: كم عميلًا، وكم منهم بلا عقدٍ موقَّع، وكم
-    // عقدًا يقارب انتهاءه. والأخيرُ هو العملُ: العقدُ يُجدَّد قبل أن ينتهي.
+    // Customers: three numbers readable in a second: how many customers, how many without a signed contract, how many contracts near expiry. The last is the work: a contract is renewed before it ends.
     customers: (() => {
       const signed = customers.filter((c) => c.customerSideContract && c.ourSideContract);
       const soon = Date.now() + 60 * 86400000;
@@ -214,7 +203,7 @@ exports.deleteVendor = async (req, res) => {
     const vendor = await ContractVendor.findByIdAndDelete(req.params.id);
     if (!vendor) return res.status(404).json({ message: 'المورد غير موجود' });
     for (const a of vendor.attachments || []) deleteStoredFile(a.fileUrl);
-    // التاريخ التشغيلي يبقى — الأرقام الشهرية حقيقة تاريخية لا تُمحى بحذف السجل.
+    // Operational history stays: the monthly figures are historical fact, not erased by deleting the record.
     await VendorUtilisation.updateMany({ vendor: vendor._id }, { $set: { vendor: null } });
     emit();
     res.json({ message: 'Deleted' });
@@ -267,8 +256,7 @@ exports.listUtilisation = async (req, res) => {
     const mo = parseMonth(month);
     if (mo.month) filter.month = mo.month;
     if (mo.year && !y) filter.year = mo.year;
-    // ١٧٧ ك.ب تُنقل كاملةً في كلّ فتح (~٢ ثانية) لسجلٍّ لا يتغيّر إلّا من هذا
-    // الملفّ — وكلُّ كتابةٍ فيه تمرّ بـ emit() فتمسح 'contracts:'. فالمهلة طويلة.
+    // About 177 KB moved in full on every open (~2 seconds) for a register that only this file changes, and every write goes through emit(), which clears 'contracts:'. So the TTL is long.
     const rows = await cache.wrap(`contracts:utilisation:${JSON.stringify(filter)}`, 10 * 60000, () =>
       VendorUtilisation.find(filter).sort({ year: 1, month: 1, orders: -1 }).lean());
     res.json({ rows });
@@ -340,7 +328,7 @@ exports.getAnalysis = async (req, res) => {
     if (cached) return res.json(cached);
 
     const lo = from.year * 100 + from.month, hi = to.year * 100 + to.month;
-    // من الكشوف الفعليّة — راجع utils/liveVendorUtilisation.
+    // From actual operations sheets: see utils/liveVendorUtilisation.
     const all = await require('../utils/liveVendorUtilisation').liveUtilisationRows();
     const rows = all.filter((r) => { const k = r.year * 100 + r.month; return k >= lo && k <= hi; });
     const months = [...new Set(rows.map((r) => `${r.year}-${String(r.month).padStart(2, '0')}`))].sort();
@@ -367,8 +355,7 @@ exports.getAnalysis = async (req, res) => {
     }
     const vendorsArr = [...byVendor.values()].sort((a, b) => b.totalOrders - a.totalOrders);
 
-    // Wasted capacity: signed vendors with a real fleet whose utilisation is
-    // near zero — the "طاقة مهدرة" review list.
+    // Wasted capacity: signed vendors with a real fleet whose utilisation is near zero; the wasted-capacity review list.
     const monthCount = Math.max(months.length, 1);
     const wasted = vendorsArr
       .filter((v) => v.category === 'signed' && v.fleetSize >= 10)
@@ -496,7 +483,7 @@ exports.deleteProspect = async (req, res) => {
   }
 };
 
-// ترقية شركة من سجل التنشيط إلى مورد فعلي — بياناتها تنتقل كما هي ويُختم السجل.
+// Promote a company from the activation register to an actual vendor: its data is carried over as is and the register entry is stamped.
 exports.convertProspect = async (req, res) => {
   try {
     const p = await ContractProspect.findById(req.params.id);
@@ -576,29 +563,15 @@ exports.deleteDeptContract = async (req, res) => {
   }
 };
 
-// ══════════════════════════════════════════════════════════════════════════════
-// العملاء — الطرفُ الآخر من كلّ صفقة
-// ══════════════════════════════════════════════════════════════════════════════
-//
-// ── وما الجديدُ فيه ──────────────────────────────────────────────────────────
-// القسمُ كان يعرف نصفَ عمله: المورّدون بعقودهم ووثائقهم وحصصهم في سجلٍّ كامل،
-// والعملاءُ بلا سجلٍّ إلّا صفوفًا في «عقود الأقسام» تُبحَث بالاسم. فسؤالُ كلّ
-// أسبوع — «فلانٌ عقدُه موقَّعٌ وإلى متى؟» — لا جوابَ له إلّا في ورقة.
-//
-// ── والربطُ بالباقي ─────────────────────────────────────────────────────────
-// الصفُّ هنا يحمل ما يخصّ العقدَ وحدَه؛ وما عداه يُقرأ من مصدره في كلّ نداء ولا
-// يُنسَخ:
-//   • ما يشحنه معنا فعلًا  ← كشوفُ التشغيل (عددًا وقيمةً وآخرَ شحنة)
-//   • ما بقي عليه          ← طرفُ التحصيل (مهلتُه المتّفق عليها ورصيدُه)
-//   • عقودُه المرفوعة       ← «عقود الأقسام» بنوع طرفٍ «عميل»
-// ورقمٌ منسوخٌ يشيخ في يومه، ورقمٌ مقروءٌ من مصدره لا يكذب أبدًا.
+// Customers: the other side of every deal. A row holds only contract data; the rest is read from its source on each call, never copied, since a copied number goes stale:
+// shipments from operations sheets, balance and term from the collections party, uploaded contracts from department contracts with party type customer.
 const { ContractCustomer } = require('../models/ContractModels');
 
 const customerStatus = (c) => (c.customerSideContract && c.ourSideContract
   ? 'signed'
   : (c.customerSideContract || c.ourSideContract ? 'pending' : 'unsigned'));
 
-/** ينتهي خلال ستّين يومًا — العقدُ يُجدَّد قبل أن ينتهي لا بعده. */
+/** Expires within sixty days: a contract is renewed before it ends, not after. */
 const EXPIRY_WINDOW_DAYS = 60;
 const expiryState = (endDate) => {
   if (!endDate) return '';
@@ -608,10 +581,8 @@ const expiryState = (endDate) => {
 };
 
 /**
- * حجمُ العملاء من كشوف التشغيل — عددًا وقيمةً وآخرَ شحنة، مطويًّا بالاسم.
- *
- * تُحسَب مرّةً لكلّ العملاء لا لكلّ صفّ: ستُّمئةِ استعلامٍ لصفحةٍ واحدةٍ تجعلها
- * تُفتَح في ثوانٍ ثمّ لا تُفتَح.
+ * Customer volume from operations sheets (count, value, last shipment), keyed by folded name.
+ * Computed once for all customers, not per row: hundreds of queries for one page make it slow to open or unusable.
  */
 async function customerVolume() {
   return cache.wrapStale('contracts:customer-volume', 60000, 15 * 60 * 1000, async () => {
@@ -641,7 +612,7 @@ async function customerVolume() {
   });
 }
 
-/** أطرافُ التحصيل من نوع «عميل» — المهلةُ المتّفق عليها ورصيدُ ما بقي. */
+/** Collections parties of customer type: agreed term and outstanding balance. */
 async function collectionsByKey() {
   return cache.wrapStale('contracts:customer-collections', 60000, 15 * 60 * 1000, async () => {
     try {
@@ -693,11 +664,8 @@ exports.listCustomers = async (req, res) => {
 };
 
 /**
- * عملاءُ يشحنون معنا ولا صفَّ لهم هنا — GET /customers/suggestions
- *
- * السجلُّ يبدأ فارغًا، وملؤه بالكتابة اليدويّة من ورقةٍ يعني أن يبقى ناقصًا إلى
- * الأبد. والعملاءُ معروفون: هم مَن تحمل كشوفُنا أسماءهم. فتُعرَض أسماؤهم مرتّبةً
- * بحجمهم — الأكبرُ أوّلًا، فهو مَن يُسأل عن عقده أوّلًا — ويُضاف من يُختار بضغطة.
+ * Customers shipping with us that have no row here: GET /customers/suggestions
+ * The register starts empty and filling it by hand from a paper sheet would leave it incomplete forever. Customers are known from the names on our sheets, so they are listed by volume, largest first (asked about first), and one click adds a customer.
  */
 exports.customerSuggestions = async (req, res) => {
   try {
@@ -710,7 +678,7 @@ exports.customerSuggestions = async (req, res) => {
       .filter(([k]) => !have.has(k))
       .map(([k, v]) => ({
         nameKey: k,
-        // أطولُ الأسماء المكتوبة: الصيغُ المختصرةُ تسقط الشركةَ ونوعَها.
+        // Longest written name wins: shortened forms drop the company and its type.
         name: v.names.sort((a, b) => b.length - a.length)[0],
         loads: v.loads,
         value: Math.round(v.value * 100) / 100,
@@ -738,8 +706,7 @@ exports.createCustomer = async (req, res) => {
     if (!name) return res.status(400).json({ message: 'اسم العميل مطلوب' });
     const key = nameKey(name);
     const exists = await ContractCustomer.findOne({ nameKey: key });
-    // الاسمُ المطويُّ هو الذي يمنع الصفَّ الثاني: «شركة الرياض» و«الرياض» صفٌّ
-    // واحدٌ في الواقع، وصفّان في سجلٍّ يقارن الحروف.
+    // The folded name prevents a second row: 'Riyadh Company' and 'Riyadh' are one customer in reality but two rows in a register that compares characters.
     if (exists) return res.status(409).json({ message: `العميل مسجل بالفعل باسم «${exists.name}»` });
     const doc = { nameKey: key, createdBy: req.user?._id, createdByName: actorName(req) };
     for (const f of CUSTOMER_FIELDS) if (req.body[f] !== undefined) doc[f] = req.body[f];
@@ -763,7 +730,7 @@ exports.getCustomer = async (req, res) => {
       DeptContract.find({ partyType: 'customer' }).lean(),
     ]);
 
-    // شهورُه الاثنا عشر الأخيرة — العقدُ يُراجَع على منحنًى لا على رقمٍ واحد.
+    // Its last twelve months: a contract is reviewed on a curve, not a single number.
     const since = new Date();
     since.setMonth(since.getMonth() - 12);
     const monthly = await OperationsWorkflow.aggregate([
@@ -804,7 +771,7 @@ exports.updateCustomer = async (req, res) => {
     const customer = await ContractCustomer.findById(req.params.id);
     if (!customer) return res.status(404).json({ message: 'العميل غير موجود' });
     for (const f of CUSTOMER_FIELDS) if (req.body[f] !== undefined) customer[f] = req.body[f];
-    // تغييرُ الاسم يغيّر مفتاحَ الربط معه، وإلّا انقطع الصفُّ عن كشوفه.
+    // Renaming changes the link key too, otherwise the row loses its sheets.
     if (req.body.name !== undefined) customer.nameKey = nameKey(req.body.name);
     await customer.save();
     emit();

@@ -1,9 +1,6 @@
 /**
- * طلباتُ الأسطول إلى الصيانة — الطلبُ من الأسطول، والقرارُ من لوكيشن سوليوشن.
- *
- * شاشتان لجدولٍ واحد: «طلباتي» في إدارة الأسطول، و«طلبات الأسطول» في لوكيشن
- * سوليوشن. والقرارُ لا يُؤخَذ إلّا من الثانية — من يملك الصيانةَ هو من يأذن
- * بتأجيلها. راجع models/FleetRequest.
+ * Fleet requests to maintenance: the fleet files the request, Location Solutions decides.
+ * One table, two screens; only the Location Solutions screen can decide. See models/FleetRequest.
  */
 const mongoose = require('mongoose');
 const FleetRequest = require('../models/FleetRequest');
@@ -15,36 +12,28 @@ const { emitToAll } = require('../websocket/socketManager');
 const logAudit = require('../utils/auditLogger');
 const cache = require('../utils/ttlCache');
 
-// والإبطالُ قبل الإعلان: الحدثُ يوقظ الشاشاتَ لتُعيد الجلب، فإن أُعلن أوّلًا
-// قرأت مخزونًا لم يُمسَح — راجع ذاكرةَ «announce before invalidate».
+// Invalidate the cache before announcing: listeners refetch on the event and would read stale data otherwise.
 const emit = (event, payload = {}) => {
   cache.clear('fleet:');
-  try { emitToAll(event, payload); } catch (e) { /* السوكت ليس شرطًا */ }
+  try { emitToAll(event, payload); } catch (e) { /* Socket is optional. */ }
 };
 
 const fullName = (u) => [u?.firstName, u?.lastName].filter(Boolean).join(' ').trim() || u?.username || '';
 
-/** حالةُ صيانة شاحنةٍ من مرآة لوكيشن — باللوحة، فالسجلّان منفصلان. */
+/** Maintenance state of a truck from the Location Solutions mirror, matched by plate. */
 async function maintenanceOf(vehicleId) {
   if (!vehicleId || !mongoose.isValidObjectId(String(vehicleId))) return null;
   const v = await FleetVehicle.findById(vehicleId).select('plate name').lean();
   if (!v) return null;
   const key = plateKey(v.plate);
   if (!key) return { vehicle: v, live: null };
-  // المرآةُ تُفهرَس باللوحة كما تكتبها هي — فتُقرأ كلُّها وتُطابَق بالمفتاح.
+  // The mirror is indexed by plate as written there, so read all of it and match by key.
   const rows = await Ls2Vehicle.find({}).select('plate maintenanceStatus kmToService nextServiceName odometerKm').lean();
   const live = rows.find((lv) => vehiclePlateKey(lv) === key) || null;
   return { vehicle: v, live };
 }
 
-/**
- * ── الحارسُ: شاحنةٌ فات موعدُ صيانتها لا تُحمَّل بلا إذن ─────────────────────
- *
- * يُنادى من إنشاء الحمولة وتعديلِ شاحنتها. ويردّ:
- *   • `null` — لا مانع (الحالةُ سليمةٌ أو قريبةٌ، أو لا مرآةَ للشاحنة).
- *   • `{ block }` — ممنوعٌ، ومعه ما فات ورقمُ الطلب المعلّق إن كان.
- *   • `{ approval }` — مسموحٌ بموافقةٍ قائمة، تُستهلَك بعد إنشاء الحمولة.
- */
+/** Guard: a truck past its maintenance date cannot be loaded without approval. Called on load creation and on changing a load's truck. Returns: null - no blocker (state fine or near, or no mirror for the truck). { block } - blocked, with what is overdue and the pending request number if any. { approval } - allowed by an existing approval, consumed after the load is created. */
 async function maintenanceGate(vehicleId) {
   const m = await maintenanceOf(vehicleId);
   if (!m || !m.live) return null;
@@ -75,7 +64,7 @@ async function maintenanceGate(vehicleId) {
   };
 }
 
-/** تُستهلَك الموافقةُ بالحمولة التي أُنشئت بها — لا تبقى مفتوحة. */
+/** An approval is consumed by the load it was created for and does not stay open. */
 async function consumeApproval(approval, shipment) {
   if (!approval) return;
   approval.usedBy = shipment._id;
@@ -85,7 +74,7 @@ async function consumeApproval(approval, shipment) {
   emit('fleet:requests', {});
 }
 
-/** POST /api/fleet/requests — الأسطولُ يطلب. */
+/** POST /api/fleet/requests */
 exports.create = async (req, res) => {
   try {
     const { vehicle, reason } = req.body || {};
@@ -95,7 +84,7 @@ exports.create = async (req, res) => {
     const m = await maintenanceOf(vehicle);
     if (!m) return res.status(404).json({ message: 'الشاحنة غير موجودة' });
     if (!m.live || m.live.maintenanceStatus !== 'overdue') {
-      // لا طلبَ لما لا يحتاج إذنًا — وإلّا امتلأ الجدولُ بطلباتٍ لا موضوعَ لها.
+      // No request for something that needs no approval; otherwise the table fills with pointless requests.
       return res.status(400).json({ message: 'صيانةُ هذه الشاحنة ليست متأخّرة — لا تحتاج موافقة' });
     }
     const open = await FleetRequest.findOne({ vehicle, kind: 'maintenance_override', status: 'pending' }).lean();
@@ -124,9 +113,7 @@ exports.create = async (req, res) => {
     emit('fleet:requests', { id: String(doc._id) });
     emit('ls2:updated', {});
 
-    // ── ويصل مَن يقرّر، لا مَن يقرأ شاشة ──────────────────────────────────
-    // القرارُ على مدير الصيانة وفريقِه. وإشعارٌ يصل من لا يقرّر يُدرَّب الناسُ
-    // على تجاهله — راجع services/ls2Notify.
+    // Notify those who decide, not whoever reads the screen: the maintenance manager and team. Notices to non-deciders get ignored. See services/ls2Notify.
     try {
       const User = require('../models/User');
       const deciders = await User.find({
@@ -142,7 +129,7 @@ exports.create = async (req, res) => {
         relatedEntityId: doc._id,
         event: 'fleet:requests',
       }).catch(() => {})));
-    } catch { /* الإشعارُ لا يُسقِط الطلب */ }
+    } catch { /* A failed notification must not fail the request. */ }
 
     await logAudit({
       user: req.user, action: 'create', entity: 'FleetRequest', entityId: doc._id,
@@ -155,7 +142,7 @@ exports.create = async (req, res) => {
   }
 };
 
-/** GET — القائمةُ نفسُها للشاشتين، بفلترِ الحالة. */
+/** GET - same list for both screens, filtered by status. */
 exports.list = async (req, res) => {
   try {
     const filter = { kind: 'maintenance_override' };
@@ -163,14 +150,14 @@ exports.list = async (req, res) => {
     if (status && status !== 'all') filter.status = status;
     const rows = await FleetRequest.find(filter).sort({ createdAt: -1 }).limit(300).lean();
 
-    // ولوحةُ الأرقام تُقاس على الجدول كلِّه لا على المعروض.
+    // Dashboard counts cover the whole table, not the displayed page.
     const counts = await FleetRequest.aggregate([
       { $match: { kind: 'maintenance_override' } },
       { $group: { _id: '$status', n: { $sum: 1 } } },
     ]);
     const summary = { pending: 0, approved: 0, rejected: 0 };
     counts.forEach((c) => { summary[c._id] = c.n; });
-    // الموافقاتُ التي لم تُستعمَل بعد: شاحناتٌ مفتوحةٌ لحمولةٍ واحدة.
+    // Unused approvals: trucks left open for a single load.
     summary.openApprovals = await FleetRequest.countDocuments({
       kind: 'maintenance_override', status: 'approved', usedBy: null,
     });

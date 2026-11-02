@@ -11,23 +11,13 @@ const Vendor = require('../models/Vendor');
 const Driver = require('../models/Driver');
 const ExpenseCategory = require('../models/ExpenseCategory');
 
-// العبارة التي يجب أن تُكتَب حرفيًّا لتنفيذ المسح. أيّ شيءٍ سواها يُرَدّ.
+// The phrase that must be typed verbatim to run the wipe; anything else is rejected.
 const CONFIRM_PHRASE = 'امسح كل البيانات نهائيًا';
 
 /**
- * مسحٌ نهائيّ لخمس عشرة مجموعة — العملاء والفواتير والمدفوعات والطلبات والسجلّ.
- *
- * ── لماذا يشترط عبارةً في الجسم ─────────────────────────────────────────────
- * كان طلبًا بلا جسمٍ ولا تأكيدٍ ولا أثر. ومع كوكيز `SameSite=None` — وهي لازمة
- * لأن الواجهة والخادم على نطاقين — يكفي أن يفتح مديرٌ صفحةً فيها استمارةٌ خفيّة
- * تُرسِل نفسها ليضيع سجلّ الشركة المالي كلُّه. والطلب البسيط لا يمرّ بفحصٍ
- * مسبقٍ للأصل، فالحماية لا تأتي من CORS.
- *
- * والعبارة تُكتَب بيد الإنسان، فلا تعرفها استمارةٌ في صفحةٍ أخرى.
- *
- * ── ولماذا يُكتَب الأثر قبل المسح ───────────────────────────────────────────
- * `AuditLog` من المجموعات التي تُمسَح، فأثرٌ يُكتَب بعدها يمسح نفسه. يُكتَب
- * أوّلًا، ويُعاد كتابته بعد التمام ليبقى في السجلّ الجديد ما حدث ومَن فعله.
+ * Permanent wipe of fifteen collections (customers, invoices, payments, orders, log).
+ * Requires a phrase in the body: the request used to have no body, confirmation or trace, and with SameSite=None cookies (needed because the frontend and API are on different domains) a hidden form on any page could trigger it for a logged-in admin. A simple request skips CORS preflight, so CORS does not protect it. The phrase is typed by a human, so no other page's form knows it.
+ * The audit entry is written before the wipe, because AuditLog is among the wiped collections, and rewritten afterwards so the new log records what happened and who did it.
  */
 const clearData = async (req, res) => {
   try {
@@ -45,7 +35,7 @@ const clearData = async (req, res) => {
         user: req.user?._id, action: 'clear_all_data_started', entity: 'System',
         changes: { before: { note: 'قبل المسح' } }, ipAddress: req.ip,
       });
-    } catch (e) { /* الأثر لا يمنع العملية، لكنّ محاولته واجبة */ }
+    } catch (e) { /* Audit must not block the operation, but it must be attempted. */ }
 
     const collections = [
       { name: 'DailyWallet', model: DailyWallet },
@@ -70,13 +60,13 @@ const clearData = async (req, res) => {
       results[name] = result.deletedCount;
     }
 
-    // السجلّ نفسه مُسِح للتوّ، فيُعاد ختم ما حدث فيه من جديد.
+    // The log itself was just wiped, so stamp the event again.
     try {
       await AuditLog.create({
         user: req.user?._id, action: 'clear_all_data', entity: 'System',
         changes: { after: { deletedCounts: results, by: who } }, ipAddress: req.ip,
       });
-    } catch (e) { /* لا يُبطل العملية بعد تمامها */ }
+    } catch (e) { /* A failure here must not undo the completed operation. */ }
     console.warn('[admin] مسحٌ شامل تمّ —', JSON.stringify(results));
 
     res.json({

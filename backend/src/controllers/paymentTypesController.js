@@ -1,15 +1,7 @@
 /**
- * أنواعُ الدفع — صفةُ كلّ عميلٍ في مكانٍ واحد، ومنها يُشتقُّ نوعُ كلّ كشف.
- *
- * ── لماذا صفحةٌ بذاتها ─────────────────────────────────────────────────────
- * كان نوعُ الدفع يُكتب على كلّ كشفٍ على حدة. وأكثرُ العملاء صفتُهم ثابتة —
- * عميلُ الكاش يدفع في يده دائمًا، والضريبيُّ يُفوتَر دائمًا — فكتابةُ ذلك على
- * أربعةٍ وثلاثين ألفَ كشفٍ عملٌ مكرَّرٌ يُنسى ويُخطأ، وخطأٌ واحدٌ يُرسل كشفَ
- * عميلٍ ضريبيّ إلى فواتير الكاش.
- *
- * فيُكتب على العميل مرّةً، ويُقرأ منه عند كلّ كشف. والاستثناءُ الوحيد أن تقول
- * منصّةُ التشغيل عن حمولةٍ بعينها إنّها نقديّة، فتغلب صفةَ العميل — راجع
- * utils/paymentType.
+ * Payment types: a per-customer attribute from which each statement's type is derived.
+ * Most customers have a fixed attribute (cash customers always pay cash, tax customers are always invoiced), so it is written once on the customer and read per statement instead of on tens of thousands of statements.
+ * Only the operations platform marking a specific load as cash overrides it (see utils/paymentType).
  */
 const CollectionsParty = require('../models/CollectionsParty');
 const OperationsWorkflow = require('../models/OperationsWorkflow');
@@ -23,7 +15,7 @@ const { flexSpaceRegex } = require('../utils/plateKey');
 const { fold } = CollectionsParty;
 const r2 = (n) => Math.round((Number(n) || 0) * 100) / 100;
 
-/** GET /api/workflows/payment-types — العملاءُ وأنواعُهم وكم كشفًا لكلٍّ. */
+/** GET /api/workflows/payment-types: customers, their types and statement counts. */
 exports.list = async (req, res) => {
   try {
     const q = String(req.query.q || '').trim();
@@ -36,8 +28,7 @@ exports.list = async (req, res) => {
     const parties = await CollectionsParty.find(filter)
       .select('name nameKey code paymentType collectionOfficer department').sort({ name: 1 }).lean();
 
-    // ── وعددُ كشوف كلّ عميلٍ يُحسب مرّةً واحدةً للجميع ──────────────────────
-    // استعلامٌ لكلّ عميلٍ يعني سبعَمئةِ رحلةٍ إلى القاعدة في فتحةٍ واحدة.
+    // Statement counts are computed once for all customers; a query per customer would be ~700 database round trips per open.
     const counts = await OperationsWorkflow.aggregate([
       { $match: { username: { $nin: [null, ''] } } },
       { $group: {
@@ -46,15 +37,10 @@ exports.list = async (req, res) => {
         cash: { $sum: { $cond: [{ $eq: ['$paymentType', 'cash'] }, 1, 0] } },
         tax: { $sum: { $cond: [{ $eq: ['$paymentType', 'tax'] }, 1, 0] } },
         manual: { $sum: { $cond: [{ $eq: ['$paymentTypeSource', 'manual'] }, 1, 0] } },
-        // ── والكشوفُ التي لا يمسّها التوحيد تُعَدُّ على حدة ──────────────────
-        // ما اختاره موظّفٌ بيده لا يُبدَّل أبدًا، فلا يصحّ أن يُعَدَّ «مخالفًا»
-        // ويُعرَض عددًا يُطلب إصلاحُه ثمّ لا يتحرّك.
+        // Statements untouched by unify are counted separately. A manual choice is never overwritten, so counting it as a mismatch would show a number to fix that never moves.
         cashAuto: { $sum: { $cond: [{ $and: [{ $eq: ['$paymentType', 'cash'] }, { $ne: ['$paymentTypeSource', 'manual'] }] }, 1, 0] } },
         taxAuto: { $sum: { $cond: [{ $and: [{ $eq: ['$paymentType', 'tax'] }, { $ne: ['$paymentTypeSource', 'manual'] }] }, 1, 0] } },
-        // ── وما صدرت له فاتورةٌ ضريبيّة ليس «مخالفًا» لعميلٍ كاش ─────────────
-        // التوحيدُ لا يمسّه (هكذا يَعِد مربّعُ التأكيد، وهكذا صار يفعل)، والمزامنةُ
-        // تعيده ضريبيًّا لو مُسّ. فعدُّه مخالفًا رقمٌ يُطلب إصلاحُه ثمّ لا يتحرّك —
-        // وهو ما كان يعود بعد كلّ توحيد.
+        // A statement with a tax invoice issued is not a mismatch for a cash customer: unify skips it and sync would flip it back to tax. Counting it would show a number that returns after every unify.
         taxAutoNoInvoice: { $sum: { $cond: [{ $and: [
           { $eq: ['$paymentType', 'tax'] }, { $ne: ['$paymentTypeSource', 'manual'] },
           { $not: [ISSUED_INVOICE_EXPR] },
@@ -79,11 +65,8 @@ exports.list = async (req, res) => {
     const rows = parties.map((p) => {
       const c = byKey.get(p.nameKey || fold(p.name))
         || { reports: 0, cash: 0, tax: 0, manual: 0, methodCash: 0, value: 0, cashAuto: 0, taxAuto: 0, taxAutoNoInvoice: 0 };
-      // ── «مخالف» = كشفٌ نوعُه غيرُ صفة عميله ─────────────────────────────────
-      // ويُقاس على صفة العميل وحدَها لا على قاعدة الاشتقاق: قاعدةُ «طريقةُ الدفع
-      // نقديّة» تصلح لملء الفارغ حيث لا دليل، ولا تصلح لنقض دليلٍ قائم — نوعُ
-      // الكشف المكتوب جاء من عمود «ض / غ ض» في شيت المتابعة، وهو قولٌ صريحٌ عن
-      // هذه الحمولة بعينها.
+      // Mismatch means a statement whose type differs from its customer's attribute.
+      // Measured against the customer attribute only, not the derivation rule: the payment-method-is-cash rule fills blanks where there is no evidence but must not override existing evidence (the type written from the follow-up sheet's tax / non-tax column is explicit for that load).
       const conflicts = p.paymentType === 'cash' ? c.taxAutoNoInvoice : (p.paymentType === 'tax' ? c.cashAuto : 0);
       return {
         _id: p._id, name: p.name, code: p.code || '',
@@ -112,10 +95,8 @@ exports.list = async (req, res) => {
 };
 
 /**
- * PUT /api/workflows/payment-types/:id — صفةُ عميلٍ تُكتب، وتسري على كشوفه.
- *
- * ولا تمسّ كشفًا اختار موظّفٌ نوعَه بيده: ذلك قرارٌ على حمولةٍ بعينها، وهذه
- * صفةٌ عامّة. والفرقُ بينهما هو كلُّ الفرق — راجع paymentTypeSource.
+ * PUT /api/workflows/payment-types/:id: write a customer's attribute and apply it to its statements.
+ * Statements whose type was chosen manually are untouched: that is a per-load decision, this is a general attribute (see paymentTypeSource).
  */
 exports.update = async (req, res) => {
   try {
@@ -130,7 +111,7 @@ exports.update = async (req, res) => {
     party.paymentType = type;
     await party.save();
 
-    // ── ثمّ تسري على كشوفه ─────────────────────────────────────────────────
+    // Then apply to its statements
     const applied = await applyToCustomer(party, { onlyEmpty: req.body.onlyEmpty !== false });
 
     logAudit({
@@ -140,7 +121,7 @@ exports.update = async (req, res) => {
     }).catch(() => {});
     cache.clear('wf:'); cache.clear('wfparty:');
     cache.clear('colledger:'); cache.clear('collections-dept:'); cache.clear('cdr:');
-    // نوعُ الكشوف تغيّر: تحصيلُ المحفظة يتبعه (قبل البثّ — راجع utils/walletCollection).
+    // Statement types changed: wallet collection follows (before broadcasting, see utils/walletCollection).
     await require('../utils/walletCollection').resyncAllWalletCollections({ user: req.user, reason: 'تغيّر نوع الدفع' })
       .catch((e) => console.error('wallet cash-collection (payment types):', e.message));
     try { require('../websocket/socketManager').emitToAll('workflow:updated', { bulk: true, paymentType: true }); } catch (_) {}
@@ -153,17 +134,14 @@ exports.update = async (req, res) => {
 };
 
 /**
- * يُطبِّق صفةَ العميل على كشوفه.
- *
- * `onlyEmpty` هو الافتراض: يُملأ ما لا نوعَ له ولا يُبدَّل ما له نوع. ومَن أراد
- * إعادةَ تصنيف تاريخِ عميلٍ كلِّه يطلبها صراحةً — فقلبُ نوعِ كشوفٍ قديمةٍ يغيّر
- * أين تُفوتَر وأين تُحصَّل، وهو قرارٌ لا أثرٌ جانبيّ.
+ * Apply the customer's attribute to its statements.
+ * `onlyEmpty` is the default: fill statements with no type, never change typed ones. Reclassifying a customer's whole history must be requested explicitly, because flipping old statements changes where they are invoiced and collected.
  */
 async function applyToCustomer(party, { onlyEmpty = true } = {}) {
   const key = party.nameKey || fold(party.name || '');
   if (!key) return { changed: 0, skippedManual: 0 };
 
-  // الأسماءُ الخامّةُ التي تطوي إلى مفتاح هذا العميل.
+  // Raw names that fold to this customer's key.
   const names = await OperationsWorkflow.distinct('username', { username: { $nin: [null, ''] } });
   const mine = names.filter((n) => fold(n) === key);
   if (!mine.length) return { changed: 0, skippedManual: 0 };
@@ -176,12 +154,9 @@ async function applyToCustomer(party, { onlyEmpty = true } = {}) {
     if (String(w.paymentTypeSource || '') === 'manual') { skippedManual += 1; continue; }
     const next = derivePaymentTypeFor(w, party.paymentType);
     if (next === (w.paymentType || '')) continue;
-    // ── وما له نوعٌ يُعَدّ ولا يُبدَّل ما لم يُطلَب ──────────────────────────
-    // قلبُ نوعِ كشفٍ قائمٍ يغيّر أين يُفوتَر وأين يُحصَّل. فيُملأ الفارغُ وحدَه،
-    // ويُقال كم كشفًا بقي مختلفًا — ليكون التحويلُ قرارًا يُرى عددُه لا أثرًا
-    // جانبيًّا لتغيير صفةٍ في صفحة.
+    // Typed statements are counted but not changed unless requested: flipping an existing type changes where it is invoiced and collected. Only blanks are filled, and the remaining difference count is reported so conversion is a visible decision.
     if (onlyEmpty && w.paymentType) { remaining += 1; continue; }
-    // والنوعُ يتبع العائلةَ المنقولة — راجع subtypeAfterAuto.
+    // The type follows the moved family, see subtypeAfterAuto.
     ops.push({ updateOne: { filter: { _id: w._id }, update: { $set: { paymentType: next, paymentSubtype: subtypeAfterAuto(w.paymentType, next, w.paymentSubtype), paymentTypeSource: 'auto' } } } });
   }
   let changed = 0;
@@ -192,10 +167,7 @@ async function applyToCustomer(party, { onlyEmpty = true } = {}) {
   return { changed, skippedManual, remaining, reports: rows.length };
 }
 
-/**
- * شرطُ كشوف العميل التي يقلبها التوحيد — يقرؤه زرُّ «توحيد» وسكربتُ
- * reapplyPaymentTypeUnify معًا. `null` إن لم يكن للعميل كشوف.
- */
+/** Filter for the customer's statements that unify flips; used by the unify button and the reapplyPaymentTypeUnify script. `null` when the customer has no statements. */
 async function unifyFilter(party) {
   const type = String(party.paymentType || '');
   const key = party.nameKey || fold(party.name || '');
@@ -206,32 +178,16 @@ async function unifyFilter(party) {
     username: { $in: mine },
     paymentType: { $nin: ['', null, type] },
     paymentTypeSource: { $ne: 'manual' },
-    // ── ولا يُمسّ ما صدرت له فاتورةٌ ضريبيّة ──────────────────────────────
-    // مربّعُ التأكيد يَعِد بذلك ولم يكن يفعله: كان يقلب كشوفًا عليها أرقامُ
-    // فواتيرَ صدرت إلى «كاش»، فتراها المزامنةُ في دورتها التالية فاتورةً
-    // وتعيدها «ضريبيًّا» — مئةٌ وأربعةٌ وثلاثون كشفًا لعملاءِ كاشٍ عادت كذلك.
+    // Statements with a tax invoice issued are not touched. The confirm dialog promises this; previously invoiced statements were flipped to cash and the next sync saw the invoice and restored them to tax.
     ...(type === 'cash' ? { $nor: [ISSUED_INVOICE_QUERY] } : {}),
   };
 }
 
 /**
- * POST /api/workflows/payment-types/:id/unify — كشوفُ العميل تُوحَّد على صفته.
- *
- * ── ولماذا فعلٌ مستقلٌّ عن ملء الفراغ ───────────────────────────────────────
- * ملءُ الفراغ استكمالٌ لا تغيير: لا دليلَ على الكشف فيُقرأ من صفة عميله، وتغلبه
- * طريقةُ الدفع النقديّة إن قالتها المنصّة.
- *
- * أمّا الكشفُ الذي **له نوعٌ مكتوب** فذاك دليلٌ قائم: جاء من عمود «ض / غ ض» في
- * شيت المتابعة، وهو قولُ التشغيل عن هذه الحمولة بعينها. فنقضُه قرارٌ يُتّخذ
- * صراحةً على عميلٍ بعينه، لا أثرٌ جانبيّ.
- *
- * وقياسُه على **صفة العميل وحدَها** لا على قاعدة الاشتقاق: قاعدةُ «طريقةُ الدفع
- * نقديّة» لو طُبِّقت هنا لقلبت ثمانيةَ آلافٍ وستَّمئةٍ وخمسةً وثمانين كشفًا
- * لعملاءَ ضريبيّين كبار — وفيها ستُّمئةٍ وثمانٍ وثمانون تحمل أرقامَ فواتير
- * صدرت بالفعل. و`payment_method` في المنصّة قيمتان لا غير: `cash` و`late` — أي
- * أنّها **شروطُ السداد** لا نوعُ الفاتورة.
- *
- * وما اختاره موظّفٌ بيده لا يُمسّ هنا كذلك.
+ * POST /api/workflows/payment-types/:id/unify: unify a customer's statements to its attribute.
+ * Separate from blank-filling: a written type is existing evidence from the follow-up sheet, so overriding it is an explicit per-customer decision.
+ * Measured on the customer attribute only: the cash payment-method rule would flip thousands of large tax customers' statements; platform payment_method is only cash or late (payment terms, not invoice type).
+ * Manually chosen types are untouched too.
  */
 exports.unifyCustomer = async (req, res) => {
   try {
@@ -249,10 +205,8 @@ exports.unifyCustomer = async (req, res) => {
     if (preview) return res.json({ preview: true, willChange, type });
 
     const r = await OperationsWorkflow.updateMany(filter, {
-      // `unified` لا `auto`: المزامنةُ تعيد اشتقاقَ كلِّ `auto` في كلّ دورة، فكان
-      // التوحيدُ يُمحى بعد دقيقة ويعود عددُ «المخالف» كما كان. راجع isUnified.
-      // والشرطُ لا يطابق إلّا كشوفًا تنتقل عائلتُها: إلى الضريبيّ تأخذ «آجل - فاتورة»
-      // (الضريبيُّ الوحيد)، وإلى الكاش بلا نوع — يختار إنسانٌ من الثلاثة.
+      // `unified`, not `auto`: sync re-derives every `auto` row each cycle, which erased unify within a minute (see isUnified).
+      // The filter only matches statements that change family: to tax they get the credit-invoice type (the only tax type); to cash they get no type, and a person picks one of the three.
       $set: {
         paymentType: type, paymentSubtype: type === 'tax' ? TAX_SUBTYPE : '',
         paymentTypeSource: 'unified', lastModifiedBy: req.user._id,
@@ -265,9 +219,9 @@ exports.unifyCustomer = async (req, res) => {
       entityKey: party.name, changes: { after: { paymentType: type, changed } }, ipAddress: req.ip,
     }).catch(() => {});
     cache.clear('wf:'); cache.clear('wfparty:'); cache.clear('colledger:');
-    // ولوحةُ التحصيل تقسم بالأنواع — تُمسح قبل البثّ.
+    // The collections dashboard splits by type, so its cache is cleared before broadcasting.
     cache.clear('collections-dept:'); cache.clear('cdr:');
-    // نوعُ الكشوف تغيّر: تحصيلُ المحفظة يتبعه (قبل البثّ — راجع utils/walletCollection).
+    // Statement types changed: wallet collection follows (before broadcasting, see utils/walletCollection).
     await require('../utils/walletCollection').resyncAllWalletCollections({ user: req.user, reason: 'تغيّر نوع الدفع' })
       .catch((e) => console.error('wallet cash-collection (payment types):', e.message));
     try { require('../websocket/socketManager').emitToAll('workflow:updated', { bulk: true, paymentType: true }); } catch (_) {}
@@ -280,10 +234,8 @@ exports.unifyCustomer = async (req, res) => {
 };
 
 /**
- * POST /api/workflows/payment-types/apply — تمرير القاعدة على الجميع.
- *
- * يُعرَض أثرُه قبل تنفيذه (`preview: true`): قلبُ نوعِ كشفٍ يغيّر أين يُفوتَر
- * وأين يُحصَّل، فلا يُنفَّذ على آلافٍ بضغطةٍ بلا أن يُرى العدد أوّلًا.
+ * POST /api/workflows/payment-types/apply: run the rule over everyone.
+ * The effect is shown first (`preview: true`): flipping types changes where statements are invoiced and collected, so thousands are not changed in one click without seeing the count.
  */
 exports.applyAll = async (req, res) => {
   try {
@@ -304,7 +256,7 @@ exports.applyAll = async (req, res) => {
     const moves = {};
     for (const w of rows) {
       if (String(w.paymentTypeSource || '') === 'manual') { skippedManual += 1; continue; }
-      // ما وُحِّد على صفة عميله قرارٌ على ذلك العميل — لا يمحوه تمريرٌ عامّ.
+      // A statement unified to its customer's attribute is a decision about that customer; a general pass does not erase it.
       if (!onlyEmpty && String(w.paymentTypeSource || '') === 'unified' && w.paymentType) { skippedUnified += 1; continue; }
       const t = typeByKey.get(fold(w.username || ''));
       if (t === undefined) { unknown += 1; continue; }
@@ -328,9 +280,9 @@ exports.applyAll = async (req, res) => {
       changes: { after: { changed, onlyEmpty, moves } }, ipAddress: req.ip,
     }).catch(() => {});
     cache.clear('wf:'); cache.clear('wfparty:'); cache.clear('colledger:');
-    // ولوحةُ التحصيل تقسم بالأنواع — تُمسح قبل البثّ.
+    // The collections dashboard splits by type, so its cache is cleared before broadcasting.
     cache.clear('collections-dept:'); cache.clear('cdr:');
-    // نوعُ الكشوف تغيّر: تحصيلُ المحفظة يتبعه (قبل البثّ — راجع utils/walletCollection).
+    // Statement types changed: wallet collection follows (before broadcasting, see utils/walletCollection).
     await require('../utils/walletCollection').resyncAllWalletCollections({ user: req.user, reason: 'تغيّر نوع الدفع' })
       .catch((e) => console.error('wallet cash-collection (payment types):', e.message));
     try { require('../websocket/socketManager').emitToAll('workflow:updated', { bulk: true, paymentType: true }); } catch (_) {}

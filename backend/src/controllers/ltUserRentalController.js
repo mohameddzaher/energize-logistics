@@ -1,9 +1,6 @@
 /**
- * تأجيرُ اليوزرات — راجع models/LtUserRental.
- *
- * يُسجَّل التأجير (مشروع · لمن: شركة أو شخص · رقم إقامته)، وتاريخُه تلقائيّ.
- * ويُنهى ولا يُحذَف إلّا بيد مدير القطاع ونائبه ومدير النظام — الحذفُ لتصحيح
- * إدخالٍ خاطئ، والإنهاءُ هو انتهاءُ التأجير فعلًا.
+ * User rentals; see models/LtUserRental.
+ * A rental records the project, the renter (company or person) and their residence number; its date is automatic. It is ended, not deleted, except by the sector manager, deputy and system admin: deletion corrects a wrong entry, while ending means the rental actually finished.
  */
 const LtUserRental = require('../models/LtUserRental');
 const logAudit = require('../utils/auditLogger');
@@ -13,15 +10,11 @@ const S = (v) => String(v ?? '').trim();
 const who = (u) => [u?.firstName, u?.lastName].filter(Boolean).join(' ').trim();
 const DELETE_ROLES = ['super_admin', 'admin', 'b2c_manager', 'b2c_deputy'];
 const changed = () => {
-  // الإبطالُ قبل الإعلان — utils/ltRental.announce يمسح ذاكرةَ القسم ثمّ يبثّ.
+  // Invalidate before announcing: utils/ltRental.announce clears the section cache and then broadcasts.
   require('../utils/ltRental').announce();
 };
 
-/**
- * ── اليوزرُ صفٌّ في «موظفي النقل الخفيف» (صاحبُ الشركة، ٢٠٢٦/١٠/٢٢) ─────────
- * يُختار صفُّه (`ltEmployee`) فيُقرأ منه مشروعُه ورقمُ هويّته واسمُ حسابه، ويصير
- * نوعُ عقده «يوزرات» — راجع utils/ltRental. ولا يُربط صفٌّ بتأجيرين ساريين.
- */
+/** A user is a row in the light-transport employees list. Picking the row (`ltEmployee`) supplies its project, ID number and account name, and its contract type becomes user rental; see utils/ltRental. A row cannot have two active rentals. */
 async function linkOf(b, current = null) {
   if (b.ltEmployee === undefined) return { ok: true };
   const id = S(b.ltEmployee);
@@ -70,7 +63,7 @@ exports.list = async (req, res) => {
       f.$or = [{ renterName: rx }, { idNumber: rx }, { userAccount: rx }, { phone: rx }, { notes: rx },
         ...(lts.length ? [{ ltEmployee: { $in: lts.map((x) => x._id) } }] : [])];
     }
-    // ── واليوزرُ يُقرأ بصفّه: اسمُه ومشروعُه ومركبتُه وحالتُه اليوم ─────────────
+    // A user is read through its row: name, project, vehicle and today's status.
     const BOARD = require('../utils/b2cBoard');
     const items = (await LtUserRental.find(f).sort({ status: 1, startDate: -1, createdAt: -1 }).limit(2000)
       .populate({
@@ -103,14 +96,14 @@ exports.list = async (req, res) => {
   }
 };
 
-// POST /user-rentals — التاريخُ اليوم، لا يُرسَل.
+// POST /user-rentals - the date is today and is not sent.
 exports.create = async (req, res) => {
   try {
     const d = pick(req.body || {});
     const link = await linkOf(req.body || {});
     if (!link.ok) return res.status(400).json({ message: link.message, fields: { ltEmployee: link.message } });
     if (link.lt) {
-      // مشروعُه ورقمُ هويّته واسمُ حسابه من صفّه — لا يُكتبان مرّتين.
+      // Project, ID number and account name come from its row and are not entered twice.
       Object.assign(d, { ...link.set, projectAr: S(link.lt.projectAr) || d.projectAr });
       if (!d.idNumber) d.idNumber = S(link.lt.idNumber);
       if (!d.userAccount) d.userAccount = S(link.lt.name);
@@ -129,7 +122,7 @@ exports.create = async (req, res) => {
   }
 };
 
-// PUT /user-rentals/:id — تصحيحُ البيانات (والتاريخُ لا يُعدَّل).
+// PUT /user-rentals/:id - correct the data (the date cannot be edited).
 exports.update = async (req, res) => {
   try {
     const doc = await LtUserRental.findById(req.params.id);
@@ -138,7 +131,7 @@ exports.update = async (req, res) => {
     const link = await linkOf(req.body || {}, doc._id);
     if (!link.ok) return res.status(400).json({ message: link.message, fields: { ltEmployee: link.message } });
     if (link.set) Object.assign(d, link.set);
-    // المربوطُ مشروعُه مشروعُ صفّه: يُنقل بـ«نقل مشروع» فيتبعه التأجير، لا العكس.
+    // A linked rental's project is its row's project: the row moves via the project transfer action and the rental follows, not the reverse.
     const linkedTo = link.set ? link.set.ltEmployee : doc.ltEmployee;
     if (linkedTo && d.projectAr !== undefined && !link.lt) delete d.projectAr;
     if (link.lt) d.projectAr = S(link.lt.projectAr) || doc.projectAr;
@@ -155,7 +148,7 @@ exports.update = async (req, res) => {
   } catch (e) { res.status(500).json({ message: 'تعذّر تعديل التأجير' }); }
 };
 
-// POST /user-rentals/:id/end — انتهى التأجير (يبقى في السجلّ).
+// POST /user-rentals/:id/end - the rental finished (stays in the log).
 exports.end = async (req, res) => {
   try {
     const doc = await LtUserRental.findById(req.params.id);
@@ -163,7 +156,7 @@ exports.end = async (req, res) => {
     if (doc.status === 'ended') return res.status(400).json({ message: 'التأجير منتهٍ أصلًا' });
     Object.assign(doc, { status: 'ended', endDate: todayKey(), endedByName: who(req.user) });
     await doc.save();
-    // استُرجع اليوزر: يعود نوعُ عقده إلى ما كان قبل التأجير، وتنقص الكروتُ فورًا.
+    // User returned: the contract type reverts to what it was before the rental, and card counts drop immediately.
     if (doc.ltEmployee) await require('../utils/ltRental').syncEmployee(doc, { user: req.user });
     changed();
     await logAudit({ user: req.user, action: 'lt_user_rental_end', entity: 'LtUserRental', entityId: doc._id,
@@ -172,7 +165,7 @@ exports.end = async (req, res) => {
   } catch (e) { res.status(500).json({ message: 'تعذّر إنهاء التأجير' }); }
 };
 
-// DELETE /user-rentals/:id — لتصحيح إدخالٍ خاطئ، لمدير القطاع ونائبه ومدير النظام.
+// DELETE /user-rentals/:id - to correct a wrong entry; sector manager, deputy and system admin only.
 exports.remove = async (req, res) => {
   try {
     if (!DELETE_ROLES.includes(req.user?.role)) return res.status(403).json({ message: 'الحذف لمدير القطاع ونائبه ومدير النظام' });
@@ -186,10 +179,7 @@ exports.remove = async (req, res) => {
   } catch (e) { res.status(500).json({ message: 'تعذّر الحذف' }); }
 };
 
-/**
- * اليوزراتُ المؤجَّرة الآن **غيرُ المربوطة بصفّ** لكلّ مشروع — تُضاف في اللوحة
- * فوق الصفوف. والمربوطُ يُعَدّ بصفّه (utils/ltRental.isRented) فلا يُعَدّ مرّتين.
- */
+/** Currently rented users NOT linked to a row, per project, added in the dashboard above the rows. A linked one is counted through its row (utils/ltRental.isRented), so it is never counted twice. */
 exports.activeByProject = async () => {
   const rows = await LtUserRental.find({ status: 'active', ltEmployee: null }).select('projectAr').lean();
   const out = {};

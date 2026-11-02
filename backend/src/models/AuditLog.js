@@ -1,24 +1,14 @@
 const mongoose = require('mongoose');
 
 const auditLogSchema = new mongoose.Schema({
-  // ── وفاعلٌ ليس إنسانًا ────────────────────────────────────────────────────
-  // الإقفالُ التلقائيُّ للمحافظ آخرَ اليوم فعلٌ يستحقُّ القيد: يُغلق دفترَ فرعٍ
-  // ويثبّت رصيدَه. وكان `user` مطلوبًا، والمحفظةُ صارت للفرع فلا صاحبَ لها —
-  // فيسقط القيدُ كلَّ ليلةٍ برسالة «AuditLog validation failed: user is
-  // required»، ويُغلَق الدفترُ بلا أثرٍ يقول من أغلقه.
-  //
-  // فصار الفاعلُ اختياريًّا و`bySystem` تقول إنّ غيابَه مقصودٌ لا نقص. راجع
-  // utils/auditLogger: القيدُ بلا فاعلٍ ولا `bySystem` يبقى مرفوضًا.
+  // An actor that is not a person. The automatic wallet close at end of day deserves an entry: it closes a branch ledger and fixes its balance. `user` was required and wallets now belong to the branch with no owner, so the entry failed every night with "AuditLog validation failed: user is required" and the ledger closed with no trace of who closed it.
+  // So the actor is optional and `bySystem` says the absence is intended, not a gap. See utils/auditLogger: an entry with neither an actor nor `bySystem` is still rejected.
   user: {
     type: mongoose.Schema.Types.ObjectId,
     ref: 'User',
   },
   bySystem: { type: Boolean, default: false },
-  // ── ولقطةُ اسمِ الفاعل ────────────────────────────────────────────────────
-  // المرجعُ وحدَه لا يكفي: حين يُحذَف الحسابُ تعود `populate` فارغةً، فتقرأ
-  // الشاشةُ الفعلَ منسوبًا إلى «النظام» — وهو كذبٌ في أخطر مكانٍ يُقال فيه.
-  // السجلُّ تاريخٌ، والتاريخُ لا يعتمد على صفٍّ يمكن حذفُه. فيُلتقط الاسمُ
-  // والبريدُ ساعةَ الفعل ويبقيان.
+  // Snapshot of the actor's name. The reference alone is not enough: when the account is deleted `populate` returns empty and the screen attributes the action to "the system", which is false in the worst place to be false. A log is history and must not depend on a deletable row, so the name and email are captured at the time of the action and kept.
   userName: { type: String, trim: true, default: '' },
   userEmail: { type: String, trim: true, default: '' },
   action: { type: String, required: true },

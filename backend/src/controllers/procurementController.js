@@ -444,14 +444,9 @@ exports.createBill = async (req, res) => {
 };
 
 /**
- * تعديل فاتورة مورّد — والقيد المحاسبيّ يُعاد ترحيله معها.
- *
- * تصحيحُ الصفّ وحده يترك قيد الذمم الدائنة على الرقم القديم، فتُقفل السنة
- * بميزانٍ لا يطابق الفواتير التي بُني عليه. فيُعكَس القيد القديم ثم يُرحَّل
- * الجديد — كأنّها حُذفت وسُجِّلت، وبأثرٍ محاسبيّ واحد.
- *
- * ولا تنزل القيمة تحت ما سُدِّد منها فعلًا، ولا يُغيَّر المورّد: ذاك التزامٌ
- * لجهةٍ أخرى، يُحذف ويُسجَّل باسمها.
+ * Edit a supplier invoice; the accounting entry is reposted with it.
+ * Correcting only the row leaves the payables entry on the old figure, so the year closes with a balance that does not match its invoices. The old entry is reversed and the new one posted, as if deleted and re-recorded.
+ * The amount cannot go below what was already paid, and the supplier cannot change: that is an obligation to another party, so delete and record it under that party.
  */
 exports.updateBill = async (req, res) => {
   try {

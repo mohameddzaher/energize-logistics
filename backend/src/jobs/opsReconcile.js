@@ -1,23 +1,7 @@
 /**
- * opsReconcile — ما اختفى من منصّة الأوبريشن يختفي عندنا.
- *
- * ── الثغرة التي يسدُّها ─────────────────────────────────────────────────────
- * المزامنةُ اللحظيّة تحذف الشحنةَ إذا أعادتها المنصّةُ ومعها `deleted_at`. لكنّ
- * الصفَّ المحذوفَ حذفًا نهائيًّا لا يعود في أيّ صفحة — فلا يمرُّ على المزامنة
- * أصلًا، ويبقى عندنا كشفًا لا وجودَ له، يُعدُّ في «فواتير لم تصل» وفي كلّ تقرير.
- *
- * وشيتُ المتابعة يكتشفها: خانةُ تاريخ الكشف تصير `#N/A` لأنّ البحثَ في المنصّة
- * لم يجد الرقم. فالإشارةُ موجودةٌ ونحن لا نقرؤها.
- *
- * ── ولماذا مرّةً في اليوم لا كلَّ دقيقة ─────────────────────────────────────
- * المطابقةُ تتطلّب مسحَ القائمة كاملةً: ثلاثمئةٍ وأربعون صفحةً من مئة. وهو ثمنٌ
- * لا يُدفع كلَّ دقيقةٍ لأجل حذفٍ يقع مرّةً في أسابيع. فيُمسح ليلًا حين لا أحدَ
- * يعمل، ويُترك اللحظيُّ للإضافة والتعديل.
- *
- * ── وشرطُ السلامة ───────────────────────────────────────────────────────────
- * مسحٌ ناقصٌ يجعل الحيَّ يبدو محذوفًا. فإن انقطع الاتّصالُ في منتصف المسح، أو
- * أعادت المنصّةُ عددًا غيرَ معقول، يُوقَف كلُّ شيء ولا يُمسح صفٌّ واحد. الخطأُ
- * في هذا الاتّجاه يُصلَح في الدورة التالية؛ وفي الاتّجاه الآخر يُفقد عمل.
+ * opsReconcile: what disappears from the operations platform disappears here.
+ * Gap: a hard-deleted platform row never appears on any page, so realtime sync never deletes it and it stays as a phantom report counted in the invoices-not-received figure; the follow-up sheet shows it as `#N/A` in the report date.
+ * Runs daily at night because it scans the full list (340 pages of 100). Safety: if the scan is incomplete or the count implausible, nothing is removed, since a partial scan makes live rows look deleted.
  */
 const upl = require('../services/uplClient');
 
@@ -32,7 +16,7 @@ async function sweepPlatform() {
   let page = 1; let total = null; let seen = 0;
   for (;;) {
     // eslint-disable-next-line no-await-in-loop
-    // (`sort` مُهمَلٌ في المنصّة — تردّ دائمًا بترتيب الإنشاء؛ راجع jobs/opsPoll.)
+    // `sort` is ignored by the platform, which always returns creation order; see jobs/opsPoll.
     const out = await upl.get('/admin/shipments', { query: { limit: 100, page } });
     const items = (out.data && out.data.items) || [];
     const meta = (out.data && out.data.meta) || {};
@@ -67,7 +51,7 @@ async function reconcileOnce({ log = true, apply = false } = {}) {
     // Platform rows only: a row created on our system is on no platform page.
     const wf = await OperationsWorkflow.find({ externalSource: 'ops_upl' }).select('reportNumber').lean();
     const gone = wf.filter((d) => !nums.has(String(d.reportNumber).trim())).map((d) => d._id);
-    // شحناتُنا (`source: 'system'`) لا معرّفَ خارجيًّا لها ولا تُمسّ أبدًا.
+    // Our own shipments (`source: 'system'`) have no external id and are never touched.
     const so = await ShipmentOrder.find({ source: 'platform' }).select('externalId').lean();
     const goneSo = so.filter((d) => !ids.has(String(d.externalId))).map((d) => d._id);
 
@@ -94,7 +78,7 @@ function startOpsReconcile() {
     console.log('[opsReconcile] UPL not configured — reconciliation disabled');
     return;
   }
-  // بعد عشر دقائق من الإقلاع كي لا يزاحم بدءَ الخدمة، ثمّ كلَّ أربعٍ وعشرين ساعة.
+  // Ten minutes after boot so it does not compete with service startup, then every 24 hours.
   setTimeout(() => { reconcileOnce().catch(() => {}); }, 10 * 60 * 1000);
   timer = setInterval(() => { reconcileOnce().catch(() => {}); }, DAY_MS);
   console.log('Ops deletion reconciliation scheduled (daily)');

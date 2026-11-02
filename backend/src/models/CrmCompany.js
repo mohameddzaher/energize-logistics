@@ -75,11 +75,8 @@ const bustCompaniesList = () => { try { require('../utils/ttlCache').clear('crm:
 crmCompanySchema.post('save', bustCompaniesList);
 crmCompanySchema.post(/^find.*[UD]/, bustCompaniesList);
 
-// ── شركةُ العلاقات هي العميلُ الأمّ لكلّ الأقسام (services/customerHub) ─────────
-// تحمل «بطاقةَ التواصل» كاملةً — أكثرُ من بريد، والمسؤول، والضريبيّ، والسجلّ —
-// ومفتاحَ الاسم المطويّ نفسَه الذي يطوي به التحصيل (CollectionsParty.fold).
-// و`uplSeen` آخرُ ما قرأناه من المنصّة: به يُعرف أنّ المنصّة غيّرت شيئًا فعلًا
-// فلا تكتب مزامنتُها فوق ما عُدِّل عندنا.
+// The CRM company is the parent customer for all sections (services/customerHub).
+// It carries the full contact card (several emails, owner, tax, register) and the same folded-name key collections uses (CollectionsParty.fold). `uplSeen` is the last state read from the platform, to tell whether the platform really changed something so its sync does not overwrite local edits.
 crmCompanySchema.add({
   nameKey: { type: String, index: true, default: '' },
   // The customer's code — its identity in every section (utils/customerCode). Unique when set.

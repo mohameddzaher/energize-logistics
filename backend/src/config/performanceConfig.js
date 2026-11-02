@@ -39,8 +39,7 @@ const DEFAULT_TIERS = [
   },
 ];
 
-// The 1..5 answer cards shown under every criterion. A template may override the
-// wording per criterion (e.g. "٥ بلا غرامات · ٤ نادرة …") but the shape is fixed.
+// The 1..5 answer cards shown under every criterion. A template may override the wording per criterion, but the shape is fixed.
 const DEFAULT_SCALE = [
   { score: 1, en: 'Poor', ar: 'ضعيف' },
   { score: 2, en: 'Below', ar: 'دون' },

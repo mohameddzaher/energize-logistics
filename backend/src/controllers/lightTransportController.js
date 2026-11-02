@@ -1,25 +1,14 @@
 /**
- * النقلُ الخفيف — موظّفوه وسكنُهم وأوامرُ تشغيلهم.
- *
- * ── ما يُقرأ من أين ─────────────────────────────────────────────────────────
- * الإنسانُ في الموارد البشريّة، والمركبةُ في سجلّ المركبات، وما يخصّ هذا القسمَ
- * هنا. فالقائمةُ تجمع الثلاثةَ في صفٍّ واحد، ولا تُنسَخ خانةٌ لها صاحبٌ في
- * مكانٍ آخر — راجع تعليقَ models/LightTransport.
- *
- * وحالةُ الخدمة تُقرأ حيّةً من ملفّ الموارد البشريّة في كلّ نداء: من أُنهيت
- * خدمتُه هناك يُقرأ هنا خارجَ العمل في اللحظة نفسها، بلا مزامنةٍ ولا مهمّةٍ
- * مجدولةٍ تنسى.
+ * Light transport - its employees, housing and operating orders.
+ * Where each thing is read from: the person lives in HR, the vehicle in the vehicle register, and what belongs to this department is here. The list joins the three in one row, and a field owned elsewhere is never copied; see models/LightTransport.
+ * Service status is read live from the HR file on every call, so someone terminated there reads as out of work here at once, with no sync job to forget.
  */
 const mongoose = require('mongoose');
 const { listSupervisors, resolveSupervisor, syncRepSupervisor, fold: foldAr } = require('../utils/b2cSupervisors');
 const VDOC = require('../config/vehicleDocuments');
 const { VehicleRegistryConfig } = require('../models/VehicleMaster');
 
-/**
- * عتباتُ تنبيه المستندات — من إعدادات قسم المركبات، لا من أرقامٍ تُكتب هنا.
- * الوثيقةُ هناك والعتبةُ هناك؛ ولو نُسخت العتبةُ إلى هذا القسم لصار تغييرُها في
- * موضعٍ لا يُغيّرها في الآخر، فقال كارتٌ واحدٌ «حرج» في شاشةٍ و«ساري» في أخرى.
- */
+/** Document alert thresholds come from the vehicles department settings, not numbers written here. The document and its threshold live there; copying the threshold here would let a change in one place miss the other, and one card would say critical on one screen and valid on another. */
 const docAlerts = async () => {
   const hit = cache.get('lt:doc-alerts');
   if (hit !== undefined) return hit;
@@ -36,10 +25,9 @@ const { emitToAll } = require('../websocket/socketManager');
 const cache = require('../utils/ttlCache');
 
 const emit = (event, payload = {}) => {
-  // تُمحى الذاكرةُ قبل البثّ لا بعده، وإلّا قرأ المستمعون القديمَ — راجع
-  // utils/ttlCache وقاعدةَ «أعلِن بعد الإبطال». (كان البثُّ أوّلًا.)
+  // Clear the cache before broadcasting, not after, or listeners read the old data. See utils/ttlCache and the announce-after-invalidate rule. (Broadcast used to come first.)
   cache.clear('lt:');
-  try { emitToAll(event, payload); } catch (e) { /* البثُّ لا يُوقف العمل */ }
+  try { emitToAll(event, payload); } catch (e) { /* Broadcast failure must not stop the work. */ }
 };
 
 const S = (v) => String(v == null ? '' : v).trim();
@@ -47,14 +35,9 @@ const byName = (u) => [u?.firstName, u?.lastName].filter(Boolean).join(' ');
 
 
 /**
- * ── مفردتان لنوعِ المركبة الواحد ────────────────────────────────────────────
- * سجلُّ المركبات يكتب «دراجة آلية» (نوعُ التسجيل الرسميّ) وشيتُ القسم يكتب
- * «دراجة نارية». وهما شيءٌ واحد. فالفلترُ على إحداهما كان يردّ صفرًا من الجهة
- * الأخرى: «الدراجات» تُظهر مئةً وخمسًا وتسعين مركبةً وصفرَ موظّف.
- *
- * والنوعُ يخصّ المركبةَ لا الإنسان، فيُقرأ من سجلّ المركبات متى كانت مربوطةً،
- * وتبقى خانةُ الموظّف لمن لا مركبةَ له في السجلّ. وهذا الجدولُ يجمع المفردتين
- * كي يُفلتَر بأيٍّ منهما.
+ * Two spellings for one vehicle type.
+ * The vehicle register writes the official registration type and the department sheet writes a colloquial variant for the same motorbike type. Filtering by one returned zero from the other side: 'motorbikes' showed 195 vehicles and zero employees.
+ * The type belongs to the vehicle, so it is read from the vehicle register when linked, and the employee field remains for those without a registered vehicle. This table merges both spellings so either filters.
  */
 const TYPE_ALIASES = [
   ['دراجة آلية', 'دراجة نارية', 'دراجه ناريه', 'دراجة'],
@@ -70,13 +53,9 @@ const typeKey = (v) => {
 
 
 /**
- * ── واللوحةُ تُقرأ بأيّ ترتيب ───────────────────────────────────────────────
- * سجلُّ المركبات يكتبها «ص ب 7918» والشيتُ يكتبها «7918 ص ب» — والمخالفةُ تُملى
- * بالهاتف بأيّهما وقع. فالبحثُ الحرفيُّ يردّ صفرًا والمركبةُ عندنا، وهو ما وقع
- * فعلًا: سُئل عن سبع لوحاتٍ فلم تظهر واحدةٌ منها وهي مسجّلة.
- *
- * فيُطوى ترتيبُ الحروف والأرقام: تُقارَن اللوحةُ بمفتاحها (أرقامٌ + حروفٌ
- * مرتَّبة) كما يفعل قسمُ المركبات نفسُه، فما يُكتب بأيّ ترتيبٍ يجد صاحبَه.
+ * A plate is read in any order.
+ * The vehicle register writes it letters-then-digits and the sheet digits-then-letters, and a violation is dictated by phone in either. A literal search returned zero though the vehicle exists; seven plates were once asked for and none appeared.
+ * So letter/digit order is folded: the plate is compared by its key (digits + sorted letters), as the vehicles department does itself.
  */
 const plateKeyOf = (p) => {
   const w = S(p).replace(/[٠-٩]/g, (d) => '٠١٢٣٤٥٦٧٨٩'.indexOf(d))
@@ -87,7 +66,7 @@ const plateKeyOf = (p) => {
   return k === '|' ? null : k;
 };
 
-/** أهذا النصُّ لوحةٌ؟ حروفٌ وأرقامٌ معًا، وأربعةُ أرقامٍ فأقلّ — لا اسمٌ ولا هويّة. */
+/** Is this text a plate? Letters and digits together, and at most four digits - not a name or an ID number. */
 const looksLikePlate = (t) => {
   const w = S(t);
   const digits = (w.match(/[0-9٠-٩]/g) || []).length;
@@ -96,21 +75,15 @@ const looksLikePlate = (t) => {
 };
 
 /**
- * ── حالةُ العمل: يعمل · إجازة · موقوف · حادث ────────────────────────────────
- * التوظيفُ وإنهاءُ الخدمة من الموارد البشريّة وحدَها (قرارُ ٢٠٢٦/١٠/١٩)، وحالةُ
- * اليوم التشغيليّةُ يكتبها القسمُ في `opStatus` (طلبُ ٢٠٢٦/١٠/٢١). والقاعدةُ
- * كاملةً في utils/b2cBoard — تقرؤها اللوحةُ والقائمتان فلا يختلف رقمٌ عن قائمته.
+ * Work status: working, on leave, suspended, accident.
+ * Hiring and termination belong to HR alone; the operating day status is written by the department in `opStatus`. The full rule is in utils/b2cBoard, read by the dashboard and both lists so a figure never differs from its list.
  */
 const BOARD = require('../utils/b2cBoard');
 const { shownStatus } = BOARD;
 
 /**
- * ── وثيقتا المركبة كما تُقرآن في هذا القسم ──────────────────────────────────
- *
- * بطاقةُ التشغيل والفحصُ الدوريُّ يعيشان على سجلّ المركبات، وعتباتُ التنبيه
- * (حرج · تحذير · قريب) تُضبَط في إعدادات قسم المركبات. فتُقرأ الحالةُ بالحساب
- * نفسِه (`VDOC.stateOf`) وبالعتبات نفسِها — وإلّا قالت شاشتان لوثيقةٍ واحدةٍ
- * حالتين، وهو أسوأُ من ألّا تُقال.
+ * The vehicle's two documents as read in this section.
+ * The operating card and the periodic inspection live on the vehicle register, and alert thresholds (critical, warning, near) are set in the vehicles department settings. State is computed the same way (`VDOC.stateOf`) with the same thresholds; otherwise two screens would give one document two states.
  */
 const docOf = (vehicle, key, alerts) => {
   const d = vehicle && typeof vehicle === 'object' ? vehicle[key] : null;
@@ -126,42 +99,36 @@ const docOf = (vehicle, key, alerts) => {
 
 const decorate = (row, alerts = {}) => ({
   ...row,
-  // عبارةُ «أُضيف من شيت المركبات…» من الاستيراد ليست ملاحظةً — النظامُ هو المرجع.
+  // The import phrase meaning added from the vehicle sheet is not a note; the system is the reference.
   notesAr: require('../utils/importLabels').stripImportNote(row.notesAr),
   ...(Array.isArray(row.history) ? { history: row.history.map(require('../utils/importLabels').cleanHistoryEntry) } : {}),
   workStatusShown: shownStatus(row),
-  // «كارتُ التشغيل والفحصُ» — من مركبته، بحالتهما لا بتاريخهما وحدَه.
+  // The operating card and inspection of his vehicle, by state and not just date.
   operatingCard: docOf(row.vehicle, 'operatingCard', alerts),
   inspection: docOf(row.vehicle, 'inspection', alerts),
-  // نوعُ المركبة من سجلّها متى كانت مربوطةً — وهو مكتوبٌ هناك رسميًّا.
+  // Vehicle type from its register when linked, where it is officially recorded.
   vehicleTypeShown: (row.vehicle && typeof row.vehicle === 'object' ? row.vehicle.registrationTypeAr : '') || row.vehicleTypeAr || '',
-  // ومن أين جاء الخبر — فلا يُسأل «مين غيّر الحالة؟».
+  // And where the information came from, so nobody asks who changed the status.
   statusSource: BOARD.statusSource(row),
-  // الفئةُ ونوعُ الارتباط والسجلّ — بالمعاني التي تعدّ بها اللوحة (utils/b2cBoard).
+  // Category, linkage type and register, with the meanings the dashboard counts by (utils/b2cBoard).
   categoryShown: BOARD.categoryOf(row),
   engagementShown: BOARD.engagementOf(row),
   registerShown: BOARD.registerOf(row),
-  // تفويضُ مركبته من سجلّ المركبات (المرجع) — `BOARD.authOf` وحدَها تقرؤه.
+  // The authorization of his vehicle from the vehicle register (the reference); only `BOARD.authOf` reads it.
   authState: row.vehicle && typeof row.vehicle === 'object' ? BOARD.authOf(row.vehicle) : '',
   hrLinked: !!row.employee,
-  // نوعُ العقد كما يُعرَض ويُعَدّ: من الموارد البشريّة لمن له ملف — راجع contractKindOf.
+  // Contract type as displayed and counted: from HR for those with a file. See contractKindOf.
   contractTypeShown: ({ sponsored: 'كفالة', freelance: 'فري لانسر', users: 'يوزرات' })[contractKindOf(row)] || '',
   employeeNumber: row.employee && typeof row.employee === 'object' ? row.employee.employeeNumber : '',
 });
 
 /**
- * ── والفلترُ بالمشرف يقبل الحساب والاسم ────────────────────────────────────
- * صار المشرفُ حسابًا، فالفلترُ بالمعرِّف. ويبقى الاسمُ مقبولًا لأنّ روابطَ
- * محفوظةً ونسخًا من التطبيق تُرسله، ولأنّ من لا حسابَ لمشرفه بعد يبقى مفلتَرًا
- * باسمه المكتوب — فلا يختفي صفٌّ من شاشةٍ كان يُرى فيها.
+ * The supervisor filter accepts an account or a name.
+ * Supervisor is now an account, so the filter uses the id. The name stays accepted because saved links and app copies send it, and someone whose supervisor has no account yet stays filtered by the written name, so no row vanishes from a screen where it was seen.
  */
 /**
- * ── قطاعُ النقل الخفيف مطويًّا ────────────────────────────────────────────────
- *
- * قسمُ الأفراد (b2c) هو قسمُ النقل الخفيف، ومركباتُه تُعرَف بقطاعها في سجلّ
- * المركبات. وكان المطابقُ نصًّا حرفيًّا («النقل الخفيف») — فمركبةٌ تُنشَأ هناك
- * بكتابة «نقل خفيف» أو بمسافةٍ زائدة لا تصل إلى هذا القسم أبدًا، ولا يُعرَف
- * لماذا. فالمطابقةُ بالكلمة: ما فيه «خفيف» فهو منه.
+ * Light-transport sector, folded.
+ * The individuals (b2c) department is the light-transport department, and its vehicles are recognised by sector in the vehicle register. Matching the literal sector string missed vehicles created there with a variant spelling or an extra space, with no clue why. Matching is by the word: anything containing the light-transport keyword belongs to it.
  */
 const LIGHT_SECTOR = /خفيف/;
 
@@ -174,18 +141,14 @@ const supervisorFilter = (filter, value, field = 'supervisorUser') => {
   else filter[nameField] = v;
 };
 
-// ── قائمةُ الموظّفين ────────────────────────────────────────────────────────
+// Employee list
 const LIST_POPULATE = [
   { path: 'employee', select: 'employeeNumber arabicName firstName lastName employmentStatus phone registerNumber staffCategory jobTitle department project' },
   { path: 'supervisor', select: 'arabicName firstName lastName employeeNumber' },
   { path: 'supervisorUser', select: 'firstName lastName email role' },
   { path: 'dutySupervisorUser', select: 'firstName lastName email role' },
-  // ── وبطاقةُ التشغيل والفحصُ يُقرآن مع المركبة ──────────────────────────
-  // «كارتُ تشغيلِ مَن ينتهي هذا الشهر؟» سؤالٌ يُسأل في هذا القسم لا في قسم
-  // المركبات: المشرفُ يوقف الرجلَ لا المركبة. والوثيقتان على سجلّ المركبات —
-  // فتُقرآن معه في النداء نفسِه، ولا تُنسَخان هنا فتفترقا عن أصلهما.
-  // ومعها ورقةُ تفويضها وقائدُها الفعليّ: الشيتُ يحملهما عمودين، والسؤالُ عنهما
-  // يقع على الرجل لا على المركبة — «مين المفوَّض؟ ومين اللي راكبها فعلًا؟».
+  // The operating card and inspection are read with the vehicle.
+  // The question 'whose operating card expires this month' is asked in this section, not in vehicles: the supervisor stops the person, not the vehicle. Both documents live on the vehicle register, so they are read with it in the same call and not copied here. The authorization sheet and the actual driver come along too: the sheet carries them as two columns and the question is about the person.
   { path: 'vehicle', select: 'plateNumber serialNumber registrationTypeAr brandAr modelAr operatingCard inspection authorizedPerson actualDriver' },
   { path: 'housing', select: 'name cityAr' },
 ];
@@ -195,7 +158,7 @@ exports.listEmployees = async (req, res) => {
     const q = req.query || {};
     const filter = {};
     if (q.active !== 'all') filter.isActive = { $ne: false };
-    // قيمٌ مفصولةٌ بفاصلة (فلاترُ اللوحة السريعة) أو قيمةٌ واحدة كما كانت.
+    // Comma-separated values (quick dashboard filters) or a single value as before.
     for (const [key, field] of [['jobTitle', 'jobTitleAr'],
       ['contractType', 'contractTypeAr'], ['register', 'registerNumber'],
       ['staffKind', 'staffKind']]) {
@@ -206,9 +169,7 @@ exports.listEmployees = async (req, res) => {
       const v = BOARD.vals(q.city);
       filter.cityAr = { $in: v.includes('—') ? [...v, '', null] : v };
     }
-    // المشروعُ بالطيّ كما تعدّه اللوحة (`projectKey`): «هنقرستيشن» يفتح
-    // «هنجرستيشن» أيضًا — وإلّا قال الكارتُ عددًا وفتح الرابطُ نصفَه.
-    // و«(غير محدد)» اسمُ اللوحة لمن لا مشروعَ مكتوبًا له — فيفتح الفارغين.
+    // Project folded as the dashboard counts it (`projectKey`): one spelling variant also opens the other, otherwise the card count and the link would differ by half. The dashboard's 'unspecified' label opens those with no project.
     if (BOARD.vals(q.project).length) {
       const wants = new Set(BOARD.vals(q.project).map(BOARD.projectKey));
       const names = (await LightTransportEmployee.distinct('projectAr')).filter((n) => wants.has(BOARD.projectKey(n)));
@@ -217,24 +178,19 @@ exports.listEmployees = async (req, res) => {
     supervisorFilter(filter, q.supervisor);
     supervisorFilter(filter, q.dutySupervisor, 'dutySupervisorUser');
     if (S(q.housing)) filter.housing = S(q.housing) === 'none' ? null : S(q.housing);
-    // ومن له مركبةٌ ومن لا مركبةَ له — سؤالٌ يُسأل كثيرًا.
+    // Those with a vehicle and those without; a frequent question.
     if (q.hasVehicle === 'yes') filter.vehicle = { $ne: null };
     if (q.hasVehicle === 'no') filter.vehicle = null;
     if (S(q.hiredFrom) || S(q.hiredTo)) {
       filter.hireDate = {};
       if (S(q.hiredFrom)) filter.hireDate.$gte = new Date(S(q.hiredFrom));
-      // الحدُّ الأعلى شاملٌ لليوم نفسِه — وإلّا سقط آخرُ يومٍ من كلّ مدّة.
+      // The upper bound is inclusive of that day, otherwise the last day of every range drops.
       if (S(q.hiredTo)) filter.hireDate.$lte = new Date(`${S(q.hiredTo)}T23:59:59.999Z`);
     }
     /**
-     * ── والبحثُ يجد بأيّ رقمٍ في يدِ السائل ─────────────────────────────────
-     * مَن يسأل عن سائقٍ يحمل ما وقع في يده: اسمَه، أو لوحتَه، أو رقمَ هويّته أو
-     * إقامته، أو الرقمَ التسلسليَّ للمركبة، أو رقمَ التفويض. وثلاثةٌ من هذه لا
-     * توجد في صفّ الموظّف أصلًا — هي في سجلّ المركبات. فبحثٌ يقتصر على صفوفنا
-     * يقول «لا نتائج» والمركبةُ عندنا.
-     *
-     * فالرقمُ يُبحَث عنه في سجلّ المركبات أوّلًا، وما يُوجَد يُضاف إلى الشرط
-     * بمعرِّف المركبة — سؤالٌ صغيرٌ واحد، وجوابُه يفتح البابَ من الجهة الأخرى.
+     * Search matches any number in the asker's hand.
+     * Someone asking about a driver holds whatever came to hand: name, plate, ID or residence number, vehicle serial number, or authorization number. Three of these are not on the employee row at all but in the vehicle register, so a search limited to our rows says no results while the vehicle is ours.
+     * So the number is looked up in the vehicle register first, and matches are added to the condition by vehicle id: one small query whose answer opens the door from the other side.
      */
     if (S(q.q)) {
       const { arabicSearchRegex } = require('../utils/arabicSearch');
@@ -249,8 +205,7 @@ exports.listEmployees = async (req, res) => {
           { 'authorizedPerson.authorizationNumber': rx }],
       }).select('_id').limit(400).lean();
       const ids = vm.map((v) => v._id);
-      // ولو بدا النصُّ لوحةً، تُطابَق بمفتاحها المطويّ — فترتيبُ الحروف والأرقام
-      // لا يمنع العثور. راجع `plateKeyOf`.
+      // Even if the text looks like a plate, it is matched by its folded key so letter/digit order does not block a find. See `plateKeyOf`.
       if (looksLikePlate(term)) {
         const want = plateKeyOf(term);
         const byKey = await VehicleMaster.find({}).select('_id plateNumber').lean();
@@ -264,21 +219,19 @@ exports.listEmployees = async (req, res) => {
       filter.$or = or;
     }
 
-    // المؤرشَفُ لا صفَّ له هنا — كأنّه حُذف؛ والمنتهي يبقى صفًّا (تحت).
+    // An archived employee has no row here, as if deleted; a terminated one stays as a row (below).
     const { endedStaff, notArchivedRow, andAll } = require('../utils/archivedHidden');
     let rows = await LightTransportEmployee.find(andAll(filter, notArchivedRow(await endedStaff())))
       .populate(LIST_POPULATE).sort({ name: 1 }).lean();
     await BOARD.markHrLeave(rows);
     await require('../utils/ltRental').markRentals(rows);
     const alerts = await docAlerts();
-    // وانتهاءُ إقامة المندوب ورخصةِ قيادته من ملفّه (utils/personDocDates).
+    // Residence and driving licence expiry of the rider come from his file (utils/personDocDates).
     const personDocs = await require('../utils/personDocDates').docDatesFor(rows);
     rows = rows.map((r) => ({ ...decorate(r, alerts), ...personDocs(r) }));
     /**
-     * ── وفلاترُ اللوحة تُطبَّق بمعناها في اللوحة ──────────────────────────────
-     * الحالةُ والفئةُ ونوعُ الارتباط والسجلُّ والمندوبُ والمركبةُ والتفويض —
-     * مشتقّةٌ من سجلَّين أو ثلاثة، فتُطبَّق بعد الاشتقاق بـ`personTests` نفسِها التي
-     * تعدّ بها اللوحة: الرقمُ المضغوطُ يفتح أصحابَه بأعيانهم.
+     * Dashboard filters are applied with their dashboard meaning.
+     * Status, category, linkage type, register, rider, vehicle and authorization are derived from two or three registers, so they apply after derivation using the same `personTests` the dashboard counts with: a clicked number opens exactly its members.
      */
     const tests = BOARD.personTests(
       Object.fromEntries(['status', 'vehicleType', 'rep', 'vehicle', 'auth', 'cr', 'engagement', 'category'].map((k) => [k, q[k]])),
@@ -286,10 +239,8 @@ exports.listEmployees = async (req, res) => {
     );
     rows = rows.filter((r) => tests(r));
     /**
-     * ── وأرقامُ «إجمالي المناديب» تُفتَح بأصحابها ─────────────────────────────
-     * نوعُ العقد بالطيّ نفسِه الذي يعدّ به `repsBreakdown` (`contractIs`)، و«none»
-     * لمن لا نوعَ عقدٍ مكتوبًا له. و`inService=1` يُسقِط المنتهين كما تُسقطهم
-     * اللوحة — فالقائمةُ المفتوحة من رقمٍ تعرض الذين عُدّوا فيه بأعيانهم.
+     * The 'total riders' numbers open with their members.
+     * Contract type is folded as `repsBreakdown` counts it (`contractIs`), and 'none' means no contract type written. `inService=1` drops terminated staff as the dashboard does, so a list opened from a number shows exactly those counted in it.
      */
     const ck = S(q.contractKind);
     if (ck === 'sponsored' || ck === 'freelance' || ck === 'users') rows = rows.filter((r) => contractIs(r, ck));
@@ -304,23 +255,15 @@ exports.listEmployees = async (req, res) => {
 };
 
 /**
- * ── منتهي الخدمة لا يظهر في اللوحة ─────────────────────────────────────────
- * قاعدةُ صاحب الشركة (٢٠٢٦/١٠/١٩) في كلّ الأقسام عدا الموارد البشريّة: مَن
- * انتهت خدمتُه لا يدخل رقمًا واحدًا من أرقام اللوحة — ولا كارتَ «أُنهيت خدمتهم»
- * ولا توزيعَ الحالات. كان «الإداريّون ١٦» وواحدٌ منهم منتهٍ في الموارد
- * البشريّة، والمراجِعُ يقارن بالموارد البشريّة فيجد ١٥. ويبقى صفُّه في قائمة
- * الموظّفين يُبحَث عنه ويُراجَع ملفُّه — القائمةُ سجلٌّ، واللوحةُ أرقام.
- * والمنتهي: «إنهاء خدمة» (من الموارد البشريّة) أو صفٌّ أُخرج من سجلّ القسم.
+ * Terminated staff do not appear in the dashboard.
+ * Rule for every department except HR: anyone whose service ended contributes to no dashboard figure, neither the terminated card nor the status distribution. A figure of 16 administrators included one terminated in HR, and a reviewer comparing with HR found 15. His row stays in the employee list to search and review his file: the list is a register, the dashboard is figures.
+ * Terminated means the termination status (from HR) or a row removed from the department register.
  */
 const ENDED = 'إنهاء خدمة';
 const isEnded = (r) => r.workStatusShown === ENDED || r.isActive === false;
 exports.isEnded = isEnded;
 
-/**
- * صفوفُ القسم لمن انتهت خدمتُه — ليُستثنَوا من عدِّ الساكنين. السكنُ سريرٌ يُعَدّ:
- * منتهٍ بقي اسمُه على غرفةٍ يجعلها «مكتملة» ويردّ مَن يحتاجها. والحالةُ من
- * الموارد البشريّة متى وُجد ملف، وإلّا آخرُ ما كُتب في السجلّ.
- */
+/** Department rows of terminated staff, to exclude them from the housing count. A bed is a counted resource: a terminated name left on a room makes it full and turns away someone who needs it. Status comes from HR when a file exists, otherwise from the last register entry. */
 async function endedRowIds() {
   const { endedStaff } = require('../utils/endedStaff');
   const sets = await endedStaff();
@@ -331,23 +274,15 @@ async function endedRowIds() {
   return rows.map((r) => r._id);
 }
 
+/** Sponsorship and freelancer are folded, not matched as text: the sheet writes several spellings of each. Anything without a written contract type is neither. */
 /**
- * الكفالةُ والفري لانسر بالطيّ لا بالنصّ: الشيتُ يكتب «كفاله» و«كفالة» و«فري
- * لانسر» و«فريلانسر». وما لا نوعَ عقدٍ مكتوبًا له ليس أيًّا منهما.
- */
-/**
- * ── وكفالةُ مَن له ملفٌّ في الموارد البشريّة من ملفّه ──────────────────────
- * قاعدةُ صاحب الشركة (٢٠٢٦/١٠/١٩): على الكفالة / فريلانسر من «رقم السجل
- * التجاري» في الموارد البشريّة (utils/hrEngagement). كان القسمُ يكتب خانتَه
- * وحدَه، فبقيت فارغةً لسبعةٍ نوعُهم معروفٌ هناك («بلا نوع عقد»). وخانةُ القسم
- * تبقى لمن لا ملفَّ له وحدَه.
+ * Sponsorship of someone with an HR file comes from the file.
+ * Rule: sponsorship/freelancer is derived from the commercial registration number in HR (utils/hrEngagement). The department used to write its own field, leaving it empty for seven people whose type is known there (no contract type). The department field now serves only those without a file.
  */
 const ENG = require('../utils/hrEngagement');
 const contractKindOf = (r) => {
-  // ── واليوزرُ المؤجَّرُ ليس كفالة ─────────────────────────────────────────────
-  // كانت كلُّ خانةٍ مكتوبةٍ غيرِ «فريلانسر» تُقرأ «كفالة»، فعُدَّ يوزراتُ نينجا
-  // الثلاثةَ عشرَ على الكفالة: ١١٤ في اللوحة و٩٨ في شيت التقرير (٢٠٢٦/١٠/٢٠).
-  // واليوزرُ المؤجَّر تأجيرٌ ساري مربوطٌ بصفّه، والنصُّ احتياطٌ لمن لم يُربط — utils/ltRental.
+  // A rented user account is not sponsorship.
+  // Every written value other than freelancer used to read as sponsorship, so the 13 Ninja user accounts were counted under sponsorship: 114 on the dashboard against 98 in the report sheet. A rented user is an active rental linked to its row; the text is a fallback for unlinked ones. See utils/ltRental.
   if (require('../utils/ltRental').isRented(r)) return 'users';
   if (r.employee && typeof r.employee === 'object') {
     const e = ENG.engagementOf(r.employee);
@@ -359,11 +294,8 @@ const contractKindOf = (r) => {
 const contractIs = (r, kind) => contractKindOf(r) === kind;
 
 /**
- * ── «إجماليُّ المناديب»: كفالة + فري لانسر + يوزرات ─────────────────────────
- * طلبُ صاحب الشركة (٢٠٢٦/١٠/١٩): المناديبُ على رأس العمل بنوع عقدهم، ومعهم
- * اليوزراتُ المؤجَّرة (تأجير اليوزرات) — والكلُّ لكلّ مشروع. والمندوبُ الذي لا
- * نوعَ عقدٍ مكتوبًا له يُعَدّ وحدَه («بلا نوع عقد») فلا يختلّ الجمع.
- * المشروعُ يُجمَع بالطيّ: «هنجرستيشن» و«هنقرستيشن» مشروعٌ واحد.
+ * Total riders: sponsorship + freelancer + user accounts.
+ * Working riders by contract type, plus rented user accounts (user rental), all per project. A rider with no contract type is counted on its own (no contract type) so the sum holds. Project is folded: the two spellings of one project are one.
  */
 const projectKey = (p) => foldAr(String(p || '')).replace(/\s+/g, '').replace(/ق/g, 'ج');
 async function repsBreakdown(rows, projectFilter) {
@@ -375,10 +307,8 @@ async function repsBreakdown(rows, projectFilter) {
     if (!by.has(k)) by.set(k, { project: S(name) || '(غير محدد)', sponsored: 0, freelance: 0, users: 0, noContract: 0 });
     return by.get(k);
   };
-  // ── على رأس العمل وحدَهم ────────────────────────────────────────────────
-  // كانت تُعَدّ صفوفُ القسم كلُّها، ومنها ستّةُ فري لانسر «إنهاء خدمة» بلا ملفٍّ
-  // في الموارد البشريّة: ٦٢ في اللوحة و٥٦ في الشيت. والمنتهي لا يُعَدّ هنا كما
-  // لا يُعَدّ في كروت الموظّفين (totalsOf).
+  // Working staff only.
+  // All department rows used to be counted, including six terminated freelancers with no HR file: 62 on the dashboard against 56 in the sheet. A terminated person is not counted here, as in the employee cards (totalsOf).
   const reps = rows.filter((r) => (r.staffKind === 'rep' || contractIs(r, 'users')) && !isEnded(r));
   for (const r of reps) {
     const o = slot(r.projectAr);
@@ -404,9 +334,9 @@ async function repsBreakdown(rows, projectFilter) {
   };
 }
 
-/** الأعدادُ التي تُقرأ في الكاردات — محسوبةٌ على ما بعد الفلترة. */
+/** Counts read in the cards - computed after filtering. */
 const totalsOf = (allRows, { includeEnded = false } = {}) => {
-  // من فلتر على «إنهاء خدمة» صراحةً سأل عنهم — فيُعَدّون له.
+  // Someone filtering explicitly on termination asked about them, so they are counted for that filter.
   const rows = includeEnded ? allRows : allRows.filter((r) => !isEnded(r));
   const count = (fn) => rows.filter(fn).length;
   const group = (fn) => {
@@ -414,19 +344,12 @@ const totalsOf = (allRows, { includeEnded = false } = {}) => {
     for (const r of rows) { const k = fn(r) || '—'; o[k] = (o[k] || 0) + 1; }
     return o;
   };
-  // «على رأس العمل» = حالتُه «يعمل» — الفلترُ نفسُه الذي يفتحه الكارت. كان «كلَّ
-  // مَن ليس منتهيًا ولا موقوفًا»، فدخل فيه مَن في إجازة: الكارتُ ١٦١ وفلترُه ١٥٧.
-  // والآن: يعمل + إجازة + متوقف = الإجمالي، كلٌّ في كارته.
+  // Working means status 'working', the same filter the card opens. It used to be everyone not terminated or suspended, which included people on leave: card 161 against filter 157. Now working + on leave + suspended = total, each in its own card.
   const working = (r) => r.workStatusShown === 'يعمل';
   /**
-   * ── الكفالةُ والفري لانسر: كارتان لا خانةُ فلترٍ وحدَها ────────────────────
-   * «كم على الكفالة وكم فري لانسر» رقمان يُسألان أوّلَ ما تُفتَح الشاشة — وكانا
-   * يُعرَفان بفتح قائمة الفلترة واختيار كلٍّ على حدة ثمّ قراءة العدّاد. فصارا
-   * كارتين ثابتين، محسوبين على ما بعد الفلترة كسائر الكاردات: من فلتر على
-   * مشروعٍ قرأ كفالةَ هذا المشروع وحدَه.
-   *
-   * والمطابقةُ بالطيّ لا بالنصّ: الشيتُ يكتب «كفاله» و«كفالة» و«فري لانسر»
-   * و«فريلانسر» — وأربعةُ أشكالٍ لمعنيَين تُنتِج كارتًا يقرأ صفرًا.
+   * Sponsorship and freelancer: two cards, not just a filter option.
+   * How many are on sponsorship and how many freelancers are asked first when the screen opens, and used to need opening the filter, choosing each and reading the counter. They are now two fixed cards computed after filtering like the rest: filtering on a project reads that project's sponsorship only.
+   * Matching is folded, not textual: the sheet writes four spellings for two meanings, and text matching gives a zero card.
    */
   const docState = (r, key, want) => {
     const st = r[key]?.state;
@@ -434,13 +357,12 @@ const totalsOf = (allRows, { includeEnded = false } = {}) => {
   };
   return {
     total: rows.length,
-    // وكلُّ صفوف القائمة (ومعها المنتهون) — للعلم لا للعدّ.
+    // All list rows (including terminated), for information, not counting.
     listed: allRows.length,
     endedHidden: allRows.length - rows.length,
     sponsored: count((r) => contractIs(r, 'sponsored')),
     freelance: count((r) => contractIs(r, 'freelance')),
-    // كارتُ تشغيلٍ أو فحصٌ منتهيان أو على وشك — الرجلُ يُوقَف لا المركبة.
-    // ومن لا مشرفَ تفقّدٍ له لا يظهر لأحدٍ في شاشة التفقّد — رقمٌ يُتابَع حتّى يصفر.
+    // An expired or nearly expired operating card or inspection: the person is stopped, not the vehicle. Someone with no inspection supervisor appears to nobody on the inspection screen, so the number is tracked until it reaches zero.
     noDutySupervisor: count((r) => r.staffKind === 'rep' && !r.dutySupervisorUser),
     cardGap: count((r) => docState(r, 'operatingCard', 'gap')),
     cardSoon: count((r) => ['warning', 'upcoming'].includes(r.operatingCard?.state)),
@@ -448,8 +370,7 @@ const totalsOf = (allRows, { includeEnded = false } = {}) => {
     inspectionSoon: count((r) => ['warning', 'upcoming'].includes(r.inspection?.state)),
     reps: count((r) => r.staffKind === 'rep'),
     admins: count((r) => r.staffKind === 'admin'),
-    // والسائقُ ميدانٌ لا مكتب، ومن لا وظيفةَ مكتوبةً له لا تنطبق عليه القاعدة —
-    // كلاهما عددٌ قائمٌ بذاته لا زيادةٌ في «الإداريّين».
+    // A driver works in the field, and someone with no written job does not fall under the rule; each is its own count, not an addition to administrators.
     drivers: count((r) => r.staffKind === 'driver'),
     unknownKind: count((r) => r.staffKind === 'unknown' || !String(r.jobTitleAr || '').trim()),
     working: count(working),
@@ -457,7 +378,7 @@ const totalsOf = (allRows, { includeEnded = false } = {}) => {
     onLeave: count((r) => r.workStatusShown === 'إجازة' || r.workStatusShown === 'اجازه'),
     suspended: count((r) => r.workStatusShown === BOARD.SUSPENDED),
     accident: count((r) => r.workStatusShown === BOARD.ACCIDENT),
-    // صفرٌ ما لم يُسأل عنهم صراحةً بفلتر «إنهاء خدمة».
+    // Zero unless asked for explicitly with the termination filter.
     terminated: count(isEnded),
     withVehicle: count((r) => !!r.vehicle),
     withoutVehicle: count((r) => !r.vehicle),
@@ -476,10 +397,7 @@ const totalsOf = (allRows, { includeEnded = false } = {}) => {
   };
 };
 
-/**
- * قيمُ الفلاتر تُبنى من السجلّ نفسِه لا تُكتب يدًا — فما يُضاف من إعدادات القسم
- * يظهر في الفلتر بلا نشرة، وما لا يُستعمَل لا يزحم القائمة.
- */
+/** Filter values are built from the register itself, not hand-written: anything added in department settings shows without a release, and unused values do not crowd the list. */
 const optionsOf = async () => cache.wrap('lt:options', 60 * 1000, async () => {
   const [projects, cities, jobs, contracts, registers, vehicleTypes, supervisors, housings,
     unlinkedSupervisors] = await Promise.all([
@@ -488,8 +406,7 @@ const optionsOf = async () => cache.wrap('lt:options', 60 * 1000, async () => {
     LightTransportEmployee.distinct('jobTitleAr'),
     LightTransportEmployee.distinct('contractTypeAr'),
     LightTransportEmployee.distinct('registerNumber'),
-    // الأنواعُ من السجلَّين: خانةُ الموظّف ونوعُ التسجيل في سجلّ المركبات، مطويّةً
-    // بمفردةٍ واحدة — وإلّا عُرض «دراجة نارية» و«دراجة آلية» خيارين لشيءٍ واحد.
+    // Types come from two registers: the employee field and the vehicle register's registration type, folded to one word; otherwise two spellings of one motorbike type would show as two options.
     (async () => {
       const [a, b] = await Promise.all([
         LightTransportEmployee.distinct('vehicleTypeAr'),
@@ -498,17 +415,13 @@ const optionsOf = async () => cache.wrap('lt:options', 60 * 1000, async () => {
       return [...new Set([...a, ...b].filter(Boolean).map(typeKey))];
     })(),
     /**
-     * ── والمشرفون حساباتٌ لا أسماءٌ مكتوبة ─────────────────────────────────
-     * كانت القائمةُ `distinct('supervisorName')` — أي ما كُتب في الصفوف. فهي
-     * تعرض ما أُدخل ولو بصيغتين، ولا تعرض مشرفًا عُيِّن أمسِ ولم يُسنَد إليه
-     * أحدٌ بعد، ولا تعرف أنّ لصاحب الاسم حسابًا يدخل به.
-     *
-     * فصارت من الحسابات: كلُّ حسابٍ نشطٍ بدورِ إشرافٍ في القسم، ومعه اسمُه
-     * العربيُّ من ملفّه ودورُه. راجع `utils/b2cSupervisors`.
+     * Supervisors are accounts, not written names.
+     * The list used to be `distinct('supervisorName')`, i.e. whatever was typed in rows: it showed variants of one name, missed a supervisor appointed yesterday with nobody assigned yet, and did not know the name has a login.
+     * It now comes from accounts: every active account with a supervision role in the department, with its Arabic name from its file and its role. See `utils/b2cSupervisors`.
      */
     listSupervisors(),
     LightTransportHousing.find({ isActive: { $ne: false } }).select('name').lean(),
-    // ومن كُتب في الصفوف ولا حسابَ له بعد — يبقى في الفلتر كي لا يختفي صفُّه.
+    // Names written in rows with no account yet stay in the filter so their rows do not vanish.
     LightTransportEmployee.distinct('supervisorName', { supervisorUser: null }),
   ]);
   const clean = (a) => a.filter(Boolean).sort((x, y) => String(x).localeCompare(String(y), 'ar'));
@@ -523,10 +436,8 @@ const optionsOf = async () => cache.wrap('lt:options', 60 * 1000, async () => {
 
 
 /**
- * قائمةُ المشرفين وحدَها — نداءٌ صغيرٌ يقرؤه الهاتف.
- *
- * الويبُ يأخذها ضمن ردّ القائمة (`options.supervisor`)، والهاتفُ يبني حقلَ
- * الاختيار من نقطةٍ مستقلّة. ومصدرُهما واحد: `listSupervisors`.
+ * The supervisor list alone, a small call the phone reads.
+ * The web takes it inside the list response (`options.supervisor`) and the phone builds its picker from a separate endpoint; both share one source, `listSupervisors`.
  */
 exports.supervisors = async (req, res) => {
   try {
@@ -538,41 +449,22 @@ exports.supervisors = async (req, res) => {
 };
 
 /**
- * ── لوحةُ القسم: سؤالٌ واحدٌ لا عشرة ────────────────────────────────────────
- * اللوحةُ تُقرأ في نداءٍ واحد: الموظّفون والمركباتُ والسكنُ معًا. وعشرةُ نداءاتٍ
- * متتالية تعني عشرةَ دوراتٍ على القاعدة وشاشةً تُبنى على مراحل.
- *
- * وكلُّ الأعداد تُحسَب على **ما بعد الفلترة**، فالكارتُ والجدولُ لا يختلفان: من
- * فلتر على مشروعٍ ثمّ قرأ «على الكفالة ٩» يجد التسعةَ أنفسَهم في القائمة.
- *
- * والمركباتُ تُعَدّ من سجلّ المركبات لا من صفوف الموظّفين: مركبةٌ لا راكبَ لها
- * لا تظهر في صفوفهم، وهي أوّلُ ما يُسأل عنه («كام مركبة واقفة؟»).
+ * Department dashboard: one query, not ten.
+ * It is read in one call: employees, vehicles and housing together; ten sequential calls mean ten database round trips and a screen built in stages.
+ * All counts are computed after filtering, so card and table agree: filtering on a project and reading 'sponsorship 9' finds the same nine in the list.
+ * Vehicles are counted from the vehicle register, not from employee rows: a vehicle without a rider is in none of their rows and is the first thing asked about (how many vehicles are idle).
  */
 /**
- * ── الأرقامُ لا تتحرّك تحت مَن يضغطها ───────────────────────────────────────
- *
- * كانت كلُّ أرقام اللوحة تُحسَب **بعد** كلّ الفلاتر، ومنها فلترُ الكارت المضغوط
- * نفسُه: يُضغط «مناديب ١٧٥» فيصير «إداريون» صفرًا، ويُضغط «كيتا» في «بالمشروع»
- * فيختفي كلُّ مشروعٍ سواه — والقائمةُ تُعاد ترتيبًا بأعدادٍ جديدة فتهتزّ.
- *
- * فكلُّ مجموعةِ كروتٍ تُحسَب **بكلّ الفلاتر عدا فلترَها هي** (عدٌّ بالأوجه —
- * القاعدةُ نفسُها في انتهاءات الموارد البشريّة، راجع `hrMasterController.expiring`):
- *   · مناديب / إداريون / سائقون / بلا وظيفة: بلا `staffKind`.
- *   · على رأس العمل / إجازة / موقوف وتقسيمةُ الحالة: بلا `status`.
- *   · لهم مركبة / بلا مركبة: بلا `hasVehicle`.   · لهم سكن / بلا سكن وإشغالُ السكن: بلا `housing`.
- *   · كلُّ تقسيمة (المشروع، الفرع، الوظيفة، نوع التعاقد، السجل، المشرف، نوع المركبة): بلا مفتاحها.
- *   · «الإجمالي» وما لا يُضغَط: بكلّ شيء — هو عددُ ما يفتحه «اعرض القائمة».
- * فمجموعُ كروتِ المجموعة يبقى إجماليَّها، والمضغوطُ يبقى على رقمه.
- *
- * ولذلك تُطبَّق هذه المفاتيحُ هنا في الذاكرة لا في الاستعلام، بالمعنى نفسِه الذي
- * يطبّقها به `listEmployees` (الطيُّ في المشروع، الحسابُ أو الاسمُ في المشرف…).
+ * Figures do not move under the one who clicks them: each card group is counted with all filters except its own (faceted counts, same rule as `hrMasterController.expiring`), so clicking a card does not zero its siblings.
+ * staffKind groups: without `staffKind`; status groups: without `status`; vehicle: without `hasVehicle`; housing: without `housing`; each split: without its own key; total and non-clickable: all filters.
+ * Hence these keys are applied in memory, not in the query, with the same meaning as `listEmployees`.
  */
 const OVERVIEW_FACETS = ['city', 'jobTitle', 'contractType', 'register', 'staffKind', 'project',
   'supervisor', 'housing', 'hasVehicle', 'status', 'vehicleType',
-  // فلاترُ اللوحة السريعة (٢٠٢٦/١٠/٢١) — راجع utils/b2cBoard.QUICK.
+  // Quick dashboard filters; see utils/b2cBoard.QUICK.
   'rep', 'vehicle', 'auth', 'cr', 'engagement', 'category'];
 
-/** اسمُ قسم B2C في قائمة أقسام الموارد البشريّة (مفتاحُه light_transport). */
+/** Name of the B2C department in the HR departments list (its key is light_transport). */
 const b2cDepartment = () => cache.wrap('lt:b2cdept', 60000, async () => {
   const Lookup = require('../models/Lookup');
   const row = await Lookup.findOne({ type: 'hr_department', key: 'light_transport', deleted: { $ne: true } }).select('nameAr').lean();
@@ -580,12 +472,9 @@ const b2cDepartment = () => cache.wrap('lt:b2cdept', 60000, async () => {
 });
 
 /**
- * ── مركباتُ القسم صفوفًا تُعَدّ وتُفلتَر ─────────────────────────────────────
- * كلُّ مركبةٍ ينسبها قسمُ المركبات إلى النقل الخفيف (قطاعًا أو إدارةً) — مفوَّضةً
- * أو لا — ومعها كلُّ مركبةٍ عليها راكبٌ من سجلّ القسم (`BOARD.vehicleScope`).
- * ولكلٍّ: مشروعُها (مشروعُ راكبها، وإلّا إدارتُها في السجلّ)، ومدينتُها، ونوعُها
- * مطويًّا، وحالةُ تفويضها (`BOARD.authOf`)، وراكبوها.
- * تقرؤها اللوحةُ وصفحةُ «مركبات النقل الخفيف» معًا — فما يعدّه الكارتُ يفتحه الرابط.
+ * Department vehicles as countable, filterable rows.
+ * Every vehicle the vehicles department attributes to light transport (by sector or management), authorized or not, plus every vehicle with a rider from the department register (`BOARD.vehicleScope`). Each has its project (the rider's project, else its management in the register), city, folded type, authorization state (`BOARD.authOf`) and riders.
+ * Read by both the dashboard and the light-transport vehicles page, so what a card counts is what its link opens.
  */
 async function vehicleRows(riderRows, select = '', holderRows = []) {
   const group = (rows) => {
@@ -609,7 +498,7 @@ async function vehicleRows(riderRows, select = '', holderRows = []) {
     const holders = heldBy.get(String(v._id)) || [];
     return {
       _id: String(v._id), v, riders, holders,
-      // عليها راكب · بانتظار التسليم (مع منتهي الخدمة) · واقفة — utils/ltRider.
+      // With rider, awaiting hand-over (including terminated staff), idle - utils/ltRider.
       state: vehicleState(riders, holders),
       project: S(riders[0]?.projectAr) || S(v.departmentAr),
       city: S(riders[0]?.cityAr) || S(v.cityAr),
@@ -620,11 +509,8 @@ async function vehicleRows(riderRows, select = '', holderRows = []) {
 }
 
 /**
- * ── مَن انتهت خدمتُه والمركبةُ ما زالت معه — «بانتظار التسليم» ─────────────
- * صفوفُ القسم النشطةُ المربوطةُ بمركبةٍ وصاحبُها منتهي الخدمة في الموارد البشريّة
- * (أو في السجلّ لمن لا ملفَّ له) — ومنهم المؤرشَف: اسمُه لا يُعرَض، والمركبةُ
- * تُعرَض «بانتظار التسليم» لا «واقفة». سؤالٌ مستقلٌّ عن صفوف اللوحة، فلا تُخفيه
- * فلاترُ الإنسان ولا قاعدةُ الأرشيف.
+ * Staff whose service ended while the vehicle is still with them: awaiting hand-over.
+ * Active department rows linked to a vehicle whose holder is terminated in HR (or in the register if no file), including archived ones: the name is not shown and the vehicle shows 'awaiting hand-over', not 'idle'. A separate query from the dashboard rows, so neither person filters nor the archive rule hide it.
  */
 async function heldRows() {
   const { endedStaff } = require('../utils/endedStaff');
@@ -641,7 +527,7 @@ async function heldRows() {
 }
 exports._heldRows = heldRows;
 
-/** صفوفُ القسم مزخرفةً — كلُّها، ومعها مَن يُعَدّ راكبًا (في الخدمة وعلى مركبة). */
+/** Department rows enriched: all of them, plus those counted as riders (in service and on a vehicle). */
 async function boardRows(filter) {
   const { endedStaff, notArchivedRow, andAll } = require('../utils/archivedHidden');
   const archSets = await endedStaff();
@@ -652,7 +538,7 @@ async function boardRows(filter) {
   return rows.map((r) => decorate(r, alerts));
 }
 
-/** خياراتُ فلترٍ: `{value, label, count}` بعددِ الصفوف، الأكثرُ أوّلًا. */
+/** Filter options: `{value, label, count}` by row count, most first. */
 const optionList = (list, valueOf, labelOf = (v) => v) => {
   const m = new Map();
   for (const r of list) {
@@ -671,7 +557,7 @@ exports._vehicleRows = vehicleRows;
 exports.overview = async (req, res) => {
   try {
     const q = req.query || {};
-    // في الاستعلام ما ليس فلترًا من فلاتر اللوحة؛ والفلاترُ تُطبَّق بعد الجلب.
+    // The query holds what is not a dashboard filter; dashboard filters are applied after the fetch.
     const filter = { isActive: { $ne: false } };
     supervisorFilter(filter, q.dutySupervisor, 'dutySupervisorUser');
     if (S(q.hiredFrom) || S(q.hiredTo)) {
@@ -683,16 +569,13 @@ exports.overview = async (req, res) => {
 
     const [decorated, allRows, housing, orders, b2cDept] = await Promise.all([
       boardRows(filter),
-      // ── «واقفة» تُقاس على السجلّ كلِّه لا على المفلتَر ──────────────────────
-      // والمنتهي لا يُحسَب راكبًا: مركبتُه واقفةٌ وإن بقي اسمُه عليها في السجلّ.
+      // 'Idle' is measured over the whole register, not the filtered set. A terminated person is not counted as a rider: his vehicle is idle even if his name stays on it in the register.
       narrowed ? boardRows({ isActive: { $ne: false } }) : null,
       LightTransportHousing.find({ isActive: { $ne: false } }).lean(),
       LightTransportOrder.find({ status: 'active' }).select('vehicle ltEmployee').lean(),
       b2cDepartment(),
     ]);
-    // ── الراكبُ تعريفٌ واحد (utils/ltRider) ───────────────────────────────────
-    // صفٌّ نشطٌ مربوطٌ بالمركبة، أيًّا كانت حالةُ يومه — من السجلّ كلِّه لا من
-    // المفلتَر، فلا يجعل فلترُ الإنسان مركبةً «واقفة». والمنتهي «بانتظار التسليم».
+    // Rider has one definition (utils/ltRider): an active row linked to the vehicle, whatever its day status - over the whole register, not the filtered set, so a person filter does not make a vehicle 'idle'. A terminated one is 'awaiting hand-over'.
     const riderRows = (allRows || decorated).filter((r) => r.vehicle && !isEnded(r));
     const vrows = await vehicleRows(riderRows, '', await heldRows());
 
@@ -700,17 +583,17 @@ exports.overview = async (req, res) => {
     const vpass = BOARD.vehicleTests(q, people, { typeKey });
     const has = (k) => (k === 'hasVehicle' ? !!q.hasVehicle : BOARD.vals(q[k]).length > 0);
     const listedRows = decorated.filter((r) => people(r));
-    // أرقامُ اللوحة كلُّها على مَن هو في الخدمة — إلّا إن سأل الفلترُ عن المنتهين.
+    // All dashboard figures cover people in service, unless the filter asks for terminated.
     const includeEnded = BOARD.vals(q.status).includes(ENDED);
     const live = (list) => (includeEnded ? list : list.filter((r) => !isEnded(r)));
     const rows = live(listedRows);
-    /** صفوفُ مجموعةٍ تُعَدّ بلا فلترها — للتقسيمات وخيارات الفلاتر. */
+    /** Rows of a group counted without its own filter - for splits and filter options. */
     const without = (k) => (has(k) ? decorated.filter((r) => people(r, k)) : listedRows);
 
-    // ── المركبات ──────────────────────────────────────────────────────────
+    // Vehicles
     const onOrder = new Set(orders.map((o) => String(o.vehicle || '')));
     const vShown = vrows.filter((v) => vpass(v));
-    // «عليها راكب / واقفة» قسمةُ المركبات نفسِها: لا يصفّرها «بلا مركبة».
+    // 'With rider / idle' is the vehicles' own split: 'without vehicle' does not zero it.
     const vSplit = vrows.filter((v) => vpass(v, 'hasVehicle'));
     const vGroup = (list, fn) => {
       const o = {};
@@ -718,7 +601,7 @@ exports.overview = async (req, res) => {
       return o;
     };
 
-    // إشغالُ السكن بلا فلتر السكن: ضغطُ سكنٍ في الجدول لا يصفّر الآخرين.
+    // Housing occupancy without the housing filter: clicking one housing in the table does not zero the others.
     const housingRows = live(without('housing'));
     const housedIn = {};
     for (const r of housingRows) { if (r.housing) { const k = String(r.housing._id); housedIn[k] = (housedIn[k] || 0) + 1; } }
@@ -727,7 +610,7 @@ exports.overview = async (req, res) => {
       if (r.housing && r.housingRoom) { const k = `${String(r.housing._id)}|${r.housingRoom}`; roomOcc[k] = (roomOcc[k] || 0) + 1; }
     }
 
-    // الأرقامُ القديمة (التقسيماتُ والتطبيقُ القديم): كلُّ مجموعةٍ بلا فلترها.
+    // The old figures (splits and the old app): each group without its own filter.
     const employees = totalsOf(listedRows, { includeEnded });
     const facet = (k, keys) => {
       if (!has(k)) return;
@@ -746,12 +629,8 @@ exports.overview = async (req, res) => {
     if (has('project')) reps.projects = (await repsBreakdown(live(without('project')), '')).projects;
 
     /**
-     * ── اللوحةُ كما طلبها صاحبُ الشركة (٢٠٢٦/١٠/٢١) ──────────────────────────
-     * الإجماليُّ، وتحته ثلاثةُ كروت (مندوب · إداري · فني) لكلٍّ نصفاه (على الكفالة ·
-     * فريلانسر) وما سواهما رقمًا صغيرًا — فالنصفان وما سواهما = الكارت، والكروتُ
-     * (ومعها «غير مصنَّف» إن وُجد) = الإجمالي. ثمّ «حالة العمل»: يعمل · إجازة ·
-     * موقوف · حادث، وفي كلٍّ قسمتُه على الفئات — ومجموعُها الإجماليُّ نفسُه.
-     * وكلُّ رقمٍ تحت كلّ الفلاتر: من اختار مشروعًا قرأ أرقامَه وحدَه.
+     * The dashboard as the company owner asked.
+     * The total, and under it three cards (rider, administrative, technician), each with its two halves (sponsorship, freelancer) and the remainder as a small number: the halves plus the remainder equal the card, and the cards (plus 'unclassified' if present) equal the total. Then work status: working, leave, suspended, accident, each split by category, summing to the same total. Every figure is under all filters: choosing a project reads that project's figures only.
      */
     const ENG_KEYS = ['sponsored', 'freelance', 'trainee', 'users', 'none'];
     const CATS = ['rep', 'admin', 'tech', 'none'];
@@ -774,7 +653,7 @@ exports.overview = async (req, res) => {
       none: list.filter((v) => v.auth === 'none').length,
     });
 
-    // ── خياراتُ الفلاتر: لكلٍّ عددُه تحت الفلاتر الأخرى ─────────────────────
+    // Filter options: each with its count under the other filters.
     const projectNames = new Map();
     for (const r of decorated) { const k = BOARD.projectKey(r.projectAr); if (!projectNames.has(k)) projectNames.set(k, S(r.projectAr) || BOARD.UNSET); }
     const vehiclesWithout = (k) => vrows.filter((v) => vpass(v, k));
@@ -788,7 +667,7 @@ exports.overview = async (req, res) => {
       engagement: optionList(live(without('engagement')), (r) => BOARD.engagementOf(r), (v) => BOARD.ENGAGEMENT_AR[v] || v),
       category: optionList(live(without('category')), (r) => BOARD.categoryOf(r), (v) => BOARD.CATEGORY_AR[v] || v),
       city: optionList(live(without('city')), (r) => S(r.cityAr) || '—', (v) => (v === '—' ? 'غير محدد' : v)),
-      // المنتهون ليسوا خيارًا: مكانُهم الموارد البشريّة (قاعدةُ ended staff).
+      // Terminated staff are not an option: their place is HR (ended staff rule).
       status: optionList(without('status').filter((r) => !isEnded(r)), (r) => r.workStatusShown),
     };
 
@@ -805,8 +684,7 @@ exports.overview = async (req, res) => {
           onActiveOrder: vSplit.filter((v) => onOrder.has(v._id)).length,
           auth: authCount(vSplit),
         },
-        // ملفُّه في الموارد البشريّة بقسمٍ غيرِ B2C — نُقل هناك ولم يُخرَج من سجلّ
-        // القسم (الخروجُ لا يقع آليًّا). رقمٌ يُراجَع لا يُصحَّح بصمت.
+        // His HR file is in a department other than B2C: he was moved there but not removed from the department register (removal is not automatic). A figure to review, not to correct silently.
         otherDepartment: rows.filter((r) => r.employee && typeof r.employee === 'object'
           && S(r.employee.department) && S(r.employee.department) !== b2cDept
           && !require('../utils/lightTransportSync').isLightDepartment(r.employee.department)).length,
@@ -818,7 +696,7 @@ exports.overview = async (req, res) => {
       reps,
       vehicles: {
         total: vSplit.length,
-        // وإجماليُّ مركبات القسم يبقى معروضًا كي يُعرَف أنّ المعروضَ جزءٌ منه.
+        // The department's vehicle total stays shown so the displayed part is known to be a portion of it.
         totalAll: vrows.length,
         withRider: vSplit.filter((v) => v.state === 'withRider').length,
         hold: vSplit.filter((v) => v.state === 'hold').length,
@@ -842,7 +720,7 @@ exports.overview = async (req, res) => {
         };
       }),
       orders: { active: orders.length },
-      /** ما ينقص ويحتاج عملًا — لا ما هو قائم. */
+      /** What is missing and needs work, not what exists. */
       gaps: {
         workingWithoutVehicle: rows.filter((r) => !r.vehicle
           && ![ENDED, BOARD.SUSPENDED, BOARD.ACCIDENT].includes(r.workStatusShown)).length,
@@ -853,7 +731,7 @@ exports.overview = async (req, res) => {
         noSupervisor: rows.filter((r) => r.staffKind === 'rep' && !S(r.supervisorName)).length,
         unhoused: housingRows.filter((r) => !r.housing).length,
         noHrFile: rows.filter((r) => !r.hrLinked).length,
-        // الورقةُ باسم غيرِ الراكب — تُقرأ من سجلّ المركبات لا من الصفّ.
+        // A sheet in a name other than the rider's, read from the vehicle register, not the row.
         authorizationMismatch: rows.filter((r) => {
           if (!r.vehicle || typeof r.vehicle !== 'object') return false;
           const holder = S(r.vehicle.authorizedPerson?.iqamaNumber);
@@ -868,7 +746,7 @@ exports.overview = async (req, res) => {
   }
 };
 
-// ── ملفُّ موظّفٍ واحد ───────────────────────────────────────────────────────
+// Single employee file
 exports.getEmployee = async (req, res) => {
   try {
     const row = await LightTransportEmployee.findById(req.params.id).populate(LIST_POPULATE).lean();
@@ -886,25 +764,19 @@ exports.getEmployee = async (req, res) => {
   }
 };
 
-// `supervisorName` ليس منها: يُشتَقُّ من الحساب المختار — راجع `applySupervisor`.
+// `supervisorName` is not one of them: it is derived from the chosen account. See `applySupervisor`.
 const EDITABLE = ['name', 'nationalityAr', 'phone', 'cityAr', 'projectAr', 'jobTitleAr', 'contractTypeAr',
-  // `workStatusAr` ليس منها: حالةُ العمل من الموارد البشريّة — راجع `shownStatus`.
+  // `workStatusAr` is not one of them: work status comes from HR. See `shownStatus`.
   'registerNumber', 'vehicleTypeAr', 'housingRoom', 'notesAr', 'hireDate'];
 
 /**
- * ── إسنادُ المشرف: حسابٌ يُختار، والباقي يُشتَقّ ────────────────────────────
- *
- * يُرسَل `supervisorUser` (معرِّفُ حساب) أو فراغٌ يعني «بلا مشرف». ومنه يُكتب
- * الاسمُ لقطةً والملفُّ إشارةً — فلا يُكتب اسمٌ بيدٍ فيفترق عن صاحبه.
- *
- * ويُسنَد الرجلُ في سجلّ التطبيق أيضًا (`B2CRep.supervisor`) فيراه مشرفُه في
- * تفقّد بداية الدوام. وهذا هو الربطُ المقصود: الإسنادُ في موضعٍ واحدٍ يظهر في
- * الشاشتين. راجع `utils/b2cSupervisors.syncRepSupervisor`.
- *
- * وحسابٌ ليس من أدوار الإشراف يُردّ صراحةً: الإسنادُ إليه رجلٌ لا يتفقّده أحد.
+ * Supervisor assignment: an account is chosen, the rest is derived.
+ * `supervisorUser` (an account id) is sent, or empty meaning no supervisor. From it the name is written as a snapshot and the file as a reference, so no hand-typed name drifts from its owner.
+ * The rider is also assigned in the app register (`B2CRep.supervisor`) so his supervisor sees him in the start-of-shift check: one assignment shows on both screens. See `utils/b2cSupervisors.syncRepSupervisor`.
+ * An account without a supervision role is rejected explicitly: assigning to it leaves a rider nobody checks.
  */
 async function applySupervisor(doc, body, res) {
-  // التشغيليُّ ومشرفُ التفقّد — يُسنَدان مستقلَّين، وكلاهما حسابٌ لا اسم.
+  // Operational supervisor and inspection supervisor are assigned independently, and both are accounts, not names.
   for (const [field, nameField, empField] of [
     ['supervisorUser', 'supervisorName', 'supervisor'],
     ['dutySupervisorUser', 'dutySupervisorName', null],
@@ -930,18 +802,9 @@ async function applySupervisor(doc, body, res) {
 }
 
 /**
- * ── وإضافةُ موظّفٍ هنا تُنشئ ملفَّه في الموارد البشريّة ──────────────────────
- *
- * كان الصفُّ يُنشأ في سجلّ القسم وحدَه إن لم تكن هويّتُه في الموارد البشريّة:
- * رجلٌ يعمل ولا ملفَّ له، ولا يظهر في الموظّفين ولا الماستر ولا الانتهاءات حتى
- * يتذكّر أحدٌ أن يسجّله هناك مرّةً ثانية. وما يُطلَب مرّتين يُنسى مرّة.
- *
- * فالقسمُ يكتب ما يعرفه — الاسم والإقامة وتاريخا التعيين والميلاد والمشروع
- * والمدينة ونوع التعاقد والسجلّ — ومستنداتِه، ويُنشأ ملفُّه في الموارد البشريّة
- * في الطلب نفسِه معلَّمًا بمصدره (`createdVia: 'b2c'`) وقسمُه «B2C». والموارد
- * البشريّة تجده بزرٍّ في صفحة الموظّفين وتُكمل الباقي.
- *
- * body: حقولُ السجلّ + { dateOfBirth, files: [{ dataUrl, fileName, title }] }
+ * Adding an employee here also creates his HR file in the same request, tagged `createdVia: 'b2c'` with department 'B2C', so no working person exists without a file. HR completes the rest from the employees page.
+ * Documents are saved with it.
+ * body: register fields + { dateOfBirth, files: [{ dataUrl, fileName, title }] }
  */
 const FREELANCE_RX = /فري|حر|free/i;
 exports.createEmployee = async (req, res) => {
@@ -953,7 +816,7 @@ exports.createEmployee = async (req, res) => {
     const dup = await LightTransportEmployee.findOne({ idNumber });
     if (dup) return res.status(400).json({ message: `الهويّةُ ${idNumber} مسجَّلةٌ بالفعل لـ${dup.name}` });
 
-    // المستنداتُ تُحفَظ قبل أيّ كتابة: ملفٌّ مرفوضٌ لا يترك موظّفًا نصفَ مُنشأ.
+    // Documents are saved before any write: a rejected file leaves no half-created employee.
     const { saveUploadFile } = require('../utils/fileStore');
     const stored = [];
     try {
@@ -971,7 +834,7 @@ exports.createEmployee = async (req, res) => {
     await applyHousing(doc, req.body.housing, req.body.housingRoom, res);
     if (res.headersSent) return undefined;
 
-    // يُربَط بملفّه إن كانت هويّتُه في الموارد البشريّة، وإلّا يُنشأ له ملفّ.
+    // Linked to his file if his ID is in HR, otherwise a file is created for him.
     let hr = await Employee.findOne({ $or: [{ nationalId: idNumber }, { iqamaNumber: idNumber }] });
     let hrCreated = false;
     if (!hr) {
@@ -1014,13 +877,13 @@ exports.createEmployee = async (req, res) => {
     if (hrCreated) {
       logAudit({ user: req.user, action: 'create_employee', entity: 'Employee', entityId: hr._id, changes: { after: { name, idNumber, from: 'سجلّ النقل الخفيف (قسم الأفراد)' } }, ipAddress: req.ip }).catch(() => {});
     }
-    // الموارد البشريّة تسمع في الحال: الموظّفون والماستر والتحليلات والانتهاءات.
+    // HR hears at once: employees, master, analytics and expiries.
     try { require('./hrController')._bustEmployeeCaches(); } catch (e) { /* */ }
     if (hrCreated) {
       try {
         const { notifySection } = require('../services/notificationService');
         await notifySection('HR', { title: 'موظف جديد من قسم الأفراد', message: `${name} — أضافه ${byName(req.user) || 'قسم الأفراد'}. أكمِل بياناتِه.`, relatedEntity: 'Employee', relatedEntityId: hr._id });
-      } catch (e) { /* الإشعارُ تيسيرٌ لا شرط */ }
+      } catch (e) { /* The notification is a convenience, not a requirement. */ }
     }
     emit('lt:updated', {});
     return res.status(201).json({ employee: doc.toObject(), hrEmployee: hr._id, hrCreated, documents: stored.length });
@@ -1031,11 +894,8 @@ exports.createEmployee = async (req, res) => {
 };
 
 /**
- * ── والسكنُ لا يُتجاوَز ─────────────────────────────────────────────────────
- * السكنُ سعةٌ محدودةٌ وغرفُه لأنواعٍ مختلفة: غرفةُ المناديب تسع ثمانيةً وغرفةُ
- * المشرفين ثلاثة. فالإسكانُ يُحسَب قبل أن يُكتب: كم في هذا السكن الآن، وكم في
- * هذه الغرفة، وهل الغرفةُ لنوعه. وبلا هذا الحسابِ يصير العددُ المكتوب في
- * الإعدادات زينةً، ويُسكَن في غرفةٍ أحدَ عشرَ وهي تسع ثمانية.
+ * Housing is never exceeded.
+ * Housing is limited capacity and its rooms are for different types: the riders' room takes eight, the supervisors' room three. So placement is computed before writing: how many in this housing now, how many in this room, and whether the room suits his type. Without it the number in settings is decoration and eleven get housed in a room for eight.
  */
 async function applyHousing(doc, housingId, room, res) {
   const wanted = S(housingId);
@@ -1047,7 +907,7 @@ async function applyHousing(doc, housingId, room, res) {
   const roomName = S(room);
   const sameHousing = String(doc.housing || '') === String(housing._id);
   const sameRoom = sameHousing && S(doc.housingRoom) === roomName;
-  if (sameRoom) return;                       // لا شيءَ يتغيّر، فلا حسابَ ولا خطر
+  if (sameRoom) return;                       // Nothing changes, so no calculation and no risk.
 
   const occupants = await LightTransportEmployee.countDocuments({
     housing: housing._id, isActive: { $ne: false }, _id: { $ne: doc._id, $nin: await endedRowIds() },
@@ -1065,7 +925,7 @@ async function applyHousing(doc, housingId, room, res) {
   if (roomName) {
     const r = (housing.rooms || []).find((x) => S(x.name) === roomName);
     if (!r) { res.status(400).json({ message: `لا غرفةَ بهذا الاسم في «${housing.name}»` }); return; }
-    // الغرفةُ لنوعه أو للجميع — وإلّا سُكِّن مشرفٌ في غرفةِ مناديب.
+    // The room is for his type or for all; otherwise a supervisor would be housed in a riders' room.
     if (r.kind !== 'any' && r.kind !== doc.staffKind) {
       const want = r.kind === 'rep' ? 'المناديب' : 'الإداريّين';
       res.status(400).json({ message: `غرفة «${r.name}» مخصَّصةٌ لـ${want}` });
@@ -1095,17 +955,14 @@ exports.updateEmployee = async (req, res) => {
     const doc = await LightTransportEmployee.findById(req.params.id);
     if (!doc) return res.status(404).json({ message: 'الموظّف غير موجود' });
 
-    // ── وكلُّ نقلٍ يُقيَّد ────────────────────────────────────────────────
-    // «نقلتُه من مشروعٍ إلى مشروع» سؤالٌ يُسأل بعد شهور، وخانةٌ تُستبدَل لا
-    // تحفظ جوابَه. فما يُغيَّر من هذه الأربعةِ يُكتب في سجلّ الموظّف بصاحبه.
-    // ── والمشروعُ لا يتغيّر من التعديل: «نقل مشروع» وحدَه، وممّن يملكه ──────
-    // (صاحبُ الشركة، ٢٠٢٦/١٠/١٩) — POST /employees/:id/transfer-project.
+    // Every transfer is recorded.
+    // 'Moved from project to project' is asked months later, and a field that is replaced does not keep the answer. So any change to these four is written in the employee's log with its author.
+    // Project does not change through edit: only 'transfer project', and only by whoever owns it - POST /employees/:id/transfer-project.
     if (req.body.projectAr !== undefined && S(req.body.projectAr) !== S(doc.projectAr) && S(doc.projectAr)) {
       return res.status(403).json({ message: 'المشروع يتغيّر بـ«نقل مشروع» من صفحة المندوب — لنائب مدير قطاع الأفراد ومدير القسم والسوبر أدمن والأدمن' });
     }
-    // ── و«يوزرات» يكتبها تأجيرُ اليوزر وحدَه (صاحبُ الشركة، ٢٠٢٦/١٠/٢٢) ─────────
-    // نوعُ العقد «يوزرات» مرآةٌ لتأجيرٍ ساري (utils/ltRental): يُسجَّل التأجيرُ أو
-    // يُنهى من «تأجير اليوزرات» فيتبعه الصفّ — لا يُكتب هنا فيفترقا.
+    // User accounts are written only by user rental.
+    // Contract type 'user accounts' mirrors an active rental (utils/ltRental): the rental is registered or ended in user rental and the row follows. It is not written here, or the two would diverge.
     if (req.body.contractTypeAr !== undefined) {
       const RENT = require('../utils/ltRental');
       const toUsers = RENT.isUsersText(req.body.contractTypeAr);
@@ -1129,7 +986,7 @@ exports.updateEmployee = async (req, res) => {
         });
       }
     }
-    // وتغييرُ المشرف يُقيَّد بالاسمين لا بالمعرِّفين: السجلُّ يُقرأ بعد شهور.
+    // A supervisor change is logged by the two names, not ids: the log is read months later.
     const beforeSupName = S(doc.supervisorName);
     const beforeSupUser = String(doc.supervisorUser || '');
     const beforeDutyName = S(doc.dutySupervisorName);
@@ -1154,10 +1011,8 @@ exports.updateEmployee = async (req, res) => {
       if (res.headersSent) return undefined;
     }
     /**
-     * ── حالةُ اليوم: يعمل · إجازة · موقوف · حادث ──────────────────────────────
-     * يكتبها القسمُ من صفّ الموظّف (صاحبُ الشركة، ٢٠٢٦/١٠/٢١)، وتُقيَّد في سجلّه،
-     * وتُنسَخ إلى ملفّه في الموارد البشريّة وإلى مركبته (models/LightTransport).
-     * لا يمنعها إلّا إنهاءُ الخدمة في الموارد البشريّة: المنتهي لا حالةَ يومٍ له.
+     * Today's status: working, leave, suspended, accident.
+     * Written by the department from the employee row, recorded in his log, and copied to his HR file and his vehicle (models/LightTransport). Only termination in HR blocks it: a terminated person has no day status.
      */
     if (req.body.opStatus !== undefined) {
       const want = S(req.body.opStatus);
@@ -1180,13 +1035,13 @@ exports.updateEmployee = async (req, res) => {
     doc.lastModifiedBy = req.user?._id;
     await doc.save();
     if (String(doc.supervisorUser || '') !== beforeSupUser) await syncRepSupervisor(doc.name, doc.supervisorUser, { ltId: doc._id });
-    // الاسمُ والجوالُ يتبعهما حسابُ تطبيق التوصيل — utils/b2cEntry.syncRepOf.
+    // Name and phone are followed by the delivery-app account - utils/b2cEntry.syncRepOf.
     if (`${S(doc.name)}|${S(doc.phone)}` !== beforeIdentity) {
       try { await require('../utils/b2cEntry').syncRepOf(doc); cache.clear('b2c:'); } catch (_) { /* */ }
     }
     logAudit({ user: req.user, action: 'update_lt_employee', entity: 'LightTransportEmployee', entityId: doc._id, changes: { after: Object.keys(req.body) }, ipAddress: req.ip }).catch(() => {});
     emit('lt:updated', {});
-    // حالةٌ صارت «إنهاء خدمة»؟ تُنزَل المركبة — راجع utils/ltVehicleRelease.
+    // Status became termination? The vehicle is released - see utils/ltVehicleRelease.
     require('../utils/ltVehicleRelease').after();
     return res.json({ employee: doc.toObject() });
   } catch (e) {
@@ -1196,14 +1051,9 @@ exports.updateEmployee = async (req, res) => {
 };
 
 /**
- * ── إسنادُ مشرفٍ لعدّة موظّفين دفعةً ────────────────────────────────────────
- *
- * الإسنادُ صفًّا صفًّا يعني فتحَ نافذةٍ مئةً وسبعًا وأربعين مرّة. والتوزيعُ يقع
- * على مجموعات: محطّةٌ كاملةٌ تنتقل إلى مشرفٍ، أو مشروعٌ يُسلَّم.
- *
- * ويُرسَل أيُّهما شاء — التشغيليُّ أو مشرفُ التفقّد أو كلاهما — وفراغٌ صريح
- * (`none`) يعني الرفع. وما لم يُرسَل لا يُمَسّ: من أسند مشرفَ تفقّدٍ لا يُسقِط
- * الإشرافَ التشغيليَّ بسكوته عنه.
+ * Assigning a supervisor to several employees at once.
+ * Assigning row by row means opening a dialog 147 times, and distribution happens in groups: a whole station moves to a supervisor, or a project is handed over.
+ * Either supervisor kind may be sent - operational, inspection or both - and an explicit empty (`none`) means remove. What is not sent is untouched: assigning an inspection supervisor must not drop the operational one by omission.
  */
 exports.assignSupervisors = async (req, res) => {
   try {
@@ -1234,12 +1084,10 @@ exports.assignSupervisors = async (req, res) => {
       if (empField) set[empField] = sup.employee || null;
     }
 
-    // و`history` ضمن المحمَّل: القيدُ يُدفَع إليها، ومصفوفةٌ لم تُحمَّل `undefined`.
+    // `history` is in the loaded fields: the entry is pushed to it, and an array that was not loaded is `undefined`.
     /**
-     * ── ويُكتب بالتحديث لا بالحفظ ────────────────────────────────────────────
-     * `doc.save()` على صفٍّ حُمّل بحقولٍ مختارة يُشغّل خطّافات المخطَّط على حقولٍ
-     * غائبة — فيُعاد اشتقاقُ ما لم يُقرَأ. والمطلوبُ هنا إسنادُ حقلين وقيدٌ في
-     * السجلّ، لا إعادةُ حساب الصفّ. فيُكتبان بـ`$set` و`$push` مباشرةً.
+     * Written with an update, not a save.
+     * `doc.save()` on a row loaded with selected fields runs schema hooks on absent fields and re-derives what was not read. Only two fields and a log entry are needed, not a row recompute, so they are written directly with `$set` and `$push`.
      */
     const rows = await LightTransportEmployee.find({ _id: { $in: ids } })
       .select('name supervisorName dutySupervisorName supervisorUser dutySupervisorUser').lean();
@@ -1262,7 +1110,7 @@ exports.assignSupervisors = async (req, res) => {
     logAudit({ user: req.user, action: 'assign_lt_supervisors', entity: 'LightTransportEmployee',
       changes: { after: { count: rows.length, ...set } }, ipAddress: req.ip }).catch(() => {});
     emit('lt:updated', {});
-    // وشاشةُ التفقّد تقرأ مشرفَ التفقّد — فتُوقَظ معه.
+    // The inspection screen reads the inspection supervisor, so it is woken too.
     try { require('../websocket/socketManager').emitToAll('b2c:duty', {}); } catch (e) { /* */ }
     return res.json({ updated: rows.length });
   } catch (e) {
@@ -1271,7 +1119,7 @@ exports.assignSupervisors = async (req, res) => {
   }
 };
 
-/** لا يُمحى موظّف — يُعطَّل السجلّ ويبقى أثرُه. راجع قاعدةَ الموارد البشريّة. */
+/** An employee is never erased: the record is disabled and its trail stays. See the HR rule. */
 exports.deactivateEmployee = async (req, res) => {
   try {
     const doc = await LightTransportEmployee.findById(req.params.id);
@@ -1286,13 +1134,13 @@ exports.deactivateEmployee = async (req, res) => {
   }
 };
 
-// ── السكن ───────────────────────────────────────────────────────────────────
+// Housing
 exports.listHousing = async (req, res) => {
   try {
     const rows = await LightTransportHousing.find({}).sort({ name: 1 }).lean();
-    // الإشغالُ محسوبٌ لا مكتوب: عددُ من يسكن الآن، لا رقمٌ يُحدَّث باليد.
+    // Occupancy is computed, not written: the number living there now, not a hand-updated figure.
     const counts = await LightTransportEmployee.aggregate([
-      // والمنتهي لا يشغل سريرًا — راجع `endedRowIds`.
+      // A terminated person occupies no bed - see `endedRowIds`.
       { $match: { housing: { $ne: null }, isActive: { $ne: false }, _id: { $nin: await endedRowIds() } } },
       { $group: { _id: { h: '$housing', r: '$housingRoom' }, n: { $sum: 1 } } },
     ]);
@@ -1343,9 +1191,8 @@ exports.saveHousing = async (req, res) => {
     if (req.params.id) {
       doc = await LightTransportHousing.findById(req.params.id);
       if (!doc) return res.status(404).json({ message: 'السكنُ غير موجود' });
-      // ── ولا تُصغَّر سعةٌ دون سكّانها ────────────────────────────────────
-      // خفضُ سعةِ غرفةٍ فيها خمسةٌ إلى ثلاثةٍ يجعل السجلَّ يكذب: العددُ يُقرأ
-      // «٥ من ٣». فيُرَدّ الطلبُ ويُنقَل السكّانُ أوّلًا.
+      // Capacity is not reduced below the residents.
+      // Lowering a room with five people to three makes the register lie ('5 of 3'), so the request is rejected and residents are moved first.
       if (fields.rooms) {
         const occ = await LightTransportEmployee.aggregate([
           { $match: { housing: doc._id, isActive: { $ne: false }, _id: { $nin: await endedRowIds() } } },
@@ -1391,20 +1238,12 @@ module.exports.totalsOf = totalsOf;
 module.exports.decorate = decorate;
 module.exports.applyHousing = applyHousing;
 
-// ═══════════════════════════════════════════════════════════════════════════
-//  مركباتُ النقل الخفيف — مركباتُ مشاريع القسم من سجلّ المركبات نفسِه
-// ═══════════════════════════════════════════════════════════════════════════
+// Light-transport vehicles - the department's project vehicles, from the vehicle register itself
 /**
- * قسمُ الأفراد يدير مشاريعَ (كيتا، هنقرستيشن، أمازون، نينجا) تعمل على مركباتٍ
- * مسجَّلةٍ في قسم المركبات. والتفويضُ وقائدُ المركبة الفعليُّ يتغيّران في الميدان
- * كلَّ يوم، فمن يعرفهما هو القسمُ لا قسمُ المركبات.
- *
- * فهذه نافذةٌ على **السجلّ نفسِه** (`VehicleMaster`) — لا نسخةٌ منه: ما يُعدَّل
- * هنا يُكتب هناك ويُبَثّ لقسم المركبات في الحال، وما يُعدَّل هناك يُقرأ هنا.
- * وما يُعدَّل من هنا محصورٌ في أعمدة التشغيل (المشروع والمدينة والقائد الفعليّ
- * والتفويض)؛ اللوحةُ والرقمُ التسلسليّ ووثائقُ المركبة تبقى لقسم المركبات.
+ * The individuals department runs projects (Keeta, HungerStation, Amazon, Ninja) on vehicles registered in the vehicles section. Authorization and the actual driver change in the field daily, so the department knows them, not the vehicles department.
+ * This is a window on the same register (`VehicleMaster`), not a copy: what is edited here is written there and broadcast to the vehicles section at once, and what is edited there is read here. Editing from here is limited to operating columns (project, city, actual driver, authorization); plate, serial number and vehicle documents stay with the vehicles department.
  */
-// ونطاقُ المركبات واحدٌ مع اللوحة: `BOARD.vehicleScope` (قطاعُه أو مشاريعُه وما عليه راكبُه).
+// Vehicle scope is the same as the dashboard's: `BOARD.vehicleScope` (its sector or projects, and whatever has a rider).
 const ymd = (d) => (d ? new Date(d).toISOString().slice(0, 10) : '');
 const ltVehicleRow = (v) => {
   const a = v.authorizedPerson || {}; const d = v.actualDriver || {};
@@ -1415,11 +1254,11 @@ const ltVehicleRow = (v) => {
     driverId: d.idNumber || '', driverName: d.name || '',
     authorizedId: a.iqamaNumber || '', authorizedName: a.name || '', authorizedPhone: a.phone || '',
     authStart: start, authEnd: end, authNumber: a.authorizationNumber || '',
-    // المدّةُ مشتقّة: من البداية إلى النهاية، بالأيّام.
+    // Duration is derived: start to end, in days.
     durationDays: start && end ? Math.round((new Date(end) - new Date(start)) / 86400000) : null,
     daysLeft: end ? Math.round((new Date(end) - new Date(today)) / 86400000) : null,
     sector: v.sectorAr || '', updatedAt: v.updatedAt,
-    // ── وما يديره القسمُ من بيانات المركبة (صاحبُ الشركة، ٢٠٢٦/١٠/٢٢) ─────────
+    // What the department manages of vehicle data
     serviceStatus: v.serviceStatusAr || '', color: v.colorAr || '', notes: v.notesAr || '',
     registrationType: v.registrationTypeAr || '',
     operatingCardNumber: v.operatingCard?.cardNumber || '', operatingCardEnd: ymd(v.operatingCard?.expiryDate),
@@ -1430,19 +1269,18 @@ const ltVehicleRow = (v) => {
 const LT_VEHICLE_SELECT = 'serialNumber departmentAr cityAr plateNumber sectorAr actualDriver authorizedPerson updatedAt '
   + 'serviceStatusAr colorAr notesAr registrationTypeAr operatingCard.cardNumber operatingCard.expiryDate insurance.expiryDate '
   + 'vehicleLicense.expiryDate inspection.expiryDate';
-/** مَن يعدّل: مديرُ القطاع ونائبُه ومديرُ النظام (وأهلُ المال كما في كلّ ما يُفتَح لهم). */
+/** Who may edit: sector manager, deputy, system admin (and finance roles, as for everything opened to them). */
 const LT_VEHICLE_EDIT = ['super_admin', 'admin', 'b2c_manager', 'b2c_deputy', ...require('../config/financeAuthority').FINANCE_FULL_ROLES];
 exports.LT_VEHICLE_EDIT = LT_VEHICLE_EDIT;
-/** مَن يعدّل سجلَّ المركبات نفسَه (routes/vehicleRegistry EDIT) — وحدَه يغيّر اللوحة من هنا. */
+/** Who edits the vehicle register itself (routes/vehicleRegistry EDIT); only they change the plate from here. */
 const REGISTRY_EDIT = ['super_admin', 'admin', 'vehicles_manager', 'vehicles_staff',
   'hr_manager', 'hr_specialist', 'cfo', 'accounting_manager', 'accountant'];
 
-// GET /people?q= — منسدلةُ الأشخاص لمركبات القسم: موظّفو النقل الخفيف أوّلًا ثمّ
-// الموارد البشريّة. ما تعرضه هو ما يقبله التعديل — utils/vehiclePerson.
+// GET /people?q= - people dropdown for department vehicles: light-transport employees first, then HR. What it shows is what the edit accepts - utils/vehiclePerson.
 exports.people = async (req, res) => {
   try {
     const all = await require('../utils/vehiclePerson').options({ scope: 'lt', q: req.query.q });
-    // `only=lt` للقائد الفعليّ وليوزر التأجير — من موظّفي القسم وحدَهم (منتقي التطبيق لا يفلتر).
+    // `only=lt` for the actual driver and the rental user: department employees only (the app picker does not filter).
     const people = req.query.only === 'lt' ? all.filter((p) => p.source === 'lt') : all;
     res.json({ people });
   } catch (e) {
@@ -1453,12 +1291,8 @@ exports.people = async (req, res) => {
 
 // GET /vehicles
 /**
- * ── كلُّ مركبات القسم، وبفلاتر اللوحة ───────────────────────────────────────
- * المجموعةُ نفسُها التي تعدّها اللوحة (`vehicleRows` ← `BOARD.vehicleScope`):
- * قطاعُ النقل الخفيف أو إدارةٌ من مشاريعه، ومعها ما عليه راكبٌ من سجلّ القسم —
- * مفوَّضةً أو لا. وتقبل فلاترَ اللوحة في الرابط (المشروع، المندوب، المركبة،
- * التفويض، السجل، كفالة/فريلانسر، الفئة، المدينة، الحالة) و`vstate`
- * (withRider · idle · activeOrder) — فرقمُ الكارت يفتح مركباتِه بأعيانها.
+ * All department vehicles, with dashboard filters.
+ * The same set the dashboard counts (`vehicleRows` from `BOARD.vehicleScope`): light-transport sector or a management of its projects, plus whatever has a rider from the department register, authorized or not. It accepts the dashboard filters in the URL (project, rider, vehicle, authorization, register, sponsorship/freelancer, category, city, status) and `vstate` (withRider, idle, activeOrder), so a card number opens its vehicles exactly.
  */
 exports.listVehicles = async (req, res) => {
   try {
@@ -1478,10 +1312,8 @@ exports.listVehicles = async (req, res) => {
     const vehicles = vrows
       .map((v) => {
         /**
-         * ── عمودُ «القائد الفعلي» = الراكبُ نفسُه (utils/ltRider) ─────────────
-         * من صفّه في سجلّ القسم، لا من نصٍّ على المركبة: فالمركبةُ «الواقفة» لا
-         * اسمَ عليها. وصاحبُ «بانتظار التسليم» يُعرَض بعلامته (والمؤرشَفُ بلا اسم).
-         * وما بقي نصًّا على المركبة بلا صفٍّ يطابقه يُعرَض «غيرَ مربوط» لا قائدًا.
+         * The 'actual driver' column is the rider himself (utils/ltRider).
+         * Taken from his row in the department register, not from text on the vehicle: an idle vehicle has no name on it. One awaiting hand-over is shown with its marker (and an archived one with no name). Text left on the vehicle with no matching row is shown as 'unlinked', not as a driver.
          */
         const rider = v.riders[0] || null;
         const holder = !rider ? (v.holders[0] || null) : null;
@@ -1493,10 +1325,10 @@ exports.listVehicles = async (req, res) => {
           driverId: rider ? S(rider.idNumber) : holder && !holder.archived ? S(holder.idNumber) : '',
           driverLt: rider ? String(rider._id) : '',
           driverHold: !!holder,
-          // نصٌّ قديمٌ على المركبة لا يطابق راكبًا — يُصحَّح بالمطابقة (scripts/reconcileLtRiders).
+          // Old text on the vehicle that matches no rider is fixed by reconciliation (scripts/reconcileLtRiders).
           driverUnlinked: !rider && !holder && S(mirror.name) ? S(mirror.name) : '',
           vstate: v.state,
-          // المشروعُ كما تعدّه اللوحة (مشروعُ الراكب، وإلّا الإدارة) — وخانةُ السجلّ تبقى في `project`.
+          // Project as the dashboard counts it (the rider's project, else the management); the register field stays in `project`.
           boardProject: v.project,
           authState: v.auth,
           riderName: v.riders.map((r) => r.name).join('، '),
@@ -1528,12 +1360,12 @@ exports.listVehicles = async (req, res) => {
   }
 };
 
-// PUT /vehicles/:id — أعمدةُ التشغيل وحدَها.
+// PUT /vehicles/:id - operating columns only.
 exports.updateVehicle = async (req, res) => {
   try {
     if (!LT_VEHICLE_EDIT.includes(req.user?.role)) return res.status(403).json({ message: 'تعديلُ مركبات القسم لمدير القطاع ونائبه' });
     const { VehicleMaster } = require('../models/VehicleMaster');
-    // مركباتُ القسم كما تعدّها اللوحة: قطاعُه أو مشاريعُه، وما عليه راكبٌ من سجلّه.
+    // Department vehicles as the dashboard counts them: its sector or projects, and whatever has a rider from its register.
     const ridden = await LightTransportEmployee.distinct('vehicle', { isActive: { $ne: false }, vehicle: { $ne: null } });
     const v = await VehicleMaster.findOne({ _id: req.params.id, ...BOARD.vehicleScope(ridden) });
     if (!v) return res.status(404).json({ message: 'المركبةُ ليست من مركبات القسم' });
@@ -1549,9 +1381,8 @@ exports.updateVehicle = async (req, res) => {
     const $set = {};
     if (b.project !== undefined) $set.departmentAr = text(b.project);
     if (b.city !== undefined) $set.cityAr = text(b.city);
-    // ── وما يديره القسمُ من بيانات المركبة (صاحبُ الشركة، ٢٠٢٦/١٠/٢٢) ─────────
-    // يُكتب في سجلّ المركبات نفسِه وبطريقه (findByIdAndUpdate) فتجري خطّافاتُه:
-    // الاشتقاقُ، ومرآةُ التفويض، ونقلُ اللوحة إلى نسخها.
+    // What the department manages of vehicle data
+    // Written to the vehicle register itself and through its path (findByIdAndUpdate) so its hooks run: derivation, authorization mirror, and copying the plate to its copies.
     if (b.serviceStatus !== undefined) $set.serviceStatusAr = text(b.serviceStatus);
     if (b.color !== undefined) $set.colorAr = text(b.color);
     if (b.notes !== undefined) $set.notesAr = S(b.notes).slice(0, 1000);
@@ -1561,11 +1392,11 @@ exports.updateVehicle = async (req, res) => {
       ['inspectionEnd', 'inspection.expiryDate', 'تاريخُ انتهاء الفحص الدوري']]) {
       if (b[k] !== undefined) {
         $set[p] = dateOf(b[k], label);
-        // تاريخٌ كُتب يرفع علامةَ «مطلوب/لا يوجد» عن المستند — صار له تاريخ.
+        // A written date clears the 'required / none' flag on the document; it now has a date.
         if ($set[p]) $set[p.replace('expiryDate', 'statusCode')] = '';
       }
     }
-    // اللوحةُ هويّةُ المركبة: يعدّلها مَن يعدّل سجلَّ المركبات وحدَه.
+    // The plate is the vehicle's identity: only those who edit the vehicle register change it.
     if (b.plateNumber !== undefined && text(b.plateNumber) !== S(v.plateNumber)) {
       if (!REGISTRY_EDIT.includes(req.user?.role)) return res.status(403).json({ message: 'اللوحةُ تُعدَّل من قسم المركبات' });
       if (!text(b.plateNumber)) return res.status(400).json({ message: 'اللوحةُ لا تُترك فارغة' });
@@ -1576,11 +1407,8 @@ exports.updateVehicle = async (req, res) => {
     if (b.authEnd !== undefined) $set['authorizedPerson.expiryDate'] = dateOf(b.authEnd, 'تاريخُ نهاية التفويض');
 
     /**
-     * ── القائدُ الفعليّ والمفوَّض: يُختاران من الموظّفين ولا يُكتبان ────────────
-     * القائدُ الفعليّ = راكبُ المركبة من سجلّ القسم (utils/ltRider) — يُغيَّر بربط
-     * صفّه بها لا بكتابة اسمٍ عليها. والمفوَّضُ ورقةٌ تُكتب بـ`setHolder`
-     * (utils/vehicleAuthorization) فيتبعها سجلُّ الإسناد. واسمٌ لا يطابق موظّفًا
-     * يُرفض برسالةٍ واضحة (utils/vehiclePerson).
+     * Actual driver and authorized person are chosen from employees, not typed.
+     * Actual driver = the vehicle's rider from the department register (utils/ltRider), changed by linking his row to it, not by writing a name on it. The authorized person is a paper written with `setHolder` (utils/vehicleAuthorization) so the assignment log follows. A name matching no employee is rejected with a clear message (utils/vehiclePerson).
      */
     const VP = require('../utils/vehiclePerson');
     const driverSent = ['driverLt', 'driverId', 'driverName'].some((k) => b[k] !== undefined);
@@ -1598,10 +1426,10 @@ exports.updateVehicle = async (req, res) => {
     const s0 = $set['authorizedPerson.startDate'] !== undefined ? $set['authorizedPerson.startDate'] : v.authorizedPerson?.startDate;
     const e0 = $set['authorizedPerson.expiryDate'] !== undefined ? $set['authorizedPerson.expiryDate'] : v.authorizedPerson?.expiryDate;
     if (s0 && e0 && new Date(e0) < new Date(s0)) return res.status(400).json({ message: 'نهايةُ التفويض قبل بدايته' });
-    // تاريخٌ كُتب يرفع علامةَ «مطلوب/لا يوجد» عن التفويض — صار له تاريخ.
+    // A written date clears the 'required / none' flag on the authorization; it now has a date.
     if ($set['authorizedPerson.expiryDate']) $set['authorizedPerson.statusCode'] = '';
 
-    // ورقةُ تفويضٍ لشخصٍ آخر تُكتب كاملةً بـ`setHolder` — رقمُها ومدّتُها معها.
+    // An authorization paper for another person is written whole with `setHolder`, including its number and term.
     if (holderChanged) {
       const auth = {};
       for (const k of Object.keys($set)) if (k.startsWith('authorizedPerson.')) { auth[k.slice(17)] = $set[k]; delete $set[k]; }
@@ -1630,8 +1458,8 @@ exports.updateVehicle = async (req, res) => {
       changes: { details: `مركبة ${after.plateNumber} — من قسم الأفراد`, before: Object.fromEntries(changedKeys.map((k) => [k, before[k]])), after: Object.fromEntries(changedKeys.map((k) => [k, after[k]])) },
       ipAddress: req.ip,
     }).catch(() => {});
-    // قسمُ المركبات يسمع في الحال (ذاكرتُه تُمسَح قبل الإعلان)، والقسمُ نفسُه كذلك.
-    // الباب المشترك (utils/vehicleAnnounce) — الأسطولُ والنقلُ الثقيل يسمعان أيضًا.
+    // The vehicles section hears at once (its cache is cleared before the announcement), and so does this section.
+    // The shared door (utils/vehicleAnnounce) also reaches fleet and heavy transport.
     require('../utils/vehicleAnnounce').announceVehicles({}, { extraCaches: ['hr:', 'dash:'], events: ['hr:employee'] });
     res.json({ vehicle: after });
   } catch (e) {

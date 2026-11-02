@@ -1,18 +1,8 @@
 /**
- * crmKpiController — مؤشرات أداء العملاء والموردين.
- *
- * A CRM company is not just a row with a phone number: it is a relationship with
- * a revenue history, a payment habit, a shipping volume and a level of contact.
- * Those live in FIVE different collections owned by five different sections, and
- * nothing links them by id — each register was filled in independently. So the
- * join is `nameKey` (see utils/nameKey.js): the Arabic-folded company name.
- *
- * The scorecard answers, for every customer:  هل ده عميل كويس؟ بيشحن كام؟ بيدفع
- * امتى؟ بنكلّمه امتى آخر مرة؟ — and for every vendor: بيشتغل معانا قد إيه، وعقده
- * مظبوط ولا لأ.
- *
- * Everything is READ-ONLY and computed on request. Cached briefly: the numbers
- * come from six collections and the page reloads on every CRM socket event.
+ * crmKpiController: customer and vendor performance indicators.
+ * A CRM company is a relationship with a revenue history, payment habit, shipping volume and contact level. Those live in FIVE collections owned by five sections with no id links, so the join is `nameKey` (see utils/nameKey.js): the Arabic-folded company name.
+ * Per customer the scorecard answers: is this a good customer, how much do they ship, when do they pay, when did we last contact them; per vendor: how much they work with us and whether the contract is in order.
+ * Everything is READ-ONLY and computed on request. Cached briefly: the numbers come from six collections and the page reloads on every CRM socket event.
  */
 const CrmCompany = require('../models/CrmCompany');
 const { startOfDay, endOfDay } = require('../utils/companyDay');
@@ -31,7 +21,7 @@ const { nameKey } = require('../utils/nameKey');
 const cache = require('../utils/ttlCache');
 
 const CACHE_TTL = 60 * 1000;
-// المخزَّنُ يبقى أطولَ من دورة التسخين، فلا يجد أحدٌ اللوحةَ فارغةً فينتظر حسابَها.
+// The cached result outlives the warm-up cycle, so nobody finds the dashboard empty and waits for the computation.
 const STORE_TTL = 70 * 60 * 1000;
 const DAY = 86400000;
 const r0 = (n) => Math.round(Number(n) || 0);
@@ -58,10 +48,7 @@ const bandOf = (bands, score) => bands.find((b) => score >= b.min) || bands[band
 // Resolve the reporting window. Default = last 12 months, which is the span a
 // customer relationship is actually judged over.
 function resolvePeriod(query) {
-  // ── الحدُّ بتوقيت الرياض لا بتوقيت الخادم ──────────────────────────────────
-  // `new Date('2026-01-01T00:00:00')` بلا منطقةٍ تُقرأ بتوقيت الجهاز الذي
-  // يشغّل الخادم: نتيجةٌ على حاسوب المطوّر وأخرى على الخادم، وكلتاهما ليست
-  // منتصفَ ليل الرياض. فيُبنى الحدُّ من تقويم الشركة صراحةً.
+  // The boundary is in Riyadh time, not server time: new Date('2026-01-01T00:00:00') without a zone reads in the server's local time, giving different results on a dev machine and the server, neither at Riyadh midnight. So it is built from the company calendar explicitly.
   const to = (query.to && endOfDay(query.to)) || new Date();
   const from = (query.from && startOfDay(query.from))
     || new Date(new Date(to).setFullYear(to.getFullYear() - 1));
@@ -69,13 +56,7 @@ function resolvePeriod(query) {
   return { from, to, months };
 }
 
-// ── والحقلُ الفارغُ لا يُرسل ─────────────────────────────────────────────────
-//
-// «مورّدٌ بلا مقرٍّ ولا مندوبٍ ولا نسبةِ تشغيل» يُرسل اليومَ عشرين حقلًا قيمتُها
-// `null` أو `""`: عشرون بايتًا لكلّ حقلٍ في ثلاثة آلافِ صفٍّ = ثمانُ مئةِ
-// كيلوبايتٍ تُنزَّل وتُحلَّل على الهاتف لتقول «لا شيء». والقارئُ في الجهتين يقرأ
-// الغائبَ كالخالي: `v ?? '—'` و`v == null` في الويب، و`r['x']` في دارت يعيد
-// `null` للمفتاح المفقود أصلًا. أمّا الصفرُ فيبقى: الصفرُ رقمٌ يُعرض ويُصدَّر.
+// An empty field is not sent. A vendor with no base, rep or utilisation used to send twenty fields of null or empty string: hundreds of KB downloaded and parsed on the phone to say nothing. Readers on both sides treat absent as empty (v ?? '-' and v == null on the web; r['x'] in Dart returns null for a missing key). Zero stays: zero is a number that is shown and exported.
 function compact(row) {
   for (const k of Object.keys(row)) {
     const v = row[k];
@@ -96,15 +77,9 @@ function indexByName(rows, nameOf) {
   return map;
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// مؤشرات العملاء — customer scorecards
-// ─────────────────────────────────────────────────────────────────────────────
-//
-// Weights. Revenue and volume dominate (that IS the relationship), payment
-// behaviour is next (a big customer who never pays is not a good customer), and
-// engagement/growth round it out.
-// نصُّ العلامات مرّةً واحدةً أعلى الحمولة (`flagLabels`)، والصفُّ يحمل مفاتيحَه
-// وحدَها: «عليه متأخرات» بالعربيّة والإنجليزيّة في كلّ صفٍّ كانت ٧٥٢ كيلوبايت.
+// Customer scorecards
+// Weights: revenue and volume dominate (that IS the relationship), payment behaviour is next (a big customer who never pays is not a good customer), and engagement/growth round it out.
+// Flag text is sent once above the payload (flagLabels) and each row carries only its keys: the bilingual overdue label in every row used to cost about 750 KB.
 const CUSTOMER_FLAGS = {
   stopped: { ar: 'موقوف', en: 'Stopped' },
   overdue: { ar: 'عليه متأخرات', en: 'Has overdue' },
@@ -114,30 +89,19 @@ const CUSTOMER_FLAGS = {
 };
 
 const CUSTOMER_WEIGHTS = {
-  revenue: 25,     // إجمالي الإيرادات
-  volume: 20,      // عدد الشحنات/المعاملات
-  payment: 20,     // الانضباط في السداد
-  recency: 15,     // آخر تعامل
-  engagement: 10,  // التواصل والأنشطة
-  growth: 10,      // النمو مقارنة بالفترة السابقة
+  revenue: 25,     // Total revenue
+  volume: 20,      // Number of shipments/transactions
+  payment: 20,     // Payment discipline
+  recency: 15,     // Last dealing
+  engagement: 10,  // Contact and activities
+  growth: 10,      // Growth versus the previous period
 };
 
 /**
- * ── القديمُ يُقدَّم والجديدُ يُحسب في الخلف ─────────────────────────────────
- *
- * لوحاتُ المؤشّرات تُحسب في ثانية، وكانت المهلةُ تنتهي كلَّ دقيقةٍ فيدفع
- * الحسابَ أوّلُ من يفتح بعدها. فتُقدَّم آخرُ حمولةٍ فورًا، وإن تجاوزت المهلةَ
- * أُعيد الحسابُ في الخلف مرّةً واحدة فيجدُه من بعده جاهزًا. ولا يُنتظَر إلّا
- * حين لا يوجد جوابٌ أصلًا.
- *
- * ── والحسابُ يُخزَّن مرّتين: القائمةُ والتفصيل ───────────────────────────────
- * الصفحةُ تعرض التفصيل (تفصيلُ التقييم والعلاماتُ والخطوط) لصفٍّ واحدٍ يفتحه
- * القارئ، فلا يُرسل مع القائمة. ويُحفظ جدولُ التفاصيل بجوار القائمة بالمفتاح
- * ذاتِه + `:detail`، فنقطةُ التفصيل تجيب من الحساب نفسِه — رقمٌ واحدٌ في
- * الموضعين، وأيُّ إبطالٍ ببادئة `crm:kpi:` يُسقطهما معًا.
- *
- * والمفتاحُ يُبنى من الفترة وحدَها لا من `JSON.stringify(req.query)`: نقطةُ
- * التفصيل تحمل `key` زائدًا، ولو دخل في المفتاح لحسبت لنفسها حسابًا كاملًا.
+ * Serve stale, compute fresh in the background.
+ * The dashboards take about a second to compute and the TTL expired every minute, so the first opener after it paid for the computation. The last payload is served at once and, if past the TTL, recomputed once in the background; waiting happens only when there is no answer at all.
+ * The computation is cached twice, list and detail: the detail (score breakdown, flags, lines) is not sent with the list. The detail table is stored under the same key + ':detail', so the detail endpoint answers from the same computation and any 'crm:kpi:' prefix invalidation drops both.
+ * The key is built from the period only, not JSON.stringify(req.query): the detail endpoint carries an extra key, which would make it compute its own.
  */
 const refreshing = new Set();
 const keyOf = (kind, q) => `crm:kpi:${kind}:${q.from || ''}:${q.to || ''}`;
@@ -151,7 +115,7 @@ async function compute(kind, q) {
   return built;
 }
 
-/** آخرُ حمولةٍ مخزَّنة، ويُعاد الحسابُ في الخلف إن تجاوزت الدقيقة. */
+/** Last cached payload, recomputed in the background if older than a minute. */
 function stale(kind, q) {
   const key = keyOf(kind, q);
   const hit = cache.get(key);
@@ -160,22 +124,16 @@ function stale(kind, q) {
     refreshing.add(key);
     Promise.resolve()
       .then(() => compute(kind, q))
-      .catch(() => { /* القديمُ يبقى مقدَّمًا */ })
+      .catch(() => { /* The stale value stays served */ })
       .finally(() => refreshing.delete(key));
   }
   return hit.val;
 }
 
 /**
- * ── تسخينُ لوحات المؤشّرات ──────────────────────────────────────────────────
- *
- * حسابُ اللوحة الواحدة خمسُ ثوانٍ إلى اثنتي عشرة (ثلاثةُ آلافِ مورّدٍ تُجمَع من
- * ستّةَ عشرَ مصدرًا). والمخزنُ يُفتَح بمفتاح الفترة، وفترةُ الصفحة الافتراضيّة
- * «من سنةٍ إلى اليوم» — فمفتاحُها يتغيّر مع تغيّر التاريخ، فيدفع أوّلُ من يفتح
- * في اليوم الحسابَ كاملًا وهو ينظر إلى دوّارة.
- *
- * فتُحسب في الخلف: مرّةً بعد الإقلاع، ثمّ كلَّ ساعة — ومعها فترةُ «بلا
- * تحديد» التي يطلبها التطبيق. وهي على النسخة التي تشغّل المهامّ وحدَها.
+ * Dashboard warm-up.
+ * One dashboard takes five to twelve seconds (thousands of vendors across sixteen sources). The cache is keyed by period, and the page's default period is one year to today, so its key changes with the date and the first opener each day paid the whole cost watching a spinner.
+ * So it is computed in the background: once after boot, then hourly, with the unspecified period the app requests. It runs only on the worker that runs the jobs.
  */
 const isoDay = (d) => d.toISOString().slice(0, 10);
 async function warmKpis() {
@@ -191,9 +149,7 @@ async function warmKpis() {
 }
 exports.startKpiWarm = () => {
   setTimeout(() => { warmKpis().catch(() => {}); }, 60 * 1000);
-  // كلَّ ساعةٍ لا كلَّ ربع (٢٠٢٦/١٠/٢٤): كلُّ تسخينٍ يقرأ الأربعين ألفَ طلبٍ مرّتين،
-  // وكان أكبرَ ما يُقرأ من القاعدة. وفاتحُ اللوحة يُخدَم فورًا كما كان، وما تجاوز
-  // الدقيقةَ يُعاد حسابُه في الخلف له ولمن بعده (stale أعلاه).
+  // Hourly rather than every quarter hour: each warm-up reads the large requests collection twice and was the biggest read on the database. The opener is still served at once, and anything older than a minute is recomputed in the background for them and the next (stale, above).
   setInterval(() => { warmKpis().catch(() => {}); }, 60 * 60 * 1000);
 };
 
@@ -213,11 +169,8 @@ function listHandler(kind, label) {
 }
 
 /**
- * تفصيلُ صفٍّ واحدٍ — يُقرأ عند فتح الصفّ في الويب أو لمسِه في التطبيق.
- *
- * يُخدَم من جدول التفاصيل المخزَّن مع القائمة التي يراها القارئ (لا يُجدَّد هنا
- * ولو تجاوز الدقيقة: التفصيلُ يجب أن يطابق الصفَّ المعروضَ أمامه، لا حسابًا
- * أحدثَ منه بلحظة).
+ * Detail of one row, read when the row is opened on the web or touched in the app.
+ * Served from the detail table cached with the list the reader sees, and not refreshed here even past a minute: the detail must match the displayed row, not a slightly newer computation.
  */
 function detailHandler(kind, label) {
   return async (req, res) => {
@@ -245,9 +198,7 @@ async function buildCustomerKpis(query) {
     companies, customers, invoices, payments, disputes,
     fleetTrips, orderTrips, customsJobs, deals, activities, tasks,
   ] = await Promise.all([
-    // ── لا يُجلب إلّا ما يدخل في حسابٍ أو يُعرض ────────────────────────────
-    // كلُّ حقلٍ زائدٍ هنا يُنقل من العنقود (زمنُ ذهابٍ وإيابٍ ٩٠ م.ث) ثمّ
-    // يُرمى، ويُضاعفه عددُ المستندات. فالإسقاطُ مضبوطٌ على ما تقرأه الصفحة.
+    // Fetch only what enters a calculation or is displayed: each extra field is moved from the cluster (about 90 ms round trip) and then thrown away, multiplied by the document count. The projection matches what the page reads.
     CrmCompany.find({}).select('name arabicName city owner linkedCustomer').populate('owner', 'firstName lastName').lean(),
     Customer.find({}).select('companyName customerNumber creditTerm grade isStopped').lean(),
     Invoice.find({ invoiceDate: { $gte: prevFrom, $lte: to } }).select('customer amount balance invoiceDate dueDate status').lean(),
@@ -309,9 +260,7 @@ async function buildCustomerKpis(query) {
   const inWindow = (d) => d && new Date(d) >= from && new Date(d) <= to;
   const inPrev = (d) => d && new Date(d) >= prevFrom && new Date(d) < from;
 
-  // ── قيمٌ يحتاجها الحسابُ ولا تُرسل ────────────────────────────────────────
-  // `isStopped` يصنع علامةً، و`onTimeRate`/`shipmentGrowthPct` يظهران داخل
-  // تفصيل التقييم لا كحقلٍ مستقلّ. فتُحفَظ جانبًا بدل أن تُحمَّل في كلّ صفّ.
+  // Values the calculation needs but are not sent: isStopped produces a flag, and onTimeRate/shipmentGrowthPct appear inside the score breakdown, not as separate fields. They are kept aside rather than loaded into every row.
   const aux = new Map();
 
   const rows = companies.map((co) => {
@@ -336,8 +285,7 @@ async function buildCustomerKpis(query) {
     const overdueInvoices = myInvoices.filter((i) => i.status !== 'paid' && new Date(i.dueDate) < new Date());
     const overdueAmount = overdueInvoices.reduce((s, i) => s + (Number(i.balance) || 0), 0);
 
-    // Payment habit: for each payment, how many days after the invoice's due
-    // date did it land? Negative = early. This is the honest "بيدفع امتى".
+    // Payment habit: for each payment, how many days after the invoice's due date did it land? Negative = early. This is the honest answer to when they pay.
     let lateSum = 0; let lateCount = 0; let onTimePayments = 0;
     for (const p of myPayments) {
       const inv = p.invoice ? invById.get(String(p.invoice)) : null;
@@ -445,7 +393,7 @@ async function buildCustomerKpis(query) {
   const maxShipments = Math.max(1, ...rows.map((r) => r.shipments));
   const maxActivities = Math.max(1, ...rows.map((r) => r.activities));
 
-  // تفصيلُ كلِّ صفٍّ يُحفظ هنا ولا يُرسل مع القائمة — انظر detailHandler.
+  // Each row's detail is stored here and not sent with the list: see detailHandler.
   const details = {};
 
   for (const r of rows) {
@@ -474,11 +422,9 @@ async function buildCustomerKpis(query) {
     const totalWeight = breakdown.reduce((s, b) => s + b.weight, 0);
     r.score = r0(breakdown.reduce((s, b) => s + (b.value / 100) * b.weight, 0) * (100 / totalWeight));
     const band = bandOf(BANDS, r.score);
-    // اسمُ التصنيفِ ولونُه يُقرآن من `bands` أعلى الحمولة بمفتاح `band` —
-    // خمسةُ تصنيفاتٍ تُرسل مرّةً بدل ثلاثِ حقولٍ في كلّ صفّ.
+    // Band name and colour are read from `bands` above the payload by the `band` key: five bands sent once instead of three fields per row.
     r.band = band.key;
-    // The one-line "what should we do about this account" — المفاتيحُ وحدَها،
-    // ونصُّها في `flagLabels` مرّةً واحدة.
+    // The one-line recommendation for the account: keys only, with their text in `flagLabels` once.
     r.flags = [
       a.isStopped && 'stopped',
       r.overdueAmount > 0 && 'overdue',
@@ -516,13 +462,8 @@ async function buildCustomerKpis(query) {
   return { payload, details };
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// مؤشرات الموردين — vendor (3PL carrier) scorecards
-// ─────────────────────────────────────────────────────────────────────────────
-//
-// A vendor is judged on whether we can actually give them work: do they take
-// loads, at what cost, is the contract signed and the paperwork in, how much
-// capacity do they have, and is anyone following them up.
+// Vendor (3PL carrier) scorecards
+// A vendor is judged on whether we can actually give them work: do they take loads, at what cost, is the contract signed and the paperwork in, how much capacity do they have, and is anyone following them up.
 const VENDOR_FLAGS = {
   not_in_crm: { ar: 'غير مسجل في CRM', en: 'Not in CRM' },
   contract_gap: { ar: 'العقد/الأوراق ناقصة', en: 'Contract incomplete' },
@@ -532,11 +473,11 @@ const VENDOR_FLAGS = {
 };
 
 const VENDOR_WEIGHTS = {
-  volume: 30,      // الحمولات المنفّذة فعليًا
-  contract: 25,    // اكتمال العقد والأوراق
-  capacity: 15,    // حجم الأسطول
-  utilisation: 15, // نسبة تشغيلهم من طاقتهم المتاحة
-  recency: 15,     // آخر تشغيل
+  volume: 30,      // Loads actually executed
+  contract: 25,    // Completeness of contract and papers
+  capacity: 15,    // Fleet size
+  utilisation: 15, // Share of their available capacity that we use
+  recency: 15,     // Last operation
 };
 
 async function buildVendorKpis(query) {
@@ -552,15 +493,12 @@ async function buildVendorKpis(query) {
   // are joined on the same folded name.
   const { VendorUtilisation, ContractVendor } = require('../models/ContractModels');
   const [vendors, suppliers, orders, utilisation, contractVendors] = await Promise.all([
-    // ── إسقاطٌ صريحٌ بدل `-__v` ───────────────────────────────────────────
-    // `select('-__v')` يجلب المستندَ كلَّه: الملاحظاتُ والمعرّفُ الخارجيُّ
-    // ومنشئُه وطوابعُ الوقت لا يقرؤها أحد. والصفحةُ لا تقرأ بريدَ المورّد
-    // ولا كونَه جديدًا، فلا يُجلبان أصلًا.
+    // Explicit projection instead of -__v: select('-__v') fetches the whole document (notes, external id, creator, timestamps nobody reads). The page does not read the vendor's email or whether it is new, so those are not fetched.
     CrmVendor.find({}).select('name carsCount hasPapers vendorSideSigned ourSideSigned contractDate energizeRep vendorType representative mobile headOffice destinations followUpStatus').lean(),
     ShipmentOrderSupplier.find({}).select('name phone').lean(),
     ShipmentOrder.find({ createdAt: { $gte: prevFrom, $lte: to } })
       .select('supplier sellPrice buyPrice status createdAt fromCity toCity').lean(),
-    // من الكشوف الفعليّة لا من ورقة الاستخدام — راجع utils/liveVendorUtilisation.
+    // From actual operations sheets, not the utilisation sheet: see utils/liveVendorUtilisation.
     require('../utils/liveVendorUtilisation').liveUtilisationRows(),
     ContractVendor.find({}).select('nameKey name fleetSize monthlyCapacity vendorSideContract ourSideContract documentsReceived contractDate destinations headquarters energizeRep vendorType').lean(),
   ]);
@@ -570,10 +508,9 @@ async function buildVendorKpis(query) {
   const monthDate = (u) => new Date(Date.UTC(u.year, (u.month || 1) - 1, 1));
   const utilByKey = new Map();
   for (const u of utilisation) {
-    if (u.isExternal || !u.nameKey) continue; // the «أفراد خارجية» bucket is not a vendor
+    if (u.isExternal || !u.nameKey) continue; // The external individuals bucket is not a vendor.
     if (!utilByKey.has(u.nameKey)) utilByKey.set(u.nameKey, []);
-    // أربعةُ حقولٍ لا الصفُّ كلُّه: الباقي (اسمُ المالك والمندوبُ ونوعُ العقد)
-    // لا يدخل في أيِّ حساب، ونُسخةُ الصفِّ الكاملِ تتكرّر لآلاف الأشهر.
+    // Four fields, not the whole row: the rest (owner name, rep, contract type) enters no calculation, and full-row copies repeat across thousands of months.
     utilByKey.get(u.nameKey).push({
       at: monthDate(u),
       orders: u.orders,
@@ -603,7 +540,7 @@ async function buildVendorKpis(query) {
   // supplier that has no CRM row yet (they exist — suppliers are usually born
   // on the create-shipment form).
   const seenKeys = new Set();
-  // المورّدون آلافٌ والمزوّدون مئات، فبحثٌ خطّيٌّ داخل كلِّ صفٍّ ضربٌ في ضرب.
+  // Vendors number in the thousands and providers in the hundreds, so a linear search inside every row is quadratic.
   const supByKey = new Map();
   for (const s of suppliers) {
     const k = nameKey(s.name);
@@ -713,8 +650,7 @@ async function buildVendorKpis(query) {
       daysSinceLastLoad: daysAgo(lastLoad),
       loadsPerMonth: r1(loads / months2),
     };
-    // ── قيمٌ للحساب لا للعرض ───────────────────────────────────────────────
-    // `inCrm` يصنع علامةً، و`ledgerLoads` يظهر داخل تفصيل التقييم وحده.
+    // Values for calculation, not display: inCrm produces a flag, and ledgerLoads appears only inside the score breakdown.
     vendorAux.set(row, { inCrm: !!v, ledgerLoads });
     return row;
   });
@@ -726,7 +662,7 @@ async function buildVendorKpis(query) {
   const medianMargin = margins.length ? margins[Math.floor(margins.length / 2)] : 0;
   const totalLoads = rows.reduce((s2, r) => s2 + r.loads, 0);
 
-  // تفصيلُ كلِّ صفٍّ يُحفظ هنا ولا يُرسل مع القائمة — انظر detailHandler.
+  // Each row's detail is stored here and not sent with the list: see detailHandler.
   const details = {};
 
   for (const r of rows) {
@@ -751,7 +687,7 @@ async function buildVendorKpis(query) {
     const totalWeight = breakdown.reduce((s2, b) => s2 + b.weight, 0);
     r.score = r0(breakdown.reduce((s2, b) => s2 + (b.value / 100) * b.weight, 0) * (100 / totalWeight));
     const band = bandOf(VENDOR_BANDS, r.score);
-    // اسمُ التصنيفِ ولونُه يُقرآن من `bands` أعلى الحمولة بمفتاح `band`.
+    // Band name and colour are read from `bands` above the payload by the `band` key.
     r.band = band.key;
     r.flags = [
       !a.inCrm && 'not_in_crm',
@@ -760,9 +696,7 @@ async function buildVendorKpis(query) {
       r.loads === 0 && 'never_used',
       r.utilisationPct != null && r.utilisationPct < 25 && r.loads > 0 && 'under_used',
     ].filter(Boolean);
-    // ما لا يظهر إلّا داخل الصفِّ المفتوح: تفصيلُ التقييم وعلاماتُ العقد
-    // والخطوطُ وممثّلُ المورّد. مفتاحُ الصفِّ هو ما يبنيه القارئُ نفسُه:
-    // المعرّفُ في CRM، فمعرّفُ المزوّد، فالاسم.
+    // Only shown inside the opened row: score breakdown, contract flags, lines and the vendor rep. The row key is what the reader builds itself: the CRM id, else the provider id, else the name.
     details[String(r._id || r.supplierId || r.name)] = {
       breakdown,
       checks: r.checks,
@@ -799,9 +733,7 @@ async function buildVendorKpis(query) {
   return { payload, details };
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// النقاطُ نفسُها — قائمةٌ خفيفةٌ لكلِّ الصفوف، وتفصيلٌ لصفٍّ واحدٍ عند الطلب
-// ─────────────────────────────────────────────────────────────────────────────
+// The scores themselves: a light list for all rows and a detail for one row on request
 exports.getCustomerKpis = listHandler('customers', 'Customer');
 exports.getVendorKpis = listHandler('vendors', 'Vendor');
 exports.getCustomerKpiDetail = detailHandler('customers', 'Customer');

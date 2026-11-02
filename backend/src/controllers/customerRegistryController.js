@@ -1,20 +1,7 @@
 /**
- * سجلُّ العملاء — جدولٌ واحدٌ لكلّ ما يُعرَف عن العميل، وملفٌّ لكلّ عميل.
- *
- * ── العلّة ──────────────────────────────────────────────────────────────────
- * كان العملاءُ بطاقاتٍ: الاسمُ والهاتفُ وزرّا تعديلٍ وحذف. ولا يُقرأ منها ما
- * يُسأل عنه أوّلًا — «كم كشفًا لهذا العميل؟ وبكم؟ وعلى أيّ المسارات؟ ومتى
- * آخرُ شحنةٍ له؟» — فيُفتح الجدولُ في مكانٍ آخر ويُجمَع بالعين.
- *
- * فصار سجلًّا يُقرأ كإكسل: عمودٌ لكلّ رقم، وفلترٌ على كلّ عمود، وملفٌّ يُفتح
- * على العميل فيه رحلاتُه وتحليلُه وأسعارُ مساراته.
- *
- * ── والوصلُ بالاسم المطويّ لا الحرفيّ ───────────────────────────────────────
- * اسمُ العميل في كشوف التشغيل يحمل فراغاتٍ غيرَ عاديّة (NBSP ومسافاتٍ مزدوجة)
- * جاءت من المنصّة. فالمطابقةُ الحرفيّةُ تعيد صفرًا والكشوفُ أربعةُ آلاف:
- * `countDocuments({ username: name })` = ٠ بينما الاسمُ نفسُه في القائمة.
- * فالوصلُ كلُّه بالمفتاح المطويّ (`fold` في CollectionsParty) — راجع
- * customer-name-hidden-differences.
+ * Customer registry: one table for everything known about a customer, and a file per customer.
+ * It replaced customer cards, which could not answer the first questions asked: how many sheets, what value, on which routes, when the last shipment. It is now an Excel-like register with a column per figure, a filter per column, and a file opening each customer's trips, analysis and route prices.
+ * Joins use the folded name, not the literal one: customer names in operations sheets carry unusual whitespace (NBSP, double spaces) from the platform, so a literal match returns zero among thousands of sheets. All joins use the folded key (fold in CollectionsParty); see customer-name-hidden-differences.
  */
 const ShipmentOrderCustomer = require('../models/ShipmentOrderCustomer');
 const OperationsWorkflow = require('../models/OperationsWorkflow');
@@ -27,7 +14,7 @@ const { canSeeSelling } = require('./workflowController');
 const TTL = 60 * 1000;
 const r2 = (n) => Math.round((Number(n) || 0) * 100) / 100;
 
-/** مجاميعُ كشوف التشغيل لكلّ عميلٍ مطويِّ الاسم — قراءةٌ واحدةٌ للجميع. */
+/** Operations sheet totals per folded customer name, in one read for all. */
 async function sheetTotals() {
   const rows = await OperationsWorkflow.aggregate([
     { $match: { username: { $nin: [null, ''] } } },
@@ -56,11 +43,8 @@ async function sheetTotals() {
 }
 
 /**
- * الطلباتُ المُنشأة **عندنا** لكلّ عميل.
- *
- * ولا تُعَدُّ المنسوخةُ من المنصّة: ٣٦٬٢٨٤ من ٣٦٬٢٨٥ صفًّا في هذا السجلّ مرآةٌ
- * لكشوف التشغيل نفسِها (`source: 'platform'`)، فعَدُّها يكرّر عمودَ الكشوف
- * برقمٍ مطابقٍ ويوهم أنّهما عملان.
+ * Orders created here per customer.
+ * Platform copies are not counted: nearly all rows in this register mirror operations sheets (source: 'platform'), so counting them would repeat the sheets column with an identical number and suggest two different pieces of work.
  */
 async function orderTotals() {
   const rows = await ShipmentOrder.aggregate([
@@ -80,17 +64,9 @@ async function orderTotals() {
 }
 
 /**
- * صفُّ العميل كما يُقرأ في الجدول.
- *
- * ── ولا يُرسَل فراغ ─────────────────────────────────────────────────────────
- * كان الصفُّ يُكتب بكلّ حقوله دائمًا، فبلغت الحمولةُ ٣١١ كيلوبايت لستّمئةٍ
- * وإحدى وسبعين عميلًا — وأكثرُ من ثلثها أسماءُ حقولٍ لا قيمةَ فيها:
- * `"paymentMethod":""` في ٦٦٩ صفًّا، و`"minPrice":null` في ٥٤٣، و`"lastSheetAt":null`
- * في ٤٤٩. وكلُّ قارئٍ لها — الجدولُ والتصديرُ والفرزُ وشاشةُ الهاتف — يقرؤها
- * بـ`?? ''` أو `v == null`، فالغائبُ عنده هو الفارغُ نفسُه.
- *
- * فيُحذَف الفارغُ والمعدوم، ويبقى **الصفرُ** و`false`: «٠ كشفًا» رقمٌ يُقرأ في
- * العمود، وبطاقةُ «بلا عمل» تُبنى على `sheets === 0` — فحذفُه يُفرغ الشريحة.
+ * A customer row as read in the table.
+ * No empty values are sent: writing every field made the payload about 311 KB for roughly 670 customers, over a third of it names of fields with no value (paymentMethod empty, minPrice null, lastSheetAt null). Every reader (table, export, sort, phone screen) treats absent as empty via `?? ''` or `v == null`.
+ * Empty and missing are dropped, but zero and false stay: zero sheets is a number read in the column, and the no-work card is built on sheets === 0.
  */
 const put = (out, k, v) => { if (v !== '' && v !== null && v !== undefined) out[k] = v; };
 
@@ -124,11 +100,8 @@ function shapeRow(c, sheets, orders) {
   put(out, 'lastPriceAt', lastRoute?.at || null);
   put(out, 'firstSheetAt', s.first || null);
   put(out, 'lastSheetAt', s.last || null);
-  // `notes` و`lastOrderAt` لا يُرسَلان: لا عمودَ لهما في الجدول ولا في التصدير
-  // (`REGISTRY_COLS` في lib/customerRegistry.ts). والملاحظاتُ تُقرأ وتُكتب في
-  // ملفّ العميل — `/api/customer-registry/:id` — لا في السجلّ.
-  // التفضيلاتُ المعتمدة تُقرأ في الجدول أيضًا: من يملأ شحنةً يريد أن يعرف
-  // أنّ لهذا العميل نوعَ شاحنةٍ وطريقةَ دفعٍ متّفقًا عليهما.
+  // notes and lastOrderAt are not sent: no table or export column for them (REGISTRY_COLS in lib/customerRegistry.ts). Notes are read and written in the customer file, /api/customer-registry/:id, not in the register.
+  // Approved preferences are read in the table too: whoever fills a shipment wants to know the customer has an agreed truck type and payment method.
   put(out, 'truckType', c.defaults?.truckType);
   put(out, 'cargoType', c.defaults?.cargoType);
   put(out, 'paymentMethod', c.defaults?.paymentMethod);
@@ -136,7 +109,7 @@ function shapeRow(c, sheets, orders) {
   return out;
 }
 
-// GET /api/customer-registry — الجدول كلُّه بأرقامه (الفلترةُ والفرزُ في الشاشة).
+// GET /api/customer-registry: the whole table with its figures (filtering and sorting happen on the screen).
 exports.list = async (req, res) => {
   try {
     const body = await cache.wrapStale('so:registry:customers:full', TTL, 15 * 60 * 1000, async () => {
@@ -179,10 +152,8 @@ exports.list = async (req, res) => {
 };
 
 /**
- * GET /api/customer-registry/:id — ملفُّ العميل: تحليلُه ومساراتُه ورحلاتُه.
- *
- * والرحلاتُ من كشوف التشغيل (تاريخُ العمل الحقيقيّ) ومن طلباتنا معًا، موصولةً
- * بالاسم المطويّ. ويُعاد منها صفحةٌ واحدةٌ لا الكلّ: عميلٌ له أربعةُ آلاف كشف.
+ * GET /api/customer-registry/:id: the customer file: analysis, routes and trips.
+ * Trips come from operations sheets (the real work history) and from our own orders, joined by folded name. Only one page of them is returned, since a customer may have thousands of sheets.
  */
 exports.profile = async (req, res) => {
   try {
@@ -196,7 +167,7 @@ exports.profile = async (req, res) => {
     const body = await cache.wrapStale(
       `so:registry:profile:${c._id}:${money ? 'm' : 'n'}:${page}:${limit}`, TTL, 10 * 60 * 1000,
       async () => {
-        // كلُّ اسمٍ في الكشوف يطوي إلى مفتاح هذا العميل — قد يكون أكثرَ من كتابة.
+        // Every name in the sheets folds to this customer's key; there may be more than one spelling.
         const names = (await OperationsWorkflow.distinct('username', { username: { $nin: [null, ''] } }))
           .filter((n) => fold(n) === key);
         const match = names.length ? { username: { $in: names } } : { _id: null };
@@ -252,7 +223,7 @@ exports.profile = async (req, res) => {
         ]);
 
         const a = agg[0] || { sheets: 0, purchase: 0, first: null, last: null, branches: [] };
-        // سعرُ كلّ مسارٍ كما في ملفّ العميل — يُوصَل بالمسار المطويّ نفسِه.
+        // Each route's price as in the customer file, joined by the same folded route.
         const priceOf = new Map();
         for (const r of c.routes || []) {
           if (r.price == null) continue;
@@ -260,7 +231,7 @@ exports.profile = async (req, res) => {
           const prev = priceOf.get(k);
           if (!prev || (r.at || 0) > (prev.at || 0)) priceOf.set(k, { price: r.price, at: r.at, source: r.source });
         }
-        // وشرائحُ السعر بعدد السيارات — على المسار نفسِه، سُعِّر بسعرٍ واحدٍ أم لا.
+        // Price tiers by vehicle count, on the same route, whether or not it is priced with a single price.
         const tiersOf = new Map();
         for (const r of c.routes || []) {
           if ((r.tiers || []).length) tiersOf.set(routeKey(r.fromCity, r.toCity), { tiers: r.tiers, at: r.tiersAt || null, by: r.tiersBy || '' });
@@ -306,8 +277,7 @@ exports.profile = async (req, res) => {
         };
       },
     );
-    // من يعدّل الشرائح يُحسَب لكلّ سائلٍ — خارجَ الجواب المحفوظ المشترك.
-    // (والسعرُ المتّفقُ عليه كالشرائح: للدورين نفسَيهما.)
+    // Whoever may edit the tiers is computed per requester, outside the shared cached response. The agreed price is treated like the tiers: for the same two roles.
     res.json({ ...body, canEditTiers: exports.canEditTiers(req.user.role), canEditPrices: exports.canEditTiers(req.user.role) });
   } catch (e) {
     console.error('customer registry profile:', e);
@@ -317,15 +287,9 @@ exports.profile = async (req, res) => {
 
 
 /**
- * PUT /api/customer-registry/:id/route-tiers — { fromCity, toCity, tiers }
- *
- * شرائحُ سعر المسار بعدد السيارات. يكتبها **مديرُ العمليّات أو مديرُ النظام**
- * وحدَهما، ومن يفتح ملفَّ العميل غيرَهما يقرؤها ولا يعدّلها.
- *
- * ── والحارسُ هنا لا في قائمة المسار ────────────────────────────────────────
- * `authorize` تمرّ بمنح القسم («تعديل» على القسم يفتح كلَّ نقطةٍ فيه)، فقائمةُ
- * أدوارٍ في ملفّ المسارات لا تمنع من مُنح القسم. والمطلوبُ دوران بعينهما
- * مهما مُنح غيرُهما — فيُسأل الدورُ هنا.
+ * PUT /api/customer-registry/:id/route-tiers  { fromCity, toCity, tiers }
+ * Route price tiers by vehicle count. Only the operations manager or the system admin write them; anyone else opening the customer file can read but not edit.
+ * The guard is here, not in the route list: authorize passes through section grants (edit on the section opens every endpoint), so a role list in the routes file does not stop someone granted the section. Exactly two roles are required whatever else is granted, so the role is checked here.
  */
 const { PRICE_EDITORS: TIER_EDITORS } = require('../utils/customerRoutes');
 exports.canEditTiers = (role) => TIER_EDITORS.includes(role);
@@ -347,7 +311,7 @@ exports.setRouteTiers = async (req, res) => {
     let route = (customer.routes || []).find((r) => routeKey(r.fromCity, r.toCity) === k);
     const before = route ? (route.tiers || []).map((t) => ({ minTrucks: t.minTrucks, maxTrucks: t.maxTrucks, price: t.price })) : [];
     if (!route) {
-      // مسارٌ يعمل عليه العميلُ ولم يدخل قائمةَ أسعاره بعد: يدخل الآن بشرائحه.
+      // A route the customer works on that is not yet in their price list: it enters now with its tiers.
       customer.routes.push({ fromCity: from, toCity: to, price: null, at: null, source: '', hits: 0 });
       route = customer.routes[customer.routes.length - 1];
     }
@@ -366,7 +330,7 @@ exports.setRouteTiers = async (req, res) => {
       const { emitToAll } = require('../websocket/socketManager');
       emitToAll('shipmentOrders:customers', {});
       emitToAll('workflow:updated', { bulk: true, prices: true });
-    } catch (_) { /* زيادة */ }
+    } catch (_) { /* extra */ }
     res.json({ fromCity: from, toCity: to, tiers, tiersAt: route.tiersAt, tiersBy: route.tiersBy });
   } catch (e) {
     res.status(e.status === 400 ? 400 : 500).json({ message: e.status === 400 ? e.message : 'تعذّر حفظ الشرائح' });

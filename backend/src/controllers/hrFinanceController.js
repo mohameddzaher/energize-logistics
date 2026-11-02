@@ -1,42 +1,4 @@
-/**
- * ماليّاتُ الموارد البشريّة — رسومُ الإقامات ورخص العمل، وطلباتُ الموارد البشريّة.
- *
- *   الإدارة الماليّة (/api/finance):
- *     GET   /hr-docs             المستنداتُ المستحقّة + أعدادُ الشرائح + قوائمُ الفلاتر
- *     GET   /hr-docs/options     قوائمُ الفلترة السريعة وحدَها (HrQuickFilters)
- *     GET   /hr-docs/summary     أرقامُ بطاقة «ماليات الموارد البشرية»
- *     POST  /hr-docs/pay         «تمّ دفع الرسوم» — صفوفٌ بعينها أو كلُّ نتائج الفلتر
- *     POST  /hr-docs/unpay       التراجعُ عن دفعة (مديرو الماليّة)
- *     GET   /hr-requests         صندوقُ طلبات الموارد البشريّة
- *     PATCH /hr-requests/:id     الجواب: تمّ / لم يتمّ + ملاحظة + مرفقات
- *
- *   الموارد البشريّة (/api/hr):
- *     GET   /finance-follow/docs      الصفوفُ نفسُها بحالة دفعها — قراءةٌ فقط
- *     GET   /finance-follow/options
- *     GET   /finance-requests         طلباتُ القسم إلى الماليّة
- *     POST  /finance-requests         طلبٌ جديد: موظّفون + ما يُحتاج لكلٍّ منهم + مرفقات
- *
- * ── الصفُّ مستندٌ لا موظّف ──────────────────────────────────────────────────
- * لكلّ مقيمٍ مستندان تُدفع رسومُهما منفصلَين: الإقامةُ ورخصةُ العمل. فالموظّفُ
- * الواحدُ قد يظهر صفّين، ويُدفع أحدُهما ويبقى الآخر.
- *
- * ── مَن يُعرض ───────────────────────────────────────────────────────────────
- * مَن لم تنتهِ خدمتُه ولم يُؤرشَف (`employment=current` في hrMaster.buildFilter،
- * ومعه utils/endedStaff احتياطًا)، وليس سعوديًّا (لا إقامةَ له ولا رخصةَ عمل —
- * راجع skipGroups في models/Employee)، ومستندُه مطلوبٌ وله تاريخٌ مقروء. ومن
- * المستندات: ما انتهى (ويُقرأ «منتهية») وما بقي على انتهائه ٢٠ يومًا فأقلّ.
- *
- * ── والأرقامُ لا تتحرّك تحت مَن يضغطها ─────────────────────────────────────
- * كلُّ مجموعةِ أرقامٍ (شرائحُ المدّة، المستند، الدفع، كلُّ فلترٍ سريع، كلُّ
- * عمود) تُحسب بكلّ الفلاتر **عدا** فلترها — كما في hrMaster.expiring. والحسابُ
- * كلُّه هنا في الذاكرة: مئاتُ صفوفٍ لا أكثر، والفلاتر كلُّها تُطبَّق في موضعٍ
- * واحد، فلا يختلف الرقمُ عن الجدول الذي يفتحه.
- *
- * ── والدفعُ ليس تجديدًا ─────────────────────────────────────────────────────
- * «تمّ دفع الرسوم» يسجّل أنّ المال دُفع، ولا يغيّر تاريخًا في ملفّ أحد. التجديدُ
- * يبقى للموارد البشريّة من ملفّ الموظّف كما هو اليوم — وحين يتغيّر التاريخُ تبدأ
- * دورةٌ جديدةٌ غيرُ مدفوعة (راجع models/HrDocPayment).
- */
+/** HR finance: residency and work-permit fees, and HR requests. Finance (/api/finance): GET   /hr-docs             due documents + bucket counts + filter lists GET   /hr-docs/options     quick-filter lists only (HrQuickFilters) GET   /hr-docs/summary     numbers for the HR finance card POST  /hr-docs/pay         mark fees paid - given rows or all filter results POST  /hr-docs/unpay       undo a payment (finance managers) GET   /hr-requests         HR requests inbox PATCH /hr-requests/:id     answer: done / not done + note + attachments HR (/api/hr): GET   /finance-follow/docs      same rows with payment state - read only GET   /finance-follow/options GET   /finance-requests         department requests to finance POST  /finance-requests         new request: employees + needs + attachments A row is a document, not an employee: each resident has two fee-paying documents (residency, work permit), so one employee can show two rows with one paid. Shown: not ended, not archived (`employment=current` in hrMaster.buildFilter, with utils/endedStaff as a safeguard), not Saudi (no residency or work permit; see skipGroups in models/Employee), document required and with a readable date. Included: expired ones and those 20 days or less from expiry. Counts do not move under the one clicking: each group of numbers is computed with all filters except its own, as in hrMaster.expiring. All computed in memory (hundreds of rows) with filters applied in one place, so numbers match the table they open. Paying is not renewing: it records payment and changes no date. Renewal stays with HR from the employee file; when the date changes a new unpaid cycle starts (models/HrDocPayment). */
 const mongoose = require('mongoose');
 const Employee = require('../models/Employee');
 const User = require('../models/User');
@@ -55,33 +17,29 @@ const multi = (v) => String(v ?? '').split(',').map((x) => x.trim()).filter(Bool
 const nameOfUser = (u) => [u?.firstName, u?.lastName].filter(Boolean).join(' ').trim() || u?.email || '';
 const nameOfEmp = (e) => e?.arabicName || [e?.firstName, e?.lastName].filter(Boolean).join(' ').trim();
 
-// ═══════════════════════════════════════════════════════════════════════════
-//  مَن يملك ماذا
-// ═══════════════════════════════════════════════════════════════════════════
-/** مَن يسجّل الدفعَ ويجيب الطلبات — أهلُ المال، ومَن مُنح القسمَ «تعديلًا». */
+// Ownership
+/** Who records payment and answers requests: finance staff and anyone granted the section edit access. */
 const PAY_ROLES = ['super_admin', 'admin', 'cfo', 'accounting_manager', 'accountant'];
-/** والتراجعُ عن دفعةٍ لمديري الماليّة وحدَهم — يُحرَس بـ`authorize.strict`. */
+/** Undoing a payment is for finance managers only, guarded by `authorize.strict`. */
 const UNDO_ROLES = ['super_admin', 'admin', 'cfo', 'accounting_manager'];
-/** مَن يُبلَّغ بطلبٍ جديد من الموارد البشريّة. */
+/** Who is notified of a new HR request. */
 const FINANCE_NOTIFY_ROLES = ['cfo', 'finance_manager', 'accounting_manager', 'accountant'];
 
 const roleIn = (user, list) => list.map(canonicalRole).includes(canonicalRole(user?.role));
 const canPay = (req) => roleIn(req.user, PAY_ROLES) || req.sectionAccess === 'edit';
 const canUndo = (req) => roleIn(req.user, UNDO_ROLES);
 
-// ── البثُّ: الصفحتان (الماليّة والموارد البشريّة) تسمعان حدثًا واحدًا ──────────
+// Broadcast: the finance and HR pages listen to one event.
 const announce = (kind) => {
-  try { require('../websocket/socketManager').emitToAll('hr-finance:changed', { kind, at: Date.now() }); } catch (_) { /* البثُّ زيادة */ }
+  try { require('../websocket/socketManager').emitToAll('hr-finance:changed', { kind, at: Date.now() }); } catch (_) { /* The broadcast is optional. */ }
 };
 
-// ═══════════════════════════════════════════════════════════════════════════
-//  المرفقات — data URL في JSON كبقيّة النظام (لا multer)
-// ═══════════════════════════════════════════════════════════════════════════
+// Attachments: data URL in JSON like the rest of the system (no multer)
 const MAX_FILES = 10;
 const MB = 1024 * 1024;
-const MAX_TOTAL = 18 * MB; // الخادمُ يقبل ٢٥ ميغا للطلب، وbase64 يزيد الثلث.
+const MAX_TOTAL = 18 * MB; // The server accepts 25 MB per request and base64 adds a third.
 
-/** يحفظ المرفقات ويعيد ما يُكتب — ويرفض قبل أن يكتب شيئًا. */
+/** Save the attachments and return what to store; reject before writing anything. */
 function saveFiles(list) {
   const files = (Array.isArray(list) ? list : []).filter((f) => f && f.dataUrl);
   if (!files.length) return [];
@@ -105,17 +63,15 @@ function saveFiles(list) {
   return saved;
 }
 
-// ═══════════════════════════════════════════════════════════════════════════
-//  صفوفُ المستندات
-// ═══════════════════════════════════════════════════════════════════════════
+// Document rows
 const DOCS = [
   { key: 'iqama', ar: 'إقامة', en: 'Iqama', field: 'iqamaExpiry' },
   { key: 'workPermit', ar: 'رخصة عمل', en: 'Work permit', field: 'workPermitExpiry' },
 ];
-/** أوسعُ نافذة: ما بقي عليه ٢٠ يومًا فأقلّ — والشرائحُ تراكميّةٌ تحتها. */
+/** Widest window: 20 days or less remaining; the buckets are cumulative beneath it. */
 const HORIZON = 20;
 const WINDOWS = [20, 15, 10, 5];
-/** الفلاترُ السريعةُ نفسُها التي في رأس لوحة الموارد البشريّة (HrQuickFilters). */
+/** The same quick filters as the HR dashboard header (HrQuickFilters). */
 const FV = require('../utils/hrFilterValue');
 const QUICK_KEYS = ['department', 'staffCategory', 'registerNumber', 'branchName', 'workStatusText', 'project', 'nationality', 'iqamaProfession'];
 
@@ -125,11 +81,7 @@ const dayNum = (ymd) => {
   return m ? Date.UTC(Number(m[1]), Number(m[2]) - 1, Number(m[3])) / 86400000 : null;
 };
 
-/**
- * أعمدةُ الجدول القابلةُ للفلترة على طريقة إكسل — القيمةُ تُقرأ هنا وحدَه، فما
- * يُفلتَر عليه وما يُعَدّ في القائمة شيءٌ واحد. (`doc` و`paid` رموزٌ تُترجمها
- * الواجهة.)
- */
+/** Table columns filterable Excel-style. The value is read here only, so what is filtered on and what is counted in the list are the same. (`doc` and `paid` are codes the UI translates.) */
 const COLUMNS = {
   employeeNumber: (r) => r.employeeNumber,
   name: (r) => r.name,
@@ -157,7 +109,7 @@ const registerShownOf = (e) => {
   return S(e.registerNumber) || 'غير محدّد';
 };
 
-/** كلُّ مستندٍ مستحقٍّ اليوم — قبل أيّ فلترٍ من فلاتر الشاشة. */
+/** Every document due today, before any screen filter. */
 async function universe() {
   const { _buildFilter } = require('./hrMasterController');
   const match = { $and: [_buildFilter({ employment: 'current' }), { idType: { $ne: 'national_id' } }] };
@@ -172,15 +124,15 @@ async function universe() {
   for (const e of emps) {
     const id = String(e._id);
     if (ended && (ended.ids.has(id) || ended.archivedIds.has(id))) continue;
-    // السعوديُّ لا إقامةَ له ولا رخصةَ عمل — وإن كُتب نوعُ هويّته خطأً.
+    // A Saudi has no residency or work permit, even if his identity type was entered wrongly.
     if (/سعود|saudi/i.test(String(e.nationality || ''))) continue;
     for (const d of DOCS) {
       const st = e.fieldStatus?.[H.statusKeyOf(d.field)];
-      // «غير مطلوب» و«لا يوجد» قرارٌ إداريّ: المستندُ لا ينطبق على صاحبه.
+      // Not-required and none are administrative decisions: the document does not apply to the holder.
       if (st === 'not_required' || st === 'none') continue;
       const exp = S(e[d.field]).slice(0, 10);
       const n = dayNum(exp);
-      if (n === null) continue; // بلا تاريخٍ مقروء — تلك قائمةُ عملٍ في الموارد البشريّة لا رسومٌ تُدفع
+      if (n === null) continue; // No readable date: that is an HR work list, not fees to pay.
       const daysLeft = n - today;
       if (daysLeft > HORIZON) continue;
       rows.push({
@@ -199,7 +151,7 @@ async function universe() {
       });
     }
   }
-  // الدفعاتُ الساريةُ لدورات هذه الصفوف بالضبط.
+  // Active payments for exactly these rows' cycles.
   if (rows.length) {
     const pays = await HrDocPayment.find({ voided: false, employee: { $in: [...new Set(rows.map((r) => r.employeeId))] } })
       .select('employee docType expiryDate amount note files paidAt paidByName').lean();
@@ -215,7 +167,7 @@ async function universe() {
   return rows;
 }
 
-/** فلاترُ الشاشة كما وصلت — مفصولةً بمجموعاتها لتُعَدّ كلُّ مجموعةٍ بدونها. */
+/** Screen filters as received, split by group so each group can be counted without itself. */
 function readQuery(q) {
   let cf = {};
   try {
@@ -239,7 +191,7 @@ function readQuery(q) {
 const quickVal = (r, k) => (FV.applies(r, k) ? normKey(r[k]) || '—' : null);
 const inWindow = (r, w) => (w === 'expired' ? r.daysLeft < 0 : r.daysLeft >= 0 && r.daysLeft <= Number(w));
 
-/** يمرّ الصفُّ بكلّ الفلاتر عدا `skip` (اسمُ مجموعةٍ أو `cf:<عمود>` أو `quick:<حقل>`). */
+/** The row passes all filters except `skip` (a group name, `cf:<column>` or `quick:<field>`). */
 function passes(r, f, skip = '') {
   if (skip !== 'window' && f.window && !inWindow(r, f.window)) return false;
   if (skip !== 'doc' && f.doc && r.docType !== f.doc) return false;
@@ -266,7 +218,7 @@ const tally = (rows, valueOf) => {
     .sort((a, b) => b.count - a.count || String(a.value).localeCompare(String(b.value), 'ar'));
 };
 
-/** الحسابُ كلُّه: الصفوفُ المفلترة، وأعدادُ كلّ مجموعةٍ بدون فلترها. */
+/** The whole computation: filtered rows and each group's counts without its own filter. */
 async function compute(query, { withColumns = true } = {}) {
   const all = await universe();
   const f = readQuery(query || {});
@@ -284,7 +236,7 @@ async function compute(query, { withColumns = true } = {}) {
   const noPaid = all.filter((r) => passes(r, f, 'paid'));
   const paid = { all: noPaid.length, paid: noPaid.filter((r) => r.paid).length, unpaid: noPaid.filter((r) => !r.paid).length };
 
-  // بشكل HrQuickFilters: [{ key, values: [{ value, count }] }]
+  // Shaped like HrQuickFilters: [{ key, values: [{ value, count }] }]
   const filters = QUICK_KEYS.map((k) => ({ key: k, values: tally(all.filter((r) => passes(r, f, `quick:${k}`)), (r) => quickVal(r, k)) }));
 
   const columnOptions = {};
@@ -299,9 +251,7 @@ const publicRow = (r) => {
   return rest;
 };
 
-// ═══════════════════════════════════════════════════════════════════════════
-//  القراءة
-// ═══════════════════════════════════════════════════════════════════════════
+// Reads
 const listFor = (side) => async (req, res) => {
   try {
     const out = await compute(req.query);
@@ -324,7 +274,7 @@ const listFor = (side) => async (req, res) => {
 exports.financeDocs = listFor('finance');
 exports.hrDocs = listFor('hr');
 
-/** قوائمُ الفلترة السريعة وحدَها — تقرؤها HrQuickFilters من رابطها. */
+/** Quick-filter lists only; HrQuickFilters reads them from its link. */
 exports.options = async (req, res) => {
   try {
     const out = await compute(req.query, { withColumns: false });
@@ -334,7 +284,7 @@ exports.options = async (req, res) => {
   }
 };
 
-/** أرقامُ بطاقة «ماليات الموارد البشرية»: ما لم يُدفع، ومنه المنتهي، والطلباتُ المنتظرة. */
+/** Numbers for the HR finance card: unpaid, of which expired, and waiting requests. */
 exports.summary = async (req, res) => {
   try {
     const [all, pending] = await Promise.all([universe(), HrFinanceRequest.countDocuments({ status: 'pending' })]);
@@ -350,15 +300,8 @@ exports.summary = async (req, res) => {
   }
 };
 
-// ═══════════════════════════════════════════════════════════════════════════
-//  الدفع والتراجع
-// ═══════════════════════════════════════════════════════════════════════════
-/**
- * يحدّد الصفوفَ المقصودة: إمّا `items` بعينها ({employeeId, docType}) وإمّا
- * `all: true` مع `query` — فتُعاد قراءةُ نتائج الفلتر كلِّها في الخادم (لا صفحةُ
- * الشاشة وحدَها). والصفُّ يُقرأ من الملفّ الآن: الدورةُ التي تُدفع هي دورةُ اليوم،
- * لا ما كان في المتصفّح قبل ساعة.
- */
+// Pay and undo
+/** Select the target rows: either explicit `items` ({employeeId, docType}) or `all: true` with `query`, which re-reads all filter results on the server (not just the screen's page). The row is read from the file now: the cycle paid is today's, not what the browser held an hour ago. */
 async function targetRows(body) {
   if (body?.all === true) {
     const out = await compute(body.query || {}, { withColumns: false });
@@ -400,9 +343,7 @@ exports.markPaid = async (req, res) => {
       amount, note: S(b.note).slice(0, 2000), files,
       paidAt: new Date(), paidBy: req.user?._id, paidByName: byName,
     }));
-    // ── وإدراجٌ لا يكرّر ─────────────────────────────────────────────────────
-    // دفعها غيرُه في اللحظة نفسِها؟ `$setOnInsert` مع الشرط يجعل الدورةَ المدفوعةَ
-    // تُترَك كما هي، ويُعَدّ ما أُدرج فعلًا لا ما أُرسل.
+    // Insert without duplicating. If someone else paid in the same moment, `$setOnInsert` with the condition leaves an already paid cycle as is, and the count is of rows actually inserted, not sent.
     let n = 0;
     try {
       const r = await HrDocPayment.bulkWrite(docs.map((d) => ({
@@ -457,17 +398,15 @@ exports.undoPaid = async (req, res) => {
   }
 };
 
-// ═══════════════════════════════════════════════════════════════════════════
-//  طلباتُ الموارد البشريّة إلى الماليّة
-// ═══════════════════════════════════════════════════════════════════════════
+// HR requests to finance
 const nextNumber = async () => {
   const last = await HrFinanceRequest.findOne({}).sort({ number: -1 }).select('number').lean();
   return (last?.number || 1000) + 1;
 };
 
 /**
- * GET …/hr-requests?status=&from=&to=&q=&mine=1
- * والعدّادُ بكلّ الفلاتر عدا الحالة — فلا يتغيّر رقمُ «قيد الانتظار» حين تُفتح «تمّ».
+ * GET .../hr-requests?status=&from=&to=&q=&mine=1
+ * The counter uses all filters except status, so the pending number does not change when done is opened.
  */
 const listRequestsFor = (side) => async (req, res) => {
   try {
@@ -512,7 +451,7 @@ exports.createRequest = async (req, res) => {
     const raw = (Array.isArray(b.items) ? b.items : [])
       .map((x) => ({ employee: S(x?.employee || x?.employeeId), note: S(x?.note).slice(0, 2000) }))
       .filter((x) => mongoose.isValidObjectId(x.employee));
-    // الموظّفُ الواحدُ مرّةً واحدة — وإن اختير مرّتين بقي أوّلُ ما كُتب له.
+    // Each employee once; if picked twice, the first entry written for him stays.
     const seen = new Set();
     const items = raw.filter((x) => (seen.has(x.employee) ? false : seen.add(x.employee)));
     if (!items.length) return res.status(400).json({ message: 'اختر موظّفًا واحدًا على الأقلّ' });
@@ -548,7 +487,7 @@ exports.createRequest = async (req, res) => {
       throw e;
     }
 
-    // يُبلَّغ أهلُ المال بالدور — لا بقائمة أسماءٍ تشيخ. ولا يُبلَّغ الفاعلُ نفسُه.
+    // Finance is notified by role, not by an aging name list, and the actor is not notified.
     try {
       const { createNotification } = require('../services/notificationService');
       const users = await User.find({ role: { $in: FINANCE_NOTIFY_ROLES }, isActive: { $ne: false } }).select('_id').lean();
@@ -563,7 +502,7 @@ exports.createRequest = async (req, res) => {
         relatedEntity: 'HrFinanceRequest',
         relatedEntityId: doc._id,
       }).catch(() => {})));
-    } catch (_) { /* التبليغُ زيادةٌ لا شرط */ }
+    } catch (_) { /* Notification is an extra, not a requirement. */ }
 
     logAudit({
       user: req.user, action: 'create', entity: 'HrFinanceRequest', entityId: doc._id,
@@ -594,7 +533,7 @@ exports.answerRequest = async (req, res) => {
     const note = S(b.note).slice(0, 2000);
     doc.status = status;
     doc.answerNote = note;
-    // مرفقاتُ الجواب تتراكم: تصحيحُ الجواب لا يمحو ما أُرفق قبله.
+    // Answer attachments accumulate: correcting an answer does not erase earlier attachments.
     doc.answerFiles = [...(doc.answerFiles || []), ...files];
     doc.answeredBy = req.user?._id;
     doc.answeredByName = byName;
@@ -613,7 +552,7 @@ exports.answerRequest = async (req, res) => {
           relatedEntity: 'HrFinanceRequestReply',
           relatedEntityId: doc._id,
         });
-      } catch (_) { /* التبليغُ زيادة */ }
+      } catch (_) { /* Notification is an extra. */ }
     }
 
     logAudit({

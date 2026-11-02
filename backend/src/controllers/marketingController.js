@@ -1,13 +1,6 @@
 /**
- * marketingController — the Marketing section (قسم التسويق).
- *
- * Two collections only: MarketingCampaign (the budgeted push) and
- * MarketingActivity (each dated post/ad/design done under it). Everything else
- * on the pages — the dashboard, the platform breakdown and the daily/weekly/
- * monthly report — is derived from those rows in memory. The volumes here are
- * small (tens of activities a week, not millions of trips), so a lean() find
- * over a date range plus a reduce is both simpler and faster than a pipeline,
- * and it keeps the bucketing logic (ISO weeks!) in plain JS where it's testable.
+ * marketingController: the Marketing section.
+ * Two collections only: MarketingCampaign (the budgeted push) and MarketingActivity (each dated post/ad/design under it). The dashboard, platform breakdown and daily/weekly/monthly report are derived in memory from those rows. Volumes are small (tens of activities a week), so a lean() find over a date range plus a reduce is simpler and faster than a pipeline, and keeps the ISO-week bucketing in testable plain JS.
  */
 const MarketingCampaign = require('../models/MarketingCampaign');
 const MarketingActivity = require('../models/MarketingActivity');

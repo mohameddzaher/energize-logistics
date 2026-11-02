@@ -1,53 +1,20 @@
-/**
- * walletStart — اليومُ الذي تبدأ عنده عهدةُ الفروع، ولا شيءَ قبله.
- *
- * ── لماذا يوجد هذا الملف ────────────────────────────────────────────────────
- * الدفترُ كان يحمل ثلاثةَ أشهرٍ سابقةٍ من التجربة والاستيراد الأوّل: أرصدةٌ
- * افتتاحيّةٌ لا يعرف أحدٌ من أين جاءت، وحركاتٌ سُجّلت لتُجرَّب الشاشةُ لا
- * لتُقرأ. ثمّ صار الدفترُ يُقرأ فعلًا، فوجب أن يبدأ من نقطةٍ يعرفها القسمُ
- * ويقرّها — أوّلِ سبتمبر ٢٠٢٦ — ويكون ما قبلها غيرَ موجود، لا «موجودًا
- * ويُتجاهَل».
- *
- * والأمرُ ليس تنظيفًا لمرّةٍ واحدة: لو بقي البابُ مفتوحًا لكُتبت حركةٌ بتاريخ
- * أغسطس بعد أسبوع — سهوًا أو بتاريخٍ مكتوبٍ بالخطأ — فتُنشأ يوميّةٌ جديدة قبل
- * البداية، وتُعاد السلسلةُ التي صُحّحت. ورصيدُ أوّلِ سبتمبر الافتتاحيُّ رقمٌ
- * مُقَرٌّ لا محسوب: هو «ما كان في الخزنة ذلك الصباح»، وأيُّ يومٍ يُدسّ قبله
- * يجعله محسوبًا من العدم مرّةً أخرى.
- *
- * فالحدُّ يُعلَن هنا مرّةً، ويُمنع عنده كلُّ فعلٍ يكتب: إضافةُ حركةٍ وتعديلُها
- * وحذفُها، وإقفالُ يومٍ وإعادةُ فتحه، وحتّى فتحُ شاشةِ يومٍ سابق — فالفتحُ
- * وحدَه يُنشئ يوميّةً في القاعدة (`getOrCreateWallet`)، أي أنّ مجرَّد النظر
- * إلى الماضي كان يخلقه.
- */
+/** First day of branch custody; nothing before it exists. Earlier months held trial and first-import data (unexplained opening balances, test entries), so the ledger now starts from an agreed date and earlier days are nonexistent rather than ignored. The boundary blocks every write (add, edit, delete, close, reopen) and even opening an earlier day, because getOrCreateWallet creates the day on read. The opening balance on the start date is a declared figure (cash in the safe that morning), not computed; any day inserted before it would make it computed again. */
 
-/** أوّلُ يومٍ للعهدة — ما قبله لا يُقرأ ولا يُكتب. */
+/** First custody day; earlier days are neither read nor written. */
 const WALLET_START_DATE = '2026-09-01';
 
-/** التواريخُ نصوصُ `YYYY-MM-DD`، فمقارنتُها النصّيّة هي مقارنتُها الزمنيّة. */
+/** Dates are YYYY-MM-DD strings, so string comparison equals chronological comparison. */
 const isBeforeWalletStart = (date) => !!date && String(date) < WALLET_START_DATE;
 
-/** اليومُ بصيغة `YYYY-MM-DD` بتوقيت الخادم — لا `toISOString` التي تقفز يومًا. */
+/** Today as YYYY-MM-DD in server time; not toISOString, which can jump a day. */
 const todayStr = () => {
   const d = new Date();
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 };
 
 /**
- * ── وللدفتر آخِرٌ كما له أوّل: اليومُ والغد، لا أبعد ────────────────────────
- *
- * أُغلق بابُ الماضي وتُرك بابُ المستقبل مفتوحًا، وهو العطبُ نفسُه من الجهة
- * الأخرى: `getOrCreateWallet` تُنشئ اليوميّةَ لمجرّد طلبها، فمن فتح الشاشة
- * واختار تاريخًا بعد أسبوعين خلق يومًا لم يأتِ بعد. ووُجدت في الدفتر ثلاثُ
- * يوميّاتٍ فارغةٍ هكذا، إحداها سُجّلت قبل يومها بثمانيةَ عشرَ يومًا.
- *
- * ── ولماذا الغدُ داخلٌ والذي بعده خارج ──────────────────────────────────────
- * لأنّ العملَ يتجاوز منتصفَ الليل. يُقفَل يومُ الفرع ويُجهَّز يومُ الغد برصيده
- * المنقول، ثمّ يأتي قيدٌ في الساعة الواحدة صباحًا فهو قيدُ الغد بالتقويم لا
- * بالعمل. ومنعُه يعني أن يُكتب بتاريخٍ خاطئ أو لا يُكتب.
- *
- * أمّا ما بعد الغد فلا عملَ فيه بحال: النقدُ يُعَدّ ويُقفَل في يومه، ومن أراد
- * تسجيلَ شيءٍ بعد أسبوعٍ يسجّله يومَها. فالحدُّ يومان لا أكثر — واسعٌ بما يكفي
- * للعمل الحقيقيّ، ضيّقٌ بما يمنع خلقَ أيّامٍ لا صاحبَ لها.
+ * The ledger has an upper bound too: today and tomorrow only. getOrCreateWallet creates a day merely by being asked, so opening a date weeks ahead created a day that had not happened (three empty ones were found, one made 18 days early).
+ * Tomorrow is included because work crosses midnight: a branch day is closed and tomorrow prepared with its carried balance, then a 1 a.m. entry belongs to tomorrow by calendar. Blocking it would force a wrong date or no record. Beyond tomorrow there is no real work, since cash is counted and closed the same day.
  */
 const shiftDay = (base, days) => {
   const d = new Date(`${base}T00:00:00`);
@@ -55,7 +22,7 @@ const shiftDay = (base, days) => {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 };
 
-/** آخرُ يومٍ يُفتَح ويُكتب فيه — الغد. */
+/** Last day that can be opened and written: tomorrow. */
 const lastWritableDay = () => shiftDay(todayStr(), 1);
 
 const isBeyondBook = (date) => !!date && String(date) > lastWritableDay();
@@ -66,20 +33,7 @@ const walletStartMessage = () =>
 const walletFutureMessage = () =>
   `لا يُفتَح يومٌ أبعدُ من الغد — آخرُ يومٍ في الدفتر ${lastWritableDay()}.`;
 
-/**
- * ── ومَن يعمل خارج النافذة ─────────────────────────────────────────────────
- *
- * مديرُ النظام وحدَه. والحدّان ليسا قاعدةً محاسبيّةً تُطبَّق على الجميع بلا
- * استثناء: هما حمايةٌ من الخطأ اليوميّ — تاريخٌ يُكتب سهوًا، شاشةٌ تُفتَح على
- * شهرٍ قادم فتخلق يومًا. ويبقى بعد ذلك تصحيحٌ حقيقيّ يحتاج بابًا: قيدٌ نُسي في
- * يومٍ مضى، خطأٌ يُكتشَف بعد أسبوع. وبابٌ مغلقٌ على الجميع يُلتَفّ عليه —
- * تُكتب الحركةُ في يومٍ غير يومها لتمرّ، فيصير الدفترُ كاذبًا بطريقةٍ لا
- * تُكتشَف، وهو أسوأُ من يوميّةٍ زائدة.
- *
- * فالبابُ موجودٌ ومفتاحُه عند واحد. ولا يُوسَّع إلى `admin` ولا إلى مدير
- * العمليّات: هؤلاء يعملون في الدفتر يوميًّا، ومن يعمل فيه يوميًّا هو بالضبط من
- * يُحمى من الخطأ اليوميّ.
- */
+/** Who may work outside the window: super admin only. The bounds protect against everyday mistakes (a mistyped date, a screen opened on a future month), but real corrections still need a door: a forgotten entry in a past day. A door closed to everyone gets bypassed by recording the movement on the wrong day, making the ledger silently false. Not widened to admin or operations managers, since those work in the ledger daily and are exactly who the bounds protect. */
 const mayWorkOutsideBook = (user) => !!user && require('./constants').isTopRole(user.role);
 
 module.exports = {

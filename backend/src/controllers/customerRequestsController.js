@@ -1,7 +1,6 @@
 /**
- * Customer requests: sent from the portal, answered by Operations
- * («التواصل مع العملاء») in the system or by email from a company mailbox.
- * Live events carry no content (every client receives them); screens refetch.
+ * Customer requests: sent from the portal, answered by Operations (the customer communication screen) or by email from a company mailbox.
+ * Live events carry no content; screens refetch.
  */
 const mongoose = require('mongoose');
 const CustomerRequest = require('../models/CustomerRequest');
@@ -130,7 +129,7 @@ exports.myReply = async (req, res) => {
   } catch (e) { res.status(500).json({ message: 'Could not send' }); }
 };
 
-// ── Operations side («التواصل مع العملاء») ──────────────────────────────────
+// Operations side (customer communication)
 
 // GET /api/customer-requests?status=&q=
 exports.list = async (req, res) => {

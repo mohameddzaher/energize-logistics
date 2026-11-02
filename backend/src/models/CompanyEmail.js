@@ -1,43 +1,34 @@
 const mongoose = require('mongoose');
 
 /**
- * بريد الشركة — صناديق البريد المُنشأة على هوستنجر (@energize-logistics.com).
- *
- * ⚠️ ده **مش** حساب الدخول للسيستم. حساب السيستم في `User` وباسووردته hash
- * ومحدش يقدر يقراها. الحاجة دي حاجة تانية خالص: صندوق بريد بيتعمل يدويًا على
- * هوستنجر عشان الموظف يراسل بيه العملاء برّه، وتقنية المعلومات محتاجة تفضل
- * عارفة كلمة مروره عشان تسلّمها له أو تظبط له البرنامج. الاتنين ممكن يكونوا
- * لنفس الشخص وبكلمتين مرور مختلفتين تمامًا، ومحدش منهم بيأثر على التاني.
- *
- * الربط بالموظف اختياري عن قصد: الإيميل بيتعمل أول ما الموظف يستلم، وممكن يبقى
- * لسه مش متسجّل في الموارد البشرية. بيتسجّل من غير ربط ويتربط بعدين.
+ * Company email: mailboxes created on Hostinger (@energize-logistics.com).
+ * Not the system login. System accounts live in `User` with hashed passwords nobody can read. This is a mailbox created by hand on Hostinger for staff to email customers; IT must keep its password to hand over or configure the client. One person can have both, with unrelated passwords.
+ * The employee link is optional on purpose: the mailbox is created on hire and the employee may not be in HR yet. It is stored unlinked and linked later.
  */
 const companyEmailSchema = new mongoose.Schema({
   email: {
     type: String, required: true, unique: true, trim: true, lowercase: true, index: true,
   },
-  localPart: { type: String, default: '', trim: true },   // الجزء قبل @
+  localPart: { type: String, default: '', trim: true },   // Part before @
   domain: { type: String, default: 'energize-logistics.com', trim: true, lowercase: true, index: true },
 
-  // الاسم زي ما هو مكتوب في قائمة البريد (ممكن يكون عربي ومختصر: «أ. سامح حسن»).
+  // Name as written in the mailing list (may be Arabic and abbreviated).
   displayName: { type: String, default: '', trim: true, index: true },
 
-  // ── الربط بالموارد البشرية (اختياري) ────────────────────────────────────────
+  // HR link (optional)
   employee: { type: mongoose.Schema.Types.ObjectId, ref: 'Employee', default: null, index: true },
-  employeeNumber: { type: String, default: '', trim: true, index: true }, // لقطة وقت الربط
+  employeeNumber: { type: String, default: '', trim: true, index: true }, // Snapshot at link time
   employeeName: { type: String, default: '', trim: true },
   department: { type: String, default: '', trim: true },
 
-  // شخصي (لموظف) أو وظيفي (info@ / sales@ … مش لشخص بعينه).
+  // Personal (employee) or functional (info@ / sales@, not a specific person).
   mailboxType: { type: String, enum: ['personal', 'functional'], default: 'personal', index: true },
-  functionAr: { type: String, default: '', trim: true },  // وظيفة الصندوق لو functional
+  functionAr: { type: String, default: '', trim: true },  // Mailbox function when functional
 
   status: { type: String, enum: ['active', 'suspended', 'closed'], default: 'active', index: true },
 
-  // ── كلمة المرور ─────────────────────────────────────────────────────────────
-  // مشفّرة بـ AES-256-GCM (utils/secretVault) — لازم تكون قابلة للاسترجاع لأن
-  // تقنية المعلومات بتسلّمها للموظف، فالهاش مش هيفيد. `select: false` عشان أي
-  // استعلام عادي ما يجيبهاش بالغلط.
+  // Password.
+  // Encrypted with AES-256-GCM (utils/secretVault); it must be recoverable because IT hands it to the employee, so a hash would not work. `select: false` so ordinary queries never return it by mistake.
   passwordEnc: { type: String, default: '', select: false },
   passwordSetAt: { type: Date, default: null },
   passwordSetByName: { type: String, default: '', trim: true },
@@ -46,7 +37,7 @@ const companyEmailSchema = new mongoose.Schema({
   createdByName: { type: String, default: '', trim: true },
   updatedByName: { type: String, default: '', trim: true },
 
-  // مين شاف كلمة المرور وامتى — الكشف حدث يتسجّل، مش استعلام عادي.
+  // Who viewed the password and when; viewing is a logged event, not an ordinary query.
   lastRevealedAt: { type: Date, default: null },
   lastRevealedByName: { type: String, default: '', trim: true },
   revealCount: { type: Number, default: 0 },
@@ -55,8 +46,7 @@ const companyEmailSchema = new mongoose.Schema({
 companyEmailSchema.index({ displayName: 1, email: 1 });
 companyEmailSchema.index({ employee: 1, status: 1 });
 
-// الدومين والجزء المحلي مشتقّين من الإيميل — نحسبهم مرة واحدة هنا بدل ما كل
-// استدعاء يفصل السلسلة بنفسه ويختلف عن التاني.
+// Domain and local part are derived from the email and computed once here so callers do not each split the string and diverge.
 companyEmailSchema.pre('save', function normalise(next) {
   if (this.email) {
     this.email = String(this.email).trim().toLowerCase();

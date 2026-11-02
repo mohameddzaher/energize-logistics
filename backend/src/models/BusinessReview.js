@@ -1,22 +1,7 @@
 /**
- * BusinessReview — اجتماعات مراجعة الأعمال: الاجتماع، المحضر، البنود، والتكليفات.
- *
- * THREE collections, and the split is the security model — not a stylistic
- * choice. The brief was firm that employees must never see what the managers and
- * the board discussed, only the piece of work handed down to them.
- *
- *   BrMeeting     — the meeting: cadence, attendees, agenda, and the MINUTES
- *                   (محضر الاجتماع) the secretary writes.
- *   BrAction      — a decision that became work (بند تنفيذي): one owner, a due
- *                   date, a status. Owned by an attendee — i.e. a manager.
- *   BrAssignment  — a manager passing part of their action to their own team.
- *
- * If delegations lived inside BrAction, every employee query would have to
- * redact meeting context field by field, and one forgotten `.select()` would
- * leak the boardroom. Because they live in their own collection, an employee's
- * query is `BrAssignment.find({ assignee: me })` — it cannot return minutes,
- * because minutes are not in there. The data model enforces the rule, not the
- * diligence of whoever writes the next endpoint.
+ * BusinessReview: review meetings, minutes, action items and assignments, in three collections.
+ * The split is the security model: employees never see what managers and the board discussed, only work handed down.
+ * Assignments live apart from BrAction, so an employee query (BrAssignment.find({ assignee: me })) cannot return minutes.
  */
 const mongoose = require('mongoose');
 const {
@@ -35,7 +20,7 @@ const updateSchema = new mongoose.Schema({
   at: { type: Date, default: Date.now },
 }, { _id: true });
 
-// ── الاجتماع ────────────────────────────────────────────────────────────────
+// Meeting
 const brMeetingSchema = new mongoose.Schema({
   // Sequential reference (BRM-000123) so a meeting can be cited in writing.
   refNumber: { type: String, unique: true, index: true },
@@ -54,8 +39,7 @@ const brMeetingSchema = new mongoose.Schema({
 
   status: { type: String, enum: MEETING_STATUS_KEYS, default: 'scheduled', index: true },
   heldAt: { type: Date, default: null },
-  // الإقفال: مين قال إن كل حاجة في الاجتماع ده خلصت، وامتى. منفصل عن heldAt
-  // لأن الاجتماع بينعقد في يوم وبيقفل في يوم تاني بعد ما بنوده تخلص.
+  // Closure: who declared everything in this meeting done, and when. Separate from heldAt because a meeting closes after its items finish.
   completedAt: { type: Date, default: null },
   completedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User', default: null },
   completedByName: { type: String, trim: true, default: '' },
@@ -75,12 +59,12 @@ const brMeetingSchema = new mongoose.Schema({
     attendanceAt: { type: Date, default: null },
     attendanceBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User', default: null },
     attendanceByName: { type: String, trim: true, default: '' },
-    // Why they were not there (اعتذر ليه). Only meaningful for absent/excused.
+    // Why they were absent. Only meaningful for absent/excused.
     excuseReason: { type: String, trim: true, default: '' },
     isChair: { type: Boolean, default: false },
   }],
 
-  // جدول الأعمال — set before the meeting.
+  // Agenda, set before the meeting.
   agenda: [{
     title: { type: String, trim: true, default: '' },
     presenter: { type: mongoose.Schema.Types.ObjectId, ref: 'User', default: null },
@@ -89,8 +73,7 @@ const brMeetingSchema = new mongoose.Schema({
     order: { type: Number, default: 0 },
   }],
 
-  // محضر الاجتماع — written during/after by the secretary. Deliberately separate
-  // from the actions: minutes are the DISCUSSION, actions are the WORK.
+  // Meeting minutes, written by the secretary. Separate from actions: minutes are the discussion, actions are the work.
   minutes: [{
     heading: { type: String, trim: true, default: '' },
     body: { type: String, trim: true, default: '' },
@@ -130,7 +113,7 @@ brMeetingSchema.pre('save', async function (next) {
   next();
 });
 
-// ── البند التنفيذي ──────────────────────────────────────────────────────────
+// Action item
 const brActionSchema = new mongoose.Schema({
   meeting: { type: mongoose.Schema.Types.ObjectId, ref: 'BrMeeting', required: true, index: true },
   // Snapshots so an action list reads correctly without joining the meeting.
@@ -174,10 +157,7 @@ const brActionSchema = new mongoose.Schema({
 brActionSchema.index({ assignee: 1, status: 1 });
 brActionSchema.index({ status: 1, dueDate: 1 });
 
-// ── التكليف الفرعي ──────────────────────────────────────────────────────────
-// A manager breaking their action down for their own team. One row per person,
-// so "assign to more than one" is just more rows — and each person sees only
-// their own.
+// Sub-assignment: a manager breaking an action down for their team. One row per person, so assigning to several is more rows and each person sees only their own.
 const brAssignmentSchema = new mongoose.Schema({
   action: { type: mongoose.Schema.Types.ObjectId, ref: 'BrAction', required: true, index: true },
   // Snapshot of the parent action's headline ONLY. Never the meeting minutes —

@@ -1,33 +1,12 @@
 /**
- * الأدوارُ المحصورة — حسابٌ خارجيٌّ يرى شاشةً واحدةً من نظامنا ولا يرى غيرَها.
- *
- * ── لماذا ليس حسابَ «شريك» في البوابة ────────────────────────────────────────
- * بوابةُ الشركاء (`role: 'client'`) لعميلٍ أو مورّدٍ مسجَّلٍ في أحد سجلّاتنا،
- * وتبني صفحاتِها ممّا له عندنا من شحناتٍ وفواتيرَ ومعاملات. وMedia Go ليست
- * عميلًا ولا مورّدًا في أيّ سجلّ: شريكٌ يركّب شاشاتٍ على دبّاباتنا، وعملُه
- * معنا شيءٌ واحد — بلاغاتُ أعطال الشاشات التي نرفعها له. فشاشتُه شاشةٌ من
- * قسم الأفراد نفسِها، يراها هو ونراها نحن، لا بوابةٌ تُبنى له.
- *
- * ── والحصرُ في الخادم لا في القائمة ─────────────────────────────────────────
- * إخفاءُ الروابط لا يحرس شيئًا: نقاطٌ كثيرةٌ في النظام تكتفي بـ`authenticate`
- * (الإشعارات، القوائم المرجعيّة، مهامُّ الأقسام، التقارير…) فيصلها أيُّ حسابٍ
- * مسجَّل. فالحسابُ المحصورُ يمرّ بـ`middleware/scopedRoleFence` قبل كلّ شيء،
- * وما ليس في `api` أدناه يُردّ ٤٠٣ — قائمةُ سماحٍ لا قائمةُ منع، فنقطةٌ تُضاف
- * غدًا في أيّ قسمٍ مغلقةٌ عليه من يومها.
- *
- * ومعه: صلاحيّاتُ الأقسام كلُّها «لا شيء»، وصفحاتُه هي `pages` وحدَها، وبيتُه
- * `home` — فلا يُنتظَر من مصفوفة الصلاحيّات أن تتذكّره. ولا يصله البثُّ العامّ
- * للأقسام (راجع websocket/socketManager): يصله ما يُرسَل إلى دوره فحسب.
- *
- * والمفتاحُ لا ينتهي بـ`_manager` عمدًا وإن كان لقبُه «مدير حساب»: تلك اللاحقةُ
- * تُجلِس صاحبَها في اجتماعات الإدارة (راجع config/roles.js، القاعدة ٢).
- *
- * الملفُّ لا يستورد شيئًا من config — يُقرأ من roles وsections وpermissions.
+ * Scoped roles: an external account that sees one screen of our system and nothing else.
+ * Not a portal partner account: the portal is for registered customers or vendors, and Media Go is neither; its screen belongs to the individuals section, shared with us.
+ * Enforced on the server, not in the menu: many endpoints only require authenticate, so a scoped account passes middleware/scopedRoleFence first and anything not in `api` below gets 403 (allow list). Section permissions are all none, its pages are `pages` only, and its home is `home`. It does not receive the general section broadcast (see websocket/socketManager). The key does not end in _manager on purpose (config/roles.js rule 2). This file imports only roles, sections and permissions.
  */
 const MEDIAGO_ROLE = 'mediago_account';
 const MEDIAGO_PAGE = '/system/b2c/mediago-complaints';
 const MEDIAGO_API = '/api/b2c/mediago-complaints';
-// والمحتوى الإعلانيّ: تطلب فيه Media Go تصويرَ إعلاناتها على مركباتنا (٢٠٢٦/١٠/٢٢).
+// Advertising content: Media Go requests ad filming on our vehicles.
 const MEDIAGO_ADS_PAGE = '/system/b2c/mediago-ads';
 const MEDIAGO_ADS_API = '/api/b2c/mediago-ads';
 
@@ -35,9 +14,7 @@ const SCOPED_ROLES = {
   [MEDIAGO_ROLE]: {
     home: MEDIAGO_PAGE,
     pages: [MEDIAGO_PAGE, MEDIAGO_ADS_PAGE],
-    // البادئاتُ المسموحة. الدخولُ والخروجُ وملفُّه وكلمةُ مروره (`/api/auth`)،
-    // وجرسُ الإشعارات (لا يرى فيه إلّا ما أُرسل إليه باسمه — notificationController)،
-    // وشاشتُه. والمرفقاتُ تُخدَم قبل هذا الحارس (`/api/uploads`، أسماءٌ عشوائيّة).
+    // Allowed prefixes: login, logout, profile and password (/api/auth), the notification bell (shows only items addressed to it, see notificationController), and its screen. Attachments are served before this fence (/api/uploads, random names).
     api: ['/api/auth', '/api/notifications', MEDIAGO_API, MEDIAGO_ADS_API, '/api/health'],
   },
 };
@@ -45,7 +22,7 @@ const SCOPED_ROLES = {
 const isScopedRole = (role) => Object.prototype.hasOwnProperty.call(SCOPED_ROLES, String(role || ''));
 const scopeOf = (role) => (isScopedRole(role) ? SCOPED_ROLES[role] : null);
 
-/** كلُّ حسابٍ من خارج الشركة: الشريكُ في البوابة والأدوارُ المحصورة. */
+/** Every account from outside the company: portal partners and scoped roles. */
 const EXTERNAL_ROLES = ['client', ...Object.keys(SCOPED_ROLES)];
 const isExternalRole = (role) => EXTERNAL_ROLES.includes(String(role || ''));
 

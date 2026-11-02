@@ -1,7 +1,6 @@
 const jwt = require('jsonwebtoken');
 
-// توكنات وصولٍ أُبطلت بالخروج، ووقت انتهائها. تُنسى وحدها متى انتهى عمرها،
-// فلا يبقى منها شيء بعد ربع ساعة من آخر خروج.
+// Access tokens revoked by logout, with their expiry. Entries forget themselves when the token expires, so nothing remains 15 minutes after the last logout.
 const revoked = new Map();
 const isRevoked = (t) => {
   const exp = revoked.get(t);
@@ -45,10 +44,7 @@ const authenticate = async (req, res, next) => {
 
     const decoded = jwt.verify(token, process.env.JWT_ACCESS_SECRET);
 
-    // ── توكن الوصول لجلسةٍ خرجت لا يُقبَل ─────────────────────────────────────
-    // الخروج كان يُبطل توكن التجديد ويمسح الكوكي، لكنّ توكن الوصول يبقى موقَّعًا
-    // وصالحًا ربعَ ساعة. مَن نسخه قبل الخروج يظلّ داخلًا بعده — و«خروج» لا
-    // يُخرِج ليس خروجًا. القائمة قصيرة العمر بطول عمر التوكن نفسه، فلا تنمو.
+    // An access token of a logged-out session is not accepted. Logout revoked the refresh token and cleared the cookie, but the access token stayed signed and valid for 15 minutes, so anyone who copied it before logout stayed logged in. The list is short-lived (as long as the token itself), so it does not grow.
     if (isRevoked(token)) {
       return res.status(401).json({ message: 'Session ended', code: 'SESSION_ENDED' });
     }
@@ -88,16 +84,9 @@ const authenticate = async (req, res, next) => {
 };
 
 /**
- * مَن صاحبُ هذا الطلب — أو `null` بلا ردّ.
- *
- * ── ولماذا نسخةٌ لا تردّ ────────────────────────────────────────────────────
- * `authenticate` حارس: يرفض ويردّ. وحارسُ الصفحات (`pageGate`) يُركَّب على
- * `/api/` كلِّها — وفيها مساراتٌ عامّةٌ عمدًا (تسجيلُ الدخول، خطّافُ منصّة
- * التشغيل، واجهةُ الأسطول العامّة). فلو استعمل الحارسَ لردَّ ٤٠١ على أبوابٍ
- * مفتوحةٍ بقصد.
- *
- * فهذه تقرأ التوكن إن وُجد وتصمت إن لم يوجد، وتترك القبولَ والرفضَ لحارس
- * المسار نفسِه. وتستعمل ذاكرةَ المستخدم نفسَها، فلا استعلامَ إضافيّ.
+ * Who owns this request, or `null`, without sending a response.
+ * `authenticate` rejects and responds, but `pageGate` is mounted on all of `/api/`, which includes deliberately public routes (login, operations platform hook, public fleet API); using it would return 401 there.
+ * This reads the token if present and stays silent otherwise, leaving accept/reject to the route's own guard, with the same user cache.
  */
 const resolveUser = async (req) => {
   if (req.user) return req.user;

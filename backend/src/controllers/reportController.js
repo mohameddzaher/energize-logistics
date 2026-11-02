@@ -1,15 +1,6 @@
 /**
- * reportController — مركز التقارير.
- *
- * Three endpoints, and they are the whole API:
- *   GET /api/reports/subjects              — what can I report on?
- *   GET /api/reports/:subject/options?q=   — which ones? (searchable)
- *   GET /api/reports/:subject/:id          — the report, as JSON or as a PDF
- *
- * The report itself is DESCRIBED once (services/reportSources.js) and rendered
- * twice: as blocks the screen draws, and as a PDF the printer draws. That is why
- * the on-screen preview and the downloaded file can never disagree, and why the
- * mobile app gets the identical document without duplicating a single line.
+ * reportController: reports center. Endpoints: GET /api/reports/subjects, GET /api/reports/:subject/options?q=, GET /api/reports/:subject/:id (JSON or PDF).
+ * A report is described once (services/reportSources.js) and rendered as blocks and as PDF, so preview, download and mobile cannot disagree.
  */
 const { getSubject, subjectMeta, COMPANY } = require('../services/reportSources');
 const { renderReportPdf } = require('../services/reportBuilder');
@@ -19,35 +10,17 @@ const cache = require('../utils/ttlCache');
 // already trusted with cross-section visibility. A `client` (partner) login must
 // never reach them — they have the portal, which is scoped to themselves.
 /**
- * من يدخل مركزَ التقارير أصلًا.
- *
- * كانت قائمةً تُكتب باليد، فيسقط منها الدورُ الجديد: «مدير قطاع الأفراد» لم
- * يكن يرى تقريرًا واحدًا — ولا حتى تقريرَ قسمِه. وقد رأينا ما تفعله القوائمُ
- * اليدويّة في أسماء الأدوار وفي القوائم المرجعيّة وفي الخدمة الذاتيّة.
- *
- * فصارت القاعدةُ: كلُّ دورٍ داخليّ يدخل، و**ما يراه** داخلَها محسومٌ بمصفوفة
- * صلاحيّات الأقسام (SUBJECT_SECTIONS أدناه) — وهي المكانُ الوحيد الذي يُضبط
- * منه الوصول. والشريكُ الخارجيّ وحدَه يُمنع: له بوابتُه.
+ * Who may enter the reports center at all.
+ * A hand-written role list drops new roles (a new manager role saw no report, not even its own section's). So every internal role enters, and what it sees inside is decided by the section permission matrix (SUBJECT_SECTIONS below), the single place access is configured. Only external partners are blocked; they have their portal.
  */
 const { EXTERNAL_ROLES } = require('../config/scopedRoles');
 const canOpenReports = (role) => !!role && !EXTERNAL_ROLES.includes(role);
 
 
 /**
- * كلُّ تقريرٍ يخصُّ قسمًا — أو أقسامًا.
- *
- * ── لماذا لا تكفي قائمةُ أدوار ──────────────────────────────────────────────
- * كانت الصفحةُ تعرض التقاريرَ كلَّها لكلّ من دخلها: يفتح مديرُ الموارد البشريّة
- * حسابَه فيطبع تقريرَ فردةِ كاوتش. وليس هذا عبثًا في الشكل فقط — تقريرُ العميل
- * يحمل أسعارَه، وتقريرُ المورّد يحمل عقودَه.
- *
- * ولا تُعالَج بقائمةِ أدوارٍ ثالثة: عندنا قوائمُ تشيخ في كلّ مكان، وقد رأينا
- * ما تفعله. الصلاحيّةُ محسومةٌ في مكانٍ واحد — مصفوفةُ صلاحيّات الأقسام التي
- * يضبطها مديرُ النظام — فيُسأل عنها: أتملك قسمَ هذا التقرير؟ فمن مُنح قسمًا
- * في المصفوفة رأى تقاريرَه في اللحظة نفسِها، ومن سُحب منه اختفت.
- *
- * وموضوعٌ يخصُّ أكثرَ من قسم يكفيه واحدٌ منها: المركبةُ تخصّ سجلَّ المركبات
- * وإدارةَ الأسطول ولوكيشن سوليوشن معًا، وكلُّ واحدٍ منهم يسأل عنها بحقّ.
+ * Each report belongs to a section, or several.
+ * A role list would show every report to everyone (an HR manager could print a tire report), yet customer reports carry prices and supplier reports carry contracts. Permission is decided by the section permission matrix: granting a section shows its reports at once.
+ * A subject owned by several sections needs only one: a vehicle belongs to the register, fleet management and Location Solutions.
  */
 const SUBJECT_SECTIONS = {
   vehicle: ['Vehicles', 'Fleet Management', 'Location Solutions'],
@@ -55,14 +28,13 @@ const SUBJECT_SECTIONS = {
   driver: ['Fleet Management', 'Location Solutions'],
   customer: ['CRM', 'Collections', 'Sales'],
   vendor: ['CRM', 'Contracts', 'Procurement'],
-  // تقريرُ الموظّف يحمل الراتبَ والإقامةَ والتقييم — الموارد البشريّة وحدَها.
+  // The employee report carries salary, residency and evaluation: HR only.
   employee: ['HR'],
   meeting: ['Business Review'],
-  // تقريرُ القسم يُصدره صاحبُ كلِّ قسمٍ عن قسمِه، فلا يُقيَّد بقسمٍ بعينه.
+  // The department report is issued by each department's owner for his own department, so it is not tied to one section.
   section: null,
-  // ── والمواضيعُ المضافة ────────────────────────────────────────────────────
-  // الشحنةُ والناقلُ يخصّان قسمَ طلبات الشحنات ومعه المحاسبةُ والتحصيل (الورقةُ
-  // تُطلَب في نزاعٍ ماليّ)، والمندوبُ يخصّ B2C والمواردَ البشريّة.
+  // Added subjects.
+  // Shipment and carrier belong to the shipment orders section plus accounting and collections (the sheet is requested in financial disputes); the rep belongs to B2C and HR.
   shipment: ['Shipment Orders', 'Accounting', 'Collections'],
   carrier: ['Shipment Orders', 'Procurement', 'Accounting'],
   rider: ['B2C', 'HR'],
@@ -72,12 +44,12 @@ const { getOverride } = require('../utils/permissions');
 const { FULL_ACCESS_ROLES } = require('../config/constants');
 const { defaultAccess } = require('../config/sections');
 
-/** أيملك هذا الدورُ أيًّا من أقسام هذا التقرير؟ */
+/** Does this role own any of this report's sections? */
 const canUse = async (user, subject) => {
   if (!canOpenReports(user.role)) return false;
   if (FULL_ACCESS_ROLES.includes(user.role)) return true;
   const sections = SUBJECT_SECTIONS[subject];
-  if (!sections) return true;                       // تقريرُ القسم: للجميع عن قسمهم
+  if (!sections) return true;                       // Department report: for everyone, about their own department
   for (const key of sections) {
     // eslint-disable-next-line no-await-in-loop
     const override = await getOverride(user.role, key);
@@ -90,8 +62,7 @@ const canUse = async (user, subject) => {
 const langOf = (req) => (req.query.lang === 'en' ? 'en' : 'ar');
 
 exports.getSubjects = async (req, res) => {
-  // تُصفّى بالتوازي: كلُّ سؤالٍ يقرأ المصفوفةَ من مخزنٍ مؤقّت، والانتظارُ
-  // واحدًا تلو الآخر يجعل فتحَ الصفحة أبطأ بلا سبب.
+  // Filter in parallel: each check reads the matrix from a cache, and awaiting one by one slows opening the page for no reason.
   const allowed = await Promise.all(subjectMeta().map((s) => canUse(req.user, s.key)));
   const subjects = subjectMeta().filter((_, i) => allowed[i]);
   res.json({ subjects, company: COMPANY });
@@ -137,20 +108,9 @@ exports.getReport = async (req, res) => {
     const id = decodeURIComponent(req.params.id || '');
     if (!id) return res.status(400).json({ message: 'Report subject id is required' });
 
-    // ── التخزينُ يخدم الضغطتين المتتاليتين، لا أكثر ────────────────────────
-    //
-    // التقريرُ الواحد يُطلَب مرّتين في الغالب: معاينةٌ ثمّ PDF. فدقيقةٌ تكفي
-    // لذلك تمامًا.
-    //
-    // وكان المغلقُ منها يُخزَّن ساعةً بحجّة أنّ «الفترة المغلقة لا يتغيّر ما
-    // خلفها» — وهي حجّةٌ صحيحةٌ لأرقام الفترة وحدَها. لكنّ تقارير الملفّات —
-    // مركبةٌ أو موظّفٌ أو سائق — تحمل مع الأرقام **حالتَها اليوم**: تأمينٌ ساري،
-    // ورخصةٌ تنتهي بعد كذا، وتفويضٌ قائم. فمن جدّد وثيقةً ثمّ طبع وجد الورقةَ
-    // القديمة ساعةً كاملة — وهي ورقةٌ تُرسَل إلى جهةٍ خارجيّة وتُبنى عليها
-    // قرارات.
-    //
-    // ومع هذا يُمسَح تقريرُ المركبة صراحةً عند أيّ كتابةٍ في قسمها
-    // (`vehicleRegistryController.emit`)، فالدقيقةُ حدٌّ أعلى لا انتظارٌ فعليّ.
+    // Caching serves the two consecutive clicks only.
+    // A report is usually requested twice (preview, then PDF), so one minute is enough. Closed periods used to be cached for an hour because a closed period does not change, which holds only for period figures. File reports (vehicle, employee, driver) also carry today's state (valid insurance, licence expiring, authorization in force), so someone who renewed a document and printed got the stale sheet for an hour, a sheet sent to outside parties and used for decisions.
+    // The vehicle report is also cleared explicitly on any write in its section (`vehicleRegistryController.emit`), so the minute is an upper bound, not a real wait.
     const { resolvePeriod } = require('../services/reportSources');
     resolvePeriod(req.query);
     const docScope = subject.userScoped ? String(req.user._id) : 'all';

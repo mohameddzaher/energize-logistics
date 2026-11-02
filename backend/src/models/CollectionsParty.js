@@ -1,28 +1,13 @@
 /**
- * أطرافُ التحصيل — العملاءُ الذين نحصّل منهم، والموردون الذين نسدّد لهم.
- *
- * ── لماذا سجلٌّ لا اسمٌ في الكشف ───────────────────────────────────────────
- * اسمُ العميل ومالكِ السيارة مكتوبان نصًّا في كلّ كشفٍ من كشوف التشغيل. فمن
- * أراد أن يعرف «كم لنا عند هذا العميل» جمعَ صفوفَه بعينه، ومن كُتب اسمُه
- * بصيغتين صار طرفين لا يجتمعان — و«شركة تنشيط للخدمات اللوجستية» و«…اللوچستية»
- * موردٌ واحدٌ في ٦٤٨٨ كشفًا يُقرأ ٤٥٢٨ و١٩٦٠.
- *
- * فالسجلُّ هنا هو ما يجمع صفوفَ الطرف الواحد، ويحمل ما لا موضعَ له في الكشف
- * أصلًا: شروطُ السداد، وحالةُ التحصيل، ومسؤولُ المتابعة، وبيانُ التواصل الذي
- * يُتَّصل به فعلًا.
- *
- * ── والنوعان في مجموعةٍ واحدة ──────────────────────────────────────────────
- * البنيةُ واحدة (اسمٌ، تواصلٌ، شروطُ سدادٍ، رصيد) والفرقُ اتّجاهُ المال: العميل
- * يدفع لنا والموردُ ندفع له. ومجموعتان بحقولٍ متطابقةٍ تعني كتابةَ كلّ شيءٍ
- * مرّتين ثمّ إصلاحَ العطل في إحداهما ونسيانَ الأخرى.
+ * Collection parties: customers we collect from and suppliers we pay.
+ * A register rather than a name on the statement, because customer and vehicle-owner names are free text on each statement: one spelling variation splits a party (one supplier read 4528 and 1960 of 6488 statements). The register groups a party's rows and holds what the statement cannot: payment terms, collection status, follow-up owner, and the contact actually called.
+ * Both kinds share one collection: same structure (name, contact, terms, balance), differing only in money direction, so two collections would duplicate every fix.
  */
 const mongoose = require('mongoose');
 
 /**
- * الاسمُ مطويًّا — وهو مفتاحُ الربط بكشوف التشغيل.
- *
- * الحروفُ المعرَّبةُ (چ گ ڤ پ) مطويّةٌ هنا عن قصد: كُتبت في البيانات الحقيقيّة
- * مكانَ نظائرها العربيّة، وبدونها يبقى المورّدُ الأكبرُ عندنا مقسومًا صفّين.
+ * Folded name, the join key to operations statements.
+ * Letters from other scripts (Persian/Urdu variants of Arabic letters) are folded on purpose: real data uses them in place of the Arabic ones, and without folding our biggest supplier stays split in two rows.
  */
 const fold = (v) => String(v || '')
   .replace(/[٠-٩]/g, (d) => '٠١٢٣٤٥٦٧٨٩'.indexOf(d))
@@ -38,20 +23,19 @@ const collectionsPartySchema = new mongoose.Schema({
   name: { type: String, required: true, trim: true, index: true },
   nameKey: { type: String, index: true },
 
-  // ── التواصل ───────────────────────────────────────────────────────────────
-  // مَن يُتَّصل به في شأن فاتورة ليس بالضرورة مَن وقّع العقد. الحقولُ الثلاثة
-  // مفصولةٌ لأنّ الاتّصال بالمالك في شأن سندٍ يضيّع يومًا.
+  // Contact.
+  // Whoever is called about an invoice is not necessarily who signed the contract; the three fields are separate because calling the owner about a voucher wastes a day.
   phone: { type: String, trim: true, default: '' },
   email: { type: String, trim: true, default: '' },
-  // أكثرُ من بريدٍ للعميل الواحد (٢٠٢٦/١٠/٢٤) — يُرسَل إليها كشفُ الحساب كلِّها.
-  // و`email` يبقى أوّلَها لكلّ من يقرأه (utils/partyEmails يجمعهما).
+  // More than one email per customer; the account statement goes to all of them.
+  // `email` stays the first for any reader (utils/partyEmails merges both).
   emails: { type: [String], default: [] },
   contactPerson: { type: String, trim: true, default: '' },
   contactPhone: { type: String, trim: true, default: '' },
   accountantName: { type: String, trim: true, default: '' },
   accountantPhone: { type: String, trim: true, default: '' },
 
-  // ── الهويّة التجاريّة ─────────────────────────────────────────────────────
+  // Commercial identity
   commercialRegister: { type: String, trim: true, default: '' },
   taxNumber: { type: String, trim: true, default: '' },
   iban: { type: String, trim: true, default: '' },
@@ -60,74 +44,45 @@ const collectionsPartySchema = new mongoose.Schema({
   city: { type: String, trim: true, default: '' },
   partyType: { type: String, trim: true, default: '' },
 
-  // ── الكودُ المحاسبيُّ — هويّةُ الحساب ──────────────────────────────────────
-  // الاسمُ يُكتب بصورٍ شتّى وتتغيّر صيغتُه الرسميّة، والكودُ لا يتغيّر. وهو ما
-  // يُقرأ به الحسابُ في دفاتر المحاسبة، فصار هو المفتاح لا الاسم.
-  //
-  // وسياقتُه من الواقع: الضريبيُّ رقمٌ من سلسلة `1104xxxx`، والنقديُّ `C####`.
-  // فمَن أُضيف جديدًا يأخذ التاليَ في سلسلة نوعِه من نفسِه.
+  // Accounting code: the account's identity.
+  // Names vary and official forms change, but the code does not, so it is the key rather than the name. Tax accounts use the `1104xxxx` series and cash accounts `C####`; a new account takes the next number in its own series.
   // Account code = the customer's code (utils/customerCode), kept in step with the master by customerHub.
   code: { type: String, trim: true, default: '', set: (v) => require('../utils/customerCode').normCode(v) },
 
-  // ── وأسماؤه الأخرى ────────────────────────────────────────────────────────
-  // اسمُ الحساب في المحاسبة غيرُ الاسم الذي يُكتب في كشف التشغيل: «شركة صليهم
-  // سعيد الهاجري للنقليات» و«شركه صليهم الهاجري» حسابٌ واحد. فتُحفظ الصيغُ
-  // الأخرى هنا مطويّةً، ويُقرأ بها الكشفُ إلى حسابه بدل أن يصير حسابين.
+  // Other names.
+  // The accounting name differs from the name written on operations statements (two spellings of one company are one account), so alternate forms are stored folded and used to map the statement to its account.
   aliases: [{ type: String, trim: true }],
   aliasKeys: [{ type: String, index: true }],
 
-  // ── بياناتُ الحساب في سجلّ التحصيل ────────────────────────────────────────
-  collectionOfficer: { type: String, trim: true, default: '', index: true }, // موظّفُ التحصيل المسؤول (اسمُه كما يُعرَض)
+  // Account data in the collections register
+  collectionOfficer: { type: String, trim: true, default: '', index: true }, // Responsible collections employee (name as displayed)
   /**
-   * ── والمسؤولُ مستخدمٌ في النظام لا اسمٌ مكتوب ───────────────────────────
-   * `collectionOfficer` نصٌّ من دفتر التحصيل («Hossam»، «Orabi») لا يطابق
-   * مستخدمًا واحدًا — فلا يُعرَف «حساباتي» لمن يدخل، ولا يتبع الإسنادُ صاحبَه إن
-   * تغيّر اسمُه. فهذا المرجعُ هو الإسنادُ، والنصُّ يبقى للعرض والفلاتر ويُكتب
-   * منه. راجع utils/collectionsOfficer (المرجعُ مقدَّمٌ على النصّ).
+   * The officer is a system user, not a written name.
+   * `collectionOfficer` is text from the ledger ("Hossam", "Orabi") that matches no single user, so "my accounts" cannot be known at login and assignment would not follow a renamed user. This reference is the assignment; the text stays for display and filters and is written from it. See utils/collectionsOfficer (reference takes precedence over text).
    */
   collectionOfficerUser: { type: mongoose.Schema.Types.ObjectId, ref: 'User', default: null, index: true },
-  officer: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },            // قديم — لا يكتبه أحد
-  hoLocation: { type: String, trim: true, default: '', index: true },        // فرعُ العميل
+  officer: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },            // Legacy, nobody writes it
+  hoLocation: { type: String, trim: true, default: '', index: true },        // Customer branch
   grade: { type: String, trim: true, default: '', index: true },             // A1 … C3
-  salesManagers: [{ type: String, trim: true }],                             // قد يتعامل معه أكثرُ من مندوب
+  salesManagers: [{ type: String, trim: true }],                             // May be handled by more than one rep
   department: { type: String, trim: true, default: '', index: true },        // Branches / Fleet / Customs Clearance
   region: { type: String, trim: true, default: '' },                         // Central / Western / …
-  // ── مدّةُ السداد المتّفق عليها ────────────────────────────────────────────
-  // تُعَدّ **من تاريخ تسليم الفاتورة** لا من تاريخ إصدارها: العميلُ لا يبدأ
-  // عدَّ أيّامه قبل أن تصله الفاتورة.
+  // Agreed payment term.
+  // Counted from the invoice delivery date, not its issue date, since the customer cannot start counting before receiving it.
   creditDays: { type: Number, default: 0 },
 
-  // ── نوعُ حساب العميل — لا قاعدةٌ على شحناته ───────────────────────────────
-  //
-  // يقول في أيّ دفترٍ يجلس هذا **الحساب**: النقديُّ في سجلّ الكاش بكودٍ `C####`،
-  // والضريبيُّ في سجلّ الضريبيّ بكودٍ `1104####`. ومنه يُولَّد الكودُ ويُفلتَر
-  // سجلُّ الأعمار.
-  //
-  // ولا يُستنتَج منه نوعُ دفعِ كشفٍ بعينه. جُرِّب ذلك فبان خطؤه: العميلُ الواحد
-  // يقول في حمولةٍ «حاسبوني كاش» وفي أخرى «افتحوا فاتورة» — فالنوعُ صفةُ
-  // الشحنة لا صفةُ الطرف. والاستنتاجُ كان يكتب على الكشف ما لم يقله أحد.
-  //
-  // والدليلُ في البيانات نفسِها: سبعةَ عشرَ عميلًا تقول عنهم ورقةُ «نوع الدفع»
-  // ضريبيّون ويجلسون في دفتر الكاش بأكوادِ `C` — وكلا القولين صحيح، لأنّهم
-  // يتعاملون بالوجهين.
-  //
-  // ونوعُ الكشف مكتوبٌ على الكشف نفسِه، فيُعرَف بعد سنةٍ أيُّ حمولاتِ هذا
-  // العميل كانت نقدًا وأيُّها فاتورة.
+  // Customer account type, not a rule about its shipments.
+  // It says which ledger holds this account: cash in the cash register with a `C####` code, tax in the tax register with a `1104####` code. The code is generated from it and the aging register filtered by it.
+  // It is not inferred as a statement's payment type: one customer says "charge me cash" on one load and "open an invoice" on another, so the type belongs to the shipment, and inference wrote values nobody stated. Seventeen customers are tax per the payment-type sheet yet sit in the cash ledger with C codes; both are right as they deal both ways. The statement's own type stays on the statement.
   paymentType: { type: String, enum: ['', 'cash', 'tax'], default: '' },
 
-  // ── شروطُ التحصيل ────────────────────────────────────────────────────────
+  // Collection terms
   paymentTerms: { type: String, trim: true, default: '' },
   creditLimit: { type: Number, default: 0 },
 
   /**
-   * ── وحالةُ الخلاف مع هذا العميل ─────────────────────────────────────────
-   * فاتورةٌ تأخّرت ستّين يومًا ليست حالةً واحدة: إمّا عميلٌ يتفاوض ويُسدّد
-   * متأخّرًا، وإمّا خلافٌ وصل إلى القضاء. والفرقُ بينهما هو الفرقُ بين مكالمةٍ
-   * أخرى ومحضرٍ — ولوحةُ التحصيل لا تُقرأ بغيره: رقمٌ واحدٌ كبيرٌ لا يقول
-   * أيُّه ما زال في اليد وأيُّه خرج منها.
-   *
-   * ويُكتب على **العميل** لا على الفاتورة: الخلافُ مع صاحب الحساب، وفواتيرُه
-   * كلُّها تتبعه. والتاريخُ يُقيَّد كي يُعرَف منذ متى.
+   * Dispute status with this customer.
+   * An invoice sixty days late is either a customer negotiating late payment or a dispute that reached court; the dashboard needs that difference to show what is still in hand. Recorded on the customer, not the invoice, since the dispute is with the account holder; the date records since when.
    */
   issue: {
     state: { type: String, enum: ['none', 'negotiating', 'legal'], default: 'none', index: true },
@@ -136,8 +91,7 @@ const collectionsPartySchema = new mongoose.Schema({
     updatedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User', default: null },
     updatedByName: { type: String, trim: true, default: '' },
   },
-  // حالةُ التحصيل قرارٌ بشريٌّ لا مشتقٌّ من الأرقام: عميلٌ متأخّرٌ اتُّفق معه
-  // على جدولةٍ ليس متعثّرًا، والرقمُ وحدَه لا يعرف الفرق.
+  // Collection status is a human decision, not derived from numbers: a late customer on an agreed schedule is not defaulting.
   status: { type: String, trim: true, default: '' },
   assignedTo: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
   lastContactAt: { type: Date },
@@ -145,17 +99,9 @@ const collectionsPartySchema = new mongoose.Schema({
   notes: { type: String, trim: true, default: '' },
 
   isActive: { type: Boolean, default: true, index: true },
-  // مِن أين جاء السجلّ أوّلَ مرّة — كشوفُ التشغيل أم أحدُ السجلّات القائمة.
-  // يُقرأ حين يُسأل «ومن أضاف هذا؟» بعد شهر.
-  // ── لقطةُ دفتر التحصيل كما كتبها المحاسب ──────────────────────────────────
-  //
-  // أعمارُ الدين في ورقة `Aging` ليست محسوبةً من فواتيرنا: هي ما أقرّه قسمُ
-  // الحسابات في الملفّ، وعليه يُطالِب القسمُ العميلَ ويُراجَع. وأرقامُنا
-  // المشتقّة من الفواتير تقاربها ولا تطابقها — ستّةٌ في المئة من فواتير الدفتر
-  // لها كشوفٌ عندنا، فالباقي لا نعرف عنه إلّا ما في الورقة.
-  //
-  // فتُحفظ كما هي، مفصولةً في `ledger` حتى لا تختلط بما نحسبه نحن: من أراد رقمَ
-  // المحاسب وجده، ومن أراد رقمَنا وجده، ولا يُقرأ أحدُهما مكانَ الآخر.
+  // Where the record first came from: operations statements or an existing register. Read when asked later who added it.
+  // Snapshot of the collections ledger as written by the accountant.
+  // The Aging sheet's debt ages are what accounts approved and collections claims on, not computed from our invoices; ours approximate them (only about 6% of ledger invoices have statements here). They are kept as-is, separate in `ledger`, so neither is read in place of the other.
   ledger: {
     outstanding: { type: Number, default: 0 },      // Total Outstanding
     total60to1y: { type: Number, default: 0 },      // Total 60+ to 1Y
@@ -168,14 +114,14 @@ const collectionsPartySchema = new mongoose.Schema({
     d45: { type: Number, default: 0 },
     d30: { type: Number, default: 0 },
     d15: { type: Number, default: 0 },
-    // ورقةُ النقديّ عمودان لا عشرة: ما مضى عليه أكثرُ من خمسةَ عشرَ يومًا وما دونها.
+    // The cash sheet has two columns, not ten: older than fifteen days and newer.
     d15plus: { type: Number, default: 0 },
     d15minus: { type: Number, default: 0 },
     contracts: { type: String, trim: true, default: '' },
     reconciliation: { type: String, trim: true, default: '' },
     reconciliationDate: { type: Date, default: null },
     comments: { type: String, trim: true, default: '' },
-    // من أيّ ملفٍّ ومتى — فالرقمُ الذي يُطالَب به يُعرَف عمرُه.
+    // Source file and when, so the age of a claimed figure is known.
     sourceFile: { type: String, trim: true, default: '' },
     importedAt: { type: Date, default: null },
   },
@@ -186,7 +132,7 @@ const collectionsPartySchema = new mongoose.Schema({
 
 collectionsPartySchema.pre('save', function preSave(next) {
   this.nameKey = fold(this.name);
-  // الصيغُ الأخرى تُطوى مثلَ الاسم، فيُقرأ بها الكشفُ إلى حسابه.
+  // Other forms are folded like the name, to map the statement to its account.
   if (Array.isArray(this.aliases)) {
     this.aliasKeys = [...new Set(this.aliases.map(fold).filter(Boolean))];
   }
@@ -199,22 +145,16 @@ collectionsPartySchema.pre('findOneAndUpdate', function preUpd(next) {
   next();
 });
 
-// ── طرفٌ واحدٌ بالاسم الواحد — إلّا أن يكونا حسابين ────────────────────────
-// كان الشرطُ (الجهة + الاسم)، وهو صوابٌ ما دام الاسمُ هو الهويّة. ثمّ دخل
-// الكود، وبان في الدفتر أنّ الشركة الواحدة قد تحمل حسابين: «شركة المنشور
-// الذهبي» لها ١١٠٤٠٢٢٦ ضريبيٌّ وC0011 نقديّ — تتعامل معنا بالوجهين، ولكلٍّ
-// رصيدُه ومدّةُ سداده.
-//
-// فالشرطُ صار (الجهة + الاسم + الكود): حسابان بالاسم نفسِه يجتمعان إن اختلف
-// كوداهما، ومَن لا كودَ له يبقى محكومًا بالقديم تمامًا — كودُه الفارغ يساوي
-// الفارغ، فلا يدخل عميلان بلا كودٍ بالاسم الواحد كما كان.
+// One party per name unless they are two accounts.
+// The condition was (side + name), right while the name was the identity. With the code, one company can hold two accounts: one company has a tax code 11040226 and a cash code C0011, each with its own balance and term.
+// It is now (side + name + code): same-name accounts coexist if their codes differ, and rows with no code keep the old behaviour exactly (empty equals empty, so two code-less customers cannot share a name).
 collectionsPartySchema.index({ kind: 1, nameKey: 1, code: 1 }, { unique: true });
 collectionsPartySchema.index({ kind: 1, isActive: 1, name: 1 });
-// كودُ الحساب فريدٌ حيث وُجد — ولا يُفرَض على من لا كودَ له بعد.
+// Account code is unique where present; not yet required for rows without one.
 collectionsPartySchema.index({ code: 1 }, { unique: true, partialFilterExpression: { code: { $type: 'string', $gt: '' } } });
 collectionsPartySchema.index({ collectionOfficer: 1, kind: 1 });
 
-// ── العميلُ واحدٌ في كلّ الأقسام — رابطُه إلى شركة العلاقات الأمّ (services/customerHub) ──
+// One customer across all sections: link to the parent CRM company (services/customerHub)
 collectionsPartySchema.add({ crmCompany: { type: mongoose.Schema.Types.ObjectId, ref: 'CrmCompany', default: null, index: true } });
 require('../services/customerHub').attach(collectionsPartySchema, 'collections');
 module.exports = mongoose.models.CollectionsParty

@@ -10,6 +10,8 @@ import { useLatestRequest } from '@/hooks/useLatestRequest';
 import api from '@/lib/api';
 import { SHIPMENT_STATUSES, statusStyle } from '@/lib/ops';
 import { paymentKindLabel } from '@/lib/paymentKind';
+import { ColumnFilter, type ColumnFilterOption } from '@/components/ColumnFilter';
+import DateRangeFilter from '@/components/system/DateRangeFilter';
 import ColumnChooser, { useVisibleColumns, type ChooserColumn } from '@/components/system/ColumnChooser';
 import TablePager, { readPageSize, savePageSize } from '@/components/system/TablePager';
 import ScrollX from '@/components/system/ScrollX';
@@ -20,6 +22,16 @@ import { Truck, Search, Wallet, FileDown, Loader2, MapPin, User, Phone, X } from
 type Row = Record<string, any> & { _id: string; applicationStatus?: string; hasWaybill?: boolean; origin?: string };
 
 const VIEW_PREF_KEY = 'opsBoard.view';
+// Columns with an Excel-style filter; mirrors FILTER_FIELDS in backend config/opsBoard.
+const FILTER_FIELDS = new Set([
+  'reportNumber', 'reportDate', 'fromLocation', 'toLocation', 'branch', 'carOwner', 'carNumber',
+  'applicationStatus', 'username', 'userPhone', 'driverName', 'truckType', 'representativeName',
+  'operationsReview', 'paymentDate', 'payingBranch', 'paymentType', 'finalReportDestination',
+  'documentNumber', 'sendingDate', 'branchDeliveryDate',
+]);
+const DATE_FIELDS = new Set(['reportDate', 'paymentDate', 'sendingDate', 'branchDeliveryDate']);
+const EMPTY_SET = new Set<string>();
+const EMPTY_OPTIONS: ColumnFilterOption[] = [];
 const VIEW_PREF_READ_KEY = 'opsBoard:view';
 
 const dayOf = (d: unknown) => {
@@ -53,7 +65,24 @@ export default function OpsBoardPage() {
   const [pageSize, setPageSize] = useState(() => readPageSize('opsBoard'));
   const [searchInput, setSearchInput] = useState('');
   const [search, setSearch] = useState('');
-  const [status, setStatus] = useState('');
+  // Excel-style column filters, sent to the server (cf_<field>, repeated per value); the status chips write the status column's filter.
+  const [colFilters, setColFilters] = useState<Record<string, Set<string>>>({});
+  const [colOptions, setColOptions] = useState<Record<string, { values: ColumnFilterOption[]; truncated: boolean }>>({});
+  const [colLoading, setColLoading] = useState<Record<string, boolean>>({});
+  const [openField, setOpenField] = useState<string | null>(null);
+  const [openNonce, setOpenNonce] = useState(0);
+  const optionsSeq = useRef<Record<string, number>>({});
+  const statusSel = colFilters.applicationStatus;
+  const status = statusSel && statusSel.size === 1 ? [...statusSel][0] : '';
+  const setColFilter = (field: string, set: Set<string>) => {
+    setPage(1);
+    setColFilters((prev) => {
+      const next = { ...prev };
+      if (set.size) next[field] = set; else delete next[field];
+      return next;
+    });
+  };
+  const setStatus = (k: string) => setColFilter('applicationStatus', k ? new Set([k]) : new Set());
   const [origin, setOrigin] = useState('');
   const [dateFrom, setDateFrom] = useState('');
   const [dateTo, setDateTo] = useState('');
@@ -133,18 +162,59 @@ export default function OpsBoardPage() {
     return () => clearTimeout(h);
   }, [searchInput]);
 
+  // One place builds the filter, for the table and for every column's value list, so a list never counts rows the table hides.
+  const buildParams = useCallback(() => {
+    const p = new URLSearchParams();
+    if (search) p.append('search', search);
+    if (origin) p.append('origin', origin);
+    if (dateFrom) p.append('dateFrom', dateFrom);
+    if (dateTo) p.append('dateTo', dateTo);
+    if (excludeCancelled) p.append('excludeCancelled', '1');
+    for (const [f, set] of Object.entries(colFilters)) set.forEach((v) => p.append(`cf_${f}`, v));
+    return p;
+  }, [search, origin, dateFrom, dateTo, excludeCancelled, colFilters]);
+
+  const fetchColOptions = useCallback(async (field: string, q = '') => {
+    const seq = (optionsSeq.current[field] || 0) + 1;
+    optionsSeq.current[field] = seq;
+    setColLoading((prev) => ({ ...prev, [field]: true }));
+    try {
+      const p = buildParams();
+      p.append('field', field);
+      if (q) p.append('q', q);
+      const d = await api.get<any>(`/api/ops-board/filters?${p.toString()}`);
+      if (optionsSeq.current[field] !== seq) return;
+      const f = d?.filters?.[0];
+      setColOptions((prev) => ({ ...prev, [field]: { values: f?.values || [], truncated: !!f?.truncated } }));
+    } catch {
+      if (optionsSeq.current[field] === seq) setColOptions((prev) => ({ ...prev, [field]: prev[field] || { values: [], truncated: false } }));
+    } finally {
+      if (optionsSeq.current[field] === seq) setColLoading((prev) => ({ ...prev, [field]: false }));
+    }
+  }, [buildParams]);
+  // A filter change makes cached value lists stale; the open column refetches at once.
+  useEffect(() => {
+    setColOptions((prev) => (openField && prev[openField] ? { [openField]: prev[openField] } : {}));
+    if (openField) fetchColOptions(openField);
+  }, [fetchColOptions, openField, openNonce]);
+
+  const colFormat = (field: string): ((v: any) => string) | undefined => {
+    if (field === 'applicationStatus') return (v: any) => statusLabel(String(v || ''));
+    if (field === 'paymentType') return (v: any) => paymentKindLabel(v, ar) || String(v || '');
+    if (field === 'operationsReview') return (v: any) => (String(v) === 'true' ? t('تمّت', 'Done') : t('لم تتمّ', 'Not done'));
+    if (DATE_FIELDS.has(field)) return (v: any) => {
+      const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(String(v || ''));
+      return m ? `${m[3]}/${m[2]}/${m[1]}` : dayOf(v);
+    };
+    return undefined;
+  };
+
   const guard = useLatestRequest();
   const load = useCallback(async (background = false) => {
     const seq = guard.begin();
     if (!background) setLoading(true);
     try {
-      const p = new URLSearchParams();
-      if (search) p.append('search', search);
-      if (status) p.append('cf_applicationStatus', status);
-      if (origin) p.append('origin', origin);
-      if (dateFrom) p.append('dateFrom', dateFrom);
-      if (dateTo) p.append('dateTo', dateTo);
-      if (excludeCancelled) p.append('excludeCancelled', '1');
+      const p = buildParams();
       p.append('page', String(page));
       p.append('limit', String(pageSize));
       const d = await api.get<any>(`/api/ops-board?${p.toString()}`);
@@ -159,7 +229,7 @@ export default function OpsBoardPage() {
       if (guard.isCurrent(seq)) setLoading(false);
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [search, status, origin, dateFrom, dateTo, excludeCancelled, page, pageSize, guard]);
+  }, [buildParams, page, pageSize, guard]);
   useEffect(() => { load(); }, [load]);
 
   // Any change on the workflow, shipment orders or fleet loads reloads this page; a burst becomes one reload.
@@ -174,6 +244,7 @@ export default function OpsBoardPage() {
   useSocket('workflow:deleted', reloadSoon);
   useSocket('workflow:stageChanged', reloadSoon);
   useSocket('workflow:bulkImported', reloadSoon);
+  useSocket('ops:shipments:changed', reloadSoon);
   useSocket('shipmentOrders:updated', reloadSoon);
   useSocket('fleet:updated', reloadSoon);
 
@@ -204,10 +275,11 @@ export default function OpsBoardPage() {
     const s = statusStyle(r.applicationStatus);
     return (
       <div className="relative inline-flex items-center">
-        <select value={r.applicationStatus || ''} disabled={busyId === r._id}
-          onChange={(e) => changeStatus(r, e.target.value)}
-          className={`rounded-full border-0 font-semibold cursor-pointer ${compact ? 'text-[11px] px-2 py-0.5' : 'text-xs px-2.5 py-1'} ${s ? `${s.bg} ${s.text}` : 'bg-slate-100 text-slate-700'}`}>
-          {!s && <option value={r.applicationStatus || ''}>{statusLabel(r.applicationStatus)}</option>}
+        <select value={r.applicationStatus || ''} disabled={busyId === r._id} aria-label={t('حالة الشحنة', 'Shipment status')}
+          onClick={(e) => e.stopPropagation()} onChange={(e) => changeStatus(r, e.target.value)}
+          className={`rounded-lg border px-2 py-1 text-xs font-semibold cursor-pointer outline-none focus:ring-2 focus:ring-[#f37121]/40 disabled:opacity-50 ${s ? `${s.bg} ${s.text} border-transparent` : 'bg-white text-slate-700 border-slate-300'}`}>
+          {!r.applicationStatus && <option value="">-</option>}
+          {r.applicationStatus && !s && <option value={r.applicationStatus}>{statusLabel(r.applicationStatus)}</option>}
           {SHIPMENT_STATUSES.map((x) => <option key={x.key} value={x.key}>{ar ? x.ar : x.en}</option>)}
         </select>
         {busyId === r._id && <Loader2 className="w-3.5 h-3.5 animate-spin text-slate-400 ms-1" />}
@@ -270,8 +342,14 @@ export default function OpsBoardPage() {
             <option value="orders">{t('طلبات الشحنات', 'Shipment orders')}</option>
             <option value="fleet">{t('إدارة الأسطول', 'Fleet')}</option>
           </select>
-          <input type="date" value={dateFrom} onChange={(e) => { setDateFrom(e.target.value); setPage(1); }} className="px-3 py-2 rounded-lg border border-slate-200 text-sm" aria-label={t('من تاريخ', 'From date')} />
-          <input type="date" value={dateTo} onChange={(e) => { setDateTo(e.target.value); setPage(1); }} className="px-3 py-2 rounded-lg border border-slate-200 text-sm" aria-label={t('إلى تاريخ', 'To date')} />
+          <DateRangeFilter ar={ar} from={dateFrom} to={dateTo}
+            onFrom={(v) => { setDateFrom(v); setPage(1); }} onTo={(v) => { setDateTo(v); setPage(1); }} />
+          {(Object.keys(colFilters).length > 0 || origin || dateFrom || dateTo || searchInput || excludeCancelled) && (
+            <button type="button" onClick={() => { setColFilters({}); setOrigin(''); setDateFrom(''); setDateTo(''); setSearchInput(''); setExcludeCancelled(false); setPage(1); }}
+              className="inline-flex items-center gap-1 px-3 py-2 rounded-lg text-sm font-semibold text-red-600 hover:bg-red-50">
+              <X className="w-4 h-4" />{t('مسح الفلاتر', 'Clear filters')}
+            </button>
+          )}
           <label className="inline-flex items-center gap-1.5 text-sm text-slate-700">
             <input type="checkbox" checked={excludeCancelled} onChange={(e) => { setExcludeCancelled(e.target.checked); setPage(1); }} />
             {t('بدون الملغاة', 'Hide cancelled')}
@@ -302,18 +380,38 @@ export default function OpsBoardPage() {
       ) : view === 'table' ? (
         <div className="bg-white border border-slate-200 rounded-xl overflow-hidden">
           <ScrollX>
-            <table className="w-full text-sm">
-              <thead className="bg-slate-50 text-slate-600">
-                <tr>
-                  {shownCols.map((c) => <th key={c.key} className="px-3 py-2.5 text-start font-semibold whitespace-nowrap">{c.label}</th>)}
-                  <th className="px-3 py-2.5 text-start font-semibold whitespace-nowrap">{t('أمر النقل', 'Order')}</th>
+            <table className="w-full text-sm" style={{ minWidth: Math.max(960, shownCols.length * 110) }}>
+              <thead>
+                <tr className="bg-slate-900 border-b border-slate-200">
+                  {shownCols.map((c) => {
+                    const pinned = c.key === 'reportNumber';
+                    return (
+                      <th key={c.key} className={`px-3 py-3 text-start text-xs font-semibold whitespace-nowrap text-slate-300 ${pinned ? 'sticky start-0 z-20 bg-slate-900' : ''}`}>
+                        <span className="inline-flex items-center">
+                          {c.label}
+                          {FILTER_FIELDS.has(c.key) && (
+                            <ColumnFilter field={c.key}
+                              selected={colFilters[c.key] || EMPTY_SET}
+                              onChange={(set) => setColFilter(c.key, set)}
+                              onOpen={() => { setOpenField(c.key); setOpenNonce((n) => n + 1); }}
+                              options={colOptions[c.key]?.values || EMPTY_OPTIONS}
+                              truncated={!!colOptions[c.key]?.truncated}
+                              loading={!!colLoading[c.key]}
+                              onQuery={(q) => fetchColOptions(c.key, q)}
+                              lang={lang} format={colFormat(c.key)} />
+                          )}
+                        </span>
+                      </th>
+                    );
+                  })}
+                  <th className="px-3 py-3 text-start text-xs font-semibold whitespace-nowrap text-slate-300">{t('أمر النقل', 'Order')}</th>
                 </tr>
               </thead>
-              <tbody>
+              <tbody className="divide-y divide-slate-100">
                 {rows.map((r) => (
-                  <tr key={r._id} className="border-t border-slate-100 hover:bg-slate-50/60">
+                  <tr key={r._id} className="hover:bg-slate-100 transition-colors">
                     {shownCols.map((c) => (
-                      <td key={c.key} className="px-3 py-2 whitespace-nowrap text-slate-700">
+                      <td key={c.key} className={`px-3 py-2.5 whitespace-nowrap text-slate-700 ${c.key === 'reportNumber' ? 'sticky start-0 z-10 bg-white border-e border-slate-200' : ''}`}>
                         {c.key === 'applicationStatus' ? statusSelect(r, true)
                           : c.key === 'reportNumber' ? <span className="font-semibold text-slate-900 tabular-nums">{r.reportNumber}</span>
                             : (cell(r, c.key) || <span className="text-slate-300">—</span>)}

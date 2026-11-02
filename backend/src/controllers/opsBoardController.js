@@ -66,6 +66,14 @@ exports.list = async (req, res) => {
   }
 };
 
+// GET /api/ops-board/filters?field=… — one column's values with counts, under the board's other filters.
+const FILTERABLE = new Set(BOARD.FILTER_FIELDS);
+exports.filters = (req, res) => {
+  const field = String(req.query.field || '');
+  if (!FILTERABLE.has(field)) return res.status(400).json({ message: 'Unknown filter column' });
+  return WF.filterOptions({ user: req.user, query: cleanQuery(req.query) }, res);
+};
+
 // PATCH /api/ops-board/:id/status
 exports.setStatus = async (req, res) => {
   try {

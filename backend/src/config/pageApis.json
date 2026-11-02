@@ -76,7 +76,8 @@
     "/system/operations/loads": {
       "apis": [
         "/api/auth/me/prefs",
-        "/api/ops-board"
+        "/api/ops-board",
+        "/api/ops-board/filters"
       ],
       "wildcard": false
     },

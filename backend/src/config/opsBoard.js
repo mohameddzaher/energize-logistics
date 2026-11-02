@@ -30,4 +30,12 @@ const FIELDS = [
   'lockedBy', 'lockedByName', 'shipmentOrder', 'fleetShipment', 'externalSource', 'createdAt', 'updatedAt',
 ];
 
-module.exports = { PAGE, DEFAULT_ROLES, HIDDEN_FIELDS, FIELDS };
+/** Columns with an Excel-style filter: the board's columns the workflow filter understands. Purchase value is left out because the list ignores money filters. */
+const FILTER_FIELDS = [
+  'reportNumber', 'reportDate', 'fromLocation', 'toLocation', 'branch', 'carOwner', 'carNumber',
+  'applicationStatus', 'username', 'userPhone', 'driverName', 'truckType', 'representativeName',
+  'operationsReview', 'paymentDate', 'payingBranch', 'paymentType', 'finalReportDestination',
+  'documentNumber', 'sendingDate', 'branchDeliveryDate',
+];
+
+module.exports = { PAGE, DEFAULT_ROLES, HIDDEN_FIELDS, FIELDS, FILTER_FIELDS };

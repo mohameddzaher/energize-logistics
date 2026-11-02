@@ -9,6 +9,8 @@ router.param('id', objectIdParam());
 router.use(authenticate, board.gate);
 
 router.get('/', primeRelatedSearch, board.list);
+// Before `/:id` routes, so 'filters' is not read as an id.
+router.get('/filters', primeRelatedSearch, board.filters);
 router.patch('/:id/status', board.setStatus);
 router.get('/:id/waybill.pdf', board.waybill);
 

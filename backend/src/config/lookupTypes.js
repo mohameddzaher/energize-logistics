@@ -818,6 +818,33 @@ const ensureDefaultLookups = async () => {
   }
   await applyDefaultRenames();
   await applyRemovedDefaults();
+  await ensureListOrder();
+};
+
+/**
+ * Lists the owner fixed by name and order: each name exists and is active (an earlier deleted row is revived, not duplicated) and sits in this order.
+ */
+const FIXED_LISTS = {
+  hr_staff_category: ['سائق', 'مندوب توصيل', 'إداري', 'فني', 'مشرف'],
+};
+const ensureListOrder = async () => {
+  const Lookup = require('../models/Lookup');
+  const fold = (x) => String(x || '').trim().replace(/[إأآ]/g, 'ا');
+  for (const [type, names] of Object.entries(FIXED_LISTS)) {
+    const rows = await Lookup.find({ type }).lean();
+    for (let i = 0; i < names.length; i++) {
+      const hits = rows.filter((r) => fold(r.nameAr) === fold(names[i]));
+      const row = hits.find((r) => !r.deleted) || hits[0];
+      const seed = (REGISTRY.find((e) => e.type === type)?.seed || []).find((x) => x.nameAr === names[i]);
+      if (row) {
+        await Lookup.updateOne({ _id: row._id }, { $set: { deleted: false, isActive: true, order: i } });
+      } else {
+        // A taken key (another name under it) gets a fresh one rather than failing the boot.
+        await Lookup.create({ type, key: seed?.key || `${type}_${i}`, nameAr: names[i], nameEn: seed?.nameEn || names[i], order: i, isActive: true, isSystem: true })
+          .catch(() => Lookup.create({ type, key: `${type}_${i}_${Date.now().toString(36)}`, nameAr: names[i], nameEn: seed?.nameEn || names[i], order: i, isActive: true, isSystem: true }));
+      }
+    }
+  }
 };
 
 /**

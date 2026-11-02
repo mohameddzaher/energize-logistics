@@ -176,9 +176,9 @@ async function applyVehicleSnapshot(data, req) {
   const chosenId = await resolveSupplierChoice(req);
   // Written even when the truck is unknown: the supplier is agreed before naming a truck, and the function used to return here, saving the order without the chosen supplier.
   if (chosenId) data.supplier = chosenId;
-  if (!data.vehicle) return;
+  if (!data.vehicle) return applySupplierName(data);
   const veh = await ShipmentOrderVehicle.findById(data.vehicle).lean();
-  if (!veh) return;
+  if (!veh) return applySupplierName(data);
   data.vehicleName = [veh.plate, veh.name].filter(Boolean).join(' — ');
   // The plate goes in its own field.
   // It used to be written only inside `vehicleName`, leaving the plate field empty for every order made from our screen (only platform orders filled it). So our shipments fell out of the truck-column filter, the waybill could not find make and colour (looked up by plate in the truck register), and plate-based reports did not match.
@@ -195,6 +195,14 @@ async function applyVehicleSnapshot(data, req) {
   }
   if (!data.driverName && veh.defaultDriverName) data.driverName = veh.defaultDriverName;
   if (!data.driverPhone && veh.defaultDriverPhone) data.driverPhone = veh.defaultDriverPhone;
+  await applySupplierName(data);
+}
+
+/** The supplier's name beside its id: the workflow's owner column and the transport order read the name, and it used to stay empty. */
+async function applySupplierName(data) {
+  if (!data.supplier) return;
+  const sup = await ShipmentOrderSupplier.findById(data.supplier).select('name').lean();
+  if (sup?.name) data.supplierName = sup.name;
 }
 
 /**
@@ -225,7 +233,7 @@ exports.getWaybillsPdf = async (req, res) => {
       // Trucks are requested by key, not by pulling the whole register: that read ~13.5k rows to filter three, on a sheet printed daily with a register that grows weekly. See `plateKey` in models/ShipmentOrderVehicle.
       plates.length || refs.length
         ? ShipmentOrderVehicle.find({ $or: [{ plateKey: { $in: plates } }, { _id: { $in: refs } }] })
-          .select('_id plate plateKey brand color truckType vehicleMaster').populate('vehicleMaster', VEHICLE_MASTER_FIELDS).lean()
+          .select('_id plate plateKey brand color truckType vehicleMaster supplier').populate('vehicleMaster', VEHICLE_MASTER_FIELDS).lean()
           .then((rows) => rows.map(vehicleView))
         : [],
       names.length
@@ -244,6 +252,10 @@ exports.getWaybillsPdf = async (req, res) => {
       vehByPlate.set(k, { ...v, brand: v.brand || had?.brand || '', color: v.color || had?.color || '', truckType: v.truckType || had?.truckType || '' });
     }
     const drvByName = new Map(drvRows.map((d) => [d.name.trim(), d]));
+    // Supplier agreed with and the truck's owner, by id, so a renamed supplier prints its current name.
+    const supIds = [...new Set([...orders.map((o) => o.supplier), ...vehRows.map((v) => v.supplier)].filter(Boolean).map(String))];
+    const supName = new Map((supIds.length ? await ShipmentOrderSupplier.find({ _id: { $in: supIds } }).select('name').lean() : [])
+      .map((s) => [String(s._id), s.name || '']));
     // The representative printed on the order is whoever created the shipment.
     const creators = new Map((await require('../models/User').find({ _id: { $in: orders.map((o) => o.createdBy).filter(Boolean) } })
       .select('firstName lastName').lean()).map((u) => [String(u._id), `${u.firstName || ''} ${u.lastName || ''}`.trim()]));
@@ -255,6 +267,9 @@ exports.getWaybillsPdf = async (req, res) => {
       const own = o.vehicle ? vehById.get(String(o.vehicle)) : null;
       const v = own || vehByPlate.get(plateKeyOf(o.vehiclePlate));
       const twin = vehByPlate.get(plateKeyOf(own?.plate || o.vehiclePlate));
+      row.supplierName = (o.supplier && supName.get(String(o.supplier))) || o.supplierName || '';
+      const owner = v?.supplier ? supName.get(String(v.supplier)) || '' : '';
+      if (owner && owner !== row.supplierName) row.ownerName = owner;
       if (v) {
         row.plateNumber = v.plate || row.plateNumber;
         row.carBrand = v.brand || twin?.brand || '';
@@ -871,6 +886,7 @@ exports.updateOrder = async (req, res) => {
       // Changing only the supplier is a valid edit by itself: it is now chosen with the customer, not the truck, so swapping a truck is not required to save it.
       const chosenId = await resolveSupplierChoice(req);
       if (chosenId) data.supplier = chosenId;
+      await applySupplierName(data);
     }
 
     if (data.status && !(await isValidStatus(data.status))) {

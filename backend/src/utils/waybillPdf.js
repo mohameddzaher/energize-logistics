@@ -178,6 +178,8 @@ ${getFontCss()}
       <div class="row"><span class="ar-label">العنوان من</span><span class="value">${valOrBlank(row.fromLocation)}</span><span class="en-label">From</span></div>
       <div class="row"><span class="ar-label">إلى</span><span class="value">${valOrBlank(row.toLocation)}</span><span class="en-label">To</span></div>
       <div class="row"><span class="ar-label">نوع السيارة</span><span class="value">${valOrBlank(row.carType)}</span><span class="en-label">Vehicle Type</span></div>
+      ${row.supplierName ? `<div class="row"><span class="ar-label">المورد</span><span class="value">${esc(row.supplierName)}</span><span class="en-label">Supplier</span></div>` : ''}
+      ${row.ownerName ? `<div class="row"><span class="ar-label">مالك الشاحنة</span><span class="value">${esc(row.ownerName)}</span><span class="en-label">Truck Owner</span></div>` : ''}
       ${row.blNumber ? `<div class="row"><span class="ar-label">رقم البوليصة</span><span class="value">${esc(row.blNumber)}</span><span class="en-label">B/L No.</span></div>` : ''}
       ${row.containerNumber ? `<div class="row"><span class="ar-label">رقم الحاوية</span><span class="value">${esc(row.containerNumber)}</span><span class="en-label">Container No.</span></div>` : ''}
       ${row.agentName ? `<div class="row"><span class="ar-label">المندوب</span><span class="value">${esc(row.agentName)}</span><span class="en-label">Representative</span></div>` : ''}

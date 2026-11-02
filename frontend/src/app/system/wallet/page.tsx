@@ -592,7 +592,9 @@ export default function WalletPage() {
     setPurchaseInvoiceAmount(null);
     setExpectedPurchaseValue(null);
     try {
-      const data = await api.get<any>(`/api/wallet/lookup-report?reportNumber=${encodeURIComponent(purchaseReportSearch.trim())}`);
+      // The branch decides what a purchase costs: heavy transport pays the truck rent (server, purchaseBasis).
+      const branchQs = canSelectBranch && selectedBranch ? `&branchId=${selectedBranch}` : '';
+      const data = await api.get<any>(`/api/wallet/lookup-report?reportNumber=${encodeURIComponent(purchaseReportSearch.trim())}${branchQs}`);
       setTxForm((f) => ({
         ...f,
         purchaseDeliveryStatementNumber: data.reportNumber,
@@ -609,7 +611,7 @@ export default function WalletPage() {
       setPurchaseReportFound(true);
       setPurchaseAlready(data.alreadyPurchased || null);
       setPurchaseBond({ ok: !!data.bondReceived, status: data.applicationStatus || '' });
-      setPurchaseReportMsg(`${txx.purchasePrice}: ${(data.purchaseValue || 0).toLocaleString()}`);
+      setPurchaseReportMsg(`${data.heavy ? (lang === 'ar' ? 'الإيجار' : 'Rent') : txx.purchasePrice}: ${(data.purchaseValue || 0).toLocaleString()}`);
     } catch (err: any) {
       setPurchaseReportFound(false);
       setPurchaseReportMsg(err.message || txx.reportNotFound);

@@ -1011,7 +1011,9 @@ class _TxFormState extends State<_TxForm> {
     if (q.isEmpty) return;
     setState(() { _pMsg = ''; _pFound = false; _pAlready = null; _pBond = null; _selling = null; _expected = null; });
     try {
-      final d = await Api.instance.get('/api/wallet/lookup-report?reportNumber=${Uri.encodeQueryComponent(q)}');
+      // The branch decides what a purchase costs: heavy transport pays the truck rent (server, purchaseBasis).
+      final branchQs = widget.branchId.isNotEmpty ? '&branchId=${widget.branchId}' : '';
+      final d = await Api.instance.get('/api/wallet/lookup-report?reportNumber=${Uri.encodeQueryComponent(q)}$branchQs');
       setState(() {
         _pReport = '${d['reportNumber'] ?? q}';
         _pSearch.text = _pReport;
@@ -1024,7 +1026,7 @@ class _TxFormState extends State<_TxForm> {
         _pFound = true;
         _pAlready = d['alreadyPurchased'] is Map ? d['alreadyPurchased'] as Map : null;
         _pBond = (d['bondReceived'] == true, '${d['applicationStatus'] ?? ''}');
-        _pMsg = '${tr('سعر الشراء', 'Purchase price')}: ${walletMoney(pv)}';
+        _pMsg = '${d['heavy'] == true ? tr('الإيجار', 'Rent') : tr('سعر الشراء', 'Purchase price')}: ${walletMoney(pv)}';
       });
     } catch (e) {
       setState(() { _pFound = false; _pMsg = e.toString(); });

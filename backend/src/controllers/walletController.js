@@ -127,6 +127,26 @@ const getOrCreateWallet = async (branchId, date) => {
  * What a custody entry writes onto the dispatch sheet. Entered once: report number and amount come from the custody entry, the paying branch is the wallet's branch, the date is the journal day.
  * Uses $set on empty fields only, so manual corrections in the operations workflow are not overwritten.
  */
+/**
+ * What a purchase on this report should cost, read for the wallet's branch. Heavy transport pays the
+ * truck rent: the full rent when the load has one, else the rent (the load's selling price). Every
+ * other branch pays the report's purchase price.
+ */
+async function purchaseBasis(workflow, branchId) {
+  const Branch = require('../models/Branch');
+  const b = branchId && mongoose.isValidObjectId(String(branchId)) ? await Branch.findById(branchId).select('name').lean() : null;
+  if (!b || !require('../utils/payingBranch').isHeavy(b.name)) {
+    return { heavy: false, expected: Number(workflow.purchaseValue) || 0, selling: Number(workflow.sellingValue) || 0 };
+  }
+  let rent = Number(workflow.sellingValue) || 0;
+  if (workflow.fleetShipment) {
+    const { FleetShipment } = require('../models/FleetModels');
+    const f = await FleetShipment.findById(workflow.fleetShipment).select('price fullRent').lean();
+    if (f) rent = Number(f.fullRent) > 0 ? Number(f.fullRent) : (Number(f.price) || rent);
+  }
+  return { heavy: true, expected: rent, selling: rent };
+}
+
 async function fillReportFromWallet({ workflow, amount, date, branchId, documentNumber, role }) {
   const OperationsWorkflow = require('../models/OperationsWorkflow');
   const patch = {};
@@ -405,10 +425,11 @@ exports.addTransaction = async (req, res) => {
           existing: { id: String(prior._id), amount: prior.amount, date: prior.date, by: who },
         });
       }
-      if (purchaseWorkflow.sellingValue) purchaseInvoiceAmountVal = purchaseWorkflow.sellingValue;
-      const expected = Number(purchaseWorkflow.purchaseValue) || 0;
+      const basis = await purchaseBasis(purchaseWorkflow, txBranch);
+      if (basis.selling) purchaseInvoiceAmountVal = basis.selling;
+      const { expected } = basis;
       if (expected > 0 && Math.abs(expected - amount) > 0.5) {
-        purchaseMismatch = { reportNumber: purchaseWorkflow.reportNumber, expected, paid: amount, difference: Math.round((amount - expected) * 100) / 100 };
+        purchaseMismatch = { reportNumber: purchaseWorkflow.reportNumber, expected, paid: amount, difference: Math.round((amount - expected) * 100) / 100, heavy: basis.heavy };
       }
     }
 
@@ -417,7 +438,7 @@ exports.addTransaction = async (req, res) => {
     // A purchase price mismatch is flagged like other notes, with the same sentence the dashboard shows: who paid, on which report, and the recorded amount.
     if (purchaseMismatch) {
       riskFlags.push(
-        `سعرُ الشراء مختلف — أمر النقل ${purchaseMismatch.reportNumber}: المسجَّل ${purchaseMismatch.expected}`
+        `${purchaseMismatch.heavy ? 'المبلغُ يختلف عن الإيجار' : 'سعرُ الشراء مختلف'} — أمر النقل ${purchaseMismatch.reportNumber}: المسجَّل ${purchaseMismatch.expected}`
         + ` والمدفوع ${purchaseMismatch.paid} (فرق ${purchaseMismatch.difference})`,
       );
     }
@@ -1366,10 +1387,13 @@ exports.lookupByReport = async (req, res) => {
       purchaseDeliveryStatementNumber: flexSpaceRegex(workflow.reportNumber),
     }).populate('user', 'firstName lastName').populate('branch', 'name').lean();
 
+    // The wallet's branch decides what a purchase costs (see purchaseBasis); heavy transport reads the rent.
+    const basis = await purchaseBasis(workflow, req.query.branchId || req.user.branch);
     const base = {
       reportNumber: workflow.reportNumber,
-      purchaseValue: workflow.purchaseValue || 0,
-      sellingValue: workflow.sellingValue || 0,
+      purchaseValue: basis.heavy ? basis.expected : (workflow.purchaseValue || 0),
+      sellingValue: basis.heavy ? 0 : (workflow.sellingValue || 0),
+      heavy: basis.heavy,
       driverName: workflow.driverName || '',
       branch: workflow.branch || '',
       // The order status is reported in the lookup: the condition is known before the form is filled, not after.

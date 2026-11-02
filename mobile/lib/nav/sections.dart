@@ -79,6 +79,7 @@ import '../screens/crm_calendar.dart';
 import '../screens/ls2_temperature.dart';
 import '../screens/ls2_settings.dart';
 import '../screens/ls2_store.dart';
+import '../screens/lt_issue_requests.dart';
 import '../screens/ls2_suppliers.dart';
 import '../screens/settings_screen.dart';
 import '../screens/performance_evaluations.dart';
@@ -700,15 +701,9 @@ List<AppSection> sectionsFor(AuthProvider auth) {
         AppPage('تفقّد بداية الدوام', 'Duty Start Check', Icons.photo_camera_outlined, (c) => const B2cDutyScreen(), path: '/system/b2c/duty/start'),
         // The log after it: the supervisor screen performs the check, and this one is read.
         AppPage('سجل التفقّد', 'Duty Register', Icons.fact_check_outlined, (c) => const B2cDutyRegisterScreen(), path: '/system/b2c/duty'),
-        // Department store: the same screen with a different scope; the store mechanism is shared but its items and balances are separate from the heavy transport store.
+        // Department store: opens on issue requests, the only way stock leaves it; the items screen (shared with the heavy store, separate balances) is one tap away.
         AppPage('المخزن', 'Store', Icons.inventory_2_outlined,
-            (c) => const Ls2StoreScreen(
-                  base: '/api/light-transport/store',
-                  titleAr: 'مخزن النقل الخفيف',
-                  titleEn: 'Light Transport Store',
-                  // Department vehicles and projects, not heavy transport trucks.
-                  vehiclesKind: 'light',
-                ),
+            (c) => const LtIssueRequestsScreen(),
             path: '/system/b2c/light-transport/store'),
         // Department custody: cash, purchases card and workshop; replaced project custody.
         if (_ltOwners.contains(role)) AppPage('عهدة النقل الخفيف', 'Light Transport Custody', Icons.account_balance_wallet_outlined, (c) => const LtCustodyScreen(), path: '/system/b2c/light-transport/custody'),

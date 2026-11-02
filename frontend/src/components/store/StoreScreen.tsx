@@ -27,7 +27,7 @@ export interface PlateRow {
 }
 
 /** Matching key: a plate is written in different forms in two registers. */
-const plateKeyOf = (v: unknown) => String(v ?? '').replace(/[^0-9A-Za-z\u0621-\u064A]/g, '').toUpperCase();
+export const plateKeyOf = (v: unknown) => String(v ?? '').replace(/[^0-9A-Za-z\u0621-\u064A]/g, '').toUpperCase();
 import { useDialog } from '@/components/system/DialogProvider';
 import { Spinner, PageHeader, StatCard } from '@/components/hr/HRKit';
 import { ListPlus, Boxes, Plus, ArrowDownToLine, ArrowUpFromLine, Edit, Trash2, X, Save, History, Search, Undo2, HelpCircle, ChevronDown, ChevronUp } from 'lucide-react';
@@ -70,6 +70,8 @@ type Movement = {
   // Reversal: the server decides whether a movement can be reversed, so the UI does not rebuild that rule.
   reversed?: boolean; reversedByName?: string; reversalReason?: string;
   canReverse?: boolean; isReversal?: boolean;
+  /** Issue request that wrote this movement; undone only by cancelling the request. */
+  issueRequestNo?: string;
 };
 
 const money = (n: unknown) => (Number(n) || 0).toLocaleString('en-US', { maximumFractionDigits: 0 });
@@ -107,6 +109,8 @@ export type StoreScope = {
   noInitialQty?: boolean;
   /** Items carry the supplier's own name for them. */
   supplierItemName?: boolean;
+  /** Stock leaves only through issue requests: the per-item and bulk out actions are hidden (the server refuses them too). */
+  noDirectIssue?: boolean;
 };
 
 type StoreFlags = { noPrices: boolean; noInitialQty: boolean; supplierItemName: boolean };
@@ -123,6 +127,7 @@ export default function StoreScreen({ scope }: { scope: StoreScope }) {
   // Gate on the SECTION, not on a hand-written role list. A role granted edit on Location Solutions by the super admin gets in/out/edit/delete here without a code change, as the permissions page promises and the API already honours (rbac lets a section grant through). The old list silently broke this: the section opened but the actions stayed hidden.
   const canEdit = scope.canEdit(user);
   const canAdd = scope.canAdd ? scope.canAdd(user) : canEdit;
+  const directIssue = !scope.noDirectIssue;
 
   const [items, setItems] = useState<Item[]>([]);
   const [totals, setTotals] = useState<any>(null);
@@ -251,6 +256,7 @@ export default function StoreScreen({ scope }: { scope: StoreScope }) {
     { header: ar ? 'الإجمالي' : 'Total', key: 'total', transform: (v) => (v == null ? '' : v), width: 13 },
     { header: ar ? 'المركبة' : 'Vehicle', key: 'vehiclePlate', width: 14 },
     { header: ar ? 'سبب الصرف' : 'Issue reason', key: 'issueReason', transform: (v) => issueReasonLabel(v, ar), width: 18 },
+    { header: ar ? 'طلب الصرف' : 'Issue request', key: 'issueRequestNo', width: 13 },
     { header: ar ? 'ملاحظة' : 'Note', key: 'reason', width: 30 },
     { header: ar ? 'الرصيد بعدها' : 'Balance after', key: 'balanceAfter', width: 14 },
     { header: ar ? 'بواسطة' : 'By', key: 'performedByName', width: 20 },
@@ -375,7 +381,7 @@ export default function StoreScreen({ scope }: { scope: StoreScope }) {
                     {canEdit && (
                       <div className="flex items-center gap-1">
                         <button onClick={() => setMove({ item: it, type: 'in' })} title={ar ? 'وارد' : 'Stock in'} className="px-2 py-1 rounded-md bg-emerald-50 hover:bg-emerald-100 text-emerald-700 text-[11px] font-semibold inline-flex items-center gap-1"><ArrowDownToLine className="w-3.5 h-3.5" />{ar ? 'وارد' : 'In'}</button>
-                        <button onClick={() => setMove({ item: it, type: 'out' })} title={ar ? 'صادر' : 'Stock out'} className="px-2 py-1 rounded-md bg-orange-50 hover:bg-orange-100 text-[#f37121] text-[11px] font-semibold inline-flex items-center gap-1"><ArrowUpFromLine className="w-3.5 h-3.5" />{ar ? 'صادر' : 'Out'}</button>
+                        {directIssue && <button onClick={() => setMove({ item: it, type: 'out' })} title={ar ? 'صادر' : 'Stock out'} className="px-2 py-1 rounded-md bg-orange-50 hover:bg-orange-100 text-[#f37121] text-[11px] font-semibold inline-flex items-center gap-1"><ArrowUpFromLine className="w-3.5 h-3.5" />{ar ? 'صادر' : 'Out'}</button>}
                       </div>
                     )}
                   </td>
@@ -396,7 +402,16 @@ export default function StoreScreen({ scope }: { scope: StoreScope }) {
       </div>
 
       {/* Bulk action bar: fixed at the screen bottom, shown once the first item is selected. Issue and receipt side by side; both accept a different quantity per item. */}
-      {canEdit && (
+      {canEdit && !directIssue && (
+        <SelectionBar
+          count={picked.size} ar={ar} tone="green"
+          label={ar ? `${picked.size} صنف محدَّد` : `${picked.size} selected`}
+          hint={ar ? 'الصرف من هذا المخزن عبر «طلب صرف» فقط؛ المتاح هنا الوارد' : 'Issuing here goes through issue requests; this bar records receipts'}
+          actionLabel={ar ? `وارد (${picked.size})` : `Receive (${picked.size})`}
+          onAction={() => setBulkKind('in')}
+          onClear={() => setPicked(new Set())} />
+      )}
+      {canEdit && directIssue && (
         <SelectionBar
           count={picked.size} ar={ar}
           label={ar ? `${picked.size} صنف محدَّد` : `${picked.size} selected`}
@@ -508,6 +523,7 @@ function MovementsLog({ movements, ar, canEdit, onChanged, base, f, setF, suppli
                   <span className="block text-[10px] leading-tight">
                     {m.reversed && <span className="text-red-500">{ar ? 'مُلغاة' : 'reversed'}{m.reversedByName ? ` · ${m.reversedByName}` : ''}</span>}
                     {m.isReversal && <span className="text-amber-600">{ar ? 'حركة تراجع' : 'reversal entry'}</span>}
+                    {m.issueRequestNo ? <span className="inline-block me-1 rounded bg-slate-100 text-slate-700 font-semibold px-1.5 py-0.5 text-[11px]" dir="ltr">{m.issueRequestNo}</span> : null}
                     {m.reversed && m.reversalReason && <span className="block text-slate-400">{m.reversalReason}</span>}
                     {m.issueReason ? <span className="inline-block rounded bg-orange-50 text-[#c2410c] font-semibold px-1.5 py-0.5 text-[11px]">{issueReasonLabel(m.issueReason, ar)}</span> : null}
                     {!m.reversed && !m.isReversal && m.reason ? <span className="text-slate-400">{m.reason}</span> : null}
@@ -758,7 +774,7 @@ function BulkOutModal({ items, plates, ar, kind = 'out', onClose, onDone, base, 
  * Now `SearchableSelect`, searched by plate, project or rider name; `allowCustom` keeps typing a plate that is not in the register open (a vehicle entered today and not yet registered), and the writer is told it is not in the register.
  * Below the field a line shows the selected vehicle's project, rider and branch, answering 'on which project's account?' in place.
  */
-function PlatePicker({ plates, value, onChange, ar, label }: {
+export function PlatePicker({ plates, value, onChange, ar, label }: {
   plates: PlateRow[]; value: string; onChange: (v: string) => void; ar: boolean; label: string;
 }) {
   const t = (a: string, e: string) => (ar ? a : e);
@@ -807,7 +823,7 @@ function PlatePicker({ plates, value, onChange, ar, label }: {
 }
 
 // Issue reason: a required choice on every issue. The same four exist on the server (backend utils/storeIssueReasons) and in the app, and the reason shows in the vehicle file with the part. The free note is now optional beside it.
-function IssueReasonPicker({ value, onChange, ar }: { value: string; onChange: (v: string) => void; ar: boolean }) {
+export function IssueReasonPicker({ value, onChange, ar }: { value: string; onChange: (v: string) => void; ar: boolean }) {
   return (
     <div>
       <label className="block text-xs font-semibold text-slate-700 mb-1">

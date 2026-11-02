@@ -108,45 +108,14 @@ class _Ls2StoreScreenState extends State<Ls2StoreScreen> {
   }
 
   /// Plate key: the two registers write plates in two formats, so they are matched by letters and digits.
-  String _pk(dynamic v) => (v ?? '').toString().replaceAll(RegExp(r'[^0-9A-Za-z\u0621-\u064A]'), '').toUpperCase();
+  String _pk(dynamic v) => storePlateKey(v);
 
   /// Vehicles issued onto, with what is known about them (project first).
   Future<void> _loadPlates() async {
     try {
       if (widget.vehiclesKind == 'light') {
-        // The department's vehicle register joined to its current rider, which gives project and branch.
-        final d = await Api.instance.get('/api/light-transport/orders/options');
-        final riders = <String, Map<String, dynamic>>{};
-        for (final e in List<Map<String, dynamic>>.from(d['employees'] ?? [])) {
-          final k = _pk(e['vehiclePlate']);
-          if (k.isNotEmpty) riders.putIfAbsent(k, () => e);
-        }
-        final rows = <Map<String, dynamic>>[];
-        for (final v in List<Map<String, dynamic>>.from(d['vehicles'] ?? [])) {
-          final r = riders[_pk(v['plateNumber'])];
-          rows.add({
-            'plate': (v['plateNumber'] ?? '').toString(),
-            'project': (r?['projectAr'] ?? '').toString(),
-            'rider': (r?['name'] ?? v['authorizedName'] ?? '').toString(),
-            'city': (r?['cityAr'] ?? '').toString(),
-            'detail': [v['typeAr'], v['brand']].where((x) => (x ?? '').toString().isNotEmpty).join(' '),
-          });
-        }
-        // A plate on an employee but not in the vehicle register is added: the spend on it happened.
-        final have = rows.map((r) => _pk(r['plate'])).toSet();
-        for (final e in riders.entries) {
-          if (!have.contains(e.key)) {
-            rows.add({
-              'plate': (e.value['vehiclePlate'] ?? '').toString(),
-              'project': (e.value['projectAr'] ?? '').toString(),
-              'rider': (e.value['name'] ?? '').toString(),
-              'city': (e.value['cityAr'] ?? '').toString(),
-              'detail': '',
-            });
-          }
-        }
-        rows.sort((a, b) => a['plate'].toString().compareTo(b['plate'].toString()));
-        if (mounted) setState(() => _plates = rows.where((r) => r['plate'].toString().isNotEmpty).toList());
+        final rows = await loadLightStorePlates();
+        if (mounted) setState(() => _plates = rows);
       } else {
         // The endpoint returns `items`, not `vehicles`; the list used to come out empty with no error.
         final d = await Api.instance.get('/api/ls2/vehicles');
@@ -169,74 +138,7 @@ class _Ls2StoreScreenState extends State<Ls2StoreScreen> {
     } catch (_) { /* The list stays empty and the plate is typed by hand. */ }
   }
 
-  /// Vehicle picker: a searchable list with its project. `Autocomplete` matched text literally on the plate only: no search by project or rider name, and nothing but the plate was shown, while whoever issues asks "which project is this for?".
-  Future<Map<String, dynamic>?> _pickPlate() {
-    return showModalBottomSheet<Map<String, dynamic>>(
-      context: context,
-      isScrollControlled: true,
-      backgroundColor: Colors.white,
-      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
-      builder: (c) {
-        String q = '';
-        String fold(String x) => x
-            .replaceAll(RegExp('[أإآ]'), 'ا').replaceAll('ى', 'ي').replaceAll('ة', 'ه')
-            .replaceAll(' ', '').toLowerCase();
-        return StatefulBuilder(builder: (c, setS) {
-          final fq = fold(q.trim());
-          final list = _plates.where((r) => fq.isEmpty
-              || fold('${r['plate']} ${r['project']} ${r['rider']} ${r['city']} ${r['detail']}').contains(fq)).toList();
-          return SafeArea(
-            child: Padding(
-              padding: EdgeInsets.only(bottom: MediaQuery.of(c).viewInsets.bottom),
-              child: SizedBox(
-                height: MediaQuery.of(c).size.height * 0.7,
-                child: Column(children: [
-                  Padding(
-                    padding: const EdgeInsets.all(14),
-                    child: SearchField(
-                      autofocus: true,
-                      hint: tr('اللوحة أو المشروع أو اسم الراكب…', 'Plate, project or rider…'),
-                      onChanged: (v) => setS(() => q = v),
-                    ),
-                  ),
-                  Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 14),
-                    child: Align(
-                      alignment: AlignmentDirectional.centerStart,
-                      child: Text(tr('${list.length} من ${_plates.length} مركبة', '${list.length} of ${_plates.length}'),
-                          style: const TextStyle(fontSize: 11.5, color: T.inkFaint)),
-                    ),
-                  ),
-                  const Divider(height: 14),
-                  Expanded(
-                    child: ListView.builder(
-                      keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
-                      itemCount: list.length,
-                      itemBuilder: (c, i) {
-                        final r = list[i];
-                        final sub = [
-                          if ((r['project'] ?? '').toString().isNotEmpty) '${tr('مشروع', 'project')}: ${r['project']}',
-                          if ((r['rider'] ?? '').toString().isNotEmpty) r['rider'],
-                          if ((r['city'] ?? '').toString().isNotEmpty) r['city'],
-                          if ((r['detail'] ?? '').toString().isNotEmpty) r['detail'],
-                        ].join(' · ');
-                        return ListTile(
-                          dense: true,
-                          title: Text(r['plate'].toString(), style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 14)),
-                          subtitle: sub.isEmpty ? null : Text(sub, style: const TextStyle(fontSize: 11.5)),
-                          onTap: () => Navigator.pop(c, r),
-                        );
-                      },
-                    ),
-                  ),
-                ]),
-              ),
-            ),
-          );
-        });
-      },
-    );
-  }
+  Future<Map<String, dynamic>?> _pickPlate() => pickStorePlate(context, _plates);
 
   Future<void> _load() async {
     final seq = ++_seq;
@@ -417,12 +319,15 @@ class _Ls2StoreScreenState extends State<Ls2StoreScreen> {
                                           icon: const Icon(Icons.south, size: 16), label: Text(tr('وارد', 'In')),
                                           onPressed: () => _openMovement(it, 'in'),
                                         )),
-                                        const SizedBox(width: 8),
-                                        Expanded(child: OutlinedButton.icon(
-                                          style: OutlinedButton.styleFrom(foregroundColor: T.orange, side: const BorderSide(color: T.orange), padding: const EdgeInsets.symmetric(vertical: 6)),
-                                          icon: const Icon(Icons.north, size: 16), label: Text(tr('صادر', 'Out')),
-                                          onPressed: () => _openMovement(it, 'out'),
-                                        )),
+                                        // The light store issues only through issue requests; the server refuses a direct out there too.
+                                        if (!_isLightStore(widget.base)) ...[
+                                          const SizedBox(width: 8),
+                                          Expanded(child: OutlinedButton.icon(
+                                            style: OutlinedButton.styleFrom(foregroundColor: T.orange, side: const BorderSide(color: T.orange), padding: const EdgeInsets.symmetric(vertical: 6)),
+                                            icon: const Icon(Icons.north, size: 16), label: Text(tr('صادر', 'Out')),
+                                            onPressed: () => _openMovement(it, 'out'),
+                                          )),
+                                        ],
                                         IconButton(
                                           tooltip: tr('حذف الصنف', 'Delete item'),
                                           icon: const Icon(Icons.delete_outline, color: T.danger),
@@ -453,12 +358,14 @@ class _Ls2StoreScreenState extends State<Ls2StoreScreen> {
                             onPressed: () => _openBulk('in'),
                             child: Text(tr('وارد (${_picked.length})', 'Receive (${_picked.length})')),
                           ),
-                          const SizedBox(width: 6),
-                          FilledButton(
-                            style: FilledButton.styleFrom(backgroundColor: T.orange, visualDensity: VisualDensity.compact),
-                            onPressed: () => _openBulk('out'),
-                            child: Text(tr('صادر (${_picked.length})', 'Issue (${_picked.length})')),
-                          ),
+                          if (!_isLightStore(widget.base)) ...[
+                            const SizedBox(width: 6),
+                            FilledButton(
+                              style: FilledButton.styleFrom(backgroundColor: T.orange, visualDensity: VisualDensity.compact),
+                              onPressed: () => _openBulk('out'),
+                              child: Text(tr('صادر (${_picked.length})', 'Issue (${_picked.length})')),
+                            ),
+                          ],
                         ]),
                       ),
                     ),
@@ -676,6 +583,115 @@ class _Ls2StoreScreenState extends State<Ls2StoreScreen> {
     );
   }
 }
+
+/// Plate key: the two registers write plates in two formats, so they are matched by letters and digits.
+String storePlateKey(dynamic v) => (v ?? '').toString().replaceAll(RegExp(r'[^0-9A-Za-z\u0621-\u064A]'), '').toUpperCase();
+
+/// Light-transport vehicles issued onto: the department's vehicle register joined to its current rider, which gives project and branch.
+Future<List<Map<String, dynamic>>> loadLightStorePlates() async {
+  final d = await Api.instance.get('/api/light-transport/orders/options');
+  final riders = <String, Map<String, dynamic>>{};
+  for (final e in List<Map<String, dynamic>>.from(d['employees'] ?? [])) {
+    final k = storePlateKey(e['vehiclePlate']);
+    if (k.isNotEmpty) riders.putIfAbsent(k, () => e);
+  }
+  final rows = <Map<String, dynamic>>[];
+  for (final v in List<Map<String, dynamic>>.from(d['vehicles'] ?? [])) {
+    final r = riders[storePlateKey(v['plateNumber'])];
+    rows.add({
+      'plate': (v['plateNumber'] ?? '').toString(),
+      'project': (r?['projectAr'] ?? '').toString(),
+      'rider': (r?['name'] ?? v['authorizedName'] ?? '').toString(),
+      'city': (r?['cityAr'] ?? '').toString(),
+      'detail': [v['typeAr'], v['brand']].where((x) => (x ?? '').toString().isNotEmpty).join(' '),
+    });
+  }
+  // A plate on an employee but not in the vehicle register is added: the spend on it happened.
+  final have = rows.map((r) => storePlateKey(r['plate'])).toSet();
+  for (final e in riders.entries) {
+    if (!have.contains(e.key)) {
+      rows.add({
+        'plate': (e.value['vehiclePlate'] ?? '').toString(),
+        'project': (e.value['projectAr'] ?? '').toString(),
+        'rider': (e.value['name'] ?? '').toString(),
+        'city': (e.value['cityAr'] ?? '').toString(),
+        'detail': '',
+      });
+    }
+  }
+  rows.sort((a, b) => a['plate'].toString().compareTo(b['plate'].toString()));
+  return rows.where((r) => r['plate'].toString().isNotEmpty).toList();
+}
+
+/// Vehicle picker: a searchable list with its project. `Autocomplete` matched text literally on the plate only: no search by project or rider name, and nothing but the plate was shown, while whoever issues asks "which project is this for?".
+Future<Map<String, dynamic>?> pickStorePlate(BuildContext context, List<Map<String, dynamic>> plates) {
+  return showModalBottomSheet<Map<String, dynamic>>(
+    context: context,
+    isScrollControlled: true,
+    backgroundColor: Colors.white,
+    shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
+    builder: (c) {
+      String q = '';
+      String fold(String x) => x
+          .replaceAll(RegExp('[أإآ]'), 'ا').replaceAll('ى', 'ي').replaceAll('ة', 'ه')
+          .replaceAll(' ', '').toLowerCase();
+      return StatefulBuilder(builder: (c, setS) {
+        final fq = fold(q.trim());
+        final list = plates.where((r) => fq.isEmpty
+            || fold('${r['plate']} ${r['project']} ${r['rider']} ${r['city']} ${r['detail']}').contains(fq)).toList();
+        return SafeArea(
+          child: Padding(
+            padding: EdgeInsets.only(bottom: MediaQuery.of(c).viewInsets.bottom),
+            child: SizedBox(
+              height: MediaQuery.of(c).size.height * 0.7,
+              child: Column(children: [
+                Padding(
+                  padding: const EdgeInsets.all(14),
+                  child: SearchField(
+                    autofocus: true,
+                    hint: tr('اللوحة أو المشروع أو اسم الراكب…', 'Plate, project or rider…'),
+                    onChanged: (v) => setS(() => q = v),
+                  ),
+                ),
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 14),
+                  child: Align(
+                    alignment: AlignmentDirectional.centerStart,
+                    child: Text(tr('${list.length} من ${plates.length} مركبة', '${list.length} of ${plates.length}'),
+                        style: const TextStyle(fontSize: 11.5, color: T.inkFaint)),
+                  ),
+                ),
+                const Divider(height: 14),
+                Expanded(
+                  child: ListView.builder(
+                    keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
+                    itemCount: list.length,
+                    itemBuilder: (c, i) {
+                      final r = list[i];
+                      final sub = [
+                        if ((r['project'] ?? '').toString().isNotEmpty) '${tr('مشروع', 'project')}: ${r['project']}',
+                        if ((r['rider'] ?? '').toString().isNotEmpty) r['rider'],
+                        if ((r['city'] ?? '').toString().isNotEmpty) r['city'],
+                        if ((r['detail'] ?? '').toString().isNotEmpty) r['detail'],
+                      ].join(' · ');
+                      return ListTile(
+                        dense: true,
+                        title: Text(r['plate'].toString(), style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 14)),
+                        subtitle: sub.isEmpty ? null : Text(sub, style: const TextStyle(fontSize: 11.5)),
+                        onTap: () => Navigator.pop(c, r),
+                      );
+                    },
+                  ),
+                ),
+              ]),
+            ),
+          ),
+        );
+      });
+    },
+  );
+}
+
 
 // The API lets an edit grant on Location Solutions through and refuses a view one; offer the write actions on exactly that line, so a read-only user isn't handed buttons that 403.
 bool _canEditStore(AuthProvider auth) =>
@@ -936,10 +952,10 @@ String storeIssueReasonLabel(dynamic key) {
   return '';
 }
 
-class _IssueReasonPicker extends StatelessWidget {
+class IssueReasonPicker extends StatelessWidget {
   final String value;
   final ValueChanged<String> onChanged;
-  const _IssueReasonPicker({required this.value, required this.onChanged});
+  const IssueReasonPicker({super.key, required this.value, required this.onChanged});
   @override
   Widget build(BuildContext context) {
     return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
@@ -1114,7 +1130,7 @@ class _MovementSheetState extends State<_MovementSheet> {
             ),
           const SizedBox(height: 10),
           if (!isIn) ...[
-            _IssueReasonPicker(value: _issueReason, onChanged: (v) => setState(() { _issueReason = v; _err = null; })),
+            IssueReasonPicker(value: _issueReason, onChanged: (v) => setState(() { _issueReason = v; _err = null; })),
             const SizedBox(height: 10),
           ],
           TextField(controller: _reason, decoration: InputDecoration(labelText: isIn ? tr('ملاحظة', 'Note') : tr('ملاحظة (اختياري)', 'Note (optional)'))),
@@ -1256,7 +1272,7 @@ class _BulkMovementSheetState extends State<_BulkMovementSheet> {
               ),
               const SizedBox(height: 10),
               if (!isIn) ...[
-                _IssueReasonPicker(value: _issueReason, onChanged: (v) => setState(() { _issueReason = v; _err = null; })),
+                IssueReasonPicker(value: _issueReason, onChanged: (v) => setState(() { _issueReason = v; _err = null; })),
                 const SizedBox(height: 10),
               ],
               TextField(controller: _reason, decoration: InputDecoration(labelText: isIn ? tr('ملاحظة', 'Note') : tr('ملاحظة (اختياري)', 'Note (optional)'))),

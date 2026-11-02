@@ -50,6 +50,9 @@ const storeMovementSchema = new mongoose.Schema({
   // Issue reason, required on every new outbound (utils/storeIssueReasons). Empty for inbound and for old outbound rows predating the field.
   issueReason: { type: String, enum: ['', ...require('../utils/storeIssueReasons').ISSUE_REASON_KEYS], default: '', index: true },
   balanceAfter: { type: Number, default: 0 },                 // Balance after the movement
+  // Issue request that wrote this movement; such a movement is undone only by cancelling its request.
+  issueRequest: { type: mongoose.Schema.Types.ObjectId, ref: 'StoreIssueRequest', default: null, index: true },
+  issueRequestNo: { type: String, default: '' },
   performedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
   performedByName: { type: String, default: '' },
 

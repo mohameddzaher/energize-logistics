@@ -391,6 +391,8 @@ const effectOf = (type, qty) => (type === 'in' ? +qty : -qty);
 const guard = (mv) => {
   if (mv.reversed) return 'تم التراجع عن هذه الحركة من قبل';
   if (mv.reversalOf) return 'هذه حركة تراجع — لا يمكن التراجع عنها؛ سجّل حركة جديدة بدلاً من ذلك';
+  // A request's movements are undone together by cancelling the request, so the request and the log never disagree.
+  if (mv.issueRequest) return `هذه الحركة جزء من طلب الصرف ${mv.issueRequestNo || ''} — ألغِ الطلب بدلًا من التراجع عن سطر منه`;
   return null;
 };
 
@@ -463,7 +465,7 @@ exports.listMovements = async (req, res) => {
     }
     if (req.query.q && String(req.query.q).trim()) {
       const rx = new RegExp(String(req.query.q).trim().slice(0, 60).replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i');
-      (filter.$and = filter.$and || []).push({ $or: [{ itemName: rx }, { vehiclePlate: rx }, { reason: rx }, { supplierName: rx }, { performedByName: rx }] });
+      (filter.$and = filter.$and || []).push({ $or: [{ itemName: rx }, { vehiclePlate: rx }, { reason: rx }, { supplierName: rx }, { performedByName: rx }, { issueRequestNo: rx }] });
     }
     const limit = Math.min(Number(req.query.limit) || 200, 3000);
     const rows = await Ls2StoreMovement.find(filter).sort({ createdAt: -1 }).limit(limit).lean();
@@ -485,7 +487,7 @@ exports.listMovements = async (req, res) => {
     res.json({
       movements: movements.map((m) => ({
         ...m,
-        canReverse: !m.reversed && !m.reversalOf,
+        canReverse: !m.reversed && !m.reversalOf && !m.issueRequest,
         isReversal: !!m.reversalOf,
         // A small snapshot of the original movement when it is on the same page.
         originalRef: m.reversalOf

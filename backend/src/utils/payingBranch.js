@@ -70,4 +70,4 @@ async function payingBranchOf({ branchId, role, workflow }) {
   return resolvePayingBranch({ branchName: b?.name, role, workflow }, rows);
 }
 
-module.exports = { arabicBranchName, matchPayingBranch, resolvePayingBranch, payingBranchOf, foldEn, foldAr };
+module.exports = { arabicBranchName, matchPayingBranch, resolvePayingBranch, payingBranchOf, isHeavy, foldEn, foldAr };

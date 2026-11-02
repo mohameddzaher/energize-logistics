@@ -377,4 +377,4 @@ const dt = (v) => (v ? new Date(v).toLocaleDateString('en-GB') : '—');
 const dtm = (v) => (v ? new Date(v).toLocaleString('en-GB', { dateStyle: 'short', timeStyle: 'short' }) : '—');
 const pct = (n) => (n === null || n === undefined ? '—' : `${Math.round(Number(n))}%`);
 
-module.exports = { renderReportPdf, documentHtml, blockHtml, money, num, dt, dtm, pct, esc };
+module.exports = { renderReportPdf, documentHtml, blockHtml, stampLetterhead, MARGIN, FOOTER_OFFSET, money, num, dt, dtm, pct, esc };

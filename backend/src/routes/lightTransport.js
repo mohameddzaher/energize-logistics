@@ -89,9 +89,24 @@ router.get('/suppliers', lightStore(store.listSuppliers));
 router.post('/suppliers', authorize(...EDIT), lightStore(store.createSupplier));
 router.put('/suppliers/:id', objectIdParam('id'), authorize(...EDIT), lightStore(store.updateSupplier));
 router.delete('/suppliers/:id', objectIdParam('id'), authorize(...EDIT), lightStore(store.deleteSupplier));
-router.post('/store/bulk-movement', authorize(...EDIT), lightStore(store.addBulkMovement));
+/**
+ * Issuing from this store happens only through an issue request (طلب صرف), so the direct out actions are refused here; receipts stay open.
+ * The heavy store keeps its direct issue: the rule lives in this route, not in the shared controller.
+ */
+const noDirectIssue = (req, res, next) => (String(req.body?.type || '') === 'out'
+  ? res.status(400).json({ code: 'ISSUE_VIA_REQUEST', message: 'الصرف من مخزن النقل الخفيف يتمّ عبر «طلب صرف» فقط' })
+  : next());
+router.post('/store/bulk-movement', authorize(...EDIT), noDirectIssue, lightStore(store.addBulkMovement));
 router.post('/store/movements/:movementId/reverse', authorize(...EDIT), lightStore(store.reverseMovement));
-router.post('/store/:id/movement', objectIdParam('id'), authorize(...EDIT), lightStore(store.addMovement));
+router.post('/store/:id/movement', objectIdParam('id'), authorize(...EDIT), noDirectIssue, lightStore(store.addMovement));
+
+// Issue requests: saving one is the stock-out; cancelling reverses it on the record. Same writers as the store.
+const issue = require('../controllers/storeIssueRequestController');
+router.get('/store/issue-requests', lightStore(issue.list));
+router.get('/store/issue-requests/:id', lightStore(issue.get));
+router.get('/store/issue-requests/:id/pdf', lightStore(issue.pdf));
+router.post('/store/issue-requests', authorize(...EDIT), lightStore(issue.create));
+router.post('/store/issue-requests/:id/cancel', authorize(...EDIT), lightStore(issue.cancel));
 router.put('/store/:id', objectIdParam('id'), authorize(...EDIT), lightStore(store.updateItem));
 router.delete('/store/:id', objectIdParam('id'), authorize(...EDIT), lightStore(store.deleteItem));
 

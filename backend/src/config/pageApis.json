@@ -73,6 +73,13 @@
       ],
       "wildcard": false
     },
+    "/system/operations/loads": {
+      "apis": [
+        "/api/auth/me/prefs",
+        "/api/ops-board"
+      ],
+      "wildcard": false
+    },
     "/system/operations/private": {
       "apis": [
         "/api/operations-private",
@@ -616,6 +623,7 @@
         "/api/fleet/arrivals",
         "/api/fleet/customers",
         "/api/fleet/drivers",
+        "/api/fleet/form-options",
         "/api/fleet/shipments",
         "/api/fleet/shipments/waybills.pdf",
         "/api/fleet/vehicle-logs",
@@ -828,18 +836,6 @@
       "apis": [
         "/api/customs-clearance/settings",
         "/api/lookups/types"
-      ],
-      "wildcard": false
-    },
-    "/system/ls2/custody": {
-      "apis": [
-        "/api/ls2/custody"
-      ],
-      "wildcard": false
-    },
-    "/system/b2c/light-transport/custody": {
-      "apis": [
-        "/api/light-transport/custody"
       ],
       "wildcard": false
     },
@@ -1143,6 +1139,12 @@
         "/api/ls2/assets/tires/next-number",
         "/api/ls2/assets/trailers",
         "/api/ls2/assets/vehicle"
+      ],
+      "wildcard": false
+    },
+    "/system/ls2/custody": {
+      "apis": [
+        "/api/ls2/custody"
       ],
       "wildcard": false
     },
@@ -1852,6 +1854,12 @@
     "/system/b2c/projects": {
       "apis": [
         "/api/b2c/projects"
+      ],
+      "wildcard": false
+    },
+    "/system/b2c/light-transport/custody": {
+      "apis": [
+        "/api/light-transport/custody"
       ],
       "wildcard": false
     },

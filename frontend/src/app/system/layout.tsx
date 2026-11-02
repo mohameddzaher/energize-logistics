@@ -115,6 +115,8 @@ interface NavItem {
   // (KPI evaluation boards, section settings, supervisor assignment) — a link
   // the page will refuse is worse than no link.
   restrict?: boolean;
+  // The page's own grant opens it even when its section is closed to the role (the loads board for sales; config/opsBoard).
+  pageOpens?: boolean;
 }
 
 export default function SystemLayout({ children }: { children: React.ReactNode }) {
@@ -249,6 +251,8 @@ function SystemLayoutInner({ children }: { children: React.ReactNode }) {
     // Operations
     { href: '/system/operations', label: L.operations, icon: <ClipboardList className="w-5 h-5" />, roles: ['super_admin', 'it_manager', 'it_specialist', 'admin', 'employee', 'operations_manager', 'operations_staff', 'moderator', 'collections_manager', 'collections_staff'], section: 'Operations' },
     // Margin is not shown to everyone who opens the section: the private operations page shows our profit per load, so it is narrower than the workflow (management and finance). `restrict` keeps the menu honest, since a link the page rejects is worse than none. The guard is server-side (routes/operationsPrivate).
+    // Loads board: the workflow without billing and collection columns. Opened by its page, so sales reach it without the rest of Operations (config/opsBoard).
+    { href: '/system/operations/loads', label: lang === 'ar' ? 'متابعة الحمولات والشحنات' : 'Loads & Shipments', icon: <Truck className="w-5 h-5" />, roles: ['super_admin', 'admin', 'operations_manager', 'operations_staff', 'sales_manager', 'sales_rep', 'data_manager', 'data_analyst'], section: 'Operations', pageOpens: true },
     { href: '/system/operations/private', label: lang === 'ar' ? 'التشغيل — خاصّ' : 'Operations — private', icon: <Lock className="w-5 h-5" />, roles: ['super_admin', 'admin', 'it_manager', 'it_specialist', 'operations_manager', 'cfo', 'accounting_manager', 'accountant'], section: 'Operations', restrict: true },
     // Customer attribute is readable by whoever opens the operations page and writable only by its managers; the server enforces it and this list only gates who reaches the endpoint.
     { href: '/system/operations/payment-types', label: lang === 'ar' ? 'أنواع الدفع' : 'Payment Types', icon: <Banknote className="w-5 h-5" />, roles: ['super_admin', 'it_manager', 'it_specialist', 'admin', 'employee', 'operations_manager', 'operations_staff', 'moderator', 'cfo', 'accounting_manager', 'accountant', 'collections_manager', 'collections_staff'], section: 'Operations' },
@@ -362,9 +366,6 @@ function SystemLayoutInner({ children }: { children: React.ReactNode }) {
     // Department settings follow the permissions page like the rest of its pages, in all sections. `restrict` limited them to manager and management, so a staff member granted access from the permissions page could not find them in the menu; whoever should not see them is blocked from there.
     { href: '/system/customs/settings', label: lang === 'ar' ? 'إعدادات القسم' : 'Section Settings', icon: <SlidersHorizontal className="w-5 h-5" />, roles: ['super_admin', 'admin', 'it_manager', 'customs_manager'], section: 'Customs' },
     // Vehicles & Authorizations: super admin + HR + Accounting.
-    // The vehicles manager holds both custody ledgers without the two sections they live in.
-    { href: '/system/ls2/custody', label: lang === 'ar' ? 'عهدة النقل الثقيل' : 'Heavy Transport Custody', icon: <Wallet className="w-5 h-5" />, roles: ['vehicles_manager'], section: 'Vehicles', restrict: true },
-    { href: '/system/b2c/light-transport/custody', label: lang === 'ar' ? 'عهدة النقل الخفيف' : 'Light Transport Custody', icon: <Wallet className="w-5 h-5" />, roles: ['vehicles_manager'], section: 'Vehicles', restrict: true },
     { href: '/system/vehicles/registry/overview', label: lang === 'ar' ? 'نظرة شاملة' : 'Overview', icon: <LayoutGrid className="w-5 h-5" />, roles: ['super_admin', 'it_manager', 'it_specialist', 'admin', 'vehicles_manager', 'vehicles_staff', 'hr_manager', 'hr_specialist', 'cfo', 'accounting_manager', 'accountant'], section: 'Vehicles' },
     { href: '/system/vehicles/registry', label: lang === 'ar' ? 'سجل المركبات' : 'Vehicle Registry', icon: <Car className="w-5 h-5" />, roles: ['super_admin', 'it_manager', 'it_specialist', 'admin', 'vehicles_manager', 'vehicles_staff', 'hr_manager', 'hr_specialist', 'cfo', 'accounting_manager', 'accountant'], section: 'Vehicles' },
     { href: '/system/vehicles/registry/expiring', label: lang === 'ar' ? 'الانتهاءات والتجديد' : 'Expiries & Renewals', icon: <CalendarClock className="w-5 h-5" />, roles: ['super_admin', 'it_manager', 'it_specialist', 'admin', 'vehicles_manager', 'vehicles_staff', 'hr_manager', 'hr_specialist', 'cfo', 'accounting_manager', 'accountant'], section: 'Vehicles' },
@@ -397,7 +398,7 @@ function SystemLayoutInner({ children }: { children: React.ReactNode }) {
     { href: '/system/ls2/temperature', label: lang === 'ar' ? 'الحرارة' : 'Temperature', icon: <Thermometer className="w-5 h-5" />, roles: LS2_SECTION_ROLES, section: 'Location Solutions' },
     { href: '/system/ls2/maintenance', label: lang === 'ar' ? 'الصيانة' : 'Maintenance', icon: <Wrench className="w-5 h-5" />, roles: LS2_SECTION_ROLES, section: 'Location Solutions' },
     { href: '/system/ls2/fleet-assets', label: lang === 'ar' ? 'السطحات والكاوتشات' : 'Fleet Assets', icon: <Container className="w-5 h-5" />, roles: LS2_SECTION_ROLES, section: 'Location Solutions' },
-    { href: '/system/ls2/custody', label: lang === 'ar' ? 'عهدة النقل الثقيل' : 'Heavy Transport Custody', icon: <Wallet className="w-5 h-5" />, roles: ['super_admin', 'admin', 'location_manager', 'cfo', 'accounting_manager', 'accountant'], section: 'Location Solutions' },
+    { href: '/system/ls2/custody', label: lang === 'ar' ? 'عهدة النقل الثقيل' : 'Heavy Transport Custody', icon: <Wallet className="w-5 h-5" />, roles: ['super_admin', 'admin', 'location_manager', 'vehicles_manager', 'cfo', 'accounting_manager', 'accountant'], section: 'Location Solutions' },
     { href: '/system/ls2/store', label: lang === 'ar' ? 'مخزن النقل الثقيل' : 'Store', icon: <Boxes className="w-5 h-5" />, roles: [...LS2_SECTION_ROLES, 'accountant', 'accounting_manager', 'cfo', 'vehicles_manager'], section: 'Location Solutions' },
     // Who spare parts are bought from; also added from the supplier field in the item form.
     { href: '/system/ls2/suppliers', label: lang === 'ar' ? 'الموردون' : 'Suppliers', icon: <Truck className="w-5 h-5" />, roles: LS2_SECTION_ROLES, section: 'Location Solutions' },
@@ -502,7 +503,7 @@ function SystemLayoutInner({ children }: { children: React.ReactNode }) {
     { href: '/system/b2c/orders', label: L.b2cOrders, icon: <ClipboardList className="w-5 h-5" />, roles: ['super_admin', 'it_manager', 'it_specialist', 'admin', 'b2c_manager', 'b2c_deputy', 'b2c_project_lead'], section: 'B2C' },
     { href: '/system/b2c/projects', label: L.b2cProjects, icon: <Target className="w-5 h-5" />, roles: ['super_admin', 'it_manager', 'it_specialist', 'admin', 'b2c_manager', 'b2c_deputy', 'b2c_project_lead'], section: 'B2C' },
     // Department custody: cash, purchase card and workshop, with each one's in, out and balance.
-    { href: '/system/b2c/light-transport/custody', label: lang === 'ar' ? 'عهدة النقل الخفيف' : 'Light Transport Custody', icon: <Wallet className="w-5 h-5" />, roles: ['super_admin', 'admin', 'b2c_manager', 'b2c_deputy', 'cfo', 'accounting_manager', 'accountant'], section: 'B2C' },
+    { href: '/system/b2c/light-transport/custody', label: lang === 'ar' ? 'عهدة النقل الخفيف' : 'Light Transport Custody', icon: <Wallet className="w-5 h-5" />, roles: ['super_admin', 'admin', 'b2c_manager', 'b2c_deputy', 'vehicles_manager', 'cfo', 'accounting_manager', 'accountant'], section: 'B2C' },
     // Department project vehicles from the vehicle register itself: actual driver and authorization.
     { href: '/system/b2c/vehicles', label: lang === 'ar' ? 'مركبات النقل الخفيف' : 'Light Transport Vehicles', icon: <Truck className="w-5 h-5" />, roles: ['super_admin', 'admin', 'b2c_manager', 'b2c_deputy', 'cfo', 'accounting_manager', 'accountant'], section: 'B2C' },
     // The department reports field observations to HR: a rep may return to work today and HR hear days later, leaving him 'ended' in the system with no operating order. The reps' operations supervisor sees it first, so this screen is theirs.
@@ -722,7 +723,7 @@ function SystemLayoutInner({ children }: { children: React.ReactNode }) {
     // (sectionKey → none/view/edit) instead of the static role list. This is
     // what makes granting/removing a section to a role take effect live.
     if (isManagedSection(item.section)) {
-      if (!canAccessSection(user.permissions, item.section as string)) return false;
+      if (!canAccessSection(user.permissions, item.section as string) && !(item.pageOpens && user.pageAccess?.[item.href] === true)) return false;
       if (item.remoteKey && user.role === 'remote_employee') {
         return Array.isArray(user.remoteAccess) && user.remoteAccess.includes(item.remoteKey);
       }

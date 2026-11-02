@@ -84,7 +84,7 @@ const kindOfTitle = (t) => {
   if (TECH_RX.test(x)) return 'tech';
   return 'admin';
 };
-const CATEGORY_OF_HR = { 'سائق': 'rep', 'مندوب': 'rep', 'فني': 'tech', 'إداري': 'admin', 'اداري': 'admin' };
+const CATEGORY_OF_HR = { 'سائق': 'rep', 'مندوب': 'rep', 'مندوب توصيل': 'rep', 'مشرف': 'admin', 'فني': 'tech', 'إداري': 'admin', 'اداري': 'admin' };
 function categoryOf(row) {
   const hr = hrOf(row);
   const c = CATEGORY_OF_HR[S(hr?.staffCategory)];
@@ -134,10 +134,13 @@ function authOf(v, today = new Date().toISOString().slice(0, 10)) {
 // Section vehicles.
 /** Every vehicle the vehicles section attributes to light transport, by its sector (the light transport name or its code) or by its department (one of the section's projects), plus every vehicle with a rider from the section register. Authorized or not: authorization is a counted state, not an entry condition. */
 const LT_VEHICLE_PROJECTS = /^(كيتا|هنجرستيشن|هنقرستيشن|امازون|أمازون|نينجا)$/;
+const UNUSED_PROJECT = 'غير مستخدمة';
 const vehicleScope = (riddenIds = []) => ({
   isActive: { $ne: false },
   $or: [
     { sectorAr: /خفيف/ }, { sectorCode: 'light_transport' }, { departmentAr: LT_VEHICLE_PROJECTS },
+    // A section vehicle parked as unused stays on the section's list; heavy trucks marked the same do not join it.
+    { departmentAr: UNUSED_PROJECT, sectorAr: { $not: /ثقيل/ }, sectorCode: { $ne: 'heavy_transport' } },
     ...(riddenIds.length ? [{ _id: { $in: riddenIds.map((x) => new mongoose.Types.ObjectId(String(x))) } }] : []),
   ],
 });

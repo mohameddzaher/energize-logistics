@@ -222,7 +222,8 @@ function rowFromShipment(s) {
   const date = `${dt.getDate()}/${dt.getMonth() + 1}/${dt.getFullYear()}`;
   const driverName = [s.driverName, s.secondDriverName].filter(Boolean).join(' + ');
   return {
-    rentalType: s.rentType || '', carBrand: s.vehicleBrand || '', carColor: s.vehicleColor || '',
+    // Loads now carry one of the four payment types instead of a rent type; older loads keep their rent type.
+    rentalType: require('./shipmentOrderPayment').subtypeLabel(s.paymentSubtype) || s.rentType || '', carBrand: s.vehicleBrand || '', carColor: s.vehicleColor || '',
     carType: s.trailerType || '', plateNumber: s.vehiclePlate || '',
     // The advance stays on the fleet record but never prints on its transport order.
     hideDriverAdvance: true,

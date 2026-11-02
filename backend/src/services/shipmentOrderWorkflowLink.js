@@ -53,14 +53,18 @@ function rowOfFleet(f) {
     representativeName: str(f.supervisorName),
     applicationStatus: str(f.status),
     executionStatus: str(f.status),
-    paymentMethod: str(f.paymentType) === 'cash' ? 'cash' : 'late',
+    paymentMethod: isSubtype(f.paymentSubtype)
+      ? (termsOfSubtype(f.paymentSubtype) === 'نقدي' ? 'cash' : 'late')
+      : str(f.paymentType) === 'cash' ? 'cash' : 'late',
     driverRentalType: str(f.rentType),
     driverCost: num(f.driverExpense),
     sellingValue: num(f.price),
   };
 }
 
-const fleetPayment = (f) => (str(f.paymentType) === 'cash'
+const fleetPayment = (f) => (isSubtype(f.paymentSubtype)
+  ? { paymentType: subtypeFamily(f.paymentSubtype), paymentSubtype: f.paymentSubtype, paymentTypeSource: 'manual' }
+  : str(f.paymentType) === 'cash'
   ? { paymentType: 'cash', paymentSubtype: 'cash_ht', paymentTypeSource: 'manual' }
   : str(f.paymentType) === 'tax' ? { paymentType: 'tax', paymentSubtype: 'deferred_invoice', paymentTypeSource: 'manual' } : {});
 
@@ -233,6 +237,7 @@ async function pullFleet(w) {
     price: num(w.sellingValue), driverExpense: num(w.driverCost), status: str(w.applicationStatus) || load.status,
   };
   if (w.reportDate) wanted.loadDate = w.reportDate;
+  if (isSubtype(w.paymentSubtype)) { wanted.paymentSubtype = w.paymentSubtype; wanted.paymentType = subtypeFamily(w.paymentSubtype); }
   const diff = changes(load, wanted);
   if (!Object.keys(diff).length) return { changed: false };
   await fleetModel().updateOne({ _id: load._id }, { $set: diff });

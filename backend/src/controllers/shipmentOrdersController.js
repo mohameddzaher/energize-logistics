@@ -2311,6 +2311,18 @@ exports.setBranchAccess = async (req, res) => {
   }
 };
 
+/** «From / To» cities: the owner's list plus what the section settings added, the same list the shipment form shows. */
+exports.cityOptions = async () => {
+  const base = require('../config/shipmentCities');
+  const rows = await ShipmentOrderField.find({ key: { $in: ['fromCity', 'toCity'] }, deleted: { $ne: true } }).select('options').lean();
+  const out = [...base];
+  for (const f of rows) for (const o of f.options || []) {
+    const c = String(o?.ar || o?.key || '').trim();
+    if (c && !out.includes(c)) out.push(c);
+  }
+  return out;
+};
+
 exports.listFields = async (req, res) => {
   try {
     // ?all=1 → the settings page (inactive rows included); default → the form.

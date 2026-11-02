@@ -25,10 +25,13 @@ import type { DispatchSheetRow } from '@/lib/dispatchSheetExcelParser';
 import ScrollX from '@/components/system/ScrollX';
 import { printPdfBlob } from '@/utils/printPdfBlob';
 
+const PAYMENT_SUBTYPE_EN: Record<string, string> = { deferred_cash: 'Deferred – cash', deferred_invoice: 'Deferred – invoice', cash_3pl: 'Cash – 3PL', cash_ht: 'Cash – HT' };
+const PAYMENT_SUBTYPE_AR: Record<string, string> = { deferred_cash: 'آجل - كاش', deferred_invoice: 'آجل - فاتورة', cash_3pl: 'نقدي - 3PL', cash_ht: 'نقدي - HT' };
+
 // One shipment is one waybill sheet row. Untracked sheet fields stay blank.
 const toSheetRow = (s: FleetShipment): DispatchSheetRow => ({
   rowIndex: 1,
-  rentalType: s.rentType || '',
+  rentalType: PAYMENT_SUBTYPE_AR[(s as any).paymentSubtype] || s.rentType || '',
   carBrand: s.vehicleBrand || '',
   carColor: s.vehicleColor || '',
   carType: s.trailerType || '',
@@ -62,7 +65,7 @@ const SHIPMENT_COLUMNS = [
   { header: 'Vehicle rent', key: 'price', width: 14 },
   { header: 'Full rent', key: 'fullRent', width: 14 },
   { header: 'Driver expense', key: 'driverExpense', width: 14 },
-  { header: 'Payment', key: 'paymentType', width: 12 },
+  { header: 'Payment', key: 'paymentSubtype', transform: (v: any, r: any) => PAYMENT_SUBTYPE_EN[v] || r?.paymentType || '', width: 14 },
   { header: 'Load date', key: 'loadDate', transform: (v: any) => fmtD(v), width: 14 },
   { header: 'Status', key: 'status', transform: (v: any) => fleetStatusLabel(v, 'en'), width: 14 },
 ];

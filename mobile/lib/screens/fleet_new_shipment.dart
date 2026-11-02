@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import '../services/api.dart';
 import '../services/lang.dart';
+import '../services/live.dart';
 import '../ui/contact.dart';
 import '../ui/app_scaffold.dart';
 import '../ui/theme.dart';
@@ -58,13 +59,14 @@ class _FleetNewShipmentScreenState extends State<FleetNewShipmentScreen> {
   final _vehicleRent = TextEditingController();   // Vehicle rent = section income.
   final _fullRent = TextEditingController();       // Full rent (optional).
   final _driverExpense = TextEditingController();  // Driver expense.
-  Map<String, dynamic>? _rentTypeItem;             // Rent type list item.
-  Map<String, dynamic>? _paymentTypeItem;
+  Map<String, dynamic>? _paymentTypeItem;          // One of the four workflow payment types.
   Map<String, dynamic>? _loadTypeItem;
   String _customerType = '';                       // heavy / branch
   String? _branch;
   bool _fridayBonus = false;
-  List<Map<String, dynamic>> _rentTypes = [], _paymentTypes = [], _loadTypes = [], _branches = [];
+  List<Map<String, dynamic>> _paymentTypes = [], _loadTypes = [], _branches = [];
+  // From/To cities: the shipment orders' list, live with their settings.
+  List<String> _cityList = List.of(_cities);
   bool get _isFriday => DateTime.now().weekday == DateTime.friday;
   bool _busy = false;
   String? _error;
@@ -97,7 +99,7 @@ class _FleetNewShipmentScreenState extends State<FleetNewShipmentScreen> {
         ),
       );
 
-  // Searchable reference dropdown (rent/payment/load type) through _pickSheet.
+  // Searchable reference dropdown (payment/load type) through _pickSheet.
   Widget _lkPicker(String label, Map<String, dynamic>? selected, List<Map<String, dynamic>> items, void Function(Map<String, dynamic>?) onPick) => Pressable(
         onTap: () async {
           final v = await _pickSheet<Map<String, dynamic>>(
@@ -121,10 +123,29 @@ class _FleetNewShipmentScreenState extends State<FleetNewShipmentScreen> {
   void initState() {
     super.initState();
     _load();
+    Live.instance.on('shipmentOrders:fields', _onFormOptions);
+  }
+
+  void _onFormOptions() => _loadFormOptions();
+
+  /// Payment types and cities shared with shipment orders.
+  Future<void> _loadFormOptions() async {
+    try {
+      final d = await Api.instance.get('/api/fleet/form-options');
+      if (!mounted) return;
+      setState(() {
+        _paymentTypes = List<Map<String, dynamic>>.from((d['paymentSubtypes'] ?? []) as List)
+            .map((o) => <String, dynamic>{'key': o['key'], 'nameAr': o['ar'], 'nameEn': o['en']}).toList();
+        final c = List<String>.from(((d['cities'] ?? []) as List).map((x) => x.toString()));
+        if (c.isNotEmpty) _cityList = c;
+        if (_paymentTypeItem != null) _paymentTypeItem = _lkItem(_paymentTypes, _paymentTypeItem!['key']);
+      });
+    } catch (_) {}
   }
 
   @override
   void dispose() {
+    Live.instance.off('shipmentOrders:fields', _onFormOptions);
     _newCustomerName.dispose();
     _newCustomerPhone.dispose();
     _fromCity.dispose();
@@ -142,8 +163,7 @@ class _FleetNewShipmentScreenState extends State<FleetNewShipmentScreen> {
       final results = await Future.wait([
         Api.instance.get('/api/fleet/customers'),
         Api.instance.get('/api/fleet/vehicles'),
-        Api.instance.get('/api/lookups?type=fleet_rent_type&active=true').catchError((_) => <String, dynamic>{'items': []}),
-        Api.instance.get('/api/lookups?type=fleet_payment_type&active=true').catchError((_) => <String, dynamic>{'items': []}),
+        Api.instance.get('/api/fleet/form-options').catchError((_) => <String, dynamic>{}),
         Api.instance.get('/api/lookups?type=fleet_load_type&active=true').catchError((_) => <String, dynamic>{'items': []}),
         Api.instance.get('/api/branches?active=true').catchError((_) => <String, dynamic>{'branches': []}),
         Api.instance.get('/api/fleet/drivers').catchError((_) => <String, dynamic>{'drivers': []}),
@@ -156,11 +176,13 @@ class _FleetNewShipmentScreenState extends State<FleetNewShipmentScreen> {
       setState(() {
         _customers = List<Map<String, dynamic>>.from(results[0]['customers'] ?? []);
         _vehicles = List<Map<String, dynamic>>.from(results[1]['vehicles'] ?? []);
-        _rentTypes = List<Map<String, dynamic>>.from(results[2]['items'] ?? []);
-        _paymentTypes = List<Map<String, dynamic>>.from(results[3]['items'] ?? []);
-        _loadTypes = List<Map<String, dynamic>>.from(results[4]['items'] ?? []);
-        _branches = List<Map<String, dynamic>>.from(results[5]['branches'] ?? []);
-        _drivers = List<Map<String, dynamic>>.from(results[6]['drivers'] ?? []);
+        _paymentTypes = List<Map<String, dynamic>>.from((results[2]['paymentSubtypes'] ?? []) as List)
+            .map((o) => <String, dynamic>{'key': o['key'], 'nameAr': o['ar'], 'nameEn': o['en']}).toList();
+        final cities = List<String>.from(((results[2]['cities'] ?? []) as List).map((x) => x.toString()));
+        if (cities.isNotEmpty) _cityList = cities;
+        _loadTypes = List<Map<String, dynamic>>.from(results[3]['items'] ?? []);
+        _branches = List<Map<String, dynamic>>.from(results[4]['branches'] ?? []);
+        _drivers = List<Map<String, dynamic>>.from(results[5]['drivers'] ?? []);
         if (ship != null) _prefill(ship);
         _loading = false;
       });
@@ -198,8 +220,7 @@ class _FleetNewShipmentScreenState extends State<FleetNewShipmentScreen> {
     if (ld != null) _loadDate = DateTime(ld.year, ld.month, ld.day);
     _expectedArrival = DateTime.tryParse((o['expectedArrival'] ?? '').toString())?.toLocal();
     _notes.text = (o['notes'] ?? '').toString();
-    _rentTypeItem = _lkItem(_rentTypes, o['rentType']);
-    _paymentTypeItem = _lkItem(_paymentTypes, o['paymentType']);
+    _paymentTypeItem = _lkItem(_paymentTypes, o['paymentSubtype']);
     _loadTypeItem = _lkItem(_loadTypes, o['loadType']);
     _vehicleRent.text = _numText(o['price']);
     _fullRent.text = _numText(o['fullRent']);
@@ -458,8 +479,7 @@ class _FleetNewShipmentScreenState extends State<FleetNewShipmentScreen> {
         // Day only, as on the web: a local time without offset is read on the server as GMT, so a 10:30 PM load was recorded on the next day.
         'loadDate': '${_loadDate.year.toString().padLeft(4, '0')}-${_loadDate.month.toString().padLeft(2, '0')}-${_loadDate.day.toString().padLeft(2, '0')}',
         if (edit || _expectedArrival != null) 'expectedArrival': _expectedArrival?.toUtc().toIso8601String(),
-        if (edit || _rentTypeItem != null) 'rentType': _rentTypeItem?['key'] ?? '',
-        if (edit || _paymentTypeItem != null) 'paymentType': _paymentTypeItem?['key'] ?? '',
+        if (edit || _paymentTypeItem != null) 'paymentSubtype': _paymentTypeItem?['key'] ?? '',
         if (edit || _loadTypeItem != null) 'loadType': _loadTypeItem?['key'] ?? '',
         if (edit || n(_vehicleRent) != null) 'price': n(_vehicleRent) ?? 0,
         if (edit || n(_fullRent) != null) 'fullRent': n(_fullRent) ?? 0,
@@ -488,28 +508,21 @@ class _FleetNewShipmentScreenState extends State<FleetNewShipmentScreen> {
     }
   }
 
-  Widget _cityField(TextEditingController ctrl, String label) {
-    return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-      TextField(controller: ctrl, decoration: InputDecoration(labelText: label)),
-      const SizedBox(height: 6),
-      SizedBox(
-        height: 32,
-        child: ListView(
-          scrollDirection: Axis.horizontal,
-          children: _cities.map((c) => Padding(
-                padding: const EdgeInsetsDirectional.only(end: 6),
-                child: ActionChip(
-                  label: Text(c, style: const TextStyle(fontSize: 11.5)),
-                  backgroundColor: T.navy.withValues(alpha: 0.06),
-                  side: BorderSide.none,
-                  visualDensity: VisualDensity.compact,
-                  onPressed: () => setState(() => ctrl.text = c),
-                ),
-              )).toList(),
+  /// A city is chosen from the shipment orders' list, searchable, like their form.
+  Widget _cityField(TextEditingController ctrl, String label) => Pressable(
+        onTap: () async {
+          final v = await _pickSheet<String>(title: label, items: _cityList, label: (c) => c);
+          if (v != null) setState(() => ctrl.text = v);
+        },
+        child: InputDecorator(
+          decoration: InputDecoration(labelText: label, contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 14)),
+          child: Row(children: [
+            Expanded(child: Text(ctrl.text.isEmpty ? tr('اختر المدينة…', 'Select city…') : ctrl.text,
+                style: TextStyle(fontWeight: FontWeight.w700, fontSize: 13.5, color: ctrl.text.isEmpty ? T.inkFaint : T.ink))),
+            const Icon(Icons.expand_more, size: 18, color: T.inkFaint),
+          ]),
         ),
-      ),
-    ]);
-  }
+      );
 
   @override
   Widget build(BuildContext context) {
@@ -541,8 +554,9 @@ class _FleetNewShipmentScreenState extends State<FleetNewShipmentScreen> {
                         final ct = (c['customerType'] ?? '').toString();
                         if (ct.isNotEmpty) { _customerType = ct; }
                         // The agreed payment type is filled in automatically and stays editable here: a taxed customer may pay one load in cash, so the agreement is a default, not a constraint.
-                        final pt = (c['paymentType'] ?? '').toString();
-                        if (pt.isNotEmpty) {
+                        // Our own trucks: an agreed cash customer is cash HT, a tax customer deferred invoice.
+                        final pt = const {'tax': 'deferred_invoice', 'cash': 'cash_ht'}[(c['paymentType'] ?? '').toString()];
+                        if (pt != null) {
                           final hit = _paymentTypes.where((x) => (x['key'] ?? '').toString() == pt);
                           if (hit.isNotEmpty) _paymentTypeItem = hit.first;
                         }
@@ -695,12 +709,7 @@ class _FleetNewShipmentScreenState extends State<FleetNewShipmentScreen> {
                       style: const TextStyle(fontSize: 12, color: T.warn, fontWeight: FontWeight.w600)),
                 ),
                 const SizedBox(height: 10),
-                // Rent type / payment type: editable reference lists.
-                Row(children: [
-                  Expanded(child: _lkPicker(tr('نوع الإيجار', 'Rent type'), _rentTypeItem, _rentTypes, (v) => setState(() => _rentTypeItem = v))),
-                  const SizedBox(width: 10),
-                  Expanded(child: _lkPicker(tr('نوع الدفع', 'Payment type'), _paymentTypeItem, _paymentTypes, (v) => setState(() => _paymentTypeItem = v))),
-                ]),
+                _lkPicker(tr('نوع الدفع', 'Payment type'), _paymentTypeItem, _paymentTypes, (v) => setState(() => _paymentTypeItem = v)),
                 const SizedBox(height: 10),
                 _lkPicker(tr('نوع الحمولة', 'Load type'), _loadTypeItem, _loadTypes, (v) => setState(() => _loadTypeItem = v)),
                 const SizedBox(height: 10),

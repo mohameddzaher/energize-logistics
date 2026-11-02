@@ -13,8 +13,9 @@ import { motion, AnimatePresence } from 'framer-motion';
 import {
   Wallet, X, Check, Loader2, ArrowUpCircle, ArrowDownCircle,
   ShoppingCart, Lock, Unlock, AlertTriangle, Search,
-  Receipt, Download, Pencil, ArrowLeftRight, ClipboardCopy,
+  Receipt, Download, Pencil, ArrowLeftRight, ClipboardCopy, Truck,
 } from 'lucide-react';
+import Link from 'next/link';
 import { exportMultiSheet, fmt } from '@/utils/exportExcel';
 import { useLanguage } from '@/context/LanguageContext';
 import { getWalletTranslations, getWalletExtraTranslations } from '@/lib/translations';
@@ -874,6 +875,12 @@ export default function WalletPage() {
         </div>
 
         <div className="flex items-center gap-2 flex-wrap">
+          {/* Staff move between the wallet and the loads board all day. */}
+          {user?.pageAccess?.['/system/operations/loads'] === true && (
+            <Link href="/system/operations/loads" className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm font-semibold bg-[#12325C] text-white hover:bg-[#0e2849]">
+              <Truck className="w-4 h-4" />{lang === 'ar' ? 'متابعة الحمولات والشحنات' : 'Loads & Shipments'}
+            </Link>
+          )}
           {canSelectBranch && (
             <>
               <select value={selectedBranch} onChange={(e) => setSelectedBranch(e.target.value)} title={L.selectBranch}

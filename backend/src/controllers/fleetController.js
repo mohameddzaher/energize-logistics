@@ -87,9 +87,31 @@ const SHIPMENT_EDITABLE = [
   'customer', 'vehicle', 'driver', 'secondDriver',
   'loadDate', 'fromCity', 'toCity', 'status', 'expectedArrival', 'notes',
   // Load/waybill fields:
-  'rentType', 'paymentType', 'loadType', 'price', 'fullRent', 'customerType',
+  'rentType', 'paymentType', 'paymentSubtype', 'loadType', 'price', 'fullRent', 'customerType',
   'driverExpense', 'driverAdvance', 'fridayBonus', 'branch',
 ];
+
+/** Load form choices shared with shipment orders: the four payment types and the From/To cities. */
+exports.getFormOptions = async (req, res) => {
+  try {
+    const { paymentSubtypeOptions } = require('../utils/shipmentOrderPayment');
+    const cities = await require('./shipmentOrdersController').cityOptions();
+    res.json({ paymentSubtypes: paymentSubtypeOptions(), cities });
+  } catch (error) {
+    res.status(500).json({ message: 'تعذّر تحميل خيارات النموذج' });
+  }
+};
+
+/** The chosen payment type sets the cash/tax family; anything outside the four is dropped. */
+const applyPaymentSubtype = (data) => {
+  if (data.paymentSubtype === undefined) return;
+  const PT = require('../utils/paymentType');
+  const k = String(data.paymentSubtype || '').trim();
+  data.paymentSubtype = PT.isSubtype(k) ? k : '';
+  if (data.paymentSubtype) data.paymentType = PT.subtypeFamily(k);
+};
+/** A customer's agreed cash/tax as one of the four: our own trucks, so cash is cash HT. */
+const subtypeOfCustomer = (paymentType) => ({ tax: 'deferred_invoice', cash: 'cash_ht' }[String(paymentType || '')] || '');
 
 // The fleet settings singleton — created on first read with sensible defaults.
 const getFleetConfig = async () => {
@@ -404,8 +426,10 @@ exports.createShipment = async (req, res) => {
         if (!data.customerType && c.customerType) data.customerType = c.customerType;
         // The payment type agreed with the customer is filled automatically, and what the UI sent always wins: the agreement is a default for a new load, not a constraint on this load.
         if (!data.paymentType && c.paymentType) data.paymentType = c.paymentType;
+        if (!data.paymentSubtype && c.paymentType) data.paymentSubtype = subtypeOfCustomer(c.paymentType);
       }
     }
+    applyPaymentSubtype(data);
 
     // Friday bonus: the settings amount is added to the driver's expense once, at creation.
     await applyFridayBonus(data);
@@ -459,6 +483,7 @@ exports.updateShipment = async (req, res) => {
     if (!shipment) return res.status(404).json({ message: 'Shipment not found' });
 
     const data = pick(req.body, SHIPMENT_EDITABLE);
+    applyPaymentSubtype(data);
 
     // An edit can switch the load to a first-time customer, exactly like create.
     if (!data.customer && req.body.newCustomer && String(req.body.newCustomer.name || '').trim()) {

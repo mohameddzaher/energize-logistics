@@ -2532,6 +2532,7 @@ exports.getFieldPermissions = async (req, res) => {
 
 // One filter condition for everything that reads these reports. The private operations page shows the same reports with our selling price; if it built its own condition, the two tables would split at the first edit here (rows on one screen not on the other, a total not equal to a total). So the function is exported and the condition is read from one place.
 module.exports.buildWorkflowFilter = buildWorkflowFilter;
+module.exports.isLocked = isLocked;
 module.exports.primeRelatedSearch = primeRelatedSearch;
 // Hiding money columns is also single: the private page shows all report columns, and whoever lacks the invoice here lacks it there.
 module.exports.canSeeMoney = canSeeMoney;

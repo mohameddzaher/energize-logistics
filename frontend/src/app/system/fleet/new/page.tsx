@@ -82,7 +82,7 @@ function CreateFleetShipmentInner() {
               status: o.status, fromCity: o.fromCity || '', toCity: o.toCity || '',
               loadDate: toLocalDate(o.loadDate), expectedArrival: toLocalInput(o.expectedArrival),
               notes: o.notes || '',
-              rentType: o.rentType || '', paymentType: o.paymentType || '', loadType: o.loadType || '',
+              rentType: o.rentType || '', paymentType: o.paymentType || '', paymentSubtype: o.paymentSubtype || '', loadType: o.loadType || '',
               price: o.price ?? '', fullRent: o.fullRent ?? '', customerType: o.customerType || '',
               driverExpense: o.driverExpense ?? '', fridayBonus: !!o.fridayBonus, branch: o.branch || '',
             });
@@ -123,6 +123,19 @@ function CreateFleetShipmentInner() {
   useSocket('vreg:updated', reloadCrew);
   useSocket('hr:employee', reloadCrew);
 
+  // Payment types and From/To cities are the shipment orders' own lists, so a city added in their settings appears here at once.
+  const [formOptions, setFormOptions] = useState<{ paymentSubtypes: { key: string; ar: string; en: string }[]; cities: string[] }>({ paymentSubtypes: [], cities: [] });
+  const reloadFormOptions = useCallback(() => {
+    api.get<{ paymentSubtypes: { key: string; ar: string; en: string }[]; cities: string[] }>('/api/fleet/form-options')
+      .then((d) => setFormOptions({ paymentSubtypes: d.paymentSubtypes || [], cities: d.cities || [] })).catch(() => {});
+  }, []);
+  useEffect(() => { reloadFormOptions(); }, [reloadFormOptions]);
+  useSocket('shipmentOrders:fields', reloadFormOptions);
+  const cityOptions = (current: string) => {
+    const list = current && !formOptions.cities.includes(current) ? [current, ...formOptions.cities] : formOptions.cities;
+    return list.map((c) => ({ value: c, label: c }));
+  };
+
   const set = (k: string, v: any) => setForm((f) => ({ ...f, [k]: v }));
   const vehicle = useMemo(() => vehicles.find((v) => v._id === vehicleId) || null, [vehicles, vehicleId]);
   const customer = useMemo(() => customers.find((c) => c._id === customerId) || null, [customers, customerId]);
@@ -136,6 +149,7 @@ function CreateFleetShipmentInner() {
       ...f,
       ...(customer.customerType ? { customerType: customer.customerType } : {}),
       ...(customer.paymentType ? { paymentType: customer.paymentType } : {}),
+      ...(customer.paymentType === 'tax' ? { paymentSubtype: 'deferred_invoice' } : customer.paymentType === 'cash' ? { paymentSubtype: 'cash_ht' } : {}),
     }));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [customerId]);
@@ -203,7 +217,7 @@ function CreateFleetShipmentInner() {
         expectedArrival: form.expectedArrival ? new Date(form.expectedArrival).toISOString() : null,
         status: form.status || 'requesting',
         notes: form.notes || '',
-        rentType: form.rentType || '', paymentType: form.paymentType || '', loadType: form.loadType || '',
+        paymentSubtype: form.paymentSubtype || '', loadType: form.loadType || '',
         price: form.price === '' || form.price == null ? 0 : Number(form.price),
         fullRent: form.fullRent === '' || form.fullRent == null ? 0 : Number(form.fullRent),
         customerType: form.customerType || '',
@@ -411,11 +425,17 @@ function CreateFleetShipmentInner() {
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
           <div>
             <label className={labelCls}>{ar ? 'من' : 'From'}</label>
-            <input value={form.fromCity || ''} onChange={(e) => set('fromCity', e.target.value)} className={inputCls} />
+            <SearchableSelect value={form.fromCity || ''} onChange={(v) => set('fromCity', v)} searchAfter={0}
+              placeholder={ar ? 'اختر المدينة — اكتب للبحث…' : 'City — type to search…'}
+              searchPlaceholder={ar ? 'ابحث عن مدينة…' : 'Search…'} emptyLabel={ar ? 'لا نتائج' : 'No matches'}
+              options={cityOptions(form.fromCity || '')} />
           </div>
           <div>
             <label className={labelCls}>{ar ? 'إلى' : 'To'}</label>
-            <input value={form.toCity || ''} onChange={(e) => set('toCity', e.target.value)} className={inputCls} />
+            <SearchableSelect value={form.toCity || ''} onChange={(v) => set('toCity', v)} searchAfter={0}
+              placeholder={ar ? 'اختر المدينة — اكتب للبحث…' : 'City — type to search…'}
+              searchPlaceholder={ar ? 'ابحث عن مدينة…' : 'Search…'} emptyLabel={ar ? 'لا نتائج' : 'No matches'}
+              options={cityOptions(form.toCity || '')} />
           </div>
           <div>
             <label className={labelCls}>{ar ? 'تاريخ التحميل' : 'Load date'}</label>
@@ -448,14 +468,11 @@ function CreateFleetShipmentInner() {
             )}
           </div>
           <div>
-            <label className={labelCls}>{ar ? 'نوع الإيجار' : 'Rent type'}</label>
-            <SearchableManagedSelect type="fleet_rent_type" value={form.rentType || ''} onChange={(v) => set('rentType', v)}
-              placeholder={ar ? 'اختر نوع الإيجار' : 'Rent type'} />
-          </div>
-          <div>
             <label className={labelCls}>{ar ? 'نوع الدفع' : 'Payment type'}</label>
-            <SearchableManagedSelect type="fleet_payment_type" value={form.paymentType || ''} onChange={(v) => set('paymentType', v)}
-              placeholder={ar ? 'كاش / ضريبي' : 'Cash / Tax'} />
+            <SearchableSelect value={form.paymentSubtype || ''} onChange={(v) => set('paymentSubtype', v)} searchAfter={0}
+              placeholder={ar ? 'اختر نوع الدفع' : 'Payment type'}
+              searchPlaceholder={ar ? 'اكتب للبحث…' : 'Search…'} emptyLabel={ar ? 'لا نتائج' : 'No matches'}
+              options={formOptions.paymentSubtypes.map((o) => ({ value: o.key, label: ar ? o.ar : o.en }))} />
           </div>
           <div>
             <label className={labelCls}>{ar ? 'الفرع' : 'Branch'}</label>

@@ -64,6 +64,7 @@ const REGISTRY = [
     { key: 'hungerstation', nameAr: 'هنجرستيشن', nameEn: 'HungerStation' },
     { key: 'jamarat', nameAr: 'منقل الجمار', nameEn: 'Jamarat transport' },
     { key: 'owner', nameAr: 'مالك', nameEn: 'Owner' },
+    { key: 'unused', nameAr: 'غير مستخدمة', nameEn: 'Not in use' },
   ]),
   vehicleList('vehicle_city', 'مدن المركبات', 'Vehicle Cities', [
     { key: 'riyadh', nameAr: 'الرياض', nameEn: 'Riyadh' },
@@ -212,6 +213,8 @@ const REGISTRY = [
       { key: 'admin', nameEn: 'Administrative', nameAr: 'إداري' },
       { key: 'driver', nameEn: 'Driver', nameAr: 'سائق' },
       { key: 'technician', nameEn: 'Technician', nameAr: 'فني' },
+      { key: 'delivery_rep', nameEn: 'Delivery rep', nameAr: 'مندوب توصيل' },
+      { key: 'supervisor', nameEn: 'Supervisor', nameAr: 'مشرف' },
     ],
   },
   /**
@@ -249,6 +252,8 @@ const REGISTRY = [
       { key: 'branches', nameEn: 'Branches', nameAr: 'الفروع' },
       { key: 'saudization', nameEn: 'Saudization', nameAr: 'التوطين' },
       { key: 'training', nameEn: 'Training', nameAr: 'التدريب' },
+      { key: 'disabilities', nameEn: 'People of Determination', nameAr: 'ذوي الهمم' },
+      { key: 'remote_work', nameEn: 'Remote Work', nameAr: 'عمل عن بعد' },
     ],
   },
   // Other employee file fields with limited choices.

@@ -225,6 +225,8 @@ app.patch('/api/workflows/:id/application-status', authenticate, (req, res, next
   require('./controllers/workflowController').STATUS_ROLES.includes(req.user.role) && require('mongoose').isValidObjectId(req.params.id)
     ? require('./controllers/workflowController').updateApplicationStatus(req, res) : next()));
 app.use('/api/workflows', authenticate, sectionGate('Operations'), workflowRoutes);
+// Loads board: its page decides access, not the Operations section, so sales reach it without the rest of Operations (config/opsBoard).
+app.use('/api/ops-board', require('./routes/opsBoard'));
 // Operations private: the same statements at our selling price, part of the operations section with a narrower permission inside it (see routes/operationsPrivate).
 // Section guard on both read and write. Writes used to be unguarded because the price was a page-specific column (PrivateSellingPrice); it is now the statement's own column (sellingValue) written via the workflow path, so it is guarded like /api/workflows and nobody gains here what they lack there. The column permission itself is checked in setSellingValue.
 app.use('/api/operations-private', authenticate, sectionGate('Operations'), require('./routes/operationsPrivate'));

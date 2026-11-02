@@ -11,6 +11,7 @@ import '../ui/theme.dart';
 import '../ui/widgets.dart';
 import '../ui/search_field.dart';
 import 'wallet_common.dart';
+import 'ops_loads_board.dart';
 
 /// Daily cash wallet: the branch's daily wallet with collections, expenses and purchases, with transaction entry and day closing, /api/wallet/daily. The counterpart of /system/wallet on the web: a day, period or month, branch selector, edit, delete and move of a transaction, reopening a day, and export. Finance staff hold the same wallet powers as the system admin; mirrors backend/src/config/financeAuthority.js. The server is the guard.
 const _financeFullRoles = ['cfo', 'accounting_manager', 'accountant'];
@@ -720,6 +721,13 @@ class _CashWalletScreenState extends State<CashWalletScreen> {
     return AppScaffold(
       title: Text(tr('المحفظة اليومية', 'Daily Wallet')),
       actions: [
+        // Staff move between the wallet and the loads board all day.
+        if (canOpenOpsBoard(context.watch<AuthProvider>()))
+          IconButton(
+            tooltip: tr('متابعة الحمولات والشحنات', 'Loads & Shipments'),
+            icon: const Icon(Icons.local_shipping_outlined),
+            onPressed: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => const OpsLoadsBoardScreen())),
+          ),
         IconButton(tooltip: tr('تصدير Excel', 'Export to Excel'), icon: const Icon(Icons.file_download_outlined), onPressed: () => _export(shown)),
       ],
       floatingActionButton: canAdd

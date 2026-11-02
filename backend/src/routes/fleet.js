@@ -95,6 +95,7 @@ router.delete('/vehicle-logs/:id', authorize(...EDIT_ROLES), fleet.deleteVehicle
 
 
 router.get('/config', fleet.getConfig);
+router.get('/form-options', fleet.getFormOptions);
 router.put('/config', authorize(...ADMIN_ROLES), fleet.updateConfig);
 
 module.exports = router;

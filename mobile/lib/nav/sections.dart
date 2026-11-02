@@ -62,6 +62,7 @@ import '../screens/ls2_drivers.dart';
 import '../screens/marketing_activities.dart';
 import '../screens/ops_workflows.dart';
 import '../screens/ops_private.dart';
+import '../screens/ops_loads_board.dart';
 import '../screens/custody_ledger.dart';
 import '../screens/hr_archive.dart';
 import '../screens/light_transport_housing.dart';
@@ -219,6 +220,8 @@ List<AppSection> sectionsFor(AuthProvider auth) {
     if (s.managed && auth.canAccessSection(s.key)) return true;
     // A page explicitly marked opens its section even if the menu does not know it; see isPageGranted.
     if (s.pages.any((p) => auth.isPageGranted(p.path))) return true;
+    // The loads board opens by its page, not its section: sales reach it without the rest of Operations (config/opsBoard). The other Operations pages stay closed by their own page access.
+    if (s.key == 'Operations' && canOpenOpsBoard(auth)) return true;
     return false;
   }
 
@@ -230,6 +233,7 @@ List<AppSection> sectionsFor(AuthProvider auth) {
         AppPage('التشغيل', 'Operations', Icons.workspaces_outline, (c) => const OpsWorkflowsScreen(), path: '/system/operations'),
         // Operations sheets at our selling price: a management page, with permission from the web (path is its key in the matrix, and the server guards it on top).
         AppPage('التشغيل — خاصّ', 'Operations — private', Icons.lock_outline, (c) => const OpsPrivateScreen(), path: '/system/operations/private'),
+        AppPage('متابعة الحمولات والشحنات', 'Loads & Shipments', Icons.local_shipping_outlined, (c) => const OpsLoadsBoardScreen(), path: opsBoardPath),
         // Customers: on the web this was under operations and was missing here; the same register with no copies.
         AppPage('العملاء', 'Customers', Icons.people_outline, (c) => ResourceScreen(config: customersCfg), path: '/system/operations/customers'),
         AppPage('العهدة اليومية', 'Cash Wallet', Icons.account_balance_wallet_outlined, (c) => const CashWalletScreen(), path: '/system/wallet'),
@@ -458,7 +462,7 @@ List<AppSection> sectionsFor(AuthProvider auth) {
         AppPage('الإصلاحات', 'Repairs', Icons.home_repair_service_outlined, (c) => ResourceScreen(config: ls2RepairsCfg), path: '/system/ls2/repairs'),
         AppPage('أصول الأسطول', 'Fleet Assets', Icons.tire_repair_outlined, (c) => const Ls2FleetAssetsScreen(), path: '/system/ls2/fleet-assets'),
         AppPage('مخزن النقل الثقيل', 'Store', Icons.inventory_2_outlined, (c) => const Ls2StoreScreen(), path: '/system/ls2/store'),
-        if (_htOwners.contains(role)) AppPage('عهدة النقل الثقيل', 'Heavy Transport Custody', Icons.account_balance_wallet_outlined, (c) => const HtCustodyScreen(), path: '/system/ls2/custody'),
+        if (_htOwners.contains(role) || role == 'vehicles_manager') AppPage('عهدة النقل الثقيل', 'Heavy Transport Custody', Icons.account_balance_wallet_outlined, (c) => const HtCustodyScreen(), path: '/system/ls2/custody'),
         // Who spare parts are bought from: heavy store only.
         AppPage('الموردون', 'Suppliers', Icons.storefront_outlined, (c) => const Ls2SuppliersScreen(), path: '/system/ls2/suppliers'),
         AppPage('الأسطول المباشر', 'Live Fleet', Icons.satellite_alt_outlined, (c) => const Ls2LiveScreen(), path: '/system/ls2/live'),
@@ -541,9 +545,6 @@ List<AppSection> sectionsFor(AuthProvider auth) {
       roles: const [..._admins, 'vehicles_manager', 'vehicles_staff', 'hr_manager', 'hr_specialist', 'cfo', 'accounting_manager', 'accountant'],
       pages: [
         // Vehicles, authorizations and accidents: the screens exist (vehicles_suite) but were not in the menu.
-        // The vehicles manager holds both custody ledgers without the two sections they live in.
-        if (role == 'vehicles_manager') AppPage('عهدة النقل الثقيل', 'Heavy Transport Custody', Icons.account_balance_wallet_outlined, (c) => const HtCustodyScreen(), path: '/system/ls2/custody'),
-        if (role == 'vehicles_manager') AppPage('عهدة النقل الخفيف', 'Light Transport Custody', Icons.account_balance_wallet_outlined, (c) => const LtCustodyScreen(), path: '/system/b2c/light-transport/custody'),
         AppPage('لوحة المركبات', 'Vehicles Dashboard', Icons.dashboard_outlined, (c) => const SectionDashScreen(spec: vehiclesDashSpec), path: '/system/vehicles/dashboard'),
         AppPage('المركبات والتفويضات', 'Vehicles', Icons.directions_car_filled_outlined, (c) => const VehiclesListScreen(), path: '/system/vehicles'),
         AppPage('الحوادث', 'Accidents', Icons.car_crash_outlined, (c) => const AccidentsListScreen(), path: '/system/vehicles/accidents'),
@@ -706,7 +707,7 @@ List<AppSection> sectionsFor(AuthProvider auth) {
             (c) => const LtIssueRequestsScreen(),
             path: '/system/b2c/light-transport/store'),
         // Department custody: cash, purchases card and workshop; replaced project custody.
-        if (_ltOwners.contains(role)) AppPage('عهدة النقل الخفيف', 'Light Transport Custody', Icons.account_balance_wallet_outlined, (c) => const LtCustodyScreen(), path: '/system/b2c/light-transport/custody'),
+        if (_ltOwners.contains(role) || role == 'vehicles_manager') AppPage('عهدة النقل الخفيف', 'Light Transport Custody', Icons.account_balance_wallet_outlined, (c) => const LtCustodyScreen(), path: '/system/b2c/light-transport/custody'),
         // Department project vehicles: a window on the vehicles register itself, the actual driver and the authorization.
         if (_ltOwners.contains(role)) AppPage('مركبات النقل الخفيف', 'Light Transport Vehicles', Icons.local_shipping_outlined, (c) => const B2cVehiclesScreen(), path: '/system/b2c/vehicles'),
         // The department reports to HR what it saw in the field: the sending side.

@@ -142,6 +142,9 @@ const effectivePages = async (role) => {
     // Pages the matrix is silent on follow their section (rule in `pageFollowsSection`). A section not managed by the matrix (home, tools, admin, self-service, portal) stays guarded by the older role lists, except a created role: no list knows it, so only what is ticked opens for it.
     out[p.key] = pageFollowsSection(p, sections, custom);
   }
+  // The loads board opens by its page, not its section: its default roles include sales, who have no Operations section. A saved choice still wins.
+  const board = require('../config/opsBoard');
+  if (board.DEFAULT_ROLES.includes(role) && !Object.prototype.hasOwnProperty.call(pages, board.PAGE)) out[board.PAGE] = true;
   // The two wallet pages are always view-only for the collections section (config/walletViewOnly). They were open unless explicitly closed, but saving the page matrix writes every page into the role, so all operations pages including the wallet were saved as closed for collections staff. They are now always open; writes are rejected at the gate by role.
   const wv = require('../config/walletViewOnly');
   if (wv.isWalletViewOnly(role)) {

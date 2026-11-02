@@ -363,7 +363,9 @@ class _FleetShipmentDetailsScreenState extends State<FleetShipmentDetailsScreen>
                                 Chip2(_lkLabel('fleet_load_type', (s['loadType'] ?? '').toString()), T.inkSoft, icon: Icons.category_outlined),
                               if (_lkLabel('fleet_rent_type', (s['rentType'] ?? '').toString()).isNotEmpty)
                                 Chip2(_lkLabel('fleet_rent_type', (s['rentType'] ?? '').toString()), T.navy, icon: Icons.swap_horiz_outlined),
-                              if (_lkLabel('fleet_payment_type', (s['paymentType'] ?? '').toString()).isNotEmpty)
+                              if (_subtypeLabel(s['paymentSubtype']).isNotEmpty)
+                                Chip2(_subtypeLabel(s['paymentSubtype']), T.inkSoft, icon: Icons.credit_card_outlined)
+                              else if (_lkLabel('fleet_payment_type', (s['paymentType'] ?? '').toString()).isNotEmpty)
                                 Chip2(_lkLabel('fleet_payment_type', (s['paymentType'] ?? '').toString()), T.inkSoft, icon: Icons.credit_card_outlined),
                               if ((num.tryParse((s['driverExpense'] ?? '').toString()) ?? 0) > 0)
                                 Chip2('${tr('مصروف السائق', 'Driver expense')}: ${s['driverExpense']}', T.warn, icon: Icons.account_balance_wallet_outlined),
@@ -542,3 +544,12 @@ class _FleetShipmentDetailsScreenState extends State<FleetShipmentDetailsScreen>
     );
   }
 }
+
+/// The four workflow payment types, as the server names them (utils/paymentType).
+String _subtypeLabel(dynamic k) => switch ((k ?? '').toString()) {
+      'deferred_cash' => tr('آجل - كاش', 'Deferred – cash'),
+      'deferred_invoice' => tr('آجل - فاتورة', 'Deferred – invoice'),
+      'cash_3pl' => tr('نقدي - 3PL', 'Cash – 3PL'),
+      'cash_ht' => tr('نقدي - HT', 'Cash – HT'),
+      _ => '',
+    };

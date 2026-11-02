@@ -125,6 +125,11 @@ const fleetShipmentSchema = new mongoose.Schema({
   // Waybill/load fields, entered at creation.
   rentType: { type: String, trim: true, default: '' },      // Rental type (forward / return ...), an editable list.
   paymentType: { type: String, trim: true, default: '' },   // Payment type (cash / tax), an editable list.
+  // One of the four workflow payment types, as on shipment orders; the form asks this, and paymentType follows its family.
+  paymentSubtype: {
+    type: String, trim: true, default: '',
+    enum: ['', ...require('../utils/paymentType').SUBTYPE_KEYS],
+  },
   loadType: { type: String, trim: true, default: '' },      // Load type: from a list or typed manually.
   // Vehicle rent: the fleet section's actual income from this load (basis of analytics).
   price: { type: Number, default: 0, index: true },

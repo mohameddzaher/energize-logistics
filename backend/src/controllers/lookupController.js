@@ -41,7 +41,7 @@ exports.getLookups = async (req, res) => {
   try {
     const { type, active } = req.query;
     if (!type || !byType(type)) return res.status(400).json({ message: 'Unknown lookup type' });
-    // المحذوفةُ لا تظهر في أيّ قائمة — ولا حتّى في شاشة الإدارة.
+    // Deleted items appear in no list, not even the admin screen.
     const filter = { type, deleted: { $ne: true } };
     if (active === 'true') filter.isActive = true;
     const items = await Lookup.find(filter).sort({ order: 1, nameEn: 1 }).lean();
@@ -55,14 +55,14 @@ exports.getLookups = async (req, res) => {
 exports.createLookup = async (req, res) => {
   try {
     const { type, nameAr, color } = req.body;
-    // الاسمُ العربيُّ وحدَه يكفي: يُستعمل للإنجليزيّ إن لم يُكتب.
+    // The Arabic name is enough: it fills the English name when that is blank.
     const nameEn = String(req.body.nameEn || '').trim() || String(nameAr || '').trim();
     const entry = byType(type);
     if (!entry) return res.status(400).json({ message: 'Unknown lookup type' });
     if (!canManage(type, req.user.role)) return res.status(403).json({ message: 'Insufficient permissions' });
     if (!nameEn || !nameEn.trim()) return res.status(400).json({ message: 'English name is required' });
 
-    // بندان بالاسم نفسِه يُقرآن بندًا واحدًا في كلّ ملفّ — فلا يُضاف الثاني.
+    // Two items with one name read as one on every file, so the second is refused.
     if (LISTS.isHrList(type)) {
       const ar = String((nameAr && nameAr.trim()) || nameEn.trim());
       if (await Lookup.exists({ type, nameAr: ar, deleted: { $ne: true } })) return res.status(409).json({ message: `«${ar}» موجود بالفعل في القائمة` });
@@ -107,7 +107,7 @@ exports.updateLookup = async (req, res) => {
       if (next && next !== nameBefore && await Lookup.exists({ type: item.type, nameAr: next, deleted: { $ne: true }, _id: { $ne: item._id } })) {
         return res.status(409).json({ message: `«${next}» موجود بالفعل في القائمة` });
       }
-      // إيقافُ البند حذفٌ له من القائمة — فلا يُوقَف وعليه موظّفون.
+      // Deactivating removes the item from the list, so it is refused while employees hold it.
       if (isActive === false && item.isActive) {
         const u = await LISTS.usage(item.type, nameBefore);
         if (u.total) return res.status(409).json({ message: inUse(nameBefore, u) });
@@ -121,14 +121,12 @@ exports.updateLookup = async (req, res) => {
     await item.save();
 
     await logAudit({ user: req.user._id, action: 'update_lookup', entity: 'Lookup', entityId: item._id, changes: { after: { nameEn: item.nameEn } }, ipAddress: req.ip }).catch(() => {});
-    // الاسمُ الملقوطُ على ما سُجِّل من قبل يتبع الاسمَ الجديد — فالتعديلُ من
-    // الإعدادات يسري في الحال وعلى ما مضى (راجع services/customsLookupSync).
+    // Names snapshotted on existing records follow the rename at once (services/customsLookupSync).
     if (nameBefore !== item.nameAr) {
       await require('../services/customsLookupSync')
         .lookupRenamed({ type: item.type, key: item.key, from: nameBefore, to: item.nameAr }).catch(() => {});
     }
-    // وقوائمُ ملفّ الموظّف (القسم، الجنسيّة، المدينة، المشروع): الاسمُ الجديدُ على
-    // ملفّات أصحابه كلِّهم في الحال — راجع utils/hrLists.
+    // Employee-file lists (department, nationality, city, project) rename on every file at once (utils/hrLists).
     if (LISTS.isHrList(item.type)) {
       LISTS.forget();
       if (nameBefore !== item.nameAr) {
@@ -143,11 +141,9 @@ exports.updateLookup = async (req, res) => {
   }
 };
 
-// DELETE /api/lookups/:id — تُحذَف القيمة.
+// DELETE /api/lookups/:id
 //
-// المضافةُ يدويًّا تُمحى. والمبذورةُ تُعلَّم محذوفةً بدل أن تُمحى: البذرُ عند
-// الإقلاع ينشئ ما لا يجده، فمحوُها يعيدها في أوّل إعادة تشغيل. وكان الحلُّ
-// السابقُ إخفاءَ زرّ الحذف عنها — فتمتلئ القائمةُ بقيمٍ لا تُستعمل ولا تُزال.
+// Hand-added values are removed. Seeded ones get a tombstone, because boot seeding recreates anything missing.
 exports.deleteLookup = async (req, res) => {
   try {
     const item = await Lookup.findById(req.params.id);
@@ -159,8 +155,7 @@ exports.deleteLookup = async (req, res) => {
       LISTS.forget();
     }
     if (item.isSystem) {
-      // لا تُمحى من القاعدة بل تُعلَّم محذوفةً: المحوُ يعيدها البذرُ في أوّل
-      // إقلاع، والشاهدةُ تُخبره ألّا يفعل.
+      // Tombstone, not removal: the next boot's seeding would bring it back.
       item.deleted = true;
       item.isActive = false;
       await item.save();
@@ -178,7 +173,7 @@ exports.deleteLookup = async (req, res) => {
   }
 };
 
-// بندٌ عليه موظّفون لا يُحذف ولا يُوقَف: يُنقَلون أوّلًا (أو يُغيَّر اسمُه بدلَ حذفه).
+// An item with employees is neither deleted nor deactivated: move them first, or rename it.
 const inUse = (name, u) => `لا يمكن حذف «${name}»: عليه ${u.total} موظّف${u.archived ? ` (منهم ${u.archived} في الأرشيف)` : ''}. انقلهم إلى غيره أوّلًا، أو غيّر الاسمَ بدلَ الحذف.`;
 
 // Helper for other controllers: active rows for a type as {key,nameEn,nameAr,color}.

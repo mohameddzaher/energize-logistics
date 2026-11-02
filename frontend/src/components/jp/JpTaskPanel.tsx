@@ -16,7 +16,7 @@ import api from '@/lib/api';
 import { useSocket } from '@/hooks/useSocket';
 import { useDialog } from '@/components/system/DialogProvider';
 import ManagedSelect from '@/components/system/ManagedSelect';
-import { Modal, Field, TextInput, TextArea, Select, PrimaryButton } from '@/components/hr/HRKit';
+import { Modal, Field, TextInput, TextArea, SearchableSelect, PrimaryButton } from '@/components/hr/HRKit';
 import { DuePicker, NO_DUE, dueBody, type Due } from '@/components/jp/JpBoard';
 import { type JpTask, type JpMe, deadlineLine, TONE_CLASS, fmtMinutes, jpPagePath } from '@/lib/jp';
 import { CalendarCheck, Plus, Check, Clock, ExternalLink } from 'lucide-react';
@@ -140,10 +140,17 @@ function QuickAdd({ me, section, kind, refId, ar, onClose, onSaved }: {
           <ManagedSelect type={`jp_task_${section}`} storeLabel value={title} onChange={(v) => setTitle(v)} className="w-full px-3 py-2 rounded-lg border border-slate-200 text-sm" />
         </Field>
         <Field label={t('تُسنَد إلى', 'Assign to')}>
-          <Select value={assignedTo} onChange={(e) => setAssignedTo(e.target.value)}>
-            {!team.some((m) => String(m._id) === String(me.me)) && <option value={String(me.me)}>{t('أنا', 'Me')}</option>}
-            {team.map((m) => <option key={m._id} value={m._id}>{String(m._id) === String(me.me) ? `${m.name} (${t('أنا', 'me')})` : m.name}</option>)}
-          </Select>
+          <SearchableSelect value={assignedTo} onChange={setAssignedTo} searchAfter={0}
+            searchPlaceholder={t('ابحث بالاسم أو الدور…', 'Search name or role…')}
+            options={[
+              ...(team.some((m) => String(m._id) === String(me.me)) ? [] : [{ value: String(me.me), label: t('أنا', 'Me') }]),
+              ...team.map((m) => ({
+                value: String(m._id),
+                label: String(m._id) === String(me.me) ? `${m.name} (${t('أنا', 'me')})` : m.name,
+                hint: t(m.roleAr, m.roleEn),
+                search: [m.nameAr, m.search].filter(Boolean).join(' '),
+              })),
+            ]} />
         </Field>
         <Field label={t('يوم العمل (اختياري)', 'Work day (optional)')}>
           <TextInput type="date" value={workDate} onChange={(e) => setWorkDate(e.target.value)} />

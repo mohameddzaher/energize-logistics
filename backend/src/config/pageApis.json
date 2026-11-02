@@ -831,6 +831,18 @@
       ],
       "wildcard": false
     },
+    "/system/ls2/custody": {
+      "apis": [
+        "/api/ls2/custody"
+      ],
+      "wildcard": false
+    },
+    "/system/b2c/light-transport/custody": {
+      "apis": [
+        "/api/light-transport/custody"
+      ],
+      "wildcard": false
+    },
     "/system/vehicles/registry/overview": {
       "apis": [
         "/api/vehicle-registry/filters",
@@ -1131,12 +1143,6 @@
         "/api/ls2/assets/tires/next-number",
         "/api/ls2/assets/trailers",
         "/api/ls2/assets/vehicle"
-      ],
-      "wildcard": false
-    },
-    "/system/ls2/custody": {
-      "apis": [
-        "/api/ls2/custody"
       ],
       "wildcard": false
     },
@@ -1845,12 +1851,6 @@
     "/system/b2c/projects": {
       "apis": [
         "/api/b2c/projects"
-      ],
-      "wildcard": false
-    },
-    "/system/b2c/light-transport/custody": {
-      "apis": [
-        "/api/light-transport/custody"
       ],
       "wildcard": false
     },

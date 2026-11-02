@@ -244,9 +244,13 @@ exports.getWaybillsPdf = async (req, res) => {
       vehByPlate.set(k, { ...v, brand: v.brand || had?.brand || '', color: v.color || had?.color || '', truckType: v.truckType || had?.truckType || '' });
     }
     const drvByName = new Map(drvRows.map((d) => [d.name.trim(), d]));
+    // The representative printed on the order is whoever created the shipment.
+    const creators = new Map((await require('../models/User').find({ _id: { $in: orders.map((o) => o.createdBy).filter(Boolean) } })
+      .select('firstName lastName').lean()).map((u) => [String(u._id), `${u.firstName || ''} ${u.lastName || ''}`.trim()]));
 
     const pdf = await renderWaybillsPdf(orders.map((o) => {
       const row = rowFromOrder(o);
+      row.agentName = creators.get(String(o.createdBy)) || '';
       // The chosen truck's live record, so an edit on the suppliers page prints here.
       const own = o.vehicle ? vehById.get(String(o.vehicle)) : null;
       const v = own || vehByPlate.get(plateKeyOf(o.vehiclePlate));

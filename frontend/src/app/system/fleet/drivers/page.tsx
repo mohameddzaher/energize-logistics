@@ -73,6 +73,14 @@ export default function FleetDriversPage() {
   const [showModal, setShowModal] = useState(false);
   const [editing, setEditing] = useState<FleetDriver | null>(null);
   const [form, setForm] = useState<any>(EMPTY);
+  // Nationality comes from the HR list (lookup hr_nationality), so the fleet and HR write one spelling.
+  const [nationalities, setNationalities] = useState<string[]>([]);
+  const loadNationalities = useCallback(() => {
+    api.get<{ items: { nameAr: string }[] }>('/api/lookups?type=hr_nationality&active=true')
+      .then((d) => setNationalities((d.items || []).map((x) => x.nameAr).filter(Boolean))).catch(() => {});
+  }, []);
+  useEffect(() => { loadNationalities(); }, [loadNationalities]);
+  useSocket('lookup:changed', loadNationalities);
   const [saving, setSaving] = useState(false);
 
   const load = useCallback(async () => {
@@ -483,7 +491,15 @@ export default function FleetDriversPage() {
             <TextInput value={form.iban} dir="ltr" placeholder="SA00 0000 0000 0000 0000 0000"
               onChange={(e) => setForm((f: any) => ({ ...f, iban: e.target.value.toUpperCase() }))} />
           </Field>
-          <Field label={ar ? 'الجنسية' : 'Nationality'}><TextInput value={form.nationality} onChange={(e) => setForm((f: any) => ({ ...f, nationality: e.target.value }))} /></Field>
+          <Field label={ar ? 'الجنسية' : 'Nationality'}>
+            <SearchableSelect value={form.nationality || ''} onChange={(v) => setForm((f: any) => ({ ...f, nationality: v }))} searchAfter={0}
+              placeholder={ar ? '— اختر —' : '— choose —'} searchPlaceholder={ar ? 'ابحث عن الجنسية…' : 'Search nationality…'}
+              options={[
+                // A value written before the list existed still shows until it is changed.
+                ...(form.nationality && !nationalities.includes(form.nationality) ? [{ value: form.nationality, label: form.nationality }] : []),
+                ...nationalities.map((n) => ({ value: n, label: n })),
+              ]} />
+          </Field>
           <Field label={ar ? 'الحالة' : 'Status'}>
             <Select value={form.working ? 'yes' : 'no'} onChange={(e) => setForm((f: any) => ({ ...f, working: e.target.value === 'yes' }))}>
               <option value="yes">{ar ? 'يعمل' : 'Working'}</option>

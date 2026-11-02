@@ -136,7 +136,11 @@ final fleetDriversCfg = ResourceConfig(
     const FieldSpec('name', 'اسم السائق', 'Name', required: true),
     const FieldSpec('phone', 'رقم الجوال', 'Phone', type: FieldType.phone),
     const FieldSpec('iqama', 'رقم الإقامة', 'Iqama', type: FieldType.number),
-    const FieldSpec('nationality', 'الجنسية', 'Nationality'),
+    // The HR nationality list, so the fleet and HR write one spelling.
+    FieldSpec('nationality', 'الجنسية', 'Nationality', type: FieldType.lookup,
+        lookupEndpoint: '/api/lookups?type=hr_nationality&active=true',
+        lookupListKey: 'items', lookupQuery: 'limit=300',
+        lookupLabel: (r) => _s(r, 'nameAr'), lookupValue: (r) => _s(r, 'nameAr')),
     FieldSpec('vehicle', 'السيارة', 'Vehicle', type: FieldType.lookup,
         lookupEndpoint: '/api/fleet/vehicles', lookupListKey: 'vehicles',
         lookupLabel: (v) => [_s(v, 'plate'), _s(v, 'name')].where((x) => x.isNotEmpty).join(' · ')),

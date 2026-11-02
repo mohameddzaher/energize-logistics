@@ -180,6 +180,7 @@ ${getFontCss()}
       <div class="row"><span class="ar-label">نوع السيارة</span><span class="value">${valOrBlank(row.carType)}</span><span class="en-label">Vehicle Type</span></div>
       ${row.blNumber ? `<div class="row"><span class="ar-label">رقم البوليصة</span><span class="value">${esc(row.blNumber)}</span><span class="en-label">B/L No.</span></div>` : ''}
       ${row.containerNumber ? `<div class="row"><span class="ar-label">رقم الحاوية</span><span class="value">${esc(row.containerNumber)}</span><span class="en-label">Container No.</span></div>` : ''}
+      ${row.agentName ? `<div class="row"><span class="ar-label">المندوب</span><span class="value">${esc(row.agentName)}</span><span class="en-label">Representative</span></div>` : ''}
     </div>
     <div class="section">
       <div class="section-head"><span class="ar">بيانات السائق</span><span class="en">Driver Details</span></div>

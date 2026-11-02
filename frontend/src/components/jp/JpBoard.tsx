@@ -603,6 +603,7 @@ function JpBoardInner({ scope, section }: { scope: JpScope; section?: string }) 
       value: m._id,
       label: m._id === me.me ? (ar ? `${m.name} (أنا)` : `${m.name} (me)`) : m.name,
       hint: ar ? m.roleAr : m.roleEn,
+      search: [m.nameAr, m.search].filter(Boolean).join(' '),
       badge: m.inSection === false ? (ar ? 'خارج القسم' : 'Other') : (ar ? 'القسم' : 'Team'),
       tone: (m.inSection === false ? 'info' : 'ok') as 'info' | 'ok',
     });

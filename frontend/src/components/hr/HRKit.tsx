@@ -1,6 +1,7 @@
 'use client';
 // Small shared UI kit for the HR section so every page stays consistent and
 // short. Pure presentation — all data/logic lives in the pages themselves.
+import { soundsLike } from '@/lib/nameSound';
 import { ReactNode, useState, useRef, useEffect, useMemo, useLayoutEffect } from 'react';
 import { createPortal } from 'react-dom';
 import Link from 'next/link';
@@ -205,6 +206,8 @@ export function ErrorNotice({ error, onRetry, lang = 'en' }: { error: string; on
 // text participates in search just like the hint.
 export interface SearchOption {
   value: string; label: string; hint?: string;
+  /** Extra text the search reads but the list does not show, e.g. the Arabic name. */
+  search?: string;
   badge?: string;
   tone?: 'ok' | 'busy' | 'info';
 }
@@ -291,8 +294,8 @@ export function SearchableSelect({
     // Every space-separated word must appear somewhere, so "ahmed 2570" works.
     const words = s.split(/\s+/);
     return options.filter((o) => {
-      const hay = fold(`${o.label} ${o.hint || ''} ${o.badge || ''}`);
-      return words.every((w) => hay.includes(w));
+      const hay = fold(`${o.label} ${o.search || ''} ${o.hint || ''} ${o.badge || ''}`);
+      return words.every((w) => hay.includes(w)) || soundsLike(o.label, s);
     });
   }, [options, q, loading, onSearch]);
 

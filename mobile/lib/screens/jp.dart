@@ -1,4 +1,5 @@
 import '../ui/lookup_field.dart';
+import '../ui/name_sound.dart';
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:url_launcher/url_launcher.dart';
@@ -1308,7 +1309,7 @@ class JpPersonField extends StatelessWidget {
       isScrollControlled: true,
       builder: (c) => StatefulBuilder(builder: (c, setSt) {
         final q = ctl.text.trim().toLowerCase();
-        final list = people.where((m) => q.isEmpty || '${m['name']} ${_role(m)}'.toLowerCase().contains(q)).toList()
+        final list = people.where((m) => q.isEmpty || '${m['name']} ${m['nameAr'] ?? ''} ${m['search'] ?? ''} ${_role(m)}'.toLowerCase().contains(q) || soundsLike('${m['name']} ${m['search'] ?? ''}', q)).toList()
           ..sort((a, b) => (b['inSection'] == false ? 0 : 1) - (a['inSection'] == false ? 0 : 1));
         return Padding(
           padding: EdgeInsets.only(bottom: MediaQuery.of(c).viewInsets.bottom),

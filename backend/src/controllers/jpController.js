@@ -26,13 +26,22 @@ const { saveUploadFile, deleteStoredFile } = require('../utils/fileStore');
 const { createNotification } = require('../services/notificationService');
 const { emitToAll } = require('../websocket/socketManager');
 const logAudit = require('../utils/auditLogger');
-const { endedStaff, userEnded } = require('../utils/endedStaff');
+const { endedStaff, userEnded, userArchived } = require('../utils/endedStaff');
 
 // السوبر أدمن والأدمن يريان السيستمَ كلَّه بصلاحيّاتٍ كاملة (صاحبُ الشركة، ٢٠٢٦/١٠/٢٧).
 const TOP_ROLES = ['super_admin', 'admin'];
 const sameId = (a, b) => !!a && !!b && String(a._id || a) === String(b._id || b);
 const nameOf = (u) => (u ? [u.firstName, u.lastName].filter(Boolean).join(' ').trim() || u.email || '' : '');
 const HOUR = 3600000;
+const EMP = 'emp:';
+const assigneeName = (t) => nameOf(t.assignedTo) || t.assigneeName || '';
+const assigneeKey = (t) => (t.assignedTo ? String(t.assignedTo._id || t.assignedTo) : (t.assignedEmployee ? `${EMP}${t.assignedEmployee}` : ''));
+/** Task fields for a picked person. Employees without a login are picked as `emp:<id>`. */
+const assigneeFields = (picked, team) => {
+  const id = String(picked);
+  if (!id.startsWith(EMP)) return { assignedTo: picked, assignedEmployee: null, assigneeName: '' };
+  return { assignedTo: null, assignedEmployee: id.slice(EMP.length), assigneeName: team.find((m) => m._id === id)?.name || '' };
+};
 
 /**
  * موقعُ السائل من النطاق المطلوب. يردّ `null` إن كان النطاقُ نفسُه غيرَ معروف.
@@ -61,33 +70,65 @@ function who(req, src = {}) {
  * Who can be assigned in this scope.
  * `wide`: a top role (super_admin/admin) planning a section may assign anyone active —
  * e.g. the IT team are super_admins, so the section's role list does not contain them.
- * `assign`: the list for assigning a task, where top roles are always selectable.
+ * `assign`: the list for assigning a task: every account plus every HR employee with no
+ * login, whatever their status. Only partner logins and the archive stay out.
  * Without it the result is the team as counted on dashboards and for hand-down.
  * The section's own members come first, flagged `inSection`.
  */
 async function teamOf(w, { wide = false, assign = false } = {}) {
-  const base = { isActive: { $ne: false } };
+  const base = assign ? {} : { isActive: { $ne: false } };
   const [users, ended] = await Promise.all([
-    User.find(base).select('firstName lastName role email').lean(),
+    User.find(base).select('firstName lastName role email linkedEmployee').lean(),
     endedStaff(),
   ]);
+  // Accounts are mostly in English; the HR file's Arabic name lets people search as they speak.
+  const Employee = require('../models/Employee');
+  const { withoutArchived } = require('../utils/hrEngagement');
+  const files = await Employee.find(assign ? withoutArchived({}) : { $or: [
+    { _id: { $in: users.map((u) => u.linkedEmployee).filter(Boolean) } },
+    { user: { $in: users.map((u) => u._id) } },
+  ] }).select('arabicName firstName lastName user department email companyEmail').lean();
+  const arabicOf = new Map();
+  for (const f of files) {
+    arabicOf.set(String(f._id), f.arabicName);
+    if (f.user) arabicOf.set(String(f.user), f.arabicName);
+  }
   const { isExternalRole } = require('../config/scopedRoles');
   const inSection = (u) => (w.scope === 'management'
     ? isManagerRole(u.role) && !TOP_ROLES.includes(u.role)
     : w.def.memberRoles.includes(u.role));
   const scoped = wide && w.scope === 'section' ? (u) => !isExternalRole(u.role) : inSection;
-  const pick = (u) => scoped(u) || (assign && TOP_ROLES.includes(u.role));
+  const pick = (u) => (assign ? !isExternalRole(u.role) && !userArchived(ended, u) : scoped(u) && !userEnded(ended, u));
   // Ended staff are off the team even with a live account; their old tasks stay
   // and count under their name as former on the dashboard.
-  return users.filter((u) => pick(u) && !userEnded(ended, u)).map((u) => ({
+  const accounts = users.filter(pick).map((u) => ({
     _id: u._id,
     name: nameOf(u),
+    nameAr: arabicOf.get(String(u.linkedEmployee)) || arabicOf.get(String(u._id)) || '',
     role: u.role,
     roleAr: LABELS_AR[u.role] || u.role,
     roleEn: LABELS_EN[u.role] || u.role,
     isManager: w.scope === 'management' ? false : w.def.managerRoles.includes(u.role),
     inSection: inSection(u),
-  })).sort((a, b) => (Number(b.inSection) - Number(a.inSection)) || a.name.localeCompare(b.name, 'ar'));
+  }));
+  const withLogin = new Set(users.flatMap((u) => [String(u.linkedEmployee), String(u.email || '').toLowerCase()]));
+  const noLogin = !assign ? [] : files
+    .filter((f) => !f.user && ![String(f._id), String(f.email || '').toLowerCase(), String(f.companyEmail || '').toLowerCase()].some((k) => k && withLogin.has(k)))
+    .map((f) => ({
+      _id: `${EMP}${f._id}`,
+      name: f.arabicName || [f.firstName, f.lastName].filter(Boolean).join(' ').trim(),
+      nameAr: f.arabicName || '',
+      // Latin spelling still searchable when the list shows the Arabic name.
+      search: [f.firstName, f.lastName].filter(Boolean).join(' '),
+      role: '',
+      roleAr: f.department || 'موظف بدون حساب',
+      roleEn: f.department || 'Employee without login',
+      isManager: false,
+      inSection: false,
+      noLogin: true,
+    }))
+    .filter((m) => m.name);
+  return [...accounts, ...noLogin].sort((a, b) => (Number(b.inSection) - Number(a.inSection)) || a.name.localeCompare(b.name, 'ar'));
 }
 
 /** ما يراه السائل: المديرُ كلَّ النطاق، وغيرُه ما أُسنِد إليه أو كتبه. */
@@ -116,10 +157,11 @@ const shape = (t, req, w) => {
   const { parentTask, ...rest } = t;
   return {
     ...rest,
+    assignedTo: rest.assignedTo || (rest.assignedEmployee ? { _id: assigneeKey(t), firstName: rest.assigneeName, lastName: '' } : null),
     fromManagement: w.canManage && !!parentTask,
     state: stateOf(t),
     onTime: t.status === 'done' && t.deadlineAt ? new Date(t.doneAt) <= new Date(t.deadlineAt) : null,
-    assignedToName: nameOf(t.assignedTo),
+    assignedToName: assigneeName(t),
     createdByName: nameOf(t.createdBy),
     // الوقتُ حتى الآن مع ما يجري في المؤقّت.
     spentNow: Math.round(((Number(t.spentMinutes) || 0) + (t.timerStartedAt ? (Date.now() - new Date(t.timerStartedAt).getTime()) / 60000 : 0)) * 10) / 10,
@@ -310,6 +352,7 @@ exports.listTasks = async (req, res) => {
     if (project === 'none') and.push({ project: null });
     else if (project && mongoose.isValidObjectId(project)) and.push({ project });
     if (assignee && mongoose.isValidObjectId(assignee)) and.push({ assignedTo: assignee });
+    if (assignee && String(assignee).startsWith(EMP) && mongoose.isValidObjectId(String(assignee).slice(EMP.length))) and.push({ assignedEmployee: String(assignee).slice(EMP.length) });
     const now = new Date();
     if (status === 'done') and.push({ status: 'done' });
     else if (status === 'open') and.push({ status: 'open' });
@@ -395,7 +438,7 @@ exports.createTask = async (req, res) => {
       kind: w.canManage || sameId(assignedTo, req.user._id) ? 'task' : 'request',
       project, title, details: String(req.body.details || '').trim(), action,
       contact: String(req.body.contact || '').trim(),
-      assignedTo, createdBy: req.user._id, ...deadline,
+      ...assigneeFields(assignedTo, team), createdBy: req.user._id, ...deadline,
     });
     for (const f of (Array.isArray(req.body.files) ? req.body.files : []).slice(0, 5)) {
       const stored = saveUploadFile(f.dataUrl, 'jp', f.fileName);
@@ -403,7 +446,7 @@ exports.createTask = async (req, res) => {
     }
     if (doc.attachments.length) await doc.save();
 
-    await notify(assignedTo, req.user._id,
+    await notify(doc.assignedTo, req.user._id,
       doc.kind === 'task' ? 'مهمّةٌ جديدةٌ أُسنِدت إليك' : 'طلبٌ جديدٌ من زميل',
       `${title} — من ${nameOf(req.user)}`, doc._id);
     await logAudit({ user: req.user._id, action: 'create', entity: 'JpTask', entityId: doc._id, changes: { after: { title, kind: doc.kind, section: w.section, assignedTo } }, ipAddress: req.ip }).catch(() => {});
@@ -444,10 +487,10 @@ exports.updateTask = async (req, res) => {
       }
     }
     let reassigned = false;
-    if (b.assignedTo !== undefined && !sameId(b.assignedTo, t.assignedTo)) {
+    if (b.assignedTo !== undefined && String(b.assignedTo) !== assigneeKey(t)) {
       const team = await teamOf(w, { wide: w.top, assign: true });
       if (!(team.some((m) => sameId(m._id, b.assignedTo)) || sameId(b.assignedTo, req.user._id))) throw bad('اختر من يُسنَد إليه من فريق القسم');
-      t.assignedTo = b.assignedTo; reassigned = true;
+      Object.assign(t, assigneeFields(b.assignedTo, team)); reassigned = true;
     }
     const deadline = readDeadline(b);
     if (deadline) Object.assign(t, deadline);
@@ -596,7 +639,7 @@ exports.daily = async (req, res) => {
         if (req.query.status && req.query.status !== status) continue;
         rows.push({
           day: d, taskId: String(t._id), title: t.title, kind: t.kind,
-          assignedTo: t.assignedTo?._id ? String(t.assignedTo._id) : null, assignedToName: nameOf(t.assignedTo),
+          assignedTo: t.assignedTo?._id ? String(t.assignedTo._id) : null, assignedToName: assigneeName(t),
           createdByName: nameOf(t.createdBy), status, running: !!t.timerStartedAt,
           expectedMinutes: t.expectedMinutes ?? null, minutes: Math.round((per.get(d) || 0) * 10) / 10,
           totalMinutes: Math.round(((Number(t.spentMinutes) || 0) + (t.timerStartedAt ? (now - new Date(t.timerStartedAt)) / 60000 : 0)) * 10) / 10,
@@ -608,7 +651,7 @@ exports.daily = async (req, res) => {
     // لكلّ موظّفٍ في المدى: مهامُّه، وما تمّ، ودقائقُه، وما خُطِّط له من وقت.
     const people = new Map();
     for (const r of rows) {
-      const k = r.assignedTo || '—';
+      const k = r.assignedTo || r.assignedToName || '—';
       const p = people.get(k) || { assignedTo: r.assignedTo, name: r.assignedToName || '—', tasks: 0, done: 0, minutes: 0, expected: 0, running: 0 };
       p.tasks += 1; if (r.status === 'done') p.done += 1; p.minutes += r.minutes; if (r.planned && r.expectedMinutes) p.expected += r.expectedMinutes; if (r.running) p.running += 1;
       people.set(k, p);
@@ -619,7 +662,7 @@ exports.daily = async (req, res) => {
       from, to, rows,
       people: [...people.values()].map((p) => ({ ...p, minutes: Math.round(p.minutes * 10) / 10 })).sort((a, b) => b.minutes - a.minutes),
       titles: [...titles.entries()].map(([title, minutes]) => ({ title, minutes: Math.round(minutes * 10) / 10 })).sort((a, b) => b.minutes - a.minutes),
-      team: w.canManage ? await teamOf(w, { wide: w.top, assign: true }) : [],
+      team: w.canManage ? (await teamOf(w, { wide: w.top, assign: true })).filter((m) => !m.noLogin) : [],
     });
   } catch (e) { fail(res, e, 'تعذّر تحميل اليوميّة'); }
 };
@@ -918,10 +961,10 @@ exports.dashboard = async (req, res) => {
       if (!projectOk(t)) continue;
       const s = stateOf(t, now);
       const onTime = s === 'done' && t.deadlineAt ? new Date(t.doneAt) <= new Date(t.deadlineAt) : null;
-      const aid = String(t.assignedTo?._id || t.assignedTo);
+      const aid = assigneeKey(t);
       // من خرج من الفريق تبقى مهامُّه معدودةً باسمه — لا تسقط من الإجمالي.
       // An active person assigned from outside the section's roles (e.g. a super_admin in IT) is a member, not «former».
-      if (!members.has(aid)) members.set(aid, { _id: aid, name: nameOf(t.assignedTo) || '—', role: t.assignedTo?.role || '', roleAr: LABELS_AR[t.assignedTo?.role] || '', roleEn: LABELS_EN[t.assignedTo?.role] || '', former: !activeIds.has(aid), ...blank() });
+      if (!members.has(aid)) members.set(aid, { _id: aid, name: assigneeName(t) || '—', role: t.assignedTo?.role || '', roleAr: LABELS_AR[t.assignedTo?.role] || '', roleEn: LABELS_EN[t.assignedTo?.role] || '', former: !activeIds.has(aid), ...blank() });
       const m = members.get(aid);
       m.assigned += 1;
       if (s === 'done') { m.done += 1; if (t.doneAt) { m.hoursSum += (new Date(t.doneAt) - new Date(t.createdAt)) / HOUR; m.hoursN += 1; } } else m.open += 1;
@@ -934,7 +977,7 @@ exports.dashboard = async (req, res) => {
     for (const t of allTasks) {
       if (!assigneeOk(t)) continue;
       const s = stateOf(t, now);
-      const aid = String(t.assignedTo?._id || t.assignedTo);
+      const aid = assigneeKey(t);
       const pid = t.project ? String(t.project._id || t.project) : 'none';
       const pe = byProject.get(pid) || { total: 0, done: 0, overdue: 0, people: new Set() };
       pe.total += 1; if (s === 'done') pe.done += 1; if (s === 'overdue') pe.overdue += 1; pe.people.add(aid);
@@ -943,7 +986,7 @@ exports.dashboard = async (req, res) => {
 
     const pct = (a, b) => (b ? Math.round((a / b) * 1000) / 10 : null);
     const slim = (t) => ({
-      _id: t._id, title: t.title, kind: t.kind, assignedToName: nameOf(t.assignedTo), createdByName: nameOf(t.createdBy),
+      _id: t._id, title: t.title, kind: t.kind, assignedToName: assigneeName(t), createdByName: nameOf(t.createdBy),
       deadlineAt: t.deadlineAt, doneAt: t.doneAt, createdAt: t.createdAt, project: t.project?.name || '',
       files: (t.attachments || []).length, doneNote: t.doneNote || '', state: stateOf(t, now),
     });

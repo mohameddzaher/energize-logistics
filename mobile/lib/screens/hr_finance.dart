@@ -417,6 +417,7 @@ class _HrDocFeesViewState extends State<HrDocFeesView> with AutomaticKeepAliveCl
     ExportCol('تاريخ الانتهاء', 'Expiry date', (r) => '${r['expiryDate'] ?? ''}'.split('T').first),
     ExportCol('تاريخ الانتهاء (هجري)', 'Expiry (Hijri)', (r) => hijriDay(r['expiryDate'])),
     ExportCol('المتبقي (يوم)', 'Days left', (r) => r['daysLeft'] ?? ''),
+    ExportCol('السجل', 'Register', (r) => r['registerShown'] ?? ''),
     ExportCol('القسم', 'Department', (r) => r['department'] ?? ''),
     ExportCol('الفئة الوظيفية', 'Staff category', (r) => r['staffCategory'] ?? ''),
     ExportCol('المشروع', 'Project', (r) => r['project'] ?? ''),
@@ -491,6 +492,7 @@ class _HrDocFeesViewState extends State<HrDocFeesView> with AutomaticKeepAliveCl
                 Text([
                   if ('${r['employeeNumber'] ?? ''}'.isNotEmpty) '#${r['employeeNumber']}',
                   if ('${r['idNumber'] ?? ''}'.isNotEmpty) '${r['idNumber']}',
+                  if ('${r['registerShown'] ?? ''}'.isNotEmpty) '${r['registerShown']}',
                   if ('${r['department'] ?? ''}'.isNotEmpty) '${r['department']}',
                   if ('${r['project'] ?? ''}'.isNotEmpty) '${r['project']}',
                 ].join(' · '), style: const TextStyle(fontSize: 12, color: T.inkSoft)),

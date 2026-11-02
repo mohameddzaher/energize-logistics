@@ -183,7 +183,7 @@ export default function HrDocFees({ listUrl, optionsUrl, payUrl, unpayUrl, profi
     { header: t('المشروع', 'Project'), key: 'project', width: 16 },
     { header: t('المدينة', 'City'), key: 'branchName', width: 14 },
     { header: t('الجنسية', 'Nationality'), key: 'nationality', width: 14 },
-    { header: t('السجل التجاري', 'Register'), key: 'registerNumber', width: 16 },
+    { header: t('السجل', 'Register'), key: 'registerShown', width: 16 },
     { header: t('حالة الدفع', 'Payment'), key: 'paid', width: 12, transform: (v) => PAID_LABEL[v ? 'paid' : 'unpaid'][ar ? 0 : 1] },
     { header: t('المبلغ', 'Amount'), key: 'payment', width: 12, type: 'number', transform: (v) => v?.amount ?? '' },
     { header: t('دفعها', 'Paid by'), key: 'payment', width: 18, transform: (v) => v?.paidByName || '' },
@@ -344,6 +344,7 @@ export default function HrDocFees({ listUrl, optionsUrl, payUrl, unpayUrl, profi
                 <th className={thCls}>{t('الانتهاء (هجري)', 'Expiry (Hijri)')}</th>
                 <th className={thCls}>{t('المتبقي', 'Left')} {colHead('daysLeft')}</th>
                 <th className={thCls}>{t('القسم', 'Department')} {colHead('department')}</th>
+                <th className={thCls}>{t('السجل', 'Register')} {colHead('registerShown')}</th>
                 <th className={thCls}>{t('الفئة', 'Category')} {colHead('staffCategory')}</th>
                 <th className={thCls}>{t('المشروع', 'Project')} {colHead('project')}</th>
                 <th className={thCls}>{t('المدينة', 'City')} {colHead('branchName')}</th>
@@ -379,6 +380,7 @@ export default function HrDocFees({ listUrl, optionsUrl, payUrl, unpayUrl, profi
                         : <span className={`text-[12.5px] font-bold ${r.daysLeft <= 5 ? 'text-red-600' : r.daysLeft <= 10 ? 'text-orange-600' : 'text-amber-600'}`}>{daysLeftText(r.daysLeft, ar)}</span>}
                     </td>
                     <td className="px-3 py-2.5 whitespace-nowrap text-[13px] text-slate-700">{r.department || '—'}</td>
+                    <td className="px-3 py-2.5 whitespace-nowrap tabular-nums text-[13px] text-slate-700">{(r as any).registerShown || '—'}</td>
                     <td className="px-3 py-2.5 whitespace-nowrap text-[13px] text-slate-700">{r.staffCategory || '—'}</td>
                     <td className="px-3 py-2.5 whitespace-nowrap text-[13px] text-slate-700">{r.project || '—'}</td>
                     <td className="px-3 py-2.5 whitespace-nowrap text-[13px] text-slate-700">{r.branchName || '—'}</td>
@@ -410,7 +412,7 @@ export default function HrDocFees({ listUrl, optionsUrl, payUrl, unpayUrl, profi
                 );
               })}
               {!rows.length && (
-                <tr><td colSpan={canPay ? 14 : 13} className="px-3 py-12 text-center text-slate-400">
+                <tr><td colSpan={canPay ? 15 : 14} className="px-3 py-12 text-center text-slate-400">
                   {t('لا مستنداتٍ تطابق الفلاتر', 'No documents match the filters')}
                 </td></tr>
               )}

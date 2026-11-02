@@ -143,10 +143,19 @@ const COLUMNS = {
   nationality: (r) => r.nationality,
   branchName: (r) => r.branchName,
   registerNumber: (r) => r.registerNumber,
+  registerShown: (r) => r.registerShown,
   paid: (r) => (r.paid ? 'paid' : 'unpaid'),
   paidByName: (r) => r.payment?.paidByName || '',
 };
 const cellOf = (r, k) => normKey(COLUMNS[k] ? COLUMNS[k](r) : '');
+
+/** The register number, or the kind when the file has none: same words as the HR master. */
+const registerShownOf = (e) => {
+  const kind = require('../utils/hrEngagement').engagementOf(e);
+  if (kind === 'freelance') return 'فريلانسر';
+  if (kind === 'trainee') return 'متدرّب';
+  return S(e.registerNumber) || 'غير محدّد';
+};
 
 /** كلُّ مستندٍ مستحقٍّ اليوم — قبل أيّ فلترٍ من فلاتر الشاشة. */
 async function universe() {
@@ -183,7 +192,7 @@ async function universe() {
         docType: d.key, docAr: d.ar, docEn: d.en,
         expiryDate: exp, daysLeft, expired: daysLeft < 0,
         department: S(e.department), staffCategory: S(e.staffCategory), project: S(e.project),
-        nationality: S(e.nationality), branchName: S(e.branchName), registerNumber: S(e.registerNumber),
+        nationality: S(e.nationality), branchName: S(e.branchName), registerNumber: S(e.registerNumber), registerShown: registerShownOf(e),
         workStatusText: S(e.workStatusText) || FV.derivedOf(e, 'workStatusText'), iqamaProfession: S(e.iqamaProfession) || FV.answerOf(e, 'iqamaProfession'),
         paid: false, payment: null,
         _emp: e,

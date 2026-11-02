@@ -59,7 +59,10 @@ const jpTaskSchema = new mongoose.Schema({
   // مع من يكون التواصل — اسمٌ أو رقم، كما يكتبه المدير.
   contact: { type: String, trim: true, default: '', maxlength: 200 },
 
-  assignedTo: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
+  // Empty for an HR employee with no login: `assignedEmployee` and `assigneeName` name them.
+  assignedTo: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
+  assignedEmployee: { type: mongoose.Schema.Types.ObjectId, ref: 'Employee' },
+  assigneeName: { type: String, trim: true, default: '' },
   createdBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
 
   deadlineKind: { type: String, enum: ['', 'date', 'hours'], default: '' },

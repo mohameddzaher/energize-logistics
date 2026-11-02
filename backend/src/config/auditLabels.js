@@ -192,6 +192,7 @@ const ENTITY_LABELS = {
   HtCustodyEntry: ['عهدة النقل الثقيل', 'Heavy transport custody'],
   LtUserRental: ['تأجير اليوزرات', 'User rentals'],
   Ls2StoreMovement: ['حركة مستودع', 'Store movement'], Ls2StoreItem: ['صنف مخزن', 'Store item'], Ls2Supplier: ['مورد', 'Supplier'], Ls2Asset: ['كاوتش / تيدر / سطحة', 'Tyre / trailer / flatbed'],
+  Ls2Rim: ['جنط', 'Rim'], Ls2RimMovement: ['حركة جنوط', 'Rim movement'],
   WalletTransaction: ['حركة عهدة', 'Wallet transaction'], DailyWallet: ['يومية عهدة', 'Wallet day'],
   CustomsClearance: ['معاملة تخليص', 'Customs clearance'], CustomsParty: ['طرف في التخليص', 'Customs party'], CustomsContract: ['عقد تخليص', 'Customs contract'],
   B2C: ['بيانات قطاع الأفراد', 'B2C data'], B2CProject: ['مشروع قطاع الأفراد', 'B2C project'],

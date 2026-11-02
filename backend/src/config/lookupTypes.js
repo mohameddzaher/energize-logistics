@@ -700,6 +700,14 @@ const REGISTRY = [
       { key: 'piece', nameAr: 'قطعة', nameEn: 'Piece' },
       { key: 'litre', nameAr: 'لتر', nameEn: 'Litre' },
     ]],
+    // Rim types on the tire side (models/Ls2Rim): brand and size are lists so a new rim is added from the field, not in code.
+    ['ls2_rim_brand', 'أنواع الجنوط', 'Rim brands', [
+      { key: 'chinese', nameAr: 'صيني', nameEn: 'صيني' },
+    ]],
+    ['ls2_rim_size', 'مقاسات الجنوط', 'Rim sizes', [
+      { key: 'r315', nameAr: '315', nameEn: '315' },
+      { key: 'r385', nameAr: '385', nameEn: '385' },
+    ]],
   ].map(([type, nameAr, nameEn, seed]) => ({
     type, module: 'ls2', nameAr, nameEn,
     roles: ['location_manager', 'location_staff', 'operations_manager', 'it_manager', 'it_specialist', 'vehicles_manager', 'procurement_staff', 'b2c_manager', 'b2c_deputy', 'b2c_project_lead'],

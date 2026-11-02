@@ -85,6 +85,16 @@ router.post('/assets/tires/:id/move', oid, ADMIN, assets.moveTire);
 router.post('/assets/tires/:id/renewal-result', oid, ADMIN, assets.tireRenewalResult); // Retread or scrap.
 router.post('/assets/tires/:id/retire', oid, ADMIN, assets.retireTire);
 router.post('/assets/tires/:id/status', oid, ADMIN, assets.setTireStatus); // Move between statuses.
+// Rims: counted stock on the tire side (no serials), with an immutable movement ledger.
+const rims = require('../controllers/ls2RimsController');
+router.get('/assets/rims', rims.listRims);
+router.get('/assets/rims/movements', rims.listMovements); // Before /assets/rims/:id routes.
+router.post('/assets/rims', ADMIN, rims.createRim);
+router.post('/assets/rims/movements/:movementId/reverse', ADMIN, rims.reverseMovement);
+router.patch('/assets/rims/:id', oid, ADMIN, rims.updateRim);
+router.delete('/assets/rims/:id', oid, ADMIN, rims.hideRim);
+router.post('/assets/rims/:id/movement', oid, ADMIN, rims.addMovement);
+router.post('/assets/rims/:id/transfer', oid, ADMIN, rims.transfer);
 
 // Heavy-transport store (spare parts): list/CRUD, in/out movements and log.
 router.get('/store', store.listItems);

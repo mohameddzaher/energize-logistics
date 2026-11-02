@@ -13,12 +13,11 @@ import '../ui/tire_states.dart';
 import '../ui/widgets.dart';
 import '../ui/search_field.dart';
 import 'ls2_common.dart';
+import 'ls2_rims.dart';
 import 'ls2_tires.dart';
 import 'ls2_vehicle_assets.dart';
 
-/// أصول الأسطول (الكاوتشات والتريلات والسطحات) — نفس عمليات الويب:
-/// تسجيل، فك إلى المستودع/التجديد/التالف/السكراب مع نسبة الحالة، تركيب/نقل
-/// مع مصير القاطن وتركيب بديل، نتيجة التجديد، وسجل الأحداث.
+/// Fleet assets (tyres, trailers, flatbeds): the same operations as the web: register, remove to warehouse / renewal / damaged / scrap with a condition percentage, mount / move with the occupant's fate and a replacement, renewal result, and the event log.
 class Ls2FleetAssetsScreen extends StatefulWidget {
   const Ls2FleetAssetsScreen({super.key});
   @override
@@ -28,11 +27,9 @@ class Ls2FleetAssetsScreen extends StatefulWidget {
 List<Map<String, dynamic>> _l(dynamic v) =>
     v is List ? List<Map<String, dynamic>>.from(v.whereType<Map>().map((e) => Map<String, dynamic>.from(e))) : const [];
 
-// الحالات كلُّها في ui/tire_states.dart — تعريفٌ واحد يقرأ منه الخادم والشاشة
-// والجوّال. وما بقي هنا هو الدرجة وحدها.
+// All states live in ui/tire_states.dart, one definition read by the server, the screen and the mobile app. Only the grade remains here.
 
-// الدرجة وصفٌ للفردة لا لمكانها: جديدةٌ أو مستعملة، لا ثالث. وكانت هنا درجةٌ
-// ثالثة «at_factory» تصف **مكانًا**، فاختلط وصفُ المكان بوصف الفردة.
+// Grade describes the tyre, not its place: new or used, nothing else. A third grade, "at_factory", used to describe a location, mixing place with tyre description.
 const _conditions = {
   'new': ('جديد', 'New', T.success),
   'used': ('مستعمل', 'Used', T.info),
@@ -46,17 +43,19 @@ class _Ls2FleetAssetsScreenState extends State<Ls2FleetAssetsScreen> {
   String _qFlat = '';
   String _qTrail = '';
   String _filter = '';
-  // مطابقةُ السينسورات: المسجَّل في كشف الورشة مقابلَ ما يُرسله Wialon فعلًا.
+  // Sensor matching: what is recorded in the workshop sheet against what Wialon actually sends.
   List<Map<String, dynamic>> _sensorRows = [];
   bool _sensorLoaded = false;
   bool _sensorRequested = false;
   String _qSensor = '';
-  // متحكِّماتُ البحث عند الشاشة: التبويبُ والتحميلُ يُعيدان بناءَ الخانات، فلا يضيع النصُّ والكلمةُ تُرشِّح.
+  // Search controllers live at the screen level: tab switches and loading rebuild the fields, so the text survives while the word still filters.
   final _qCtl = TextEditingController();
   final _qFlatCtl = TextEditingController();
   final _qTrailCtl = TextEditingController();
   final _qSensorCtl = TextEditingController();
   final Set<String> _openSensor = {};
+  // The rims tab owns its data; the header export asks it while that tab is open.
+  final _rimsKey = GlobalKey<Ls2RimsTabState>();
   late final void Function() _onLive;
 
   @override
@@ -65,7 +64,7 @@ class _Ls2FleetAssetsScreenState extends State<Ls2FleetAssetsScreen> {
     _load();
     _onLive = () { _load(); if (_sensorLoaded) _loadSensors(); };
     Live.instance.on('ls2:updated', _onLive);
-    // لوحةُ كلّ سطحةٍ في سجلّ المركبات — تعديلُها هناك يظهر هنا في الحال.
+    // Each flatbed's panel in the vehicle register; an edit there shows here immediately.
     Live.instance.on('vreg:updated', _onLive);
   }
 
@@ -96,12 +95,12 @@ class _Ls2FleetAssetsScreenState extends State<Ls2FleetAssetsScreen> {
     }
   }
 
-  /// رتبةُ الإدارة في القسم — كـ isLs2Admin في الموقع (الاستيرادُ لها وحدَها).
+  /// Section admin rank, like isLs2Admin on the web (only they may import).
   bool _isAdmin(AuthProvider a) =>
       const ['super_admin', 'admin', 'it_manager', 'it_specialist', 'operations_manager', 'workshop_manager', 'location_manager', 'vehicles_manager'].contains(a.role)
       || a.canEditSection('Location Solutions');
 
-  // ── استيراد كشف الورشة (JSON) — آمنٌ للتكرار: الفردةُ على عربيةٍ أخرى تُسجَّل نقلًا.
+  // Import the workshop sheet (JSON): safe to repeat, a tyre found on another vehicle is recorded as a move.
   Future<void> _import() async {
     final ctrl = TextEditingController();
     Map<String, dynamic>? result;
@@ -167,7 +166,7 @@ class _Ls2FleetAssetsScreenState extends State<Ls2FleetAssetsScreen> {
 
   Map<String, dynamic> _m(dynamic v) => v is Map ? Map<String, dynamic>.from(v) : <String, dynamic>{};
 
-  // ── Excel: التبويب الحالي (بعد الفلتر) أو كلّ الأصول بثلاث أوراق ──
+  // Excel: the current tab (after filter) or all assets in three sheets.
   static const _sensorLabels = {'yes': ('يوجد', 'Has sensor'), 'no': ('لا يوجد', 'No sensor'), 'unknown': ('غير محدد', 'Unknown')};
   List<ExportCol> get _flatbedCols => [
         ExportCol('الترقيم', 'No.', (r) => r['numbering'] ?? ''),
@@ -212,6 +211,10 @@ class _Ls2FleetAssetsScreenState extends State<Ls2FleetAssetsScreen> {
       ];
 
   Future<void> _export(int tab, List<Map<String, dynamic>> tiresShown) async {
+    if (tab == 4) { await _rimsKey.currentState?.exportExcel(); return; }
+    List<Map<String, dynamic>> rims = const [];
+    try { rims = _l((await Api.instance.get('/api/ls2/assets/rims'))['rims']); } catch (_) {}
+    if (!mounted) return;
     final flatbeds = _l(_d?['flatbeds']);
     final trailers = _l(_d?['trailers']);
     final current = switch (tab) {
@@ -222,10 +225,11 @@ class _Ls2FleetAssetsScreenState extends State<Ls2FleetAssetsScreen> {
     };
     await ls2ExportMenu(context, fileName: 'ls2-assets', options: [
       ('التبويب الحالي (بعد الفلتر)', 'Current tab (filtered)', [current]),
-      ('كل الأصول (3 شيتات)', 'All assets (3 sheets)', [
+      ('كل الأصول (4 شيتات)', 'All assets (4 sheets)', [
         (tr('السطحات', 'Flatbeds'), _flatbedCols, flatbeds),
         (tr('التيدرات', 'Trailers'), _trailerCols, trailers),
         (tr('الكاوتشات', 'Tires'), _tireCols, _l(_d?['tires'])),
+        (tr('الجنوط', 'Rims'), Ls2RimsTabState.rimExportCols, rims),
       ]),
     ]);
   }
@@ -238,8 +242,7 @@ class _Ls2FleetAssetsScreenState extends State<Ls2FleetAssetsScreen> {
 
   String _fold(String s) => s.replaceAll(RegExp('[أإآ]'), 'ا').replaceAll('ى', 'ي').replaceAll('ة', 'ه').toLowerCase();
 
-  // نفس قاعدة الباك: نطابق العربية بأرقام اللوحة فقط (لأن لوحة السطحة كثيرًا ما
-  // تختلف عن لوحة الفردة المخزّنة). أرقام عربية → إنجليزية ثم استخراج الأرقام.
+  // Same rule as the backend: match the vehicle by plate digits only (a flatbed's plate often differs from the stored tyre's plate). Arabic-Indic digits are converted to Latin, then the digits are extracted.
   String _plateKey(String? p) {
     if (p == null) return '';
     const ar = '٠١٢٣٤٥٦٧٨٩';
@@ -254,11 +257,7 @@ class _Ls2FleetAssetsScreenState extends State<Ls2FleetAssetsScreen> {
       if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(okMsg)));
       _load();
     } on ApiException catch (e) {
-      // ── «الموقع لا يجوز أن يبقى فارغًا» ─────────────────────────────────
-      // الخادمُ يقول أيَّ موقعٍ بقي فارغًا في سلسلة البدائل: الموقع الذي أخلته
-      // الفردة نفسُها، أو موقعُ فردةٍ سُحبت من عربيةٍ أخرى (كانت عليه X).
-      // فنسأل عن فردةٍ له ونعيد الطلب بالسلسلة أطول بخطوة — حتى تأتي فردةٌ من
-      // المستودع. والقاعدةُ واحدةٌ في الخادم، لا نسخةٌ ثانيةٌ منها هنا.
+      // A position must not stay empty. The server says which position was left empty in the replacement chain: the one the tyre itself vacated, or the position of a tyre pulled from another vehicle (which was on position X). So we ask for a tyre for it and retry with the chain one step longer, until a warehouse tyre arrives. The rule lives once on the server, not copied here.
       if (e.status == 400 && tire != null && e.message.contains('لا يجوز أن يبقى فارغًا')) {
         final m = RegExp(r'كانت عليه (\S+)').firstMatch(e.message);
         final all = _l(_d?['tires']);
@@ -278,7 +277,7 @@ class _Ls2FleetAssetsScreenState extends State<Ls2FleetAssetsScreen> {
         }
         return;
       }
-      // «الموقع مشغول» — نسأل عن مصير القاطن ثم نعيد الطلب نفسه + displacedTo.
+      // Position occupied: ask for the occupant's fate, then repeat the same request with displacedTo.
       if (e.status == 400 && onDisplaced != null && e.message.contains('مشغول')) {
         final retry = await onDisplaced(body);
         if (retry) return;
@@ -295,8 +294,7 @@ class _Ls2FleetAssetsScreenState extends State<Ls2FleetAssetsScreen> {
     final q = _fold(_q.trim());
     final filtered = tires.where((t) {
       if (_filter.isNotEmpty) {
-        // الفلترُ والبطاقةُ من تعريفٍ واحد (ui/tire_states.dart): فلا يقول
-        // العدّاد رقمًا وتفتح البطاقةُ غيره.
+        // Filter and card share one definition (ui/tire_states.dart), so the counter never shows a number the card does not open.
         if (_filter == 'unmounted') {
           if (tireStateKey(t) == 'mounted') return false;
         } else if (_filter == 'store') {
@@ -314,8 +312,7 @@ class _Ls2FleetAssetsScreenState extends State<Ls2FleetAssetsScreen> {
       ('', tr('الكل', 'All'), tires.length, T.navy),
       ('mounted', tr('مركّبة', 'Mounted'), tires.where((t) => tireStateKey(t) == 'mounted').length, T.success),
       ('unmounted', tr('غير مركّبة', 'Unmounted'), tires.where((t) => tireStateKey(t) != 'mounted').length, T.warn),
-      // «في المخزن» شاملةٌ لِما تحتها: الجديد والمستعمل وتحت التجديد وفي المصنع
-      // والسكراب — كلُّ ما هو عندنا وغيرُ مركَّب.
+      // "In store" includes what is under it: new, used, under renewal, at the factory and scrap; everything we own that is not mounted.
       ('store', tr('في المخزن', 'In store'), tires.where(tireInStore).length, T.info),
       for (final st in tireStates.where((x) => x.key != 'mounted'))
         (st.key, tr(st.ar, st.en), tires.where((t) => tireStateKey(t) == st.key).length, st.color),
@@ -326,7 +323,7 @@ class _Ls2FleetAssetsScreenState extends State<Ls2FleetAssetsScreen> {
 
     final admin = _isAdmin(context.watch<AuthProvider>());
     return DefaultTabController(
-      length: 4,
+      length: 5,
       child: Builder(builder: (tabCtx) => AppScaffold(
       title: Text(tr('أصول الأسطول', 'Fleet Assets')),
       actions: [
@@ -353,6 +350,7 @@ class _Ls2FleetAssetsScreenState extends State<Ls2FleetAssetsScreen> {
           Tab(text: '${tr('السطحات', 'Flatbeds')} (${flatbeds.length})'),
           Tab(text: '${tr('التيدرات', 'Trailers')} (${trailers.length})'),
           Tab(text: tr('مطابقة السينسورات', 'Sensor check')),
+          Tab(text: tr('الجنوط', 'Rims')),
         ],
       ),
       body: _loading
@@ -431,12 +429,12 @@ class _Ls2FleetAssetsScreenState extends State<Ls2FleetAssetsScreen> {
                                           if ((t['type'] ?? '').toString().isNotEmpty) Chip2('${t['type']} ${t['size'] ?? ''}'.trim(), T.inkFaint),
                                           if (t['sensor'] == 'yes') Chip2(tr('حساس', 'Sensor'), T.cyan, icon: Icons.sensors),
                                         ]),
-                                        // المكانُ الآن بكلمات — كعمود «المكان الآن» في الموقع.
+                                        // Where it is now in words, like the "current place" column on the web.
                                         Padding(
                                           padding: const EdgeInsets.only(top: 5),
                                           child: Text(_placeOf(t), style: TextStyle(fontSize: 11.5, fontWeight: FontWeight.w700, color: st.$3)),
                                         ),
-                                        // إجراء سريع: تركيب الفردة المتاحة على شاحنة مباشرة.
+                                        // Quick action: mount the available tyre directly on a truck.
                                         if (t['status'] == 'spare' || t['status'] == 'in_repair') ...[
                                           const SizedBox(height: 6),
                                           Align(
@@ -461,14 +459,13 @@ class _Ls2FleetAssetsScreenState extends State<Ls2FleetAssetsScreen> {
                 _flatbedsTab(flatbeds),
                 _trailersTab(trailers),
                 _sensorsTab(),
+                Ls2RimsTab(key: _rimsKey, admin: admin, plates: [for (final f in flatbeds) if ('${f['plate'] ?? ''}'.isNotEmpty) '${f['plate']}']),
               ]),
       )),
     );
   }
 
-  // ── تبويب مطابقة السينسورات ──
-  // ترقيمُ Wialon (محور/إطار) غيرُ ترقيم الورشة (١–١٤)، فتُقارَن الأعدادُ
-  // ويُعرَض الترقيمان معًا للمطابقة اليدويّة.
+  // Sensor matching tab. Wialon numbering (axle / tyre) differs from the workshop numbering (1 to 14), so counts are compared and both numberings are shown for manual matching.
   Widget _sensorsTab() {
     if (!_sensorLoaded) {
       if (!_sensorRequested) { _sensorRequested = true; _loadSensors(); }
@@ -543,7 +540,7 @@ class _Ls2FleetAssetsScreenState extends State<Ls2FleetAssetsScreen> {
     ]);
   }
 
-  // ── تبويب السطحات ──
+  // Flatbeds tab.
   Widget _flatbedsTab(List<Map<String, dynamic>> flatbeds) {
     final q = _fold(_qFlat.trim());
     final list = flatbeds.where((f) {
@@ -579,7 +576,7 @@ class _Ls2FleetAssetsScreenState extends State<Ls2FleetAssetsScreen> {
                             Row(children: [
                               Expanded(child: Text('${tr('سطحة', 'Flatbed')} $plate${(f['registryPlate'] ?? '').toString().isNotEmpty ? ' · ${f['registryPlate']}' : ''}', style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 14))),
                               if (f['numbering'] != null) Chip2('#${f['numbering']}', T.navy),
-                              // التيدرُ الذي تحت هذا الرأس — يُختار من العربية نفسِها.
+                              // The trailer under this head, chosen from the vehicle itself.
                               IconButton(
                                 visualDensity: VisualDensity.compact,
                                 onPressed: () => _hitchTruck(f),
@@ -597,7 +594,7 @@ class _Ls2FleetAssetsScreenState extends State<Ls2FleetAssetsScreen> {
                             Wrap(spacing: 6, runSpacing: 6, children: [
                               if ((f['brand'] ?? '').toString().isNotEmpty) Chip2('${f['brand']}', T.inkFaint, icon: Icons.factory_outlined),
                               if ((f['batch'] ?? '').toString().isNotEmpty) Chip2('${f['batch']}', T.violet),
-                              // ١٤ هو الطقم الكامل — اللون بيقول على طول مين ناقص
+                              // 14 is the full set: the colour shows at a glance who is missing tyres.
                               Chip2('${f['tireCount'] ?? 0}/14 ${tr('كاوتش', 'tires')}',
                                   (f['tireCount'] ?? 0) >= 14 ? T.success : (f['tireCount'] ?? 0) > 0 ? T.warn : T.inkFaint,
                                   icon: Icons.circle_outlined),
@@ -620,7 +617,7 @@ class _Ls2FleetAssetsScreenState extends State<Ls2FleetAssetsScreen> {
     ]);
   }
 
-  // ── تبويب التيدرات ──
+  // Trailers tab.
   Widget _trailersTab(List<Map<String, dynamic>> trailers) {
     final q = _fold(_qTrail.trim());
     final list = trailers.where((t) {
@@ -665,7 +662,7 @@ class _Ls2FleetAssetsScreenState extends State<Ls2FleetAssetsScreen> {
                     return FadeSlideIn(
                       delayMs: (i * 10).clamp(0, 120),
                       child: Pressable(
-                        // التيدرُ يُفتح على كاوتشاته هو — وأمام كلّ فردةٍ إجراءاتُها.
+                        // The trailer opens on its own tyres, with each tyre's actions.
                         onTap: () => _trailerTires(t),
                         child: AppCard(
                           topAccent: st.$3,
@@ -691,7 +688,7 @@ class _Ls2FleetAssetsScreenState extends State<Ls2FleetAssetsScreen> {
     ]);
   }
 
-  // ── تسجيل كاوتش جديد ──
+  // Register a new tyre.
   Future<void> _createTire() async {
     final serial = TextEditingController();
     final tireNumber = TextEditingController();
@@ -701,13 +698,11 @@ class _Ls2FleetAssetsScreenState extends State<Ls2FleetAssetsScreen> {
     final position = TextEditingController();
     String sensor = 'unknown';
     bool isSpare = false;
-    // ── رقمُ الكاوتش يولّده الخادم ──────────────────────────────────────────
-    // يُعرَض هنا الرقمُ التالي للقراءة وحسب، ولا يُرسَل: الخادمُ يعيّنه عند
-    // الحفظ بعد آخر رقمٍ مسجَّل، فلا يتكرّر رقمٌ كتبه اثنان في اللحظة نفسِها.
+    // The tyre number is generated by the server. The next number is shown for reading only and is not sent: the server assigns it on save after the last registered number, so a number typed by two people at once never repeats.
     try {
       final d = await Api.instance.get('/api/ls2/assets/tires/next-number');
       tireNumber.text = (d['tireNumber'] ?? '').toString();
-    } catch (_) {/* تبقى الخانةُ «تلقائي» والخادمُ يعيّن الرقم */}
+    } catch (_) {/* The field stays "auto" and the server assigns the number. */}
     if (!mounted) return;
     await showModalBottomSheet(
       context: context,
@@ -730,7 +725,7 @@ class _Ls2FleetAssetsScreenState extends State<Ls2FleetAssetsScreen> {
                 ),
               ),
               const SizedBox(height: 10),
-              // الماركةُ والمقاسُ من القوائم المرجعيّة — وتُقبَل قيمةٌ تُكتب.
+              // Brand and size come from the reference lists, and a typed value is accepted.
               Row(children: [
                 Expanded(child: LookupField(type: 'ls2_tire_brand', controller: type, label: tr('النوع / الماركة', 'Type / brand'), hint: tr('اختر الماركة', 'Pick a brand'))),
                 const SizedBox(width: 10),
@@ -793,7 +788,7 @@ class _Ls2FleetAssetsScreenState extends State<Ls2FleetAssetsScreen> {
     );
   }
 
-  // ── ورقة عمليات الكاوتش ──
+  // Tyre operations sheet.
   Future<void> _tireSheet(Map<String, dynamic> t) async {
     final status = (t['status'] ?? '').toString();
     await showModalBottomSheet(
@@ -811,7 +806,7 @@ class _Ls2FleetAssetsScreenState extends State<Ls2FleetAssetsScreen> {
             ),
             const SizedBox(height: 14),
             Wrap(spacing: 8, runSpacing: 8, children: [
-              // حياةُ الفردة: على أيّ عربياتٍ كانت، وكم مشت، وكلُّ ما حدث لها.
+              // A tyre's life: which vehicles it was on, how far it ran, and everything that happened to it.
               _chip(sheet, Icons.timeline, tr('حياة الفردة', 'Tire life'), T.orange, () async {
                 await Navigator.push(context, MaterialPageRoute(builder: (_) => Ls2TireProfileScreen(tireId: '${t['_id']}', serial: '${t['serial'] ?? ''}')));
               }),
@@ -835,11 +830,11 @@ class _Ls2FleetAssetsScreenState extends State<Ls2FleetAssetsScreen> {
                 _chip(sheet, Icons.local_shipping_outlined, status == 'mounted' ? tr('نقل لشاحنة أخرى', 'Transfer') : tr('تركيب على شاحنة', 'Mount'), T.success, () => _mount(t)),
               if (status == 'in_repair')
                 _chip(sheet, Icons.autorenew_rounded, tr('نتيجة التجديد', 'Renewal result'), T.violet, () => _renewalResult(t)),
-              // نقل الحالة — متاح دائمًا لكل الكاوتش (مثلًا: مستعمل صالح ← سكراب/تالف، أو سكراب ← مخزن).
+              // Move state: always available for any tyre (for example used-good to scrap/damaged, or scrap to warehouse).
               _chip(sheet, Icons.swap_horiz_rounded, tr('نقل الحالة', 'Change status'), T.info, () => _changeStatus(t)),
               if (status != 'scrap' && status != 'damaged' && status != 'retired' && status != 'sold')
                 _chip(sheet, Icons.dangerous_outlined, tr('إتلاف/سكراب مباشرة', 'Retire'), T.danger, () => _retire(t)),
-              // بيع الفردة (خاصة السكراب — تُباع كخردة).
+              // Sell the tyre (especially scrap, sold as scrap metal).
               if (status == 'scrap' || status == 'damaged')
                 _chip(sheet, Icons.sell_outlined, tr('بيع كخردة', 'Sell as scrap'), T.success, () => _sell(t)),
             ]),
@@ -859,10 +854,9 @@ class _Ls2FleetAssetsScreenState extends State<Ls2FleetAssetsScreen> {
         onPressed: () { Navigator.pop(sheet); run(); },
       );
 
-  // فك: إلى المستودع (بنسبة حالة) أو التجديد أو التالف أو السكراب مباشرة.
+  // Remove: straight to the warehouse (with a condition percentage), renewal, damaged or scrap.
   Future<void> _dismount(Map<String, dynamic> t) async {
-    // الاستبن هو الموقع الوحيد اللي مسموح يفضل فاضي — العربية بتمشي من غيره.
-    // أي موقع تاني لازم يتملي، فالبديل إجباري (أو تبديل متبادل).
+    // The spare is the only position allowed to stay empty, since the vehicle runs without it. Any other position must be filled, so a replacement is mandatory (or a mutual swap).
     final needsReplacement = t['status'] == 'mounted'
         && !(t['isSpare'] == true || (t['section'] ?? '').toString().contains('استبن'));
     String destination = 'store';
@@ -898,7 +892,7 @@ class _Ls2FleetAssetsScreenState extends State<Ls2FleetAssetsScreen> {
               ],
               const SizedBox(height: 10),
               TextField(controller: reason, decoration: InputDecoration(labelText: tr('السبب', 'Reason'))),
-              // فردة بديلة تُركَّب مكانها — من المخزن أو مسحوبة من مركبة أخرى.
+              // Replacement tyre mounted in its place: from the warehouse or pulled from another vehicle.
               if (mounted) ...[
                 const SizedBox(height: 12),
                 Text(
@@ -931,7 +925,7 @@ class _Ls2FleetAssetsScreenState extends State<Ls2FleetAssetsScreen> {
                          'This position cannot be left empty — pick a replacement or swap.'),
                       style: const TextStyle(fontSize: 11.5, fontWeight: FontWeight.w600, color: T.warn)),
                   ),
-                // تبديل متبادل: هذه الفردة تُركَّب مكان البديلة على عربيتها.
+                // Mutual swap: this tyre is mounted in the replacement's place on its vehicle.
                 if (replacement != null && replacement!['status'] == 'mounted') ...[
                   Container(
                     margin: const EdgeInsets.only(top: 8),
@@ -948,8 +942,7 @@ class _Ls2FleetAssetsScreenState extends State<Ls2FleetAssetsScreen> {
                       ),
                     ),
                   ),
-                  // بدون تبديل: البديلةُ أخلت موقعًا على عربيتها، وسيُطلب ملؤه بعد الضغط
-                  // على «فك» — إلزاميًّا، حتى تأتي فردةٌ من المستودع.
+                  // Without a swap: the replacement vacated a position on its vehicle, and filling it is required after pressing "remove", until a warehouse tyre arrives.
                   if (!swap)
                     Padding(
                       padding: const EdgeInsets.only(top: 6),
@@ -985,7 +978,7 @@ class _Ls2FleetAssetsScreenState extends State<Ls2FleetAssetsScreen> {
     }, doSwap ? tr('تم التبديل', 'Swapped') : tr('تم الفك', 'Dismounted'), tire: t);
   }
 
-  // منتقي لوحة شاحنة من اللوحات المتاحة (بحث سريع).
+  // Truck plate picker from the available plates (quick search).
   Future<String?> _pickPlate(List<String> plates) {
     return showModalBottomSheet<String>(
       context: context,
@@ -1027,10 +1020,8 @@ class _Ls2FleetAssetsScreenState extends State<Ls2FleetAssetsScreen> {
     );
   }
 
-  // منتقي فردة: المخزن + المركّبة على أي مركبة (بما فيها نفس المركبة = الاستبن)،
-  // مع استثناء فردات محددة. الترتيب: مخزن ← نفس المركبة ← مركبات أخرى.
-  /// كاوتشاتُ تيدرٍ واحد: ما يحمل رقمَه وهو مركَّب، وما رُكِّب في قسم التيدر على
-  /// العربية التي تجرّه ولم يُكتب عليه رقمُ تيدر (سجلّاتٌ قديمة).
+  // Tyre picker: warehouse plus mounted on any vehicle (including the same vehicle = the spare), with specific tyres excluded. Order: warehouse, same vehicle, other vehicles.
+  // Tyres of one trailer: those carrying its number while mounted, and those mounted in the trailer section on the truck that pulls it with no trailer number written (old records).
   Future<void> _trailerTires(Map<String, dynamic> trailer) async {
     final no = (trailer['trailerNumber'] ?? '').toString();
     final key = (trailer['currentPlateKey'] ?? '').toString();
@@ -1092,7 +1083,7 @@ class _Ls2FleetAssetsScreenState extends State<Ls2FleetAssetsScreen> {
     );
   }
 
-  /// أين الفردة الآن — مركّبةٌ على أيّ جزء، أو في أيّ ركنٍ من المستودع، أو خارج العهدة.
+  /// Where the tyre is now: mounted on which part, in which corner of the warehouse, or out of custody.
   String _placeOf(Map<String, dynamic> t) {
     final k = tireStateKey(t);
     final section = (t['section'] ?? '').toString();
@@ -1201,11 +1192,11 @@ class _Ls2FleetAssetsScreenState extends State<Ls2FleetAssetsScreen> {
     );
   }
 
-  // تركيب/نقل: لوحة + موضع؛ لو الموضع مشغول يسأل عن مصير القاطن ويعيد.
+  // Mount / move: plate and position; if the position is occupied, ask the occupant's fate and repeat.
   Future<void> _mount(Map<String, dynamic> t) async {
     final plate = TextEditingController(text: (t['plate'] ?? '').toString());
     final position = TextEditingController(text: (t['positionNumber'] ?? '').toString());
-    // كل السطحات (61) متاحة للاختيار — مش بس اللي عليها كاوتشات مسجّلة.
+    // All flatbeds (61) are selectable, not only those with registered tyres.
     final plates = (_l(_d?['flatbeds']).map((x) => (x['plate'] ?? '').toString()).where((p) => p.isNotEmpty).toSet().toList()..sort());
     final ok = await showModalBottomSheet<bool>(
       context: context,
@@ -1228,8 +1219,7 @@ class _Ls2FleetAssetsScreenState extends State<Ls2FleetAssetsScreen> {
             const SizedBox(height: 10),
             TextField(controller: plate, onChanged: (_) => setS(() {}), decoration: InputDecoration(labelText: tr('أو اكتب اللوحة *', 'Or type plate *'))),
             const SizedBox(height: 10),
-            // شبكة المواضع 1..14 على الشاحنة المختارة: 🟢 فاضي = تركيب مباشر،
-            // 🔴 عليه فردة = استبدال (هيتطلب مصير الفردة القديمة). اضغط الموضع لاختياره.
+            // Grid of positions 1 to 14 on the chosen truck: green empty = direct mount, red occupied = replacement (the old tyre's fate is asked). Tap a position to choose it.
             if (plate.text.trim().isNotEmpty)
               Builder(builder: (_) {
                 final ptext = plate.text.trim();
@@ -1335,7 +1325,7 @@ class _Ls2FleetAssetsScreenState extends State<Ls2FleetAssetsScreen> {
         ),
       );
       if (fate == null) return false;
-      // نكمّل السايكل: سليمة للمخزن → نسجّل نسبة الحالة (يقرأها التسكين لاحقًا).
+      // Complete the cycle: a good tyre goes to the warehouse, so record its condition percentage (read later by placement).
       num? pct;
       if (fate == 'store') pct = await _askPercent();
       await _post('/api/ls2/assets/tires/${t['_id']}/move',
@@ -1344,7 +1334,7 @@ class _Ls2FleetAssetsScreenState extends State<Ls2FleetAssetsScreen> {
     });
   }
 
-  // كام في المية عند تخزين فردة سليمة — اختياري (يقدر يتخطّاها).
+  // Condition percentage when storing a good tyre; optional, can be skipped.
   Future<num?> _askPercent() {
     final ctrl = TextEditingController();
     return showDialog<num?>(
@@ -1396,7 +1386,7 @@ class _Ls2FleetAssetsScreenState extends State<Ls2FleetAssetsScreen> {
     await _post('/api/ls2/assets/tires/${t['_id']}/retire', {'kind': kind}, tr('تم التسجيل', 'Recorded'));
   }
 
-  // نقل الحالة — أي كاوتش لأي حالة مباشرة (يُفَك تلقائيًا لو كان مركّبًا).
+  // Move state: any tyre to any state directly (removed automatically if mounted).
   Future<void> _changeStatus(Map<String, dynamic> t) async {
     const opts = [
       ('spare', 'في المخزن (سليمة)', 'In stock'),
@@ -1420,7 +1410,7 @@ class _Ls2FleetAssetsScreenState extends State<Ls2FleetAssetsScreen> {
     await _post('/api/ls2/assets/tires/${t['_id']}/status', {'status': status}, tr('تم النقل', 'Moved'));
   }
 
-  // بيع الفردة (السكراب/التالف يُباع كخردة) — تخرج من المخزون كمباعة.
+  // Sell the tyre (scrap/damaged sold as scrap); it leaves stock as sold.
   Future<void> _sell(Map<String, dynamic> t) async {
     final reason = TextEditingController();
     final ok = await showDialog<bool>(
@@ -1444,7 +1434,7 @@ class _Ls2FleetAssetsScreenState extends State<Ls2FleetAssetsScreen> {
     await _post('/api/ls2/assets/tires/${t['_id']}/retire', {'kind': 'sold', if (reason.text.trim().isNotEmpty) 'notes': reason.text.trim()}, tr('سُجّلت كمباعة', 'Marked sold'));
   }
 
-  // ── تيدر جديد ──
+  // New trailer.
   Future<void> _createTrailer() async {
     final number = TextEditingController();
     final plate = TextEditingController();
@@ -1477,7 +1467,7 @@ class _Ls2FleetAssetsScreenState extends State<Ls2FleetAssetsScreen> {
     }, tr('تم تسجيل التيدر', 'Trailer registered'));
   }
 
-  // ── نقل تيدر إلى سطحة (أو فكّه) ──
+  // Move a trailer to a flatbed (or remove it).
   Future<void> _moveTrailer(Map<String, dynamic> t) async {
     final plates = (_l(_d?['flatbeds']).map((x) => (x['plate'] ?? '').toString()).where((p) => p.isNotEmpty).toSet().toList()..sort());
     final plate = TextEditingController(text: (t['currentPlate'] ?? '').toString());
@@ -1510,7 +1500,7 @@ class _Ls2FleetAssetsScreenState extends State<Ls2FleetAssetsScreen> {
     );
     if (ok != true) return;
     final to = plate.text.trim();
-    // العربيةُ المستقبِلة عليها تيدر؟ يُسأل عن مصيره كالموقع — وإلّا ردّ الخادمُ الحركة.
+    // Does the receiving vehicle already have a trailer? Ask its fate, like the web; otherwise the server rejects the move.
     String? fate;
     if (to.isNotEmpty) {
       final target = _l(_d?['flatbeds']).where((x) => (x['plate'] ?? '').toString() == to).firstOrNull;
@@ -1524,8 +1514,7 @@ class _Ls2FleetAssetsScreenState extends State<Ls2FleetAssetsScreen> {
         to.isEmpty ? tr('تم فكّ التيدر', 'Trailer unhitched') : tr('تم نقل التيدر', 'Trailer moved'));
   }
 
-  /// مصيرُ التيدر الذي على العربية المستقبِلة: يقف وحدَه، أو يأخذ مكانَ الداخل على
-  /// عربيّته (تبديل) — والتبديلُ لا يصحّ إن كان الداخلُ واقفًا بلا عربية.
+  /// Fate of the trailer on the receiving vehicle: it stands alone, or takes the incoming one's place on its vehicle (swap). A swap is invalid if the incoming one is standing with no vehicle.
   Future<String?> _askFate(String occupant, String incoming, String incomingPlate) {
     return showDialog<String>(
       context: context,
@@ -1547,8 +1536,7 @@ class _Ls2FleetAssetsScreenState extends State<Ls2FleetAssetsScreen> {
     );
   }
 
-  /// من جهة العربية: أيُّ تيدرٍ عليها. الحركةُ نفسُها (`/trailers/:id/move`) — التيدرُ
-  /// المختار يُنقَل إليها بكاوتشه، والذي كان عليها يُسأل عن مصيره.
+  /// From the vehicle's side: which trailer is on it. Same move (`/trailers/:id/move`): the chosen trailer is moved to it with its tyres, and the one that was on it is asked about its fate.
   Future<void> _hitchTruck(Map<String, dynamic> f) async {
     final plate = (f['plate'] ?? '').toString();
     final cur = (f['currentTrailerNumber'] ?? '').toString();
@@ -1620,7 +1608,7 @@ class _Ls2FleetAssetsScreenState extends State<Ls2FleetAssetsScreen> {
         tr('تم تركيب التيدر ${picked['trailerNumber']} على $plate', 'Trailer ${picked['trailerNumber']} hitched to $plate'));
   }
 
-  // ── تعديل سطحة (ترقيم/دفعة/ماركة/ملاحظات) ──
+  // Edit a flatbed (numbering, batch, brand, notes).
   Future<void> _editFlatbed(Map<String, dynamic> f) async {
     final numbering = TextEditingController(text: (f['numbering'] ?? '').toString());
     final batch = TextEditingController(text: (f['batch'] ?? '').toString());

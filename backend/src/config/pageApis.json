@@ -1127,6 +1127,8 @@
         "/api/ls2/assets/flatbeds",
         "/api/ls2/assets/import",
         "/api/ls2/assets/overview",
+        "/api/ls2/assets/rims",
+        "/api/ls2/assets/rims/movements",
         "/api/ls2/assets/sensor-check",
         "/api/ls2/assets/tires",
         "/api/ls2/assets/tires/next-number",

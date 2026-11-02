@@ -79,7 +79,7 @@ const ENTITY_SECTION = {
   LightTransportEmployee: 'b2c', LightTransportOrder: 'b2c', LtCustodyEntry: 'b2c', LtUserRental: 'b2c',
   // Location Solutions: workshop and warehouse
   WorkshopPurchaseRequest: 'ls2', WorkshopTask: 'ls2', MaintenanceRequest: 'ls2',
-  InventoryItem: 'ls2', Ls2StoreMovement: 'ls2', HtCustodyEntry: 'ls2', Ls2Asset: 'ls2', Ls2StoreItem: 'ls2', Ls2Supplier: 'ls2',
+  InventoryItem: 'ls2', Ls2StoreMovement: 'ls2', HtCustodyEntry: 'ls2', Ls2Asset: 'ls2', Ls2StoreItem: 'ls2', Ls2Supplier: 'ls2', Ls2Rim: 'ls2', Ls2RimMovement: 'ls2',
   // Contracts
   Contract: 'contracts',
   // Relations management

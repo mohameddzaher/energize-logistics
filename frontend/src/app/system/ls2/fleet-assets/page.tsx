@@ -22,7 +22,7 @@ import {
   Truck, RefreshCw, Search, Plus, Upload, ArrowLeftRight, ArrowDownToLine, Pencil,
   Trash2, History, Radio, CircleDot, Container, ChevronDown, ChevronRight, X, ExternalLink,
   Wrench, Boxes,
-  Repeat,
+  Repeat, Disc3,
 } from 'lucide-react';
 
 import { Spinner, PageHeader } from '@/components/hr/HRKit';
@@ -35,6 +35,7 @@ import TireActions, { type TireActionHandlers } from '@/components/ls2/TireActio
 import FilterBar, { useChipFilter, type Chip } from '@/components/ls2/FilterBar';
 import ScrollX from '@/components/system/ScrollX';
 import ManagedSelect from '@/components/system/ManagedSelect';
+import RimsPanel, { type Rim } from '@/components/ls2/RimsPanel';
 
 // ---- Types mirroring /api/ls2/assets ---------------------------------------
 interface Flatbed { _id: string; numbering: number | null; plate: string; plateKey: string; batch: string; brand: string; currentTrailerNumber: string | null; notes: string; tireCount: number; unitId: number | null; driver: string; odometerKm: number | null; vehicleMaster?: string | null; registryPlate?: string }
@@ -168,9 +169,11 @@ export default function Ls2FleetAssetsPage() {
   // one truck's tires (the vehicle profile links here that way).
   const params = useSearchParams();
   const initialTab = params?.get('tab');
-  const [tab, setTab] = useState<'flatbeds' | 'trailers' | 'tires' | 'store' | 'history' | 'sensors'>(
-    initialTab === 'trailers' || initialTab === 'tires' || initialTab === 'history' || initialTab === 'sensors' ? initialTab : 'flatbeds'
+  const [tab, setTab] = useState<'flatbeds' | 'trailers' | 'tires' | 'rims' | 'store' | 'history' | 'sensors'>(
+    initialTab === 'trailers' || initialTab === 'tires' || initialTab === 'rims' || initialTab === 'history' || initialTab === 'sensors' ? initialTab : 'flatbeds'
   );
+  // Rims are counted stock (components/ls2/RimsPanel); the panel reports its rows for the header export.
+  const [rimRows, setRimRows] = useState<Rim[]>([]);
   const [loading, setLoading] = useState(true);
   const [q, setQ] = useState(params?.get('q') || '');
   const [flatbeds, setFlatbeds] = useState<Flatbed[]>([]);
@@ -369,6 +372,14 @@ export default function Ls2FleetAssetsPage() {
     { header: ar ? 'ملاحظات' : 'Notes', key: 'notes', width: 24 },
     { header: ar ? 'بواسطة' : 'By', key: 'performedByName', width: 16 },
   ];
+  const rimCols: ExportColumn[] = [
+    { header: ar ? 'الصنف' : 'Rim', key: 'name', width: 24 },
+    { header: ar ? 'الحالة' : 'Condition', key: 'condition', transform: (v) => ({ new: ar ? 'جديد' : 'New', used: ar ? 'مستعمل' : 'Used', scrap: ar ? 'سكراب' : 'Scrap' } as Record<string, string>)[v] || v, width: 10 },
+    { header: ar ? 'الرصيد' : 'Quantity', key: 'quantity', type: 'number', width: 9 },
+    { header: ar ? 'سعر القطعة' : 'Unit price', key: 'unitPrice', type: 'number', width: 11 },
+    { header: ar ? 'القيمة' : 'Value', key: 'value', type: 'number', width: 11 },
+    { header: ar ? 'ملاحظات' : 'Notes', key: 'notes', width: 24 },
+  ];
   const sensorCols: ExportColumn[] = [
     { header: ar ? 'اللوحة' : 'Plate', key: 'plate', width: 10 },
     { header: ar ? 'السائق' : 'Driver', key: 'driver', width: 20 },
@@ -383,6 +394,7 @@ export default function Ls2FleetAssetsPage() {
       case 'flatbeds': return { name: ar ? 'السطحات' : 'Flatbeds', rows: fFlatbeds, columns: flatbedCols };
       case 'trailers': return { name: ar ? 'التيدرات' : 'Trailers', rows: fTrailers, columns: trailerCols };
       case 'tires': return { name: ar ? 'الكاوتشات' : 'Tires', rows: fTires, columns: tireCols };
+      case 'rims': return { name: ar ? 'الجنوط' : 'Rims', rows: rimRows, columns: rimCols };
       case 'history': return { name: ar ? 'سجل الحركات' : 'History', rows: fEvents, columns: eventCols };
       case 'sensors': return { name: ar ? 'مطابقة السينسورات' : 'Sensor check', rows: fSensors, columns: sensorCols };
     }
@@ -443,6 +455,7 @@ export default function Ls2FleetAssetsPage() {
     { key: 'flatbeds', label: ar ? 'السطحات' : 'Flatbeds', icon: <Truck className="w-3.5 h-3.5" />, count: counts.flatbeds },
     { key: 'trailers', label: ar ? 'التيدرات' : 'Trailers', icon: <Container className="w-3.5 h-3.5" />, count: counts.trailers },
     { key: 'tires', label: ar ? 'الكاوتشات' : 'Tires', icon: <CircleDot className="w-3.5 h-3.5" />, count: counts.tires },
+    { key: 'rims', label: ar ? 'الجنوط' : 'Rims', icon: <Disc3 className="w-3.5 h-3.5" />, count: rimRows.reduce((a, r) => a + (r.quantity || 0), 0) },
     { key: 'store', label: ar ? 'المستودع' : 'Store', icon: <Boxes className="w-3.5 h-3.5" />, count: tires.filter((x) => x.status !== 'mounted').length + trailers.filter((x) => !x.currentPlate).length },
     { key: 'history', label: ar ? 'سجل الحركات' : 'History', icon: <History className="w-3.5 h-3.5" /> },
     { key: 'sensors', label: ar ? 'مطابقة السينسورات' : 'Sensor check', icon: <Radio className="w-3.5 h-3.5" /> },
@@ -467,11 +480,12 @@ export default function Ls2FleetAssetsPage() {
           options={[
             { key: 'tab', label: ar ? 'التبويب الحالي (بعد الفلتر)' : 'Current tab (filtered)', sheets: [currentTabExport()!] },
             {
-              key: 'all', label: ar ? 'كل الأصول مع سجل الحركات (4 شيتات)' : 'All assets with the movement log (4 sheets)',
+              key: 'all', label: ar ? 'كل الأصول مع سجل الحركات (5 شيتات)' : 'All assets with the movement log (5 sheets)',
               sheets: [
                 { name: ar ? 'السطحات' : 'Flatbeds', rows: flatbeds, columns: flatbedCols },
                 { name: ar ? 'التيدرات' : 'Trailers', rows: trailers, columns: trailerCols },
                 { name: ar ? 'الكاوتشات' : 'Tires', rows: tires, columns: tireCols },
+                { name: ar ? 'الجنوط' : 'Rims', rows: rimRows, columns: rimCols },
                 { name: ar ? 'سجل الحركات' : 'History', rows: events, columns: eventCols },
               ],
             },
@@ -741,6 +755,12 @@ export default function Ls2FleetAssetsPage() {
           </div>
         </div>
       )}
+
+      {/* Rims: counted stock with its own ledger. Kept mounted so the tab count and the all-assets export have its rows. */}
+      <div className={tab === 'rims' ? '' : 'hidden'}>
+        <RimsPanel ar={ar} lang={lang as Lang} admin={admin} query={tab === 'rims' ? q : ''} onQuery={setQ}
+          plateOptions={flatbedOptions(flatbeds, ar)} onRows={setRimRows} />
+      </div>
 
       {/* ---- Store ------------------------------------------------------------
            نفس مستودع الورشة تمامًا — سجل واحد مشترك، فكل حركة هناك تظهر هنا

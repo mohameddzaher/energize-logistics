@@ -174,13 +174,16 @@ exports.getVehicleHistory = async (req, res) => {
     const Ls2Repair = require('../models/Ls2Repair');
     const Ls2ServiceLog = require('../models/Ls2ServiceLog');
 
-    const [tireEvents, storeOut, issues, repairs, services] = await Promise.all([
+    const { Ls2RimMovement } = require('../models/Ls2Rim');
+    const [tireEvents, storeOut, issues, repairs, services, rimMoves] = await Promise.all([
       // The busiest plate has more than 500 events, so the old cap made its tire history look complete while truncated.
       Ls2AssetEvent.find({ $or: [{ fromPlateKey: key }, { toPlateKey: key }] }).sort({ date: -1 }).limit(10000).lean(),
       Ls2StoreMovement.find({ vehiclePlate: { $nin: ['', null] } }).sort({ createdAt: -1 }).limit(3000).lean(),
       InventoryIssue.find({ vehicleNumber: { $nin: ['', null] } }).sort({ date: -1 }).limit(3000).lean(),
       Ls2Repair.find({ plate: { $nin: ['', null] } }).sort({ date: -1 }).limit(1000).lean(),
       Ls2ServiceLog.find({ plate: { $nin: ['', null] } }).sort({ date: -1 }).limit(1000).lean(),
+      // Legacy copies are skipped: the store rows they copy are already read above.
+      Ls2RimMovement.find({ plateKey: key, legacy: { $ne: true }, type: { $ne: 'edit' } }).sort({ at: -1 }).limit(1000).lean(),
     ]);
 
     const mine = (v) => plateKey(v) === key;
@@ -204,6 +207,15 @@ exports.getVehicleHistory = async (req, res) => {
         by: m.performedByName, notes: [issueReasonLabel(m.issueReason), m.reason, m.reversed ? 'اتّرجع عنها' : ''].filter(Boolean).join(' · '),
         issueReason: m.issueReason || '', issueReasonLabel: issueReasonLabel(m.issueReason),
         reversed: !!m.reversed, source: 'ls2-store', refId: m._id,
+      });
+    }
+    const { REASON_LABELS: RIM_REASONS } = require('./ls2RimsController');
+    for (const m of rimMoves) {
+      rows.push({
+        kind: 'part', date: m.at || m.createdAt, action: m.type === 'out' ? 'صرف' : 'وارد',
+        title: m.rimName, detail: `${m.type === 'out' ? 'صادر' : 'وارد'} ${m.quantity}`,
+        by: m.performedByName, notes: [RIM_REASONS[m.reason]?.ar, m.notes, m.reversed ? 'اتّرجع عنها' : ''].filter(Boolean).join(' · '),
+        reversed: !!m.reversed, source: 'ls2-rims', refId: m._id,
       });
     }
     for (const i of issues.filter((x) => mine(x.vehicleNumber))) {

@@ -61,6 +61,10 @@ async function resolveSupplier(req, raw, rawName) {
 }
 const actorName = (req) => (req.user ? `${req.user.firstName || ''} ${req.user.lastName || ''}`.trim() : '');
 
+// Rims of the heavy fleet are counted on the tire side (models/Ls2Rim); a store line for them would count them twice.
+const isHeavyRim = (req, name) => whOf(req) === 'heavy' && /^جنط/.test(foldName(name));
+const RIM_IN_STORE = { code: 'RIM_BELONGS_TO_TIRES', message: 'الجنوط تُدار من «السطحات والكاوتشات ← الجنوط»، لا من المخزن' };
+
 // Item status: out of stock (0) / low (at or below threshold) / available.
 const statusOf = (it) => (it.quantity <= 0 ? 'out' : (it.minQuantity > 0 && it.quantity <= it.minQuantity ? 'low' : 'ok'));
 
@@ -123,6 +127,7 @@ exports.createItem = async (req, res) => {
   try {
     const data = pick(req.body);
     if (!String(data.name || '').trim()) return res.status(400).json({ message: 'اسم الصنف مطلوب' });
+    if (isHeavyRim(req, data.name)) return res.status(400).json(RIM_IN_STORE);
     // The part is added with its price. An item with no price is worth zero in the store however much stock it has, so the store total is understated and the cost of a part issued to a vehicle is unknown.
     if (needsPrice(req) && !(Number(data.unitPrice) > 0)) return res.status(400).json({ message: 'اكتب سعر القطعة الواحدة', code: 'PRICE_REQUIRED' });
     const [it] = await createItems(req, [req.body]);
@@ -178,6 +183,7 @@ exports.createItemsBulk = async (req, res) => {
       const line = i + 1; const name = String(b?.name || '').trim();
       if (!name) errors.push({ line, message: 'اسم الصنف مطلوب' });
       else if (seen.has(foldName(name))) errors.push({ line, message: `«${name}» مكرَّر في الجدول` });
+      else if (isHeavyRim(req, name)) errors.push({ line, message: RIM_IN_STORE.message });
       seen.add(foldName(name));
       if (needsPrice(req) && !(Number(b?.unitPrice) > 0)) errors.push({ line, message: 'اكتب سعر القطعة الواحدة' });
       if (!(Number(b?.quantity) >= 0)) errors.push({ line, message: 'العدد غير صحيح' });
@@ -199,6 +205,7 @@ exports.createItemsBulk = async (req, res) => {
 exports.updateItem = async (req, res) => {
   try {
     const set = pickEdit(req.body);
+    if (set.name !== undefined && isHeavyRim(req, set.name)) return res.status(400).json(RIM_IN_STORE);
     if (req.body.supplier !== undefined || req.body.supplierName !== undefined) {
       const sup = await resolveSupplier(req, req.body.supplier, req.body.supplierName);
       Object.assign(set, sup || { supplier: null, supplierName: '' });

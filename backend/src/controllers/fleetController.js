@@ -349,15 +349,16 @@ exports.listShipments = async (req, res) => {
     // Enrich the waybill with driver data (residence/mobile) from the driver record: these fields are not stored on the shipment itself but the waybill needs them, so they came out empty.
     const driverIds = [...new Set(shipments.map((s) => s.driver).filter(Boolean).map(String))];
     if (driverIds.length) {
-      const drivers = await FleetDriver.find({ _id: { $in: driverIds } }).select('iqama phone nationality employee').lean()
+      const drivers = await FleetDriver.find({ _id: { $in: driverIds } }).select('name iqama phone nationality employee').lean()
         .then(FI.decorateDrivers);
       const dmap = new Map(drivers.map((d) => [String(d._id), d]));
       for (const s of shipments) {
         const d = s.driver ? dmap.get(String(s.driver)) : null;
         if (d) {
-          if (!s.driverIqama) s.driverIqama = d.iqama || '';
-          if (!s.driverNationality) s.driverNationality = d.nationality || '';
-          if (!s.driverPhone) s.driverPhone = d.phone || '';
+          s.driverIqama = d.iqama || s.driverIqama || '';
+          s.driverNationality = d.nationality || s.driverNationality || '';
+          s.driverPhone = d.phone || s.driverPhone || '';
+          s.driverName = d.name || s.driverName || '';
         }
       }
     }
@@ -560,27 +561,62 @@ exports.patchStatus = async (req, res) => {
   }
 };
 
+
+/**
+ * What a transport order prints, read at print time: the driver from his HR file when linked
+ * (else his fleet record), the truck from the vehicle register, and list keys as names.
+ * The stored snapshot is the fallback for anything the records leave empty.
+ */
+async function waybillReady(shipments, lang = '') {
+  const people = shipments.flatMap((s) => [s.driver, s.secondDriver]).filter((d) => d && typeof d === 'object');
+  await FI.decorateDrivers(people);
+  await FI.decorateVehicles(shipments.map((s) => s.vehicle).filter((v) => v && typeof v === 'object'));
+  for (const s of shipments) {
+    const d = s.driver && typeof s.driver === 'object' ? s.driver : null;
+    if (d) {
+      s.driverName = d.name || s.driverName || '';
+      s.driverPhone = d.phone || s.driverPhone || '';
+      s.driverIqama = d.iqama || s.driverIqama || '';
+      s.driverNationality = d.nationality || s.driverNationality || '';
+    }
+    if (s.secondDriver && typeof s.secondDriver === 'object') s.secondDriverName = s.secondDriver.name || s.secondDriverName || '';
+    const v = s.vehicle && typeof s.vehicle === 'object' ? s.vehicle : null;
+    if (v) {
+      s.vehiclePlate = v.plate || s.vehiclePlate || '';
+      s.trailerType = v.trailerType || s.trailerType || '';
+      s.vehicleBrand = v.brand || s.vehicleBrand || '';
+      s.vehicleColor = v.color || s.vehicleColor || '';
+    }
+  }
+  if (!lang) return shipments;
+  const Lookup = require('../models/Lookup');
+  const lut = await Lookup.find({ type: { $in: ['fleet_rent_type', 'fleet_payment_type', 'fleet_load_type'] } })
+    .select('type key nameAr nameEn').lean();
+  const nameOf = (type, key) => {
+    if (!key) return '';
+    const it = lut.find((x) => x.type === type && x.key === key);
+    return it ? (lang === 'en' ? (it.nameEn || it.nameAr) : (it.nameAr || it.nameEn)) : key;
+  };
+  for (const s of shipments) {
+    s.rentType = nameOf('fleet_rent_type', s.rentType);
+    s.paymentType = nameOf('fleet_payment_type', s.paymentType);
+    s.loadType = nameOf('fleet_load_type', s.loadType);
+  }
+  return shipments;
+}
+
 exports.getShipment = async (req, res) => {
   try {
     const [shipment, events] = await Promise.all([
       FleetShipment.findById(req.params.id)
         .populate('customer', 'name phone routes')
-        .populate('vehicle', 'plate trailerType gpsType brand color')
-        .populate('driver secondDriver', 'name phone iqama nationality working onSponsorship')
+        .populate('vehicle', 'plate trailerType gpsType brand color vehicleMaster')
+        .populate('driver secondDriver', 'name phone iqama nationality working onSponsorship employee')
         .lean(),
       FleetEvent.find({ shipment: req.params.id }).sort({ createdAt: -1 }).limit(500).lean(),
     ]);
     if (!shipment) return res.status(404).json({ message: 'Shipment not found' });
-    // For the waybill: fill fields from the records if not stored on the shipment (older shipments).
-    if (shipment.driver && typeof shipment.driver === 'object') {
-      if (!shipment.driverIqama) shipment.driverIqama = shipment.driver.iqama || '';
-      if (!shipment.driverNationality) shipment.driverNationality = shipment.driver.nationality || '';
-      if (!shipment.driverPhone) shipment.driverPhone = shipment.driver.phone || '';
-    }
-    if (shipment.vehicle && typeof shipment.vehicle === 'object') {
-      if (!shipment.vehicleBrand) shipment.vehicleBrand = shipment.vehicle.brand || '';
-      if (!shipment.vehicleColor) shipment.vehicleColor = shipment.vehicle.color || '';
-    }
+    await waybillReady([shipment]);
     res.json({ shipment, events });
   } catch (error) {
     res.status(500).json({ message: 'Failed to load the shipment' });
@@ -601,8 +637,8 @@ exports.getWaybillsPdf = async (req, res) => {
 
     const { renderWaybillsPdf, rowFromShipment } = require('../utils/waybillPdf');
     const shipments = await FleetShipment.find({ _id: { $in: ids } })
-      .populate('vehicle', 'plate trailerType gpsType brand color')
-      .populate('driver secondDriver', 'name phone iqama nationality')
+      .populate('vehicle', 'plate trailerType gpsType brand color vehicleMaster')
+      .populate('driver secondDriver', 'name phone iqama nationality employee')
       .lean();
     if (!shipments.length) return res.status(404).json({ message: 'لا شحنات' });
 
@@ -610,17 +646,7 @@ exports.getWaybillsPdf = async (req, res) => {
     const order = new Map(ids.map((id, i) => [String(id), i]));
     shipments.sort((a, b) => (order.get(String(a._id)) ?? 0) - (order.get(String(b._id)) ?? 0));
 
-    for (const s of shipments) {
-      if (s.driver && typeof s.driver === 'object') {
-        if (!s.driverIqama) s.driverIqama = s.driver.iqama || '';
-        if (!s.driverNationality) s.driverNationality = s.driver.nationality || '';
-        if (!s.driverPhone) s.driverPhone = s.driver.phone || '';
-      }
-      if (s.vehicle && typeof s.vehicle === 'object') {
-        if (!s.vehicleBrand) s.vehicleBrand = s.vehicle.brand || '';
-        if (!s.vehicleColor) s.vehicleColor = s.vehicle.color || '';
-      }
-    }
+    await waybillReady(shipments, req.query.lang === 'en' ? 'en' : 'ar');
     const pdf = await renderWaybillsPdf(shipments.map(rowFromShipment));
     res.setHeader('Content-Type', 'application/pdf');
     res.setHeader('Content-Disposition', `attachment; filename="waybills-${shipments.length}.pdf"`);
@@ -634,32 +660,11 @@ exports.getWaybillPdf = async (req, res) => {
   try {
     const { renderWaybillPdf, rowFromShipment } = require('../utils/waybillPdf');
     const shipment = await FleetShipment.findById(req.params.id)
-      .populate('vehicle', 'plate trailerType gpsType brand color')
-      .populate('driver secondDriver', 'name phone iqama nationality working onSponsorship')
+      .populate('vehicle', 'plate trailerType gpsType brand color vehicleMaster')
+      .populate('driver secondDriver', 'name phone iqama nationality working onSponsorship employee')
       .lean();
     if (!shipment) return res.status(404).json({ message: 'Shipment not found' });
-    if (shipment.driver && typeof shipment.driver === 'object') {
-      if (!shipment.driverIqama) shipment.driverIqama = shipment.driver.iqama || '';
-      if (!shipment.driverNationality) shipment.driverNationality = shipment.driver.nationality || '';
-      if (!shipment.driverPhone) shipment.driverPhone = shipment.driver.phone || '';
-    }
-    if (shipment.vehicle && typeof shipment.vehicle === 'object') {
-      if (!shipment.vehicleBrand) shipment.vehicleBrand = shipment.vehicle.brand || '';
-      if (!shipment.vehicleColor) shipment.vehicleColor = shipment.vehicle.color || '';
-    }
-    // Rental/payment/load type are stored as list keys (forward/general...); converted to the display name in the request language so they do not appear in English on an Arabic waybill.
-    const Lookup = require('../models/Lookup');
-    const lang = req.query.lang === 'en' ? 'en' : 'ar';
-    const lut = await Lookup.find({ type: { $in: ['fleet_rent_type', 'fleet_payment_type', 'fleet_load_type'] } })
-      .select('type key nameAr nameEn').lean();
-    const nameOf = (type, key) => {
-      if (!key) return '';
-      const it = lut.find((x) => x.type === type && x.key === key);
-      return it ? (lang === 'en' ? (it.nameEn || it.nameAr) : (it.nameAr || it.nameEn)) : key;
-    };
-    shipment.rentType = nameOf('fleet_rent_type', shipment.rentType);
-    shipment.paymentType = nameOf('fleet_payment_type', shipment.paymentType);
-    shipment.loadType = nameOf('fleet_load_type', shipment.loadType);
+    await waybillReady([shipment], req.query.lang === 'en' ? 'en' : 'ar');
     const pdf = await renderWaybillPdf(rowFromShipment(shipment));
     res.setHeader('Content-Type', 'application/pdf');
     res.setHeader('Content-Disposition', `inline; filename="waybill-${shipment.waybillNumber || shipment._id}.pdf"`);

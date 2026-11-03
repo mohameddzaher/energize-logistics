@@ -298,7 +298,8 @@ app.use('/api/shipment-orders', authenticate, sectionGate('Shipment Orders'), sh
 app.use('/api/customer-registry', authenticate, require('./routes/customerRegistry'));
 // Large exports are built in the background and delivered to the requester by notification; see exportJobsController.
 app.use('/api/exports', authenticate, require('./routes/exportJobs'));
-app.use('/api/fleet', authenticate, sectionGate('Fleet Management'), fleetRoutes);
+// The data team creates and edits loads as it does shipments, whatever the Fleet section grant; the route lists still decide each action.
+app.use('/api/fleet', authenticate, custodyOrSection('Fleet Management', () => require('./config/roles').DATA_ROLES), fleetRoutes);
 // No sectionGate: every performance handler scopes itself (a manager only ever
 // sees their own team; only super_admin may configure or override), and a
 // section switch here would risk locking managers out of their /kpis page.

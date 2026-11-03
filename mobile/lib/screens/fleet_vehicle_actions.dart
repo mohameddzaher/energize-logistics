@@ -8,7 +8,7 @@ import '../ui/search_field.dart';
 
 /// Vehicle row actions in the fleet vehicles page: counterpart of the two driver columns and the assign-supervisor button on web page /system/fleet/vehicles.
 
-const _fleetEditRoles = ['super_admin', 'admin', 'it_manager', 'it_specialist', 'operations_manager', 'operations_staff', 'moderator', 'fleet_manager', 'fleet_supervisor'];
+const _fleetEditRoles = ['super_admin', 'admin', 'it_manager', 'it_specialist', 'operations_manager', 'operations_staff', 'moderator', 'fleet_manager', 'fleet_supervisor', 'data_manager', 'data_analyst', 'data_entry'];
 const _fleetAdminRoles = ['super_admin', 'admin', 'it_manager', 'operations_manager', 'fleet_manager'];
 
 bool _canEdit(BuildContext c) { final a = c.read<AuthProvider>(); return _fleetEditRoles.contains(a.role) || a.canEditSection('Fleet Management'); }

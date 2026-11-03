@@ -241,7 +241,9 @@ export const foldAr = (x: string) => x.toLowerCase()
 // permissions matrix (backend rbac honours an 'edit' grant even on admin
 // routes, so the UI must too). Pass the USER: only it carries the grants.
 import { canAccessSection, canEditSection, roleOf, permsOf, type RoleOrUser } from './sections';
-export const FLEET_EDIT_ROLES = ['super_admin', 'admin', 'it_manager', 'it_specialist', 'operations_manager', 'operations_staff', 'moderator', 'fleet_manager', 'fleet_supervisor'];
+// Mirrors EDIT_ROLES in backend/src/routes/fleet.js, data team included.
+export const FLEET_EDIT_ROLES = ['super_admin', 'admin', 'it_manager', 'it_specialist', 'operations_manager', 'operations_staff', 'moderator', 'fleet_manager', 'fleet_supervisor',
+  'data_manager', 'data_analyst', 'data_entry'];
 export const FLEET_ADMIN_ROLES = ['super_admin', 'admin', 'it_manager', 'operations_manager', 'fleet_manager'];
 
 // Card status on the main board; computed automatically on the server.

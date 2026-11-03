@@ -323,6 +323,8 @@ employeeSchema.post('init', function () {
 });
 employeeSchema.pre('save', function (next) {
   this.$locals.wasNew = this.isNew;
+  // Dates are stored in one form, YYYY-MM-DD, whatever screen or import wrote them; see utils/employeeDateRepair.
+  try { require('../utils/employeeDateRepair').normalizeDoc(this); } catch (_) { /* */ }
   next();
 });
 employeeSchema.post('save', async function (doc) {

@@ -453,6 +453,29 @@ exports.deleteEmployee = async (req, res) => {
         canAutoReturnAssets: blockers.assets > 0 && blockers.authorizations === 0,
       });
     }
+    // Records in other sections that point at this file would be left pointing at nothing, so deletion stops and names them; ending service keeps them intact.
+    {
+      const id = employee._id;
+      const LT = require('../models/LightTransport');
+      const { FleetDriver } = require('../models/FleetModels');
+      const counts = await Promise.all([
+        ['سجل النقل الخفيف', LT.LightTransportEmployee.countDocuments({ employee: id })],
+        ['سائق في إدارة الأسطول', FleetDriver.countDocuments({ employee: id })],
+        ['سائق في طلبات الشحنات', require('../models/ShipmentOrderDriver').countDocuments({ employee: id })],
+        ['بطاقة سائق', require('../models/DriverCard').countDocuments({ employee: id })],
+        ['عقود', require('../models/Contract').countDocuments({ employee: id })],
+        ['طلبات إجازة', require('../models/LeaveRequest').countDocuments({ employee: id })],
+        ['بريد شركة', require('../models/CompanyEmail').countDocuments({ employee: id })],
+      ].map(async ([label, q]) => [label, await q.catch(() => 0)]));
+      const linked = counts.filter(([, n]) => n > 0);
+      if (linked.length) {
+        return res.status(400).json({
+          code: 'EMPLOYEE_LINKED',
+          message: `لا يمكن الحذف: للموظّف سجلّاتٌ في أقسامٍ أخرى (${linked.map(([l, n]) => `${l}: ${n}`).join('، ')}). أنهِ خدمتَه من ملفّه بدل الحذف، فتبقى سجلّاتُه سليمة.`,
+          linked: Object.fromEntries(linked),
+        });
+      }
+    }
     const returned = blockers.assets
       ? await returnEmployeeAssetsToStore(employee._id, { note: `أُعيدت للمستودع عند حذف سجلّ ${fullName(employee)}` })
       : 0;

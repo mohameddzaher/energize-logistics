@@ -314,7 +314,7 @@ List<AppSection> sectionsFor(AuthProvider auth) {
     ),
     AppSection(
       key: 'Fleet Management', arTitle: 'إدارة الأسطول', enTitle: 'Fleet Management', icon: Icons.local_shipping_outlined,
-      roles: const [..._admins, 'operations_manager', 'operations_staff', 'moderator', 'fleet_manager', 'fleet_supervisor'],
+      roles: const [..._admins, 'operations_manager', 'operations_staff', 'moderator', 'fleet_manager', 'fleet_supervisor', 'data_manager', 'data_analyst', 'data_entry'],
       pages: [
         AppPage('اللوحة', 'Dashboard', Icons.dashboard_outlined, (c) => SectionDashScreen(spec: fleetDashSpec), path: '/system/fleet/dashboard'),
         AppPage('التحليلات', 'Analytics', Icons.insights_outlined, (c) => const FleetAnalyticsScreen(), path: '/system/fleet/dashboard'),

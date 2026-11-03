@@ -9,7 +9,9 @@ const authenticate = require('../middleware/auth');
 const authorize = require('../middleware/rbac');
 
 // Fleet management: our own trucks. fleet_manager runs the section; fleet_supervisor works only his assigned trucks (scoped in the controller).
-const EDIT_ROLES = ['super_admin', 'admin', 'it_manager', 'it_specialist', 'operations_manager', 'operations_staff', 'moderator', 'fleet_manager', 'fleet_supervisor'];
+// The data team creates loads as it creates shipment orders (routes/shipmentOrders EDIT_ROLES).
+const EDIT_ROLES = ['super_admin', 'admin', 'it_manager', 'it_specialist', 'operations_manager', 'operations_staff', 'moderator', 'fleet_manager', 'fleet_supervisor',
+  ...require('../config/roles').DATA_ROLES];
 const ADMIN_ROLES = ['super_admin', 'admin', 'it_manager', 'operations_manager', 'fleet_manager'];
 
 router.use(authenticate);

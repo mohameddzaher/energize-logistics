@@ -24,6 +24,9 @@ const asDate = (v) => {
   if (!s) return null;
   const m = /^(\d{4})-(\d{1,2})-(\d{1,2})/.exec(s);
   if (m) return new Date(Date.UTC(Number(m[1]), Number(m[2]) - 1, Number(m[3])));
+  // Day/month/year text, as some imports wrote it.
+  const dm = /^(\d{1,2})[/.-](\d{1,2})[/.-](\d{4})$/.exec(s);
+  if (dm && +dm[2] >= 1 && +dm[2] <= 12 && +dm[1] >= 1 && +dm[1] <= 31) return new Date(Date.UTC(+dm[3], +dm[2] - 1, +dm[1]));
   const d = new Date(s);
   return Number.isNaN(d.getTime()) ? null : d;
 };

@@ -10,10 +10,26 @@ const FMT = new Intl.DateTimeFormat('en-u-ca-islamic-umalqura-nu-latn', {
 
 export type HijriParts = { y: number; m: number; d: number };
 
+/**
+ * A stored Gregorian date as a Date (UTC midnight), or null.
+ * Imports wrote some dates as day/month/year text (13/11/2026), which `new Date` cannot read: the Gregorian box opened empty and the date never counted as a date.
+ */
+export function readGregorian(input: any): Date | null {
+  if (!input) return null;
+  if (input instanceof Date) return Number.isNaN(input.getTime()) ? null : input;
+  const s = String(input).trim();
+  let m = /^(\d{4})-(\d{1,2})-(\d{1,2})/.exec(s);
+  if (m) return new Date(Date.UTC(+m[1], +m[2] - 1, +m[3]));
+  m = /^(\d{1,2})[/.-](\d{1,2})[/.-](\d{4})$/.exec(s);
+  if (m && +m[2] >= 1 && +m[2] <= 12 && +m[1] >= 1 && +m[1] <= 31) return new Date(Date.UTC(+m[3], +m[2] - 1, +m[1]));
+  const d = new Date(s);
+  return Number.isNaN(d.getTime()) ? null : d;
+}
+
 export function toHijriParts(input: any): HijriParts | null {
   if (!input) return null;
-  const dt = input instanceof Date ? input : new Date(input);
-  if (Number.isNaN(dt.getTime())) return null;
+  const dt = readGregorian(input);
+  if (!dt) return null;
   const p = FMT.formatToParts(dt);
   const get = (t: string) => Number(p.find((x) => x.type === t)?.value);
   const y = get('year'); const m = get('month'); const d = get('day');

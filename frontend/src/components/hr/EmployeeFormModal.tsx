@@ -28,6 +28,10 @@ export const EMPTY_EMPLOYEE = {
   insuranceCompany: '', insuranceExpiry: '', socialInsuranceStatus: '', visaExpiry: '', lastTravelDate: '', lastReturnDate: '',
   vehiclePlate: '', licenseNumber: '', licenseType: '', licenseExpiry: '',
   driverCardNumber: '', driverCardType: '', driverCardStatus: '', driverCardExpiry: '', workCard: '', ajeerStatus: '', ajeerExpiry: '',
+  companyEmail: '', employerNumber: '', isOutsideKingdom: false, iqamaIssueDate: '', iqamaProfessionRequirements: '',
+  contractOccupation: '', contractStartDate: '', contractEndDate: '', annualLeaveDays: '', probationPeriod: '',
+  insuranceClass: '', medicalInsuranceNumber: '', medicalInsuranceRegister: '', insuranceRequirements: '',
+  healthCertNumber: '', healthCertExpiry: '',
 };
 
 function Section({ title, children }: { title: string; children: React.ReactNode }) {
@@ -217,6 +221,7 @@ export function EmployeeFormModal({ open, employee, onClose, onSaved }: {
         ) : (
           <>
             <Field label={tx.iqamaNumber}><TextInput value={form.iqamaNumber} onChange={(e) => set('iqamaNumber', e.target.value)} /></Field>
+            <DatePair label={ar ? 'تاريخ إصدار الإقامة' : 'Iqama issue date'} value={form.iqamaIssueDate || ''} onChange={(v) => set('iqamaIssueDate', v)} ar={ar} />
             <DocInput k="iqamaExpiry" label={tx.iqamaExpiry} type="date" form={form} set={set} mark={marks['iqamaExpiry'] || ''} setMark={setMark} choices={choices} ar={ar} />
           </>
         )}
@@ -227,8 +232,9 @@ export function EmployeeFormModal({ open, employee, onClose, onSaved }: {
       <Section title={tx.sectionGovernment}>
         <DocInput k="qiwaContractNumber" label={tx.qiwaContractNumber} form={form} set={set} mark={marks['qiwaContractNumber'] || ''} setMark={setMark} choices={choices} ar={ar} />
         <Field label={tx.gosiNumber}><TextInput value={form.gosiNumber} onChange={(e) => set('gosiNumber', e.target.value)} /></Field>
-        <Field label={tx.absherStatus}><TextInput value={form.absherStatus} onChange={(e) => set('absherStatus', e.target.value)} /></Field>
-        <Field label={tx.sponsorName}><TextInput value={form.sponsorName} onChange={(e) => set('sponsorName', e.target.value)} /></Field>
+        <DocInput k="absherStatus" label={tx.absherStatus} form={form} set={set} mark="" setMark={setMark} choices={choices} ar={ar} />
+        <DocInput k="sponsorName" label={tx.sponsorName} form={form} set={set} mark="" setMark={setMark} choices={choices} ar={ar} />
+        <Field label={ar ? 'رقم صاحب العمل' : 'Employer number'}><TextInput value={form.employerNumber || ''} onChange={(e) => set('employerNumber', e.target.value)} /></Field>
         <DocInput k="workPermitExpiry" label={tx.workPermitExpiry} type="date" form={form} set={set} mark={marks['workPermitExpiry'] || ''} setMark={setMark} choices={choices} ar={ar} />
       </Section>
 
@@ -277,6 +283,12 @@ export function EmployeeFormModal({ open, employee, onClose, onSaved }: {
             <span className="block text-[11px] text-slate-400">{ar ? 'تتغيّر بإنهاء الخدمة أو إعادة التفعيل من ملف الموظف' : 'Changes via End Service / Reactivate on the profile'}</span>
           </div>
         </Field>
+        <Field label={ar ? 'خارج المملكة' : 'Outside the Kingdom'}>
+          <label className="inline-flex items-center gap-2 text-sm text-slate-700 py-2">
+            <input type="checkbox" checked={!!form.isOutsideKingdom} onChange={(e) => set('isOutsideKingdom', e.target.checked)} />
+            {ar ? 'الموظف خارج المملكة الآن' : 'Currently outside the Kingdom'}
+          </label>
+        </Field>
         <Field label={tx.basicSalary}><TextInput type="number" value={form.basicSalary} onChange={(e) => set('basicSalary', Number(e.target.value))} /></Field>
         <Field label={tx.allowances}><TextInput type="number" value={form.allowances} onChange={(e) => set('allowances', Number(e.target.value))} /></Field>
       </Section>
@@ -284,10 +296,21 @@ export function EmployeeFormModal({ open, employee, onClose, onSaved }: {
       <Section title={tx.sectionContact}>
         <Field label={tx.phone}><TextInput value={form.phone} onChange={(e) => set('phone', e.target.value)} /></Field>
         <Field label={tx.email}><TextInput value={form.email} onChange={(e) => set('email', e.target.value)} /></Field>
+        <Field label={ar ? 'بريد الشركة' : 'Company email'}><TextInput value={form.companyEmail || ''} onChange={(e) => set('companyEmail', e.target.value)} /></Field>
+        <Field label={ar ? 'جوال الشركة' : 'Company mobile'}><TextInput value={form.companyNumber || ''} onChange={(e) => set('companyNumber', e.target.value)} /></Field>
+        <Field label={ar ? 'جوال بلد الإقامة' : 'Home-country mobile'}><TextInput value={form.originCountryNumber || ''} onChange={(e) => set('originCountryNumber', e.target.value)} /></Field>
         <Field label={tx.address} span2><TextInput value={form.address} onChange={(e) => set('address', e.target.value)} /></Field>
         <Field label={tx.emergencyContactName}><TextInput value={form.emergencyContactName} onChange={(e) => set('emergencyContactName', e.target.value)} /></Field>
         <Field label={tx.emergencyContactPhone}><TextInput value={form.emergencyContactPhone} onChange={(e) => set('emergencyContactPhone', e.target.value)} /></Field>
         <Field label={tx.notes} span2><TextArea rows={2} value={form.notes} onChange={(e) => set('notes', e.target.value)} /></Field>
+      </Section>
+
+      <Section title={ar ? 'العقد' : 'Contract'}>
+        <Field label={ar ? 'المهنة في العقد' : 'Contract occupation'}><TextInput value={form.contractOccupation || ''} onChange={(e) => set('contractOccupation', e.target.value)} /></Field>
+        <Field label={ar ? 'الإجازة السنوية' : 'Annual leave'}><TextInput value={form.annualLeaveDays || ''} onChange={(e) => set('annualLeaveDays', e.target.value)} /></Field>
+        <Field label={ar ? 'فترة التجربة' : 'Probation period'}><TextInput value={form.probationPeriod || ''} onChange={(e) => set('probationPeriod', e.target.value)} /></Field>
+        <DatePair label={ar ? 'بداية العقد' : 'Contract start'} value={form.contractStartDate || ''} onChange={(v) => set('contractStartDate', v)} ar={ar} />
+        <DatePair label={ar ? 'نهاية العقد' : 'Contract end'} value={form.contractEndDate || ''} onChange={(v) => set('contractEndDate', v)} ar={ar} />
       </Section>
 
       <Section title={vtx.sectionBankingDocs}>
@@ -307,13 +330,25 @@ export function EmployeeFormModal({ open, employee, onClose, onSaved }: {
         </Field>
         <Field label={vtx.absherNumber}><TextInput value={form.absherNumber} onChange={(e) => set('absherNumber', e.target.value)} /></Field>
         <DocInput k="iqamaProfession" label={vtx.iqamaProfession} form={form} set={set} mark={marks['iqamaProfession'] || ''} setMark={setMark} choices={choices} ar={ar} />
+        <Field label={ar ? 'متطلبات المهنة في الإقامة' : 'Occupation requirements'}><TextInput value={form.iqamaProfessionRequirements || ''} onChange={(e) => set('iqamaProfessionRequirements', e.target.value)} /></Field>
         <Field label={vtx.penaltyClause}><TextInput type="number" value={form.penaltyClause} onChange={(e) => set('penaltyClause', Number(e.target.value))} /></Field>
-        <Field label={vtx.classification}><TextInput value={form.classification} onChange={(e) => set('classification', e.target.value)} /></Field>
-        <Field label={vtx.fileStatus}><TextInput value={form.fileStatus} onChange={(e) => set('fileStatus', e.target.value)} /></Field>
+        <DocInput k="classification" label={vtx.classification} form={form} set={set} mark="" setMark={setMark} choices={choices} ar={ar} />
+        <DocInput k="fileStatus" label={vtx.fileStatus} form={form} set={set} mark="" setMark={setMark} choices={choices} ar={ar} />
         <DocInput k="insuranceCompany" label={vtx.insuranceCompany} form={form} set={set} mark={marks['insuranceCompany'] || ''} setMark={setMark} choices={choices} ar={ar} />
+        <DocInput k="insuranceClass" label={ar ? 'فئة التأمين' : 'Insurance class'} form={form} set={set} mark="" setMark={setMark} choices={choices} ar={ar} />
+        <Field label={ar ? 'رقم وثيقة التأمين' : 'Policy number'}><TextInput value={form.medicalInsuranceNumber || ''} onChange={(e) => set('medicalInsuranceNumber', e.target.value)} /></Field>
+        <DocInput k="medicalInsuranceRegister" label={ar ? 'سجل التأمين الطبي' : 'Medical insurance register'} form={form} set={set} mark="" setMark={setMark} choices={choices} ar={ar} />
+        <Field label={ar ? 'متطلبات التأمين' : 'Insurance requirements'}><TextInput value={form.insuranceRequirements || ''} onChange={(e) => set('insuranceRequirements', e.target.value)} /></Field>
         <DocInput k="insuranceExpiry" label={vtx.insuranceExpiry} type="date" form={form} set={set} mark={marks['insuranceExpiry'] || ''} setMark={setMark} choices={choices} ar={ar} />
+        <Field label={ar ? 'رقم الشهادة الصحية' : 'Health certificate no.'}><TextInput value={form.healthCertNumber || ''} onChange={(e) => set('healthCertNumber', e.target.value)} /></Field>
+        <DatePair label={ar ? 'انتهاء الشهادة الصحية' : 'Health certificate expiry'} value={form.healthCertExpiry || ''} onChange={(v) => set('healthCertExpiry', v)} ar={ar} />
+        <DocInput k="ajeerStatus" label={ar ? 'حالة أجير' : 'Ajeer status'} form={form} set={set} mark="" setMark={setMark} choices={choices} ar={ar} />
+        <DatePair label={ar ? 'انتهاء أجير' : 'Ajeer expiry'} value={form.ajeerExpiry || ''} onChange={(v) => set('ajeerExpiry', v)} ar={ar} />
+        <Field label={ar ? 'كارت العمل' : 'Work card'}><TextInput value={form.workCard || ''} onChange={(e) => set('workCard', e.target.value)} /></Field>
         <DocInput k="socialInsuranceStatus" label={vtx.socialInsuranceStatus} form={form} set={set} mark={marks['socialInsuranceStatus'] || ''} setMark={setMark} choices={choices} ar={ar} />
         <DatePair label={vtx.visaExpiry} value={form.visaExpiry || ''} onChange={(v) => set('visaExpiry', v)} ar={ar} />
+        <DatePair label={ar ? 'تاريخ السفر' : 'Travel date'} value={form.lastTravelDate || ''} onChange={(v) => set('lastTravelDate', v)} ar={ar} />
+        <DatePair label={ar ? 'تاريخ العودة' : 'Return date'} value={form.lastReturnDate || ''} onChange={(v) => set('lastReturnDate', v)} ar={ar} />
       </Section>
 
       <Section title={vtx.sectionDriving}>
@@ -327,7 +362,8 @@ export function EmployeeFormModal({ open, employee, onClose, onSaved }: {
         <DocInput k="licenseType" label={vtx.licenseType} form={form} set={set} mark={marks['licenseType'] || ''} setMark={setMark} choices={choices} ar={ar} />
         <DocInput k="licenseExpiry" label={vtx.licenseExpiry} type="date" form={form} set={set} mark={marks['licenseExpiry'] || ''} setMark={setMark} choices={choices} ar={ar} />
         <DocInput k="driverCardNumber" label={vtx.driverCardNumber} form={form} set={set} mark={marks['driverCardNumber'] || ''} setMark={setMark} choices={choices} ar={ar} />
-        <Field label={vtx.driverCardType}><TextInput value={form.driverCardType} onChange={(e) => set('driverCardType', e.target.value)} /></Field>
+        <DocInput k="driverCardType" label={vtx.driverCardType} form={form} set={set} mark="" setMark={setMark} choices={choices} ar={ar} />
+        <Field label={ar ? 'توفّر البطاقة' : 'Card availability'}><TextInput value={form.driverCardStatus || ''} onChange={(e) => set('driverCardStatus', e.target.value)} /></Field>
         <DocInput k="driverCardExpiry" label={vtx.driverCardExpiry} type="date" form={form} set={set} mark={marks['driverCardExpiry'] || ''} setMark={setMark} choices={choices} ar={ar} />
       </Section>
       {employee && bothDates(employee.createdAt, ar, '') && <p className="text-xs text-slate-500">{tx.added}: {bothDates(employee.createdAt, ar)}</p>}

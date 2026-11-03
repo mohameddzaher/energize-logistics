@@ -32,12 +32,14 @@ class _ShipmentOrdersFleetScreenState extends State<ShipmentOrdersFleetScreen> {
     _load();
     Live.instance.on('shipmentOrders:fleet', _onLive);
     Live.instance.on('vreg:updated', _onLive);
+    Live.instance.on('hr:employee', _onLive);
   }
 
   @override
   void dispose() {
     Live.instance.off('shipmentOrders:fleet', _onLive);
     Live.instance.off('vreg:updated', _onLive);
+    Live.instance.off('hr:employee', _onLive);
     super.dispose();
   }
 

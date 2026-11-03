@@ -57,6 +57,10 @@ const bustEmployeeCaches = () => {
     cache.clear('hrm:');
     // Fleet reads the driver name and status from this file (utils/fleetIdentity).
     cache.clear('fleet:');
+    // The B2C register, every dashboard and the ended-staff rule read the file too, so an edit shows there at once.
+    cache.clear('lt:');
+    cache.clear('dash:');
+    cache.clear('endedstaff:');
   } catch (e) {}
   // All three events: expiries and master hear hr:master, the employee file and list hear hr:employee, the contracts page hears hr:contract. One write changes what all three show.
   for (const ev of ['hr:master', 'hr:employee', 'hr:contract']) { try { emitToAll(ev, {}); } catch (e) {} }
@@ -347,7 +351,13 @@ exports.updateEmployee = async (req, res) => {
       // `vehiclePlate` is excluded: it is a snapshot from the vehicle register (authorization), not written from the form.
       'licenseNumber', 'licenseType', 'licenseExpiry',
       'driverCardNumber', 'driverCardType', 'driverCardStatus', 'driverCardExpiry', 'workCard', 'ajeerStatus', 'ajeerExpiry',
+      // The rest of the HR master's editable fields, so the form edits everything the master does.
+      'companyEmail', 'employerNumber', 'isOutsideKingdom', 'iqamaIssueDate', 'iqamaProfessionRequirements',
+      'contractOccupation', 'contractStartDate', 'contractEndDate', 'annualLeaveDays', 'probationPeriod',
+      'insuranceClass', 'medicalInsuranceNumber', 'medicalInsuranceRegister', 'insuranceRequirements',
+      'healthCertNumber', 'healthCertExpiry',
     ];
+    const H = require('../config/hrFields');
     // Capture a before/after diff of only the fields that actually change, so the
     // audit log (and the profile "history" tab) shows exactly what HR edited.
     {
@@ -364,6 +374,11 @@ exports.updateEmployee = async (req, res) => {
     for (const f of fields) {
       if (req.body[f] === undefined) continue;
       let next = req.body[f] === '' && ['branch', 'directManager'].includes(f) ? null : req.body[f];
+      // A Hijri date typed into a Gregorian field is converted, as in the master (hrMasterController.updateFields).
+      if (H.getField(f)?.type === 'date' && /^1[34]\d\d-\d{1,2}-\d{1,2}$/.test(String(next || '').trim())) {
+        next = require('../utils/hijri').fromHijriString(String(next).trim()) || next;
+      }
+      if (f === 'isOutsideKingdom') next = next === true || next === 'true' || next === '1';
       // Extra branches are an array, but an old form may send a comma-separated string. The main branch must not repeat inside it.
       if (f === 'branches') {
         const arr = Array.isArray(next) ? next : String(next || '').split(',');

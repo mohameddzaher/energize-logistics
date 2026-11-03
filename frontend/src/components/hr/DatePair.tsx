@@ -3,6 +3,7 @@
  * Contracts tabs: one menu entry with two views.
  * Contracts is the work register (create, renew, end); Contract data shows the contract columns in the HR file with their state and what is missing.
  */
+import { toDateInput } from '@/lib/hrMaster';
 import { useState } from 'react';
 import { gregorianToHijri, hijriToGregorian } from '@/lib/hijri';
 import { pairLabels } from '@/lib/hrDates';
@@ -32,7 +33,8 @@ export default function DatePair({
   disabled?: boolean; autoFocus?: boolean;
   inputClassName?: string;
 }) {
-  const g = (value || '').slice(0, 10);
+  // Any stored form (day/month/year text included) opens as yyyy-mm-dd, so the Gregorian box is never blank beside a Hijri.
+  const g = toDateInput(value);
   // What the user is typing in the Hijri field now. `forValue` ties it to the Gregorian value it was typed against: if the Gregorian changes from outside (another row, a renew button) the draft is dropped and the Hijri follows the value, with no `useEffect` re-formatting under the fingers.
   const [draft, setDraft] = useState<Draft>(null);
   const live = draft && draft.forValue === g ? draft : null;

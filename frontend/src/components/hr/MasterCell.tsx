@@ -112,7 +112,9 @@ export default function MasterCell({ id, f, raw, st, choices, ar, canEdit, onSav
     );
   }
 
-  if (st === 'required') {
+  // A filled field shows its value even if an old «مطلوب» mark stayed on it (imports wrote values without clearing marks).
+  const hasValue = raw != null && String(raw).trim() !== '';
+  if (st === 'required' && !hasValue) {
     return (
       <button type="button" onClick={start} disabled={!canEdit}
         className="px-2 py-0.5 rounded-full bg-red-100 text-red-700 text-[11px] font-semibold hover:bg-red-200 disabled:hover:bg-red-100">

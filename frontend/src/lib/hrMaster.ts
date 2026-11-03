@@ -1,3 +1,4 @@
+import { readGregorian } from '@/lib/hijri';
 // HR master client for /api/hr/master.
 // Required and not-required are kept apart everywhere: required is work to do, not-required is not a gap; mixing them makes the work list meaningless.
 import api from '@/lib/api';
@@ -89,15 +90,15 @@ export const stateLabel = (c: string, ar: boolean) => (STATE_META[c] ? (ar ? STA
 
 export const fmtDate = (d?: string | Date | null) => {
   if (!d) return '—';
-  const x = new Date(d);
-  return isNaN(x.getTime()) ? String(d) : x.toISOString().slice(0, 10);
+  const x = readGregorian(d);
+  return x ? x.toISOString().slice(0, 10) : String(d);
 };
 
 /** Value as accepted by <input type="date">. Date fields here sometimes hold an administrative word instead of a date, and new Date(word).toISOString() throws, which would take down the whole screen. */
 export const toDateInput = (v?: string | Date | null) => {
   if (!v) return '';
-  const d = new Date(v);
-  return isNaN(d.getTime()) ? '' : d.toISOString().slice(0, 10);
+  const d = readGregorian(v);
+  return d ? d.toISOString().slice(0, 10) : '';
 };
 /** Expiry fields and the name of each one's duration column. Five master columns share the title 'expiry date' and differ only by group, so each duration column gets an explicit unambiguous name, which also identifies which dates are expiries. */
 export const EXPIRY_FIELDS: Record<string, { ar: string; en: string }> = {

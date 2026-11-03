@@ -116,6 +116,8 @@ export default function FleetPage() {
     return () => clearTimeout(t);
   }, [load, search]);
   useSocket('shipmentOrders:fleet', useCallback(() => load(), [load]));
+  // Drivers linked to an HR file show its name, residency and phone; an edit there shows here at once.
+  useSocket('hr:employee', useCallback(() => load(), [load]));
   // Identity of our trucks (plate, make, colour) is read from the vehicle register at view time (vehicleView), so edits there show here immediately.
   useSocket('vreg:updated', useCallback(() => load(), [load]));
   // Truck types are read from the form fields, so a type added there is selectable here at once.

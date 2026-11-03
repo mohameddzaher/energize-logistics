@@ -952,11 +952,72 @@ class _EditEmployeeSheetState extends State<EditEmployeeSheet> {
     ('firstName', 'الاسم الأول', 'First name'),
     ('lastName', 'اسم العائلة', 'Last name'),
     ('arabicName', 'الاسم العربي', 'Arabic name'),
+    ('employeeNumber', 'الرقم الوظيفي', 'Employee no.'),
     ('jobTitle', 'المسمى الوظيفي', 'Job title'),
-    ('mobileNumber', 'الجوال', 'Mobile'),
+    // The server field is `phone`; `mobileNumber` was dropped on save.
+    ('phone', 'الجوال', 'Mobile'),
     ('email', 'البريد', 'Email'),
+    ('companyEmail', 'بريد الشركة', 'Company email'),
+    ('companyNumber', 'جوال الشركة', 'Company mobile'),
+    ('absherNumber', 'جوال أبشر', 'Absher mobile'),
+    ('originCountryNumber', 'جوال بلد الإقامة', 'Home-country mobile'),
+    ('emergencyContactName', 'اسم جهة اتصال الطوارئ', 'Emergency contact'),
+    ('emergencyContactPhone', 'جوال جهة اتصال الطوارئ', 'Emergency phone'),
+    ('address', 'العنوان الوطني', 'National address'),
     ('iqamaNumber', 'رقم الإقامة', 'Iqama'),
+    ('employerNumber', 'رقم صاحب العمل', 'Employer no.'),
+    ('gosiNumber', 'الرقم التأميني', 'GOSI no.'),
+    ('qiwaContractNumber', 'رقم عقد قوى', 'Qiwa contract no.'),
+    ('iban', 'الآيبان', 'IBAN'),
+    ('iqamaProfession', 'المهنة في الإقامة', 'Iqama occupation'),
+    ('iqamaProfessionRequirements', 'متطلبات المهنة في الإقامة', 'Occupation requirements'),
+    ('contractOccupation', 'المهنة في العقد', 'Contract occupation'),
+    ('annualLeaveDays', 'الإجازة السنوية', 'Annual leave'),
+    ('probationPeriod', 'فترة التجربة', 'Probation period'),
+    ('medicalInsuranceNumber', 'رقم وثيقة التأمين', 'Policy number'),
+    ('insuranceRequirements', 'متطلبات التأمين', 'Insurance requirements'),
+    ('healthCertNumber', 'رقم الشهادة الصحية', 'Health certificate no.'),
+    ('licenseNumber', 'رقم الرخصة', 'Licence no.'),
+    ('driverCardStatus', 'توفّر بطاقة السائق', 'Driver card availability'),
+    ('workCard', 'كارت العمل', 'Work card'),
+    ('notes', 'ملاحظات', 'Notes'),
   ];
+  // Amounts, sent as numbers.
+  static const _numbers = [
+    ('basicSalary', 'الراتب الأساسي', 'Basic salary'),
+    ('allowances', 'البدلات', 'Allowances'),
+    ('penaltyClause', 'الشرط الجزائي', 'Penalty clause'),
+  ];
+  // Dates without a document status; the Hijri shows under each.
+  static const _dates = [
+    ('dateOfBirth', 'تاريخ الميلاد', 'Date of birth'),
+    ('hireDate', 'تاريخ التعيين', 'Hire date'),
+    ('actualWorkStartDate', 'تاريخ مباشرة العمل', 'Work start date'),
+    ('iqamaIssueDate', 'تاريخ إصدار الإقامة', 'Iqama issue date'),
+    ('contractStartDate', 'بداية العقد', 'Contract start'),
+    ('contractEndDate', 'نهاية العقد', 'Contract end'),
+    ('workPermitExpiry', 'انتهاء رخصة العمل', 'Work permit expiry'),
+    ('visaExpiry', 'انتهاء التأشيرة', 'Visa expiry'),
+    ('ajeerExpiry', 'انتهاء أجير', 'Ajeer expiry'),
+    ('healthCertExpiry', 'انتهاء الشهادة الصحية', 'Health certificate expiry'),
+    ('lastTravelDate', 'تاريخ السفر', 'Travel date'),
+    ('lastReturnDate', 'تاريخ العودة', 'Return date'),
+  ];
+  // Free-choice lists read from values in use (/api/hr/master/choices), as on the web.
+  static const _moreChoices = [
+    ('absherStatus', 'حالة أبشر', 'Absher status'),
+    ('sponsorName', 'الكفيل', 'Sponsor'),
+    ('classification', 'التصنيف', 'Classification'),
+    ('fileStatus', 'حالة الملف', 'File status'),
+    ('ajeerStatus', 'حالة أجير', 'Ajeer status'),
+    ('insuranceClass', 'فئة التأمين', 'Insurance class'),
+    ('medicalInsuranceRegister', 'سجل التأمين الطبي', 'Medical insurance register'),
+    ('driverCardType', 'نوع بطاقة السائق', 'Driver card type'),
+  ];
+  late final Map<String, TextEditingController> _n;
+  late final Map<String, TextEditingController> _dt;
+  String _gender = '';
+  bool _outside = false;
 
   // Documents: a value, or a status explaining why there is none, like the web form. A new employee's empty documents are marked "required" on the server; one who needs no document picks "not required". Choice fields are lists of used values (/api/hr/master/choices); the bank allows "cash salary".
   static const _docs = [
@@ -990,8 +1051,15 @@ class _EditEmployeeSheetState extends State<EditEmployeeSheet> {
       return RegExp(r'^\d{4}-\d{2}-\d{2}').hasMatch(t) ? t.substring(0, 10) : t;
     }
     _d = {for (final f in _docs) f.$1: TextEditingController(text: asText(widget.employee?[f.$1]))};
+    _n = {for (final f in _numbers) f.$1: TextEditingController(text: '${widget.employee?[f.$1] ?? ''}' == '0' ? '' : '${widget.employee?[f.$1] ?? ''}')};
+    _dt = {for (final f in _dates) f.$1: TextEditingController(text: asText(widget.employee?[f.$1]))};
+    _gender = (widget.employee?['gender'] ?? '').toString();
+    _outside = widget.employee?['isOutsideKingdom'] == true;
+    for (final f in _moreChoices) {
+      _pick[f.$1] = (widget.employee?[f.$1] ?? '').toString();
+    }
     // Department comes only from the department list (added by the super admin); it cannot be typed.
-    for (final k in ['department', 'staffCategory', 'registerNumber', 'nationality', 'branchName', 'project', 'bank', 'socialInsuranceStatus', 'insuranceCompany', 'licenseType']) {
+    for (final k in ['department', 'staffCategory', 'registerNumber', 'nationality', 'branchName', 'workLocation', 'project', 'bank', 'socialInsuranceStatus', 'insuranceCompany', 'licenseType']) {
       _pick[k] = (widget.employee?[k] ?? '').toString();
     }
     final fs = Map<String, dynamic>.from(widget.employee?['fieldStatus'] ?? {});
@@ -1073,6 +1141,10 @@ class _EditEmployeeSheetState extends State<EditEmployeeSheet> {
         'employmentStatus': _status,
         for (final f in _docs) if (!_choiceKeys.contains(f.$1)) f.$1: _d[f.$1]!.text.trim(),
         for (final e in _pick.entries) e.key: e.value,
+        for (final f in _numbers) f.$1: num.tryParse(_n[f.$1]!.text.trim()) ?? 0,
+        for (final f in _dates) f.$1: _dt[f.$1]!.text.trim(),
+        'gender': _gender,
+        'isOutsideKingdom': _outside,
         // "Auto" on an existing file clears the flag; on a new one nothing is sent so the default applies.
         'markStatus': {
           for (final f in _docs)
@@ -1112,12 +1184,57 @@ class _EditEmployeeSheetState extends State<EditEmployeeSheet> {
                   child: TextField(controller: _c[f.$1], decoration: InputDecoration(labelText: tr(f.$2, f.$3))),
                 )),
             // Department, nationality, city and project are closed, searchable lists (utils/hrLists on the server). The commercial registration number is picked too: our registrations, freelancer and training; the engagement type derives from it.
-            for (final k in const [('department', 'القسم', 'Department'), ('staffCategory', 'الفئة الوظيفية', 'Staff category'), ('registerNumber', 'رقم السجل التجاري', 'Commercial register'), ('nationality', 'الجنسية', 'Nationality'), ('branchName', 'المدينة', 'City'), ('project', 'المشروع', 'Project')])
+            for (final k in const [('department', 'القسم', 'Department'), ('staffCategory', 'الفئة الوظيفية', 'Staff category'), ('registerNumber', 'رقم السجل التجاري', 'Commercial register'), ('nationality', 'الجنسية', 'Nationality'), ('branchName', 'المدينة', 'City'), ('workLocation', 'مكان العمل', 'Work location'), ('project', 'المشروع', 'Project')])
               Padding(
                 padding: const EdgeInsets.only(bottom: 10),
                 child: PickField(label: tr(k.$2, k.$3), value: _pick[k.$1] ?? '', options: _choices[k.$1] ?? const [],
                     onChanged: (v) => setState(() => _pick[k.$1] = v)),
               ),
+            Padding(
+              padding: const EdgeInsets.only(bottom: 10),
+              child: DropdownButtonFormField<String>(
+                initialValue: const ['male', 'female'].contains(_gender) ? _gender : '',
+                decoration: InputDecoration(labelText: tr('الجنس', 'Gender')),
+                items: [
+                  DropdownMenuItem(value: '', child: Text(tr('—', '—'))),
+                  DropdownMenuItem(value: 'male', child: Text(tr('ذكر', 'Male'))),
+                  DropdownMenuItem(value: 'female', child: Text(tr('أنثى', 'Female'))),
+                ],
+                onChanged: (v) => setState(() => _gender = v ?? ''),
+              ),
+            ),
+            SwitchListTile(
+              contentPadding: EdgeInsets.zero,
+              value: _outside,
+              title: Text(tr('خارج المملكة', 'Outside the Kingdom')),
+              onChanged: (v) => setState(() => _outside = v),
+            ),
+            ..._numbers.map((f) => Padding(
+                  padding: const EdgeInsets.only(bottom: 10),
+                  child: TextField(controller: _n[f.$1], keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                      decoration: InputDecoration(labelText: tr(f.$2, f.$3))),
+                )),
+            ..._dates.map((f) => Padding(
+                  padding: const EdgeInsets.only(bottom: 10),
+                  child: TextField(
+                    controller: _dt[f.$1],
+                    readOnly: true,
+                    decoration: InputDecoration(
+                      labelText: tr(f.$2, f.$3),
+                      helperText: hijriHint(_dt[f.$1]!.text, ar: Lang.instance.ar).isNotEmpty ? hijriHint(_dt[f.$1]!.text, ar: Lang.instance.ar) : null,
+                      suffixIcon: _dt[f.$1]!.text.isEmpty
+                          ? const Icon(Icons.calendar_today_outlined, size: 18)
+                          : IconButton(icon: const Icon(Icons.close, size: 18), onPressed: () => setState(() => _dt[f.$1]!.text = '')),
+                    ),
+                    onTap: () async {
+                      final now = DateTime.now();
+                      final init = DateTime.tryParse(_dt[f.$1]!.text) ?? now;
+                      final picked = await showDatePicker(context: context, initialDate: init, firstDate: DateTime(1940), lastDate: DateTime(now.year + 20));
+                      if (picked != null) setState(() => _dt[f.$1]!.text = picked.toIso8601String().substring(0, 10));
+                    },
+                  ),
+                )),
+            ..._moreChoices.map((f) => Padding(padding: const EdgeInsets.only(bottom: 10), child: _choiceField(f.$1, f.$2, f.$3))),
             const SizedBox(height: 6),
             Text(tr('المستندات والبنك', 'Documents & bank'), style: const TextStyle(fontWeight: FontWeight.w800, color: T.orange)),
             const SizedBox(height: 8),

@@ -422,6 +422,10 @@ if (!DOCS_ONLY) connectDB().then(async () => {
   // Seed the default editable reference lists (lookups) once (no-op once they exist).
   const { ensureDefaultLookups } = require('./config/lookupTypes');
   await ensureDefaultLookups();
+  // Day/month/year dates and stale «required» marks on filled fields are corrected once per start; see utils/employeeDateRepair.
+  require('./utils/employeeDateRepair').repairEmployeeDates()
+    .then((n) => { if (n) console.log(`[hr] repaired dates/marks on ${n} employee files`); })
+    .catch((e) => console.error('[hr] date repair:', e.message));
   const { ensureShipmentOrderDefaults } = require('./controllers/shipmentOrdersController');
   await ensureShipmentOrderDefaults();
   const { ensureFleetDefaults } = require('./controllers/fleetController');

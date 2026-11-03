@@ -163,12 +163,9 @@ const categoryDepartments = () => cache.wrap('hrlists:catdeps', 30000, async () 
   const rows = await Lookup.find({ type: 'hr_department', key: { $in: ['light_transport', 'heavy_transport'] }, deleted: { $ne: true } }).select('nameAr').lean();
   return rows.map((r) => String(r.nameAr || '').trim()).filter(Boolean);
 });
-async function categoryError(department, value) {
-  const v = String(value ?? '').trim();
-  if (!v) return null;
-  const deps = await categoryDepartments();
-  if (deps.includes(String(department || '').trim())) return null;
-  return `الفئة الوظيفية لموظفي ${deps.join(' و')} فقط`;
+/** Any department may hold a job category (the owner's call); kept as a hook for the callers. */
+async function categoryError() {
+  return null;
 }
 
 module.exports = {

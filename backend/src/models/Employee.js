@@ -375,13 +375,4 @@ for (const op of ['updateOne', 'updateMany', 'findOneAndUpdate']) {
   });
 }
 
-// Staff category is dropped when the employee leaves both its departments (B2C, heavy transport).
-employeeSchema.pre('save', async function () {
-  if (!this.isModified('department') || !this.staffCategory) return;
-  try {
-    const deps = await require('../utils/hrLists').categoryDepartments();
-    if (!deps.includes(String(this.department || '').trim())) this.staffCategory = '';
-  } catch (_) { /* */ }
-});
-
 module.exports = mongoose.model('Employee', employeeSchema);

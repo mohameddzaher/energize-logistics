@@ -1113,8 +1113,6 @@ class _EditEmployeeSheetState extends State<EditEmployeeSheet> {
                 )),
             // Department, nationality, city and project are closed, searchable lists (utils/hrLists on the server). The commercial registration number is picked too: our registrations, freelancer and training; the engagement type derives from it.
             for (final k in const [('department', 'القسم', 'Department'), ('staffCategory', 'الفئة الوظيفية', 'Staff category'), ('registerNumber', 'رقم السجل التجاري', 'Commercial register'), ('nationality', 'الجنسية', 'Nationality'), ('branchName', 'المدينة', 'City'), ('project', 'المشروع', 'Project')])
-              // Job category applies to B2C and heavy-transport employees only.
-              if (k.$1 != 'staffCategory' || const ['B2C', 'النقل الثقيل'].contains(_pick['department'] ?? ''))
               Padding(
                 padding: const EdgeInsets.only(bottom: 10),
                 child: PickField(label: tr(k.$2, k.$3), value: _pick[k.$1] ?? '', options: _choices[k.$1] ?? const [],

@@ -1044,7 +1044,8 @@ exports.employeeFields = async (req, res) => {
     const seen = new Set();
     const groups = H.GROUPS.filter((g) => !g.virtual).map((g) => ({
       key: g.key, ar: g.ar, en: g.en, icon: g.icon,
-      fields: g.fields.filter((f) => !seen.has(f.key) && seen.add(f.key) && FV.applies(emp, f.key)).map((f) => {
+      // Job category is editable for every employee; it only counts as missing in B2C and heavy transport.
+      fields: g.fields.filter((f) => !seen.has(f.key) && seen.add(f.key) && (f.key === 'staffCategory' || FV.applies(emp, f.key))).map((f) => {
         const base = f.type === 'hijri' ? f.of : f.key;
         const raw = f.type === 'hijri' ? (H.valueOf(emp, base) ? toHijri(H.valueOf(emp, base)) : null) : (H.valueOf(emp, f.key) ?? null);
         return {

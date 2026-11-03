@@ -236,10 +236,8 @@ export function EmployeeFormModal({ open, employee, onClose, onSaved }: {
         <Field label={tx.jobTitle}><TextInput value={form.jobTitle} onChange={(e) => set('jobTitle', e.target.value)} /></Field>
         {/* Department comes from the list only; the super admin adds departments from reference data. */}
         <Field label={tx.department}><ManagedSelect type="hr_department" storeLabel strict noAdd value={form.department} onChange={(v) => set('department', v)} /></Field>
-        {/* Job category applies only to B2C and heavy-transport employees: administrative, driver, technician. */}
-        {['B2C', 'النقل الثقيل'].includes(form.department) && (
-          <Field label={ar ? 'الفئة الوظيفية' : 'Staff category'}><ManagedSelect type="hr_staff_category" storeLabel strict noAdd value={form.staffCategory || ''} onChange={(v) => set('staffCategory', v)} /></Field>
-        )}
+        {/* Every employee may hold a job category; only B2C and heavy transport count it as missing. */}
+        <Field label={ar ? 'الفئة الوظيفية' : 'Staff category'}><ManagedSelect type="hr_staff_category" storeLabel strict noAdd value={form.staffCategory || ''} onChange={(v) => set('staffCategory', v)} /></Field>
         <DatePair label={tx.hireDate} value={form.hireDate || ''} onChange={(v) => set('hireDate', v)} ar={ar} />
         <DatePair label={tx.actualWorkStartDate} value={form.actualWorkStartDate || ''} onChange={(v) => set('actualWorkStartDate', v)} ar={ar} />
         <Field label={ar ? 'المدينة' : 'City'}><SearchableSelect value={form.branchName || ''} onChange={(v) => set('branchName', v)} placeholder={ar ? '— اختر —' : '— choose —'} searchPlaceholder={ar ? 'ابحث…' : 'Search…'} searchAfter={0}

@@ -291,11 +291,12 @@ const ORDER_TO_ROW = {
   fromCity: ['fromLocation'], toCity: ['toLocation'], branch: ['branch'], customerName: ['username'],
   supplierName: ['carOwner', 'ownerName'], vehiclePlate: ['carNumber', 'plateNumber'], vehicleName: ['carName'],
   driverName: ['driverName'], driverPhone: ['driverPhone'], truckType: ['truckType'], truckLength: ['truckSize'],
-  cargoType: ['loadType'], quantity: ['quantity'], status: ['applicationStatus', 'executionStatus'],
+  cargoType: ['loadType'], quantity: ['quantity'], status: ['applicationStatus', 'executionStatus'], paymentSubtype: ['paymentSubtype'],
   driverRentPrice: ['driverCost'], buyPrice: ['purchaseValue'], sellPrice: ['sellingValue'], pickupTime: ['reportDate', 'loadingTime'],
 };
 const ROW_TO_ORDER = Object.fromEntries(Object.entries(ORDER_TO_ROW).flatMap(([o, cols]) => cols.map((c) => [c, o])));
 const linkOff = () => !require('./uplClient').isConfigured();
+const PAYMENT_KEYS = ['paymentSubtype', 'paymentType'];
 
 async function mirrorPlatformOrder(orderOrId, keys = []) {
   if (!linkOff()) return null;
@@ -305,6 +306,10 @@ async function mirrorPlatformOrder(orderOrId, keys = []) {
   if (!wf) return null;
   const row = rowOf(o);
   const wanted = Object.fromEntries(keys.flatMap((k) => ORDER_TO_ROW[k] || []).map((c) => [c, row[c]]));
+  // Payment type is chosen by hand on the shipment; the workflow takes it with its family.
+  if (keys.includes('paymentSubtype') && isSubtype(o.paymentSubtype)) {
+    Object.assign(wanted, { paymentSubtype: o.paymentSubtype, paymentType: subtypeFamily(o.paymentSubtype), paymentTypeSource: 'manual' });
+  }
   const diff = changes(wf, wanted);
   if (!Object.keys(diff).length) return { changed: false };
   await OperationsWorkflow.updateOne({ _id: wf._id }, { $set: diff });
@@ -320,6 +325,9 @@ async function pullPlatformRow(id, keys = []) {
   if (!o) return null;
   const all = { ...orderOf(w), status: str(w.applicationStatus) };
   const wanted = Object.fromEntries(keys.map((c) => ROW_TO_ORDER[c]).filter((k) => k && k in all).map((k) => [k, all[k]]));
+  if (keys.some((k) => PAYMENT_KEYS.includes(k)) && 'paymentSubtype' in all) {
+    wanted.paymentSubtype = all.paymentSubtype;
+  }
   const diff = changes(o, wanted);
   if (!Object.keys(diff).length) return { changed: false };
   const update = { $set: diff };
@@ -375,8 +383,35 @@ const pullSoon = (id, actor, keys) => {
   run(pullPlatformRow, id, keys);
 };
 
+/**
+ * Platform shipments take the workflow's payment type.
+ * The workflow sets it many ways (by hand, in bulk, derived from the customer), and only some of them called the shipment back, so 40,000 platform shipments read blank on the shipments page while the workflow had a type. Bulk and diff-only: unchanged shipments are not rewritten.
+ */
+async function syncPlatformPayment(since) {
+  if (!linkOff()) return 0;
+  const rows = await OperationsWorkflow.find({ externalSource: 'ops_upl', externalId: { $nin: ['', null] }, updatedAt: { $gt: since } })
+    .select('externalId paymentSubtype').lean();
+  const want = new Map(rows.filter((w) => isSubtype(w.paymentSubtype)).map((w) => [String(w.externalId), w.paymentSubtype]));
+  let changed = 0;
+  const ids = [...want.keys()];
+  for (let i = 0; i < ids.length; i += 2000) {
+    const batch = ids.slice(i, i + 2000);
+    const orders = await ShipmentOrder.find({ source: 'platform', externalId: { $in: batch } }).select('externalId paymentSubtype').lean(); // eslint-disable-line no-await-in-loop
+    const ops = [];
+    for (const o of orders) {
+      const k = want.get(String(o.externalId));
+      if (o.paymentSubtype === k) continue;
+      ops.push({ updateOne: { filter: { _id: o._id }, update: { $set: { paymentSubtype: k } } } });
+    }
+    if (ops.length) { await ShipmentOrder.bulkWrite(ops, { ordered: false }); changed += ops.length; } // eslint-disable-line no-await-in-loop
+  }
+  if (changed) announceOrders();
+  return changed;
+}
+
 /** One pass over everything touched since `since`; the later side of each pair wins. */
 async function reconcile(since) {
+  await syncPlatformPayment(since).catch((e) => console.error('[so-link] payment:', e.message));
   const [orders, rows] = await Promise.all([
     ShipmentOrder.find({ source: 'system', graduationNumber: { $ne: null }, updatedAt: { $gt: since } }).lean(),
     OperationsWorkflow.find({ shipmentOrder: { $type: 'objectId' }, updatedAt: { $gt: since } }).lean(),
@@ -452,5 +487,5 @@ function startShipmentOrderLink() {
 }
 
 module.exports = {
-  SHIPMENT_DELETE_ROLES, deleteShipments, announceRename, markLateArrivals, mirrorFleet, mirrorFleetSoon, mirrorOrder, pullWorkflow, mirrorPlatformOrder, pullPlatformRow, mirrorSoon, mirrorPlatformSoon, pullSoon, reconcile, startShipmentOrderLink,
+  SHIPMENT_DELETE_ROLES, syncPlatformPayment, deleteShipments, announceRename, markLateArrivals, mirrorFleet, mirrorFleetSoon, mirrorOrder, pullWorkflow, mirrorPlatformOrder, pullPlatformRow, mirrorSoon, mirrorPlatformSoon, pullSoon, reconcile, startShipmentOrderLink,
 };

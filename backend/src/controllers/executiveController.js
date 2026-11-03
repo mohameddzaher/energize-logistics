@@ -18,9 +18,14 @@ const dayKey = (d = new Date()) => new Intl.DateTimeFormat('en-CA', { timeZone: 
 async function build(user) {
   const today = dayKey();
   const monthStart = `${today.slice(0, 8)}01`;
-  const lastMonthDate = new Date(`${monthStart}T00:00:00+03:00`); lastMonthDate.setDate(0);
-  const lastMonthEnd = dayKey(lastMonthDate);
-  const lastMonthStart = `${lastMonthEnd.slice(0, 8)}01`;
+  // Calendar arithmetic on the key itself: setDate(0) ran in the server's zone (Cairo), so the Riyadh midnight fell two months back.
+  const y = Number(today.slice(0, 4)); const m = Number(today.slice(5, 7));
+  const lastYm = m === 1 ? `${y - 1}-12` : `${y}-${String(m - 1).padStart(2, '0')}`;
+  const lastMonthDays = new Date(Date.UTC(Number(lastYm.slice(0, 4)), Number(lastYm.slice(5, 7)), 0)).getUTCDate();
+  const lastMonthStart = `${lastYm}-01`;
+  const lastMonthEnd = `${lastYm}-${String(lastMonthDays).padStart(2, '0')}`;
+  // The trend compares month-to-date with the same days of last month, not with a whole month.
+  const lastMonthSameDay = `${lastYm}-${String(Math.min(Number(today.slice(8, 10)), lastMonthDays)).padStart(2, '0')}`;
   const month = finance.periodOf({ from: monthStart, to: today });
 
   const OperationsWorkflow = require('../models/OperationsWorkflow');
@@ -30,7 +35,7 @@ async function build(user) {
   const safe = (p) => Promise.resolve(p).catch((e) => { console.error('executive:', e.message); return null; });
   const [
     fOps, fCol, fFleet, fCustoms, fHr, fVeh, fLight,
-    sheetsMonth, sheetsLast, sheetsByBranch, wfStats, walletToday,
+    sheetsMonth, sheetsLast, sheetsLastToDate, sheetsByBranch, wfStats, walletToday,
     fleetDash, ls2, hr, regOverview, customsYear, duty, crm, sales, proc,
   ] = await Promise.all([
     safe(finance.buildDept('operations', month, user)),
@@ -42,6 +47,7 @@ async function build(user) {
     safe(finance.buildDept('light', month, user)),
     safe(OperationsWorkflow.countDocuments({ ...NOT_CANCELLED, ...inRange(monthStart, today) })),
     safe(OperationsWorkflow.countDocuments({ ...NOT_CANCELLED, ...inRange(lastMonthStart, lastMonthEnd) })),
+    safe(OperationsWorkflow.countDocuments({ ...NOT_CANCELLED, ...inRange(lastMonthStart, lastMonthSameDay) })),
     safe(OperationsWorkflow.aggregate([{ $match: { ...NOT_CANCELLED, ...inRange(monthStart, today) } }, { $group: { _id: '$branch', n: { $sum: 1 } } }, { $sort: { n: -1 } }])),
     safe(callController('./workflowController', 'getWorkflowStats', {}, user)),
     safe(callController('./walletController', 'getAllBranchesDashboard', { date: today }, user)),
@@ -60,7 +66,10 @@ async function build(user) {
   const branches = walletToday?.branches || [];
   const docs = regOverview?.documents || [];
   const expiredDocs = docs.reduce((a, d) => a + (d.states?.expired || 0), 0);
-  const trend = sheetsLast ? Math.round(((sheetsMonth - sheetsLast) / sheetsLast) * 100) : null;
+  const trend = sheetsLastToDate ? Math.round(((sheetsMonth - sheetsLastToDate) / sheetsLastToDate) * 100) : null;
+  const docsExpiringSoon = hr?.summary?.expiringDocsCount != null ? hr.summary.expiringDocsCount - (hr.summary.expiredDocsCount || 0) : null;
+  // A ratio above 100% means checks were made on riders outside the roster denominator; no honest ratio exists then.
+  const dutyCompliance = duty?.totals && duty.totals.checks <= duty.totals.expected ? duty.totals.compliance : null;
   const perfCollected = card(fCol, 'collectedPeriod');
 
   const sections = [
@@ -82,7 +91,8 @@ async function build(user) {
       kpis: [
         kpi('أوامر نقل هذا الشهر', 'Sheets this month', sheetsMonth, { trend, href: '/system/operations' }),
         kpi('أوامر نقل الشهر الماضي', 'Sheets last month', sheetsLast),
-        kpi('أوامر نقل بلا فاتورة', 'Sheets awaiting invoice', wfStats?.pendingInvoices, { tone: 'warn', href: '/system/operations' }),
+        // `pendingInvoices` is the operations page's «سندات لم تصل» card: no payment date yet, not a missing invoice.
+        kpi('سندات لم تصل', 'Pending bonds', wfStats?.pendingInvoices, { tone: 'warn', href: '/system/operations' }),
         money('تحصيلات المحافظ اليوم', 'Wallet collections today', branches.reduce((a, b) => a + (b.totalCollections || 0), 0), { tone: 'good', href: '/system/wallet-dashboard' }),
         money('مشتريات المحافظ اليوم', 'Wallet purchases today', branches.reduce((a, b) => a + (b.totalPurchases || 0), 0), { href: '/system/wallet-dashboard' }),
         money('أرصدة المحافظ', 'Wallet balances', branches.reduce((a, b) => a + (b.closingBalance || 0), 0), { tone: 'auto', href: '/system/wallet-dashboard' }),
@@ -104,7 +114,7 @@ async function build(user) {
       key: 'fleet', ar: 'إدارة الأسطول', en: 'Fleet management', color: 'orange', href: '/system/fleet/board',
       kpis: [
         kpi('شحنات اليوم', 'Loads today', fleetDash?.shipmentsToday, { href: '/system/fleet' }),
-        kpi('شحنات الأسبوع', 'Loads this week', fleetDash?.shipmentsWeek, { href: '/system/fleet' }),
+        kpi('شحنات آخر 7 أيام', 'Loads last 7 days', fleetDash?.shipmentsWeek, { href: '/system/fleet' }),
         kpi('في الطريق', 'On the way', fleetDash?.byStatus?.on_way, { href: '/system/fleet/board' }),
         kpi('سائقون على رأس العمل', 'Drivers working', fleetDash?.drivers?.working, { href: '/system/fleet/drivers' }),
         kpi('متابعات اليوم', 'Follow-ups today', fleetDash?.followupsToday),
@@ -139,13 +149,14 @@ async function build(user) {
       kpis: [
         kpi('موظفون على رأس العمل', 'Active employees', hr?.summary?.activeEmployees, { href: '/system/hr/employees' }),
         kpi('في إجازة', 'On leave', hr?.summary?.onLeaveCount, { href: '/system/hr/leaves' }),
-        kpi('مستندات تنتهي قريبًا', 'Documents expiring', hr?.summary?.expiringDocsCount, { tone: 'warn', href: '/system/hr/master/expiring' }),
+        // The HR count of documents within 60 days includes the expired ones shown in the next card.
+        kpi('مستندات تنتهي قريبًا', 'Documents expiring', docsExpiringSoon, { tone: 'warn', href: '/system/hr/master/expiring' }),
         kpi('مستندات منتهية', 'Documents expired', hr?.summary?.expiredDocsCount, { tone: 'bad', href: '/system/hr/master/expiring' }),
         kpi('طلبات إجازة معلّقة', 'Pending leaves', hr?.summary?.pendingLeaves, { href: '/system/hr/leaves' }),
         kpi('تراخيص تنتهي', 'Licences expiring', hr?.summary?.licensesExpiringCount, { tone: 'warn', href: '/system/hr/licenses' }),
       ],
-      // Active staff only: ended ones appear in the HR dashboard, not here.
-      chart: { kind: 'bar', ar: 'الموظفون على رأس العمل حسب القسم', data: (hr?.activeByDepartment || hr?.byDepartment || []).slice(0, 10).map((x) => ({ name: x.name, value: x.count })) },
+      // Ended staff are excluded; on-leave and suspended staff are still counted, hence not «على رأس العمل».
+      chart: { kind: 'bar', ar: 'الموظفون حسب القسم (عدا المنتهية خدمتهم)', data: (hr?.activeByDepartment || hr?.byDepartment || []).slice(0, 10).map((x) => ({ name: x.name, value: x.count })) },
     },
     {
       key: 'customs', ar: 'التخليص الجمركي (هذه السنة)', en: 'Customs (this year)', color: 'amber', href: '/system/customs/analytics',
@@ -163,7 +174,7 @@ async function build(user) {
       kpis: [
         kpi('مناديب تحت الإشراف', 'Supervised riders', duty?.totals?.expected, { href: '/system/b2c/reps' }),
         kpi('تفقّد اليوم', 'Checked today', duty?.totals?.checks, { href: '/system/b2c/duty' }),
-        kpi('التزام التفقّد اليوم ٪', 'Check compliance today %', duty?.totals?.compliance, { format: 'pct', tone: 'auto', href: '/system/b2c/duty' }),
+        kpi('التزام التفقّد اليوم ٪', 'Check compliance today %', dutyCompliance, { format: 'pct', tone: 'auto', href: '/system/b2c/duty' }),
         money('أرصدة العُهَد', 'Custody balances', card(fLight, 'custodyBalance'), { href: '/system/b2c/light-transport/custody' }),
         kpi('مركبات النقل الخفيف', 'Light vehicles', card(fLight, 'bikes')),
       ],
@@ -173,7 +184,7 @@ async function build(user) {
       kpis: [
         kpi('الشركات في CRM', 'CRM companies', crm?.companiesTotal, { href: '/system/crm/companies' }),
         money('قيمة الصفقات المفتوحة', 'Open pipeline', crm?.pipelineValue, { href: '/system/crm/deals' }),
-        money('مبيعات مكسوبة (الفترة)', 'Won sales (period)', sales?.wonValue, { tone: 'good', href: '/system/sales/dashboard' }),
+        money('مبيعات مكسوبة هذا الشهر', 'Won sales this month', sales?.wonValue, { tone: 'good', href: '/system/sales/dashboard' }),
         kpi('طلبات شراء معلّقة', 'Pending purchase requests', proc?.prPending, { href: '/system/procurement/requests' }),
         money('فواتير موردين غير مدفوعة', 'Unpaid vendor bills', proc?.unpaidBills, { tone: 'warn', href: '/system/procurement/bills' }),
       ],

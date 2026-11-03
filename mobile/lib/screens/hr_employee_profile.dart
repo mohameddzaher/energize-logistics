@@ -3,6 +3,7 @@ import 'package:provider/provider.dart';
 import '../services/api.dart';
 import '../services/auth.dart';
 import '../services/hijri.dart';
+import '../ui/hijri_picker.dart';
 import '../services/lang.dart';
 import '../services/live.dart';
 import '../ui/ht_custody_panel.dart';
@@ -1108,11 +1109,10 @@ class _EditEmployeeSheetState extends State<EditEmployeeSheet> {
               helperText: f.$4 && hijriHint(_d[k]!.text, ar: Lang.instance.ar).isNotEmpty ? hijriHint(_d[k]!.text, ar: Lang.instance.ar) : null,
               suffixIcon: f.$4 ? const Icon(Icons.calendar_today_outlined, size: 18) : null,
             ),
+            // Picked in either calendar; the Hijri fills the Gregorian at once.
             onTap: f.$4 ? () async {
-              final now = DateTime.now();
-              final init = DateTime.tryParse(_d[k]!.text) ?? now;
-              final picked = await showDatePicker(context: context, initialDate: init, firstDate: DateTime(1990), lastDate: DateTime(now.year + 20));
-              if (picked != null) setState(() => _d[k]!.text = picked.toIso8601String().substring(0, 10));
+              final picked = await pickDateEitherCalendar(context, current: _d[k]!.text, firstYear: 1990);
+              if (picked != null) setState(() => _d[k]!.text = picked);
             } : null,
           );
     return Padding(
@@ -1227,10 +1227,8 @@ class _EditEmployeeSheetState extends State<EditEmployeeSheet> {
                           : IconButton(icon: const Icon(Icons.close, size: 18), onPressed: () => setState(() => _dt[f.$1]!.text = '')),
                     ),
                     onTap: () async {
-                      final now = DateTime.now();
-                      final init = DateTime.tryParse(_dt[f.$1]!.text) ?? now;
-                      final picked = await showDatePicker(context: context, initialDate: init, firstDate: DateTime(1940), lastDate: DateTime(now.year + 20));
-                      if (picked != null) setState(() => _dt[f.$1]!.text = picked.toIso8601String().substring(0, 10));
+                      final picked = await pickDateEitherCalendar(context, current: _dt[f.$1]!.text);
+                      if (picked != null) setState(() => _dt[f.$1]!.text = picked);
                     },
                   ),
                 )),

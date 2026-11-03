@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+import '../services/hijri.dart';
+import '../ui/hijri_picker.dart';
 import '../services/api.dart';
 import '../services/lang.dart';
 import '../services/live.dart';
@@ -94,6 +96,11 @@ class _HrAllFieldsTabState extends State<HrAllFieldsTab> with AutomaticKeepAlive
       final picked = await showDatePicker(context: context, initialDate: DateTime.tryParse(cur) ?? now, firstDate: DateTime(1950), lastDate: DateTime(now.year + 20));
       if (picked == null) return;
       next = picked.toIso8601String().substring(0, 10);
+    } else if (f['type'] == 'hijri') {
+      // Hijri is picked from a calendar, not typed; the server stores its Gregorian date.
+      final g = await showHijriDatePicker(context, initialGregorian: cur.isEmpty ? '' : (gregorianOfHijriText(cur)));
+      if (g == null) return;
+      next = g.isEmpty ? '' : hijriDay(g);
     } else if (f['type'] == 'bool') {
       next = cur == 'true' ? 'false' : 'true';
     } else if (f['choice'] == true) {

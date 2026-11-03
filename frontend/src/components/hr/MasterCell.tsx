@@ -8,6 +8,8 @@ import { useState } from 'react';
 import { Check, X, UserCheck } from 'lucide-react';
 import { useDialog } from '@/components/system/DialogProvider';
 import api from '@/lib/api';
+import HijriDateInput from '@/components/system/HijriDateInput';
+import { gregorianToHijri, hijriToGregorian } from '@/lib/hijri';
 import { updateEmployeeFields, statusMeta, statusLabel, fmtDate, toDateInput } from '@/lib/hrMaster';
 
 // `strict`: closed list (department), no 'other...' and no typing; see utils/hrDepartments on the server.
@@ -87,6 +89,12 @@ export default function MasterCell({ id, f, raw, st, choices, ar, canEdit, onSav
             {opts.map((o) => <option key={o.value} value={o.value}>{o.value}</option>)}
             {!f.strict && <option value="__other">{t('أخرى… (اكتب)', 'Other… (type)')}</option>}
           </select>
+        ) : f.type === 'hijri' ? (
+          // Hijri is picked from a calendar; the cell keeps it as yyyy-mm-dd Hijri, which the server stores as its Gregorian date.
+          <span className={compact ? 'w-36' : 'w-40'}>
+            <HijriDateInput value={hijriToGregorian(val)} onChange={(g) => setVal(g ? gregorianToHijri(g) : '')} ar={ar}
+              className="px-2 py-1 rounded border border-[#f37121] text-[12px] bg-white" />
+          </span>
         ) : (
           <input type={f.type === 'date' ? 'date' : 'text'} value={val} autoFocus
             inputMode={f.type === 'number' ? 'decimal' : undefined}

@@ -113,3 +113,27 @@ String hijriHint(dynamic v, {bool ar = true}) {
   if (h.isEmpty) return '';
   return ar ? 'الموافق $h هـ' : '= $h AH';
 }
+
+/// Days in a Hijri month (29 or 30), or 0 outside the table.
+int hijriMonthLength(int y, int m) {
+  final i = (y - _y0) * 12 + (m - 1);
+  final st = _monthStarts();
+  if (i < 0 || i + 1 >= st.length) return 0;
+  return st[i + 1] - st[i];
+}
+
+/// Gregorian "yyyy-mm-dd" of a Hijri day, or '' outside the table.
+String gregorianOfHijri(int y, int m, int d) {
+  final i = (y - _y0) * 12 + (m - 1);
+  final st = _monthStarts();
+  if (i < 0 || i + 1 >= st.length || d < 1 || d > st[i + 1] - st[i]) return '';
+  final g = DateTime.utc(1970).add(Duration(days: st[i] + d - 1));
+  return '${g.year}-${_p2(g.month)}-${_p2(g.day)}';
+}
+
+/// Gregorian "yyyy-mm-dd" of a Hijri "yyyy-mm-dd" text, or ''.
+String gregorianOfHijriText(String h) {
+  final m = RegExp(r'^(\d{3,4})-(\d{1,2})-(\d{1,2})$').firstMatch(h.trim());
+  if (m == null) return '';
+  return gregorianOfHijri(int.parse(m.group(1)!), int.parse(m.group(2)!), int.parse(m.group(3)!));
+}

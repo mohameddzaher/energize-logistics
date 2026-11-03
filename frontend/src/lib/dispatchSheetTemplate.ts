@@ -338,11 +338,6 @@ export function buildDispatchSheetHTML(row: DispatchSheetRow, options?: {
         <span class="value">${valOrBlank(row.driverPhone)}</span>
         <span class="en-label">Driver Phone</span>
       </div>
-      <div class="row">
-        <span class="ar-label">سلفة للسائق</span>
-        <span class="value">${valOrBlank(row.driverAdvance)}</span>
-        <span class="en-label">Driver Advance</span>
-      </div>
     </div>
 
     <div class="section">

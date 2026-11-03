@@ -190,7 +190,6 @@ ${getFontCss()}
       <div class="row"><span class="ar-label">الجنسية</span><span class="value">${valOrBlank(row.driverNationality)}</span><span class="en-label">Nationality</span></div>
       <div class="row"><span class="ar-label">رقم الإقامة</span><span class="value">${valOrBlank(row.driverIqama)}</span><span class="en-label">Iqama No.</span></div>
       <div class="row"><span class="ar-label">جوال السائق</span><span class="value" dir="ltr">${valOrBlank(row.driverPhone)}</span><span class="en-label">Driver Phone</span></div>
-      ${row.hideDriverAdvance ? '' : `<div class="row"><span class="ar-label">سلفة السائق</span><span class="value">${valOrBlank(row.driverAdvance)}</span><span class="en-label">Driver Advance</span></div>`}
     </div>
     <div class="section">
       <div class="section-head"><span class="ar">بيانات السيارة</span><span class="en">Vehicle Details</span></div>
@@ -227,8 +226,6 @@ function rowFromShipment(s) {
     // Loads now carry one of the four payment types instead of a rent type; older loads keep their rent type.
     rentalType: require('./shipmentOrderPayment').subtypeLabel(s.paymentSubtype) || s.rentType || '', carBrand: s.vehicleBrand || '', carColor: s.vehicleColor || '',
     carType: s.trailerType || '', plateNumber: s.vehiclePlate || '',
-    // The advance stays on the fleet record but never prints on its transport order.
-    hideDriverAdvance: true,
     driverPhone: s.driverPhone || '', driverIqama: s.driverIqama || '', driverNationality: s.driverNationality || '',
     driverName, customerName: s.customerName || '', branch: s.branch || '',
     toLocation: s.toCity || '', fromLocation: s.fromCity || '', date, dispatchNumber: String(s.waybillNumber || ''),

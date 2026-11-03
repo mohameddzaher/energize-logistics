@@ -247,6 +247,12 @@ exports.updateUser = async (req, res) => {
 
     const before = { firstName: user.firstName, lastName: user.lastName, role: user.role, email: user.email };
 
+    // Top management is set by a super admin only: it signs the last leave stage for the whole company.
+    if (req.body.isTopManagement !== undefined) {
+      if (!require('../config/constants').isTopRole(req.user.role)) return res.status(403).json({ message: 'الإدارة العليا يحدّدها مدير النظام فقط' });
+      user.isTopManagement = req.body.isTopManagement === true || req.body.isTopManagement === 'true';
+    }
+
     // Account type / partner link. Switching an account between staff and partner
     // rewrites BOTH sides at once so the pair can never drift apart.
     if (req.body.accountType !== undefined) {

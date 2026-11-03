@@ -14,6 +14,8 @@ interface User {
   assignedProjects?: { _id: string; name: string; code?: string }[];
   assignedBranches?: { _id: string; name: string; code?: string; city?: string }[];
   remoteAccess?: string[];
+  // Top management: signs the last leave stage and opens its section.
+  isTopManagement?: boolean;
   manager?: { _id: string; firstName: string; lastName: string; email: string; role: string } | string;
   linkedEmployee?: { _id: string; firstName: string; lastName: string; employeeNumber?: string; jobTitle?: string } | string;
   // Effective per-section access set by the super_admin permissions page

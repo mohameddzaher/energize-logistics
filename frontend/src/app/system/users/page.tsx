@@ -168,6 +168,7 @@ export default function UsersPage() {
     manager: '',
     remoteAccess: [] as string[],
     linkedEmployee: '',
+    isTopManagement: false,
     // 'employee' = one of our people; 'customer'/'vendor' = an outside partner
     // whose login opens the portal instead of the system.
     accountType: 'employee' as 'employee' | 'customer' | 'vendor',
@@ -313,7 +314,7 @@ export default function UsersPage() {
 
   // CREATE
   const openCreateModal = async () => {
-    setFormData({ email: '', password: '', firstName: '', lastName: '', role: 'employee', linkedCustomer: '', assignedCustomers: [], branch: '', assignedProjects: [], assignedBranches: [], shipmentBranches: [], manager: '', remoteAccess: REMOTE_PAGE_OPTIONS.map((p) => p.key), linkedEmployee: '', accountType: 'employee', partnerSource: '', partnerRefId: '' });
+    setFormData({ email: '', password: '', firstName: '', lastName: '', role: 'employee', linkedCustomer: '', assignedCustomers: [], branch: '', assignedProjects: [], assignedBranches: [], shipmentBranches: [], manager: '', remoteAccess: REMOTE_PAGE_OPTIONS.map((p) => p.key), linkedEmployee: '', isTopManagement: false, accountType: 'employee', partnerSource: '', partnerRefId: '' });
     setPartnerLabel(''); setPartnerQuery(''); setPartners([]);
     setEmpSearch(''); setEmpResults([]); setLinkedEmployeeLabel('');
     setFormError('');
@@ -398,6 +399,7 @@ export default function UsersPage() {
       manager: u.manager?._id || '',
       remoteAccess: u.remoteAccess && u.remoteAccess.length ? u.remoteAccess : REMOTE_PAGE_OPTIONS.map((p) => p.key),
       linkedEmployee: u.linkedEmployee?._id || '',
+      isTopManagement: !!(u as any).isTopManagement,
       accountType: u.accountType || (u.role === 'client' ? 'customer' : 'employee'),
       partnerSource: u.partner?.source || (u.role === 'client' && u.linkedCustomer ? 'customer' : ''),
       partnerRefId: u.partner?.refId || (u.role === 'client' && u.linkedCustomer ? u.linkedCustomer._id : ''),
@@ -463,6 +465,7 @@ export default function UsersPage() {
       }
       // HR: link/unlink this login to an employee profile.
       payload.linkedEmployee = formData.linkedEmployee || null;
+      payload.isTopManagement = !!formData.isTopManagement;
       await api.put(`/api/users/${selectedUser._id}`, payload);
       setShowEditModal(false);
       setSelectedUser(null);
@@ -954,6 +957,16 @@ export default function UsersPage() {
             ]}
           />
         </div>
+      )}
+
+      {/* Top management signs the last leave stage and opens its own section; it keeps the account's role and permissions. */}
+      {selectedUser && formData.role !== 'client' && (
+        <label className="flex items-center gap-2 px-3 py-2.5 rounded-lg border border-slate-200 bg-slate-50 cursor-pointer">
+          <input type="checkbox" className="w-4 h-4 accent-[#f37121]" checked={!!formData.isTopManagement}
+            onChange={(e) => setFormData({ ...formData, isTopManagement: e.target.checked })} />
+          <span className="text-sm font-semibold text-slate-800">{lang === 'ar' ? 'الإدارة العليا' : 'Top management'}</span>
+          <span className="text-xs text-slate-500">{lang === 'ar' ? '— آخر موافقة على الإجازات، وقسم الإدارة العليا' : '— last leave approval and the top management section'}</span>
+        </label>
       )}
 
       {/* HR: link this login to an existing employee profile (search by name / iqama / number) */}

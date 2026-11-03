@@ -215,6 +215,8 @@ app.use('/api/fleet-api', require('./routes/publicFleetApi'));
 
 app.use('/api/notifications', notificationRoutes);
 app.use('/api/nav-badges', require('./routes/navBadges'));
+// Top management: its own gate (the flagged accounts and super admins), not a section in the permissions matrix.
+app.use('/api/top-management', require('./routes/topManagement'));
 // Section requests to HR: guarded in the controller, see the file header.
 app.use('/api/staff-requests', require('./routes/staffRequests'));
 app.use('/api/audit', auditRoutes);

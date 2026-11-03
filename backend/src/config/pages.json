@@ -2,6 +2,24 @@
   "generatedFrom": "frontend/src/app/system/layout.tsx",
   "pages": [
     {
+      "key": "/system/top-management",
+      "section": "Top Management",
+      "ar": "طلبات الإجازات",
+      "en": "Leave Requests"
+    },
+    {
+      "key": "/system/top-management/requests",
+      "section": "Top Management",
+      "ar": "طلبات الموظفين",
+      "en": "Staff Requests"
+    },
+    {
+      "key": "/system/top-management/activity",
+      "section": "Top Management",
+      "ar": "نشاط الشركة المباشر",
+      "en": "Live Company Activity"
+    },
+    {
       "key": "/system/executive",
       "section": "Main",
       "ar": "النظرة التنفيذية",

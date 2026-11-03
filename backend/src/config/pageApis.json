@@ -14,6 +14,25 @@
     "/api/uploads"
   ],
   "pages": {
+    "/system/top-management": {
+      "apis": [
+        "/api/hr/leaves",
+        "/api/top-management/leaves"
+      ],
+      "wildcard": false
+    },
+    "/system/top-management/requests": {
+      "apis": [
+        "/api/top-management/requests"
+      ],
+      "wildcard": false
+    },
+    "/system/top-management/activity": {
+      "apis": [
+        "/api/top-management/activity"
+      ],
+      "wildcard": false
+    },
     "/system/executive": {
       "apis": [
         "/api/analytics/executive"

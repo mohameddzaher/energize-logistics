@@ -120,7 +120,6 @@ export interface LeaveThreadEntry {
 export const LEAVE_STAGES: { key: LeaveStage; ar: string; en: string; decision: keyof LeaveRequest }[] = [
   { key: 'manager', ar: 'المدير المباشر', en: 'Direct Manager', decision: 'managerDecision' },
   { key: 'hr', ar: 'الموارد البشرية', en: 'HR', decision: 'hrDecision' },
-  { key: 'finance', ar: 'الحسابات', en: 'Finance', decision: 'financeDecision' },
   { key: 'executive', ar: 'الإدارة العليا', en: 'Executive', decision: 'executiveDecision' },
 ];
 

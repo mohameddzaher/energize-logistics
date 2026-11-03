@@ -1,12 +1,12 @@
 /**
  * Leave approval chain: who decides at each stage.
- * Four stages: direct manager, HR, accounting, top management. Accounting was added because money matters (advances, settlements before travel) never reached it, and top management learned of travel after the fact.
+ * Three stages, the owner's order: direct manager, HR, top management (the accounts flagged `isTopManagement`). Accounting was a stage once; requests still held there finish through it.
  * A clarification request is not a rejection: the request returns to the employee to reply, amend or attach a receipt, and when they reply the chain restarts from the beginning because the approved request is no longer the same request.
  */
 const { rolesOfSection } = require('../config/roles');
 
 // Stage to the pending status held at it.
-const STAGES = ['manager', 'hr', 'finance', 'executive'];
+const STAGES = ['manager', 'hr', 'executive'];
 const PENDING_OF = {
   manager: 'pending_manager',
   hr: 'pending_hr',
@@ -16,7 +16,7 @@ const PENDING_OF = {
 // A request is 'open' until finally decided: at any stage, or returned to the employee for a reply. This is the measure used to count pending requests on every dashboard; per-file two-stage lists used to drop requests that had reached accounting or management from every counter.
 const OPEN_STATUSES = [...Object.values(PENDING_OF), 'info_requested'];
 
-const NEXT_OF = { manager: 'hr', hr: 'finance', finance: 'executive', executive: 'done' };
+const NEXT_OF = { manager: 'hr', hr: 'executive', finance: 'executive', executive: 'done' };
 const DECISION_FIELD = {
   manager: 'managerDecision', hr: 'hrDecision',
   finance: 'financeDecision', executive: 'executiveDecision',
@@ -26,6 +26,8 @@ const DECISION_FIELD = {
 const HR_ROLES = rolesOfSection('HR');
 const FINANCE_ROLES = rolesOfSection('Accounting');
 const EXEC_ROLES = ['super_admin', 'admin'];
+/** Top management: the named accounts, not a role; any super admin can still push a stalled request (OVERRIDE_ROLES). */
+const isTopManagement = (user) => user?.isTopManagement === true;
 
 // Who can push a stalled request through. Not `FULL_ACCESS_ROLES`: IT owns the whole system to fix it, not to sign anyone's leave.
 const OVERRIDE_ROLES = ['super_admin', 'admin'];
@@ -37,7 +39,7 @@ function canActAt(stage, user, leave) {
   if (stage === 'manager') return String(leave.manager || '') === String(user._id);
   if (stage === 'hr') return HR_ROLES.includes(role);
   if (stage === 'finance') return FINANCE_ROLES.includes(role);
-  if (stage === 'executive') return EXEC_ROLES.includes(role);
+  if (stage === 'executive') return isTopManagement(user) || EXEC_ROLES.includes(role);
   return false;
 }
 
@@ -50,8 +52,7 @@ function stagesFor(user) {
   if (OVERRIDE_ROLES.includes(role)) return [...STAGES];
   const out = ['manager'];
   if (HR_ROLES.includes(role)) out.push('hr');
-  if (FINANCE_ROLES.includes(role)) out.push('finance');
-  if (EXEC_ROLES.includes(role)) out.push('executive');
+  if (isTopManagement(user)) out.push('executive');
   return out;
 }
 
@@ -103,6 +104,6 @@ function restart(leave) {
 
 module.exports = {
   STAGES, PENDING_OF, OPEN_STATUSES, NEXT_OF, DECISION_FIELD,
-  HR_ROLES, FINANCE_ROLES, EXEC_ROLES, OVERRIDE_ROLES,
+  HR_ROLES, FINANCE_ROLES, EXEC_ROLES, OVERRIDE_ROLES, isTopManagement,
   canActAt, stagesFor, inboxFilter, advance, askEmployee, restart,
 };

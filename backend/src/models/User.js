@@ -18,6 +18,8 @@ const userSchema = new mongoose.Schema(
     },
     firstName: { type: String, required: true, trim: true },
     lastName: { type: String, required: true, trim: true },
+    // Top management (الإدارة العليا): signs the last stage of leave and opens the top management section. A flag, not a role, so these accounts keep every super admin permission.
+    isTopManagement: { type: Boolean, default: false, index: true },
     // Display preferences in the user account.
     // Stored on the account, not in the browser, so they follow the user from mobile to site. Key to value: { 'shipmentOrders.view': 'cards' }.
     uiPrefs: { type: Map, of: String, default: {} },

@@ -10,7 +10,6 @@ import 'theme.dart';
 const leaveStages = <({String key, String ar, String en, String decision})>[
   (key: 'manager', ar: 'المدير المباشر', en: 'Direct Manager', decision: 'managerDecision'),
   (key: 'hr', ar: 'الموارد البشرية', en: 'HR', decision: 'hrDecision'),
-  (key: 'finance', ar: 'الحسابات', en: 'Finance', decision: 'financeDecision'),
   (key: 'executive', ar: 'الإدارة العليا', en: 'Executive', decision: 'executiveDecision'),
 ];
 

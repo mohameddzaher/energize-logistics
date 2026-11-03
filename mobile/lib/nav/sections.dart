@@ -7,6 +7,7 @@ import '../screens/tasks_board.dart';
 import '../screens/my_leaves.dart';
 import '../screens/my_requests.dart';
 import '../screens/approvals.dart';
+import '../screens/top_management.dart';
 import '../screens/fleet_board.dart';
 import '../screens/fleet_arrivals.dart';
 import '../screens/fleet_shipments.dart';
@@ -184,6 +185,7 @@ const _htOwners = ['super_admin', 'admin', 'location_manager', 'cfo', 'accountin
 /// Section order on the screen, the same as the website (SECTION_ORDER in layout.tsx).
 /// The work chain as it runs: operations, then orders and platform, then collections, then fleet and tracking, then what supports all of it.
 const _sectionOrder = <String>[
+  'Top Management',
   'Operations',
   'Shipment Orders',
   'Operations Platform',
@@ -222,10 +224,21 @@ List<AppSection> sectionsFor(AuthProvider auth) {
     if (s.pages.any((p) => auth.isPageGranted(p.path))) return true;
     // The loads board opens by its page, not its section: sales reach it without the rest of Operations (config/opsBoard). The other Operations pages stay closed by their own page access.
     if (s.key == 'Operations' && canOpenOpsBoard(auth)) return true;
+    // Top management is an account flag, not a role (User.isTopManagement).
+    if (s.key == 'Top Management' && auth.user?['isTopManagement'] == true) return true;
     return false;
   }
 
   final all = <AppSection>[
+    AppSection(
+      key: 'Top Management', arTitle: 'الإدارة العليا', enTitle: 'Top Management', icon: Icons.workspace_premium_outlined,
+      roles: const ['super_admin', 'admin'],
+      pages: [
+        AppPage('طلبات الإجازات', 'Leave Requests', Icons.event_available_outlined, (c) => const TopLeavesScreen(), path: '/system/top-management'),
+        AppPage('طلبات الموظفين', 'Staff Requests', Icons.mark_email_unread_outlined, (c) => const TopRequestsScreen(), path: '/system/top-management/requests'),
+        AppPage('نشاط الشركة المباشر', 'Live Company Activity', Icons.timeline_outlined, (c) => const TopActivityScreen(), path: '/system/top-management/activity'),
+      ],
+    ),
     AppSection(
       key: 'Operations', arTitle: 'العمليات', enTitle: 'Operations', icon: Icons.workspaces_outline,
       roles: const [..._admins, 'employee', 'operations_manager', 'operations_staff', 'moderator'],

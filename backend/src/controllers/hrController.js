@@ -110,6 +110,14 @@ const notifyRoles = async (roles, { title, message, relatedEntity, relatedEntity
   if (event) users.forEach((u) => { try { emitToUser(String(u._id), event, { id: String(relatedEntityId || '') }); } catch (e) {} });
 };
 
+/** The top management accounts (User.isTopManagement), who sign the last leave stage. */
+const notifyTopManagement = async ({ title, message, relatedEntity, relatedEntityId, event }) => {
+  const users = await User.find({ isTopManagement: true, isActive: true }).select('_id').lean();
+  await Promise.all(users.map((u) =>
+    createNotification({ recipient: u._id, type: 'system_alert', title, message, relatedEntity, relatedEntityId }).catch(() => {})));
+  users.forEach((u) => { try { emitToUser(String(u._id), event || 'hr:leave', { id: String(relatedEntityId || '') }); } catch (e) {} });
+};
+
 const notifyUser = async (userId, { title, message, relatedEntity, relatedEntityId, event }) => {
   if (!userId) return;
   await createNotification({ recipient: userId, type: 'system_alert', title, message, relatedEntity, relatedEntityId }).catch(() => {});
@@ -1764,7 +1772,8 @@ exports.decideLeave = async (req, res) => {
     if (stage === 'employee') {
       return res.status(400).json({ message: 'الطلب عند صاحبه للردّ على استفسار' });
     }
-    if (!chain.STAGES.includes(stage)) {
+    // 'finance' is no longer a stage, but a request already held there still finishes through it.
+    if (!chain.STAGES.includes(stage) && stage !== 'finance') {
       return res.status(400).json({ message: 'هذا الطلب ليس في محطّة قرار' });
     }
     if (!chain.canActAt(stage, req.user, leave)) {
@@ -1802,7 +1811,7 @@ exports.decideLeave = async (req, res) => {
         ...ref,
       });
     } else if (leave.status === 'approved') {
-      await notifyUser(leave.requester, { title: 'اعتُمدت إجازتك', message: `إجازتك (${period}) اعتُمدت بعد موافقة المحطّات الأربع.`, ...ref });
+      await notifyUser(leave.requester, { title: 'اعتُمدت إجازتك', message: `إجازتك (${period}) اعتُمدت بعد موافقة المدير المباشر والموارد البشرية والإدارة العليا.`, ...ref });
       await notifyHR({ title: 'إجازة اعتُمدت', message: `اكتملت سلسلةُ الموافقات على إجازة (${period}).`, ...ref });
     } else if (leave.status === 'rejected') {
       await notifyUser(leave.requester, { title: 'رُفض طلب الإجازة', message: `رفضت ${STAGE_AR[stage] || ''} طلبك (${period}). ${note || ''}`.trim(), ...ref });
@@ -1816,7 +1825,7 @@ exports.decideLeave = async (req, res) => {
       });
       if (next === 'hr') await notifyHR({ title: 'إجازة تنتظر الموارد البشرية', message: `طلب إجازة (${period}) وصل محطّتكم.`, ...ref });
       else if (next === 'finance') await notifyRoles(chain.FINANCE_ROLES, { title: 'إجازة تنتظر الإدارة المالية', message: `طلب إجازة (${period}) وصل محطّتكم — راجعوا مستحقّاته وسُلَفه.`, ...ref });
-      else if (next === 'executive') await notifyRoles(chain.EXEC_ROLES, { title: 'إجازة تنتظر الإدارة العليا', message: `طلب إجازة (${period}) وصل المحطّة الأخيرة.`, ...ref });
+      else if (next === 'executive') await notifyTopManagement({ title: 'إجازة تنتظر الإدارة العليا', message: `طلب إجازة (${period}) وصل المحطّة الأخيرة.`, ...ref });
       else if (next === 'manager' && leave.manager) await notifyUser(leave.manager, { title: 'إجازة تنتظر موافقتك', message: `طلب إجازة (${period}) من أحد فريقك.`, ...ref });
     }
     if (leave.manager) { try { emitToUser(String(leave.manager), 'hr:leave', { id: String(leave._id) }); } catch (e) {} }

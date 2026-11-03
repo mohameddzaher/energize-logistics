@@ -242,6 +242,10 @@ function SystemLayoutInner({ children }: { children: React.ReactNode }) {
     // Main
     // Page + /api/analytics/super-overview admit super_admin/admin ONLY — offering
     // the link to the IT roles was a guaranteed dead-end screen.
+    // Top management: the flagged accounts (User.isTopManagement) and super admins; the server gate is routes/topManagement.
+    { href: '/system/top-management', label: lang === 'ar' ? 'طلبات الإجازات' : 'Leave Requests', icon: <CalendarCheck className="w-5 h-5" />, roles: ['super_admin', 'admin'], section: 'Top Management', visible: (u: any) => u?.isTopManagement === true || ['super_admin', 'admin'].includes(u?.role) },
+    { href: '/system/top-management/requests', label: lang === 'ar' ? 'طلبات الموظفين' : 'Staff Requests', icon: <MessageSquare className="w-5 h-5" />, roles: ['super_admin', 'admin'], section: 'Top Management', visible: (u: any) => u?.isTopManagement === true || ['super_admin', 'admin'].includes(u?.role) },
+    { href: '/system/top-management/activity', label: lang === 'ar' ? 'نشاط الشركة المباشر' : 'Live Company Activity', icon: <Activity className="w-5 h-5" />, roles: ['super_admin', 'admin'], section: 'Top Management', visible: (u: any) => u?.isTopManagement === true || ['super_admin', 'admin'].includes(u?.role) },
     { href: '/system/executive', label: lang === 'ar' ? 'النظرة التنفيذية' : 'Executive Overview', icon: <Crown className="w-5 h-5" />, roles: ['super_admin', 'admin'], section: 'Main' },
     // Top-management plan to department managers; its dashboard is for the system admin only (a department manager finds the management plan inside their department).
     { href: '/system/management-jp', label: lang === 'ar' ? 'خطّة الإدارة (Management JP)' : 'Management JP', icon: <CalendarCheck className="w-5 h-5" />, roles: ['super_admin', 'admin'], section: 'Main', visible: (u) => jpTop(u) },
@@ -690,10 +694,14 @@ function SystemLayoutInner({ children }: { children: React.ReactNode }) {
     return () => clearInterval(t);
   }, [user?._id, fetchNavBadges]); // eslint-disable-line react-hooks/exhaustive-deps
   const badgeTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  useSocket('customs:updated', useCallback(() => {
+  const badgesSoon = useCallback(() => {
     if (badgeTimer.current) clearTimeout(badgeTimer.current);
     badgeTimer.current = setTimeout(fetchNavBadges, 1200);
-  }, [fetchNavBadges]));
+  }, [fetchNavBadges]);
+  useSocket('customs:updated', badgesSoon);
+  // Leave and staff-request counters follow each decision and new request.
+  useSocket('hr:leave', badgesSoon);
+  useSocket('hr:request', badgesSoon);
 
   // Real-time notification updates
   useSocket('notification:new', useCallback(() => {
@@ -777,6 +785,7 @@ function SystemLayoutInner({ children }: { children: React.ReactNode }) {
   const SECTION_ORDER = [
     // Home is always first; when it was missing from the list it dropped below all sections and looked gone to the system admin.
     'Main',
+    'Top Management',
     'Operations',
     'Shipment Orders',
     'Operations Platform',
@@ -846,7 +855,7 @@ function SystemLayoutInner({ children }: { children: React.ReactNode }) {
         {(onClick || sidebarOpen) && <span className="min-w-0 flex-1">{item.label}</span>}
         {navBadges[item.href] ? (
           <span className={`${(onClick || sidebarOpen) ? '' : 'absolute -top-1 -end-1'} inline-flex min-w-[20px] items-center justify-center rounded-full bg-red-500 px-1.5 text-[11px] font-bold leading-5 text-white tabular-nums`}
-            title={lang === 'ar' ? 'طلبات تنتظر الإدارة المالية' : 'Requests awaiting Finance'}>
+            title={lang === 'ar' ? 'طلبات تنتظر الإجراء' : 'Awaiting action'}>
             {navBadges[item.href] > 99 ? '99+' : navBadges[item.href]}
           </span>
         ) : null}

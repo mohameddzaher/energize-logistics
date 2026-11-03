@@ -46,6 +46,7 @@ const REASON_LABELS = {
   hidden: { ar: 'إخفاء الصنف', en: 'Rim type hidden' },
   other: { ar: 'أخرى', en: 'Other' },
 };
+const { ISSUE_REASONS, ISSUE_REASON_KEYS, issueReasonLabel } = require('../utils/storeIssueReasons');
 // Reasons that tie a movement to a truck, so the plate is required.
 const NEEDS_PLATE = new Set(['mounted', 'returned']);
 
@@ -100,6 +101,7 @@ exports.listRims = async (req, res) => {
         in: IN_REASONS.map((key) => ({ key, ...REASON_LABELS[key] })),
         out: OUT_REASONS.map((key) => ({ key, ...REASON_LABELS[key] })),
         all: Object.entries(REASON_LABELS).map(([key, v]) => ({ key, ...v })),
+        issue: ISSUE_REASONS,
       },
     });
   } catch (e) { console.error('ls2 rims list', e); res.status(500).json({ message: 'تعذّر تحميل الجنوط' }); }
@@ -113,6 +115,7 @@ exports.listMovements = async (req, res) => {
     if (['in', 'out', 'edit'].includes(String(req.query.type || ''))) filter.type = req.query.type;
     if (REASON_LABELS[String(req.query.reason || '')]) filter.reason = req.query.reason;
     if (req.query.legacy === '0') filter.legacy = { $ne: true };
+    if (req.query.plate) { const k = plateKey(String(req.query.plate)); if (k) filter.plateKey = k; }
     const from = dayOf(req.query.from); const to = dayOf(req.query.to);
     if (from || to) filter.date = { ...(from ? { $gte: from } : {}), ...(to ? { $lte: to } : {}) };
     if (req.query.q && String(req.query.q).trim()) {
@@ -126,6 +129,7 @@ exports.listMovements = async (req, res) => {
         ...m,
         reasonAr: REASON_LABELS[m.reason]?.ar || m.reason,
         reasonEn: REASON_LABELS[m.reason]?.en || m.reason,
+        issueReasonLabel: issueReasonLabel(m.issueReason),
         total: m.unitPrice != null ? r2(m.quantity * m.unitPrice) : null,
         canReverse: reversible(m) === null,
       })),
@@ -245,6 +249,9 @@ exports.addMovement = async (req, res) => {
     if (reason === 'other' && notes.length < 3) return res.status(400).json({ message: 'اكتب السبب في الملاحظات' });
     const link = await plateLink(b.vehiclePlate);
     if (NEEDS_PLATE.has(reason) && !link.vehiclePlate) return res.status(400).json({ code: 'PLATE_REQUIRED', message: 'اكتب لوحة المركبة' });
+    // Fitting to a truck states why, like an issue from the store.
+    const issueReason = reason === 'mounted' ? String(b.issueReason || '') : '';
+    if (reason === 'mounted' && !ISSUE_REASON_KEYS.includes(issueReason)) return res.status(400).json({ code: 'ISSUE_REASON_REQUIRED', message: 'اختر سبب الصرف' });
     let unitPrice = null;
     if (type === 'in' && b.unitPrice !== undefined && b.unitPrice !== null && b.unitPrice !== '') {
       unitPrice = r2(b.unitPrice);
@@ -260,11 +267,63 @@ exports.addMovement = async (req, res) => {
       rim: rim._id, rimName: rim.name, type, reason, quantity: qty, balanceAfter: rim.quantity,
       unitPrice: type === 'in' ? (unitPrice ?? (rim.unitPrice || null)) : (rim.unitPrice || null),
       supplierName: type === 'in' ? str(b.supplierName, 120) : '',
-      ...link, date: dayOf(b.date) || todayKey(), notes, ...actor(req),
+      ...link, issueReason, date: dayOf(b.date) || todayKey(), notes, ...actor(req),
     });
     touch();
     res.status(201).json({ rim: decorate(rim.toObject()), movement: mv });
   } catch (e) { console.error('ls2 rims movement', e); res.status(500).json({ message: 'تعذّر تسجيل الحركة' }); }
+};
+
+/**
+ * POST /assets/rims/vehicle-movement { type: out|in, vehiclePlate, issueReason?, date?, notes?, items: [{ rimId, quantity }] }
+ * Out fits rims to one truck, in returns them from it: several rim types in one go, like the store's issue to a vehicle.
+ * All or nothing: if one line lacks stock, the lines already taken are given back and nothing is recorded.
+ */
+exports.vehicleMovement = async (req, res) => {
+  try {
+    const b = req.body || {};
+    const type = b.type === 'in' ? 'in' : b.type === 'out' ? 'out' : null;
+    if (!type) return res.status(400).json({ message: 'نوع الحركة غير صحيح' });
+    const link = await plateLink(b.vehiclePlate);
+    if (!link.vehiclePlate) return res.status(400).json({ code: 'PLATE_REQUIRED', message: 'اختر المركبة' });
+    const issueReason = type === 'out' ? String(b.issueReason || '') : '';
+    if (type === 'out' && !ISSUE_REASON_KEYS.includes(issueReason)) return res.status(400).json({ code: 'ISSUE_REASON_REQUIRED', message: 'اختر سبب الصرف' });
+    // Same rim twice in the list counts once with the summed quantity.
+    const want = new Map();
+    for (const it of Array.isArray(b.items) ? b.items : []) {
+      const q = Number(it?.quantity);
+      if (!isId(it?.rimId)) continue;
+      if (!Number.isInteger(q) || q < 1) return res.status(400).json({ message: 'العدد يجب أن يكون رقمًا صحيحًا لا يقل عن 1' });
+      want.set(String(it.rimId), (want.get(String(it.rimId)) || 0) + q);
+    }
+    if (!want.size) return res.status(400).json({ message: 'أضف جنطًا واحدًا على الأقل' });
+    if (want.size > 50) return res.status(400).json({ message: 'الحد الأقصى خمسون صنفًا في الحركة' });
+
+    const done = [];
+    for (const [id, qty] of want) {
+      const rim = type === 'out' ? await takeStock(id, qty) : await giveStock(id, qty, {}); // eslint-disable-line no-await-in-loop
+      if (!rim) {
+        for (const d of done) await (type === 'out' ? giveStock(d.rim._id, d.qty, {}) : takeStock(d.rim._id, d.qty)); // eslint-disable-line no-await-in-loop
+        const m = await shortMessage(id, qty); // eslint-disable-line no-await-in-loop
+        return res.status(m.status).json(m);
+      }
+      done.push({ rim, qty });
+    }
+    const reason = type === 'out' ? 'mounted' : 'returned';
+    const date = dayOf(b.date) || todayKey();
+    const notes = str(b.notes, 500);
+    const movements = await Ls2RimMovement.insertMany(done.map(({ rim, qty }) => ({
+      rim: rim._id, rimName: rim.name, type, reason, quantity: qty, balanceAfter: rim.quantity,
+      unitPrice: rim.unitPrice || null, ...link, issueReason, date, notes, ...actor(req),
+    })));
+    await logAudit({
+      user: req.user, action: type === 'out' ? 'rim_issue' : 'rim_return', entity: 'Ls2Rim', entityId: done[0].rim._id,
+      changes: { details: `${type === 'out' ? 'صرف' : 'إرجاع'} جنوط ${type === 'out' ? 'على' : 'من'} ${link.vehiclePlate}: ${done.map((d) => `${d.rim.name} × ${d.qty}`).join('، ')}` },
+      ipAddress: req.ip,
+    }).catch(() => {});
+    touch();
+    res.status(201).json({ rims: done.map((d) => decorate(d.rim.toObject())), movements });
+  } catch (e) { console.error('ls2 rims vehicle movement', e); res.status(500).json({ message: 'تعذّر تسجيل الحركة' }); }
 };
 
 // POST /assets/rims/:id/transfer { toRimId, quantity, date?, notes? } - e.g. used rims declared scrap.

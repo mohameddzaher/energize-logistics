@@ -58,6 +58,8 @@ const movementSchema = new mongoose.Schema({
   vehiclePlate: { type: String, default: '' },
   plateKey: { type: String, default: null, index: true },
   vehicleMaster: { type: mongoose.Schema.Types.ObjectId, ref: 'VehicleMaster', default: null },
+  // Why a rim went onto a truck (periodic maintenance, accident…), the store's own list; shown in the vehicle file.
+  issueReason: { type: String, enum: ['', ...require('../utils/storeIssueReasons').ISSUE_REASON_KEYS], default: '', index: true },
   date: { type: String, default: '', index: true },               // YYYY-MM-DD, the day it happened
   at: { type: Date, default: Date.now, index: true },             // Ordering; legacy copies keep the store row's time
   notes: { type: String, default: '' },

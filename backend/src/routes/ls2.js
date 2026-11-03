@@ -90,6 +90,7 @@ const rims = require('../controllers/ls2RimsController');
 router.get('/assets/rims', rims.listRims);
 router.get('/assets/rims/movements', rims.listMovements); // Before /assets/rims/:id routes.
 router.post('/assets/rims', ADMIN, rims.createRim);
+router.post('/assets/rims/vehicle-movement', ADMIN, rims.vehicleMovement);
 router.post('/assets/rims/movements/:movementId/reverse', ADMIN, rims.reverseMovement);
 router.patch('/assets/rims/:id', oid, ADMIN, rims.updateRim);
 router.delete('/assets/rims/:id', oid, ADMIN, rims.hideRim);

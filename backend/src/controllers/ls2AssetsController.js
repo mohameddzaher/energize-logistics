@@ -214,7 +214,8 @@ exports.getVehicleHistory = async (req, res) => {
       rows.push({
         kind: 'part', date: m.at || m.createdAt, action: m.type === 'out' ? 'صرف' : 'وارد',
         title: m.rimName, detail: `${m.type === 'out' ? 'صادر' : 'وارد'} ${m.quantity}`,
-        by: m.performedByName, notes: [RIM_REASONS[m.reason]?.ar, m.notes, m.reversed ? 'اتّرجع عنها' : ''].filter(Boolean).join(' · '),
+        by: m.performedByName, notes: [issueReasonLabel(m.issueReason), RIM_REASONS[m.reason]?.ar, m.notes, m.reversed ? 'اتّرجع عنها' : ''].filter(Boolean).join(' · '),
+        issueReason: m.issueReason || '', issueReasonLabel: issueReasonLabel(m.issueReason),
         reversed: !!m.reversed, source: 'ls2-rims', refId: m._id,
       });
     }

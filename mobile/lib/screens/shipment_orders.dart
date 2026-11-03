@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
+import '../ui/hr_quick.dart' show pickFromList;
 import 'package:provider/provider.dart';
 import '../services/api.dart';
 import '../services/auth.dart';
@@ -582,16 +583,24 @@ class _ShipmentOrdersScreenState extends State<ShipmentOrdersScreen> {
                 [('', tr('الكل', 'All'), null), ('yes', tr('لها ملاحظة', 'With note'), null), ('no', tr('بلا ملاحظة', 'No note'), null)],
                 _note, (v) => apply(() => _note = v))),
             title(tr('العميل', 'Customer')),
-            DropdownButtonFormField<String>(
-              initialValue: _customers.any((c) => c['_id'] == _customer) ? _customer : '',
-              isExpanded: true,
-              items: [
-                DropdownMenuItem(value: '', child: Text(tr('كل العملاء', 'All customers'))),
-                for (final c in _customers)
-                  DropdownMenuItem(value: '${c['_id']}', child: Text('${c['name'] ?? ''}', overflow: TextOverflow.ellipsis)),
-              ],
-              onChanged: (v) => apply(() => _customer = v ?? ''),
-            ),
+            // Searchable, as on the web: the customer list runs into the hundreds.
+            Builder(builder: (ctx) {
+              final all = tr('كل العملاء', 'All customers');
+              final cur = _customers.where((c) => c['_id'] == _customer).map((c) => '${c['name'] ?? ''}').firstOrNull ?? '';
+              return InkWell(
+                onTap: () async {
+                  final v = await pickFromList(ctx, title: tr('العميل', 'Customer'),
+                      options: [all, ..._customers.map((c) => '${c['name'] ?? ''}')], current: cur.isEmpty ? all : cur);
+                  if (v == null) return;
+                  final hit = _customers.where((c) => '${c['name'] ?? ''}' == v).firstOrNull;
+                  apply(() => _customer = v == all || hit == null ? '' : '${hit['_id']}');
+                },
+                child: InputDecorator(
+                  decoration: const InputDecoration(suffixIcon: Icon(Icons.search, size: 18)),
+                  child: Text(cur.isEmpty ? all : cur, overflow: TextOverflow.ellipsis),
+                ),
+              );
+            }),
             title(tr('التاريخ', 'Date')),
             Wrap(spacing: 6, runSpacing: 6, crossAxisAlignment: WrapCrossAlignment.center, children: [
               ActionChip(avatar: const Icon(Icons.event, size: 16), label: Text(_from.isEmpty ? tr('من تاريخ', 'From') : _from),

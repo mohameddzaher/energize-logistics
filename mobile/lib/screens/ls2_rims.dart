@@ -36,6 +36,7 @@ class Ls2RimsTabState extends State<Ls2RimsTab> with AutomaticKeepAliveClientMix
   Map<String, dynamic> _totals = {};
   List<Map<String, dynamic>> _inReasons = [];
   List<Map<String, dynamic>> _outReasons = [];
+  List<Map<String, dynamic>> _issueReasons = [];
   bool _loading = true;
   String? _error;
   String _q = '';
@@ -72,6 +73,7 @@ class Ls2RimsTabState extends State<Ls2RimsTab> with AutomaticKeepAliveClientMix
         _totals = d['totals'] is Map ? Map<String, dynamic>.from(d['totals']) : {};
         _inReasons = _l(reasons['in']);
         _outReasons = _l(reasons['out']);
+        _issueReasons = _l(reasons['issue']);
         _loading = false;
         _error = null;
       });
@@ -111,6 +113,7 @@ class Ls2RimsTabState extends State<Ls2RimsTab> with AutomaticKeepAliveClientMix
         ExportCol('العدد', 'Qty', (r) => r['quantity'] ?? 0),
         ExportCol('الرصيد بعدها', 'Balance after', (r) => r['balanceAfter'] ?? 0),
         ExportCol('المركبة', 'Vehicle', (r) => r['vehiclePlate'] ?? ''),
+        ExportCol('سبب الصرف', 'Issue reason', (r) => r['issueReasonLabel'] ?? ''),
         ExportCol('من / إلى صنف', 'Other rim', (r) => r['counterpartName'] ?? ''),
         ExportCol('المورد', 'Supplier', (r) => r['supplierName'] ?? ''),
         ExportCol('ملاحظات', 'Notes', (r) => r['notes'] ?? ''),
@@ -161,10 +164,10 @@ class Ls2RimsTabState extends State<Ls2RimsTab> with AutomaticKeepAliveClientMix
       builder: (c) => SafeArea(child: Column(mainAxisSize: MainAxisSize.min, children: [
         ListTile(title: Text('${r['name']}', style: const TextStyle(fontWeight: FontWeight.w900)), subtitle: Text(tr('الرصيد $qty', 'On hand $qty'))),
         if (widget.admin) ...[
-          ListTile(leading: const Icon(Icons.add_circle_outline, color: T.success), title: Text(tr('إضافة رصيد', 'Add stock')),
-              onTap: () { Navigator.pop(c); _openSheet(_MovementSheet(rim: r, type: 'in', reasons: _inReasons, plates: widget.plates)); }),
-          if (qty > 0) ListTile(leading: const Icon(Icons.remove_circle_outline, color: T.warn), title: Text(tr('خصم من الرصيد', 'Reduce stock')),
-              onTap: () { Navigator.pop(c); _openSheet(_MovementSheet(rim: r, type: 'out', reasons: _outReasons, plates: widget.plates)); }),
+          ListTile(leading: const Icon(Icons.add_circle_outline, color: T.success), title: Text(tr('وارد', 'In')),
+              onTap: () { Navigator.pop(c); _openSheet(_MovementSheet(rim: r, type: 'in', reasons: _inReasons, issueReasons: _issueReasons, plates: widget.plates)); }),
+          if (qty > 0) ListTile(leading: const Icon(Icons.remove_circle_outline, color: T.warn), title: Text(tr('صادر', 'Out')),
+              onTap: () { Navigator.pop(c); _openSheet(_MovementSheet(rim: r, type: 'out', reasons: _outReasons, issueReasons: _issueReasons, plates: widget.plates)); }),
           if (qty > 0 && _rims.length > 1) ListTile(leading: const Icon(Icons.swap_horiz, color: T.info), title: Text(tr('تحويل إلى صنف آخر', 'Transfer to another type')),
               onTap: () { Navigator.pop(c); _openSheet(_TransferSheet(rim: r, rims: _rims)); }),
           ListTile(leading: const Icon(Icons.edit_outlined), title: Text(tr('تعديل', 'Edit')),
@@ -236,6 +239,18 @@ class Ls2RimsTabState extends State<Ls2RimsTab> with AutomaticKeepAliveClientMix
                       const SizedBox(width: 8),
                       OutlinedButton.icon(onPressed: () => _openLog(null), icon: const Icon(Icons.history, size: 18), label: Text(tr('سجل الحركات', 'Movements'))),
                     ]),
+                    if (widget.admin) ...[
+                      const SizedBox(height: 8),
+                      Row(children: [
+                        Expanded(child: FilledButton.icon(style: FilledButton.styleFrom(backgroundColor: T.orange),
+                          onPressed: () => _openSheet(_VehicleMoveSheet(type: 'out', rims: _rims, issueReasons: _issueReasons, plates: widget.plates)),
+                          icon: const Icon(Icons.local_shipping_outlined, size: 18), label: Text(tr('صادر على مركبة', 'Issue to vehicle')))),
+                        const SizedBox(width: 8),
+                        Expanded(child: OutlinedButton.icon(
+                          onPressed: () => _openSheet(_VehicleMoveSheet(type: 'in', rims: _rims, issueReasons: _issueReasons, plates: widget.plates)),
+                          icon: const Icon(Icons.assignment_return_outlined, size: 18), label: Text(tr('وارد من مركبة', 'Return from vehicle')))),
+                      ]),
+                    ],
                     const SizedBox(height: 10),
                     if (shown.isEmpty) EmptyState(icon: Icons.album_outlined, title: tr('لا توجد جنوط مطابقة', 'No matching rims')),
                     for (final r in shown) Padding(
@@ -359,8 +374,9 @@ class _MovementSheet extends StatefulWidget {
   final Map<String, dynamic> rim;
   final String type;
   final List<Map<String, dynamic>> reasons;
+  final List<Map<String, dynamic>> issueReasons;
   final List<String> plates;
-  const _MovementSheet({required this.rim, required this.type, required this.reasons, required this.plates});
+  const _MovementSheet({required this.rim, required this.type, required this.reasons, required this.issueReasons, required this.plates});
   @override
   State<_MovementSheet> createState() => _MovementSheetState();
 }
@@ -369,6 +385,7 @@ class _MovementSheetState extends State<_MovementSheet> {
   final _qty = TextEditingController(text: '1');
   late String _reason = widget.type == 'in' ? 'purchase' : '';
   String _plate = '';
+  String _issueReason = '';
   late final _price = TextEditingController(text: (widget.rim['unitPrice'] ?? 0) == 0 ? '' : '${widget.rim['unitPrice']}');
   final _supplier = TextEditingController();
   final _notes = TextEditingController();
@@ -391,6 +408,7 @@ class _MovementSheetState extends State<_MovementSheet> {
       await Api.instance.post('/api/ls2/assets/rims/${widget.rim['_id']}/movement', {
         'type': widget.type, 'quantity': int.tryParse(_qty.text.trim()) ?? 0, 'reason': _reason,
         'vehiclePlate': _plate, 'date': _date, 'notes': _notes.text.trim(),
+        if (_reason == 'mounted') 'issueReason': _issueReason,
         if (widget.type == 'in') 'unitPrice': _price.text.trim().isEmpty ? null : num.tryParse(_price.text.trim()),
         if (widget.type == 'in') 'supplierName': _supplier.text.trim(),
       });
@@ -404,8 +422,9 @@ class _MovementSheetState extends State<_MovementSheet> {
   Widget build(BuildContext context) {
     final q = int.tryParse(_qty.text.trim()) ?? 0;
     final valid = q >= 1 && _reason.isNotEmpty && (!_needsPlate || _plate.isNotEmpty)
-        && (_reason != 'other' || _notes.text.trim().length >= 3) && (widget.type == 'in' || q <= _onHand);
-    return _sheet(context, '${widget.type == 'in' ? tr('إضافة رصيد', 'Add stock') : tr('خصم من الرصيد', 'Reduce stock')} — ${widget.rim['name']}', [
+        && (_reason != 'other' || _notes.text.trim().length >= 3) && (widget.type == 'in' || q <= _onHand)
+        && (_reason != 'mounted' || _issueReason.isNotEmpty);
+    return _sheet(context, '${widget.type == 'in' ? tr('وارد', 'In') : tr('صادر', 'Out')} — ${widget.rim['name']}', [
       Text(tr('الرصيد الحالي: $_onHand', 'On hand: $_onHand'), style: const TextStyle(fontSize: 12.5, color: T.inkSoft)),
       TextField(controller: _qty, keyboardType: TextInputType.number, onChanged: (_) => setState(() {}), decoration: InputDecoration(labelText: tr('العدد', 'Quantity'))),
       const SizedBox(height: 8),
@@ -425,6 +444,12 @@ class _MovementSheetState extends State<_MovementSheet> {
           if (p != null) setState(() => _plate = p);
         },
       ),
+      if (_reason == 'mounted') DropdownButtonFormField<String>(
+        initialValue: _issueReason.isEmpty ? null : _issueReason,
+        decoration: InputDecoration(labelText: tr('سبب الصرف', 'Issue reason')),
+        items: [for (final r in widget.issueReasons) DropdownMenuItem(value: '${r['key']}', child: Text(tr('${r['ar']}', '${r['en']}')))],
+        onChanged: (v) => setState(() => _issueReason = v ?? ''),
+      ),
       if (widget.type == 'in') ...[
         TextField(controller: _price, keyboardType: const TextInputType.numberWithOptions(decimal: true), decoration: InputDecoration(labelText: tr('سعر القطعة (ريال)', 'Unit price (SAR)'))),
         TextField(controller: _supplier, decoration: InputDecoration(labelText: tr('المورد (اختياري)', 'Supplier (optional)'))),
@@ -438,6 +463,124 @@ class _MovementSheetState extends State<_MovementSheet> {
       ),
       TextField(controller: _notes, onChanged: (_) => setState(() {}), decoration: InputDecoration(labelText: tr(_reason == 'other' ? 'ملاحظات (مطلوبة)' : 'ملاحظات', _reason == 'other' ? 'Notes (required)' : 'Notes'))),
       if (widget.type == 'out' && q > _onHand) _err(tr('العدد أكبر من الرصيد المتاح', 'More than on hand')),
+      if (_error != null) _err(_error!),
+      const SizedBox(height: 12),
+      FilledButton(style: FilledButton.styleFrom(backgroundColor: T.orange), onPressed: _busy || !valid ? null : _save, child: Text(_busy ? '…' : tr('تسجيل', 'Record'))),
+    ]);
+  }
+}
+
+/// Out to a truck (fitted) or in from it (returned), several rim types at once, like the store's issue to a vehicle.
+class _VehicleMoveSheet extends StatefulWidget {
+  final String type;
+  final List<Map<String, dynamic>> rims;
+  final List<Map<String, dynamic>> issueReasons;
+  final List<String> plates;
+  const _VehicleMoveSheet({required this.type, required this.rims, required this.issueReasons, required this.plates});
+  @override
+  State<_VehicleMoveSheet> createState() => _VehicleMoveSheetState();
+}
+
+class _VehicleMoveSheetState extends State<_VehicleMoveSheet> {
+  String _plate = '';
+  String _issueReason = '';
+  String _date = _today();
+  final _notes = TextEditingController();
+  final List<(String, TextEditingController)> _lines = [('', TextEditingController(text: '1'))];
+  bool _busy = false;
+  String? _error;
+
+  bool get _out => widget.type == 'out';
+
+  @override
+  void dispose() {
+    _notes.dispose();
+    for (final l in _lines) { l.$2.dispose(); }
+    super.dispose();
+  }
+
+  Map<String, dynamic>? _rim(String id) => widget.rims.where((r) => '${r['_id']}' == id).firstOrNull;
+  int _onHand(String id) => ((_rim(id)?['quantity']) as num?)?.toInt() ?? 0;
+  int _asked(String id) => _lines.where((l) => l.$1 == id).fold(0, (a, l) => a + (int.tryParse(l.$2.text.trim()) ?? 0));
+  String _lineError((String, TextEditingController) l) {
+    if (l.$1.isEmpty) return '';
+    final q = int.tryParse(l.$2.text.trim()) ?? 0;
+    if (q < 1) return tr('عدد غير صحيح', 'Bad quantity');
+    if (_out && _asked(l.$1) > _onHand(l.$1)) return tr('أكبر من الرصيد (${_onHand(l.$1)})', 'More than on hand (${_onHand(l.$1)})');
+    return '';
+  }
+
+  Future<void> _save() async {
+    setState(() { _busy = true; _error = null; });
+    try {
+      await Api.instance.post('/api/ls2/assets/rims/vehicle-movement', {
+        'type': widget.type, 'vehiclePlate': _plate, 'date': _date, 'notes': _notes.text.trim(),
+        if (_out) 'issueReason': _issueReason,
+        'items': [for (final l in _lines.where((l) => l.$1.isNotEmpty)) {'rimId': l.$1, 'quantity': int.tryParse(l.$2.text.trim()) ?? 0}],
+      });
+      if (mounted) Navigator.pop(context, true);
+    } catch (e) {
+      if (mounted) setState(() { _busy = false; _error = e is ApiException ? e.message : e.toString(); });
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final filled = _lines.where((l) => l.$1.isNotEmpty).toList();
+    final valid = _plate.isNotEmpty && filled.isNotEmpty && filled.every((l) => _lineError(l).isEmpty) && (!_out || _issueReason.isNotEmpty);
+    final pickable = widget.rims.where((r) => !_out || ((r['quantity'] as num?) ?? 0) > 0).toList();
+    return _sheet(context, _out ? tr('صادر جنوط على مركبة', 'Issue rims to a vehicle') : tr('وارد جنوط من مركبة', 'Return rims from a vehicle'), [
+      ListTile(
+        contentPadding: EdgeInsets.zero,
+        leading: const Icon(Icons.local_shipping_outlined),
+        title: Text(_plate.isEmpty ? tr('اختر الشاحنة *', 'Choose truck *') : _plate),
+        trailing: const Icon(Icons.chevron_left),
+        onTap: () async {
+          final p = await pickFromList(context, title: tr('الشاحنة', 'Truck'), options: widget.plates, current: _plate);
+          if (p != null) setState(() => _plate = p);
+        },
+      ),
+      if (_out) DropdownButtonFormField<String>(
+        initialValue: _issueReason.isEmpty ? null : _issueReason,
+        decoration: InputDecoration(labelText: tr('سبب الصرف', 'Issue reason')),
+        items: [for (final r in widget.issueReasons) DropdownMenuItem(value: '${r['key']}', child: Text(tr('${r['ar']}', '${r['en']}')))],
+        onChanged: (v) => setState(() => _issueReason = v ?? ''),
+      ),
+      const SizedBox(height: 8),
+      Text(tr('الجنوط', 'Rims'), style: const TextStyle(fontWeight: FontWeight.w800)),
+      for (var i = 0; i < _lines.length; i++) Padding(
+        padding: const EdgeInsets.only(top: 6),
+        child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Expanded(flex: 3, child: InkWell(
+            onTap: () async {
+              final names = pickable.map((r) => '${r['name']}').toList();
+              final v = await pickFromList(context, title: tr('الصنف', 'Rim'), options: names, current: '${_rim(_lines[i].$1)?['name'] ?? ''}');
+              final hit = pickable.where((r) => '${r['name']}' == v).firstOrNull;
+              if (hit != null) setState(() => _lines[i] = ('${hit['_id']}', _lines[i].$2));
+            },
+            child: InputDecorator(
+              decoration: InputDecoration(labelText: tr('الصنف', 'Rim'), errorText: _lineError(_lines[i]).isEmpty ? null : _lineError(_lines[i]),
+                  helperText: _lines[i].$1.isEmpty ? null : tr('الرصيد ${_onHand(_lines[i].$1)}', 'On hand ${_onHand(_lines[i].$1)}')),
+              child: Text(_lines[i].$1.isEmpty ? tr('اختر…', 'Choose…') : '${_rim(_lines[i].$1)?['name'] ?? ''}', overflow: TextOverflow.ellipsis),
+            ),
+          )),
+          const SizedBox(width: 8),
+          SizedBox(width: 70, child: TextField(controller: _lines[i].$2, keyboardType: TextInputType.number, onChanged: (_) => setState(() {}),
+              decoration: InputDecoration(labelText: tr('العدد', 'Qty')))),
+          IconButton(icon: const Icon(Icons.delete_outline), onPressed: _lines.length == 1 ? null : () => setState(() { _lines.removeAt(i).$2.dispose(); })),
+        ]),
+      ),
+      Align(alignment: AlignmentDirectional.centerStart, child: TextButton.icon(
+        onPressed: () => setState(() => _lines.add(('', TextEditingController(text: '1')))),
+        icon: const Icon(Icons.add), label: Text(tr('صنف آخر', 'Another rim')))),
+      ListTile(
+        contentPadding: EdgeInsets.zero, leading: const Icon(Icons.event_outlined), title: Text(_date),
+        onTap: () async {
+          final d = await showDatePicker(context: context, initialDate: DateTime.tryParse(_date) ?? DateTime.now(), firstDate: DateTime(2020), lastDate: DateTime.now().add(const Duration(days: 1)));
+          if (d != null) setState(() => _date = d.toIso8601String().substring(0, 10));
+        },
+      ),
+      TextField(controller: _notes, decoration: InputDecoration(labelText: tr('ملاحظات (اختياري)', 'Notes (optional)'))),
       if (_error != null) _err(_error!),
       const SizedBox(height: 12),
       FilledButton(style: FilledButton.styleFrom(backgroundColor: T.orange), onPressed: _busy || !valid ? null : _save, child: Text(_busy ? '…' : tr('تسجيل', 'Record'))),
@@ -598,6 +741,7 @@ class _RimLogScreenState extends State<_RimLogScreen> {
                           final color = isEdit ? T.inkFaint : isIn ? T.success : T.warn;
                           final details = [
                             if ('${m['vehiclePlate'] ?? ''}'.isNotEmpty) '${tr('المركبة', 'Vehicle')} ${m['vehiclePlate']}',
+                            if ('${m['issueReasonLabel'] ?? ''}'.isNotEmpty) '${m['issueReasonLabel']}',
                             if ('${m['counterpartName'] ?? ''}'.isNotEmpty) '${isIn ? tr('من', 'from') : tr('إلى', 'to')} ${m['counterpartName']}',
                             if ('${m['supplierName'] ?? ''}'.isNotEmpty) '${tr('المورد', 'Supplier')} ${m['supplierName']}',
                             if ('${m['notes'] ?? ''}'.isNotEmpty) '${m['notes']}',

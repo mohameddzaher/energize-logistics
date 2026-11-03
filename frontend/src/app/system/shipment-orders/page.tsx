@@ -13,7 +13,7 @@ import { ColumnFilter } from '@/components/ColumnFilter';
 import ColumnChooser, { useVisibleColumns } from '@/components/system/ColumnChooser';
 import { Ban, PackageSearch, Plus, Pencil, Eye, FileDown, Loader2, RefreshCw, X, Check, MessageSquareText, SlidersHorizontal, Trash2 } from 'lucide-react';
 import {
-  Spinner, PageHeader, SearchInput, PrimaryButton, Select, ErrorNotice,
+  Spinner, PageHeader, SearchInput, PrimaryButton, SearchableSelect, ErrorNotice,
 } from '@/components/hr/HRKit';
 import ExportMenu, { exportScopeLabels, type ExportColumn } from '@/components/ls2/ExportMenu';
 import {
@@ -551,10 +551,10 @@ function ShipmentOrdersInner() {
         {/* Shipment source: buttons rather than a dropdown, since this is asked every session; each button carries its count under the other filters, so the size is known before clicking. */}
         {/* Note filter: show shipments with a note is asked before printing, since the transport order carries the note and what will print is reviewed. */}
         <div className="w-56 grow sm:grow-0">
-          <Select value={customerFilter} onChange={(e) => { setCustomerFilter(e.target.value); setPage(1); }}>
-            <option value="">{ar ? 'كل العملاء' : 'All customers'}</option>
-            {customers.map((c) => <option key={c._id} value={c._id}>{c.name}</option>)}
-          </Select>
+          <SearchableSelect value={customerFilter} onChange={(v) => { setCustomerFilter(v); setPage(1); }} searchAfter={0}
+            placeholder={ar ? 'كل العملاء' : 'All customers'}
+            searchPlaceholder={ar ? 'ابحث عن عميل…' : 'Search customers…'} emptyLabel={ar ? 'لا نتائج' : 'No matches'}
+            options={[{ value: '', label: ar ? 'كل العملاء' : 'All customers' }, ...customers.map((c) => ({ value: c._id, label: c.name }))]} />
         </div>
         <div className="w-full flex flex-wrap gap-2">
           {([

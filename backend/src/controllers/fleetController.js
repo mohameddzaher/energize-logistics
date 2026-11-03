@@ -2804,6 +2804,17 @@ exports.getVehicleAnalytics = async (req, res) => {
           .select('itemName quantity reason issueReason createdAt performedByName').lean()
           // The issue reason by name (periodic maintenance / accident...) is read in the vehicle file.
           .then((rows) => rows.map((m) => ({ ...m, issueReasonLabel: require('../utils/storeIssueReasons').issueReasonLabel(m.issueReason) })))
+          // Rims fitted to this truck from the tire side count as parts issued too.
+          .then(async (rows) => {
+            const { Ls2RimMovement } = require('../models/Ls2Rim');
+            const rims = await Ls2RimMovement.find({ plateKey: vKey, type: 'out', reason: 'mounted', reversed: { $ne: true }, legacy: { $ne: true } })
+              .sort({ at: -1 }).limit(50).select('rimName quantity issueReason notes at performedByName').lean().catch(() => []);
+            const { issueReasonLabel } = require('../utils/storeIssueReasons');
+            return [...rows, ...rims.map((m) => ({
+              _id: m._id, itemName: m.rimName, quantity: m.quantity, reason: m.notes || '', issueReason: m.issueReason || '',
+              issueReasonLabel: issueReasonLabel(m.issueReason), createdAt: m.at, performedByName: m.performedByName,
+            }))].sort((x, y) => new Date(y.createdAt) - new Date(x.createdAt)).slice(0, 50);
+          })
           .catch(() => []),
       ]);
 

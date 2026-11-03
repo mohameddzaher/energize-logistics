@@ -2,7 +2,7 @@
 // Rims (جنوط) tab of the fleet-asset registry: counted stock per brand/size/condition with an immutable movement ledger.
 // Rims carry no serial, so they are quantities, not Ls2TireAsset rows. Mistakes are reversed, never edited (same rule as the store).
 import { useState, useEffect, useCallback, useMemo } from 'react';
-import { Plus, Minus, ArrowLeftRight, Pencil, Trash2, History, X, Undo2 } from 'lucide-react';
+import { Plus, Minus, ArrowLeftRight, Pencil, Trash2, History, X, Undo2, Truck, PackageCheck } from 'lucide-react';
 import api from '@/lib/api';
 import { useSocket } from '@/hooks/useSocket';
 import { useDialog } from '@/components/system/DialogProvider';
@@ -21,7 +21,7 @@ export interface Rim {
 interface RimMovement {
   _id: string; rim: string; rimName: string; type: 'in' | 'out' | 'edit'; reason: string; reasonAr: string; reasonEn: string;
   quantity: number; balanceAfter: number; unitPrice: number | null; total: number | null; supplierName: string; vehiclePlate: string;
-  date: string; at: string; notes: string; counterpartName: string; legacy: boolean; performedByName: string;
+  date: string; at: string; notes: string; counterpartName: string; issueReason?: string; issueReasonLabel?: string; legacy: boolean; performedByName: string;
   reversed: boolean; reversedByName: string; reversalReason: string; reversalOf: string | null; canReverse: boolean;
 }
 type Reason = { key: string; ar: string; en: string };
@@ -69,6 +69,7 @@ const movementCols = (ar: boolean): ExportColumn[] => [
   { header: ar ? 'العدد' : 'Qty', key: 'quantity', type: 'number', width: 7 },
   { header: ar ? 'الرصيد بعدها' : 'Balance after', key: 'balanceAfter', type: 'number', width: 10 },
   { header: ar ? 'المركبة' : 'Vehicle', key: 'vehiclePlate', width: 10 },
+  { header: ar ? 'سبب الصرف' : 'Issue reason', key: 'issueReasonLabel', width: 16 },
   { header: ar ? 'من / إلى صنف' : 'Other rim', key: 'counterpartName', width: 20 },
   { header: ar ? 'المورد' : 'Supplier', key: 'supplierName', width: 16 },
   { header: ar ? 'سعر القطعة' : 'Unit price', key: 'unitPrice', type: 'number', width: 10 },
@@ -137,9 +138,10 @@ function RimForm({ rim, ar, onClose, onSaved }: { rim: Rim | null; ar: boolean; 
 }
 
 // In (add stock) or out (reduce stock) on one rim type.
-function MovementForm({ rim, type, reasons, plateOptions, ar, onClose, onSaved }: {
-  rim: Rim; type: 'in' | 'out'; reasons: Reason[]; plateOptions: PlateOption[]; ar: boolean; onClose: () => void; onSaved: () => void;
+function MovementForm({ rim, type, reasons, issueReasons, plateOptions, ar, onClose, onSaved }: {
+  rim: Rim; type: 'in' | 'out'; reasons: Reason[]; issueReasons: Reason[]; plateOptions: PlateOption[]; ar: boolean; onClose: () => void; onSaved: () => void;
 }) {
+  const [issueReason, setIssueReason] = useState('');
   const { notify } = useDialog();
   const [quantity, setQuantity] = useState('1');
   const [reason, setReason] = useState(type === 'in' ? 'purchase' : '');
@@ -152,12 +154,13 @@ function MovementForm({ rim, type, reasons, plateOptions, ar, onClose, onSaved }
   const needsPlate = reason === 'mounted' || reason === 'returned';
   const qty = Number(quantity);
   const valid = Number.isInteger(qty) && qty >= 1 && !!reason && (!needsPlate || !!vehiclePlate) && (reason !== 'other' || notes.trim().length >= 3)
+    && (reason !== 'mounted' || !!issueReason)
     && (type === 'in' || qty <= rim.quantity);
   const save = async () => {
     setBusy(true);
     try {
       await api.post(`/api/ls2/assets/rims/${rim._id}/movement`, {
-        type, quantity: qty, reason, vehiclePlate, date, notes,
+        type, quantity: qty, reason, vehiclePlate, date, notes, ...(reason === 'mounted' ? { issueReason } : {}),
         ...(type === 'in' ? { unitPrice: unitPrice === '' ? undefined : Number(unitPrice), supplierName } : {}),
       });
       onSaved();
@@ -165,7 +168,7 @@ function MovementForm({ rim, type, reasons, plateOptions, ar, onClose, onSaved }
     setBusy(false);
   };
   return (
-    <Modal title={`${type === 'in' ? (ar ? 'إضافة رصيد' : 'Add stock') : (ar ? 'خصم من الرصيد' : 'Reduce stock')} — ${rim.name}`} onClose={onClose}>
+    <Modal title={`${type === 'in' ? (ar ? 'وارد' : 'In') : (ar ? 'صادر' : 'Out')} — ${rim.name}`} onClose={onClose}>
       <p className="text-xs text-slate-500">{ar ? `الرصيد الحالي: ${rim.quantity} ${rim.unit}` : `On hand: ${rim.quantity}`}</p>
       <div className="grid grid-cols-2 gap-3">
         <div><label className={labelCls}>{ar ? 'العدد' : 'Quantity'}</label>
@@ -182,6 +185,13 @@ function MovementForm({ rim, type, reasons, plateOptions, ar, onClose, onSaved }
             <SearchSelect value={vehiclePlate} onChange={setVehiclePlate} options={plateOptions} ar={ar} emptyLabel={needsPlate ? undefined : (ar ? '— بلا مركبة —' : '— none —')}
               placeholder={ar ? '— اختر الشاحنة —' : '— choose truck —'} searchPlaceholder={ar ? 'ابحث برقم اللوحة…' : 'Search plate…'} /></div>
         )}
+        {reason === 'mounted' && (
+          <div className="col-span-2"><label className={labelCls}>{ar ? 'سبب الصرف' : 'Issue reason'}</label>
+            <select className={inputCls} value={issueReason} onChange={(e) => setIssueReason(e.target.value)}>
+              <option value="">{ar ? '— اختر سبب الصرف —' : '— choose —'}</option>
+              {issueReasons.map((x) => <option key={x.key} value={x.key}>{ar ? x.ar : x.en}</option>)}
+            </select></div>
+        )}
         {type === 'in' && <>
           <div><label className={labelCls}>{ar ? 'سعر القطعة (ريال)' : 'Unit price (SAR)'}</label>
             <input type="number" min={0} step="0.01" className={inputCls} value={unitPrice} onChange={(e) => setUnitPrice(e.target.value)} /></div>
@@ -192,6 +202,90 @@ function MovementForm({ rim, type, reasons, plateOptions, ar, onClose, onSaved }
           <input className={inputCls} value={notes} onChange={(e) => setNotes(e.target.value)} /></div>
       </div>
       {type === 'out' && qty > rim.quantity && <p className="text-xs text-red-600">{ar ? 'العدد أكبر من الرصيد المتاح' : 'More than on hand'}</p>}
+      <div className="flex justify-end gap-2">
+        <button type="button" onClick={onClose} className="px-4 py-2 rounded-lg bg-slate-100 text-slate-700 text-sm">{ar ? 'إلغاء' : 'Cancel'}</button>
+        <button type="button" disabled={busy || !valid} onClick={save} className="px-4 py-2 rounded-lg bg-[#f37121] text-white text-sm font-medium disabled:opacity-50">{busy ? '…' : (ar ? 'تسجيل' : 'Record')}</button>
+      </div>
+    </Modal>
+  );
+}
+
+// Out to a truck (fitted) or in from it (returned), several rim types at once, like the store's issue to a vehicle.
+function VehicleMoveForm({ type, rims, issueReasons, plateOptions, ar, onClose, onSaved }: {
+  type: 'in' | 'out'; rims: Rim[]; issueReasons: Reason[]; plateOptions: PlateOption[]; ar: boolean; onClose: () => void; onSaved: () => void;
+}) {
+  const { notify } = useDialog();
+  const [vehiclePlate, setVehiclePlate] = useState('');
+  const [issueReason, setIssueReason] = useState('');
+  const [date, setDate] = useState(today());
+  const [notes, setNotes] = useState('');
+  const [lines, setLines] = useState<{ rimId: string; quantity: string }[]>([{ rimId: '', quantity: '1' }]);
+  const [busy, setBusy] = useState(false);
+  const byId = useMemo(() => new Map(rims.map((r) => [r._id, r])), [rims]);
+  const options = rims.filter((r) => type === 'in' || r.quantity > 0)
+    .map((r) => ({ value: r._id, label: r.name, hint: ar ? `الرصيد ${r.quantity}` : `on hand ${r.quantity}` }));
+  const lineError = (l: { rimId: string; quantity: string }) => {
+    const q = Number(l.quantity); const rim = byId.get(l.rimId);
+    if (!l.rimId) return '';
+    if (!Number.isInteger(q) || q < 1) return ar ? 'عدد غير صحيح' : 'Bad quantity';
+    if (type === 'out' && rim) {
+      const asked = lines.filter((x) => x.rimId === l.rimId).reduce((a, x) => a + (Number(x.quantity) || 0), 0);
+      if (asked > rim.quantity) return ar ? `أكبر من الرصيد (${rim.quantity})` : `More than on hand (${rim.quantity})`;
+    }
+    return '';
+  };
+  const filled = lines.filter((l) => l.rimId);
+  const valid = !!vehiclePlate && filled.length > 0 && filled.every((l) => !lineError(l)) && (type === 'in' || !!issueReason);
+  const setLine = (i: number, patch: Partial<{ rimId: string; quantity: string }>) => setLines((p) => p.map((l, k) => (k === i ? { ...l, ...patch } : l)));
+  const save = async () => {
+    setBusy(true);
+    try {
+      await api.post('/api/ls2/assets/rims/vehicle-movement', {
+        type, vehiclePlate, date, notes, ...(type === 'out' ? { issueReason } : {}),
+        items: filled.map((l) => ({ rimId: l.rimId, quantity: Number(l.quantity) })),
+      });
+      onSaved();
+    } catch (e: any) { notify(e?.message || 'Failed', 'error'); }
+    setBusy(false);
+  };
+  return (
+    <Modal title={type === 'out' ? (ar ? 'صادر جنوط على مركبة' : 'Issue rims to a vehicle') : (ar ? 'وارد جنوط من مركبة' : 'Return rims from a vehicle')} onClose={onClose} wide>
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+        <div className="sm:col-span-2"><label className={labelCls}>{ar ? 'المركبة' : 'Vehicle'}</label>
+          <SearchSelect value={vehiclePlate} onChange={setVehiclePlate} options={plateOptions} ar={ar}
+            placeholder={ar ? '— اختر الشاحنة —' : '— choose truck —'} searchPlaceholder={ar ? 'ابحث برقم اللوحة…' : 'Search plate…'} /></div>
+        <div><label className={labelCls}>{ar ? 'التاريخ' : 'Date'}</label>
+          <input type="date" className={inputCls} value={date} onChange={(e) => setDate(e.target.value)} /></div>
+        {type === 'out' && (
+          <div><label className={labelCls}>{ar ? 'سبب الصرف' : 'Issue reason'}</label>
+            <select className={inputCls} value={issueReason} onChange={(e) => setIssueReason(e.target.value)}>
+              <option value="">{ar ? '— اختر سبب الصرف —' : '— choose —'}</option>
+              {issueReasons.map((x) => <option key={x.key} value={x.key}>{ar ? x.ar : x.en}</option>)}
+            </select></div>
+        )}
+        <div className={type === 'out' ? 'sm:col-span-2' : 'sm:col-span-3'}><label className={labelCls}>{ar ? 'ملاحظات (اختياري)' : 'Notes (optional)'}</label>
+          <input className={inputCls} value={notes} onChange={(e) => setNotes(e.target.value)} /></div>
+      </div>
+      <div className="space-y-2">
+        <p className="text-xs font-semibold text-slate-600">{ar ? 'الجنوط' : 'Rims'}</p>
+        {lines.map((l, i) => {
+          const err = lineError(l); const rim = byId.get(l.rimId);
+          return (
+            <div key={i} className="grid grid-cols-[1fr_110px_120px_36px] gap-2 items-start">
+              <SearchSelect value={l.rimId} onChange={(v) => setLine(i, { rimId: v })} options={options} ar={ar}
+                placeholder={ar ? '— اختر الصنف —' : '— choose rim —'} searchPlaceholder={ar ? 'ابحث بالنوع أو المقاس…' : 'Search brand or size…'} />
+              <input type="number" min={1} step={1} className={inputCls} value={l.quantity} onChange={(e) => setLine(i, { quantity: e.target.value })} aria-label={ar ? 'العدد' : 'Quantity'} />
+              <div className={`text-xs pt-2.5 ${err ? 'text-red-600' : 'text-slate-500'}`}>
+                {err || (rim ? (ar ? `بعدها: ${rim.quantity + (type === 'in' ? 1 : -1) * (Number(l.quantity) || 0)}` : `after: ${rim.quantity + (type === 'in' ? 1 : -1) * (Number(l.quantity) || 0)}`) : '')}
+              </div>
+              <button type="button" disabled={lines.length === 1} onClick={() => setLines((p) => p.filter((_, k) => k !== i))}
+                className="p-2 rounded-md text-slate-400 hover:text-red-600 hover:bg-red-50 disabled:opacity-30"><Trash2 className="w-4 h-4" /></button>
+            </div>
+          );
+        })}
+        <button type="button" onClick={() => setLines((p) => [...p, { rimId: '', quantity: '1' }])}
+          className="inline-flex items-center gap-1 text-sm font-medium text-[#f37121] hover:underline"><Plus className="w-4 h-4" />{ar ? 'صنف آخر' : 'Another rim'}</button>
+      </div>
       <div className="flex justify-end gap-2">
         <button type="button" onClick={onClose} className="px-4 py-2 rounded-lg bg-slate-100 text-slate-700 text-sm">{ar ? 'إلغاء' : 'Cancel'}</button>
         <button type="button" disabled={busy || !valid} onClick={save} className="px-4 py-2 rounded-lg bg-[#f37121] text-white text-sm font-medium disabled:opacity-50">{busy ? '…' : (ar ? 'تسجيل' : 'Record')}</button>
@@ -312,6 +406,7 @@ function MovementLog({ rim, ar, lang, admin, refreshKey, onClose, onChanged }: {
                   <td className="px-3 py-2 text-end tabular-nums text-slate-500">{m.type === 'edit' ? '—' : m.balanceAfter}</td>
                   <td className="px-3 py-2 text-xs text-slate-500 max-w-[320px]">
                     {[m.vehiclePlate && (ar ? `المركبة ${m.vehiclePlate}` : `vehicle ${m.vehiclePlate}`),
+                      m.issueReasonLabel,
                       m.counterpartName && (m.type === 'out' ? (ar ? `إلى ${m.counterpartName}` : `to ${m.counterpartName}`) : (ar ? `من ${m.counterpartName}` : `from ${m.counterpartName}`)),
                       m.supplierName && (ar ? `المورد ${m.supplierName}` : `supplier ${m.supplierName}`),
                       m.unitPrice != null && m.type !== 'edit' && `${fmtNum(m.unitPrice)} ${ar ? 'ريال/قطعة' : 'SAR/pc'}`,
@@ -343,7 +438,8 @@ export default function RimsPanel({ ar, lang, admin, query, onQuery, plateOption
   const { confirm, notify } = useDialog();
   const [rims, setRims] = useState<Rim[]>([]);
   const [totals, setTotals] = useState<any>({});
-  const [reasons, setReasons] = useState<{ in: Reason[]; out: Reason[] }>({ in: [], out: [] });
+  const [reasons, setReasons] = useState<{ in: Reason[]; out: Reason[]; issue?: Reason[] }>({ in: [], out: [] });
+  const [vehicleMove, setVehicleMove] = useState<'in' | 'out' | null>(null);
   const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState('');
   const [form, setForm] = useState<{ rim: Rim | null } | null>(null);
@@ -376,7 +472,7 @@ export default function RimsPanel({ ar, lang, admin, query, onQuery, plateOption
   const searchIn = useCallback((r: Rim) => [r.name, r.brand, r.size, r.notes, COND[r.condition]?.ar], []);
   const f = useChipFilter(rims, CHIPS, filter, query, searchIn);
 
-  const saved = (msg: string) => { setForm(null); setMove(null); setTransfer(null); load(); setRefreshKey((k) => k + 1); notify(msg, 'success'); };
+  const saved = (msg: string) => { setForm(null); setMove(null); setTransfer(null); setVehicleMove(null); load(); setRefreshKey((k) => k + 1); notify(msg, 'success'); };
   const hide = async (r: Rim) => {
     if (!(await confirm(ar ? `حذف «${r.name}» من القائمة؟ يبقى سجله محفوظًا.` : `Remove ${r.name}? Its log is kept.`))) return;
     try { await api.delete(`/api/ls2/assets/rims/${r._id}`); load(); } catch (e: any) { notify(e?.message || 'Failed', 'error'); }
@@ -412,6 +508,14 @@ export default function RimsPanel({ ar, lang, admin, query, onQuery, plateOption
             <Plus className="w-4 h-4 text-[#f37121]" /> {ar ? 'إضافة صنف جنوط' : 'Add rim type'}
           </button>
         )}
+        {admin && <>
+          <button type="button" onClick={() => setVehicleMove('out')} className="flex items-center gap-1.5 px-3 py-2 rounded-lg bg-[#f37121] text-white text-sm font-medium hover:bg-[#e0651a]">
+            <Truck className="w-4 h-4" /> {ar ? 'صادر على مركبة' : 'Issue to vehicle'}
+          </button>
+          <button type="button" onClick={() => setVehicleMove('in')} className="flex items-center gap-1.5 px-3 py-2 rounded-lg bg-white border border-slate-200 hover:border-emerald-400 text-slate-700 text-sm">
+            <PackageCheck className="w-4 h-4 text-emerald-600" /> {ar ? 'وارد من مركبة' : 'Return from vehicle'}
+          </button>
+        </>}
         <button type="button" onClick={() => setLog({ rim: null })} className="flex items-center gap-1.5 px-3 py-2 rounded-lg bg-white border border-slate-200 hover:border-slate-300 text-slate-700 text-sm">
           <History className="w-4 h-4" /> {ar ? 'سجل حركات الجنوط' : 'Rim movements'}
         </button>
@@ -460,8 +564,8 @@ export default function RimsPanel({ ar, lang, admin, query, onQuery, plateOption
                   <td className="px-4 py-3">
                     <div className="flex items-center justify-end gap-1">
                       {admin && <>
-                        <button type="button" title={ar ? 'إضافة رصيد' : 'Add stock'} onClick={() => setMove({ rim: r, type: 'in' })} className="p-1.5 rounded-md hover:bg-emerald-50 text-slate-400 hover:text-emerald-600"><Plus className="w-4 h-4" /></button>
-                        <button type="button" title={ar ? 'خصم من الرصيد' : 'Reduce stock'} disabled={r.quantity <= 0} onClick={() => setMove({ rim: r, type: 'out' })} className="p-1.5 rounded-md hover:bg-amber-50 text-slate-400 hover:text-amber-600 disabled:opacity-30"><Minus className="w-4 h-4" /></button>
+                        <button type="button" title={ar ? 'وارد' : 'In'} onClick={() => setMove({ rim: r, type: 'in' })} className="p-1.5 rounded-md hover:bg-emerald-50 text-slate-400 hover:text-emerald-600"><Plus className="w-4 h-4" /></button>
+                        <button type="button" title={ar ? 'صادر' : 'Out'} disabled={r.quantity <= 0} onClick={() => setMove({ rim: r, type: 'out' })} className="p-1.5 rounded-md hover:bg-amber-50 text-slate-400 hover:text-amber-600 disabled:opacity-30"><Minus className="w-4 h-4" /></button>
                         <button type="button" title={ar ? 'تحويل إلى صنف آخر' : 'Transfer to another type'} disabled={r.quantity <= 0 || rims.length < 2} onClick={() => setTransfer(r)} className="p-1.5 rounded-md hover:bg-blue-50 text-slate-400 hover:text-blue-600 disabled:opacity-30"><ArrowLeftRight className="w-4 h-4" /></button>
                         <button type="button" title={ar ? 'تعديل' : 'Edit'} onClick={() => setForm({ rim: r })} className="p-1.5 rounded-md hover:bg-slate-100 text-slate-400 hover:text-slate-700"><Pencil className="w-4 h-4" /></button>
                       </>}
@@ -480,7 +584,9 @@ export default function RimsPanel({ ar, lang, admin, query, onQuery, plateOption
       </div>
 
       {form && <RimForm rim={form.rim} ar={ar} onClose={() => setForm(null)} onSaved={() => saved(ar ? 'تم الحفظ' : 'Saved')} />}
-      {move && <MovementForm rim={move.rim} type={move.type} reasons={move.type === 'in' ? reasons.in : reasons.out} plateOptions={plateOptions} ar={ar}
+      {vehicleMove && <VehicleMoveForm type={vehicleMove} rims={rims} issueReasons={reasons.issue || []} plateOptions={plateOptions} ar={ar}
+        onClose={() => setVehicleMove(null)} onSaved={() => saved(ar ? 'تم تسجيل الحركة' : 'Recorded')} />}
+      {move && <MovementForm rim={move.rim} type={move.type} reasons={move.type === 'in' ? reasons.in : reasons.out} issueReasons={reasons.issue || []} plateOptions={plateOptions} ar={ar}
         onClose={() => setMove(null)} onSaved={() => saved(ar ? 'تم تسجيل الحركة' : 'Recorded')} />}
       {transfer && <TransferForm rim={transfer} rims={rims} ar={ar} onClose={() => setTransfer(null)} onSaved={() => saved(ar ? 'تم التحويل' : 'Transferred')} />}
       {log && <MovementLog rim={log.rim} ar={ar} lang={lang} admin={admin} refreshKey={refreshKey} onClose={() => setLog(null)} onChanged={() => load()} />}

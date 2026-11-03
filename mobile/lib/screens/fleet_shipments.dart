@@ -3,6 +3,8 @@ import 'package:printing/printing.dart';
 import '../services/api.dart';
 import '../services/lang.dart';
 import '../services/live.dart';
+import '../services/auth.dart';
+import 'package:provider/provider.dart';
 import 'fleet_new_shipment.dart';
 import 'fleet_shipment_details.dart';
 import '../ui/app_scaffold.dart';
@@ -32,7 +34,30 @@ const _statuses = {
   'cancelled': ('ملغاة', 'Cancelled', T.danger),
 };
 
+/// Column filters, the same fields and server endpoint as the web table (GET /api/fleet/shipments/filters).
+const _filterFields = [
+  ('branch', 'الفرع', 'Branch'), ('paymentSubtype', 'نوع الدفع', 'Payment type'), ('customerName', 'العميل', 'Customer'),
+  ('fromCity', 'من', 'From'), ('toCity', 'إلى', 'To'), ('supervisorName', 'المشرف', 'Supervisor'),
+  ('vehiclePlate', 'اللوحة', 'Plate'), ('driverName', 'السائق', 'Driver'), ('customerType', 'نوع العميل', 'Customer type'),
+  ('loadType', 'نوع الحمولة', 'Load type'), ('loadDate', 'تاريخ التحميل', 'Load date'), ('trailerType', 'نوع السيارة', 'Truck type'),
+  ('driverExpensePaid', 'صُرف المصروف', 'Expense paid'), ('fridayBonus', 'بدل الجمعة', 'Friday bonus'),
+];
+/// Optional fields on a load card; each person hides what they do not need (saved on the account).
+const _cardFields = [
+  ('branch', 'الفرع', 'Branch'), ('paymentSubtype', 'نوع الدفع', 'Payment type'), ('vehiclePlate', 'اللوحة', 'Plate'),
+  ('driverName', 'السائق', 'Driver'), ('price', 'إيجار السيارة', 'Vehicle rent'), ('fullRent', 'الإيجار كامل', 'Full rent'),
+  ('driverExpense', 'مصروف السائق', 'Driver expense'), ('customerType', 'نوع العميل', 'Customer type'), ('loadType', 'نوع الحمولة', 'Load type'),
+  ('supervisorName', 'المشرف', 'Supervisor'), ('loadDate', 'تاريخ التحميل', 'Load date'), ('expectedArrival', 'الوصول المتوقع', 'Expected arrival'),
+  ('trailerType', 'نوع السيارة', 'Truck type'), ('lastContactAt', 'آخر تواصل', 'Last contact'), ('notes', 'ملاحظات', 'Notes'),
+];
+const _payAr = {'deferred_cash': 'آجل - كاش', 'deferred_invoice': 'آجل - فاتورة', 'cash_3pl': 'نقدي - 3PL', 'cash_ht': 'نقدي - HT'};
+const _payEn = {'deferred_cash': 'Deferred – cash', 'deferred_invoice': 'Deferred – invoice', 'cash_3pl': 'Cash – 3PL', 'cash_ht': 'Cash – HT'};
+
 class _FleetShipmentsScreenState extends State<FleetShipmentsScreen> {
+  static const _hiddenKey = 'fleetLoads.hidden';
+  final Map<String, Set<String>> _cf = {};
+  Set<String> _hidden = {};
+  int _total = 0;
   List<Map<String, dynamic>> _rows = [];
   List<Map<String, dynamic>> _loadTypes = [];
   bool _loading = true;
@@ -57,6 +82,10 @@ class _FleetShipmentsScreenState extends State<FleetShipmentsScreen> {
   @override
   void initState() {
     super.initState();
+    _hidden = {
+      for (final ch in context.read<AuthProvider>().pref(_hiddenKey).split(''))
+        if (int.tryParse(ch, radix: 36) case final i? when i < _cardFields.length) _cardFields[i].$1,
+    };
     _load();
     _onLive = () => _load();
     Live.instance.on('fleet:updated', _onLive);
@@ -71,7 +100,7 @@ class _FleetShipmentsScreenState extends State<FleetShipmentsScreen> {
 
   Future<void> _load() async {
     try {
-      final qs = '${_status.isEmpty ? '' : '&status=$_status'}${_excludeCancelled ? '&excludeCancelled=1' : ''}';
+      final qs = '${_status.isEmpty ? '' : '&status=$_status'}${_excludeCancelled ? '&excludeCancelled=1' : ''}${_cfQuery()}';
       final results = await Future.wait([
         Api.instance.get('/api/fleet/shipments?limit=100$qs'),
         if (_loadTypes.isEmpty)
@@ -80,6 +109,7 @@ class _FleetShipmentsScreenState extends State<FleetShipmentsScreen> {
       if (!mounted) return;
       setState(() {
         _rows = List<Map<String, dynamic>>.from(results[0]['shipments'] ?? []);
+        _total = (results[0]['total'] as num?)?.toInt() ?? _rows.length;
         if (results.length > 1) _loadTypes = List<Map<String, dynamic>>.from(results[1]['items'] ?? []);
         _loading = false;
         _error = null;
@@ -88,6 +118,123 @@ class _FleetShipmentsScreenState extends State<FleetShipmentsScreen> {
       if (mounted) setState(() { _loading = false; _error = e.toString(); });
     }
   }
+
+  String _cfQuery() => [
+        for (final e in _cf.entries)
+          for (final v in e.value) '&cf_${e.key}=${Uri.encodeQueryComponent(v)}'
+      ].join();
+
+  String _valueLabel(String field, String v) {
+    if (v.isEmpty) return tr('(فارغ)', '(blank)');
+    if (field == 'paymentSubtype') return (Lang.instance.ar ? _payAr : _payEn)[v] ?? v;
+    if (field == 'customerType') return v == 'heavy' ? tr('نقل ثقيل', 'Heavy') : v == 'branch' ? tr('فروع', 'Branch') : v;
+    if (field == 'loadType') return _loadTypeLabel(v);
+    if (field == 'driverExpensePaid' || field == 'fridayBonus') return v == 'true' ? tr('نعم', 'Yes') : tr('لا', 'No');
+    return v;
+  }
+
+  /// One column's values with counts under every other filter, then the chosen ones go back to the server.
+  Future<void> _pickValues(String field, String label) async {
+    final others = Map<String, Set<String>>.from(_cf)..remove(field);
+    final qs = [
+      'field=$field',
+      if (_status.isNotEmpty) 'status=$_status',
+      if (_excludeCancelled) 'excludeCancelled=1',
+      for (final e in others.entries) for (final v in e.value) 'cf_${e.key}=${Uri.encodeQueryComponent(v)}',
+    ].join('&');
+    List<Map<String, dynamic>> values;
+    try {
+      final d = await Api.instance.get('/api/fleet/shipments/filters?$qs');
+      values = List<Map<String, dynamic>>.from(((d['filters'] as List?)?.firstOrNull?['values'] as List?) ?? const []);
+    } catch (e) {
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.toString())));
+      return;
+    }
+    if (!mounted) return;
+    final chosen = {...?_cf[field]};
+    var q = '';
+    final out = await showModalBottomSheet<Set<String>>(
+      context: context, isScrollControlled: true,
+      builder: (c) => StatefulBuilder(builder: (c, set) {
+        final shown = values.where((v) => q.isEmpty || _valueLabel(field, '${v['value'] ?? ''}').contains(q)).toList();
+        return SafeArea(child: SizedBox(
+          height: MediaQuery.of(c).size.height * 0.7,
+          child: Column(children: [
+            ListTile(
+              title: Text(label, style: const TextStyle(fontWeight: FontWeight.w800)),
+              trailing: Row(mainAxisSize: MainAxisSize.min, children: [
+                TextButton(onPressed: () => set(() => chosen.clear()), child: Text(tr('مسح', 'Clear'))),
+                FilledButton(onPressed: () => Navigator.pop(c, chosen), child: Text(tr('تطبيق', 'Apply'))),
+              ]),
+            ),
+            Padding(padding: const EdgeInsets.symmetric(horizontal: 14),
+                child: TextField(decoration: InputDecoration(hintText: tr('ابحث…', 'Search…'), prefixIcon: const Icon(Icons.search)), onChanged: (v) => set(() => q = v.trim()))),
+            Expanded(child: ListView(children: [
+              for (final v in shown)
+                CheckboxListTile(
+                  dense: true,
+                  value: chosen.contains('${v['value'] ?? ''}'),
+                  onChanged: (on) => set(() => on == true ? chosen.add('${v['value'] ?? ''}') : chosen.remove('${v['value'] ?? ''}')),
+                  title: Text(_valueLabel(field, '${v['value'] ?? ''}')),
+                  secondary: Text('${v['count'] ?? 0}', style: const TextStyle(color: T.inkFaint, fontWeight: FontWeight.w700)),
+                ),
+            ])),
+          ]),
+        ));
+      }),
+    );
+    if (out == null) return;
+    setState(() { if (out.isEmpty) { _cf.remove(field); } else { _cf[field] = out; } _loading = true; });
+    _load();
+  }
+
+  Future<void> _openFilters() async {
+    await showModalBottomSheet<void>(
+      context: context,
+      builder: (c) => SafeArea(child: ListView(shrinkWrap: true, children: [
+        ListTile(
+          title: Text(tr('فلاتر الأعمدة', 'Column filters'), style: const TextStyle(fontWeight: FontWeight.w800)),
+          trailing: _cf.isEmpty ? null : TextButton(onPressed: () { Navigator.pop(c); setState(() { _cf.clear(); _loading = true; }); _load(); }, child: Text(tr('مسح الكل', 'Clear all'))),
+        ),
+        for (final f in _filterFields)
+          ListTile(
+            dense: true,
+            title: Text(tr(f.$2, f.$3)),
+            trailing: _cf[f.$1] == null ? const Icon(Icons.chevron_left) : Chip2('${_cf[f.$1]!.length}', T.orange),
+            onTap: () { Navigator.pop(c); _pickValues(f.$1, tr(f.$2, f.$3)); },
+          ),
+      ])),
+    );
+  }
+
+  Future<void> _chooseFields() async {
+    final hidden = {..._hidden};
+    final picked = await showModalBottomSheet<Set<String>>(
+      context: context, isScrollControlled: true,
+      builder: (c) => StatefulBuilder(builder: (c, set) => SafeArea(child: SizedBox(
+        height: MediaQuery.of(c).size.height * 0.7,
+        child: ListView(children: [
+          ListTile(title: Text(tr('الحقول الظاهرة في البطاقة', 'Fields on the card'), style: const TextStyle(fontWeight: FontWeight.w800)),
+              trailing: TextButton(onPressed: () => Navigator.pop(c, hidden), child: Text(tr('حفظ', 'Save')))),
+          for (final f in _cardFields)
+            CheckboxListTile(dense: true, value: !hidden.contains(f.$1), title: Text(tr(f.$2, f.$3)),
+                onChanged: (on) => set(() => on == true ? hidden.remove(f.$1) : hidden.add(f.$1))),
+        ]),
+      ))),
+    );
+    if (picked == null || !mounted) return;
+    setState(() => _hidden = picked);
+    final code = [for (var i = 0; i < _cardFields.length; i++) if (picked.contains(_cardFields[i].$1)) i.toRadixString(36)].join();
+    final auth = context.read<AuthProvider>();
+    try {
+      await Api.instance.patch('/api/auth/me/prefs', {'key': _hiddenKey, 'value': code});
+      auth.setPref(_hiddenKey, code);
+    } catch (_) {}
+  }
+
+  bool _on(String k) => !_hidden.contains(k);
+  String _day(dynamic v) { final d = DateTime.tryParse('${v ?? ''}')?.toLocal(); return d == null ? '' : '${d.day}/${d.month}/${d.year}'; }
+  String _num(dynamic v) { final n = num.tryParse('${v ?? ''}') ?? 0; return n == 0 ? '' : n.toStringAsFixed(n == n.roundToDouble() ? 0 : 2); }
 
   String _fold(String s) => s
       .replaceAll(RegExp('[أإآ]'), 'ا').replaceAll('ى', 'ي').replaceAll('ة', 'ه').toLowerCase();
@@ -161,6 +308,8 @@ class _FleetShipmentsScreenState extends State<FleetShipmentsScreen> {
                       controller: _searchCtl,
                       onChanged: (v) => setState(() => _q = v),
                       hint: tr('ابحث برقم أمر النقل أو العميل أو اللوحة…', 'Search waybill, customer, plate…'),
+                      // How many loads match the filters on the server, not just the ones loaded here.
+                      suffixText: '$_total',
                     ),
                   ),
                   Padding(
@@ -169,6 +318,19 @@ class _FleetShipmentsScreenState extends State<FleetShipmentsScreen> {
                       scrollDirection: Axis.horizontal,
                       child: Row(
                         children: [
+                          ActionChip(
+                            avatar: const Icon(Icons.filter_alt_outlined, size: 16),
+                            label: Text(_cf.isEmpty ? tr('فلاتر', 'Filters') : '${tr('فلاتر', 'Filters')} (${_cf.length})', style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w700)),
+                            backgroundColor: _cf.isEmpty ? null : T.orange.withValues(alpha: 0.12),
+                            onPressed: _openFilters,
+                          ),
+                          const SizedBox(width: 6),
+                          ActionChip(
+                            avatar: const Icon(Icons.view_column_outlined, size: 16),
+                            label: Text(tr('الحقول', 'Fields'), style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w700)),
+                            onPressed: _chooseFields,
+                          ),
+                          const SizedBox(width: 6),
                           FilterChip(
                             selected: _excludeCancelled,
                             onSelected: (_) {
@@ -274,21 +436,39 @@ class _FleetShipmentsScreenState extends State<FleetShipmentsScreen> {
                                             style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600)),
                                         const SizedBox(height: 6),
                                         Wrap(spacing: 6, runSpacing: 6, children: [
-                                          if ((s['vehiclePlate'] ?? '').toString().isNotEmpty)
+                                          if (_on('branch') && (s['branch'] ?? '').toString().isNotEmpty)
+                                            Chip2(s['branch'].toString(), T.navy, icon: Icons.store_mall_directory_outlined),
+                                          if (_on('paymentSubtype') && (s['paymentSubtype'] ?? '').toString().isNotEmpty)
+                                            Chip2(_valueLabel('paymentSubtype', s['paymentSubtype'].toString()), T.violet, icon: Icons.credit_card_outlined),
+                                          if (_on('vehiclePlate') && (s['vehiclePlate'] ?? '').toString().isNotEmpty)
                                             Chip2(s['vehiclePlate'].toString(), T.navy, icon: Icons.local_shipping_outlined),
-                                          if ((s['driverName'] ?? '').toString().isNotEmpty)
+                                          if (_on('trailerType') && (s['trailerType'] ?? '').toString().isNotEmpty)
+                                            Chip2(s['trailerType'].toString(), T.inkSoft, icon: Icons.rv_hookup_outlined),
+                                          if (_on('driverName') && (s['driverName'] ?? '').toString().isNotEmpty)
                                             Chip2(s['driverName'].toString(), T.inkSoft, icon: Icons.person_outline),
-                                          if ((num.tryParse((s['price'] ?? '').toString()) ?? 0) > 0)
-                                            Chip2('${tr('إيجار', 'Rent')} ${s['price']}', T.success, icon: Icons.payments_outlined),
-                                          if (s['customerType'] == 'heavy')
+                                          if (_on('price') && _num(s['price']).isNotEmpty)
+                                            Chip2('${tr('إيجار', 'Rent')} ${_num(s['price'])}', T.success, icon: Icons.payments_outlined),
+                                          if (_on('fullRent') && _num(s['fullRent']).isNotEmpty)
+                                            Chip2('${tr('الإيجار كامل', 'Full rent')} ${_num(s['fullRent'])}', T.success),
+                                          if (_on('driverExpense') && _num(s['driverExpense']).isNotEmpty)
+                                            Chip2('${tr('مصروف السائق', 'Driver expense')} ${_num(s['driverExpense'])}', T.warn),
+                                          if (_on('customerType') && s['customerType'] == 'heavy')
                                             Chip2(tr('نقل ثقيل', 'Heavy'), T.violet, icon: Icons.workspace_premium_outlined),
-                                          if (s['customerType'] == 'branch')
+                                          if (_on('customerType') && s['customerType'] == 'branch')
                                             Chip2(tr('عميل فروع', 'Branch'), T.info, icon: Icons.store_outlined),
-                                          if (_loadTypeLabel((s['loadType'] ?? '').toString()).isNotEmpty)
+                                          if (_on('loadType') && _loadTypeLabel((s['loadType'] ?? '').toString()).isNotEmpty)
                                             Chip2(_loadTypeLabel((s['loadType'] ?? '').toString()), T.inkSoft, icon: Icons.category_outlined),
+                                          if (_on('supervisorName') && (s['supervisorName'] ?? '').toString().isNotEmpty)
+                                            Chip2(s['supervisorName'].toString(), T.inkSoft, icon: Icons.badge_outlined),
+                                          if (_on('loadDate') && _day(s['loadDate']).isNotEmpty)
+                                            Chip2('${tr('التحميل', 'Loaded')} ${_day(s['loadDate'])}', T.inkSoft, icon: Icons.event_outlined),
+                                          if (_on('expectedArrival') && _day(s['expectedArrival']).isNotEmpty)
+                                            Chip2('${tr('الوصول المتوقع', 'ETA')} ${_day(s['expectedArrival'])}', T.inkSoft, icon: Icons.schedule_outlined),
+                                          if (_on('notes') && (s['notes'] ?? '').toString().isNotEmpty)
+                                            Chip2(s['notes'].toString(), T.inkFaint, icon: Icons.notes_outlined),
                                           if ((s['driverPhone'] ?? '').toString().isNotEmpty)
                                             ContactButtons(phone: (s['driverPhone']).toString(), compact: true, size: 17),
-                                          if (s['lastContactAt'] != null)
+                                          if (_on('lastContactAt') && s['lastContactAt'] != null)
                                             Chip2('${tr('آخر تواصل', 'Last contact')}: ${_ago(s['lastContactAt'])}',
                                                 _hoursSince(s['lastContactAt']) >= 3 ? T.danger : T.success,
                                                 icon: Icons.phone_in_talk_outlined),

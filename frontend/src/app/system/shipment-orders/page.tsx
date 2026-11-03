@@ -13,7 +13,7 @@ import { ColumnFilter } from '@/components/ColumnFilter';
 import ColumnChooser, { useVisibleColumns } from '@/components/system/ColumnChooser';
 import { Ban, PackageSearch, Plus, Pencil, Eye, FileDown, Loader2, RefreshCw, X, Check, MessageSquareText, SlidersHorizontal, Trash2 } from 'lucide-react';
 import {
-  Spinner, PageHeader, SearchInput, PrimaryButton, StatCard, Select, ErrorNotice,
+  Spinner, PageHeader, SearchInput, PrimaryButton, Select, ErrorNotice,
 } from '@/components/hr/HRKit';
 import ExportMenu, { exportScopeLabels, type ExportColumn } from '@/components/ls2/ExportMenu';
 import {
@@ -454,14 +454,6 @@ function ShipmentOrdersInner() {
 
   if (loading) return <Spinner />;
 
-  // The two groups are defined once: the card counts what it filters itself.
-  const IN_FLIGHT_KEYS = ['loading', 'uploaded', 'on_way'];
-  const DONE_KEYS = ['arrived', 'bond_sent', 'bond_received', 'invoiced'];
-  const inFlight = IN_FLIGHT_KEYS.reduce((s, k) => s + (stats?.byStatus[k] || 0), 0);
-  const done = DONE_KEYS.reduce((s, k) => s + (stats?.byStatus[k] || 0), 0);
-  /** Are the selected statuses exactly this group? */
-  const isSet = (keys: string[]) => keys.length === statuses.length && keys.every((k) => statuses.includes(k));
-
   return (
     <div className="space-y-3 sm:space-y-6" dir={isRTL ? 'rtl' : 'ltr'}>
       <PageHeader
@@ -537,34 +529,6 @@ function ShipmentOrdersInner() {
           <button type="button" onClick={() => { setStatuses([]); setPage(1); }} className="ms-2 text-[#f37121] hover:underline">{ar ? 'مسح' : 'clear'}</button>
         </div>
       )}
-
-      {/* Two remaining figures, not five. Total sale and profit margin sat above a screen the operations team opens every day: two financial numbers not read or acted on there; they belong to the analytics page. */}
-      {/* Mobile: one row of three small cards with no hint lines. */}
-      <div className="sm:hidden grid grid-cols-3 gap-2">
-        {([
-          [ar ? 'الإجمالي' : 'Total', total, 'text-[#f37121]', statuses.length === 0, () => pickStatuses([])],
-          [ar ? 'قيد التنفيذ' : 'In flight', inFlight, 'text-blue-600', isSet(IN_FLIGHT_KEYS), () => pickStatuses(isSet(IN_FLIGHT_KEYS) ? [] : IN_FLIGHT_KEYS)],
-          [ar ? 'مكتملة' : 'Done', done, 'text-emerald-600', isSet(DONE_KEYS), () => pickStatuses(isSet(DONE_KEYS) ? [] : DONE_KEYS)],
-        ] as [string, number, string, boolean, () => void][]).map(([label, value, accent, on, click]) => (
-          <button key={label} type="button" onClick={click}
-            className={`min-w-0 text-start rounded-xl border bg-white px-2.5 py-2 ${on ? 'border-[#f37121] ring-1 ring-[#f37121]/40' : 'border-slate-200'}`}>
-            <p className="text-[11px] text-slate-500 truncate">{label}</p>
-            <p className={`text-base font-bold tabular-nums leading-tight ${accent}`}>{value}</p>
-          </button>
-        ))}
-      </div>
-      <div className="hidden sm:grid grid-cols-2 sm:grid-cols-3 gap-3">
-        {/* The card selects the status cards below it: in progress is a group of three statuses and arrived/completed is four; the filter already accepts several. */}
-        <StatCard label={ar ? 'إجمالي الشحنات' : 'Total shipments'} value={total} accent="text-[#f37121]"
-          onClick={() => pickStatuses([])} active={statuses.length === 0}
-          hint={ar ? 'اضغط لعرض الكل' : 'tap to show all'} />
-        <StatCard label={ar ? 'قيد التنفيذ' : 'In flight'} value={inFlight} accent="text-blue-600"
-          onClick={() => pickStatuses(isSet(IN_FLIGHT_KEYS) ? [] : IN_FLIGHT_KEYS)}
-          active={isSet(IN_FLIGHT_KEYS)} hint={ar ? 'اضغط لعرضها' : 'tap to filter'} />
-        <StatCard label={ar ? 'وصلت / مكتملة' : 'Arrived / done'} value={done} accent="text-emerald-600"
-          onClick={() => pickStatuses(isSet(DONE_KEYS) ? [] : DONE_KEYS)}
-          active={isSet(DONE_KEYS)} hint={ar ? 'اضغط لعرضها' : 'tap to filter'} />
-      </div>
 
       <div className="flex flex-wrap gap-3 items-center">
         <div className="flex-1 min-w-[240px]">

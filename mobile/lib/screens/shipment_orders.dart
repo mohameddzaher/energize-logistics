@@ -330,10 +330,6 @@ class _ShipmentOrdersScreenState extends State<ShipmentOrdersScreen> {
         ]),
       );
 
-  static const _inFlight = ['loading', 'uploaded', 'on_way'];
-  static const _done = ['arrived', 'bond_sent', 'bond_received', 'invoiced'];
-  bool _isSet(List<String> keys) => keys.length == _statuses.length && keys.every(_statuses.contains);
-
   Future<void> _openDetail(Map<String, dynamic> r) async {
     await Navigator.push(context, MaterialPageRoute(builder: (_) => ShipmentOrderDetailScreen(order: r, vocab: _vocab)));
     _load();
@@ -424,18 +420,6 @@ class _ShipmentOrdersScreenState extends State<ShipmentOrdersScreen> {
                 : RefreshIndicator(
                     onRefresh: _load,
                     child: ListView(keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag, padding: const EdgeInsets.fromLTRB(12, 4, 12, 90), children: [
-                      // Stats cards: tapping shows only those shipments below, tapping again clears
-                      Row(children: [
-                        Expanded(child: _kpiTile(tr('كل الشحنات', 'All'), _total, T.navy, _statuses.isEmpty,
-                            () => _refilter(_statuses.clear, reveal: true))),
-                        const SizedBox(width: 6),
-                        Expanded(child: _kpiTile(tr('قيد التنفيذ', 'In flight'), _inFlight.fold(0, (a, k) => a + _byStatus(k)), T.info, _isSet(_inFlight),
-                            () => _refilter(() { final on = _isSet(_inFlight); _statuses.clear(); if (!on) _statuses.addAll(_inFlight); }, reveal: true))),
-                        const SizedBox(width: 6),
-                        Expanded(child: _kpiTile(tr('وصلت / مكتملة', 'Done'), _done.fold(0, (a, k) => a + _byStatus(k)), T.success, _isSet(_done),
-                            () => _refilter(() { final on = _isSet(_done); _statuses.clear(); if (!on) _statuses.addAll(_done); }, reveal: true))),
-                      ]),
-                      const SizedBox(height: 6),
                       // Status bar: tapping shows only that status, long-press adds it to the selection
                       SingleChildScrollView(scrollDirection: Axis.horizontal, child: Row(children: [
                         for (final s in _vocab)
@@ -533,25 +517,6 @@ class _ShipmentOrdersScreenState extends State<ShipmentOrdersScreen> {
             ),
         ]);
       });
-
-  Widget _kpiTile(String label, int n, Color color, bool on, VoidCallback onTap) => InkWell(
-        onTap: onTap,
-        borderRadius: BorderRadius.circular(12),
-        child: AnimatedContainer(
-          duration: const Duration(milliseconds: 150),
-          padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 6),
-          decoration: BoxDecoration(
-            color: on ? color : T.card,
-            borderRadius: BorderRadius.circular(12),
-            border: Border.all(color: on ? color : T.line),
-          ),
-          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            FittedBox(fit: BoxFit.scaleDown, alignment: AlignmentDirectional.centerStart,
-                child: Text('$n', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w800, color: on ? Colors.white : T.ink, height: 1.15))),
-            Text(label, maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(fontSize: 10.5, color: on ? Colors.white : color, fontWeight: FontWeight.w700)),
-          ]),
-        ),
-      );
 
   /// Count of active filters in the panel (note, source, customer, both dates, columns).
   int get _sheetFilterCount =>

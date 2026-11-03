@@ -313,6 +313,44 @@ const _oid = (v) => (mongoose.Types.ObjectId.isValid(v) ? new mongoose.Types.Obj
 
 // ── Shipments ───────────────────────────────────────────────────────────────
 
+/**
+ * Excel-style column filters on the loads list: `cf_<field>` repeated per chosen value; '' means empty.
+ * Day columns compare by the Riyadh day, money and flags by their stored value.
+ */
+const LOAD_FILTER_FIELDS = {
+  waybillNumber: 'num', customerName: 'text', fromCity: 'text', toCity: 'text', branch: 'text',
+  vehiclePlate: 'text', trailerType: 'text', vehicleBrand: 'text', vehicleColor: 'text',
+  driverName: 'text', secondDriverName: 'text', driverNationality: 'text',
+  paymentSubtype: 'text', customerType: 'text', loadType: 'text', status: 'text', supervisorName: 'text',
+  price: 'num', fullRent: 'num', driverExpense: 'num', fridayBonus: 'bool', driverExpensePaid: 'bool',
+  loadDate: 'day', expectedArrival: 'day', createdAt: 'day',
+};
+const RIYADH_DAY = (f) => ({ $dateToString: { format: '%Y-%m-%d', date: `$${f}`, timezone: 'Asia/Riyadh' } });
+const valuesOf = (q, field) => {
+  const v = q[`cf_${field}`];
+  return v === undefined ? null : (Array.isArray(v) ? v : [v]).map((x) => String(x));
+};
+function columnClauses(q, skipField) {
+  const out = [];
+  for (const [f, kind] of Object.entries(LOAD_FILTER_FIELDS)) {
+    if (f === skipField) continue;
+    const vals = valuesOf(q, f);
+    if (!vals) continue;
+    const blank = vals.includes('');
+    const rest = vals.filter((x) => x !== '');
+    const or = [];
+    if (blank) or.push({ [f]: { $in: [null, ''] } }, { [f]: { $exists: false } });
+    if (rest.length) {
+      if (kind === 'num') or.push({ [f]: { $in: rest.map(Number).filter(Number.isFinite) } });
+      else if (kind === 'bool') or.push({ [f]: { $in: rest.map((x) => x === 'true') } });
+      else if (kind === 'day') or.push({ $expr: { $in: [RIYADH_DAY(f), rest] } });
+      else or.push({ [f]: { $in: rest } });
+    }
+    out.push(or.length ? { $or: or } : { _id: null });
+  }
+  return out;
+}
+
 exports.listShipments = async (req, res) => {
   try {
     const { q, status, supervisor, customer, vehicle, toCity, preset, from, to, day, month, page = 1, limit = 25 } = req.query;
@@ -348,6 +386,7 @@ exports.listShipments = async (req, res) => {
       else if (keys.length) narrow.push({ status: { $in: keys } });
     }
     if (toCity) narrow.push({ toCity });
+    base.push(...columnClauses(req.query));
     const all = [...base, ...narrow];
     const filter = all.length ? { $and: all } : {};
 
@@ -402,6 +441,53 @@ exports.listShipments = async (req, res) => {
   } catch (error) {
     console.error('Error listing fleet shipments:', error);
     res.status(500).json({ message: 'Failed to load fleet shipments' });
+  }
+};
+
+// GET /shipments/filters?field=… — one column's values with counts, under every other filter on the list.
+exports.shipmentFilterValues = async (req, res) => {
+  try {
+    const field = String(req.query.field || '');
+    const kind = LOAD_FILTER_FIELDS[field];
+    if (!kind) return res.status(400).json({ message: 'Unknown filter column' });
+    const { q, status, supervisor, customer, toCity, preset, from, to, day, month } = req.query;
+    const base = [];
+    if (supervisor) base.push({ supervisor: _oid(supervisor) });
+    if (customer) base.push({ customer: _oid(customer) });
+    if (req.query.excludeCancelled === '1') base.push({ status: { $ne: 'cancelled' } });
+    const scope = await supervisorVehicleIds(req);
+    if (scope) base.push({ vehicle: { $in: scope } });
+    if (preset || from || to || day || month) {
+      const period = resolvePeriod({ preset, from, to, day, month });
+      if (period && period.preset !== 'all') base.push(effectiveDateMatch(period.start, period.end));
+    }
+    if (q && q.trim()) {
+      const r = arRx(q);
+      const or = [{ customerName: r }, { driverName: r }, { secondDriverName: r }, { vehiclePlate: r }, { fromCity: r }, { toCity: r }, { supervisorName: r }];
+      const n = Number(String(q).trim());
+      if (Number.isFinite(n)) or.push({ waybillNumber: n });
+      base.push({ $or: or });
+    }
+    if (status && field !== 'status') {
+      const keys = String(status).split(',').map((x) => x.trim()).filter(Boolean);
+      if (keys.length) base.push({ status: { $in: keys } });
+    }
+    if (toCity && field !== 'toCity') base.push({ toCity });
+    base.push(...columnClauses(req.query, field));
+    const key = kind === 'day' ? RIYADH_DAY(field) : { $ifNull: [`$${field}`, ''] };
+    const rows = await FleetShipment.aggregate([
+      ...(base.length ? [{ $match: { $and: base } }] : []),
+      { $group: { _id: key, count: { $sum: 1 } } },
+      { $sort: { count: -1 } },
+      { $limit: 1000 },
+    ]);
+    const needle = String(req.query.q2 || req.query.search || '').trim();
+    const values = rows.map((r) => ({ value: r._id == null ? '' : String(r._id), count: r.count }))
+      .filter((v) => !needle || v.value.includes(needle));
+    res.json({ filters: [{ key: field, values, truncated: rows.length >= 1000, distinct: values.length }] });
+  } catch (error) {
+    console.error('fleet filter values:', error);
+    res.status(500).json({ message: 'تعذّر تحميل قيم الفلتر' });
   }
 };
 

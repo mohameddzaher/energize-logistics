@@ -207,6 +207,13 @@ async function mirrorFleet(loadOrId) {
   const f = loadOrId?.createdAt ? loadOrId : await fleetModel().findById(loadOrId).lean();
   if (!f || f.waybillNumber == null) return null;
   const wf = await OperationsWorkflow.findOne({ fleetShipment: f._id }).lean();
+  // A load saved before it carried one of the four types takes the workflow's, so the two agree and the loads page shows it.
+  if (wf && !isSubtype(f.paymentSubtype) && isSubtype(wf.paymentSubtype)) {
+    await fleetModel().updateOne({ _id: f._id }, { $set: { paymentSubtype: wf.paymentSubtype, paymentType: subtypeFamily(wf.paymentSubtype) } });
+    f.paymentSubtype = wf.paymentSubtype;
+    f.paymentType = subtypeFamily(wf.paymentSubtype);
+    announceFleet();
+  }
   const wanted = { ...rowOfFleet(f), ...fleetPayment(f) };
   if (wf) {
     const diff = changes(wf, wanted);

@@ -41,8 +41,14 @@ export default function DateFieldLocale() {
     };
     document.addEventListener('click', onClick, true);
 
+    // Values set from code fire no input event: a Gregorian filled from its Hijri, or a form filled after it opened, kept the empty mark and hid its date under the hint. React writes the value attribute along with the value, so attribute changes are watched too.
     const mo = new MutationObserver((records) => {
       for (const r of records) {
+        if (r.type === 'attributes') {
+          const el = r.target as Element;
+          if (el.matches?.(SELECTOR)) mark(el);
+          continue;
+        }
         for (const n of r.addedNodes) {
           if (n.nodeType !== 1) continue;
           const el = n as Element;
@@ -51,7 +57,11 @@ export default function DateFieldLocale() {
         }
       }
     });
-    mo.observe(document.body, { childList: true, subtree: true });
+    mo.observe(document.body, { childList: true, subtree: true, attributes: true, attributeFilter: ['value'] });
+    // Safety net for a value set without its attribute: only inputs still marked empty are checked, a handful at most.
+    const sweep = window.setInterval(() => {
+      document.querySelectorAll(`${SELECTOR.split(',').map((x) => `${x}[data-empty="1"]`).join(',')}`).forEach(mark);
+    }, 400);
 
     return () => {
       document.removeEventListener('input', onChange, true);
@@ -59,6 +69,7 @@ export default function DateFieldLocale() {
       document.removeEventListener('blur', onChange, true);
       document.removeEventListener('click', onClick, true);
       mo.disconnect();
+      window.clearInterval(sweep);
     };
   }, []);
   return null;

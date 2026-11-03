@@ -50,7 +50,6 @@ exports.getLookups = async (req, res) => {
     res.status(500).json({ message: 'Failed to load lookups' });
   }
 };
-
 // POST /api/lookups — create a row (also used by the inline "+ add" in dropdowns).
 exports.createLookup = async (req, res) => {
   try {

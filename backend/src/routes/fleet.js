@@ -32,6 +32,8 @@ router.post('/requests', authorize(...EDIT_ROLES), fleetRequests.create);
 
 // Shipments (loads)
 router.get('/shipments', fleet.listShipments);
+// Before /shipments/:id, so 'filters' is not read as an id.
+router.get('/shipments/filters', fleet.shipmentFilterValues);
 router.post('/shipments', authorize(...EDIT_ROLES), fleet.createShipment);
 router.get('/shipments/:id/waybill.pdf', fleet.getWaybillPdf); // Waybill PDF, same file as the web.
 // Waybills for several shipments in one file, instead of rendering each in the browser.

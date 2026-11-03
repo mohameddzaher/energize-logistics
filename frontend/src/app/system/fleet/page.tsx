@@ -15,6 +15,9 @@ import {
   Spinner, PageHeader, SearchInput, PrimaryButton, StatCard, Select, ErrorNotice,
 } from '@/components/hr/HRKit';
 import ExportMenu from '@/components/ls2/ExportMenu';
+import { ColumnFilter, type ColumnFilterOption } from '@/components/ColumnFilter';
+import ColumnChooser, { useVisibleColumns, type ChooserColumn } from '@/components/system/ColumnChooser';
+import { paymentKindLabel } from '@/lib/paymentKind';
 import PeriodFilter, { PeriodBanner, periodParams, periodFromParams, type Period } from '@/components/fleet/PeriodFilter';
 import { useFleetLookups } from '@/hooks/useFleetLookups';
 import {
@@ -60,6 +63,17 @@ const SHIPMENT_COLUMNS = [
   { header: 'Driver', key: 'driverName', width: 18 },
   { header: 'Second driver', key: 'secondDriverName', width: 18 },
   { header: 'Supervisor', key: 'supervisorName', width: 18 },
+  { header: 'Branch', key: 'branch', width: 14 },
+  { header: 'Payment type', key: 'paymentSubtype', transform: (v: any) => paymentKindLabel(v, false) || '', width: 16 },
+  { header: 'Truck type', key: 'trailerType', width: 14 },
+  { header: 'Brand', key: 'vehicleBrand', width: 12 },
+  { header: 'Colour', key: 'vehicleColor', width: 10 },
+  { header: 'Driver phone', key: 'driverPhone', width: 14 },
+  { header: 'Driver iqama', key: 'driverIqama', width: 14 },
+  { header: 'Driver nationality', key: 'driverNationality', width: 14 },
+  { header: 'Expected arrival', key: 'expectedArrival', transform: (v: any) => fmtD(v), width: 14 },
+  { header: 'Notes', key: 'notes', width: 30 },
+  { header: 'Created', key: 'createdAt', transform: (v: any) => fmtD(v), width: 14 },
   { header: 'Customer type', key: 'customerType', transform: (v: any) => (v === 'heavy' ? 'Heavy' : v === 'branch' ? 'Branch' : ''), width: 14 },
   { header: 'Load type', key: 'loadType', width: 16 },
   { header: 'Vehicle rent', key: 'price', width: 14 },
@@ -124,6 +138,17 @@ function FleetShipmentsInner() {
   const [showPicked, setShowPicked] = useState(false);
   const [bulkBusy, setBulkBusy] = useState(false);
   const [bulkProgress, setBulkProgress] = useState('');
+  // Excel-style column filters, filtered on the server over every load (cf_<field>, one per value).
+  const [colFilters, setColFilters] = useState<Record<string, Set<string>>>({});
+  const [colOptions, setColOptions] = useState<Record<string, { values: ColumnFilterOption[]; truncated: boolean }>>({});
+  const [colLoading, setColLoading] = useState<Record<string, boolean>>({});
+  const [openField, setOpenField] = useState<string | null>(null);
+  const [openNonce, setOpenNonce] = useState(0);
+  const setColFilter = (field: string, set: Set<string>) => setColFilters((prev) => {
+    const next = { ...prev };
+    if (set.size) next[field] = set; else delete next[field];
+    return next;
+  });
 
   useEffect(() => {
     const t = setTimeout(() => setDebounced(search), 300);
@@ -141,12 +166,32 @@ function FleetShipmentsInner() {
     if (supervisorFilter) p.supervisor = supervisorFilter;
     return p;
   }, [debounced, statusFilter, excludeCancelled, cityFilter, customerFilter, supervisorFilter, period]);
+  /** The list filters plus the column filters, as sent to the server. */
+  const queryOf = useCallback((extra: Record<string, string> = {}) => {
+    const qs = new URLSearchParams({ ...filterParams, ...extra });
+    for (const [f, set] of Object.entries(colFilters)) set.forEach((v) => qs.append(`cf_${f}`, v));
+    return qs;
+  }, [filterParams, colFilters]);
+  const fetchColOptions = useCallback(async (field: string, q = '') => {
+    setColLoading((p) => ({ ...p, [field]: true }));
+    try {
+      const qs = queryOf({ field, ...(q ? { q2: q } : {}) });
+      const d = await api.get<any>(`/api/fleet/shipments/filters?${qs}`);
+      const f = d?.filters?.[0];
+      setColOptions((p) => ({ ...p, [field]: { values: f?.values || [], truncated: !!f?.truncated } }));
+    } catch { /* keep the previous list */ }
+    setColLoading((p) => ({ ...p, [field]: false }));
+  }, [queryOf]);
+  useEffect(() => {
+    setColOptions((prev) => (openField && prev[openField] ? { [openField]: prev[openField] } : {}));
+    if (openField) fetchColOptions(openField);
+  }, [fetchColOptions, openField, openNonce]);
 
   const guard = useLatestRequest(); // A stale response (previous filter) must not overwrite the latest one
   const load = useCallback(async () => {
     const mine = guard.begin();
     try {
-      const qs = new URLSearchParams({ ...filterParams, page: String(page), limit: '25' });
+      const qs = queryOf({ page: String(page), limit: '25' });
       const d = await api.get<{ shipments: FleetShipment[]; total: number; stats: any; period: any }>(`/api/fleet/shipments?${qs}`);
       if (!guard.isCurrent(mine)) return;
       setShipments(d.shipments || []);
@@ -156,7 +201,7 @@ function FleetShipmentsInner() {
       setError('');
     } catch (e: any) { if (!guard.isCurrent(mine)) return; setError(e?.message || 'Request failed'); }
     setLoading(false);
-  }, [filterParams, page, guard]);
+  }, [queryOf, page, guard]);
 
   useEffect(() => { load(); }, [load]);
   useEffect(() => {
@@ -164,7 +209,7 @@ function FleetShipmentsInner() {
     router.replace(`/system/fleet${qs ? `?${qs}` : ''}`, { scroll: false });
   }, [filterParams, router]);
   // Any filter change resets paging to the start; otherwise the user stays on a page number beyond the new results and the list looks empty for no visible reason.
-  useEffect(() => { setPage(1); }, [filterParams]);
+  useEffect(() => { setPage(1); }, [filterParams, colFilters]);
   useSocket('fleet:updated', useCallback(() => load(), [load]));
   useEffect(() => {
     api.get<{ customers: FleetCustomer[] }>('/api/fleet/customers')
@@ -290,6 +335,106 @@ function FleetShipmentsInner() {
   // How many selected rows are off screen right now, stated so the user trusts that their search did not cancel their selection.
   const pickedOffScreen = pickedRows.filter((s) => !shipments.some((x) => x._id === s._id)).length;
 
+  // Every load field as a column; each person chooses which to show, saved in the browser.
+  const colDefs = useMemo<(ChooserColumn & { filter?: boolean })[]>(() => [
+    { key: 'waybillNumber', label: ar ? 'رقم أمر النقل' : 'Transport order', locked: true, filter: true },
+    { key: 'customerName', label: ar ? 'العميل' : 'Customer', filter: true },
+    { key: 'fromCity', label: ar ? 'من' : 'From', filter: true },
+    { key: 'toCity', label: ar ? 'إلى' : 'To', filter: true },
+    { key: 'branch', label: ar ? 'الفرع' : 'Branch', filter: true },
+    { key: 'vehiclePlate', label: ar ? 'اللوحة' : 'Plate', filter: true },
+    { key: 'trailerType', label: ar ? 'نوع السيارة' : 'Truck type', filter: true },
+    { key: 'vehicleBrand', label: ar ? 'الماركة' : 'Brand', filter: true },
+    { key: 'vehicleColor', label: ar ? 'اللون' : 'Colour', filter: true },
+    { key: 'driverName', label: ar ? 'السائق' : 'Driver', filter: true },
+    { key: 'secondDriverName', label: ar ? 'السائق الثاني' : 'Second driver', filter: true },
+    { key: 'driverPhone', label: ar ? 'جوال السائق' : 'Driver phone' },
+    { key: 'driverIqama', label: ar ? 'إقامة السائق' : 'Driver iqama' },
+    { key: 'driverNationality', label: ar ? 'جنسية السائق' : 'Driver nationality', filter: true },
+    { key: 'price', label: ar ? 'إيجار السيارة' : 'Vehicle rent', filter: true },
+    { key: 'fullRent', label: ar ? 'الإيجار كامل' : 'Full rent', filter: true },
+    { key: 'driverExpense', label: ar ? 'مصروف السائق' : 'Driver expense', filter: true },
+    { key: 'driverExpensePaid', label: ar ? 'صُرف المصروف' : 'Expense paid', filter: true },
+    { key: 'fridayBonus', label: ar ? 'بدل الجمعة' : 'Friday bonus', filter: true },
+    { key: 'paymentSubtype', label: ar ? 'نوع الدفع' : 'Payment type', filter: true },
+    { key: 'customerType', label: ar ? 'نوع العميل' : 'Cust. type', filter: true },
+    { key: 'loadType', label: ar ? 'نوع الحمولة' : 'Load type', filter: true },
+    { key: 'loadDate', label: ar ? 'تاريخ التحميل' : 'Load date', filter: true },
+    { key: 'expectedArrival', label: ar ? 'الوصول المتوقع' : 'Expected arrival', filter: true },
+    { key: 'lastContactAt', label: ar ? 'آخر تواصل' : 'Last contact' },
+    { key: 'supervisorName', label: ar ? 'المشرف' : 'Supervisor', filter: true },
+    { key: 'status', label: ar ? 'الحالة' : 'Status', filter: true },
+    { key: 'notes', label: ar ? 'ملاحظات' : 'Notes' },
+    { key: 'createdAt', label: ar ? 'تاريخ الإنشاء' : 'Created', filter: true },
+  ], [ar]);
+  const { visible: visibleCols, setVisible: setVisibleCols } = useVisibleColumns('fleet:loadColumns', colDefs, {
+    defaults: ['waybillNumber', 'customerName', 'fromCity', 'toCity', 'branch', 'vehiclePlate', 'driverName', 'price', 'paymentSubtype', 'customerType', 'loadType', 'loadDate', 'lastContactAt', 'supervisorName', 'status'],
+  });
+  const shownCols = colDefs.filter((c) => visibleCols.includes(c.key));
+  const yesNo = (v: any) => (String(v) === 'true' ? (ar ? 'نعم' : 'Yes') : (ar ? 'لا' : 'No'));
+  const colFormat = (k: string): ((v: any) => string) | undefined => {
+    if (k === 'status') return (v) => fleetStatusLabel(v, lang as Lang);
+    if (k === 'paymentSubtype') return (v) => paymentKindLabel(v, ar) || String(v || '');
+    if (k === 'customerType') return (v) => (v === 'heavy' ? (ar ? 'نقل ثقيل' : 'Heavy') : v === 'branch' ? (ar ? 'فروع' : 'Branch') : String(v || ''));
+    if (k === 'loadType') return (v) => lkp('fleet_load_type', v) || String(v || '');
+    if (k === 'fridayBonus' || k === 'driverExpensePaid') return yesNo;
+    if (['price', 'fullRent', 'driverExpense'].includes(k)) return (v) => (v === '' ? '' : Number(v).toLocaleString('en-US'));
+    return undefined;
+  };
+
+  const money = (v: any) => (Number(v) ? Number(v).toLocaleString('en-US') : '—');
+  const dash = <span className="text-slate-300">—</span>;
+  // One cell per column key; a plain function, not a component, so inputs inside it are not remounted.
+  const cellOf = (s: FleetShipment, key: string): React.ReactNode => {
+    const x = s as any;
+    switch (key) {
+      case 'waybillNumber': return <span className="text-slate-900 font-bold font-mono">{s.waybillNumber}</span>;
+      case 'customerName': return <span className="text-slate-900 font-medium max-w-[200px] truncate inline-block align-bottom" title={s.customerName}>{s.customerName || '—'}</span>;
+      case 'vehiclePlate': return shipmentVehicleId(s)
+        ? <Link href={`/system/fleet/vehicles/${shipmentVehicleId(s)}`} className="font-mono text-xs font-semibold text-[#f37121] hover:underline">{s.vehiclePlate || '—'}</Link>
+        : <span className="font-mono text-xs text-slate-700">{s.vehiclePlate || '—'}</span>;
+      case 'driverName': return (
+        <div className="flex items-center gap-2 text-xs text-slate-700">
+          <span className="max-w-[150px] truncate">{s.driverName || '—'}</span>
+          {(s.driverPhone || '').trim() && <ContactButtons phone={s.driverPhone} size={13} />}
+        </div>
+      );
+      case 'driverPhone': return x.driverPhone ? <span dir="ltr" className="text-xs text-slate-700">{x.driverPhone}</span> : dash;
+      case 'price': return <span className="text-xs font-semibold text-emerald-700 whitespace-nowrap">{money(s.price)}</span>;
+      case 'fullRent': case 'driverExpense': return <span className="text-xs text-slate-700 whitespace-nowrap">{money(x[key])}</span>;
+      case 'driverExpensePaid': case 'fridayBonus': return <span className="text-xs text-slate-700">{yesNo(!!x[key])}</span>;
+      case 'paymentSubtype': return x.paymentSubtype ? <span className="text-xs font-semibold text-slate-700 whitespace-nowrap">{paymentKindLabel(x.paymentSubtype, ar)}</span> : dash;
+      case 'customerType': return s.customerType === 'heavy'
+        ? <span className="px-2 py-0.5 rounded-full bg-orange-100 text-orange-700 text-[11px] font-semibold">{ar ? 'نقل ثقيل' : 'Heavy'}</span>
+        : s.customerType === 'branch'
+          ? <span className="px-2 py-0.5 rounded-full bg-blue-100 text-blue-700 text-[11px] font-semibold">{ar ? 'فروع' : 'Branch'}</span>
+          : dash;
+      case 'loadType': return <span className="text-xs text-slate-600 whitespace-nowrap">{lkp('fleet_load_type', s.loadType) || '—'}</span>;
+      case 'loadDate': case 'expectedArrival': case 'createdAt': return <span className="text-xs text-slate-700 whitespace-nowrap">{x[key] ? fmtD(x[key]) : '—'}</span>;
+      case 'lastContactAt': {
+        const hrs = hoursSince(s.lastContactAt);
+        const stale = ['loading', 'uploaded', 'on_way'].includes(s.status) && (hrs === null || hrs >= 3);
+        return (
+          <span className={`inline-flex items-center gap-1 text-xs font-medium whitespace-nowrap ${stale ? 'text-red-600' : 'text-slate-600'}`}>
+            <PhoneCall className="w-3 h-3" />
+            {hrs === null ? (ar ? 'لم يُتواصل' : 'Never') : (ar ? `منذ ${hrs} س` : `${hrs}h ago`)}
+          </span>
+        );
+      }
+      case 'status': {
+        const st = fleetStatus(s.status);
+        return editor ? (
+          <select value={s.status} disabled={busyId === s._id} onChange={(e) => changeStatus(s, e.target.value)}
+            className={`text-xs font-medium rounded-full px-2 py-1.5 border-0 cursor-pointer focus:outline-none ${st?.bg || 'bg-slate-100'} ${st?.text || 'text-slate-700'}`}>
+            {FLEET_STATUSES.map((v) => <option key={v.key} value={v.key}>{ar ? v.ar : v.en}</option>)}
+          </select>
+        ) : <span className={`text-xs font-medium rounded-full px-2.5 py-1 ${st?.bg} ${st?.text}`}>{fleetStatusLabel(s.status, lang as Lang)}</span>;
+      }
+      case 'notes': return x.notes ? <span className="text-xs text-slate-600 max-w-[220px] truncate inline-block align-bottom" title={x.notes}>{x.notes}</span> : dash;
+      default: return x[key] ? <span className="text-xs text-slate-700 whitespace-nowrap">{String(x[key])}</span> : dash;
+    }
+  };
+
   if (loading) return <Spinner />;
 
   // The two groups are written once: the card counts what the button itself filters.
@@ -323,6 +468,13 @@ function FleetShipmentsInner() {
             </button>
           </>
         )}
+        {Object.keys(colFilters).length > 0 && (
+          <button type="button" onClick={() => setColFilters({})}
+            className="inline-flex items-center gap-1 px-3 py-2 rounded-lg text-sm font-semibold text-red-600 hover:bg-red-50">
+            <X className="w-4 h-4" />{ar ? 'مسح فلاتر الأعمدة' : 'Clear column filters'}
+          </button>
+        )}
+        <ColumnChooser columns={colDefs} visible={visibleCols} onChange={setVisibleCols} ar={ar} />
         <ExportMenu lang={ar ? 'ar' : 'en'} fileName="fleet-shipments"
           options={[
             { key: 'page', label: ar ? 'الصفحة المعروضة' : 'This page', sheets: [{ name: 'Shipments', rows: shipments as any[], columns: SHIPMENT_COLUMNS }] },
@@ -332,7 +484,7 @@ function FleetShipmentsInner() {
               hint: String(total),
               // The list is paged, so the full export must be fetched from the server, not built from the displayed page, otherwise it would export 25 rows labelled all.
               resolve: async () => {
-                const qs = new URLSearchParams({ ...filterParams, page: '1', limit: '2000' });
+                const qs = queryOf({ page: '1', limit: '2000' });
                 const d = await api.get<{ shipments: FleetShipment[] }>(`/api/fleet/shipments?${qs}`);
                 return [{ name: 'Shipments', rows: (d.shipments || []) as any[], columns: SHIPMENT_COLUMNS }];
               },
@@ -467,33 +619,29 @@ function FleetShipmentsInner() {
                 onChange={(e) => togglePage(e.target.checked)}
                 aria-label={ar ? 'تحديد كل المعروض' : 'Select everything shown'} />
             </th>
-            {[
-              ar ? 'رقم أمر النقل' : 'Transport order',
-              ar ? 'العميل' : 'Customer',
-              // From and To are separate columns: an Arabic arrow points left while the text runs right-to-left and reads backwards, and two columns can be sorted, filtered and exported.
-              ar ? 'من' : 'From',
-              ar ? 'إلى' : 'To',
-              ar ? 'اللوحة' : 'Plate',
-              ar ? 'السائقون' : 'Drivers',
-              ar ? 'إيجار السيارة' : 'Vehicle rent',
-              ar ? 'نوع العميل' : 'Cust. type',
-              ar ? 'نوع الحمولة' : 'Load type',
-              ar ? 'تاريخ التحميل' : 'Load date',
-              ar ? 'آخر تواصل' : 'Last contact',
-              ar ? 'المشرف' : 'Supervisor',
-              ar ? 'الحالة' : 'Status',
-              ar ? 'إجراءات' : 'Actions',
-            ].map((h, i) => <th key={i} className="text-start font-semibold px-3 py-3 whitespace-nowrap">{h}</th>)}
+            {shownCols.map((c) => (
+              <th key={c.key} className={`text-start font-semibold px-3 py-3 whitespace-nowrap ${c.key === 'waybillNumber' ? 'sticky start-0 z-20 bg-slate-900' : ''}`}>
+                <span className="inline-flex items-center">
+                  {c.label}
+                  {c.filter && (
+                    <ColumnFilter field={c.key} selected={colFilters[c.key] || new Set()}
+                      onChange={(set) => setColFilter(c.key, set)}
+                      onOpen={() => { setOpenField(c.key); setOpenNonce((n) => n + 1); }}
+                      options={colOptions[c.key]?.values || []} truncated={!!colOptions[c.key]?.truncated}
+                      loading={!!colLoading[c.key]} onQuery={(q) => fetchColOptions(c.key, q)}
+                      lang={ar ? 'ar' : 'en'} format={colFormat(c.key)} />
+                  )}
+                </span>
+              </th>
+            ))}
+            <th className="text-start font-semibold px-3 py-3 whitespace-nowrap">{ar ? 'إجراءات' : 'Actions'}</th>
           </tr></thead>
           <tbody>
             {shipments.length === 0 ? (
-              <tr><td colSpan={15} className="text-center text-slate-500 py-14">
+              <tr><td colSpan={shownCols.length + 2} className="text-center text-slate-500 py-14">
                 {ar ? 'لا توجد حمولات بعد — ابدأ من زر «إنشاء حمولة».' : 'No shipments yet.'}
               </td></tr>
             ) : shipments.map((s) => {
-              const st = fleetStatus(s.status);
-              const hrs = hoursSince(s.lastContactAt);
-              const contactStale = ['loading', 'uploaded', 'on_way'].includes(s.status) && (hrs === null || hrs >= 3);
               return (
                 <tr key={s._id}
                   className={`border-b border-slate-200/70 cursor-pointer ${picked.has(s._id)
@@ -505,53 +653,8 @@ function FleetShipmentsInner() {
                       checked={picked.has(s._id)} onChange={() => togglePick(s)}
                       aria-label={String(s.waybillNumber)} />
                   </td>
-                  <td className="px-3 py-3 text-slate-900 font-bold font-mono">{s.waybillNumber}</td>
-                  <td className="px-3 py-3 text-slate-900 font-medium max-w-[200px] truncate" title={s.customerName}>{s.customerName || '—'}</td>
-                  <td className="px-3 py-3 text-slate-700 whitespace-nowrap">{s.fromCity || '—'}</td>
-                  <td className="px-3 py-3 text-slate-700 whitespace-nowrap">{s.toCity || '—'}</td>
-                  <td className="px-3 py-3 font-mono text-xs" onClick={(e) => e.stopPropagation()}>
-                    {shipmentVehicleId(s)
-                      ? <Link href={`/system/fleet/vehicles/${shipmentVehicleId(s)}`} className="font-semibold text-[#f37121] hover:underline">{s.vehiclePlate || '—'}</Link>
-                      : <span className="text-slate-700">{s.vehiclePlate || '—'}</span>}
-                  </td>
-                  <td className="px-3 py-3 text-slate-700 text-xs">
-                    <div className="flex items-center gap-2">
-                      <span className="max-w-[150px] truncate">{[s.driverName, s.secondDriverName].filter(Boolean).join(' + ') || '—'}</span>
-                      {(s.driverPhone || '').trim() && <ContactButtons phone={s.driverPhone} size={13} />}
-                    </div>
-                  </td>
-                  <td className="px-3 py-3 text-xs whitespace-nowrap">
-                    <span className="font-semibold text-emerald-700">{s.price ? Number(s.price).toLocaleString('en-US') : '—'}</span>
-                    {s.fullRent ? <span className="text-slate-400"> / {Number(s.fullRent).toLocaleString('en-US')}</span> : null}
-                  </td>
-                  <td className="px-3 py-3 text-xs whitespace-nowrap">
-                    {s.customerType === 'heavy'
-                      ? <span className="px-2 py-0.5 rounded-full bg-orange-100 text-orange-700 text-[11px] font-semibold">{ar ? 'نقل ثقيل' : 'Heavy'}</span>
-                      : s.customerType === 'branch'
-                        ? <span className="px-2 py-0.5 rounded-full bg-blue-100 text-blue-700 text-[11px] font-semibold">{ar ? 'فروع' : 'Branch'}</span>
-                        : <span className="text-slate-300">—</span>}
-                  </td>
-                  <td className="px-3 py-3 text-slate-600 text-xs whitespace-nowrap">{lkp('fleet_load_type', s.loadType) || '—'}</td>
-                  <td className="px-3 py-3 text-slate-700 text-xs whitespace-nowrap">{fmtD(s.loadDate)}</td>
-                  <td className="px-3 py-3 whitespace-nowrap">
-                    {/* The follow-up cadence, visible per row: red once 3h pass. */}
-                    <span className={`inline-flex items-center gap-1 text-xs font-medium ${contactStale ? 'text-red-600' : 'text-slate-600'}`}>
-                      <PhoneCall className="w-3 h-3" />
-                      {hrs === null ? (ar ? 'لم يُتواصل' : 'Never') : (ar ? `منذ ${hrs} س` : `${hrs}h ago`)}
-                    </span>
-                  </td>
-                  <td className="px-3 py-3 text-slate-700 text-xs max-w-[140px] truncate">{s.supervisorName || '—'}</td>
-                  <td className="px-3 py-3" onClick={(e) => e.stopPropagation()}>
-                    {editor ? (
-                      <select value={s.status} disabled={busyId === s._id}
-                        onChange={(e) => changeStatus(s, e.target.value)}
-                        className={`text-xs font-medium rounded-full px-2 py-1.5 border-0 cursor-pointer focus:outline-none ${st?.bg || 'bg-slate-100'} ${st?.text || 'text-slate-700'}`}>
-                        {FLEET_STATUSES.map((x) => <option key={x.key} value={x.key}>{ar ? x.ar : x.en}</option>)}
-                      </select>
-                    ) : (
-                      <span className={`text-xs font-medium rounded-full px-2.5 py-1 ${st?.bg} ${st?.text}`}>{fleetStatusLabel(s.status, lang as Lang)}</span>
-                    )}
-                  </td>
+                  {shownCols.map((c) => <td key={c.key} className={`px-3 py-3 ${c.key === 'waybillNumber' ? 'sticky start-0 z-10 bg-white border-e border-slate-200' : ''}`}
+                    onClick={c.key === 'vehiclePlate' || c.key === 'status' || c.key === 'driverName' ? (e) => e.stopPropagation() : undefined}>{cellOf(s, c.key)}</td>)}
                   <td className="px-3 py-3" onClick={(e) => e.stopPropagation()}>
                     <div className="flex items-center justify-end gap-1">
                       <button type="button" onClick={() => downloadOne(s)} disabled={downloadingId === s._id}

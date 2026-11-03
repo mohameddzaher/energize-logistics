@@ -626,6 +626,7 @@
         "/api/fleet/drivers",
         "/api/fleet/form-options",
         "/api/fleet/shipments",
+        "/api/fleet/shipments/filters",
         "/api/fleet/shipments/waybills.pdf",
         "/api/fleet/vehicle-logs",
         "/api/fleet/vehicles",

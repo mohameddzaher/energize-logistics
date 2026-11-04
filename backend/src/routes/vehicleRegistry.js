@@ -15,8 +15,8 @@ const authorize = require('../middleware/rbac');
 const EDIT = ['super_admin', 'admin', 'vehicles_manager', 'vehicles_staff',
   'hr_manager', 'hr_specialist', 'cfo', 'accounting_manager', 'accountant'];
 const ADMIN = ['super_admin', 'admin', 'vehicles_manager', 'hr_manager'];
-// Editing and deleting accidents is for management and finance only. `strict`: neither a section grant nor a page grant opens it, the list is everything. Recording a new accident and attaching its papers stay with the vehicles team.
-const CLAIM_EDIT = ['super_admin', 'admin', 'cfo', 'accounting_manager'];
+// Editing, closing and deleting accidents: management, finance and the vehicles manager (the owner's call). `strict`: neither a section grant nor a page grant opens it, the list is everything. Recording a new accident and attaching its papers stay with the vehicles team.
+const CLAIM_EDIT = ['super_admin', 'admin', 'cfo', 'accounting_manager', 'vehicles_manager'];
 
 router.get('/dashboard', c.dashboard);
 // Overview: a card per column, each linking to a filtered page.

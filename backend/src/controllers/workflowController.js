@@ -746,6 +746,12 @@ const pendingAsOfMatch = (asOf) => ({
 const AS_OF_START = '2026-01-01';
 // Non-enumerable search hints set by primeRelatedSearch; copies of the query must carry them.
 const SEARCH_HINTS = ['_related', '_exactId', '_textIds'];
+/** A copy of the query with some keys replaced, keeping the non-enumerable search hints a spread would drop (the copy then searched by regex again, ~1 s per query). */
+const withQuery = (query, patch) => {
+  const q = { ...(query || {}), ...patch };
+  for (const k of SEARCH_HINTS) if (query && query[k]) Object.defineProperty(q, k, { value: query[k], enumerable: false });
+  return q;
+};
 const asOfQuery = (query) => {
   const q = { ...(query || {}) };
   // The search hints are non-enumerable (kept out of exports), so a spread drops them; carry them over.
@@ -977,9 +983,12 @@ exports.getWorkflowStats = async (req, res) => {
     ]);
     // Bonds pending as of the end of the filtered period (counted on the same filter, minus «pendingOnly»).
     const asOf = pendingAsOfDate(req.query);
-    const asOfBase = buildWorkflowFilter(asOfQuery({ ...req.query, pendingOnly: '', pendingAsOf: '' }), undefined, canSeeMoney(req.user.role), canSeeSelling(req.user.role));
+    const asOfBase = buildWorkflowFilter(asOfQuery(withQuery(req.query, { pendingOnly: '', pendingAsOf: '' })), undefined, canSeeMoney(req.user.role), canSeeSelling(req.user.role));
     const asOfMatch = { ...asOfBase, $and: [...(asOfBase.$and || []), pendingAsOfMatch(asOf)] };
-    const [total, pendingRows, pendingBondReceived, agg, stages, pendingAsOfCount] = await Promise.all([
+    // Status counts ignore the status filter, origin counts ignore the origin filter (explained below); every count runs in one round.
+    const statusFree = buildWorkflowFilter(req.query, 'applicationStatus', canSeeMoney(req.user.role), canSeeSelling(req.user.role));
+    const anyOrigin = buildWorkflowFilter(withQuery(req.query, { origin: '' }), undefined, canSeeMoney(req.user.role), canSeeSelling(req.user.role));
+    const [total, pendingRows, pendingBondReceived, agg, stages, pendingAsOfCount, byStatusRows, allOrigins, fleetCount] = await Promise.all([
       OperationsWorkflow.countDocuments(filter),
       PENDING_SPLIT,
       OperationsWorkflow.countDocuments(bondReceivedPending),
@@ -993,15 +1002,16 @@ exports.getWorkflowStats = async (req, res) => {
         { $group: { _id: '$stage', count: { $sum: 1 } } },
       ]),
       OperationsWorkflow.countDocuments(asOfMatch),
+      OperationsWorkflow.aggregate([
+        { $match: statusFree },
+        { $group: { _id: { $ifNull: ['$applicationStatus', ''] }, count: { $sum: 1 } } },
+      ]),
+      OperationsWorkflow.countDocuments(anyOrigin),
+      OperationsWorkflow.countDocuments({ $and: [anyOrigin, { fleetShipment: { $type: 'objectId' } }] }),
     ]);
 
     // Application status counts. The status cards above the table existed only on the platform shipments page, and they are the first question here too: how many on the way, how many arrived without a bond. Computing in the browser from loaded rows counts fifty of 36,000.
     // They are computed under the existing filters except the status filter itself, as Excel does: someone filtering 'on the way' wants to see the other statuses to move to them, not zeros. skipField is the mechanism built for this in buildWorkflowFilter.
-    const statusFree = buildWorkflowFilter(req.query, 'applicationStatus', canSeeMoney(req.user.role), canSeeSelling(req.user.role));
-    const byStatusRows = await OperationsWorkflow.aggregate([
-      { $match: statusFree },
-      { $group: { _id: { $ifNull: ['$applicationStatus', ''] }, count: { $sum: 1 } } },
-    ]);
     const byStatus = {};
     let statusTotal = 0;
     byStatusRows.forEach((r) => { byStatus[r._id || '(بلا حالة)'] = r.count; statusTotal += r.count; });
@@ -1012,12 +1022,7 @@ exports.getWorkflowStats = async (req, res) => {
       else { pendingTax += r.n; if (r._id !== 'tax') pendingUntyped += r.n; }
     }
     const pendingInvoices = pendingCash + pendingTax;
-    // Ignores the origin filter so both sections stay visible once one of them is picked.
-    const anyOrigin = buildWorkflowFilter({ ...req.query, origin: '' }, undefined, canSeeMoney(req.user.role), canSeeSelling(req.user.role));
-    const [allOrigins, fleetCount] = await Promise.all([
-      OperationsWorkflow.countDocuments(anyOrigin),
-      OperationsWorkflow.countDocuments({ $and: [anyOrigin, { fleetShipment: { $type: 'objectId' } }] }),
-    ]);
+    // Origin counts ignore the origin filter so both sections stay visible once one of them is picked.
     res.json({
       total,
       byOrigin: { orders: allOrigins - fleetCount, fleet: fleetCount },

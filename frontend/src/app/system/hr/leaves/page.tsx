@@ -5,7 +5,6 @@ import { useAuth } from '@/context/AuthContext';
 import { useLanguage } from '@/context/LanguageContext';
 import { useSocket } from '@/hooks/useSocket';
 import api from '@/lib/api';
-import { usePinnedColumns } from '@/components/hr/usePinnedColumns';
 import { CalendarCheck, Check, X, HelpCircle, FileDown, PenTool, CalendarPlus, History, Pencil, Trash2 } from 'lucide-react';
 import { isHRStaff, LeaveRequest, LEAVE_STATUS, empName, userName, leaveTypeLabel } from '@/lib/hr';
 import DatePair from '@/components/hr/DatePair';
@@ -27,8 +26,6 @@ const idOf = (e: any) => (e?.idType === 'national_id' ? (e?.nationalId || e?.iqa
 const BG = 'bg-white group-hover:bg-slate-100';
 
 export default function HRLeavesPage() {
-  // Only the actions stay pinned; number, name and ID scroll with the rest (the owner's call).
-  const pin = usePinnedColumns(1);
   const { notify, confirm, prompt } = useDialog();
   const { user } = useAuth();
   const { lang, isRTL } = useLanguage();
@@ -283,7 +280,6 @@ export default function HRLeavesPage() {
       <ScrollX className="bg-white border border-slate-200 rounded-xl shadow-sm">
         <table className="w-full text-sm">
           <thead><tr className="bg-slate-900 border-b border-slate-200 text-slate-300">
-            <th {...pin.th(0, 'text-start font-semibold px-4 py-3 whitespace-nowrap')}>{ar ? 'الإجراءات' : 'Actions'}</th>
             <th className="text-start font-semibold px-4 py-3 whitespace-nowrap">{ar ? 'الرقم الوظيفي' : 'Emp. no.'}</th>
             <th className="text-start font-semibold px-4 py-3 whitespace-nowrap">{tx.colEmployee}</th>
             <th className="text-start font-semibold px-4 py-3 whitespace-nowrap">{ar ? 'الهوية / الإقامة' : 'ID / Iqama'}</th>
@@ -296,6 +292,7 @@ export default function HRLeavesPage() {
             <th className="text-start font-semibold px-4 py-3">{tx.colDays}</th>
             <th className="text-start font-semibold px-4 py-3">{tx.colBalance}</th>
             <th className="text-start font-semibold px-4 py-3">{tx.colStatus}</th>
+            <th className="sticky end-0 z-30 bg-slate-900 border-s border-slate-600 text-start font-semibold px-4 py-3 whitespace-nowrap">{ar ? 'الإجراءات' : 'Actions'}</th>
           </tr></thead>
           <tbody>
             {filtered.length === 0 ? (
@@ -304,33 +301,6 @@ export default function HRLeavesPage() {
               const over = l.balanceSnapshot && typeof l.balanceSnapshot.remainingAfter === 'number' && l.balanceSnapshot.remainingAfter < 0;
               return (
                 <tr key={l._id} className="group border-b border-slate-200/70 hover:bg-slate-100 cursor-pointer" onClick={() => openReview(l)}>
-                  <td {...pin.td(0, 'px-4 py-3', BG)}>
-                    <div className="flex items-center gap-1.5">
-                      {canActNow(l) && <>
-                        <button type="button" disabled={rowBusy === l._id} onClick={(e) => { e.stopPropagation(); quickDecide(l, 'approved'); }}
-                          className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-emerald-600 text-white text-xs font-semibold hover:bg-emerald-700 disabled:opacity-50">
-                          {rowBusy === l._id ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Check className="w-3.5 h-3.5" />}{tx.approve}
-                        </button>
-                        <button type="button" disabled={rowBusy === l._id} onClick={(e) => { e.stopPropagation(); quickDecide(l, 'info'); }}
-                          className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-orange-500/15 text-orange-700 text-xs font-semibold hover:bg-orange-500/25 disabled:opacity-50 whitespace-nowrap">
-                          <HelpCircle className="w-3.5 h-3.5" />{ar ? 'استفسار / طلب تعديل' : 'Ask / change'}
-                        </button>
-                        <button type="button" disabled={rowBusy === l._id} onClick={(e) => { e.stopPropagation(); quickDecide(l, 'rejected'); }}
-                          className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-red-500/15 text-red-600 text-xs font-semibold hover:bg-red-500/25 disabled:opacity-50">
-                          <X className="w-3.5 h-3.5" />{tx.reject}
-                        </button>
-                      </>}
-                      <button type="button" title={t('Download PDF', 'تحميل PDF')} onClick={(e) => { e.stopPropagation(); downloadPdf(l._id); }} className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-slate-100 hover:bg-[#f37121]/10 hover:text-[#f37121] text-slate-600 text-xs">
-                        {pdfBusy === l._id ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <FileDown className="w-3.5 h-3.5" />} PDF
-                      </button>
-                      <button type="button" title={t('Edit', 'تعديل')} onClick={(e) => { e.stopPropagation(); openEdit(l); }} className="p-1.5 rounded-lg bg-slate-100 hover:bg-blue-50 hover:text-blue-600 text-slate-600">
-                        <Pencil className="w-3.5 h-3.5" />
-                      </button>
-                      <button type="button" title={t('Delete', 'حذف')} onClick={(e) => { e.stopPropagation(); removeLeave(l); }} className="p-1.5 rounded-lg bg-slate-100 hover:bg-red-50 hover:text-red-600 text-slate-600">
-                        <Trash2 className="w-3.5 h-3.5" />
-                      </button>
-                    </div>
-                  </td>
                   <td className="px-4 py-3 text-slate-700 whitespace-nowrap">{(l.employee as any)?.employeeNumber || '—'}</td>
                   <td className="px-4 py-3 text-slate-900 font-medium whitespace-nowrap">
                     {/* Cap the width and truncate: an uncapped long name hides the columns the table exists for. The full name is in the tooltip. */}
@@ -356,6 +326,33 @@ export default function HRLeavesPage() {
                           <History className="w-3 h-3" /> {ar ? 'قيد رجعيّ' : 'Back-dated'}
                         </span>
                       )}
+                    </div>
+                  </td>
+                  <td className={`sticky end-0 z-10 border-s border-slate-200 px-4 py-3 ${BG}`}>
+                    <div className="flex items-center gap-1.5">
+                      {canActNow(l) && <>
+                        <button type="button" disabled={rowBusy === l._id} onClick={(e) => { e.stopPropagation(); quickDecide(l, 'approved'); }}
+                          className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-emerald-600 text-white text-xs font-semibold hover:bg-emerald-700 disabled:opacity-50">
+                          {rowBusy === l._id ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Check className="w-3.5 h-3.5" />}{tx.approve}
+                        </button>
+                        <button type="button" disabled={rowBusy === l._id} onClick={(e) => { e.stopPropagation(); quickDecide(l, 'info'); }}
+                          className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-orange-500/15 text-orange-700 text-xs font-semibold hover:bg-orange-500/25 disabled:opacity-50 whitespace-nowrap">
+                          <HelpCircle className="w-3.5 h-3.5" />{ar ? 'استفسار / طلب تعديل' : 'Ask / change'}
+                        </button>
+                        <button type="button" disabled={rowBusy === l._id} onClick={(e) => { e.stopPropagation(); quickDecide(l, 'rejected'); }}
+                          className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-red-500/15 text-red-600 text-xs font-semibold hover:bg-red-500/25 disabled:opacity-50">
+                          <X className="w-3.5 h-3.5" />{tx.reject}
+                        </button>
+                      </>}
+                      <button type="button" title={t('Download PDF', 'تحميل PDF')} onClick={(e) => { e.stopPropagation(); downloadPdf(l._id); }} className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-slate-100 hover:bg-[#f37121]/10 hover:text-[#f37121] text-slate-600 text-xs">
+                        {pdfBusy === l._id ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <FileDown className="w-3.5 h-3.5" />} PDF
+                      </button>
+                      <button type="button" title={t('Edit', 'تعديل')} onClick={(e) => { e.stopPropagation(); openEdit(l); }} className="p-1.5 rounded-lg bg-slate-100 hover:bg-blue-50 hover:text-blue-600 text-slate-600">
+                        <Pencil className="w-3.5 h-3.5" />
+                      </button>
+                      <button type="button" title={t('Delete', 'حذف')} onClick={(e) => { e.stopPropagation(); removeLeave(l); }} className="p-1.5 rounded-lg bg-slate-100 hover:bg-red-50 hover:text-red-600 text-slate-600">
+                        <Trash2 className="w-3.5 h-3.5" />
+                      </button>
                     </div>
                   </td>
                 </tr>

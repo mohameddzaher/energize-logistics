@@ -252,7 +252,10 @@ class _TopActivityScreenState extends State<TopActivityScreen> {
           separatorBuilder: (_, __) => const Divider(height: 1),
           itemBuilder: (_, i) {
             final l = _logs[i];
-            final text = '${l['summary'] ?? ''}'.isNotEmpty ? '${l['summary']}' : [l['actionLabel'], l['entityLabel'], l['subject']].where((x) => '${x ?? ''}'.isNotEmpty).join(' — ');
+            // The server's full sentence, as on the web; it starts with the actor, who is shown in bold.
+            final actor = '${l['userName'] ?? ''}';
+            final full = '${l['sentence'] ?? ''}'.isNotEmpty ? '${l['sentence']}' : [l['actionLabel'], l['entityLabel'], l['subject'], l['summary']].where((x) => '${x ?? ''}'.isNotEmpty).join(' — ');
+            final text = full.startsWith(actor) ? full.substring(actor.length).trim() : full;
             return ListTile(
               dense: true,
               leading: const Icon(Icons.circle, size: 9, color: T.orange),
@@ -260,7 +263,7 @@ class _TopActivityScreenState extends State<TopActivityScreen> {
                 TextSpan(text: '${l['userName'] ?? ''} ', style: const TextStyle(fontWeight: FontWeight.w800)),
                 TextSpan(text: text),
               ]), style: const TextStyle(fontSize: 13)),
-              subtitle: Text([l['sectionLabel'], _ago(l['createdAt'])].where((x) => '${x ?? ''}'.isNotEmpty).join(' · '), style: const TextStyle(fontSize: 11)),
+              subtitle: Text([l['branchName'], l['sectionLabel'], _ago(l['createdAt'])].where((x) => '${x ?? ''}'.isNotEmpty).join(' · '), style: const TextStyle(fontSize: 11)),
             );
           },
         ),

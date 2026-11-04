@@ -148,6 +148,11 @@ export default function OpsBoardPage() {
   const cell = (r: Row, key: string): string => {
     switch (key) {
       case 'reportDate': case 'paymentDate': case 'sendingDate': case 'branchDeliveryDate': return dayOf(r[key]);
+      // Stored as an ISO instant; shown as the Riyadh date and time.
+      case 'loadingTime': {
+        const d = r[key] ? new Date(String(r[key])) : null;
+        return d && !Number.isNaN(d.getTime()) ? new Intl.DateTimeFormat('en-GB', { timeZone: 'Asia/Riyadh', dateStyle: 'short', timeStyle: 'short' }).format(d) : (r[key] || '');
+      }
       case 'purchaseValue': return num(r[key]);
       case 'paymentType': return paymentKindLabel(r.paymentSubtype || r.paymentType, ar);
       case 'origin': return originLabel(r.origin);

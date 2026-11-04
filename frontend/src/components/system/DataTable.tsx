@@ -1,4 +1,5 @@
 'use client';
+import { useLanguage } from '@/context/LanguageContext';
 import { useState } from 'react';
 import { ChevronUp, ChevronDown, Search } from 'lucide-react';
 import ScrollX from '@/components/system/ScrollX';
@@ -35,6 +36,8 @@ interface DataTableProps {
 }
 
 export default function DataTable({ columns, data, searchable, searchPlaceholder, onRowClick, emptyMessage, actions }: DataTableProps) {
+  // The actions header follows the page language; it was written in English for every table using this component.
+  const { lang } = useLanguage();
   const [search, setSearch] = useState('');
   const [sortKey, setSortKey] = useState('');
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('asc');
@@ -101,7 +104,7 @@ export default function DataTable({ columns, data, searchable, searchPlaceholder
                   </div>
                 </th>
               ))}
-              {actions && <th className="px-4 py-3 text-start text-xs font-semibold text-slate-300 uppercase whitespace-nowrap">Actions</th>}
+              {actions && <th className="px-4 py-3 text-start text-xs font-semibold text-slate-300 uppercase whitespace-nowrap">{lang === 'ar' ? 'الإجراءات' : 'Actions'}</th>}
             </tr>
           </thead>
           <tbody className="divide-y divide-slate-200">

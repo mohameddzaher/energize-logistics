@@ -335,7 +335,8 @@ class _ItEmailsScreenState extends State<ItEmailsScreen> {
                                       Icon(linked ? Icons.link : Icons.link_off, size: 14, color: linked ? T.success : T.warn),
                                       const SizedBox(width: 4),
                                       Expanded(child: Text(
-                                        linked ? (r['employeeName'] ?? '').toString() : tr('غير مربوط بموظف', 'not linked'),
+                                        [linked ? (r['employeeName'] ?? '').toString() : tr('غير مربوط بموظف', 'not linked'),
+                                          if ((r['department'] ?? '').toString().isNotEmpty) (r['department']).toString()].join(' · '),
                                         style: TextStyle(fontSize: 11.5, color: linked ? T.inkSoft : T.warn))),
                                       if (hasPw && _canReveal)
                                         TextButton.icon(
@@ -379,6 +380,8 @@ class _ItEmailsScreenState extends State<ItEmailsScreen> {
     final name = TextEditingController(text: (row?['displayName'] ?? '').toString());
     final pw = TextEditingController();
     final notes = TextEditingController(text: (row?['notes'] ?? '').toString());
+    // Typed by hand; not taken from the HR file.
+    final department = TextEditingController(text: (row?['department'] ?? '').toString());
     final functionAr = TextEditingController(text: (row?['functionAr'] ?? '').toString());
     String type = (row?['mailboxType'] ?? 'personal').toString();
     String status = (row?['status'] ?? 'active').toString();
@@ -467,6 +470,8 @@ class _ItEmailsScreenState extends State<ItEmailsScreen> {
                 TextField(controller: functionAr, decoration: InputDecoration(labelText: tr('وظيفة الصندوق', 'What it is for'))),
               ],
               const SizedBox(height: 10),
+              TextField(controller: department, decoration: InputDecoration(labelText: tr('القسم', 'Department'))),
+              const SizedBox(height: 8),
               TextField(controller: notes, maxLines: 2, decoration: InputDecoration(labelText: tr('ملاحظات', 'Notes'))),
             ],
             const SizedBox(height: 16),
@@ -488,6 +493,7 @@ class _ItEmailsScreenState extends State<ItEmailsScreen> {
       'functionAr': functionAr.text.trim(),
       'status': status,
       'notes': notes.text.trim(),
+      'department': department.text.trim(),
       'employee': emp?['_id'],
       if (pw.text.trim().isNotEmpty) 'password': pw.text.trim(),
     };

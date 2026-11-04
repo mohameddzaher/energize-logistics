@@ -164,7 +164,7 @@ export default function CompanyEmailsPage() {
         <ScrollX>
           <table className="w-full text-sm">
             <thead className="bg-slate-900 text-slate-200 text-[13px]">
-              <tr>{[t('الاسم', 'Name'), t('البريد', 'Email'), t('الموظف', 'Employee'), t('كلمة المرور', 'Password'), ''].map((h, i) => (
+              <tr>{[t('الاسم', 'Name'), t('البريد', 'Email'), t('الموظف', 'Employee'), t('القسم', 'Department'), t('كلمة المرور', 'Password'), ''].map((h, i) => (
                 <th key={i} className="px-3 py-3 text-center font-bold whitespace-nowrap tracking-wide">{h}</th>
               ))}</tr>
             </thead>
@@ -174,7 +174,7 @@ export default function CompanyEmailsPage() {
                   onEdit={() => setEditing(r)} onChanged={load} notify={notify} confirm={confirm} />
               ))}
               {!rows.length && (
-                <tr><td colSpan={5} className="px-3 py-10 text-center text-slate-400">{t('لا توجد صناديق مطابقة', 'No mailboxes')}</td></tr>
+                <tr><td colSpan={6} className="px-3 py-10 text-center text-slate-400">{t('لا توجد صناديق مطابقة', 'No mailboxes')}</td></tr>
               )}
             </tbody>
           </table>
@@ -234,6 +234,8 @@ function Row({ r, ar, t, canEdit, canReveal, onEdit, onChanged, notify, confirm 
           : <span className="text-slate-300 text-[13px]">—</span>}
       </td>
 
+      <td className={`${cell} text-slate-700 text-[13px]`}>{r.department || <span className="text-slate-300">—</span>}</td>
+
       <td className={cell}>
         {!r.passwordSetAt ? (
           <span className="text-[12px] text-slate-300">—</span>
@@ -274,6 +276,7 @@ function EmailModal({ row, ar, t, vaultReady, onClose, onSaved, notify }: any) {
   const [functionAr, setFunctionAr] = useState(row?.functionAr || '');
   const [status, setStatus] = useState(row?.status || 'active');
   const [notes, setNotes] = useState(row?.notes || '');
+  const [department, setDepartment] = useState(row?.department || '');
   const [password, setPassword] = useState('');
   const [showPw, setShowPw] = useState(false);
   const [more, setMore] = useState(false);
@@ -295,7 +298,7 @@ function EmailModal({ row, ar, t, vaultReady, onClose, onSaved, notify }: any) {
     try {
       const body: any = {
         email: localPart.includes('@') ? localPart : `${localPart}@${COMPANY_DOMAIN}`,
-        displayName, mailboxType, functionAr, status, notes,
+        displayName, mailboxType, functionAr, status, notes, department: department.trim(),
         employee: emp?._id || null,
       };
       if (password) body.password = password;
@@ -325,6 +328,13 @@ function EmailModal({ row, ar, t, vaultReady, onClose, onSaved, notify }: any) {
               {t('إذا لم يُضَف بعد في الموارد البشرية، اتركها «بدون ربط» واربطه لاحقًا.',
                  'Not in HR yet? Leave it unlinked and link later.')}
             </p>
+          </div>
+
+          {/* Typed by hand; it is not taken from the HR file. */}
+          <div>
+            <L>{t('القسم', 'Department')}</L>
+            <input value={department} onChange={(e) => setDepartment(e.target.value)} className={inp}
+              placeholder={t('اكتب القسم', 'Type the department')} />
           </div>
 
           <div>

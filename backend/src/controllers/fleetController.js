@@ -463,7 +463,8 @@ exports.shipmentFilterValues = async (req, res) => {
     }
     if (q && q.trim()) {
       const r = arRx(q);
-      const or = [{ customerName: r }, { driverName: r }, { secondDriverName: r }, { vehiclePlate: r }, { fromCity: r }, { toCity: r }, { supervisorName: r }];
+      // The list's own search fields, B/L and container included, or a column's values would not match the rows shown.
+      const or = [{ customerName: r }, { driverName: r }, { secondDriverName: r }, { vehiclePlate: r }, { fromCity: r }, { toCity: r }, { supervisorName: r }, { blNumber: r }, { containerNumber: r }];
       const n = Number(String(q).trim());
       if (Number.isFinite(n)) or.push({ waybillNumber: n });
       base.push({ $or: or });

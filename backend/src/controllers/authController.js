@@ -126,6 +126,8 @@ exports.login = async (req, res) => {
         firstName: user.firstName,
         lastName: user.lastName,
         role: user.role,
+        // Top management opens its section from the first render, not only after /me.
+        isTopManagement: user.isTopManagement === true,
         permissions,
         // Which screens open; the sidebar reads it from the first render.
         pageAccess,

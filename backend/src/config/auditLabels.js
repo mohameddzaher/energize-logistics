@@ -6,6 +6,7 @@
 
 /** Specific action to its sentence. */
 const ACTION_AR = {
+  leave_approve: 'الموافقة على إجازة', leave_reject: 'رفض إجازة', leave_ask: 'استفسار على طلب إجازة',
   // Actions written by the code that had no Arabic name and showed as code in the log.
   add_workflow_followup: 'إضافة متابعة لأمر نقل',
   answer: 'رد',
@@ -407,6 +408,7 @@ const WORKFLOW_FIELDS = {
  * Unknown fields show their split-out raw name; showing English beats hiding a change.
  */
 const FIELD_LABELS = {
+  stage: ['المرحلة', 'Stage'], note: ['الملاحظة', 'Note'], endDate: ['تاريخ الانتهاء', 'End date'], days: ['عدد الأيام', 'Days'], employeeName: ['الموظف', 'Employee'],
   // Fields of features added after the label table, which showed as code in the log.
   itemsCount: ['عدد الأصناف', 'Items'], issueReason: ['سبب الصرف', 'Issue reason'], rimName: ['الجنط', 'Rim'],
   cancelReason: ['سبب الإلغاء', 'Cancel reason'], requestNumber: ['رقم الطلب', 'Request no.'],

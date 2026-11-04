@@ -121,7 +121,7 @@ export default function TopManagementLeavesPage() {
                   return (
                     <tr key={l._id} className="hover:bg-slate-50">
                       <td className="px-3 py-2.5">
-                        <p className="font-semibold text-slate-900">{l.employee?.arabicName || nameOf(l.employee) || '—'}</p>
+                        <p className="font-semibold text-slate-900 whitespace-nowrap">{l.employee?.arabicName || nameOf(l.employee) || '—'}</p>
                         <p className="text-[11px] text-slate-500">{[l.employee?.employeeNumber, l.employee?.jobTitle].filter(Boolean).join(' · ')}</p>
                         {l.reason && <p className="text-[11px] text-slate-500 max-w-[260px] truncate" title={l.reason}>{l.reason}</p>}
                       </td>

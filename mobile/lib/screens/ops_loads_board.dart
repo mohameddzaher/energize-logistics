@@ -222,6 +222,14 @@ class _OpsLoadsBoardScreenState extends State<OpsLoadsBoardScreen> {
     switch (k) {
       case 'reportDate': case 'paymentDate': case 'sendingDate': case 'branchDeliveryDate':
         return v == null || v == '' ? '' : opsDate(v);
+      // An ISO instant; shown as the Riyadh date and time.
+      case 'loadingTime': {
+        final d = DateTime.tryParse('${v ?? ''}');
+        if (d == null) return v == null ? '' : '$v';
+        final r3 = d.toUtc().add(const Duration(hours: 3));
+        String p2(int n) => n.toString().padLeft(2, '0');
+        return '${p2(r3.day)}/${p2(r3.month)}/${r3.year} ${p2(r3.hour)}:${p2(r3.minute)}';
+      }
       case 'purchaseValue': return opsMoney(v, dash: false);
       case 'paymentType': return opsPaymentKindLabel(opsPaymentKindOf(r));
       case 'origin': return _originLabel(v);

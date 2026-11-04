@@ -7,7 +7,7 @@ import { useLanguage } from '@/context/LanguageContext';
 import { useSocket } from '@/hooks/useSocket';
 import { PageHeader, Spinner } from '@/components/hr/HRKit';
 
-type Log = { _id: string; createdAt: string; userName: string; sectionLabel?: string; actionLabel?: string; entityLabel?: string; subject?: string; summary?: string; kind?: string };
+type Log = { _id: string; createdAt: string; userName: string; sectionLabel?: string; actionLabel?: string; entityLabel?: string; subject?: string; summary?: string; kind?: string; sentence?: string; branchName?: string };
 
 const ago = (iso: string, ar: boolean) => {
   const s = Math.max(0, Math.round((Date.now() - new Date(iso).getTime()) / 1000));
@@ -77,11 +77,18 @@ export default function TopManagementActivityPage() {
             <div key={l._id} className="flex items-start gap-3 px-4 py-3">
               <span className="mt-1.5 w-2 h-2 rounded-full bg-[#f37121] shrink-0" />
               <div className="min-w-0 flex-1">
-                <p className="text-sm text-slate-800">
-                  <span className="font-semibold">{l.userName}</span>{' '}
-                  <span className="text-slate-600">{l.summary || [l.actionLabel, l.entityLabel, l.subject].filter(Boolean).join(' — ')}</span>
+                {/* The server's full sentence (who, what, which record, every change), as on the audit timeline. */}
+                <p className="text-sm text-slate-800 leading-relaxed" dir="auto">
+                  {(() => {
+                    const text = l.sentence || [l.actionLabel, l.entityLabel, l.subject, l.summary].filter(Boolean).join(' — ');
+                    const rest = text.startsWith(l.userName) ? text.slice(l.userName.length) : ` ${text}`;
+                    return <><span className="font-semibold text-slate-900">{l.userName}</span><span className="text-slate-700">{rest}</span></>;
+                  })()}
                 </p>
-                <p className="text-[11px] text-slate-400">{[l.sectionLabel, ago(l.createdAt, ar)].filter(Boolean).join(' · ')}</p>
+                <p className="text-[11px] text-slate-400 tabular-nums">
+                  {[new Date(l.createdAt).toLocaleTimeString('en-GB', { timeZone: 'Asia/Riyadh', hour: '2-digit', minute: '2-digit', second: '2-digit' }),
+                    l.userName, l.branchName, l.sectionLabel, ago(l.createdAt, ar)].filter(Boolean).join('  ·  ')}
+                </p>
               </div>
             </div>
           ))}

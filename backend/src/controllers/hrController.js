@@ -118,6 +118,18 @@ const notifyTopManagement = async ({ title, message, relatedEntity, relatedEntit
   users.forEach((u) => { try { emitToUser(String(u._id), event || 'hr:leave', { id: String(relatedEntityId || '') }); } catch (e) {} });
 };
 
+/**
+ * A leave changed: everyone whose screens or counters it touches hears it — its direct manager, HR staff and top management.
+ * Only the manager heard it before, so HR's and top management's sidebar counts lagged until their minute poll.
+ */
+const announceLeave = async (leave) => {
+  const ids = new Set();
+  if (leave && leave.manager) ids.add(String(leave.manager._id || leave.manager));
+  try { for (const id of await hrStaffIds()) ids.add(String(id)); } catch (e) { /* */ }
+  try { for (const u of await User.find({ isTopManagement: true, isActive: true }).select('_id').lean()) ids.add(String(u._id)); } catch (e) { /* */ }
+  for (const id of ids) { try { emitToUser(id, 'hr:leave', { id: String(leave && leave._id || '') }); } catch (e) { /* */ } }
+};
+
 const notifyUser = async (userId, { title, message, relatedEntity, relatedEntityId, event }) => {
   if (!userId) return;
   await createNotification({ recipient: userId, type: 'system_alert', title, message, relatedEntity, relatedEntityId }).catch(() => {});
@@ -1651,7 +1663,7 @@ exports.updateLeave = async (req, res) => {
         relatedEntity: 'LeaveRequest', relatedEntityId: leave._id, event: 'hr:leave',
       });
     }
-    if (leave.manager) { try { emitToUser(String(leave.manager), 'hr:leave', { id: String(leave._id) }); } catch (e) {} }
+    await announceLeave(leave);
     try { emitToAll('hr:leave', { id: String(leave._id) }); } catch (e) {}
     await syncLeaveStatus(leave.employee);
 
@@ -1798,6 +1810,17 @@ exports.decideLeave = async (req, res) => {
       chain.advance(leave, stage);
     }
     await leave.save();
+    // A named entry, so the log reads «الموافقة على إجازة …» instead of the generic path the safety net writes.
+    try {
+      const emp = await Employee.findById(leave.employee).select('arabicName firstName lastName employeeNumber').lean();
+      const stageAr = { manager: 'المدير المباشر', hr: 'الموارد البشرية', finance: 'الإدارة المالية', executive: 'الإدارة العليا' }[stage] || stage;
+      await logAudit({
+        user: req.user, action: { approved: 'leave_approve', rejected: 'leave_reject', info: 'leave_ask' }[decision], entity: 'LeaveRequest', entityId: leave._id,
+        changes: { after: { employeeName: emp ? (emp.arabicName || `${emp.firstName || ''} ${emp.lastName || ''}`.trim()) : '', stage: stageAr,
+          startDate: leave.startDate, endDate: leave.endDate, days: leave.days, ...(note ? { note } : {}) } },
+        ipAddress: req.ip,
+      });
+    } catch (e) { /* the decision stands even if its log line fails */ }
 
     // Notify the requester always, plus the next stage's owners. A mid-chain approver used to tell the requester it was approved when it had only moved on, so he planned travel on partial approval. The message now says where the request stands.
     const STAGE_AR = { manager: 'المدير المباشر', hr: 'الموارد البشرية', finance: 'الإدارة المالية', executive: 'الإدارة العليا' };
@@ -1828,7 +1851,7 @@ exports.decideLeave = async (req, res) => {
       else if (next === 'executive') await notifyTopManagement({ title: 'إجازة تنتظر الإدارة العليا', message: `طلب إجازة (${period}) وصل المحطّة الأخيرة.`, ...ref });
       else if (next === 'manager' && leave.manager) await notifyUser(leave.manager, { title: 'إجازة تنتظر موافقتك', message: `طلب إجازة (${period}) من أحد فريقك.`, ...ref });
     }
-    if (leave.manager) { try { emitToUser(String(leave.manager), 'hr:leave', { id: String(leave._id) }); } catch (e) {} }
+    await announceLeave(leave);
     if (leave.status === 'approved') {
       if (!leave.plannedEndDate) { leave.plannedEndDate = leave.endDate; await leave.save(); }
       await syncLeaveStatus(leave.employee);
@@ -1911,7 +1934,7 @@ exports.cancelMyLeave = async (req, res) => {
     leave.status = 'cancelled';
     leave.currentStage = 'done';
     await leave.save();
-    if (leave.manager) { try { emitToUser(String(leave.manager), 'hr:leave', { id: String(leave._id) }); } catch (e) {} }
+    await announceLeave(leave);
     res.json({ leave });
   } catch (error) {
     res.status(500).json({ message: 'Failed to cancel leave request' });
@@ -1969,7 +1992,7 @@ exports.updateMyLeave = async (req, res) => {
     }
 
     await leave.save();
-    if (leave.manager) { try { emitToUser(String(leave.manager), 'hr:leave', { id: String(leave._id) }); } catch (e) {} }
+    await announceLeave(leave);
     const populated = await LeaveRequest.findById(leave._id).populate('leaveType', 'nameAr nameEn code').lean();
     res.json({ leave: populated });
   } catch (error) {

@@ -630,7 +630,8 @@ function ShipmentOrdersInner() {
       </div>
 
       <div ref={listRef} className="scroll-mt-4 pt-1 sm:pt-0">
-      {total > 0 && (
+      {/* Shown with no results too: the view switcher lives in it. */}
+      {(
         <TablePager className="mb-2 rounded-xl border border-slate-200 bg-white px-4 py-2.5 shadow-sm"
           page={page} pageSize={pageSize} total={total} ar={ar} onPage={setPage} onPageSize={changePageSize}
           extra={<ViewSwitcher value={view} onChange={changeView} ar={ar} />} />

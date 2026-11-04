@@ -90,16 +90,15 @@ exports.searchEmployees = async (req, res) => {
   }
 };
 
-// Collect the employee data once so the snapshot (number/department) stays consistent.
+// Collect the employee data once so the snapshot (number/name) stays consistent. The department is not taken from the file: IT types it by hand (owner's call).
 async function employeeSnapshot(employeeId) {
-  if (!employeeId) return { employee: null, employeeNumber: '', employeeName: '', department: '' };
-  const e = await Employee.findById(employeeId).select('firstName lastName arabicName employeeNumber department').lean();
-  if (!e) return { employee: null, employeeNumber: '', employeeName: '', department: '' };
+  if (!employeeId) return { employee: null, employeeNumber: '', employeeName: '' };
+  const e = await Employee.findById(employeeId).select('firstName lastName arabicName employeeNumber').lean();
+  if (!e) return { employee: null, employeeNumber: '', employeeName: '' };
   return {
     employee: e._id,
     employeeNumber: e.employeeNumber || '',
     employeeName: e.arabicName || `${e.firstName || ''} ${e.lastName || ''}`.trim(),
-    department: e.department || '',
   };
 }
 
@@ -125,6 +124,7 @@ exports.create = async (req, res) => {
       functionAr: clean(req.body.functionAr) || '',
       status: ['active', 'suspended', 'closed'].includes(req.body.status) ? req.body.status : 'active',
       notes: clean(req.body.notes) || '',
+      department: clean(req.body.department) || '',
       createdByName: who(req),
       ...snap,
     });
@@ -174,6 +174,7 @@ exports.update = async (req, res) => {
     if (req.body.functionAr !== undefined) doc.functionAr = clean(req.body.functionAr);
     if (req.body.status !== undefined && ['active', 'suspended', 'closed'].includes(req.body.status)) doc.status = req.body.status;
     if (req.body.notes !== undefined) doc.notes = clean(req.body.notes);
+    if (req.body.department !== undefined) doc.department = clean(req.body.department);
 
     // Link to an employee, or unlink by sending null explicitly.
     if (req.body.employee !== undefined) {

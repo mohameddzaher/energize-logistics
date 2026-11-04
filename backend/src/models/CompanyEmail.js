@@ -19,7 +19,8 @@ const companyEmailSchema = new mongoose.Schema({
   employee: { type: mongoose.Schema.Types.ObjectId, ref: 'Employee', default: null, index: true },
   employeeNumber: { type: String, default: '', trim: true, index: true }, // Snapshot at link time
   employeeName: { type: String, default: '', trim: true },
-  department: { type: String, default: '', trim: true },
+  // Typed by IT by hand; not read from the HR file.
+  department: { type: String, default: '', trim: true, index: true },
 
   // Personal (employee) or functional (info@ / sales@, not a specific person).
   mailboxType: { type: String, enum: ['personal', 'functional'], default: 'personal', index: true },

@@ -650,7 +650,9 @@ export default function UsersPage() {
 
   const formatDate = (date?: string) => {
     if (!date) return txx.never;
-    return new Date(date).toLocaleDateString('en-US', {
+    // In the reader's language with Latin digits, in company time.
+    return new Date(date).toLocaleDateString(lang === 'ar' ? 'ar-SA-u-nu-latn-ca-gregory' : 'en-GB', {
+      timeZone: 'Asia/Riyadh',
       year: 'numeric',
       month: 'short',
       day: 'numeric',

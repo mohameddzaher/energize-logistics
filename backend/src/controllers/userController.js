@@ -245,7 +245,7 @@ exports.updateUser = async (req, res) => {
     }
     if (guardSuperAdminRole(req, res, { currentRole: user.role, nextRole: role })) return;
 
-    const before = { firstName: user.firstName, lastName: user.lastName, role: user.role, email: user.email };
+    const before = { firstName: user.firstName, lastName: user.lastName, role: user.role, email: user.email, isTopManagement: user.isTopManagement === true };
 
     // Top management is set by a super admin only: it signs the last leave stage for the whole company.
     if (req.body.isTopManagement !== undefined) {
@@ -373,7 +373,7 @@ exports.updateUser = async (req, res) => {
       entityId: user._id,
       changes: {
         before,
-        after: { firstName: user.firstName, lastName: user.lastName, role: user.role, email: user.email },
+        after: { firstName: user.firstName, lastName: user.lastName, role: user.role, email: user.email, isTopManagement: user.isTopManagement === true },
         passwordChanged: !!req.body.password || undefined,
       },
       ipAddress: req.ip,

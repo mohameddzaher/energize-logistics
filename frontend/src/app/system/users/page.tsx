@@ -1,10 +1,11 @@
 'use client';
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { useAuth } from '@/context/AuthContext';
 import { useLanguage } from '@/context/LanguageContext';
 import { getUsersTranslations, getUsersExtraTranslations } from '@/lib/translations';
 import api from '@/lib/api';
 import DataTable from '@/components/system/DataTable';
+import RowMenu from '@/components/system/RowMenu';
 import { useSocket } from '@/hooks/useSocket';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
@@ -126,6 +127,11 @@ const statusDot: Record<string, string> = {
   inactive: 'bg-slate-300',
 };
 
+const loginFormatters: Record<string, Intl.DateTimeFormat> = {};
+const loginFormatter = (ar: boolean) => (loginFormatters[ar ? 'ar' : 'en'] ||= new Intl.DateTimeFormat(ar ? 'ar-SA-u-nu-latn-ca-gregory' : 'en-GB', {
+  timeZone: 'Asia/Riyadh', year: 'numeric', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit',
+}));
+
 const SHIPMENT_BRANCH_ROLES = ['data_entry', 'data_analyst', 'shipment_orders_followup'];
 
 export default function UsersPage() {
@@ -144,7 +150,8 @@ export default function UsersPage() {
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [selectedUser, setSelectedUser] = useState<UserRecord | null>(null);
   const [actionMenuId, setActionMenuId] = useState<string | null>(null);
-  const [menuPos, setMenuPos] = useState<{ top: number; left: number }>({ top: 0, left: 0 });
+  const [menuAnchor, setMenuAnchor] = useState<DOMRect | null>(null);
+  const closeMenu = useCallback(() => setActionMenuId(null), []);
 
   // Create/Edit form
   const [customers, setCustomers] = useState<Customer[]>([]);
@@ -651,18 +658,8 @@ export default function UsersPage() {
     active: T.activeStatus, locked: T.lockedStatus, inactive: T.inactiveStatus,
   };
 
-  const formatDate = (date?: string) => {
-    if (!date) return txx.never;
-    // In the reader's language with Latin digits, in company time.
-    return new Date(date).toLocaleDateString(lang === 'ar' ? 'ar-SA-u-nu-latn-ca-gregory' : 'en-GB', {
-      timeZone: 'Asia/Riyadh',
-      year: 'numeric',
-      month: 'short',
-      day: 'numeric',
-      hour: '2-digit',
-      minute: '2-digit',
-    });
-  };
+  // In the reader's language with Latin digits, in company time. One formatter per language: toLocaleDateString built a new one for every row on every render.
+  const formatDate = (date?: string) => (date ? loginFormatter(lang === 'ar').format(new Date(date)) : txx.never);
 
   // Per-column search text. Columns show composed values (two-field name, role label from a map, computed status) and search used to read the raw field by column name; row.name does not exist.
   const columns = [
@@ -1240,6 +1237,34 @@ export default function UsersPage() {
     </>
   );
 
+  const menuRow = actionMenuId ? users.find((u) => u._id === actionMenuId) || null : null;
+  // The table depends only on the list, language and role names. Rebuilt on every render, each keystroke in the create/edit form re-rendered every user row, which is what made the page hang.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  const table = useMemo(() => (
+    <DataTable
+      columns={columns}
+      data={users}
+      searchable
+      pageSize={50}
+      searchPlaceholder={T.searchUsers}
+      emptyMessage={T.noUsers}
+      actions={(row: UserRecord) => (
+        <button
+          type="button"
+          aria-label={lang === 'ar' ? 'إجراءات' : 'Actions'}
+          onClick={(e) => {
+            e.stopPropagation();
+            setMenuAnchor((e.currentTarget as HTMLElement).getBoundingClientRect());
+            setActionMenuId((cur) => (cur === row._id ? null : row._id));
+          }}
+          className="p-1.5 text-slate-500 hover:text-slate-900 rounded-lg hover:bg-slate-100 transition-colors"
+        >
+          <MoreVertical className="w-4 h-4" />
+        </button>
+      )}
+    />
+  ), [users, lang, serverRoles]);
+
   if (loading) {
     return (
       <div className="flex items-center justify-center h-64">
@@ -1286,102 +1311,63 @@ export default function UsersPage() {
         </div>
       )}
 
-      {/* Data Table */}
-      <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }}>
-        <DataTable
-          columns={columns}
-          data={users}
-          searchable
-          searchPlaceholder={T.searchUsers}
-          emptyMessage={T.noUsers}
-          actions={(row: UserRecord) => {
-            const status = getUserStatus(row);
-            const isCurrentUser = row._id === currentUser?._id;
-            return (
-              <div className="relative">
-                <button
-                  type="button"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    if (actionMenuId === row._id) {
-                      setActionMenuId(null);
-                    } else {
-                      const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
-                      setMenuPos({ top: rect.bottom + 4, left: rect.right - 176 });
-                      setActionMenuId(row._id);
-                    }
-                  }}
-                  className="p-1 text-slate-500 hover:text-slate-900 rounded hover:bg-slate-100 transition-colors"
-                >
-                  <MoreVertical className="w-4 h-4" />
-                </button>
-                <AnimatePresence>
-                  {actionMenuId === row._id && (
-                    <motion.div
-                      initial={{ opacity: 0, scale: 0.95 }}
-                      animate={{ opacity: 1, scale: 1 }}
-                      exit={{ opacity: 0, scale: 0.95 }}
-                      style={{ top: menuPos.top, left: menuPos.left }}
-                      className="fixed w-44 bg-white border border-slate-200 rounded-lg shadow-xl z-[100] py-1"
-                    >
-                      <button
-                        type="button"
-                        onClick={() => openEditModal(row)}
-                        className="w-full flex items-center gap-2 px-3 py-2 text-sm text-slate-700 hover:bg-slate-100 hover:text-slate-900 transition-colors"
-                      >
-                        <Edit className="w-3.5 h-3.5" />
-                        {T.edit}
-                      </button>
-                      {!isCurrentUser && (
-                        <button
-                          type="button"
-                          onClick={() => handleToggleLock(row)}
-                          className="w-full flex items-center gap-2 px-3 py-2 text-sm text-slate-700 hover:bg-slate-100 hover:text-slate-900 transition-colors"
-                        >
-                          {status === 'locked' ? (
-                            <>
-                              <Unlock className="w-3.5 h-3.5" />
-                              {T.unlockUser}
-                            </>
-                          ) : (
-                            <>
-                              <Lock className="w-3.5 h-3.5" />
-                              {T.lockUser}
-                            </>
-                          )}
-                        </button>
-                      )}
-                      <button
-                        type="button"
-                        onClick={() => openResetModal(row)}
-                        className="w-full flex items-center gap-2 px-3 py-2 text-sm text-slate-700 hover:bg-slate-100 hover:text-slate-900 transition-colors"
-                      >
-                        <KeyRound className="w-3.5 h-3.5" />
-                        {T.resetPassword}
-                      </button>
-                      {!isCurrentUser && (
-                        <button
-                          type="button"
-                          onClick={() => openDeleteConfirm(row)}
-                          className="w-full flex items-center gap-2 px-3 py-2 text-sm text-red-600 hover:bg-red-500/10 transition-colors"
-                        >
-                          <Trash2 className="w-3.5 h-3.5" />
-                          {T.delete}
-                        </button>
-                      )}
-                    </motion.div>
-                  )}
-                </AnimatePresence>
-              </div>
-            );
-          }}
-        />
-      </motion.div>
+      {/* Data Table — memoized so typing in a form does not re-render every user row. */}
+      {table}
 
-      {/* Click-away listener for action menus */}
-      {actionMenuId && (
-        <div className="fixed inset-0 z-[99]" onClick={() => setActionMenuId(null)} />
-      )}
+      {menuRow && menuAnchor && (() => {
+        const row = menuRow;
+        const status = getUserStatus(row);
+        const isCurrentUser = row._id === currentUser?._id;
+        return (
+          <RowMenu anchor={menuAnchor} onClose={closeMenu} rtl={lang === 'ar'}>
+          <button
+            type="button"
+            onClick={() => openEditModal(row)}
+            className="w-full flex items-center gap-2 px-3 py-2 text-sm text-slate-700 hover:bg-slate-100 hover:text-slate-900 transition-colors"
+          >
+            <Edit className="w-3.5 h-3.5" />
+            {T.edit}
+          </button>
+          {!isCurrentUser && (
+            <button
+              type="button"
+              onClick={() => handleToggleLock(row)}
+              className="w-full flex items-center gap-2 px-3 py-2 text-sm text-slate-700 hover:bg-slate-100 hover:text-slate-900 transition-colors"
+            >
+              {status === 'locked' ? (
+                <>
+                  <Unlock className="w-3.5 h-3.5" />
+                  {T.unlockUser}
+                </>
+              ) : (
+                <>
+                  <Lock className="w-3.5 h-3.5" />
+                  {T.lockUser}
+                </>
+              )}
+            </button>
+          )}
+          <button
+            type="button"
+            onClick={() => openResetModal(row)}
+            className="w-full flex items-center gap-2 px-3 py-2 text-sm text-slate-700 hover:bg-slate-100 hover:text-slate-900 transition-colors"
+          >
+            <KeyRound className="w-3.5 h-3.5" />
+            {T.resetPassword}
+          </button>
+          {!isCurrentUser && (
+            <button
+              type="button"
+              onClick={() => openDeleteConfirm(row)}
+              className="w-full flex items-center gap-2 px-3 py-2 text-sm text-red-600 hover:bg-red-500/10 transition-colors"
+            >
+              <Trash2 className="w-3.5 h-3.5" />
+              {T.delete}
+            </button>
+          )}
+          </RowMenu>
+        );
+      })()}
 
       {/* Create User Modal */}
       <AnimatePresence>

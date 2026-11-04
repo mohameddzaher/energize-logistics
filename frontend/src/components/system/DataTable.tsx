@@ -1,6 +1,6 @@
 'use client';
 import { useLanguage } from '@/context/LanguageContext';
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { ChevronUp, ChevronDown, Search } from 'lucide-react';
 import ScrollX from '@/components/system/ScrollX';
 
@@ -33,9 +33,11 @@ interface DataTableProps {
   onRowClick?: (row: any) => void;
   emptyMessage?: string;
   actions?: (row: any) => React.ReactNode;
+  /** Rows per page; without it every row is drawn, which is slow for long lists. */
+  pageSize?: number;
 }
 
-export default function DataTable({ columns, data, searchable, searchPlaceholder, onRowClick, emptyMessage, actions }: DataTableProps) {
+export default function DataTable({ columns, data, searchable, searchPlaceholder, onRowClick, emptyMessage, actions, pageSize }: DataTableProps) {
   // The actions header follows the page language; it was written in English for every table using this component.
   const { lang } = useLanguage();
   const [search, setSearch] = useState('');
@@ -61,6 +63,13 @@ export default function DataTable({ columns, data, searchable, searchPlaceholder
         return 0;
       })
     : filteredData;
+
+  const [page, setPage] = useState(0);
+  // A new search or sort starts from the first page, otherwise the reader lands on an empty page.
+  useEffect(() => { setPage(0); }, [needle, sortKey, sortDir]);
+  const pages = pageSize ? Math.max(1, Math.ceil(sortedData.length / pageSize)) : 1;
+  const current = Math.min(page, pages - 1);
+  const shownData = pageSize ? sortedData.slice(current * pageSize, (current + 1) * pageSize) : sortedData;
 
   const handleSort = (key: string) => {
     if (sortKey === key) {
@@ -115,7 +124,7 @@ export default function DataTable({ columns, data, searchable, searchPlaceholder
                 </td>
               </tr>
             ) : (
-              sortedData.map((row, i) => (
+              shownData.map((row, i) => (
                 <tr
                   key={row._id || i}
                   onClick={() => onRowClick?.(row)}
@@ -133,6 +142,20 @@ export default function DataTable({ columns, data, searchable, searchPlaceholder
           </tbody>
         </table>
       </ScrollX>
+      {pageSize && sortedData.length > pageSize && (
+        <div className="mt-3 flex flex-wrap items-center justify-between gap-2 text-sm text-slate-600">
+          <span className="tabular-nums">
+            {(current * pageSize + 1).toLocaleString('en-US')}–{Math.min((current + 1) * pageSize, sortedData.length).toLocaleString('en-US')} {lang === 'ar' ? 'من' : 'of'} {sortedData.length.toLocaleString('en-US')}
+          </span>
+          <div className="flex items-center gap-1.5">
+            <button type="button" disabled={current === 0} onClick={() => setPage(current - 1)}
+              className="px-3 py-1.5 rounded-lg border border-slate-200 bg-white hover:bg-slate-50 disabled:opacity-40">{lang === 'ar' ? 'السابق' : 'Previous'}</button>
+            <span className="px-2 tabular-nums">{(current + 1).toLocaleString('en-US')} / {pages.toLocaleString('en-US')}</span>
+            <button type="button" disabled={current >= pages - 1} onClick={() => setPage(current + 1)}
+              className="px-3 py-1.5 rounded-lg border border-slate-200 bg-white hover:bg-slate-50 disabled:opacity-40">{lang === 'ar' ? 'التالي' : 'Next'}</button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

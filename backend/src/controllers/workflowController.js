@@ -800,7 +800,12 @@ function buildWorkflowFilter(queryIn, skipField, allowMoney = true, allowSelling
     // A number typed in search is a request for that one row, cancelled or not.
     const asked = require('../utils/arabicSearch').westernDigits(String((query && query.search) || '').trim());
     const exact = asked && !/\s/.test(asked) ? [{ reportNumber: asked }, { documentNumber: asked }] : [];
-    filter.$and = [...(filter.$and || []), { $or: [{ applicationStatus: { $nin: CANCELLED } }, ...exact] }];
+    // While searching, the exclusion is an $expr: as a plain $nin the planner chose the status index and read every non-cancelled report (34k) instead of the search indexes. Same meaning, including reports with no status.
+    const searching = !!String((query && query.search) || '').trim();
+    const notCancelled = searching
+      ? { $expr: { $not: { $in: [{ $ifNull: ['$applicationStatus', null] }, CANCELLED] } } }
+      : { applicationStatus: { $nin: CANCELLED } };
+    filter.$and = [...(filter.$and || []), { $or: [notCancelled, ...exact] }];
   }
   const customs = String((query && query.customs) || '');
   if (customs === 'linked') filter.$and = [...(filter.$and || []), LINKED];

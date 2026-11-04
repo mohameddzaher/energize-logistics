@@ -136,6 +136,13 @@ function ShipmentOrdersInner() {
   // `customs=linked`: shipments linked to a customs file, from a dashboard card.
   const [customsOnly, setCustomsOnly] = useState(() => sp?.get('customs') === 'linked');
   const [page, setPage] = useState(1);
+  // One button empties every filter on the page: search, status cards, customer, period, note, customs, cancelled and every column filter.
+  const clearAllFilters = () => {
+    setSearch(''); setDebounced(''); setStatuses([]); setNoteFilter(''); setCustomerFilter('');
+    setFromDate(''); setToDate(''); setDateBy('pickup'); setCustomsOnly(false); setColFilters({});
+    if (excludeCancelled) { try { localStorage.setItem('shipments:excludeCancelled', '0'); } catch { /* */ } setExcludeCancelled(false); }
+    setPage(1);
+  };
   const [pageSize, setPageSize] = useState<number>(() => readPageSize('so:pageSize'));
   const changePageSize = (n: number) => { setPageSize(n); setPage(1); savePageSize('so:pageSize', n); };
 
@@ -556,6 +563,12 @@ function ShipmentOrdersInner() {
             searchPlaceholder={ar ? 'ابحث عن عميل…' : 'Search customers…'} emptyLabel={ar ? 'لا نتائج' : 'No matches'}
             options={[{ value: '', label: ar ? 'كل العملاء' : 'All customers' }, ...customers.map((c) => ({ value: c._id, label: c.name }))]} />
         </div>
+        {(search || statuses.length || noteFilter || customerFilter || fromDate || toDate || customsOnly || excludeCancelled || Object.keys(colFilters).length > 0) && (
+          <button type="button" onClick={clearAllFilters}
+            className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg border border-red-200 bg-red-50 text-red-700 text-sm font-semibold hover:bg-red-100">
+            <X className="w-4 h-4" />{ar ? 'مسح كل الفلاتر' : 'Clear all filters'}
+          </button>
+        )}
         <div className="w-full flex flex-wrap gap-2">
           {([
             [ar ? 'الفرع' : 'Branch', 'branch'], [ar ? 'من' : 'From', 'fromCity'], [ar ? 'إلى' : 'To', 'toCity'],

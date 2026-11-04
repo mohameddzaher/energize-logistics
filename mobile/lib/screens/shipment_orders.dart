@@ -382,11 +382,18 @@ class _ShipmentOrdersScreenState extends State<ShipmentOrdersScreen> {
           padding: const EdgeInsetsDirectional.only(start: 14, top: 6),
           child: Align(
             alignment: AlignmentDirectional.centerStart,
-            child: FilterChip(
-              selected: _excludeCancelled,
-              onSelected: (_) => _refilter(() => _excludeCancelled = !_excludeCancelled),
-              label: Text(tr('باستثناء الملغاة', 'Excluding cancelled'), style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w700)),
-            ),
+            child: Wrap(spacing: 6, children: [
+              FilterChip(
+                selected: _excludeCancelled,
+                onSelected: (_) => _refilter(() => _excludeCancelled = !_excludeCancelled),
+                label: Text(tr('باستثناء الملغاة', 'Excluding cancelled'), style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w700)),
+              ),
+              if (_anyFilter) ActionChip(
+                avatar: const Icon(Icons.filter_alt_off_outlined, size: 16, color: T.danger),
+                label: Text(tr('مسح كل الفلاتر', 'Clear all filters'), style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: T.danger)),
+                onPressed: _clearAll,
+              ),
+            ]),
           ),
         ),
         if (_customsOnly)
@@ -520,6 +527,18 @@ class _ShipmentOrdersScreenState extends State<ShipmentOrdersScreen> {
       });
 
   /// Count of active filters in the panel (note, source, customer, both dates, columns).
+  bool get _anyFilter => _q.isNotEmpty || _statuses.isNotEmpty || _customsOnly || _excludeCancelled || _dateBy.isNotEmpty || _sheetFilterCount > 0;
+
+  /// Every filter on the screen at once: search, statuses, period, sheet filters, customs and cancelled.
+  void _clearAll() {
+    _debounce?.cancel();
+    _searchCtrl.clear();
+    _refilter(() {
+      _q = ''; _statuses.clear(); _note = ''; _customer = ''; _from = ''; _to = ''; _dateBy = '';
+      _colFilters.clear(); _customsOnly = false; _excludeCancelled = false;
+    });
+  }
+
   int get _sheetFilterCount =>
       (_note.isNotEmpty ? 1 : 0) + (_customer.isNotEmpty ? 1 : 0) +
       (_from.isNotEmpty ? 1 : 0) + (_to.isNotEmpty ? 1 : 0) + _colFilters.length;
@@ -568,7 +587,7 @@ class _ShipmentOrdersScreenState extends State<ShipmentOrdersScreen> {
               Expanded(child: Text(tr('فلاتر', 'Filters'), style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 16))),
               if (_sheetFilterCount > 0)
                 TextButton(
-                  onPressed: () => apply(() { _note = ''; _customer = ''; _from = ''; _to = ''; _colFilters.clear(); }),
+                  onPressed: () { _clearAll(); setSheet(() {}); },
                   child: Text(tr('مسح الكل', 'Clear all')),
                 ),
             ]),

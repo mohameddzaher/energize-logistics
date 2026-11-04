@@ -160,6 +160,30 @@ async function resolveSubjects(logs) {
   return out;
 }
 
+/**
+ * One entry as a full sentence: who did what, on which record, and every value that changed.
+ * «نورهان فراج عدّل فاتورة INV-1 (المبلغ: من 1,000 إلى 1,150، الحالة: مكتمل)». The table's short summary kept three changes; the log is read to know exactly what happened, so nothing is cut here.
+ */
+const GENERIC = /^(create|add|update|edit|delete|remove)(_|$)/;
+function sentenceOf({ actor, action, actionLabel: label, entityLabel: ent, subject, kind, rows, bulkCount, lang }) {
+  const ar = lang !== 'en';
+  const verb = {
+    create: ar ? 'أضاف' : 'added', update: ar ? 'عدّل' : 'edited', set: ar ? 'عدّل' : 'edited',
+    delete: ar ? 'حذف' : 'deleted', fields: ar ? 'عدّل' : 'edited',
+  }[kind];
+  const what = [ent, subject && !String(ent || '').includes(subject) ? subject : ''].filter(Boolean).join(' ');
+  // A named action ("record collection", "close the day") says more than a generic verb.
+  let head;
+  if (verb && GENERIC.test(String(action || ''))) head = `${actor} ${verb} ${what}`.trim();
+  else head = ar ? `${actor} قام ب${label}${subject ? ` — ${subject}` : ''}` : `${actor}: ${label}${subject ? ` — ${subject}` : ''}`;
+  const told = (rows || []).map((r) => r.text).filter(Boolean);
+  const MAX = 15;
+  const list = told.slice(0, MAX).join(ar ? '، ' : ', ');
+  const more = told.length > MAX ? (ar ? ` و${told.length - MAX} أخرى` : ` +${told.length - MAX} more`) : '';
+  const bulk = bulkCount ? (ar ? ` على ${bulkCount} سجلًّا` : ` on ${bulkCount} records`) : '';
+  return `${head}${bulk}${list ? ` (${list}${more})` : ''}`;
+}
+
 exports.getAuditLogs = async (req, res) => {
   try {
     const lang = req.query.lang === 'en' ? 'en' : 'ar';
@@ -184,6 +208,11 @@ exports.getAuditLogs = async (req, res) => {
       User.find({ _id: { $in: actorIds } }).select('firstName lastName email role branch').lean(),
     ]);
     const actorById = Object.fromEntries(actors.map((u) => [String(u._id), u]));
+    // The actor's branch by name, shown under each entry.
+    const branchIds = [...new Set(actors.map((u) => u.branch && String(u.branch)).filter(Boolean))];
+    const branchName = Object.fromEntries((branchIds.length
+      ? await require('../models/Branch').find({ _id: { $in: branchIds } }).select('name nameAr').lean() : [])
+      .map((b) => [String(b._id), (lang === 'ar' ? b.nameAr : '') || b.name || '']));
     // Full detail only for the screen page; export needs just the readable line, and a snapshot of every entry across tens of thousands of rows is a payload nobody reads.
     const withDetail = limit <= 200;
 
@@ -216,6 +245,8 @@ exports.getAuditLogs = async (req, res) => {
       o.summary = d.summary;
       o.kind = d.kind;
       o.hasDetails = d.rows.length > 0 || d.unchanged.length > 0;
+      o.branchName = (o.user && o.user.branch && branchName[String(o.user.branch)]) || '';
+      o.sentence = sentenceOf({ actor: o.userName, action: l.action, actionLabel: o.actionLabel, entityLabel: o.entityLabel, subject: d.subject, kind: d.kind, rows: d.rows.filter((r) => !(d.subjectKey && r.key === d.subjectKey && r.kind === 'value')), bulkCount: d.bulkCount, lang });
       if (withDetail) o.detail = { rows: d.rows, unchanged: d.unchanged, bulkCount: d.bulkCount };
       return o;
     });

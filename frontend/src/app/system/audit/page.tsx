@@ -43,6 +43,9 @@ interface AuditLog {
   subject?: string;
   /** Summary of what happened, shown in the cell as is. */
   summary?: string;
+  /** The whole entry as one sentence (who, what, which record, every change), from the server. */
+  sentence?: string;
+  branchName?: string;
   kind?: 'none' | 'update' | 'create' | 'set' | 'delete' | 'fields' | 'bulk' | 'info';
   hasDetails?: boolean;
   detail?: { rows: DetailRow[]; unchanged: { key: string; label: string; value: string }[]; bulkCount: number | null };
@@ -91,6 +94,9 @@ export default function AuditPage() {
   const [error, setError] = useState('');
   const [pagination, setPagination] = useState<PaginationInfo>({ page: 1, limit: PAGE_SIZE, total: 0, pages: 0 });
   const [expandedRow, setExpandedRow] = useState<string | null>(null);
+  // Timeline reads each action as a full sentence; the table stays for scanning columns. The choice is kept in the browser.
+  const [view, setViewState] = useState<'timeline' | 'table'>(() => (typeof window !== 'undefined' && window.localStorage.getItem('audit:view') === 'table' ? 'table' : 'timeline'));
+  const setView = (v: 'timeline' | 'table') => { setViewState(v); try { window.localStorage.setItem('audit:view', v); } catch { /* private mode */ } };
   const [showUnchanged, setShowUnchanged] = useState(false);
   const [loadedOnce, setLoadedOnce] = useState(false);
 
@@ -255,6 +261,8 @@ export default function AuditPage() {
     { header: T.entity, key: 'entityLabel', width: 18 },
     { header: ar ? 'السجل' : 'Record', key: 'subject', width: 26 },
     { header: T.details, key: 'summary', width: 70 },
+    { header: ar ? 'الوصف الكامل' : 'Full description', key: 'sentence', width: 90 },
+    { header: ar ? 'الفرع' : 'Branch', key: 'branchName', width: 16 },
     { header: T.ipAddress, key: 'ipAddress', width: 16 },
   ];
   // The log is paginated on the server at 25 rows and has tens of thousands of entries, so exporting what is in memory gave a few minutes of history labelled as the full log. Refetch with an open limit before exporting whenever more than the current page is requested.
@@ -676,7 +684,60 @@ export default function AuditPage() {
         )}
       </AnimatePresence>
 
+      <div className="flex items-center gap-1 rounded-lg border border-slate-200 bg-white p-1 w-fit">
+        {([['timeline', ar ? 'سجل زمني مفصّل' : 'Detailed timeline'], ['table', ar ? 'جدول' : 'Table']] as const).map(([k, lbl]) => (
+          <button key={k} type="button" onClick={() => setView(k)}
+            className={`px-3 py-1.5 rounded-md text-xs font-semibold ${view === k ? 'bg-[#12325C] text-white' : 'text-slate-600 hover:bg-slate-100'}`}>{lbl}</button>
+        ))}
+      </div>
+
+      {/* Timeline: one full sentence per action, its time, actor and branch under it, grouped by day. */}
+      {view === 'timeline' && (
+        <div className="rounded-xl border border-slate-200 bg-white divide-y divide-slate-100">
+          {logs.length === 0 ? (
+            <p className="px-4 py-8 text-center text-slate-800 text-sm">{T.noLogs}</p>
+          ) : logs.map((log, i) => {
+            const dayOf = (d: string) => new Date(d).toLocaleDateString(ar ? 'ar-SA-u-nu-latn-ca-gregory' : 'en-GB', { timeZone: COMPANY_TZ, weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
+            const newDay = i === 0 || dayOf(logs[i - 1].createdAt) !== dayOf(log.createdAt);
+            const actor = log.userName || txx.system;
+            const text = log.sentence || [log.actionLabel, log.entityLabel, log.subject, log.summary].filter(Boolean).join(' — ');
+            const rest = text.startsWith(actor) ? text.slice(actor.length) : ` ${text}`;
+            const dot = log.kind === 'delete' ? 'bg-red-500' : log.kind === 'create' ? 'bg-emerald-500' : log.kind === 'update' || log.kind === 'set' || log.kind === 'fields' ? 'bg-blue-500' : 'bg-[#f37121]';
+            const time = new Date(log.createdAt).toLocaleTimeString('en-GB', { timeZone: COMPANY_TZ, hour: '2-digit', minute: '2-digit', second: '2-digit' });
+            return (
+              <React.Fragment key={log._id}>
+                {newDay && <div className="px-4 py-2 bg-slate-50 text-xs font-bold text-slate-600">{dayOf(log.createdAt)}</div>}
+                <div className={`px-4 py-3 ${log.hasDetails ? 'cursor-pointer hover:bg-slate-50' : ''}`} onClick={() => (log.hasDetails ? toggleRow(log._id) : undefined)}>
+                  <div className="flex items-start gap-3">
+                    <span className={`mt-1.5 w-2.5 h-2.5 rounded-full shrink-0 ${dot}`} />
+                    <div className="min-w-0 flex-1">
+                      <p className="text-[13.5px] text-slate-800 leading-relaxed break-words" dir="auto">
+                        <button type="button" onClick={(e) => { e.stopPropagation(); if (log.user) filterByActor(log); else { setUserFilter('system'); setShowFilters(true); } }}
+                          className="font-bold text-slate-900 hover:text-[#f37121] hover:underline">{actor}</button>
+                        {rest}
+                      </p>
+                      <p className="mt-1 text-[11.5px] text-slate-500 tabular-nums" dir="auto">
+                        {[time, actor, log.branchName, log.sectionLabel, formatRelativeTime(log.createdAt)].filter(Boolean).join('  ·  ')}
+                        {log.user?.deleted && <span className="ms-1 text-amber-600">{ar ? '(حساب محذوف)' : '(deleted account)'}</span>}
+                      </p>
+                    </div>
+                    {log.hasDetails && (expandedRow === log._id ? <ChevronUp className="w-4 h-4 text-slate-400" /> : <ChevronDown className="w-4 h-4 text-slate-400" />)}
+                  </div>
+                  {expandedRow === log._id && log.hasDetails && (
+                    <div className="mt-3 ms-5 bg-slate-50 border border-slate-200 rounded-lg p-3 overflow-x-auto" onClick={(e) => e.stopPropagation()}>
+                      {renderDetail(log)}
+                      {log.ipAddress && <p className="text-slate-500 text-xs mt-2">{T.ipAddress}: {log.ipAddress}</p>}
+                    </div>
+                  )}
+                </div>
+              </React.Fragment>
+            );
+          })}
+        </div>
+      )}
+
       {/* Audit Logs Table */}
+      {view === 'table' && (
       <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }}>
         <div className="overflow-x-auto rounded-lg border border-slate-200">
           <table className="w-full">
@@ -809,6 +870,7 @@ export default function AuditPage() {
           </table>
         </div>
       </motion.div>
+      )}
 
       {/* Pagination */}
       {pagination.pages > 1 && (

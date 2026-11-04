@@ -107,6 +107,8 @@ class _AdminAuditScreenState extends State<AdminAuditScreen> {
     ExportCol('الكيان', 'Entity', (l) => l['entityLabel'] ?? l['entity']),
     ExportCol('السجل', 'Record', (l) => l['subject']),
     ExportCol('التفاصيل', 'Details', (l) => l['summary']),
+    ExportCol('الوصف الكامل', 'Full description', (l) => l['sentence'] ?? ''),
+    ExportCol('الفرع', 'Branch', (l) => l['branchName'] ?? ''),
     ExportCol('عنوان IP', 'IP address', (l) => l['ipAddress']),
   ];
 
@@ -291,9 +293,10 @@ class _AdminAuditScreenState extends State<AdminAuditScreen> {
                                   if (l['hasDetails'] == true) Icon(open ? Icons.expand_less : Icons.expand_more, size: 20, color: T.inkFaint),
                                 ]),
                                 if ('${l['subject'] ?? ''}'.isNotEmpty) Text('${l['subject']}', style: const TextStyle(fontSize: 12.5, fontWeight: FontWeight.w600, color: T.navy)),
-                                if ('${l['summary'] ?? ''}'.isNotEmpty) Padding(
+                                // The whole action as one sentence (who, what, which record, every change), as on the web timeline.
+                                if ('${l['sentence'] ?? l['summary'] ?? ''}'.isNotEmpty) Padding(
                                   padding: const EdgeInsets.only(top: 3),
-                                  child: Text('${l['summary']}', maxLines: open ? null : 3, overflow: open ? null : TextOverflow.ellipsis, style: const TextStyle(fontSize: 12.5, color: T.inkSoft)),
+                                  child: Text('${l['sentence'] ?? l['summary']}', style: const TextStyle(fontSize: 12.5, color: T.ink, height: 1.45)),
                                 ),
                                 const SizedBox(height: 6),
                                 Wrap(spacing: 6, runSpacing: 4, children: [
@@ -301,6 +304,7 @@ class _AdminAuditScreenState extends State<AdminAuditScreen> {
                                     onTap: l['user'] is Map ? () => _set(() => _user = '${l['user']['_id']}') : null,
                                     child: Chip2(_actor(l), T.navy, icon: Icons.person_outline),
                                   ),
+                                  if ('${l['branchName'] ?? ''}'.isNotEmpty) Chip2('${l['branchName']}', T.inkSoft, icon: Icons.store_mall_directory_outlined),
                                   if ('${l['sectionLabel'] ?? ''}'.isNotEmpty) Chip2('${l['sectionLabel']}', T.orange),
                                   if ('${l['entityLabel'] ?? ''}'.isNotEmpty) Chip2('${l['entityLabel']}', T.inkSoft),
                                   Chip2(_when(l['createdAt']), T.inkFaint, icon: Icons.schedule),

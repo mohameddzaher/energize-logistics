@@ -265,6 +265,8 @@ function describe(log, ctx = {}) {
   const out = { kind: 'none', subject: '', summary: '', rows: [], unchanged: [], bulkCount: null };
   const subj = subjectOf(ch, log, c);
   out.subject = subj.text;
+  // The field the record is named by, so a sentence does not repeat it in its details.
+  out.subjectKey = subj.key;
   // A safety-net entry is read by what was done, not by its path.
   // It used to display as stored: method, path, sent and contact time. The title is now built from the path in words (section, shipment, follow-up) and the detail is what was sent, field by field with display names.
   if (/^api_/.test(action) && isPlain(ch)) {

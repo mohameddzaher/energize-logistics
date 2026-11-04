@@ -1,4 +1,5 @@
 'use client';
+import type React from 'react';
 /**
  * Pagination bar for server-paged tables. The full bar (range + rows per page) sits above
  * the table; `compact` is the prev/next pair kept under a long table.
@@ -17,10 +18,12 @@ export const savePageSize = (key: string, n: number) => {
 
 const fmt = (n: number) => n.toLocaleString('en-US');
 
-export default function TablePager({ page, pageSize, total, ar, onPage, onPageSize, note, compact, className = '' }: {
+export default function TablePager({ page, pageSize, total, ar, onPage, onPageSize, note, compact, className = '', extra }: {
   page: number; pageSize: number; total: number; ar: boolean;
   onPage: (p: number) => void; onPageSize?: (n: number) => void;
   note?: string; compact?: boolean; className?: string;
+  /** Controls that belong with how the list is shown (view switcher), placed beside the rows-per-page select. */
+  extra?: React.ReactNode;
 }) {
   const pages = Math.max(1, Math.ceil(total / pageSize));
   const Prev = ar ? ChevronRight : ChevronLeft;
@@ -44,7 +47,8 @@ export default function TablePager({ page, pageSize, total, ar, onPage, onPageSi
         {ar ? 'عرض' : 'Showing'} <b className="font-semibold text-slate-800">{fmt(from)}–{fmt(to)}</b> {ar ? 'من' : 'of'} <b className="font-semibold text-slate-800">{fmt(total)}</b>
         {note ? <span className="ms-1.5 text-[#f37121]">({note})</span> : null}
       </p>
-      <div className="flex items-center gap-3">
+      <div className="flex flex-wrap items-center gap-3">
+        {extra}
         {onPageSize && (
           <label className="flex items-center gap-2 text-[13px] text-slate-500">
             {ar ? 'عدد الصفوف' : 'Rows per page'}

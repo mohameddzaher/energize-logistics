@@ -1,6 +1,5 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
-import '../ui/hr_quick.dart' show pickFromList;
 import 'package:provider/provider.dart';
 import '../services/api.dart';
 import '../services/auth.dart';
@@ -82,7 +81,6 @@ class _ShipmentOrdersScreenState extends State<ShipmentOrdersScreen> {
   final Map<String, Set<String>> _colFilters = {};
   bool _customsOnly = false;
   bool _excludeCancelled = false;
-  List<Map<String, dynamic>> _customers = [];
 
   // Selected waybills become one file from the server.
   final Map<String, Map<String, dynamic>> _picked = {};
@@ -107,9 +105,6 @@ class _ShipmentOrdersScreenState extends State<ShipmentOrdersScreen> {
     _customsOnly = widget.customsLinked;
     _load();
     loadSoStatuses().then((v) { if (mounted) setState(() => _vocab = v); });
-    Api.instance.get('/api/shipment-orders/customers').then((d) {
-      if (mounted) setState(() => _customers = List<Map<String, dynamic>>.from(d['customers'] ?? []));
-    }).catchError((_) {});
     Live.instance.on('shipmentOrders:updated', _onLive);
   }
 
@@ -601,25 +596,6 @@ class _ShipmentOrdersScreenState extends State<ShipmentOrdersScreen> {
             SingleChildScrollView(scrollDirection: Axis.horizontal, child: _seg(
                 [('', tr('الكل', 'All'), null), ('yes', tr('لها ملاحظة', 'With note'), null), ('no', tr('بلا ملاحظة', 'No note'), null)],
                 _note, (v) => apply(() => _note = v))),
-            title(tr('العميل', 'Customer')),
-            // Searchable, as on the web: the customer list runs into the hundreds.
-            Builder(builder: (ctx) {
-              final all = tr('كل العملاء', 'All customers');
-              final cur = _customers.where((c) => c['_id'] == _customer).map((c) => '${c['name'] ?? ''}').firstOrNull ?? '';
-              return InkWell(
-                onTap: () async {
-                  final v = await pickFromList(ctx, title: tr('العميل', 'Customer'),
-                      options: [all, ..._customers.map((c) => '${c['name'] ?? ''}')], current: cur.isEmpty ? all : cur);
-                  if (v == null) return;
-                  final hit = _customers.where((c) => '${c['name'] ?? ''}' == v).firstOrNull;
-                  apply(() => _customer = v == all || hit == null ? '' : '${hit['_id']}');
-                },
-                child: InputDecorator(
-                  decoration: const InputDecoration(suffixIcon: Icon(Icons.search, size: 18)),
-                  child: Text(cur.isEmpty ? all : cur, overflow: TextOverflow.ellipsis),
-                ),
-              );
-            }),
             title(tr('التاريخ', 'Date')),
             Wrap(spacing: 6, runSpacing: 6, crossAxisAlignment: WrapCrossAlignment.center, children: [
               ActionChip(avatar: const Icon(Icons.event, size: 16), label: Text(_from.isEmpty ? tr('من تاريخ', 'From') : _from),

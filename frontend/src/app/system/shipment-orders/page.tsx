@@ -13,7 +13,7 @@ import { ColumnFilter } from '@/components/ColumnFilter';
 import ColumnChooser, { useVisibleColumns } from '@/components/system/ColumnChooser';
 import { Ban, PackageSearch, Plus, Pencil, Eye, FileDown, Loader2, RefreshCw, X, Check, MessageSquareText, SlidersHorizontal, Trash2 } from 'lucide-react';
 import {
-  Spinner, PageHeader, SearchInput, PrimaryButton, SearchableSelect, ErrorNotice,
+  Spinner, PageHeader, SearchInput, PrimaryButton, ErrorNotice,
 } from '@/components/hr/HRKit';
 import ExportMenu, { exportScopeLabels, type ExportColumn } from '@/components/ls2/ExportMenu';
 import {
@@ -477,6 +477,8 @@ function ShipmentOrdersInner() {
               : (ar ? `تحميل ${picked.size} أمر نقل` : `Download ${picked.size} waybills`)}
           </button>
         )}
+        {/* Columns sit with the page's actions in the header, so less stands between the filters and the table. */}
+        {view === 'table' && <ColumnChooser columns={chooserCols} visible={visible} onChange={setVisible} ar={ar} />}
         <ExportMenu fileName="shipment-orders" lang={ar ? 'ar' : 'en'} variant="subtle" options={exportOptions} />
         {editor && (
           <PrimaryButton onClick={() => router.push('/system/shipment-orders/new')}>
@@ -543,8 +545,6 @@ function ShipmentOrdersInner() {
             placeholder={ar ? 'بحث برقم أمر النقل، العميل، السائق، الإقامة، الجوال، اللوحة، الهيكل، المدينة…' : 'waybill, customer, driver, iqama, phone, plate, chassis, city…'} />
         </div>
         <div className="flex items-center gap-2 w-full sm:w-auto">
-          <ViewSwitcher value={view} onChange={changeView} ar={ar} />
-          {view === 'table' && <ColumnChooser columns={chooserCols} visible={visible} onChange={setVisible} ar={ar} />}
           {/* Mobile: secondary filters behind a button showing how many are active. */}
           <button type="button" onClick={() => setShowFilters((v) => !v)} aria-expanded={showFilters}
             className={`sm:hidden ms-auto inline-flex items-center gap-1.5 min-h-[38px] px-3 rounded-lg border text-[13px] font-semibold ${
@@ -557,12 +557,6 @@ function ShipmentOrdersInner() {
         <div className={`${showFilters ? 'flex flex-wrap gap-3 items-center w-full' : 'hidden'} sm:contents`}>
         {/* Shipment source: buttons rather than a dropdown, since this is asked every session; each button carries its count under the other filters, so the size is known before clicking. */}
         {/* Note filter: show shipments with a note is asked before printing, since the transport order carries the note and what will print is reviewed. */}
-        <div className="w-56 grow sm:grow-0">
-          <SearchableSelect value={customerFilter} onChange={(v) => { setCustomerFilter(v); setPage(1); }} searchAfter={0}
-            placeholder={ar ? 'كل العملاء' : 'All customers'}
-            searchPlaceholder={ar ? 'ابحث عن عميل…' : 'Search customers…'} emptyLabel={ar ? 'لا نتائج' : 'No matches'}
-            options={[{ value: '', label: ar ? 'كل العملاء' : 'All customers' }, ...customers.map((c) => ({ value: c._id, label: c.name }))]} />
-        </div>
         {(search || statuses.length || noteFilter || customerFilter || fromDate || toDate || customsOnly || excludeCancelled || Object.keys(colFilters).length > 0) && (
           <button type="button" onClick={clearAllFilters}
             className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg border border-red-200 bg-red-50 text-red-700 text-sm font-semibold hover:bg-red-100">
@@ -638,7 +632,8 @@ function ShipmentOrdersInner() {
       <div ref={listRef} className="scroll-mt-4 pt-1 sm:pt-0">
       {total > 0 && (
         <TablePager className="mb-2 rounded-xl border border-slate-200 bg-white px-4 py-2.5 shadow-sm"
-          page={page} pageSize={pageSize} total={total} ar={ar} onPage={setPage} onPageSize={changePageSize} />
+          page={page} pageSize={pageSize} total={total} ar={ar} onPage={setPage} onPageSize={changePageSize}
+          extra={<ViewSwitcher value={view} onChange={changeView} ar={ar} />} />
       )}
       {view !== 'table' ? (
         <>

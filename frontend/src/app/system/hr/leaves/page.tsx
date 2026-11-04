@@ -23,7 +23,6 @@ import PeriodFilter from '@/components/system/PeriodFilter';
 import Link from 'next/link';
 
 const idOf = (e: any) => (e?.idType === 'national_id' ? (e?.nationalId || e?.iqamaNumber) : (e?.iqamaNumber || e?.nationalId)) || '—';
-const BG = 'bg-white group-hover:bg-slate-100';
 
 export default function HRLeavesPage() {
   const { notify, confirm, prompt } = useDialog();
@@ -290,7 +289,7 @@ export default function HRLeavesPage() {
             <th className="text-start font-semibold px-4 py-3">{tx.colDays}</th>
             <th className="text-start font-semibold px-4 py-3">{tx.colBalance}</th>
             <th className="text-start font-semibold px-4 py-3">{tx.colStatus}</th>
-            <th className="sticky end-0 z-30 bg-slate-900 border-s border-slate-600 text-start font-semibold px-4 py-3 whitespace-nowrap">{ar ? 'الإجراءات' : 'Actions'}</th>
+            <th className="text-start font-semibold px-4 py-3 whitespace-nowrap">{ar ? 'الإجراءات' : 'Actions'}</th>
           </tr></thead>
           <tbody>
             {filtered.length === 0 ? (
@@ -326,7 +325,7 @@ export default function HRLeavesPage() {
                       )}
                     </div>
                   </td>
-                  <td className={`sticky end-0 z-10 border-s border-slate-200 px-4 py-3 ${BG}`}>
+                  <td className="px-4 py-3">
                     <div className="flex items-center gap-1.5">
                       {canActNow(l) && <>
                         <button type="button" disabled={rowBusy === l._id} onClick={(e) => { e.stopPropagation(); quickDecide(l, 'approved'); }}

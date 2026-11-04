@@ -186,6 +186,8 @@ const operationsWorkflowSchema = new mongoose.Schema(
         blNumber: { type: String, default: '' },
         customerName: { type: String, default: '' },
         containers: { type: [String], default: [] },
+        // The containers as one string: number search is a contains-match, and a regex on an array (multikey) index must fetch every report, while one on a string index filters the keys.
+        containersText: { type: String, default: '' },
         via: { type: String, enum: ['move', 'bl', 'container', 'manual', 'unlinked'], default: 'move' },
         at: { type: Date, default: null },
         byName: { type: String, default: '' },
@@ -210,6 +212,12 @@ operationsWorkflowSchema.index({ collectedByWallet: 1 }, { partialFilterExpressi
 operationsWorkflowSchema.index({ invoiceNumber: 1, invoiceDate: -1 });
 // Exact search by voucher number (primeRelatedSearch) must not scan.
 operationsWorkflowSchema.index({ documentNumber: 1 });
+// Number search (buildWorkflowFilter) is a contains-match over these codes and phones. With every $or branch indexed the planner scans the small index keys and fetches only matching reports; with one branch unindexed it read all ~40k reports per query.
+for (const f of ['carNumber', 'plateNumber', 'loadNumber', 'reference', 'invoiceRef', 'customsLink.refNumber', 'customsLink.blNumber', 'customsLink.containersText', 'driverPhone', 'userPhone', 'ownerPhone', 'driverName',
+  // Text search adds the name and place fields (NAME_FIELDS); carOwner and branch already have their own index.
+  'username', 'payingBranch', 'fromLocation', 'toLocation', 'finalReportDestination', 'truckType', 'truckSize', 'agentName', 'representativeName', 'ownerName', 'carName', 'product']) {
+  operationsWorkflowSchema.index({ [f]: 1 });
+}
 // Reports of a customs transaction; few among tens of thousands, so the index is partial.
 operationsWorkflowSchema.index({ 'customsLink.clearance': 1 }, { partialFilterExpression: { 'customsLink.clearance': { $type: 'objectId' } } });
 

@@ -51,9 +51,8 @@ exports.list = async (req, res) => {
     const filter = WF.buildWorkflowFilter(q, undefined, false, false);
     // Status counts ignore the status filter itself, so every chip keeps its number.
     const countFilter = WF.buildWorkflowFilter(q, 'applicationStatus', false, false);
-    const [rows, total, byStatus] = await Promise.all([
-      OperationsWorkflow.find(filter).select(SELECT).sort({ createdAt: -1 }).skip((page - 1) * limit).limit(limit).lean(),
-      OperationsWorkflow.countDocuments(filter),
+    const [{ rows, total }, byStatus] = await Promise.all([
+      WF.pageOfReports(filter, { select: SELECT, skip: (page - 1) * limit, limit, searching: !!String(req.query.search || '').trim() }),
       OperationsWorkflow.aggregate([{ $match: countFilter }, { $group: { _id: '$applicationStatus', n: { $sum: 1 } } }]),
     ]);
     res.json({

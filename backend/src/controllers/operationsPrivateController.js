@@ -150,8 +150,9 @@ function summarize(groups) {
 }
 
 /** Matching rows (with the priced filter if requested) in table order. `skip/limit` for the page; no limit for export (with a sane cap). */
-async function matchingRows(filter, priced, { skip = 0, limit = 0 } = {}) {
+async function matchingRows(filter, priced, { skip = 0, limit = 0, searching = false } = {}) {
   const f = withPriced(filter, priced);
+  if (limit) return require('./workflowController').pageOfReports(f, { select: LIST_PROJECT, skip, limit, searching });
   let q = OperationsWorkflow.find(f).select(LIST_PROJECT).sort({ createdAt: -1 });
   if (skip) q = q.skip(skip);
   if (limit) q = q.limit(limit);
@@ -172,7 +173,7 @@ exports.list = async (req, res) => {
 
     const [index, { rows, total }] = await Promise.all([
       routePriceIndex(),
-      matchingRows(filter, priced, { skip: (page - 1) * limit, limit }),
+      matchingRows(filter, priced, { skip: (page - 1) * limit, limit, searching: !!String(req.query.search || '').trim() }),
     ]);
     const { stripMoneyFor } = require('./workflowController');
     const workflows = stripMoneyFor(req.user.role, rows.map((w) => shapeRow(w, index)));

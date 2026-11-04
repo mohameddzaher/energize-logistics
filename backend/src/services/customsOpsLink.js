@@ -113,12 +113,14 @@ function autoLinkFor(report, idx) {
 /** The copy written onto the report. */
 function snapshot(idx, id, via, containers, extra = {}) {
   const m = idx.meta.get(String(id)) || {};
+  const units = [...new Set((containers || []).filter(Boolean))].sort();
   return {
     clearance: new mongoose.Types.ObjectId(String(id)),
     refNumber: m.refNumber || '',
     blNumber: m.blNumber || '',
     customerName: m.customerName || '',
-    containers: [...new Set((containers || []).filter(Boolean))].sort(),
+    containers: units,
+    containersText: units.join(' '),
     via,
     ...extra,
   };
@@ -131,7 +133,8 @@ const sameLink = (a, b) => {
     && (x.refNumber || '') === (y.refNumber || '')
     && (x.blNumber || '') === (y.blNumber || '')
     && (x.customerName || '') === (y.customerName || '')
-    && (x.containers || []).join('|') === (y.containers || []).join('|');
+    && (x.containers || []).join('|') === (y.containers || []).join('|')
+    && (x.containersText || '') === (y.containersText || (y.containers || []).join(' '));
 };
 
 /** What the report's link should be now, given its current state and the evidence. Returns `undefined` for no change. */

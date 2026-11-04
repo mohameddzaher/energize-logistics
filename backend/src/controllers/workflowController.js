@@ -659,6 +659,20 @@ const LIST_FIELDS = [
 ].join(' ');
 
 // GET /api/workflows
+/**
+ * One table page of reports, newest first, and the total.
+ * The total is counted first because it decides the plan: for a narrow search (few matches) walking the createdAt index reads every report before filling a page, while the per-field search indexes read only the matches; sorting on { createdAt, _id } (no such index) makes the planner take the search indexes. A broad match fills the page early by walking createdAt, so it keeps that sort.
+ */
+const NARROW_MATCH = 3000;
+async function pageOfReports(filter, { select, skip = 0, limit = 50, searching = false }) {
+  const total = await OperationsWorkflow.countDocuments(filter);
+  const sort = searching && total <= NARROW_MATCH ? { createdAt: -1, _id: -1 } : { createdAt: -1 };
+  let q = OperationsWorkflow.find(filter);
+  if (select) q = q.select(select);
+  const rows = await q.sort(sort).skip(skip).limit(limit).lean();
+  return { rows, total };
+}
+
 exports.getWorkflows = async (req, res) => {
   try {
     const page = Math.max(1, parseInt(req.query.page, 10) || 1);
@@ -669,15 +683,7 @@ exports.getWorkflows = async (req, res) => {
 
     const skip = (parseInt(page) - 1) * parseInt(limit);
     // No populate for what the list does not read. There were three on every page (creator, last editor, locker) but the table reads only lockedBy._id, the raw id already present: three database trips per open and per search keystroke for nothing displayed. Details are populated on the report page where they are read.
-    const [workflows, total] = await Promise.all([
-      OperationsWorkflow.find(filter)
-        .select(LIST_FIELDS)
-        .sort({ createdAt: -1 })
-        .skip(skip)
-        .limit(parseInt(limit))
-        .lean(),
-      OperationsWorkflow.countDocuments(filter),
-    ]);
+    const { rows: workflows, total } = await pageOfReports(filter, { select: LIST_FIELDS, skip, limit: parseInt(limit), searching: !!String(req.query.search || '').trim() });
 
     // Reports paid by the wallet: their payment amount cell is shown locked.
     const { walletPaidMap, walletRecorderMap } = require('../utils/walletPayment');
@@ -846,7 +852,7 @@ function buildWorkflowFilter(queryIn, skipField, allowMoney = true, allowSelling
     const term = westernDigits(String(search).trim());
     const ID_EXACT = ['reportNumber', 'documentNumber', ...(allowMoney ? ['invoiceNumber'] : [])];
     // Clearance transaction number and bill of lading are written as is, so their report is found. Load number, reference and invoice reference are codes searched by part (owner request: any number related to the shipment).
-    const CODE_FIELDS = ['carNumber', 'plateNumber', 'customsLink.refNumber', 'customsLink.blNumber', 'customsLink.containers', 'loadNumber', 'reference', 'invoiceRef'];
+    const CODE_FIELDS = ['carNumber', 'plateNumber', 'customsLink.refNumber', 'customsLink.blNumber', 'customsLink.containersText', 'loadNumber', 'reference', 'invoiceRef'];
     const PHONE_FIELDS = ['driverPhone', 'userPhone', 'ownerPhone'];
     // Notes are outside quick search on purpose: free text lets a passing word pull in unrelated reports. They have their own column filter.
     const NAME_FIELDS = [
@@ -2589,6 +2595,7 @@ exports.getFieldPermissions = async (req, res) => {
 module.exports.buildWorkflowFilter = buildWorkflowFilter;
 module.exports.isLocked = isLocked;
 module.exports.primeRelatedSearch = primeRelatedSearch;
+module.exports.pageOfReports = pageOfReports;
 // Hiding money columns is also single: the private page shows all report columns, and whoever lacks the invoice here lacks it there.
 module.exports.canSeeMoney = canSeeMoney;
 module.exports.AMOUNT_FIELDS = AMOUNT_FIELDS;

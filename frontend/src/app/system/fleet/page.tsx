@@ -533,10 +533,6 @@ function FleetShipmentsInner() {
       )}
 
       <div className="flex flex-wrap gap-3 items-center">
-        <div className="flex-1 min-w-[240px] basis-72">
-          <SearchInput value={search} onChange={setSearch}
-            placeholder={ar ? 'بحث برقم أمر النقل أو العميل أو السائق أو اللوحة…' : 'Search waybill, customer, driver, plate…'} />
-        </div>
         <div className="w-40 grow sm:grow-0">
           <Select value={statusFilter} onChange={(e) => { setStatusFilter(e.target.value); setPage(1); }}>
             <option value="">{ar ? 'كل الحالات' : 'All statuses'}</option>
@@ -613,6 +609,10 @@ function FleetShipmentsInner() {
           )}
         </div>
       )}
+
+      {/* Search sits right above the table it filters. */}
+      <SearchInput value={search} onChange={setSearch}
+        placeholder={ar ? 'بحث برقم أمر النقل أو العميل أو السائق أو اللوحة أو البوليصة أو الحاوية…' : 'Search waybill, customer, driver, plate, B/L, container…'} />
 
       <ScrollX className="bg-white border border-slate-200 rounded-xl shadow-sm">
         <table className="w-full text-sm">

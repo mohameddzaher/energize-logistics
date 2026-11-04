@@ -232,6 +232,8 @@ export default function CustomsPage() {
   const today = new Date().toISOString().slice(0, 10);
   const returnState = (c: Clearance): 'returned' | 'overdue' | 'due' | 'open' | 'none' => {
     if (c.stageDone?.containersReturned) return 'returned';
+    // Same rule as the dashboard: only an open containers transaction can be late to return.
+    if (c.cancelled || c.isCompleted || c.cargoType === 'vehicles') return 'none';
     const d = (c.returnDeadline || '').slice(0, 10);
     if (!d) return 'none';
     if (d < today) return 'overdue';

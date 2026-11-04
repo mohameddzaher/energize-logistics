@@ -293,7 +293,9 @@ function toWire(r, money = true) {
   if (r.billing && r.billing.ourInvoiceNumber) billing.ourInvoiceNumber = r.billing.ourInvoiceNumber;
   if (Object.keys(billing).length) out.billing = billing;
   // Returned is a raised flag, not a state moved to: the screen reads `stageDone?.containersReturned`.
-  if ((r.stageDone && r.stageDone.containersReturned) || (r.stagesDone || []).includes('containers_returned')) out.stageDone = { containersReturned: true };
+  // The return is marked per container since stages became per unit, so the aggregate step counts too (done when every container is returned), the same rule as the dashboard. Reading only the transaction flag left a returned transaction "return overdue" on the list.
+  const returnedAll = p.steps.some((x) => x.key === 'containers_returned' && x.done);
+  if (returnedAll || (r.stageDone && r.stageDone.containersReturned) || (r.stagesDone || []).includes('containers_returned')) out.stageDone = { containersReturned: true };
   if (r.lastNote) out.lastNote = r.lastNote;
   out.notesCount = r.notesCount;
   // Unit numbers on one line: the web search box filters in the browser, so it would not find a container that never reached it.

@@ -191,6 +191,8 @@ class _CustomsListScreenState extends State<CustomsListScreen> {
   String _returnState(Map r) {
     final done = r['stageDone'] is Map && (r['stageDone'] as Map)['containersReturned'] == true;
     if (done) return 'returned';
+    // Same rule as the dashboard: only an open containers transaction can be late to return.
+    if (r['cancelled'] == true || r['isCompleted'] == true || _s(r, 'cargoType') == 'vehicles') return 'none';
     final d = _s(r, 'returnDeadline');
     if (d.length < 10) return 'none';
     final today = _ymd(DateTime.now());

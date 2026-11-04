@@ -9,6 +9,7 @@ import '../ui/theme.dart';
 import '../ui/widgets.dart';
 import '../ui/search_field.dart';
 import 'collections_party.dart';
+import 'ls2_common.dart' show ls2ExportMenu;
 
 /// Team: each collection employee's performance and who handles which account (like the web page /system/collections-dept/team). Both panels are on one screen on purpose: the decision after reading the evaluation is moving accounts from one employee to another.
 class CollectionsTeamScreen extends StatefulWidget {
@@ -139,6 +140,15 @@ class _CollectionsTeamScreenState extends State<CollectionsTeamScreen> {
       builder: (_) => _OfficerAccountsScreen(officer: officer.isEmpty ? 'none' : officer)));
 
   // Export columns: the web columns in the same order and values.
+  List<ExportCol> get _assignCols => [
+        ExportCol('الكود', 'Code', (r) => r['code'] ?? ''),
+        ExportCol('الحساب', 'Account', (r) => r['name'] ?? ''),
+        ExportCol('المسؤول الحالي', 'Current officer', (r) => _officerLabel(r)),
+        ExportCol('غير مُسنَد (عند مدير القسم)', 'Unassigned (with manager)', (r) => r['officerIsDefault'] == true ? tr('نعم', 'Yes') : ''),
+        ExportCol('التقييم', 'Grade', (r) => r['grade'] ?? ''),
+        ExportCol('المديونية', 'Outstanding', (r) => r['outstanding'] ?? 0),
+      ];
+
   List<ExportCol> get _perfCols => [
         ExportCol('الموظف', 'Officer', (r) => _officerLabel({'officer': r['officer']})),
         ExportCol('حسابات', 'Accounts', (r) => r['accounts']),
@@ -215,11 +225,19 @@ class _CollectionsTeamScreenState extends State<CollectionsTeamScreen> {
     return AppScaffold(
       title: Text(tr('الفريق', 'The team')),
       actions: [
-        ExportButton(
-          fileName: tr('تقييم-الفريق', 'team-performance'),
-          sheetName: tr('تقييم الفريق', 'Team'),
-          columns: _perfCols,
-          rows: () => _perf,
+        // Both panels export, as on the web: team evaluation, account assignment, or both in one file.
+        IconButton(
+          tooltip: tr('تصدير Excel', 'Export to Excel'),
+          icon: const Icon(Icons.file_download_outlined),
+          onPressed: () async {
+            final assign = (tr('إسناد الحسابات', 'Assignment'), _assignCols, _rows);
+            final perf = (tr('تقييم الفريق', 'Team'), _perfCols, _perf);
+            await ls2ExportMenu(context, fileName: tr('الفريق', 'team'), options: [
+              ('تقييم الفريق', 'Team performance', [perf]),
+              ('إسناد الحسابات', 'Account assignment', [assign]),
+              ('الاثنان معًا', 'Both', [perf, assign]),
+            ]);
+          },
         ),
       ],
       body: _loading

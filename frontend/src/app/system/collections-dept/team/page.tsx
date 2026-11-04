@@ -101,6 +101,17 @@ export default function CollectionsTeamPage() {
     { header: ar ? 'إجمالي المهام' : 'Tasks total', key: 'tasks', width: 12 },
   ];
 
+  // Account assignment export: who holds which account, with its grade and debt, as the table reads.
+  const assignCols: ExportColumn[] = [
+    { header: ar ? 'الكود' : 'Code', key: 'code', width: 12 },
+    { header: ar ? 'الحساب' : 'Account', key: 'name', width: 34 },
+    { header: ar ? 'المسؤول الحالي' : 'Current officer', key: 'officer', transform: (_v: any, row: any) => officerLabel(row, ar), width: 20 },
+    { header: ar ? 'غير مُسنَد (عند مدير القسم)' : 'Unassigned (with manager)', key: 'officerIsDefault', transform: (v: any) => (v ? (ar ? 'نعم' : 'Yes') : ''), width: 14 },
+    { header: ar ? 'التقييم' : 'Grade', key: 'grade', width: 10 },
+    { header: ar ? 'المديونية' : 'Outstanding', key: 'outstanding', type: 'number', width: 16 },
+  ];
+  const selectedRows = rows.filter((x) => sel.has(x._id));
+
   const TH = (k: string, label: string, end?: boolean, title?: string) => (
     <th className={`${th}${end ? ' text-end' : ''}`} title={title}>
       <span className="inline-flex items-center gap-1">{label}{cf.header(k, perf, PG[k], ar)}</span>
@@ -244,6 +255,21 @@ export default function CollectionsTeamPage() {
                 className="w-full ps-9 pe-3 py-1.5 rounded-lg border border-slate-300 text-sm" />
             </div>
             <div className="flex-1" />
+            <ExportMenu fileName={ar ? 'إسناد-الحسابات' : 'account-assignment'} lang={ar ? 'ar' : 'en'}
+              options={[
+                { key: 'shown', label: ar ? 'الحسابات المعروضة' : 'Shown accounts', hint: String(rows.length), sheets: [{ name: ar ? 'إسناد الحسابات' : 'Assignment', rows: rows as unknown as Record<string, any>[], columns: assignCols }] },
+                ...(selectedRows.length ? [{ key: 'selected', label: ar ? `المحدَّد (${selectedRows.length})` : `Selected (${selectedRows.length})`, sheets: [{ name: ar ? 'إسناد الحسابات' : 'Assignment', rows: selectedRows as unknown as Record<string, any>[], columns: assignCols }] }] : []),
+                {
+                  key: 'all', label: ar ? 'كل الحسابات' : 'All accounts',
+                  // The table loads 500 at a time; every account is fetched from the server for the full file.
+                  resolve: async () => {
+                    const p = new URLSearchParams({ limit: '20000' });
+                    if (officerFilter) p.append('officer', officerFilter);
+                    const d = await api.get<any>(`/api/collections-dept/ledger/aging?${p.toString()}`);
+                    return [{ name: ar ? 'إسناد الحسابات' : 'Assignment', rows: (d.rows || []) as Record<string, any>[], columns: assignCols }];
+                  },
+                },
+              ]} />
             {sel.size > 0 && (
               <>
                 <span className="text-xs text-slate-500">{ar ? `${sel.size} محدَّد` : `${sel.size} selected`}</span>

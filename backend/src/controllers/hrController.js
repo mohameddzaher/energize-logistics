@@ -20,7 +20,7 @@ const { cappedFind, askedLimit, CAP_NOTE_AR } = require('../utils/capped');
 const { saveEmployeeFile, deleteStoredFile } = require('../utils/fileStore');
 const { createNotification } = require('../services/notificationService');
 const { emitToUser, emitToAll } = require('../websocket/socketManager');
-const { computeBalance, leaveDays } = require('../utils/leaveBalance');
+const { computeBalance, leaveDays, leaveDeducts } = require('../utils/leaveBalance');
 const chain = require('../utils/leaveChain');
 
 // ── Roles / helpers ──────────────────────────────────────────────────────────
@@ -118,13 +118,12 @@ const notifyTopManagement = async ({ title, message, relatedEntity, relatedEntit
   users.forEach((u) => { try { emitToUser(String(u._id), event || 'hr:leave', { id: String(relatedEntityId || '') }); } catch (e) {} });
 };
 
-/**
- * A leave changed: everyone whose screens or counters it touches hears it — its direct manager, HR staff and top management.
- * Only the manager heard it before, so HR's and top management's sidebar counts lagged until their minute poll.
- */
+/** A leave changed: everyone whose screens or counters it touches hears it — its owner, the manager who filed or reviews it, HR staff and top management. */
 const announceLeave = async (leave) => {
+  // Clear what the listeners re-read first: the HR dashboard and master count open leaves and balances.
+  try { const cache = require('../utils/ttlCache'); cache.clear('dash:hr:'); cache.clear('hrm:'); } catch (e) { /* */ }
   const ids = new Set();
-  if (leave && leave.manager) ids.add(String(leave.manager._id || leave.manager));
+  for (const k of ['manager', 'requester', 'filedBy']) if (leave && leave[k]) ids.add(String(leave[k]._id || leave[k]));
   try { for (const id of await hrStaffIds()) ids.add(String(id)); } catch (e) { /* */ }
   try { for (const u of await User.find({ isTopManagement: true, isActive: true }).select('_id').lean()) ids.add(String(u._id)); } catch (e) { /* */ }
   for (const id of ids) { try { emitToUser(id, 'hr:leave', { id: String(leave && leave._id || '') }); } catch (e) { /* */ } }
@@ -162,13 +161,10 @@ const computeEmployeeBalance = async (employeeId, asOf = new Date()) => {
   if (contract && contract.startDate) takenFilter.startDate = { $gte: contract.startDate };
   const approved = await LeaveRequest.find(takenFilter)
     .populate('leaveType', 'affectsBalance')
-    .select('days leaveType')
+    .select('days leaveType deductsBalance')
     .lean();
-  // Whether a leave is deducted is a property of the leave type, defined once in leave types, so the same type is treated identically in every file.
-  const taken = approved.reduce(
-    (s, l) => s + ((l.leaveType?.affectsBalance ?? true) ? (l.days || 0) : 0),
-    0
-  );
+  // HR's choice on the request decides; older records follow the leave type (utils/leaveBalance.leaveDeducts).
+  const taken = approved.reduce((s, l) => s + (leaveDeducts(l) ? (l.days || 0) : 0), 0);
   return { contract, balance: computeBalance(contract, taken, asOf, accrualOpts) };
 };
 
@@ -274,7 +270,7 @@ exports.getEmployee = async (req, res) => {
 
     const [contracts, leaves, assets, requests, documents, renewals, balanceData] = await Promise.all([
       Contract.find({ employee: id }).sort({ createdAt: -1 }).lean(),
-      LeaveRequest.find({ employee: id }).populate('leaveType', 'nameEn nameAr code color').sort({ createdAt: -1 }).limit(200).lean(),
+      LeaveRequest.find({ employee: id }).populate('leaveType', 'nameEn nameAr code color affectsBalance').sort({ createdAt: -1 }).limit(200).lean(),
       // `status: { $ne: 'in_stock' }` is belt-and-braces — a store item has
       // employee: null so it cannot match this query anyway.
       Asset.find({ employee: id, status: { $ne: 'in_stock' } }).sort({ createdAt: -1 }).lean(),
@@ -1342,7 +1338,8 @@ exports.getLeave = async (req, res) => {
     const uid = String(req.user._id);
     const allowed = hrStaffReq(req)
       || String(leave.requester?._id || leave.requester) === uid
-      || String(leave.manager?._id || leave.manager) === uid;
+      || String(leave.manager?._id || leave.manager) === uid
+      || String(leave.filedBy?._id || leave.filedBy || '') === uid;
     if (!allowed) return res.status(403).json({ message: 'Not allowed' });
     res.json({ leave });
   } catch (error) {
@@ -1352,11 +1349,12 @@ exports.getLeave = async (req, res) => {
 
 exports.listMyLeaves = async (req, res) => {
   try {
-    const leaves = await populateLeave(LeaveRequest.find({ requester: req.user._id })).select(NO_SIG).sort({ createdAt: -1 }).lean();
-    // Resolve (auto-provisioning if needed) instead of trusting the cached
-    // req.user.linkedEmployee — a stale token copy made this report "not
-    // linked" for accounts that were linked all along.
+    // Resolve (auto-provisioning if needed) instead of trusting the cached req.user.linkedEmployee, which can predate the link.
     const employeeId = await ensureSelfEmployee(req);
+    // Mine = requests I made for myself, plus any on my file (a manager filed it for me). Those I filed for my team are on the team tab.
+    const or = [{ requester: req.user._id, filedByManager: { $ne: true } }];
+    if (employeeId) or.push({ employee: employeeId });
+    const leaves = await populateLeave(LeaveRequest.find({ $or: or })).select(NO_SIG).sort({ createdAt: -1 }).lean();
     let balance = null;
     if (employeeId) ({ balance } = await computeEmployeeBalance(employeeId));
     res.json({ leaves, balance, linked: !!employeeId });
@@ -1368,7 +1366,7 @@ exports.listMyLeaves = async (req, res) => {
 // Leave requests from the current user's direct reports awaiting their action.
 exports.listTeamLeaves = async (req, res) => {
   try {
-    const leaves = await populateLeave(LeaveRequest.find(await withoutArchivedRef({ manager: req.user._id }))).select(NO_SIG).sort({ createdAt: -1 }).lean();
+    const leaves = await populateLeave(LeaveRequest.find(await withoutArchivedRef({ $or: [{ manager: req.user._id }, { filedBy: req.user._id }] }))).select(NO_SIG).sort({ createdAt: -1 }).lean();
     res.json({ leaves });
   } catch (error) {
     res.status(500).json({ message: 'Failed to load team leaves' });
@@ -1423,6 +1421,24 @@ function saveLeaveFiles(files, user) {
   return out;
 }
 
+/** An open or approved leave of this employee on any of these days; a day is never requested or deducted twice. */
+const findLeaveClash = (employee, startDate, endDate, excludeId) => LeaveRequest.findOne({
+  ...(excludeId ? { _id: { $ne: excludeId } } : {}),
+  employee, status: { $in: ['approved', ...chain.OPEN_STATUSES] },
+  startDate: { $lte: endDate }, endDate: { $gte: startDate },
+}).select('startDate endDate status').lean();
+const clashMessage = (c) => `تتداخل مع إجازةٍ أخرى لنفس الموظّف (${c.startDate} → ${c.endDate}) | Overlaps another leave of the same employee`;
+
+/** Tell the request's owner and, when different, the manager who filed it. */
+const notifyLeaveOwners = async (leave, payload) => {
+  const ids = new Set([leave.requester, leave.filedBy].filter(Boolean).map((x) => String(x._id || x)));
+  for (const id of ids) await notifyUser(id, payload);
+};
+
+/** The requester or the manager who filed the request: both may reply to a question or withdraw it. */
+const ownsLeave = (leave, user) => [leave.requester, leave.filedBy].filter(Boolean)
+  .some((x) => String(x._id || x) === String(user._id));
+
 exports.createMyLeave = async (req, res) => {
   try {
     const employeeId = await ensureSelfEmployee(req);
@@ -1446,8 +1462,11 @@ exports.createMyLeave = async (req, res) => {
       });
     }
 
+    if (String(endDate) < String(startDate)) return res.status(400).json({ message: 'تاريخ النهاية قبل تاريخ البداية' });
     const days = leaveDays(startDate, endDate);
-    const { balance } = await computeEmployeeBalance(req.user.linkedEmployee);
+    const clash = await findLeaveClash(employeeId, startDate, endDate);
+    if (clash) return res.status(400).json({ message: clashMessage(clash), code: 'LEAVE_OVERLAP' });
+    const { balance } = await computeEmployeeBalance(employeeId);
     const hasManager = !!req.user.manager;
 
     // Attach the requester's signature: the one they picked (signatureId), else
@@ -1467,7 +1486,7 @@ exports.createMyLeave = async (req, res) => {
 
     const leave = await LeaveRequest.create({
       attachments,
-      employee: req.user.linkedEmployee,
+      employee: employeeId,
       requester: req.user._id,
       manager: req.user.manager || undefined,
       leaveType,
@@ -1506,7 +1525,109 @@ exports.createMyLeave = async (req, res) => {
   }
 };
 
-// Manager advances to HR; HR is the final authority. A rejection at any stage ends it.
+/** GET /api/hr/team/leave-members: the people this manager may file leave for (utils/leaveTeam), with their live balance. */
+exports.listLeaveTeamMembers = async (req, res) => {
+  try {
+    const team = await require('../utils/leaveTeam').teamOf(req.user);
+    team.sort((a, b) => String(a.arabicName || a.firstName || '').localeCompare(String(b.arabicName || b.firstName || ''), 'ar'));
+    const balances = {};
+    for (let i = 0; i < team.length; i += 8) {
+      // eslint-disable-next-line no-await-in-loop
+      await Promise.all(team.slice(i, i + 8).map(async (e) => {
+        try { balances[String(e._id)] = (await computeEmployeeBalance(e._id)).balance?.available ?? null; } catch (_) { balances[String(e._id)] = null; }
+      }));
+    }
+    res.json({ members: team, balances });
+  } catch (error) {
+    console.error('listLeaveTeamMembers error:', error);
+    res.status(500).json({ message: 'تعذّر تحميل فريقك' });
+  }
+};
+
+/**
+ * POST /api/hr/team/leaves { employee, leaveType, startDate, endDate, reason, files }
+ * A manager files a leave for someone under him. His own stage is the filing, so it is stamped approved by him and the request starts at HR.
+ * The request belongs to the employee's login when he has one (he sees it, replies, is notified); otherwise to the filing manager.
+ */
+exports.createTeamLeave = async (req, res) => {
+  try {
+    const { employee, leaveType, startDate, endDate, reason } = req.body || {};
+    if (!employee || !mongoose.isValidObjectId(employee)) return res.status(400).json({ message: 'اختر الموظّف' });
+    if (!leaveType || !mongoose.isValidObjectId(leaveType) || !startDate || !endDate) return res.status(400).json({ message: 'نوع الإجازة وتاريخا البداية والنهاية مطلوبة' });
+    if (String(endDate) < String(startDate)) return res.status(400).json({ message: 'تاريخ النهاية قبل تاريخ البداية' });
+    if (!(await require('../utils/leaveTeam').isUnder(req.user, employee))) {
+      return res.status(403).json({ message: 'هذا الموظّف ليس ضمن فريقك أو قسمك | This employee is not under you', code: 'NOT_IN_TEAM' });
+    }
+    const emp = await Employee.findById(employee).select('firstName lastName arabicName user employmentStatus').lean();
+    if (!emp) return res.status(404).json({ message: 'الموظّف غير موجود' });
+    const lt = await LeaveType.findById(leaveType).lean();
+    if (!lt) return res.status(400).json({ message: 'نوع إجازة غير صالح' });
+
+    // The notice rule is the company's, whoever files.
+    const notice = evaluateAdvanceNotice(lt, startDate);
+    const wantsOverride = req.body.policyOverride === true && hrStaffReq(req);
+    if (!notice.satisfied && !wantsOverride) {
+      return res.status(400).json({ message: notice.message, code: 'ADVANCE_NOTICE_REQUIRED', policy: { requiredDays: notice.requiredDays, daysAhead: notice.daysAhead, leaveType: lt.code } });
+    }
+    const days = leaveDays(startDate, endDate);
+    if (!days || days < 1) return res.status(400).json({ message: 'مدّة الإجازة غير صالحة' });
+    const clash = await findLeaveClash(employee, startDate, endDate);
+    if (clash) return res.status(400).json({ message: clashMessage(clash), code: 'LEAVE_OVERLAP' });
+
+    let attachments = [];
+    try { attachments = saveLeaveFiles(req.body.files, req.user); }
+    catch (e) { return res.status(400).json({ message: e.message }); }
+
+    const login = emp.user || (await User.findOne({ linkedEmployee: emp._id, isActive: { $ne: false } }).select('_id').lean())?._id;
+    const { balance } = await computeEmployeeBalance(employee);
+    const filer = fullName(req.user);
+    const leave = await LeaveRequest.create({
+      attachments,
+      employee,
+      requester: login || req.user._id,
+      manager: req.user._id,
+      filedByManager: true,
+      filedBy: req.user._id,
+      filedByName: filer,
+      leaveType,
+      leaveTypeCode: lt.code,
+      startDate, endDate, days, reason: String(reason || '').trim(),
+      status: 'pending_hr',
+      currentStage: 'hr',
+      managerDecision: { by: req.user._id, at: new Date(), decision: 'approved', note: `قدّم الطلبَ المديرُ ${filer} بنفسه | Filed by the manager` },
+      balanceSnapshot: {
+        accrued: balance.accrued,
+        requested: days,
+        remainingAfter: lt.affectsBalance ? Math.round((balance.available - days) * 100) / 100 : balance.available,
+      },
+      advanceNotice: {
+        required: notice.required, requiredDays: notice.requiredDays, daysAhead: notice.daysAhead, satisfied: notice.satisfied,
+        overridden: !notice.satisfied, overriddenBy: notice.satisfied ? undefined : req.user._id,
+        overrideReason: notice.satisfied ? '' : String(req.body.overrideReason || '').trim().slice(0, 300),
+      },
+    });
+
+    const name = emp.arabicName || `${emp.firstName || ''} ${emp.lastName || ''}`.trim();
+    const ref = { relatedEntity: 'LeaveRequest', relatedEntityId: leave._id, event: 'hr:leave' };
+    try {
+      await logAudit({
+        user: req.user._id, action: 'leave_filed_by_manager', entity: 'LeaveRequest', entityId: leave._id,
+        changes: { after: { employeeName: name, startDate, endDate, days, filedBy: filer } }, ipAddress: req.ip,
+      });
+    } catch (e) { /* the request stands even if its log line fails */ }
+    await notifyHR({ title: 'إجازة تنتظر الموارد البشرية', message: `قدّم ${filer} إجازة ${days} يوم لـ ${name} (${startDate} → ${endDate}).`, ...ref });
+    if (login && String(login) !== String(req.user._id)) {
+      await notifyUser(login, { title: 'قدّم مديرك إجازة لك', message: `${filer} قدّم لك إجازة ${days} يوم (${startDate} → ${endDate}) — هي الآن عند الموارد البشرية.`, ...ref });
+    }
+    await announceLeave(leave);
+    const populated = await populateLeave(LeaveRequest.findById(leave._id)).select(NO_SIG).lean();
+    res.status(201).json({ leave: populated });
+  } catch (error) {
+    console.error('createTeamLeave error:', error);
+    return sendMongooseError(res, error, 'تعذّر تقديم الإجازة');
+  }
+};
+
 /**
  * POST /api/hr/leaves/backdated
  * Record a leave that already happened (HR).
@@ -1529,17 +1650,14 @@ exports.createBackdatedLeave = async (req, res) => {
     const days = leaveDays(startDate, endDate);
     if (!days || days < 1) return res.status(400).json({ message: 'مدّة الإجازة غير صالحة' });
 
-    // Deduction follows the leave type's property, defined once in leave types and applied to everyone.
-    const affects = lt.affectsBalance !== false;
+    // HR may state the deduction explicitly, as at its approval stage; otherwise the leave type decides.
+    const rawDeduct = req.body.deductBalance;
+    const deductChoice = rawDeduct === true || rawDeduct === 'true' ? true : rawDeduct === false || rawDeduct === 'false' ? false : null;
+    const affects = deductChoice !== null ? deductChoice : lt.affectsBalance !== false;
 
-    // No two leaves on the same days: a day is not deducted twice.
-    const clash = await LeaveRequest.findOne({
-      employee, status: { $in: ['approved', 'pending_manager', 'pending_hr'] },
-      startDate: { $lte: endDate }, endDate: { $gte: startDate },
-    }).select('startDate endDate').lean();
-    if (clash) {
-      return res.status(400).json({ message: `تتداخل مع إجازةٍ مسجّلة (${clash.startDate} → ${clash.endDate})` });
-    }
+    // No two leaves on the same days, at any open stage or approved: a day is not deducted twice.
+    const clash = await findLeaveClash(employee, startDate, endDate);
+    if (clash) return res.status(400).json({ message: clashMessage(clash), code: 'LEAVE_OVERLAP' });
 
     let attachments = [];
     try { attachments = saveLeaveFiles(req.body.files, req.user); }
@@ -1563,6 +1681,7 @@ exports.createBackdatedLeave = async (req, res) => {
       status: 'approved',
       currentStage: 'done',
       hrDecision: stamp,
+      deductsBalance: deductChoice,
       backdated: !manual,
       manual,
       recordedBy: req.user._id,
@@ -1613,6 +1732,7 @@ exports.updateLeave = async (req, res) => {
     const before = { leaveType: String(leave.leaveType), startDate: leave.startDate, endDate: leave.endDate, days: leave.days, reason: leave.reason };
     const { leaveType, startDate, endDate, reason } = req.body;
     const oldType = await LeaveType.findById(leave.leaveType).select('affectsBalance').lean();
+    const oldDeducts = leaveDeducts({ deductsBalance: leave.deductsBalance, leaveType: oldType });
     let newType = oldType;
     if (leaveType && String(leaveType) !== String(leave.leaveType)) {
       if (!mongoose.isValidObjectId(leaveType)) return res.status(400).json({ message: 'نوع إجازة غير صالح' });
@@ -1642,8 +1762,8 @@ exports.updateLeave = async (req, res) => {
     const oldDays = leave.days || 0;
     leave.days = days;
     if (leave.balanceSnapshot && typeof leave.balanceSnapshot.remainingAfter === 'number') {
-      const oldCut = (oldType?.affectsBalance ?? true) ? oldDays : 0;
-      const newCut = (newType?.affectsBalance ?? true) ? days : 0;
+      const oldCut = oldDeducts ? oldDays : 0;
+      const newCut = leaveDeducts({ deductsBalance: leave.deductsBalance, leaveType: newType || oldType }) ? days : 0;
       leave.balanceSnapshot.requested = days;
       leave.balanceSnapshot.remainingAfter = Math.round((leave.balanceSnapshot.remainingAfter + oldCut - newCut) * 100) / 100;
     }
@@ -1778,7 +1898,7 @@ exports.decideLeave = async (req, res) => {
     catch (e) { return res.status(400).json({ message: e.message }); }
     const stamp = { by: req.user._id, at: new Date(), decision, note: note || '', signature, attachments: decisionFiles };
 
-    // A decision is made only at the current stage. HR's decision used to be final at any stage, so a request could be approved without accounting or management seeing it. The chain has four stages and each decides at its own. See utils/leaveChain.
+    // A decision is made only at the request's current stage, by that stage's owner (utils/leaveChain).
     const stage = leave.currentStage;
 
     if (stage === 'employee') {
@@ -1792,7 +1912,27 @@ exports.decideLeave = async (req, res) => {
       return res.status(403).json({ message: 'You cannot act on this request at its current stage' });
     }
 
+    // HR's approval states whether the days come off the balance; nothing is assumed from the leave type.
+    let deduct = null;
+    if (stage === 'hr' && decision === 'approved') {
+      const raw = req.body.deductBalance;
+      deduct = raw === true || raw === 'true' ? true : raw === false || raw === 'false' ? false : null;
+      if (deduct === null) {
+        return res.status(400).json({ message: 'اختر: تُخصم الإجازة من الرصيد أم بدون خصم | Choose whether the leave is deducted from the balance', code: 'DEDUCTION_CHOICE_REQUIRED' });
+      }
+    }
+
     leave[chain.DECISION_FIELD[stage]] = stamp;
+    if (deduct !== null) {
+      const snap = leave.balanceSnapshot;
+      const lt = await LeaveType.findById(leave.leaveType).select('affectsBalance').lean();
+      // The snapshot was estimated from the leave type; restate it with HR's choice.
+      if (snap && typeof snap.remainingAfter === 'number') {
+        const before = snap.remainingAfter + (leaveDeducts({ deductsBalance: leave.deductsBalance, leaveType: lt }) ? (leave.days || 0) : 0);
+        snap.remainingAfter = Math.round((before - (deduct ? (leave.days || 0) : 0)) * 100) / 100;
+      }
+      leave.deductsBalance = deduct;
+    }
 
     if (decision === 'rejected') {
       leave.status = 'rejected';
@@ -1817,7 +1957,7 @@ exports.decideLeave = async (req, res) => {
       await logAudit({
         user: req.user, action: { approved: 'leave_approve', rejected: 'leave_reject', info: 'leave_ask' }[decision], entity: 'LeaveRequest', entityId: leave._id,
         changes: { after: { employeeName: emp ? (emp.arabicName || `${emp.firstName || ''} ${emp.lastName || ''}`.trim()) : '', stage: stageAr,
-          startDate: leave.startDate, endDate: leave.endDate, days: leave.days, ...(note ? { note } : {}) } },
+          startDate: leave.startDate, endDate: leave.endDate, days: leave.days, ...(deduct !== null ? { deductsBalance: deduct } : {}), ...(note ? { note } : {}) } },
         ipAddress: req.ip,
       });
     } catch (e) { /* the decision stands even if its log line fails */ }
@@ -1828,20 +1968,21 @@ exports.decideLeave = async (req, res) => {
     const period = `${leave.startDate} → ${leave.endDate}`;
 
     if (leave.status === 'info_requested') {
-      await notifyUser(leave.requester, {
+      await notifyLeaveOwners(leave, {
         title: 'مطلوب إيضاح على طلب الإجازة',
         message: `${STAGE_AR[stage] || 'أحد المراجعين'} طلب إيضاحًا: ${note || ''}`.trim(),
         ...ref,
       });
     } else if (leave.status === 'approved') {
-      await notifyUser(leave.requester, { title: 'اعتُمدت إجازتك', message: `إجازتك (${period}) اعتُمدت بعد موافقة المدير المباشر والموارد البشرية والإدارة العليا.`, ...ref });
+      const cut = leaveDeducts(await LeaveRequest.findById(leave._id).populate('leaveType', 'affectsBalance').select('deductsBalance leaveType').lean());
+      await notifyLeaveOwners(leave, { title: 'اعتُمدت إجازتك', message: `إجازتك (${period}) اعتُمدت بعد موافقة المدير المباشر والموارد البشرية والإدارة العليا — ${cut ? `تُخصم ${leave.days} يوم من الرصيد` : 'بدون خصم من الرصيد'}.`, ...ref });
       await notifyHR({ title: 'إجازة اعتُمدت', message: `اكتملت سلسلةُ الموافقات على إجازة (${period}).`, ...ref });
     } else if (leave.status === 'rejected') {
-      await notifyUser(leave.requester, { title: 'رُفض طلب الإجازة', message: `رفضت ${STAGE_AR[stage] || ''} طلبك (${period}). ${note || ''}`.trim(), ...ref });
+      await notifyLeaveOwners(leave, { title: 'رُفض طلب الإجازة', message: `رفضت ${STAGE_AR[stage] || ''} طلبك (${period}). ${note || ''}`.trim(), ...ref });
     } else {
       // Moved to the next stage: the requester is told where it stands and the stage owners are notified.
       const next = leave.currentStage;
-      await notifyUser(leave.requester, {
+      await notifyLeaveOwners(leave, {
         title: 'تقدّم طلب الإجازة',
         message: `وافقت ${STAGE_AR[stage] || ''} على طلبك (${period}) — وهو الآن عند ${STAGE_AR[next] || ''}.`,
         ...ref,
@@ -1873,7 +2014,7 @@ exports.replyToLeave = async (req, res) => {
   try {
     const leave = await LeaveRequest.findById(req.params.id);
     if (!leave) return res.status(404).json({ message: 'Leave request not found' });
-    if (String(leave.requester) !== String(req.user._id)) {
+    if (!ownsLeave(leave, req.user)) {
       return res.status(403).json({ message: 'Not your request' });
     }
     if (leave.status !== 'info_requested') {
@@ -1898,10 +2039,10 @@ exports.replyToLeave = async (req, res) => {
       attachmentName: stored ? (stored.fileName || String(req.body.attachmentName || '')) : '',
     });
 
-    chain.restart(leave);
+    chain.restart(leave, req.user);
     await leave.save();
 
-    if (leave.manager) {
+    if (leave.currentStage === 'manager' && leave.manager) {
       try { emitToUser(String(leave.manager), 'hr:leave', { id: String(leave._id) }); } catch (e) { /* */ }
       await notifyUser(leave.manager, {
         title: 'طلب إجازة عاد بعد الردّ',
@@ -1915,6 +2056,7 @@ exports.replyToLeave = async (req, res) => {
         relatedEntity: 'LeaveRequest', relatedEntityId: leave._id, event: 'hr:leave',
       });
     }
+    await announceLeave(leave);
 
     const populated = await populateLeave(LeaveRequest.findById(leave._id)).lean();
     res.json({ leave: populated });
@@ -1928,8 +2070,8 @@ exports.cancelMyLeave = async (req, res) => {
   try {
     const leave = await LeaveRequest.findById(req.params.id);
     if (!leave) return res.status(404).json({ message: 'Leave request not found' });
-    if (String(leave.requester) !== String(req.user._id)) return res.status(403).json({ message: 'Not your request' });
-    // The owner may withdraw anything not finally decided, including requests returned with a question.
+    if (!ownsLeave(leave, req.user)) return res.status(403).json({ message: 'Not your request' });
+    // The owner (or the manager who filed it) may withdraw anything not finally decided, including requests returned with a question.
     if (!['pending_manager', 'pending_hr', 'pending_finance', 'pending_executive', 'info_requested'].includes(leave.status)) return res.status(400).json({ message: 'Only pending requests can be cancelled' });
     leave.status = 'cancelled';
     leave.currentStage = 'done';
@@ -1973,7 +2115,12 @@ exports.updateMyLeave = async (req, res) => {
     if (startDate) leave.startDate = startDate;
     if (endDate) leave.endDate = endDate;
     if (reason !== undefined) leave.reason = reason;
-    if (startDate || endDate) leave.days = leaveDays(leave.startDate, leave.endDate);
+    if (startDate || endDate) {
+      if (String(leave.endDate) < String(leave.startDate)) return res.status(400).json({ message: 'تاريخ النهاية قبل تاريخ البداية' });
+      leave.days = leaveDays(leave.startDate, leave.endDate);
+      const clash = await findLeaveClash(leave.employee, leave.startDate, leave.endDate, leave._id);
+      if (clash) return res.status(400).json({ message: clashMessage(clash), code: 'LEAVE_OVERLAP' });
+    }
 
     // Attachments can be added or removed while the request is untouched; a forgotten medical report should not force cancelling and rewriting.
     if (Array.isArray(req.body.files) && req.body.files.length) {
@@ -2009,9 +2156,9 @@ exports.deleteMyLeave = async (req, res) => {
     if (!leaveIsUntouched(leave)) {
       return res.status(400).json({ message: 'لا يُحذف الطلب بعد أن اتُّخذ فيه إجراء — ألغِه بدل ذلك' });
     }
-    const managerId = leave.manager;
     await leave.deleteOne();
-    if (managerId) { try { emitToUser(String(managerId), 'hr:leave', {}); } catch (e) {} }
+    // HR counts it too when the requester has no manager, so everyone on the chain hears it.
+    await announceLeave(leave);
     res.json({ message: 'حُذف الطلب' });
   } catch (error) {
     res.status(500).json({ message: 'تعذّر حذف الطلب' });
@@ -2493,7 +2640,7 @@ exports.getDashboard = async (req, res) => {
       Employee.countDocuments({ ...HRQ, employmentStatus: 'on_leave' }),
       Employee.countDocuments({ ...HRQ, employmentStatus: 'suspended' }),
       Employee.countDocuments({ ...HRQ, employmentStatus: 'terminated' }),
-      LeaveRequest.countDocuments(andAll({ status: { $in: ['pending_manager', 'pending_hr'] } }, noArch)),
+      LeaveRequest.countDocuments(andAll({ status: { $in: chain.OPEN_STATUSES } }, noArch)),
       HRRequest.countDocuments(andAll({ status: { $in: ['open', 'in_progress'] } }, noArch, notArchivedUserRef(sets, 'requester'))),
       // Employee-held custody only — IT store items are `in_stock`/employee null.
       Asset.countDocuments(andAll({ status: 'assigned', employee: { $ne: null } }, noArch)),
@@ -2593,7 +2740,7 @@ exports.getMyProfile = async (req, res) => {
     const [employee, contracts, leaves, assets, balanceData] = await Promise.all([
       Employee.findById(id).populate('directManager', 'firstName lastName email').populate('branch', 'name').lean(),
       Contract.find({ employee: id }).sort({ createdAt: -1 }).lean(),
-      LeaveRequest.find({ employee: id }).populate('leaveType', 'nameEn nameAr code color').sort({ createdAt: -1 }).limit(100).lean(),
+      LeaveRequest.find({ employee: id }).populate('leaveType', 'nameEn nameAr code color affectsBalance').sort({ createdAt: -1 }).limit(100).lean(),
       // `status: { $ne: 'in_stock' }` is belt-and-braces — a store item has
       // employee: null so it cannot match this query anyway.
       Asset.find({ employee: id, status: { $ne: 'in_stock' } }).sort({ createdAt: -1 }).lean(),
@@ -2626,8 +2773,12 @@ exports.getOptions = async (req, res) => {
 exports.getMyTeam = async (req, res) => {
   try {
     const sets = await endedStaff();
-    const reports = await User.find(andAll({ manager: req.user._id }, notArchivedUserRef(sets, '_id'))).select('firstName lastName email role linkedEmployee').lean();
-    res.json({ hasTeam: reports.length > 0, teamCount: reports.length, team: reports });
+    const [reports, members] = await Promise.all([
+      User.find(andAll({ manager: req.user._id }, notArchivedUserRef(sets, '_id'))).select('firstName lastName email role linkedEmployee').lean(),
+      require('../utils/leaveTeam').teamOf(req.user, { select: '_id user isHrRecord' }).catch(() => []),
+    ]);
+    // A section manager has a team even when nobody's login names him: the people he may file leave for (utils/leaveTeam).
+    res.json({ hasTeam: reports.length > 0 || members.length > 0, teamCount: reports.length, team: reports, leaveMembers: members.length });
   } catch (error) {
     res.status(500).json({ message: 'Failed to load team' });
   }

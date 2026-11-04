@@ -72,10 +72,13 @@ class _ShipmentOrderCreateScreenState extends State<ShipmentOrderCreateScreen> {
   final Set<String> _missing = {};
 
   bool get _editing => widget.order != null;
-  // Money after saving, for whoever the server allows. On create, whoever creates the shipment writes it; on edit it is locked for anyone but system admins and the operations manager. The list comes from the server (/money-editors), as on the web.
+  // Money after saving, for whoever the server allows (/money-editors, as on the web): `editable` is written directly, `byRequest` goes to approval (the data team's selling price).
   List<String> _moneyFields = const [];
+  List<String> _moneyEditable = const [];
+  List<String> _moneyByRequest = const [];
   bool _canEditMoney = true;
-  bool _moneyLocked(String k) => _editing && !_canEditMoney && _moneyFields.contains(k);
+  bool _moneyLocked(String k) => _editing && !_canEditMoney && _moneyFields.contains(k) && !_moneyEditable.contains(k) && !_moneyByRequest.contains(k);
+  bool _moneyNeedsApproval(String k) => _editing && _moneyByRequest.contains(k);
   Future<void> _loadMoneyEditors() async {
     try {
       final d = await Api.instance.get('/api/shipment-orders/money-editors');
@@ -83,6 +86,8 @@ class _ShipmentOrderCreateScreenState extends State<ShipmentOrderCreateScreen> {
       setState(() {
         _moneyFields = [for (final x in (d['fields'] as List? ?? const [])) '$x'];
         _canEditMoney = d['canEdit'] == true;
+        _moneyEditable = [for (final x in (d['editable'] as List? ?? const [])) '$x'];
+        _moneyByRequest = [for (final x in (d['byRequest'] as List? ?? const [])) '$x'];
       });
     } catch (_) {}
   }
@@ -761,7 +766,9 @@ class _ShipmentOrderCreateScreenState extends State<ShipmentOrderCreateScreen> {
     }
     try {
       if (_editing) {
-        await Api.instance.put('/api/shipment-orders/orders/${widget.order!['_id']}', payload);
+        final out = await Api.instance.put('/api/shipment-orders/orders/${widget.order!['_id']}', payload);
+        // Held for approval: the old price stays until an approver applies it.
+        if (out is Map && out['sellingRequestMessage'] != null && mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('${out['sellingRequestMessage']}')));
       } else if (_extraTrucks.isNotEmpty) {
         // The first row is a truck like the rest and is sent with them in the same list. If it were created alone and the rest sent after, the first would be saved and the second rejected, and the employee would not know where it stopped.
         final body = Map<String, dynamic>.from(payload)
@@ -820,6 +827,7 @@ class _ShipmentOrderCreateScreenState extends State<ShipmentOrderCreateScreen> {
     final miss = _missing.contains(k);
     final deco = InputDecoration(
       labelText: f['required'] == true ? '$label *' : label,
+      helperText: _moneyNeedsApproval(k) ? tr('التعديل يُرسَل للاعتماد', 'A change needs approval') : null,
       labelStyle: miss ? const TextStyle(color: T.danger, fontWeight: FontWeight.w700) : null,
       enabledBorder: miss ? OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: const BorderSide(color: T.danger)) : null,
     );

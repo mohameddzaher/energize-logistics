@@ -10,8 +10,9 @@ import { useDialog } from '@/components/system/DialogProvider';
 import { Modal, PrimaryButton, SearchableSelect, TextArea } from '@/components/hr/HRKit';
 import DatePair from '@/components/hr/DatePair';
 import FilePicker, { type PickedFile } from '@/components/system/FilePicker';
+import { DeductionChoice } from '@/components/hr/LeaveDeduction';
 
-const EMPTY = { employee: '', leaveType: '', startDate: '', endDate: '', reason: '' };
+const EMPTY = { employee: '', leaveType: '', startDate: '', endDate: '', reason: '', deductBalance: null as boolean | null };
 
 export default function LeaveRecordModal({ open, onClose, onSaved, ar, employeeId }: {
   open: boolean; onClose: () => void; onSaved?: () => void; ar: boolean;
@@ -65,6 +66,11 @@ export default function LeaveRecordModal({ open, onClose, onSaved, ar, employeeI
       notify(ar ? 'اختر الموظّف ونوع الإجازة والتاريخين' : 'Pick the employee, the leave type and both dates', 'error');
       return;
     }
+    // HR states the deduction here as it does when approving a request.
+    if (form.deductBalance === null) {
+      notify(ar ? 'اختر: تُخصم من الرصيد أم بدون خصم.' : 'Choose whether the leave is deducted from the balance.', 'error');
+      return;
+    }
     setSaving(true);
     try {
       const r = await api.post<any>('/api/hr/leaves/backdated', {
@@ -94,8 +100,8 @@ export default function LeaveRecordModal({ open, onClose, onSaved, ar, employeeI
       <div className="space-y-3 text-sm">
         <p className="text-slate-500 text-xs">
           {ar
-            ? 'تُسجَّل معتمَدةً مباشرةً وتُخصَم من الرصيد حسب نوعها — لموظفٍ بلا حسابٍ في النظام أو لإجازةٍ تُسجِّلها الموارد البشرية بنفسها. ويبقى في السجل من سجّلها ومتى.'
-            : 'Saved as approved and deducted per its type — for an employee without a login, or a leave HR records itself. The log keeps who recorded it and when.'}
+            ? 'تُسجَّل معتمَدةً مباشرةً وتُخصَم من الرصيد أو لا بحسب اختيارك أدناه — لموظفٍ بلا حسابٍ في النظام أو لإجازةٍ تُسجِّلها الموارد البشرية بنفسها. ويبقى في السجل من سجّلها ومتى.'
+            : 'Saved as approved, deducted or not as you choose below — for an employee without a login, or a leave HR records itself. The log keeps who recorded it and when.'}
         </p>
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
           {!employeeId && (
@@ -139,6 +145,8 @@ export default function LeaveRecordModal({ open, onClose, onSaved, ar, employeeI
             value={form.endDate} onChange={(v) => setForm((f: any) => ({ ...f, endDate: v }))} />
         </div>
         {!!days && <p className="text-slate-900 text-sm font-semibold">{ar ? `المدّة: ${days} يوم` : `Duration: ${days} day(s)`}</p>}
+        <DeductionChoice value={form.deductBalance} onChange={(v) => setForm((f: any) => ({ ...f, deductBalance: v }))}
+          leave={{ days, leaveType: types.find((t) => t._id === form.leaveType) } as any} ar={ar} />
         <div>
           <label className="text-slate-500 text-xs mb-1 block">{ar ? 'السبب / ملاحظة' : 'Reason / note'}</label>
           <TextArea rows={2} value={form.reason} onChange={(e: any) => setForm((f: any) => ({ ...f, reason: e.target.value }))} />

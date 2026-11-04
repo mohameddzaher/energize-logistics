@@ -500,7 +500,11 @@ class _FleetNewShipmentScreenState extends State<FleetNewShipmentScreen> {
         if (edit || _container.text.trim().isNotEmpty) 'containerNumber': _container.text.trim().toUpperCase(),
       };
       if (edit) {
-        await Api.instance.put('/api/fleet/shipments/${widget.editId}', body);
+        final out = await Api.instance.put('/api/fleet/shipments/${widget.editId}', body);
+        // A price change from the data team is held for approval.
+        if (out is Map && out['sellingRequestMessage'] != null && mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('${out['sellingRequestMessage']}')));
+        }
       } else {
         await Api.instance.post('/api/fleet/shipments', body);
       }

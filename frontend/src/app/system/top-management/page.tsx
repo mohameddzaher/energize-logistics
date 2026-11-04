@@ -9,6 +9,7 @@ import { useSocket } from '@/hooks/useSocket';
 import { useDialog } from '@/components/system/DialogProvider';
 import { PageHeader, Spinner } from '@/components/hr/HRKit';
 import ScrollX from '@/components/system/ScrollX';
+import { DeductionBadge } from '@/components/hr/LeaveDeduction';
 import { bothDatesShort } from '@/lib/hrDates';
 
 type Decision = { by?: { firstName?: string; lastName?: string }; at?: string; decision?: string; note?: string };
@@ -133,7 +134,7 @@ export default function TopManagementLeavesPage() {
                       </td>
                       <td className="px-3 py-2.5 font-bold tabular-nums">{l.days}</td>
                       <td className="px-3 py-2.5">{decisionCell(l.managerDecision)}</td>
-                      <td className="px-3 py-2.5">{decisionCell(l.hrDecision)}</td>
+                      <td className="px-3 py-2.5">{decisionCell(l.hrDecision)}<div className="mt-1 flex flex-wrap gap-1"><DeductionBadge leave={l as any} ar={ar} /></div></td>
                       <td className="px-3 py-2.5">{decisionCell(l.executiveDecision)}</td>
                       <td className="px-3 py-2.5"><span className={`px-2.5 py-1 rounded-full text-xs font-semibold whitespace-nowrap ${st.cls}`}>{ar ? st.ar : st.en}</span></td>
                       <td className="px-3 py-2.5">

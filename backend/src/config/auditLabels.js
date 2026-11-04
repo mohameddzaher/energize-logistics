@@ -6,7 +6,7 @@
 
 /** Specific action to its sentence. */
 const ACTION_AR = {
-  leave_approve: 'الموافقة على إجازة', leave_reject: 'رفض إجازة', leave_ask: 'استفسار على طلب إجازة',
+  leave_approve: 'الموافقة على إجازة', leave_reject: 'رفض إجازة', leave_ask: 'استفسار على طلب إجازة', leave_filed_by_manager: 'تقديم إجازة من المدير لأحد فريقه',
   // Actions written by the code that had no Arabic name and showed as code in the log.
   add_workflow_followup: 'إضافة متابعة لأمر نقل',
   answer: 'رد',
@@ -511,7 +511,7 @@ const FIELD_LABELS = {
   details: ['التفاصيل', 'Details'], sharedPolicy: ['وثيقة مشتركة', 'Shared policy'], policyUpdated: ['حُدِّثت الوثيقة', 'Policy updated'],
   filters: ['الفلاتر', 'Filters'], customerUpdates: ['تحديثات العملاء', 'Customer updates'],
   department: ['الإدارة', 'Department'], subjects: ['عدد المعنيّين', 'Subjects'],
-  directManager: ['المدير المباشر', 'Direct manager'], licenseNumber: ['رقم الرخصة', 'Licence number'],
+  directManager: ['المدير المباشر', 'Direct manager'], deductsBalance: ['الخصم من رصيد الإجازات', 'Deducted from leave balance'], filedBy: ['قدّمه المدير', 'Filed by manager'], licenseNumber: ['رقم الرخصة', 'Licence number'],
   driverCardType: ['نوع بطاقة السائق', 'Driver card type'], classification: ['التصنيف', 'Classification'],
   actualWorkStartDate: ['تاريخ المباشرة الفعلي', 'Actual start date'], workLocation: ['موقع العمل', 'Work location'],
   nationalId: ['رقم الهوية الوطنية', 'National ID'], repId: ['رقم المندوب', 'Rep ID'], sponsorName: ['الكفيل', 'Sponsor'],

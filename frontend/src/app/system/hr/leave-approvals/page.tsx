@@ -1,5 +1,5 @@
 'use client';
-/** Leave approvals: what awaits the current user's decision. One page for four stages (direct manager, HR, accounts, management). The server decides what is shown (`utils/leaveChain.inboxFilter`), so the page never guesses a role or filters after reading and no button ends in a 403. The third action is "inquiry", not reject: the request returns to its owner to answer, then restarts from the direct manager. */
+/** Leave approvals: what awaits the current user's decision. One page for every stage (direct manager, HR, top management). The server decides what is shown (`utils/leaveChain.inboxFilter`), so the page never guesses a role or filters after reading and no button ends in a 403. The third action is "inquiry", not reject: the request returns to its owner to answer, then restarts from the direct manager. */
 import { useState, useEffect, useCallback, useMemo } from 'react';
 import { useDialog } from '@/components/system/DialogProvider';
 import { useLanguage } from '@/context/LanguageContext';
@@ -14,6 +14,7 @@ import { Spinner, PageHeader, PrimaryButton, Badge, Modal, TextArea, Tabs, Searc
 import { LeaveChainBar, LeaveThread } from '@/components/hr/LeaveChain';
 import { bothPeriod } from '@/lib/hrDates';
 import { AttachmentList } from '@/components/system/FilePicker';
+import { DeductionChoice, DeductionBadge, needsDeductionChoice } from '@/components/hr/LeaveDeduction';
 
 type Decision = 'approved' | 'rejected' | 'info';
 
@@ -31,6 +32,7 @@ export default function LeaveApprovalsPage() {
   const [review, setReview] = useState<LeaveRequest | null>(null);
   const [note, setNote] = useState('');
   const [busy, setBusy] = useState(false);
+  const [deduct, setDeduct] = useState<boolean | null>(null);
 
   const load = useCallback(async () => {
     try {
@@ -74,9 +76,14 @@ export default function LeaveApprovalsPage() {
         'error');
       return;
     }
+    const withChoice = decision === 'approved' && needsDeductionChoice(review);
+    if (withChoice && deduct === null) {
+      notify(ar ? 'اختر: تُخصم من الرصيد أم بدون خصم.' : 'Choose whether the leave is deducted from the balance.', 'error');
+      return;
+    }
     setBusy(true);
     try {
-      await api.patch(`/api/hr/leaves/${review._id}/decision`, { decision, note });
+      await api.patch(`/api/hr/leaves/${review._id}/decision`, { decision, note, ...(withChoice ? { deductBalance: deduct } : {}) });
       setReview(null); setNote('');
       load();
     } catch (e: any) { notify(e.message, 'error'); }
@@ -123,7 +130,8 @@ export default function LeaveApprovalsPage() {
                   </div>
                   <div className="flex shrink-0 items-center gap-2">
                     <Badge style={LEAVE_STATUS[l.status]} lang={lang} />
-                    <PrimaryButton onClick={() => { setReview(l); setNote(''); }}>
+                    <DeductionBadge leave={l} ar={ar} />
+                    <PrimaryButton onClick={() => { setReview(l); setNote(''); setDeduct(null); }}>
                       {ar ? 'مراجعة' : 'Review'}
                     </PrimaryButton>
                   </div>
@@ -181,6 +189,12 @@ export default function LeaveApprovalsPage() {
             )}
 
             <LeaveThread leave={review} lang={ar ? 'ar' : 'en'} />
+
+            {needsDeductionChoice(review) && (
+              <div className="border-t border-slate-200 pt-3">
+                <DeductionChoice value={deduct} onChange={setDeduct} leave={review} ar={ar} />
+              </div>
+            )}
 
             <div className="border-t border-slate-200 pt-3">
               <label className="mb-1 block text-xs text-slate-500">

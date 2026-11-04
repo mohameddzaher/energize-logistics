@@ -33,6 +33,13 @@
       ],
       "wildcard": false
     },
+    "/system/selling-requests": {
+      "apis": [
+        "/api/selling-price-requests",
+        "/api/selling-price-requests/count"
+      ],
+      "wildcard": false
+    },
     "/system/executive": {
       "apis": [
         "/api/analytics/executive"
@@ -77,6 +84,8 @@
         "/api/jp/tasks",
         "/api/lookups/types",
         "/api/partners/account",
+        "/api/selling-price-requests",
+        "/api/selling-price-requests/count",
         "/api/workflows",
         "/api/workflows/bulk-delete",
         "/api/workflows/bulk-import",
@@ -2247,6 +2256,7 @@
         "/api/hr/leaves",
         "/api/hr/me/leaves",
         "/api/hr/me/team",
+        "/api/hr/team/leave-members",
         "/api/hr/team/leaves"
       ],
       "wildcard": false

@@ -16,6 +16,7 @@ import 'ops_common.dart';
 import '../ui/list_pager.dart';
 import 'ops_workflow_detail.dart';
 import 'ops_workflow_new.dart';
+import 'selling_requests.dart';
 
 /// Operations workflow of statements (counterpart of /system/operations): cards, filter bar and column filters, period (day / month / range), selection and bulk actions (record payment, delete, "everything matching the filter"), export in its scopes, new request and import, and live row locks.
 class OpsWorkflowsScreen extends StatefulWidget {
@@ -147,6 +148,9 @@ class _OpsWorkflowsScreenState extends State<OpsWorkflowsScreen> {
   // Invoice amounts (net invoice onward): the server decides who sees them.
   bool _seesAmounts = false;
   bool _seesSelling = false;
+  // Server-decided: selling-price edits from this reader go to approval / this reader approves them.
+  bool _sellingByRequest = false;
+  bool _approvesSelling = false;
   bool get _canViewFinancials => _full || _seesAmounts;
   bool get _canEditOpsReview => _full || _has('operationsReview');
   bool get _canEditAccReview => _full || _has('accountingReview');
@@ -215,6 +219,8 @@ class _OpsWorkflowsScreenState extends State<OpsWorkflowsScreen> {
         _myFields = Set<String>.from((list ?? const []).map((e) => '$e'));
         _seesAmounts = view['amounts'] == true;
         _seesSelling = view['selling'] == true;
+        _sellingByRequest = d is Map && d['sellingByRequest'] == true;
+        _approvesSelling = d is Map && d['canApproveSelling'] == true;
       });
     }).catchError((_) { if (mounted) setState(() => _myFields = <String>{}); });
   }
@@ -372,7 +378,9 @@ class _OpsWorkflowsScreenState extends State<OpsWorkflowsScreen> {
         content: TextField(
           controller: ctrl, autofocus: true,
           keyboardType: const TextInputType.numberWithOptions(decimal: true),
-          decoration: InputDecoration(helperText: tr('تُحفظ هنا وفي منصّة التشغيل معًا', 'Saved here and on the operations platform')),
+          decoration: InputDecoration(helperText: _sellingByRequest
+              ? tr('يُرسَل التعديل للاعتماد، ويبقى السعر الحالي حتى يُعتمد', 'Sent for approval; the current price stays until approved')
+              : tr('تُحفظ هنا وفي منصّة التشغيل معًا', 'Saved here and on the operations platform')),
         ),
         actions: [
           TextButton(onPressed: () => Navigator.pop(c), child: Text(tr('إلغاء', 'Cancel'))),
@@ -393,6 +401,8 @@ class _OpsWorkflowsScreenState extends State<OpsWorkflowsScreen> {
       _patchRow('${w['_id']}', row, patch);
       if (row is Map && row['refusedMessage'] != null) {
         opsSnack(context, '${row['refusedMessage']}', error: true);
+      } else if (row is Map && row['sellingRequestMessage'] != null) {
+        opsSnack(context, '${row['sellingRequestMessage']}');
       } else if (row is Map && row['sellingPlatform'] is bool) {
         opsSnack(context, row['sellingPlatform'] == true
             ? tr('حُفظت قيمة البيع هنا وفي منصّة التشغيل', 'Selling value saved here and on the platform')
@@ -1106,6 +1116,7 @@ class _OpsWorkflowsScreenState extends State<OpsWorkflowsScreen> {
     return AppScaffold(
       title: Text(tr('التشغيل', 'Operations')),
       actions: [
+        if (_approvesSelling) const SellingRequestsAction(),
         IconButton(tooltip: tr('تصدير Excel', 'Export to Excel'), icon: const Icon(Icons.file_download_outlined), onPressed: _export),
       ],
       floatingActionButton: _canCreate

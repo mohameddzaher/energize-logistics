@@ -72,4 +72,12 @@ function computeBalance(contract, daysTaken = 0, asOf = new Date(), opts = {}) {
 
 const round2 = (n) => Math.round((Number(n) || 0) * 100) / 100;
 
-module.exports = { computeBalance, leaveDays, contractDaysElapsed, accrualStart };
+/**
+ * Does this leave come off the balance? HR's choice on the request wins (`deductsBalance`, set at the HR stage);
+ * without one (older records), the leave type decides. Needs `leaveType` populated with `affectsBalance`.
+ */
+const leaveDeducts = (l) => (typeof l?.deductsBalance === 'boolean'
+  ? l.deductsBalance
+  : (l?.leaveType?.affectsBalance ?? true));
+
+module.exports = { computeBalance, leaveDays, contractDaysElapsed, accrualStart, leaveDeducts };

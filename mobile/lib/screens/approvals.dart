@@ -60,6 +60,8 @@ class _ApprovalsScreenState extends State<ApprovalsScreen> {
     final note = TextEditingController();
     // Decision sheet: approval letter or rejection reason when it has supporting grounds. It lives with the request, so it can be read from the employee file a year later, not in a lost chat.
     final files = <PickedFile>[];
+    final askDeduct = decision == 'approved' && leaveNeedsDeduction(l);
+    bool? deduct;
     final ok = await showDialog<bool>(
       context: context,
       builder: (c) => StatefulBuilder(builder: (c, setSt) => AlertDialog(
@@ -90,6 +92,10 @@ class _ApprovalsScreenState extends State<ApprovalsScreen> {
               ),
             ])),
             const Divider(height: 16),
+          ],
+          if (askDeduct) ...[
+            DeductionPicker(value: deduct, days: l['days'], onChanged: (v) => setSt(() => deduct = v)),
+            const SizedBox(height: 10),
           ],
           TextField(
             controller: note,
@@ -138,7 +144,7 @@ class _ApprovalsScreenState extends State<ApprovalsScreen> {
               },
             ),
             // A rejection without a reason or a question without text reaches the employee empty.
-            onPressed: decision != 'approved' && note.text.trim().isEmpty
+            onPressed: (decision != 'approved' && note.text.trim().isEmpty) || (askDeduct && deduct == null)
                 ? null
                 : () => Navigator.pop(c, true),
             child: Text(switch (decision) {
@@ -155,6 +161,7 @@ class _ApprovalsScreenState extends State<ApprovalsScreen> {
       await Api.instance.patch('/api/hr/leaves/${l['_id']}/decision', {
         'decision': decision,
         'note': note.text,
+        if (askDeduct) 'deductBalance': deduct,
         'files': files.map((f) => {'dataUrl': f.dataUrl, 'fileName': f.fileName, 'title': f.fileName}).toList(),
       });
       _load();
@@ -252,6 +259,8 @@ class _ApprovalsScreenState extends State<ApprovalsScreen> {
                 ),
               const SizedBox(height: 8),
               LeaveChainBar(leave: l),
+              const SizedBox(height: 4),
+              LeaveDeductionBadge(leave: l),
               if (actionable) ...[
                 const SizedBox(height: 12),
                 Row(children: [

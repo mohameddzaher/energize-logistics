@@ -122,11 +122,17 @@ class _HrLeavesScreenState extends State<HrLeavesScreen> {
     String? sigId = approving
         ? (signatures.firstWhere((s) => s['isDefault'] == true, orElse: () => signatures.isNotEmpty ? signatures.first : {})['_id'])?.toString()
         : null;
+    final askDeduct = approving && leaveNeedsDeduction(l);
+    bool? deduct;
     final ok = await showDialog<bool>(
       context: context,
       builder: (c) => StatefulBuilder(builder: (c, setD) => AlertDialog(
         title: Text(approving ? tr('اعتماد الطلب', 'Approve') : tr('رفض الطلب', 'Reject')),
         content: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
+          if (askDeduct) ...[
+            DeductionPicker(value: deduct, days: l['days'], onChanged: (v) => setD(() => deduct = v)),
+            const SizedBox(height: 10),
+          ],
           TextField(controller: note, decoration: InputDecoration(labelText: tr('ملاحظة (اختياري)', 'Note'))),
           if (approving) ...[
             const SizedBox(height: 12),
@@ -153,7 +159,7 @@ class _HrLeavesScreenState extends State<HrLeavesScreen> {
           TextButton(onPressed: () => Navigator.pop(c, false), child: Text(tr('إلغاء', 'Cancel'))),
           FilledButton(
             style: FilledButton.styleFrom(backgroundColor: approving ? T.success : T.danger),
-            onPressed: () => Navigator.pop(c, true),
+            onPressed: askDeduct && deduct == null ? null : () => Navigator.pop(c, true),
             child: Text(approving ? tr('اعتماد', 'Approve') : tr('رفض', 'Reject')),
           ),
         ],
@@ -165,6 +171,7 @@ class _HrLeavesScreenState extends State<HrLeavesScreen> {
         'decision': decision,
         'note': note.text,
         if (approving && sigId != null) 'signatureId': sigId,
+        if (askDeduct) 'deductBalance': deduct,
       });
       _load();
     } catch (e) {
@@ -421,6 +428,8 @@ class _HrLeavesScreenState extends State<HrLeavesScreen> {
                                           style: const TextStyle(fontSize: 12.5, color: T.inkSoft)),
                                       const SizedBox(height: 6),
                                       LeaveChainBar(leave: l),
+                                      const SizedBox(height: 4),
+                                      LeaveDeductionBadge(leave: l),
                                       if (l['status'] == 'approved') ...[
                                         const SizedBox(height: 6),
                                         Row(children: [

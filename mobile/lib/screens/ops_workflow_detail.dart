@@ -261,11 +261,12 @@ class _OpsWorkflowDetailScreenState extends State<OpsWorkflowDetailScreen> {
     // Payment kind is sent only if it changed: sending it unchanged stamps it as a manual choice.
     if (_ptype != opsPaymentKindOf(_w!)) payload['paymentType'] = _ptype;
     try {
-      await Api.instance.put('/api/workflows/${widget.id}', payload);
+      final out = await Api.instance.put('/api/workflows/${widget.id}', payload);
       try { await Api.instance.post('/api/workflows/${widget.id}/unlock'); } catch (_) {}
       if (!mounted) return;
       setState(() => _editing = false);
-      opsSnack(context, tr('تم حفظ التعديلات', 'Changes saved'));
+      // A selling-price edit held for approval is said so; the old price stays.
+      opsSnack(context, out is Map && out['sellingRequestMessage'] != null ? '${out['sellingRequestMessage']}' : tr('تم حفظ التعديلات', 'Changes saved'));
       _load();
     } catch (e) {
       if (mounted) opsSnack(context, opsErr(e), error: true);

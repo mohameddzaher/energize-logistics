@@ -62,6 +62,7 @@ import '../screens/marketing_report.dart';
 import '../screens/ls2_drivers.dart';
 import '../screens/marketing_activities.dart';
 import '../screens/ops_workflows.dart';
+import '../screens/selling_requests.dart';
 import '../screens/ops_private.dart';
 import '../screens/ops_loads_board.dart';
 import '../screens/custody_ledger.dart';
@@ -237,6 +238,7 @@ List<AppSection> sectionsFor(AuthProvider auth) {
         AppPage('طلبات الإجازات', 'Leave Requests', Icons.event_available_outlined, (c) => const TopLeavesScreen(), path: '/system/top-management'),
         AppPage('طلبات الموظفين', 'Staff Requests', Icons.mark_email_unread_outlined, (c) => const TopRequestsScreen(), path: '/system/top-management/requests'),
         AppPage('نشاط الشركة المباشر', 'Live Company Activity', Icons.timeline_outlined, (c) => const TopActivityScreen(), path: '/system/top-management/activity'),
+        if (canApproveSelling(auth)) AppPage('طلبات تعديل سعر البيع', 'Selling-price requests', Icons.price_check_outlined, (c) => const SellingRequestsScreen(), path: sellingRequestsPath),
       ],
     ),
     AppSection(
@@ -244,6 +246,8 @@ List<AppSection> sectionsFor(AuthProvider auth) {
       roles: const [..._admins, 'employee', 'operations_manager', 'operations_staff', 'moderator'],
       pages: [
         AppPage('التشغيل', 'Operations', Icons.workspaces_outline, (c) => const OpsWorkflowsScreen(), path: '/system/operations'),
+        // Approvers who cannot open the workflow (the sales manager) reach the list here too.
+        if (canApproveSelling(auth)) AppPage('طلبات تعديل سعر البيع', 'Selling-price requests', Icons.price_check_outlined, (c) => const SellingRequestsScreen(), path: sellingRequestsPath),
         // Operations sheets at our selling price: a management page, with permission from the web (path is its key in the matrix, and the server guards it on top).
         AppPage('التشغيل — خاصّ', 'Operations — private', Icons.lock_outline, (c) => const OpsPrivateScreen(), path: '/system/operations/private'),
         AppPage('متابعة الحمولات والشحنات', 'Loads & Shipments', Icons.local_shipping_outlined, (c) => const OpsLoadsBoardScreen(), path: opsBoardPath),

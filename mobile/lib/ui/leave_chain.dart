@@ -169,3 +169,63 @@ class LeaveThread extends StatelessWidget {
     ]);
   }
 }
+
+/// HR's balance choice is needed when approving at the HR stage; the server refuses it otherwise (DEDUCTION_CHOICE_REQUIRED).
+bool leaveNeedsDeduction(Map l) => l['status'] == 'pending_hr' || l['currentStage'] == 'hr';
+
+/// Twin of backend utils/leaveBalance.leaveDeducts: HR's choice wins, else the leave type.
+bool leaveDeducts(Map l) {
+  final d = l['deductsBalance'];
+  if (d is bool) return d;
+  final t = l['leaveType'];
+  return !(t is Map && t['affectsBalance'] == false);
+}
+
+/// Two options, none preselected: HR must press one.
+class DeductionPicker extends StatelessWidget {
+  const DeductionPicker({super.key, required this.value, required this.onChanged, this.days});
+  final bool? value;
+  final ValueChanged<bool> onChanged;
+  final Object? days;
+
+  @override
+  Widget build(BuildContext context) {
+    Widget opt(bool v, String label, Color c) => ChoiceChip(
+          label: Text(label, style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w700)),
+          selected: value == v,
+          selectedColor: c.withValues(alpha: 0.18),
+          onSelected: (_) => onChanged(v),
+        );
+    return Column(crossAxisAlignment: CrossAxisAlignment.start, mainAxisSize: MainAxisSize.min, children: [
+      Text(tr('رصيد الإجازات — مطلوب للموافقة', 'Leave balance — required to approve'),
+          style: const TextStyle(fontSize: 11.5, fontWeight: FontWeight.w800, color: T.inkSoft)),
+      const SizedBox(height: 6),
+      Wrap(spacing: 8, runSpacing: 6, children: [
+        opt(true, tr('تُخصم من الرصيد${days != null ? ' ($days يوم)' : ''}', 'Deduct${days != null ? ' ($days d)' : ''}'), T.warn),
+        opt(false, tr('بدون خصم من الرصيد', 'Without deduction'), T.success),
+      ]),
+    ]);
+  }
+}
+
+/// Badge: deducted or not (once decided or approved), and whether a manager filed it.
+class LeaveDeductionBadge extends StatelessWidget {
+  const LeaveDeductionBadge({super.key, required this.leave});
+  final Map<String, dynamic> leave;
+
+  @override
+  Widget build(BuildContext context) {
+    final decided = leave['deductsBalance'] is bool;
+    final cut = leaveDeducts(leave);
+    Widget chip(String text, Color c) => Container(
+          padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
+          decoration: BoxDecoration(color: c.withValues(alpha: 0.12), borderRadius: BorderRadius.circular(20)),
+          child: Text(text, style: TextStyle(fontSize: 10.5, fontWeight: FontWeight.w700, color: c)),
+        );
+    return Wrap(spacing: 4, runSpacing: 4, children: [
+      if (decided || leave['status'] == 'approved')
+        chip(cut ? tr('تُخصم من الرصيد', 'Deducted') : tr('بدون خصم', 'No deduction'), cut ? T.warn : T.success),
+      if (leave['filedByManager'] == true) chip(tr('قدّمها المدير', 'Filed by manager'), const Color(0xFF4F46E5)),
+    ]);
+  }
+}

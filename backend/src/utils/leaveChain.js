@@ -89,15 +89,23 @@ function askEmployee(leave) {
 }
 
 /**
- * Employee reply restarts the chain from the start.
- * Previous approvals are cleared: the request changed, so earlier approval was for a different one.
+ * A reply restarts the chain from the start.
+ * Previous approvals (and HR's deduction choice) are cleared: the request changed, so earlier approval was for a different one.
+ * When the replier is the request's manager himself (he filed it for his team), his reply is his approval: it goes straight to HR.
  */
-function restart(leave) {
+function restart(leave, replier) {
   leave.managerDecision = undefined;
   leave.hrDecision = undefined;
   leave.financeDecision = undefined;
   leave.executiveDecision = undefined;
+  leave.deductsBalance = null;
   const hasManager = !!leave.manager;
+  if (hasManager && replier && String(replier._id || replier) === String(leave.manager)) {
+    leave.managerDecision = { by: replier._id || replier, at: new Date(), decision: 'approved', note: 'ردّ المدير على الاستفسار — موافقته قائمة' };
+    leave.status = 'pending_hr';
+    leave.currentStage = 'hr';
+    return;
+  }
   leave.status = hasManager ? 'pending_manager' : 'pending_hr';
   leave.currentStage = hasManager ? 'manager' : 'hr';
 }

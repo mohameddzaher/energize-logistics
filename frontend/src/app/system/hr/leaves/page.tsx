@@ -19,6 +19,7 @@ import type { Signature } from '@/components/SignatureManager';
 import FilePicker, { AttachmentList, type PickedFile } from '@/components/system/FilePicker';
 import ScrollX from '@/components/system/ScrollX';
 import { LeaveReturnChip, LeaveReturnPanel } from '@/components/hr/LeaveReturn';
+import { DeductionChoice, DeductionBadge, needsDeductionChoice, useDeductionAsk } from '@/components/hr/LeaveDeduction';
 import PeriodFilter from '@/components/system/PeriodFilter';
 import Link from 'next/link';
 
@@ -46,6 +47,8 @@ export default function HRLeavesPage() {
   const [review, setReview] = useState<LeaveRequest | null>(null);
   const [note, setNote] = useState('');
   const [busy, setBusy] = useState(false);
+  const [deduct, setDeduct] = useState<boolean | null>(null);
+  const deductionAsk = useDeductionAsk(ar);
   // Decision paper: the approved doctor's report, or the rejection letter with its reason.
   const [files, setFiles] = useState<PickedFile[]>([]);
   const [types, setTypes] = useState<any[]>([]);
@@ -126,7 +129,7 @@ export default function HRLeavesPage() {
 
   useSocket('hr:leave', useCallback(() => load(), [load]));
 
-  const openReview = (l: LeaveRequest) => { setReview(l); setNote(''); setSignWith(''); setFiles([]); };
+  const openReview = (l: LeaveRequest) => { setReview(l); setNote(''); setSignWith(''); setFiles([]); setDeduct(null); };
   // Keep the open review in step with the reloaded list (return/extension/no-show).
   useEffect(() => {
     setReview((r) => (r ? (allLeaves.find((x) => x._id === r._id) || r) : r));
@@ -139,10 +142,16 @@ export default function HRLeavesPage() {
       notify(ar ? 'اكتب استفسارك حتى يعرف الموظّف بمَ يردّ.' : 'Write your question so the employee knows what to answer.', 'error');
       return;
     }
+    const withChoice = decision === 'approved' && needsDeductionChoice(review);
+    if (withChoice && deduct === null) {
+      notify(ar ? 'اختر: تُخصم من الرصيد أم بدون خصم.' : 'Choose whether the leave is deducted from the balance.', 'error');
+      return;
+    }
     setBusy(true);
     try {
       await api.patch(`/api/hr/leaves/${review._id}/decision`, {
         decision, note, signatureId: signWith || undefined,
+        ...(withChoice ? { deductBalance: deduct } : {}),
         files: files.map((f) => ({ dataUrl: f.dataUrl, fileName: f.fileName, title: f.title })),
       });
       setReview(null); setNote(''); setSignWith(''); setFiles([]); load();
@@ -154,6 +163,12 @@ export default function HRLeavesPage() {
   const [rowBusy, setRowBusy] = useState('');
   const quickDecide = async (l: LeaveRequest, decision: 'approved' | 'rejected' | 'info') => {
     let text = '';
+    let choice: boolean | null = null;
+    // HR's approval states the balance choice even from the row.
+    if (decision === 'approved' && needsDeductionChoice(l)) {
+      choice = await deductionAsk.ask(l);
+      if (choice === null) return;
+    }
     if (decision !== 'approved') {
       const v = await prompt(decision === 'info'
         ? (ar ? 'اكتب استفسارك أو التعديل المطلوب — يصل للموظّف ليردّ' : 'Write your question or the change needed — the employee will reply')
@@ -164,7 +179,7 @@ export default function HRLeavesPage() {
     }
     setRowBusy(l._id);
     try {
-      await api.patch(`/api/hr/leaves/${l._id}/decision`, { decision, note: text });
+      await api.patch(`/api/hr/leaves/${l._id}/decision`, { decision, note: text, ...(choice !== null ? { deductBalance: choice } : {}) });
       notify(decision === 'approved' ? (ar ? 'تمت الموافقة' : 'Approved') : decision === 'rejected' ? (ar ? 'رُفض الطلب' : 'Rejected') : (ar ? 'أُرسل الاستفسار للموظّف' : 'Question sent to the employee'), 'success');
       load();
     } catch (e: any) { notify(e.message, 'error'); }
@@ -333,6 +348,7 @@ export default function HRLeavesPage() {
                     <div className="flex items-center gap-1.5 flex-wrap">
                       <Badge style={LEAVE_STATUS[l.status]} lang={lang} />
                       <LeaveReturnChip leave={l} ar={ar} />
+                      <DeductionBadge leave={l} ar={ar} />
                       {/* Requested-and-approved vs recorded after the fact stays visible. */}
                       {(l as any).backdated && (
                         <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-semibold bg-slate-200 text-slate-600"
@@ -410,7 +426,7 @@ export default function HRLeavesPage() {
             <Row k={tx.colDays} v={`${review.days} ${tx.dayUnit}`} />
             <Row k={tx.fieldAccrued} v={`${review.balanceSnapshot?.accrued ?? '—'} ${tx.dayUnit}`} />
             <Row k={tx.fieldRemainingAfter} v={`${review.balanceSnapshot?.remainingAfter ?? '—'} ${tx.dayUnit}`} danger={typeof review.balanceSnapshot?.remainingAfter === 'number' && review.balanceSnapshot.remainingAfter < 0} />
-            <Row k={tx.fieldStatus} v={<Badge style={LEAVE_STATUS[review.status]} lang={lang} />} />
+            <Row k={tx.fieldStatus} v={<span className="inline-flex flex-wrap items-center gap-1.5"><Badge style={LEAVE_STATUS[review.status]} lang={lang} /><DeductionBadge leave={review} ar={ar} /></span>} />
             {/* Each text has its owner in its label: the employee's request text versus the reviewer's decision note were both generic and read as duplicates. */}
             {review.reason && (
               <div className="border-t border-slate-200 pt-3">
@@ -429,6 +445,7 @@ export default function HRLeavesPage() {
             <LeaveThread leave={review} lang={ar ? 'ar' : 'en'} />
             {actionable(review) && (
               <div className="border-t border-slate-200 pt-3 space-y-3">
+                {needsDeductionChoice(review) && <DeductionChoice value={deduct} onChange={setDeduct} leave={review} ar={ar} />}
                 <div>
                   <label className="text-slate-500 text-xs mb-1 block">
                     {ar ? 'ملاحظتك على القرار — مطلوبة مع الاستفسار' : 'Your note — required when asking a question'}
@@ -486,6 +503,7 @@ export default function HRLeavesPage() {
           </div>
         )}
       </Modal>
+      {deductionAsk.dialog}
     </div>
   );
 }

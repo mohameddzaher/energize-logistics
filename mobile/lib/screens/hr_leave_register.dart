@@ -6,6 +6,7 @@ import '../ui/app_scaffold.dart';
 import '../ui/leave_record.dart';
 import '../ui/leave_return.dart';
 import '../ui/search_field.dart';
+import '../ui/leave_chain.dart';
 import '../ui/theme.dart';
 import '../ui/widgets.dart';
 import 'hr_employee_profile.dart';
@@ -116,6 +117,8 @@ class _HrLeaveRegisterScreenState extends State<HrLeaveRegisterScreen> {
             if ('${e['employeeNumber'] ?? ''}'.isNotEmpty) Text('#${e['employeeNumber']}', style: const TextStyle(color: T.inkSoft)),
             const SizedBox(height: 8),
             LeaveReturnChip(l),
+            const SizedBox(height: 4),
+            LeaveDeductionBadge(leave: l),
             const SizedBox(height: 10),
             for (final row in [
               (tr('النوع', 'Type'), _typeName(l)),
@@ -236,6 +239,8 @@ class _HrLeaveRegisterScreenState extends State<HrLeaveRegisterScreen> {
                                           style: const TextStyle(fontSize: 12.5, color: T.inkSoft)),
                                       const SizedBox(height: 6),
                                       LeaveReturnChip(l),
+                                      const SizedBox(height: 4),
+                                      LeaveDeductionBadge(leave: l),
                                     ]),
                                   ),
                                 );

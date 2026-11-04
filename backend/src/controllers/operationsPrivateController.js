@@ -352,6 +352,8 @@ exports.updatePrice = async (req, res) => {
     const note = String(req.body.note ?? '').trim().slice(0, 300);
     const out = await setSellingValue(req.params.id, req.body.sellingValue, req.user, { ip: req.ip, note });
     if (out.status !== 200) return res.status(out.status).json(out.body);
+    // Held for approval: nothing was written, so nothing is learned.
+    if (out.body.sellingRequest) return res.json(out.body);
     const w = out.body.workflow;
     const value = Number(w.sellingValue) || 0;
 

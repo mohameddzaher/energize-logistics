@@ -572,6 +572,22 @@ exports.updateShipment = async (req, res) => {
     const data = pick(req.body, SHIPMENT_EDITABLE);
     applyPaymentSubtype(data);
 
+    // The load price is the selling price of its workflow row; from these roles it goes to approval (config/sellingPriceRequests).
+    let sellingRequest = null;
+    if (data.price !== undefined && require('../config/sellingPriceRequests').sellingByRequest(req.user)) {
+      const v = data.price === '' || data.price === null ? 0 : Number(data.price);
+      if (Math.round(v * 100) !== Math.round((Number(shipment.price) || 0) * 100)) {
+        const link = require('../services/shipmentOrderWorkflowLink');
+        await link.mirrorFleet(shipment._id);
+        const row = await require('../models/OperationsWorkflow').findOne({ fleetShipment: shipment._id }).lean();
+        if (!row) return res.status(409).json({ message: 'لا يوجد سطر في سير العمل لهذه الحمولة بعد — أعد المحاولة بعد قليل.' });
+        const r = await require('../services/sellingPriceRequests').createRequest({ workflow: row, origin: 'workflow', raw: data.price, user: req.user });
+        if (r.error) return res.status(r.error.status).json(r.error.body);
+        sellingRequest = r.request || null;
+      }
+      delete data.price;
+    }
+
     // An edit can switch the load to a first-time customer, exactly like create.
     if (!data.customer && req.body.newCustomer && String(req.body.newCustomer.name || '').trim()) {
       const c = await FleetCustomer.create({
@@ -634,6 +650,9 @@ exports.updateShipment = async (req, res) => {
     }
     for (const line of moveNotes) await logEvent(req, shipment._id, 'driver_change', { text: line });
     emit('fleet:updated', { id: String(shipment._id) });
+    if (sellingRequest) {
+      return res.json({ shipment, sellingRequest, sellingRequestMessage: require('../services/sellingPriceRequests').PENDING_MESSAGE });
+    }
     res.json({ shipment });
   } catch (error) {
     if (error.status === 400) return res.status(400).json({ message: error.message });

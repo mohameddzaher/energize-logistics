@@ -25,7 +25,7 @@ router.get('/leaves', async (req, res) => {
           : tab === 'rejected' ? { status: 'rejected' } : {};
     const rows = await LeaveRequest.find(filter)
       .populate('employee', 'firstName lastName arabicName employeeNumber department jobTitle')
-      .populate('leaveType', 'nameAr nameEn color')
+      .populate('leaveType', 'nameAr nameEn color affectsBalance')
       .populate('manager', 'firstName lastName')
       .populate('managerDecision.by hrDecision.by financeDecision.by executiveDecision.by', 'firstName lastName')
       .select('-employeeSignature -managerDecision.signature -hrDecision.signature -financeDecision.signature -executiveDecision.signature')

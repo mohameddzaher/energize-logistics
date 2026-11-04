@@ -10,6 +10,9 @@ const {
   normalizePaymentChoice, paymentKindCondition, PAYMENT_KIND_EXPR, paymentKindLabel,
 } = require('../utils/paymentType');
 const XLSX = require('xlsx');
+const { sellingByRequest, canApproveSelling } = require('../config/sellingPriceRequests');
+// Lazy: the service requires this controller back.
+const sellingRequests = () => require('../services/sellingPriceRequests');
 const fs = require('fs');
 const path = require('path');
 const cache = require('../utils/ttlCache');
@@ -1303,6 +1306,23 @@ async function setSellingValue(id, raw, user, { ip, note } = {}) {
       body: { code: 'FIELDS_NOT_ALLOWED', fields: ['sellingValue'], message: 'صلاحيّتك لا تسمح بتعديل: sellingValue — لم يُحفظ شيء.' },
     };
   }
+  // These roles request the change; an approver applies it (services/sellingPriceRequests).
+  if (sellingByRequest(user)) {
+    const workflow = await OperationsWorkflow.findById(id).lean();
+    if (!workflow) return { status: 404, body: { message: 'أمر النقل غير موجود' } };
+    const r = await sellingRequests().createRequest({ workflow, origin: 'workflow', raw, user });
+    if (r.error) return r.error;
+    if (r.unchanged) return { status: 200, body: { workflow: stripRowFor(user.role, workflow), unchanged: true } };
+    return { status: 200, body: { workflow: stripRowFor(user.role, workflow), sellingRequest: r.request, sellingRequestMessage: sellingRequests().PENDING_MESSAGE } };
+  }
+  return writeSellingValue(id, raw, user, { ip, note });
+}
+
+/**
+ * The selling-price write itself, without the role check: setSellingValue checks the
+ * field, an approved change request is its own authority. Lock, platform and broadcast still apply.
+ */
+async function writeSellingValue(id, raw, user, { ip, note } = {}) {
   const workflow = await OperationsWorkflow.findById(id);
   if (!workflow) return { status: 404, body: { message: 'أمر النقل غير موجود' } };
   if (isLocked(workflow, user._id)) {
@@ -1337,6 +1357,7 @@ async function setSellingValue(id, raw, user, { ip, note } = {}) {
   };
 }
 exports.setSellingValue = setSellingValue;
+exports.writeSellingValue = writeSellingValue;
 
 /** GET /customer-names - the approved customer names for the customer picker. */
 exports.customerNames = async (req, res) => {
@@ -1379,6 +1400,20 @@ exports.updateWorkflow = async (req, res) => {
         fields: rejected,
         message: `صلاحيّتك لا تسمح بتعديل: ${rejected.join('، ')} — لم يُحفظ شيء.`,
       });
+    }
+
+    // A selling-price edit from these roles becomes a request; the stored price stays until approved.
+    let sellingRequest = null;
+    if (sellingByRequest(req.user) && Object.prototype.hasOwnProperty.call(filteredBody, 'sellingValue')) {
+      const r = await sellingRequests().createRequest({ workflow: workflow.toObject(), origin: 'workflow', raw: filteredBody.sellingValue, user: req.user });
+      if (r.error) return res.status(r.error.status).json(r.error.body);
+      delete filteredBody.sellingValue;
+      if (r.request) sellingRequest = r.request;
+      if (!Object.keys(filteredBody).length) {
+        const row = stripRowFor(req.user.role, workflow);
+        return res.json(Object.assign(row.toObject ? row.toObject() : { ...row }, sellingRequest
+          ? { sellingRequest, sellingRequestMessage: sellingRequests().PENDING_MESSAGE } : {}));
+      }
     }
 
     if (filteredBody.username !== undefined) {
@@ -1556,6 +1591,10 @@ exports.updateWorkflow = async (req, res) => {
     }
     // Reports where selling value was written: on the platform and here, or here only (a report not from it).
     if (sellingPush) extra.sellingPlatform = !!sellingPush.platform;
+    if (sellingRequest) {
+      extra.sellingRequest = sellingRequest;
+      extra.sellingRequestMessage = sellingRequests().PENDING_MESSAGE;
+    }
     if (Object.keys(extra).length) {
       return res.json(Object.assign(out.toObject ? out.toObject() : { ...out }, extra));
     }
@@ -2525,6 +2564,9 @@ exports.getFieldPermissions = async (req, res) => {
     myFields: await fieldsForRole(req.user.role),
     // What this reader may see, independent of what it may write.
     view: { amounts: canSeeMoney(req.user.role), selling: canSeeSelling(req.user.role) },
+    // Selling-price edits from this reader go to approval; and whether this reader approves them.
+    sellingByRequest: sellingByRequest(req.user),
+    canApproveSelling: canApproveSelling(req.user),
     // The 'link to clearance transaction' button is shown to whoever has it; the server checks it again.
     canLinkCustoms: await canLinkCustoms(req.user.role),
   });

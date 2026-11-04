@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import '../services/api.dart';
 import '../services/hijri.dart';
 import '../services/lang.dart';
+import 'leave_chain.dart';
 import 'search_field.dart';
 import 'theme.dart';
 
@@ -34,6 +35,7 @@ Future<bool> showLeaveRecordSheet(BuildContext context, {String? employeeId}) as
   String? typeId;
   DateTime? start;
   DateTime? end;
+  bool? deduct;
   final reason = TextEditingController();
   final search = TextEditingController();
 
@@ -62,8 +64,8 @@ Future<bool> showLeaveRecordSheet(BuildContext context, {String? employeeId}) as
                     style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 15)),
                 const SizedBox(height: 4),
                 Text(
-                  tr('تُسجَّل معتمَدةً وتُخصَم من الرصيد حسب نوعها — لموظفٍ بلا حساب أو لإجازةٍ تسجّلها الموارد البشرية.',
-                     'Saved as approved and deducted per its type — for an employee without a login, or a leave HR records.'),
+                  tr('تُسجَّل معتمَدةً، وتُخصَم من الرصيد أو لا بحسب اختيارك — لموظفٍ بلا حساب أو لإجازةٍ تسجّلها الموارد البشرية.',
+                     'Saved as approved, deducted or not as you choose — for an employee without a login, or a leave HR records.'),
                   style: const TextStyle(fontSize: 11.5, color: T.inkFaint),
                 ),
                 const SizedBox(height: 12),
@@ -137,12 +139,14 @@ Future<bool> showLeaveRecordSheet(BuildContext context, {String? employeeId}) as
                       style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 13.5)),
                 ],
                 const SizedBox(height: 10),
+                DeductionPicker(value: deduct, days: days() > 0 ? days() : null, onChanged: (v) => setSt(() => deduct = v)),
+                const SizedBox(height: 10),
                 TextField(controller: reason, maxLines: 2, decoration: InputDecoration(labelText: tr('السبب / ملاحظة', 'Reason / note'))),
                 const SizedBox(height: 12),
                 SizedBox(
                   width: double.infinity,
                   child: FilledButton(
-                    onPressed: (empId == null || typeId == null || days() == 0) ? null : () => Navigator.pop(c, true),
+                    onPressed: (empId == null || typeId == null || days() == 0 || deduct == null) ? null : () => Navigator.pop(c, true),
                     child: Text(tr('تسجيل', 'Record')),
                   ),
                 ),
@@ -163,6 +167,7 @@ Future<bool> showLeaveRecordSheet(BuildContext context, {String? employeeId}) as
       'endDate': iso(end!),
       'reason': reason.text.trim(),
       'mode': 'manual',
+      'deductBalance': deduct,
     });
     final bal = (r is Map) ? r['balance'] : null;
     if (context.mounted) {

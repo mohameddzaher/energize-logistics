@@ -138,6 +138,12 @@ export interface LeaveRequest {
   // Request dialogue: a stage's question and the requester's reply, oldest first.
   thread?: LeaveThreadEntry[];
   balanceSnapshot?: { accrued?: number; requested?: number; remainingAfter?: number };
+  // HR's choice at its stage; null on older records, where the leave type decides (backend utils/leaveBalance.leaveDeducts).
+  deductsBalance?: boolean | null;
+  // Filed by a manager for someone under him; his stage was stamped at filing.
+  filedByManager?: boolean;
+  filedBy?: any;
+  filedByName?: string;
   createdAt?: string;
   // Request attachments and its two decisions; the reviewer reads them before deciding, and they stay in the employee file.
   attachments?: { _id?: string; title?: string; fileUrl: string; fileName?: string; size?: number; mimeType?: string }[];
@@ -157,6 +163,10 @@ export interface LeaveRequest {
   extensions?: { fromEnd: string; toEnd: string; days: number; note?: string; byName?: string; at?: string }[];
   noShow?: { since?: string; note?: string; byName?: string; at?: string };
 }
+
+/** Does this leave come off the balance? Twin of backend utils/leaveBalance.leaveDeducts. */
+export const leaveDeducts = (l?: Partial<LeaveRequest> | null) =>
+  typeof l?.deductsBalance === 'boolean' ? l.deductsBalance : (l?.leaveType?.affectsBalance ?? true);
 
 export interface HRRequest {
   _id: string;

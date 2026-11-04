@@ -59,6 +59,10 @@ const fullName = (u) => (u ? `${u.firstName || ''} ${u.lastName || ''}`.trim() :
 const MONEY_FIELDS = ['sellPrice', 'buyPrice', 'advanceAmount', 'driverRentPrice'];
 const MONEY_EDIT_ROLES = ['super_admin', 'admin', 'operations_manager'];
 const canEditMoney = (user) => !!user && MONEY_EDIT_ROLES.includes(user.role);
+const { sellingByRequest } = require('../config/sellingPriceRequests');
+// The data team writes the purchase price directly; its selling-price edits go to approval.
+const moneyEditable = (user) => (canEditMoney(user) ? MONEY_FIELDS : sellingByRequest(user) ? ['buyPrice'] : []);
+const moneyByRequest = (user) => (!canEditMoney(user) && sellingByRequest(user) ? ['sellPrice'] : []);
 exports.MONEY_FIELDS = MONEY_FIELDS;
 exports.MONEY_EDIT_ROLES = MONEY_EDIT_ROLES;
 
@@ -843,7 +847,30 @@ exports.getOrder = async (req, res) => {
 };
 
 /** Who edits money after saving; read by the create/edit screens (web and phone). */
-exports.moneyEditors = (req, res) => res.json({ fields: MONEY_FIELDS, roles: MONEY_EDIT_ROLES, canEdit: canEditMoney(req.user) });
+exports.moneyEditors = (req, res) => res.json({
+  fields: MONEY_FIELDS,
+  roles: MONEY_EDIT_ROLES,
+  canEdit: canEditMoney(req.user),
+  // Per field: written directly after save, or sent for approval.
+  editable: moneyEditable(req.user),
+  byRequest: moneyByRequest(req.user),
+});
+
+/**
+ * The selling-price write on a shipment, for an approved change request; the same
+ * save, audit and announce as updateOrder. The link to the workflow row is the caller's.
+ */
+exports.writeSellPrice = async (order, value, user, { ip, note } = {}) => {
+  const before = Number(order.sellPrice) || 0;
+  order.sellPrice = value;
+  await order.save();
+  await logAudit({
+    user, action: 'update_shipment_order', entity: 'ShipmentOrder', entityId: order._id, ipAddress: ip,
+    changes: { before: { sellPrice: before }, after: { sellPrice: value, ...(note ? { note } : {}) } },
+  });
+  announceOrderChange(order._id);
+  return { status: 200, body: { order } };
+};
 
 exports.updateOrder = async (req, res) => {
   try {
@@ -852,18 +879,23 @@ exports.updateOrder = async (req, res) => {
 
     const data = pick(req.body, ORDER_EDITABLE);
 
-    // Money after creation is for MONEY_EDIT_ROLES only.
-    // The form sends all its fields, so only what really changed is rejected: a value equal to the stored one (or empty equal to empty) passes.
+    // Money after creation: MONEY_EDIT_ROLES write all of it; the data team writes the purchase price and requests the selling price.
+    // The form sends all its fields, so only what really changed counts: a value equal to the stored one (or empty equal to empty) passes.
+    let requestedSell;
     if (!canEditMoney(req.user)) {
       const num = (v) => (v === '' || v === null || v === undefined ? null : Number(v));
+      const editable = moneyEditable(req.user);
+      const byRequest = moneyByRequest(req.user);
       const changed = MONEY_FIELDS.filter((f) => f in data && num(data[f]) !== num(order[f]));
-      if (changed.length) {
+      const locked = changed.filter((f) => !editable.includes(f) && !byRequest.includes(f));
+      if (locked.length) {
         return res.status(403).json({
           message: 'أسعارُ الشحنة (البيع والشراء والسلفة وأجرة السائق) لا يعدّلها بعد الحفظ إلّا مديرُ النظام والإدارة ومديرُ التشغيل',
-          code: 'MONEY_LOCKED', fields: changed,
+          code: 'MONEY_LOCKED', fields: locked,
         });
       }
-      for (const f of MONEY_FIELDS) delete data[f];
+      if (changed.includes('sellPrice') && byRequest.includes('sellPrice')) requestedSell = data.sellPrice;
+      for (const f of MONEY_FIELDS) if (!editable.includes(f)) delete data[f];
     }
     try { applyPaymentSubtype(data); } catch (e) { return res.status(400).json({ message: e.message }); }
     const branchError = await require('../utils/branchList').applyBranchList(data, order);
@@ -897,9 +929,21 @@ exports.updateOrder = async (req, res) => {
     // the form only sends the currently-configured fields, so merge, don't replace.
     if (data.customFields) data.customFields = { ...(order.customFields || {}), ...data.customFields };
 
+    // Checked before saving so a bad price saves nothing.
+    if (requestedSell !== undefined) {
+      const v = requestedSell === '' || requestedSell === null ? 0 : Number(requestedSell);
+      if (!Number.isFinite(v) || v < 0) return res.status(400).json({ code: 'BAD_SELLING_VALUE', fields: ['sellPrice'], message: 'سعر البيع يجب أن يكون رقمًا لا يقلّ عن صفر.' });
+    }
+
     Object.assign(order, data);
     await order.save();
     await saveWaybillDetails(order, req.body.waybillDetails);
+    let sellingRequest = null;
+    if (requestedSell !== undefined) {
+      const r = await require('../services/sellingPriceRequests')
+        .createRequest({ order: order.toObject(), origin: 'shipment_order', raw: requestedSell, user: req.user });
+      if (r.request) sellingRequest = r.request;
+    }
     announceOrderChange(order._id);
     linkCustomsSoon(order._id);
 
@@ -911,6 +955,9 @@ exports.updateOrder = async (req, res) => {
           .syncShipmentsById([String(order.externalId)])
           .catch((e) => console.error('[shipment-orders] mirror after status:', e.message));
       });
+    }
+    if (sellingRequest) {
+      return res.json({ order, sellingRequest, sellingRequestMessage: require('../services/sellingPriceRequests').PENDING_MESSAGE });
     }
     res.json({ order });
   } catch (error) {

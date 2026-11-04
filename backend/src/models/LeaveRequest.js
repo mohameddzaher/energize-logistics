@@ -1,8 +1,7 @@
 const mongoose = require('mongoose');
 
-// A leave request follows an approval chain:
-// pending_manager, pending_hr, approved (or rejected/cancelled anywhere)
-// If the requester has no direct manager, it starts at pending_hr directly.
+// A leave request follows the chain in utils/leaveChain: pending_manager, pending_hr, pending_executive, approved
+// (or rejected/cancelled at any stage). Without a direct manager it starts at pending_hr.
 // Attachment: sick leave needs a report and exceptional leave a justifying paper. Sent over WhatsApp they got lost and could not be found months later. The attachment lives with the request, is backed up with it and stays downloadable from the employee file.
 const attachmentSchema = new mongoose.Schema({
   title: { type: String, trim: true, default: '' },
@@ -34,7 +33,12 @@ const leaveRequestSchema = new mongoose.Schema(
     employee: { type: mongoose.Schema.Types.ObjectId, ref: 'Employee', required: true },
     requester: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
     // Denormalised copy of requester.manager at creation time → fast team lookup.
+    // For a request a manager filed for his team, this is that manager.
     manager: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
+    // Filed by a manager on behalf of someone under him (utils/leaveTeam): his own stage is stamped approved at creation.
+    filedByManager: { type: Boolean, default: false },
+    filedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
+    filedByName: { type: String, default: '' },
 
     leaveType: { type: mongoose.Schema.Types.ObjectId, ref: 'LeaveType', required: true },
     leaveTypeCode: { type: String }, // snapshot for display/export
@@ -77,8 +81,8 @@ const leaveRequestSchema = new mongoose.Schema(
       by: { type: mongoose.Schema.Types.ObjectId, ref: 'User' }, byName: String, at: Date,
     },
 
-    // The approval chain has four stages: direct manager, HR, accounts, senior management. It was two stages, so money matters (an advance on the employee, or dues before travel) never reached accounts and senior management learned of travel after it happened.
-    // An ask for clarification is not a rejection: accounts may say a sum must be settled first and the employee replies or amends. When he replies the chain restarts from the beginning, since the request the manager approved is no longer the same request.
+    // Stages: direct manager, HR, top management ('finance' remains only for requests already held there).
+    // An ask for clarification is not a rejection; the owner's reply restarts the chain, since what was approved changed.
     status: {
       type: String,
       enum: [
@@ -92,6 +96,10 @@ const leaveRequestSchema = new mongoose.Schema(
       enum: ['manager', 'hr', 'finance', 'executive', 'employee', 'done'],
       default: 'manager',
     },
+
+    // HR's explicit choice at its stage: true = days come off the balance, false = leave without deduction.
+    // Null on older records, where the leave type decides (utils/leaveBalance.leaveDeducts).
+    deductsBalance: { type: Boolean, default: null },
 
     managerDecision: decisionSchema,
     hrDecision: decisionSchema,

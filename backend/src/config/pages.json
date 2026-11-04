@@ -20,6 +20,12 @@
       "en": "Live Company Activity"
     },
     {
+      "key": "/system/selling-requests",
+      "section": "Main",
+      "ar": "طلبات تعديل سعر البيع",
+      "en": "Selling-price requests"
+    },
+    {
       "key": "/system/executive",
       "section": "Main",
       "ar": "النظرة التنفيذية",

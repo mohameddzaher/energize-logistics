@@ -23,6 +23,7 @@ import {
 import ScrollX from '@/components/system/ScrollX';
 import TablePager, { readPageSize, savePageSize } from '@/components/system/TablePager';
 import InvoiceImportButton from '@/components/operations/InvoiceImportButton';
+import { SellingRequestsButton } from '@/components/operations/SellingPriceRequests';
 import WorkflowFilterBar, { type FilterBarField } from '@/components/operations/WorkflowFilterBar';
 import InvoiceCheckCards from '@/components/operations/InvoiceCheckCards';
 import CustomerNamePicker from '@/components/operations/CustomerNamePicker';
@@ -370,12 +371,14 @@ export default function OperationsWorkflowPage() {
   const [myFields, setMyFields] = useState<Set<string> | null>(null);
   // What this reader may see (server-decided), independent of what it may write.
   const [view, setView] = useState<{ amounts?: boolean; selling?: boolean }>({});
+  // Server-decided: whether this reader approves selling-price requests.
+  const [canApproveSelling, setCanApproveSelling] = useState(false);
   useEffect(() => {
     if (!role) return;
     let alive = true;
     // `myFields` is this reader's fields as computed by the server; it alone knows roles created from the permissions screen (no key in `roleAccess`). `roleAccess` stays as a fallback for an older server.
-    api.get<{ roleAccess: Record<string, string[]>; myFields?: string[]; view?: { amounts?: boolean; selling?: boolean } }>('/api/workflows/permissions')
-      .then((d) => { if (alive) { setMyFields(new Set(d?.myFields || d?.roleAccess?.[role] || [])); setView(d?.view || {}); } })
+    api.get<{ roleAccess: Record<string, string[]>; myFields?: string[]; view?: { amounts?: boolean; selling?: boolean }; canApproveSelling?: boolean }>('/api/workflows/permissions')
+      .then((d) => { if (alive) { setMyFields(new Set(d?.myFields || d?.roleAccess?.[role] || [])); setView(d?.view || {}); setCanApproveSelling(!!d?.canApproveSelling); } })
       // A failed read opens nothing: an empty set means no fields, so financial columns stay hidden until the answer is known.
       .catch(() => { if (alive) setMyFields(new Set()); });
     return () => { alive = false; };
@@ -691,6 +694,8 @@ export default function OperationsWorkflowPage() {
       const r = await putWithRetry(savedId, patch);
       // A server rejection is reported so the user does not assume it was saved.
       if (r && r.refusedMessage) setError(r.refusedMessage);
+      // Held for approval: the row keeps its old price, the user is told why.
+      if (r && (r as any).sellingRequestMessage) notify((r as any).sellingRequestMessage, 'info');
       // Selling value: report where it was written, the platform and here, or here only (a statement not from the platform).
       if (r && typeof (r as any).sellingPlatform === 'boolean') {
         notify((r as any).sellingPlatform
@@ -1071,6 +1076,7 @@ export default function OperationsWorkflowPage() {
           {T.title}
         </h1>
         <div className="flex items-center gap-2 flex-wrap">
+          {canApproveSelling && <SellingRequestsButton ar={lang === 'ar'} />}
           {canDelete && selectedCount > 0 && (
             <button type="button" onClick={handleBulkDelete} disabled={bulkDeleting} className="flex items-center gap-1.5 px-3 py-2 rounded-lg bg-red-600 hover:bg-red-700 text-white text-sm font-medium transition-colors disabled:opacity-50">
               {bulkDeleting ? <Loader2 className="w-4 h-4 animate-spin" /> : <Trash2 className="w-4 h-4" />} {T.deleteCount} ({selectedCount.toLocaleString('en-US')})

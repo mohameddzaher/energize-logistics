@@ -31,6 +31,7 @@ import { EmployeeFormModal } from '@/components/hr/EmployeeFormModal';
 import ContractFormModal from '@/components/hr/ContractFormModal';
 import DatePair from '@/components/hr/DatePair';
 import { LeaveReturnChip, LeaveReturnPanel } from '@/components/hr/LeaveReturn';
+import { DeductionBadge } from '@/components/hr/LeaveDeduction';
 import LeaveRecordModal from '@/components/hr/LeaveRecordModal';
 import { bothDates, bothDatesShort, gregCell, gregDay, hijriCell, pairLabels, exportDatePair } from '@/lib/hrDates';
 import { getHrEmployeesIdTranslations } from '@/lib/translations';
@@ -619,6 +620,7 @@ export default function EmployeeProfilePage() {
                     <div className="flex flex-col items-start gap-1">
                       <Badge style={LEAVE_STATUS[l.status]} lang={lang} />
                       <LeaveReturnChip leave={l} ar={ar} />
+                      <DeductionBadge leave={l} ar={ar} />
                     </div>
                   </Td>
                   <DateTds v={l.createdAt} />

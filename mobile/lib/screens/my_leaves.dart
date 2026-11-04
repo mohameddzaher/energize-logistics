@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:url_launcher/url_launcher.dart';
 import '../config.dart';
+import 'package:provider/provider.dart';
 import '../services/api.dart';
+import '../services/auth.dart';
 import '../services/hijri.dart';
 import '../services/lang.dart';
 import '../ui/app_scaffold.dart';
@@ -28,6 +30,8 @@ class _MyLeavesScreenState extends State<MyLeavesScreen> {
   // "My team's requests" tab for managers, as on the web
   bool _hasTeam = false;
   List<Map<String, dynamic>> _team = [];
+  // People this manager may file leave for (backend utils/leaveTeam); a filed request starts at HR.
+  List<Map<String, dynamic>> _members = [];
   int _tab = 0;
   int _seq = 0;
   late final void Function() _onLive;
@@ -38,6 +42,7 @@ class _MyLeavesScreenState extends State<MyLeavesScreen> {
     _load();
     Api.instance.get('/api/hr/me/team').then((d) {
       if (mounted) setState(() => _hasTeam = (d as Map)['hasTeam'] == true);
+      if (_hasTeam) _loadMembers();
     }).catchError((_) {});
     Api.instance.get('/api/hr/leave-types').then((d) {
       if (mounted) setState(() => _types = List<Map<String, dynamic>>.from(d['leaveTypes'] ?? []));
@@ -69,6 +74,30 @@ class _MyLeavesScreenState extends State<MyLeavesScreen> {
     } catch (e) {
       if (mounted) setState(() { _loading = false; _error = e.toString(); });
     }
+  }
+
+  Future<void> _loadMembers() async {
+    try {
+      final d = await Api.instance.get('/api/hr/team/leave-members');
+      if (mounted) setState(() => _members = List<Map<String, dynamic>>.from(((d as Map)['members'] as List? ?? const []).map((e) => Map<String, dynamic>.from(e as Map))));
+    } catch (_) { /* no team */ }
+  }
+
+  void _fileForTeam() {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.white,
+      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
+      builder: (c) => _NewLeaveSheet(types: _types, onDone: _load, members: _members),
+    );
+  }
+
+  String _empName(dynamic e) => e is Map ? '${e['arabicName'] ?? ''}'.trim().isNotEmpty ? '${e['arabicName']}' : '${e['firstName'] ?? ''} ${e['lastName'] ?? ''}'.trim() : '';
+  bool _filedByMe(Map l) {
+    final f = l['filedBy'];
+    final id = f is Map ? f['_id'] : f;
+    return id != null && '$id' == '${context.read<AuthProvider>().user?['_id'] ?? context.read<AuthProvider>().user?['id'] ?? ''}';
   }
 
   void _newRequest([Map<String, dynamic>? editing]) {
@@ -110,7 +139,7 @@ class _MyLeavesScreenState extends State<MyLeavesScreen> {
 
   // Web export columns: type, start and end in both calendars, days, status.
   List<ExportCol> _cols({bool team = false}) => [
-        if (team) ExportCol('الموظف', 'Employee', (r) => _userName(r['requester'])),
+        if (team) ExportCol('الموظف', 'Employee', (r) => _empName(r['employee']).isNotEmpty ? _empName(r['employee']) : _userName(r['requester'])),
         ExportCol('النوع', 'Type', (r) => _typeName(r['leaveType'])),
         ExportCol('تاريخ البداية الميلادي', 'Start date (Gregorian)', (r) => gregDay(r['startDate'])),
         ExportCol('تاريخ البداية الهجري', 'Start date (Hijri)', (r) => hijriDay(r['startDate'])),
@@ -128,7 +157,7 @@ class _MyLeavesScreenState extends State<MyLeavesScreen> {
       builder: (c) => AlertDialog(
         title: Text(tr('مراجعة طلب الفريق', 'Review team request')),
         content: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
-          Text('${tr('الموظف', 'Employee')}: ${_userName(l['requester'])}'),
+          Text('${tr('الموظف', 'Employee')}: ${_empName(l['employee']).isNotEmpty ? _empName(l['employee']) : _userName(l['requester'])}'),
           Text('${tr('النوع', 'Type')}: ${_typeName(l['leaveType'])}'),
           Text('${_d(l['startDate'])} ← ${_d(l['endDate'])} · ${l['days'] ?? '—'} ${tr('يوم', 'days')}'),
           if ('${l['reason'] ?? ''}'.isNotEmpty) Text('${l['reason']}', style: const TextStyle(color: T.inkSoft)),
@@ -147,19 +176,44 @@ class _MyLeavesScreenState extends State<MyLeavesScreen> {
   }
 
   Widget _teamList() {
-    if (_team.isEmpty) return EmptyState(icon: Icons.groups_outlined, title: tr('لا توجد طلبات من فريقك', 'No requests from your team'));
+    final file = _members.isEmpty ? const SizedBox.shrink() : Padding(
+      padding: const EdgeInsets.only(bottom: 10),
+      child: SizedBox(width: double.infinity, child: FilledButton.icon(
+        onPressed: _fileForTeam,
+        icon: const Icon(Icons.add_rounded, size: 18),
+        label: Text(tr('تقديم إجازة لأحد فريقي (${_members.length})', 'File leave for my team (${_members.length})')),
+      )),
+    );
+    if (_team.isEmpty) return Column(children: [file, EmptyState(icon: Icons.groups_outlined, title: tr('لا توجد طلبات من فريقك', 'No requests from your team'))]);
     return Column(children: [
+      file,
       for (final l in _team)
         Padding(
           padding: const EdgeInsets.only(bottom: 10),
           child: AppCard(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
             Row(children: [
-              Expanded(child: Text(_userName(l['requester']), style: const TextStyle(fontWeight: FontWeight.w800))),
+              Expanded(child: Text(_empName(l['employee']).isNotEmpty ? _empName(l['employee']) : _userName(l['requester']), style: const TextStyle(fontWeight: FontWeight.w800))),
               Chip2(_statusName(l['status']), leaveStatusOf(l['status']).$3),
             ]),
             Text('${_typeName(l['leaveType'])} · ${_d(l['startDate'])} ← ${_d(l['endDate'])} · ${l['days'] ?? '—'} ${tr('يوم', 'days')}', style: const TextStyle(fontSize: 12.5, color: T.inkSoft)),
-            if (l['status'] == 'pending_manager')
-              Align(alignment: AlignmentDirectional.centerEnd, child: TextButton(onPressed: () => _review(l), child: Text(tr('مراجعة', 'Review')))),
+            const SizedBox(height: 4),
+            LeaveDeductionBadge(leave: l),
+            Wrap(alignment: WrapAlignment.end, spacing: 4, children: [
+              if (l['status'] == 'pending_manager')
+                TextButton(onPressed: () => _review(l), child: Text(tr('مراجعة', 'Review'))),
+              // The manager who filed it answers questions on it and may withdraw it.
+              if (_filedByMe(l) && l['status'] == 'info_requested')
+                TextButton(onPressed: () => _reply(l), child: Text(tr('الردّ على الاستفسار', 'Reply'))),
+              if (_filedByMe(l) && leaveIsOpen(l['status']))
+                TextButton(
+                  onPressed: () async {
+                    if (!await _ask(tr('إلغاء هذا الطلب؟', 'Cancel this request?'))) return;
+                    try { await Api.instance.patch('/api/hr/me/leaves/${l['_id']}/cancel'); _load(); }
+                    catch (e) { if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.toString()))); }
+                  },
+                  child: Text(tr('إلغاء الطلب', 'Cancel'), style: const TextStyle(color: T.danger)),
+                ),
+            ]),
           ])),
         ),
     ]);
@@ -220,15 +274,18 @@ class _MyLeavesScreenState extends State<MyLeavesScreen> {
     );
     if (ok != true) return;
     try {
-      await Api.instance.post('/api/hr/me/leaves/${l['_id']}/reply', {
+      final r = await Api.instance.post('/api/hr/me/leaves/${l['_id']}/reply', {
         'text': text.text.trim(),
         if (file != null) 'attachment': file!.dataUrl,
         if (file != null) 'attachmentName': file!.fileName,
       });
+      // The filing manager's own reply keeps his approval, so it returns to HR.
+      final toHr = r is Map && r['leave'] is Map && r['leave']['currentStage'] == 'hr';
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-          content: Text(tr('أُرسل ردّك — عاد الطلبُ إلى مديرك المباشر.',
-                           'Your reply was sent — the request went back to your direct manager.')),
+          content: Text(toHr
+              ? tr('أُرسل ردّك — عاد الطلبُ إلى الموارد البشرية.', 'Your reply was sent — the request went back to HR.')
+              : tr('أُرسل ردّك — عاد الطلبُ إلى المدير المباشر.', 'Your reply was sent — the request went back to the direct manager.')),
         ));
       }
       _load();
@@ -358,6 +415,8 @@ class _MyLeavesScreenState extends State<MyLeavesScreen> {
                                   )),
                                   const SizedBox(height: 8),
                                   LeaveChainBar(leave: l),
+                                  const SizedBox(height: 4),
+                                  LeaveDeductionBadge(leave: l),
                                   const SizedBox(height: 8),
                                   LeaveThread(leave: l),
                                   // A stage asked instead of rejecting. The request returns to its owner to reply or add proof, and the reply restarts from the direct manager.
@@ -444,13 +503,16 @@ class _NewLeaveSheet extends StatefulWidget {
   final Future<void> Function() onDone;
   /// Existing request being edited (PUT /api/hr/me/leaves/:id); otherwise a new request.
   final Map<String, dynamic>? editing;
-  const _NewLeaveSheet({required this.types, required this.onDone, this.editing});
+  /// Set when a manager files for his team (POST /api/hr/team/leaves): an employee picker is shown.
+  final List<Map<String, dynamic>>? members;
+  const _NewLeaveSheet({required this.types, required this.onDone, this.editing, this.members});
   @override
   State<_NewLeaveSheet> createState() => _NewLeaveSheetState();
 }
 
 class _NewLeaveSheetState extends State<_NewLeaveSheet> {
   String _type = '';
+  String? _employee;
   DateTime? _start;
   DateTime? _end;
   final _reason = TextEditingController();
@@ -493,6 +555,7 @@ class _NewLeaveSheetState extends State<_NewLeaveSheet> {
 
   Future<void> _save() async {
     if (_type.isEmpty || _start == null || _end == null || _busy) return;
+    if (widget.members != null && _employee == null) return;
     if (_noticeViolated) {
       final min = _minStart;
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(tr(
@@ -511,7 +574,14 @@ class _NewLeaveSheetState extends State<_NewLeaveSheet> {
         'files': _files.map((f) => {'dataUrl': f.dataUrl, 'fileName': f.fileName, 'title': f.fileName}).toList(),
       };
       final l = widget.editing;
-      if (l != null) {
+      if (widget.members != null) {
+        body['employee'] = _employee!;
+        await Api.instance.post('/api/hr/team/leaves', body);
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(tr(
+            'قُدِّمت الإجازة — موافقتك مسجّلة، وهي الآن عند الموارد البشرية.', 'Leave filed — your approval is recorded; it is now with HR.'))));
+        }
+      } else if (l != null) {
         final keptIds = _kept.map((a) => '${a['_id']}').toSet();
         body['removeAttachments'] = [for (final a in (l['attachments'] as List? ?? const [])) if (!keptIds.contains('${(a as Map)['_id']}')) '${a['_id']}'];
         await Api.instance.put('/api/hr/me/leaves/${l['_id']}', body);
@@ -549,8 +619,29 @@ class _NewLeaveSheetState extends State<_NewLeaveSheet> {
         mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(widget.editing != null ? tr('تعديل الطلب', 'Edit request') : tr('طلب إجازة جديد', 'New leave request'), style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+          Text(widget.members != null
+              ? tr('تقديم إجازة لأحد فريقي', 'File leave for my team')
+              : widget.editing != null ? tr('تعديل الطلب', 'Edit request') : tr('طلب إجازة جديد', 'New leave request'),
+              style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
           const SizedBox(height: 14),
+          if (widget.members != null) ...[
+            Text(tr('تُسجَّل موافقتك كمديرٍ مباشر، ويذهب الطلب إلى الموارد البشرية ثم الإدارة العليا.',
+                    'Your manager approval is recorded; the request goes to HR, then top management.'),
+                style: const TextStyle(fontSize: 11.5, color: T.inkFaint)),
+            const SizedBox(height: 8),
+            DropdownButtonFormField<String>(
+              initialValue: _employee,
+              isExpanded: true,
+              decoration: InputDecoration(labelText: tr('الموظّف *', 'Employee *')),
+              items: widget.members!.map((m) {
+                final nm = '${m['arabicName'] ?? ''}'.trim().isNotEmpty ? '${m['arabicName']}' : '${m['firstName'] ?? ''} ${m['lastName'] ?? ''}'.trim();
+                final num = '${m['employeeNumber'] ?? ''}';
+                return DropdownMenuItem(value: '${m['_id']}', child: Text(num.isEmpty ? nm : '$nm · #$num', overflow: TextOverflow.ellipsis));
+              }).toList(),
+              onChanged: (v) => setState(() => _employee = v),
+            ),
+            const SizedBox(height: 10),
+          ],
           DropdownButtonFormField<String>(
             initialValue: _type.isEmpty ? null : _type,
             decoration: InputDecoration(labelText: tr('نوع الإجازة *', 'Leave type *')),

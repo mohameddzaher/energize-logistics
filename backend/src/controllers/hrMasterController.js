@@ -644,7 +644,7 @@ exports.overview = async (req, res) => {
     const Asset = require('../models/Asset');
     const empIds = employees.map((e) => e._id);
     const [pendingLeaves, openRequests, assignedAssets] = await Promise.all([
-      LeaveRequest.countDocuments({ employee: { $in: empIds }, status: { $in: ['pending_manager', 'pending_hr'] } }),
+      LeaveRequest.countDocuments({ employee: { $in: empIds }, status: { $in: require('../utils/leaveChain').OPEN_STATUSES } }),
       HRRequest.countDocuments({ employee: { $in: empIds }, status: { $in: ['open', 'in_progress'] } }),
       Asset.countDocuments({ employee: { $in: empIds }, status: 'assigned' }),
     ]);
@@ -1575,11 +1575,12 @@ exports.byDepartment = async (req, res) => {
     };
     const [assets, leaves, contracts] = await Promise.all([
       Asset.find({ status: 'assigned' }).select('employee').lean().catch(() => []),
-      LeaveRequest.find({ status: { $in: ['pending', 'approved'] } }).select('employee status').lean().catch(() => []),
+      LeaveRequest.find({ status: { $in: ['approved', ...require('../utils/leaveChain').OPEN_STATUSES] } }).select('employee status').lean().catch(() => []),
       Contract.find({ status: 'active' }).select('employee').lean().catch(() => []),
     ]);
     const custodyBy = tallyBy(assets, (a) => a.employee);
-    const leavePendingBy = tallyBy(leaves.filter((l) => l.status === 'pending'), (l) => l.employee);
+    // Open = waiting at any stage or on the employee's reply; 'pending' is not a status.
+    const leavePendingBy = tallyBy(leaves.filter((l) => l.status !== 'approved'), (l) => l.employee);
     const leaveApprovedBy = tallyBy(leaves.filter((l) => l.status === 'approved'), (l) => l.employee);
     const contractsBy = tallyBy(contracts, (c) => c.employee);
 

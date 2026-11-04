@@ -15,6 +15,7 @@ import { isHRStaff, empName, leaveTypeLabel, type LeaveRequest } from '@/lib/hr'
 import { Spinner, PageHeader, SearchInput, Modal } from '@/components/hr/HRKit';
 import { LeaveChainBar, LeaveThread } from '@/components/hr/LeaveChain';
 import { LeaveReturnChip, LeaveReturnPanel } from '@/components/hr/LeaveReturn';
+import { DeductionBadge } from '@/components/hr/LeaveDeduction';
 import LeaveRecordModal from '@/components/hr/LeaveRecordModal';
 import PeriodFilter from '@/components/system/PeriodFilter';
 import ScrollX from '@/components/system/ScrollX';
@@ -185,7 +186,7 @@ export default function LeaveRegisterPage() {
                 <td className="px-4 py-3 text-slate-700 tabular-nums whitespace-nowrap">{ymd(r.startDate)}</td>
                 <td className="px-4 py-3 text-slate-700 tabular-nums whitespace-nowrap">{ymd(r.endDate)}</td>
                 <td className="px-4 py-3 text-slate-700 tabular-nums">{r.days}</td>
-                <td className="px-4 py-3"><LeaveReturnChip leave={r} ar={ar} /></td>
+                <td className="px-4 py-3"><div className="flex flex-wrap items-center gap-1.5"><LeaveReturnChip leave={r} ar={ar} /><DeductionBadge leave={r} ar={ar} /></div></td>
                 <td className="px-4 py-3 text-slate-600 whitespace-nowrap text-xs">{sourceLabel(r.source)}</td>
                 <td className="px-4 py-3 text-slate-600 whitespace-nowrap text-xs">{r.approvedByName || '—'}{r.approvedAt ? ` · ${dt(r.approvedAt)}` : ''}</td>
                 <td className="px-4 py-3 text-slate-900 font-semibold tabular-nums">{bal(r)}</td>

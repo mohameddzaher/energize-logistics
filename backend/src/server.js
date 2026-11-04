@@ -215,6 +215,8 @@ app.use('/api/fleet-api', require('./routes/publicFleetApi'));
 
 app.use('/api/notifications', notificationRoutes);
 app.use('/api/nav-badges', require('./routes/navBadges'));
+// Selling-price change requests: approvers are checked in the controller, not by section.
+app.use('/api/selling-price-requests', require('./routes/sellingPriceRequests'));
 // Top management: its own gate (the flagged accounts and super admins), not a section in the permissions matrix.
 app.use('/api/top-management', require('./routes/topManagement'));
 // Section requests to HR: guarded in the controller, see the file header.

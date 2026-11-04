@@ -25,7 +25,7 @@ import {
   CheckCircle2, Info,
   KeySquare,
   Archive,
-  MonitorPlay, Clapperboard,
+  MonitorPlay, Clapperboard, BadgeDollarSign,
 } from 'lucide-react';
 import api from '@/lib/api';
 import { downloadExportJob } from '@/lib/backgroundExport';
@@ -246,6 +246,8 @@ function SystemLayoutInner({ children }: { children: React.ReactNode }) {
     { href: '/system/top-management', label: lang === 'ar' ? 'طلبات الإجازات' : 'Leave Requests', icon: <CalendarCheck className="w-5 h-5" />, roles: ['super_admin', 'admin'], section: 'Top Management', visible: (u: any) => u?.isTopManagement === true || ['super_admin', 'admin'].includes(u?.role) },
     { href: '/system/top-management/requests', label: lang === 'ar' ? 'طلبات الموظفين' : 'Staff Requests', icon: <MessageSquare className="w-5 h-5" />, roles: ['super_admin', 'admin'], section: 'Top Management', visible: (u: any) => u?.isTopManagement === true || ['super_admin', 'admin'].includes(u?.role) },
     { href: '/system/top-management/activity', label: lang === 'ar' ? 'نشاط الشركة المباشر' : 'Live Company Activity', icon: <Activity className="w-5 h-5" />, roles: ['super_admin', 'admin'], section: 'Top Management', visible: (u: any) => u?.isTopManagement === true || ['super_admin', 'admin'].includes(u?.role) },
+    // Selling-price approvals: the sales manager, top roles and flagged top-management accounts; the server checks again (config/sellingPriceRequests).
+    { href: '/system/selling-requests', label: lang === 'ar' ? 'طلبات تعديل سعر البيع' : 'Selling-price requests', icon: <BadgeDollarSign className="w-5 h-5" />, roles: ['super_admin', 'admin', 'sales_manager'], section: 'Main', visible: (u: any) => u?.isTopManagement === true || ['super_admin', 'admin', 'sales_manager'].includes(u?.role) },
     { href: '/system/executive', label: lang === 'ar' ? 'النظرة التنفيذية' : 'Executive Overview', icon: <Crown className="w-5 h-5" />, roles: ['super_admin', 'admin'], section: 'Main' },
     // Top-management plan to department managers; its dashboard is for the system admin only (a department manager finds the management plan inside their department).
     { href: '/system/management-jp', label: lang === 'ar' ? 'خطّة الإدارة (Management JP)' : 'Management JP', icon: <CalendarCheck className="w-5 h-5" />, roles: ['super_admin', 'admin'], section: 'Main', visible: (u) => jpTop(u) },
@@ -702,6 +704,7 @@ function SystemLayoutInner({ children }: { children: React.ReactNode }) {
   // Leave and staff-request counters follow each decision and new request.
   useSocket('hr:leave', badgesSoon);
   useSocket('hr:request', badgesSoon);
+  useSocket('sellingRequests:changed', badgesSoon);
 
   // Real-time notification updates
   useSocket('notification:new', useCallback(() => {

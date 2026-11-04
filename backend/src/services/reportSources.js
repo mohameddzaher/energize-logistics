@@ -1361,7 +1361,7 @@ async function buildEmployeeReport(id, query, lang) {
   const Asset = require('../models/Asset');
   const VehicleAuthorization = require('../models/VehicleAuthorization');
   const PerfEvaluation = require('../models/PerfEvaluation');
-  const { computeBalance } = require('../utils/leaveBalance');
+  const { computeBalance, leaveDeducts } = require('../utils/leaveBalance');
   const { from, to, fromKey, toKey } = resolvePeriod(query);
   const t = (ar, en) => T(ar, en, lang);
 
@@ -1384,8 +1384,9 @@ async function buildEmployeeReport(id, query, lang) {
   ]);
 
   const active = contracts.find((c) => c.status === 'active') || contracts[0] || null;
-  const takenAll = leaves.filter((l) => l.status === 'approved')
-    .reduce((s, l) => s + ((l.leaveType?.affectsBalance ?? true) ? (l.days || 0) : 0), 0);
+  // Same count as the employee file (hrController.computeEmployeeBalance): leave from the active contract's start on.
+  const takenAll = leaves.filter((l) => l.status === 'approved' && (!active?.startDate || String(l.startDate) >= String(active.startDate).slice(0, 10)))
+    .reduce((s, l) => s + (leaveDeducts(l) ? (l.days || 0) : 0), 0);
   // The balance is counted from the work start date, not the contract date; see utils/leaveBalance.
   const balance = active
     ? computeBalance(active, takenAll, new Date(), { workStartDate: e.actualWorkStartDate || '', contracts: contracts.length })

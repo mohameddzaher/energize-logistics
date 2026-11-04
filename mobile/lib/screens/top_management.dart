@@ -6,6 +6,7 @@ import '../services/hijri.dart';
 import '../services/lang.dart';
 import '../services/live.dart';
 import '../ui/app_scaffold.dart';
+import '../ui/leave_chain.dart';
 import '../ui/theme.dart';
 import '../ui/widgets.dart';
 
@@ -113,6 +114,7 @@ class _TopLeavesScreenState extends State<TopLeavesScreen> {
                     _decision(tr('المدير المباشر', 'Manager'), l['managerDecision']),
                     _decision(tr('الموارد البشرية', 'HR'), l['hrDecision']),
                     _decision(tr('الإدارة العليا', 'Top management'), l['executiveDecision']),
+                    LeaveDeductionBadge(leave: l),
                     if (l['status'] == 'pending_executive') Padding(padding: const EdgeInsets.only(top: 8), child: Row(children: [
                       Expanded(child: FilledButton.icon(
                         style: FilledButton.styleFrom(backgroundColor: T.success),

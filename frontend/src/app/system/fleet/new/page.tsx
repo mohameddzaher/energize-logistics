@@ -230,8 +230,11 @@ function CreateFleetShipmentInner() {
       if (customerId) payload.customer = customerId;
       else payload.newCustomer = { name: newCustomer.name.trim(), phone: newCustomer.phone.trim() };
 
-      if (editId) await api.put(`/api/fleet/shipments/${editId}`, payload);
-      else {
+      if (editId) {
+        const out = await api.put<{ sellingRequestMessage?: string }>(`/api/fleet/shipments/${editId}`, payload);
+        // A price change from the data team is held for approval.
+        if (out?.sellingRequestMessage) notify(out.sellingRequestMessage, 'info');
+      } else {
         const d = await api.post<{ shipment: any }>('/api/fleet/shipments', payload);
         notify(ar ? `تم إنشاء الحمولة — رقم أمر النقل ${d.shipment.waybillNumber}` : `Created — waybill ${d.shipment.waybillNumber}`, 'success');
       }

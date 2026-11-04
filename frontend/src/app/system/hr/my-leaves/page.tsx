@@ -9,11 +9,12 @@ import { CalendarDays, Plus, Check, X, XCircle, AlertTriangle, ShieldCheck, Penc
 import { LeaveRequest, LeaveType, LeaveBalance, LEAVE_STATUS, empName, userName, leaveTypeLabel, today, earliestStartDate, daysUntil } from '@/lib/hr';
 import DatePair from '@/components/hr/DatePair';
 import { bothPeriod, gregCell, hijriCell, pairLabels, exportDatePair } from '@/lib/hrDates';
-import { Spinner, PageHeader, PrimaryButton, Badge, Modal, Field, Select, TextArea, Tabs, StatCard, Pick, Loader2 } from '@/components/hr/HRKit';
+import { Spinner, PageHeader, PrimaryButton, Badge, Modal, Field, Select, TextArea, Tabs, StatCard, Pick, Loader2, SearchableSelect } from '@/components/hr/HRKit';
 import { getHrMyLeavesTranslations } from '@/lib/translations';
 import ExportMenu, { exportScopeLabels, type ExportColumn } from '@/components/ls2/ExportMenu';
 import FilePicker, { AttachmentList, type PickedFile } from '@/components/system/FilePicker';
 import { LeaveChainBar, LeaveThread } from '@/components/hr/LeaveChain';
+import { DeductionBadge } from '@/components/hr/LeaveDeduction';
 
 export default function MyLeavesPage() {
   const { confirm, notify } = useDialog();
@@ -44,6 +45,14 @@ export default function MyLeavesPage() {
   const [note, setNote] = useState('');
   const [busy, setBusy] = useState(false);
 
+  // A manager files leave for the people under him (backend utils/leaveTeam); it starts at HR.
+  const [members, setMembers] = useState<any[]>([]);
+  const [memberBalances, setMemberBalances] = useState<Record<string, number | null>>({});
+  const [teamFormOpen, setTeamFormOpen] = useState(false);
+  const [teamForm, setTeamForm] = useState({ employee: '', leaveType: '', startDate: '', endDate: '', reason: '' });
+  const [teamFiles, setTeamFiles] = useState<PickedFile[]>([]);
+  const [teamSaving, setTeamSaving] = useState(false);
+
   const load = useCallback(async () => {
     try {
       const [mine, team] = await Promise.all([
@@ -63,6 +72,29 @@ export default function MyLeavesPage() {
     api.get<{ leaveTypes: LeaveType[] }>('/api/hr/leave-types').then((d) => setTypes(d.leaveTypes || [])).catch(() => {});
     api.get<{ hasTeam: boolean }>('/api/hr/me/team').then((d) => setHasTeam(!!d.hasTeam)).catch(() => {});
   }, []);
+  const loadMembers = useCallback(() => {
+    api.get<{ members: any[]; balances: Record<string, number | null> }>('/api/hr/team/leave-members')
+      .then((d) => { setMembers(d.members || []); setMemberBalances(d.balances || {}); }).catch(() => {});
+  }, []);
+  useEffect(() => { if (hasTeam) loadMembers(); }, [hasTeam, loadMembers]);
+  useSocket('hr:leave', useCallback(() => { if (hasTeam) loadMembers(); }, [hasTeam, loadMembers]));
+
+  const teamType = types.find((t) => t._id === teamForm.leaveType) || null;
+  const teamMinStart = earliestStartDate(teamType);
+  const submitTeam = async () => {
+    if (!teamForm.employee || !teamForm.leaveType || !teamForm.startDate || !teamForm.endDate) return;
+    setTeamSaving(true);
+    try {
+      await api.post('/api/hr/team/leaves', { ...teamForm, files: teamFiles.map((f) => ({ dataUrl: f.dataUrl, fileName: f.fileName, title: f.title })) });
+      notify(ar ? 'قُدِّمت الإجازة — موافقتك مسجّلة، وهي الآن عند الموارد البشرية.' : 'Leave filed — your approval is recorded; it is now with HR.', 'success');
+      setTeamFormOpen(false);
+      setTeamForm({ employee: '', leaveType: '', startDate: '', endDate: '', reason: '' });
+      setTeamFiles([]);
+      load(); loadMembers();
+    } catch (e: any) { notify(e.message, 'error'); }
+    setTeamSaving(false);
+  };
+  const filedByMe = (l: LeaveRequest) => String((l.filedBy as any)?._id || l.filedBy || '') === String(user?._id || '');
 
   // Advance-notice policy: the picked type decides the earliest legal start date.
   const chosenType = types.find((t) => t._id === form.leaveType) || null;
@@ -143,12 +175,15 @@ export default function MyLeavesPage() {
     setBusy(true);
     try {
       const f = answerFiles[0];
-      await api.post(`/api/hr/me/leaves/${answering._id}/reply`, {
+      const r = await api.post<{ leave: LeaveRequest }>(`/api/hr/me/leaves/${answering._id}/reply`, {
         text: answer.trim(),
         attachment: f?.dataUrl, attachmentName: f?.fileName,
       });
       setAnswering(null); setAnswer(''); setAnswerFiles([]);
-      notify(ar ? 'أُرسل ردّك — عاد الطلبُ إلى مديرك المباشر.' : 'Your reply was sent — the request went back to your direct manager.', 'success');
+      // The filing manager's own reply keeps his approval, so it returns to HR, not to him.
+      notify(r?.leave?.currentStage === 'hr'
+        ? (ar ? 'أُرسل ردّك — عاد الطلبُ إلى الموارد البشرية.' : 'Your reply was sent — the request went back to HR.')
+        : (ar ? 'أُرسل ردّك — عاد الطلبُ إلى المدير المباشر.' : 'Your reply was sent — the request went back to the direct manager.'), 'success');
       load();
     } catch (e: any) { notify(e.message, 'error'); }
     setBusy(false);
@@ -175,7 +210,7 @@ export default function MyLeavesPage() {
     { header: tx.colStatus, key: 'status', transform: (v) => (LEAVE_STATUS[v] ? (ar ? LEAVE_STATUS[v].ar : LEAVE_STATUS[v].en) : v), width: 16 },
   ];
   const teamColumns: ExportColumn[] = [
-    { header: tx.colEmployee, key: 'requester', transform: (v) => userName(v), width: 22 },
+    { header: tx.colEmployee, key: 'employee', transform: (v) => empName(v, lang), width: 22 },
     { header: tx.colType, key: 'leaveType', transform: (v) => leaveTypeLabel(v, lang), width: 20 },
     ...exportDatePair(FROM_LABEL, 'startDate', ar),
     ...exportDatePair(TO_LABEL, 'endDate', ar),
@@ -238,7 +273,7 @@ export default function MyLeavesPage() {
                     <Td className="text-slate-900">{leaveTypeLabel(l.leaveType, lang)}</Td>
                     <Td className="whitespace-nowrap tabular-nums">{gregCell(l.startDate)}</Td><Td className="whitespace-nowrap tabular-nums"><span dir="ltr">{hijriCell(l.startDate)}</span></Td><Td className="whitespace-nowrap tabular-nums">{gregCell(l.endDate)}</Td><Td className="whitespace-nowrap tabular-nums"><span dir="ltr">{hijriCell(l.endDate)}</span></Td><Td>{l.days}</Td>
                     <Td>
-                      <Badge style={LEAVE_STATUS[l.status]} lang={lang} />
+                      <span className="inline-flex flex-wrap items-center gap-1.5"><Badge style={LEAVE_STATUS[l.status]} lang={lang} /><DeductionBadge leave={l} ar={ar} /></span>
                       {l.status === 'info_requested' && lastQuestion(l) && (
                         <p className="mt-1 max-w-xs truncate text-[11px] text-orange-700" title={lastQuestion(l)?.text}>
                           {lastQuestion(l)?.text}
@@ -275,11 +310,16 @@ export default function MyLeavesPage() {
 
       {tab === 'team' && (
         <div className="space-y-3">
-        {teamLeaves.length > 0 && (
-          <div className="flex justify-end">
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          {members.length > 0 ? (
+            <PrimaryButton onClick={() => { setTeamForm({ employee: '', leaveType: '', startDate: '', endDate: '', reason: '' }); setTeamFiles([]); setTeamFormOpen(true); }}>
+              <Plus className="w-4 h-4" /> {ar ? `تقديم إجازة لأحد فريقي (${members.length})` : `File leave for my team (${members.length})`}
+            </PrimaryButton>
+          ) : <span />}
+          {teamLeaves.length > 0 && (
             <ExportMenu fileName="team-leaves" lang={ar ? 'ar' : 'en'} variant="subtle" label={ar ? 'تصدير Excel' : 'Export Excel'} options={teamExportOptions} />
-          </div>
-        )}
+          )}
+        </div>
         <Card>
           <table className="w-full text-sm">
             <thead className="bg-slate-900"><Tr head><Th>{tx.colEmployee}</Th><Th>{tx.colType}</Th><Th>{fromLabels[0]}</Th><Th>{fromLabels[1]}</Th><Th>{toLabels[0]}</Th><Th>{toLabels[1]}</Th><Th>{tx.colDays}</Th><Th>{tx.colStatus}</Th><Th end></Th></Tr></thead>
@@ -287,11 +327,25 @@ export default function MyLeavesPage() {
               {teamLeaves.length === 0 ? <tr><td colSpan={9} className="text-center text-slate-800 py-10">{tx.noTeamRequests}</td></tr> :
                 teamLeaves.map((l) => (
                   <Tr key={l._id}>
-                    <Td className="text-slate-900">{userName(l.requester)}</Td>
+                    <Td className="text-slate-900">{empName(l.employee, lang) || userName(l.requester)}</Td>
                     <Td>{leaveTypeLabel(l.leaveType, lang)}</Td>
                     <Td className="whitespace-nowrap tabular-nums">{gregCell(l.startDate)}</Td><Td className="whitespace-nowrap tabular-nums"><span dir="ltr">{hijriCell(l.startDate)}</span></Td><Td className="whitespace-nowrap tabular-nums">{gregCell(l.endDate)}</Td><Td className="whitespace-nowrap tabular-nums"><span dir="ltr">{hijriCell(l.endDate)}</span></Td><Td>{l.days}</Td>
-                    <Td><Badge style={LEAVE_STATUS[l.status]} lang={lang} /></Td>
-                    <Td end>{l.status === 'pending_manager' ? <button type="button" onClick={() => { setReview(l); setNote(''); }} className="text-[#f37121] hover:underline text-xs">{tx.review}</button> : null}</Td>
+                    <Td><span className="inline-flex flex-wrap items-center gap-1.5"><Badge style={LEAVE_STATUS[l.status]} lang={lang} /><DeductionBadge leave={l} ar={ar} /></span></Td>
+                    <Td end>
+                      <div className="flex items-center justify-end gap-2">
+                        {l.status === 'pending_manager' && <button type="button" onClick={() => { setReview(l); setNote(''); }} className="text-[#f37121] hover:underline text-xs">{tx.review}</button>}
+                        {filedByMe(l) && l.status === 'info_requested' && (
+                          <button type="button" onClick={() => { setAnswering(l); setAnswer(''); setAnswerFiles([]); }}
+                            className="flex items-center gap-1 rounded-lg bg-orange-500/20 px-2 py-1 text-[11px] font-semibold text-orange-700 hover:bg-orange-500/30">
+                            <HelpCircle className="w-3.5 h-3.5" />{ar ? 'الردّ على الاستفسار' : 'Reply'}
+                          </button>
+                        )}
+                        <button type="button" onClick={() => setDetail(l)} className="text-slate-400 hover:text-[#f37121]" title={ar ? 'مسار الطلب' : 'Request trail'}><Eye className="w-4 h-4" /></button>
+                        {filedByMe(l) && cancellable(l) && (
+                          <button type="button" onClick={() => cancel(l)} className="text-slate-500 hover:text-red-600" title={tx.cancel}><XCircle className="w-4 h-4" /></button>
+                        )}
+                      </div>
+                    </Td>
                   </Tr>
                 ))}
             </tbody>
@@ -441,6 +495,58 @@ export default function MyLeavesPage() {
             )}
           </div>
         )}
+      </Modal>
+
+      {/* File leave for someone under me: my approval is the filing, so it goes to HR. */}
+      <Modal open={teamFormOpen} onClose={() => setTeamFormOpen(false)} title={ar ? 'تقديم إجازة لأحد فريقي' : 'File leave for my team'}
+        footer={<>
+          <button type="button" onClick={() => setTeamFormOpen(false)} className="px-4 py-2 text-slate-500 hover:text-slate-900 text-sm">{tx.cancel}</button>
+          <PrimaryButton onClick={submitTeam} disabled={teamSaving || !teamForm.employee || !teamForm.leaveType || !teamForm.startDate || !teamForm.endDate}>
+            {teamSaving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Check className="w-4 h-4" />}{tx.submit}
+          </PrimaryButton>
+        </>}>
+        <div className="space-y-3">
+          <p className="rounded-lg border border-indigo-200 bg-indigo-50 p-2.5 text-xs text-indigo-800">
+            {ar ? 'تُسجَّل موافقتك كمديرٍ مباشر عند التقديم، ويذهب الطلب مباشرةً إلى الموارد البشرية ثم الإدارة العليا.'
+                : 'Your manager approval is recorded with the filing; the request goes straight to HR, then top management.'}
+          </p>
+          <Field label={ar ? 'الموظّف *' : 'Employee *'}>
+            <SearchableSelect value={teamForm.employee} onChange={(v) => setTeamForm((f) => ({ ...f, employee: v }))}
+              placeholder={ar ? '— اختر من فريقك —' : '— pick from your team —'} searchPlaceholder={ar ? 'ابحث بالاسم أو الرقم…' : 'name or number…'}
+              options={members.map((m) => {
+                const b = memberBalances[String(m._id)];
+                return {
+                  value: m._id,
+                  label: [empName(m, lang), m.employeeNumber ? `#${m.employeeNumber}` : '', m.department || '', typeof b === 'number' ? `${ar ? 'الرصيد' : 'balance'} ${b}` : ''].filter(Boolean).join(' · '),
+                };
+              })} />
+          </Field>
+          <Field label={tx.leaveTypeRequired}>
+            <Select value={teamForm.leaveType} onChange={(e) => {
+              const id = e.target.value;
+              const min = earliestStartDate(types.find((x) => x._id === id) || null);
+              setTeamForm((f) => ({ ...f, leaveType: id, startDate: f.startDate && f.startDate < min ? '' : f.startDate, endDate: f.startDate && f.startDate < min ? '' : f.endDate }));
+            }}>
+              <option value="">—</option>
+              {types.map((t) => (
+                <option key={t._id} value={t._id}>
+                  {ar ? t.nameAr : t.nameEn}
+                  {t.requiresAdvanceNotice === false ? (ar ? ' — بدون إخطار مسبق' : ' — no notice required') : ` — ${t.minAdvanceDays ?? 30}${ar ? ' يوم مقدّمًا' : 'd notice'}`}
+                </option>
+              ))}
+            </Select>
+          </Field>
+          <div className="grid grid-cols-2 gap-3">
+            <DatePair label={`${FROM_LABEL} *`} ar={ar} value={teamForm.startDate} min={teamMinStart} disabled={!teamForm.leaveType}
+              onChange={(v) => setTeamForm((f) => ({ ...f, startDate: v }))} />
+            <DatePair label={`${TO_LABEL} *`} ar={ar} value={teamForm.endDate} min={teamForm.startDate || teamMinStart} disabled={!teamForm.startDate}
+              onChange={(v) => setTeamForm((f) => ({ ...f, endDate: v }))} />
+          </div>
+          <Field label={tx.reasonNotes}><TextArea rows={2} value={teamForm.reason} onChange={(e) => setTeamForm((f) => ({ ...f, reason: e.target.value }))} /></Field>
+          <Field label={ar ? 'المرفقات (اختياري)' : 'Attachments (optional)'}>
+            <FilePicker files={teamFiles} onChange={setTeamFiles} max={5} />
+          </Field>
+        </div>
       </Modal>
 
       {/* Team review modal */}

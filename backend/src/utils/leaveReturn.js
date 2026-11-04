@@ -39,7 +39,8 @@ function emit(event, payload) {
 function bustHrCaches() {
   try {
     const cache = require('./ttlCache');
-    for (const p of ['hr:', 'hrm:', 'lt:', 'fleet:', 'b2c:']) cache.clear(p);
+    // 'dash:' too: the HR and section dashboards count who is on leave.
+    for (const p of ['hr:', 'hrm:', 'lt:', 'fleet:', 'b2c:', 'dash:']) cache.clear(p);
   } catch (_) { /* best effort */ }
 }
 

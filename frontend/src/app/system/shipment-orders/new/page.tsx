@@ -61,13 +61,16 @@ function CreateShipmentInner() {
   const params = useSearchParams();
   const editId = params?.get('id') || null;
   // Money after save is writable only for roles the server allows. On create the creator writes it; on edit it is locked except for system admins and the operations manager. The role list comes from the server (MONEY_EDIT_ROLES), not duplicated here.
-  const [moneyEdit, setMoneyEdit] = useState<{ fields: string[]; canEdit: boolean }>({ fields: [], canEdit: true });
+  // `editable` fields are written directly after save, `byRequest` ones go to approval (the data team's selling price).
+  const [moneyEdit, setMoneyEdit] = useState<{ fields: string[]; canEdit: boolean; editable: string[]; byRequest: string[] }>({ fields: [], canEdit: true, editable: [], byRequest: [] });
   useEffect(() => {
-    api.get<{ fields: string[]; canEdit: boolean }>('/api/shipment-orders/money-editors')
-      .then((d) => setMoneyEdit({ fields: d.fields || [], canEdit: !!d.canEdit }))
+    api.get<{ fields: string[]; canEdit: boolean; editable?: string[]; byRequest?: string[] }>('/api/shipment-orders/money-editors')
+      .then((d) => setMoneyEdit({ fields: d.fields || [], canEdit: !!d.canEdit, editable: d.editable || [], byRequest: d.byRequest || [] }))
       .catch(() => {});
   }, []);
-  const moneyLocked = (key: string) => !!editId && !moneyEdit.canEdit && moneyEdit.fields.includes(key);
+  const moneyLocked = (key: string) => !!editId && !moneyEdit.canEdit && moneyEdit.fields.includes(key)
+    && !moneyEdit.editable.includes(key) && !moneyEdit.byRequest.includes(key);
+  const moneyByRequest = (key: string) => !!editId && moneyEdit.byRequest.includes(key);
   const { notify } = useDialog();
 
   const [fields, setFields] = useState<FormField[]>([]);
@@ -469,7 +472,10 @@ function CreateShipmentInner() {
         else if (payload[k] != null) payload[k] = Number(payload[k]);
       });
 
-      if (editId) await api.put(`/api/shipment-orders/orders/${editId}`, payload);
+      if (editId) {
+        const out = await api.put<{ sellingRequestMessage?: string }>(`/api/shipment-orders/orders/${editId}`, payload);
+        if (out?.sellingRequestMessage) notify(out.sellingRequestMessage, 'info');
+      }
       else if (extras.length) {
         // Load on several trucks: the first row is a truck like the rest and is sent in the same list. Creating it alone and then sending the others could save the first while the second is rejected, leaving the user not knowing where it stopped.
         const truckOf = (sup: string, veh: string, plate: string, dn: string, dp: string, bl: string, cn: string) => ({
@@ -532,7 +538,11 @@ function CreateShipmentInner() {
     const label = fieldLabel(f, lang as Lang);
     const v = form[f.key] ?? '';
     const bad = miss(f.key);
-    const lab = <label className={bad ? labelMissCls : labelCls}>{label}{f.required && <span className="text-red-500"> *</span>}</label>;
+    const lab = (
+      <label className={bad ? labelMissCls : labelCls}>{label}{f.required && <span className="text-red-500"> *</span>}
+        {moneyByRequest(f.key) && <span className="ms-1.5 text-[11px] font-normal text-amber-700">{ar ? '(التعديل يُرسَل للاعتماد)' : '(change needs approval)'}</span>}
+      </label>
+    );
     // Payment method is read, not chosen. It follows the driver rental type (return means credit, forward means cash), so it is shown with its reason rather than as a field that could contradict the type.
     if (moneyLocked(f.key)) {
       return (

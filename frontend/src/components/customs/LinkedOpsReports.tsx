@@ -151,7 +151,7 @@ function ReportDetail({ r, access, clearanceId, ar, canOpenOps, userId, onSaved 
       const out = await api.put<any>(`/api/workflows/${r._id}`, payload);
       try { await api.post(`/api/workflows/${r._id}/unlock`); } catch { /* */ }
       setEditing(false);
-      setNote(out?.refusedMessage || t('حُفظ التعديل.', 'Saved.'));
+      setNote(out?.refusedMessage || out?.sellingRequestMessage || t('حُفظ التعديل.', 'Saved.'));
       onSaved();
     } catch (e: any) {
       // The server message is shown as is, e.g. the payment date cannot be recorded until a condition holds, or the manifest is cash.

@@ -256,10 +256,11 @@ export default function WorkflowDetailPage() {
       // Payment type is sent only if it changed: sending it as is would stamp it as a manual choice and remove it from the payment types page though nobody chose it.
       const payload: Record<string, any> = { ...formData };
       if (payload.paymentType === paymentKindOf(workflow as any)) delete payload.paymentType;
-      await api.put(`/api/workflows/${workflow._id}`, payload);
+      const out = await api.put<any>(`/api/workflows/${workflow._id}`, payload);
       try { await api.post(`/api/workflows/${workflow._id}/unlock`); } catch {}
       setEditing(false);
-      setSuccess(T.changesSavedSuccess);
+      // A selling-price edit held for approval is said so; the old price stays.
+      setSuccess(out?.sellingRequestMessage || T.changesSavedSuccess);
       setTimeout(() => setSuccess(''), 3000);
       fetchWorkflow();
     } catch (err: any) {

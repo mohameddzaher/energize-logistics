@@ -66,6 +66,9 @@ router.post('/me/requests', hr.createMyRequest);
 router.put('/me/requests/:id', hr.updateMyRequest);
 router.delete('/me/requests/:id', hr.deleteMyRequest);
 router.get('/team/leaves', hr.listTeamLeaves);
+// A manager files leave for someone under him (utils/leaveTeam); the controller checks the person is his.
+router.get('/team/leave-members', hr.listLeaveTeamMembers);
+router.post('/team/leaves', hr.createTeamLeave);
 
 // Approvals inbox: whoever holds a station in the chain reads what awaits them. No `authorize`: the controller builds the query from the reader's stations, so someone with none sees nothing. See utils/leaveChain.inboxFilter.
 router.get('/leaves/inbox', hr.listLeaveInbox);

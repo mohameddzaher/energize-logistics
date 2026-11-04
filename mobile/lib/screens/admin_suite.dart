@@ -791,7 +791,7 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
                       FilterChip(
                         selected: _unreadOnly,
                         onSelected: (_) { setState(() { _unreadOnly = !_unreadOnly; _loading = true; }); _load(); },
-                        label: Text('${tr('غير المقروءة', 'Unread')} ($_unread)'),
+                        label: Text('${tr('غير المقروءة', 'Unread')} (${_unread >= 100 ? '99+' : _unread})'),  // The server stops counting at 100.
                         labelStyle: TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: _unreadOnly ? Colors.white : T.orange),
                         selectedColor: T.orange,
                         backgroundColor: T.orange.withValues(alpha: 0.1),

@@ -470,7 +470,9 @@ exports.listOrders = async (req, res) => {
       const { arabicSearchRegex, westernDigits } = require('../utils/arabicSearch');
       const term = westernDigits(String(q).trim());
       const r = arabicSearchRegex(term);
-      const or = [
+      // The text fields are answered by the Atlas Search index (config/orderSearch) as an id list; when it cannot answer, the regex over the same fields is kept.
+      const textIds = await require('../config/orderSearch').ids(ShipmentOrder, term);
+      const or = textIds ? [{ _id: { $in: textIds } }] : [
         { customerName: r }, { driverName: r }, { driverPhone: r }, { fromCity: r }, { toCity: r },
         // The plate in its own field as well as in the vehicle name, so either finds it.
         { vehicleName: r }, { vehiclePlate: r }, { supplierName: r }, { agentName: r }, { notes: r },

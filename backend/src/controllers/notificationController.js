@@ -54,10 +54,11 @@ exports.getNotifications = async (req, res) => {
 
     const filter = unreadOnly === 'true' ? unreadFilter(uid, sections) : mineFilter(uid, sections);
     const skip = (Number(page) - 1) * Number(limit);
+    // The counts stop at a cap: the bell shows '9+' and the list pages through tens, while an exact count over ~20k section rows (each fetched to test readBy) cost ~180 ms per refresh.
     const [rows, total, unreadCount] = await Promise.all([
       Notification.find(filter).sort({ createdAt: -1 }).skip(skip).limit(Number(limit)).lean(),
-      Notification.countDocuments(filter),
-      Notification.countDocuments(unreadFilter(uid, sections)),
+      Notification.countDocuments(filter, { limit: 1000 }),
+      Notification.countDocuments(unreadFilter(uid, sections), { limit: 100 }),
     ]);
 
     // The screen reads a single `isRead` whatever the notification type, so it is derived from `readBy` for section ones instead of teaching the screen the difference.

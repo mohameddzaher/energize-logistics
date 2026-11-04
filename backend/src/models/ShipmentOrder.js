@@ -139,6 +139,8 @@ shipmentOrderSchema.index({ source: 1, createdAt: -1 });
 shipmentOrderSchema.index({ 'customsLink.clearance': 1 }, { partialFilterExpression: { 'customsLink.clearance': { $type: 'objectId' } } });
 
 shipmentOrderSchema.index({ fromCity: 1, toCity: 1 });
+// Status counts per branch (page cards, nav badges) are answered from the index alone.
+shipmentOrderSchema.index({ branch: 1, status: 1 });
 
 // The waybill counter lives in its own tiny collection so the number survives
 // deletes: a voided shipment must not free its number for someone else.

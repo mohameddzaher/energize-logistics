@@ -212,6 +212,8 @@ operationsWorkflowSchema.index({ collectedByWallet: 1 }, { partialFilterExpressi
 operationsWorkflowSchema.index({ invoiceNumber: 1, invoiceDate: -1 });
 // Exact search by voucher number (primeRelatedSearch) must not scan.
 operationsWorkflowSchema.index({ documentNumber: 1 });
+// The platform payment-type sync reads reports changed since its last run (shipmentOrderWorkflowLink.syncPlatformPayment).
+operationsWorkflowSchema.index({ externalSource: 1, updatedAt: 1 });
 // Number search (buildWorkflowFilter) is a contains-match over these codes and phones. With every $or branch indexed the planner scans the small index keys and fetches only matching reports; with one branch unindexed it read all ~40k reports per query.
 for (const f of ['carNumber', 'plateNumber', 'loadNumber', 'reference', 'invoiceRef', 'customsLink.refNumber', 'customsLink.blNumber', 'customsLink.containersText', 'driverPhone', 'userPhone', 'ownerPhone', 'driverName',
   // Text search adds the name and place fields (NAME_FIELDS); carOwner and branch already have their own index.

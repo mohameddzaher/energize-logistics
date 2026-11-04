@@ -59,6 +59,8 @@ const shipmentOrderVehicleSchema = new mongoose.Schema(
 );
 
 shipmentOrderVehicleSchema.index({ plate: 1 });
+// Active vehicles per supplier, counted on every suppliers screen, from the index alone.
+shipmentOrderVehicleSchema.index({ supplier: 1, isActive: 1 });
 
 // Derived on every save, not only on import.
 // A truck added from the screen without a key is not found when its waybill prints and nothing says why: the boxes just come out empty. `updateOne`/`findOneAndUpdate` are covered too, so a plate edit from any path re-derives the key.

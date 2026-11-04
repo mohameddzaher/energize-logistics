@@ -29,5 +29,7 @@ b2cDailyOrderSchema.index({ rep: 1, dateKey: 1 }, { unique: true });
 b2cDailyOrderSchema.index({ project: 1, dateKey: 1 });
 b2cDailyOrderSchema.index({ branch: 1, dateKey: 1 });
 b2cDailyOrderSchema.index({ year: 1, month: 1 });
+// The sheets' month stamps (last update per month) read only these two fields, so the index answers without fetching 54k orders.
+b2cDailyOrderSchema.index({ dateKey: 1, updatedAt: 1 });
 
 module.exports = mongoose.model('B2CDailyOrder', b2cDailyOrderSchema);

@@ -772,19 +772,7 @@ const pendingAsOfDate = (query) => {
 const WHOLE = '\u0000whole';
 const TEXT_ID_CAP = 15000;
 async function textSearchIds(term, scope) {
-  const stage = require('../config/workflowSearch').searchStage(term, { namesOnly: scope === 'names' });
-  if (!stage) return null;
-  try {
-    const rows = await OperationsWorkflow.aggregate([
-      stage,
-      { $limit: TEXT_ID_CAP + 1 },
-      { $project: { _id: 1 } },
-    ]);
-    return rows.length > TEXT_ID_CAP ? null : rows.map((r) => r._id);
-  } catch (e) {
-    if (!textSearchIds.warned) { textSearchIds.warned = true; console.warn('[workflow search] Atlas Search unavailable, using regex:', e.message); }
-    return null;
-  }
+  return require('../config/workflowSearch').ids(OperationsWorkflow, term, { namesOnly: scope === 'names', cap: TEXT_ID_CAP });
 }
 
 /** A number belonging to one of the report owners. Called before buildWorkflowFilter (which is synchronous): each number of six or more digits in the search is translated to its owners in the registers (a driver's residence number to name and phone, a truck chassis to its plate) and attached to req.query._related as a non-enumerable property, so it does not appear in any copy or export of the query. */

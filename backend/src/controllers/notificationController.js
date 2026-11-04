@@ -22,10 +22,15 @@ const scopeOf = async (user) => {
 };
 const sectionsOf = scopeOf;
 
-/** Section rows this reader sees; their own actions are not shown to them. */
+/**
+ * Section rows this reader sees (their own actions are not shown to them), from the last SECTION_WINDOW_DAYS.
+ * Section rows are written for every action across the company, so without a date bound the unread count of a super admin read every one of them on each bell refresh (Atlas query targeting ~18,000 examined per count). The bound lets the { section, createdAt } index answer it.
+ */
+const SECTION_WINDOW_DAYS = 60;
 const sectionClause = (userId, scope) => {
-  if (scope.all) return [{ section: { $ne: null }, actor: { $ne: userId } }];
-  return scope.sections.length ? [{ section: { $in: scope.sections }, actor: { $ne: userId } }] : [];
+  const recent = { $gte: new Date(Date.now() - SECTION_WINDOW_DAYS * 86400000) };
+  if (scope.all) return [{ section: { $type: 'string' }, createdAt: recent, actor: { $ne: userId } }];
+  return scope.sections.length ? [{ section: { $in: scope.sections }, createdAt: recent, actor: { $ne: userId } }] : [];
 };
 
 /** Concerns-me condition: addressed to me, or to a section I manage. */

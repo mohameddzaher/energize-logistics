@@ -58,6 +58,8 @@ notificationSchema.pre('validate', function requireAudience(next) {
 });
 
 notificationSchema.index({ recipient: 1, isRead: 1 });
+// The bell lists a reader's own rows newest first; without it the sort walked every notification.
+notificationSchema.index({ recipient: 1, createdAt: -1 });
 notificationSchema.index({ section: 1, createdAt: -1 });
 notificationSchema.index({ createdAt: -1 });
 

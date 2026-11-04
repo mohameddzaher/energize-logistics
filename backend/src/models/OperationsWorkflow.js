@@ -208,6 +208,8 @@ operationsWorkflowSchema.index({ username: 1, paymentType: 1 });
 // Wallet-written collections are queried on every match; they are few among tens of thousands.
 operationsWorkflowSchema.index({ collectedByWallet: 1 }, { partialFilterExpression: { collectedByWallet: true } });
 operationsWorkflowSchema.index({ invoiceNumber: 1, invoiceDate: -1 });
+// Exact search by voucher number (primeRelatedSearch) must not scan.
+operationsWorkflowSchema.index({ documentNumber: 1 });
 // Reports of a customs transaction; few among tens of thousands, so the index is partial.
 operationsWorkflowSchema.index({ 'customsLink.clearance': 1 }, { partialFilterExpression: { 'customsLink.clearance': { $type: 'objectId' } } });
 

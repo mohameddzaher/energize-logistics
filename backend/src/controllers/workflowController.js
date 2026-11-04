@@ -740,6 +740,8 @@ const pendingAsOfMatch = (asOf) => ({
 const AS_OF_START = '2026-01-01';
 const asOfQuery = (query) => {
   const q = { ...(query || {}) };
+  // The search hints are non-enumerable (kept out of exports), so a spread drops them; carry them over.
+  for (const k of ['_related', '_exactId']) if (query && query[k]) Object.defineProperty(q, k, { value: query[k], enumerable: false });
   if (q.dateTo && (!q.dateFrom || q.dateFrom === q.dateTo)) q.dateFrom = AS_OF_START;
   return q;
 };
@@ -761,6 +763,14 @@ async function primeRelatedSearch(req, res, next) {
       const map = {};
       for (const d of nums) map[d] = await relatedClauses(d, RELATED_FIELDS); // eslint-disable-line no-await-in-loop
       Object.defineProperty(req.query, '_related', { value: map, enumerable: false, configurable: true });
+    }
+    // A single number that is exactly a report or document number is answered from those indexes alone. Invoice numbers are left out: readers without money rights do not search them, so a hit there would hide what they can find.
+    // As a contains-match over eight code fields it scanned every report (~40k) for each of the eight queries a search fires (table, count, stat cards): the heaviest load on the database in Atlas query stats.
+    const tokens = westernDigits(raw).trim().split(/\s+/).filter(Boolean);
+    const bare = tokens.length === 1 && /^[\d\s+()\-]+$/.test(tokens[0]) ? tokens[0].replace(/\D/g, '') : '';
+    if (bare) {
+      const hit = await OperationsWorkflow.exists({ $or: [{ reportNumber: bare }, { documentNumber: bare }] });
+      if (hit) Object.defineProperty(req.query, '_exactId', { value: bare, enumerable: false, configurable: true });
     }
   } catch (e) { console.error('related search:', e.message); }
   next();
@@ -853,6 +863,9 @@ function buildWorkflowFilter(queryIn, skipField, allowMoney = true, allowSelling
       const bare = tk.replace(/\D/g, '');
       const numeric = /^[\d\s+()\-]+$/.test(tk) && bare.length > 0;
       const rx = arabicSearchRegex(tk);
+      if (numeric && query && query._exactId === bare) {
+        return ID_EXACT.map((f) => ({ [f]: bare }));  // reportNumber / documentNumber (and invoiceNumber for money readers), all indexed
+      }
       if (numeric) {
         const rxBare = new RegExp(bare.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'));
         const tail = bare.length > 9 ? bare.slice(-9) : bare;

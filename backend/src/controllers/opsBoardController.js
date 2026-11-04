@@ -30,6 +30,7 @@ function cleanQuery(q) {
     out[k] = v;
   }
   if (q && q._related) Object.defineProperty(out, '_related', { value: q._related, enumerable: false });
+  if (q && q._exactId) Object.defineProperty(out, '_exactId', { value: q._exactId, enumerable: false });
   return out;
 }
 

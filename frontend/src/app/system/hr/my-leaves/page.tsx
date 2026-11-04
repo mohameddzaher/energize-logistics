@@ -5,8 +5,9 @@ import { useAuth } from '@/context/AuthContext';
 import { useLanguage } from '@/context/LanguageContext';
 import { useSocket } from '@/hooks/useSocket';
 import api from '@/lib/api';
-import { CalendarDays, Plus, Check, X, XCircle, AlertTriangle, ShieldCheck, Pencil, Trash2, HelpCircle, Eye, Send } from 'lucide-react';
-import { LeaveRequest, LeaveType, LeaveBalance, LEAVE_STATUS, empName, userName, leaveTypeLabel, today, earliestStartDate, daysUntil } from '@/lib/hr';
+import { CalendarDays, Plus, Check, X, XCircle, AlertTriangle, ShieldCheck, Pencil, Trash2, HelpCircle, Eye, Send, FileDown } from 'lucide-react';
+import { downloadLeaveSheet } from '@/lib/leavePdf';
+import { LeaveRequest, LeaveType, LeaveBalance, LEAVE_STATUS, empName, userName, leaveTypeLabel, today, earliestStartDate, daysUntil, LEAVE_OPEN, leaveUntouched } from '@/lib/hr';
 import DatePair from '@/components/hr/DatePair';
 import { bothPeriod, gregCell, hijriCell, pairLabels, exportDatePair } from '@/lib/hrDates';
 import { Spinner, PageHeader, PrimaryButton, Badge, Modal, Field, Select, TextArea, Tabs, StatCard, Pick, Loader2, SearchableSelect } from '@/components/hr/HRKit';
@@ -86,7 +87,7 @@ export default function MyLeavesPage() {
     setTeamSaving(true);
     try {
       await api.post('/api/hr/team/leaves', { ...teamForm, files: teamFiles.map((f) => ({ dataUrl: f.dataUrl, fileName: f.fileName, title: f.title })) });
-      notify(ar ? 'قُدِّمت الإجازة — موافقتك مسجّلة، وهي الآن عند الموارد البشرية.' : 'Leave filed — your approval is recorded; it is now with HR.', 'success');
+      notify(ar ? 'قُدِّمت الإجازة — موافقتك وتوقيعك مسجّلان، وهي الآن عند الإدارة المالية.' : 'Leave filed — your approval and signature are recorded; it is now with Finance.', 'success');
       setTeamFormOpen(false);
       setTeamForm({ employee: '', leaveType: '', startDate: '', endDate: '', reason: '' });
       setTeamFiles([]);
@@ -104,11 +105,16 @@ export default function MyLeavesPage() {
 
   // While pending, it belongs to its owner. The employee may get a date wrong, and the only fix was to cancel and rewrite, so the manager saw two requests. The door closes as soon as any decision is made: approving one date and then changing it would approve one thing and approve another.
   const [editing, setEditing] = useState<LeaveRequest | null>(null);
-  const editable = (l: LeaveRequest) =>
-    ['pending_manager', 'pending_hr'].includes(l.status) && !l.managerDecision?.at && !l.hrDecision?.at;
+  const editable = (l: LeaveRequest) => leaveUntouched(l);
+  const [sheetBusy, setSheetBusy] = useState('');
+  const sheet = async (id: string) => {
+    setSheetBusy(id);
+    try { await downloadLeaveSheet(id); } catch (e: any) { notify(e?.message || (ar ? 'تعذّر التحميل' : 'Could not download'), 'error'); }
+    setSheetBusy('');
+  };
   // Cancel is available while the request is not closed, at any stage or returned for reply.
   const cancellable = (l: LeaveRequest) =>
-    ['pending_manager', 'pending_hr', 'pending_finance', 'pending_executive', 'info_requested'].includes(l.status);
+    LEAVE_OPEN.includes(l.status);
 
   const openEdit = (l: LeaveRequest) => {
     setEditing(l);
@@ -295,6 +301,9 @@ export default function MyLeavesPage() {
                           </button>
                         )}
                         <button type="button" onClick={() => setDetail(l)} className="text-slate-400 hover:text-[#f37121]" title={ar ? 'مسار الطلب' : 'Request trail'}><Eye className="w-4 h-4" /></button>
+                        <button type="button" onClick={() => sheet(l._id)} disabled={sheetBusy === l._id} className="text-slate-400 hover:text-[#f37121] disabled:opacity-50" title={ar ? 'ورقة الإجازة PDF' : 'Leave sheet PDF'}>
+                          {sheetBusy === l._id ? <Loader2 className="w-4 h-4 animate-spin" /> : <FileDown className="w-4 h-4" />}
+                        </button>
                         {cancellable(l) && (
                           <button type="button" onClick={() => cancel(l)} className="text-slate-500 hover:text-red-600" title={tx.cancel}><XCircle className="w-4 h-4" /></button>
                         )}
@@ -341,6 +350,9 @@ export default function MyLeavesPage() {
                           </button>
                         )}
                         <button type="button" onClick={() => setDetail(l)} className="text-slate-400 hover:text-[#f37121]" title={ar ? 'مسار الطلب' : 'Request trail'}><Eye className="w-4 h-4" /></button>
+                        <button type="button" onClick={() => sheet(l._id)} disabled={sheetBusy === l._id} className="text-slate-400 hover:text-[#f37121] disabled:opacity-50" title={ar ? 'ورقة الإجازة PDF' : 'Leave sheet PDF'}>
+                          {sheetBusy === l._id ? <Loader2 className="w-4 h-4 animate-spin" /> : <FileDown className="w-4 h-4" />}
+                        </button>
                         {filedByMe(l) && cancellable(l) && (
                           <button type="button" onClick={() => cancel(l)} className="text-slate-500 hover:text-red-600" title={tx.cancel}><XCircle className="w-4 h-4" /></button>
                         )}
@@ -507,8 +519,8 @@ export default function MyLeavesPage() {
         </>}>
         <div className="space-y-3">
           <p className="rounded-lg border border-indigo-200 bg-indigo-50 p-2.5 text-xs text-indigo-800">
-            {ar ? 'تُسجَّل موافقتك كمديرٍ مباشر عند التقديم، ويذهب الطلب مباشرةً إلى الموارد البشرية ثم الإدارة العليا.'
-                : 'Your manager approval is recorded with the filing; the request goes straight to HR, then top management.'}
+            {ar ? 'تُسجَّل موافقتك كمديرٍ مباشر عند التقديم ويوضع توقيعك مكان الموظف ومكانك، ثم يمرّ الطلب على الإدارة المالية ثم الموارد البشرية ثم الإدارة العليا ثم رئيس مجلس الإدارة.'
+                : 'Your manager approval is recorded with the filing and your signature goes in the employee box and yours; the request then goes to Finance, HR, top management and the chairman.'}
           </p>
           <Field label={ar ? 'الموظّف *' : 'Employee *'}>
             <SearchableSelect value={teamForm.employee} onChange={(v) => setTeamForm((f) => ({ ...f, employee: v }))}

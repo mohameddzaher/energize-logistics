@@ -169,6 +169,7 @@ export default function UsersPage() {
     remoteAccess: [] as string[],
     linkedEmployee: '',
     isTopManagement: false,
+    isChairman: false,
     // 'employee' = one of our people; 'customer'/'vendor' = an outside partner
     // whose login opens the portal instead of the system.
     accountType: 'employee' as 'employee' | 'customer' | 'vendor',
@@ -314,7 +315,7 @@ export default function UsersPage() {
 
   // CREATE
   const openCreateModal = async () => {
-    setFormData({ email: '', password: '', firstName: '', lastName: '', role: 'employee', linkedCustomer: '', assignedCustomers: [], branch: '', assignedProjects: [], assignedBranches: [], shipmentBranches: [], manager: '', remoteAccess: REMOTE_PAGE_OPTIONS.map((p) => p.key), linkedEmployee: '', isTopManagement: false, accountType: 'employee', partnerSource: '', partnerRefId: '' });
+    setFormData({ email: '', password: '', firstName: '', lastName: '', role: 'employee', linkedCustomer: '', assignedCustomers: [], branch: '', assignedProjects: [], assignedBranches: [], shipmentBranches: [], manager: '', remoteAccess: REMOTE_PAGE_OPTIONS.map((p) => p.key), linkedEmployee: '', isTopManagement: false, isChairman: false, accountType: 'employee', partnerSource: '', partnerRefId: '' });
     setPartnerLabel(''); setPartnerQuery(''); setPartners([]);
     setEmpSearch(''); setEmpResults([]); setLinkedEmployeeLabel('');
     setFormError('');
@@ -400,6 +401,7 @@ export default function UsersPage() {
       remoteAccess: u.remoteAccess && u.remoteAccess.length ? u.remoteAccess : REMOTE_PAGE_OPTIONS.map((p) => p.key),
       linkedEmployee: u.linkedEmployee?._id || '',
       isTopManagement: !!(u as any).isTopManagement,
+      isChairman: !!(u as any).isChairman,
       accountType: u.accountType || (u.role === 'client' ? 'customer' : 'employee'),
       partnerSource: u.partner?.source || (u.role === 'client' && u.linkedCustomer ? 'customer' : ''),
       partnerRefId: u.partner?.refId || (u.role === 'client' && u.linkedCustomer ? u.linkedCustomer._id : ''),
@@ -466,6 +468,7 @@ export default function UsersPage() {
       // HR: link/unlink this login to an employee profile.
       payload.linkedEmployee = formData.linkedEmployee || null;
       payload.isTopManagement = !!formData.isTopManagement;
+      if (currentUser?.role === 'super_admin') payload.isChairman = !!formData.isChairman;
       await api.put(`/api/users/${selectedUser._id}`, payload);
       setShowEditModal(false);
       setSelectedUser(null);
@@ -961,13 +964,23 @@ export default function UsersPage() {
         </div>
       )}
 
-      {/* Top management signs the last leave stage and opens its own section; it keeps the account's role and permissions. */}
+      {/* Top management signs its leave stage (after HR, before the chairman) and opens its own section; it keeps the account's role and permissions. */}
       {selectedUser && formData.role !== 'client' && (
         <label className="flex items-center gap-2 px-3 py-2.5 rounded-lg border border-slate-200 bg-slate-50 cursor-pointer">
           <input type="checkbox" className="w-4 h-4 accent-[#f37121]" checked={!!formData.isTopManagement}
             onChange={(e) => setFormData({ ...formData, isTopManagement: e.target.checked })} />
           <span className="text-sm font-semibold text-slate-800">{lang === 'ar' ? 'الإدارة العليا' : 'Top management'}</span>
-          <span className="text-xs text-slate-500">{lang === 'ar' ? '— آخر موافقة على الإجازات، وقسم الإدارة العليا' : '— last leave approval and the top management section'}</span>
+          <span className="text-xs text-slate-500">{lang === 'ar' ? '— موافقة الإدارة العليا على الإجازات (بعد الموارد البشرية)، وقسم الإدارة العليا' : '— top management leave approval (after HR) and its section'}</span>
+        </label>
+      )}
+
+      {/* The chairman is a super admin account with the final leave stage; only a super admin can tick it, and ticking it makes the account super admin. */}
+      {selectedUser && formData.role !== 'client' && currentUser?.role === 'super_admin' && (
+        <label className="flex items-center gap-2 px-3 py-2.5 rounded-lg border border-slate-200 bg-slate-50 cursor-pointer">
+          <input type="checkbox" className="w-4 h-4 accent-[#f37121]" checked={!!formData.isChairman}
+            onChange={(e) => setFormData({ ...formData, isChairman: e.target.checked, ...(e.target.checked ? { role: 'super_admin' } : {}) })} />
+          <span className="text-sm font-semibold text-slate-800">{lang === 'ar' ? 'رئيس مجلس الإدارة' : 'Chairman of the board'}</span>
+          <span className="text-xs text-slate-500">{lang === 'ar' ? '— نفس صلاحيات السوبر أدمن، والاعتماد النهائي للإجازات' : '— super admin permissions and the final leave approval'}</span>
         </label>
       )}
 

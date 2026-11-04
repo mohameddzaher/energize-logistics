@@ -106,7 +106,7 @@ export function earliestStartDate(t?: LeaveType | null): string {
 
 export interface LeaveBalance { entitlement: number; daysElapsed: number; accrued: number; taken: number; available: number; }
 
-export type LeaveStage = 'manager' | 'hr' | 'finance' | 'executive';
+export type LeaveStage = 'manager' | 'finance' | 'hr' | 'executive' | 'chairman';
 
 export interface LeaveDecision { by?: any; at?: string; decision?: string; note?: string }
 
@@ -119,22 +119,31 @@ export interface LeaveThreadEntry {
 /** Chain stages in order; the progress bar on every page is drawn from this, so the order is not repeated in four places where two could diverge. */
 export const LEAVE_STAGES: { key: LeaveStage; ar: string; en: string; decision: keyof LeaveRequest }[] = [
   { key: 'manager', ar: 'المدير المباشر', en: 'Direct Manager', decision: 'managerDecision' },
+  { key: 'finance', ar: 'الإدارة المالية', en: 'Finance', decision: 'financeDecision' },
   { key: 'hr', ar: 'الموارد البشرية', en: 'HR', decision: 'hrDecision' },
-  { key: 'executive', ar: 'الإدارة العليا', en: 'Executive', decision: 'executiveDecision' },
+  { key: 'executive', ar: 'الإدارة العليا', en: 'Top Management', decision: 'executiveDecision' },
+  { key: 'chairman', ar: 'رئيس مجلس الإدارة', en: 'Chairman', decision: 'chairmanDecision' },
 ];
+
+/** Statuses waiting at a stage, and the open set (waiting, or returned to the owner); mirrors utils/leaveChain on the server. */
+export const LEAVE_PENDING: string[] = LEAVE_STAGES.map((s) => `pending_${s.key}`);
+export const LEAVE_OPEN: string[] = [...LEAVE_PENDING, 'info_requested'];
+/** Editable by its owner until any stage has acted, as the server's leaveIsUntouched. */
+export const leaveUntouched = (l: any) => LEAVE_PENDING.includes(l?.status) && LEAVE_STAGES.every((s) => !l?.[s.decision]?.at);
 
 export interface LeaveRequest {
   _id: string;
   employee: any; requester: any; manager?: any;
   leaveType: any; leaveTypeCode?: string;
   startDate: string; endDate: string; days: number; reason?: string;
-  status: 'pending_manager' | 'pending_hr' | 'pending_finance' | 'pending_executive'
+  status: 'pending_manager' | 'pending_hr' | 'pending_finance' | 'pending_executive' | 'pending_chairman'
         | 'info_requested' | 'approved' | 'rejected' | 'cancelled';
-  currentStage: 'manager' | 'hr' | 'finance' | 'executive' | 'employee' | 'done';
+  currentStage: 'manager' | 'hr' | 'finance' | 'executive' | 'chairman' | 'employee' | 'done';
   managerDecision?: LeaveDecision;
   hrDecision?: LeaveDecision;
   financeDecision?: LeaveDecision;
   executiveDecision?: LeaveDecision;
+  chairmanDecision?: LeaveDecision;
   // Request dialogue: a stage's question and the requester's reply, oldest first.
   thread?: LeaveThreadEntry[];
   balanceSnapshot?: { accrued?: number; requested?: number; remainingAfter?: number };
@@ -260,8 +269,9 @@ export const auditActionLabel = (key: string, lang: Lang) =>
 export const LEAVE_STATUS: Record<string, { bg: string; text: string; en: string; ar: string }> = {
   pending_manager: { bg: 'bg-amber-500/20', text: 'text-amber-700', en: 'With Manager', ar: 'عند المدير' },
   pending_hr: { bg: 'bg-blue-500/20', text: 'text-blue-700', en: 'With HR', ar: 'عند الموارد البشرية' },
-  pending_finance: { bg: 'bg-violet-500/20', text: 'text-violet-700', en: 'With Finance', ar: 'عند الحسابات' },
-  pending_executive: { bg: 'bg-indigo-500/20', text: 'text-indigo-700', en: 'With Executive', ar: 'عند الإدارة العليا' },
+  pending_finance: { bg: 'bg-violet-500/20', text: 'text-violet-700', en: 'With Finance', ar: 'عند الإدارة المالية' },
+  pending_executive: { bg: 'bg-indigo-500/20', text: 'text-indigo-700', en: 'With Top Management', ar: 'عند الإدارة العليا' },
+  pending_chairman: { bg: 'bg-fuchsia-500/20', text: 'text-fuchsia-700', en: 'With the Chairman', ar: 'عند رئيس مجلس الإدارة' },
   // Not a rejection: the request went back to its owner to reply or edit.
   info_requested: { bg: 'bg-orange-500/20', text: 'text-orange-700', en: 'Needs your reply', ar: 'بانتظار ردّك' },
   approved: { bg: 'bg-green-500/20', text: 'text-green-700', en: 'Approved', ar: 'مقبولة' },

@@ -118,6 +118,26 @@ const notifyTopManagement = async ({ title, message, relatedEntity, relatedEntit
   users.forEach((u) => { try { emitToUser(String(u._id), event || 'hr:leave', { id: String(relatedEntityId || '') }); } catch (e) {} });
 };
 
+/** The chairman account(s) (User.isChairman), who sign the final leave stage. */
+const notifyChairman = async ({ title, message, relatedEntity, relatedEntityId, event }) => {
+  const users = await User.find({ isChairman: true, isActive: true }).select('_id').lean();
+  await Promise.all(users.map((u) =>
+    createNotification({ recipient: u._id, type: 'system_alert', title, message, relatedEntity, relatedEntityId }).catch(() => {})));
+  users.forEach((u) => { try { emitToUser(String(u._id), event || 'hr:leave', { id: String(relatedEntityId || '') }); } catch (e) {} });
+};
+
+/** Tells the owners of `stage` that a request now waits on them; one place, so a stage added to the chain is announced everywhere it can be reached from. */
+const notifyStage = async (stage, leave, message) => {
+  const ref = { relatedEntity: 'LeaveRequest', relatedEntityId: leave._id, event: 'hr:leave' };
+  const title = `إجازة تنتظر ${chain.STAGE_AR[stage] || ''}`.trim();
+  if (stage === 'manager' && leave.manager) return notifyUser(leave.manager, { title: 'إجازة تنتظر موافقتك', message, ...ref });
+  if (stage === 'finance') return notifyRoles(chain.FINANCE_ROLES, { title, message, ...ref });
+  if (stage === 'hr') return notifyHR({ title, message, ...ref });
+  if (stage === 'executive') return notifyTopManagement({ title, message, ...ref });
+  if (stage === 'chairman') return notifyChairman({ title, message, ...ref });
+  return null;
+};
+
 /** A leave changed: everyone whose screens or counters it touches hears it — its owner, the manager who filed or reviews it, HR staff and top management. */
 const announceLeave = async (leave) => {
   // Clear what the listeners re-read first: the HR dashboard and master count open leaves and balances.
@@ -125,7 +145,10 @@ const announceLeave = async (leave) => {
   const ids = new Set();
   for (const k of ['manager', 'requester', 'filedBy']) if (leave && leave[k]) ids.add(String(leave[k]._id || leave[k]));
   try { for (const id of await hrStaffIds()) ids.add(String(id)); } catch (e) { /* */ }
-  try { for (const u of await User.find({ isTopManagement: true, isActive: true }).select('_id').lean()) ids.add(String(u._id)); } catch (e) { /* */ }
+  try {
+    const others = await User.find({ isActive: true, $or: [{ isTopManagement: true }, { isChairman: true }, { role: { $in: chain.FINANCE_ROLES } }] }).select('_id').lean();
+    for (const u of others) ids.add(String(u._id));
+  } catch (e) { /* */ }
   for (const id of ids) { try { emitToUser(id, 'hr:leave', { id: String(leave && leave._id || '') }); } catch (e) { /* */ } }
 };
 
@@ -1204,7 +1227,17 @@ exports.deleteLeaveType = async (req, res) => {
 };
 
 // ── Leave requests ───────────────────────────────────────────────────────────
-const NO_SIG = '-employeeSignature -managerDecision.signature -hrDecision.signature';
+const NO_SIG = '-employeeSignature -managerDecision.signature -financeDecision.signature -hrDecision.signature -executiveDecision.signature -chairmanDecision.signature';
+
+/** A user's signature from self-service: the one with `pickId` if given, else the default, else the first; '' when none is saved. */
+async function defaultSignatureOf(userId, pickId) {
+  try {
+    const u = await User.findById(userId).select('+signatures').lean();
+    const sigs = (u && u.signatures) || [];
+    const pick = pickId ? sigs.find((x) => String(x._id) === String(pickId)) : null;
+    return ((pick || sigs.find((x) => x.isDefault) || sigs[0]) || {}).dataUrl || '';
+  } catch (e) { return ''; }
+}
 const populateLeave = (q) => q
   .populate('employee', 'firstName lastName arabicName iqamaNumber nationalId idType employeeNumber department')
   .populate('requester', 'firstName lastName email')
@@ -1213,7 +1246,8 @@ const populateLeave = (q) => q
   .populate('managerDecision.by', 'firstName lastName')
   .populate('hrDecision.by', 'firstName lastName')
   .populate('financeDecision.by', 'firstName lastName')
-  .populate('executiveDecision.by', 'firstName lastName');
+  .populate('executiveDecision.by', 'firstName lastName')
+  .populate('chairmanDecision.by', 'firstName lastName');
 
 /**
  * Inbox: requests currently waiting on this user.
@@ -1347,6 +1381,34 @@ exports.getLeave = async (req, res) => {
   }
 };
 
+/**
+ * The official sheet as a PDF (services/leaveSheet), the same file on web and mobile.
+ * Readable by whoever may open the request, plus every stage desk: finance, top management and the chairman follow requests before they reach them.
+ */
+exports.getLeaveSheet = async (req, res) => {
+  try {
+    const leave = await LeaveRequest.findById(req.params.id)
+      .populate('employee', 'firstName lastName arabicName iqamaNumber nationalId idType employeeNumber department jobTitle registerNumber iqamaExpiry iqamaExpiryHijri')
+      .populate('requester filedBy', 'firstName lastName')
+      .populate('leaveType', 'nameEn nameAr')
+      .populate(Object.values(chain.DECISION_FIELD).map((f) => `${f}.by`).join(' '), 'firstName lastName')
+      .lean();
+    if (!leave) return res.status(404).json({ message: 'Leave request not found' });
+    const uid = String(req.user._id);
+    const own = [leave.requester, leave.manager, leave.filedBy].some((x) => x && String(x._id || x) === uid);
+    const desk = chain.STAGES.some((st) => st !== 'manager' && chain.canActAt(st, req.user, leave));
+    if (!own && !desk && !hrStaffReq(req)) return res.status(403).json({ message: 'Not allowed' });
+    const pdf = await require('../services/leaveSheet').renderLeaveSheet(leave);
+    const who = (leave.employee?.employeeNumber || String(leave._id)).replace(/[^\w-]/g, '');
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader('Content-Disposition', `inline; filename="leave-${who}-${leave.startDate || ''}.pdf"`);
+    res.send(pdf);
+  } catch (error) {
+    console.error('leave sheet error:', error);
+    res.status(500).json({ message: 'تعذّر إصدار ورقة الإجازة' });
+  }
+};
+
 exports.listMyLeaves = async (req, res) => {
   try {
     // Resolve (auto-provisioning if needed) instead of trusting the cached req.user.linkedEmployee, which can predate the link.
@@ -1469,15 +1531,8 @@ exports.createMyLeave = async (req, res) => {
     const { balance } = await computeEmployeeBalance(employeeId);
     const hasManager = !!req.user.manager;
 
-    // Attach the requester's signature: the one they picked (signatureId), else
-    // their default. No signature is fine (the sheet just shows a blank line).
-    let employeeSignature = '';
-    try {
-      const me = await User.findById(req.user._id).select('+signatures').lean();
-      const sigs = (me && me.signatures) || [];
-      if (req.body.signatureId) employeeSignature = (sigs.find((s) => String(s._id) === String(req.body.signatureId)) || {}).dataUrl || '';
-      else employeeSignature = ((sigs.find((s) => s.isDefault) || sigs[0]) || {}).dataUrl || '';
-    } catch (e) { /* no signature is fine */ }
+    // The requester's signature: the one picked, else the default. Saved later in self-service, it is still read on the sheet (services/leaveSheet).
+    const employeeSignature = await defaultSignatureOf(req.user._id, req.body.signatureId);
 
     // A sick-leave report is attached to the request, not sent over WhatsApp.
     let attachments = [];
@@ -1493,8 +1548,7 @@ exports.createMyLeave = async (req, res) => {
       leaveTypeCode: lt.code,
       startDate, endDate, days, reason,
       employeeSignature,
-      status: hasManager ? 'pending_manager' : 'pending_hr',
-      currentStage: hasManager ? 'manager' : 'hr',
+      ...chain.startOf(hasManager),
       balanceSnapshot: {
         accrued: balance.accrued,
         requested: days,
@@ -1512,11 +1566,8 @@ exports.createMyLeave = async (req, res) => {
     });
 
     const name = fullName(req.user);
-    if (hasManager) {
-      await notifyUser(req.user.manager, { title: 'Leave request to review', message: `${name} requested ${days} day(s) (${startDate} → ${endDate}).`, relatedEntity: 'LeaveRequest', relatedEntityId: leave._id, event: 'hr:leave' });
-    } else {
-      await notifyHR({ title: 'New leave request', message: `${name} requested ${days} day(s).`, relatedEntity: 'LeaveRequest', relatedEntityId: leave._id, event: 'hr:leave' });
-    }
+    await notifyStage(leave.currentStage, leave, `${name} طلب إجازة ${days} يوم (${startDate} → ${endDate}).`);
+    await announceLeave(leave);
     const populated = await populateLeave(LeaveRequest.findById(leave._id)).lean();
     res.status(201).json({ leave: populated });
   } catch (error) {
@@ -1592,9 +1643,9 @@ exports.createTeamLeave = async (req, res) => {
       leaveType,
       leaveTypeCode: lt.code,
       startDate, endDate, days, reason: String(reason || '').trim(),
-      status: 'pending_hr',
-      currentStage: 'hr',
-      managerDecision: { by: req.user._id, at: new Date(), decision: 'approved', note: `قدّم الطلبَ المديرُ ${filer} بنفسه | Filed by the manager` },
+      ...chain.startOf(false),
+      // The manager filed it, so he signs both the employee's and his own box (resolved live on the sheet, see services/leaveSheet).
+      managerDecision: { by: req.user._id, at: new Date(), decision: 'approved', note: `قدّم الطلبَ المديرُ ${filer} بنفسه | Filed by the manager`, signature: await defaultSignatureOf(req.user._id) },
       balanceSnapshot: {
         accrued: balance.accrued,
         requested: days,
@@ -1615,9 +1666,9 @@ exports.createTeamLeave = async (req, res) => {
         changes: { after: { employeeName: name, startDate, endDate, days, filedBy: filer } }, ipAddress: req.ip,
       });
     } catch (e) { /* the request stands even if its log line fails */ }
-    await notifyHR({ title: 'إجازة تنتظر الموارد البشرية', message: `قدّم ${filer} إجازة ${days} يوم لـ ${name} (${startDate} → ${endDate}).`, ...ref });
+    await notifyStage(leave.currentStage, leave, `قدّم ${filer} إجازة ${days} يوم لـ ${name} (${startDate} → ${endDate}).`);
     if (login && String(login) !== String(req.user._id)) {
-      await notifyUser(login, { title: 'قدّم مديرك إجازة لك', message: `${filer} قدّم لك إجازة ${days} يوم (${startDate} → ${endDate}) — هي الآن عند الموارد البشرية.`, ...ref });
+      await notifyUser(login, { title: 'قدّم مديرك إجازة لك', message: `${filer} قدّم لك إجازة ${days} يوم (${startDate} → ${endDate}) — هي الآن عند ${chain.STAGE_AR[leave.currentStage] || ''}.`, ...ref });
     }
     await announceLeave(leave);
     const populated = await populateLeave(LeaveRequest.findById(leave._id)).select(NO_SIG).lean();
@@ -1886,13 +1937,8 @@ exports.decideLeave = async (req, res) => {
 
     // Optional: the approver signs. Resolve the chosen signature (by id) from
     // their own signatures and snapshot it onto this decision.
-    let signature = '';
-    if (signatureId) {
-      try {
-        const me = await User.findById(req.user._id).select('+signatures').lean();
-        signature = ((me && me.signatures) || []).find((s) => String(s._id) === String(signatureId))?.dataUrl || '';
-      } catch (e) { /* ignore */ }
-    }
+    // An approval carries the approver's signature: the one picked, else his default from self-service. A rejection or a question signs nothing.
+    const signature = decision === 'approved' ? await defaultSignatureOf(req.user._id, signatureId) : '';
     let decisionFiles = [];
     try { decisionFiles = saveLeaveFiles(req.body.files, req.user); }
     catch (e) { return res.status(400).json({ message: e.message }); }
@@ -1904,8 +1950,7 @@ exports.decideLeave = async (req, res) => {
     if (stage === 'employee') {
       return res.status(400).json({ message: 'الطلب عند صاحبه للردّ على استفسار' });
     }
-    // 'finance' is no longer a stage, but a request already held there still finishes through it.
-    if (!chain.STAGES.includes(stage) && stage !== 'finance') {
+    if (!chain.STAGES.includes(stage)) {
       return res.status(400).json({ message: 'هذا الطلب ليس في محطّة قرار' });
     }
     if (!chain.canActAt(stage, req.user, leave)) {
@@ -1953,7 +1998,7 @@ exports.decideLeave = async (req, res) => {
     // A named entry, so the log reads «الموافقة على إجازة …» instead of the generic path the safety net writes.
     try {
       const emp = await Employee.findById(leave.employee).select('arabicName firstName lastName employeeNumber').lean();
-      const stageAr = { manager: 'المدير المباشر', hr: 'الموارد البشرية', finance: 'الإدارة المالية', executive: 'الإدارة العليا' }[stage] || stage;
+      const stageAr = chain.STAGE_AR[stage] || stage;
       await logAudit({
         user: req.user, action: { approved: 'leave_approve', rejected: 'leave_reject', info: 'leave_ask' }[decision], entity: 'LeaveRequest', entityId: leave._id,
         changes: { after: { employeeName: emp ? (emp.arabicName || `${emp.firstName || ''} ${emp.lastName || ''}`.trim()) : '', stage: stageAr,
@@ -1963,7 +2008,7 @@ exports.decideLeave = async (req, res) => {
     } catch (e) { /* the decision stands even if its log line fails */ }
 
     // Notify the requester always, plus the next stage's owners. A mid-chain approver used to tell the requester it was approved when it had only moved on, so he planned travel on partial approval. The message now says where the request stands.
-    const STAGE_AR = { manager: 'المدير المباشر', hr: 'الموارد البشرية', finance: 'الإدارة المالية', executive: 'الإدارة العليا' };
+    const { STAGE_AR } = chain;
     const ref = { relatedEntity: 'LeaveRequest', relatedEntityId: leave._id, event: 'hr:leave' };
     const period = `${leave.startDate} → ${leave.endDate}`;
 
@@ -1975,7 +2020,7 @@ exports.decideLeave = async (req, res) => {
       });
     } else if (leave.status === 'approved') {
       const cut = leaveDeducts(await LeaveRequest.findById(leave._id).populate('leaveType', 'affectsBalance').select('deductsBalance leaveType').lean());
-      await notifyLeaveOwners(leave, { title: 'اعتُمدت إجازتك', message: `إجازتك (${period}) اعتُمدت بعد موافقة المدير المباشر والموارد البشرية والإدارة العليا — ${cut ? `تُخصم ${leave.days} يوم من الرصيد` : 'بدون خصم من الرصيد'}.`, ...ref });
+      await notifyLeaveOwners(leave, { title: 'اعتُمدت إجازتك', message: `إجازتك (${period}) اعتُمدت بعد اكتمال الموافقات حتى رئيس مجلس الإدارة — ${cut ? `تُخصم ${leave.days} يوم من الرصيد` : 'بدون خصم من الرصيد'}.`, ...ref });
       await notifyHR({ title: 'إجازة اعتُمدت', message: `اكتملت سلسلةُ الموافقات على إجازة (${period}).`, ...ref });
     } else if (leave.status === 'rejected') {
       await notifyLeaveOwners(leave, { title: 'رُفض طلب الإجازة', message: `رفضت ${STAGE_AR[stage] || ''} طلبك (${period}). ${note || ''}`.trim(), ...ref });
@@ -1987,10 +2032,7 @@ exports.decideLeave = async (req, res) => {
         message: `وافقت ${STAGE_AR[stage] || ''} على طلبك (${period}) — وهو الآن عند ${STAGE_AR[next] || ''}.`,
         ...ref,
       });
-      if (next === 'hr') await notifyHR({ title: 'إجازة تنتظر الموارد البشرية', message: `طلب إجازة (${period}) وصل محطّتكم.`, ...ref });
-      else if (next === 'finance') await notifyRoles(chain.FINANCE_ROLES, { title: 'إجازة تنتظر الإدارة المالية', message: `طلب إجازة (${period}) وصل محطّتكم — راجعوا مستحقّاته وسُلَفه.`, ...ref });
-      else if (next === 'executive') await notifyTopManagement({ title: 'إجازة تنتظر الإدارة العليا', message: `طلب إجازة (${period}) وصل المحطّة الأخيرة.`, ...ref });
-      else if (next === 'manager' && leave.manager) await notifyUser(leave.manager, { title: 'إجازة تنتظر موافقتك', message: `طلب إجازة (${period}) من أحد فريقك.`, ...ref });
+      await notifyStage(next, leave, `طلب إجازة (${period}) وصل محطّتكم بعد موافقة ${STAGE_AR[stage] || ''}.`);
     }
     await announceLeave(leave);
     if (leave.status === 'approved') {
@@ -2050,11 +2092,7 @@ exports.replyToLeave = async (req, res) => {
         relatedEntity: 'LeaveRequest', relatedEntityId: leave._id, event: 'hr:leave',
       });
     } else {
-      await notifyHR({
-        title: 'طلب إجازة عاد بعد الردّ',
-        message: 'ردّ الموظّف على الاستفسار.',
-        relatedEntity: 'LeaveRequest', relatedEntityId: leave._id, event: 'hr:leave',
-      });
+      await notifyStage(leave.currentStage, leave, 'ردّ الموظّف على الاستفسار — الطلب عاد إلى بداية المسار.');
     }
     await announceLeave(leave);
 
@@ -2072,7 +2110,7 @@ exports.cancelMyLeave = async (req, res) => {
     if (!leave) return res.status(404).json({ message: 'Leave request not found' });
     if (!ownsLeave(leave, req.user)) return res.status(403).json({ message: 'Not your request' });
     // The owner (or the manager who filed it) may withdraw anything not finally decided, including requests returned with a question.
-    if (!['pending_manager', 'pending_hr', 'pending_finance', 'pending_executive', 'info_requested'].includes(leave.status)) return res.status(400).json({ message: 'Only pending requests can be cancelled' });
+    if (!chain.OPEN_STATUSES.includes(leave.status)) return res.status(400).json({ message: 'Only pending requests can be cancelled' });
     leave.status = 'cancelled';
     leave.currentStage = 'done';
     await leave.save();
@@ -2088,9 +2126,9 @@ exports.cancelMyLeave = async (req, res) => {
  * Correcting a mistake used to mean cancelling and rewriting, leaving the manager two requests. Now edit and delete are allowed while nobody has acted on it. The first action by the manager or HR locks it: changing a date after approval makes the approval cover something other than what is approved.
  * The lock is measured by decision, not status alone: a request awaiting HR may already have manager approval.
  */
-// Measure by decision, not stage: someone with no manager starts at HR, so requiring awaiting-manager locked out requests nobody had touched.
-const leaveIsUntouched = (l) => ['pending_manager', 'pending_hr'].includes(l.status)
-  && !l.managerDecision?.at && !l.hrDecision?.at;
+// Measure by decision, not stage: someone with no manager starts after the manager stage, so requiring awaiting-manager locked out requests nobody had touched.
+const leaveIsUntouched = (l) => chain.OPEN_STATUSES.includes(l.status) && l.status !== 'info_requested'
+  && Object.values(chain.DECISION_FIELD).every((f) => !l[f]?.at);
 
 exports.updateMyLeave = async (req, res) => {
   try {

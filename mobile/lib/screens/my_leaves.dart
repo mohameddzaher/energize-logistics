@@ -13,6 +13,7 @@ import '../services/live.dart';
 import '../ui/file_upload.dart';
 import '../ui/leave_chain.dart';
 import '../ui/export_sheet.dart';
+import 'hr_leave_pdf.dart';
 
 /// My leaves: the self-service leave page with balance cards, request history and a new-request sheet. Same endpoints as the web (/api/hr/me/leaves).
 class MyLeavesScreen extends StatefulWidget {
@@ -111,10 +112,7 @@ class _MyLeavesScreenState extends State<MyLeavesScreen> {
   }
 
   /// While pending and untouched by any decision, the request belongs to its owner: editable or deletable (as on the web).
-  bool _editable(Map<String, dynamic> l) =>
-      ['pending_manager', 'pending_hr'].contains(l['status'])
-      && !(l['managerDecision'] is Map && l['managerDecision']['at'] != null)
-      && !(l['hrDecision'] is Map && l['hrDecision']['at'] != null);
+  bool _editable(Map<String, dynamic> l) => leaveIsUntouched(l);
 
   Future<bool> _ask(String m) async => await showDialog<bool>(
         context: context,
@@ -201,6 +199,7 @@ class _MyLeavesScreenState extends State<MyLeavesScreen> {
             Wrap(alignment: WrapAlignment.end, spacing: 4, children: [
               if (l['status'] == 'pending_manager')
                 TextButton(onPressed: () => _review(l), child: Text(tr('مراجعة', 'Review'))),
+              TextButton(onPressed: () => downloadLeaveSheet(context, '${l['_id']}'), child: const Text('PDF')),
               // The manager who filed it answers questions on it and may withdraw it.
               if (_filedByMe(l) && l['status'] == 'info_requested')
                 TextButton(onPressed: () => _reply(l), child: Text(tr('الردّ على الاستفسار', 'Reply'))),
@@ -446,6 +445,14 @@ class _MyLeavesScreenState extends State<MyLeavesScreen> {
                                         label: Text(tr('حذف', 'Delete'), style: const TextStyle(color: T.danger, fontSize: 12)),
                                       ),
                                     ]),
+                                  Align(
+                                    alignment: AlignmentDirectional.centerStart,
+                                    child: TextButton.icon(
+                                      onPressed: () => downloadLeaveSheet(context, '${l['_id']}'),
+                                      icon: const Icon(Icons.picture_as_pdf_outlined, size: 15),
+                                      label: Text(tr('ورقة الإجازة PDF', 'Leave sheet PDF'), style: const TextStyle(fontSize: 12)),
+                                    ),
+                                  ),
                                   if (canCancel)
                                     Align(
                                       alignment: AlignmentDirectional.centerStart,

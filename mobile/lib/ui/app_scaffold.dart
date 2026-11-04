@@ -135,7 +135,7 @@ class AppSearchDelegate extends SearchDelegate<void> {
   List<(String, AppPage)> _matches() {
     final q = _fold(query.trim());
     final List<(String, AppPage)> out = [];
-    for (final p in selfServicePages(true, isPartner: auth.role == 'client')) {
+    for (final p in selfServicePages(true, isPartner: auth.role == 'client', approvesLeaves: auth.user?['approvesLeaves'] == true || const ['super_admin', 'admin'].contains(auth.role))) {
       if (q.isEmpty || _fold(p.title).contains(q)) out.add((tr('الخدمة الذاتية', 'Self Service'), p));
     }
     for (final s in sectionsFor(auth)) {
@@ -251,7 +251,7 @@ class _AppDrawerState extends State<AppDrawer> {
     final auth = context.watch<AuthProvider>();
     final sections = sectionsFor(auth);
     // My team's approvals are shown and the screen verifies itself. A partner (client) is not an employee and sees no leave or requests.
-    final selfPages = selfServicePages(true, isPartner: auth.role == 'client');
+    final selfPages = selfServicePages(true, isPartner: auth.role == 'client', approvesLeaves: auth.user?['approvesLeaves'] == true || const ['super_admin', 'admin'].contains(auth.role));
 
     void go(WidgetBuilder b) {
       Navigator.pop(context); // Close the drawer.

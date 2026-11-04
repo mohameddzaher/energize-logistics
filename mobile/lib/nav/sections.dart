@@ -226,7 +226,7 @@ List<AppSection> sectionsFor(AuthProvider auth) {
     // The loads board opens by its page, not its section: sales reach it without the rest of Operations (config/opsBoard). The other Operations pages stay closed by their own page access.
     if (s.key == 'Operations' && canOpenOpsBoard(auth)) return true;
     // Top management is an account flag, not a role (User.isTopManagement).
-    if (s.key == 'Top Management' && auth.user?['isTopManagement'] == true) return true;
+    if (s.key == 'Top Management' && (auth.user?['isTopManagement'] == true || auth.user?['isChairman'] == true)) return true;
     return false;
   }
 
@@ -235,8 +235,11 @@ List<AppSection> sectionsFor(AuthProvider auth) {
       key: 'Top Management', arTitle: 'الإدارة العليا', enTitle: 'Top Management', icon: Icons.workspace_premium_outlined,
       roles: const ['super_admin', 'admin'],
       pages: [
-        AppPage('طلبات الإجازات', 'Leave Requests', Icons.event_available_outlined, (c) => const TopLeavesScreen(), path: '/system/top-management'),
+        AppPage('طلبات الإجازات', 'Leave Requests', Icons.event_available_outlined, (c) => TopLeavesScreen(canDecide: auth.user?['isTopManagement'] == true || _top.contains(role)), path: '/system/top-management'),
         AppPage('طلبات الموظفين', 'Staff Requests', Icons.mark_email_unread_outlined, (c) => const TopRequestsScreen(), path: '/system/top-management/requests'),
+        // The chairman's desk: requests arrive only after top management approves.
+        if (auth.user?['isChairman'] == true || _top.contains(role))
+          AppPage('اعتماد رئيس مجلس الإدارة', 'Chairman Approval', Icons.verified_outlined, (c) => const TopLeavesScreen(base: '/api/chairman', stage: 'chairman', canDecide: true, title: ('اعتماد رئيس مجلس الإدارة', 'Chairman Approval')), path: '/system/chairman'),
         AppPage('نشاط الشركة المباشر', 'Live Company Activity', Icons.timeline_outlined, (c) => const TopActivityScreen(), path: '/system/top-management/activity'),
         if (canApproveSelling(auth)) AppPage('طلبات تعديل سعر البيع', 'Selling-price requests', Icons.price_check_outlined, (c) => const SellingRequestsScreen(), path: sellingRequestsPath),
       ],
@@ -522,6 +525,11 @@ List<AppSection> sectionsFor(AuthProvider auth) {
       roles: const [..._admins, 'cfo', 'accounting_manager', 'accountant'],
       pages: [
         AppPage('لوحة الإدارة المالية', 'Finance Overview', Icons.dashboard_outlined, (c) => const FinanceOverviewScreen(), path: '/system/finance'),
+        // Finance's leave stage comes right after the direct manager; same desk as top management on its own API.
+        if (const [..._admins, 'cfo', 'accounting_manager', 'accountant'].contains(role)) ...[
+          AppPage('طلبات الإجازات', 'Leave Requests', Icons.event_available_outlined, (c) => const TopLeavesScreen(base: '/api/finance-desk', stage: 'finance', canDecide: true, title: ('طلبات الإجازات — الإدارة المالية', 'Leave Requests — Finance')), path: '/system/finance/leaves'),
+          AppPage('طلبات الموظفين', 'Staff Requests', Icons.mark_email_unread_outlined, (c) => const TopRequestsScreen(base: '/api/finance-desk'), path: '/system/finance/staff-requests'),
+        ],
         AppPage('ماليات التشغيل', 'Operations Finance', Icons.assignment_outlined, (c) => const FinanceDeptScreen(dept: 'operations', arTitle: 'ماليات التشغيل', enTitle: 'Operations Finance'), path: '/system/finance/operations'),
         AppPage('ماليات إدارة الأسطول', 'Fleet Finance', Icons.local_shipping_outlined, (c) => const FinanceDeptScreen(dept: 'fleet', arTitle: 'ماليات إدارة الأسطول', enTitle: 'Fleet Finance'), path: '/system/finance/fleet'),
         AppPage('ماليات التخليص الجمركي', 'Customs Finance', Icons.directions_boat_outlined, (c) => const FinanceDeptScreen(dept: 'customs', arTitle: 'ماليات التخليص الجمركي', enTitle: 'Customs Finance'), path: '/system/finance/customs'),
@@ -825,7 +833,8 @@ List<AppSection> sectionsFor(AuthProvider auth) {
 /// Self-service — every signed-in EMPLOYEE, no gating. Partner (client) logins
 /// have no employee profile behind them, so callers pass `isPartner: true` and
 /// get only the two pages that make sense for an outsider.
-List<AppPage> selfServicePages(bool hasTeam, {bool isPartner = false}) => isPartner
+/// [approvesLeaves] is the server's flag (a direct manager of someone or a stage owner); an employee with nobody to approve does not see the approvals page.
+List<AppPage> selfServicePages(bool hasTeam, {bool isPartner = false, bool? approvesLeaves}) => isPartner
     ? [
       AppPage('ملفي', 'My Profile', Icons.account_circle_outlined, (c) => const MyProfileScreen()),
       AppPage('الإشعارات', 'Notifications', Icons.notifications_outlined, (c) => const NotificationsScreen()),
@@ -839,7 +848,7 @@ List<AppPage> selfServicePages(bool hasTeam, {bool isPartner = false}) => isPart
       AppPage('المساعد', 'Assistant', Icons.auto_awesome_outlined, (c) => const AssistantScreen(), path: '/system/assistant'),
       AppPage('إجازاتي', 'My Leaves', Icons.beach_access_outlined, (c) => const MyLeavesScreen()),
       AppPage('طلباتي', 'My Requests', Icons.description_outlined, (c) => const MyRequestsScreen()),
-      if (hasTeam) AppPage('موافقات فريقي', 'Team Approvals', Icons.fact_check_outlined, (c) => const ApprovalsScreen()),
+      if (approvesLeaves ?? hasTeam) AppPage('موافقات الإجازات', 'Leave Approvals', Icons.fact_check_outlined, (c) => const ApprovalsScreen()),
       if (hasTeam) AppPage('تقييم فريقي', 'Evaluate Team', Icons.rate_review_outlined, (c) => const EvaluationsScreen()),
       AppPage('الإعدادات', 'Settings', Icons.settings_outlined, (c) => const SettingsScreen()),
     ];

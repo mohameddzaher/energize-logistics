@@ -1,4 +1,4 @@
-// Top management section, twin of /system/top-management on the web: every leave request (decided here after the direct manager and HR), every staff request to HR, and the company's live activity.
+// Leave desks, twin of the web's LeaveDesk: finance, top management and the chairman each see every leave and decide their own stage (backend routes/leaveDesk). Also the staff requests to HR and the company's live activity.
 import 'dart:async';
 import 'package:flutter/material.dart';
 import '../services/api.dart';
@@ -9,29 +9,24 @@ import '../ui/app_scaffold.dart';
 import '../ui/leave_chain.dart';
 import '../ui/theme.dart';
 import '../ui/widgets.dart';
+import 'hr_leave_pdf.dart';
 
 String _name(dynamic u) => u is Map ? '${u['firstName'] ?? ''} ${u['lastName'] ?? ''}'.trim() : '';
 
-const _leaveStatus = {
-  'pending_manager': ('عند المدير المباشر', 'With manager', Color(0xFFD97706)),
-  'pending_hr': ('عند الموارد البشرية', 'With HR', Color(0xFF2563EB)),
-  'pending_finance': ('عند الحسابات', 'With finance', Color(0xFF0891B2)),
-  'pending_executive': ('تنتظر قرارك', 'Awaiting you', Color(0xFFEA580C)),
-  'info_requested': ('عند الموظف للرد', 'With employee', Color(0xFF64748B)),
-  'approved': ('معتمدة', 'Approved', Color(0xFF059669)),
-  'rejected': ('مرفوضة', 'Rejected', Color(0xFFDC2626)),
-  'cancelled': ('ملغاة', 'Cancelled', Color(0xFF94A3B8)),
-};
 
-/// Leave requests: the awaiting tab first; approve or reject at the last stage.
+/// One stage's leave desk: the awaiting tab first; approve or reject at this stage.
 class TopLeavesScreen extends StatefulWidget {
-  const TopLeavesScreen({super.key});
+  const TopLeavesScreen({super.key, this.base = '/api/top-management', this.stage = 'executive', this.canDecide = true, this.title = const ('طلبات الإجازات', 'Leave Requests')});
+  final String base;
+  final String stage;
+  final bool canDecide;
+  final (String, String) title;
   @override
   State<TopLeavesScreen> createState() => _TopLeavesScreenState();
 }
 
 class _TopLeavesScreenState extends State<TopLeavesScreen> {
-  static const _tabs = [('awaiting', 'تنتظر قرارك', 'Awaiting'), ('in_chain', 'قيد المسار', 'In the chain'), ('approved', 'معتمدة', 'Approved'), ('rejected', 'مرفوضة', 'Rejected'), ('all', 'الكل', 'All')];
+  static const _tabs = [('awaiting', 'تنتظر قرارك', 'Awaiting you'), ('in_chain', 'قيد المسار', 'In the chain'), ('approved', 'معتمدة', 'Approved'), ('rejected', 'مرفوضة', 'Rejected'), ('all', 'الكل', 'All')];
   String _tab = 'awaiting';
   List<Map<String, dynamic>> _rows = [];
   bool _loading = true;
@@ -45,7 +40,7 @@ class _TopLeavesScreenState extends State<TopLeavesScreen> {
 
   Future<void> _load() async {
     try {
-      final d = await Api.instance.get('/api/top-management/leaves?tab=$_tab');
+      final d = await Api.instance.get('${widget.base}/leaves?tab=$_tab');
       if (mounted) setState(() { _rows = List<Map<String, dynamic>>.from(d['leaves'] ?? []); _loading = false; });
     } catch (e) {
       if (mounted) { setState(() => _loading = false); ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.toString()))); }
@@ -87,7 +82,7 @@ class _TopLeavesScreenState extends State<TopLeavesScreen> {
   @override
   Widget build(BuildContext context) {
     return AppScaffold(
-      title: Text(tr('طلبات الإجازات', 'Leave Requests')),
+      title: Text(tr(widget.title.$1, widget.title.$2)),
       body: Column(children: [
         SizedBox(height: 50, child: ListView(scrollDirection: Axis.horizontal, padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8), children: [
           for (final t in _tabs) Padding(padding: const EdgeInsets.only(left: 6), child: ChoiceChip(
@@ -103,7 +98,7 @@ class _TopLeavesScreenState extends State<TopLeavesScreen> {
                   for (final l in _rows) Padding(padding: const EdgeInsets.only(bottom: 8), child: AppCard(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                     Row(children: [
                       Expanded(child: Text('${(l['employee'] as Map?)?['arabicName'] ?? _name(l['employee'])}', style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 14.5))),
-                      Chip2(tr(_leaveStatus[l['status']]?.$1 ?? '${l['status']}', _leaveStatus[l['status']]?.$2 ?? '${l['status']}'), _leaveStatus[l['status']]?.$3 ?? T.inkSoft),
+                      Chip2(tr(leaveStatusOf(l['status']).$1, leaveStatusOf(l['status']).$2), leaveStatusOf(l['status']).$3),
                     ]),
                     const SizedBox(height: 4),
                     Text('${tr((l['leaveType'] as Map?)?['nameAr'] ?? '', (l['leaveType'] as Map?)?['nameEn'] ?? '')} · ${l['days'] ?? ''} ${tr('يوم', 'days')} · ${(l['employee'] as Map?)?['department'] ?? ''}',
@@ -111,15 +106,16 @@ class _TopLeavesScreenState extends State<TopLeavesScreen> {
                     Text('${bothDates(l['startDate'], ar: Lang.instance.ar)}  →  ${bothDates(l['endDate'], ar: Lang.instance.ar)}', style: const TextStyle(fontSize: 12, color: T.inkSoft)),
                     if ('${l['reason'] ?? ''}'.isNotEmpty) Text('${l['reason']}', style: const TextStyle(fontSize: 12)),
                     const SizedBox(height: 4),
-                    _decision(tr('المدير المباشر', 'Manager'), l['managerDecision']),
-                    _decision(tr('الموارد البشرية', 'HR'), l['hrDecision']),
-                    _decision(tr('الإدارة العليا', 'Top management'), l['executiveDecision']),
+                    for (final st in leaveStages) _decision(tr(st.ar, st.en), l[st.decision]),
                     LeaveDeductionBadge(leave: l),
-                    if (l['status'] == 'pending_executive') Padding(padding: const EdgeInsets.only(top: 8), child: Row(children: [
+                    Align(alignment: AlignmentDirectional.centerEnd, child: TextButton.icon(
+                      onPressed: () => downloadLeaveSheet(context, '${l['_id']}'),
+                      icon: const Icon(Icons.picture_as_pdf_outlined, size: 16), label: Text(tr('ورقة الإجازة PDF', 'Leave sheet PDF')))),
+                    if (widget.canDecide && l['status'] == 'pending_${widget.stage}') Padding(padding: const EdgeInsets.only(top: 8), child: Row(children: [
                       Expanded(child: FilledButton.icon(
                         style: FilledButton.styleFrom(backgroundColor: T.success),
                         onPressed: _busy == '${l['_id']}' ? null : () => _decide(l, 'approved'),
-                        icon: const Icon(Icons.check, size: 18), label: Text(tr('اعتماد', 'Approve')))),
+                        icon: const Icon(Icons.check, size: 18), label: Text(tr('موافقة', 'Approve')))),
                       const SizedBox(width: 8),
                       Expanded(child: OutlinedButton.icon(
                         style: OutlinedButton.styleFrom(foregroundColor: T.danger),
@@ -148,7 +144,8 @@ const _reqCategory = {
 
 /// Every staff request to HR, open first.
 class TopRequestsScreen extends StatefulWidget {
-  const TopRequestsScreen({super.key});
+  const TopRequestsScreen({super.key, this.base = '/api/top-management'});
+  final String base;
   @override
   State<TopRequestsScreen> createState() => _TopRequestsScreenState();
 }
@@ -167,7 +164,7 @@ class _TopRequestsScreenState extends State<TopRequestsScreen> {
 
   Future<void> _load() async {
     try {
-      final d = await Api.instance.get('/api/top-management/requests${_tab.isEmpty ? '' : '?status=$_tab'}');
+      final d = await Api.instance.get('${widget.base}/requests${_tab.isEmpty ? '' : '?status=$_tab'}');
       if (mounted) setState(() { _rows = List<Map<String, dynamic>>.from(d['requests'] ?? []); _loading = false; });
     } catch (e) {
       if (mounted) setState(() => _loading = false);

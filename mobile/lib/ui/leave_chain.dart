@@ -9,16 +9,19 @@ import 'theme.dart';
 /// Steps in order: key, the two names, and the document field holding its decision.
 const leaveStages = <({String key, String ar, String en, String decision})>[
   (key: 'manager', ar: 'المدير المباشر', en: 'Direct Manager', decision: 'managerDecision'),
+  (key: 'finance', ar: 'الإدارة المالية', en: 'Finance', decision: 'financeDecision'),
   (key: 'hr', ar: 'الموارد البشرية', en: 'HR', decision: 'hrDecision'),
-  (key: 'executive', ar: 'الإدارة العليا', en: 'Executive', decision: 'executiveDecision'),
+  (key: 'executive', ar: 'الإدارة العليا', en: 'Top Management', decision: 'executiveDecision'),
+  (key: 'chairman', ar: 'رئيس مجلس الإدارة', en: 'Chairman', decision: 'chairmanDecision'),
 ];
 
 /// Status to name and color. Read through [leaveStatusOf] so it is never empty: reading a color from a missing key crashes the screen.
 const leaveStatusMeta = <String, (String, String, Color)>{
   'pending_manager': ('عند المدير المباشر', 'With manager', Color(0xFFD97706)),
   'pending_hr': ('عند الموارد البشرية', 'With HR', Color(0xFF2563EB)),
-  'pending_finance': ('عند الحسابات', 'With Finance', Color(0xFF7C3AED)),
-  'pending_executive': ('عند الإدارة العليا', 'With Executive', Color(0xFF4F46E5)),
+  'pending_finance': ('عند الإدارة المالية', 'With Finance', Color(0xFF7C3AED)),
+  'pending_executive': ('عند الإدارة العليا', 'With Top Management', Color(0xFF4F46E5)),
+  'pending_chairman': ('عند رئيس مجلس الإدارة', 'With the Chairman', Color(0xFFC026D3)),
   'info_requested': ('بانتظار ردّك', 'Needs your reply', Color(0xFFEA580C)),
   'approved': ('معتمدة', 'Approved', Color(0xFF059669)),
   'rejected': ('مرفوضة', 'Rejected', Color(0xFFDC2626)),
@@ -31,9 +34,11 @@ const leaveStatusMeta = <String, (String, String, Color)>{
 }
 
 /// Is it a live step awaiting a decision? (Finished and returned-to-owner are not.)
-bool leaveIsActionable(Object? status) => const [
-      'pending_manager', 'pending_hr', 'pending_finance', 'pending_executive',
-    ].contains((status ?? '').toString());
+bool leaveIsActionable(Object? status) => leaveStages.any((s) => 'pending_${s.key}' == (status ?? '').toString());
+
+/// Editable by its owner until any stage has acted, as the server's leaveIsUntouched.
+bool leaveIsUntouched(Map<String, dynamic> l) =>
+    leaveIsActionable(l['status']) && leaveStages.every((s) => !(l[s.decision] is Map && (l[s.decision] as Map)['at'] != null));
 
 /// Is the request still open? Used for the pending counters and the cancel button.
 bool leaveIsOpen(Object? status) =>

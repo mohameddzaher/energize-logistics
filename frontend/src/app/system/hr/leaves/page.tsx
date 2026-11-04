@@ -6,7 +6,7 @@ import { useLanguage } from '@/context/LanguageContext';
 import { useSocket } from '@/hooks/useSocket';
 import api from '@/lib/api';
 import { CalendarCheck, Check, X, HelpCircle, FileDown, PenTool, CalendarPlus, History, Pencil, Trash2 } from 'lucide-react';
-import { isHRStaff, LeaveRequest, LEAVE_STATUS, empName, userName, leaveTypeLabel } from '@/lib/hr';
+import { isHRStaff, LeaveRequest, LEAVE_STATUS, empName, userName, leaveTypeLabel, LEAVE_OPEN, LEAVE_PENDING } from '@/lib/hr';
 import DatePair from '@/components/hr/DatePair';
 import { bothDates, gregCell, hijriCell, pairLabels, exportDatePair } from '@/lib/hrDates';
 import { LeaveChainBar, LeaveThread } from '@/components/hr/LeaveChain';
@@ -183,12 +183,10 @@ export default function HRLeavesPage() {
     setRowBusy('');
   };
 
-  // Fetch the full leave (with signatures) then build the official PDF sheet.
   const downloadPdf = async (id: string) => {
     setPdfBusy(id);
     try {
-      const { leave } = await api.get<{ leave: any }>(`/api/hr/leaves/${id}`);
-      await downloadLeaveSheet(leave, lang as 'ar' | 'en');
+      await downloadLeaveSheet(id);
     } catch (e: any) { notify(e.message || 'PDF failed', 'error'); }
     setPdfBusy('');
   };
@@ -205,16 +203,16 @@ export default function HRLeavesPage() {
     return empName(l.employee).toLowerCase().includes(q) || userName(l.requester).toLowerCase().includes(q)
       || String(l.employee?.employeeNumber || '').includes(q);
   });
-  // Pending means waiting at one of the four stages or returned to its owner. Counting only two stages dropped requests at accounts or management from the counter, making them look finished.
-  const OPEN = ['pending_manager', 'pending_hr', 'pending_finance', 'pending_executive', 'info_requested'];
-  const pendingCount = allLeaves.filter((l) => OPEN.includes(l.status)).length;
+  // Pending means waiting at any stage or returned to its owner; one list (lib/hr) so a stage added later is counted.
+  const pendingCount = allLeaves.filter((l) => LEAVE_OPEN.includes(l.status)).length;
   // Decisions are made only at an existing stage; the server verifies it is the reader's stage.
-  const actionable = (l: LeaveRequest | null) => !!l && ['pending_manager', 'pending_hr', 'pending_finance', 'pending_executive'].includes(l.status);
-  // Row buttons only where this reader decides now, as the server checks (utils/leaveChain canActAt): HR at the HR stage, top management at the last, super admins anywhere.
+  const actionable = (l: LeaveRequest | null) => !!l && LEAVE_PENDING.includes(l.status);
+  // Row buttons only where this reader decides now, as the server checks (utils/leaveChain canActAt): HR at the HR stage, top management and the chairman at theirs, super admins anywhere.
   const top = ['super_admin', 'admin'].includes(user?.role || '');
   const canActNow = (l: LeaveRequest) => actionable(l) && (top
     || (staff && l.status === 'pending_hr')
     || ((user as any)?.isTopManagement === true && l.status === 'pending_executive')
+    || ((user as any)?.isChairman === true && l.status === 'pending_chairman')
     || (l.status === 'pending_manager' && String((l.manager as any)?._id || l.manager || '') === String(user?._id || '')));
 
   // The "from Gregorian" label is never shown; the main name is start/end date.

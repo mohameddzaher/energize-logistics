@@ -16,6 +16,8 @@ interface User {
   remoteAccess?: string[];
   // Top management: signs the last leave stage and opens its section.
   isTopManagement?: boolean;
+  isChairman?: boolean;
+  approvesLeaves?: boolean;
   manager?: { _id: string; firstName: string; lastName: string; email: string; role: string } | string;
   linkedEmployee?: { _id: string; firstName: string; lastName: string; employeeNumber?: string; jobTitle?: string } | string;
   // Effective per-section access set by the super_admin permissions page

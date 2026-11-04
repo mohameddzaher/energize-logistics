@@ -93,4 +93,18 @@ async function isUnder(user, employeeId) {
   return team.some((e) => String(e._id) === String(employeeId));
 }
 
-module.exports = { teamOf, isUnder, teamFilter, managedSection };
+/**
+ * Does this user approve leave anywhere: a stage owner (finance, HR, top management, chairman, super admin), or a direct manager of someone.
+ * Decides who sees the leave-approvals page; employees with nobody under them have nothing to approve there.
+ */
+async function approvesLeaves(user) {
+  if (!user) return false;
+  if (require('./leaveChain').stagesFor(user).length > 1) return true;
+  const User = require('../models/User');
+  const LeaveRequest = require('../models/LeaveRequest');
+  if (await User.exists({ manager: user._id, isActive: { $ne: false } })) return true;
+  if (await LeaveRequest.exists({ manager: user._id })) return true;
+  return (await teamOf(user, { select: '_id' })).length > 0;
+}
+
+module.exports = { teamOf, isUnder, teamFilter, managedSection, approvesLeaves };

@@ -237,7 +237,7 @@ async function extendLeave(leaveId, { newEndDate, note = '' }, user) {
   if (leave.returnState === 'returned') throw new LeaveReturnError('سُجِّلت عودته بالفعل — لا يُمدَّد');
   const clash = await LeaveRequest.findOne({
     _id: { $ne: leave._id }, employee: leave.employee,
-    status: { $in: ['approved', 'pending_manager', 'pending_hr', 'pending_finance', 'pending_executive', 'info_requested'] },
+    status: { $in: ['approved', ...require('./leaveChain').OPEN_STATUSES] },
     startDate: { $lte: newEndDate }, endDate: { $gt: leave.endDate },
   }).select('startDate endDate').lean();
   if (clash) throw new LeaveReturnError(`التمديد يتداخل مع إجازةٍ أخرى (${clash.startDate} → ${clash.endDate})`);

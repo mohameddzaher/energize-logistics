@@ -245,7 +245,15 @@ exports.updateUser = async (req, res) => {
     }
     if (guardSuperAdminRole(req, res, { currentRole: user.role, nextRole: role })) return;
 
-    const before = { firstName: user.firstName, lastName: user.lastName, role: user.role, email: user.email, isTopManagement: user.isTopManagement === true };
+    const before = { firstName: user.firstName, lastName: user.lastName, role: user.role, email: user.email, isTopManagement: user.isTopManagement === true, isChairman: user.isChairman === true };
+
+    // The chairman is a super admin account with the last leave stage, so ticking it makes the account super admin; guardSuperAdminRole already limits that to a super admin.
+    if (req.body.isChairman !== undefined) {
+      const on = req.body.isChairman === true || req.body.isChairman === 'true';
+      if (on && guardSuperAdminRole(req, res, { currentRole: user.role, nextRole: 'super_admin' })) return;
+      user.isChairman = on;
+      if (on) user.role = 'super_admin';
+    }
 
     // Top management is set by a super admin only: it signs the last leave stage for the whole company.
     if (req.body.isTopManagement !== undefined) {
@@ -318,6 +326,8 @@ exports.updateUser = async (req, res) => {
     // A partner login stays on the external `client` role no matter what the
     // form sends; only staff accounts take a role from the picker.
     if (role && user.accountType === 'employee') user.role = role;
+    // A chairman stays super admin whatever the role field says; untick the chairman box first to change his role.
+    if (user.isChairman) user.role = 'super_admin';
     if (linkedEmployee !== undefined) {
       user.linkedEmployee = linkedEmployee || null;
       await syncEmployeeLink(linkedEmployee || null, user._id);
@@ -373,7 +383,7 @@ exports.updateUser = async (req, res) => {
       entityId: user._id,
       changes: {
         before,
-        after: { firstName: user.firstName, lastName: user.lastName, role: user.role, email: user.email, isTopManagement: user.isTopManagement === true },
+        after: { firstName: user.firstName, lastName: user.lastName, role: user.role, email: user.email, isTopManagement: user.isTopManagement === true, isChairman: user.isChairman === true },
         passwordChanged: !!req.body.password || undefined,
       },
       ipAddress: req.ip,

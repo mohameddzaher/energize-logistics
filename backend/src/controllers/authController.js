@@ -128,6 +128,9 @@ exports.login = async (req, res) => {
         role: user.role,
         // Top management opens its section from the first render, not only after /me.
         isTopManagement: user.isTopManagement === true,
+        isChairman: user.isChairman === true,
+        // Whether the leave-approvals page is shown: a stage owner or someone's direct manager.
+        approvesLeaves: await require('../utils/leaveTeam').approvesLeaves(user).catch(() => false),
         permissions,
         // Which screens open; the sidebar reads it from the first render.
         pageAccess,
@@ -362,7 +365,8 @@ exports.getMe = async (req, res) => {
     // The UI hides super-admin actions from those without them and must know that a custom or fully granted role has them. The real guard is on the server regardless.
     const { hasSuperAdminPowers } = require('../utils/permissions');
     const superAdminPowers = user ? await hasSuperAdminPowers(user.role) : false;
-    const out = user ? { ...user.toObject({ flattenMaps: true }), permissions, pageAccess, pagesGranted, homePage, superAdminPowers, ...(roleLabel ? { roleLabel } : {}) } : user;
+    const approvesLeaves = user ? await require('../utils/leaveTeam').approvesLeaves(user).catch(() => false) : false;
+    const out = user ? { ...user.toObject({ flattenMaps: true }), permissions, pageAccess, pagesGranted, homePage, superAdminPowers, approvesLeaves, ...(roleLabel ? { roleLabel } : {}) } : user;
 
     res.json({ user: out });
   } catch (error) {

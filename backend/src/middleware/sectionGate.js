@@ -28,7 +28,7 @@ const hrSelfServiceExempt = (req) => {
   if (req.method === 'GET' && p === '/leave-types') return true;
   // Leave approval inbox and its counter, and a single leave (for the PDF): the controller builds the query from the reader's stages and checks the requester. These were outside this list, so a department manager saved with HR "none" never saw their team's requests.
   if (req.method === 'GET' && /^\/leaves\/inbox(\/count)?$/.test(p)) return true;
-  if (req.method === 'GET' && /^\/leaves\/[0-9a-f]{24}$/i.test(p)) return true;
+  if (req.method === 'GET' && /^\/leaves\/[0-9a-f]{24}(\/sheet\.pdf)?$/i.test(p)) return true;
   if (/^\/leaves\/[^/]+\/decision$/.test(p)) return true;
   if (/^\/requests\/[^/]+\/reply$/.test(p)) return true;
   if (req.method === 'GET' && /^\/employees\/[^/]+$/.test(p)) return true;

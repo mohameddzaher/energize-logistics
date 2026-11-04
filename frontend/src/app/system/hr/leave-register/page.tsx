@@ -226,8 +226,7 @@ export default function LeaveRegisterPage() {
             <div className="border-t border-slate-200 pt-3">
               <button type="button" onClick={async () => {
                 try {
-                  const { leave } = await api.get<{ leave: any }>(`/api/hr/leaves/${open._id}`);
-                  await downloadLeaveSheet(leave, ar ? 'ar' : 'en');
+                  await downloadLeaveSheet(open._id);
                 } catch (e: any) { notify(e?.message || (ar ? 'تعذّر التحميل' : 'Could not download'), 'error'); }
               }}
                 className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 text-sm">

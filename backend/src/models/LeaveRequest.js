@@ -1,7 +1,7 @@
 const mongoose = require('mongoose');
 
-// A leave request follows the chain in utils/leaveChain: pending_manager, pending_hr, pending_executive, approved
-// (or rejected/cancelled at any stage). Without a direct manager it starts at pending_hr.
+// A leave request follows the chain in utils/leaveChain: pending_manager, pending_finance, pending_hr, pending_executive, pending_chairman, approved
+// (or rejected/cancelled at any stage). Without a direct manager it starts at pending_finance.
 // Attachment: sick leave needs a report and exceptional leave a justifying paper. Sent over WhatsApp they got lost and could not be found months later. The attachment lives with the request, is backed up with it and stays downloadable from the employee file.
 const attachmentSchema = new mongoose.Schema({
   title: { type: String, trim: true, default: '' },
@@ -81,19 +81,19 @@ const leaveRequestSchema = new mongoose.Schema(
       by: { type: mongoose.Schema.Types.ObjectId, ref: 'User' }, byName: String, at: Date,
     },
 
-    // Stages: direct manager, HR, top management ('finance' remains only for requests already held there).
+    // Stages, in order: direct manager, finance, HR, top management, chairman of the board.
     // An ask for clarification is not a rejection; the owner's reply restarts the chain, since what was approved changed.
     status: {
       type: String,
       enum: [
-        'pending_manager', 'pending_hr', 'pending_finance', 'pending_executive',
+        'pending_manager', 'pending_hr', 'pending_finance', 'pending_executive', 'pending_chairman',
         'info_requested', 'approved', 'rejected', 'cancelled',
       ],
       default: 'pending_manager',
     },
     currentStage: {
       type: String,
-      enum: ['manager', 'hr', 'finance', 'executive', 'employee', 'done'],
+      enum: ['manager', 'hr', 'finance', 'executive', 'chairman', 'employee', 'done'],
       default: 'manager',
     },
 
@@ -105,6 +105,7 @@ const leaveRequestSchema = new mongoose.Schema(
     hrDecision: decisionSchema,
     financeDecision: decisionSchema,
     executiveDecision: decisionSchema,
+    chairmanDecision: decisionSchema,
 
     // What passed between the requester and reviewers: a question asked and a reply written stay on the request, so why it was delayed and what was answered is readable later. Nothing is erased.
     thread: [{

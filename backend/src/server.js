@@ -219,6 +219,14 @@ app.use('/api/nav-badges', require('./routes/navBadges'));
 app.use('/api/selling-price-requests', require('./routes/sellingPriceRequests'));
 // Top management: its own gate (the flagged accounts and super admins), not a section in the permissions matrix.
 app.use('/api/top-management', require('./routes/topManagement'));
+// Finance's leave desk (its stage, after the direct manager) and the staff requests to HR; the chairman's desk decides the final stage.
+{
+  const leaveDesk = require('./routes/leaveDesk');
+  const chain = require('./utils/leaveChain');
+  const { isTopRole } = require('./config/constants');
+  app.use('/api/finance-desk', authenticate, leaveDesk({ stage: 'finance', allow: (u) => chain.FINANCE_ROLES.includes(u?.role) || isTopRole(u?.role), denyMessage: 'هذه الصفحة للإدارة المالية', requests: true }));
+  app.use('/api/chairman', authenticate, leaveDesk({ stage: 'chairman', allow: (u) => chain.isChairman(u) || isTopRole(u?.role), denyMessage: 'هذه الصفحة لرئيس مجلس الإدارة' }));
+}
 // Section requests to HR: guarded in the controller, see the file header.
 app.use('/api/staff-requests', require('./routes/staffRequests'));
 app.use('/api/audit', auditRoutes);

@@ -137,6 +137,7 @@ router.get('/leaves', authorize(...STAFF), hr.listLeaves);
 router.get('/leave-register', authorize(...STAFF), hr.leaveRegister);
 // Recording a leave that actually happened; before the parameterized route, or `/:id` would swallow it.
 router.post('/leaves/backdated', authorize(...STAFF), hr.createBackdatedLeave);
+router.get('/leaves/:id/sheet.pdf', hr.getLeaveSheet); // official sheet PDF, same on web and mobile; access checked in controller
 router.get('/leaves/:id', hr.getLeave); // single leave + signatures (for the PDF); access checked in controller
 // HR record correction: edit date, type or reason, or delete the leave.
 router.put('/leaves/:id', authorize(...STAFF), hr.updateLeave);

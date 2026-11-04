@@ -413,7 +413,7 @@ const FIELD_LABELS = {
   itemsCount: ['عدد الأصناف', 'Items'], issueReason: ['سبب الصرف', 'Issue reason'], rimName: ['الجنط', 'Rim'],
   cancelReason: ['سبب الإلغاء', 'Cancel reason'], requestNumber: ['رقم الطلب', 'Request no.'],
   paymentSubtype: ['نوع الدفع', 'Payment type'], blNumber: ['رقم البوليصة', 'B/L No.'], containerNumber: ['رقم الحاوية', 'Container No.'],
-  isTopManagement: ['الإدارة العليا', 'Top management'], supplierName: ['المورد', 'Supplier'], customsLink: ['الربط بالتخليص', 'Customs link'],
+  isTopManagement: ['الإدارة العليا', 'Top management'], isChairman: ['رئيس مجلس الإدارة', 'Chairman of the board'], supplierName: ['المورد', 'Supplier'], customsLink: ['الربط بالتخليص', 'Customs link'],
   // Fields recorded by the safety net (middleware/auditTrail) as sent; previously shown by code names such as 'contact time'.
   contactTime: ['وقت التواصل', 'Contact time'], currentLocation: ['الموقع الحالي', 'Current location'],
   fromCity: ['من مدينة', 'From city'], toCity: ['إلى مدينة', 'To city'], loadDate: ['تاريخ التحميل', 'Load date'],

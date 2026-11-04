@@ -17,13 +17,20 @@
     "/system/top-management": {
       "apis": [
         "/api/hr/leaves",
-        "/api/top-management/leaves"
+        "/api/top-management"
       ],
       "wildcard": false
     },
     "/system/top-management/requests": {
       "apis": [
-        "/api/top-management/requests"
+        "/api/top-management"
+      ],
+      "wildcard": false
+    },
+    "/system/chairman": {
+      "apis": [
+        "/api/chairman",
+        "/api/hr/leaves"
       ],
       "wildcard": false
     },
@@ -2411,6 +2418,19 @@
       "apis": [
         "/api/finance/departments",
         "/api/finance/overview"
+      ],
+      "wildcard": false
+    },
+    "/system/finance/leaves": {
+      "apis": [
+        "/api/finance-desk",
+        "/api/hr/leaves"
+      ],
+      "wildcard": false
+    },
+    "/system/finance/staff-requests": {
+      "apis": [
+        "/api/finance-desk"
       ],
       "wildcard": false
     },

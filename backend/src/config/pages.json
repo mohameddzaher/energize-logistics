@@ -14,6 +14,12 @@
       "en": "Staff Requests"
     },
     {
+      "key": "/system/chairman",
+      "section": "Top Management",
+      "ar": "اعتماد رئيس مجلس الإدارة",
+      "en": "Chairman Approval"
+    },
+    {
       "key": "/system/top-management/activity",
       "section": "Top Management",
       "ar": "نشاط الشركة المباشر",
@@ -1632,6 +1638,18 @@
       "section": "Accounting",
       "ar": "لوحة الإدارة المالية",
       "en": "Finance Overview"
+    },
+    {
+      "key": "/system/finance/leaves",
+      "section": "Accounting",
+      "ar": "طلبات الإجازات",
+      "en": "Leave Requests"
+    },
+    {
+      "key": "/system/finance/staff-requests",
+      "section": "Accounting",
+      "ar": "طلبات الموظفين",
+      "en": "Staff Requests"
     },
     {
       "key": "/system/finance/operations",

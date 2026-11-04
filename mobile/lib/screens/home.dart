@@ -152,7 +152,7 @@ class _HomeScreenState extends State<HomeScreen> {
   Widget build(BuildContext context) {
     final auth = context.watch<AuthProvider>();
     final sections = sectionsFor(auth);
-    final selfPages = selfServicePages(_hasTeam, isPartner: auth.role == 'client');
+    final selfPages = selfServicePages(_hasTeam, isPartner: auth.role == 'client', approvesLeaves: auth.user?['approvesLeaves'] == true || _hasTeam || const ['super_admin', 'admin'].contains(auth.role));
 
     return Scaffold(
       appBar: AppBar(

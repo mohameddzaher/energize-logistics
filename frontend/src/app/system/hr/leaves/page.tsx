@@ -26,9 +26,9 @@ const idOf = (e: any) => (e?.idType === 'national_id' ? (e?.nationalId || e?.iqa
 const BG = 'bg-white group-hover:bg-slate-100';
 
 export default function HRLeavesPage() {
-  // Actions, employee number, name and ID stay pinned to the right.
-  const pin = usePinnedColumns(4);
-  const { notify, confirm } = useDialog();
+  // Only the actions stay pinned; number, name and ID scroll with the rest (the owner's call).
+  const pin = usePinnedColumns(1);
+  const { notify, confirm, prompt } = useDialog();
   const { user } = useAuth();
   const { lang, isRTL } = useLanguage();
   const ar = lang === 'ar';
@@ -150,6 +150,27 @@ export default function HRLeavesPage() {
     setBusy(false);
   };
 
+  // Decide straight from the row; a rejection or a question asks for its text first. Signature and files stay in the review window.
+  const [rowBusy, setRowBusy] = useState('');
+  const quickDecide = async (l: LeaveRequest, decision: 'approved' | 'rejected' | 'info') => {
+    let text = '';
+    if (decision !== 'approved') {
+      const v = await prompt(decision === 'info'
+        ? (ar ? 'اكتب استفسارك أو التعديل المطلوب — يصل للموظّف ليردّ' : 'Write your question or the change needed — the employee will reply')
+        : (ar ? 'سبب الرفض (اختياري)' : 'Reason for rejection (optional)'));
+      if (v === null) return;
+      if (decision === 'info' && !v.trim()) { notify(ar ? 'اكتب استفسارك حتى يعرف الموظّف بمَ يردّ.' : 'Write your question so the employee knows what to answer.', 'error'); return; }
+      text = v;
+    }
+    setRowBusy(l._id);
+    try {
+      await api.patch(`/api/hr/leaves/${l._id}/decision`, { decision, note: text });
+      notify(decision === 'approved' ? (ar ? 'تمت الموافقة' : 'Approved') : decision === 'rejected' ? (ar ? 'رُفض الطلب' : 'Rejected') : (ar ? 'أُرسل الاستفسار للموظّف' : 'Question sent to the employee'), 'success');
+      load();
+    } catch (e: any) { notify(e.message, 'error'); }
+    setRowBusy('');
+  };
+
   // Fetch the full leave (with signatures) then build the official PDF sheet.
   const downloadPdf = async (id: string) => {
     setPdfBusy(id);
@@ -177,6 +198,12 @@ export default function HRLeavesPage() {
   const pendingCount = allLeaves.filter((l) => OPEN.includes(l.status)).length;
   // Decisions are made only at an existing stage; the server verifies it is the reader's stage.
   const actionable = (l: LeaveRequest | null) => !!l && ['pending_manager', 'pending_hr', 'pending_finance', 'pending_executive'].includes(l.status);
+  // Row buttons only where this reader decides now, as the server checks (utils/leaveChain canActAt): HR at the HR stage, top management at the last, super admins anywhere.
+  const top = ['super_admin', 'admin'].includes(user?.role || '');
+  const canActNow = (l: LeaveRequest) => actionable(l) && (top
+    || (staff && l.status === 'pending_hr')
+    || ((user as any)?.isTopManagement === true && l.status === 'pending_executive')
+    || (l.status === 'pending_manager' && String((l.manager as any)?._id || l.manager || '') === String(user?._id || '')));
 
   // The "from Gregorian" label is never shown; the main name is start/end date.
   const FROM_LABEL = ar ? 'تاريخ البداية' : 'Start date';
@@ -242,10 +269,10 @@ export default function HRLeavesPage() {
         <table className="w-full text-sm">
           <thead><tr className="bg-slate-900 border-b border-slate-200 text-slate-300">
             <th {...pin.th(0, 'text-start font-semibold px-4 py-3 whitespace-nowrap')}>{ar ? 'الإجراءات' : 'Actions'}</th>
-            <th {...pin.th(1, 'text-start font-semibold px-4 py-3 whitespace-nowrap')}>{ar ? 'الرقم الوظيفي' : 'Emp. no.'}</th>
-            <th {...pin.th(2, 'text-start font-semibold px-4 py-3 whitespace-nowrap')}>{tx.colEmployee}</th>
-            <th {...pin.th(3, 'text-start font-semibold px-4 py-3 whitespace-nowrap')}>{ar ? 'الهوية / الإقامة' : 'ID / Iqama'}</th>
-            <th className="text-start font-semibold px-4 py-3">{tx.colType}</th>
+            <th className="text-start font-semibold px-4 py-3 whitespace-nowrap">{ar ? 'الرقم الوظيفي' : 'Emp. no.'}</th>
+            <th className="text-start font-semibold px-4 py-3 whitespace-nowrap">{tx.colEmployee}</th>
+            <th className="text-start font-semibold px-4 py-3 whitespace-nowrap">{ar ? 'الهوية / الإقامة' : 'ID / Iqama'}</th>
+            <th className="text-start font-semibold px-4 py-3 whitespace-nowrap min-w-[160px]">{tx.colType}</th>
             {/* From and To are two columns: a combined range in one cell cannot be sorted or compared, and the questions differ (when absence starts, when it ends). */}
             <th className="text-start font-semibold px-4 py-3 whitespace-nowrap">{fromLabels[0]}</th>
             <th className="text-start font-semibold px-4 py-3 whitespace-nowrap">{fromLabels[1]}</th>
@@ -264,6 +291,20 @@ export default function HRLeavesPage() {
                 <tr key={l._id} className="group border-b border-slate-200/70 hover:bg-slate-100 cursor-pointer" onClick={() => openReview(l)}>
                   <td {...pin.td(0, 'px-4 py-3', BG)}>
                     <div className="flex items-center gap-1.5">
+                      {canActNow(l) && <>
+                        <button type="button" disabled={rowBusy === l._id} onClick={(e) => { e.stopPropagation(); quickDecide(l, 'approved'); }}
+                          className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-emerald-600 text-white text-xs font-semibold hover:bg-emerald-700 disabled:opacity-50">
+                          {rowBusy === l._id ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Check className="w-3.5 h-3.5" />}{tx.approve}
+                        </button>
+                        <button type="button" disabled={rowBusy === l._id} onClick={(e) => { e.stopPropagation(); quickDecide(l, 'info'); }}
+                          className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-orange-500/15 text-orange-700 text-xs font-semibold hover:bg-orange-500/25 disabled:opacity-50 whitespace-nowrap">
+                          <HelpCircle className="w-3.5 h-3.5" />{ar ? 'استفسار / طلب تعديل' : 'Ask / change'}
+                        </button>
+                        <button type="button" disabled={rowBusy === l._id} onClick={(e) => { e.stopPropagation(); quickDecide(l, 'rejected'); }}
+                          className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-red-500/15 text-red-600 text-xs font-semibold hover:bg-red-500/25 disabled:opacity-50">
+                          <X className="w-3.5 h-3.5" />{tx.reject}
+                        </button>
+                      </>}
                       <button type="button" title={t('Download PDF', 'تحميل PDF')} onClick={(e) => { e.stopPropagation(); downloadPdf(l._id); }} className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-slate-100 hover:bg-[#f37121]/10 hover:text-[#f37121] text-slate-600 text-xs">
                         {pdfBusy === l._id ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <FileDown className="w-3.5 h-3.5" />} PDF
                       </button>
@@ -275,13 +316,13 @@ export default function HRLeavesPage() {
                       </button>
                     </div>
                   </td>
-                  <td {...pin.td(1, 'px-4 py-3 text-slate-700 whitespace-nowrap', BG)}>{(l.employee as any)?.employeeNumber || '—'}</td>
-                  <td {...pin.td(2, 'px-4 py-3 text-slate-900 font-medium whitespace-nowrap', BG)}>
+                  <td className="px-4 py-3 text-slate-700 whitespace-nowrap">{(l.employee as any)?.employeeNumber || '—'}</td>
+                  <td className="px-4 py-3 text-slate-900 font-medium whitespace-nowrap">
                     {/* Cap the width and truncate: an uncapped long name hides the columns the table exists for. The full name is in the tooltip. */}
                     <span className="block max-w-[15rem] truncate" title={empName(l.employee, lang)}>{empName(l.employee, lang)}</span>
                   </td>
-                  <td {...pin.td(3, 'px-4 py-3 text-slate-700 whitespace-nowrap', BG)}>{idOf(l.employee)}</td>
-                  <td className="px-4 py-3 text-slate-700">{leaveTypeLabel(l.leaveType, lang)}</td>
+                  <td className="px-4 py-3 text-slate-700 whitespace-nowrap">{idOf(l.employee)}</td>
+                  <td className="px-4 py-3 text-slate-700 whitespace-nowrap min-w-[160px]">{leaveTypeLabel(l.leaveType, lang)}</td>
                   <td className="px-4 py-3 text-slate-700 whitespace-nowrap tabular-nums">{gregCell(l.startDate)}</td>
                   <td className="px-4 py-3 text-slate-700 whitespace-nowrap tabular-nums" dir="ltr">{hijriCell(l.startDate)}</td>
                   <td className="px-4 py-3 text-slate-700 whitespace-nowrap tabular-nums">{gregCell(l.endDate)}</td>

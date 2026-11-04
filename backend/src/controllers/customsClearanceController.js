@@ -968,6 +968,8 @@ exports.createParty = async (req, res) => {
     if (exists) return res.status(409).json({ message: 'موجودٌ بالاسم نفسِه', party: exists });
     const party = await CustomsParty.create({ ...mirrorContacts(req.body), kind, name, createdBy: req.user._id });
     cache.clear('customs:');
+    // Its name is shown on transactions, the list and the dashboard; they reload.
+    try { emitToAll('customs:updated', { party: String(party._id) }); } catch (_) { /* */ }
     res.status(201).json({ party });
   } catch (e) {
     return sendMongooseError(res, e, e.message || 'تعذّر الحفظ');
@@ -986,6 +988,8 @@ exports.updateParty = async (req, res) => {
     const link = party.kind === 'agent' ? 'agentParty' : 'customerParty';
     await CustomsClearance.updateMany({ [link]: party._id }, { $set: { [field]: party.name } });
     cache.clear('customs:');
+    // Its name is shown on transactions, the list and the dashboard; they reload.
+    try { emitToAll('customs:updated', { party: String(party._id) }); } catch (_) { /* */ }
     res.json({ party });
   } catch (e) {
     return sendMongooseError(res, e, e.message || 'تعذّر الحفظ');
@@ -1003,6 +1007,8 @@ exports.deleteParty = async (req, res) => {
       party.isActive = false;
       await party.save();
       cache.clear('customs:');
+    // Its name is shown on transactions, the list and the dashboard; they reload.
+    try { emitToAll('customs:updated', { party: String(party._id) }); } catch (_) { /* */ }
       return res.json({ deactivated: true, used, message: `له ${used} معاملة — عُطِّل ولم يُحذَف كي لا ينقطع تاريخُه.` });
     }
     await party.deleteOne();
@@ -1118,6 +1124,8 @@ exports.updateSettings = async (req, res) => {
       { new: true, upsert: true },
     ).lean();
     try { cache.clear('customs:'); } catch (_) { /* */ }
+    // The upcoming window changes what the dashboard flags.
+    try { emitToAll('customs:updated', { settings: true }); } catch (_) { /* */ }
     res.json({ settings });
   } catch (e) {
     res.status(500).json({ message: 'تعذّر حفظ الإعدادات' });

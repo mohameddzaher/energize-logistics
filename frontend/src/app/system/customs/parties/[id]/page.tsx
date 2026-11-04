@@ -5,6 +5,7 @@ import { useParams, useRouter } from 'next/navigation';
 import { useLanguage } from '@/context/LanguageContext';
 import { useDialog } from '@/components/system/DialogProvider';
 import api from '@/lib/api';
+import { useSocket } from '@/hooks/useSocket';
 import { useColumnFilters, ClearColumnFilters } from '@/components/useColumnFilters';
 import { Spinner, PageHeader } from '@/components/hr/HRKit';
 import ExportMenu, { type ExportColumn } from '@/components/ls2/ExportMenu';
@@ -47,6 +48,10 @@ export default function CustomsPartyProfile() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [id]);
   useEffect(() => { load(); }, [load]);
+  // Its transactions and totals follow any change inside a transaction, a new one, a deletion or a rename.
+  useSocket('customs:updated', load);
+  useSocket('customs:created', load);
+  useSocket('customs:deleted', load);
 
   if (loading) return <Spinner />;
   if (!d) return null;

@@ -107,11 +107,14 @@ class _FleetShipmentDetailsScreenState extends State<FleetShipmentDetailsScreen>
     _load();
     _onLive = () => _load();
     Live.instance.on('fleet:updated', _onLive);
+    // A customs link made or removed shows here at once.
+    Live.instance.on('customs:opsLinks', _onLive);
   }
 
   @override
   void dispose() {
     Live.instance.off('fleet:updated', _onLive);
+    Live.instance.off('customs:opsLinks', _onLive);
     _location.dispose();
     _note.dispose();
     super.dispose();
@@ -361,6 +364,15 @@ class _FleetShipmentDetailsScreenState extends State<FleetShipmentDetailsScreen>
                                 Chip2(tr('عميل فروع', 'Branch'), T.info, icon: Icons.store_outlined),
                               if (_lkLabel('fleet_load_type', (s['loadType'] ?? '').toString()).isNotEmpty)
                                 Chip2(_lkLabel('fleet_load_type', (s['loadType'] ?? '').toString()), T.inkSoft, icon: Icons.category_outlined),
+                              if ((s['blNumber'] ?? '').toString().isNotEmpty)
+                                Chip2('${tr('البوليصة', 'B/L')} ${s['blNumber']}', T.navy, icon: Icons.description_outlined),
+                              if ((s['containerNumber'] ?? '').toString().isNotEmpty)
+                                Chip2('${tr('الحاوية', 'Container')} ${s['containerNumber']}', T.navy, icon: Icons.inventory_2_outlined),
+                              // The customs transaction linked by those numbers.
+                              if (s['customsLink'] is Map)
+                                Chip2('${tr('التخليص', 'Customs')} ${(s['customsLink'] as Map)['refNumber'] ?? ''}', T.success, icon: Icons.verified_outlined)
+                              else if ((s['blNumber'] ?? '').toString().isNotEmpty || (s['containerNumber'] ?? '').toString().isNotEmpty)
+                                Chip2(tr('غير مرتبطة بالتخليص', 'Not linked to customs'), T.inkFaint, icon: Icons.link_off),
                               if (_lkLabel('fleet_rent_type', (s['rentType'] ?? '').toString()).isNotEmpty)
                                 Chip2(_lkLabel('fleet_rent_type', (s['rentType'] ?? '').toString()), T.navy, icon: Icons.swap_horiz_outlined),
                               if (_subtypeLabel(s['paymentSubtype']).isNotEmpty)

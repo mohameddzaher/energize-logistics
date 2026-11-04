@@ -55,6 +55,9 @@ class _FleetNewShipmentScreenState extends State<FleetNewShipmentScreen> {
   DateTime _loadDate = DateTime.now();
   DateTime? _expectedArrival;
   final _notes = TextEditingController();
+  // B/L and container: link the load to customs and print on the transport order, as on shipment orders.
+  final _bl = TextEditingController();
+  final _container = TextEditingController();
   // Load/pricing fields.
   final _vehicleRent = TextEditingController();   // Vehicle rent = section income.
   final _fullRent = TextEditingController();       // Full rent (optional).
@@ -151,6 +154,8 @@ class _FleetNewShipmentScreenState extends State<FleetNewShipmentScreen> {
     _fromCity.dispose();
     _toCity.dispose();
     _notes.dispose();
+    _bl.dispose();
+    _container.dispose();
     _vehicleRent.dispose();
     _fullRent.dispose();
     _driverExpense.dispose();
@@ -220,6 +225,8 @@ class _FleetNewShipmentScreenState extends State<FleetNewShipmentScreen> {
     if (ld != null) _loadDate = DateTime(ld.year, ld.month, ld.day);
     _expectedArrival = DateTime.tryParse((o['expectedArrival'] ?? '').toString())?.toLocal();
     _notes.text = (o['notes'] ?? '').toString();
+    _bl.text = (o['blNumber'] ?? '').toString();
+    _container.text = (o['containerNumber'] ?? '').toString();
     _paymentTypeItem = _lkItem(_paymentTypes, o['paymentSubtype']);
     _loadTypeItem = _lkItem(_loadTypes, o['loadType']);
     _vehicleRent.text = _numText(o['price']);
@@ -489,6 +496,8 @@ class _FleetNewShipmentScreenState extends State<FleetNewShipmentScreen> {
         if (edit || _fridayBonus) 'fridayBonus': _fridayBonus,
         if (edit || (_branch != null && _branch!.isNotEmpty)) 'branch': _branch ?? '',
         'notes': _notes.text,
+        if (edit || _bl.text.trim().isNotEmpty) 'blNumber': _bl.text.trim(),
+        if (edit || _container.text.trim().isNotEmpty) 'containerNumber': _container.text.trim().toUpperCase(),
       };
       if (edit) {
         await Api.instance.put('/api/fleet/shipments/${widget.editId}', body);
@@ -712,6 +721,14 @@ class _FleetNewShipmentScreenState extends State<FleetNewShipmentScreen> {
                 _lkPicker(tr('نوع الدفع', 'Payment type'), _paymentTypeItem, _paymentTypes, (v) => setState(() => _paymentTypeItem = v)),
                 const SizedBox(height: 10),
                 _lkPicker(tr('نوع الحمولة', 'Load type'), _loadTypeItem, _loadTypes, (v) => setState(() => _loadTypeItem = v)),
+                const SizedBox(height: 10),
+                Row(children: [
+                  Expanded(child: TextField(controller: _bl, textDirection: TextDirection.ltr,
+                      decoration: InputDecoration(labelText: tr('رقم البوليصة', 'B/L No.'), helperText: tr('اختياري — يربط بالتخليص', 'Optional — links to customs')))),
+                  const SizedBox(width: 10),
+                  Expanded(child: TextField(controller: _container, textDirection: TextDirection.ltr, textCapitalization: TextCapitalization.characters,
+                      decoration: InputDecoration(labelText: tr('رقم الحاوية', 'Container No.'), helperText: tr('اختياري — يربط بالتخليص', 'Optional — links to customs')))),
+                ]),
                 const SizedBox(height: 10),
                 // Branch: from the company branches.
                 Pressable(

@@ -83,6 +83,7 @@ function CreateFleetShipmentInner() {
               loadDate: toLocalDate(o.loadDate), expectedArrival: toLocalInput(o.expectedArrival),
               notes: o.notes || '',
               rentType: o.rentType || '', paymentType: o.paymentType || '', paymentSubtype: o.paymentSubtype || '', loadType: o.loadType || '',
+              blNumber: o.blNumber || '', containerNumber: o.containerNumber || '',
               price: o.price ?? '', fullRent: o.fullRent ?? '', customerType: o.customerType || '',
               driverExpense: o.driverExpense ?? '', fridayBonus: !!o.fridayBonus, branch: o.branch || '',
             });
@@ -218,6 +219,7 @@ function CreateFleetShipmentInner() {
         status: form.status || 'requesting',
         notes: form.notes || '',
         paymentSubtype: form.paymentSubtype || '', loadType: form.loadType || '',
+        blNumber: String(form.blNumber || '').trim(), containerNumber: String(form.containerNumber || '').trim(),
         price: form.price === '' || form.price == null ? 0 : Number(form.price),
         fullRent: form.fullRent === '' || form.fullRent == null ? 0 : Number(form.fullRent),
         customerType: form.customerType || '',
@@ -517,6 +519,17 @@ function CreateFleetShipmentInner() {
             <label className={labelCls}>{ar ? 'نوع الحمولة' : 'Load type'}</label>
             <SearchableManagedSelect type="fleet_load_type" value={form.loadType || ''} onChange={(v) => set('loadType', v)}
               placeholder={ar ? 'اختر أو أضف نوع الحمولة' : 'Pick or add a load type'} />
+          </div>
+          {/* B/L and container link the load to its customs transaction and print on the transport order, as on shipment orders. */}
+          <div>
+            <label className={labelCls}>{ar ? 'رقم البوليصة' : 'B/L No.'}</label>
+            <input value={form.blNumber || ''} onChange={(e) => set('blNumber', e.target.value)} dir="ltr" className={inputCls}
+              placeholder={ar ? 'اختياري — يربط الحمولة بالتخليص' : 'Optional — links to customs'} />
+          </div>
+          <div>
+            <label className={labelCls}>{ar ? 'رقم الحاوية' : 'Container No.'}</label>
+            <input value={form.containerNumber || ''} onChange={(e) => set('containerNumber', e.target.value.toUpperCase())} dir="ltr" className={inputCls}
+              placeholder={ar ? 'اختياري — يربط الحمولة بالتخليص' : 'Optional — links to customs'} />
           </div>
           <div>
             <label className={labelCls}>{ar ? 'مصروف السائق' : 'Driver expense'}</label>

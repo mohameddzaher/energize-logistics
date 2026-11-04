@@ -155,18 +155,42 @@ function decide(report, idx) {
   return sameLink(cur, next) ? undefined : next;
 }
 
-const REPORT_FIELDS = '_id reportNumber documentNumber customsLink shipmentOrder';
+const REPORT_FIELDS = '_id reportNumber documentNumber customsLink shipmentOrder fleetShipment';
 
-/** Adds each row's shipment numbers, which `autoLinkFor` reads alongside documentNumber. */
+/** Adds each row's shipment or fleet-load numbers, which `autoLinkFor` reads alongside documentNumber. */
 async function withShipmentNumbers(rows) {
   const ids = rows.map((r) => r.shipmentOrder).filter(Boolean);
-  if (!ids.length) return rows;
+  const loadIds = rows.map((r) => r.fleetShipment).filter(Boolean);
+  if (!ids.length && !loadIds.length) return rows;
   const ShipmentOrder = require('../models/ShipmentOrder');
-  const orders = new Map((await ShipmentOrder.find({ _id: { $in: ids } }).select('blNumber containerNumber').lean()).map((o) => [String(o._id), o]));
+  const { FleetShipment } = require('../models/FleetModels');
+  const [orderRows, loadRows] = await Promise.all([
+    ids.length ? ShipmentOrder.find({ _id: { $in: ids } }).select('blNumber containerNumber').lean() : [],
+    loadIds.length ? FleetShipment.find({ _id: { $in: loadIds } }).select('blNumber containerNumber').lean() : [],
+  ]);
+  const orders = new Map([...orderRows, ...loadRows].map((o) => [String(o._id), o]));
   return rows.map((r) => {
-    const o = orders.get(String(r.shipmentOrder));
+    const o = orders.get(String(r.shipmentOrder || r.fleetShipment || ''));
     return o ? { ...r, shipmentBl: o.blNumber, shipmentContainer: o.containerNumber } : r;
   });
+}
+
+/** A linked fleet load takes the transaction's B/L and its single container into its empty fields, as shipment orders do; nothing written is overwritten. */
+async function fillFleetLoads(rows, idx) {
+  const { FleetShipment } = require('../models/FleetModels');
+  const ops = [];
+  for (const { r, link } of rows) {
+    if (!r.fleetShipment || !link || !link.clearance) continue;
+    const set = {};
+    if (!String(r.shipmentBl || '').trim() && link.blNumber) set.blNumber = link.blNumber;
+    // A transaction with one container names it even when the link came by B/L.
+    const units = (link.containers || []).length ? link.containers : (idx.meta.get(idOf(link.clearance))?.units || []);
+    if (!String(r.shipmentContainer || '').trim() && units.length === 1) set.containerNumber = units[0];
+    if (Object.keys(set).length) ops.push({ updateOne: { filter: { _id: r.fleetShipment }, update: { $set: set } } });
+  }
+  if (!ops.length) return;
+  await FleetShipment.bulkWrite(ops, { ordered: false });
+  try { cache.clear('fleet:'); require('../websocket/socketManager').emitToAll('fleet:updated', { customsLink: true }); } catch (_) { /* No sockets in the script */ }
 }
 
 /**
@@ -180,12 +204,13 @@ async function resolveReports(rowsOrFilter, { emit = true, dryRun = false } = {}
     : await OperationsWorkflow.find(rowsOrFilter).select(REPORT_FIELDS).lean());
   if (!rows.length) return { changed: 0, reportNumbers: [], clearanceIds: [], changes: [] };
   const idx = await loadIndex();
-  const ops = []; const changes = []; const clearanceIds = new Set();
+  const ops = []; const changes = []; const clearanceIds = new Set(); const loadFills = [];
   for (const r of rows) {
     const next = decide(r, idx);
     // A row with no number of its own shows the clearance's. Rows of shipments made here
     // get theirs from the shipment, and fleet loads have nowhere else to hold it.
     const link = next === undefined ? r.customsLink : next;
+    if (r.fleetShipment && link && link.clearance) loadFills.push({ r, link });
     const fill = link && link.clearance && !r.shipmentOrder && !String(r.documentNumber || '').trim()
       ? ((link.containers || []).length === 1 ? link.containers[0] : link.blNumber) : '';
     if (next === undefined && !fill) continue;
@@ -198,6 +223,7 @@ async function resolveReports(rowsOrFilter, { emit = true, dryRun = false } = {}
     const update = { ...(Object.keys(set).length ? { $set: set } : {}), ...(next === null ? { $unset: { customsLink: 1 } } : {}) };
     ops.push({ updateOne: { filter: { _id: r._id }, update } });
   }
+  if (loadFills.length && !dryRun) await fillFleetLoads(loadFills, idx).catch((e) => console.error('[customs-link] fleet loads:', e.message));
   if (ops.length && !dryRun) {
     for (let i = 0; i < ops.length; i += 500) await OperationsWorkflow.bulkWrite(ops.slice(i, i + 500), { ordered: false });
     if (emit) announce({ reportNumbers: changes.map((c) => c.reportNumber), clearanceIds: [...clearanceIds] });
@@ -235,6 +261,13 @@ async function syncClearance(clearanceId, opts = {}) {
       const ShipmentOrder = require('../models/ShipmentOrder');
       const orders = await ShipmentOrder.find(filter).select('_id').lean();
       if (orders.length) or.push({ shipmentOrder: { $in: orders.map((o) => o._id) } });
+      // Fleet loads by their own B/L or container, which may differ from their row's document number.
+      if (keys.size) {
+        const { FleetShipment } = require('../models/FleetModels');
+        const rx = { $regex: [...keys].map(looseRx).join('|'), $options: 'i' };
+        const loads = await FleetShipment.find({ $or: [{ blNumber: rx }, { containerNumber: rx }] }).select('_id').lean();
+        if (loads.length) or.push({ fleetShipment: { $in: loads.map((l) => l._id) } });
+      }
     } catch (e) { console.error('[customs-link] طلبات الشحن:', e.message); }
   } else {
     try { await resolveShipments({ 'customsLink.clearance': new mongoose.Types.ObjectId(id) }, opts); } catch (_) { /* */ }

@@ -87,7 +87,7 @@ const SHIPMENT_EDITABLE = [
   'customer', 'vehicle', 'driver', 'secondDriver',
   'loadDate', 'fromCity', 'toCity', 'status', 'expectedArrival', 'notes',
   // Load/waybill fields:
-  'rentType', 'paymentType', 'paymentSubtype', 'loadType', 'price', 'fullRent', 'customerType',
+  'rentType', 'paymentType', 'paymentSubtype', 'loadType', 'blNumber', 'containerNumber', 'price', 'fullRent', 'customerType',
   'driverExpense', 'driverAdvance', 'fridayBonus', 'branch',
 ];
 
@@ -321,7 +321,7 @@ const LOAD_FILTER_FIELDS = {
   waybillNumber: 'num', customerName: 'text', fromCity: 'text', toCity: 'text', branch: 'text',
   vehiclePlate: 'text', trailerType: 'text', vehicleBrand: 'text', vehicleColor: 'text',
   driverName: 'text', secondDriverName: 'text', driverNationality: 'text',
-  paymentSubtype: 'text', customerType: 'text', loadType: 'text', status: 'text', supervisorName: 'text',
+  paymentSubtype: 'text', customerType: 'text', loadType: 'text', status: 'text', supervisorName: 'text', blNumber: 'text', containerNumber: 'text',
   price: 'num', fullRent: 'num', driverExpense: 'num', fridayBonus: 'bool', driverExpensePaid: 'bool',
   loadDate: 'day', expectedArrival: 'day', createdAt: 'day',
 };
@@ -371,7 +371,7 @@ exports.listShipments = async (req, res) => {
       const r = arRx(q);
       const or = [
         { customerName: r }, { driverName: r }, { secondDriverName: r },
-        { vehiclePlate: r }, { fromCity: r }, { toCity: r }, { supervisorName: r },
+        { vehiclePlate: r }, { fromCity: r }, { toCity: r }, { supervisorName: r }, { blNumber: r }, { containerNumber: r },
       ];
       const n = Number(String(q).trim());
       if (Number.isFinite(n)) or.push({ waybillNumber: n });
@@ -728,6 +728,9 @@ exports.getShipment = async (req, res) => {
     ]);
     if (!shipment) return res.status(404).json({ message: 'Shipment not found' });
     await waybillReady([shipment]);
+    // The customs transaction this load is linked to, read from its workflow row (where the link lives).
+    const wf = await require('../models/OperationsWorkflow').findOne({ fleetShipment: shipment._id }).select('customsLink reportNumber').lean();
+    shipment.customsLink = require('../services/customsOpsLink').linkView(wf && wf.customsLink);
     res.json({ shipment, events });
   } catch (error) {
     res.status(500).json({ message: 'Failed to load the shipment' });

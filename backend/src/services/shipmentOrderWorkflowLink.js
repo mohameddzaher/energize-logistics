@@ -215,10 +215,14 @@ async function mirrorFleet(loadOrId) {
     announceFleet();
   }
   const wanted = { ...rowOfFleet(f), ...fleetPayment(f) };
+  // The load's B/L or container is the row's document number, which the customs link reads; an empty load leaves what the link filled.
+  const doc = str(f.blNumber) || str(f.containerNumber);
+  if (doc) wanted.documentNumber = doc;
   if (wf) {
     const diff = changes(wf, wanted);
     if (!Object.keys(diff).length) return { changed: false };
     await OperationsWorkflow.updateOne({ _id: wf._id }, { $set: diff });
+    if ('documentNumber' in diff) await require('./customsOpsLink').resolveReports({ _id: wf._id }).catch((e) => console.error('[fleet-link] customs:', e.message));
     announceWorkflow();
     return { changed: true };
   }
@@ -230,6 +234,8 @@ async function mirrorFleet(loadOrId) {
     if (e.code === 11000) return { changed: false };
     throw e;
   }
+  // A new load with a B/L or container links to its customs transaction at once, not on its first edit.
+  if (doc) await require('./customsOpsLink').resolveReports({ fleetShipment: f._id }).catch((e) => console.error('[fleet-link] customs:', e.message));
   announceWorkflow();
   return { changed: true, created: true };
 }

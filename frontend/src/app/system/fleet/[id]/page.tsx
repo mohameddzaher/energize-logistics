@@ -19,6 +19,7 @@ import {
 } from '@/lib/fleet';
 import { useFleetLookups } from '@/hooks/useFleetLookups';
 import VehicleMonthLog from '@/components/fleet/VehicleMonthLog';
+import CustomsLinkBadge from '@/components/customs/CustomsLinkBadge';
 
 const labelCls = 'block text-sm font-semibold text-slate-800 mb-1.5';
 const inputCls = 'w-full px-3 py-2.5 rounded-lg bg-white border border-slate-200 text-slate-900 text-sm focus:outline-none focus:ring-2 focus:ring-[#f37121]/50';
@@ -77,6 +78,8 @@ function FleetShipmentDetailsInner() {
   // The truck is from the vehicles register and the driver from HR: refetched whenever either changes.
   useSocket('vreg:updated', useCallback(() => load(), [load]));
   useSocket('hr:employee', useCallback(() => load(), [load]));
+  // A link made or removed from the customs side shows here at once.
+  useSocket('customs:opsLinks', useCallback(() => load(), [load]));
 
   const submitFollowUp = async () => {
     if (!fu.currentLocation.trim() && !fu.note.trim()) {
@@ -133,6 +136,12 @@ function FleetShipmentDetailsInner() {
     [ar ? 'المسار' : 'Route', `${shipment.fromCity || '—'} ← ${shipment.toCity || '—'}`],
     [ar ? 'رقم السيارة' : 'Plate', shipment.vehiclePlate || '—'],
     [ar ? 'نوع التيدر' : 'Trailer', shipment.trailerType || '—'],
+    [ar ? 'رقم البوليصة' : 'B/L No.', <span key="bl" dir="ltr">{(shipment as any).blNumber || '—'}</span>],
+    [ar ? 'رقم الحاوية' : 'Container No.', <span key="ct" dir="ltr">{(shipment as any).containerNumber || '—'}</span>],
+    // The customs transaction the load is linked to by its B/L or container; updates live with customs.
+    [ar ? 'التخليص' : 'Customs', (shipment as any).customsLink
+      ? <CustomsLinkBadge key="cl" link={(shipment as any).customsLink} ar={ar} />
+      : <span key="cl" className="text-slate-400">{ar ? 'غير مرتبطة' : 'Not linked'}</span>],
     ['GPS', shipment.gpsType || '—'],
     [ar ? 'السائق' : 'Driver', [shipment.driverName, shipment.driverPhone].filter(Boolean).join(' · ') || '—'],
     [ar ? 'سائق ثانٍ' : 'Second driver', shipment.secondDriverName || '—'],

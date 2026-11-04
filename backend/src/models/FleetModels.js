@@ -131,6 +131,9 @@ const fleetShipmentSchema = new mongoose.Schema({
     enum: ['', ...require('../utils/paymentType').SUBTYPE_KEYS],
   },
   loadType: { type: String, trim: true, default: '' },      // Load type: from a list or typed manually.
+  // B/L and container, as on shipment orders: they link the load to its customs transaction (services/customsOpsLink) and print on the transport order.
+  blNumber: { type: String, trim: true, default: '', index: true },
+  containerNumber: { type: String, trim: true, default: '', index: true },
   // Vehicle rent: the fleet section's actual income from this load (basis of analytics).
   price: { type: Number, default: 0, index: true },
   // Full rent (optional): the amount the driver collects from the customer, usually with forward rental. The difference (fullRent - price) is the branches section's share (3PL scenario). Zero means none.
@@ -201,8 +204,23 @@ fleetShipmentSchema.pre('save', async function (next) {
   next();
 });
 
+// Numbers held before this save: a load whose B/L and container are both cleared releases the row that took its number.
+fleetShipmentSchema.post('init', function () {
+  this.$locals.docAtLoad = String(this.blNumber || '').trim() || String(this.containerNumber || '').trim();
+});
+
 // Every saved load has its row in the operations workflow.
-fleetShipmentSchema.post('save', (doc) => {
+fleetShipmentSchema.post('save', async (doc) => {
+  const before = doc.$locals && doc.$locals.docAtLoad;
+  const now = String(doc.blNumber || '').trim() || String(doc.containerNumber || '').trim();
+  if (doc.$locals) doc.$locals.docAtLoad = now;
+  if (before && !now) {
+    try {
+      const OperationsWorkflow = require('./OperationsWorkflow');
+      const r = await OperationsWorkflow.updateOne({ fleetShipment: doc._id, documentNumber: before }, { $set: { documentNumber: '' } });
+      if (r.modifiedCount) await require('../services/customsOpsLink').resolveReports({ fleetShipment: doc._id });
+    } catch (e) { console.error('[fleet-link] clear number:', e.message); }
+  }
   require('../services/shipmentOrderWorkflowLink').mirrorFleetSoon(doc._id);
 });
 

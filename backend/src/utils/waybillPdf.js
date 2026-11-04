@@ -228,6 +228,7 @@ function rowFromShipment(s) {
     carType: s.trailerType || '', plateNumber: s.vehiclePlate || '',
     driverPhone: s.driverPhone || '', driverIqama: s.driverIqama || '', driverNationality: s.driverNationality || '',
     driverName, customerName: s.customerName || '', branch: s.branch || '',
+    blNumber: s.blNumber || '', containerNumber: s.containerNumber || '',
     toLocation: s.toCity || '', fromLocation: s.fromCity || '', date, dispatchNumber: String(s.waybillNumber || ''),
   };
 }

@@ -817,7 +817,8 @@ export default function CollectionsInvoicesPage({ kind }: { kind: InvoiceKind })
         </div>
       )}
 
-      {(selected.size > 0 || colCount > 0) && (
+      {/* The bulk actions are always on screen, not only after a tick: they could not be found when they appeared only on selection. */}
+      {(selected.size > 0 || colCount > 0 || canEdit) && (
         <div className="flex flex-wrap items-center gap-2 text-sm">
           {selected.size > 0 && (
             <span className="inline-flex items-center gap-2 px-3 py-1.5 rounded-lg bg-[#f37121]/10 text-[#f37121] font-semibold">
@@ -827,16 +828,21 @@ export default function CollectionsInvoicesPage({ kind }: { kind: InvoiceKind })
               </button>
             </span>
           )}
-          {selected.size > 0 && canEdit && (
+          {canEdit && (
             <>
-              <button type="button" onClick={openBulkDeliver}
-                className="px-3 py-1.5 rounded-lg border border-slate-300 bg-white text-slate-800 hover:bg-slate-50 text-[13px] font-semibold">
+              <button type="button" onClick={openBulkDeliver} disabled={!selectedRows.length}
+                title={selectedRows.length ? '' : t('حدّد الفواتير من المربّعات في أوّل الجدول', 'Tick invoices in the first column')}
+                className="px-3 py-1.5 rounded-lg border border-slate-300 bg-white text-slate-800 hover:bg-slate-50 text-[13px] font-semibold disabled:opacity-50 disabled:cursor-not-allowed">
                 {t(`تسليم المحدَّد (${selectedRows.length})`, `Deliver selected (${selectedRows.length})`)}
               </button>
-              <button type="button" onClick={openBulkCollect}
-                className="px-3 py-1.5 rounded-lg bg-[#f37121] text-white hover:bg-[#e0651a] text-[13px] font-semibold">
+              <button type="button" onClick={openBulkCollect} disabled={!selectedRows.length}
+                title={selectedRows.length ? '' : t('حدّد الفواتير من المربّعات في أوّل الجدول', 'Tick invoices in the first column')}
+                className="px-3 py-1.5 rounded-lg bg-[#f37121] text-white hover:bg-[#e0651a] text-[13px] font-semibold disabled:opacity-50 disabled:cursor-not-allowed">
                 {t(`تحصيل المحدَّد بالكامل (${selectedRows.length})`, `Collect selected in full (${selectedRows.length})`)}
               </button>
+              {!selectedRows.length && (
+                <span className="text-xs text-slate-500">{t('حدّد أكثر من فاتورة من المربّعات في أوّل الجدول لتسليمها أو تحصيلها مرّةً واحدة بتاريخ تختاره.', 'Tick several invoices in the first column to deliver or collect them at once on a date you choose.')}</span>
+              )}
             </>
           )}
           {colCount > 0 && (

@@ -216,6 +216,31 @@ export default function CustomersRegister({ basePath }: { basePath: string }) {
         subtitle={ar
           ? `${(summary?.total || 0).toLocaleString('en-US')} عميل — الأرقامُ تُضغَط، والصفُّ يُفتح على ملفّ العميل`
           : `${(summary?.total || 0).toLocaleString('en-US')} customers — cards filter, a row opens the full file`}>
+        {/* Export sits in the header beside the page's main action, as on the other registers. */}
+        <ExportMenu fileName="customers" lang={ar ? 'ar' : 'en'}
+          options={[
+            { key: 'page', label: scope.page, sheets: [{ name: sheetName, rows: pageRows, columns: exportCols }] },
+            { key: 'shown', label: scope.shown, sheets: [{ name: sheetName, rows: shown, columns: exportCols }] },
+            { key: 'all', label: scope.all, sheets: [{ name: sheetName, rows, columns: exportCols }] },
+            {
+              key: 'routes',
+              label: ar ? 'أسعار المسارات' : 'Route prices',
+              hint: ar ? 'كلّ المسارات' : 'every route',
+              resolve: async () => {
+                const map = await ensureFull();
+                const flat: Record<string, any>[] = [];
+                for (const c of Object.values(map)) {
+                  for (const r of c.routes || []) {
+                    flat.push({
+                      customer: c.name, from: r.fromCity, to: r.toCity,
+                      price: r.price ?? null, at: r.at || null, source: r.source || '',
+                    });
+                  }
+                }
+                return [{ name: ar ? 'أسعار المسارات' : 'Route prices', rows: flat, columns: routePriceCols }];
+              },
+            },
+          ]} />
         {editor && <PrimaryButton onClick={openCreate}><Plus className="w-4 h-4" /> {ar ? 'إضافة عميل' : 'Add customer'}</PrimaryButton>}
       </PageHeader>
 
@@ -258,30 +283,6 @@ export default function CustomersRegister({ basePath }: { basePath: string }) {
               </button>
             )}
             <ClearColumnFilters count={cf.count} onClear={cf.clear} ar={ar} />
-            <ExportMenu fileName="customers" lang={ar ? 'ar' : 'en'}
-              options={[
-                { key: 'page', label: scope.page, sheets: [{ name: sheetName, rows: pageRows, columns: exportCols }] },
-                { key: 'shown', label: scope.shown, sheets: [{ name: sheetName, rows: shown, columns: exportCols }] },
-                { key: 'all', label: scope.all, sheets: [{ name: sheetName, rows, columns: exportCols }] },
-                {
-                  key: 'routes',
-                  label: ar ? 'أسعار المسارات' : 'Route prices',
-                  hint: ar ? 'كلّ المسارات' : 'every route',
-                  resolve: async () => {
-                    const map = await ensureFull();
-                    const flat: Record<string, any>[] = [];
-                    for (const c of Object.values(map)) {
-                      for (const r of c.routes || []) {
-                        flat.push({
-                          customer: c.name, from: r.fromCity, to: r.toCity,
-                          price: r.price ?? null, at: r.at || null, source: r.source || '',
-                        });
-                      }
-                    }
-                    return [{ name: ar ? 'أسعار المسارات' : 'Route prices', rows: flat, columns: routePriceCols }];
-                  },
-                },
-              ]} />
           </div>
         </div>
 

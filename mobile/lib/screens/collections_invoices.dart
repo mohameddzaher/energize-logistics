@@ -787,13 +787,18 @@ class _CollectionsInvoicesScreenState extends State<CollectionsInvoicesScreen> {
                           Text(_selected.isEmpty ? tr('تحديد الصفحة', 'Select page') : tr('محدَّد: ${_selected.length}', '${_selected.length} selected'),
                               style: const TextStyle(fontSize: 12.5, fontWeight: FontWeight.w700)),
                           const Spacer(),
-                          if (_selected.isNotEmpty && collectionsCanEdit)
-                            TextButton.icon(onPressed: () => _collectMany(selRows), icon: const Icon(Icons.payments_outlined, size: 18), label: Text(tr('تحصيل بالكامل', 'Collect in full'))),
-                            TextButton.icon(onPressed: () => _deliver(selRows), icon: const Icon(Icons.local_shipping_outlined, size: 18),
+                          // Both follow edit rights and stay on screen, enabled once rows are ticked, so they can be found.
+                          if (collectionsCanEdit) ...[
+                            TextButton.icon(onPressed: selRows.isEmpty ? null : () => _collectMany(selRows), icon: const Icon(Icons.payments_outlined, size: 18), label: Text(tr('تحصيل بالكامل', 'Collect in full'))),
+                            TextButton.icon(onPressed: selRows.isEmpty ? null : () => _deliver(selRows), icon: const Icon(Icons.local_shipping_outlined, size: 18),
                                 label: Text(tr('تسليم المحدَّد', 'Deliver selected'))),
+                          ],
                           if (_selected.isNotEmpty)
                             IconButton(tooltip: tr('إلغاء التحديد', 'Clear selection'), icon: const Icon(Icons.close), onPressed: () => setState(() => _selected.clear())),
                         ]),
+                        if (collectionsCanEdit && _selected.isEmpty && _rows.isNotEmpty)
+                          Padding(padding: const EdgeInsets.only(bottom: 6), child: Text(tr('حدّد أكثر من فاتورة (اضغط مطوّلًا أو من المربّع) لتسليمها أو تحصيلها مرّةً واحدة بتاريخ تختاره.', 'Tick several invoices (long-press or the box) to deliver or collect them at once on a date you choose.'),
+                              style: const TextStyle(fontSize: 11.5, color: T.inkSoft))),
                         if (_rows.isEmpty)
                           EmptyState(icon: Icons.receipt_long_outlined, title: _activeCount > 0 || _q.isNotEmpty ? tr('لا نتائج للفلتر المحدد', 'No rows match the filters') : tr('لا نتائج', 'No results')),
                         if (_rows.isEmpty && _elsewhere != null) _elsewhereHint(_elsewhere!),

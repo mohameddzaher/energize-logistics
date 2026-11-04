@@ -744,10 +744,12 @@ const pendingAsOfMatch = (asOf) => ({
  * manifests from the start of 2026 to that day (owner, 2026-10-29). A range keeps its start.
  */
 const AS_OF_START = '2026-01-01';
+// Non-enumerable search hints set by primeRelatedSearch; copies of the query must carry them.
+const SEARCH_HINTS = ['_related', '_exactId', '_textIds'];
 const asOfQuery = (query) => {
   const q = { ...(query || {}) };
   // The search hints are non-enumerable (kept out of exports), so a spread drops them; carry them over.
-  for (const k of ['_related', '_exactId']) if (query && query[k]) Object.defineProperty(q, k, { value: query[k], enumerable: false });
+  for (const k of SEARCH_HINTS) if (query && query[k]) Object.defineProperty(q, k, { value: query[k], enumerable: false });
   if (q.dateTo && (!q.dateFrom || q.dateFrom === q.dateTo)) q.dateFrom = AS_OF_START;
   return q;
 };
@@ -756,6 +758,28 @@ const pendingAsOfDate = (query) => {
   const to = query && query.dateTo;
   return to ? endOfDay(to) : new Date();
 };
+
+/**
+ * Report ids whose text fields contain `term`, from the Atlas Search index; null when the index cannot answer (not built yet, unavailable, or too many matches to pass as a list), so the caller keeps the regex.
+ * `scope` 'names' searches the name and place fields only, as the whole-phrase alternative does.
+ */
+const WHOLE = '\u0000whole';
+const TEXT_ID_CAP = 15000;
+async function textSearchIds(term, scope) {
+  const stage = require('../config/workflowSearch').searchStage(term, { namesOnly: scope === 'names' });
+  if (!stage) return null;
+  try {
+    const rows = await OperationsWorkflow.aggregate([
+      stage,
+      { $limit: TEXT_ID_CAP + 1 },
+      { $project: { _id: 1 } },
+    ]);
+    return rows.length > TEXT_ID_CAP ? null : rows.map((r) => r._id);
+  } catch (e) {
+    if (!textSearchIds.warned) { textSearchIds.warned = true; console.warn('[workflow search] Atlas Search unavailable, using regex:', e.message); }
+    return null;
+  }
+}
 
 /** A number belonging to one of the report owners. Called before buildWorkflowFilter (which is synchronous): each number of six or more digits in the search is translated to its owners in the registers (a driver's residence number to name and phone, a truck chassis to its plate) and attached to req.query._related as a non-enumerable property, so it does not appear in any copy or export of the query. */
 const RELATED_FIELDS = { name: ['driverName'], phone: ['driverPhone', 'userPhone', 'ownerPhone'], plate: ['carNumber', 'plateNumber'] };
@@ -777,6 +801,14 @@ async function primeRelatedSearch(req, res, next) {
     if (bare) {
       const hit = await OperationsWorkflow.exists({ $or: [{ reportNumber: bare }, { documentNumber: bare }] });
       if (hit) Object.defineProperty(req.query, '_exactId', { value: bare, enumerable: false, configurable: true });
+    }
+    // Text words are answered by the Atlas Search index (config/workflowSearch) as id lists; a word it cannot answer keeps the regex path.
+    const words = tokens.filter((t) => !/^[\d\s+()\-]+$/.test(t));
+    if (words.length) {
+      const ids = {};
+      for (const w of words) ids[w] = await textSearchIds(w, 'all'); // eslint-disable-line no-await-in-loop
+      if (tokens.length > 1) ids[WHOLE] = await textSearchIds(tokens.join(' '), 'names');
+      Object.defineProperty(req.query, '_textIds', { value: ids, enumerable: false, configurable: true });
     }
   } catch (e) { console.error('related search:', e.message); }
   next();
@@ -888,6 +920,8 @@ function buildWorkflowFilter(queryIn, skipField, allowMoney = true, allowSelling
           ...(related[bare] || []),
         ];
       }
+      const ids = query && query._textIds && query._textIds[tk];
+      if (ids) return [{ _id: { $in: ids } }];
       return [...NAME_FIELDS, ...CODE_FIELDS].map((f) => ({ [f]: rx }));
     };
 
@@ -902,7 +936,7 @@ function buildWorkflowFilter(queryIn, skipField, allowMoney = true, allowSelling
         {
           $or: [
             { $and: tokens.map((tk) => ({ $or: clauseFor(tk) })) },
-            ...NAME_FIELDS.map((f) => ({ [f]: whole })),
+            ...((query && query._textIds && query._textIds[WHOLE]) ? [{ _id: { $in: query._textIds[WHOLE] } }] : NAME_FIELDS.map((f) => ({ [f]: whole }))),
           ],
         },
       ];
@@ -2601,6 +2635,7 @@ module.exports.buildWorkflowFilter = buildWorkflowFilter;
 module.exports.isLocked = isLocked;
 module.exports.primeRelatedSearch = primeRelatedSearch;
 module.exports.pageOfReports = pageOfReports;
+module.exports.SEARCH_HINTS = SEARCH_HINTS;
 // Hiding money columns is also single: the private page shows all report columns, and whoever lacks the invoice here lacks it there.
 module.exports.canSeeMoney = canSeeMoney;
 module.exports.AMOUNT_FIELDS = AMOUNT_FIELDS;

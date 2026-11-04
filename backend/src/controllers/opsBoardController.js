@@ -29,8 +29,7 @@ function cleanQuery(q) {
     if (k.startsWith('cf_') && HIDDEN.has(k.slice(3))) continue;
     out[k] = v;
   }
-  if (q && q._related) Object.defineProperty(out, '_related', { value: q._related, enumerable: false });
-  if (q && q._exactId) Object.defineProperty(out, '_exactId', { value: q._exactId, enumerable: false });
+  for (const k of WF.SEARCH_HINTS) if (q && q[k]) Object.defineProperty(out, k, { value: q[k], enumerable: false });
   return out;
 }
 

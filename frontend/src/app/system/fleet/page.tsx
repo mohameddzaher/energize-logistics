@@ -254,11 +254,8 @@ function FleetShipmentsInner() {
 
   // Many waybills are requested once and built on the server. They used to be rendered in the browser one by one with `html2canvas`: the table mounted in the page, rendered at high scale, then removed, once per sheet, on the main thread, so thirty sheets meant thirty freezes that looked like repeated reloads.
   // The server already renders a single waybill with the same file (the row button calls it), so bulk is one call returning one file with a page per waybill.
-  /**
-   * Ticked waybills become one file. The server caps a call at one hundred (each waybill is a render in a headless browser), so larger selections are split into sequential batches rather than telling the user the cap and leaving them stuck at 120.
-   * Batches are sixty, not a hundred: the server renders six at once at about four seconds each, so a hundred is near 75 seconds and nginx cuts off after 120. Sixty stays within half the timeout on a busy server.
-   */
-  const CHUNK = 60;
+  /** Ticked waybills become one file; selections above the server's cap of one hundred go in sequential batches. */
+  const CHUNK = 100;
   const pickedRows = useMemo(() => Array.from(picked.values()), [picked]);
 
   const buildPickedPdfs = async (): Promise<Blob[]> => {

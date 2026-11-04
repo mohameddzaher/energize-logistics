@@ -1,6 +1,6 @@
 /**
  * Server-side waybill generator: produces the exact sheet the web download makes, so web and mobile print the identical file.
- * Mirrors frontend/src/lib/dispatchSheetGenerator.ts: HTML overlay (ported from dispatchSheetTemplate.ts), rendered to a transparent PNG with headless Chromium, stitched onto the letterhead PDF with pdf-lib.
+ * Mirrors frontend/src/lib/dispatchSheetGenerator.ts: HTML overlay (ported from dispatchSheetTemplate.ts), printed to a transparent vector PDF with headless Chromium, laid over the letterhead PDF with pdf-lib.
  */
 const fs = require('fs');
 const path = require('path');
@@ -233,14 +233,13 @@ function rowFromShipment(s) {
   };
 }
 
-async function renderWaybillPdf(row) {
+// Fallback only: one waybill as a transparent screenshot over the letterhead. Used when the vector pass does not give one page per waybill.
+async function renderWaybillImagePdf(row) {
   return withPage(async (page) => {
     // 210mm × 297mm at 96dpi = 794 × 1123, ×1.5 device scale — matches the web's html2canvas scale.
     await page.setViewport({ width: 794, height: 1123, deviceScaleFactor: 1.5 });
-    // No external resources on the page (fonts and stamp are inlined), so waiting for network idle only wastes time; wait for font readiness, the real condition for the snapshot.
     await page.setContent(buildDispatchSheetHTML(row), { waitUntil: 'domcontentloaded', timeout: 20000 });
     try { await page.evaluateHandle('document.fonts.ready'); } catch (e) { /* fallback font */ }
-    // The waybill is a single page, with the driver acknowledgement compressed to fit, because a second sheet per waybill doubles paper use. See the `.pledge` styles.
     const el = await page.$('.sheet');
     const overlayPng = await el.screenshot({ omitBackground: true, type: 'png' });
 
@@ -250,44 +249,59 @@ async function renderWaybillPdf(row) {
     const png = await pdfDoc.embedPng(overlayPng);
     p0.drawImage(png, { x: 0, y: 0, width, height });
     while (pdfDoc.getPageCount() > 1) pdfDoc.removePage(pdfDoc.getPageCount() - 1);
-    // Object streams are not used when saving: compressing them saves about 2 KB on a roughly 400 KB file (the image is almost all of it) but costs about 120 ms of server CPU per request.
     return Buffer.from(await pdfDoc.save({ useObjectStreams: false }));
   });
 }
 
+// One sheet per printed page; the sheet is exactly A4, so the break never adds a blank page.
+const PRINT_CSS = '<style>@page{size:210mm 297mm;margin:0}.sheet{break-after:page}.sheet:last-of-type{break-after:auto}</style>';
+
 /**
- * Many waybills in one file, built on the server.
- * The browser path rendered each waybill with html2canvas on the main thread, freezing the screen once per row. The server already renders a single waybill (see `renderWaybillPdf`), so a bulk request is one call returning one printable file, with one browser page opened for all rows.
+ * Waybills as one vector PDF: all sheets go into a single HTML document, Chromium prints it once (text stays text), and each printed page is laid over the letterhead.
+ * The old path took a 1.5x screenshot per waybill: ~4 s and ~440 KB each, so 25 waybills meant minutes on the VPS and an 11 MB file the print dialog choked on.
+ * If the print does not come out as one page per waybill, the screenshot path is used so a sheet is never split or lost.
  */
 async function renderWaybillsPdf(rows) {
-  const merged = await PDFDocument.create();
-  // Each waybill is rendered on a fresh page, exactly as a single one is: networkidle0 on a reused page may never fire and would wait for the timeout.
-  // Pages render in parallel with a small cap: each takes about 4 s, so sequential rendering of 30 would exceed the nginx timeout; four at once cuts it to about a quarter.
-  // Order is preserved: results are placed by index and merged in order.
-  const CONCURRENCY = 6;
-  const out = new Array(rows.length);
-  let next = 0;
-  const worker = async () => {
-    for (;;) {
-      const i = next; next += 1;
-      if (i >= rows.length) return;
-      // eslint-disable-next-line no-await-in-loop
-      out[i] = await renderWaybillPdf(rows[i]);
-    }
-  };
-  await Promise.all(Array.from({ length: Math.min(CONCURRENCY, rows.length) }, worker));
+  if (!rows.length) throw new Error('No waybills');
+  const htmls = rows.map(buildDispatchSheetHTML);
+  const head = htmls[0].slice(0, htmls[0].indexOf('<body>')).replace('</head>', `${PRINT_CSS}</head>`);
+  const bodies = htmls.map((h) => h.slice(h.indexOf('<body>') + 6, h.lastIndexOf('</body>')));
+  const overlayBytes = await withPage(async (page) => {
+    await page.emulateMediaType('screen');
+    await page.setContent(`${head}<body>${bodies.join('')}</body></html>`, { waitUntil: 'domcontentloaded', timeout: 60000 });
+    try { await page.evaluateHandle('document.fonts.ready'); } catch (e) { /* fallback font */ }
+    return page.pdf({ printBackground: true, omitBackground: true, preferCSSPageSize: true, margin: { top: 0, right: 0, bottom: 0, left: 0 }, timeout: 120000 });
+  });
 
-  for (const one of out) {
-    if (!one) continue;
-    // eslint-disable-next-line no-await-in-loop
-    const doc = await PDFDocument.load(one);
-    // All waybill pages, not just the first, since the driver acknowledgement was added.
-    // eslint-disable-next-line no-await-in-loop
-    const copied = await merged.copyPages(doc, doc.getPageIndices());
-    copied.forEach((pg) => merged.addPage(pg));
+  const out = await PDFDocument.create();
+  const overlay = await PDFDocument.load(overlayBytes);
+  if (overlay.getPageCount() === rows.length) {
+    const letterhead = await PDFDocument.load(getLetterhead());
+    const { width, height } = letterhead.getPages()[0].getSize();
+    // The letterhead is embedded once and drawn under every page.
+    const [lh] = await out.embedPdf(letterhead, [0]);
+    const sheets = await out.embedPdf(overlay, overlay.getPageIndices());
+    for (const sheet of sheets) {
+      const pg = out.addPage([width, height]);
+      pg.drawPage(lh, { x: 0, y: 0, width, height });
+      pg.drawPage(sheet, { x: 0, y: 0, width, height });
+    }
+    return Buffer.from(await out.save({ useObjectStreams: false }));
   }
-  return Buffer.from(await merged.save({ useObjectStreams: false }));
+
+  console.warn(`[waybill] vector print gave ${overlay.getPageCount()} pages for ${rows.length} waybills; using screenshots`);
+  for (const row of rows) {
+    // eslint-disable-next-line no-await-in-loop
+    const doc = await PDFDocument.load(await renderWaybillImagePdf(row));
+    // eslint-disable-next-line no-await-in-loop
+    const copied = await out.copyPages(doc, doc.getPageIndices());
+    copied.forEach((pg) => out.addPage(pg));
+  }
+  return Buffer.from(await out.save({ useObjectStreams: false }));
 }
+
+// A single waybill is the same file as a bulk one with one row, so the row button, the portal and mobile print exactly what bulk prints.
+const renderWaybillPdf = (row) => renderWaybillsPdf([row]);
 
 /**
  * A waybill row built from a shipment order, same shape as `rowFromShipment`.

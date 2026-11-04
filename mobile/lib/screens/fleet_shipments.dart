@@ -247,14 +247,14 @@ class _FleetShipmentsScreenState extends State<FleetShipmentsScreen> {
   }
 
   /// Marked waybills to one file printed or saved from the system dialog.
-  /// The batch is sixty: the server limits the call to a hundred and nginx cuts off after a hundred and twenty seconds, so more is sent in successive batches.
+  /// The server caps a call at a hundred waybills, so larger selections go in successive batches.
   Future<void> _printPicked() async {
     if (_picked.isEmpty) return;
     setState(() => _bulkBusy = true);
     final ids = _picked.keys.toList();
     try {
-      for (var i = 0; i < ids.length; i += 60) {
-        final part = ids.sublist(i, i + 60 > ids.length ? ids.length : i + 60);
+      for (var i = 0; i < ids.length; i += 100) {
+        final part = ids.sublist(i, i + 100 > ids.length ? ids.length : i + 100);
         final bytes = await Api.instance.postBytes('/api/fleet/shipments/waybills.pdf', {'ids': part});
         await Printing.layoutPdf(onLayout: (_) async => bytes, name: 'أوامر نقل-الشحن-${part.length}');
       }

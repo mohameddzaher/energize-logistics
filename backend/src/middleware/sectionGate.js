@@ -16,6 +16,8 @@ const { getSection, defaultAccess } = require('../config/sections');
 const { FULL_ACCESS_ROLES } = require('../config/constants');
 
 const READ_METHODS = new Set(['GET', 'HEAD', 'OPTIONS']);
+// Bulk PDFs are POST only because the id list is too long for a URL; rendering a file writes nothing, so view access may call them.
+const isRead = (req) => READ_METHODS.has(req.method) || (req.method === 'POST' && /\.pdf$/i.test(req.path || ''));
 
 // HR self-service paths (relative to the /api/hr mount) are used by every logged
 // in user for their own profile/leaves/requests and by managers acting on their
@@ -63,7 +65,7 @@ const sectionGate = (sectionKey) => {
       if (access === 'none') {
         return res.status(403).json({ message: 'No access to this section', code: 'SECTION_FORBIDDEN' });
       }
-      if (access === 'view' && !READ_METHODS.has(req.method)) {
+      if (access === 'view' && !isRead(req)) {
         return res.status(403).json({ message: 'Read-only access to this section', code: 'SECTION_READ_ONLY' });
       }
       req.sectionAccess = access; // 'view' or 'edit'

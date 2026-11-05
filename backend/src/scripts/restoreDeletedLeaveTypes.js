@@ -1,6 +1,7 @@
 /**
  * Restores leave types that were deleted while leave requests still use them, from the deletedrecords safety net.
  * Without its type a request falls back to "deducts" (utils/leaveBalance.leaveDeducts), so non-deducting leave was taken off the balance.
+ * refId is matched as ObjectId or string (the safety net has written both).
  * Idempotent: a type that exists is left alone. `--dry` lists only.
  *   node src/scripts/restoreDeletedLeaveTypes.js [--dry]
  */
@@ -18,7 +19,7 @@ const mongoose = require('mongoose');
   ]).toArray();
   let restored = 0;
   for (const o of orphans) {
-    const rec = await db.collection('deletedrecords').find({ model: 'LeaveType', refId: String(o._id) }).sort({ deletedAt: -1 }).limit(1).next();
+    const rec = await db.collection('deletedrecords').find({ model: 'LeaveType', refId: { $in: [o._id, String(o._id)] } }).sort({ deletedAt: -1 }).limit(1).next();
     if (!rec || !rec.data) { console.log(`no backup for ${o._id} (${o.requests} requests)`); continue; }
     const doc = { ...rec.data, _id: o._id };
     for (const k of ['createdAt', 'updatedAt']) if (typeof doc[k] === 'string') doc[k] = new Date(doc[k]);

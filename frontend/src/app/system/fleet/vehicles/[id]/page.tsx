@@ -281,7 +281,7 @@ function VehicleAnalyticsInner() {
                           {/* Reason for the disbursement: periodic maintenance / accident / preventive / breakdown on the road. */}
                           {m.issueReason ? <span className="ms-1.5 rounded bg-orange-50 text-[#c2410c] font-semibold px-1.5 py-0.5 text-[10.5px]">{issueReasonLabel(m.issueReason, ar)}</span> : null}
                         </span>
-                        <span className="shrink-0 text-slate-400">×{m.quantity} · {fmtD(m.createdAt)}</span>
+                        <span className="shrink-0 text-slate-400">×{m.quantity} · {fmtD(m.date || m.createdAt)}{m.issueRequestNo ? ` · ${m.issueRequestNo}` : ''}</span>
                       </li>
                     ))}
                   </ul>

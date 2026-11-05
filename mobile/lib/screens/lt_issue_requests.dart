@@ -12,14 +12,29 @@ import '../ui/theme.dart';
 import '../ui/widgets.dart';
 import 'ls2_store.dart';
 
-/// Light-transport store issue requests (طلب صرف), as on the web: the list first, the items screen one tap away.
+/// Store issue requests (طلب صرف) for both stores, as on the web: the list first, the items screen one tap away.
 /// Saving a request is the stock-out; the server refuses any line that would take a balance below zero. Posted requests are not edited; cancelling returns the stock on the record.
-const _base = '/api/light-transport/store/issue-requests';
-const _itemsBase = '/api/light-transport/store';
+class IssueCfg {
+  final String base, itemsBase, titleAr, titleEn, vehiclesKind, section;
+  final List<String> editRoles;
+  const IssueCfg({required this.base, required this.itemsBase, required this.titleAr, required this.titleEn,
+      required this.vehiclesKind, required this.section, required this.editRoles});
+  bool get heavy => vehiclesKind == 'heavy';
+  bool canEdit(AuthProvider a) => editRoles.contains(a.role) || a.canEditSection(section);
+  Future<List<Map<String, dynamic>>> plates() => heavy ? loadHeavyStorePlates() : loadLightStorePlates();
+}
 
-// Same writers as the store route on the server (routes/lightTransport.js EDIT).
-const _editRoles = ['super_admin', 'admin', 'b2c_manager', 'b2c_deputy', 'b2c_project_lead', 'it_manager', 'cfo', 'accounting_manager', 'accountant'];
-bool _canEdit(AuthProvider a) => _editRoles.contains(a.role) || a.canEditSection('B2C');
+// Same writers as the store routes on the server (routes/lightTransport.js EDIT, routes/ls2.js ADMIN).
+const ltIssueCfg = IssueCfg(
+  base: '/api/light-transport/store/issue-requests', itemsBase: '/api/light-transport/store',
+  titleAr: 'مخزن النقل الخفيف — طلبات الصرف', titleEn: 'Light Transport Store — Issue Requests', vehiclesKind: 'light', section: 'B2C',
+  editRoles: ['super_admin', 'admin', 'b2c_manager', 'b2c_deputy', 'b2c_project_lead', 'it_manager', 'cfo', 'accounting_manager', 'accountant'],
+);
+const htIssueCfg = IssueCfg(
+  base: '/api/ls2/store/issue-requests', itemsBase: '/api/ls2/store',
+  titleAr: 'مخزن النقل الثقيل — طلبات الصرف', titleEn: 'Heavy Transport Store — Issue Requests', vehiclesKind: 'heavy', section: 'Location Solutions',
+  editRoles: ['super_admin', 'admin', 'it_manager', 'it_specialist', 'operations_manager', 'workshop_manager', 'location_manager', 'vehicles_manager'],
+);
 
 num _num(dynamic v) => v is num ? v : num.tryParse(v?.toString() ?? '') ?? 0;
 num _r3(num n) => (n * 1000).round() / 1000;
@@ -51,9 +66,9 @@ String _reasonLabel(String key) {
   return key.isEmpty ? '—' : key;
 }
 
-Future<void> _printPdf(BuildContext context, Map<String, dynamic> r) async {
+Future<void> _printPdf(BuildContext context, String base, Map<String, dynamic> r) async {
   try {
-    final bytes = await Api.instance.getBytes('$_base/${r['_id']}/pdf');
+    final bytes = await Api.instance.getBytes('$base/${r['_id']}/pdf');
     await Printing.layoutPdf(onLayout: (_) async => bytes, name: (r['number'] ?? 'issue-request').toString());
   } catch (e) {
     if (context.mounted) {
@@ -63,7 +78,8 @@ Future<void> _printPdf(BuildContext context, Map<String, dynamic> r) async {
 }
 
 class LtIssueRequestsScreen extends StatefulWidget {
-  const LtIssueRequestsScreen({super.key});
+  final IssueCfg cfg;
+  const LtIssueRequestsScreen({super.key, this.cfg = ltIssueCfg});
   @override
   State<LtIssueRequestsScreen> createState() => _LtIssueRequestsScreenState();
 }
@@ -103,7 +119,7 @@ class _LtIssueRequestsScreenState extends State<LtIssueRequestsScreen> {
       if (_status.isNotEmpty) 'status=$_status',
     ].join('&');
     try {
-      final d = await Api.instance.get('$_base${qs.isEmpty ? '' : '?$qs'}');
+      final d = await Api.instance.get('${widget.cfg.base}${qs.isEmpty ? '' : '?$qs'}');
       if (!mounted || seq != _seq) return;
       setState(() { _rows = List<Map<String, dynamic>>.from(d['requests'] ?? []); _loading = false; _error = null; });
     } catch (e) {
@@ -112,7 +128,7 @@ class _LtIssueRequestsScreenState extends State<LtIssueRequestsScreen> {
   }
 
   Future<void> _create() async {
-    final r = await Navigator.of(context).push<Map<String, dynamic>>(MaterialPageRoute(builder: (_) => const _IssueRequestForm()));
+    final r = await Navigator.of(context).push<Map<String, dynamic>>(MaterialPageRoute(builder: (_) => _IssueRequestForm(cfg: widget.cfg)));
     if (r == null || !mounted) return;
     _load();
     final go = await showDialog<bool>(
@@ -125,28 +141,28 @@ class _LtIssueRequestsScreenState extends State<LtIssueRequestsScreen> {
         ],
       ),
     );
-    if (go == true && mounted) await _printPdf(context, r);
+    if (go == true && mounted) await _printPdf(context, widget.cfg.base, r);
   }
 
   void _openItems() {
-    Navigator.of(context).push(MaterialPageRoute(builder: (_) => const Ls2StoreScreen(
-          base: _itemsBase, titleAr: 'الأصناف والأرصدة', titleEn: 'Items & stock', vehiclesKind: 'light')));
+    Navigator.of(context).push(MaterialPageRoute(builder: (_) => Ls2StoreScreen(
+          base: widget.cfg.itemsBase, titleAr: 'الأصناف والأرصدة', titleEn: 'Items & stock', vehiclesKind: widget.cfg.vehiclesKind)));
   }
 
   Future<void> _openDetail(Map<String, dynamic> r, bool canEdit) async {
     final changed = await showModalBottomSheet<bool>(
       context: context, isScrollControlled: true, backgroundColor: Colors.white,
       shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
-      builder: (_) => _DetailSheet(r: r, canEdit: canEdit),
+      builder: (_) => _DetailSheet(r: r, canEdit: canEdit, base: widget.cfg.base),
     );
     if (changed == true) _load();
   }
 
   @override
   Widget build(BuildContext context) {
-    final canEdit = _canEdit(context.watch<AuthProvider>());
+    final canEdit = widget.cfg.canEdit(context.watch<AuthProvider>());
     return AppScaffold(
-      title: Text(tr('مخزن النقل الخفيف — طلبات الصرف', 'Light Transport Store — Issue Requests')),
+      title: Text(tr(widget.cfg.titleAr, widget.cfg.titleEn)),
       actions: [
         IconButton(icon: const Icon(Icons.inventory_2_outlined), tooltip: tr('الأصناف والأرصدة', 'Items & stock'), onPressed: _openItems),
       ],
@@ -236,7 +252,8 @@ class _LtIssueRequestsScreenState extends State<LtIssueRequestsScreen> {
 class _DetailSheet extends StatefulWidget {
   final Map<String, dynamic> r;
   final bool canEdit;
-  const _DetailSheet({required this.r, required this.canEdit});
+  final String base;
+  const _DetailSheet({required this.r, required this.canEdit, required this.base});
   @override
   State<_DetailSheet> createState() => _DetailSheetState();
 }
@@ -254,7 +271,7 @@ class _DetailSheetState extends State<_DetailSheet> {
   Future<void> _cancel() async {
     setState(() { _busy = true; _err = null; });
     try {
-      await Api.instance.post('$_base/${widget.r['_id']}/cancel', {'reason': _reason.text.trim()});
+      await Api.instance.post('${widget.base}/${widget.r['_id']}/cancel', {'reason': _reason.text.trim()});
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(tr('أُلغي ${widget.r['number']} وعادت الكميات إلى المخزن', '${widget.r['number']} cancelled; stock returned'))));
       Navigator.pop(context, true);
@@ -273,7 +290,7 @@ class _DetailSheetState extends State<_DetailSheet> {
       if ('${r['createdAt'] ?? ''}'.length >= 16) (tr('تاريخ التسجيل', 'Recorded'), _recordedAt(r['createdAt'])),
       (tr('المركبة / اللوحة', 'Vehicle / plate'), '${r['vehiclePlate'] ?? '—'}'),
       if ('${r['project'] ?? ''}'.isNotEmpty) (tr('المشروع', 'Project'), '${r['project']}'),
-      if ('${r['rider'] ?? ''}'.isNotEmpty) (tr('الراكب', 'Rider'), '${r['rider']}'),
+      if ('${r['rider'] ?? ''}'.isNotEmpty) (r['warehouse'] == 'heavy' ? tr('السائق', 'Driver') : tr('الراكب', 'Rider'), '${r['rider']}'),
       (tr('سبب الصرف', 'Issue reason'), _reasonLabel('${r['issueReason'] ?? ''}')),
       if ('${r['note'] ?? ''}'.isNotEmpty) (tr('ملاحظة', 'Note'), '${r['note']}'),
       (tr('بواسطة', 'By'), '${r['createdByName'] ?? '—'}'),
@@ -341,7 +358,7 @@ class _DetailSheetState extends State<_DetailSheet> {
               label: Text(tr('طباعة / مشاركة PDF', 'Print / share PDF')),
               onPressed: _printing ? null : () async {
                 setState(() => _printing = true);
-                await _printPdf(context, r);
+                await _printPdf(context, widget.base, r);
                 if (mounted) setState(() => _printing = false);
               },
             )),
@@ -369,7 +386,8 @@ class _Line {
 
 /// Create form. The balance after each line is computed while typing: stock minus this line and every earlier line of the same item, which is what the server checks and prints.
 class _IssueRequestForm extends StatefulWidget {
-  const _IssueRequestForm();
+  final IssueCfg cfg;
+  const _IssueRequestForm({required this.cfg});
   @override
   State<_IssueRequestForm> createState() => _IssueRequestFormState();
 }
@@ -390,7 +408,7 @@ class _IssueRequestFormState extends State<_IssueRequestForm> {
   void initState() {
     super.initState();
     _loadItems();
-    loadLightStorePlates().then((p) { if (mounted) setState(() => _plates = p); }).catchError((_) {});
+    widget.cfg.plates().then((p) { if (mounted) setState(() => _plates = p); }).catchError((_) {});
     // Balances change under the form when someone else issues or receives.
     _onLive = _loadItems;
     Live.instance.on('ls2:store', _onLive);
@@ -406,7 +424,7 @@ class _IssueRequestFormState extends State<_IssueRequestForm> {
 
   Future<void> _loadItems() async {
     try {
-      final d = await Api.instance.get(_itemsBase);
+      final d = await Api.instance.get(widget.cfg.itemsBase);
       if (!mounted) return;
       final items = List<Map<String, dynamic>>.from(d['items'] ?? []);
       final byId = {for (final i in items) '${i['_id']}': i};
@@ -454,7 +472,7 @@ class _IssueRequestFormState extends State<_IssueRequestForm> {
     final filled = _lines.where((l) => l.item != null || l.qty.text.trim().isNotEmpty).toList();
     setState(() { _busy = true; _err = null; for (final l in _lines) { l.serverErr = null; } });
     try {
-      final d = await Api.instance.post(_base, {
+      final d = await Api.instance.post(widget.cfg.base, {
         'date': _date,
         'vehiclePlate': _plate.trim(),
         'issueReason': _issueReason,

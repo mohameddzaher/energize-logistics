@@ -603,7 +603,7 @@ class _FleetVehicleAnalyticsScreenState extends State<FleetVehicleAnalyticsScree
             // The reason for the issue beside the part: periodic maintenance / accident / preventive / breakdown on the road.
             _kv(
               '${m['itemName'] ?? ''}${storeIssueReasonLabel(m['issueReason']).isNotEmpty ? ' — ${storeIssueReasonLabel(m['issueReason'])}' : ''}',
-              '×${m['quantity'] ?? ''} · ${_fmtD(m['createdAt'])}',
+              '×${m['quantity'] ?? ''} · ${_fmtD((m['date'] ?? '').toString().isNotEmpty ? m['date'] : m['createdAt'])}${(m['issueRequestNo'] ?? '').toString().isNotEmpty ? ' · ${m['issueRequestNo']}' : ''}',
             ),
         ],
         if (services.isNotEmpty) ...[

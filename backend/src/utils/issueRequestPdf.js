@@ -23,8 +23,8 @@ function issueRequestHtml(r) {
     ['رقم الطلب', 'Request No.', dash(r.number)],
     ['التاريخ', 'Date', iso(dmy(r.date))],
     ['المركبة / اللوحة', 'Vehicle / Plate', dash(formatPlate(r.vehiclePlate) || r.vehiclePlate)],
-    ['المشروع', 'Project', dash(r.project)],
-    ['الراكب', 'Rider', dash(r.rider)],
+    // Heavy trucks run on waybills with no project, and are driven, not ridden.
+    ...(r.warehouse === 'heavy' ? [['السائق', 'Driver', dash(r.rider)]] : [['المشروع', 'Project', dash(r.project)], ['الراكب', 'Rider', dash(r.rider)]]),
     ['سبب الصرف', 'Issue reason', dash(r.issueReasonAr)],
   ];
   const headRows = [];

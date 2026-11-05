@@ -1,5 +1,5 @@
 /**
- * Store issue requests (طلب صرف): the light-transport store issues stock only through these.
+ * Store issue requests (طلب صرف): both stores (light and heavy transport) issue stock only through these.
  * A request is the stock-out itself: saving it writes one outgoing movement per line, linked to the vehicle and the request number.
  * Stock is taken with conditional decrements (`quantity >= wanted`), so two requests racing for the last pieces cannot drive a balance below zero; a failure part-way is compensated before answering.
  * Posted requests are never edited. Cancelling reverses every movement on the record, like a movement reversal.
@@ -24,8 +24,20 @@ const r3 = (n) => Math.round((Number(n) || 0) * 1000) / 1000;
 const plateKeyOf = (v) => String(v ?? '').replace(/[^0-9A-Za-zء-ي]/g, '').toUpperCase();
 const emit = () => { require('../utils/ls2Touch').touchLs2({ store: true, issueRequests: true }); };
 
-/** Registry vehicle, rider and project behind a plate, as the store's vehicle picker shows them. */
-async function vehicleContext(plate) {
+/** Registry vehicle, rider and project behind a plate, as the store's vehicle picker shows them. Heavy trucks have no project; their driver comes from the fleet mirror. */
+async function vehicleContext(plate, wh = 'light') {
+  if (wh === 'heavy') {
+    const vehicleMaster = await resolveLs2Plate(plate, { heavy: true }).catch(() => null);
+    let rider = '';
+    try {
+      const { plateKey } = require('../utils/plateKey');
+      const Ls2Vehicle = require('../models/Ls2Vehicle');
+      const key = plateKey(plate);
+      const v = key ? (await Ls2Vehicle.find({}).select('plate driver').lean()).find((x) => plateKey(x.plate) === key) : null;
+      rider = v?.driver || '';
+    } catch (_) { /* The plate is what is issued to. */ }
+    return { vehicleMaster, rider, project: '' };
+  }
   const vehicleMaster = await resolveLs2Plate(plate, { heavy: false }).catch(() => null);
   let rider = ''; let project = '';
   try {
@@ -175,7 +187,7 @@ exports.create = async (req, res) => {
 
   let request = null;
   try {
-    const ctx = await vehicleContext(vehiclePlate);
+    const ctx = await vehicleContext(vehiclePlate, wh);
     const { seq, number } = await nextIssueNumber(wh);
     // Balance after each line, in line order: the item's balance before the request minus what this and earlier lines took.
     const running = new Map([...wanted].map(([id, total]) => [id, r3(after.get(id) + total)]));

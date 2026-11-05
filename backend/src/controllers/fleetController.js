@@ -2908,9 +2908,10 @@ exports.getVehicleAnalytics = async (req, res) => {
         Ls2Repair.find({ plate: plateRx, status: { $ne: 'done' } }).sort({ createdAt: -1 }).limit(20)
           .select('plate category status description cost createdAt').lean().catch(() => []),
         // What the store issued to this truck: parts actually installed on it. The store plate is written in a third format (letters plus 5096 or just 2708) while here it is "5096 VXA", so the join is by digits alone, bounded so 1082 does not match 21082.
-        Ls2StoreMovement.find({ type: 'out', reversed: { $ne: true }, vehiclePlate: digitsRx })
-          .sort({ createdAt: -1 }).limit(50)
-          .select('itemName quantity reason issueReason createdAt performedByName').lean()
+        // `date` is the issue day picked on the request (shown instead of the entry time); the request number lets the reader find its signed sheet.
+        Ls2StoreMovement.find({ type: 'out', warehouse: { $ne: 'light' }, reversed: { $ne: true }, vehiclePlate: digitsRx })
+          .sort({ date: -1, createdAt: -1 }).limit(50)
+          .select('itemName quantity reason issueReason date issueRequestNo createdAt performedByName').lean()
           // The issue reason by name (periodic maintenance / accident...) is read in the vehicle file.
           .then((rows) => rows.map((m) => ({ ...m, issueReasonLabel: require('../utils/storeIssueReasons').issueReasonLabel(m.issueReason) })))
           // Rims fitted to this truck from the tire side count as parts issued too.

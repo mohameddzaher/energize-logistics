@@ -117,22 +117,7 @@ class _Ls2StoreScreenState extends State<Ls2StoreScreen> {
         final rows = await loadLightStorePlates();
         if (mounted) setState(() => _plates = rows);
       } else {
-        // The endpoint returns `items`, not `vehicles`; the list used to come out empty with no error.
-        final d = await Api.instance.get('/api/ls2/vehicles');
-        // The description comes from the vehicle register: its plate, make and model (as on the web).
-        final rows = List<Map<String, dynamic>>.from(d['items'] ?? []).map((v) {
-              final reg = v['registry'] is Map ? Map<String, dynamic>.from(v['registry']) : <String, dynamic>{};
-              final prof = v['profile'] is Map ? Map<String, dynamic>.from(v['profile']) : <String, dynamic>{};
-              final detail = [reg['plateNumber'], (reg['brand'] ?? '').toString().isNotEmpty ? reg['brand'] : prof['brand'], reg['model']]
-                  .where((x) => (x ?? '').toString().isNotEmpty).join(' · ');
-              return <String, dynamic>{
-                'plate': (v['plate'] ?? '').toString(),
-                'project': '',
-                'rider': (v['driver'] ?? '').toString(),
-                'city': '',
-                'detail': detail.isNotEmpty ? detail : (v['name'] ?? '').toString(),
-              };
-            }).where((r) => r['plate'].toString().isNotEmpty).toList();
+        final rows = await loadHeavyStorePlates();
         if (mounted) setState(() => _plates = rows);
       }
     } catch (_) { /* The list stays empty and the plate is typed by hand. */ }
@@ -319,15 +304,7 @@ class _Ls2StoreScreenState extends State<Ls2StoreScreen> {
                                           icon: const Icon(Icons.south, size: 16), label: Text(tr('وارد', 'In')),
                                           onPressed: () => _openMovement(it, 'in'),
                                         )),
-                                        // The light store issues only through issue requests; the server refuses a direct out there too.
-                                        if (!_isLightStore(widget.base)) ...[
-                                          const SizedBox(width: 8),
-                                          Expanded(child: OutlinedButton.icon(
-                                            style: OutlinedButton.styleFrom(foregroundColor: T.orange, side: const BorderSide(color: T.orange), padding: const EdgeInsets.symmetric(vertical: 6)),
-                                            icon: const Icon(Icons.north, size: 16), label: Text(tr('صادر', 'Out')),
-                                            onPressed: () => _openMovement(it, 'out'),
-                                          )),
-                                        ],
+                                        // Both stores issue only through issue requests; the server refuses a direct out.
                                         IconButton(
                                           tooltip: tr('حذف الصنف', 'Delete item'),
                                           icon: const Icon(Icons.delete_outline, color: T.danger),
@@ -358,14 +335,6 @@ class _Ls2StoreScreenState extends State<Ls2StoreScreen> {
                             onPressed: () => _openBulk('in'),
                             child: Text(tr('وارد (${_picked.length})', 'Receive (${_picked.length})')),
                           ),
-                          if (!_isLightStore(widget.base)) ...[
-                            const SizedBox(width: 6),
-                            FilledButton(
-                              style: FilledButton.styleFrom(backgroundColor: T.orange, visualDensity: VisualDensity.compact),
-                              onPressed: () => _openBulk('out'),
-                              child: Text(tr('صادر (${_picked.length})', 'Issue (${_picked.length})')),
-                            ),
-                          ],
                         ]),
                       ),
                     ),
@@ -586,6 +555,27 @@ class _Ls2StoreScreenState extends State<Ls2StoreScreen> {
 
 /// Plate key: the two registers write plates in two formats, so they are matched by letters and digits.
 String storePlateKey(dynamic v) => (v ?? '').toString().replaceAll(RegExp(r'[^0-9A-Za-z\u0621-\u064A]'), '').toUpperCase();
+
+/// Heavy-transport trucks issued onto: the fleet mirror with its driver and the register's description (no project: the fleet runs on waybills).
+Future<List<Map<String, dynamic>>> loadHeavyStorePlates() async {
+  // The endpoint returns `items`, not `vehicles`; the list used to come out empty with no error.
+  final d = await Api.instance.get('/api/ls2/vehicles');
+  // The description comes from the vehicle register: its plate, make and model (as on the web).
+  final rows = List<Map<String, dynamic>>.from(d['items'] ?? []).map((v) {
+        final reg = v['registry'] is Map ? Map<String, dynamic>.from(v['registry']) : <String, dynamic>{};
+        final prof = v['profile'] is Map ? Map<String, dynamic>.from(v['profile']) : <String, dynamic>{};
+        final detail = [reg['plateNumber'], (reg['brand'] ?? '').toString().isNotEmpty ? reg['brand'] : prof['brand'], reg['model']]
+            .where((x) => (x ?? '').toString().isNotEmpty).join(' · ');
+        return <String, dynamic>{
+          'plate': (v['plate'] ?? '').toString(),
+          'project': '',
+          'rider': (v['driver'] ?? '').toString(),
+          'city': '',
+          'detail': detail.isNotEmpty ? detail : (v['name'] ?? '').toString(),
+        };
+      }).where((r) => r['plate'].toString().isNotEmpty).toList();
+  return rows;
+}
 
 /// Light-transport vehicles issued onto: the department's vehicle register joined to its current rider, which gives project and branch.
 Future<List<Map<String, dynamic>>> loadLightStorePlates() async {

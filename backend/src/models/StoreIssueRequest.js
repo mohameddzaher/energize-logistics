@@ -42,13 +42,13 @@ issueRequestSchema.index({ warehouse: 1, seq: -1 });
 const counterSchema = new mongoose.Schema({ _id: String, seq: { type: Number, default: 0 } });
 const Counter = mongoose.models.StoreIssueCounter || mongoose.model('StoreIssueCounter', counterSchema);
 
-/** Readable request number: SR-00001 (light store). */
-const formatNumber = (seq) => `SR-${String(seq).padStart(5, '0')}`;
+/** Readable request number: SR-00001 in the light store, HSR-00001 in the heavy one (numbers are unique across both). */
+const formatNumber = (seq, warehouse = 'light') => `${warehouse === 'heavy' ? 'HSR' : 'SR'}-${String(seq).padStart(5, '0')}`;
 
 /** Next number for a warehouse; numbers are taken only after the stock is secured, so a rejected request leaves no gap. */
 async function nextNumber(warehouse = 'light') {
   const c = await Counter.findOneAndUpdate({ _id: `issue:${warehouse}` }, { $inc: { seq: 1 } }, { new: true, upsert: true });
-  return { seq: c.seq, number: formatNumber(c.seq) };
+  return { seq: c.seq, number: formatNumber(c.seq, warehouse) };
 }
 
 module.exports = {

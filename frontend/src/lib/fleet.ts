@@ -327,7 +327,7 @@ export interface FleetVehicleAnalytics {
     mountedTires: number;
     openRepairs: { _id: string; category?: string; status: string; description?: string; cost?: number; createdAt: string }[];
     recentServices: { _id: string; createdAt: string; byName?: string; note?: string; odometerKm?: number; items?: { label?: string; status?: string }[] }[];
-    partsIssued: { _id: string; itemName: string; quantity: number; reason?: string; issueReason?: string; createdAt: string; performedByName?: string }[];
+    partsIssued: { _id: string; itemName: string; quantity: number; reason?: string; issueReason?: string; date?: string; issueRequestNo?: string; createdAt: string; performedByName?: string }[];
     partsCount: number;
   } | null;
 }

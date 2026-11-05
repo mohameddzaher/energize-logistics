@@ -81,7 +81,6 @@ import '../screens/vehicle_registry_dash.dart';
 import '../screens/crm_calendar.dart';
 import '../screens/ls2_temperature.dart';
 import '../screens/ls2_settings.dart';
-import '../screens/ls2_store.dart';
 import '../screens/lt_issue_requests.dart';
 import '../screens/ls2_suppliers.dart';
 import '../screens/settings_screen.dart';
@@ -483,7 +482,8 @@ List<AppSection> sectionsFor(AuthProvider auth) {
         AppPage('المركبات والصيانة', 'Fleet & Maintenance', Icons.local_shipping_outlined, (c) => const Ls2VehiclesScreen(), path: '/system/ls2/maintenance'),
         AppPage('الإصلاحات', 'Repairs', Icons.home_repair_service_outlined, (c) => ResourceScreen(config: ls2RepairsCfg), path: '/system/ls2/repairs'),
         AppPage('أصول الأسطول', 'Fleet Assets', Icons.tire_repair_outlined, (c) => const Ls2FleetAssetsScreen(), path: '/system/ls2/fleet-assets'),
-        AppPage('مخزن النقل الثقيل', 'Store', Icons.inventory_2_outlined, (c) => const Ls2StoreScreen(), path: '/system/ls2/store'),
+        // Heavy store: opens on issue requests, the only way stock leaves it (as in the light store); items are one tap away.
+        AppPage('مخزن النقل الثقيل', 'Store', Icons.inventory_2_outlined, (c) => const LtIssueRequestsScreen(cfg: htIssueCfg), path: '/system/ls2/store'),
         if (custodyOpens(auth, '/system/ls2/custody', _htOwners.contains(role) || role == 'vehicles_manager')) AppPage('عهدة النقل الثقيل', 'Heavy Transport Custody', Icons.account_balance_wallet_outlined, (c) => const HtCustodyScreen(), path: '/system/ls2/custody'),
         // Who spare parts are bought from: heavy store only.
         AppPage('الموردون', 'Suppliers', Icons.storefront_outlined, (c) => const Ls2SuppliersScreen(), path: '/system/ls2/suppliers'),

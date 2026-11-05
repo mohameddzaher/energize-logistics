@@ -114,10 +114,26 @@ router.put('/suppliers/:id', oid, ADMIN, store.updateSupplier);
 router.delete('/suppliers/:id', oid, ADMIN, store.deleteSupplier);
 router.put('/store/:id', oid, ADMIN, store.updateItem);
 router.delete('/store/:id', oid, ADMIN, store.deleteItem);
-// Bulk movement (out or in) of several items with different quantities. Registered before /store/:id so 'bulk-out' is not read as an item id.
-router.post('/store/bulk-out', ADMIN, store.addBulkOut);
-router.post('/store/bulk-movement', ADMIN, store.addBulkMovement);
-router.post('/store/:id/movement', oid, ADMIN, store.addMovement);
+// Issuing happens only through an issue request (طلب صرف), as in the light store: the direct out actions are refused, receipts stay open.
+const noDirectIssue = (req, res, next) => (String(req.body?.type || '') === 'out'
+  ? res.status(400).json({ code: 'ISSUE_VIA_REQUEST', message: 'الصرف من مخزن النقل الثقيل يتمّ عبر «طلب صرف» فقط' })
+  : next());
+const issue = require('../controllers/storeIssueRequestController');
+// The controller reads the store from the query; this router is the heavy store.
+const heavyStore = (fn) => (req, res, next) => {
+  req.query = { ...req.query, warehouse: 'heavy' };
+  if (req.body && typeof req.body === 'object') req.body.warehouse = 'heavy';
+  return fn(req, res, next);
+};
+router.get('/store/issue-requests', heavyStore(issue.list));
+router.get('/store/issue-requests/:id', oid, heavyStore(issue.get));
+router.get('/store/issue-requests/:id/pdf', oid, heavyStore(issue.pdf));
+router.post('/store/issue-requests', ADMIN, heavyStore(issue.create));
+router.post('/store/issue-requests/:id/cancel', oid, ADMIN, heavyStore(issue.cancel));
+// Bulk movement of several items with different quantities (receipts only now). Registered before /store/:id so 'bulk-out' is not read as an item id.
+router.post('/store/bulk-out', ADMIN, (req, res) => res.status(400).json({ code: 'ISSUE_VIA_REQUEST', message: 'الصرف من مخزن النقل الثقيل يتمّ عبر «طلب صرف» فقط' }));
+router.post('/store/bulk-movement', ADMIN, noDirectIssue, store.addBulkMovement);
+router.post('/store/:id/movement', oid, ADMIN, noDirectIssue, store.addMovement);
 // Reversing a movement writes an opposite movement; it does not delete or edit a row. There is deliberately no PUT/PATCH on movements: a recorded movement is not edited (finance decision).
 router.post('/store/movements/:movementId/reverse', ADMIN, store.reverseMovement);
 router.post('/assets/trailers', ADMIN, assets.createTrailer);

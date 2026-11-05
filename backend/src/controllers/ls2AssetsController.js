@@ -189,15 +189,22 @@ exports.getVehicleHistory = async (req, res) => {
     const Ls2ServiceLog = require('../models/Ls2ServiceLog');
 
     const { Ls2RimMovement } = require('../models/Ls2Rim');
-    const [tireEvents, storeOut, issues, repairs, services, rimMoves] = await Promise.all([
+    const HtCustodyEntry = require('../models/HtCustody');
+    // Store rows and custody entries are read by this plate, not from a global latest-N slice: an older truck's rows fell out of the slice and its profile looked empty.
+    // The plate is stored as typed, so the pattern allows any separators between its characters; `mine` then confirms the exact key.
+    const platePattern = new RegExp(key.split('').map((c) => c.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('[^0-9A-Za-z\u0621-\u064A]*'), 'i');
+    const unitIds = (await Ls2Vehicle.find({}).select('unitId plate name').lean())
+      .filter((v) => plateKey(v.plate) === key || vehiclePlateKey(v.name) === key).map((v) => v.unitId);
+    const [tireEvents, storeOut, issues, repairs, services, rimMoves, custody] = await Promise.all([
       // The busiest plate has more than 500 events, so the old cap made its tire history look complete while truncated.
       Ls2AssetEvent.find({ $or: [{ fromPlateKey: key }, { toPlateKey: key }] }).sort({ date: -1 }).limit(10000).lean(),
-      Ls2StoreMovement.find({ vehiclePlate: { $nin: ['', null] } }).sort({ createdAt: -1 }).limit(3000).lean(),
+      Ls2StoreMovement.find({ warehouse: { $ne: 'light' }, vehiclePlate: platePattern }).sort({ createdAt: -1 }).limit(5000).lean(),
       InventoryIssue.find({ vehicleNumber: { $nin: ['', null] } }).sort({ date: -1 }).limit(3000).lean(),
       Ls2Repair.find({ plate: { $nin: ['', null] } }).sort({ date: -1 }).limit(1000).lean(),
       Ls2ServiceLog.find({ plate: { $nin: ['', null] } }).sort({ date: -1 }).limit(1000).lean(),
       // Legacy copies are skipped: the store rows they copy are already read above.
       Ls2RimMovement.find({ plateKey: key, legacy: { $ne: true }, type: { $ne: 'edit' } }).sort({ at: -1 }).limit(1000).lean(),
+      HtCustodyEntry.find({ $or: [...(unitIds.length ? [{ vehicleUnitId: { $in: unitIds } }] : []), { vehiclePlate: platePattern }] }).sort({ date: -1, createdAt: -1 }).limit(2000).lean(),
     ]);
 
     const mine = (v) => plateKey(v) === key;
@@ -214,10 +221,12 @@ exports.getVehicleHistory = async (req, res) => {
         source: 'assets', refId: e.refId,
       });
     }
+    // The movement's own day (the issue date picked on the request), not when it was typed in.
+    const dayOf = (ymd, fallback) => (/^\d{4}-\d{2}-\d{2}$/.test(String(ymd || '')) ? new Date(`${ymd}T12:00:00+03:00`) : fallback);
     for (const m of storeOut.filter((x) => mine(x.vehiclePlate))) {
       rows.push({
-        kind: 'part', date: m.createdAt, action: m.type === 'out' ? 'صرف' : 'وارد',
-        title: m.itemName, detail: `${m.type === 'out' ? 'صادر' : 'وارد'} ${m.quantity}`,
+        kind: 'part', date: dayOf(m.date, m.createdAt), recordedAt: m.createdAt, action: m.type === 'out' ? 'صرف' : 'وارد',
+        title: m.itemName, detail: `${m.type === 'out' ? 'صادر' : 'وارد'} ${m.quantity}${m.issueRequestNo ? ` · طلب صرف ${m.issueRequestNo}` : ''}`,
         by: m.performedByName, notes: [issueReasonLabel(m.issueReason), m.reason, m.reversed ? 'اتّرجع عنها' : ''].filter(Boolean).join(' · '),
         issueReason: m.issueReason || '', issueReasonLabel: issueReasonLabel(m.issueReason),
         reversed: !!m.reversed, source: 'ls2-store', refId: m._id,
@@ -256,6 +265,20 @@ exports.getVehicleHistory = async (req, res) => {
         detail: (s.items || []).filter((x) => x.status === 'done').map((x) => x.labelAr || x.label).slice(0, 6).join(' · '),
         odometerKm: s.odometerKm ?? null, by: s.performedByName, notes: s.notes || '',
         source: 'maintenance', refId: s._id,
+      });
+    }
+
+    // Heavy custody spent on or received for this truck.
+    const ACCOUNT_AR = { cash: 'كاش', card: 'بطاقة المشتريات', workshop: 'الورشة' };
+    for (const c of custody) {
+      if (!unitIds.includes(c.vehicleUnitId) && !mine(c.vehiclePlate)) continue;
+      rows.push({
+        kind: 'custody', date: dayOf(c.date, c.createdAt), recordedAt: c.createdAt,
+        action: c.direction === 'out' ? 'صرف' : 'وارد',
+        title: `عهدة ${ACCOUNT_AR[c.account] || c.account} — ${c.direction === 'out' ? 'صرف' : 'وارد'} ${Number(c.amount || 0).toLocaleString('en-US')} ر.س`,
+        detail: [c.repName, c.detail].filter(Boolean).join(' · '),
+        by: c.createdByName || '', notes: '',
+        source: 'ht-custody', refId: c._id,
       });
     }
 

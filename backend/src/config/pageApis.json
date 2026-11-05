@@ -1183,6 +1183,7 @@
       "apis": [
         "/api/lookups/types",
         "/api/ls2/store",
+        "/api/ls2/store/issue-requests",
         "/api/ls2/store/unknown-plates",
         "/api/ls2/suppliers",
         "/api/ls2/vehicles"

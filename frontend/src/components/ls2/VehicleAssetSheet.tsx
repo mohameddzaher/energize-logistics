@@ -3,7 +3,7 @@
 // Tires tab: serial, plate, type, position out of 14, section, sensor, status. History tab: tire movements, issued spare parts, repairs and maintenance in one chronological line, each type in its color.
 // Sources: /assets/vehicle/:plate for current tires and /history for the merged timeline, loaded together so switching tabs does not wait on the network.
 import { useEffect, useState, useMemo } from 'react';
-import { X, CircleDot, Wrench, Boxes, CalendarCheck, Search } from 'lucide-react';
+import { X, CircleDot, Wrench, Boxes, CalendarCheck, Search, Wallet } from 'lucide-react';
 import api from '@/lib/api';
 import { fmtDateTime } from '@/lib/ls2';
 import TireActions, { type TireActionHandlers } from './TireActions';
@@ -15,7 +15,7 @@ type Tire = {
   positionNumber: number | null; positionLabel: string; section: string; isSpare: boolean; notes: string;
 };
 type Row = {
-  kind: 'tire' | 'part' | 'repair' | 'service' | 'asset';
+  kind: 'tire' | 'part' | 'repair' | 'service' | 'asset' | 'custody';
   date: string; action: string; title: string; detail: string;
   odometerKm?: number | null; by?: string; notes?: string; source: string; reversed?: boolean;
 };
@@ -26,6 +26,8 @@ const KIND: Record<string, { ar: string; en: string; cls: string; dot: string; i
   repair: { ar: 'إصلاح', en: 'Repairs', cls: 'bg-rose-50 text-rose-800 border-rose-200', dot: 'bg-rose-500', icon: Wrench },
   service: { ar: 'صيانة', en: 'Service', cls: 'bg-emerald-50 text-emerald-800 border-emerald-200', dot: 'bg-emerald-500', icon: CalendarCheck },
   asset: { ar: 'أصول', en: 'Assets', cls: 'bg-slate-50 text-slate-700 border-slate-200', dot: 'bg-slate-400', icon: Boxes },
+  // Heavy custody money spent on or received for this truck (server: getVehicleHistory).
+  custody: { ar: 'عهدة', en: 'Custody', cls: 'bg-violet-50 text-violet-800 border-violet-200', dot: 'bg-violet-500', icon: Wallet },
 };
 const SENSOR: Record<string, { ar: string; en: string; cls: string }> = {
   yes: { ar: 'يوجد', en: 'yes', cls: 'bg-emerald-100 text-emerald-700' },

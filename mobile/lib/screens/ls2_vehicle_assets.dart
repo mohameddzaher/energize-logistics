@@ -76,6 +76,8 @@ class _Ls2VehicleAssetsScreenState extends State<Ls2VehicleAssetsScreen> {
     'part': ('قطع غيار', 'Parts', T.cyan),
     'repair': ('إصلاح', 'Repairs', T.danger),
     'service': ('صيانة', 'Service', T.success),
+    // Heavy custody money spent on or received for this truck.
+    'custody': ('عهدة', 'Custody', T.violet),
   };
 
   bool _isHead(dynamic section) => (section ?? '').toString().contains('راس') || (section ?? '').toString().toLowerCase().contains('head');

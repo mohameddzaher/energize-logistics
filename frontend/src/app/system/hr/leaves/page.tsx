@@ -6,7 +6,7 @@ import { useLanguage } from '@/context/LanguageContext';
 import { useSocket } from '@/hooks/useSocket';
 import api from '@/lib/api';
 import { CalendarCheck, Check, X, HelpCircle, FileDown, PenTool, CalendarPlus, History, Pencil, Trash2 } from 'lucide-react';
-import { isHRStaff, LeaveRequest, LEAVE_STATUS, empName, userName, leaveTypeLabel, LEAVE_OPEN, LEAVE_PENDING, canDecideLeave, leaveWaitNote, leaveStatusStyle } from '@/lib/hr';
+import { isHRStaff, LeaveRequest, LEAVE_STATUS, empName, userName, leaveTypeLabel, LEAVE_OPEN, LEAVE_PENDING, canDecideLeave, leaveWaitNote, leaveStatusStyle, countLeaveDays, fridaysNote } from '@/lib/hr';
 import DatePair from '@/components/hr/DatePair';
 import { bothDates, gregCell, hijriCell, pairLabels, exportDatePair } from '@/lib/hrDates';
 import { LeaveChainBar, LeaveThread } from '@/components/hr/LeaveChain';
@@ -86,11 +86,13 @@ export default function HRLeavesPage() {
       reason: l.reason || '',
     });
   };
-  const editDays = (() => {
-    const { startDate, endDate } = editForm;
-    if (!startDate || !endDate || endDate < startDate) return 0;
-    return Math.round((new Date(endDate).getTime() - new Date(startDate).getTime()) / 86400000) + 1;
+  // The type picked in the edit, else the request's own rule (older requests count calendar days, as the server keeps them).
+  const editFridays = (() => {
+    const t = types.find((x: any) => x._id === editForm.leaveType);
+    if (t && editing && String(t._id) !== String((editing.leaveType as any)?._id || editing.leaveType)) return t.countsFridays === true;
+    return (editing as any)?.countsFridays !== false;
   })();
+  const editDays = countLeaveDays(editForm.startDate, editForm.endDate, editFridays);
   const saveEdit = async () => {
     if (!editing) return;
     if (!editForm.leaveType || !editDays) {
@@ -391,7 +393,7 @@ export default function HRLeavesPage() {
                 value={editForm.endDate} onChange={(v) => setEditForm((f: any) => ({ ...f, endDate: v }))} />
             </div>
             {!!editDays && (
-              <p className="text-slate-900 text-sm font-semibold">{ar ? `المدّة: ${editDays} يوم` : `Duration: ${editDays} day(s)`}</p>
+              <p className="text-slate-900 text-sm font-semibold">{ar ? `المدّة: ${editDays} يوم` : `Duration: ${editDays} day(s)`} <span className="text-xs font-normal text-slate-500">{fridaysNote(editForm.startDate, editForm.endDate, editFridays, ar)}</span></p>
             )}
             <div>
               <label className="text-slate-500 text-xs mb-1 block">{ar ? 'السبب / ملاحظة' : 'Reason / note'}</label>

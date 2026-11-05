@@ -1,4 +1,5 @@
 'use client';
+import { countLeaveDays, fridaysNote } from '@/lib/hr';
 /**
  * Record a leave from HR (past, current or future) for any employee, with or without a login.
  * Saved approved immediately (POST /api/hr/leaves/backdated, mode 'manual'); the balance follows.
@@ -55,11 +56,8 @@ export default function LeaveRecordModal({ open, onClose, onSaved, ar, employeeI
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, employeeId]);
 
-  const days = (() => {
-    const { startDate, endDate } = form;
-    if (!startDate || !endDate || endDate < startDate) return 0;
-    return Math.round((new Date(endDate).getTime() - new Date(startDate).getTime()) / 86400000) + 1;
-  })();
+  const recordFridays = types.find((t) => t._id === form.leaveType)?.countsFridays === true;
+  const days = countLeaveDays(form.startDate, form.endDate, recordFridays);
 
   const save = async () => {
     if (!form.employee || !form.leaveType || !days) {
@@ -144,7 +142,7 @@ export default function LeaveRecordModal({ open, onClose, onSaved, ar, employeeI
           <DatePair label={TO} ar={ar} inputClassName="[color-scheme:light]" min={form.startDate || undefined}
             value={form.endDate} onChange={(v) => setForm((f: any) => ({ ...f, endDate: v }))} />
         </div>
-        {!!days && <p className="text-slate-900 text-sm font-semibold">{ar ? `المدّة: ${days} يوم` : `Duration: ${days} day(s)`}</p>}
+        {!!days && <p className="text-slate-900 text-sm font-semibold">{ar ? `المدّة: ${days} يوم` : `Duration: ${days} day(s)`} <span className="text-xs font-normal text-slate-500">{fridaysNote(form.startDate, form.endDate, recordFridays, ar)}</span></p>}
         <DeductionChoice value={form.deductBalance} onChange={(v) => setForm((f: any) => ({ ...f, deductBalance: v }))}
           leave={{ days, leaveType: types.find((t) => t._id === form.leaveType) } as any} ar={ar} />
         <div>

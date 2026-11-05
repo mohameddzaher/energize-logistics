@@ -88,6 +88,8 @@ export interface Contract {
 export interface LeaveType {
   _id: string; code: string; nameEn: string; nameAr: string;
   paid: boolean; affectsBalance: boolean; color?: string; active: boolean;
+  // Friday is the weekly day off and not a leave day, unless the type counts calendar days.
+  countsFridays?: boolean;
   // Advance notice policy: planned leave must be requested this many days before it starts. Sick/emergency types carry requiresAdvanceNotice: false.
   requiresAdvanceNotice?: boolean;
   minAdvanceDays?: number;
@@ -450,4 +452,29 @@ export function leaveWaitNote(l: any, ar: boolean): string {
   const stage = LEAVE_STAGES.find((s) => `pending_${s.key}` === l.status);
   if (stage) return ar ? `بانتظار قرار ${stage.ar}` : `Waiting for ${stage.en}`;
   return '';
+}
+
+
+/**
+ * Leave days between two YYYY-MM-DD dates, both ends included; Friday (the weekly day off) is not counted unless `countFridays`.
+ * Same rule as backend utils/leaveBalance.leaveDays, which stores the figure; this only previews it.
+ */
+export function countLeaveDays(startDate?: string, endDate?: string, countFridays = false): number {
+  if (!startDate || !endDate || endDate < startDate) return 0;
+  const a = new Date(`${startDate.slice(0, 10)}T00:00:00Z`);
+  const b = new Date(`${endDate.slice(0, 10)}T00:00:00Z`);
+  const span = Math.round((b.getTime() - a.getTime()) / 86400000) + 1;
+  if (countFridays) return span;
+  let fridays = Math.floor(span / 7);
+  for (let i = 0; i < span % 7; i += 1) if ((a.getUTCDay() + i) % 7 === 5) fridays += 1;
+  return span - fridays;
+}
+
+/** Fridays inside the period, said beside the day count so a shorter figure is not read as a mistake. */
+export function fridaysNote(startDate: string | undefined, endDate: string | undefined, countFridays: boolean, ar: boolean): string {
+  if (countFridays) return '';
+  const all = countLeaveDays(startDate, endDate, true);
+  const off = all - countLeaveDays(startDate, endDate, false);
+  if (!off) return '';
+  return ar ? `(لا تُحسب ${off === 1 ? 'جمعة واحدة' : `${off} أيام جمعة`} — إجازة أسبوعية)` : `(${off} Friday${off > 1 ? 's' : ''} not counted — weekly day off)`;
 }

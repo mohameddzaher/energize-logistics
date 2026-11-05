@@ -20,7 +20,9 @@ const { cappedFind, askedLimit, CAP_NOTE_AR } = require('../utils/capped');
 const { saveEmployeeFile, deleteStoredFile } = require('../utils/fileStore');
 const { createNotification } = require('../services/notificationService');
 const { emitToUser, emitToAll } = require('../websocket/socketManager');
-const { computeBalance, leaveDays, leaveDeducts } = require('../utils/leaveBalance');
+const { computeBalance, leaveDays, leaveDaysOf, fridayRuleOf, leaveDeducts } = require('../utils/leaveBalance');
+// A period of Fridays only holds no leave day (Friday is the weekly day off).
+const NO_WORKDAY = 'الفترة المختارة كلها أيام جمعة (إجازة أسبوعية) — لا تُحسب إجازة';
 const chain = require('../utils/leaveChain');
 
 // ── Roles / helpers ──────────────────────────────────────────────────────────
@@ -1206,7 +1208,7 @@ exports.updateLeaveType = async (req, res) => {
     if (denyNonStaff(req, res)) return;
     const lt = await LeaveType.findById(req.params.id);
     if (!lt) return res.status(404).json({ message: 'Leave type not found' });
-    ['nameEn', 'nameAr', 'paid', 'affectsBalance', 'color', 'active', 'requiresAdvanceNotice', 'minAdvanceDays'].forEach((f) => {
+    ['nameEn', 'nameAr', 'paid', 'affectsBalance', 'color', 'active', 'requiresAdvanceNotice', 'minAdvanceDays', 'countsFridays'].forEach((f) => {
       if (req.body[f] !== undefined) lt[f] = req.body[f];
     });
     await lt.save();
@@ -1525,7 +1527,9 @@ exports.createMyLeave = async (req, res) => {
     }
 
     if (String(endDate) < String(startDate)) return res.status(400).json({ message: 'تاريخ النهاية قبل تاريخ البداية' });
-    const days = leaveDays(startDate, endDate);
+    const countsFridays = fridayRuleOf(null, lt);
+    const days = leaveDays(startDate, endDate, { countFridays: countsFridays });
+    if (!days) return res.status(400).json({ message: NO_WORKDAY, code: 'NO_LEAVE_DAYS' });
     const clash = await findLeaveClash(employeeId, startDate, endDate);
     if (clash) return res.status(400).json({ message: clashMessage(clash), code: 'LEAVE_OVERLAP' });
     const { balance } = await computeEmployeeBalance(employeeId);
@@ -1546,7 +1550,7 @@ exports.createMyLeave = async (req, res) => {
       manager: req.user.manager || undefined,
       leaveType,
       leaveTypeCode: lt.code,
-      startDate, endDate, days, reason,
+      startDate, endDate, days, reason, countsFridays,
       employeeSignature,
       ...chain.startOf(hasManager),
       balanceSnapshot: {
@@ -1620,8 +1624,9 @@ exports.createTeamLeave = async (req, res) => {
     if (!notice.satisfied && !wantsOverride) {
       return res.status(400).json({ message: notice.message, code: 'ADVANCE_NOTICE_REQUIRED', policy: { requiredDays: notice.requiredDays, daysAhead: notice.daysAhead, leaveType: lt.code } });
     }
-    const days = leaveDays(startDate, endDate);
-    if (!days || days < 1) return res.status(400).json({ message: 'مدّة الإجازة غير صالحة' });
+    const countsFridays = fridayRuleOf(null, lt);
+    const days = leaveDays(startDate, endDate, { countFridays: countsFridays });
+    if (!days || days < 1) return res.status(400).json({ message: NO_WORKDAY, code: 'NO_LEAVE_DAYS' });
     const clash = await findLeaveClash(employee, startDate, endDate);
     if (clash) return res.status(400).json({ message: clashMessage(clash), code: 'LEAVE_OVERLAP' });
 
@@ -1642,7 +1647,7 @@ exports.createTeamLeave = async (req, res) => {
       filedByName: filer,
       leaveType,
       leaveTypeCode: lt.code,
-      startDate, endDate, days, reason: String(reason || '').trim(),
+      startDate, endDate, days, countsFridays, reason: String(reason || '').trim(),
       ...chain.startOf(false),
       // The manager filed it, so he signs both the employee's and his own box (resolved live on the sheet, see services/leaveSheet).
       managerDecision: { by: req.user._id, at: new Date(), decision: 'approved', note: `قدّم الطلبَ المديرُ ${filer} بنفسه | Filed by the manager`, signature: await defaultSignatureOf(req.user._id) },
@@ -1698,8 +1703,9 @@ exports.createBackdatedLeave = async (req, res) => {
     const lt = await LeaveType.findById(leaveType).lean();
     if (!lt) return res.status(400).json({ message: 'نوع إجازة غير صالح' });
 
-    const days = leaveDays(startDate, endDate);
-    if (!days || days < 1) return res.status(400).json({ message: 'مدّة الإجازة غير صالحة' });
+    const countsFridays = fridayRuleOf(null, lt);
+    const days = leaveDays(startDate, endDate, { countFridays: countsFridays });
+    if (!days || days < 1) return res.status(400).json({ message: NO_WORKDAY, code: 'NO_LEAVE_DAYS' });
 
     // HR may state the deduction explicitly, as at its approval stage; otherwise the leave type decides.
     const rawDeduct = req.body.deductBalance;
@@ -1726,7 +1732,7 @@ exports.createBackdatedLeave = async (req, res) => {
       requester: emp.user || req.user._id,
       leaveType,
       leaveTypeCode: lt.code,
-      startDate, endDate, days, plannedEndDate: endDate,
+      startDate, endDate, days, countsFridays, plannedEndDate: endDate,
       reason: String(reason || '').trim(),
       attachments,
       status: 'approved',
@@ -1791,12 +1797,14 @@ exports.updateLeave = async (req, res) => {
       if (!newType) return res.status(400).json({ message: 'نوع إجازة غير صالح' });
       leave.leaveType = leaveType;
       leave.leaveTypeCode = newType.code;
+      // A new type brings its own Friday rule.
+      leave.countsFridays = fridayRuleOf(leave, newType);
     }
     if (startDate) leave.startDate = startDate;
     if (endDate) leave.endDate = endDate;
     if (String(leave.endDate) < String(leave.startDate)) return res.status(400).json({ message: 'تاريخ النهاية قبل تاريخ البداية' });
-    const days = leaveDays(leave.startDate, leave.endDate);
-    if (!days || days < 1) return res.status(400).json({ message: 'مدّة الإجازة غير صالحة' });
+    const days = leaveDaysOf(leave, leave.startDate, leave.endDate);
+    if (!days || days < 1) return res.status(400).json({ message: NO_WORKDAY, code: 'NO_LEAVE_DAYS' });
     if (reason !== undefined) leave.reason = String(reason || '').trim();
 
     // No two leaves on the same days, and a request does not overlap itself.
@@ -2149,13 +2157,15 @@ exports.updateMyLeave = async (req, res) => {
         return res.status(400).json({ message: notice.message, code: 'ADVANCE_NOTICE_REQUIRED' });
       }
       leave.leaveType = leaveType;
+      leave.countsFridays = fridayRuleOf(leave, lt);
     }
     if (startDate) leave.startDate = startDate;
     if (endDate) leave.endDate = endDate;
     if (reason !== undefined) leave.reason = reason;
     if (startDate || endDate) {
       if (String(leave.endDate) < String(leave.startDate)) return res.status(400).json({ message: 'تاريخ النهاية قبل تاريخ البداية' });
-      leave.days = leaveDays(leave.startDate, leave.endDate);
+      leave.days = leaveDaysOf(leave, leave.startDate, leave.endDate);
+      if (!leave.days) return res.status(400).json({ message: NO_WORKDAY, code: 'NO_LEAVE_DAYS' });
       const clash = await findLeaveClash(leave.employee, leave.startDate, leave.endDate, leave._id);
       if (clash) return res.status(400).json({ message: clashMessage(clash), code: 'LEAVE_OVERLAP' });
     }

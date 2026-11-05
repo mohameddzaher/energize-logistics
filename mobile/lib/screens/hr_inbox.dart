@@ -203,7 +203,13 @@ class _HrLeavesScreenState extends State<HrLeavesScreen> {
     DateTime? start = DateTime.tryParse((l['startDate'] ?? '').toString());
     DateTime? end = DateTime.tryParse((l['endDate'] ?? '').toString());
     final reason = TextEditingController(text: (l['reason'] ?? '').toString());
-    int days() => (start == null || end == null || end!.isBefore(start!)) ? 0 : end!.difference(start!).inDays + 1;
+    final origType = typeId;
+    // A changed type brings its own Friday rule; otherwise the request keeps the one it was counted with (older requests count calendar days).
+    bool fridays() {
+      if (typeId != origType) return types.where((t) => t['_id'] == typeId).firstOrNull?['countsFridays'] == true;
+      return l['countsFridays'] != false;
+    }
+    int days() => countLeaveDays(start, end, countFridays: fridays());
     String fmt(DateTime? d) => d == null ? '—' : '${d.day}/${d.month}/${d.year}';
 
     final ok = await showModalBottomSheet<bool>(

@@ -10,15 +10,36 @@ const toDate = (v) => (v instanceof Date ? v : v ? new Date(v) : null);
 const diffDaysInclusiveFloor = (from, to) =>
   Math.max(0, Math.floor((to.getTime() - from.getTime()) / DAY_MS));
 
-// Whole-day span between two YYYY-MM-DD strings or dates, inclusive of both
-// ends (a single-day leave = 1 day). Mirrors remoteController.daysBetween.
-function leaveDays(startDate, endDate) {
+/**
+ * Leave days between two YYYY-MM-DD dates, both ends included.
+ * Friday is the company's weekly day off, so it is not a leave day unless `countFridays` (the leave type's choice, e.g. sick leave counted in calendar days).
+ * Days are read in UTC from the date strings, so the weekday never shifts with the server's time zone.
+ */
+const FRIDAY = 5;
+function leaveDays(startDate, endDate, { countFridays = true } = {}) {
   const a = toDate(startDate);
   const b = toDate(endDate);
   if (!a || !b) return 0;
   const diff = Math.round((b.getTime() - a.getTime()) / DAY_MS);
-  return diff >= 0 ? diff + 1 : 1;
+  if (diff < 0) return 1;
+  const span = diff + 1;
+  if (countFridays) return span;
+  const full = Math.floor(span / 7);
+  let fridays = full;
+  const startDay = a.getUTCDay();
+  for (let i = 0; i < span % 7; i += 1) if ((startDay + i) % 7 === FRIDAY) fridays += 1;
+  return span - fridays;
 }
+
+/**
+ * The Friday rule of a request: from its leave type when the type is given (a new or re-typed request, written onto the request), else the rule stored on the request.
+ * Requests from before the rule have none stored and keep counting calendar days, so their days and balances never change after the fact.
+ */
+function fridayRuleOf(leave, leaveType) {
+  if (leaveType) return leaveType.countsFridays === true;
+  return !(leave && leave.countsFridays === false);
+}
+const leaveDaysOf = (leave, startDate, endDate, leaveType) => leaveDays(startDate, endDate, { countFridays: fridayRuleOf(leave, leaveType) });
 
 /**
  * Day counting starts from: actual work start if known, otherwise contract start.
@@ -80,4 +101,4 @@ const leaveDeducts = (l) => (typeof l?.deductsBalance === 'boolean'
   ? l.deductsBalance
   : (l?.leaveType?.affectsBalance ?? true));
 
-module.exports = { computeBalance, leaveDays, contractDaysElapsed, accrualStart, leaveDeducts };
+module.exports = { computeBalance, leaveDays, leaveDaysOf, fridayRuleOf, contractDaysElapsed, accrualStart, leaveDeducts };

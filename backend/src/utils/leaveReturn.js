@@ -15,7 +15,7 @@
 const LeaveRequest = require('../models/LeaveRequest');
 const Employee = require('../models/Employee');
 const User = require('../models/User');
-const { leaveDays } = require('./leaveBalance');
+const { leaveDaysOf } = require('./leaveBalance');
 const { todayKey } = require('./companyDay');
 const { createNotification, notifySection } = require('../services/notificationService');
 
@@ -187,7 +187,7 @@ async function recordReturn(leaveId, { returnDate, startsSameDay = false, note =
   if (newEnd < leave.startDate) throw new LeaveReturnError('عاد في يوم بداية الإجازة نفسه — ألغِ الإجازة بدلًا من تسجيل عودة');
   const before = { endDate: leave.endDate, days: leave.days };
   leave.endDate = newEnd;
-  leave.days = leaveDays(leave.startDate, newEnd);
+  leave.days = leaveDaysOf(leave, leave.startDate, newEnd);
   leave.returnState = 'returned';
   leave.returnAuto = false;
   leave.returnedOn = returnDate;
@@ -213,7 +213,10 @@ async function recordReturn(leaveId, { returnDate, startsSameDay = false, note =
   const plannedEnd = leave.plannedEndDate;
   const early = newEnd < plannedEnd;
   const late = newEnd > plannedEnd;
-  const delta = leaveDays(plannedEnd < newEnd ? plannedEnd : newEnd, plannedEnd < newEnd ? newEnd : plannedEnd) - 1;
+  // Days between the planned and actual end, on the request's own Friday rule (the end day itself is not a difference).
+  const lo = plannedEnd < newEnd ? plannedEnd : newEnd;
+  const hi = plannedEnd < newEnd ? newEnd : plannedEnd;
+  const delta = lo === hi ? 0 : leaveDaysOf(leave, addDays(lo, 1), hi);
   if (emp) {
     const n = empName(emp);
     await announce(leave, emp, {
@@ -242,10 +245,10 @@ async function extendLeave(leaveId, { newEndDate, note = '' }, user) {
   }).select('startDate endDate').lean();
   if (clash) throw new LeaveReturnError(`التمديد يتداخل مع إجازةٍ أخرى (${clash.startDate} → ${clash.endDate})`);
   const fromEnd = leave.endDate;
-  const added = leaveDays(addDays(fromEnd, 1), newEndDate);
+  const added = leaveDaysOf(leave, addDays(fromEnd, 1), newEndDate);
   leave.extensions.push({ fromEnd, toEnd: newEndDate, days: added, note: String(note || '').trim(), by: user?._id, byName: nameOf(user) });
   leave.endDate = newEndDate;
-  leave.days = leaveDays(leave.startDate, newEndDate);
+  leave.days = leaveDaysOf(leave, leave.startDate, newEndDate);
   leave.returnState = '';
   leave.noShow = { since: '', note: '' };
   await leave.save();

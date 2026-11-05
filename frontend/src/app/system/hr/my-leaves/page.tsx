@@ -7,7 +7,7 @@ import { useSocket } from '@/hooks/useSocket';
 import api from '@/lib/api';
 import { CalendarDays, Plus, Check, X, XCircle, AlertTriangle, ShieldCheck, Pencil, Trash2, HelpCircle, Eye, Send, FileDown } from 'lucide-react';
 import { downloadLeaveSheet } from '@/lib/leavePdf';
-import { LeaveRequest, LeaveType, LeaveBalance, LEAVE_STATUS, empName, userName, leaveTypeLabel, today, earliestStartDate, daysUntil, LEAVE_OPEN, leaveUntouched, leaveStatusStyle, leaveWaitNote } from '@/lib/hr';
+import { LeaveRequest, LeaveType, LeaveBalance, LEAVE_STATUS, empName, userName, leaveTypeLabel, today, earliestStartDate, daysUntil, LEAVE_OPEN, leaveUntouched, leaveStatusStyle, leaveWaitNote, countLeaveDays, fridaysNote } from '@/lib/hr';
 import DatePair from '@/components/hr/DatePair';
 import { bothPeriod, gregCell, hijriCell, pairLabels, exportDatePair } from '@/lib/hrDates';
 import { Spinner, PageHeader, PrimaryButton, Badge, Modal, Field, Select, TextArea, Tabs, StatCard, Pick, Loader2, SearchableSelect } from '@/components/hr/HRKit';
@@ -16,6 +16,18 @@ import ExportMenu, { exportScopeLabels, type ExportColumn } from '@/components/l
 import FilePicker, { AttachmentList, type PickedFile } from '@/components/system/FilePicker';
 import { LeaveChainBar, LeaveThread } from '@/components/hr/LeaveChain';
 import { DeductionBadge } from '@/components/hr/LeaveDeduction';
+
+/** The leave days the server will count, shown under the dates (module level so the form does not remount). */
+function DaysPreview({ start, end, countFridays, ar }: { start: string; end: string; countFridays: boolean; ar: boolean }) {
+  const n = countLeaveDays(start, end, countFridays);
+  if (!start || !end) return null;
+  return (
+    <p className={`text-sm font-semibold ${n ? 'text-slate-900' : 'text-red-600'}`}>
+      {n ? (ar ? `عدد أيام الإجازة: ${n} يوم` : `Leave days: ${n}`) : (ar ? 'الفترة كلها أيام جمعة — لا تُحسب إجازة' : 'Only Fridays — no leave day')}{' '}
+      <span className="text-xs font-normal text-slate-500">{fridaysNote(start, end, countFridays, ar)}</span>
+    </p>
+  );
+}
 
 export default function MyLeavesPage() {
   const { confirm, notify } = useDialog();
@@ -434,6 +446,7 @@ export default function MyLeavesPage() {
             <DatePair label={`${TO_LABEL} *`} ar={ar} value={form.endDate} min={form.startDate || minStart} disabled={!form.startDate}
               onChange={(v) => setForm((f) => ({ ...f, endDate: v }))} />
           </div>
+          <DaysPreview start={form.startDate} end={form.endDate} countFridays={chosenType?.countsFridays === true} ar={ar} />
           {noticeViolated && (
             <p className="text-xs text-red-600">
               {ar
@@ -557,6 +570,7 @@ export default function MyLeavesPage() {
             <DatePair label={`${TO_LABEL} *`} ar={ar} value={teamForm.endDate} min={teamForm.startDate || teamMinStart} disabled={!teamForm.startDate}
               onChange={(v) => setTeamForm((f) => ({ ...f, endDate: v }))} />
           </div>
+          <DaysPreview start={teamForm.startDate} end={teamForm.endDate} countFridays={teamType?.countsFridays === true} ar={ar} />
           <Field label={tx.reasonNotes}><TextArea rows={2} value={teamForm.reason} onChange={(e) => setTeamForm((f) => ({ ...f, reason: e.target.value }))} /></Field>
           <Field label={ar ? 'المرفقات (اختياري)' : 'Attachments (optional)'}>
             <FilePicker files={teamFiles} onChange={setTeamFiles} max={5} />

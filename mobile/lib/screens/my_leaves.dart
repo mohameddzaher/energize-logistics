@@ -704,6 +704,15 @@ class _NewLeaveSheetState extends State<_NewLeaveSheet> {
               ),
             ),
           ]),
+          if (_start != null && _end != null) Builder(builder: (_) {
+            final cf = _chosen?['countsFridays'] == true;
+            final n = countLeaveDays(_start, _end, countFridays: cf);
+            return Padding(
+              padding: const EdgeInsets.only(top: 8),
+              child: Text(n == 0 ? tr('الفترة كلها أيام جمعة — لا تُحسب إجازة', 'Only Fridays — no leave day') : '${tr('عدد أيام الإجازة', 'Leave days')}: $n ${fridaysNote(_start, _end, countFridays: cf)}',
+                  style: TextStyle(fontWeight: FontWeight.w700, color: n == 0 ? T.danger : T.ink)),
+            );
+          }),
           const SizedBox(height: 10),
           TextField(controller: _reason, decoration: InputDecoration(labelText: tr('السبب', 'Reason'))),
           const SizedBox(height: 10),

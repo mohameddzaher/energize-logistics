@@ -272,3 +272,27 @@ class LeaveDeductionBadge extends StatelessWidget {
     ]);
   }
 }
+
+
+/// Leave days between two dates, both ends included; Friday (the weekly day off) is not counted unless [countFridays]. Same rule as backend utils/leaveBalance.leaveDays, which stores the figure.
+int countLeaveDays(DateTime? start, DateTime? end, {bool countFridays = false}) {
+  if (start == null || end == null) return 0;
+  final a = DateTime.utc(start.year, start.month, start.day);
+  final b = DateTime.utc(end.year, end.month, end.day);
+  if (b.isBefore(a)) return 0;
+  final span = b.difference(a).inDays + 1;
+  if (countFridays) return span;
+  var fridays = span ~/ 7;
+  for (var i = 0; i < span % 7; i++) {
+    if (a.add(Duration(days: i)).weekday == DateTime.friday) fridays++;
+  }
+  return span - fridays;
+}
+
+/// Fridays left out of the count, said beside it so a shorter figure is not read as a mistake.
+String fridaysNote(DateTime? start, DateTime? end, {bool countFridays = false}) {
+  if (countFridays) return '';
+  final off = countLeaveDays(start, end, countFridays: true) - countLeaveDays(start, end);
+  if (off <= 0) return '';
+  return tr(off == 1 ? '(لا تُحسب جمعة واحدة — إجازة أسبوعية)' : '(لا تُحسب $off أيام جمعة — إجازة أسبوعية)', '($off Friday${off > 1 ? 's' : ''} not counted — weekly day off)');
+}

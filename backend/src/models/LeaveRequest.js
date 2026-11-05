@@ -62,7 +62,9 @@ const leaveRequestSchema = new mongoose.Schema(
     // Return from leave (utils/leaveReturn). The end date and day count follow
     // what actually happened, so the live balance refunds an early return and
     // charges an extension without separate arithmetic.
-    plannedEndDate: { type: String, default: '' },              // end date as approved, before any change
+    plannedEndDate: { type: String, default: '' },
+    // The Friday rule this request was counted with, copied from its type (utils/leaveBalance.fridayRuleOf). Absent on older requests, which count calendar days.
+    countsFridays: { type: Boolean, default: undefined },              // end date as approved, before any change
     returnState: { type: String, enum: ['', 'returned', 'no_show'], default: '', index: true },
     returnedOn: { type: String, default: '' },                  // YYYY-MM-DD the employee came back
     workStartsOn: { type: String, default: '' },                // first working day

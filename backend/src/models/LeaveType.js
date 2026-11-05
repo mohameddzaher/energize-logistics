@@ -16,6 +16,8 @@ const leaveTypeSchema = new mongoose.Schema(
     // How many days before `startDate` the request must be submitted. Only read
     // when requiresAdvanceNotice is true.
     minAdvanceDays: { type: Number, default: 30, min: 0 },
+    // Friday is the weekly day off and is not counted as a leave day; a type counted in calendar days (sick leave, by labour law) sets this.
+    countsFridays: { type: Boolean, default: false },
 
     color: { type: String, default: '#f37121' },
     active: { type: Boolean, default: true },

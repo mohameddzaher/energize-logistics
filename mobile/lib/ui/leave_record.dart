@@ -39,9 +39,8 @@ Future<bool> showLeaveRecordSheet(BuildContext context, {String? employeeId}) as
   final reason = TextEditingController();
   final search = TextEditingController();
 
-  int days() => (start == null || end == null || end!.isBefore(start!))
-      ? 0
-      : end!.difference(start!).inDays + 1;
+  bool fridays() => types.where((t) => t['_id'] == typeId).firstOrNull?['countsFridays'] == true;
+  int days() => countLeaveDays(start, end, countFridays: fridays());
   String fmt(DateTime? d) => d == null ? '—' : '${d.day}/${d.month}/${d.year}';
 
   final ok = await showModalBottomSheet<bool>(

@@ -22,11 +22,49 @@ const leaveStatusMeta = <String, (String, String, Color)>{
   'pending_finance': ('عند الإدارة المالية', 'With Finance', Color(0xFF7C3AED)),
   'pending_executive': ('عند الإدارة العليا', 'With Top Management', Color(0xFF4F46E5)),
   'pending_chairman': ('عند رئيس مجلس الإدارة', 'With the Chairman', Color(0xFFC026D3)),
-  'info_requested': ('بانتظار ردّك', 'Needs your reply', Color(0xFFEA580C)),
+  'info_requested': ('عند الموظف للرد', 'With the employee to reply', Color(0xFFEA580C)),
   'approved': ('معتمدة', 'Approved', Color(0xFF059669)),
   'rejected': ('مرفوضة', 'Rejected', Color(0xFFDC2626)),
   'cancelled': ('ملغاة', 'Cancelled', Color(0xFF64748B)),
 };
+
+/// The owner's own wording: on his own requests a returned request waits on him; every other reader sees where it is.
+(String, String, Color) leaveStatusOwn(Object? status) =>
+    (status ?? '').toString() == 'info_requested' ? ('بانتظار ردّك', 'Needs your reply', const Color(0xFFEA580C)) : leaveStatusOf(status);
+
+/// Can this reader decide the request now? Mirrors backend utils/leaveChain canActAt, so no button is shown for a decision the server refuses.
+bool canDecideLeave(Map<String, dynamic>? user, Map<String, dynamic> l, {required bool hrStaff}) {
+  final st = (l['status'] ?? '').toString();
+  if (!leaveIsActionable(st)) return false;
+  final role = (user?['role'] ?? '').toString();
+  if (role == 'super_admin' || role == 'admin') return true;
+  switch (st) {
+    case 'pending_manager':
+      final m = l['manager'];
+      return '${m is Map ? m['_id'] : m}' == '${user?['_id']}';
+    case 'pending_finance': return const ['cfo', 'accounting_manager', 'accountant'].contains(role);
+    case 'pending_hr': return hrStaff;
+    case 'pending_executive': return user?['isTopManagement'] == true;
+    case 'pending_chairman': return user?['isChairman'] == true;
+  }
+  return false;
+}
+
+/// Why a request has no decision buttons: who holds it now, and the question asked when it was returned.
+String leaveWaitNote(Map<String, dynamic> l) {
+  final st = (l['status'] ?? '').toString();
+  if (st == 'info_requested') {
+    final thread = List<Map<String, dynamic>>.from((l['thread'] as List? ?? const []).map((e) => Map<String, dynamic>.from(e as Map)));
+    final q = thread.reversed.where((t) => t['kind'] == 'question').firstOrNull;
+    final stage = leaveStages.where((s) => s.key == (q?['stage'] ?? '')).firstOrNull;
+    final who = stage != null ? tr(stage.ar, stage.en) : '${q?['byName'] ?? ''}';
+    final text = '${q?['text'] ?? ''}';
+    return tr('أُعيد للموظف ليرد${who.isNotEmpty ? ' على استفسار $who' : ''}${text.isNotEmpty ? ': «$text»' : ''} — يعود للمسار بعد رده',
+        'Returned to the employee${who.isNotEmpty ? ' with a question from $who' : ''}${text.isNotEmpty ? ': "$text"' : ''}; it re-enters the chain when they reply');
+  }
+  final stage = leaveStages.where((s) => 'pending_${s.key}' == st).firstOrNull;
+  return stage == null ? '' : tr('بانتظار قرار ${stage.ar}', 'Waiting for ${stage.en}');
+}
 
 (String, String, Color) leaveStatusOf(Object? status) {
   final s = (status ?? '').toString();

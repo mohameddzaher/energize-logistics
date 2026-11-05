@@ -111,6 +111,8 @@ class _TopLeavesScreenState extends State<TopLeavesScreen> {
                     Align(alignment: AlignmentDirectional.centerEnd, child: TextButton.icon(
                       onPressed: () => downloadLeaveSheet(context, '${l['_id']}'),
                       icon: const Icon(Icons.picture_as_pdf_outlined, size: 16), label: Text(tr('ورقة الإجازة PDF', 'Leave sheet PDF')))),
+                    if (!(widget.canDecide && l['status'] == 'pending_${widget.stage}') && leaveIsOpen(l['status']))
+                      Padding(padding: const EdgeInsets.only(top: 4), child: Text(leaveWaitNote(l), style: const TextStyle(fontSize: 11.5, color: T.inkSoft))),
                     if (widget.canDecide && l['status'] == 'pending_${widget.stage}') Padding(padding: const EdgeInsets.only(top: 8), child: Row(children: [
                       Expanded(child: FilledButton.icon(
                         style: FilledButton.styleFrom(backgroundColor: T.success),

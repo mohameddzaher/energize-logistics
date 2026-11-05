@@ -273,7 +273,7 @@ export const LEAVE_STATUS: Record<string, { bg: string; text: string; en: string
   pending_executive: { bg: 'bg-indigo-500/20', text: 'text-indigo-700', en: 'With Top Management', ar: 'عند الإدارة العليا' },
   pending_chairman: { bg: 'bg-fuchsia-500/20', text: 'text-fuchsia-700', en: 'With the Chairman', ar: 'عند رئيس مجلس الإدارة' },
   // Not a rejection: the request went back to its owner to reply or edit.
-  info_requested: { bg: 'bg-orange-500/20', text: 'text-orange-700', en: 'Needs your reply', ar: 'بانتظار ردّك' },
+  info_requested: { bg: 'bg-orange-500/20', text: 'text-orange-700', en: 'With the employee to reply', ar: 'عند الموظف للرد' },
   approved: { bg: 'bg-green-500/20', text: 'text-green-700', en: 'Approved', ar: 'مقبولة' },
   rejected: { bg: 'bg-red-500/20', text: 'text-red-700', en: 'Rejected', ar: 'مرفوضة' },
   cancelled: { bg: 'bg-gray-500/20', text: 'text-gray-600', en: 'Cancelled', ar: 'ملغاة' },
@@ -408,3 +408,46 @@ export const expiryBadge = (v?: string | null, lang: Lang = 'en') => {
   if (d <= 60) return { bg: 'bg-amber-500/20', text: 'text-amber-700', label: pick(lang, `${d}d left`, `باقي ${d} يوم`) };
   return { bg: 'bg-green-500/20', text: 'text-green-700', label: pick(lang, `${d}d left`, `باقي ${d} يوم`) };
 };
+
+
+/** The owner's own wording: on his own requests a returned request waits on him. Every other reader sees where it is (LEAVE_STATUS). */
+export const leaveStatusStyle = (l: { status: string }, ownView = false) =>
+  (ownView && l.status === 'info_requested'
+    ? { ...LEAVE_STATUS.info_requested, en: 'Needs your reply', ar: 'بانتظار ردّك' }
+    : LEAVE_STATUS[l.status]);
+
+/** The last open question on a request, if it was returned to its owner. */
+export const leaveLastQuestion = (l: any) =>
+  (l?.status === 'info_requested' ? [...(l?.thread || [])].reverse().find((t: any) => t.kind === 'question') : undefined);
+
+const FINANCE_STAGE_ROLES = ['cfo', 'accounting_manager', 'accountant'];
+/** Can this reader decide the request now? Mirrors backend utils/leaveChain canActAt, so a button is never shown for a decision the server refuses. */
+export function canDecideLeave(user: any, l: any, hrStaff: boolean): boolean {
+  if (!l || !LEAVE_PENDING.includes(l.status)) return false;
+  const role = user?.role || '';
+  if (['super_admin', 'admin'].includes(role)) return true;
+  if (l.status === 'pending_manager') return String(l.manager?._id || l.manager || '') === String(user?._id || '');
+  if (l.status === 'pending_finance') return FINANCE_STAGE_ROLES.includes(role);
+  if (l.status === 'pending_hr') return hrStaff;
+  if (l.status === 'pending_executive') return user?.isTopManagement === true;
+  if (l.status === 'pending_chairman') return user?.isChairman === true;
+  return false;
+}
+
+/**
+ * Why there is no decision button on a row: who holds it now and, when it was returned, the question asked.
+ * The status says where a request is; this says it next to the actions so an empty actions cell is never left unexplained.
+ */
+export function leaveWaitNote(l: any, ar: boolean): string {
+  if (!l) return '';
+  if (l.status === 'info_requested') {
+    const q = leaveLastQuestion(l);
+    const who = q ? (LEAVE_STAGES.find((s) => s.key === q.stage)?.[ar ? 'ar' : 'en'] || q.byName || '') : '';
+    return ar
+      ? `أُعيد للموظف ليرد${who ? ` على استفسار ${who}` : ''}${q?.text ? `: «${q.text}»` : ''} — يعود للمسار بعد رده`
+      : `Returned to the employee${who ? ` with a question from ${who}` : ''}${q?.text ? `: "${q.text}"` : ''}; it re-enters the chain when they reply`;
+  }
+  const stage = LEAVE_STAGES.find((s) => `pending_${s.key}` === l.status);
+  if (stage) return ar ? `بانتظار قرار ${stage.ar}` : `Waiting for ${stage.en}`;
+  return '';
+}

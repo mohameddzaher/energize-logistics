@@ -6,7 +6,7 @@ import { useLanguage } from '@/context/LanguageContext';
 import { useSocket } from '@/hooks/useSocket';
 import api from '@/lib/api';
 import { CalendarCheck, Check, X, HelpCircle, FileDown, PenTool, CalendarPlus, History, Pencil, Trash2 } from 'lucide-react';
-import { isHRStaff, LeaveRequest, LEAVE_STATUS, empName, userName, leaveTypeLabel, LEAVE_OPEN, LEAVE_PENDING } from '@/lib/hr';
+import { isHRStaff, LeaveRequest, LEAVE_STATUS, empName, userName, leaveTypeLabel, LEAVE_OPEN, LEAVE_PENDING, canDecideLeave, leaveWaitNote, leaveStatusStyle } from '@/lib/hr';
 import DatePair from '@/components/hr/DatePair';
 import { bothDates, gregCell, hijriCell, pairLabels, exportDatePair } from '@/lib/hrDates';
 import { LeaveChainBar, LeaveThread } from '@/components/hr/LeaveChain';
@@ -208,11 +208,7 @@ export default function HRLeavesPage() {
   const actionable = (l: LeaveRequest | null) => !!l && LEAVE_PENDING.includes(l.status);
   // Row buttons only where this reader decides now, as the server checks (utils/leaveChain canActAt): HR at the HR stage, top management and the chairman at theirs, super admins anywhere.
   const top = ['super_admin', 'admin'].includes(user?.role || '');
-  const canActNow = (l: LeaveRequest) => actionable(l) && (top
-    || (staff && l.status === 'pending_hr')
-    || ((user as any)?.isTopManagement === true && l.status === 'pending_executive')
-    || ((user as any)?.isChairman === true && l.status === 'pending_chairman')
-    || (l.status === 'pending_manager' && String((l.manager as any)?._id || l.manager || '') === String(user?._id || '')));
+  const canActNow = (l: LeaveRequest) => actionable(l) && canDecideLeave(user, l, staff);
 
   // The "from Gregorian" label is never shown; the main name is start/end date.
   const FROM_LABEL = ar ? 'تاريخ البداية' : 'Start date';
@@ -313,7 +309,7 @@ export default function HRLeavesPage() {
                   <td className="px-4 py-3"><span className={over ? 'text-red-600' : 'text-slate-700'}>{l.balanceSnapshot?.accrued ?? '—'}{over ? ` ${tx.over}` : ''}</span></td>
                   <td className="px-4 py-3">
                     <div className="flex items-center gap-1.5 flex-wrap">
-                      <Badge style={LEAVE_STATUS[l.status]} lang={lang} />
+                      <Badge style={leaveStatusStyle(l)} lang={lang} />
                       <LeaveReturnChip leave={l} ar={ar} />
                       <DeductionBadge leave={l} ar={ar} />
                       {/* Requested-and-approved vs recorded after the fact stays visible. */}
@@ -341,6 +337,9 @@ export default function HRLeavesPage() {
                           <X className="w-3.5 h-3.5" />{tx.reject}
                         </button>
                       </>}
+                      {!canActNow(l) && LEAVE_OPEN.includes(l.status) && (
+                        <span className="max-w-[260px] text-[11px] leading-snug text-slate-500" title={leaveWaitNote(l, ar)}>{leaveWaitNote(l, ar)}</span>
+                      )}
                       <button type="button" title={t('Download PDF', 'تحميل PDF')} onClick={(e) => { e.stopPropagation(); downloadPdf(l._id); }} className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-slate-100 hover:bg-[#f37121]/10 hover:text-[#f37121] text-slate-600 text-xs">
                         {pdfBusy === l._id ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <FileDown className="w-3.5 h-3.5" />} PDF
                       </button>
@@ -403,11 +402,11 @@ export default function HRLeavesPage() {
       </Modal>
 
       <Modal open={!!review} onClose={() => setReview(null)} title={tx.reviewTitle}
-        footer={actionable(review) ? <div className="flex flex-wrap items-center justify-end gap-2">
+        footer={review && canActNow(review) ? <div className="flex flex-wrap items-center justify-end gap-2">
           <button type="button" onClick={() => decide('rejected')} disabled={busy} className="flex items-center gap-2 px-4 py-2 bg-red-500/20 text-red-600 rounded-lg text-sm font-medium hover:bg-red-500/30 disabled:opacity-50"><X className="w-4 h-4" /> {tx.reject}</button>
           <button type="button" onClick={() => decide('info')} disabled={busy} className="flex items-center gap-2 px-4 py-2 bg-orange-500/20 text-orange-700 rounded-lg text-sm font-medium hover:bg-orange-500/30 disabled:opacity-50"><HelpCircle className="w-4 h-4" /> {ar ? 'استفسار / طلب تعديل' : 'Ask / request change'}</button>
           <PrimaryButton onClick={() => decide('approved')} disabled={busy}>{busy ? <Loader2 className="w-4 h-4 animate-spin" /> : <Check className="w-4 h-4" />} {tx.approve}</PrimaryButton>
-        </div> : undefined}>
+        </div> : (review && LEAVE_OPEN.includes(review.status) ? <p className="text-xs text-slate-500">{leaveWaitNote(review, ar)}</p> : undefined)}>
         {review && (
           <div className="space-y-3 text-sm">
             {/* Where the request stands and who signed, before any other field. */}
@@ -420,7 +419,7 @@ export default function HRLeavesPage() {
             <Row k={tx.colDays} v={`${review.days} ${tx.dayUnit}`} />
             <Row k={tx.fieldAccrued} v={`${review.balanceSnapshot?.accrued ?? '—'} ${tx.dayUnit}`} />
             <Row k={tx.fieldRemainingAfter} v={`${review.balanceSnapshot?.remainingAfter ?? '—'} ${tx.dayUnit}`} danger={typeof review.balanceSnapshot?.remainingAfter === 'number' && review.balanceSnapshot.remainingAfter < 0} />
-            <Row k={tx.fieldStatus} v={<span className="inline-flex flex-wrap items-center gap-1.5"><Badge style={LEAVE_STATUS[review.status]} lang={lang} /><DeductionBadge leave={review} ar={ar} /></span>} />
+            <Row k={tx.fieldStatus} v={<span className="inline-flex flex-wrap items-center gap-1.5"><Badge style={leaveStatusStyle(review)} lang={lang} /><DeductionBadge leave={review} ar={ar} /></span>} />
             {/* Each text has its owner in its label: the employee's request text versus the reviewer's decision note were both generic and read as duplicates. */}
             {review.reason && (
               <div className="border-t border-slate-200 pt-3">
@@ -437,7 +436,7 @@ export default function HRLeavesPage() {
             )}
             <LeaveReturnPanel leave={review} ar={ar} canAct={staff} onDone={load} />
             <LeaveThread leave={review} lang={ar ? 'ar' : 'en'} />
-            {actionable(review) && (
+            {review && canActNow(review) && (
               <div className="border-t border-slate-200 pt-3 space-y-3">
                 {needsDeductionChoice(review) && <DeductionChoice value={deduct} onChange={setDeduct} leave={review} ar={ar} />}
                 <div>

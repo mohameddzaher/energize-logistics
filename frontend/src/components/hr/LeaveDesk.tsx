@@ -10,7 +10,7 @@ import { PageHeader, Spinner } from '@/components/hr/HRKit';
 import ScrollX from '@/components/system/ScrollX';
 import { DeductionBadge } from '@/components/hr/LeaveDeduction';
 import { bothDatesShort } from '@/lib/hrDates';
-import { LEAVE_STAGES, LEAVE_STATUS, LeaveStage } from '@/lib/hr';
+import { LEAVE_STAGES, LEAVE_STATUS, LEAVE_OPEN, LeaveStage, leaveWaitNote } from '@/lib/hr';
 import { downloadLeaveSheet } from '@/lib/leavePdf';
 
 type Decision = { by?: { firstName?: string; lastName?: string }; at?: string; decision?: string; note?: string };
@@ -153,6 +153,9 @@ export default function LeaveDesk({ base, stage, canDecide, title, subtitle }: {
                                 <X className="w-3.5 h-3.5" />{t('رفض', 'Reject')}
                               </button>
                             </>
+                          )}
+                          {!(canDecide && l.status === awaiting) && LEAVE_OPEN.includes(l.status) && (
+                            <span className="max-w-[240px] text-[11px] leading-snug text-slate-500">{leaveWaitNote(l, ar)}</span>
                           )}
                           <button type="button" title={t('ورقة الإجازة PDF', 'Leave sheet PDF')} onClick={() => sheet(l._id)} disabled={pdfBusy === l._id}
                             className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-slate-100 hover:bg-[#f37121]/10 hover:text-[#f37121] text-slate-600 text-xs disabled:opacity-50">

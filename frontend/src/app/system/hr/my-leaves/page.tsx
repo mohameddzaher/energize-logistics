@@ -7,7 +7,7 @@ import { useSocket } from '@/hooks/useSocket';
 import api from '@/lib/api';
 import { CalendarDays, Plus, Check, X, XCircle, AlertTriangle, ShieldCheck, Pencil, Trash2, HelpCircle, Eye, Send, FileDown } from 'lucide-react';
 import { downloadLeaveSheet } from '@/lib/leavePdf';
-import { LeaveRequest, LeaveType, LeaveBalance, LEAVE_STATUS, empName, userName, leaveTypeLabel, today, earliestStartDate, daysUntil, LEAVE_OPEN, leaveUntouched } from '@/lib/hr';
+import { LeaveRequest, LeaveType, LeaveBalance, LEAVE_STATUS, empName, userName, leaveTypeLabel, today, earliestStartDate, daysUntil, LEAVE_OPEN, leaveUntouched, leaveStatusStyle, leaveWaitNote } from '@/lib/hr';
 import DatePair from '@/components/hr/DatePair';
 import { bothPeriod, gregCell, hijriCell, pairLabels, exportDatePair } from '@/lib/hrDates';
 import { Spinner, PageHeader, PrimaryButton, Badge, Modal, Field, Select, TextArea, Tabs, StatCard, Pick, Loader2, SearchableSelect } from '@/components/hr/HRKit';
@@ -213,7 +213,7 @@ export default function MyLeavesPage() {
     ...exportDatePair(FROM_LABEL, 'startDate', ar),
     ...exportDatePair(TO_LABEL, 'endDate', ar),
     { header: tx.colDays, key: 'days', width: 8 },
-    { header: tx.colStatus, key: 'status', transform: (v) => (LEAVE_STATUS[v] ? (ar ? LEAVE_STATUS[v].ar : LEAVE_STATUS[v].en) : v), width: 16 },
+    { header: tx.colStatus, key: 'status', transform: (v) => { const st = leaveStatusStyle({ status: v }, true); return st ? (ar ? st.ar : st.en) : v; }, width: 16 },
   ];
   const teamColumns: ExportColumn[] = [
     { header: tx.colEmployee, key: 'employee', transform: (v) => empName(v, lang), width: 22 },
@@ -279,7 +279,7 @@ export default function MyLeavesPage() {
                     <Td className="text-slate-900">{leaveTypeLabel(l.leaveType, lang)}</Td>
                     <Td className="whitespace-nowrap tabular-nums">{gregCell(l.startDate)}</Td><Td className="whitespace-nowrap tabular-nums"><span dir="ltr">{hijriCell(l.startDate)}</span></Td><Td className="whitespace-nowrap tabular-nums">{gregCell(l.endDate)}</Td><Td className="whitespace-nowrap tabular-nums"><span dir="ltr">{hijriCell(l.endDate)}</span></Td><Td>{l.days}</Td>
                     <Td>
-                      <span className="inline-flex flex-wrap items-center gap-1.5"><Badge style={LEAVE_STATUS[l.status]} lang={lang} /><DeductionBadge leave={l} ar={ar} /></span>
+                      <span className="inline-flex flex-wrap items-center gap-1.5"><Badge style={leaveStatusStyle(l, true)} lang={lang} /><DeductionBadge leave={l} ar={ar} /></span>
                       {l.status === 'info_requested' && lastQuestion(l) && (
                         <p className="mt-1 max-w-xs truncate text-[11px] text-orange-700" title={lastQuestion(l)?.text}>
                           {lastQuestion(l)?.text}
@@ -339,7 +339,10 @@ export default function MyLeavesPage() {
                     <Td className="text-slate-900">{empName(l.employee, lang) || userName(l.requester)}</Td>
                     <Td>{leaveTypeLabel(l.leaveType, lang)}</Td>
                     <Td className="whitespace-nowrap tabular-nums">{gregCell(l.startDate)}</Td><Td className="whitespace-nowrap tabular-nums"><span dir="ltr">{hijriCell(l.startDate)}</span></Td><Td className="whitespace-nowrap tabular-nums">{gregCell(l.endDate)}</Td><Td className="whitespace-nowrap tabular-nums"><span dir="ltr">{hijriCell(l.endDate)}</span></Td><Td>{l.days}</Td>
-                    <Td><span className="inline-flex flex-wrap items-center gap-1.5"><Badge style={LEAVE_STATUS[l.status]} lang={lang} /><DeductionBadge leave={l} ar={ar} /></span></Td>
+                    <Td>
+                      <span className="inline-flex flex-wrap items-center gap-1.5"><Badge style={leaveStatusStyle(l, filedByMe(l))} lang={lang} /><DeductionBadge leave={l} ar={ar} /></span>
+                      {l.status !== 'pending_manager' && LEAVE_OPEN.includes(l.status) && <p className="mt-1 max-w-xs text-[11px] text-slate-500">{leaveWaitNote(l, ar)}</p>}
+                    </Td>
                     <Td end>
                       <div className="flex items-center justify-end gap-2">
                         {l.status === 'pending_manager' && <button type="button" onClick={() => { setReview(l); setNote(''); }} className="text-[#f37121] hover:underline text-xs">{tx.review}</button>}

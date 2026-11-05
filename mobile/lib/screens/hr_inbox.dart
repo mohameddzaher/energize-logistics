@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
+import '../services/auth.dart';
 import '../services/api.dart';
 import '../services/hijri.dart';
 import '../services/lang.dart';
@@ -110,6 +112,7 @@ class _HrLeavesScreenState extends State<HrLeavesScreen> {
   Future<void> _decide(Map<String, dynamic> l, String decision) async {
     final note = TextEditingController();
     final approving = decision == 'approved';
+    final asking = decision == 'info';
     // Fetch the approver's signatures so they can optionally pick one when approving.
     List<Map<String, dynamic>> signatures = [];
     if (approving) {
@@ -127,13 +130,13 @@ class _HrLeavesScreenState extends State<HrLeavesScreen> {
     final ok = await showDialog<bool>(
       context: context,
       builder: (c) => StatefulBuilder(builder: (c, setD) => AlertDialog(
-        title: Text(approving ? tr('اعتماد الطلب', 'Approve') : tr('رفض الطلب', 'Reject')),
+        title: Text(approving ? tr('اعتماد الطلب', 'Approve') : asking ? tr('استفسار / طلب تعديل', 'Ask / request change') : tr('رفض الطلب', 'Reject')),
         content: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
           if (askDeduct) ...[
             DeductionPicker(value: deduct, days: l['days'], onChanged: (v) => setD(() => deduct = v)),
             const SizedBox(height: 10),
           ],
-          TextField(controller: note, decoration: InputDecoration(labelText: tr('ملاحظة (اختياري)', 'Note'))),
+          TextField(controller: note, onChanged: (_) => setD(() {}), decoration: InputDecoration(labelText: asking ? tr('سؤالك أو ما تريد تعديله *', 'Your question *') : tr('ملاحظة (اختياري)', 'Note'))),
           if (approving) ...[
             const SizedBox(height: 12),
             if (signatures.isEmpty)
@@ -158,9 +161,9 @@ class _HrLeavesScreenState extends State<HrLeavesScreen> {
         actions: [
           TextButton(onPressed: () => Navigator.pop(c, false), child: Text(tr('إلغاء', 'Cancel'))),
           FilledButton(
-            style: FilledButton.styleFrom(backgroundColor: approving ? T.success : T.danger),
-            onPressed: askDeduct && deduct == null ? null : () => Navigator.pop(c, true),
-            child: Text(approving ? tr('اعتماد', 'Approve') : tr('رفض', 'Reject')),
+            style: FilledButton.styleFrom(backgroundColor: approving ? T.success : asking ? const Color(0xFFEA580C) : T.danger),
+            onPressed: (askDeduct && deduct == null) || (asking && note.text.trim().isEmpty) ? null : () => Navigator.pop(c, true),
+            child: Text(approving ? tr('اعتماد', 'Approve') : asking ? tr('إرسال', 'Send') : tr('رفض', 'Reject')),
           ),
         ],
       )),
@@ -394,7 +397,7 @@ class _HrLeavesScreenState extends State<HrLeavesScreen> {
                                         : '${l['employee']['firstName'] ?? ''} ${l['employee']['lastName'] ?? ''}'.trim())
                                     : (l['requester'] is Map ? '${l['requester']['firstName'] ?? ''} ${l['requester']['lastName'] ?? ''}'.trim() : '—');
                                 final type = l['leaveType'] is Map ? (l['leaveType']['nameAr'] ?? l['leaveType']['nameEn'] ?? '') : '';
-                                final actionable = l['status'] == 'pending_hr';  // The HR station only, from here.
+                                final actionable = canDecideLeave(context.read<AuthProvider>().user, l, hrStaff: true);
                                 return FadeSlideIn(
                                   delayMs: (i * 15).clamp(0, 150),
                                   child: AppCard(
@@ -442,6 +445,10 @@ class _HrLeavesScreenState extends State<HrLeavesScreen> {
                                       ],
                                       if ((l['reason'] ?? '').toString().isNotEmpty)
                                         Text(l['reason'], style: const TextStyle(fontSize: 12, color: T.inkFaint)),
+                                      if (!actionable && leaveIsOpen(l['status'])) ...[
+                                        const SizedBox(height: 6),
+                                        Text(leaveWaitNote(l), style: const TextStyle(fontSize: 11.5, color: T.inkSoft)),
+                                      ],
                                       if (actionable) ...[
                                         const SizedBox(height: 8),
                                         Row(children: [
@@ -457,6 +464,12 @@ class _HrLeavesScreenState extends State<HrLeavesScreen> {
                                             child: Text(tr('رفض', 'Reject')),
                                           )),
                                         ]),
+                                        // A question is not a rejection: the request returns to its owner to answer or edit.
+                                        Align(alignment: AlignmentDirectional.centerStart, child: TextButton.icon(
+                                          onPressed: () => _decide(l, 'info'),
+                                          icon: const Icon(Icons.help_outline, size: 16, color: Color(0xFFEA580C)),
+                                          label: Text(tr('استفسار / طلب تعديل', 'Ask / request change'), style: const TextStyle(color: Color(0xFFEA580C))),
+                                        )),
                                       ],
                                     ]),
                                   ),

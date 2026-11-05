@@ -363,7 +363,7 @@ class _MyLeavesScreenState extends State<MyLeavesScreen> {
                         ),
                       if (_tab == 0) ..._leaves.asMap().entries.map((e) {
                         final l = e.value;
-                        final st = leaveStatusOf(l['status']);
+                        final st = leaveStatusOwn(l['status']);
                         final type = l['leaveType'] is Map ? (l['leaveType']['nameAr'] ?? l['leaveType']['nameEn'] ?? '') : '';
                         final canCancel = leaveIsOpen(l['status']);
                         return FadeSlideIn(

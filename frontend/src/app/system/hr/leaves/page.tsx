@@ -5,7 +5,7 @@ import { useAuth } from '@/context/AuthContext';
 import { useLanguage } from '@/context/LanguageContext';
 import { useSocket } from '@/hooks/useSocket';
 import api from '@/lib/api';
-import { CalendarCheck, Check, X, HelpCircle, FileDown, PenTool, CalendarPlus, History, Pencil, Trash2 } from 'lucide-react';
+import { CalendarCheck, Check, X, HelpCircle, FileDown, PenTool, CalendarPlus, History, Pencil, Trash2, BellRing, Hourglass } from 'lucide-react';
 import { isHRStaff, LeaveRequest, empName, userName, leaveTypeLabel, LEAVE_OPEN, LEAVE_PENDING, canDecideLeave, leaveWaitNote, leaveStatusStyle, seesLeaveProcess, leaveStatusOptions, fridaysOf, countLeaveDays, fridaysNote } from '@/lib/hr';
 import DatePair from '@/components/hr/DatePair';
 import { bothDates, gregCell, hijriCell, pairLabels, exportDatePair } from '@/lib/hrDates';
@@ -24,6 +24,15 @@ import PeriodFilter from '@/components/system/PeriodFilter';
 import Link from 'next/link';
 
 const idOf = (e: any) => (e?.idType === 'national_id' ? (e?.nationalId || e?.iqamaNumber) : (e?.iqamaNumber || e?.nationalId)) || '—';
+
+/**
+ * Where HR stands on a request, for the row mark: 'now' when it waits on HR's decision, 'before' when it is open and has not reached HR yet (or came back to the employee before HR acted), '' once HR has acted or the request is closed.
+ */
+const hrMark = (l: LeaveRequest): '' | 'now' | 'before' => {
+  if (l.status === 'pending_hr') return 'now';
+  if (!LEAVE_OPEN.includes(l.status) || (l as any).hrDecision?.at) return '';
+  return 'before';
+};
 
 /** Counts over every request the page holds: open ones by stage, returned ones, and this month's approvals and rejections. Module level so the page's inputs never remount. */
 function LeaveStats({ leaves, ar, active, onPick }: { leaves: LeaveRequest[]; ar: boolean; active: string; onPick: (k: string) => void }) {
@@ -314,9 +323,16 @@ export default function HRLeavesPage() {
         <PeriodFilter from={from} to={to} onChange={(f, t2) => { setFrom(f); setTo(t2); }} ar={ar} />
       </div>
 
+      {/* What the row marks mean, once above the table. */}
+      <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-slate-600">
+        <span className="inline-flex items-center gap-1.5"><BellRing className="w-4 h-4 text-orange-600" />{ar ? 'بانتظار إجراء الموارد البشرية الآن' : 'Awaiting HR action now'}</span>
+        <span className="inline-flex items-center gap-1.5"><Hourglass className="w-4 h-4 text-sky-600" />{ar ? 'مفتوح ولم يصل الموارد البشرية بعد' : 'Open, not yet at HR'}</span>
+      </div>
+
       <ScrollX className="bg-white border border-slate-200 rounded-xl shadow-sm">
         <table className="w-full text-sm">
           <thead><tr className="bg-slate-900 border-b border-slate-200 text-slate-300">
+            <th className="w-8 px-2 py-3" aria-label={ar ? 'إجراء الموارد البشرية' : 'HR action'} />
             <th className="text-start font-semibold px-4 py-3 whitespace-nowrap">{ar ? 'الرقم الوظيفي' : 'Emp. no.'}</th>
             <th className="text-start font-semibold px-4 py-3 whitespace-nowrap">{tx.colEmployee}</th>
             <th className="text-start font-semibold px-4 py-3 whitespace-nowrap">{ar ? 'الهوية / الإقامة' : 'ID / Iqama'}</th>
@@ -333,11 +349,15 @@ export default function HRLeavesPage() {
           </tr></thead>
           <tbody>
             {filtered.length === 0 ? (
-              <tr><td colSpan={12} className="text-center text-slate-800 py-12">{tx.noRequests}</td></tr>
+              <tr><td colSpan={13} className="text-center text-slate-800 py-12">{tx.noRequests}</td></tr>
             ) : filtered.map((l) => {
               const over = l.balanceSnapshot && typeof l.balanceSnapshot.remainingAfter === 'number' && l.balanceSnapshot.remainingAfter < 0;
               return (
-                <tr key={l._id} className="group border-b border-slate-200/70 hover:bg-slate-100 cursor-pointer" onClick={() => openReview(l)}>
+                <tr key={l._id} className={`group border-b border-slate-200/70 cursor-pointer ${hrMark(l) === 'now' ? 'bg-orange-50 hover:bg-orange-100' : 'hover:bg-slate-100'}`} onClick={() => openReview(l)}>
+                  <td className={`px-2 py-3 ${hrMark(l) === 'now' ? 'border-s-4 border-orange-500' : ''}`}>
+                    {hrMark(l) === 'now' && <span title={ar ? 'بانتظار إجراء الموارد البشرية الآن' : 'Awaiting HR action now'}><BellRing className="w-4 h-4 text-orange-600 animate-pulse" /></span>}
+                    {hrMark(l) === 'before' && <span title={ar ? 'مفتوح ولم يصل الموارد البشرية بعد' : 'Open, not yet at HR'}><Hourglass className="w-4 h-4 text-sky-600" /></span>}
+                  </td>
                   <td className="px-4 py-3 text-slate-700 whitespace-nowrap">{(l.employee as any)?.employeeNumber || '—'}</td>
                   <td className="px-4 py-3 text-slate-900 font-medium whitespace-nowrap">
                     {/* Cap the width and truncate: an uncapped long name hides the columns the table exists for. The full name is in the tooltip. */}

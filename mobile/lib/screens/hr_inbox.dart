@@ -18,6 +18,15 @@ import '../ui/search_field.dart';
 /// HR inboxes, native: leave requests (HR decisions) and employee requests (reply and status change).
 
 // Leave requests.
+/// Where HR stands on a request, for the card mark (twin of web hrMark): 'now' waits on HR, 'before' is open and has not reached HR yet, '' once HR acted or it is closed.
+String _hrMark(Map l) {
+  final st = '${l['status'] ?? ''}';
+  if (st == 'pending_hr') return 'now';
+  final open = st.startsWith('pending_') || st == 'info_requested';
+  final hrDone = l['hrDecision'] is Map && '${l['hrDecision']['at'] ?? ''}'.isNotEmpty;
+  return open && !hrDone ? 'before' : '';
+}
+
 class HrLeavesScreen extends StatefulWidget {
   const HrLeavesScreen({super.key});
   @override
@@ -436,9 +445,12 @@ class _HrLeavesScreenState extends State<HrLeavesScreen> {
                                 return FadeSlideIn(
                                   delayMs: (i * 15).clamp(0, 150),
                                   child: AppCard(
-                                    topAccent: st.$3,
+                                    // Waiting on HR now shows in orange, as the web row is marked.
+                                    topAccent: _hrMark(l) == 'now' ? T.orange : st.$3,
                                     child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                                       Row(children: [
+                                        if (_hrMark(l) == 'now') const Padding(padding: EdgeInsetsDirectional.only(end: 6), child: Icon(Icons.notifications_active, size: 18, color: T.orange)),
+                                        if (_hrMark(l) == 'before') const Padding(padding: EdgeInsetsDirectional.only(end: 6), child: Icon(Icons.hourglass_top, size: 17, color: T.info)),
                                         Expanded(child: Text(emp.toString(), style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 14))),
                                         Chip2(tr(st.$1, st.$2), st.$3),
                                         // Official leave sheet PDF with signatures, like the PDF button on the web.

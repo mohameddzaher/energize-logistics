@@ -20,9 +20,9 @@ const { cappedFind, askedLimit, CAP_NOTE_AR } = require('../utils/capped');
 const { saveEmployeeFile, deleteStoredFile } = require('../utils/fileStore');
 const { createNotification } = require('../services/notificationService');
 const { emitToUser, emitToAll } = require('../websocket/socketManager');
-const { computeBalance, leaveDays, leaveDaysOf, fridayRuleOf, leaveDeducts } = require('../utils/leaveBalance');
+const { computeBalance, leaveDays, leaveDaysOf, fridayRuleOf, leaveDeducts, takenSince, countTaken } = require('../utils/leaveBalance');
 // A period of Fridays only holds no leave day (Friday is the weekly day off).
-const NO_WORKDAY = 'الفترة المختارة كلها أيام جمعة (إجازة أسبوعية) — لا تُحسب إجازة';
+const NO_WORKDAY = 'اختر تاريخ البداية والنهاية';
 const chain = require('../utils/leaveChain');
 
 // ── Roles / helpers ──────────────────────────────────────────────────────────
@@ -181,15 +181,16 @@ const computeEmployeeBalance = async (employeeId, asOf = new Date()) => {
     Contract.countDocuments({ employee: employeeId }),
   ]);
   const accrualOpts = { workStartDate: emp?.actualWorkStartDate || '', contracts: contractCount };
-  // Days taken count from the start of the active contract: earlier usage was settled there and the remainder is carried in carriedOverDays. Counting it again would deduct twice.
+  // Days taken count from the same day the accrual counts from (work start, else contract start). Counting them only from the contract start, while accrual ran from the work start, gave the whole service's days and deducted none of the leave taken before the current contract (14 employees, 395 days).
   const takenFilter = { employee: employeeId, status: 'approved' };
-  if (contract && contract.startDate) takenFilter.startDate = { $gte: contract.startDate };
+  const from = takenSince(contract, accrualOpts);
+  if (from) takenFilter.startDate = { $gte: from };
   const approved = await LeaveRequest.find(takenFilter)
     .populate('leaveType', 'affectsBalance')
-    .select('days leaveType deductsBalance')
+    .select('days leaveType deductsBalance status startDate')
     .lean();
   // HR's choice on the request decides; older records follow the leave type (utils/leaveBalance.leaveDeducts).
-  const taken = approved.reduce((s, l) => s + (leaveDeducts(l) ? (l.days || 0) : 0), 0);
+  const taken = countTaken(approved, contract, accrualOpts);
   return { contract, balance: computeBalance(contract, taken, asOf, accrualOpts) };
 };
 

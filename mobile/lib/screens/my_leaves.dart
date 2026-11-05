@@ -657,7 +657,7 @@ class _NewLeaveSheetState extends State<_NewLeaveSheet> {
             final n = countLeaveDays(_start, _end, countFridays: cf);
             return Padding(
               padding: const EdgeInsets.only(top: 8),
-              child: Text(n == 0 ? tr('الفترة كلها أيام جمعة — لا تُحسب إجازة', 'Only Fridays — no leave day') : '${tr('عدد أيام الإجازة', 'Leave days')}: $n ${fridaysNote(_start, _end, countFridays: cf)}',
+              child: Text(n == 0 ? tr('تاريخ النهاية قبل البداية', 'The end date is before the start') : '${tr('عدد أيام الإجازة', 'Leave days')}: $n ${fridaysNote(_start, _end, countFridays: cf)}',
                   style: TextStyle(fontWeight: FontWeight.w700, color: n == 0 ? T.danger : T.ink)),
             );
           }),
@@ -831,7 +831,7 @@ class _ReplyDialogState extends State<_ReplyDialog> {
           if (_start != null && _end != null)
             Padding(
               padding: const EdgeInsets.only(top: 8),
-              child: Text(n == 0 ? tr('الفترة كلها أيام جمعة — لا تُحسب إجازة', 'Only Fridays — no leave day') : '${tr('عدد أيام الإجازة', 'Leave days')}: $n ${fridaysNote(_start, _end, countFridays: cf)}',
+              child: Text(n == 0 ? tr('تاريخ النهاية قبل البداية', 'The end date is before the start') : '${tr('عدد أيام الإجازة', 'Leave days')}: $n ${fridaysNote(_start, _end, countFridays: cf)}',
                   style: TextStyle(fontWeight: FontWeight.w700, color: n == 0 ? T.danger : T.ink)),
             ),
           const SizedBox(height: 8),

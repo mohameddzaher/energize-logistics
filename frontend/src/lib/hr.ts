@@ -484,25 +484,16 @@ export function leaveWaitNote(l: any, ar: boolean, full = false): string {
 
 
 /**
- * Leave days between two YYYY-MM-DD dates, both ends included; Friday (the weekly day off) is not counted unless `countFridays`.
- * Same rule as backend utils/leaveBalance.leaveDays, which stores the figure; this only previews it.
+ * Leave days between two YYYY-MM-DD dates, both ends included: calendar days, Friday counted (backend utils/leaveBalance.leaveDays). The third argument is ignored, kept for callers.
  */
-export function countLeaveDays(startDate?: string, endDate?: string, countFridays = false): number {
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
+export function countLeaveDays(startDate?: string, endDate?: string, _countFridays = true): number {
   if (!startDate || !endDate || endDate < startDate) return 0;
   const a = new Date(`${startDate.slice(0, 10)}T00:00:00Z`);
   const b = new Date(`${endDate.slice(0, 10)}T00:00:00Z`);
-  const span = Math.round((b.getTime() - a.getTime()) / 86400000) + 1;
-  if (countFridays) return span;
-  let fridays = Math.floor(span / 7);
-  for (let i = 0; i < span % 7; i += 1) if ((a.getUTCDay() + i) % 7 === 5) fridays += 1;
-  return span - fridays;
+  return Math.round((b.getTime() - a.getTime()) / 86400000) + 1;
 }
 
-/** Fridays inside the period, said beside the day count so a shorter figure is not read as a mistake. */
-export function fridaysNote(startDate: string | undefined, endDate: string | undefined, countFridays: boolean, ar: boolean): string {
-  if (countFridays) return '';
-  const all = countLeaveDays(startDate, endDate, true);
-  const off = all - countLeaveDays(startDate, endDate, false);
-  if (!off) return '';
-  return ar ? `(لا تُحسب ${off === 1 ? 'جمعة واحدة' : `${off} أيام جمعة`} — إجازة أسبوعية)` : `(${off} Friday${off > 1 ? 's' : ''} not counted — weekly day off)`;
-}
+/** Fridays are counted, so there is nothing to explain beside the figure. Kept for callers. */
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
+export function fridaysNote(_s?: string, _e?: string, _c?: boolean, _ar?: boolean): string { return ''; }

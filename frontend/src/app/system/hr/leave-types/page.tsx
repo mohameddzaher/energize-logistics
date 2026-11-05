@@ -11,7 +11,7 @@ import { getHrLeaveTypesTranslations } from '@/lib/translations';
 import ExportMenu, { exportScopeLabels, type ExportColumn } from '@/components/ls2/ExportMenu';
 import ScrollX from '@/components/system/ScrollX';
 
-const EMPTY = { code: '', nameEn: '', nameAr: '', paid: true, affectsBalance: true, color: '#f37121', active: true, requiresAdvanceNotice: true, minAdvanceDays: 30, countsFridays: false };
+const EMPTY = { code: '', nameEn: '', nameAr: '', paid: true, affectsBalance: true, color: '#f37121', active: true, requiresAdvanceNotice: true, minAdvanceDays: 30 };
 
 export default function LeaveTypesPage() {
   const { confirm, notify } = useDialog();
@@ -56,7 +56,6 @@ export default function LeaveTypesPage() {
     { header: tx.colPaid, key: 'paid', transform: (v) => (v ? tx.yes : tx.no), width: 12 },
     { header: tx.colAffectsBalance, key: 'affectsBalance', transform: (v) => (v ? tx.yes : tx.no), width: 18 },
     { header: ar ? 'الإخطار المسبق (يوم)' : 'Advance notice (days)', key: 'minAdvanceDays', transform: (v, r: any) => (r.requiresAdvanceNotice === false ? (ar ? 'معفاة' : 'Exempt') : (v ?? 30)), width: 20 },
-    { header: ar ? 'الجمعة' : 'Fridays', key: 'countsFridays', transform: (v) => (v === true ? (ar ? 'تُحسب' : 'Counted') : (ar ? 'لا تُحسب' : 'Not counted')), width: 14 },
     { header: tx.colActive, key: 'active', transform: (v) => (v ? tx.activeLabel : tx.inactiveLabel), width: 14 },
   ];
   // The page lists all leave types without search or filter, so a second scope would export the same file; two identical choices would suggest a difference that does not exist.
@@ -83,7 +82,6 @@ export default function LeaveTypesPage() {
             <th className="text-start font-semibold px-4 py-3">{tx.colPaid}</th>
             <th className="text-start font-semibold px-4 py-3">{tx.colAffectsBalance}</th>
             <th className="text-start font-semibold px-4 py-3">{ar ? 'الإخطار المسبق' : 'Advance notice'}</th>
-            <th className="text-start font-semibold px-4 py-3">{ar ? 'الجمعة' : 'Fridays'}</th>
             <th className="text-start font-semibold px-4 py-3">{tx.colActive}</th>
             <th className="text-end font-semibold px-4 py-3">{tx.colActions}</th>
           </tr></thead>
@@ -99,9 +97,6 @@ export default function LeaveTypesPage() {
                     ? <SmallBadge bg="bg-emerald-500/20" text="text-emerald-700" label={ar ? 'معفاة' : 'Exempt'} />
                     : <SmallBadge bg="bg-amber-500/20" text="text-amber-700" label={ar ? `${t.minAdvanceDays ?? 30} يومًا` : `${t.minAdvanceDays ?? 30} days`} />}
                 </td>
-                <td className="px-4 py-3">{(t as any).countsFridays === true
-                  ? <SmallBadge bg="bg-slate-500/20" text="text-slate-700" label={ar ? 'تُحسب' : 'Counted'} />
-                  : <SmallBadge bg="bg-emerald-500/20" text="text-emerald-700" label={ar ? 'لا تُحسب' : 'Not counted'} />}</td>
                 <td className="px-4 py-3">{t.active ? <SmallBadge bg="bg-green-500/20" text="text-green-600" label={tx.activeLabel} /> : <SmallBadge bg="bg-red-500/20" text="text-red-600" label={tx.inactiveLabel} />}</td>
                 <td className="px-4 py-3">
                   <div className="flex items-center justify-end gap-1">
@@ -128,13 +123,6 @@ export default function LeaveTypesPage() {
           <Field label={tx.fieldPaid}><Select value={form.paid ? '1' : '0'} onChange={(e) => set('paid', e.target.value === '1')}><option value="1">{tx.yes}</option><option value="0">{tx.no}</option></Select></Field>
           <Field label={tx.fieldAffectsBalance}><Select value={form.affectsBalance ? '1' : '0'} onChange={(e) => set('affectsBalance', e.target.value === '1')}><option value="1">{tx.yes}</option><option value="0">{tx.no}</option></Select></Field>
           <Field label={tx.fieldActive}><Select value={form.active ? '1' : '0'} onChange={(e) => set('active', e.target.value === '1')}><option value="1">{tx.yes}</option><option value="0">{tx.no}</option></Select></Field>
-          {/* Friday is the weekly day off: not a leave day unless this type counts calendar days (sick leave by labour law). */}
-          <Field label={ar ? 'تُحسب الجمعة من أيام الإجازة؟' : 'Count Fridays as leave days?'}>
-            <Select value={form.countsFridays === true ? '1' : '0'} onChange={(e) => set('countsFridays', e.target.value === '1')}>
-              <option value="0">{ar ? 'لا — الجمعة إجازة أسبوعية' : 'No — Friday is the weekly day off'}</option>
-              <option value="1">{ar ? 'نعم — أيام تقويمية' : 'Yes — calendar days'}</option>
-            </Select>
-          </Field>
           {/* Advance-notice policy; emergency and sick leave are exempt by setting "no" here. */}
           <Field label={ar ? 'يتطلب إخطارًا مسبقًا؟' : 'Requires advance notice?'}>
             <Select value={form.requiresAdvanceNotice === false ? '0' : '1'} onChange={(e) => set('requiresAdvanceNotice', e.target.value === '1')}>

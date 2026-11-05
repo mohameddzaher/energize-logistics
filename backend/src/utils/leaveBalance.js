@@ -1,7 +1,7 @@
 // Leave-balance maths for the HR section.
 // The balance accrues progressively and is computed on every read (no jobs or stored counters):
 // accrued = annualLeaveDays * (daysElapsed / 365); available = accrued - daysTaken
-// `daysElapsed` is clamped to the contract window and starts from the actual work start date (`Employee.actualWorkStartDate`), not the contract start, with no exception. Earlier service has no leave record, so it is not deducted; a negative `Contract.carriedOverDays` can deduct it. `scripts/auditLeaveAccrualBasis.js` lists the affected employees.
+// `daysElapsed` is clamped to the contract window and starts from the actual work start date (`Employee.actualWorkStartDate`), not the contract start, with no exception. Days taken are counted from that same day (hrController.computeEmployeeBalance), so accrual and use cover one period. Leave from before the system kept records is deducted with a negative `Contract.carriedOverDays`. `scripts/auditLeaveAccrualBasis.js` lists the affected employees.
 
 const DAY_MS = 86400000;
 
@@ -11,35 +11,22 @@ const diffDaysInclusiveFloor = (from, to) =>
   Math.max(0, Math.floor((to.getTime() - from.getTime()) / DAY_MS));
 
 /**
- * Leave days between two YYYY-MM-DD dates, both ends included.
- * Friday is the company's weekly day off, so it is not a leave day unless `countFridays` (the leave type's choice, e.g. sick leave counted in calendar days).
- * Days are read in UTC from the date strings, so the weekday never shifts with the server's time zone.
+ * Leave days between two YYYY-MM-DD dates, both ends included: calendar days, Friday counted like any other day.
+ * A Friday exclusion existed briefly (2026-11-05) and the owner cancelled it; `countFridays` is accepted and ignored so older callers keep working.
+ * Days are read in UTC from the date strings, so the count never shifts with the server's time zone.
  */
-const FRIDAY = 5;
-function leaveDays(startDate, endDate, { countFridays = true } = {}) {
+function leaveDays(startDate, endDate) {
   const a = toDate(startDate);
   const b = toDate(endDate);
   if (!a || !b) return 0;
   const diff = Math.round((b.getTime() - a.getTime()) / DAY_MS);
   if (diff < 0) return 1;
-  const span = diff + 1;
-  if (countFridays) return span;
-  const full = Math.floor(span / 7);
-  let fridays = full;
-  const startDay = a.getUTCDay();
-  for (let i = 0; i < span % 7; i += 1) if ((startDay + i) % 7 === FRIDAY) fridays += 1;
-  return span - fridays;
+  return diff + 1;
 }
 
-/**
- * The Friday rule of a request: from its leave type when the type is given (a new or re-typed request, written onto the request), else the rule stored on the request.
- * Requests from before the rule have none stored and keep counting calendar days, so their days and balances never change after the fact.
- */
-function fridayRuleOf(leave, leaveType) {
-  if (leaveType) return leaveType.countsFridays === true;
-  return !(leave && leave.countsFridays === false);
-}
-const leaveDaysOf = (leave, startDate, endDate, leaveType) => leaveDays(startDate, endDate, { countFridays: fridayRuleOf(leave, leaveType) });
+/** Kept for callers that stored the rule on a request; every request now counts Fridays. */
+const fridayRuleOf = () => true;
+const leaveDaysOf = (leave, startDate, endDate) => leaveDays(startDate, endDate);
 
 /**
  * Day counting starts from: actual work start if known, otherwise contract start.
@@ -66,7 +53,12 @@ function contractDaysElapsed(contract, asOf = new Date(), opts = {}) {
 function computeBalance(contract, daysTaken = 0, asOf = new Date(), opts = {}) {
   const annual = Number(contract?.annualLeaveDays) || 0;
   // Days carried over from the previous contract are added to the available balance: unused days do not lapse on renewal. See `models/Contract.carriedOverDays`.
-  const carried = round2(Number(contract?.carriedOverDays) || 0);
+  // When accrual already runs from a work start before this contract, the earlier contracts' days are inside it, and adding what was carried would count them twice.
+  const startAt = accrualStart(contract, opts);
+  const coversEarlier = !!(startAt && contract?.startDate && startAt < toDate(contract.startDate));
+  // A negative value is HR's deduction for leave taken before the system kept records, so it applies either way.
+  const rawCarried = round2(Number(contract?.carriedOverDays) || 0);
+  const carried = coversEarlier && rawCarried > 0 ? 0 : rawCarried;
   if (!contract || !annual) {
     return {
       entitlement: annual, carried, accrued: 0,
@@ -93,6 +85,16 @@ function computeBalance(contract, daysTaken = 0, asOf = new Date(), opts = {}) {
 
 const round2 = (n) => Math.round((Number(n) || 0) * 100) / 100;
 
+/** First day (YYYY-MM-DD) whose leave counts as taken: the day accrual counts from, so both cover one period. Every balance reader uses this. */
+const takenSince = (contract, opts = {}) => String(opts.workStartDate || contract?.startDate || '').slice(0, 10);
+
+/** Days taken from a list of leave requests (needs `leaveType.affectsBalance` populated): approved, from takenSince, deducting. */
+function countTaken(leaves, contract, opts = {}) {
+  const from = takenSince(contract, opts);
+  return (leaves || []).filter((l) => l.status === 'approved' && (!from || String(l.startDate || '') >= from))
+    .reduce((s, l) => s + (leaveDeducts(l) ? (Number(l.days) || 0) : 0), 0);
+}
+
 /**
  * Does this leave come off the balance? HR's choice on the request wins (`deductsBalance`, set at the HR stage);
  * without one (older records), the leave type decides. Needs `leaveType` populated with `affectsBalance`.
@@ -101,4 +103,4 @@ const leaveDeducts = (l) => (typeof l?.deductsBalance === 'boolean'
   ? l.deductsBalance
   : (l?.leaveType?.affectsBalance ?? true));
 
-module.exports = { computeBalance, leaveDays, leaveDaysOf, fridayRuleOf, contractDaysElapsed, accrualStart, leaveDeducts };
+module.exports = { computeBalance, leaveDays, leaveDaysOf, fridayRuleOf, contractDaysElapsed, accrualStart, leaveDeducts, takenSince, countTaken };

@@ -800,7 +800,6 @@ class _HrSettingsScreenState extends State<HrSettingsScreen> {
                         Chip2('${tr('رصيد', 'Bal.')}: ${yn(x['affectsBalance'])}', x['affectsBalance'] == false ? T.inkFaint : T.info),
                         const SizedBox(width: 4),
                         Chip2(x['requiresAdvanceNotice'] == false ? tr('معفاة', 'Exempt') : '${x['minAdvanceDays'] ?? 30} ${tr('يوم', 'd')}', T.warn),
-                        Chip2(x['countsFridays'] == true ? tr('الجمعة تُحسب', 'Fridays counted') : tr('الجمعة لا تُحسب', 'Fridays off'), T.inkSoft),
                         if (x['active'] == false) ...[const SizedBox(width: 4), Chip2(tr('غير نشط', 'Inactive'), T.inkFaint)],
                       ]),
                     ),

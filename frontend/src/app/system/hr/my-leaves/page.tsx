@@ -23,7 +23,7 @@ function DaysPreview({ start, end, countFridays, ar }: { start: string; end: str
   if (!start || !end) return null;
   return (
     <p className={`text-sm font-semibold ${n ? 'text-slate-900' : 'text-red-600'}`}>
-      {n ? (ar ? `عدد أيام الإجازة: ${n} يوم` : `Leave days: ${n}`) : (ar ? 'الفترة كلها أيام جمعة — لا تُحسب إجازة' : 'Only Fridays — no leave day')}{' '}
+      {n ? (ar ? `عدد أيام الإجازة: ${n} يوم` : `Leave days: ${n}`) : (ar ? 'تاريخ النهاية قبل البداية' : 'The end date is before the start')}{' '}
       <span className="text-xs font-normal text-slate-500">{fridaysNote(start, end, countFridays, ar)}</span>
     </p>
   );

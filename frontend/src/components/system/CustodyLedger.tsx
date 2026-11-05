@@ -78,6 +78,7 @@ export default function CustodyLedger({ cfg }: { cfg: CustodyConfig }) {
 
   const [d, setD] = useState<Payload | null>(null);
   // Adding entries: owner roles, or a permissions-screen grant at edit level; the server says which (`canCreate`, middleware/custodyGate). Editing and deleting a posted entry is the server's `canEdit` / `canDelete`.
+  // role-only: the list is only a first-paint guess until the server answers with canCreate, which already counts permission grants.
   const canEdit = d ? d.canCreate !== false : cfg.roles.includes(user?.role || '');
   // All entries of the three accounts without filters, for the export of everything.
   const [all, setAll] = useState<Entry[]>([]);

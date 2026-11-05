@@ -42,10 +42,11 @@ const isChairman = (user) => user?.isChairman === true;
 const OVERRIDE_ROLES = ['super_admin', 'admin'];
 
 /**
- * A department manager is his own direct manager: his request starts after the manager stage, with his own approval recorded there (and signed on the sheet). The CFO sits above the accounting department and counts the same.
+ * A manager is his own direct manager: his request starts after the manager stage, with his own approval recorded there (and signed on the sheet). The CFO sits above the accounting department and counts the same.
  * Read from the role, not User.manager, so a manager whose account points at someone else (an admin who set up the user) is not sent to that person.
  */
-const selfManaged = (user) => !!user && (isManager(user.role) || user.role === 'cfo');
+// Every manager role ends in _manager (config/roles rule), which also covers managers above a single section such as data_manager.
+const selfManaged = (user) => !!user && (isManager(user.role) || /_manager$/.test(String(user.role || '')) || user.role === 'cfo');
 const SELF_MANAGER_NOTE = 'مدير القسم — هو مديره المباشر | Department manager: his own direct manager';
 /** The manager-stage stamp for a self-managed requester. */
 const selfManagerDecision = (user, signature = '') => ({ by: user._id || user, at: new Date(), decision: 'approved', note: SELF_MANAGER_NOTE, signature });

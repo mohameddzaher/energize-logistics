@@ -107,7 +107,12 @@ exports.create = async (req, res) => {
   const issueReason = String(b.issueReason || '').trim();
   const note = String(b.note || '').trim().slice(0, 500);
   const raw = Array.isArray(b.lines) ? b.lines : [];
+  // The day the parts were actually issued, picked by the storekeeper (entry often follows the paper); createdAt keeps when it was recorded.
+  const today = todayKey();
+  const date = /^\d{4}-\d{2}-\d{2}$/.test(String(b.date || '')) ? String(b.date) : '';
 
+  if (!date) return res.status(400).json({ code: 'ISSUE_DATE_REQUIRED', message: 'اختر تاريخ الصرف' });
+  if (date > today) return res.status(400).json({ code: 'ISSUE_DATE_FUTURE', message: 'تاريخ الصرف لا يكون بعد اليوم' });
   if (!vehiclePlate) return res.status(400).json({ message: 'اختر المركبة' });
   if (!ISSUE_REASON_KEYS.includes(issueReason)) return res.status(400).json({ code: 'ISSUE_REASON_REQUIRED', message: 'اختر سبب الصرف' });
   if (!raw.length) return res.status(400).json({ message: 'أضف صنفًا واحدًا على الأقل' });
@@ -172,7 +177,6 @@ exports.create = async (req, res) => {
   try {
     const ctx = await vehicleContext(vehiclePlate);
     const { seq, number } = await nextIssueNumber(wh);
-    const date = todayKey();
     // Balance after each line, in line order: the item's balance before the request minus what this and earlier lines took.
     const running = new Map([...wanted].map(([id, total]) => [id, r3(after.get(id) + total)]));
     const docLines = lines.map((l) => {

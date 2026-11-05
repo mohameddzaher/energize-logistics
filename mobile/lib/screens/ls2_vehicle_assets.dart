@@ -348,7 +348,8 @@ class _Ls2VehicleAssetsScreenState extends State<Ls2VehicleAssetsScreen> {
                                   '${(e['fromPlate'] ?? '').toString().isNotEmpty && e['action'] != 'mounted' && e['action'] != 'registered' ? ' · ${tr('من', 'from')} ${e['fromPlate']}' : ''}'
                                   '${(e['toPlate'] ?? '').toString().isNotEmpty ? ' → ${e['toPlate']}' : ''}',
                                   style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 12.5)),
-                                Text('${_d(e['date'])}${(e['performedByName'] ?? '').toString().isNotEmpty ? ' · ${e['performedByName']}' : ''}${(e['reason'] ?? '').toString().isNotEmpty ? ' · ${e['reason']}' : ''}',
+                                // The day it happened and, when entered later, the day it was recorded.
+                                Text('${_d(e['date'])}${_d(e['createdAt']) != _d(e['date']) && (e['createdAt'] ?? '').toString().isNotEmpty ? ' · ${tr('سُجّل', 'recorded')} ${_d(e['createdAt'])}' : ''}${(e['performedByName'] ?? '').toString().isNotEmpty ? ' · ${e['performedByName']}' : ''}${(e['reason'] ?? '').toString().isNotEmpty ? ' · ${e['reason']}' : ''}',
                                     style: const TextStyle(fontSize: 11, color: T.inkFaint), maxLines: 2, overflow: TextOverflow.ellipsis),
                               ]),
                             ),

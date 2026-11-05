@@ -67,6 +67,20 @@ async function tireSnapshot(data) {
   return t ? { stateAfter: tireState(t), percentAfter: t.conditionPercent ?? null } : {};
 }
 
+/**
+ * The day an asset operation actually happened, picked on the screen (the workshop often enters a job after it was done); the event's createdAt keeps when it was recorded.
+ * Today keeps the current time; a past day is stamped at noon Riyadh so it never shifts a day across time zones. A future day is refused. No date (imports, older app builds) means now.
+ */
+function opDate(body) {
+  const v = String(body?.date || '').trim();
+  if (!v) return { when: new Date() };
+  const m = /^(\d{4}-\d{2}-\d{2})/.exec(v);
+  if (!m || Number.isNaN(Date.parse(m[1]))) return { error: 'تاريخ العملية غير صالح' };
+  const today = new Date(Date.now() + 3 * 3600000).toISOString().slice(0, 10);
+  if (m[1] > today) return { error: 'تاريخ العملية لا يكون بعد اليوم' };
+  return { when: m[1] === today ? new Date() : new Date(`${m[1]}T12:00:00+03:00`) };
+}
+
 async function logEvent(req, data) {
   let ev;
   try {
@@ -487,7 +501,7 @@ exports.moveTire = async (req, res) => {
   try {
     const tire = await Ls2TireAsset.findById(req.params.id);
     if (!tire) return res.status(404).json({ message: 'Not found' });
-    const { toPlate = null, positionNumber = null, positionLabel = '', section = '', reason = '', notes = '', date, destination = 'store', conditionPercent = null, displacedTo = '', displacedConditionPercent = null, replacementTireId = null, secondReplacementTireId = null } = req.body;
+    const { toPlate = null, positionNumber = null, positionLabel = '', section = '', reason = '', notes = '', destination = 'store', conditionPercent = null, displacedTo = '', displacedConditionPercent = null, replacementTireId = null, secondReplacementTireId = null } = req.body;
     const from = { plate: tire.plate, key: tire.plateKey, pos: posLabel(tire) };
     // The exact slot being vacated — the replacement (if any) goes here.
     const vacated = tire.status === 'mounted' && tire.plateKey
@@ -525,7 +539,9 @@ exports.moveTire = async (req, res) => {
       }
     }
 
-    const when = date ? new Date(date) : new Date();
+    const op = opDate(req.body);
+    if (op.error) return res.status(400).json({ code: 'BAD_OP_DATE', message: op.error });
+    const when = op.when;
 
     // Mutual swap between two trucks: tire X on truck A and replacement Y on truck B trade positions in one operation, requested with destination='swap'.
     if (destination === 'swap') {
@@ -678,6 +694,8 @@ exports.tireRenewalResult = async (req, res) => {
     }
     const { result, notes = '' } = req.body || {};
     if (!['renewed', 'scrap'].includes(result)) return res.status(400).json({ message: 'result must be renewed | scrap' });
+    const op = opDate(req.body);
+    if (op.error) return res.status(400).json({ code: 'BAD_OP_DATE', message: op.error });
     // Either way the tire left the factory so its grade returns to normal: renewal success puts it on the shelf as used; failure makes it scrap for sale.
     const st = result === 'renewed' ? 'spare' : 'scrap';
     tire.set({ status: st, condition: gradeForStatus(tire, st, req.body.condition) });
@@ -685,7 +703,7 @@ exports.tireRenewalResult = async (req, res) => {
     await logEvent(req, {
       entityType: 'tire', refId: tire._id, label: tire.serial,
       action: result === 'renewed' ? 'renewed' : 'scrapped',
-      notes,
+      notes, date: op.when,
     });
     res.json({ tire });
   } catch (e) {
@@ -719,13 +737,15 @@ exports.retireTire = async (req, res) => {
     if (tire.status === kind) return res.json({ tire, unchanged: true });
     const blocked = blockEmptySlot(tire, req.body?.replacementTireId);
     if (blocked) return res.status(400).json(blocked);
+    const op = opDate(req.body);
+    if (op.error) return res.status(400).json({ code: 'BAD_OP_DATE', message: op.error });
     const from = { plate: tire.plate, key: tire.plateKey, pos: posLabel(tire) };
     tire.set({ status: kind, plate: null, plateKey: null, positionNumber: null, positionLabel: '', section: '', isSpare: false });
     await tire.save();
     await logEvent(req, {
       entityType: 'tire', refId: tire._id, label: tire.serial,
       action: kind === 'damaged' ? 'damaged' : kind === 'scrap' ? 'scrapped' : kind === 'sold' ? 'sold' : 'retired',
-      fromPlate: from.plate, fromPlateKey: from.key, fromPosition: from.pos,
+      fromPlate: from.plate, fromPlateKey: from.key, fromPosition: from.pos, date: op.when,
       reason: req.body?.reason || '', notes: req.body?.notes || '',
     });
     await clearSensorNotice(from.key);
@@ -760,6 +780,8 @@ exports.setTireStatus = async (req, res) => {
     }
     const blocked = blockEmptySlot(tire, req.body?.replacementTireId);
     if (blocked) return res.status(400).json(blocked);
+    const op = opDate(req.body);
+    if (op.error) return res.status(400).json({ code: 'BAD_OP_DATE', message: op.error });
     const from = { plate: tire.plate, key: tire.plateKey, pos: posLabel(tire), status: tire.status };
     const set = { status, condition: gradeForStatus(tire, status, req.body.condition) };
     // The factory state is derived from status, not chosen. Grade is not manually changed while the tire is at the factory, otherwise the store bucket counts an absent tire as on the shelf.
@@ -773,7 +795,7 @@ exports.setTireStatus = async (req, res) => {
     await tire.save();
     await logEvent(req, {
       entityType: 'tire', refId: tire._id, label: tire.serial, action: STATUS_ACTION[status] || 'updated',
-      fromPlate: from.plate, fromPlateKey: from.key, fromPosition: from.pos,
+      fromPlate: from.plate, fromPlateKey: from.key, fromPosition: from.pos, date: op.when,
       reason: req.body?.reason || '', notes: `${from.status} → ${status}${req.body?.notes ? ` · ${req.body.notes}` : ''}`,
     });
     if (from.key) await clearSensorNotice(from.key);
@@ -865,8 +887,10 @@ exports.moveTrailer = async (req, res) => {
   try {
     const trailer = await Ls2Trailer.findById(req.params.id);
     if (!trailer) return res.status(404).json({ message: 'Not found' });
-    const { toPlate = null, reason = '', notes = '', date, displacedTo = 'standing' } = req.body;
-    const when = date ? new Date(date) : new Date();
+    const { toPlate = null, reason = '', notes = '', displacedTo = 'standing' } = req.body;
+    const op = opDate(req.body);
+    if (op.error) return res.status(400).json({ code: 'BAD_OP_DATE', message: op.error });
+    const when = op.when;
     const from = { plate: trailer.currentPlate, key: trailer.currentPlateKey };
     const toKey = toPlate ? plateKey(toPlate) : null;
 
@@ -1386,3 +1410,4 @@ exports.getTireProfile = async (req, res) => {
   }
 };
 exports._planReplacementChain = planReplacementChain;
+exports._opDate = opDate;

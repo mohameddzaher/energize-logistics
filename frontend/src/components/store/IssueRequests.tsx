@@ -147,7 +147,7 @@ export default function IssueRequests({ scope }: { scope: IssueRequestsScope }) 
           <table className="w-full min-w-[960px] text-sm">
             <thead className="bg-slate-900 text-slate-300 text-xs">
               <tr>
-                {[t('رقم الطلب', 'No.'), t('التاريخ', 'Date'), t('المركبة', 'Vehicle'), t('سبب الصرف', 'Reason'), t('الأصناف', 'Items'), t('بواسطة', 'By'), t('الحالة', 'Status'), ''].map((h) => (
+                {[t('رقم الطلب', 'No.'), t('تاريخ الصرف', 'Issue date'), t('المركبة', 'Vehicle'), t('سبب الصرف', 'Reason'), t('الأصناف', 'Items'), t('بواسطة', 'By'), t('الحالة', 'Status'), ''].map((h) => (
                   <th key={h} className="px-3 py-2.5 text-start font-semibold whitespace-nowrap">{h}</th>
                 ))}
               </tr>
@@ -159,7 +159,10 @@ export default function IssueRequests({ scope }: { scope: IssueRequestsScope }) 
                 return [
                   <tr key={r._id} className={`hover:bg-slate-50 ${r.status === 'cancelled' ? 'text-slate-400' : ''}`}>
                     <td className="px-3 py-2 font-bold whitespace-nowrap" dir="ltr">{r.number}</td>
-                    <td className="px-3 py-2 whitespace-nowrap text-slate-600">{dmy(r.date)}</td>
+                    <td className="px-3 py-2 whitespace-nowrap text-slate-600">
+                      {dmy(r.date)}
+                      {r.createdAt && <span className="block text-[11px] text-slate-400" dir="ltr">{t('سُجّل', 'Recorded')} {new Date(r.createdAt).toLocaleString('en-GB', { dateStyle: 'short', timeStyle: 'short', timeZone: 'Asia/Riyadh' })}</span>}
+                    </td>
                     <td className="px-3 py-2">
                       <p className="font-semibold text-slate-800 whitespace-nowrap">{formatPlate(r.vehiclePlate) || r.vehiclePlate}</p>
                       <p className="text-[11px] text-slate-500">{[r.project || info?.project, r.rider || info?.rider].filter(Boolean).join(' · ')}</p>
@@ -261,6 +264,8 @@ function CreateModal({ base, items, plates, ar, onClose, onSaved }: {
   const t = (a: string, e: string) => (ar ? a : e);
   const [plate, setPlate] = useState('');
   const [issueReason, setIssueReason] = useState('');
+  // The actual issue day, chosen (the entry can follow the paper); the server keeps when it was recorded.
+  const [date, setDate] = useState('');
   const [note, setNote] = useState('');
   const [lines, setLines] = useState<DraftLine[]>(() => [blankLine()]);
   const [serverErr, setServerErr] = useState<Record<number, string>>({});
@@ -301,13 +306,13 @@ function CreateModal({ base, items, plates, ar, onClose, onSaved }: {
   const filled = lines.filter((l) => l.item || l.quantity);
   const incomplete = filled.some((l) => !l.item || !(Number(l.quantity) > 0));
   const anyErr = computed.some((c) => c.err);
-  const canSave = !!plate.trim() && !!issueReason && filled.length > 0 && !incomplete && !anyErr && !busy;
+  const canSave = !!date && date <= todayYmd() && !!plate.trim() && !!issueReason && filled.length > 0 && !incomplete && !anyErr && !busy;
 
   const save = async () => {
     setBusy(true); setServerErr({});
     try {
       const d = await api.post<{ request: IssueRequest }>(base, {
-        vehiclePlate: plate.trim(), issueReason, note: note.trim(),
+        date, vehiclePlate: plate.trim(), issueReason, note: note.trim(),
         lines: filled.map((l) => ({ item: l.item, quantity: Number(l.quantity) })),
       });
       notify(t(`حُفظ طلب الصرف ${d.request.number}`, `Saved ${d.request.number}`), 'success');
@@ -329,16 +334,13 @@ function CreateModal({ base, items, plates, ar, onClose, onSaved }: {
         </div>
         <p className="mb-4 text-[12.5px] text-slate-500">{t('يُخصم الرصيد عند الحفظ. لا يُعدَّل الطلب بعد حفظه؛ يُلغى ويُعاد إن لزم.', 'Stock is deducted on save. A saved request is not edited; cancel it and raise a new one.')}</p>
 
-        <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
           <div>
-            <label className="block text-xs font-semibold text-slate-700 mb-1">{t('رقم الطلب', 'Request No.')}</label>
-            <div className="px-3 py-2 rounded-lg border border-dashed border-slate-300 bg-slate-50 text-sm text-slate-500">{t('يُولَّد تلقائيًا عند الحفظ', 'Assigned on save')}</div>
+            <label className="block text-xs font-semibold text-slate-700 mb-1">{t('تاريخ الصرف *', 'Issue date *')}</label>
+            <input type="date" value={date} max={todayYmd()} onChange={(e) => setDate(e.target.value)}
+              className="w-full px-3 py-2 rounded-lg border border-slate-200 bg-white text-sm text-slate-900" />
           </div>
           <div>
-            <label className="block text-xs font-semibold text-slate-700 mb-1">{t('التاريخ', 'Date')}</label>
-            <div className="px-3 py-2 rounded-lg border border-slate-200 bg-slate-50 text-sm text-slate-700">{dmy(todayYmd())}</div>
-          </div>
-          <div className="sm:col-span-1">
             <PlatePicker plates={plates} value={plate} onChange={setPlate} ar={ar} label={t('المركبة / اللوحة *', 'Vehicle / plate *')} />
           </div>
         </div>

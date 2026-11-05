@@ -20,7 +20,7 @@ const issueRequestSchema = new mongoose.Schema({
   warehouse: { type: String, enum: ['heavy', 'light'], default: 'light', index: true },
   seq: { type: Number, required: true },
   number: { type: String, required: true, unique: true },
-  date: { type: String, required: true, index: true },        // YYYY-MM-DD, Riyadh day of creation
+  date: { type: String, required: true, index: true },        // YYYY-MM-DD, the actual issue day picked on entry; createdAt is when it was recorded
   vehiclePlate: { type: String, default: '' },
   vehicleMaster: { type: mongoose.Schema.Types.ObjectId, ref: 'VehicleMaster', default: null, index: true },
   // Snapshot of who rode the vehicle and for which project when the request was made.

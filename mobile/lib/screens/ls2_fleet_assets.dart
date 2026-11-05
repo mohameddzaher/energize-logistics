@@ -251,7 +251,26 @@ class _Ls2FleetAssetsScreenState extends State<Ls2FleetAssetsScreen> {
     return digits.isNotEmpty ? digits : west.trim().toUpperCase();
   }
 
+  /// Operations that record a movement: each asks for the day it actually happened (the workshop often enters a job afterwards), shown in the movement log beside the recording time.
+  static final _opPath = RegExp(r'/assets/(tires|trailers)/[^/]+/(move|retire|status|renewal-result)$');
+
+  Future<String?> _pickOpDate() async {
+    final now = DateTime.now().toUtc().add(const Duration(hours: 3));
+    final today = DateTime(now.year, now.month, now.day);
+    final d = await showDatePicker(
+      context: context, initialDate: today, firstDate: DateTime(today.year - 2), lastDate: today,
+      helpText: tr('تاريخ العملية الفعلي', 'Actual operation date'),
+    );
+    if (d == null) return null;
+    return '${d.year}-${d.month.toString().padLeft(2, '0')}-${d.day.toString().padLeft(2, '0')}';
+  }
+
   Future<void> _post(String path, Map<String, dynamic> body, String okMsg, {Future<bool> Function(Map<String, dynamic>)? onDisplaced, Map<String, dynamic>? tire}) async {
+    if (_opPath.hasMatch(path) && body['date'] == null) {
+      final date = await _pickOpDate();
+      if (date == null) return;
+      body = {...body, 'date': date};
+    }
     try {
       await Api.instance.post(path, body);
       if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(okMsg)));

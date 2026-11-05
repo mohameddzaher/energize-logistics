@@ -31,10 +31,21 @@ String _dmy(dynamic v) {
   final s = (v ?? '').toString();
   return s.length < 10 ? '—' : s.substring(0, 10).split('-').reversed.join('/');
 }
-String _todayDmy() {
-  final d = DateTime.now().toUtc().add(const Duration(hours: 3));
-  return '${d.day.toString().padLeft(2, '0')}/${d.month.toString().padLeft(2, '0')}/${d.year}';
+/// When the request was entered in the system, Riyadh time.
+String _recordedAt(dynamic v) {
+  final d = DateTime.tryParse('${v ?? ''}');
+  if (d == null) return '—';
+  final r = d.toUtc().add(const Duration(hours: 3));
+  String p(int x) => x.toString().padLeft(2, '0');
+  return '${p(r.day)}/${p(r.month)}/${r.year} ${p(r.hour)}:${p(r.minute)}';
 }
+
+/// Today in Riyadh, the latest issue date allowed.
+DateTime _todayRiyadh() {
+  final d = DateTime.now().toUtc().add(const Duration(hours: 3));
+  return DateTime(d.year, d.month, d.day);
+}
+String _ymd(DateTime d) => '${d.year}-${d.month.toString().padLeft(2, '0')}-${d.day.toString().padLeft(2, '0')}';
 String _reasonLabel(String key) {
   for (final r in storeIssueReasons) { if (r.$1 == key) return tr(r.$2, r.$3); }
   return key.isEmpty ? '—' : key;
@@ -258,7 +269,8 @@ class _DetailSheetState extends State<_DetailSheet> {
     final lines = List<Map<String, dynamic>>.from(r['lines'] ?? []);
     final cancelled = r['status'] == 'cancelled';
     final kv = <(String, String)>[
-      (tr('التاريخ', 'Date'), _dmy(r['date'])),
+      (tr('تاريخ الصرف', 'Issue date'), _dmy(r['date'])),
+      if ('${r['createdAt'] ?? ''}'.length >= 16) (tr('تاريخ التسجيل', 'Recorded'), _recordedAt(r['createdAt'])),
       (tr('المركبة / اللوحة', 'Vehicle / plate'), '${r['vehiclePlate'] ?? '—'}'),
       if ('${r['project'] ?? ''}'.isNotEmpty) (tr('المشروع', 'Project'), '${r['project']}'),
       if ('${r['rider'] ?? ''}'.isNotEmpty) (tr('الراكب', 'Rider'), '${r['rider']}'),
@@ -365,6 +377,7 @@ class _IssueRequestForm extends StatefulWidget {
 class _IssueRequestFormState extends State<_IssueRequestForm> {
   List<Map<String, dynamic>> _items = [];
   List<Map<String, dynamic>> _plates = [];
+  String _date = '';
   String _plate = '';
   String _issueReason = '';
   final _note = TextEditingController();
@@ -442,6 +455,7 @@ class _IssueRequestFormState extends State<_IssueRequestForm> {
     setState(() { _busy = true; _err = null; for (final l in _lines) { l.serverErr = null; } });
     try {
       final d = await Api.instance.post(_base, {
+        'date': _date,
         'vehiclePlate': _plate.trim(),
         'issueReason': _issueReason,
         'note': _note.text.trim(),
@@ -469,7 +483,7 @@ class _IssueRequestFormState extends State<_IssueRequestForm> {
     final filled = _lines.where((l) => l.item != null || l.qty.text.trim().isNotEmpty).toList();
     final incomplete = filled.any((l) => l.item == null || !((num.tryParse(l.qty.text.trim()) ?? 0) > 0));
     final anyErr = computed.any((c) => c.$2 != null);
-    final canSave = _plate.trim().isNotEmpty && _issueReason.isNotEmpty && filled.isNotEmpty && !incomplete && !anyErr && !_busy;
+    final canSave = _date.isNotEmpty && _plate.trim().isNotEmpty && _issueReason.isNotEmpty && filled.isNotEmpty && !incomplete && !anyErr && !_busy;
     final hit = _plates.where((p) => storePlateKey(p['plate']) == storePlateKey(_plate)).firstOrNull;
     return Scaffold(
       appBar: AppBar(title: Text(tr('طلب صرف', 'Issue request'))),
@@ -477,11 +491,17 @@ class _IssueRequestFormState extends State<_IssueRequestForm> {
         Text(tr('يُخصم الرصيد عند الحفظ. لا يُعدَّل الطلب بعد حفظه؛ يُلغى ويُعاد إن لزم.', 'Stock is deducted on save. A saved request is not edited; cancel it and raise a new one.'),
             style: const TextStyle(fontSize: 12, color: T.inkFaint)),
         const SizedBox(height: 10),
-        Row(children: [
-          Expanded(child: _ro(tr('رقم الطلب', 'Request No.'), tr('يُولَّد عند الحفظ', 'Assigned on save'))),
-          const SizedBox(width: 10),
-          Expanded(child: _ro(tr('التاريخ', 'Date'), _todayDmy())),
-        ]),
+        // The actual issue day, chosen (the entry can follow the paper); the server keeps when it was recorded.
+        OutlinedButton.icon(
+          style: OutlinedButton.styleFrom(alignment: AlignmentDirectional.centerStart, padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12)),
+          onPressed: () async {
+            final today = _todayRiyadh();
+            final d = await showDatePicker(context: context, initialDate: DateTime.tryParse(_date) ?? today, firstDate: DateTime(today.year - 2), lastDate: today);
+            if (d != null && mounted) setState(() => _date = _ymd(d));
+          },
+          icon: const Icon(Icons.event_outlined, size: 18),
+          label: Text(_date.isEmpty ? tr('اختر تاريخ الصرف *', 'Pick the issue date *') : '${tr('تاريخ الصرف', 'Issue date')}: ${_dmy(_date)}'),
+        ),
         const SizedBox(height: 10),
         OutlinedButton.icon(
           style: OutlinedButton.styleFrom(alignment: AlignmentDirectional.centerStart, padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12)),
@@ -572,15 +592,6 @@ class _IssueRequestFormState extends State<_IssueRequestForm> {
       ),
     );
   }
-
-  Widget _ro(String label, String value) => Container(
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-        decoration: BoxDecoration(color: T.canvas, borderRadius: BorderRadius.circular(10), border: Border.all(color: T.line)),
-        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          Text(label, style: const TextStyle(fontSize: 11, color: T.inkFaint)),
-          Text(value, style: const TextStyle(fontWeight: FontWeight.w800)),
-        ]),
-      );
 }
 
 /// Item search by name, supplier name or code.

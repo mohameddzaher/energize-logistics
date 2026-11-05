@@ -41,7 +41,7 @@ import RimsPanel, { type Rim } from '@/components/ls2/RimsPanel';
 interface Flatbed { _id: string; numbering: number | null; plate: string; plateKey: string; batch: string; brand: string; currentTrailerNumber: string | null; notes: string; tireCount: number; unitId: number | null; driver: string; odometerKm: number | null; vehicleMaster?: string | null; registryPlate?: string }
 interface Trailer { _id: string; trailerNumber: string; currentPlate: string | null; currentPlateKey?: string | null; status: string; notes: string }
 interface TireAsset { _id: string; tireNumber: string; serial: string; type: string; size?: string; sensor: 'yes' | 'no' | 'unknown'; condition?: 'new' | 'used'; conditionPercent?: number | null; status: string; plate: string | null; positionNumber: number | null; positionLabel: string; section: string; plateKey?: string | null; isSpare?: boolean; trailerNumber?: string | null; notes: string }
-interface AssetEvent { _id: string; entityType: string; label: string; action: string; fromPlate: string | null; fromPosition: string; toPlate: string | null; toPosition: string; date: string; odometerKm: number | null; reason: string; notes: string; performedByName: string }
+interface AssetEvent { _id: string; entityType: string; label: string; action: string; fromPlate: string | null; fromPosition: string; toPlate: string | null; toPosition: string; date: string; createdAt?: string; odometerKm: number | null; reason: string; notes: string; performedByName: string }
 interface SensorRow { plate: string; unitId: number | null; driver: string; registeredTotal: number; registeredWithSensor: number; registeredSensorPositions: { positionNumber: number | null; positionLabel: string; section: string; serial: string }[]; liveReporting: number; liveTotal: number; livePositions: { axle: number; position: number }[]; match: boolean | null; hasLive: boolean }
 
 // The workshop's 14-position scheme (matches the collected JSON exactly).
@@ -355,7 +355,9 @@ export default function Ls2FleetAssetsPage() {
     { header: ar ? 'ملاحظات' : 'Notes', key: 'notes', width: 20 },
   ];
   const eventCols: ExportColumn[] = [
-    { header: ar ? 'التاريخ' : 'Date', key: 'date', transform: (v) => (v ? new Date(v).toLocaleString('en-GB') : ''), width: 16 },
+    // The day it happened (picked on entry) and when it was recorded, as two columns.
+    { header: ar ? 'تاريخ العملية' : 'Operation date', key: 'date', transform: (v) => opDay(v), width: 13 },
+    { header: ar ? 'تاريخ التسجيل' : 'Recorded at', key: 'createdAt', transform: (v, r) => { const x = v || r.date; return x ? new Date(x).toLocaleString('en-GB', { timeZone: 'Asia/Riyadh' }) : ''; }, width: 18 },
     { header: ar ? 'نوع الأصل' : 'Entity', key: 'entityType', transform: (v) => (ENTITY_LABELS[v] ? (ar ? ENTITY_LABELS[v].ar : ENTITY_LABELS[v].en) : v), width: 11 },
     { header: ar ? 'الأصل' : 'Asset', key: 'label', width: 14 },
     { header: ar ? 'رقم الكاوتش' : 'Tire no.', key: 'tireNumber', width: 10 },
@@ -421,21 +423,21 @@ export default function Ls2FleetAssetsPage() {
     catch (e: any) { notify(e?.message || 'Failed', 'error'); }
     setBusy(false);
   };
-  const doRetireTire = async (tire: TireAsset, kind: 'damaged' | 'scrap' | 'sold', reason: string) => {
+  const doRetireTire = async (tire: TireAsset, kind: 'damaged' | 'scrap' | 'sold', reason: string, date = '') => {
     setBusy(true);
-    try { await api.post(`/api/ls2/assets/tires/${tire._id}/retire`, { kind, reason }); await load(); setRefreshKey((k) => k + 1); setRetireTire(null); }
+    try { await api.post(`/api/ls2/assets/tires/${tire._id}/retire`, { kind, reason, ...(date ? { date } : {}) }); await load(); setRefreshKey((k) => k + 1); setRetireTire(null); }
     catch (e: any) { notify(e?.message || 'Failed', 'error'); }
     setBusy(false);
   };
-  const doSetStatus = async (tire: TireAsset, body: { status: string; condition?: string; conditionPercent?: number | null; reason?: string }) => {
+  const doSetStatus = async (tire: TireAsset, body: { status: string; condition?: string; conditionPercent?: number | null; reason?: string; date?: string }) => {
     setBusy(true);
     try { await api.post(`/api/ls2/assets/tires/${tire._id}/status`, body); await load(); setRefreshKey((k) => k + 1); setStatusTire(null); }
     catch (e: any) { notify(e?.message || 'Failed', 'error'); }
     setBusy(false);
   };
-  const doRenewalResult = async (tire: TireAsset, result: 'renewed' | 'scrap', notes: string) => {
+  const doRenewalResult = async (tire: TireAsset, result: 'renewed' | 'scrap', notes: string, date: string) => {
     setBusy(true);
-    try { await api.post(`/api/ls2/assets/tires/${tire._id}/renewal-result`, { result, notes }); await load(); setRefreshKey((k) => k + 1); setRenewalTire(null); }
+    try { await api.post(`/api/ls2/assets/tires/${tire._id}/renewal-result`, { result, notes, date }); await load(); setRefreshKey((k) => k + 1); setRenewalTire(null); }
     catch (e: any) { notify(e?.message || 'Failed', 'error'); }
     setBusy(false);
   };
@@ -859,7 +861,8 @@ export default function Ls2FleetAssetsPage() {
             <table className="w-full text-sm">
               <thead>
                 <tr className="bg-slate-900 text-slate-300 text-xs">
-                  <th className="text-start font-semibold px-4 py-3">{ar ? 'التاريخ' : 'Date'}</th>
+                  <th className="text-start font-semibold px-4 py-3">{ar ? 'تاريخ العملية' : 'Operation date'}</th>
+                  <th className="text-start font-semibold px-4 py-3">{ar ? 'تاريخ التسجيل' : 'Recorded'}</th>
                   <th className="text-start font-semibold px-4 py-3">{ar ? 'الأصل' : 'Asset'}</th>
                   <th className="text-center font-semibold px-4 py-3">{ar ? 'الحركة' : 'Action'}</th>
                   <th className="text-start font-semibold px-4 py-3">{ar ? 'من' : 'From'}</th>
@@ -874,7 +877,8 @@ export default function Ls2FleetAssetsPage() {
                   const ent = ENTITY_LABELS[e.entityType] || { en: e.entityType, ar: e.entityType };
                   return (
                     <tr key={e._id} className="border-b border-slate-100 hover:bg-slate-50">
-                      <td className="px-4 py-3 text-xs text-slate-500 whitespace-nowrap">{fmtDateTime(e.date, lang as Lang)}</td>
+                      <td className="px-4 py-3 text-xs font-semibold text-slate-700 whitespace-nowrap">{opDay(e.date)}</td>
+                      <td className="px-4 py-3 text-xs text-slate-500 whitespace-nowrap">{fmtDateTime(e.createdAt || e.date, lang as Lang)}</td>
                       <td className="px-4 py-3"><span className="text-xs text-slate-400">{ar ? ent.ar : ent.en}</span> <span className="font-mono text-xs font-medium text-slate-800">{e.label}</span></td>
                       <td className="px-4 py-3 text-center"><span className={`px-2 py-0.5 rounded-full text-[11px] font-medium ${act.cls}`}>{ar ? act.ar : act.en}</span></td>
                       <td className="px-4 py-3 text-xs text-slate-600">{[e.fromPlate, e.fromPosition].filter(Boolean).join(' · ') || '—'}</td>
@@ -884,7 +888,7 @@ export default function Ls2FleetAssetsPage() {
                     </tr>
                   );
                 })}
-                {fEvents.length === 0 && <tr><td colSpan={7} className="text-center text-slate-400 py-10">{ar ? 'لا توجد حركات بعد' : 'No movements yet'}</td></tr>}
+                {fEvents.length === 0 && <tr><td colSpan={8} className="text-center text-slate-400 py-10">{ar ? 'لا توجد حركات بعد' : 'No movements yet'}</td></tr>}
               </tbody>
             </table>
           </ScrollX>
@@ -985,8 +989,8 @@ export default function Ls2FleetAssetsPage() {
       )}
       {moveTire && <MoveTireModal tire={moveTire} flatbeds={flatbeds} tires={tires} ar={ar} busy={busy} onClose={() => setMoveTire(null)} onSubmit={(body) => doMoveTire(moveTire, body)} />}
       {downTire && <DismountTireModal tire={downTire} tires={tires} ar={ar} busy={busy} onClose={() => setDownTire(null)} onSubmit={(body) => doMoveTire(downTire, body).then(() => setDownTire(null))} />}
-      {renewalTire && <RenewalResultModal tire={renewalTire} ar={ar} busy={busy} onClose={() => setRenewalTire(null)} onSubmit={(result, notes) => doRenewalResult(renewalTire, result, notes)} />}
-      {retireTire && <RetireTireModal tire={retireTire} ar={ar} busy={busy} onClose={() => setRetireTire(null)} onSubmit={(kind, reason) => doRetireTire(retireTire, kind, reason)} />}
+      {renewalTire && <RenewalResultModal tire={renewalTire} ar={ar} busy={busy} onClose={() => setRenewalTire(null)} onSubmit={(result, notes, date) => doRenewalResult(renewalTire, result, notes, date)} />}
+      {retireTire && <RetireTireModal tire={retireTire} ar={ar} busy={busy} onClose={() => setRetireTire(null)} onSubmit={(kind, reason, date) => doRetireTire(retireTire, kind, reason, date)} />}
       {statusTire && <TireStatusModal tire={statusTire} ar={ar} busy={busy} onClose={() => setStatusTire(null)} onSubmit={(body) => doSetStatus(statusTire, body)} />}
       {(addTire || editTire) && (
         <TireFormModal
@@ -1068,6 +1072,24 @@ const pendingSlotOf = (start: TireAsset, chain: string[], tires: TireAsset[]): T
   }
   return pending;
 };
+
+/** An operation's day as dd/mm/yyyy in Riyadh time. */
+const opDay = (v?: string | null) => (v ? new Date(v).toLocaleDateString('en-GB', { timeZone: 'Asia/Riyadh' }) : '—');
+/** Today in Riyadh (YYYY-MM-DD), the latest operation date allowed. */
+const riyadhToday = () => new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Riyadh' });
+
+/**
+ * The day the operation actually happened, chosen by the user (the workshop often enters a job after doing it). Required, never in the future; the movement log keeps it beside the recording time.
+ */
+function OpDateField({ value, onChange, ar }: { value: string; onChange: (v: string) => void; ar: boolean }) {
+  return (
+    <div>
+      <label className={labelCls}>{ar ? 'تاريخ العملية الفعلي *' : 'Actual operation date *'}</label>
+      <input type="date" value={value} max={riyadhToday()} onChange={(e) => onChange(e.target.value)} className={inputCls} dir="ltr" />
+    </div>
+  );
+}
+const opDateOk = (d: string) => !!d && d <= riyadhToday();
 
 function ReplacementChain({ start, tires, exclude = [], chain, onChange, ar, maxRows }: {
   start: TireAsset; tires: TireAsset[]; exclude?: string[]; chain: string[];
@@ -1177,6 +1199,7 @@ function DismountTireModal({ tire, tires, ar, busy, onClose, onSubmit }: {
   const replacementId = chain[0] || '';
   const [swap, setSwap] = useState(false);
   const [reason, setReason] = useState('');
+  const [date, setDate] = useState('');
   // الاستبن هو الموقع الوحيد اللي مسموح يفضل فاضي — العربية بتمشي من غيره.
   // أي موقع تاني لازم يتملي، فالبديل إجباري (أو تبديل متبادل).
   const spareSlot = tire.isSpare || /استبن/.test(tire.section || '');
@@ -1245,14 +1268,15 @@ function DismountTireModal({ tire, tires, ar, busy, onClose, onSubmit }: {
           <label className={labelCls}>{ar ? 'السبب' : 'Reason'}</label>
           <input value={reason} onChange={(e) => setReason(e.target.value)} placeholder={ar ? 'مثال: تآكل / تدوير / انفجار…' : 'e.g. wear / rotation / blowout…'} className={inputCls} />
         </div>
+        <OpDateField value={date} onChange={setDate} ar={ar} />
         <button
           type="button"
-          disabled={busy || (swap && canSwap ? false : (!destination || !!pendingSlotOf(tire, chain, tires)))}
+          disabled={busy || !opDateOk(date) || (swap && canSwap ? false : (!destination || !!pendingSlotOf(tire, chain, tires)))}
           onClick={() => onSubmit(
             swap && canSwap
-              ? { toPlate: null, destination: 'swap', replacementTireId: replacementId, reason }
+              ? { toPlate: null, destination: 'swap', replacementTireId: replacementId, reason, date }
               : {
-                  toPlate: null, destination, reason,
+                  toPlate: null, destination, reason, date,
                   ...(destination === 'used' && percent !== '' ? { conditionPercent: Number(percent) } : {}),
                   ...(chain.length ? { chain } : {}),
                 }
@@ -1280,6 +1304,7 @@ function MoveTireModal({ tire, flatbeds, tires, ar, busy, onClose, onSubmit }: {
   const [posN, setPosN] = useState<number>(tire.positionNumber || 1);
   const [reason, setReason] = useState('');
   const [notes, setNotes] = useState('');
+  const [date, setDate] = useState('');
   // The mandatory OUT: when the slot is occupied, where does the removed tire go?
   const [displacedTo, setDisplacedTo] = useState<string>('');
   // لو رجعت سليمة للمخزن — كام في المية؟ (تُقرأ لاحقًا عند التسكين)
@@ -1386,10 +1411,11 @@ function MoveTireModal({ tire, flatbeds, tires, ar, busy, onClose, onSubmit }: {
           <label className={labelCls}>{ar ? 'ملاحظات' : 'Notes'}</label>
           <input value={notes} onChange={(e) => setNotes(e.target.value)} className={inputCls} />
         </div>
+        <OpDateField value={date} onChange={setDate} ar={ar} />
         <button
-          type="button" disabled={busy || !toPlate || (!!occupant && !displacedTo) || !!pendingSlot}
+          type="button" disabled={busy || !opDateOk(date) || !toPlate || (!!occupant && !displacedTo) || !!pendingSlot}
           onClick={() => onSubmit({
-            toPlate, positionNumber: posN, positionLabel: pos.label, section: pos.section, reason, notes,
+            toPlate, positionNumber: posN, positionLabel: pos.label, section: pos.section, reason, notes, date,
             ...(occupant ? { displacedTo } : {}),
             ...(occupant && displacedTo === 'store' && displacedPercent !== '' ? { displacedConditionPercent: Number(displacedPercent) } : {}),
             ...(vacates && chain.length ? { chain } : {}),
@@ -1407,10 +1433,11 @@ function MoveTireModal({ tire, flatbeds, tires, ar, busy, onClose, onSubmit }: {
 
 // ---- Renewal result: the ONLY exit from «في المصنع» --------------------------
 function RenewalResultModal({ tire, ar, busy, onClose, onSubmit }: {
-  tire: TireAsset; ar: boolean; busy: boolean; onClose: () => void; onSubmit: (result: 'renewed' | 'scrap', notes: string) => void;
+  tire: TireAsset; ar: boolean; busy: boolean; onClose: () => void; onSubmit: (result: 'renewed' | 'scrap', notes: string, date: string) => void;
 }) {
   const [result, setResult] = useState<'' | 'renewed' | 'scrap'>('');
   const [notes, setNotes] = useState('');
+  const [date, setDate] = useState('');
   return (
     <Modal title={ar ? `نتيجة التجديد — الفردة ${tire.serial}` : `Renewal result — ${tire.serial}`} onClose={onClose}>
       <div className="space-y-3">
@@ -1433,7 +1460,8 @@ function RenewalResultModal({ tire, ar, busy, onClose, onSubmit }: {
           <label className={labelCls}>{ar ? 'ملاحظات' : 'Notes'}</label>
           <input value={notes} onChange={(e) => setNotes(e.target.value)} className={inputCls} />
         </div>
-        <button type="button" disabled={busy || !result} onClick={() => result && onSubmit(result, notes)}
+        <OpDateField value={date} onChange={setDate} ar={ar} />
+        <button type="button" disabled={busy || !result || !opDateOk(date)} onClick={() => result && onSubmit(result, notes, date)}
           className="w-full py-2 rounded-lg bg-[#f37121] hover:bg-[#d95f13] text-white text-sm font-medium disabled:opacity-40">
           {ar ? 'تسجيل النتيجة' : 'Record result'}
         </button>
@@ -1444,10 +1472,11 @@ function RenewalResultModal({ tire, ar, busy, onClose, onSubmit }: {
 
 // ---- Damaged / scrap (outside the renewal loop) ------------------------------
 function RetireTireModal({ tire, ar, busy, onClose, onSubmit }: {
-  tire: TireAsset; ar: boolean; busy: boolean; onClose: () => void; onSubmit: (kind: 'damaged' | 'scrap', reason: string) => void;
+  tire: TireAsset; ar: boolean; busy: boolean; onClose: () => void; onSubmit: (kind: 'damaged' | 'scrap', reason: string, date: string) => void;
 }) {
   const [kind, setKind] = useState<'' | 'damaged' | 'scrap'>('');
   const [reason, setReason] = useState('');
+  const [date, setDate] = useState('');
   return (
     <Modal title={ar ? `إخراج الفردة ${tire.serial} من الخدمة` : `Take ${tire.serial} out of service`} onClose={onClose}>
       <div className="space-y-3">
@@ -1469,7 +1498,8 @@ function RetireTireModal({ tire, ar, busy, onClose, onSubmit }: {
           <label className={labelCls}>{ar ? 'السبب' : 'Reason'}</label>
           <input value={reason} onChange={(e) => setReason(e.target.value)} className={inputCls} />
         </div>
-        <button type="button" disabled={busy || !kind} onClick={() => kind && onSubmit(kind, reason)}
+        <OpDateField value={date} onChange={setDate} ar={ar} />
+        <button type="button" disabled={busy || !kind || !opDateOk(date)} onClick={() => kind && onSubmit(kind, reason, date)}
           className="w-full py-2 rounded-lg bg-red-600 hover:bg-red-700 text-white text-sm font-medium disabled:opacity-40">
           {ar ? 'تنفيذ' : 'Confirm'}
         </button>
@@ -1481,8 +1511,9 @@ function RetireTireModal({ tire, ar, busy, onClose, onSubmit }: {
 // ---- Change tire status (نقل بين الحالات) -----------------------------------
 function TireStatusModal({ tire, ar, busy, onClose, onSubmit }: {
   tire: TireAsset; ar: boolean; busy: boolean; onClose: () => void;
-  onSubmit: (body: { status: string; conditionPercent?: number | null; reason?: string }) => void;
+  onSubmit: (body: { status: string; conditionPercent?: number | null; reason?: string; date?: string }) => void;
 }) {
+  const [date, setDate] = useState('');
   // القائمة من التعريف الواحد (lib/tireStates): كانت هذه النافذة تعرض قائمةً
   // ثالثة تخالف نافذتَي النزول والإزاحة — «في المخزن» بلا تفريقٍ بين جديدٍ
   // ومستعمل، و«معدومة» التي لا وجود لها في شاشةٍ أخرى. فمن أراد نقلَ فردةٍ
@@ -1517,8 +1548,9 @@ function TireStatusModal({ tire, ar, busy, onClose, onSubmit }: {
           <label className={labelCls}>{ar ? 'السبب / ملاحظة' : 'Reason / note'}</label>
           <input value={reason} onChange={(e) => setReason(e.target.value)} className={inputCls} />
         </div>
-        <button type="button" disabled={busy || !status}
-          onClick={() => status && onSubmit({ status, conditionPercent: pct === '' ? null : Number(pct), reason })}
+        <OpDateField value={date} onChange={setDate} ar={ar} />
+        <button type="button" disabled={busy || !status || !opDateOk(date)}
+          onClick={() => status && onSubmit({ status, conditionPercent: pct === '' ? null : Number(pct), reason, date })}
           className="w-full py-2 rounded-lg bg-[#12325c] hover:bg-[#0f2748] text-white text-sm font-medium disabled:opacity-40">
           {ar ? 'تنفيذ النقل' : 'Confirm'}
         </button>
@@ -1651,6 +1683,7 @@ function HitchTruckModal({ flatbed, trailers, ar, busy, onClose, onSubmit }: {
 }) {
   const [pick, setPick] = useState('');
   const [reason, setReason] = useState('');
+  const [date, setDate] = useState('');
   const [displacedTo, setDisplacedTo] = useState<'standing' | 'swap'>('standing');
   const current = trailers.find((t) => t.trailerNumber === flatbed.currentTrailerNumber) || null;
   const chosen = trailers.find((t) => t._id === pick) || null;
@@ -1706,16 +1739,17 @@ function HitchTruckModal({ flatbed, trailers, ar, busy, onClose, onSubmit }: {
           <label className={labelCls}>{ar ? 'السبب' : 'Reason'}</label>
           <input value={reason} onChange={(e) => setReason(e.target.value)} className={inputCls} />
         </div>
-        <button type="button" disabled={busy || !chosen}
-          onClick={() => chosen && onSubmit(chosen, { toPlate: flatbed.plate, reason, displacedTo })}
+        <OpDateField value={date} onChange={setDate} ar={ar} />
+        <button type="button" disabled={busy || !chosen || !opDateOk(date)}
+          onClick={() => chosen && onSubmit(chosen, { toPlate: flatbed.plate, reason, displacedTo, date })}
           className="w-full py-2 rounded-lg bg-[#f37121] hover:bg-[#d95f13] text-white text-sm font-medium disabled:opacity-40">
           {!chosen ? (ar ? 'اختر التيدر' : 'Choose a trailer')
             : current && displacedTo === 'swap' ? (ar ? 'تبديل التيدرين' : 'Swap the two trailers')
             : (ar ? `تركيب التيدر ${chosen.trailerNumber}` : `Hitch trailer ${chosen.trailerNumber}`)}
         </button>
         {current && (
-          <button type="button" disabled={busy}
-            onClick={() => onSubmit(current, { toPlate: null, reason: reason || (ar ? 'إنزال من العربية' : 'Unhitched') })}
+          <button type="button" disabled={busy || !opDateOk(date)}
+            onClick={() => onSubmit(current, { toPlate: null, reason: reason || (ar ? 'إنزال من العربية' : 'Unhitched'), date })}
             className="w-full py-2 rounded-lg border border-slate-200 text-slate-600 text-sm hover:bg-slate-50 disabled:opacity-40">
             {ar ? `إنزال التيدر ${current.trailerNumber} فقط (يقف لوحده)` : `Just unhitch trailer ${current.trailerNumber}`}
           </button>
@@ -1730,6 +1764,7 @@ function MoveTrailerModal({ trailer, flatbeds, ar, busy, onClose, onSubmit }: {
 }) {
   const [toPlate, setToPlate] = useState('');
   const [reason, setReason] = useState('');
+  const [date, setDate] = useState('');
   // التيدر اللي على العربية المستقبِلة لازم يروح مكان محدّد — زي الداخل ⇐ الخارج
   // بتاع الكاوتش بالظبط. من غير الاختيار ده، تيدر بيختفي من غير ما حد يقول راح فين.
   const [displacedTo, setDisplacedTo] = useState<'standing' | 'swap'>('standing');
@@ -1784,8 +1819,9 @@ function MoveTrailerModal({ trailer, flatbeds, ar, busy, onClose, onSubmit }: {
           <label className={labelCls}>{ar ? 'السبب' : 'Reason'}</label>
           <input value={reason} onChange={(e) => setReason(e.target.value)} className={inputCls} />
         </div>
-        <button type="button" disabled={busy || !toPlate}
-          onClick={() => onSubmit({ toPlate, reason, displacedTo })}
+        <OpDateField value={date} onChange={setDate} ar={ar} />
+        <button type="button" disabled={busy || !toPlate || !opDateOk(date)}
+          onClick={() => onSubmit({ toPlate, reason, displacedTo, date })}
           className="w-full py-2 rounded-lg bg-[#f37121] hover:bg-[#d95f13] text-white text-sm font-medium disabled:opacity-40">
           {!toPlate ? (ar ? 'اختر السطحة' : 'Choose a flatbed')
             : occupied && displacedTo === 'swap' ? (ar ? `تبديل التيدرين` : 'Swap the two trailers')

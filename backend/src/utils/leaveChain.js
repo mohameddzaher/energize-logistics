@@ -40,8 +40,8 @@ const EXEC_ROLES = ['super_admin', 'admin', 'it_manager', 'it_specialist'];
 const isTopManagement = (user) => user?.isTopManagement === true;
 const isChairman = (user) => user?.isChairman === true;
 
-/** Who may see where a request stands in the chain: super admin powers, top management and the chairman (the owner's rule). */
-const seesProcess = (user) => !!user && (EXEC_ROLES.includes(user.role) || isTopManagement(user) || isChairman(user));
+/** Who may see where a request stands in the chain: super admin powers, top management, the chairman and HR, which follows every request from filing to the end (the owner's rule). The employee and other desks see it under review. */
+const seesProcess = (user) => !!user && (EXEC_ROLES.includes(user.role) || HR_ROLES.includes(user.role) || isTopManagement(user) || isChairman(user));
 
 // Who can push a stalled request through: the roles with super admin powers (config/constants TOP_ROLES, IT included by the owner's decision of 2026-11-05).
 const OVERRIDE_ROLES = ['super_admin', 'admin', 'it_manager', 'it_specialist'];
@@ -138,13 +138,15 @@ function restart(leave, replier, { amended = true } = {}) {
   if (asked && asked !== 'manager') {
     const from = STAGES.indexOf(asked);
     for (const st of STAGES.slice(from)) leave[DECISION_FIELD[st]] = undefined;
-    if (from <= STAGES.indexOf('hr')) leave.deductsBalance = null;
+    // HR's choices (deduction, excluded Fridays) go with its decision.
+    if (from <= STAGES.indexOf('hr')) { leave.deductsBalance = null; leave.excludedFridays = undefined; }
     leave.status = PENDING_OF[asked];
     leave.currentStage = asked;
     return 'resumed';
   }
   for (const f of Object.values(DECISION_FIELD)) leave[f] = undefined;
   leave.deductsBalance = null;
+  leave.excludedFridays = undefined;
   if (replier && selfManaged(replier) && String(replier._id || replier) === String(leave.requester)) {
     leave.managerDecision = selfManagerDecision(replier, leave.employeeSignature || '');
     Object.assign(leave, startOf(false));

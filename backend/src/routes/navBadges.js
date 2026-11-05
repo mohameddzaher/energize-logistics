@@ -34,7 +34,8 @@ router.get('/', async (req, res) => {
     const [mine, atHr, openReq, atTop, atFin, atChair] = await Promise.all([
       // Leave approvals: what waits on this reader's own stations (team as manager, HR, top management).
       withoutArchivedRef(chain.inboxFilter(req.user)).then((f) => LeaveRequest.countDocuments(f)).catch(() => 0),
-      hr ? withoutArchivedRef({ status: 'pending_hr' }).then((f) => LeaveRequest.countDocuments(f)) : 0,
+      // HR follows every request from filing to the end, so its page counts all open ones, not only those at its stage.
+      hr ? withoutArchivedRef({ status: { $in: chain.OPEN_STATUSES } }).then((f) => LeaveRequest.countDocuments(f)) : 0,
       hr || top || fin ? HRRequest.countDocuments(OPEN_REQ) : 0,
       top ? LeaveRequest.countDocuments({ status: 'pending_executive' }) : 0,
       fin ? LeaveRequest.countDocuments({ status: 'pending_finance' }) : 0,

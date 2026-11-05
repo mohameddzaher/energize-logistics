@@ -20,7 +20,7 @@ const { cappedFind, askedLimit, CAP_NOTE_AR } = require('../utils/capped');
 const { saveEmployeeFile, deleteStoredFile } = require('../utils/fileStore');
 const { createNotification } = require('../services/notificationService');
 const { emitToUser, emitToAll } = require('../websocket/socketManager');
-const { computeBalance, leaveDays, leaveDaysOf, fridayRuleOf, leaveDeducts, takenSince, countTaken } = require('../utils/leaveBalance');
+const { computeBalance, leaveDays, leaveDaysOf, fridaysIn, fridayRuleOf, leaveDeducts, takenSince, countTaken } = require('../utils/leaveBalance');
 // A period of Fridays only holds no leave day (Friday is the weekly day off).
 const NO_WORKDAY = 'اختر تاريخ البداية والنهاية';
 const chain = require('../utils/leaveChain');
@@ -1793,6 +1793,17 @@ exports.createBackdatedLeave = async (req, res) => {
  * Edit and delete an employee's leave from HR's leave requests.
  * The requester cannot edit after the first action (updateMyLeave). HR corrects the record: wrong dates, wrong type, duplicate backdated entries. Status and chain stage are untouched; this is data correction, not a decision, and the balance follows because it is computed from approved leaves.
  */
+/** Validates HR's excluded Fridays for a request: { dates, days } or { error }. */
+function checkExcludedFridays(leave, raw) {
+  const fridays = new Set(fridaysIn(leave.startDate, leave.endDate));
+  const dates = [...new Set((raw || []).map((d) => String(d).slice(0, 10)))];
+  const bad = dates.find((d) => !fridays.has(d));
+  if (bad) return { error: { code: 'NOT_A_FRIDAY_IN_PERIOD', message: `${bad} ليس يوم جمعة داخل فترة الإجازة` } };
+  const days = leaveDaysOf({ excludedFridays: dates }, leave.startDate, leave.endDate);
+  if (days < 1) return { error: { code: 'NO_LEAVE_DAYS', message: 'لا يمكن استثناء كل أيام الإجازة' } };
+  return { dates: dates.sort(), days };
+}
+
 exports.updateLeave = async (req, res) => {
   try {
     if (denyNonStaff(req, res)) return;
@@ -1816,6 +1827,11 @@ exports.updateLeave = async (req, res) => {
     if (startDate) leave.startDate = startDate;
     if (endDate) leave.endDate = endDate;
     if (String(leave.endDate) < String(leave.startDate)) return res.status(400).json({ message: 'تاريخ النهاية قبل تاريخ البداية' });
+    if (Array.isArray(req.body.excludedFridays)) {
+      const ex = checkExcludedFridays(leave, req.body.excludedFridays);
+      if (ex.error) return res.status(400).json(ex.error);
+      leave.excludedFridays = ex.dates;
+    }
     const days = leaveDaysOf(leave, leave.startDate, leave.endDate);
     if (!days || days < 1) return res.status(400).json({ message: NO_WORKDAY, code: 'NO_LEAVE_DAYS' });
     if (reason !== undefined) leave.reason = String(reason || '').trim();
@@ -1988,16 +2004,24 @@ exports.decideLeave = async (req, res) => {
       }
     }
 
+    // HR may leave out chosen Fridays (not a leave day, not off the balance). Only Fridays of this period are accepted, and at least one leave day must remain.
+    const exclusion = stage === 'hr' && decision === 'approved' && Array.isArray(req.body.excludedFridays) ? checkExcludedFridays(leave, req.body.excludedFridays) : null;
+    if (exclusion && exclusion.error) return res.status(400).json(exclusion.error);
+
     leave[chain.DECISION_FIELD[stage]] = stamp;
-    if (deduct !== null) {
+    if (deduct !== null || exclusion) {
       const snap = leave.balanceSnapshot;
       const lt = await LeaveType.findById(leave.leaveType).select('affectsBalance').lean();
-      // The snapshot was estimated from the leave type; restate it with HR's choice.
+      const oldDays = leave.days || 0;
+      const oldCut = leaveDeducts({ deductsBalance: leave.deductsBalance, leaveType: lt }) ? oldDays : 0;
+      if (exclusion) { leave.excludedFridays = exclusion.dates; leave.days = exclusion.days; }
+      if (deduct !== null) leave.deductsBalance = deduct;
+      // The snapshot was estimated from the leave type and the full period; restate it with HR's choices.
       if (snap && typeof snap.remainingAfter === 'number') {
-        const before = snap.remainingAfter + (leaveDeducts({ deductsBalance: leave.deductsBalance, leaveType: lt }) ? (leave.days || 0) : 0);
-        snap.remainingAfter = Math.round((before - (deduct ? (leave.days || 0) : 0)) * 100) / 100;
+        const newCut = leaveDeducts({ deductsBalance: leave.deductsBalance, leaveType: lt }) ? (leave.days || 0) : 0;
+        snap.remainingAfter = Math.round((snap.remainingAfter + oldCut - newCut) * 100) / 100;
+        snap.requested = leave.days;
       }
-      leave.deductsBalance = deduct;
     }
 
     if (decision === 'rejected') {
@@ -2099,6 +2123,8 @@ exports.replyToLeave = async (req, res) => {
     });
 
     const route = chain.restart(leave, req.user, { amended: edit.changed });
+    // A restart that reaches back to HR drops its excluded Fridays, so the days are recounted.
+    leave.days = leaveDaysOf(leave, leave.startDate, leave.endDate);
     if (edit.changed) {
       // The amended request is a new request for the balance as well: its snapshot is restated from today's balance.
       try {

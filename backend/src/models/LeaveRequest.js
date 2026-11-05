@@ -64,7 +64,9 @@ const leaveRequestSchema = new mongoose.Schema(
     // charges an extension without separate arithmetic.
     plannedEndDate: { type: String, default: '' },
     // The Friday rule this request was counted with, copied from its type (utils/leaveBalance.fridayRuleOf). Absent on older requests, which count calendar days.
-    countsFridays: { type: Boolean, default: undefined },              // end date as approved, before any change
+    countsFridays: { type: Boolean, default: undefined },
+    // Fridays HR chose not to count as leave (YYYY-MM-DD); every other day, Fridays included, is a leave day. See utils/leaveBalance.leaveDaysOf.
+    excludedFridays: { type: [String], default: undefined },              // end date as approved, before any change
     returnState: { type: String, enum: ['', 'returned', 'no_show'], default: '', index: true },
     returnedOn: { type: String, default: '' },                  // YYYY-MM-DD the employee came back
     workStartsOn: { type: String, default: '' },                // first working day

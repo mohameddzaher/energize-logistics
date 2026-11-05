@@ -222,6 +222,7 @@ ${getFontCss()}
       <div class="grid">
         ${field('نوع الإجازة', type)}
         ${field('عدد الأيام', leave.days != null ? `${leave.days} يوم` : '')}
+        ${(leave.excludedFridays || []).length ? field('أيام جمعة لا تُحسب إجازة', leave.excludedFridays.map(dmy).join('  ·  '), { wide: true }) : ''}
         ${field('من', bothDates(leave.startDate))}
         ${field('إلى', bothDates(leave.endDate))}
         ${field('تاريخ الطلب', bothDates(leave.createdAt))}

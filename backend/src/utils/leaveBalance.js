@@ -26,7 +26,28 @@ function leaveDays(startDate, endDate) {
 
 /** Kept for callers that stored the rule on a request; every request now counts Fridays. */
 const fridayRuleOf = () => true;
-const leaveDaysOf = (leave, startDate, endDate) => leaveDays(startDate, endDate);
+
+/** The Fridays (YYYY-MM-DD) inside a period, both ends included. */
+function fridaysIn(startDate, endDate) {
+  const a = toDate(startDate); const b = toDate(endDate);
+  if (!a || !b || b < a) return [];
+  const out = [];
+  for (let t = a.getTime(); t <= b.getTime(); t += DAY_MS) {
+    const d = new Date(t);
+    if (d.getUTCDay() === 5) out.push(d.toISOString().slice(0, 10));
+  }
+  return out;
+}
+
+/**
+ * Days of a request: calendar days minus the Fridays HR chose not to count (`leave.excludedFridays`, e.g. the Friday that closes a month away, which should not come off the balance).
+ * Only exclusions still inside the period and still Fridays count, so moving the dates never subtracts a day that is no longer there.
+ */
+function leaveDaysOf(leave, startDate, endDate) {
+  const inRange = new Set(fridaysIn(startDate, endDate));
+  const off = new Set((leave?.excludedFridays || []).map((d) => String(d).slice(0, 10)).filter((d) => inRange.has(d)));
+  return leaveDays(startDate, endDate) - off.size;
+}
 
 /**
  * Day counting starts from: actual work start if known, otherwise contract start.
@@ -103,4 +124,4 @@ const leaveDeducts = (l) => (typeof l?.deductsBalance === 'boolean'
   ? l.deductsBalance
   : (l?.leaveType?.affectsBalance ?? true));
 
-module.exports = { computeBalance, leaveDays, leaveDaysOf, fridayRuleOf, contractDaysElapsed, accrualStart, leaveDeducts, takenSince, countTaken };
+module.exports = { computeBalance, leaveDays, leaveDaysOf, fridaysIn, fridayRuleOf, contractDaysElapsed, accrualStart, leaveDeducts, takenSince, countTaken };

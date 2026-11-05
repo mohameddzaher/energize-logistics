@@ -6,11 +6,11 @@ import { useLanguage } from '@/context/LanguageContext';
 import { useSocket } from '@/hooks/useSocket';
 import api from '@/lib/api';
 import { CalendarCheck, Check, X, HelpCircle, FileDown, PenTool, CalendarPlus, History, Pencil, Trash2 } from 'lucide-react';
-import { isHRStaff, LeaveRequest, empName, userName, leaveTypeLabel, LEAVE_OPEN, LEAVE_PENDING, canDecideLeave, leaveWaitNote, leaveStatusStyle, seesLeaveProcess, leaveStatusOptions, countLeaveDays, fridaysNote } from '@/lib/hr';
+import { isHRStaff, LeaveRequest, empName, userName, leaveTypeLabel, LEAVE_OPEN, LEAVE_PENDING, canDecideLeave, leaveWaitNote, leaveStatusStyle, seesLeaveProcess, leaveStatusOptions, fridaysOf, countLeaveDays, fridaysNote } from '@/lib/hr';
 import DatePair from '@/components/hr/DatePair';
 import { bothDates, gregCell, hijriCell, pairLabels, exportDatePair } from '@/lib/hrDates';
 import { LeaveChainBar, LeaveThread } from '@/components/hr/LeaveChain';
-import { Spinner, PageHeader, SearchInput, Badge, Modal, TextArea, PrimaryButton, SearchableSelect, Loader2 } from '@/components/hr/HRKit';
+import { Spinner, PageHeader, SearchInput, Badge, Modal, TextArea, PrimaryButton, SearchableSelect, Loader2, StatCard } from '@/components/hr/HRKit';
 import ExportMenu, { exportScopeLabels, type ExportColumn } from '@/components/ls2/ExportMenu';
 import { getHrLeavesTranslations } from '@/lib/translations';
 import { downloadLeaveSheet } from '@/lib/leavePdf';
@@ -18,11 +18,40 @@ import type { Signature } from '@/components/SignatureManager';
 import FilePicker, { AttachmentList, type PickedFile } from '@/components/system/FilePicker';
 import ScrollX from '@/components/system/ScrollX';
 import { LeaveReturnChip, LeaveReturnPanel } from '@/components/hr/LeaveReturn';
+import FridayPicker from '@/components/hr/FridayPicker';
 import { DeductionChoice, DeductionBadge, needsDeductionChoice, useDeductionAsk } from '@/components/hr/LeaveDeduction';
 import PeriodFilter from '@/components/system/PeriodFilter';
 import Link from 'next/link';
 
 const idOf = (e: any) => (e?.idType === 'national_id' ? (e?.nationalId || e?.iqamaNumber) : (e?.iqamaNumber || e?.nationalId)) || '—';
+
+/** Counts over every request the page holds: open ones by stage, returned ones, and this month's approvals and rejections. Module level so the page's inputs never remount. */
+function LeaveStats({ leaves, ar, active, onPick }: { leaves: LeaveRequest[]; ar: boolean; active: string; onPick: (k: string) => void }) {
+  const month = new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Riyadh' }).slice(0, 7);
+  const today = new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Riyadh' });
+  const n = (f: (l: LeaveRequest) => boolean) => leaves.filter(f).length;
+  const decidedThisMonth = (l: LeaveRequest, st: string) => l.status === st && String((l as any).updatedAt || l.createdAt || '').slice(0, 7) === month;
+  const cards: { k: string; ar: string; en: string; v: number; accent?: string }[] = [
+    { k: 'in_review', ar: 'قيد المسار الآن', en: 'In progress', v: n((l) => LEAVE_PENDING.includes(l.status)), accent: 'text-amber-700' },
+    { k: 'pending_hr', ar: 'بانتظار الموارد البشرية', en: 'Awaiting HR', v: n((l) => l.status === 'pending_hr'), accent: 'text-blue-700' },
+    { k: 'pending_manager', ar: 'عند المدير المباشر', en: 'With the manager', v: n((l) => l.status === 'pending_manager') },
+    { k: 'pending_finance', ar: 'عند الإدارة المالية', en: 'With finance', v: n((l) => l.status === 'pending_finance') },
+    { k: 'pending_executive', ar: 'عند الإدارة العليا', en: 'With top management', v: n((l) => l.status === 'pending_executive') },
+    { k: 'pending_chairman', ar: 'عند رئيس مجلس الإدارة', en: 'With the chairman', v: n((l) => l.status === 'pending_chairman') },
+    { k: 'info_requested', ar: 'مطلوب إيضاح من الموظف', en: 'Awaiting the employee', v: n((l) => l.status === 'info_requested'), accent: 'text-orange-700' },
+    { k: 'approved', ar: 'معتمدة هذا الشهر', en: 'Approved this month', v: n((l) => decidedThisMonth(l, 'approved')), accent: 'text-green-700' },
+    { k: 'rejected', ar: 'مرفوضة هذا الشهر', en: 'Rejected this month', v: n((l) => decidedThisMonth(l, 'rejected')), accent: 'text-red-600' },
+    { k: 'on_leave', ar: 'في إجازة اليوم', en: 'On leave today', v: n((l) => l.status === 'approved' && l.startDate <= today && l.endDate >= today), accent: 'text-violet-700' },
+  ];
+  return (
+    <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
+      {cards.map((c) => (
+        <StatCard key={c.k} label={ar ? c.ar : c.en} value={c.v.toLocaleString('en-US')} accent={c.accent}
+          active={active === c.k} onClick={() => onPick(c.k)} hint={ar ? 'اضغط للعرض' : 'Click to show'} />
+      ))}
+    </div>
+  );
+}
 
 export default function HRLeavesPage() {
   const { notify, confirm, prompt } = useDialog();
@@ -46,6 +75,8 @@ export default function HRLeavesPage() {
   const [note, setNote] = useState('');
   const [busy, setBusy] = useState(false);
   const [deduct, setDeduct] = useState<boolean | null>(null);
+  // Fridays HR leaves out of the leave (not counted, not off the balance); chosen at its own stage.
+  const [offFridays, setOffFridays] = useState<string[]>([]);
   const deductionAsk = useDeductionAsk(ar);
   // Decision paper: the approved doctor's report, or the rejection letter with its reason.
   const [files, setFiles] = useState<PickedFile[]>([]);
@@ -67,7 +98,10 @@ export default function HRLeavesPage() {
     setLoading(false);
   }, []);
   // Status is filtered client-side. Sent to the server, the "N under review" header count was computed on the filtered result and dropped to zero; so fetch all and filter only the table.
-  const leaves = statusFilter ? allLeaves.filter((l) => (statusFilter === 'in_review' ? LEAVE_PENDING.includes(l.status) : l.status === statusFilter)) : allLeaves;
+  const todayKey = new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Riyadh' });
+  const leaves = statusFilter ? allLeaves.filter((l) => (statusFilter === 'in_review' ? LEAVE_PENDING.includes(l.status)
+    : statusFilter === 'on_leave' ? (l.status === 'approved' && l.startDate <= todayKey && l.endDate >= todayKey)
+    : l.status === statusFilter)) : allLeaves;
 
   useEffect(() => { load(); }, [load]);
   useEffect(() => { api.get<{ signatures: Signature[] }>('/api/auth/signatures').then((r) => setMySigs(r.signatures || [])).catch(() => {}); }, []);
@@ -129,7 +163,7 @@ export default function HRLeavesPage() {
 
   useSocket('hr:leave', useCallback(() => load(), [load]));
 
-  const openReview = (l: LeaveRequest) => { setReview(l); setNote(''); setSignWith(''); setFiles([]); setDeduct(null); };
+  const openReview = (l: LeaveRequest) => { setReview(l); setNote(''); setSignWith(''); setFiles([]); setDeduct(null); setOffFridays(((l as any).excludedFridays || []) as string[]); };
   // Keep the open review in step with the reloaded list (return/extension/no-show).
   useEffect(() => {
     setReview((r) => (r ? (allLeaves.find((x) => x._id === r._id) || r) : r));
@@ -152,6 +186,7 @@ export default function HRLeavesPage() {
       await api.patch(`/api/hr/leaves/${review._id}/decision`, {
         decision, note, signatureId: signWith || undefined,
         ...(withChoice ? { deductBalance: deduct } : {}),
+        ...(decision === 'approved' && review.status === 'pending_hr' ? { excludedFridays: offFridays } : {}),
         files: files.map((f) => ({ dataUrl: f.dataUrl, fileName: f.fileName, title: f.title })),
       });
       setReview(null); setNote(''); setSignWith(''); setFiles([]); load();
@@ -164,6 +199,8 @@ export default function HRLeavesPage() {
   const quickDecide = async (l: LeaveRequest, decision: 'approved' | 'rejected' | 'info') => {
     let text = '';
     let choice: boolean | null = null;
+    // At HR's stage a period with Fridays opens the review window, where HR picks the Fridays not to count.
+    if (decision === 'approved' && l.status === 'pending_hr' && fridaysOf(l.startDate, l.endDate).length) { openReview(l); return; }
     // HR's approval states the balance choice even from the row.
     if (decision === 'approved' && needsDeductionChoice(l)) {
       choice = await deductionAsk.ask(l);
@@ -256,6 +293,9 @@ export default function HRLeavesPage() {
         <ExportMenu fileName="leaves" lang={ar ? 'ar' : 'en'} variant="subtle" label={tx.exportExcel} options={exportOptions} />
       </PageHeader>
 
+      {/* The process at a glance: where every open request stands, and this month's outcomes. Each card filters the list. */}
+      <LeaveStats leaves={allLeaves} ar={ar} active={statusFilter} onPick={(k) => setStatusFilter(statusFilter === k ? '' : k)} />
+
 
       <div className="flex flex-wrap items-center gap-3">
         <div className="flex-1 min-w-[240px]"><SearchInput value={search} onChange={setSearch} placeholder={tx.searchPlaceholder} /></div>
@@ -309,7 +349,12 @@ export default function HRLeavesPage() {
                   <td className="px-4 py-3 text-slate-700 whitespace-nowrap tabular-nums" dir="ltr">{hijriCell(l.startDate)}</td>
                   <td className="px-4 py-3 text-slate-700 whitespace-nowrap tabular-nums">{gregCell(l.endDate)}</td>
                   <td className="px-4 py-3 text-slate-700 whitespace-nowrap tabular-nums" dir="ltr">{hijriCell(l.endDate)}</td>
-                  <td className="px-4 py-3 text-slate-700">{l.days}</td>
+                  <td className="px-4 py-3 text-slate-700">
+                    {l.days}
+                    {!!((l as any).excludedFridays || []).length && (
+                      <span className="block text-[10.5px] text-sky-700 whitespace-nowrap">{ar ? `بدون ${(l as any).excludedFridays.length} جمعة` : `${(l as any).excludedFridays.length} Fri not counted`}</span>
+                    )}
+                  </td>
                   <td className="px-4 py-3"><span className={over ? 'text-red-600' : 'text-slate-700'}>{l.balanceSnapshot?.accrued ?? '—'}{over ? ` ${tx.over}` : ''}</span></td>
                   <td className="px-4 py-3">
                     <div className="flex items-center gap-1.5 flex-wrap">
@@ -442,6 +487,7 @@ export default function HRLeavesPage() {
             <LeaveThread leave={review} lang={ar ? 'ar' : 'en'} full={full} />
             {review && canActNow(review) && (
               <div className="border-t border-slate-200 pt-3 space-y-3">
+                {review.status === 'pending_hr' && <FridayPicker startDate={review.startDate} endDate={review.endDate} value={offFridays} onChange={setOffFridays} ar={ar} />}
                 {needsDeductionChoice(review) && <DeductionChoice value={deduct} onChange={setDeduct} leave={review} ar={ar} />}
                 <div>
                   <label className="text-slate-500 text-xs mb-1 block">

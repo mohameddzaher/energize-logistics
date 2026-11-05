@@ -416,11 +416,23 @@ export const expiryBadge = (v?: string | null, lang: Lang = 'en') => {
 
 
 /**
- * Who sees where a request stands in the chain: super admin powers, top management and the chairman (backend utils/leaveChain.seesProcess).
+ * Who sees where a request stands in the chain: super admin powers, top management, the chairman and HR, which follows every request from filing to the end (backend utils/leaveChain.seesProcess).
  * Everyone else, the employee first, sees a request as under review until it is decided or returned with a question.
  */
 export const seesLeaveProcess = (user: any) => !!user
-  && (['super_admin', 'admin', 'it_manager', 'it_specialist'].includes(user.role) || user.isTopManagement === true || user.isChairman === true);
+  && (['super_admin', 'admin', 'it_manager', 'it_specialist', 'hr_manager', 'hr_specialist'].includes(user.role) || user.isTopManagement === true || user.isChairman === true);
+
+/** The Fridays (YYYY-MM-DD) inside a period, both ends included; twin of backend utils/leaveBalance.fridaysIn. */
+export function fridaysOf(startDate?: string, endDate?: string): string[] {
+  if (!startDate || !endDate || endDate < startDate) return [];
+  const out: string[] = [];
+  const end = new Date(`${endDate.slice(0, 10)}T00:00:00Z`).getTime();
+  for (let t = new Date(`${startDate.slice(0, 10)}T00:00:00Z`).getTime(); t <= end; t += 86400000) {
+    const d = new Date(t);
+    if (d.getUTCDay() === 5) out.push(d.toISOString().slice(0, 10));
+  }
+  return out;
+}
 
 export const LEAVE_IN_REVIEW = { bg: 'bg-amber-500/20', text: 'text-amber-700', en: 'Under review', ar: 'قيد المراجعة' };
 const LEAVE_AWAITING_YOU = { bg: 'bg-blue-500/20', text: 'text-blue-700', en: 'Awaiting your decision', ar: 'بانتظار قرارك' };

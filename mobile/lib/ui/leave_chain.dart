@@ -28,13 +28,28 @@ const leaveStatusMeta = <String, (String, String, Color)>{
   'cancelled': ('ملغاة', 'Cancelled', Color(0xFF64748B)),
 };
 
-/// Who sees where a request stands in the chain: super admin powers, top management and the chairman (backend utils/leaveChain.seesProcess).
+/// Who sees where a request stands in the chain: super admin powers, top management, the chairman and HR, which follows every request to the end (backend utils/leaveChain.seesProcess).
 /// Everyone else, the employee first, sees a request as under review until it is decided or returned with a question.
 bool seesLeaveProcess(Map<String, dynamic>? user) =>
     user != null &&
-    (const ['super_admin', 'admin', 'it_manager', 'it_specialist'].contains('${user['role'] ?? ''}') ||
+    (const ['super_admin', 'admin', 'it_manager', 'it_specialist', 'hr_manager', 'hr_specialist'].contains('${user['role'] ?? ''}') ||
         user['isTopManagement'] == true ||
         user['isChairman'] == true);
+
+/// The Fridays (YYYY-MM-DD) inside a period, both ends included; twin of web fridaysOf / backend leaveBalance.fridaysIn.
+List<String> fridaysOf(DateTime? start, DateTime? end) {
+  if (start == null || end == null) return const [];
+  final a = DateTime.utc(start.year, start.month, start.day);
+  final b = DateTime.utc(end.year, end.month, end.day);
+  final out = <String>[];
+  for (var d = a; !d.isAfter(b); d = d.add(const Duration(days: 1))) {
+    if (d.weekday == DateTime.friday) out.add('${d.year}-${d.month.toString().padLeft(2, '0')}-${d.day.toString().padLeft(2, '0')}');
+  }
+  return out;
+}
+
+/// HR's excluded Fridays on a request.
+List<String> leaveExcludedFridays(Map l) => [for (final d in (l['excludedFridays'] as List? ?? const [])) if (d.toString().length >= 10) d.toString().substring(0, 10)];
 
 /// A request's status as this reader may see it; twin of web lib/hr.ts leaveStatusStyle.
 /// [own]: his own request. [full]: seesLeaveProcess, the stage is shown. [canAct]: he decides it now.
@@ -255,6 +270,52 @@ bool leaveDeducts(Map l) {
   if (d is bool) return d;
   final t = l['leaveType'];
   return !(t is Map && t['affectsBalance'] == false);
+}
+
+/// HR's choice at its stage: every Friday in the period is a leave day unless ticked out (then not a leave day, not off the balance). Twin of web components/hr/FridayPicker.
+class LeaveFridayPicker extends StatelessWidget {
+  final List<String> fridays;
+  final int calendarDays;
+  final List<String> value;
+  final ValueChanged<List<String>> onChanged;
+  const LeaveFridayPicker({super.key, required this.fridays, required this.calendarDays, required this.value, required this.onChanged});
+
+  String _dmy(String d) => d.split('-').reversed.join('/');
+
+  @override
+  Widget build(BuildContext context) {
+    final off = value.where(fridays.contains).toList();
+    final total = fridays.length;
+    const sky = Color(0xFF0369A1);
+    return Container(
+      padding: const EdgeInsets.all(10),
+      decoration: BoxDecoration(color: const Color(0xFFF0F9FF), borderRadius: BorderRadius.circular(10), border: Border.all(color: const Color(0xFFBAE6FD))),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Text(tr(total == 1 ? 'في هذه الإجازة يوم جمعة واحد — يُحسب من أيام الإجازة.' : 'في هذه الإجازة $total أيام جمعة — كلها تُحسب من أيام الإجازة.',
+                'This leave has $total Friday${total > 1 ? 's' : ''} — all counted as leave days.'),
+            style: const TextStyle(fontSize: 12.5, fontWeight: FontWeight.w800, color: sky)),
+        const SizedBox(height: 4),
+        Text(tr('إن أردت ألا تُحسب جمعةٌ معيّنة إجازةً (فلا تُخصم من الرصيد) فاخترها:', 'To not count a Friday as leave (not off the balance), pick it:'),
+            style: const TextStyle(fontSize: 11.5, color: sky)),
+        const SizedBox(height: 6),
+        Wrap(spacing: 6, runSpacing: 6, children: [
+          for (final d in fridays)
+            FilterChip(
+              selected: off.contains(d),
+              onSelected: (on) => onChanged(on ? [...off, d] : off.where((x) => x != d).toList()),
+              label: Text('${tr('جمعة', 'Fri')} ${_dmy(d)}${off.contains(d) ? tr(' — لا تُحسب', ' — not counted') : ''}'),
+              labelStyle: TextStyle(fontSize: 11.5, fontWeight: FontWeight.w700, color: off.contains(d) ? Colors.white : sky),
+              selectedColor: sky,
+              checkmarkColor: Colors.white,
+              backgroundColor: Colors.white,
+            ),
+        ]),
+        const SizedBox(height: 6),
+        Text(tr('أيام الإجازة بعد الاختيار: ${calendarDays - off.length} يوم', 'Leave days after this: ${calendarDays - off.length}'),
+            style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w800)),
+      ]),
+    );
+  }
 }
 
 /// Two options, none preselected: HR must press one.

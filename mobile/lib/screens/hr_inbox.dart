@@ -45,9 +45,30 @@ class _HrLeavesScreenState extends State<HrLeavesScreen> {
       : '';
   String _reqName(Map<String, dynamic> l) => l['requester'] is Map ? '${l['requester']['firstName'] ?? ''} ${l['requester']['lastName'] ?? ''}'.trim() : '';
 
+  /// Status keys shared by the chips and the stats strip; filtered here over the full list so the counts never shrink to the filter.
+  bool _matchStatus(Map<String, dynamic> l) {
+    if (_status.isEmpty) return true;
+    final s = '${l['status']}';
+    if (_status == 'in_review') return leaveIsActionable(s);
+    if (_status == 'on_leave') return _onLeaveToday(l);
+    if (_status == 'approved_month' || _status == 'rejected_month') return _decidedThisMonth(l, _status.split('_').first);
+    return s == _status;
+  }
+
+  static String _riyadhToday() {
+    final d = DateTime.now().toUtc().add(const Duration(hours: 3));
+    return '${d.year}-${d.month.toString().padLeft(2, '0')}-${d.day.toString().padLeft(2, '0')}';
+  }
+  static bool _onLeaveToday(Map l) {
+    final t = _riyadhToday();
+    return l['status'] == 'approved' && '${l['startDate']}'.compareTo(t) <= 0 && '${l['endDate']}'.compareTo(t) >= 0;
+  }
+  static bool _decidedThisMonth(Map l, String status) =>
+      l['status'] == status && '${l['updatedAt'] ?? l['createdAt'] ?? ''}'.startsWith(_riyadhToday().substring(0, 7));
+
   List<Map<String, dynamic>> get _shown {
     final q = _q.trim().toLowerCase();
-    final rows = _type.isEmpty ? _rows : _rows.where((l) => l['leaveType'] is Map && '${l['leaveType']['_id']}' == _type).toList();
+    final rows = _rows.where((l) => _matchStatus(l) && (_type.isEmpty || (l['leaveType'] is Map && '${l['leaveType']['_id']}' == _type))).toList();
     if (q.isEmpty) return rows;
     return rows.where((l) => _empName(l).toLowerCase().contains(q) || _reqName(l).toLowerCase().contains(q)
         || '${(l['employee'] as Map?)?['arabicName'] ?? ''}'.contains(q)).toList();
@@ -74,16 +95,8 @@ class _HrLeavesScreenState extends State<HrLeavesScreen> {
 
   Future<void> _export(String scope) async {
     var rows = _shown;
-    final messenger = ScaffoldMessenger.of(context);
-    // Status filter runs on the server, so "All" refetches without a status; otherwise the record comes back truncated.
-    if (scope == 'all') {
-      if (_status.isEmpty) {
-        rows = _rows;
-      } else {
-        try { rows = List<Map<String, dynamic>>.from((await Api.instance.get('/api/hr/leaves'))['leaves'] ?? []); }
-        catch (e) { messenger.showSnackBar(SnackBar(content: Text(e.toString()))); return; }
-      }
-    }
+    // The full list is always loaded (filters run here), so "All" is what is held.
+    if (scope == 'all') rows = _rows;
     if (!mounted) return;
     exportExcel(context, fileName: 'leaves', sheets: [('Leaves', _exportCols, rows)]);
   }
@@ -106,8 +119,8 @@ class _HrLeavesScreenState extends State<HrLeavesScreen> {
   Future<void> _load() async {
     final mine = ++_seq;
     try {
-      final qs = _status.isEmpty ? '' : '?status=$_status';
-      final d = await Api.instance.get('/api/hr/leaves$qs');
+      // Unfiltered: the stats strip counts every request, and the chips filter locally.
+      final d = await Api.instance.get('/api/hr/leaves');
       if (!mounted || mine != _seq) return;
       setState(() { _rows = List<Map<String, dynamic>>.from(d['leaves'] ?? []); _loading = false; _error = null; });
     } catch (e) {
@@ -133,11 +146,21 @@ class _HrLeavesScreenState extends State<HrLeavesScreen> {
         : null;
     final askDeduct = approving && leaveNeedsDeduction(l);
     bool? deduct;
+    // At HR's stage every Friday is a leave day unless HR picks it out (not counted, not off the balance).
+    final hrStage = approving && l['status'] == 'pending_hr';
+    final start = DateTime.tryParse('${l['startDate'] ?? ''}');
+    final end = DateTime.tryParse('${l['endDate'] ?? ''}');
+    final fridays = hrStage ? fridaysOf(start, end) : const <String>[];
+    var offFridays = leaveExcludedFridays(l).where(fridays.contains).toList();
     final ok = await showDialog<bool>(
       context: context,
       builder: (c) => StatefulBuilder(builder: (c, setD) => AlertDialog(
         title: Text(approving ? tr('اعتماد الطلب', 'Approve') : asking ? tr('استفسار / طلب تعديل', 'Ask / request change') : tr('رفض الطلب', 'Reject')),
         content: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
+          if (fridays.isNotEmpty) ...[
+            LeaveFridayPicker(fridays: fridays, calendarDays: countLeaveDays(start, end), value: offFridays, onChanged: (v) => setD(() => offFridays = v)),
+            const SizedBox(height: 10),
+          ],
           if (askDeduct) ...[
             DeductionPicker(value: deduct, days: l['days'], onChanged: (v) => setD(() => deduct = v)),
             const SizedBox(height: 10),
@@ -181,6 +204,7 @@ class _HrLeavesScreenState extends State<HrLeavesScreen> {
         'note': note.text,
         if (approving && sigId != null) 'signatureId': sigId,
         if (askDeduct) 'deductBalance': deduct,
+        if (hrStage) 'excludedFridays': offFridays,
       });
       _load();
     } catch (e) {
@@ -209,13 +233,9 @@ class _HrLeavesScreenState extends State<HrLeavesScreen> {
     DateTime? start = DateTime.tryParse((l['startDate'] ?? '').toString());
     DateTime? end = DateTime.tryParse((l['endDate'] ?? '').toString());
     final reason = TextEditingController(text: (l['reason'] ?? '').toString());
-    final origType = typeId;
-    // A changed type brings its own Friday rule; otherwise the request keeps the one it was counted with (older requests count calendar days).
-    bool fridays() {
-      if (typeId != origType) return types.where((t) => t['_id'] == typeId).firstOrNull?['countsFridays'] == true;
-      return l['countsFridays'] != false;
-    }
-    int days() => countLeaveDays(start, end, countFridays: fridays());
+    // Calendar days minus HR's excluded Fridays still inside the new period (the server counts the same).
+    final excluded = leaveExcludedFridays(l);
+    int days() => countLeaveDays(start, end) - fridaysOf(start, end).where(excluded.contains).length;
     String fmt(DateTime? d) => d == null ? '—' : '${d.day}/${d.month}/${d.year}';
 
     final ok = await showModalBottomSheet<bool>(
@@ -343,6 +363,8 @@ class _HrLeavesScreenState extends State<HrLeavesScreen> {
           : _error != null
               ? ErrorRetry(message: _error!, onRetry: () { setState(() => _loading = true); _load(); })
               : Column(children: [
+                  // The process at a glance, like the web: each card filters the list.
+                  _LeaveStatsStrip(rows: _rows, active: _status, onPick: (k) => setState(() => _status = _status == k ? '' : k)),
                   Padding(
                     padding: const EdgeInsets.fromLTRB(14, 10, 14, 0),
                     child: SearchField(
@@ -376,7 +398,7 @@ class _HrLeavesScreenState extends State<HrLeavesScreen> {
                             padding: const EdgeInsets.only(left: 6),
                             child: FilterChip(
                               selected: selected,
-                              onSelected: (_) { setState(() { _status = selected ? '' : e.key; _loading = true; }); _load(); },
+                              onSelected: (_) => setState(() => _status = selected ? '' : e.key),
                               label: Text(tr(e.value.$1, e.value.$2)),
                               labelStyle: TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: selected ? Colors.white : e.value.$3),
                               selectedColor: e.value.$3,
@@ -442,6 +464,9 @@ class _HrLeavesScreenState extends State<HrLeavesScreen> {
                                       const SizedBox(height: 4),
                                       Text('$type · ${_d(l['startDate'])} ← ${_d(l['endDate'])} · ${l['days'] ?? '—'} ${tr('يوم', 'days')}',
                                           style: const TextStyle(fontSize: 12.5, color: T.inkSoft)),
+                                      if (leaveExcludedFridays(l).isNotEmpty)
+                                        Text(tr('بدون ${leaveExcludedFridays(l).length} جمعة', '${leaveExcludedFridays(l).length} Fri not counted'),
+                                            style: const TextStyle(fontSize: 11, color: Color(0xFF0369A1), fontWeight: FontWeight.w700)),
                                       const SizedBox(height: 6),
                                       LeaveChainBar(leave: l, full: _full),
                                       const SizedBox(height: 4),
@@ -492,6 +517,61 @@ class _HrLeavesScreenState extends State<HrLeavesScreen> {
                     ),
                   ),
                 ]),
+    );
+  }
+}
+
+/// Counts over every loaded request: open ones by stage, returned ones, this month's outcomes, and who is on leave today. Each card filters the list.
+class _LeaveStatsStrip extends StatelessWidget {
+  final List<Map<String, dynamic>> rows;
+  final String active;
+  final ValueChanged<String> onPick;
+  const _LeaveStatsStrip({required this.rows, required this.active, required this.onPick});
+
+  @override
+  Widget build(BuildContext context) {
+    int n(bool Function(Map<String, dynamic>) f) => rows.where(f).length;
+    final cards = <(String, String, String, int, Color)>[
+      ('in_review', 'قيد المسار الآن', 'In progress', n((l) => leaveIsActionable('${l['status']}')), const Color(0xFFB45309)),
+      ('pending_hr', 'بانتظار الموارد البشرية', 'Awaiting HR', n((l) => l['status'] == 'pending_hr'), T.info),
+      ('pending_manager', 'عند المدير المباشر', 'With the manager', n((l) => l['status'] == 'pending_manager'), T.inkSoft),
+      ('pending_finance', 'عند الإدارة المالية', 'With finance', n((l) => l['status'] == 'pending_finance'), T.inkSoft),
+      ('pending_executive', 'عند الإدارة العليا', 'With top management', n((l) => l['status'] == 'pending_executive'), T.inkSoft),
+      ('pending_chairman', 'عند رئيس مجلس الإدارة', 'With the chairman', n((l) => l['status'] == 'pending_chairman'), T.inkSoft),
+      ('info_requested', 'مطلوب إيضاح من الموظف', 'Awaiting the employee', n((l) => l['status'] == 'info_requested'), const Color(0xFFEA580C)),
+      ('approved_month', 'معتمدة هذا الشهر', 'Approved this month', n((l) => _HrLeavesScreenState._decidedThisMonth(l, 'approved')), T.success),
+      ('rejected_month', 'مرفوضة هذا الشهر', 'Rejected this month', n((l) => _HrLeavesScreenState._decidedThisMonth(l, 'rejected')), T.danger),
+      ('on_leave', 'في إجازة اليوم', 'On leave today', n((l) => _HrLeavesScreenState._onLeaveToday(l)), T.violet),
+    ];
+    return SizedBox(
+      height: 74,
+      child: ListView(
+        scrollDirection: Axis.horizontal,
+        padding: const EdgeInsets.fromLTRB(14, 10, 14, 0),
+        children: [
+          for (final c in cards)
+            Padding(
+              padding: const EdgeInsetsDirectional.only(end: 8),
+              child: InkWell(
+                borderRadius: BorderRadius.circular(12),
+                onTap: () => onPick(c.$1),
+                child: Container(
+                  width: 128,
+                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                  decoration: BoxDecoration(
+                    color: Colors.white,
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(color: active == c.$1 ? T.orange : T.line, width: active == c.$1 ? 2 : 1),
+                  ),
+                  child: Column(crossAxisAlignment: CrossAxisAlignment.start, mainAxisAlignment: MainAxisAlignment.center, children: [
+                    Text(tr(c.$2, c.$3), maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 10.5, color: T.inkFaint)),
+                    Text('${c.$4}', style: TextStyle(fontSize: 20, fontWeight: FontWeight.w900, color: c.$5)),
+                  ]),
+                ),
+              ),
+            ),
+        ],
+      ),
     );
   }
 }

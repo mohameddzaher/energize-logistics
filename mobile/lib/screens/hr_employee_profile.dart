@@ -51,6 +51,8 @@ class _HrEmployeeProfileScreenState extends State<HrEmployeeProfileScreen> {
     // A master edit, employee file edit or driver card edit from vehicles arrives here immediately.
     Live.instance.on('hr:master', _onLive);
     Live.instance.on('hr:employee', _onLive);
+    // A leave decision (days, excluded Fridays, deduction) changes the leaves list and the balance at once.
+    Live.instance.on('hr:leave', _onLive);
   }
 
   void _onLive() => _load();
@@ -59,6 +61,7 @@ class _HrEmployeeProfileScreenState extends State<HrEmployeeProfileScreen> {
   void dispose() {
     Live.instance.off('hr:master', _onLive);
     Live.instance.off('hr:employee', _onLive);
+    Live.instance.off('hr:leave', _onLive);
     super.dispose();
   }
 
@@ -848,6 +851,9 @@ class _HrEmployeeProfileScreenState extends State<HrEmployeeProfileScreen> {
                           const SizedBox(height: 4),
                           Text('${_date(l['startDate'])} ← ${_date(l['endDate'])} · ${l['days'] ?? '—'} ${tr('يوم', 'days')}',
                               style: const TextStyle(fontSize: 12.5, color: T.inkSoft)),
+                          if (leaveExcludedFridays(l).isNotEmpty)
+                            Text(tr('بدون ${leaveExcludedFridays(l).length} جمعة', '${leaveExcludedFridays(l).length} Fri not counted'),
+                                style: const TextStyle(fontSize: 11, color: Color(0xFF0369A1), fontWeight: FontWeight.w700)),
                           if (l['status'] == 'approved') ...[
                             const SizedBox(height: 6),
                             Row(children: [

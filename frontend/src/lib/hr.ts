@@ -131,7 +131,10 @@ export const LEAVE_STAGES: { key: LeaveStage; ar: string; en: string; decision: 
 export const LEAVE_PENDING: string[] = LEAVE_STAGES.map((s) => `pending_${s.key}`);
 export const LEAVE_OPEN: string[] = [...LEAVE_PENDING, 'info_requested'];
 /** Editable by its owner until any stage has acted, as the server's leaveIsUntouched. */
-export const leaveUntouched = (l: any) => LEAVE_PENDING.includes(l?.status) && LEAVE_STAGES.every((s) => !l?.[s.decision]?.at);
+// A department manager's own approval at the manager stage does not lock his request (backend leaveIsUntouched).
+const idOf = (x: any) => String(x?._id || x || '');
+export const leaveUntouched = (l: any) => LEAVE_PENDING.includes(l?.status) && LEAVE_STAGES.every((s) => !l?.[s.decision]?.at
+  || (s.key === 'manager' && idOf(l?.managerDecision?.by) === idOf(l?.requester)));
 
 export interface LeaveRequest {
   _id: string;

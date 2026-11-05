@@ -1533,7 +1533,9 @@ exports.createMyLeave = async (req, res) => {
     const clash = await findLeaveClash(employeeId, startDate, endDate);
     if (clash) return res.status(400).json({ message: clashMessage(clash), code: 'LEAVE_OVERLAP' });
     const { balance } = await computeEmployeeBalance(employeeId);
-    const hasManager = !!req.user.manager;
+    // A department manager is his own direct manager (utils/leaveChain.selfManaged): no manager stage, his approval recorded at once.
+    const ownManager = chain.selfManaged(req.user);
+    const hasManager = !!req.user.manager && !ownManager;
 
     // The requester's signature: the one picked, else the default. Saved later in self-service, it is still read on the sheet (services/leaveSheet).
     const employeeSignature = await defaultSignatureOf(req.user._id, req.body.signatureId);
@@ -1547,7 +1549,8 @@ exports.createMyLeave = async (req, res) => {
       attachments,
       employee: employeeId,
       requester: req.user._id,
-      manager: req.user.manager || undefined,
+      manager: ownManager ? undefined : (req.user.manager || undefined),
+      ...(ownManager ? { managerDecision: chain.selfManagerDecision(req.user, employeeSignature) } : {}),
       leaveType,
       leaveTypeCode: lt.code,
       startDate, endDate, days, reason, countsFridays,
@@ -2135,8 +2138,10 @@ exports.cancelMyLeave = async (req, res) => {
  * The lock is measured by decision, not status alone: a request awaiting HR may already have manager approval.
  */
 // Measure by decision, not stage: someone with no manager starts after the manager stage, so requiring awaiting-manager locked out requests nobody had touched.
+// A department manager's own approval at the manager stage (selfManaged) is not someone else's action, so it does not lock his request.
+const ownApproval = (l, f) => f === 'managerDecision' && l[f]?.by && String(l[f].by._id || l[f].by) === String(l.requester?._id || l.requester);
 const leaveIsUntouched = (l) => chain.OPEN_STATUSES.includes(l.status) && l.status !== 'info_requested'
-  && Object.values(chain.DECISION_FIELD).every((f) => !l[f]?.at);
+  && Object.values(chain.DECISION_FIELD).every((f) => !l[f]?.at || ownApproval(l, f));
 
 exports.updateMyLeave = async (req, res) => {
   try {

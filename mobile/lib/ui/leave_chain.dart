@@ -75,8 +75,15 @@ String leaveWaitNote(Map<String, dynamic> l) {
 bool leaveIsActionable(Object? status) => leaveStages.any((s) => 'pending_${s.key}' == (status ?? '').toString());
 
 /// Editable by its owner until any stage has acted, as the server's leaveIsUntouched.
-bool leaveIsUntouched(Map<String, dynamic> l) =>
-    leaveIsActionable(l['status']) && leaveStages.every((s) => !(l[s.decision] is Map && (l[s.decision] as Map)['at'] != null));
+/// A department manager's own approval at the manager stage does not lock his request (backend leaveIsUntouched).
+bool leaveIsUntouched(Map<String, dynamic> l) {
+  String idOf(dynamic x) => '${x is Map ? x['_id'] : x ?? ''}';
+  return leaveIsActionable(l['status']) && leaveStages.every((s) {
+    final d = l[s.decision];
+    if (d is! Map || d['at'] == null) return true;
+    return s.key == 'manager' && idOf(d['by']) == idOf(l['requester']);
+  });
+}
 
 /// Is the request still open? Used for the pending counters and the cancel button.
 bool leaveIsOpen(Object? status) =>

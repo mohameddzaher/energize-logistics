@@ -4,7 +4,7 @@
  * A request already past a stage that was added later (held at HR without a finance decision) carries on from where it is; NEXT_OF never sends it back.
  * A clarification request is not a rejection: the request returns to the employee to reply, amend or attach a receipt, and when they reply the chain restarts from the beginning because the approved request is no longer the same request.
  */
-const { rolesOfSection } = require('../config/roles');
+const { rolesOfSection, isManager } = require('../config/roles');
 
 const STAGES = ['manager', 'finance', 'hr', 'executive', 'chairman'];
 const PENDING_OF = {
@@ -40,6 +40,15 @@ const isChairman = (user) => user?.isChairman === true;
 
 // Who can push a stalled request through. Not `FULL_ACCESS_ROLES`: IT owns the whole system to fix it, not to sign anyone's leave.
 const OVERRIDE_ROLES = ['super_admin', 'admin'];
+
+/**
+ * A department manager is his own direct manager: his request starts after the manager stage, with his own approval recorded there (and signed on the sheet). The CFO sits above the accounting department and counts the same.
+ * Read from the role, not User.manager, so a manager whose account points at someone else (an admin who set up the user) is not sent to that person.
+ */
+const selfManaged = (user) => !!user && (isManager(user.role) || user.role === 'cfo');
+const SELF_MANAGER_NOTE = 'مدير القسم — هو مديره المباشر | Department manager: his own direct manager';
+/** The manager-stage stamp for a self-managed requester. */
+const selfManagerDecision = (user, signature = '') => ({ by: user._id || user, at: new Date(), decision: 'approved', note: SELF_MANAGER_NOTE, signature });
 
 /** Can this user decide this request at this stage? */
 function canActAt(stage, user, leave) {
@@ -109,11 +118,16 @@ function askEmployee(leave) {
 /**
  * A reply restarts the chain from the start.
  * Previous approvals (and HR's deduction choice) are cleared: the request changed, so earlier approval was for a different one.
- * When the replier is the request's manager himself (he filed it for his team), his reply is his approval: it goes straight to the next stage.
+ * When the replier is the request's manager himself (he filed it for his team), or a department manager replying on his own request, his reply is his approval: it goes straight to the next stage.
  */
 function restart(leave, replier) {
   for (const f of Object.values(DECISION_FIELD)) leave[f] = undefined;
   leave.deductsBalance = null;
+  if (replier && selfManaged(replier) && String(replier._id || replier) === String(leave.requester)) {
+    leave.managerDecision = selfManagerDecision(replier, leave.employeeSignature || '');
+    Object.assign(leave, startOf(false));
+    return;
+  }
   const hasManager = !!leave.manager;
   if (hasManager && replier && String(replier._id || replier) === String(leave.manager)) {
     leave.managerDecision = { by: replier._id || replier, at: new Date(), decision: 'approved', note: 'ردّ المدير على الاستفسار — موافقته قائمة' };
@@ -125,6 +139,6 @@ function restart(leave, replier) {
 
 module.exports = {
   STAGES, PENDING_OF, OPEN_STATUSES, NEXT_OF, AFTER_MANAGER, DECISION_FIELD, STAGE_AR,
-  HR_ROLES, FINANCE_ROLES, EXEC_ROLES, OVERRIDE_ROLES, isTopManagement, isChairman,
+  HR_ROLES, FINANCE_ROLES, EXEC_ROLES, OVERRIDE_ROLES, isTopManagement, isChairman, selfManaged, selfManagerDecision,
   canActAt, stagesFor, inboxFilter, startOf, advance, askEmployee, restart,
 };

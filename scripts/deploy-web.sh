@@ -23,10 +23,9 @@ NEXT_PUBLIC_API_URL="${NEXT_PUBLIC_API_URL:-https://api.energize-logistics.com}"
 ok "بُنيت الواجهة"
 
 say "Upload"
-# Only what is needed to run: build output, public, package manifests and configs. `node_modules` is not uploaded; it is installed there, which is faster and safer than copying tens of thousands of files. Old `static` files are kept: `--delete` removed them at upload while the old server still ran and served pages that request them, so a page opened during the deploy showed "Loading chunk ... failed". Names are content hashes, so old files never collide with new: new ones are uploaded over them with no deletion, and files older than a week are removed after the restart.
-rsync -az --delete -e "ssh -i $VPS_KEY -o ConnectTimeout=20" \
-  --exclude 'cache' --exclude 'static' \
-  "$HERE/frontend/.next/" "$VPS_HOST:$REMOTE/.next/"
+# Order matters. While the old web server runs, it renders from whatever build is on disk but serves only the static files it knew at start, so a page opened between replacing the build and the restart asked for new chunks, got 404 and showed «حدث خطأ غير متوقع» (2026-11-05, during one of many deploys).
+# So: new static files, public and manifests first (add-only, harmless to the old server); install packages while the old build is still in place; then swap the build and restart at once, leaving a window of seconds instead of the minute npm took.
+# Old `static` files are kept: names are content hashes, so old tabs keep loading theirs; files older than a week are removed after the restart.
 rsync -az -e "ssh -i $VPS_KEY -o ConnectTimeout=20" \
   "$HERE/frontend/.next/static/" "$VPS_HOST:$REMOTE/.next/static/"
 rsync -az --delete -e "ssh -i $VPS_KEY -o ConnectTimeout=20" \
@@ -34,9 +33,8 @@ rsync -az --delete -e "ssh -i $VPS_KEY -o ConnectTimeout=20" \
 rsync -az -e "ssh -i $VPS_KEY -o ConnectTimeout=20" \
   "$HERE/frontend/package.json" "$HERE/frontend/package-lock.json" "$HERE/frontend/next.config.ts" \
   "$VPS_HOST:$REMOTE/"
-ok "رُفعت إلى $REMOTE"
 
-say "Install & run"
+say "Install"
 "${SSH[@]}" bash -s <<REMOTE_SCRIPT
 set -euo pipefail
 cd "$REMOTE"
@@ -46,6 +44,16 @@ npm ci --omit=dev --no-audit --no-fund >/dev/null 2>&1 || npm install --omit=dev
 cat > .env.production <<ENVFILE
 PORT=$PORT
 ENVFILE
+REMOTE_SCRIPT
+
+say "Swap & run"
+rsync -az --delete -e "ssh -i $VPS_KEY -o ConnectTimeout=20" \
+  --exclude 'cache' --exclude 'static' \
+  "$HERE/frontend/.next/" "$VPS_HOST:$REMOTE/.next/"
+ok "رُفعت إلى $REMOTE"
+"${SSH[@]}" bash -s <<REMOTE_SCRIPT
+set -euo pipefail
+cd "$REMOTE"
 if pm2 describe energize-web >/dev/null 2>&1; then
   pm2 restart energize-web --update-env >/dev/null
 else

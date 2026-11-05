@@ -4,6 +4,7 @@
  * Three accounts, each with in/out/balance: cash (in from card, workshop or bank), card (in from bank), workshop (in from maintenance). Out goes to a bearer (rep/employee looked up by ID number, or the company with a note). Card and workshop can also pay out to cash, written as a transfer in both accounts.
  * Heavy transport adds an optional LS2 truck per entry (`cfg.vehicles`). Rules come from the server (controllers/custodyLedgerController) via `rules`; the screen only renders them. The API path is written in full in each page so the page-API map (scripts/genPageApis) does not mix the two.
  */
+import { readUploadFiles } from '@/lib/uploadFiles';
 import { useState, useEffect, useCallback, useMemo } from 'react';
 import { useAuth } from '@/context/AuthContext';
 import { useLanguage } from '@/context/LanguageContext';
@@ -358,10 +359,6 @@ function Sel({ value, onChange, label, list }: { value: string; onChange: (v: st
   );
 }
 
-/** The file is sent as base64 text in the same request, like other system attachments. */
-const readAsDataUrl = (file: File) => new Promise<string>((resolve, reject) => {
-  const r = new FileReader(); r.onload = () => resolve(String(r.result)); r.onerror = () => reject(new Error('read')); r.readAsDataURL(file);
-});
 
 /**
  * Entry form: in (from where) or out (to whom), with minimal fields.
@@ -417,7 +414,8 @@ function EntryForm({ cfg, carOptions, account, direction, rules, today, ar, onCl
     if (!isIn && target === 'company' && !detail.trim()) { notify(t('اكتب البيان: ما الصرف؟', 'Enter what it was spent on'), 'error'); return; }
     setSaving(true);
     try {
-      const sent = await Promise.all(files.map(async (f) => ({ fileName: f.name, title: f.name.replace(/\.[^.]+$/, ''), dataUrl: await readAsDataUrl(f) })));
+      // Large photos are shrunk first so several receipts fit one request (lib/uploadFiles).
+      const sent = (await readUploadFiles(files, ar)).map((f) => ({ fileName: f.fileName, title: f.fileName.replace(/\.[^.]+$/, ''), dataUrl: f.dataUrl }));
       if (editing) {
         await api.put(`${API}/${entry!._id}`, {
           amount: Number(amount), date, detail: detail.trim(), files: sent, removeAttachments: removed,

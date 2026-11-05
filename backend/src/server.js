@@ -126,7 +126,8 @@ app.use(cors({
 
 // Body parsing. Limit is generous because employee documents are uploaded as
 // base64 data URLs in JSON (no multer dependency) — see utils/fileStore.js.
-app.use(express.json({ limit: '25mb' }));
+// Several attachments travel as base64 in one request (custody receipts, a multi-page bond), so the cap covers a few phone photos; nginx matches it (client_max_body_size).
+app.use(express.json({ limit: '60mb' }));
 // urlencoded is intentionally removed: this server accepts only JSON. A form parser would let a form on any other site send a simple request that reaches the handler without preflight, half of a request-forgery hole; csrfGuard below closes the other half.
 app.use(cookieParser());
 

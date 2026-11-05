@@ -1,5 +1,6 @@
 'use client';
 // Shipment orders: the trial section's main list. Everything for running the day happens here without opening each order: search by waybill or customer, change status inline, download the waybill PDF per row.
+import { readUploadFiles, type UploadFile } from '@/lib/uploadFiles';
 import { useState, useEffect, useCallback, useRef, Suspense, useMemo } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { useAuth } from '@/context/AuthContext';
@@ -47,9 +48,9 @@ function downloadBlob(blob: Blob, fileName: string) {
   setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
 
+/** Files on a status entry: the list, or the single file older entries carry. */
+const logFiles = (l: any): { fileUrl: string; fileName?: string }[] => (Array.isArray(l?.files) && l.files.length ? l.files : l?.fileUrl ? [{ fileUrl: l.fileUrl, fileName: l.fileName }] : []);
 const STATUS_NEEDS_FILE = new Set(['bond_sent']);
-type PickedFile = { dataUrl: string; fileName: string; size: number };
-const MAX_UPLOAD = 20 * 1024 * 1024;
 
 const fmtDate = (v?: string | null) => {
   if (!v) return '';
@@ -163,14 +164,15 @@ function ShipmentOrdersInner() {
     q.delete('open');
     router.replace(`${window.location.pathname}${q.toString() ? `?${q}` : ''}`, { scroll: false });
   }, [openId, router]);
-  const [fuFile, setFuFile] = useState<PickedFile | null>(null);
+  // The bond can be several pages or photos, so the transition takes several files.
+  const [fuFiles, setFuFiles] = useState<UploadFile[]>([]);
 
-  const openFollowUp = (o: any) => { setFuFile(null); setFu({ order: o, status: o.status, note: '' }); };
+  const openFollowUp = (o: any) => { setFuFiles([]); setFu({ order: o, status: o.status, note: '' }); };
 
   // A status meaning the bond was sent requires the bond file. The condition is on the server (REQUIRE_FILE in shipmentOrdersController); here the button stays disabled until attached and says why, instead of failing after a click.
   const submitFollowUp = async () => {
     if (!fu) return;
-    if (STATUS_NEEDS_FILE.has(fu.status) && fu.status !== fu.order.status && !fuFile) {
+    if (STATUS_NEEDS_FILE.has(fu.status) && fu.status !== fu.order.status && !fuFiles.length) {
       notify(ar ? 'أرفق صورة السند أو ملفه أولًا.' : 'Attach the bond file first.', 'error');
       return;
     }
@@ -179,8 +181,8 @@ function ShipmentOrdersInner() {
       notify(ar ? 'اختر سببَ الإلغاء.' : 'Choose the cancellation reason.', 'error');
       return;
     }
-    await changeStatus(fu.order, fu.status, fu.note.trim(), fuFile, String(fu.reason || '').trim());
-    setFuFile(null);
+    await changeStatus(fu.order, fu.status, fu.note.trim(), fuFiles, String(fu.reason || '').trim());
+    setFuFiles([]);
     setFu(null);
   };
   const [downloadingId, setDownloadingId] = useState<string | null>(null);
@@ -301,11 +303,11 @@ function ShipmentOrdersInner() {
   }, []);
 
   // The inline change: nobody needs to open an order just to mark it arrived.
-  const changeStatus = async (o: ShipmentOrder, status: string, note = '', file?: PickedFile | null, cancelReason = '') => {
+  const changeStatus = async (o: ShipmentOrder, status: string, note = '', files: UploadFile[] = [], cancelReason = '') => {
     setBusyId(o._id);
     try {
       await api.patch(`/api/shipment-orders/orders/${o._id}/status`, {
-        status, note, cancelReason, ...(file ? { dataUrl: file.dataUrl, fileName: file.fileName } : {}),
+        status, note, cancelReason, ...(files.length ? { files: files.map((f) => ({ dataUrl: f.dataUrl, fileName: f.fileName })) } : {}),
       });
       load();
     } catch (e: any) { notify(e.message, 'error'); }
@@ -1048,12 +1050,12 @@ function ShipmentOrdersInner() {
                             <span className="text-slate-500">{fmtDT(l.at, lang as Lang)}</span>
                             {l.byName ? <><span className="text-slate-400">·</span><span className="text-slate-500">{l.byName}</span></> : null}
                             {l.note ? <span className="text-slate-700">— {l.note}</span> : null}
-                            {(l as any).fileUrl ? (
-                              <a href={(l as any).fileUrl} target="_blank" rel="noreferrer"
+                            {logFiles(l).map((f, j) => (
+                              <a key={j} href={f.fileUrl} target="_blank" rel="noreferrer"
                                 className="inline-flex items-center gap-1 font-semibold text-[#f37121] hover:underline">
-                                <FileDown className="w-3 h-3" />{(l as any).fileName || (ar ? 'المرفق' : 'Attachment')}
+                                <FileDown className="w-3 h-3" />{f.fileName || (ar ? 'المرفق' : 'Attachment')}
                               </a>
-                            ) : null}
+                            ))}
                           </div>
                         ))}
                       </div>
@@ -1138,24 +1140,29 @@ function ShipmentOrdersInner() {
                     {ar ? 'صورة السند أو ملفه' : 'Bond file'}
                     <span className="text-red-500 ms-1">*</span>
                   </label>
-                  <input type="file" accept="image/*,application/pdf,.doc,.docx,.xls,.xlsx"
+                  <input type="file" multiple accept="image/*,application/pdf,.doc,.docx,.xls,.xlsx"
                     onChange={async (e) => {
-                      const f = e.target.files?.[0];
-                      if (!f) { setFuFile(null); return; }
-                      if (f.size > MAX_UPLOAD) { notify(ar ? 'الملف أكبر من 20 ميجابايت.' : 'File larger than 20MB.', 'error'); e.target.value = ''; return; }
-                      const dataUrl: string = await new Promise((resolve, reject) => {
-                        const r = new FileReader();
-                        r.onload = () => resolve(String(r.result || ''));
-                        r.onerror = () => reject(new Error('read failed'));
-                        r.readAsDataURL(f);
-                      });
-                      setFuFile({ dataUrl, fileName: f.name, size: f.size });
+                      const picked = Array.from(e.target.files || []);
+                      e.target.value = '';
+                      if (!picked.length) return;
+                      try {
+                        const read = await readUploadFiles(picked, ar);
+                        setFuFiles((p) => [...p, ...read].slice(0, 10));
+                      } catch (err: any) { notify(err?.message || 'Failed', 'error'); }
                     }}
                     className="block w-full text-xs text-slate-600 file:me-3 file:py-2 file:px-3 file:rounded-lg file:border-0 file:text-xs file:font-semibold file:bg-slate-100 file:text-slate-700 hover:file:bg-slate-200" />
-                  <p className="text-[11px] text-slate-500 mt-1">
-                    {fuFile ? `${fuFile.fileName} · ${Math.round(fuFile.size / 1024)}KB`
-                      : (ar ? 'لا تُحفَظ الحالة بلا إرفاق السند.' : 'The status is not saved without the bond file.')}
-                  </p>
+                  {fuFiles.length > 0 ? (
+                    <ul className="mt-1.5 space-y-1">
+                      {fuFiles.map((f, i) => (
+                        <li key={i} className="flex items-center justify-between gap-2 rounded-md bg-slate-50 px-2 py-1 text-[11.5px] text-slate-700">
+                          <span className="truncate">{f.fileName} · {Math.round(f.size / 1024)}KB</span>
+                          <button type="button" onClick={() => setFuFiles((p) => p.filter((_, j) => j !== i))} className="shrink-0 text-red-600 hover:underline">{ar ? 'إزالة' : 'Remove'}</button>
+                        </li>
+                      ))}
+                    </ul>
+                  ) : (
+                    <p className="text-[11px] text-slate-500 mt-1">{ar ? 'لا تُحفَظ الحالة بلا إرفاق السند — يمكن رفع أكثر من ملف.' : 'The status is not saved without the bond file — several files are allowed.'}</p>
+                  )}
                 </div>
               )}
 
@@ -1177,12 +1184,16 @@ function ShipmentOrdersInner() {
                         </div>
                         {h.note ? <p className="text-sm text-slate-800 mt-1 whitespace-pre-wrap break-words">{h.note}</p> : null}
                         {/* The attachment is read from where it was attached, not searched for elsewhere. */}
-                        {h.fileUrl ? (
-                          <a href={h.fileUrl} target="_blank" rel="noreferrer"
-                            className="inline-flex items-center gap-1 mt-1 text-[11.5px] font-semibold text-[#f37121] hover:underline">
-                            <FileDown className="w-3 h-3" />{h.fileName || (ar ? 'المرفق' : 'Attachment')}
-                          </a>
-                        ) : null}
+                        {logFiles(h).length > 0 && (
+                          <div className="mt-1 flex flex-wrap gap-x-3 gap-y-1">
+                            {logFiles(h).map((f, j) => (
+                              <a key={j} href={f.fileUrl} target="_blank" rel="noreferrer"
+                                className="inline-flex items-center gap-1 text-[11.5px] font-semibold text-[#f37121] hover:underline">
+                                <FileDown className="w-3 h-3" />{f.fileName || (ar ? 'المرفق' : 'Attachment')}
+                              </a>
+                            ))}
+                          </div>
+                        )}
                         {h.byName ? <p className="text-xs text-slate-500 mt-0.5">{h.byName}</p> : null}
                       </li>
                     ))}

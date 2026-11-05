@@ -10,6 +10,13 @@ import '../ui/file_upload.dart';
 import '../ui/lookup_field.dart';
 import '../ui/theme.dart';
 
+/// Files on a status entry: the list, or the single file older entries carry.
+List<Map<String, dynamic>> soLogFiles(Map h) {
+  final list = h['files'];
+  if (list is List && list.isNotEmpty) return [for (final f in list) Map<String, dynamic>.from(f as Map)];
+  return '${h['fileUrl'] ?? ''}'.isNotEmpty ? [{'fileUrl': h['fileUrl'], 'fileName': h['fileName']}] : const [];
+}
+
 /// Shared by the shipment orders screens: status vocabulary, the write gate, the server waybill and the follow-up dialog. Mirrors lib/shipmentOrders.ts on web.
 
 /// Same roles as routes/shipmentOrders.js, or an edit grant from the permissions matrix.
@@ -154,12 +161,13 @@ class SoStatusLog extends StatelessWidget {
               Text(soFmtDT(h['at']), style: const TextStyle(fontSize: 12, color: T.inkSoft)),
             ]),
             if ('${h['note'] ?? ''}'.isNotEmpty) Padding(padding: const EdgeInsets.only(top: 4), child: Text('${h['note']}', style: const TextStyle(fontSize: 14.5, height: 1.35))),
-            if ('${h['fileUrl'] ?? ''}'.isNotEmpty)
+            // Every file of the entry; older entries carry one in fileUrl.
+            for (final f in soLogFiles(h))
               InkWell(
-                onTap: () => soOpenFile('${h['fileUrl']}'),
+                onTap: () => soOpenFile('${f['fileUrl']}'),
                 child: Padding(padding: const EdgeInsets.only(top: 3), child: Row(children: [
                   const Icon(Icons.attach_file, size: 13, color: T.orange),
-                  Flexible(child: Text('${h['fileName'] ?? tr('المرفق', 'Attachment')}', style: const TextStyle(fontSize: 11.5, color: T.orange, fontWeight: FontWeight.w700))),
+                  Flexible(child: Text('${f['fileName'] ?? tr('المرفق', 'Attachment')}', style: const TextStyle(fontSize: 11.5, color: T.orange, fontWeight: FontWeight.w700))),
                 ])),
               ),
             if ('${h['byName'] ?? ''}'.isNotEmpty) Padding(padding: const EdgeInsets.only(top: 2), child: Text('${h['byName']}', style: const TextStyle(fontSize: 12.5, color: T.inkSoft))),
@@ -192,7 +200,8 @@ class _FollowUpSheetState extends State<_FollowUpSheet> {
   late String _status = '${widget.order['status'] ?? ''}';
   final _note = TextEditingController();
   final _reason = TextEditingController();
-  PickedFile? _file;
+  // The bond can be several pages or photos.
+  final List<PickedFile> _files = [];
   bool _busy = false;
 
   @override
@@ -203,7 +212,7 @@ class _FollowUpSheetState extends State<_FollowUpSheet> {
   Future<void> _save() async {
     final o = widget.order;
     final prev = '${o['status'] ?? ''}';
-    if (_needsFile.contains(_status) && _status != prev && _file == null) {
+    if (_needsFile.contains(_status) && _status != prev && _files.isEmpty) {
       return _say(tr('أرفق صورة السند أو ملفه أولًا.', 'Attach the bond file first.'));
     }
     final reason = _reason.text.trim();
@@ -216,7 +225,7 @@ class _FollowUpSheetState extends State<_FollowUpSheet> {
         'status': _status,
         'note': _note.text.trim(),
         'cancelReason': reason,
-        if (_file != null) ...{'dataUrl': _file!.dataUrl, 'fileName': _file!.fileName},
+        if (_files.isNotEmpty) 'files': [for (final f in _files) {'dataUrl': f.dataUrl, 'fileName': f.fileName}],
       });
       if (mounted) Navigator.pop(context, true);
     } catch (e) {
@@ -270,15 +279,23 @@ class _FollowUpSheetState extends State<_FollowUpSheet> {
           const SizedBox(height: 12),
           OutlinedButton.icon(
             icon: const Icon(Icons.attach_file),
-            label: Text(_file == null ? '${tr('صورة السند أو ملفه', 'Bond file')} *' : '${_file!.fileName} · ${(_file!.sizeBytes / 1024).round()}KB'),
+            label: Text(_files.isEmpty ? '${tr('صورة السند أو ملفه', 'Bond file')} *' : tr('إضافة ملف آخر', 'Add another file')),
             onPressed: () async {
-              final f = await pickFileAsDataUrl();
-              if (f == null) return;
-              if (f.sizeBytes > 20 * 1024 * 1024) return _say(tr('الملف أكبر من 20 ميجابايت.', 'File larger than 20MB.'));
-              setState(() => _file = f);
+              final picked = await pickFilesAsDataUrls();
+              if (picked.isEmpty) return;
+              final big = picked.where((f) => f.sizeBytes > 20 * 1024 * 1024).toList();
+              if (big.isNotEmpty) _say(tr('«${big.first.fileName}» أكبر من 20 ميجابايت ولم يُضَف.', '"${big.first.fileName}" is larger than 20MB and was skipped.'));
+              setState(() => _files.addAll(picked.where((f) => f.sizeBytes <= 20 * 1024 * 1024).take(10 - _files.length)));
             },
           ),
-          if (_file == null) Text(tr('لا تُحفَظ الحالة بلا إرفاق السند.', 'The status is not saved without the bond file.'), style: const TextStyle(fontSize: 11, color: T.inkFaint)),
+          for (final f in _files)
+            Row(children: [
+              const Icon(Icons.insert_drive_file_outlined, size: 14, color: T.inkSoft),
+              const SizedBox(width: 4),
+              Expanded(child: Text('${f.fileName} · ${(f.sizeBytes / 1024).round()}KB', style: const TextStyle(fontSize: 11.5), maxLines: 1, overflow: TextOverflow.ellipsis)),
+              IconButton(visualDensity: VisualDensity.compact, icon: const Icon(Icons.close, size: 16, color: T.danger), onPressed: () => setState(() => _files.remove(f))),
+            ]),
+          if (_files.isEmpty) Text(tr('لا تُحفَظ الحالة بلا إرفاق السند — يمكن رفع أكثر من ملف.', 'The status is not saved without the bond file — several files are allowed.'), style: const TextStyle(fontSize: 11, color: T.inkFaint)),
         ],
         if (log.isNotEmpty) ...[
           const Divider(height: 24),

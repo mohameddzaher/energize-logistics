@@ -498,9 +498,10 @@ class _EntrySheetState extends State<_EntrySheet> {
 
   void _say(String m) => ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(m)));
 
+  // Several receipts at once; the server keeps up to 10 per entry.
   Future<void> _addFile() async {
-    final f = await pickFileAsDataUrl();
-    if (f != null && mounted) setState(() => _files.add(f));
+    final picked = await pickFilesAsDataUrls();
+    if (picked.isNotEmpty && mounted) setState(() => _files.addAll(picked.take(10 - _files.length)));
   }
 
   Future<void> _save() async {

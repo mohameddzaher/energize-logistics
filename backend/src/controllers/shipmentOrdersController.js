@@ -1500,7 +1500,7 @@ const noteEntry = async (req, res) => {
   if (!order) { res.status(404).json({ message: 'Shipment order not found' }); return null; }
   const e = (order.statusLog || []).find((x) => String(x._id) === String(req.params.logId));
   if (!e) { res.status(404).json({ message: 'الملاحظة غير موجودة' }); return null; }
-  if (e.from !== e.to || e.fileUrl) { res.status(400).json({ message: 'هذا قيدُ تغييرِ حالة، لا ملاحظة — لا يُعدَّل.' }); return null; }
+  if (e.from !== e.to || e.fileUrl || (e.files || []).length) { res.status(400).json({ message: 'هذا قيدُ تغييرِ حالة، لا ملاحظة — لا يُعدَّل.' }); return null; }
   const mine = e.by && String(e.by) === String(req.user._id);
   if (!mine && !NOTE_MANAGERS.has(req.user.role)) { res.status(403).json({ message: 'يعدّل الملاحظةَ كاتبُها أو مديرُ القسم.' }); return null; }
   return e;
@@ -1558,14 +1558,18 @@ exports.patchStatus = async (req, res) => {
 
     // A status saying the receipt was sent requires the receipt.
     // Moving to that status asserts a document went out, and claims and collection rely on it. Without the document the assertion has no proof: asked a week later, it is requested from an employee who forgot which he sent. So the transition itself carries its attachment.
-    let file = null;
-    if (req.body.dataUrl) {
-      try {
-        file = saveUploadFile(String(req.body.dataUrl), 'shipment-orders', String(req.body.fileName || ''));
-      } catch (e) {
-        return res.status(400).json({ message: e.message || 'تعذّر حفظ المرفق' });
-      }
+    // Several files may go with it (`files: [{ dataUrl, fileName }]`, up to 10); a single `dataUrl` is still accepted from older app builds.
+    const sent = [
+      ...(Array.isArray(req.body.files) ? req.body.files : []),
+      ...(req.body.dataUrl ? [{ dataUrl: req.body.dataUrl, fileName: req.body.fileName }] : []),
+    ].filter((f) => f && f.dataUrl).slice(0, 10);
+    const saved = [];
+    try {
+      for (const f of sent) saved.push(saveUploadFile(String(f.dataUrl), 'shipment-orders', String(f.fileName || '')));
+    } catch (e) {
+      return res.status(400).json({ message: e.message || 'تعذّر حفظ المرفق' });
     }
+    const file = saved[0] || null;
     if (REQUIRE_FILE.has(status) && from !== status && !file) {
       return res.status(400).json({
         code: 'ATTACHMENT_REQUIRED',
@@ -1613,6 +1617,7 @@ exports.patchStatus = async (req, res) => {
       by: req.user._id,
       byName: `${req.user.firstName || ''} ${req.user.lastName || ''}`.trim(),
       ...(file || {}),
+      files: saved.map((f) => ({ fileUrl: f.fileUrl, fileName: f.fileName, mimeType: f.mimeType || '', size: f.size || 0 })),
     });
     await order.save();
     announceOrderChange(order._id);

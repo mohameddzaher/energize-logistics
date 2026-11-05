@@ -61,7 +61,7 @@ export interface ShipmentOrder {
   createdBy?: { firstName?: string; lastName?: string } | string | null;
   createdAt?: string;
   // Status transition log: from where to where, when, why and by whom. When it became in transit and who delayed it are asked a week later, and cannot be answered if only the last status is kept.
-  statusLog?: { _id?: string; from?: string; to?: string; note?: string; at?: string; by?: string; byName?: string; fileUrl?: string; fileName?: string; editedAt?: string | null; editedByName?: string }[];
+  statusLog?: { _id?: string; from?: string; to?: string; note?: string; at?: string; by?: string; byName?: string; fileUrl?: string; fileName?: string; files?: { fileUrl: string; fileName?: string }[]; editedAt?: string | null; editedByName?: string }[];
 }
 
 // Same keys and colours as the ops mirror so a status reads identically on

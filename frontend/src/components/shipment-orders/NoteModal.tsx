@@ -117,7 +117,7 @@ export default function NoteModal({ order, ar, onClose, onSaved }: {
             <ul className="space-y-2">
               {notes.map((n) => {
                 const id = String(n._id || '');
-                const pureNote = n.from === n.to && !n.fileUrl;
+                const pureNote = n.from === n.to && !n.fileUrl && !(n.files || []).length;
                 const canEdit = !!id && pureNote && (isManager || (!!n.by && String(n.by) === String(user?._id)));
                 const isEditing = editing?.id === id;
                 return (

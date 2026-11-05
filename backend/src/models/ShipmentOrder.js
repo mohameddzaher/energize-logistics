@@ -120,6 +120,14 @@ const shipmentOrderSchema = new mongoose.Schema(
       fileName: { type: String, default: '' },
       mimeType: { type: String, default: '' },
       size: { type: Number, default: 0 },
+      // Every file attached to the transition (the bond can be several pages); the first is also in fileUrl/fileName for older readers.
+      files: [{
+        _id: false,
+        fileUrl: { type: String, default: '' },
+        fileName: { type: String, default: '' },
+        mimeType: { type: String, default: '' },
+        size: { type: Number, default: 0 },
+      }],
       // The follow-up note can be edited, and it stays visible that it was edited and by whom.
       editedAt: { type: Date, default: null },
       editedByName: { type: String, default: '' },

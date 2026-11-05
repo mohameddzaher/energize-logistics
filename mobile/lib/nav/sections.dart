@@ -181,6 +181,11 @@ const _ltOwners = ['super_admin', 'admin', 'it_manager', 'it_specialist', 'b2c_m
 const _b2cSupervisors = ['b2c_rep_supervisor', 'b2c_inspection_supervisor'];
 
 /// Heavy transport custody: for the Location Solutions manager, system admin and finance, by role alone, like the server guard (authorize.strict in routes/htCustody).
+/// Custody ledgers are shown where the server opens them (`custodyPages` from login and /me: owner roles or a permissions-screen grant); an older server without the list falls back to the owner roles.
+bool custodyOpens(AuthProvider auth, String path, bool owner) {
+  final pages = auth.user?['custodyPages'];
+  return pages is List ? pages.contains(path) : owner;
+}
 const _htOwners = ['super_admin', 'admin', 'it_manager', 'it_specialist', 'location_manager', 'cfo', 'accounting_manager', 'accountant'];
 
 /// Section order on the screen, the same as the website (SECTION_ORDER in layout.tsx).
@@ -479,7 +484,7 @@ List<AppSection> sectionsFor(AuthProvider auth) {
         AppPage('الإصلاحات', 'Repairs', Icons.home_repair_service_outlined, (c) => ResourceScreen(config: ls2RepairsCfg), path: '/system/ls2/repairs'),
         AppPage('أصول الأسطول', 'Fleet Assets', Icons.tire_repair_outlined, (c) => const Ls2FleetAssetsScreen(), path: '/system/ls2/fleet-assets'),
         AppPage('مخزن النقل الثقيل', 'Store', Icons.inventory_2_outlined, (c) => const Ls2StoreScreen(), path: '/system/ls2/store'),
-        if (_htOwners.contains(role) || role == 'vehicles_manager') AppPage('عهدة النقل الثقيل', 'Heavy Transport Custody', Icons.account_balance_wallet_outlined, (c) => const HtCustodyScreen(), path: '/system/ls2/custody'),
+        if (custodyOpens(auth, '/system/ls2/custody', _htOwners.contains(role) || role == 'vehicles_manager')) AppPage('عهدة النقل الثقيل', 'Heavy Transport Custody', Icons.account_balance_wallet_outlined, (c) => const HtCustodyScreen(), path: '/system/ls2/custody'),
         // Who spare parts are bought from: heavy store only.
         AppPage('الموردون', 'Suppliers', Icons.storefront_outlined, (c) => const Ls2SuppliersScreen(), path: '/system/ls2/suppliers'),
         AppPage('الأسطول المباشر', 'Live Fleet', Icons.satellite_alt_outlined, (c) => const Ls2LiveScreen(), path: '/system/ls2/live'),
@@ -731,7 +736,7 @@ List<AppSection> sectionsFor(AuthProvider auth) {
             (c) => const LtIssueRequestsScreen(),
             path: '/system/b2c/light-transport/store'),
         // Department custody: cash, purchases card and workshop; replaced project custody.
-        if (_ltOwners.contains(role) || role == 'vehicles_manager') AppPage('عهدة النقل الخفيف', 'Light Transport Custody', Icons.account_balance_wallet_outlined, (c) => const LtCustodyScreen(), path: '/system/b2c/light-transport/custody'),
+        if (custodyOpens(auth, '/system/b2c/light-transport/custody', _ltOwners.contains(role) || role == 'vehicles_manager')) AppPage('عهدة النقل الخفيف', 'Light Transport Custody', Icons.account_balance_wallet_outlined, (c) => const LtCustodyScreen(), path: '/system/b2c/light-transport/custody'),
         // Department project vehicles: a window on the vehicles register itself, the actual driver and the authorization.
         if (_ltOwners.contains(role)) AppPage('مركبات النقل الخفيف', 'Light Transport Vehicles', Icons.local_shipping_outlined, (c) => const B2cVehiclesScreen(), path: '/system/b2c/vehicles'),
         // The department reports to HR what it saw in the field: the sending side.

@@ -136,6 +136,8 @@ exports.login = async (req, res) => {
         pageAccess,
         // Explicit ticks take precedence over the hand-written role lists in the sidebar.
         pagesGranted,
+        // Custody ledgers this account opens (middleware/custodyGate), so a menu never links to a refused page.
+        custodyPages: await require('../middleware/custodyGate').custodyPagesFor(user.role).catch(() => []),
         homePage,
         superAdminPowers,
         // Without this the HR self-service pages think the account is not
@@ -366,7 +368,8 @@ exports.getMe = async (req, res) => {
     const { hasSuperAdminPowers } = require('../utils/permissions');
     const superAdminPowers = user ? await hasSuperAdminPowers(user.role) : false;
     const approvesLeaves = user ? await require('../utils/leaveTeam').approvesLeaves(user).catch(() => false) : false;
-    const out = user ? { ...user.toObject({ flattenMaps: true }), permissions, pageAccess, pagesGranted, homePage, superAdminPowers, approvesLeaves, ...(roleLabel ? { roleLabel } : {}) } : user;
+    const custodyPages = user ? await require('../middleware/custodyGate').custodyPagesFor(user.role).catch(() => []) : [];
+    const out = user ? { ...user.toObject({ flattenMaps: true }), permissions, pageAccess, pagesGranted, custodyPages, homePage, superAdminPowers, approvesLeaves, ...(roleLabel ? { roleLabel } : {}) } : user;
 
     res.json({ user: out });
   } catch (error) {

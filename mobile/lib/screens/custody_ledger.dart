@@ -214,7 +214,8 @@ class _CustodyLedgerScreenState extends State<CustodyLedgerScreen> {
   @override
   Widget build(BuildContext context) {
     final d = _d;
-    final canCreate = _canCreate;
+    // The server says whether this account adds entries (owner roles, or a permissions-screen grant at edit level).
+    final canCreate = d?['canCreate'] is bool ? d!['canCreate'] == true : _canCreate;
     return AppScaffold(
       title: Text(tr(cfg.titleAr, cfg.titleEn)),
       body: d == null

@@ -39,8 +39,8 @@ router.post('/employees/assign-supervisors', authorize(...EDIT), c.assignSupervi
 // Light-transport custody: cash, purchase card and workshop.
 // In/out entries; a transfer between two accounts is two entries in one click; see models/LtCustody.
 const custody = require('../controllers/ltCustodyController');
-// Only this list decides (`strict`): a section grant opens the section to project managers and supervisors, but custody is money and opens only to the sector manager, deputy, system admin and finance roles.
-const CUSTODY = authorize.strict(...custody.CUSTODY_ROLES);
+// Custody is money: a section grant opens the section to project managers and supervisors, not custody. Only the owner roles or a role granted on the permissions screen pass (middleware/custodyGate).
+const CUSTODY = require('../middleware/custodyGate')({ roles: () => custody.CUSTODY_ROLES, section: 'B2C', page: '/system/b2c/light-transport/custody' });
 router.get('/custody', CUSTODY, custody.list);
 router.get('/custody/rep', CUSTODY, custody.lookupRep);
 router.post('/custody', CUSTODY, custody.create);

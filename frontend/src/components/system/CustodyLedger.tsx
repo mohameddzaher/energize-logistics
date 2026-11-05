@@ -33,7 +33,7 @@ interface Attachment { _id: string; title?: string; fileUrl: string; fileName?: 
 interface Bal { in: number; out: number; balance: number; count: number }
 interface Payload {
   entries: Entry[]; balances: Record<Account, Bal>; shown: { in: number; out: number; net: number; count: number };
-  rules: { inSources: Record<Account, string[]>; toCash: Account[]; vehicles?: boolean }; canDelete: boolean; canEdit: boolean; today: string;
+  rules: { inSources: Record<Account, string[]>; toCash: Account[]; vehicles?: boolean }; canDelete: boolean; canEdit: boolean; canCreate?: boolean; today: string;
 }
 interface Vehicle { unitId: number; plate: string; name: string; driver: string }
 type Pair = [string, string];
@@ -74,12 +74,11 @@ export default function CustodyLedger({ cfg }: { cfg: CustodyConfig }) {
   const t = (a: string, e: string) => (ar ? a : e);
   const w = (k?: string) => (k === 'rep' ? (ar ? cfg.rep[0] : cfg.rep[1]) : k && WORD[k] ? (ar ? WORD[k][0] : WORD[k][1]) : (k || ''));
   const { notify, confirm } = useDialog();
-  // Mirrors the server route guard (`CUSTODY_ROLES`). Editing and deleting a posted entry is decided by the server (`canEdit` / `canDelete` in the response) for super admin and finance only.
-  // role-only: custody is money, a section grant does not open it; the server guards it with `authorize.strict`.
-  const canEdit = cfg.roles.includes(user?.role || '');
   const { api: API } = cfg;
 
   const [d, setD] = useState<Payload | null>(null);
+  // Adding entries: owner roles, or a permissions-screen grant at edit level; the server says which (`canCreate`, middleware/custodyGate). Editing and deleting a posted entry is the server's `canEdit` / `canDelete`.
+  const canEdit = d ? d.canCreate !== false : cfg.roles.includes(user?.role || '');
   // All entries of the three accounts without filters, for the export of everything.
   const [all, setAll] = useState<Entry[]>([]);
   const [account, setAccount] = useState<Account>('cash');

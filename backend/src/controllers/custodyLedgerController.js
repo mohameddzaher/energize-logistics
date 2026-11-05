@@ -132,6 +132,8 @@ function makeCustodyController(cfg) {
         shown: { in: r2(shown.in), out: r2(shown.out), net: r2(shown.in - shown.out), count: entries.length },
         rules: { accounts: ACCOUNTS, inSources: IN_SOURCES, toCash: TO_CASH, vehicles },
         canDelete: canManage(req.user), canEdit: canManage(req.user),
+        // Adding entries: owner roles, or a permissions-screen grant at edit level (middleware/custodyGate); a view grant reads only.
+        canCreate: req.custodyAccess !== 'view',
         today: todayKey(),
       });
     } catch (e) {

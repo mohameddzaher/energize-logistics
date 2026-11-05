@@ -22,6 +22,8 @@ const userSchema = new mongoose.Schema(
     isTopManagement: { type: Boolean, default: false, index: true },
     // Chairman of the board (رئيس مجلس الإدارة): a super admin account that signs the final leave stage, after top management. Only meaningful on role super_admin, so it carries exactly the super admin permissions.
     isChairman: { type: Boolean, default: false, index: true },
+    // The person whose name and signature fill a leave sheet box once that stage approves, whoever clicked it (the finance manager, the HR manager). One account per box; userController clears the others.
+    leaveSheetSigner: { type: String, enum: ['', 'finance', 'hr'], default: '' },
     // Display preferences in the user account.
     // Stored on the account, not in the browser, so they follow the user from mobile to site. Key to value: { 'shipmentOrders.view': 'cards' }.
     uiPrefs: { type: Map, of: String, default: {} },

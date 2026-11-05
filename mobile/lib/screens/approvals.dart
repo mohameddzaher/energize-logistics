@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
+import '../services/auth.dart';
 import 'package:url_launcher/url_launcher.dart';
 import '../config.dart';
 import '../services/api.dart';
@@ -20,6 +22,8 @@ class ApprovalsScreen extends StatefulWidget {
 }
 
 class _ApprovalsScreenState extends State<ApprovalsScreen> {
+  // Stages are shown to process viewers only (seesLeaveProcess).
+  bool get _full => seesLeaveProcess(context.read<AuthProvider>().user);
   List<Map<String, dynamic>> _leaves = [];
   String _q = ''; // Search by name, leave type or reason, like the web.
   final _searchCtl = TextEditingController(); // Text stays equal to _q after a live refresh.
@@ -71,9 +75,9 @@ class _ApprovalsScreenState extends State<ApprovalsScreen> {
           _ => tr('رفض الطلب', 'Reject request'),
         }),
         content: SingleChildScrollView(child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
-          LeaveChainBar(leave: l),
+          LeaveChainBar(leave: l, full: _full),
           const SizedBox(height: 10),
-          LeaveThread(leave: l),
+          LeaveThread(leave: l, full: _full),
           // The request's supporting grounds are read before deciding.
           if ((l['attachments'] as List? ?? const []).isNotEmpty) ...[
             Text(tr('مرفقات الموظّف', 'Employee attachments'), style: const TextStyle(fontSize: 11.5, color: T.inkFaint)),
@@ -235,7 +239,7 @@ class _ApprovalsScreenState extends State<ApprovalsScreen> {
         ? '${l['employee']['firstName'] ?? ''} ${l['employee']['lastName'] ?? ''}'.trim()
         : (l['requester'] is Map ? '${l['requester']['firstName'] ?? ''} ${l['requester']['lastName'] ?? ''}'.trim() : '—');
     final type = l['leaveType'] is Map ? (l['leaveType']['nameAr'] ?? l['leaveType']['nameEn'] ?? '') : '';
-    final badge = leaveStatusOf(l['status']);
+    final badge = leaveStatusFor(l['status'], full: _full, canAct: actionable);
     return FadeSlideIn(
       delayMs: (i * 20).clamp(0, 200),
       child: Padding(
@@ -258,9 +262,9 @@ class _ApprovalsScreenState extends State<ApprovalsScreen> {
                   child: Text(l['reason'], style: const TextStyle(fontSize: 12, color: T.inkFaint)),
                 ),
               const SizedBox(height: 8),
-              LeaveChainBar(leave: l),
+              LeaveChainBar(leave: l, full: _full),
               const SizedBox(height: 4),
-              LeaveDeductionBadge(leave: l),
+              LeaveDeductionBadge(leave: l, full: _full),
               if (actionable) ...[
                 const SizedBox(height: 12),
                 Row(children: [

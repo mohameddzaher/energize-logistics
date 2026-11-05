@@ -1221,6 +1221,14 @@ exports.updateLeaveType = async (req, res) => {
 exports.deleteLeaveType = async (req, res) => {
   try {
     if (denyNonStaff(req, res)) return;
+    // A type in use is never deleted: its requests would lose the type, and leaveDeducts would then count non-deducting leave (Eid, sick) off the balance. Deactivating hides it from new requests instead.
+    const used = await LeaveRequest.countDocuments({ leaveType: req.params.id });
+    if (used) {
+      return res.status(409).json({
+        code: 'LEAVE_TYPE_IN_USE', used,
+        message: `لا يُحذف هذا النوع لأن عليه ${used} طلب إجازة — أوقفه (غير مفعّل) بدلًا من الحذف | In use by ${used} leave requests: deactivate it instead`,
+      });
+    }
     await LeaveType.findByIdAndDelete(req.params.id);
     res.json({ message: 'Leave type deleted' });
   } catch (error) {
@@ -1282,7 +1290,8 @@ exports.listLeaves = async (req, res) => {
   try {
     if (denyNonStaff(req, res)) return;
     const filter = {};
-    if (req.query.status) filter.status = req.query.status;
+    // 'in_review' is every stage at once: the filter of readers who do not see the process (chain.seesProcess).
+    if (req.query.status) filter.status = req.query.status === 'in_review' ? { $in: chain.PENDING_STATUSES } : req.query.status;
     if (req.query.employee) filter.employee = req.query.employee;
     // The general list excludes archived staff; leaves of a specific file remain.
     const leaves = await populateLeave(LeaveRequest.find(req.query.employee ? filter : await withoutArchivedRef(filter))).select(NO_SIG).sort({ createdAt: -1 }).limit(1000).lean();
@@ -1400,7 +1409,7 @@ exports.getLeaveSheet = async (req, res) => {
     const own = [leave.requester, leave.manager, leave.filedBy].some((x) => x && String(x._id || x) === uid);
     const desk = chain.STAGES.some((st) => st !== 'manager' && chain.canActAt(st, req.user, leave));
     if (!own && !desk && !hrStaffReq(req)) return res.status(403).json({ message: 'Not allowed' });
-    const pdf = await require('../services/leaveSheet').renderLeaveSheet(leave);
+    const pdf = await require('../services/leaveSheet').renderLeaveSheet(leave, { fullView: chain.seesProcess(req.user) });
     const who = (leave.employee?.employeeNumber || String(leave._id)).replace(/[^\w-]/g, '');
     res.setHeader('Content-Type', 'application/pdf');
     res.setHeader('Content-Disposition', `inline; filename="leave-${who}-${leave.startDate || ''}.pdf"`);
@@ -1676,7 +1685,7 @@ exports.createTeamLeave = async (req, res) => {
     } catch (e) { /* the request stands even if its log line fails */ }
     await notifyStage(leave.currentStage, leave, `قدّم ${filer} إجازة ${days} يوم لـ ${name} (${startDate} → ${endDate}).`);
     if (login && String(login) !== String(req.user._id)) {
-      await notifyUser(login, { title: 'قدّم مديرك إجازة لك', message: `${filer} قدّم لك إجازة ${days} يوم (${startDate} → ${endDate}) — هي الآن عند ${chain.STAGE_AR[leave.currentStage] || ''}.`, ...ref });
+      await notifyUser(login, { title: 'قدّم مديرك إجازة لك', message: `${filer} قدّم لك إجازة ${days} يوم (${startDate} → ${endDate}) — وهي قيد المراجعة.`, ...ref });
     }
     await announceLeave(leave);
     const populated = await populateLeave(LeaveRequest.findById(leave._id)).select(NO_SIG).lean();
@@ -2018,32 +2027,26 @@ exports.decideLeave = async (req, res) => {
       });
     } catch (e) { /* the decision stands even if its log line fails */ }
 
-    // Notify the requester always, plus the next stage's owners. A mid-chain approver used to tell the requester it was approved when it had only moved on, so he planned travel on partial approval. The message now says where the request stands.
-    const { STAGE_AR } = chain;
+    // The requester hears the outcome or a question only (never a mid-chain approval, which once made him plan travel on partial approval); the next stage's owners hear that it waits for them.
     const ref = { relatedEntity: 'LeaveRequest', relatedEntityId: leave._id, event: 'hr:leave' };
     const period = `${leave.startDate} → ${leave.endDate}`;
 
     if (leave.status === 'info_requested') {
       await notifyLeaveOwners(leave, {
         title: 'مطلوب إيضاح على طلب الإجازة',
-        message: `${STAGE_AR[stage] || 'أحد المراجعين'} طلب إيضاحًا: ${note || ''}`.trim(),
+        message: `مطلوب إيضاح على طلبك (${period}): ${note || ''}`.trim(),
         ...ref,
       });
     } else if (leave.status === 'approved') {
       const cut = leaveDeducts(await LeaveRequest.findById(leave._id).populate('leaveType', 'affectsBalance').select('deductsBalance leaveType').lean());
-      await notifyLeaveOwners(leave, { title: 'اعتُمدت إجازتك', message: `إجازتك (${period}) اعتُمدت بعد اكتمال الموافقات حتى رئيس مجلس الإدارة — ${cut ? `تُخصم ${leave.days} يوم من الرصيد` : 'بدون خصم من الرصيد'}.`, ...ref });
+      await notifyLeaveOwners(leave, { title: 'اعتُمدت إجازتك', message: `إجازتك (${period}) اعتُمدت — ${cut ? `تُخصم ${leave.days} يوم من الرصيد` : 'بدون خصم من الرصيد'}.`, ...ref });
       await notifyHR({ title: 'إجازة اعتُمدت', message: `اكتملت سلسلةُ الموافقات على إجازة (${period}).`, ...ref });
     } else if (leave.status === 'rejected') {
-      await notifyLeaveOwners(leave, { title: 'رُفض طلب الإجازة', message: `رفضت ${STAGE_AR[stage] || ''} طلبك (${period}). ${note || ''}`.trim(), ...ref });
+      await notifyLeaveOwners(leave, { title: 'رُفض طلب الإجازة', message: `رُفض طلب إجازتك (${period}). ${note || ''}`.trim(), ...ref });
     } else {
-      // Moved to the next stage: the requester is told where it stands and the stage owners are notified.
+      // Moved to the next stage: only the next stage's owners hear it. The requester is not told where it stands (the owner's rule: the process is for top management); he hears the outcome, or a question.
       const next = leave.currentStage;
-      await notifyLeaveOwners(leave, {
-        title: 'تقدّم طلب الإجازة',
-        message: `وافقت ${STAGE_AR[stage] || ''} على طلبك (${period}) — وهو الآن عند ${STAGE_AR[next] || ''}.`,
-        ...ref,
-      });
-      await notifyStage(next, leave, `طلب إجازة (${period}) وصل محطّتكم بعد موافقة ${STAGE_AR[stage] || ''}.`);
+      await notifyStage(next, leave, `طلب إجازة (${period}) بانتظار قراركم.`);
     }
     await announceLeave(leave);
     if (leave.status === 'approved') {
@@ -2060,8 +2063,8 @@ exports.decideLeave = async (req, res) => {
 };
 
 /**
- * The requester's reply to a question - POST /leaves/:id/reply { text, attachment }
- * The chain restarts: the approvals are cleared and the request returns to the direct manager as new, since an edited or extended request is no longer the one approved earlier. The question and reply stay in the request log.
+ * The requester's reply to a question - POST /leaves/:id/reply { text, attachment, leaveType?, startDate?, endDate?, reason? }
+ * The reply may carry the amended request. Unchanged type and dates: it returns to the stage that asked, earlier approvals kept. Changed: the chain restarts from the beginning, since earlier approval was for a different request (utils/leaveChain.restart). The question and reply stay in the request log.
  */
 exports.replyToLeave = async (req, res) => {
   try {
@@ -2075,6 +2078,8 @@ exports.replyToLeave = async (req, res) => {
     }
     const text = String(req.body.text || '').trim();
     if (!text) return res.status(400).json({ message: 'اكتب ردّك' });
+    const edit = await applyMyLeaveEdits(leave, req.body, req);
+    if (edit.error) return res.status(400).json(edit.error);
 
     // The attachment is written to disk, not inside the document: the inbox reads dozens of requests at once and a base64 receipt in the document makes the list pull megabytes on a throughput-limited database.
     let stored = null;
@@ -2092,19 +2097,35 @@ exports.replyToLeave = async (req, res) => {
       attachmentName: stored ? (stored.fileName || String(req.body.attachmentName || '')) : '',
     });
 
-    chain.restart(leave, req.user);
+    const route = chain.restart(leave, req.user, { amended: edit.changed });
+    if (edit.changed) {
+      // The amended request is a new request for the balance as well: its snapshot is restated from today's balance.
+      try {
+        const { balance } = await computeEmployeeBalance(leave.employee);
+        const lt = await LeaveType.findById(leave.leaveType).select('affectsBalance').lean();
+        leave.balanceSnapshot = {
+          accrued: balance.accrued, requested: leave.days,
+          remainingAfter: lt?.affectsBalance ? Math.round((balance.available - leave.days) * 100) / 100 : balance.available,
+        };
+      } catch (e) { /* the snapshot is informative only */ }
+    }
     await leave.save();
 
+    const why = edit.changed ? 'عدّل الموظّف الطلب بعد الاستفسار — عاد إلى بداية المسار' : 'ردّ الموظّف على الاستفسار — الطلب عاد إليكم';
     if (leave.currentStage === 'manager' && leave.manager) {
       try { emitToUser(String(leave.manager), 'hr:leave', { id: String(leave._id) }); } catch (e) { /* */ }
       await notifyUser(leave.manager, {
         title: 'طلب إجازة عاد بعد الردّ',
-        message: 'ردّ الموظّف على الاستفسار — الطلب ينتظر موافقتك من جديد.',
+        message: `${why} وينتظر موافقتك.`,
         relatedEntity: 'LeaveRequest', relatedEntityId: leave._id, event: 'hr:leave',
       });
     } else {
-      await notifyStage(leave.currentStage, leave, 'ردّ الموظّف على الاستفسار — الطلب عاد إلى بداية المسار.');
+      await notifyStage(leave.currentStage, leave, `${why}.`);
     }
+    try {
+      await logAudit({ user: req.user, action: 'leave_reply', entity: 'LeaveRequest', entityId: leave._id,
+        changes: { after: { amended: edit.changed, route, stage: chain.STAGE_AR[leave.currentStage] || leave.currentStage, startDate: leave.startDate, endDate: leave.endDate, days: leave.days } }, ipAddress: req.ip });
+    } catch (e) { /* the reply stands even if its log line fails */ }
     await announceLeave(leave);
 
     const populated = await populateLeave(LeaveRequest.findById(leave._id)).lean();
@@ -2143,6 +2164,38 @@ const ownApproval = (l, f) => f === 'managerDecision' && l[f]?.by && String(l[f]
 const leaveIsUntouched = (l) => chain.OPEN_STATUSES.includes(l.status) && l.status !== 'info_requested'
   && Object.values(chain.DECISION_FIELD).every((f) => !l[f]?.at || ownApproval(l, f));
 
+/**
+ * The requester's own edits (type, dates, reason), checked as on a new request: notice period, Friday rule, days, overlap.
+ * Shared by the edit of an untouched request and the reply to a question. `changed` is true when the type or the dates moved, which makes the reply an amended request.
+ */
+async function applyMyLeaveEdits(leave, body, req) {
+  const before = `${leave.leaveType}|${leave.startDate}|${leave.endDate}`;
+  const { leaveType, startDate, endDate, reason } = body;
+  if (leaveType) {
+    const lt = await LeaveType.findById(leaveType).lean();
+    if (!lt) return { error: { message: 'نوع إجازة غير صالح' } };
+    // Recheck the notice period: editing the date to tomorrow would bypass the rule and admit a date that would not have been accepted originally.
+    const notice = evaluateAdvanceNotice(lt, startDate || leave.startDate);
+    if (!notice.satisfied && !(body.policyOverride === true && hrStaffReq(req))) {
+      return { error: { message: notice.message, code: 'ADVANCE_NOTICE_REQUIRED' } };
+    }
+    leave.leaveType = leaveType;
+    leave.countsFridays = fridayRuleOf(leave, lt);
+  }
+  if (startDate) leave.startDate = startDate;
+  if (endDate) leave.endDate = endDate;
+  if (reason !== undefined) leave.reason = reason;
+  // A new type can change the Friday rule, so the days are recounted on a type change as well.
+  if (leaveType || startDate || endDate) {
+    if (String(leave.endDate) < String(leave.startDate)) return { error: { message: 'تاريخ النهاية قبل تاريخ البداية' } };
+    leave.days = leaveDaysOf(leave, leave.startDate, leave.endDate);
+    if (!leave.days) return { error: { message: NO_WORKDAY, code: 'NO_LEAVE_DAYS' } };
+    const clash = await findLeaveClash(leave.employee, leave.startDate, leave.endDate, leave._id);
+    if (clash) return { error: { message: clashMessage(clash), code: 'LEAVE_OVERLAP' } };
+  }
+  return { changed: `${leave.leaveType}|${leave.startDate}|${leave.endDate}` !== before };
+}
+
 exports.updateMyLeave = async (req, res) => {
   try {
     const leave = await LeaveRequest.findById(req.params.id);
@@ -2152,28 +2205,8 @@ exports.updateMyLeave = async (req, res) => {
       return res.status(400).json({ message: 'لا يُعدَّل الطلب بعد أن اتُّخذ فيه إجراء — ألغِه واكتب غيره' });
     }
 
-    const { leaveType, startDate, endDate, reason } = req.body;
-    if (leaveType) {
-      const lt = await LeaveType.findById(leaveType).lean();
-      if (!lt) return res.status(400).json({ message: 'نوع إجازة غير صالح' });
-      // Recheck the notice period: editing the date to tomorrow would bypass the rule and admit a date that would not have been accepted originally.
-      const notice = evaluateAdvanceNotice(lt, startDate || leave.startDate);
-      if (!notice.satisfied && !(req.body.policyOverride === true && hrStaffReq(req))) {
-        return res.status(400).json({ message: notice.message, code: 'ADVANCE_NOTICE_REQUIRED' });
-      }
-      leave.leaveType = leaveType;
-      leave.countsFridays = fridayRuleOf(leave, lt);
-    }
-    if (startDate) leave.startDate = startDate;
-    if (endDate) leave.endDate = endDate;
-    if (reason !== undefined) leave.reason = reason;
-    if (startDate || endDate) {
-      if (String(leave.endDate) < String(leave.startDate)) return res.status(400).json({ message: 'تاريخ النهاية قبل تاريخ البداية' });
-      leave.days = leaveDaysOf(leave, leave.startDate, leave.endDate);
-      if (!leave.days) return res.status(400).json({ message: NO_WORKDAY, code: 'NO_LEAVE_DAYS' });
-      const clash = await findLeaveClash(leave.employee, leave.startDate, leave.endDate, leave._id);
-      if (clash) return res.status(400).json({ message: clashMessage(clash), code: 'LEAVE_OVERLAP' });
-    }
+    const edit = await applyMyLeaveEdits(leave, req.body, req);
+    if (edit.error) return res.status(400).json(edit.error);
 
     // Attachments can be added or removed while the request is untouched; a forgotten medical report should not force cancelling and rewriting.
     if (Array.isArray(req.body.files) && req.body.files.length) {

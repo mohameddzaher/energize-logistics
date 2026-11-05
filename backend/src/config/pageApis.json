@@ -40,13 +40,6 @@
       ],
       "wildcard": false
     },
-    "/system/selling-requests": {
-      "apis": [
-        "/api/selling-price-requests",
-        "/api/selling-price-requests/count"
-      ],
-      "wildcard": false
-    },
     "/system/executive": {
       "apis": [
         "/api/analytics/executive"
@@ -2411,6 +2404,13 @@
     "/system/sales/performance": {
       "apis": [
         "/api/sales/performance"
+      ],
+      "wildcard": false
+    },
+    "/system/selling-requests": {
+      "apis": [
+        "/api/selling-price-requests",
+        "/api/selling-price-requests/count"
       ],
       "wildcard": false
     },

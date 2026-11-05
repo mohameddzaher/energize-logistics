@@ -1,13 +1,14 @@
 'use client';
-/** Leave approvals: what awaits the current user's decision. One page for every stage (direct manager, HR, top management). The server decides what is shown (`utils/leaveChain.inboxFilter`), so the page never guesses a role or filters after reading and no button ends in a 403. The third action is "inquiry", not reject: the request returns to its owner to answer, then restarts from the direct manager. */
+/** Leave approvals: what awaits the current user's decision. One page for every stage (direct manager, HR, top management). The server decides what is shown (`utils/leaveChain.inboxFilter`), so the page never guesses a role or filters after reading and no button ends in a 403. The third action is "inquiry", not reject: the request returns to its owner; a reply brings it back to the asking stage, an amended request restarts the chain. */
 import { useState, useEffect, useCallback, useMemo } from 'react';
 import { useDialog } from '@/components/system/DialogProvider';
 import { useLanguage } from '@/context/LanguageContext';
+import { useAuth } from '@/context/AuthContext';
 import { useSocket } from '@/hooks/useSocket';
 import api from '@/lib/api';
 import { CalendarCheck, Check, X, HelpCircle, Inbox, Loader2 } from 'lucide-react';
 import {
-  LeaveRequest, LEAVE_STATUS, LEAVE_STAGES, LeaveStage,
+  LeaveRequest, LEAVE_STAGES, LeaveStage, leaveStatusStyle, seesLeaveProcess,
   empName, userName, leaveTypeLabel,
 } from '@/lib/hr';
 import { Spinner, PageHeader, PrimaryButton, Badge, Modal, TextArea, Tabs, SearchInput } from '@/components/hr/HRKit';
@@ -22,6 +23,8 @@ export default function LeaveApprovalsPage() {
   const { notify } = useDialog();
   const { lang } = useLanguage();
   const ar = lang === 'ar';
+  const { user } = useAuth();
+  const full = seesLeaveProcess(user);
 
   const [leaves, setLeaves] = useState<LeaveRequest[]>([]);
   const [stages, setStages] = useState<LeaveStage[]>([]);
@@ -129,14 +132,14 @@ export default function LeaveApprovalsPage() {
                     {l.reason && <p className="mt-1 max-w-2xl text-xs text-slate-600">{l.reason}</p>}
                   </div>
                   <div className="flex shrink-0 items-center gap-2">
-                    <Badge style={LEAVE_STATUS[l.status]} lang={lang} />
+                    <Badge style={leaveStatusStyle(l, false, full, true)} lang={lang} />
                     <DeductionBadge leave={l} ar={ar} />
                     <PrimaryButton onClick={() => { setReview(l); setNote(''); setDeduct(null); }}>
                       {ar ? 'مراجعة' : 'Review'}
                     </PrimaryButton>
                   </div>
                 </div>
-                <LeaveChainBar leave={l} lang={ar ? 'ar' : 'en'} />
+                <LeaveChainBar leave={l} lang={ar ? 'ar' : 'en'} full={full} />
               </div>
             ))}
             {!rows.length && (
@@ -166,7 +169,7 @@ export default function LeaveApprovalsPage() {
         ) : undefined}>
         {review && (
           <div className="space-y-3 text-sm">
-            <LeaveChainBar leave={review} lang={ar ? 'ar' : 'en'} />
+            <LeaveChainBar leave={review} lang={ar ? 'ar' : 'en'} full={full} />
             <div className="grid gap-1.5 rounded-lg border border-slate-200 bg-slate-50 p-3">
               <Row label={ar ? 'الموظف' : 'Employee'} value={`${empName(review.employee, lang)} (${userName(review.requester)})`} />
               <Row label={ar ? 'النوع' : 'Type'} value={leaveTypeLabel(review.leaveType, lang)} />
@@ -188,7 +191,7 @@ export default function LeaveApprovalsPage() {
               </div>
             )}
 
-            <LeaveThread leave={review} lang={ar ? 'ar' : 'en'} />
+            <LeaveThread leave={review} lang={ar ? 'ar' : 'en'} full={full} />
 
             {needsDeductionChoice(review) && (
               <div className="border-t border-slate-200 pt-3">

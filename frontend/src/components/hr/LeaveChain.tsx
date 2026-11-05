@@ -32,8 +32,10 @@ const LOOK: Record<string, { ring: string; dot: string; icon: any }> = {
   waiting: { ring: 'border-slate-200 bg-white', dot: 'bg-slate-200 text-slate-500', icon: Clock },
 };
 
-export function LeaveChainBar({ leave, lang }: { leave: LeaveRequest; lang: 'ar' | 'en' }) {
+/** Shown to process viewers only (seesLeaveProcess); `full` false renders nothing. */
+export function LeaveChainBar({ leave, lang, full = false }: { leave: LeaveRequest; lang: 'ar' | 'en'; full?: boolean }) {
   const ar = lang === 'ar';
+  if (!full) return null;
   // A cancelled or rejected request has no advancing stepper; stations are shown as they stopped.
   return (
     <div className="flex flex-wrap items-stretch gap-1.5">
@@ -63,12 +65,12 @@ export function LeaveChainBar({ leave, lang }: { leave: LeaveRequest; lang: 'ar'
   );
 }
 
-/** Request dialog: questions and replies in order, oldest first. */
-export function LeaveThread({ leave, lang }: { leave: LeaveRequest; lang: 'ar' | 'en' }) {
+/** Request dialog: questions and replies in order, oldest first. Who asked (the stage) is named to process viewers only. */
+export function LeaveThread({ leave, lang, full = false }: { leave: LeaveRequest; lang: 'ar' | 'en'; full?: boolean }) {
   const ar = lang === 'ar';
   const thread = leave.thread || [];
   if (!thread.length) return null;
-  const stageLabel = (k?: string) => LEAVE_STAGES.find((s) => s.key === k)?.[ar ? 'ar' : 'en'] || (ar ? 'الموظف' : 'Employee');
+  const stageLabel = (k?: string) => (full ? LEAVE_STAGES.find((s) => s.key === k)?.[ar ? 'ar' : 'en'] : '') || (ar ? 'المراجعة' : 'Review');
   return (
     <div className="space-y-2">
       <p className="flex items-center gap-1.5 text-xs font-semibold text-slate-600">
@@ -80,7 +82,7 @@ export function LeaveThread({ leave, lang }: { leave: LeaveRequest; lang: 'ar' |
             <span className="font-semibold text-slate-700">
               {t.kind === 'question' ? `${stageLabel(t.stage)} ${ar ? '— استفسار' : '— asked'}` : (ar ? 'ردّ الموظف' : 'Employee reply')}
             </span>
-            <span>{t.byName || userName(t.by)}</span>
+            {(full || t.kind !== 'question') && <span>{t.byName || userName(t.by)}</span>}
             {t.at && <span>· {bothDatesShort(t.at, ar)}</span>}
           </div>
           <p className="whitespace-pre-wrap text-slate-700">{t.text}</p>

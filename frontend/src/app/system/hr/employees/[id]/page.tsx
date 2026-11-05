@@ -19,7 +19,7 @@ import {
   isHRStaff, Employee, Contract, LeaveRequest, Asset, HRRequest, LeaveBalance,
   EmployeeDocument, EmployeeRenewal, AuditEntry,
   empName, userName, fmtDateTime, leaveTypeLabel, expiryBadge,
-  EMPLOYMENT_STATUS, employmentBadge, CONTRACT_STATUS, contractBadge, contractRequired, LEAVE_STATUS, REQUEST_STATUS, assetTypeLabel, conditionLabel,
+  EMPLOYMENT_STATUS, employmentBadge, CONTRACT_STATUS, contractBadge, contractRequired, REQUEST_STATUS, leaveStatusStyle, seesLeaveProcess, LEAVE_OPEN, assetTypeLabel, conditionLabel,
   RENEWAL_TYPES, DOCUMENT_CATEGORIES, renewalTypeLabel, docCategoryLabel, auditActionLabel,
 } from '@/lib/hr';
 import {
@@ -247,7 +247,7 @@ export default function EmployeeProfilePage() {
       ...exportDatePair(L.from, 'startDate', ar),
       ...exportDatePair(L.to, 'endDate', ar),
       { header: tx.colDays, key: 'days', width: 9 },
-      { header: tx.colStatus, key: 'status', transform: (v) => statusText(LEAVE_STATUS, v), width: 18 },
+      { header: tx.colStatus, key: 'status', transform: (v) => { const st = leaveStatusStyle({ status: v }, false, seesLeaveProcess(user)); return st ? (ar ? st.ar : st.en) : v; }, width: 18 },
       { header: ar ? 'السبب' : 'Reason', key: 'reason', width: 28 },
       ...exportDatePair(L.submitted, 'createdAt', ar),
     ],
@@ -618,9 +618,9 @@ export default function EmployeeProfilePage() {
                   <DateTds v={l.startDate} /><DateTds v={l.endDate} /><Td>{l.days}</Td>
                   <Td>
                     <div className="flex flex-col items-start gap-1">
-                      <Badge style={LEAVE_STATUS[l.status]} lang={lang} />
+                      <Badge style={leaveStatusStyle(l, false, seesLeaveProcess(user))} lang={lang} />
                       <LeaveReturnChip leave={l} ar={ar} />
-                      <DeductionBadge leave={l} ar={ar} />
+                      {(seesLeaveProcess(user) || !LEAVE_OPEN.includes(l.status)) && <DeductionBadge leave={l} ar={ar} />}
                     </div>
                   </Td>
                   <DateTds v={l.createdAt} />

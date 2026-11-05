@@ -415,11 +415,29 @@ export const expiryBadge = (v?: string | null, lang: Lang = 'en') => {
 };
 
 
-/** The owner's own wording: on his own requests a returned request waits on him. Every other reader sees where it is (LEAVE_STATUS). */
-export const leaveStatusStyle = (l: { status: string }, ownView = false) =>
-  (ownView && l.status === 'info_requested'
-    ? { ...LEAVE_STATUS.info_requested, en: 'Needs your reply', ar: 'بانتظار ردّك' }
-    : LEAVE_STATUS[l.status]);
+/**
+ * Who sees where a request stands in the chain: super admin powers, top management and the chairman (backend utils/leaveChain.seesProcess).
+ * Everyone else, the employee first, sees a request as under review until it is decided or returned with a question.
+ */
+export const seesLeaveProcess = (user: any) => !!user
+  && (['super_admin', 'admin', 'it_manager', 'it_specialist'].includes(user.role) || user.isTopManagement === true || user.isChairman === true);
+
+export const LEAVE_IN_REVIEW = { bg: 'bg-amber-500/20', text: 'text-amber-700', en: 'Under review', ar: 'قيد المراجعة' };
+const LEAVE_AWAITING_YOU = { bg: 'bg-blue-500/20', text: 'text-blue-700', en: 'Awaiting your decision', ar: 'بانتظار قرارك' };
+
+/**
+ * A request's status as this reader may see it.
+ * `ownView`: his own request (a returned one waits on him). `full`: seesLeaveProcess, the stage is shown. `canAct`: he decides it now, so it reads as awaiting him rather than under review.
+ */
+export const leaveStatusStyle = (l: { status: string }, ownView = false, full = false, canAct = false) => {
+  if (l.status === 'info_requested') return ownView ? { ...LEAVE_STATUS.info_requested, en: 'Needs your reply', ar: 'بانتظار ردّك' } : LEAVE_STATUS.info_requested;
+  if (!LEAVE_PENDING.includes(l.status) || full) return LEAVE_STATUS[l.status];
+  return canAct ? LEAVE_AWAITING_YOU : LEAVE_IN_REVIEW;
+};
+/** Status filter options for this reader: process viewers filter by stage, the rest by «قيد المراجعة» (backend status=in_review). */
+export const leaveStatusOptions = (full: boolean) => (full
+  ? Object.entries(LEAVE_STATUS)
+  : [['in_review', LEAVE_IN_REVIEW] as const, ...Object.entries(LEAVE_STATUS).filter(([k]) => !LEAVE_PENDING.includes(k))]);
 
 /** The last open question on a request, if it was returned to its owner. */
 export const leaveLastQuestion = (l: any) =>
@@ -443,14 +461,21 @@ export function canDecideLeave(user: any, l: any, hrStaff: boolean): boolean {
  * Why there is no decision button on a row: who holds it now and, when it was returned, the question asked.
  * The status says where a request is; this says it next to the actions so an empty actions cell is never left unexplained.
  */
-export function leaveWaitNote(l: any, ar: boolean): string {
+export function leaveWaitNote(l: any, ar: boolean, full = false): string {
   if (!l) return '';
+  if (!full) {
+    if (l.status === 'info_requested') {
+      const q = leaveLastQuestion(l);
+      return ar ? `أُعيد للموظف للإيضاح${q?.text ? `: «${q.text}»` : ''} — يعود للمراجعة بعد رده` : `Returned to the employee for clarification${q?.text ? `: "${q.text}"` : ''}; back under review after the reply`;
+    }
+    return LEAVE_PENDING.includes(l.status) ? (ar ? 'قيد المراجعة' : 'Under review') : '';
+  }
   if (l.status === 'info_requested') {
     const q = leaveLastQuestion(l);
     const who = q ? (LEAVE_STAGES.find((s) => s.key === q.stage)?.[ar ? 'ar' : 'en'] || q.byName || '') : '';
     return ar
-      ? `أُعيد للموظف ليرد${who ? ` على استفسار ${who}` : ''}${q?.text ? `: «${q.text}»` : ''} — يعود للمسار بعد رده`
-      : `Returned to the employee${who ? ` with a question from ${who}` : ''}${q?.text ? `: "${q.text}"` : ''}; it re-enters the chain when they reply`;
+      ? `أُعيد للموظف ليرد${who ? ` على استفسار ${who}` : ''}${q?.text ? `: «${q.text}»` : ''} — بعد رده يعود ${who ? `إلى ${who}` : 'إلى من سأل'}، وإن عدّل الطلب يبدأ المسار من أوله`
+      : `Returned to the employee${who ? ` with a question from ${who}` : ''}${q?.text ? `: "${q.text}"` : ''}; a reply returns it ${who ? `to ${who}` : 'to the asker'}, an amended request restarts the chain`;
   }
   const stage = LEAVE_STAGES.find((s) => `pending_${s.key}` === l.status);
   if (stage) return ar ? `بانتظار قرار ${stage.ar}` : `Waiting for ${stage.en}`;

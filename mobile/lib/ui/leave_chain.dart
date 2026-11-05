@@ -28,9 +28,25 @@ const leaveStatusMeta = <String, (String, String, Color)>{
   'cancelled': ('ملغاة', 'Cancelled', Color(0xFF64748B)),
 };
 
-/// The owner's own wording: on his own requests a returned request waits on him; every other reader sees where it is.
-(String, String, Color) leaveStatusOwn(Object? status) =>
-    (status ?? '').toString() == 'info_requested' ? ('بانتظار ردّك', 'Needs your reply', const Color(0xFFEA580C)) : leaveStatusOf(status);
+/// Who sees where a request stands in the chain: super admin powers, top management and the chairman (backend utils/leaveChain.seesProcess).
+/// Everyone else, the employee first, sees a request as under review until it is decided or returned with a question.
+bool seesLeaveProcess(Map<String, dynamic>? user) =>
+    user != null &&
+    (const ['super_admin', 'admin', 'it_manager', 'it_specialist'].contains('${user['role'] ?? ''}') ||
+        user['isTopManagement'] == true ||
+        user['isChairman'] == true);
+
+/// A request's status as this reader may see it; twin of web lib/hr.ts leaveStatusStyle.
+/// [own]: his own request. [full]: seesLeaveProcess, the stage is shown. [canAct]: he decides it now.
+(String, String, Color) leaveStatusFor(Object? status, {bool own = false, bool full = false, bool canAct = false}) {
+  final s = (status ?? '').toString();
+  if (s == 'info_requested') return own ? ('بانتظار ردّك', 'Needs your reply', const Color(0xFFEA580C)) : leaveStatusOf(s);
+  if (!leaveIsActionable(s) || full) return leaveStatusOf(s);
+  return canAct ? ('بانتظار قرارك', 'Awaiting your decision', const Color(0xFF2563EB)) : ('قيد المراجعة', 'Under review', const Color(0xFFD97706));
+}
+
+/// The owner's own wording on his own requests, without the stage unless [full].
+(String, String, Color) leaveStatusOwn(Object? status, {bool full = false}) => leaveStatusFor(status, own: true, full: full);
 
 /// Can this reader decide the request now? Mirrors backend utils/leaveChain canActAt, so no button is shown for a decision the server refuses.
 bool canDecideLeave(Map<String, dynamic>? user, Map<String, dynamic> l, {required bool hrStaff}) {
@@ -50,18 +66,24 @@ bool canDecideLeave(Map<String, dynamic>? user, Map<String, dynamic> l, {require
   return false;
 }
 
-/// Why a request has no decision buttons: who holds it now, and the question asked when it was returned.
-String leaveWaitNote(Map<String, dynamic> l) {
+/// Why a request has no decision buttons. Process viewers ([full]) read who holds it; everyone else reads «قيد المراجعة».
+String leaveWaitNote(Map<String, dynamic> l, {bool full = false}) {
   final st = (l['status'] ?? '').toString();
   if (st == 'info_requested') {
     final thread = List<Map<String, dynamic>>.from((l['thread'] as List? ?? const []).map((e) => Map<String, dynamic>.from(e as Map)));
     final q = thread.reversed.where((t) => t['kind'] == 'question').firstOrNull;
+    if (!full) {
+      final qt = '${q?['text'] ?? ''}';
+      return tr('أُعيد للموظف للإيضاح${qt.isNotEmpty ? ': «$qt»' : ''} — يعود للمراجعة بعد رده',
+          'Returned to the employee for clarification${qt.isNotEmpty ? ': "$qt"' : ''}; back under review after the reply');
+    }
     final stage = leaveStages.where((s) => s.key == (q?['stage'] ?? '')).firstOrNull;
     final who = stage != null ? tr(stage.ar, stage.en) : '${q?['byName'] ?? ''}';
     final text = '${q?['text'] ?? ''}';
-    return tr('أُعيد للموظف ليرد${who.isNotEmpty ? ' على استفسار $who' : ''}${text.isNotEmpty ? ': «$text»' : ''} — يعود للمسار بعد رده',
-        'Returned to the employee${who.isNotEmpty ? ' with a question from $who' : ''}${text.isNotEmpty ? ': "$text"' : ''}; it re-enters the chain when they reply');
+    return tr('أُعيد للموظف ليرد${who.isNotEmpty ? ' على استفسار $who' : ''}${text.isNotEmpty ? ': «$text»' : ''} — بعد رده يعود ${who.isNotEmpty ? 'إلى $who' : 'إلى من سأل'}، وإن عدّل الطلب يبدأ المسار من أوله',
+        'Returned to the employee${who.isNotEmpty ? ' with a question from $who' : ''}${text.isNotEmpty ? ': "$text"' : ''}; a reply returns it ${who.isNotEmpty ? 'to $who' : 'to the asker'}, an amended request restarts the chain');
   }
+  if (!full) return leaveIsActionable(st) ? tr('قيد المراجعة', 'Under review') : '';
   final stage = leaveStages.where((s) => 'pending_${s.key}' == st).firstOrNull;
   return stage == null ? '' : tr('بانتظار قرار ${stage.ar}', 'Waiting for ${stage.en}');
 }
@@ -111,13 +133,15 @@ String _stageState(Map<String, dynamic> l, String stage, String decisionField) {
   return 'waiting';
 }
 
-/// Strip of the four steps: where the request stopped and who signed.
+/// Strip of the steps: where the request stopped and who signed. Shown to process viewers only ([full]).
 class LeaveChainBar extends StatelessWidget {
-  const LeaveChainBar({super.key, required this.leave});
+  const LeaveChainBar({super.key, required this.leave, this.full = false});
   final Map<String, dynamic> leave;
+  final bool full;
 
   @override
   Widget build(BuildContext context) {
+    if (!full) return const SizedBox.shrink();
     return Wrap(
       spacing: 6,
       runSpacing: 6,
@@ -167,10 +191,11 @@ class LeaveChainBar extends StatelessWidget {
   }
 }
 
-/// Request dialogue: a step's question and its owner's reply, oldest first.
+/// Request dialogue: a step's question and its owner's reply, oldest first. The asking stage and its name are shown to process viewers only.
 class LeaveThread extends StatelessWidget {
-  const LeaveThread({super.key, required this.leave});
+  const LeaveThread({super.key, required this.leave, this.full = false});
   final Map<String, dynamic> leave;
+  final bool full;
 
   @override
   Widget build(BuildContext context) {
@@ -183,10 +208,11 @@ class LeaveThread extends StatelessWidget {
       const SizedBox(height: 6),
       ...thread.map((t) {
         final question = t['kind'] == 'question';
-        final stage = leaveStages.where((s) => s.key == t['stage']).firstOrNull;
+        final stage = full ? leaveStages.where((s) => s.key == t['stage']).firstOrNull : null;
         final who = question
-            ? tr('${stage?.ar ?? 'مراجع'} — استفسار', '${stage?.en ?? 'Reviewer'} — asked')
+            ? tr('${stage?.ar ?? 'المراجعة'} — استفسار', '${stage?.en ?? 'Review'} — asked')
             : tr('ردّ الموظف', 'Employee reply');
+        final byName = question && !full ? '' : '${t['byName'] ?? ''}';
         return Container(
           width: double.infinity,
           margin: const EdgeInsets.only(bottom: 6),
@@ -197,7 +223,7 @@ class LeaveThread extends StatelessWidget {
             border: Border.all(color: question ? const Color(0xFFFED7AA) : const Color(0xFFE2E8F0)),
           ),
           child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            Text('$who · ${t['byName'] ?? ''}',
+            Text(byName.isEmpty ? who : '$who · $byName',
                 style: const TextStyle(fontSize: 10.5, fontWeight: FontWeight.w700, color: T.inkSoft)),
             const SizedBox(height: 3),
             Text('${t['text'] ?? ''}', style: const TextStyle(fontSize: 12.5)),
@@ -259,9 +285,11 @@ class DeductionPicker extends StatelessWidget {
 }
 
 /// Badge: deducted or not (once decided or approved), and whether a manager filed it.
+/// HR's choice reveals the HR step, so on an open request it is shown to process viewers only ([full]).
 class LeaveDeductionBadge extends StatelessWidget {
-  const LeaveDeductionBadge({super.key, required this.leave});
+  const LeaveDeductionBadge({super.key, required this.leave, this.full = true});
   final Map<String, dynamic> leave;
+  final bool full;
 
   @override
   Widget build(BuildContext context) {
@@ -273,7 +301,7 @@ class LeaveDeductionBadge extends StatelessWidget {
           child: Text(text, style: TextStyle(fontSize: 10.5, fontWeight: FontWeight.w700, color: c)),
         );
     return Wrap(spacing: 4, runSpacing: 4, children: [
-      if (decided || leave['status'] == 'approved')
+      if ((decided || leave['status'] == 'approved') && (full || !leaveIsOpen(leave['status'])))
         chip(cut ? tr('تُخصم من الرصيد', 'Deducted') : tr('بدون خصم', 'No deduction'), cut ? T.warn : T.success),
       if (leave['filedByManager'] == true) chip(tr('قدّمها المدير', 'Filed by manager'), const Color(0xFF4F46E5)),
     ]);

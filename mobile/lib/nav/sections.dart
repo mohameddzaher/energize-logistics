@@ -241,7 +241,6 @@ List<AppSection> sectionsFor(AuthProvider auth) {
         if (auth.user?['isChairman'] == true || _top.contains(role))
           AppPage('اعتماد رئيس مجلس الإدارة', 'Chairman Approval', Icons.verified_outlined, (c) => const TopLeavesScreen(base: '/api/chairman', stage: 'chairman', canDecide: true, title: ('اعتماد رئيس مجلس الإدارة', 'Chairman Approval')), path: '/system/chairman'),
         AppPage('نشاط الشركة المباشر', 'Live Company Activity', Icons.timeline_outlined, (c) => const TopActivityScreen(), path: '/system/top-management/activity'),
-        if (canApproveSelling(auth)) AppPage('طلبات تعديل سعر البيع', 'Selling-price requests', Icons.price_check_outlined, (c) => const SellingRequestsScreen(), path: sellingRequestsPath),
       ],
     ),
     AppSection(
@@ -249,8 +248,6 @@ List<AppSection> sectionsFor(AuthProvider auth) {
       roles: const [..._admins, 'employee', 'operations_manager', 'operations_staff', 'moderator'],
       pages: [
         AppPage('التشغيل', 'Operations', Icons.workspaces_outline, (c) => const OpsWorkflowsScreen(), path: '/system/operations'),
-        // Approvers who cannot open the workflow (the sales manager) reach the list here too.
-        if (canApproveSelling(auth)) AppPage('طلبات تعديل سعر البيع', 'Selling-price requests', Icons.price_check_outlined, (c) => const SellingRequestsScreen(), path: sellingRequestsPath),
         // Operations sheets at our selling price: a management page, with permission from the web (path is its key in the matrix, and the server guards it on top).
         AppPage('التشغيل — خاصّ', 'Operations — private', Icons.lock_outline, (c) => const OpsPrivateScreen(), path: '/system/operations/private'),
         AppPage('متابعة الحمولات والشحنات', 'Loads & Shipments', Icons.local_shipping_outlined, (c) => const OpsLoadsBoardScreen(), path: opsBoardPath),
@@ -512,6 +509,8 @@ List<AppSection> sectionsFor(AuthProvider auth) {
         AppPage('مسار البيع', 'Pipeline', Icons.view_kanban_outlined, (c) => const SalesPipelineScreen(), path: '/system/sales/pipeline'),
         AppPage('الأهداف', 'Targets', Icons.track_changes_outlined, (c) => ResourceScreen(config: salesTargetsCfg(canEdit: canSetTargets)), path: '/system/sales/targets'),
         AppPage('الأداء', 'Performance', Icons.leaderboard_outlined, (c) => const SalesPerformanceScreen(), path: '/system/sales/performance'),
+        // Selling-price approvals: the sales manager, top roles and flagged top-management accounts; the server checks again.
+        if (canApproveSelling(auth)) AppPage('طلبات تعديل سعر البيع', 'Selling-price requests', Icons.price_check_outlined, (c) => const SellingRequestsScreen(), path: sellingRequestsPath),
         if (jpMember(role, 'sales')) AppPage('خطّة العمل (JP)', 'JP', Icons.event_available_outlined, (c) => const JpScreen(section: 'sales'), path: '/system/sales/jp'),
         if (jpManager(role, 'sales')) AppPage('لوحة JP', 'JP Dashboard', Icons.insights_outlined, (c) => const JpDashScreen(section: 'sales'), path: '/system/sales/jp-dashboard'),
         if (jpManager(role, 'sales') && !_top.contains(role)) AppPage('خطّة الإدارة (Management JP)', 'Management JP', Icons.workspace_premium_outlined, (c) => const JpScreen(scope: 'management'), path: '/system/sales/management-jp'),

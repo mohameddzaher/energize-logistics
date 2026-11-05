@@ -7,7 +7,7 @@ import { useSocket } from '@/hooks/useSocket';
 import api from '@/lib/api';
 import { CalendarDays, Plus, Check, X, XCircle, AlertTriangle, ShieldCheck, Pencil, Trash2, HelpCircle, Eye, Send, FileDown } from 'lucide-react';
 import { downloadLeaveSheet } from '@/lib/leavePdf';
-import { LeaveRequest, LeaveType, LeaveBalance, LEAVE_STATUS, empName, userName, leaveTypeLabel, today, earliestStartDate, daysUntil, LEAVE_OPEN, leaveUntouched, leaveStatusStyle, leaveWaitNote, countLeaveDays, fridaysNote } from '@/lib/hr';
+import { LeaveRequest, LeaveType, LeaveBalance, LEAVE_STATUS, empName, userName, leaveTypeLabel, today, earliestStartDate, daysUntil, LEAVE_OPEN, leaveUntouched, leaveStatusStyle, leaveWaitNote, countLeaveDays, fridaysNote, seesLeaveProcess } from '@/lib/hr';
 import DatePair from '@/components/hr/DatePair';
 import { bothPeriod, gregCell, hijriCell, pairLabels, exportDatePair } from '@/lib/hrDates';
 import { Spinner, PageHeader, PrimaryButton, Badge, Modal, Field, Select, TextArea, Tabs, StatCard, Pick, Loader2, SearchableSelect } from '@/components/hr/HRKit';
@@ -35,6 +35,8 @@ export default function MyLeavesPage() {
   const { lang, isRTL } = useLanguage();
   const ar = lang === 'ar';
   const tx = getHrMyLeavesTranslations(lang);
+  // The process (stages, who holds a request) is for process viewers only; the employee sees «قيد المراجعة» and the outcome.
+  const full = seesLeaveProcess(user);
 
   const [tab, setTab] = useState('mine');
   const [leaves, setLeaves] = useState<LeaveRequest[]>([]);
@@ -183,6 +185,14 @@ export default function MyLeavesPage() {
   const [answering, setAnswering] = useState<LeaveRequest | null>(null);
   const [answer, setAnswer] = useState('');
   const [answerFiles, setAnswerFiles] = useState<PickedFile[]>([]);
+  // The reply may carry the amended request; unchanged type and dates send it back to whoever asked, changed ones restart the review.
+  const [amend, setAmend] = useState({ leaveType: '', startDate: '', endDate: '', reason: '' });
+  const openAnswer = (l: LeaveRequest) => {
+    setAnswering(l); setAnswer(''); setAnswerFiles([]);
+    setAmend({ leaveType: String(l.leaveType?._id || l.leaveType || ''), startDate: l.startDate, endDate: l.endDate, reason: l.reason || '' });
+  };
+  const amendType = types.find((x) => x._id === amend.leaveType) || null;
+  const amended = !!answering && (amend.leaveType !== String(answering.leaveType?._id || answering.leaveType || '') || amend.startDate !== answering.startDate || amend.endDate !== answering.endDate);
   const [detail, setDetail] = useState<LeaveRequest | null>(null);
 
   const lastQuestion = (l: LeaveRequest) =>
@@ -196,12 +206,10 @@ export default function MyLeavesPage() {
       const r = await api.post<{ leave: LeaveRequest }>(`/api/hr/me/leaves/${answering._id}/reply`, {
         text: answer.trim(),
         attachment: f?.dataUrl, attachmentName: f?.fileName,
+        leaveType: amend.leaveType, startDate: amend.startDate, endDate: amend.endDate, reason: amend.reason,
       });
       setAnswering(null); setAnswer(''); setAnswerFiles([]);
-      // The filing manager's own reply keeps his approval, so it returns to HR, not to him.
-      notify(r?.leave?.currentStage === 'hr'
-        ? (ar ? 'أُرسل ردّك — عاد الطلبُ إلى الموارد البشرية.' : 'Your reply was sent — the request went back to HR.')
-        : (ar ? 'أُرسل ردّك — عاد الطلبُ إلى المدير المباشر.' : 'Your reply was sent — the request went back to the direct manager.'), 'success');
+      notify(r?.leave ? (ar ? 'أُرسل ردّك — طلبك قيد المراجعة من جديد.' : 'Your reply was sent — your request is under review again.') : '', 'success');
       load();
     } catch (e: any) { notify(e.message, 'error'); }
     setBusy(false);
@@ -225,7 +233,7 @@ export default function MyLeavesPage() {
     ...exportDatePair(FROM_LABEL, 'startDate', ar),
     ...exportDatePair(TO_LABEL, 'endDate', ar),
     { header: tx.colDays, key: 'days', width: 8 },
-    { header: tx.colStatus, key: 'status', transform: (v) => { const st = leaveStatusStyle({ status: v }, true); return st ? (ar ? st.ar : st.en) : v; }, width: 16 },
+    { header: tx.colStatus, key: 'status', transform: (v) => { const st = leaveStatusStyle({ status: v }, true, full); return st ? (ar ? st.ar : st.en) : v; }, width: 16 },
   ];
   const teamColumns: ExportColumn[] = [
     { header: tx.colEmployee, key: 'employee', transform: (v) => empName(v, lang), width: 22 },
@@ -233,7 +241,7 @@ export default function MyLeavesPage() {
     ...exportDatePair(FROM_LABEL, 'startDate', ar),
     ...exportDatePair(TO_LABEL, 'endDate', ar),
     { header: tx.colDays, key: 'days', width: 8 },
-    { header: tx.colStatus, key: 'status', transform: (v) => (LEAVE_STATUS[v] ? (ar ? LEAVE_STATUS[v].ar : LEAVE_STATUS[v].en) : v), width: 16 },
+    { header: tx.colStatus, key: 'status', transform: (v) => { const st = leaveStatusStyle({ status: v }, false, full, v === 'pending_manager'); return st ? (ar ? st.ar : st.en) : v; }, width: 16 },
   ];
   // Each tab here is a self-contained scope (all my requests, all my team's requests) without search or filter, so a second scope would repeat the same file under another title.
   const scope = exportScopeLabels(ar);
@@ -291,7 +299,7 @@ export default function MyLeavesPage() {
                     <Td className="text-slate-900">{leaveTypeLabel(l.leaveType, lang)}</Td>
                     <Td className="whitespace-nowrap tabular-nums">{gregCell(l.startDate)}</Td><Td className="whitespace-nowrap tabular-nums"><span dir="ltr">{hijriCell(l.startDate)}</span></Td><Td className="whitespace-nowrap tabular-nums">{gregCell(l.endDate)}</Td><Td className="whitespace-nowrap tabular-nums"><span dir="ltr">{hijriCell(l.endDate)}</span></Td><Td>{l.days}</Td>
                     <Td>
-                      <span className="inline-flex flex-wrap items-center gap-1.5"><Badge style={leaveStatusStyle(l, true)} lang={lang} /><DeductionBadge leave={l} ar={ar} /></span>
+                      <span className="inline-flex flex-wrap items-center gap-1.5"><Badge style={leaveStatusStyle(l, true, full)} lang={lang} />{(full || !LEAVE_OPEN.includes(l.status)) && <DeductionBadge leave={l} ar={ar} />}</span>
                       {l.status === 'info_requested' && lastQuestion(l) && (
                         <p className="mt-1 max-w-xs truncate text-[11px] text-orange-700" title={lastQuestion(l)?.text}>
                           {lastQuestion(l)?.text}
@@ -307,12 +315,12 @@ export default function MyLeavesPage() {
                           </>
                         )}
                         {l.status === 'info_requested' && (
-                          <button type="button" onClick={() => { setAnswering(l); setAnswer(''); setAnswerFiles([]); }}
+                          <button type="button" onClick={() => openAnswer(l)}
                             className="flex items-center gap-1 rounded-lg bg-orange-500/20 px-2 py-1 text-[11px] font-semibold text-orange-700 hover:bg-orange-500/30">
                             <HelpCircle className="w-3.5 h-3.5" />{ar ? 'الردّ على الاستفسار' : 'Reply'}
                           </button>
                         )}
-                        <button type="button" onClick={() => setDetail(l)} className="text-slate-400 hover:text-[#f37121]" title={ar ? 'مسار الطلب' : 'Request trail'}><Eye className="w-4 h-4" /></button>
+                        <button type="button" onClick={() => setDetail(l)} className="text-slate-400 hover:text-[#f37121]" title={full ? (ar ? 'مسار الطلب' : 'Request trail') : (ar ? 'تفاصيل الطلب' : 'Request details')}><Eye className="w-4 h-4" /></button>
                         <button type="button" onClick={() => sheet(l._id)} disabled={sheetBusy === l._id} className="text-slate-400 hover:text-[#f37121] disabled:opacity-50" title={ar ? 'ورقة الإجازة PDF' : 'Leave sheet PDF'}>
                           {sheetBusy === l._id ? <Loader2 className="w-4 h-4 animate-spin" /> : <FileDown className="w-4 h-4" />}
                         </button>
@@ -352,19 +360,19 @@ export default function MyLeavesPage() {
                     <Td>{leaveTypeLabel(l.leaveType, lang)}</Td>
                     <Td className="whitespace-nowrap tabular-nums">{gregCell(l.startDate)}</Td><Td className="whitespace-nowrap tabular-nums"><span dir="ltr">{hijriCell(l.startDate)}</span></Td><Td className="whitespace-nowrap tabular-nums">{gregCell(l.endDate)}</Td><Td className="whitespace-nowrap tabular-nums"><span dir="ltr">{hijriCell(l.endDate)}</span></Td><Td>{l.days}</Td>
                     <Td>
-                      <span className="inline-flex flex-wrap items-center gap-1.5"><Badge style={leaveStatusStyle(l, filedByMe(l))} lang={lang} /><DeductionBadge leave={l} ar={ar} /></span>
-                      {l.status !== 'pending_manager' && LEAVE_OPEN.includes(l.status) && <p className="mt-1 max-w-xs text-[11px] text-slate-500">{leaveWaitNote(l, ar)}</p>}
+                      <span className="inline-flex flex-wrap items-center gap-1.5"><Badge style={leaveStatusStyle(l, filedByMe(l), full, l.status === 'pending_manager')} lang={lang} />{(full || !LEAVE_OPEN.includes(l.status)) && <DeductionBadge leave={l} ar={ar} />}</span>
+                      {l.status !== 'pending_manager' && LEAVE_OPEN.includes(l.status) && <p className="mt-1 max-w-xs text-[11px] text-slate-500">{leaveWaitNote(l, ar, full)}</p>}
                     </Td>
                     <Td end>
                       <div className="flex items-center justify-end gap-2">
                         {l.status === 'pending_manager' && <button type="button" onClick={() => { setReview(l); setNote(''); }} className="text-[#f37121] hover:underline text-xs">{tx.review}</button>}
                         {filedByMe(l) && l.status === 'info_requested' && (
-                          <button type="button" onClick={() => { setAnswering(l); setAnswer(''); setAnswerFiles([]); }}
+                          <button type="button" onClick={() => openAnswer(l)}
                             className="flex items-center gap-1 rounded-lg bg-orange-500/20 px-2 py-1 text-[11px] font-semibold text-orange-700 hover:bg-orange-500/30">
                             <HelpCircle className="w-3.5 h-3.5" />{ar ? 'الردّ على الاستفسار' : 'Reply'}
                           </button>
                         )}
-                        <button type="button" onClick={() => setDetail(l)} className="text-slate-400 hover:text-[#f37121]" title={ar ? 'مسار الطلب' : 'Request trail'}><Eye className="w-4 h-4" /></button>
+                        <button type="button" onClick={() => setDetail(l)} className="text-slate-400 hover:text-[#f37121]" title={full ? (ar ? 'مسار الطلب' : 'Request trail') : (ar ? 'تفاصيل الطلب' : 'Request details')}><Eye className="w-4 h-4" /></button>
                         <button type="button" onClick={() => sheet(l._id)} disabled={sheetBusy === l._id} className="text-slate-400 hover:text-[#f37121] disabled:opacity-50" title={ar ? 'ورقة الإجازة PDF' : 'Leave sheet PDF'}>
                           {sheetBusy === l._id ? <Loader2 className="w-4 h-4 animate-spin" /> : <FileDown className="w-4 h-4" />}
                         </button>
@@ -482,7 +490,7 @@ export default function MyLeavesPage() {
         </div>
       </Modal>
 
-      {/* Reply to an inquiry: text and one attachment, then the chain restarts from the beginning. */}
+      {/* Reply to an inquiry: text, one attachment and the request itself, editable. */}
       <Modal open={!!answering} onClose={() => setAnswering(null)}
         title={ar ? 'الردّ على الاستفسار' : 'Reply to the question'}
         footer={<>
@@ -493,7 +501,7 @@ export default function MyLeavesPage() {
         </>}>
         {answering && (
           <div className="space-y-3">
-            <LeaveThread leave={answering} lang={ar ? 'ar' : 'en'} />
+            <LeaveThread leave={answering} lang={ar ? 'ar' : 'en'} full={full} />
             <Field label={ar ? 'ردّك' : 'Your reply'}>
               <TextArea rows={4} value={answer} onChange={(e) => setAnswer(e.target.value)}
                 placeholder={ar ? 'اكتب ردّك أو ما عدّلته…' : 'Write your reply or what you changed…'} />
@@ -501,23 +509,38 @@ export default function MyLeavesPage() {
             <Field label={ar ? 'مرفق (إيصال، تقرير…) — اختياري' : 'Attachment (receipt, report…) — optional'}>
               <FilePicker files={answerFiles} onChange={setAnswerFiles} max={1} />
             </Field>
-            <p className="rounded-lg border border-amber-200 bg-amber-50 p-2.5 text-xs text-amber-800">
-              {ar ? 'بعد الإرسال يبدأ الطلبُ دورتَه من المدير المباشر مرّةً أخرى — لأنّ ما وافقوا عليه قد تغيّر.'
-                  : 'After sending, the request starts again from your direct manager — because what they approved has changed.'}
-            </p>
+            <div className="space-y-3 rounded-lg border border-slate-200 bg-slate-50 p-3">
+              <p className="text-xs font-semibold text-slate-700">{ar ? 'تعديل الطلب — اختياري' : 'Amend the request — optional'}</p>
+              <Field label={tx.leaveTypeRequired}>
+                <Select value={amend.leaveType} onChange={(e) => setAmend((a) => ({ ...a, leaveType: e.target.value }))}>
+                  {types.map((t) => <option key={t._id} value={t._id}>{ar ? t.nameAr : t.nameEn}</option>)}
+                </Select>
+              </Field>
+              <div className="grid grid-cols-2 gap-3">
+                <DatePair label={`${FROM_LABEL} *`} ar={ar} value={amend.startDate} onChange={(v) => setAmend((a) => ({ ...a, startDate: v }))} />
+                <DatePair label={`${TO_LABEL} *`} ar={ar} value={amend.endDate} min={amend.startDate} onChange={(v) => setAmend((a) => ({ ...a, endDate: v }))} />
+              </div>
+              <DaysPreview start={amend.startDate} end={amend.endDate} countFridays={amendType?.countsFridays === true} ar={ar} />
+              <Field label={tx.reasonNotes}><TextArea rows={2} value={amend.reason} onChange={(e) => setAmend((a) => ({ ...a, reason: e.target.value }))} /></Field>
+            </div>
+            {amended && (
+              <p className="rounded-lg border border-amber-200 bg-amber-50 p-2.5 text-xs text-amber-800">
+                {ar ? 'غيّرت نوع الإجازة أو تاريخها، فيُراجَع الطلب من جديد كاملًا.' : 'You changed the leave type or dates, so the request is reviewed again in full.'}
+              </p>
+            )}
           </div>
         )}
       </Modal>
 
-      {/* Request trail: where it stopped and who said what. */}
-      <Modal open={!!detail} onClose={() => setDetail(null)} wide title={ar ? 'مسار الطلب' : 'Request trail'}>
+      {/* Request details: the conversation, and for process viewers where it stopped and who signed. */}
+      <Modal open={!!detail} onClose={() => setDetail(null)} wide title={full ? (ar ? 'مسار الطلب' : 'Request trail') : (ar ? 'تفاصيل الطلب' : 'Request details')}>
         {detail && (
           <div className="space-y-3 text-sm">
             <p className="text-slate-700">
               {leaveTypeLabel(detail.leaveType, lang)} · {bothPeriod(detail.startDate, detail.endDate, ar)} · {detail.days} {tx.dayShort}
             </p>
-            <LeaveChainBar leave={detail} lang={ar ? 'ar' : 'en'} />
-            <LeaveThread leave={detail} lang={ar ? 'ar' : 'en'} />
+            <LeaveChainBar leave={detail} lang={ar ? 'ar' : 'en'} full={full} />
+            <LeaveThread leave={detail} lang={ar ? 'ar' : 'en'} full={full} />
             {!(detail.thread || []).length && (
               <p className="text-xs text-slate-500">{ar ? 'لا مراسلات على هذا الطلب.' : 'No conversation on this request.'}</p>
             )}
@@ -535,8 +558,8 @@ export default function MyLeavesPage() {
         </>}>
         <div className="space-y-3">
           <p className="rounded-lg border border-indigo-200 bg-indigo-50 p-2.5 text-xs text-indigo-800">
-            {ar ? 'تُسجَّل موافقتك كمديرٍ مباشر عند التقديم ويوضع توقيعك مكان الموظف ومكانك، ثم يمرّ الطلب على الإدارة المالية ثم الموارد البشرية ثم الإدارة العليا ثم رئيس مجلس الإدارة.'
-                : 'Your manager approval is recorded with the filing and your signature goes in the employee box and yours; the request then goes to Finance, HR, top management and the chairman.'}
+            {ar ? 'تُسجَّل موافقتك كمديرٍ مباشر عند التقديم ويوضع توقيعك مكان الموظف ومكانك.'
+                : 'Your manager approval is recorded with the filing, and your signature goes in the employee box and yours.'}
           </p>
           <Field label={ar ? 'الموظّف *' : 'Employee *'}>
             <SearchableSelect value={teamForm.employee} onChange={(v) => setTeamForm((f) => ({ ...f, employee: v }))}

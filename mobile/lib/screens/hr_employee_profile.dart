@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../services/api.dart';
 import '../services/auth.dart';
+import '../ui/leave_chain.dart';
 import '../services/hijri.dart';
 import '../ui/hijri_picker.dart';
 import '../services/lang.dart';
@@ -842,7 +843,7 @@ class _HrEmployeeProfileScreenState extends State<HrEmployeeProfileScreen> {
                         child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                           Row(children: [
                             Expanded(child: Text(type.toString(), style: const TextStyle(fontWeight: FontWeight.w800))),
-                            Chip2((l['status'] ?? '—').toString(), l['status'] == 'approved' ? T.success : l['status'] == 'rejected' ? T.danger : T.warn),
+                            Builder(builder: (_) { final st = leaveStatusFor(l['status'], full: seesLeaveProcess(context.read<AuthProvider>().user)); return Chip2(tr(st.$1, st.$2), st.$3); }),
                           ]),
                           const SizedBox(height: 4),
                           Text('${_date(l['startDate'])} ← ${_date(l['endDate'])} · ${l['days'] ?? '—'} ${tr('يوم', 'days')}',

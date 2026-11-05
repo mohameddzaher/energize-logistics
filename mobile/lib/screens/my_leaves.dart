@@ -132,7 +132,9 @@ class _MyLeavesScreenState extends State<MyLeavesScreen> {
   }
 
   String _typeName(dynamic t) => t is Map ? '${(Lang.instance.ar ? t['nameAr'] : t['nameEn']) ?? t['nameAr'] ?? ''}' : '';
-  String _statusName(dynamic s) { final st = leaveStatusOf(s); return tr(st.$1, st.$2); }
+  // Stages are shown to process viewers only (seesLeaveProcess); the employee reads «قيد المراجعة».
+  bool get _full => seesLeaveProcess(context.read<AuthProvider>().user);
+  String _statusName(dynamic s, {bool own = false}) { final st = leaveStatusFor(s, own: own, full: _full, canAct: !own && s == 'pending_manager'); return tr(st.$1, st.$2); }
   String _userName(dynamic u) => u is Map ? '${u['firstName'] ?? ''} ${u['lastName'] ?? ''}'.trim() : '';
 
   // Web export columns: type, start and end in both calendars, days, status.
@@ -144,7 +146,7 @@ class _MyLeavesScreenState extends State<MyLeavesScreen> {
         ExportCol('تاريخ النهاية الميلادي', 'End date (Gregorian)', (r) => gregDay(r['endDate'])),
         ExportCol('تاريخ النهاية الهجري', 'End date (Hijri)', (r) => hijriDay(r['endDate'])),
         ExportCol('الأيام', 'Days', (r) => r['days'] ?? ''),
-        ExportCol('الحالة', 'Status', (r) => _statusName(r['status'])),
+        ExportCol('الحالة', 'Status', (r) => _statusName(r['status'], own: !team)),
       ];
 
   /// Review a subordinate's request at the manager's stage: PATCH decision {decision, note}.
@@ -164,7 +166,7 @@ class _MyLeavesScreenState extends State<MyLeavesScreen> {
         ]),
         actions: [
           TextButton(onPressed: () => Navigator.pop(c, 'rejected'), child: Text(tr('رفض', 'Reject'), style: const TextStyle(color: T.danger))),
-          FilledButton(onPressed: () => Navigator.pop(c, 'approved'), child: Text(tr('موافقة وإحالة للموارد البشرية', 'Approve → HR'))),
+          FilledButton(onPressed: () => Navigator.pop(c, 'approved'), child: Text(tr('موافقة', 'Approve'))),
         ],
       ),
     );
@@ -191,11 +193,11 @@ class _MyLeavesScreenState extends State<MyLeavesScreen> {
           child: AppCard(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
             Row(children: [
               Expanded(child: Text(_empName(l['employee']).isNotEmpty ? _empName(l['employee']) : _userName(l['requester']), style: const TextStyle(fontWeight: FontWeight.w800))),
-              Chip2(_statusName(l['status']), leaveStatusOf(l['status']).$3),
+              Chip2(_statusName(l['status'], own: _filedByMe(l)), leaveStatusFor(l['status'], own: _filedByMe(l), full: _full, canAct: l['status'] == 'pending_manager').$3),
             ]),
             Text('${_typeName(l['leaveType'])} · ${_d(l['startDate'])} ← ${_d(l['endDate'])} · ${l['days'] ?? '—'} ${tr('يوم', 'days')}', style: const TextStyle(fontSize: 12.5, color: T.inkSoft)),
             const SizedBox(height: 4),
-            LeaveDeductionBadge(leave: l),
+            LeaveDeductionBadge(leave: l, full: _full),
             Wrap(alignment: WrapAlignment.end, spacing: 4, children: [
               if (l['status'] == 'pending_manager')
                 TextButton(onPressed: () => _review(l), child: Text(tr('مراجعة', 'Review'))),
@@ -218,73 +220,19 @@ class _MyLeavesScreenState extends State<MyLeavesScreen> {
     ]);
   }
 
-  /// Reply to a stage's inquiry: text and one attachment.
-  /// Sending restarts the chain from the direct manager and clears earlier approvals, since the request after the reply is no longer the one they approved.
+  /// Reply to an inquiry, optionally with the amended request (type, dates, reason).
+  /// The server sends an unchanged request back to whoever asked and restarts the review for an amended one; the employee is told only that it is under review again.
   Future<void> _reply(Map<String, dynamic> l) async {
-    final text = TextEditingController();
-    PickedFile? file;
-    final ok = await showDialog<bool>(
+    final body = await showDialog<Map<String, dynamic>>(
       context: context,
-      builder: (c) => StatefulBuilder(builder: (c, setSt) => AlertDialog(
-        title: Text(tr('الردّ على الاستفسار', 'Reply to the question')),
-        content: SingleChildScrollView(
-          child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
-            LeaveThread(leave: l),
-            TextField(
-              controller: text,
-              minLines: 3,
-              maxLines: 5,
-              onChanged: (_) => setSt(() {}),
-              decoration: InputDecoration(
-                labelText: tr('ردّك', 'Your reply'),
-                hintText: tr('اكتب ردّك أو ما عدّلته…', 'Write your reply or what you changed…'),
-              ),
-            ),
-            const SizedBox(height: 8),
-            Align(
-              alignment: AlignmentDirectional.centerStart,
-              child: TextButton.icon(
-                onPressed: () async {
-                  final f = await pickFileAsDataUrl();
-                  if (f != null) setSt(() => file = f);
-                },
-                icon: const Icon(Icons.attach_file_rounded, size: 16),
-                label: Text(file == null
-                    ? tr('إرفاق ملفّ (إيصال، تقرير…)', 'Attach a file (receipt, report…)')
-                    : file!.fileName),
-              ),
-            ),
-            Text(
-              tr('بعد الإرسال يبدأ الطلبُ دورتَه من المدير المباشر مرّةً أخرى.',
-                 'After sending, the request starts again from your direct manager.'),
-              style: const TextStyle(fontSize: 11.5, color: T.inkFaint),
-            ),
-          ]),
-        ),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(c, false), child: Text(tr('إلغاء', 'Cancel'))),
-          FilledButton(
-            style: FilledButton.styleFrom(backgroundColor: const Color(0xFFEA580C)),
-            onPressed: text.text.trim().isEmpty ? null : () => Navigator.pop(c, true),
-            child: Text(tr('إرسال الردّ', 'Send reply')),
-          ),
-        ],
-      )),
+      builder: (c) => _ReplyDialog(leave: l, types: _types, full: seesLeaveProcess(context.read<AuthProvider>().user)),
     );
-    if (ok != true) return;
+    if (body == null) return;
     try {
-      final r = await Api.instance.post('/api/hr/me/leaves/${l['_id']}/reply', {
-        'text': text.text.trim(),
-        if (file != null) 'attachment': file!.dataUrl,
-        if (file != null) 'attachmentName': file!.fileName,
-      });
-      // The filing manager's own reply keeps his approval, so it returns to HR.
-      final toHr = r is Map && r['leave'] is Map && r['leave']['currentStage'] == 'hr';
+      await Api.instance.post('/api/hr/me/leaves/${l['_id']}/reply', body);
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-          content: Text(toHr
-              ? tr('أُرسل ردّك — عاد الطلبُ إلى الموارد البشرية.', 'Your reply was sent — the request went back to HR.')
-              : tr('أُرسل ردّك — عاد الطلبُ إلى المدير المباشر.', 'Your reply was sent — the request went back to the direct manager.')),
+          content: Text(tr('أُرسل ردّك — طلبك قيد المراجعة من جديد.', 'Your reply was sent — your request is under review again.')),
         ));
       }
       _load();
@@ -363,7 +311,7 @@ class _MyLeavesScreenState extends State<MyLeavesScreen> {
                         ),
                       if (_tab == 0) ..._leaves.asMap().entries.map((e) {
                         final l = e.value;
-                        final st = leaveStatusOwn(l['status']);
+                        final st = leaveStatusOwn(l['status'], full: _full);
                         final type = l['leaveType'] is Map ? (l['leaveType']['nameAr'] ?? l['leaveType']['nameEn'] ?? '') : '';
                         final canCancel = leaveIsOpen(l['status']);
                         return FadeSlideIn(
@@ -413,12 +361,12 @@ class _MyLeavesScreenState extends State<MyLeavesScreen> {
                                     ]),
                                   )),
                                   const SizedBox(height: 8),
-                                  LeaveChainBar(leave: l),
+                                  LeaveChainBar(leave: l, full: _full),
                                   const SizedBox(height: 4),
-                                  LeaveDeductionBadge(leave: l),
+                                  LeaveDeductionBadge(leave: l, full: _full),
                                   const SizedBox(height: 8),
-                                  LeaveThread(leave: l),
-                                  // A stage asked instead of rejecting. The request returns to its owner to reply or add proof, and the reply restarts from the direct manager.
+                                  LeaveThread(leave: l, full: _full),
+                                  // A stage asked instead of rejecting: the request returns to its owner to reply, add proof or amend it.
                                   if (l['status'] == 'info_requested')
                                     SizedBox(
                                       width: double.infinity,
@@ -586,7 +534,7 @@ class _NewLeaveSheetState extends State<_NewLeaveSheet> {
         await Api.instance.post('/api/hr/team/leaves', body);
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(tr(
-            'قُدِّمت الإجازة — موافقتك مسجّلة، وهي الآن عند الموارد البشرية.', 'Leave filed — your approval is recorded; it is now with HR.'))));
+            'قُدِّمت الإجازة — موافقتك مسجّلة، وهي قيد المراجعة.', 'Leave filed — your approval is recorded; it is under review.'))));
         }
       } else if (l != null) {
         final keptIds = _kept.map((a) => '${a['_id']}').toSet();
@@ -632,8 +580,8 @@ class _NewLeaveSheetState extends State<_NewLeaveSheet> {
               style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
           const SizedBox(height: 14),
           if (widget.members != null) ...[
-            Text(tr('تُسجَّل موافقتك كمديرٍ مباشر، ويذهب الطلب إلى الموارد البشرية ثم الإدارة العليا.',
-                    'Your manager approval is recorded; the request goes to HR, then top management.'),
+            Text(tr('تُسجَّل موافقتك كمديرٍ مباشر عند التقديم ويوضع توقيعك مكان الموظف ومكانك.',
+                    'Your manager approval is recorded with the filing, and your signature goes in the employee box and yours.'),
                 style: const TextStyle(fontSize: 11.5, color: T.inkFaint)),
             const SizedBox(height: 8),
             DropdownButtonFormField<String>(
@@ -764,6 +712,157 @@ class _NewLeaveSheetState extends State<_NewLeaveSheet> {
           ),
         ],
       ),
+    );
+  }
+}
+
+/// The reply dialog: answer text, one attachment and the request itself, editable. Pops the reply body, or null.
+class _ReplyDialog extends StatefulWidget {
+  const _ReplyDialog({required this.leave, required this.types, required this.full});
+  final Map<String, dynamic> leave;
+  final List<Map<String, dynamic>> types;
+  final bool full;
+  @override
+  State<_ReplyDialog> createState() => _ReplyDialogState();
+}
+
+class _ReplyDialogState extends State<_ReplyDialog> {
+  final _text = TextEditingController();
+  final _reason = TextEditingController();
+  PickedFile? _file;
+  String _type = '';
+  DateTime? _start;
+  DateTime? _end;
+  late final String _type0;
+  late final String _start0;
+  late final String _end0;
+
+  @override
+  void initState() {
+    super.initState();
+    final l = widget.leave;
+    _type = '${l['leaveType'] is Map ? l['leaveType']['_id'] : l['leaveType'] ?? ''}';
+    _start = DateTime.tryParse('${l['startDate'] ?? ''}');
+    _end = DateTime.tryParse('${l['endDate'] ?? ''}');
+    _reason.text = '${l['reason'] ?? ''}';
+    _type0 = _type;
+    _start0 = _ymd(_start);
+    _end0 = _ymd(_end);
+  }
+
+  @override
+  void dispose() {
+    _text.dispose();
+    _reason.dispose();
+    super.dispose();
+  }
+
+  String _ymd(DateTime? d) => d == null ? '' : '${d.year.toString().padLeft(4, '0')}-${d.month.toString().padLeft(2, '0')}-${d.day.toString().padLeft(2, '0')}';
+  String _fmt(DateTime? d) => d == null ? tr('اختر التاريخ', 'Pick date') : '${d.day}/${d.month}/${d.year}';
+  bool get _amended => _type != _type0 || _ymd(_start) != _start0 || _ymd(_end) != _end0;
+  Map<String, dynamic>? get _chosen => widget.types.where((t) => '${t['_id']}' == _type).firstOrNull;
+
+  Future<DateTime?> _pick(DateTime? initial, {DateTime? min}) {
+    final now = DateTime.now();
+    final first = min ?? DateTime(now.year - 1, now.month, now.day);
+    final seed = initial != null && !initial.isBefore(first) ? initial : first;
+    return showDatePicker(context: context, initialDate: seed, firstDate: first, lastDate: now.add(const Duration(days: 365)));
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final cf = _chosen?['countsFridays'] == true;
+    final n = countLeaveDays(_start, _end, countFridays: cf);
+    final typeIds = widget.types.map((t) => '${t['_id']}').toSet();
+    return AlertDialog(
+      title: Text(tr('الردّ على الاستفسار', 'Reply to the question')),
+      content: SingleChildScrollView(
+        child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
+          LeaveThread(leave: widget.leave, full: widget.full),
+          TextField(
+            controller: _text,
+            minLines: 3,
+            maxLines: 5,
+            onChanged: (_) => setState(() {}),
+            decoration: InputDecoration(
+              labelText: tr('ردّك', 'Your reply'),
+              hintText: tr('اكتب ردّك أو ما عدّلته…', 'Write your reply or what you changed…'),
+            ),
+          ),
+          const SizedBox(height: 8),
+          Align(
+            alignment: AlignmentDirectional.centerStart,
+            child: TextButton.icon(
+              onPressed: () async {
+                final f = await pickFileAsDataUrl();
+                if (f != null) setState(() => _file = f);
+              },
+              icon: const Icon(Icons.attach_file_rounded, size: 16),
+              label: Text(_file == null ? tr('إرفاق ملفّ (إيصال، تقرير…)', 'Attach a file (receipt, report…)') : _file!.fileName),
+            ),
+          ),
+          const SizedBox(height: 6),
+          Text(tr('تعديل الطلب — اختياري', 'Amend the request — optional'),
+              style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w800, color: T.inkSoft)),
+          const SizedBox(height: 6),
+          DropdownButtonFormField<String>(
+            initialValue: typeIds.contains(_type) ? _type : null,
+            isExpanded: true,
+            decoration: InputDecoration(labelText: tr('نوع الإجازة', 'Leave type')),
+            items: widget.types.map((t) => DropdownMenuItem(value: '${t['_id']}', child: Text('${(Lang.instance.ar ? t['nameAr'] : t['nameEn']) ?? t['nameAr'] ?? ''}'))).toList(),
+            onChanged: (v) => setState(() => _type = v ?? _type),
+          ),
+          const SizedBox(height: 8),
+          Row(children: [
+            Expanded(
+              child: OutlinedButton(
+                onPressed: () async { final d = await _pick(_start); if (d != null) setState(() { _start = d; if (_end != null && _end!.isBefore(d)) _end = d; }); },
+                child: Text('${tr('من', 'From')}: ${_fmt(_start)}', textAlign: TextAlign.center),
+              ),
+            ),
+            const SizedBox(width: 8),
+            Expanded(
+              child: OutlinedButton(
+                onPressed: _start == null ? null : () async { final d = await _pick(_end ?? _start, min: _start); if (d != null) setState(() => _end = d); },
+                child: Text('${tr('إلى', 'To')}: ${_fmt(_end)}', textAlign: TextAlign.center),
+              ),
+            ),
+          ]),
+          if (_start != null && _end != null)
+            Padding(
+              padding: const EdgeInsets.only(top: 8),
+              child: Text(n == 0 ? tr('الفترة كلها أيام جمعة — لا تُحسب إجازة', 'Only Fridays — no leave day') : '${tr('عدد أيام الإجازة', 'Leave days')}: $n ${fridaysNote(_start, _end, countFridays: cf)}',
+                  style: TextStyle(fontWeight: FontWeight.w700, color: n == 0 ? T.danger : T.ink)),
+            ),
+          const SizedBox(height: 8),
+          TextField(controller: _reason, decoration: InputDecoration(labelText: tr('السبب', 'Reason'))),
+          if (_amended)
+            Container(
+              width: double.infinity,
+              margin: const EdgeInsets.only(top: 10),
+              padding: const EdgeInsets.all(9),
+              decoration: BoxDecoration(color: const Color(0xFFFEF3C7), borderRadius: BorderRadius.circular(8), border: Border.all(color: const Color(0xFFFDE68A))),
+              child: Text(tr('غيّرت نوع الإجازة أو تاريخها، فيُراجَع الطلب من جديد كاملًا.', 'You changed the leave type or dates, so the request is reviewed again in full.'),
+                  style: const TextStyle(fontSize: 11.5, color: Color(0xFF92400E))),
+            ),
+        ]),
+      ),
+      actions: [
+        TextButton(onPressed: () => Navigator.pop(context), child: Text(tr('إلغاء', 'Cancel'))),
+        FilledButton(
+          style: FilledButton.styleFrom(backgroundColor: const Color(0xFFEA580C)),
+          onPressed: _text.text.trim().isEmpty || (_start != null && _end != null && n == 0) ? null : () => Navigator.pop(context, <String, dynamic>{
+            'text': _text.text.trim(),
+            if (_file != null) 'attachment': _file!.dataUrl,
+            if (_file != null) 'attachmentName': _file!.fileName,
+            if (_type.isNotEmpty) 'leaveType': _type,
+            if (_start != null) 'startDate': _ymd(_start),
+            if (_end != null) 'endDate': _ymd(_end),
+            'reason': _reason.text,
+          }),
+          child: Text(tr('إرسال الردّ', 'Send reply')),
+        ),
+      ],
     );
   }
 }

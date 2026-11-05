@@ -1,5 +1,5 @@
 'use client';
-// One stage's leave desk: every leave in the company, with this stage's own decisions. Finance, top management and the chairman each mount it on their API (backend routes/leaveDesk), so the three screens stay the same.
+// One stage's leave desk: every leave in the company, with this stage's own decisions. Other stages' columns and statuses are shown to process viewers only (seesLeaveProcess). Finance, top management and the chairman each mount it on their API (backend routes/leaveDesk), so the three screens stay the same.
 import { useCallback, useEffect, useState } from 'react';
 import { CalendarCheck, Check, X, Loader2, FileDown } from 'lucide-react';
 import api from '@/lib/api';
@@ -10,7 +10,8 @@ import { PageHeader, Spinner } from '@/components/hr/HRKit';
 import ScrollX from '@/components/system/ScrollX';
 import { DeductionBadge } from '@/components/hr/LeaveDeduction';
 import { bothDatesShort } from '@/lib/hrDates';
-import { LEAVE_STAGES, LEAVE_STATUS, LEAVE_OPEN, LeaveStage, leaveWaitNote } from '@/lib/hr';
+import { LEAVE_STAGES, LEAVE_OPEN, LeaveStage, leaveWaitNote, leaveStatusStyle, seesLeaveProcess } from '@/lib/hr';
+import { useAuth } from '@/context/AuthContext';
 import { downloadLeaveSheet } from '@/lib/leavePdf';
 
 type Decision = { by?: { firstName?: string; lastName?: string }; at?: string; decision?: string; note?: string };
@@ -31,6 +32,8 @@ export default function LeaveDesk({ base, stage, canDecide, title, subtitle }: {
   const { lang } = useLanguage();
   const ar = lang === 'ar';
   const t = (a: string, e: string) => (ar ? a : e);
+  const { user } = useAuth();
+  const full = seesLeaveProcess(user);
   const { notify, prompt } = useDialog();
   const [tab, setTab] = useState('awaiting');
   const [rows, setRows] = useState<Leave[]>([]);
@@ -40,10 +43,12 @@ export default function LeaveDesk({ base, stage, canDecide, title, subtitle }: {
   const [pdfBusy, setPdfBusy] = useState<string | null>(null);
 
   const awaiting = `pending_${stage}`;
+  // Without the process view the desk shows its own stage's decisions only.
+  const shownStages = full ? LEAVE_STAGES : LEAVE_STAGES.filter((s) => s.key === stage);
   const stageName = LEAVE_STAGES.find((s) => s.key === stage);
   const TABS = [
     { key: 'awaiting', ar: `تنتظر ${stageName?.ar || ''}`, en: 'Awaiting you', statuses: [awaiting] },
-    { key: 'in_chain', ar: 'قيد المسار', en: 'In the chain', statuses: [...LEAVE_STAGES.map((s) => `pending_${s.key}`).filter((s) => s !== awaiting), 'info_requested'] },
+    { key: 'in_chain', ar: full ? 'قيد المسار' : 'قيد المراجعة', en: full ? 'In the chain' : 'Under review', statuses: [...LEAVE_STAGES.map((s) => `pending_${s.key}`).filter((s) => s !== awaiting), 'info_requested'] },
     { key: 'approved', ar: 'معتمدة', en: 'Approved', statuses: ['approved'] },
     { key: 'rejected', ar: 'مرفوضة', en: 'Rejected', statuses: ['rejected'] },
     { key: 'all', ar: 'الكل', en: 'All', statuses: [] as string[] },
@@ -111,14 +116,14 @@ export default function LeaveDesk({ base, stage, canDecide, title, subtitle }: {
               <thead>
                 <tr className="bg-slate-900 text-slate-300 text-xs">
                   {[t('الموظف', 'Employee'), t('القسم', 'Department'), t('النوع', 'Type'), t('المدة', 'Period'), t('الأيام', 'Days'),
-                    ...LEAVE_STAGES.map((s) => (ar ? s.ar : s.en)), t('الحالة', 'Status')]
+                    ...shownStages.map((s) => (ar ? s.ar : s.en)), t('الحالة', 'Status')]
                     .map((h, i) => <th key={i} className="px-3 py-3 text-start font-semibold whitespace-nowrap">{h}</th>)}
                   <th className="sticky end-0 z-20 bg-slate-900 border-s border-slate-600 px-3 py-3 text-start font-semibold whitespace-nowrap">{t('الإجراءات', 'Actions')}</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
                 {rows.map((l) => {
-                  const st = LEAVE_STATUS[l.status] || { ar: l.status, en: l.status, bg: 'bg-slate-100', text: 'text-slate-700' };
+                  const st = leaveStatusStyle(l, false, full, canDecide && l.status === awaiting) || { ar: l.status, en: l.status, bg: 'bg-slate-100', text: 'text-slate-700' };
                   return (
                     <tr key={l._id} className="group hover:bg-slate-50">
                       <td className="px-3 py-2.5">
@@ -133,10 +138,10 @@ export default function LeaveDesk({ base, stage, canDecide, title, subtitle }: {
                         <span className="block">{t('إلى', 'To')} {bothDatesShort(l.endDate, ar)}</span>
                       </td>
                       <td className="px-3 py-2.5 font-bold tabular-nums">{l.days}</td>
-                      {LEAVE_STAGES.map((s) => (
+                      {shownStages.map((s) => (
                         <td key={s.key} className="px-3 py-2.5">
                           {decisionCell(l[s.decision as string])}
-                          {s.key === 'hr' && <div className="mt-1 flex flex-wrap gap-1"><DeductionBadge leave={l as any} ar={ar} /></div>}
+                          {(s.key === 'hr' || !full) && <div className="mt-1 flex flex-wrap gap-1"><DeductionBadge leave={l as any} ar={ar} /></div>}
                         </td>
                       ))}
                       <td className="px-3 py-2.5"><span className={`px-2.5 py-1 rounded-full text-xs font-semibold whitespace-nowrap ${st.bg} ${st.text}`}>{ar ? st.ar : st.en}</span></td>
@@ -155,7 +160,7 @@ export default function LeaveDesk({ base, stage, canDecide, title, subtitle }: {
                             </>
                           )}
                           {!(canDecide && l.status === awaiting) && LEAVE_OPEN.includes(l.status) && (
-                            <span className="max-w-[240px] text-[11px] leading-snug text-slate-500">{leaveWaitNote(l, ar)}</span>
+                            <span className="max-w-[240px] text-[11px] leading-snug text-slate-500">{leaveWaitNote(l, ar, full)}</span>
                           )}
                           <button type="button" title={t('ورقة الإجازة PDF', 'Leave sheet PDF')} onClick={() => sheet(l._id)} disabled={pdfBusy === l._id}
                             className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-slate-100 hover:bg-[#f37121]/10 hover:text-[#f37121] text-slate-600 text-xs disabled:opacity-50">

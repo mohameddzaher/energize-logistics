@@ -177,6 +177,7 @@ export default function UsersPage() {
     linkedEmployee: '',
     isTopManagement: false,
     isChairman: false,
+    leaveSheetSigner: '',
     // 'employee' = one of our people; 'customer'/'vendor' = an outside partner
     // whose login opens the portal instead of the system.
     accountType: 'employee' as 'employee' | 'customer' | 'vendor',
@@ -322,7 +323,7 @@ export default function UsersPage() {
 
   // CREATE
   const openCreateModal = async () => {
-    setFormData({ email: '', password: '', firstName: '', lastName: '', role: 'employee', linkedCustomer: '', assignedCustomers: [], branch: '', assignedProjects: [], assignedBranches: [], shipmentBranches: [], manager: '', remoteAccess: REMOTE_PAGE_OPTIONS.map((p) => p.key), linkedEmployee: '', isTopManagement: false, isChairman: false, accountType: 'employee', partnerSource: '', partnerRefId: '' });
+    setFormData({ email: '', password: '', firstName: '', lastName: '', role: 'employee', linkedCustomer: '', assignedCustomers: [], branch: '', assignedProjects: [], assignedBranches: [], shipmentBranches: [], manager: '', remoteAccess: REMOTE_PAGE_OPTIONS.map((p) => p.key), linkedEmployee: '', isTopManagement: false, isChairman: false, leaveSheetSigner: '', accountType: 'employee', partnerSource: '', partnerRefId: '' });
     setPartnerLabel(''); setPartnerQuery(''); setPartners([]);
     setEmpSearch(''); setEmpResults([]); setLinkedEmployeeLabel('');
     setFormError('');
@@ -409,6 +410,7 @@ export default function UsersPage() {
       linkedEmployee: u.linkedEmployee?._id || '',
       isTopManagement: !!(u as any).isTopManagement,
       isChairman: !!(u as any).isChairman,
+      leaveSheetSigner: (u as any).leaveSheetSigner || '',
       accountType: u.accountType || (u.role === 'client' ? 'customer' : 'employee'),
       partnerSource: u.partner?.source || (u.role === 'client' && u.linkedCustomer ? 'customer' : ''),
       partnerRefId: u.partner?.refId || (u.role === 'client' && u.linkedCustomer ? u.linkedCustomer._id : ''),
@@ -476,6 +478,7 @@ export default function UsersPage() {
       payload.linkedEmployee = formData.linkedEmployee || null;
       payload.isTopManagement = !!formData.isTopManagement;
       if (currentUser?.role === 'super_admin') payload.isChairman = !!formData.isChairman;
+      payload.leaveSheetSigner = formData.leaveSheetSigner || '';
       await api.put(`/api/users/${selectedUser._id}`, payload);
       setShowEditModal(false);
       setSelectedUser(null);
@@ -979,6 +982,20 @@ export default function UsersPage() {
           <span className="text-sm font-semibold text-slate-800">{lang === 'ar' ? 'رئيس مجلس الإدارة' : 'Chairman of the board'}</span>
           <span className="text-xs text-slate-500">{lang === 'ar' ? '— نفس صلاحيات السوبر أدمن، والاعتماد النهائي للإجازات' : '— super admin permissions and the final leave approval'}</span>
         </label>
+      )}
+
+      {/* The finance and HR boxes of the leave sheet carry this account's name and signature once the stage approves, whoever in the department clicked. */}
+      {selectedUser && formData.role !== 'client' && (
+        <div>
+          <label className="block text-slate-700 text-sm font-medium mb-1.5">{lang === 'ar' ? 'يوقّع ورقة الإجازة عن' : 'Signs the leave sheet as'}</label>
+          <select value={formData.leaveSheetSigner || ''} onChange={(e) => setFormData({ ...formData, leaveSheetSigner: e.target.value })}
+            className="w-full px-3 py-2.5 rounded-lg bg-white border border-slate-200 text-slate-900 text-sm">
+            <option value="">{lang === 'ar' ? '— لا يوقّع عن قسم —' : '— none —'}</option>
+            <option value="finance">{lang === 'ar' ? 'المدير المالي' : 'Finance Manager'}</option>
+            <option value="hr">{lang === 'ar' ? 'مدير الموارد البشرية' : 'HR Manager'}</option>
+          </select>
+          <p className="mt-1 text-xs text-slate-500">{lang === 'ar' ? 'حساب واحد لكل خانة؛ اختياره هنا يرفعه عن الحساب السابق.' : 'One account per box; choosing it here clears the previous one.'}</p>
+        </div>
       )}
 
       {/* HR: link this login to an existing employee profile (search by name / iqama / number) */}

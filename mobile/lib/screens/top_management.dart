@@ -1,6 +1,8 @@
 // Leave desks, twin of the web's LeaveDesk: finance, top management and the chairman each see every leave and decide their own stage (backend routes/leaveDesk). Also the staff requests to HR and the company's live activity.
 import 'dart:async';
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
+import '../services/auth.dart';
 import '../services/api.dart';
 import '../services/hijri.dart';
 import '../services/lang.dart';
@@ -26,7 +28,9 @@ class TopLeavesScreen extends StatefulWidget {
 }
 
 class _TopLeavesScreenState extends State<TopLeavesScreen> {
-  static const _tabs = [('awaiting', 'تنتظر قرارك', 'Awaiting you'), ('in_chain', 'قيد المسار', 'In the chain'), ('approved', 'معتمدة', 'Approved'), ('rejected', 'مرفوضة', 'Rejected'), ('all', 'الكل', 'All')];
+  // Stages are shown to process viewers only (seesLeaveProcess); the finance desk reads «قيد المراجعة».
+  bool get _full => seesLeaveProcess(context.read<AuthProvider>().user);
+  List<(String, String, String)> get _tabs => [('awaiting', 'تنتظر قرارك', 'Awaiting you'), _full ? ('in_chain', 'قيد المسار', 'In the chain') : ('in_chain', 'قيد المراجعة', 'Under review'), ('approved', 'معتمدة', 'Approved'), ('rejected', 'مرفوضة', 'Rejected'), ('all', 'الكل', 'All')];
   String _tab = 'awaiting';
   List<Map<String, dynamic>> _rows = [];
   bool _loading = true;
@@ -98,7 +102,7 @@ class _TopLeavesScreenState extends State<TopLeavesScreen> {
                   for (final l in _rows) Padding(padding: const EdgeInsets.only(bottom: 8), child: AppCard(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                     Row(children: [
                       Expanded(child: Text('${(l['employee'] as Map?)?['arabicName'] ?? _name(l['employee'])}', style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 14.5))),
-                      Chip2(tr(leaveStatusOf(l['status']).$1, leaveStatusOf(l['status']).$2), leaveStatusOf(l['status']).$3),
+                      Builder(builder: (_) { final st = leaveStatusFor(l['status'], full: _full, canAct: widget.canDecide && l['status'] == 'pending_${widget.stage}'); return Chip2(tr(st.$1, st.$2), st.$3); }),
                     ]),
                     const SizedBox(height: 4),
                     Text('${tr((l['leaveType'] as Map?)?['nameAr'] ?? '', (l['leaveType'] as Map?)?['nameEn'] ?? '')} · ${l['days'] ?? ''} ${tr('يوم', 'days')} · ${(l['employee'] as Map?)?['department'] ?? ''}',
@@ -106,13 +110,14 @@ class _TopLeavesScreenState extends State<TopLeavesScreen> {
                     Text('${bothDates(l['startDate'], ar: Lang.instance.ar)}  →  ${bothDates(l['endDate'], ar: Lang.instance.ar)}', style: const TextStyle(fontSize: 12, color: T.inkSoft)),
                     if ('${l['reason'] ?? ''}'.isNotEmpty) Text('${l['reason']}', style: const TextStyle(fontSize: 12)),
                     const SizedBox(height: 4),
-                    for (final st in leaveStages) _decision(tr(st.ar, st.en), l[st.decision]),
-                    LeaveDeductionBadge(leave: l),
+                    // Without the process view the desk shows its own stage's decision only.
+                    for (final st in leaveStages) if (_full || st.key == widget.stage) _decision(tr(st.ar, st.en), l[st.decision]),
+                    LeaveDeductionBadge(leave: l, full: _full),
                     Align(alignment: AlignmentDirectional.centerEnd, child: TextButton.icon(
                       onPressed: () => downloadLeaveSheet(context, '${l['_id']}'),
                       icon: const Icon(Icons.picture_as_pdf_outlined, size: 16), label: Text(tr('ورقة الإجازة PDF', 'Leave sheet PDF')))),
                     if (!(widget.canDecide && l['status'] == 'pending_${widget.stage}') && leaveIsOpen(l['status']))
-                      Padding(padding: const EdgeInsets.only(top: 4), child: Text(leaveWaitNote(l), style: const TextStyle(fontSize: 11.5, color: T.inkSoft))),
+                      Padding(padding: const EdgeInsets.only(top: 4), child: Text(leaveWaitNote(l, full: _full), style: const TextStyle(fontSize: 11.5, color: T.inkSoft))),
                     if (widget.canDecide && l['status'] == 'pending_${widget.stage}') Padding(padding: const EdgeInsets.only(top: 8), child: Row(children: [
                       Expanded(child: FilledButton.icon(
                         style: FilledButton.styleFrom(backgroundColor: T.success),

@@ -6,7 +6,7 @@ import { useLanguage } from '@/context/LanguageContext';
 import { useSocket } from '@/hooks/useSocket';
 import api from '@/lib/api';
 import { CalendarCheck, Check, X, HelpCircle, FileDown, PenTool, CalendarPlus, History, Pencil, Trash2 } from 'lucide-react';
-import { isHRStaff, LeaveRequest, LEAVE_STATUS, empName, userName, leaveTypeLabel, LEAVE_OPEN, LEAVE_PENDING, canDecideLeave, leaveWaitNote, leaveStatusStyle, countLeaveDays, fridaysNote } from '@/lib/hr';
+import { isHRStaff, LeaveRequest, empName, userName, leaveTypeLabel, LEAVE_OPEN, LEAVE_PENDING, canDecideLeave, leaveWaitNote, leaveStatusStyle, seesLeaveProcess, leaveStatusOptions, countLeaveDays, fridaysNote } from '@/lib/hr';
 import DatePair from '@/components/hr/DatePair';
 import { bothDates, gregCell, hijriCell, pairLabels, exportDatePair } from '@/lib/hrDates';
 import { LeaveChainBar, LeaveThread } from '@/components/hr/LeaveChain';
@@ -31,6 +31,8 @@ export default function HRLeavesPage() {
   const ar = lang === 'ar';
   const tx = getHrLeavesTranslations(lang);
   const staff = isHRStaff(user);
+  // Stages are shown to process viewers only (super admin powers, top management, chairman); HR staff see «قيد المراجعة».
+  const full = seesLeaveProcess(user);
 
   const [allLeaves, setLeaves] = useState<LeaveRequest[]>([]);
   const [loading, setLoading] = useState(true);
@@ -65,7 +67,7 @@ export default function HRLeavesPage() {
     setLoading(false);
   }, []);
   // Status is filtered client-side. Sent to the server, the "N under review" header count was computed on the filtered result and dropped to zero; so fetch all and filter only the table.
-  const leaves = statusFilter ? allLeaves.filter((l) => l.status === statusFilter) : allLeaves;
+  const leaves = statusFilter ? allLeaves.filter((l) => (statusFilter === 'in_review' ? LEAVE_PENDING.includes(l.status) : l.status === statusFilter)) : allLeaves;
 
   useEffect(() => { load(); }, [load]);
   useEffect(() => { api.get<{ signatures: Signature[] }>('/api/auth/signatures').then((r) => setMySigs(r.signatures || [])).catch(() => {}); }, []);
@@ -224,7 +226,7 @@ export default function HRLeavesPage() {
     ...exportDatePair(FROM_LABEL, 'startDate', ar),
     ...exportDatePair(TO_LABEL, 'endDate', ar),
     { header: 'Days', key: 'days', width: 8 },
-    { header: 'Status', key: 'status', width: 16 },
+    { header: 'Status', key: 'status', transform: (v: any) => { const st = leaveStatusStyle({ status: v }, false, full); return st ? (ar ? st.ar : st.en) : v; }, width: 16 },
     { header: 'Reason', key: 'reason', width: 28 },
   ];
   // Status filter runs on the server, so with e.g. "pending" memory holds nothing else. "All" re-fetches without status, otherwise the leave register is exported truncated.
@@ -259,7 +261,7 @@ export default function HRLeavesPage() {
         <div className="flex-1 min-w-[240px]"><SearchInput value={search} onChange={setSearch} placeholder={tx.searchPlaceholder} /></div>
         <select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)} className="w-full sm:w-44 shrink-0 px-3 py-2.5 rounded-lg bg-white border border-slate-200 text-slate-900 text-sm">
           <option value="">{tx.allStatuses}</option>
-          {Object.entries(LEAVE_STATUS).map(([k, v]) => <option key={k} value={k}>{ar ? v.ar : v.en}</option>)}
+          {leaveStatusOptions(full).map(([k, v]) => <option key={k} value={k}>{ar ? v.ar : v.en}</option>)}
         </select>
         <select value={typeFilter} onChange={(e) => setTypeFilter(e.target.value)} aria-label={ar ? 'النوع' : 'Type'} className="w-full sm:w-44 shrink-0 px-3 py-2.5 rounded-lg bg-white border border-slate-200 text-slate-900 text-sm">
           <option value="">{ar ? 'كل الأنواع' : 'All types'}</option>
@@ -311,7 +313,7 @@ export default function HRLeavesPage() {
                   <td className="px-4 py-3"><span className={over ? 'text-red-600' : 'text-slate-700'}>{l.balanceSnapshot?.accrued ?? '—'}{over ? ` ${tx.over}` : ''}</span></td>
                   <td className="px-4 py-3">
                     <div className="flex items-center gap-1.5 flex-wrap">
-                      <Badge style={leaveStatusStyle(l)} lang={lang} />
+                      <Badge style={leaveStatusStyle(l, false, full, canActNow(l))} lang={lang} />
                       <LeaveReturnChip leave={l} ar={ar} />
                       <DeductionBadge leave={l} ar={ar} />
                       {/* Requested-and-approved vs recorded after the fact stays visible. */}
@@ -340,7 +342,7 @@ export default function HRLeavesPage() {
                         </button>
                       </>}
                       {!canActNow(l) && LEAVE_OPEN.includes(l.status) && (
-                        <span className="max-w-[260px] text-[11px] leading-snug text-slate-500" title={leaveWaitNote(l, ar)}>{leaveWaitNote(l, ar)}</span>
+                        <span className="max-w-[260px] text-[11px] leading-snug text-slate-500" title={leaveWaitNote(l, ar, full)}>{leaveWaitNote(l, ar, full)}</span>
                       )}
                       <button type="button" title={t('Download PDF', 'تحميل PDF')} onClick={(e) => { e.stopPropagation(); downloadPdf(l._id); }} className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-slate-100 hover:bg-[#f37121]/10 hover:text-[#f37121] text-slate-600 text-xs">
                         {pdfBusy === l._id ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <FileDown className="w-3.5 h-3.5" />} PDF
@@ -408,11 +410,11 @@ export default function HRLeavesPage() {
           <button type="button" onClick={() => decide('rejected')} disabled={busy} className="flex items-center gap-2 px-4 py-2 bg-red-500/20 text-red-600 rounded-lg text-sm font-medium hover:bg-red-500/30 disabled:opacity-50"><X className="w-4 h-4" /> {tx.reject}</button>
           <button type="button" onClick={() => decide('info')} disabled={busy} className="flex items-center gap-2 px-4 py-2 bg-orange-500/20 text-orange-700 rounded-lg text-sm font-medium hover:bg-orange-500/30 disabled:opacity-50"><HelpCircle className="w-4 h-4" /> {ar ? 'استفسار / طلب تعديل' : 'Ask / request change'}</button>
           <PrimaryButton onClick={() => decide('approved')} disabled={busy}>{busy ? <Loader2 className="w-4 h-4 animate-spin" /> : <Check className="w-4 h-4" />} {tx.approve}</PrimaryButton>
-        </div> : (review && LEAVE_OPEN.includes(review.status) ? <p className="text-xs text-slate-500">{leaveWaitNote(review, ar)}</p> : undefined)}>
+        </div> : (review && LEAVE_OPEN.includes(review.status) ? <p className="text-xs text-slate-500">{leaveWaitNote(review, ar, full)}</p> : undefined)}>
         {review && (
           <div className="space-y-3 text-sm">
             {/* Where the request stands and who signed, before any other field. */}
-            <LeaveChainBar leave={review} lang={ar ? 'ar' : 'en'} />
+            <LeaveChainBar leave={review} lang={ar ? 'ar' : 'en'} full={full} />
             <Row k={tx.fieldEmployee} v={empName(review.employee, lang)} />
             <Row k={tx.fieldRequester} v={userName(review.requester)} />
             <Row k={tx.fieldType} v={leaveTypeLabel(review.leaveType, lang)} />
@@ -421,7 +423,7 @@ export default function HRLeavesPage() {
             <Row k={tx.colDays} v={`${review.days} ${tx.dayUnit}`} />
             <Row k={tx.fieldAccrued} v={`${review.balanceSnapshot?.accrued ?? '—'} ${tx.dayUnit}`} />
             <Row k={tx.fieldRemainingAfter} v={`${review.balanceSnapshot?.remainingAfter ?? '—'} ${tx.dayUnit}`} danger={typeof review.balanceSnapshot?.remainingAfter === 'number' && review.balanceSnapshot.remainingAfter < 0} />
-            <Row k={tx.fieldStatus} v={<span className="inline-flex flex-wrap items-center gap-1.5"><Badge style={leaveStatusStyle(review)} lang={lang} /><DeductionBadge leave={review} ar={ar} /></span>} />
+            <Row k={tx.fieldStatus} v={<span className="inline-flex flex-wrap items-center gap-1.5"><Badge style={leaveStatusStyle(review, false, full, canActNow(review))} lang={lang} /><DeductionBadge leave={review} ar={ar} /></span>} />
             {/* Each text has its owner in its label: the employee's request text versus the reviewer's decision note were both generic and read as duplicates. */}
             {review.reason && (
               <div className="border-t border-slate-200 pt-3">
@@ -437,7 +439,7 @@ export default function HRLeavesPage() {
               </div>
             )}
             <LeaveReturnPanel leave={review} ar={ar} canAct={staff} onDone={load} />
-            <LeaveThread leave={review} lang={ar ? 'ar' : 'en'} />
+            <LeaveThread leave={review} lang={ar ? 'ar' : 'en'} full={full} />
             {review && canActNow(review) && (
               <div className="border-t border-slate-200 pt-3 space-y-3">
                 {needsDeductionChoice(review) && <DeductionChoice value={deduct} onChange={setDeduct} leave={review} ar={ar} />}

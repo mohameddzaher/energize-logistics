@@ -1,6 +1,8 @@
 /**
  * The official leave-request sheet, rendered on the server so web and mobile download the same file.
  * Signatures are resolved when the sheet is printed, not only when a stage acted: a stamp made before the person saved a signature in self-service is filled from their current default, so the sheet never shows a blank box for someone who has since signed up a signature.
+ * The finance and HR boxes carry their department head (User.leaveSheetSigner), whoever in the department approved.
+ * Only process viewers (utils/leaveChain.seesProcess) see an open request's stage boxes and stage status; everyone else sees it as under review until it is decided.
  */
 const fs = require('fs');
 const path = require('path');
@@ -39,10 +41,24 @@ function daysUntil(ymd) {
 }
 
 const STATUS_AR = {
-  pending_manager: 'عند المدير المباشر', pending_finance: 'عند الإدارة المالية', pending_hr: 'عند الموارد البشرية',
-  pending_executive: 'عند الإدارة العليا', pending_chairman: 'عند رئيس مجلس الإدارة', info_requested: 'عند الموظف للرد',
+  pending_manager: 'عند المدير المباشر', pending_finance: 'عند المدير المالي', pending_hr: 'عند الموارد البشرية',
+  pending_executive: 'عند الإدارة العليا', pending_chairman: 'عند رئيس مجلس الإدارة', info_requested: 'مطلوب إيضاح من الموظف',
   approved: 'معتمدة', rejected: 'مرفوضة', cancelled: 'ملغاة',
 };
+const IN_REVIEW_AR = 'قيد المراجعة';
+const statusFor = (leave, fullView) => (fullView || !chain.PENDING_STATUSES.includes(leave.status) ? STATUS_AR[leave.status] || leave.status : IN_REVIEW_AR);
+
+/** The finance and HR box holders by stage, with their default signature. */
+async function boxSigners() {
+  const User = require('../models/User');
+  const rows = await User.find({ leaveSheetSigner: { $in: ['finance', 'hr'] }, isActive: { $ne: false } }).select('firstName lastName leaveSheetSigner +signatures').lean();
+  const out = {};
+  for (const u of rows) {
+    const sigs = u.signatures || [];
+    out[u.leaveSheetSigner] = { _id: u._id, firstName: u.firstName, lastName: u.lastName, ink: ((sigs.find((x) => x.isDefault) || sigs[0]) || {}).dataUrl || '' };
+  }
+  return out;
+}
 
 /** The default (else first) saved signature of each user id, in one query. */
 async function liveSignatures(ids) {
@@ -61,12 +77,17 @@ const idOf = (x) => (x && typeof x === 'object' ? String(x._id || '') : String(x
 /**
  * The six signature boxes, in the owner's layout: employee, direct manager, finance on the first row; HR, top management (general manager), chairman on the second.
  * A box is filled by the stage's approval only; a rejection or a question leaves it unsigned.
+ * `fullView` false (the employee and staff outside the process) leaves the stage boxes of an open request empty, so the sheet does not tell where it stands.
  */
-async function signatureBoxes(leave) {
+async function signatureBoxes(leave, { fullView = true } = {}) {
   const filer = leave.filedByManager ? leave.filedBy : null;
   const employeeSigner = filer || leave.requester;
-  const decided = (f) => (leave[f] && leave[f].at && leave[f].decision === 'approved' ? leave[f] : null);
-  const live = await liveSignatures([idOf(employeeSigner), ...Object.values(chain.DECISION_FIELD).map((f) => idOf(decided(f)?.by))]);
+  const hidden = !fullView && leave.status !== 'approved';
+  const decided = (f) => (!hidden && leave[f] && leave[f].at && leave[f].decision === 'approved' ? leave[f] : null);
+  const [live, heads] = await Promise.all([
+    liveSignatures([idOf(employeeSigner), ...Object.values(chain.DECISION_FIELD).map((f) => idOf(decided(f)?.by))]),
+    boxSigners(),
+  ]);
 
   const emp = leave.employee || {};
   const boxes = [{
@@ -79,17 +100,18 @@ async function signatureBoxes(leave) {
   }];
   const STAGE_BOX = [
     ['manager', 'المدير المباشر', 'Direct Manager'],
-    ['finance', 'الإدارة المالية', 'Finance'],
-    ['hr', 'الموارد البشرية', 'Human Resources'],
+    ['finance', 'المدير المالي', 'Finance Manager'],
+    ['hr', 'مدير الموارد البشرية', 'HR Manager'],
     ['executive', 'المدير العام', 'General Manager'],
     ['chairman', 'رئيس مجلس الإدارة', 'Chairman of the Board'],
   ];
   for (const [stage, label, en] of STAGE_BOX) {
     const d = decided(chain.DECISION_FIELD[stage]);
+    const head = d ? heads[stage] : null;
     boxes.push({
       label, en,
-      ink: d ? (d.signature || live.get(idOf(d.by)) || '') : '',
-      name: d ? nameOf(d.by, false) : '',
+      ink: head ? head.ink : d ? (d.signature || live.get(idOf(d.by)) || '') : '',
+      name: head ? nameOf(head, false) : d ? nameOf(d.by, false) : '',
       note: '',
       date: d ? dmy(d.at) : '',
     });
@@ -125,7 +147,7 @@ function sigBox(b) {
   </div>`;
 }
 
-async function buildLeaveSheetHTML(leave) {
+async function buildLeaveSheetHTML(leave, { fullView = true } = {}) {
   const emp = leave.employee || {};
   const saudi = emp.idType === 'national_id';
   const idNumber = (saudi ? (emp.nationalId || emp.iqamaNumber) : (emp.iqamaNumber || emp.nationalId)) || '';
@@ -139,7 +161,7 @@ async function buildLeaveSheetHTML(leave) {
     else { expiry = `${when}  —  متبقي ${left} يوم`; tone = left <= 60 ? 'warn' : ''; }
   }
   const type = leave.leaveType ? (leave.leaveType.nameAr || leave.leaveType.nameEn) : '';
-  const boxes = await signatureBoxes(leave);
+  const boxes = await signatureBoxes(leave, { fullView });
   const reg = await registerName(emp.registerNumber);
 
   return `<!DOCTYPE html>
@@ -203,7 +225,7 @@ ${getFontCss()}
         ${field('من', bothDates(leave.startDate))}
         ${field('إلى', bothDates(leave.endDate))}
         ${field('تاريخ الطلب', bothDates(leave.createdAt))}
-        ${field('الحالة', STATUS_AR[leave.status] || leave.status)}
+        ${field('الحالة', statusFor(leave, fullView))}
         ${leave.reason ? field('السبب', leave.reason, { wide: true }) : ''}
       </div>
     </div>
@@ -214,8 +236,8 @@ ${getFontCss()}
 }
 
 /** The sheet as a vector PDF; `leave` must be populated (employee with identity, expiry and register; decision `by`). */
-async function renderLeaveSheet(leave) {
-  const html = await buildLeaveSheetHTML(leave);
+async function renderLeaveSheet(leave, opts = {}) {
+  const html = await buildLeaveSheetHTML(leave, opts);
   const pdf = await withPage(async (page) => {
     await page.setContent(html, { waitUntil: 'domcontentloaded', timeout: 30000 });
     try { await page.evaluateHandle('document.fonts.ready'); } catch (e) { /* fallback font */ }

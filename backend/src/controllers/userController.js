@@ -245,7 +245,7 @@ exports.updateUser = async (req, res) => {
     }
     if (guardSuperAdminRole(req, res, { currentRole: user.role, nextRole: role })) return;
 
-    const before = { firstName: user.firstName, lastName: user.lastName, role: user.role, email: user.email, isTopManagement: user.isTopManagement === true, isChairman: user.isChairman === true };
+    const before = { firstName: user.firstName, lastName: user.lastName, role: user.role, email: user.email, isTopManagement: user.isTopManagement === true, isChairman: user.isChairman === true, leaveSheetSigner: user.leaveSheetSigner || '' };
 
     // The chairman is a super admin account with the last leave stage, so ticking it makes the account super admin; guardSuperAdminRole already limits that to a super admin.
     if (req.body.isChairman !== undefined) {
@@ -259,6 +259,14 @@ exports.updateUser = async (req, res) => {
     if (req.body.isTopManagement !== undefined) {
       if (!require('../config/constants').isTopRole(req.user.role)) return res.status(403).json({ message: 'الإدارة العليا يحدّدها مدير النظام فقط' });
       user.isTopManagement = req.body.isTopManagement === true || req.body.isTopManagement === 'true';
+    }
+
+    // The leave sheet's finance or HR signer: one account per box, so naming a new one clears the previous holder.
+    if (req.body.leaveSheetSigner !== undefined && String(req.body.leaveSheetSigner || '') !== String(user.leaveSheetSigner || '')) {
+      if (!require('../config/constants').isTopRole(req.user.role)) return res.status(403).json({ message: 'موقّع ورقة الإجازة يحدّده مدير النظام فقط' });
+      const box = ['finance', 'hr'].includes(req.body.leaveSheetSigner) ? req.body.leaveSheetSigner : '';
+      if (box && user.leaveSheetSigner !== box) await User.updateMany({ _id: { $ne: user._id }, leaveSheetSigner: box }, { $set: { leaveSheetSigner: '' } });
+      user.leaveSheetSigner = box;
     }
 
     // Account type / partner link. Switching an account between staff and partner
@@ -383,7 +391,7 @@ exports.updateUser = async (req, res) => {
       entityId: user._id,
       changes: {
         before,
-        after: { firstName: user.firstName, lastName: user.lastName, role: user.role, email: user.email, isTopManagement: user.isTopManagement === true, isChairman: user.isChairman === true },
+        after: { firstName: user.firstName, lastName: user.lastName, role: user.role, email: user.email, isTopManagement: user.isTopManagement === true, isChairman: user.isChairman === true, leaveSheetSigner: user.leaveSheetSigner || '' },
         passwordChanged: !!req.body.password || undefined,
       },
       ipAddress: req.ip,

@@ -62,9 +62,15 @@ class _HrLeavesScreenState extends State<HrLeavesScreen> {
         ExportCol('تاريخ النهاية الميلادي', 'End date (Gregorian)', (r) => gregDay(r['endDate'])),
         ExportCol('تاريخ النهاية الهجري', 'End date (Hijri)', (r) => hijriDay(r['endDate'])),
         ExportCol('Days', 'Days', (r) => r['days'] ?? ''),
-        ExportCol('Status', 'Status', (r) => r['status'] ?? ''),
+        ExportCol('Status', 'Status', (r) { final st = leaveStatusFor(r['status'], full: _full); return tr(st.$1, st.$2); }),
         ExportCol('Reason', 'Reason', (r) => r['reason'] ?? ''),
       ];
+
+  // Stages are shown to process viewers only (seesLeaveProcess); HR staff filter and read «قيد المراجعة».
+  bool get _full => seesLeaveProcess(context.read<AuthProvider>().user);
+  Map<String, (String, String, Color)> get _statusFilters => _full
+      ? leaveStatusMeta
+      : {'in_review': ('قيد المراجعة', 'Under review', const Color(0xFFD97706)), for (final e in leaveStatusMeta.entries) if (!leaveIsActionable(e.key)) e.key: e.value};
 
   Future<void> _export(String scope) async {
     var rows = _shown;
@@ -364,7 +370,7 @@ class _HrLeavesScreenState extends State<HrLeavesScreen> {
                     child: SingleChildScrollView(
                       scrollDirection: Axis.horizontal,
                       child: Row(
-                        children: leaveStatusMeta.entries.map((e) {
+                        children: _statusFilters.entries.map((e) {
                           final selected = _status == e.key;
                           return Padding(
                             padding: const EdgeInsets.only(left: 6),
@@ -396,14 +402,15 @@ class _HrLeavesScreenState extends State<HrLeavesScreen> {
                               separatorBuilder: (_, __) => const SizedBox(height: 8),
                               itemBuilder: (c, i) {
                                 final l = _shown[i];
-                                final st = leaveStatusOf(l['status']);
+                                final canAct = canDecideLeave(context.read<AuthProvider>().user, l, hrStaff: true);
+                                final st = leaveStatusFor(l['status'], full: _full, canAct: canAct);
                                 final emp = l['employee'] is Map
                                     ? ((l['employee']['arabicName'] ?? '').toString().isNotEmpty
                                         ? l['employee']['arabicName']
                                         : '${l['employee']['firstName'] ?? ''} ${l['employee']['lastName'] ?? ''}'.trim())
                                     : (l['requester'] is Map ? '${l['requester']['firstName'] ?? ''} ${l['requester']['lastName'] ?? ''}'.trim() : '—');
                                 final type = l['leaveType'] is Map ? (l['leaveType']['nameAr'] ?? l['leaveType']['nameEn'] ?? '') : '';
-                                final actionable = canDecideLeave(context.read<AuthProvider>().user, l, hrStaff: true);
+                                final actionable = canAct;
                                 return FadeSlideIn(
                                   delayMs: (i * 15).clamp(0, 150),
                                   child: AppCard(
@@ -436,9 +443,9 @@ class _HrLeavesScreenState extends State<HrLeavesScreen> {
                                       Text('$type · ${_d(l['startDate'])} ← ${_d(l['endDate'])} · ${l['days'] ?? '—'} ${tr('يوم', 'days')}',
                                           style: const TextStyle(fontSize: 12.5, color: T.inkSoft)),
                                       const SizedBox(height: 6),
-                                      LeaveChainBar(leave: l),
+                                      LeaveChainBar(leave: l, full: _full),
                                       const SizedBox(height: 4),
-                                      LeaveDeductionBadge(leave: l),
+                                      LeaveDeductionBadge(leave: l, full: _full),
                                       if (l['status'] == 'approved') ...[
                                         const SizedBox(height: 6),
                                         Row(children: [
@@ -453,7 +460,7 @@ class _HrLeavesScreenState extends State<HrLeavesScreen> {
                                         Text(l['reason'], style: const TextStyle(fontSize: 12, color: T.inkFaint)),
                                       if (!actionable && leaveIsOpen(l['status'])) ...[
                                         const SizedBox(height: 6),
-                                        Text(leaveWaitNote(l), style: const TextStyle(fontSize: 11.5, color: T.inkSoft)),
+                                        Text(leaveWaitNote(l, full: _full), style: const TextStyle(fontSize: 11.5, color: T.inkSoft)),
                                       ],
                                       if (actionable) ...[
                                         const SizedBox(height: 8),

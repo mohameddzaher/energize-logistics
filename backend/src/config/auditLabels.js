@@ -6,7 +6,7 @@
 
 /** Specific action to its sentence. */
 const ACTION_AR = {
-  leave_approve: 'الموافقة على إجازة', leave_reject: 'رفض إجازة', leave_ask: 'استفسار على طلب إجازة', leave_filed_by_manager: 'تقديم إجازة من المدير لأحد فريقه',
+  leave_approve: 'الموافقة على إجازة', leave_reject: 'رفض إجازة', leave_ask: 'استفسار على طلب إجازة', leave_reply: 'رد الموظف على استفسار إجازة', leave_filed_by_manager: 'تقديم إجازة من المدير لأحد فريقه',
   // Actions written by the code that had no Arabic name and showed as code in the log.
   add_workflow_followup: 'إضافة متابعة لأمر نقل',
   answer: 'رد',

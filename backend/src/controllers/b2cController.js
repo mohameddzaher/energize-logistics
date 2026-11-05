@@ -25,7 +25,7 @@ const pad2 = (n) => String(n).padStart(2, '0');
 const buildDateKey = (year, month, day) => `${year}-${pad2(month)}-${pad2(day)}`;
 
 // Finance roles get the section open with the same rights as the system admin (see config/financeAuthority), so they are not treated as a member limited to their own projects.
-const isB2CHead = (user) => require('../config/financeAuthority').isFinanceFull(user?.role) || user?.role === 'b2c_manager' || user?.role === 'b2c_deputy' || user?.role === 'super_admin' || user?.role === 'admin';
+const isB2CHead = (user) => require('../config/financeAuthority').isFinanceFull(user?.role) || user?.role === 'b2c_manager' || user?.role === 'b2c_deputy' || require('../config/constants').isTopRole(user?.role);
 // Project managers currently have the same visibility/permissions as heads.
 const isB2CMember = (user) => isB2CHead(user) || user?.role === 'b2c_project_lead';
 

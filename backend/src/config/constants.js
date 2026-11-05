@@ -1,7 +1,7 @@
 // Roles with unrestricted, super_admin-equivalent access to everything. The IT department owns the whole system technically, so they are never gated.
-// Admin equals super admin: admin sees the whole system with full permissions, and `TOP_ROLES` replaces every check that asked 'is this super admin?' by name. The super admin account itself stays protected from edits (userController) and from the matrix (permissionController).
+// Admin and IT (it_manager, it_specialist) equal super admin: they see the whole system with full permissions, and `TOP_ROLES` replaces every check that asked 'is this super admin?' by name. The super admin account itself stays protected from edits (userController) and from the matrix (permissionController).
 const FULL_ACCESS_ROLES = ['super_admin', 'admin', 'it_manager', 'it_specialist'];
-const TOP_ROLES = ['super_admin', 'admin'];
+const TOP_ROLES = ['super_admin', 'admin', 'it_manager', 'it_specialist'];
 const isTopRole = (role) => TOP_ROLES.includes(String(role || ''));
 
 

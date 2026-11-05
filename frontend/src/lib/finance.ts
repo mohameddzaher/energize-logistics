@@ -5,11 +5,11 @@ export { exportToExcel, fmt };
 
 export type Lang = 'en' | 'ar';
 
-export const FINANCE_STAFF_ROLES = ['super_admin', 'admin', 'cfo', 'accounting_manager', 'accountant'];
-export const FINANCE_ADMIN_ROLES = ['super_admin', 'admin', 'cfo', 'accounting_manager'];
-export const SALES_STAFF_ROLES = ['super_admin', 'admin', 'sales_manager', 'sales_rep', 'operations_manager', 'operations_staff'];
-export const SALES_ADMIN_ROLES = ['super_admin', 'admin', 'sales_manager'];
-export const KPI_ROLES = ['super_admin', 'admin', 'moderator'];
+export const FINANCE_STAFF_ROLES = ['super_admin', 'admin', 'it_manager', 'it_specialist', 'cfo', 'accounting_manager', 'accountant'];
+export const FINANCE_ADMIN_ROLES = ['super_admin', 'admin', 'it_manager', 'it_specialist', 'cfo', 'accounting_manager'];
+export const SALES_STAFF_ROLES = ['super_admin', 'admin', 'it_manager', 'it_specialist', 'sales_manager', 'sales_rep', 'operations_manager', 'operations_staff'];
+export const SALES_ADMIN_ROLES = ['super_admin', 'admin', 'it_manager', 'it_specialist', 'sales_manager'];
+export const KPI_ROLES = ['super_admin', 'admin', 'it_manager', 'it_specialist', 'moderator'];
 
 // View AND act must both honour the permission matrix. Only the *Staff halves did, so a role granted edit on Accounting or Sales by the super admin could open the section and then found every action hidden, while the API would have accepted the call (rbac lets a section grant through). Pass the whole user, not user.role: only the object carries the grants.
 export const isFinanceStaff = (u: RoleOrUser) => FINANCE_STAFF_ROLES.includes(roleOf(u)) || canAccessSection(permsOf(u), 'Accounting');

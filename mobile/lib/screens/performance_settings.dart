@@ -239,7 +239,7 @@ class _PerformanceSettingsScreenState extends State<PerformanceSettingsScreen> w
   @override
   Widget build(BuildContext context) {
     // General manager only, like canConfigurePerf on the web and the server guard.
-    if (!const ['super_admin', 'admin'].contains(context.watch<AuthProvider>().role)) {
+    if (!const ['super_admin', 'admin', 'it_manager', 'it_specialist'].contains(context.watch<AuthProvider>().role)) {
       return AppScaffold(
         title: Text(tr('إعداد تقييم الأداء', 'Performance configuration')),
         body: EmptyState(icon: Icons.lock_outline, title: tr('هذه الصفحة للمدير العام فقط.', 'This page is restricted to super admins.')),

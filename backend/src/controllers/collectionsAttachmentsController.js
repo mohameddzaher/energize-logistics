@@ -18,7 +18,7 @@ const MB = 1024 * 1024;
 const LIMITS = { file: 10 * MB, request: 18 * MB, perRequest: 10, perInvoice: 50 };
 
 /** Who may delete a file they did not upload. */
-const DELETE_ANY_ROLES = ['super_admin', 'admin', 'collections_manager'];
+const DELETE_ANY_ROLES = ['super_admin', 'admin', 'it_manager', 'it_specialist', 'collections_manager'];
 
 // Accepted types; the extension is mapped to a type when the browser or phone omits it (Excel and HEIC often arrive with no type or 'octet-stream').
 const MIME_BY_EXT = {

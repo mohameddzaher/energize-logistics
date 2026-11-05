@@ -51,7 +51,7 @@ router.get('/', paymentController.getPayments);
 router.get('/customer/:id', paymentController.getCustomerPayments);
 
 // Editing recomputes the payment's effect on the invoice and the customer balance, not just the row.
-router.put('/:id', authorize('super_admin', 'admin'), paymentController.updatePayment);
+router.put('/:id', authorize('super_admin', 'admin', 'it_manager', 'it_specialist'), paymentController.updatePayment);
 router.delete('/:id', authorize('super_admin'), paymentController.deletePayment);
 
 module.exports = router;

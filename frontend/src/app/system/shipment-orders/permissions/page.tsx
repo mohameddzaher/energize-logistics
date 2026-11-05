@@ -22,7 +22,7 @@ export default function ShipmentBranchPermissionsPage() {
   const [rows, setRows] = useState<Row[] | null>(null);
   const [q, setQ] = useState('');
   // role-only: the owner gave this to management and the operations manager alone.
-  const allowed = ['super_admin', 'admin', 'operations_manager'].includes(user?.role || '');
+  const allowed = ['super_admin', 'admin', 'it_manager', 'it_specialist', 'operations_manager'].includes(user?.role || '');
 
   const load = useCallback(async () => {
     const d = await api.get<{ branches: Branch[]; users: Row[] }>('/api/shipment-orders/branch-access');

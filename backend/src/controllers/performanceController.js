@@ -22,7 +22,7 @@ const FULL_ACCESS = ['super_admin', 'admin', 'it_manager'];
 // edit requests. Deliberately just super_admin: these are compensation
 // decisions, and a submitted grade the employee has been told must not be
 // quietly rewritten by anyone else.
-const CONFIG_ROLES = ['super_admin', 'admin'];
+const CONFIG_ROLES = ['super_admin', 'admin', 'it_manager', 'it_specialist'];
 
 const isFull = (role) => FULL_ACCESS.includes(role);
 const canConfigure = (role) => CONFIG_ROLES.includes(role);

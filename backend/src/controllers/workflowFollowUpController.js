@@ -11,7 +11,7 @@ const { saveUploadFile, deleteStoredFile } = require('../utils/fileStore');
 const { canonicalRole } = require('../config/roles');
 const logAudit = require('../utils/auditLogger');
 
-const DELETE_ANY_ROLES = ['super_admin', 'admin'];
+const DELETE_ANY_ROLES = ['super_admin', 'admin', 'it_manager', 'it_specialist'];
 const MAX_TEXT = 2000;
 const MAX_FILE = 10 * 1024 * 1024;
 

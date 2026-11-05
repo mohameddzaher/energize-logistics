@@ -1493,7 +1493,7 @@ ResourceAction _collectAction(bool isCash) => ResourceAction(
 bool collectionsCanEdit = true;
 
 /// Edit amount: by role alone, like the server guard (authorize.strict on collectionsDeptController.AMOUNT_EDIT_ROLES); a section edit grant does not open it.
-const collectionsAmountEditRoles = ['super_admin', 'admin', 'collections_manager', 'cfo', 'accounting_manager'];
+const collectionsAmountEditRoles = ['super_admin', 'admin', 'it_manager', 'it_specialist', 'collections_manager', 'cfo', 'accounting_manager'];
 bool collectionsCanEditAmount = false;
 
 /// Not collected: reverting a recorded collection. The reason is optional and recorded under the user's name. A tax invoice is identified by its number, a cash sheet by its workflow id.

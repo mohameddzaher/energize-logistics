@@ -16,9 +16,9 @@ import 'vehicle_registry.dart' show money, fmtDate, daysText;
 /// Goods insurance and breach-of-trust cover: not tied to a vehicle, and one expiring stops all work. Create, edit, renew (single and bulk), end, reopen, delete, and the list of covered drivers, with the same endpoints and role gates as web.
 
 // Section gates: copy of canEditVehicles / canAdminVehicles on web
-const _editRoles = ['super_admin', 'admin', 'vehicles_manager', 'vehicles_staff',
+const _editRoles = ['super_admin', 'admin', 'it_manager', 'it_specialist', 'vehicles_manager', 'vehicles_staff',
   'hr_manager', 'hr_specialist', 'cfo', 'accounting_manager', 'accountant'];
-const _adminRoles = ['super_admin', 'admin', 'vehicles_manager', 'hr_manager'];
+const _adminRoles = ['super_admin', 'admin', 'it_manager', 'it_specialist', 'vehicles_manager', 'hr_manager'];
 bool canEditVehiclesOf(AuthProvider a) =>
     a.user != null && (_editRoles.contains(a.role) || a.canEditSection('Vehicles'));
 bool canAdminVehiclesOf(AuthProvider a) =>

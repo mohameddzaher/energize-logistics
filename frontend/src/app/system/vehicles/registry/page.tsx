@@ -30,7 +30,7 @@ import ScrollX from '@/components/system/ScrollX';
 import HijriGregorianField from '@/components/vehicles/HijriGregorianField';
 import PersonSelect from '@/components/system/PersonSelect';
 
-const EDIT_ROLES = ['super_admin', 'admin', 'hr_manager', 'hr_specialist', 'cfo', 'accounting_manager', 'accountant'];
+const EDIT_ROLES = ['super_admin', 'admin', 'it_manager', 'it_specialist', 'hr_manager', 'hr_specialist', 'cfo', 'accounting_manager', 'accountant'];
 
 
 function VehicleRegistryListInner() {

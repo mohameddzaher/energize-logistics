@@ -115,7 +115,7 @@ export default function WalletPage() {
   const { confirm, notify } = useDialog();
   const { user } = useAuth();
   // The matrix is computed like the list: a role granted edit on this section can edit; otherwise the screen opens for a custom role while its buttons stay unavailable (see operations team).
-  const isManager = ['super_admin', 'admin', 'operations_manager', 'operations_staff', ...FINANCE_FULL_ROLES].includes(user?.role || '')
+  const isManager = ['super_admin', 'admin', 'it_manager', 'it_specialist', 'operations_manager', 'operations_staff', ...FINANCE_FULL_ROLES].includes(user?.role || '')
     || canEditSection((user as any)?.permissions, 'Operations');
   // role-only: supervisor and collections view branches, filter and export but record nothing. The server rejects their writes by role whatever they are granted (config/walletViewOnly).
   const isReadOnly = user?.role === 'moderator' || WALLET_VIEW_ONLY_ROLES.includes(user?.role || '');
@@ -133,7 +133,7 @@ export default function WalletPage() {
    * The server enforces it (mayWriteIntoClosedDay); hiding is no substitute.
    */
   // role-only: writing into a closed day is a financial authority the server guards by the same role names.
-  const canWriteClosedDay = ['super_admin', 'admin', 'operations_manager', ...FINANCE_FULL_ROLES].includes(user?.role || '')
+  const canWriteClosedDay = ['super_admin', 'admin', 'it_manager', 'it_specialist', 'operations_manager', ...FINANCE_FULL_ROLES].includes(user?.role || '')
     || !!(user as any)?.superAdminPowers;
   // Who is locked to a branch vs. who picks the branch to view. The old rule (super admin or operations manager) was a positive list forgotten whenever a role was added, so accountants, who have no branch by design, hit a no-branch dead end. The question is inverted: only operations staff are locked to their branch.
   const canSelectBranch = canPickWalletBranch(user?.role);

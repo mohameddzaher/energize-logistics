@@ -15,7 +15,7 @@ import '../ui/search_field.dart';
 /// Heavy-transport store (LS2) spare parts: items with balance, price, condition and supplier/purchase day, in/out movements, bulk add and movement log; matches the web.
 /// One screen serves heavy and light transport via `base`, since the mechanism is identical (in/out, balance after each movement, undo by opposite movement) and copies would diverge. The two stores' items and balances are separate in the database (`warehouse`).
 /// The light-transport store keeps no prices, starts new items at zero (stock moves only via in/out) and records the supplier's own item name.
-const _storeAddRoles = ['super_admin', 'admin', 'accountant', 'accounting_manager', 'cfo', 'vehicles_manager'];
+const _storeAddRoles = ['super_admin', 'admin', 'it_manager', 'it_specialist', 'accountant', 'accounting_manager', 'cfo', 'vehicles_manager'];
 
 bool _isLightStore(String base) => base.contains('/light-transport/');
 

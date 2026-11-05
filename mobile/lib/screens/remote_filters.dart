@@ -7,7 +7,7 @@ import '../ui/widgets.dart';
 
 /// Shared helpers for the remote-work screens, like lib/remote.ts on the web.
 
-const remoteStaffRoles = ['super_admin', 'admin', 'remote_manager'];
+const remoteStaffRoles = ['super_admin', 'admin', 'it_manager', 'it_specialist', 'remote_manager'];
 
 /// Supervisor: a role from the list, or the section grant from the permissions matrix, as on the web and the server.
 bool isRemoteStaff(AuthProvider auth) =>

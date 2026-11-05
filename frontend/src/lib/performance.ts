@@ -17,7 +17,7 @@ export const PERF_STAFF_ROLES = [
 export const PERF_FULL_ROLES = ['super_admin', 'admin', 'it_manager'];
 // May edit the forms, weights, bands and bonus tiers. Deliberately just one role:
 // these are the company's compensation rules.
-export const PERF_CONFIG_ROLES = ['super_admin', 'admin'];
+export const PERF_CONFIG_ROLES = ['super_admin', 'admin', 'it_manager', 'it_specialist'];
 
 export const isPerfStaff = (r?: string | null) => !!r && PERF_STAFF_ROLES.includes(r);
 export const isPerfFull = (r?: string | null) => !!r && PERF_FULL_ROLES.includes(r);

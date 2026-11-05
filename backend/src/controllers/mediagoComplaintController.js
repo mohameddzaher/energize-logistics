@@ -23,10 +23,10 @@ const MB = 1024 * 1024;
 const LIMITS = { image: 8 * MB, video: 15 * MB, request: 18 * MB };
 
 /** Who files a report: section heads, their project managers and supervisors, and anyone granted edit on the section. */
-const CREATE_ROLES = ['super_admin', 'admin', 'b2c_manager', 'b2c_deputy', 'b2c_project_lead', 'b2c_rep_supervisor', 'b2c_inspection_supervisor'];
+const CREATE_ROLES = ['super_admin', 'admin', 'it_manager', 'it_specialist', 'b2c_manager', 'b2c_deputy', 'b2c_project_lead', 'b2c_rep_supervisor', 'b2c_inspection_supervisor'];
 /** Deletion cannot be undone: sector manager, deputy and system admin only. */
 // Top management is included too; whoever can delete can edit, so it is the same list.
-const DELETE_ROLES = ['super_admin', 'admin', 'b2c_manager', 'b2c_deputy'];
+const DELETE_ROLES = ['super_admin', 'admin', 'it_manager', 'it_specialist', 'b2c_manager', 'b2c_deputy'];
 const EDIT_ROLES = DELETE_ROLES;
 /** What Media Go can say about a report: it cannot reopen or close it. */
 const PARTNER_STATUSES = ['in_progress', 'fixed'];

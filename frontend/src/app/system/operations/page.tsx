@@ -361,10 +361,10 @@ export default function OperationsWorkflowPage() {
 
   const role = user?.role || '';
   // Finance roles hold the same authority here as the system admin; see lib/financeAuthority.
-  const full = ['super_admin', 'admin'].includes(role || '') || FINANCE_FULL_ROLES.includes(role || '');
+  const full = ['super_admin', 'admin', 'it_manager', 'it_specialist'].includes(role || '') || FINANCE_FULL_ROLES.includes(role || '');
   const canCreate = full || role === 'moderator';
   // role-only: the owner limited shipment deletion to these three; a section grant does not extend it.
-  const canDelete = ['super_admin', 'admin', 'operations_manager'].includes(role);
+  const canDelete = ['super_admin', 'admin', 'it_manager', 'it_specialist', 'operations_manager'].includes(role);
 
   // Who sees what: ask the server, do not guess
   // These were three hand-written role lists next to a fourth map in `workflowController.ROLE_FIELD_ACCESS`, and four lists for one thing drift apart. For example Operations can write invoice columns on the server but could not see them in the table. They are now read from `/api/workflows/permissions`, the same map the server filters saves with, so a new role gets its fields from day one.
@@ -590,14 +590,14 @@ export default function OperationsWorkflowPage() {
 
   const getTransitions = (wf: Workflow) => {
     const map: Record<string, { stage: string; label: string; roles: string[] }[]> = {
-      draft: [{ stage: 'submitted_to_ops', label: T.submitToOps, roles: ['moderator', 'super_admin', 'admin', ...FINANCE_FULL_ROLES] }],
+      draft: [{ stage: 'submitted_to_ops', label: T.submitToOps, roles: ['moderator', 'super_admin', 'admin', 'it_manager', 'it_specialist', ...FINANCE_FULL_ROLES] }],
       submitted_to_ops: [
-        { stage: 'ops_completed', label: T.markOpsComplete, roles: ['operations_manager', 'super_admin', 'admin', ...FINANCE_FULL_ROLES] },
-        { stage: 'draft', label: T.returnToDraft, roles: ['operations_manager', 'super_admin', 'admin', ...FINANCE_FULL_ROLES] },
+        { stage: 'ops_completed', label: T.markOpsComplete, roles: ['operations_manager', 'super_admin', 'admin', 'it_manager', 'it_specialist', ...FINANCE_FULL_ROLES] },
+        { stage: 'draft', label: T.returnToDraft, roles: ['operations_manager', 'super_admin', 'admin', 'it_manager', 'it_specialist', ...FINANCE_FULL_ROLES] },
       ],
       ops_completed: [
-        { stage: 'submitted_to_collections', label: T.submitToCollections, roles: ['operations_manager', 'super_admin', 'admin', ...FINANCE_FULL_ROLES] },
-        { stage: 'submitted_to_ops', label: T.returnToOps, roles: ['operations_manager', 'super_admin', 'admin', ...FINANCE_FULL_ROLES] },
+        { stage: 'submitted_to_collections', label: T.submitToCollections, roles: ['operations_manager', 'super_admin', 'admin', 'it_manager', 'it_specialist', ...FINANCE_FULL_ROLES] },
+        { stage: 'submitted_to_ops', label: T.returnToOps, roles: ['operations_manager', 'super_admin', 'admin', 'it_manager', 'it_specialist', ...FINANCE_FULL_ROLES] },
       ],
       submitted_to_collections: [
         { stage: 'completed', label: T.markComplete, roles: ['admin', 'employee', 'super_admin', ...FINANCE_FULL_ROLES] },

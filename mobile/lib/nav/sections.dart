@@ -139,7 +139,7 @@ import '../screens/fleet_driver_expenses.dart';
 import '../screens/fleet_assign.dart';
 
 // Super admin and admin see the whole system.
-const _top = ['super_admin', 'admin'];
+const _top = ['super_admin', 'admin', 'it_manager', 'it_specialist'];
 
 /// NATIVE-ONLY navigation: a section appears here the day its screens are
 /// real Flutter screens talking to the API — nothing embedded, nothing
@@ -177,11 +177,11 @@ class AppSection {
 const _admins = ['super_admin', 'admin', 'it_manager', 'it_specialist'];
 
 /// Light transport custody, vehicles and staff adding: for the sector manager, deputy, system admin and finance, by role alone and not by section grant, like the server guard (authorize.strict in routes/lightTransport) and the website menu entries.
-const _ltOwners = ['super_admin', 'admin', 'b2c_manager', 'b2c_deputy', 'cfo', 'accounting_manager', 'accountant'];
+const _ltOwners = ['super_admin', 'admin', 'it_manager', 'it_specialist', 'b2c_manager', 'b2c_deputy', 'cfo', 'accounting_manager', 'accountant'];
 const _b2cSupervisors = ['b2c_rep_supervisor', 'b2c_inspection_supervisor'];
 
 /// Heavy transport custody: for the Location Solutions manager, system admin and finance, by role alone, like the server guard (authorize.strict in routes/htCustody).
-const _htOwners = ['super_admin', 'admin', 'location_manager', 'cfo', 'accounting_manager', 'accountant'];
+const _htOwners = ['super_admin', 'admin', 'it_manager', 'it_specialist', 'location_manager', 'cfo', 'accounting_manager', 'accountant'];
 
 /// Section order on the screen, the same as the website (SECTION_ORDER in layout.tsx).
 /// The work chain as it runs: operations, then orders and platform, then collections, then fleet and tracking, then what supports all of it.
@@ -214,8 +214,8 @@ List<AppSection> sectionsFor(AuthProvider auth) {
     canDelete: customerRemoveRoles.contains(role) || auth.canEditSection('Shipment Orders'),
   );
   // The target is set by the manager, or a role outside the section team granted edit (canSetTargets on the server).
-  const salesTeam = ['super_admin', 'admin', 'sales_manager', 'sales_rep', 'operations_manager', 'operations_staff'];
-  final canSetTargets = const ['super_admin', 'admin', 'sales_manager'].contains(role)
+  const salesTeam = ['super_admin', 'admin', 'it_manager', 'it_specialist', 'sales_manager', 'sales_rep', 'operations_manager', 'operations_staff'];
+  final canSetTargets = const ['super_admin', 'admin', 'it_manager', 'it_specialist', 'sales_manager'].contains(role)
       || (auth.canEditSection('Sales') && !salesTeam.contains(role));
   bool allowed(AppSection s) {
     if (_top.contains(role)) return true;
@@ -233,7 +233,7 @@ List<AppSection> sectionsFor(AuthProvider auth) {
   final all = <AppSection>[
     AppSection(
       key: 'Top Management', arTitle: 'الإدارة العليا', enTitle: 'Top Management', icon: Icons.workspace_premium_outlined,
-      roles: const ['super_admin', 'admin'],
+      roles: const ['super_admin', 'admin', 'it_manager', 'it_specialist'],
       pages: [
         AppPage('طلبات الإجازات', 'Leave Requests', Icons.event_available_outlined, (c) => TopLeavesScreen(canDecide: auth.user?['isTopManagement'] == true || _top.contains(role)), path: '/system/top-management'),
         AppPage('طلبات الموظفين', 'Staff Requests', Icons.mark_email_unread_outlined, (c) => const TopRequestsScreen(), path: '/system/top-management/requests'),
@@ -295,7 +295,7 @@ List<AppSection> sectionsFor(AuthProvider auth) {
         AppPage('ربط الحسابات', 'Account links', Icons.link, (c) => const PartyLinksScreen(), path: '/system/collections-dept/links'),
         AppPage('سير عمل التشغيل', 'Operations Workflow', Icons.workspaces_outline, (c) => const OpsWorkflowsScreen(), path: '/system/operations'),
         // The wallet is view-only for collections; see config/walletViewOnly on the server.
-        if (const ['super_admin', 'admin', 'collections_manager', 'collections_staff', 'collections_trainee'].contains(role)) ...[
+        if (const ['super_admin', 'admin', 'it_manager', 'it_specialist', 'collections_manager', 'collections_staff', 'collections_trainee'].contains(role)) ...[
           AppPage('محفظة الفروع (عرض)', 'Branch wallets (view)', Icons.account_balance_wallet_outlined, (c) => const CashWalletScreen(), path: '/system/wallet'),
           AppPage('لوحة المحفظة (عرض)', 'Wallet dashboard (view)', Icons.pie_chart_outline, (c) => const WalletDashboardScreen(), path: '/system/wallet-dashboard'),
         ],
@@ -672,7 +672,7 @@ List<AppSection> sectionsFor(AuthProvider auth) {
         AppPage('الشاحنات', 'Vehicles', Icons.local_shipping_outlined, (c) => ResourceScreen(config: shipmentOrdersVehiclesCfg), path: '/system/shipment-orders/fleet'),
         // Driver: a third register in the same page on the web (a tab), a screen here.
         AppPage('السوّاق', 'Drivers', Icons.badge_outlined, (c) => ResourceScreen(config: shipmentOrdersDriversCfg), path: '/system/shipment-orders/fleet'),
-        if (const ['super_admin', 'admin', 'operations_manager'].contains(role))
+        if (const ['super_admin', 'admin', 'it_manager', 'it_specialist', 'operations_manager'].contains(role))
           AppPage('الصلاحيات', 'Permissions', Icons.verified_user_outlined, (c) => const ShipmentBranchAccessScreen(), path: '/system/shipment-orders/permissions'),
         if (const ['super_admin', 'admin', 'it_manager', 'operations_manager', 'shipment_orders_manager'].contains(role) || auth.canEditSection('Shipment Orders'))
           AppPage('إعدادات القسم', 'Section Settings', Icons.tune_outlined, (c) => const ShipmentOrdersSettingsScreen(), path: '/system/shipment-orders/settings'),
@@ -705,7 +705,7 @@ List<AppSection> sectionsFor(AuthProvider auth) {
       key: 'B2C', arTitle: 'B2C', enTitle: 'B2C', icon: Icons.storefront_outlined,
       // The backend serves B2C data to super_admin/admin plus B2C heads only, so it is not shown to IT (they saw the section with zero data); the scope is matched exactly.
       // The two supervisors (operations and duty check) enter the section for their three pages only: order entries in their projects, and the duty check and its log, as on the website.
-      roles: const ['super_admin', 'admin', 'b2c_manager', 'b2c_deputy', 'b2c_project_lead', 'b2c_rep_supervisor', 'b2c_inspection_supervisor'],
+      roles: const ['super_admin', 'admin', 'it_manager', 'it_specialist', 'b2c_manager', 'b2c_deputy', 'b2c_project_lead', 'b2c_rep_supervisor', 'b2c_inspection_supervisor'],
       pages: _b2cSupervisors.contains(role) ? [
         AppPage('مدخلات الأوردرات', 'Orders Entry', Icons.edit_calendar_outlined, (c) => const B2cDailyEntryScreen(), path: '/system/b2c/daily-entry'),
         AppPage('متابعة مناديب أمازون', 'Amazon Reps Attendance', Icons.how_to_reg_outlined, (c) => const B2cAmazonAttendanceScreen(), path: '/system/b2c/amazon-attendance'),
@@ -741,7 +741,7 @@ List<AppSection> sectionsFor(AuthProvider auth) {
         // Sales reps used to read B2CRep, those with order reports, so supervisors, mechanics and cleaners were missing (eleven of 161). That page became order analysis on the web.
         AppPage('موظفون النقل الخفيف', 'Light-transport Employees', Icons.two_wheeler_outlined, (c) => const LightTransportListScreen(), path: '/system/b2c/light-transport'),
         // User rentals: counted in total reps on the section dashboard. Same as the website.
-        if (const ['super_admin', 'admin', 'it_manager', 'it_specialist', 'b2c_manager', 'b2c_deputy', 'b2c_project_lead', 'cfo', 'accounting_manager', 'accountant'].contains(role)) AppPage('تأجير اليوزرات', 'User Rentals', Icons.key_outlined, (c) => ResourceScreen(config: ltUserRentalsCfg(canWrite: true, canDelete: const ['super_admin', 'admin', 'b2c_manager', 'b2c_deputy'].contains(role))), path: '/system/b2c/user-rentals'),
+        if (const ['super_admin', 'admin', 'it_manager', 'it_specialist', 'b2c_manager', 'b2c_deputy', 'b2c_project_lead', 'cfo', 'accounting_manager', 'accountant'].contains(role)) AppPage('تأجير اليوزرات', 'User Rentals', Icons.key_outlined, (c) => ResourceScreen(config: ltUserRentalsCfg(canWrite: true, canDelete: const ['super_admin', 'admin', 'it_manager', 'it_specialist', 'b2c_manager', 'b2c_deputy'].contains(role))), path: '/system/b2c/user-rentals'),
         AppPage('أوامر التشغيل', 'Operating Orders', Icons.assignment_ind_outlined, (c) => const LtOperatingOrdersScreen(), path: '/system/b2c/orders'),
         AppPage('تحليل الأوردرات', 'Orders Analysis', Icons.insights_outlined, (c) => const B2cOrdersAnalysisScreen(), path: '/system/b2c/orders-analysis'),
         // Housing and dropdown lists, as in section settings on the web.
@@ -757,7 +757,7 @@ List<AppSection> sectionsFor(AuthProvider auth) {
     ),
     AppSection(
       key: 'Performance', arTitle: 'تقييم الأداء', enTitle: 'Performance', icon: Icons.military_tech_outlined,
-      roles: const ['super_admin', 'admin'], managed: false,
+      roles: const ['super_admin', 'admin', 'it_manager', 'it_specialist'], managed: false,
       pages: [
         AppPage('نظرة كل الأقسام', 'All Departments', Icons.insights_outlined, (c) => const PerformanceOverviewScreen(), path: '/system/performance/overview'),
         AppPage('التقييمات', 'Evaluations', Icons.rate_review_outlined, (c) => const EvaluationsScreen(), path: '/system/performance'),
@@ -767,7 +767,7 @@ List<AppSection> sectionsFor(AuthProvider auth) {
     ),
     AppSection(
       key: 'Executive', arTitle: 'النظرة التنفيذية', enTitle: 'Executive', icon: Icons.insights_outlined,
-      roles: const ['super_admin', 'admin'], managed: false,
+      roles: const ['super_admin', 'admin', 'it_manager', 'it_specialist'], managed: false,
       pages: [
         AppPage('النظرة التنفيذية', 'Overview', Icons.insights_outlined, (c) => const ExecutiveOverviewScreen()),
         // Top management plan to department managers; its dashboard is for the system admin only.

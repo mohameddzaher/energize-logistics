@@ -25,7 +25,7 @@ const _statuses = {
   'resolved': ('تم الحل', 'Resolved', T.success), 'closed': ('مغلق', 'Closed', T.inkFaint),
 };
 // Matches managerRoles in backend/routes/complaints.js; resolving and deleting are theirs.
-const _managerRoles = ['super_admin', 'admin', 'operations_manager'];
+const _managerRoles = ['super_admin', 'admin', 'it_manager', 'it_specialist', 'operations_manager'];
 const _limit = 20;
 
 String _cat(dynamic v) { for (final c in _categories) { if (c.$1 == v) return tr(c.$2, c.$3); } return '${v ?? ''}'; }

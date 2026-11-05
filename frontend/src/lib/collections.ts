@@ -28,7 +28,7 @@ export const isCollectionsAdmin = (u: RoleOrUser): boolean =>
   COLLECTIONS_ADMIN_ROLES.includes(roleOf(u));
 
 /** Editing an invoice's value is a financial decision, not daily collection work. Role-only: granting the section edit does not open it, and the server guards it with authorize.strict on the same list (collectionsDeptController.AMOUNT_EDIT_ROLES). */
-export const AMOUNT_EDIT_ROLES = ['super_admin', 'admin', 'collections_manager', 'cfo', 'accounting_manager'];
+export const AMOUNT_EDIT_ROLES = ['super_admin', 'admin', 'it_manager', 'it_specialist', 'collections_manager', 'cfo', 'accounting_manager'];
 
 export const canEditInvoiceAmount = (u: RoleOrUser): boolean =>
   AMOUNT_EDIT_ROLES.includes(roleOf(u));

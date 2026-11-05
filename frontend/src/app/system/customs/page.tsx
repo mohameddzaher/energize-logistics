@@ -95,10 +95,10 @@ export default function CustomsPage() {
   const { user } = useAuth();
   const router = useRouter();
   // Profits are for the system manager and department manager only; the server does not send them to anyone else.
-  const seesMoney = ['super_admin', 'admin', 'customs_manager'].includes(user?.role || '');
-  const canEdit = ['super_admin', 'admin', 'operations_manager', 'customs_manager', 'customs_officer'].includes(user?.role || '') || canEditSection((user as any)?.permissions, 'Customs'); // matrix edit grants count too
+  const seesMoney = ['super_admin', 'admin', 'it_manager', 'it_specialist', 'customs_manager'].includes(user?.role || '');
+  const canEdit = ['super_admin', 'admin', 'it_manager', 'it_specialist', 'operations_manager', 'customs_manager', 'customs_officer'].includes(user?.role || '') || canEditSection((user as any)?.permissions, 'Customs'); // matrix edit grants count too
   // Deletion is for the department manager and staff, matching the route guard on the server.
-  const canDelete = ['super_admin', 'admin', 'customs_manager', 'customs_officer'].includes(user?.role || '') || canEditSection((user as any)?.permissions, 'Customs');
+  const canDelete = ['super_admin', 'admin', 'it_manager', 'it_specialist', 'customs_manager', 'customs_officer'].includes(user?.role || '') || canEditSection((user as any)?.permissions, 'Customs');
   const { lang } = useLanguage();
   const T = getCustomsTranslations(lang);
 

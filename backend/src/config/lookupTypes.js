@@ -12,7 +12,7 @@ const assetDefaults = require('./assetDefaults');
 const vehicleDefaults = require('./vehicleDefaults');
 
 // Roles that can manage every lookup regardless of module.
-const BASE_WRITE_ROLES = ['super_admin', 'admin'];
+const BASE_WRITE_ROLES = ['super_admin', 'admin', 'it_manager', 'it_specialist'];
 
 const FLEET_ROLES = ['fleet_manager', 'operations_manager', 'operations_staff'];
 const SO_ROLES = ['shipment_orders_manager', 'shipment_orders_staff', 'shipment_orders_followup', 'operations_manager', 'operations_staff'];
@@ -768,7 +768,7 @@ const byType = (type) => REGISTRY.find((r) => r.type === type) || null;
 // Roles allowed to create/update/delete a given type.
 const writeRolesFor = (type) => {
   const entry = byType(type);
-  if (entry && entry.superOnly) return ['super_admin', 'admin'];
+  if (entry && entry.superOnly) return ['super_admin', 'admin', 'it_manager', 'it_specialist'];
   return [...BASE_WRITE_ROLES, ...((entry && entry.roles) || [])];
 };
 

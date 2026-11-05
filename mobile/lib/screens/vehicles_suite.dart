@@ -74,7 +74,7 @@ List<Map<String, dynamic>> _l(dynamic v) =>
 
 
 // Roles, mirrors isVehicleStaff / isVehicleAdmin in lib/vehicles.ts
-const _vehicleAdminRoles = ['super_admin', 'admin', 'hr_manager', 'cfo', 'accounting_manager'];
+const _vehicleAdminRoles = ['super_admin', 'admin', 'it_manager', 'it_specialist', 'hr_manager', 'cfo', 'accounting_manager'];
 bool isVehicleAdmin(AuthProvider a) => _vehicleAdminRoles.contains(a.role) || a.canEditSection('Vehicles');
 
 String _dd(dynamic v) {

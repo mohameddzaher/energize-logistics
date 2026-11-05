@@ -7,7 +7,7 @@ import { useAuth } from '@/context/AuthContext';
 import StoreScreen from '@/components/store/StoreScreen';
 import { isLs2Staff, isLs2Admin } from '@/lib/ls2';
 
-const STORE_ADD_ROLES = ['super_admin', 'admin', 'accountant', 'accounting_manager', 'cfo', 'vehicles_manager'];
+const STORE_ADD_ROLES = ['super_admin', 'admin', 'it_manager', 'it_specialist', 'accountant', 'accounting_manager', 'cfo', 'vehicles_manager'];
 
 export default function Ls2StorePage() {
   useAuth();

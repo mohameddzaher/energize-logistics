@@ -6,7 +6,7 @@ import LeaveDesk from '@/components/hr/LeaveDesk';
 export default function ChairmanLeavesPage() {
   const { user } = useAuth();
   // role-only: the final stage belongs to the chairman account (and super admins), not to a section grant.
-  const canDecide = (user as any)?.isChairman === true || ['super_admin', 'admin'].includes(user?.role || '');
+  const canDecide = (user as any)?.isChairman === true || ['super_admin', 'admin', 'it_manager', 'it_specialist'].includes(user?.role || '');
   return (
     <LeaveDesk base="/api/chairman" stage="chairman" canDecide={canDecide}
       title={{ ar: 'اعتماد الإجازات — رئيس مجلس الإدارة', en: 'Leave Approval — Chairman of the Board' }}

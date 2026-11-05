@@ -368,7 +368,7 @@ class _LightTransportProfileScreenState extends State<LightTransportProfileScree
 }
 
 /// Who holds "transfer project": deputy sector manager, section manager, super admin, admin (and finance roles).
-const ltTransferRoles = ['super_admin', 'admin', 'b2c_manager', 'b2c_deputy', 'cfo', 'accounting_manager', 'accountant'];
+const ltTransferRoles = ['super_admin', 'admin', 'it_manager', 'it_specialist', 'b2c_manager', 'b2c_deputy', 'cfo', 'accounting_manager', 'accountant'];
 
 /// "Transfer project", from the rider's profile and from the light-transport employee list. Returns true if moved. From then his orders are written on the new project and show at that project's managers at once.
 Future<bool> transferLtProject(BuildContext context, Map<String, dynamic> e) async {

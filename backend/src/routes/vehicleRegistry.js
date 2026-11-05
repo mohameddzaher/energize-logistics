@@ -12,11 +12,11 @@ const authorize = require('../middleware/rbac');
 // Vehicle registry: same permissions as the vehicles section (super_admin/admin/HR/accounting).
 // authenticate + sectionGate('Vehicles') are applied at mount time in server.js.
 // The section's own roles come first: the section is open with all its actions to whoever is granted it. They were missing from these lists, so the vehicles manager saw his section but could not edit it.
-const EDIT = ['super_admin', 'admin', 'vehicles_manager', 'vehicles_staff',
+const EDIT = ['super_admin', 'admin', 'it_manager', 'it_specialist', 'vehicles_manager', 'vehicles_staff',
   'hr_manager', 'hr_specialist', 'cfo', 'accounting_manager', 'accountant'];
-const ADMIN = ['super_admin', 'admin', 'vehicles_manager', 'hr_manager'];
+const ADMIN = ['super_admin', 'admin', 'it_manager', 'it_specialist', 'vehicles_manager', 'hr_manager'];
 // Editing, closing and deleting accidents: management, finance and the vehicles manager (the owner's call). `strict`: neither a section grant nor a page grant opens it, the list is everything. Recording a new accident and attaching its papers stay with the vehicles team.
-const CLAIM_EDIT = ['super_admin', 'admin', 'cfo', 'accounting_manager', 'vehicles_manager'];
+const CLAIM_EDIT = ['super_admin', 'admin', 'it_manager', 'it_specialist', 'cfo', 'accounting_manager', 'vehicles_manager'];
 
 router.get('/dashboard', c.dashboard);
 // Overview: a card per column, each linking to a filtered page.

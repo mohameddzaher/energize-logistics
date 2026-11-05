@@ -49,7 +49,7 @@ export default function PermissionsPage() {
   // role-only: the permission matrix itself; whoever edits it cannot grant themselves access through it.
   const isSuper = ['super_admin', 'admin', 'it_manager', 'it_specialist'].includes(user?.role || '');
   // Creating user types is limited to the system owner.
-  const canMakeRoles = ['super_admin', 'admin'].includes(user?.role || '');
+  const canMakeRoles = ['super_admin', 'admin', 'it_manager', 'it_specialist'].includes(user?.role || '');
 
   const [data, setData] = useState<Payload | null>(null);
   const [loading, setLoading] = useState(true);

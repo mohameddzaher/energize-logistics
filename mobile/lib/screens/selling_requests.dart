@@ -17,7 +17,7 @@ const sellingRequestsEvent = 'sellingRequests:changed';
 
 /// Same rule as config/sellingPriceRequests on the server; only decides what is shown.
 bool canApproveSelling(AuthProvider auth) =>
-    const ['super_admin', 'admin', 'sales_manager'].contains(auth.role) || auth.user?['isTopManagement'] == true;
+    const ['super_admin', 'admin', 'it_manager', 'it_specialist', 'sales_manager'].contains(auth.role) || auth.user?['isTopManagement'] == true;
 
 const _status = {
   'pending': ('بانتظار الاعتماد', 'Pending', T.warn),

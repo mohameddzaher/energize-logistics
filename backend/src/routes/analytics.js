@@ -82,9 +82,9 @@ const SUPER_OVERVIEW_TTL = 30 * 1000;
 let superOverviewCache = { at: 0, key: '', data: null };
 
 // Executive overview: one endpoint combining sections from live sources. See executiveController.
-router.get('/executive', authorize('super_admin', 'admin'), require('../controllers/executiveController').overview);
+router.get('/executive', authorize('super_admin', 'admin', 'it_manager', 'it_specialist'), require('../controllers/executiveController').overview);
 
-router.get('/super-overview', authorize('super_admin', 'admin'), async (req, res) => {
+router.get('/super-overview', authorize('super_admin', 'admin', 'it_manager', 'it_specialist'), async (req, res) => {
   try {
     const now = Date.now();
     const cacheKey = String(req.user._id);

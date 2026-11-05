@@ -37,7 +37,7 @@ export const customsIdOf = (l?: CustomsLinkView | null): string => {
 export function useCanOpenCustoms(): boolean {
   const { user } = useAuth();
   if (!user) return false;
-  return['super_admin', 'admin'].includes(user.role || '') || canAccessSection(user.permissions, 'Customs');
+  return['super_admin', 'admin', 'it_manager', 'it_specialist'].includes(user.role || '') || canAccessSection(user.permissions, 'Customs');
 }
 
 export const viaLabel = (via: string | undefined, ar: boolean) => {

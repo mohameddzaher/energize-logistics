@@ -4,4 +4,4 @@ export const FINANCE_FULL_ROLES = ['cfo', 'accounting_manager', 'accountant'];
 type U = { role?: string | null; superAdminPowers?: boolean } | null | undefined;
 
 export const hasFinancePowers = (u: U): boolean =>
-  !!u && (['super_admin', 'admin'].includes(u.role || '') || !!u.superAdminPowers || FINANCE_FULL_ROLES.includes(u.role || ''));
+  !!u && (['super_admin', 'admin', 'it_manager', 'it_specialist'].includes(u.role || '') || !!u.superAdminPowers || FINANCE_FULL_ROLES.includes(u.role || ''));

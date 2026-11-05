@@ -65,7 +65,7 @@ const MONEY_FIELDS = [...FIELD_GROUPS.collections, ...FIELD_GROUPS.accounting];
 // Invoice number and accounting review stay visible to every workflow reader.
 const AMOUNT_FIELDS = ['netInvoice', 'tax', 'totalInvoice', 'invoiceDate', 'invoiceNotes', 'collectedAmount', 'collectionDate'];
 const MONEY_VIEW_ROLES = [
-  'super_admin', 'admin', 'cfo', 'accounting_manager', 'accountant', 'collections_manager', 'collections_staff',
+  'super_admin', 'admin', 'it_manager', 'it_specialist', 'cfo', 'accounting_manager', 'accountant', 'collections_manager', 'collections_staff',
 ];
 // The whole sheet, for roles with no restriction (except selling value, which has its own list below).
 const ALL_FIELDS = [...OPS_FIELDS, ...MONEY_FIELDS];
@@ -73,10 +73,10 @@ const SELLING_FIELDS = FIELD_GROUPS.selling;
 // The whole sheet including selling value.
 const FULL_FIELDS = [...ALL_FIELDS, ...SELLING_FIELDS];
 
-// Who sees and writes selling value. The list is named roles as given by the company owner: super admin, management, finance manager, accounts manager, collections manager and team, accountant, operations manager, and the general manager if a role (general_manager) is created. Sales and IT were removed.
+// Who sees and writes selling value. The list is named roles as given by the company owner: super admin, management, finance manager, accounts manager, collections manager and team, accountant, operations manager, and the general manager if a role (general_manager) is created. Sales was removed; IT came back with super admin powers (2026-11-05).
 // A role outside the list never receives the value from the server (stripRowFor), cannot filter by it, does not get it in its export, and cannot write it.
 const SELLING_ROLES = [
-  'super_admin', 'admin', 'cfo', 'accounting_manager', 'accountant',
+  'super_admin', 'admin', 'it_manager', 'it_specialist', 'cfo', 'accounting_manager', 'accountant',
   'collections_manager', 'collections_staff', 'operations_manager', 'general_manager',
   // Data team; super admin narrows the operations section from the matrix.
   ...require('../config/roles').DATA_ROLES,
@@ -101,9 +101,9 @@ const ROLE_FIELD_ACCESS = {
   // Collections writes the whole sheet. Money columns alone are not enough: chasing an invoice also means correcting the customer name, receipt number, paying branch and final destination, all outside MONEY_FIELDS. Otherwise staff keep asking operations to fix a field they can see, or get 'saved' with nothing saved.
   collections_manager: FULL_FIELDS,
   collections_staff: FULL_FIELDS,
-  // IT is in FULL_ACCESS_ROLES with no restriction in every other section, except selling value, which is not in the owner's list.
-  it_manager: ALL_FIELDS,
-  it_specialist: ALL_FIELDS,
+  // IT has super admin powers (owner, 2026-11-05), selling value included.
+  it_manager: FULL_FIELDS,
+  it_specialist: FULL_FIELDS,
 };
 // Purchase price is for those who see selling price only (company owner): whoever is not in SELLING_ROLES cannot write purchaseValue (can see it, cannot edit). Applies to this map and to fields of created roles (fieldsForRole), and the screen reads the same map.
 const PURCHASE_FIELDS = ['purchaseValue'];
@@ -1691,11 +1691,11 @@ exports.updateStage = async (req, res) => {
 
     // Role-based stage transition authorization
     const stageRoleMap = {
-      submitted_to_ops: ['moderator', 'super_admin', 'admin', ...FINANCE_FULL_ROLES],
-      ops_completed: ['operations_manager', 'super_admin', 'admin', ...FINANCE_FULL_ROLES],
-      submitted_to_collections: ['operations_manager', 'super_admin', 'admin', ...FINANCE_FULL_ROLES],
+      submitted_to_ops: ['moderator', 'super_admin', 'admin', 'it_manager', 'it_specialist', ...FINANCE_FULL_ROLES],
+      ops_completed: ['operations_manager', 'super_admin', 'admin', 'it_manager', 'it_specialist', ...FINANCE_FULL_ROLES],
+      submitted_to_collections: ['operations_manager', 'super_admin', 'admin', 'it_manager', 'it_specialist', ...FINANCE_FULL_ROLES],
       completed: ['admin', 'employee', 'super_admin', ...FINANCE_FULL_ROLES],
-      draft: ['moderator', 'operations_manager', 'super_admin', 'admin', ...FINANCE_FULL_ROLES], // rollback
+      draft: ['moderator', 'operations_manager', 'super_admin', 'admin', 'it_manager', 'it_specialist', ...FINANCE_FULL_ROLES], // rollback
     };
 
     const allowedRoles = stageRoleMap[stage] || [];
@@ -2910,7 +2910,7 @@ exports.importInvoices = async (req, res) => {
 
 /** Who links and unlinks: whoever writes the receipt number or operations review in this table. */
 async function canLinkCustoms(role) {
-  if (['super_admin', 'admin', 'operations_manager'].includes(role) || isFinanceFull(role)) return true;
+  if (['super_admin', 'admin', 'it_manager', 'it_specialist', 'operations_manager'].includes(role) || isFinanceFull(role)) return true;
   const f = await fieldsForRole(role);
   return f.includes('documentNumber') || f.includes('operationsReview');
 }

@@ -148,9 +148,9 @@ export function InventoryPanel({ embedded = false }: { embedded?: boolean }) {
   const [issuesLoading, setIssuesLoading] = useState(false);
 
   // role-only: the workshop store is not a section in the permission matrix; the server guards it by these same role names (the next three likewise).
-  const canEdit = user && ['super_admin', 'admin', 'workshop_manager', 'procurement_staff'].includes(user.role);
-  const canDelete = user && ['super_admin', 'admin', 'workshop_manager'].includes(user.role);
-  const canApprove = user && ['super_admin', 'admin', 'workshop_manager'].includes(user.role);
+  const canEdit = user && ['super_admin', 'admin', 'it_manager', 'it_specialist', 'workshop_manager', 'procurement_staff'].includes(user.role);
+  const canDelete = user && ['super_admin', 'admin', 'it_manager', 'it_specialist', 'workshop_manager'].includes(user.role);
+  const canApprove = user && ['super_admin', 'admin', 'it_manager', 'it_specialist', 'workshop_manager'].includes(user.role);
 
   const fetchIssues = useCallback(async () => {
     setIssuesLoading(true);

@@ -172,7 +172,7 @@ class _OpsWorkflowDetailScreenState extends State<OpsWorkflowDetailScreen> {
   }
 
   Future<void> _loadPerms() async {
-    if (const ['super_admin', 'admin'].contains(_role)) {
+    if (const ['super_admin', 'admin', 'it_manager', 'it_specialist'].contains(_role)) {
       setState(() { _myFields = null; _canLinkCustoms = true; _seesAmounts = true; });
       return;
     }
@@ -190,7 +190,7 @@ class _OpsWorkflowDetailScreenState extends State<OpsWorkflowDetailScreen> {
     }
   }
 
-  bool _canEditField(String k) => const ['super_admin', 'admin'].contains(_role) || _myFields == null || _myFields!.contains(k);
+  bool _canEditField(String k) => const ['super_admin', 'admin', 'it_manager', 'it_specialist'].contains(_role) || _myFields == null || _myFields!.contains(k);
   bool _canEditGroup(List<(String, String, String, String)> fields) => fields.any((f) => _canEditField(f.$1));
 
   void _fillForm(Map<String, dynamic> w) {
@@ -278,7 +278,7 @@ class _OpsWorkflowDetailScreenState extends State<OpsWorkflowDetailScreen> {
   /// Stage transitions as on the web statement page ("send to operations" was removed).
   List<(String, String, String)> get _transitions {
     final stage = (_w?['stage'] ?? 'draft').toString();
-    const opsRoles = ['operations_manager', 'super_admin', 'admin'];
+    const opsRoles = ['operations_manager', 'super_admin', 'admin', 'it_manager', 'it_specialist'];
     const colRoles = ['admin', 'employee', 'super_admin'];
     final map = <String, List<(String, String, String, List<String>)>>{
       'submitted_to_ops': [
@@ -415,7 +415,7 @@ class _OpsWorkflowDetailScreenState extends State<OpsWorkflowDetailScreen> {
           if (w != null && !_editing) IconButton(tooltip: tr('تصدير Excel', 'Export'), icon: const Icon(Icons.file_download_outlined), onPressed: _export),
           if (w != null && !_editing && !_lockedByOther)
             IconButton(tooltip: tr('تعديل', 'Edit'), icon: const Icon(Icons.edit_outlined), onPressed: _startEdit),
-          if (w != null && !_editing && !_lockedByOther && const ['super_admin', 'admin', 'operations_manager'].contains(role))
+          if (w != null && !_editing && !_lockedByOther && const ['super_admin', 'admin', 'it_manager', 'it_specialist', 'operations_manager'].contains(role))
             IconButton(tooltip: tr('حذف أمر النقل', 'Delete report'), icon: const Icon(Icons.delete_outline), onPressed: _delete),
         ],
         body: w == null
@@ -488,7 +488,7 @@ class _OpsWorkflowDetailScreenState extends State<OpsWorkflowDetailScreen> {
                           const SizedBox(height: 8),
                           for (final f in s.$5)
                             // Selling value only for those on its list; the server does not send it to anyone else.
-                            if ((f.$1 != 'sellingValue' || const ['super_admin', 'admin'].contains(role) || (_myFields?.contains('sellingValue') ?? false))
+                            if ((f.$1 != 'sellingValue' || const ['super_admin', 'admin', 'it_manager', 'it_specialist'].contains(role) || (_myFields?.contains('sellingValue') ?? false))
                                 && (_seesAmounts || !_amountKeys.contains(f.$1)))
                               Padding(padding: const EdgeInsets.only(bottom: 10), child: _fieldView(f)),
                         ]),

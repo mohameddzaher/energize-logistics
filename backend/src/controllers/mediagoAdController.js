@@ -24,8 +24,8 @@ const MAX_VIDEO_SEC = 15;
 const MAX_FILES_PER_ITEM = 10;
 
 /** Section heads and supervisors: they photograph, deliver and close. */
-const OUR_ROLES = ['super_admin', 'admin', 'b2c_manager', 'b2c_deputy', 'b2c_project_lead', 'b2c_rep_supervisor', 'b2c_inspection_supervisor'];
-const DELETE_ROLES = ['super_admin', 'admin', 'b2c_manager', 'b2c_deputy'];
+const OUR_ROLES = ['super_admin', 'admin', 'it_manager', 'it_specialist', 'b2c_manager', 'b2c_deputy', 'b2c_project_lead', 'b2c_rep_supervisor', 'b2c_inspection_supervisor'];
+const DELETE_ROLES = ['super_admin', 'admin', 'it_manager', 'it_specialist', 'b2c_manager', 'b2c_deputy'];
 const COMPANY_TYPE = 'mediago_ad_company';
 /** Our company: requests addressed to it select our vehicles. */
 const OUR_COMPANY_KEY = 'energize';

@@ -16,7 +16,7 @@ export default function Page() {
   const ar = lang === 'ar';
   const t = (a: string, e: string) => (ar ? a : e);
   const { notify } = useDialog();
-  const canEdit = ['super_admin', 'admin', 'operations_manager', 'customs_manager', 'customs_officer']
+  const canEdit = ['super_admin', 'admin', 'it_manager', 'it_specialist', 'operations_manager', 'customs_manager', 'customs_officer']
     .includes((user as any)?.role || '') || canEditSection((user as any)?.permissions, 'Customs');
 
   // All department parties in one list to choose the contract owner.

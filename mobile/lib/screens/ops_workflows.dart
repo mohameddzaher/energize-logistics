@@ -141,10 +141,10 @@ class _OpsWorkflowsScreenState extends State<OpsWorkflowsScreen> {
   late final void Function(dynamic) _onUnlockAll;
 
   String get _role => context.read<AuthProvider>().role;
-  bool get _full => const ['super_admin', 'admin'].contains(_role) || _financeFullRoles.contains(_role);
+  bool get _full => const ['super_admin', 'admin', 'it_manager', 'it_specialist'].contains(_role) || _financeFullRoles.contains(_role);
   bool _has(String f) => _myFields?.contains(f) ?? false;
   bool get _canCreate => _full || _role == 'moderator';
-  bool get _canDelete => const ['super_admin', 'admin', 'operations_manager'].contains(_role);
+  bool get _canDelete => const ['super_admin', 'admin', 'it_manager', 'it_specialist', 'operations_manager'].contains(_role);
   // Invoice amounts (net invoice onward): the server decides who sees them.
   bool _seesAmounts = false;
   bool _seesSelling = false;

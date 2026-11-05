@@ -25,7 +25,7 @@ export default function BranchesPage() {
   const { confirm } = useDialog();
   const { user } = useAuth();
   // role-only: super admin and admin permission (config/constants TOP_ROLES), not a section grant.
-  const isSuperAdmin = ['super_admin', 'admin'].includes(user?.role || '');
+  const isSuperAdmin = ['super_admin', 'admin', 'it_manager', 'it_specialist'].includes(user?.role || '');
   const { lang } = useLanguage();
   const T = getBranchesTranslations(lang);
   const txx = getBranchesExtraTranslations(lang);

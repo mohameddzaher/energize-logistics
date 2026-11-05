@@ -18,8 +18,8 @@ const build = (roles, { strict = false } = {}) => {
       return next();
     }
 
-    // Admin passes wherever super admin passes, even in strict guards (config/constants: TOP_ROLES).
-    if (req.user.role === 'admin' && allowed.has('super_admin')) return next();
+    // Admin and IT pass wherever super admin passes, even in strict guards (config/constants: TOP_ROLES).
+    if (require('../config/constants').isTopRole(req.user.role) && allowed.has('super_admin')) return next();
 
     // A door a matrix grant cannot open. `authorize.strict` reads no section stamp and no page tick: its list is everything. It is for whoever owns the matrix itself; if their screen could be opened by a tick, the holder could grant themselves everything in two clicks. Also covers data erasure, which is irreversible.
     if (strict) return res.status(403).json({ message: 'Insufficient permissions' });

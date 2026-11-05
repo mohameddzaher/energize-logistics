@@ -290,7 +290,7 @@ exports.getDailyWallet = async (req, res) => {
  * Operations staff were in the allowed list although the comment said managers only, so closed days changed silently. Writing into a closed day requires reopening, which is super admin only (see maySettle), then closing again with a new count.
  */
 // Finance roles are included (see config/financeAuthority).
-const mayWriteIntoClosedDay = (role) => ['super_admin', 'admin', 'operations_manager', ...require('../config/financeAuthority').FINANCE_FULL_ROLES].includes(role);
+const mayWriteIntoClosedDay = (role) => ['super_admin', 'admin', 'it_manager', 'it_specialist', 'operations_manager', ...require('../config/financeAuthority').FINANCE_FULL_ROLES].includes(role);
 const denyClosedDay = (res) => res.status(400).json({
   code: 'DAY_CLOSED',
   message: 'اليومُ مُقفل — لا يُكتب فيه إلّا بعد إعادة فتحه، وإعادةُ الفتح لمدير النظام.',
@@ -616,7 +616,7 @@ const denySettle = (res, what) => res.status(403).json({
     : 'تعديلُ حركةٍ مسجَّلةٍ أو حذفُها لمدير النظام والإدارة الماليّة — والتسجيلُ الجديد متاحٌ كما هو.',
 });
 
-const MANAGER_ROLES = ['super_admin', 'admin', 'operations_manager', ...require('../config/financeAuthority').FINANCE_FULL_ROLES];
+const MANAGER_ROLES = ['super_admin', 'admin', 'it_manager', 'it_specialist', 'operations_manager', ...require('../config/financeAuthority').FINANCE_FULL_ROLES];
 const mayTouchWallet = (req, wallet) => {
   if (MANAGER_ROLES.includes(req.user.role)) return true;
   if (!wallet) return false;

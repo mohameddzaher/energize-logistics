@@ -12,12 +12,12 @@ const { emitToUser, emitToAll } = require('../websocket/socketManager');
 const { grantedBySection } = require('../utils/sectionAccess');
 
 // ── Helpers ───────────────────────────────────────────────────────────────
-const STAFF_ROLES = ['super_admin', 'admin', 'remote_manager'];
+const STAFF_ROLES = ['super_admin', 'admin', 'it_manager', 'it_specialist', 'remote_manager'];
 const isStaff = (user) => STAFF_ROLES.includes(user.role);
 // A role the super_admin granted this section to counts as staff too —
 // otherwise the grant passes the route gate but the handler still rejects it.
 const staffReq = (req) => isStaff(req.user) || grantedBySection(req);
-const isFullAdmin = (user) => user.role === 'super_admin' || user.role === 'admin';
+const isFullAdmin = (user) => require('../config/constants').isTopRole(user.role);
 
 // Cairo-local calendar day as YYYY-MM-DD (en-CA formats as ISO date).
 const cairoDate = (d = new Date()) =>
@@ -69,7 +69,7 @@ const buildScopedFilter = async (req, dateField = 'date') => {
 
 // Notify an employee's reviewers (their manager + all full admins).
 const reviewersFor = async (employeeUserId, managerId) => {
-  const admins = await User.find({ role: { $in: ['super_admin', 'admin'] }, isActive: true }).select('_id').lean();
+  const admins = await User.find({ role: { $in: ['super_admin', 'admin', 'it_manager', 'it_specialist'] }, isActive: true }).select('_id').lean();
   const ids = admins.map((a) => String(a._id));
   if (managerId) ids.push(String(managerId));
   return [...new Set(ids)].filter((id) => id !== String(employeeUserId));

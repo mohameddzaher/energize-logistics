@@ -37,7 +37,7 @@ bool canDecideLeave(Map<String, dynamic>? user, Map<String, dynamic> l, {require
   final st = (l['status'] ?? '').toString();
   if (!leaveIsActionable(st)) return false;
   final role = (user?['role'] ?? '').toString();
-  if (role == 'super_admin' || role == 'admin') return true;
+  if (const ['super_admin', 'admin', 'it_manager', 'it_specialist'].contains(role)) return true;
   switch (st) {
     case 'pending_manager':
       final m = l['manager'];

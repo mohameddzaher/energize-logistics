@@ -523,7 +523,7 @@ class _ProcOrdersScreenState extends State<ProcOrdersScreen> {
 
   bool get _canManage {
     final auth = context.read<AuthProvider>();
-    return const ['super_admin', 'admin', 'procurement_manager'].contains(auth.role) || auth.canEditSection('Procurement');
+    return const ['super_admin', 'admin', 'it_manager', 'it_specialist', 'procurement_manager'].contains(auth.role) || auth.canEditSection('Procurement');
   }
 
   String _fold(String s) => s.replaceAll(RegExp('[أإآ]'), 'ا').replaceAll('ى', 'ي').replaceAll('ة', 'ه').toLowerCase();

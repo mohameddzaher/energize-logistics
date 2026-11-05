@@ -57,7 +57,7 @@ const fullName = (u) => (u ? `${u.firstName || ''} ${u.lastName || ''}`.trim() :
 // Who edits money after a shipment is created.
 // Selling price, buying price, advance and driver fare are written at creation by whoever creates the shipment, then only system managers and the operations manager change them. Another role is a one-line addition here; the web and phone screens read the same list from /api/shipment-orders/money-editors.
 const MONEY_FIELDS = ['sellPrice', 'buyPrice', 'advanceAmount', 'driverRentPrice'];
-const MONEY_EDIT_ROLES = ['super_admin', 'admin', 'operations_manager'];
+const MONEY_EDIT_ROLES = ['super_admin', 'admin', 'it_manager', 'it_specialist', 'operations_manager'];
 const canEditMoney = (user) => !!user && MONEY_EDIT_ROLES.includes(user.role);
 const { sellingByRequest } = require('../config/sellingPriceRequests');
 // The data team writes the purchase price directly; its selling-price edits go to approval.
@@ -1493,7 +1493,7 @@ exports.addNote = async (req, res) => {
 
 // Edit and delete a follow-up note.
 // Only the note entry is edited (`from === to` with no attachment): a status-transition entry is history and is not rewritten. The note's author or the section manager may edit it.
-const NOTE_MANAGERS = new Set(['super_admin', 'admin', 'shipment_orders_manager', 'operations_manager']);
+const NOTE_MANAGERS = new Set(['super_admin', 'admin', 'it_manager', 'it_specialist', 'shipment_orders_manager', 'operations_manager']);
 const noteEntry = async (req, res) => {
   if (!mongoose.Types.ObjectId.isValid(String(req.params.logId))) { res.status(400).json({ message: 'قيدٌ غير صالح' }); return null; }
   const order = await ShipmentOrder.findById(req.params.id).select('statusLog').lean();

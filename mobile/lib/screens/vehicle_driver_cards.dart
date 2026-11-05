@@ -47,7 +47,7 @@ const _state = {
 (String, String, Color) _st(dynamic s) => _state['${s ?? ''}'] ?? _state['unknown']!;
 
 // Edit roles as on web (canEdit); the server guards with the same ADMIN roles.
-const _editRoles = ['super_admin', 'admin', 'vehicles_manager', 'hr_manager'];
+const _editRoles = ['super_admin', 'admin', 'it_manager', 'it_specialist', 'vehicles_manager', 'hr_manager'];
 
 String _s(dynamic v) => v == null ? '' : '$v';
 String _d10(dynamic v) { final s = _s(v); return s.length >= 10 ? s.substring(0, 10) : s; }

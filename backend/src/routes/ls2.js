@@ -104,7 +104,7 @@ router.get('/store/movements', store.listMovements);
 router.get('/store/issue-reasons', store.issueReasons); // The four issue reasons.
 router.get('/store/unknown-plates', store.unknownPlates); // Plates on movements that have no vehicle in the registry.
 // Adding items is for finance and the vehicles manager; section grants do not extend it.
-const STORE_ADD = authorize.strict('super_admin', 'admin', 'accountant', 'accounting_manager', 'cfo', 'vehicles_manager');
+const STORE_ADD = authorize.strict('super_admin', 'admin', 'it_manager', 'it_specialist', 'accountant', 'accounting_manager', 'cfo', 'vehicles_manager');
 router.post('/store', STORE_ADD, store.createItem);
 router.post('/store/bulk-create', STORE_ADD, store.createItemsBulk);   // Purchase invoice with several items.
 // Suppliers the parts are bought from. Before /store/:id so it is not captured as an id.

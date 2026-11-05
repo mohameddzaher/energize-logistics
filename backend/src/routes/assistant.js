@@ -26,7 +26,7 @@ router.use(authenticate);
 // Why the role restriction. This route returns customers with credit limits and balances, overdue and frozen invoices and collector ranking, and had only `authenticate`, so any account, including partner portal accounts (ordinary users), could read the company's financial file in one request.
 const authorize = require('../middleware/rbac');
 // A guard naming a role that does not exist opens for nobody while looking broader than it is. This line carried dead names twice: `collections_manager`/`collector` before they became `customers_finance_*`, then those after the customers-and-finance section was removed.
-router.use(authorize('super_admin', 'admin', 'cfo', 'accounting_manager', 'accountant',
+router.use(authorize('super_admin', 'admin', 'it_manager', 'it_specialist', 'cfo', 'accounting_manager', 'accountant',
   'collections_manager', 'collections_staff'));
 
 // Query patterns and their handlers

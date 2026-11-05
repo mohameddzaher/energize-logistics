@@ -17,7 +17,7 @@ router.get('/:id', invoiceController.getInvoice);
 
 router.post(
   '/',
-  authorize('super_admin', 'admin'),
+  authorize('super_admin', 'admin', 'it_manager', 'it_specialist'),
   [
     body('invoiceNumber').notEmpty().trim(),
     body('customer').isMongoId(),
@@ -28,12 +28,12 @@ router.post(
   invoiceController.createInvoice
 );
 
-router.put('/:id', authorize('super_admin', 'admin'), invoiceController.updateInvoice);
+router.put('/:id', authorize('super_admin', 'admin', 'it_manager', 'it_specialist'), invoiceController.updateInvoice);
 router.put('/:id/status', authorize('super_admin'), invoiceController.overrideStatus);
 router.put('/:id/freeze', authorize('super_admin'), invoiceController.freezeInvoice);
 
 router.post('/:id/refund', authorize('super_admin'), invoiceController.refundInvoice);
-router.post('/:id/mark-paid', authorize('super_admin', 'admin'), invoiceController.markFullyPaid);
+router.post('/:id/mark-paid', authorize('super_admin', 'admin', 'it_manager', 'it_specialist'), invoiceController.markFullyPaid);
 
 router.delete('/:id', authorize('super_admin'), invoiceController.deleteInvoice);
 

@@ -55,7 +55,7 @@ export default function PartiesPage({ kind }: { kind: PartyKind }) {
   const { notify, confirm } = useDialog();
   const router = useRouter();
 
-  const canEdit = ['super_admin', 'admin', 'operations_manager', 'customs_manager', 'customs_officer']
+  const canEdit = ['super_admin', 'admin', 'it_manager', 'it_specialist', 'operations_manager', 'customs_manager', 'customs_officer']
     .includes((user as any)?.role || '') || canEditSection((user as any)?.permissions, 'Customs');
 
   const [rows, setRows] = useState<Party[]>([]);

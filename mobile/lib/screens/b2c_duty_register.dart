@@ -181,7 +181,7 @@ class _B2cDutyRegisterScreenState extends State<B2cDutyRegisterScreen> {
   }
 
   /// Who reviews the check (sound / has a note), matching the server path: READ in routes/b2c.js.
-  static const _reviewRoles = ['super_admin', 'admin', 'b2c_manager', 'b2c_deputy', 'b2c_project_lead'];
+  static const _reviewRoles = ['super_admin', 'admin', 'it_manager', 'it_specialist', 'b2c_manager', 'b2c_deputy', 'b2c_project_lead'];
 
   String _when(dynamic v) {
     final d = v == null ? null : DateTime.tryParse('$v')?.toLocal();

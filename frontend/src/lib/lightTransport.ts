@@ -443,7 +443,7 @@ export const canEditLT = (u?: { role?: string | null; permissions?: Record<strin
 
 /** Project transfer is the only way to change a rider's project: deputy head of the individuals sector, the department manager, super admin and admin, plus finance as a system manager. The server also decides it (utils/b2cEntry.canTransfer). */
 export const canTransferLT = (u?: { role?: string | null } | null) =>
-  ['super_admin', 'admin', 'b2c_manager', 'b2c_deputy', ...FINANCE_FULL_ROLES].includes(String(u?.role || ''));
+  ['super_admin', 'admin', 'it_manager', 'it_specialist', 'b2c_manager', 'b2c_deputy', ...FINANCE_FULL_ROLES].includes(String(u?.role || ''));
 export const transferLTProject = (id: string, projectAr: string, note: string) =>
   api.post<{ ok: boolean; projectAr: string }>(`/api/light-transport/employees/${id}/transfer-project`, { projectAr, note });
 

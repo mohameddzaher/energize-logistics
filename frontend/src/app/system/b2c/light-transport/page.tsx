@@ -103,7 +103,7 @@ function LightTransportEmployeesInner() {
   // Adding an employee creates his HR file.
   // Restricted to sector manager, deputy, system admin and finance roles, matching the route guard in routes/lightTransport. Documents come with it: a name per file, possibly several.
   // role-only: creating an HR file is not opened by a section grant; the server guards it with `authorize.strict`.
-  const canAdd = ['super_admin', 'admin', 'b2c_manager', 'b2c_deputy', 'cfo', 'accounting_manager', 'accountant'].includes(String(user?.role || ''));
+  const canAdd = ['super_admin', 'admin', 'it_manager', 'it_specialist', 'b2c_manager', 'b2c_deputy', 'cfo', 'accounting_manager', 'accountant'].includes(String(user?.role || ''));
   const [docs, setDocs] = useState<NewDoc[]>([]);
   const [saving, setSaving] = useState(false);
 

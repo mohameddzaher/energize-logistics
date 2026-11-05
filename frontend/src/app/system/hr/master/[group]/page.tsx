@@ -65,7 +65,7 @@ function GroupInner() {
   const { notify } = useDialog();
   const group = String(params?.group || '');
 
-  const canEdit = ['super_admin', 'admin', 'hr_manager', 'hr_specialist'].includes((user as any)?.role)
+  const canEdit = ['super_admin', 'admin', 'it_manager', 'it_specialist', 'hr_manager', 'hr_specialist'].includes((user as any)?.role)
     || canEditSection((user as any)?.permissions, 'HR');
   // Pinned right columns: selection and actions (for editors), then employee number, name and ID. See usePinnedColumns.
   const lead = (RENEWABLE_GROUPS.has(group) && canEdit ? 1 : 0) + (canEdit ? 1 : 0);

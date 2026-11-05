@@ -42,7 +42,7 @@ class _HrFormsScreenState extends State<HrFormsScreen> {
   /// HR team by role or department grant; isHRStaff on the web.
   bool get _staff {
     final a = context.read<AuthProvider>();
-    return const ['super_admin', 'admin', 'hr_manager', 'hr_specialist'].contains(a.role) || a.canAccessSection('HR');
+    return const ['super_admin', 'admin', 'it_manager', 'it_specialist', 'hr_manager', 'hr_specialist'].contains(a.role) || a.canAccessSection('HR');
   }
 
   @override

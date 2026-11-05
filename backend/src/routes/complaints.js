@@ -9,10 +9,10 @@ const authenticate = require('../middleware/auth');
 const authorize = require('../middleware/rbac');
 
 const allRoles = [
-  'super_admin', 'admin', 'employee', 'operations_manager', 'operations_staff',
+  'super_admin', 'admin', 'it_manager', 'it_specialist', 'employee', 'operations_manager', 'operations_staff',
   'moderator', 'procurement_staff',
 ];
-const managerRoles = ['super_admin', 'admin', 'operations_manager'];
+const managerRoles = ['super_admin', 'admin', 'it_manager', 'it_specialist', 'operations_manager'];
 
 router.use(authenticate);
 

@@ -379,9 +379,9 @@ export const getDocumentTypes = () =>
 
 // Who can edit in the section: one answer in one place.
 // Each page had its own role list, and the section's own roles (vehicles_manager / vehicles_staff) were missing from some, so the section owner saw read-only pages. Scattered lists drift whenever a role is added.
-const EDIT_ROLES = ['super_admin', 'admin', 'vehicles_manager', 'vehicles_staff',
+const EDIT_ROLES = ['super_admin', 'admin', 'it_manager', 'it_specialist', 'vehicles_manager', 'vehicles_staff',
   'hr_manager', 'hr_specialist', 'cfo', 'accounting_manager', 'accountant'];
-const ADMIN_ROLES = ['super_admin', 'admin', 'vehicles_manager', 'hr_manager'];
+const ADMIN_ROLES = ['super_admin', 'admin', 'it_manager', 'it_specialist', 'vehicles_manager', 'hr_manager'];
 
 /** Can create and edit (vehicles, renewals, accidents). */
 export const canEditVehicles = (user: any): boolean =>
@@ -396,7 +396,7 @@ export const canAdminVehicles = (user: any): boolean =>
  * Recording a new accident and attaching its papers stay with section editors (canEditVehicles).
  */
 // Mirrors CLAIM_EDIT in backend/src/routes/vehicleRegistry.js, vehicles manager included.
-export const CLAIM_EDIT_ROLES = ['super_admin', 'admin', 'cfo', 'accounting_manager', 'vehicles_manager'];
+export const CLAIM_EDIT_ROLES = ['super_admin', 'admin', 'it_manager', 'it_specialist', 'cfo', 'accounting_manager', 'vehicles_manager'];
 export const canEditClaims = (user: any): boolean => !!user && CLAIM_EDIT_ROLES.includes(user.role);
 
 // Accidents: create, edit, delete.

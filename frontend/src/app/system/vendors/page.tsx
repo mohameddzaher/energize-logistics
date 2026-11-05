@@ -33,9 +33,9 @@ export default function VendorsPage() {
   const { confirm } = useDialog();
   const { user } = useAuth();
   // role-only: super admin and admin power (config/constants TOP_ROLES), not a section grant.
-  const isSuperAdmin = ['super_admin', 'admin'].includes(user?.role || '');
+  const isSuperAdmin = ['super_admin', 'admin', 'it_manager', 'it_specialist'].includes(user?.role || '');
   // The matrix is computed like the list: a role granted edit on this section can edit; otherwise the screen opens for a custom role while its buttons stay unavailable (see operations team).
-  const canEdit = ['super_admin', 'admin', 'operations_manager', 'operations_staff'].includes(user?.role || '')
+  const canEdit = ['super_admin', 'admin', 'it_manager', 'it_specialist', 'operations_manager', 'operations_staff'].includes(user?.role || '')
     || canEditSection((user as any)?.permissions, 'Operations');
   const { lang } = useLanguage();
   const T = getVendorsTranslations(lang);

@@ -127,7 +127,7 @@ function tierPriceFor(tiers, trucks) {
  * Who writes a route price.
  * Destination prices (agreed price and vehicle-count tiers) are written only by the operations manager and the system admin. Others edit customer data (name, phone, preferences) but not prices. The check lives in one place read by every path that reaches a price.
  */
-const PRICE_EDITORS = ['super_admin', 'admin', 'operations_manager'];
+const PRICE_EDITORS = ['super_admin', 'admin', 'it_manager', 'it_specialist', 'operations_manager'];
 const canEditPrices = (role) => PRICE_EDITORS.includes(role);
 
 module.exports = {

@@ -8,8 +8,8 @@ export type Lang = 'en' | 'ar';
 // honours grants (procurementController's grantedBySection), so the pages must
 // too. Pass the USER, not the role string: only the user carries grants.
 import { canAccessSection, canEditSection, roleOf, permsOf, type RoleOrUser } from './sections';
-export const PROCUREMENT_STAFF_ROLES = ['super_admin', 'admin', 'procurement_manager', 'procurement_staff'];
-export const PROCUREMENT_MANAGER_ROLES = ['super_admin', 'admin', 'procurement_manager'];
+export const PROCUREMENT_STAFF_ROLES = ['super_admin', 'admin', 'it_manager', 'it_specialist', 'procurement_manager', 'procurement_staff'];
+export const PROCUREMENT_MANAGER_ROLES = ['super_admin', 'admin', 'it_manager', 'it_specialist', 'procurement_manager'];
 export const isProcStaff = (u: RoleOrUser) => PROCUREMENT_STAFF_ROLES.includes(roleOf(u)) || canAccessSection(permsOf(u), 'Procurement');
 export const isProcManager = (u: RoleOrUser) => PROCUREMENT_MANAGER_ROLES.includes(roleOf(u)) || canEditSection(permsOf(u), 'Procurement');
 

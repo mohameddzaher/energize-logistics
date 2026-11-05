@@ -275,7 +275,7 @@ export default function UsersPage() {
   const fetchBranches = async () => {
     try {
       // role-only: same editors as the permissions page.
-      if (['super_admin', 'admin', 'operations_manager'].includes(currentUser?.role || '')) {
+      if (['super_admin', 'admin', 'it_manager', 'it_specialist', 'operations_manager'].includes(currentUser?.role || '')) {
         api.get<any>('/api/shipment-orders/branch-access').then((d) => setShipBranches(d.branches || [])).catch(() => {});
       }
       const data = await api.get<any>('/api/branches?active=true');
@@ -920,11 +920,11 @@ export default function UsersPage() {
           onChange={(role) => {
             setFormData({ ...formData, role, linkedCustomer: '', assignedCustomers: [] });
             // Auto-suggest a manager by org chart when creating a new user.
-            if (!selectedUser && !['super_admin', 'admin', 'client'].includes(role)) {
+            if (!selectedUser && !['super_admin', 'admin', 'it_manager', 'it_specialist', 'client'].includes(role)) {
               api.get<{ manager: { _id: string } | null }>(`/api/users/suggest-manager?role=${role}`)
                 .then((d) => { if (d.manager) setFormData((prev) => ({ ...prev, manager: d.manager!._id })); })
                 .catch(() => {});
-            } else if (['super_admin', 'admin', 'client'].includes(role)) {
+            } else if (['super_admin', 'admin', 'it_manager', 'it_specialist', 'client'].includes(role)) {
               setFormData((prev) => ({ ...prev, manager: '' }));
             }
           }}
@@ -939,7 +939,7 @@ export default function UsersPage() {
       {/* Direct manager — org chart. Hidden for top roles (super_admin/admin are
           the CEO/COO — they have no manager) and roles with their own pickers
           below. Optional everywhere; the system auto-suggests one by role. */}
-      {!['client', 'super_admin', 'admin', 'b2c_project_lead', 'remote_employee'].includes(formData.role) && (
+      {!['client', 'super_admin', 'admin', 'it_manager', 'it_specialist', 'b2c_project_lead', 'remote_employee'].includes(formData.role) && (
         <div>
           <label className="block text-slate-700 text-sm font-medium mb-1.5">
             {lang === 'ar' ? 'المدير المباشر' : 'Direct Manager'}

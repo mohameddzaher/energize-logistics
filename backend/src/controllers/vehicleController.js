@@ -16,8 +16,8 @@ const VEH_DASH_TTL = 30 * 1000;
 
 // ── Roles / helpers ──────────────────────────────────────────────────────────
 // The Vehicles section is shared by super admin, HR and Accounting.
-const STAFF = ['super_admin', 'admin', 'hr_manager', 'hr_specialist', 'cfo', 'accounting_manager', 'accountant'];
-const ADMIN = ['super_admin', 'admin', 'hr_manager', 'cfo', 'accounting_manager', 'vehicles_manager'];
+const STAFF = ['super_admin', 'admin', 'it_manager', 'it_specialist', 'hr_manager', 'hr_specialist', 'cfo', 'accounting_manager', 'accountant'];
+const ADMIN = ['super_admin', 'admin', 'it_manager', 'it_specialist', 'hr_manager', 'cfo', 'accounting_manager', 'vehicles_manager'];
 const isStaff = (user) => STAFF.includes(user.role);
 // Deletes take the role list OR an 'edit' grant from the permissions matrix —
 // sectionGate stamps req.sectionAccess, and the rest of this router already

@@ -160,7 +160,7 @@ export default function HRRequestsPage() {
               {open.thread.length === 0 && <p className="text-slate-500 text-sm">{tx.noMessagesYet}</p>}
               {open.thread.map((m, i) => {
                 const mine = String(m.sender?._id || m.sender) === String(user?._id);
-                const fromStaff = ['super_admin', 'admin', 'hr_manager', 'hr_specialist'].includes(m.sender?.role);
+                const fromStaff = ['super_admin', 'admin', 'it_manager', 'it_specialist', 'hr_manager', 'hr_specialist'].includes(m.sender?.role);
                 return (
                   <div key={m._id || i} className={`flex ${mine ? 'justify-end' : 'justify-start'}`}>
                     <div className={`max-w-[80%] rounded-xl px-3 py-2 text-sm ${fromStaff ? 'bg-[#f37121]/20 text-white' : 'bg-slate-100 text-slate-900'}`}>

@@ -4,7 +4,7 @@ import { SECTION_ROLES } from '@/lib/roles';
 // Who manages the section without having the manager role; mirrors `extraManagers` in config/jpSections.
 const EXTRA_MANAGERS: Record<string, string[]> = { Accounting: ['cfo'] };
 // Super admin and admin see everything; mirrors TOP_ROLES in jpController.
-const TOP = ['super_admin', 'admin'];
+const TOP = ['super_admin', 'admin', 'it_manager', 'it_specialist'];
 
 type U = { role?: string | null };
 const def = (section: string) => SECTION_ROLES.find((s) => s.section === section);

@@ -1,7 +1,7 @@
 // Shared helpers for the Remote (work-from-home) section pages.
 import { canAccessSection, roleOf, permsOf, type RoleOrUser } from './sections';
 
-export const REMOTE_STAFF_ROLES = ['super_admin', 'admin', 'remote_manager'];
+export const REMOTE_STAFF_ROLES = ['super_admin', 'admin', 'it_manager', 'it_specialist', 'remote_manager'];
 
 // Role list OR a grant from the permissions matrix — a granted role otherwise
 // gets the nav link and then the employee view whose API calls 403.

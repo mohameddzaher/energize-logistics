@@ -1,6 +1,6 @@
 /**
  * Top management section (/api/top-management): the whole company's leave and staff requests, and its live activity.
- * Open to the accounts flagged `isTopManagement` and to super admins; top management decides its stage here, after HR and before the chairman.
+ * Open to the accounts flagged `isTopManagement` and to super admins; top management decides its stage here, after HR; its approval is final.
  */
 const express = require('express');
 const router = express.Router();

@@ -119,12 +119,12 @@ export interface LeaveThreadEntry {
 }
 
 /** Chain stages in order; the progress bar on every page is drawn from this, so the order is not repeated in four places where two could diverge. */
+// Four stages: top management's approval is final; the chairman left the chain on 2026-11-07 (backend utils/leaveChain). The chairman label stays in LEAVE_STATUS for old records.
 export const LEAVE_STAGES: { key: LeaveStage; ar: string; en: string; decision: keyof LeaveRequest }[] = [
   { key: 'manager', ar: 'المدير المباشر', en: 'Direct Manager', decision: 'managerDecision' },
   { key: 'finance', ar: 'الإدارة المالية', en: 'Finance', decision: 'financeDecision' },
   { key: 'hr', ar: 'الموارد البشرية', en: 'HR', decision: 'hrDecision' },
   { key: 'executive', ar: 'الإدارة العليا', en: 'Top Management', decision: 'executiveDecision' },
-  { key: 'chairman', ar: 'رئيس مجلس الإدارة', en: 'Chairman', decision: 'chairmanDecision' },
 ];
 
 /** Statuses waiting at a stage, and the open set (waiting, or returned to the owner); mirrors utils/leaveChain on the server. */
@@ -465,7 +465,6 @@ export function canDecideLeave(user: any, l: any, hrStaff: boolean): boolean {
   if (l.status === 'pending_finance') return FINANCE_STAGE_ROLES.includes(role);
   if (l.status === 'pending_hr') return hrStaff;
   if (l.status === 'pending_executive') return user?.isTopManagement === true;
-  if (l.status === 'pending_chairman') return user?.isChairman === true;
   return false;
 }
 

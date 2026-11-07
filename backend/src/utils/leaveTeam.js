@@ -94,7 +94,7 @@ async function isUnder(user, employeeId) {
 }
 
 /**
- * Does this user approve leave anywhere: a stage owner (finance, HR, top management, chairman, super admin), or a direct manager of someone.
+ * Does this user approve leave anywhere: a stage owner (finance, HR, top management, super admin), or a direct manager of someone.
  * Decides who sees the leave-approvals page; employees with nobody under them have nothing to approve there.
  */
 async function approvesLeaves(user) {

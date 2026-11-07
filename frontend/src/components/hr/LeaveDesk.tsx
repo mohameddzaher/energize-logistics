@@ -189,7 +189,8 @@ export default function LeaveDesk({ base, stage, canDecide, title, subtitle }: {
   const awaiting = `pending_${stage}`;
   const stageName = LEAVE_STAGES.find((s) => s.key === stage);
   const TABS = [
-    { key: 'awaiting', ar: `تنتظر ${stageName?.ar || ''}`, en: 'Awaiting you', statuses: [awaiting] },
+    // A read-only desk (the chairman's office) names where they wait instead of «awaiting you».
+    { key: 'awaiting', ar: canDecide ? `تنتظر ${stageName?.ar || ''}` : `عند ${stageName?.ar || ''}`, en: canDecide ? 'Awaiting you' : `With ${stageName?.en || ''}`, statuses: [awaiting] },
     { key: 'in_chain', ar: full ? 'قيد المسار' : 'قيد المراجعة', en: full ? 'In the chain' : 'Under review', statuses: [...LEAVE_STAGES.map((s) => `pending_${s.key}`).filter((s) => s !== awaiting), 'info_requested'] },
     { key: 'approved', ar: 'معتمدة', en: 'Approved', statuses: ['approved'] },
     { key: 'rejected', ar: 'مرفوضة', en: 'Rejected', statuses: ['rejected'] },

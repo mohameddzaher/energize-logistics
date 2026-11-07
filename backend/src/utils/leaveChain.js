@@ -1,25 +1,25 @@
 /**
  * Leave approval chain: who decides at each stage.
- * Five stages, the owner's order: direct manager, finance, HR, top management (accounts flagged `isTopManagement`), chairman of the board (`isChairman`).
+ * Four stages, the owner's order: direct manager, finance, HR, top management (accounts flagged `isTopManagement`, the general manager). Top management's approval is final.
+ * The chairman of the board (`isChairman`) left the chain on 2026-11-07: he follows every request for information only. The chairman fields stay for the old records he decided.
  * A request already past a stage that was added later (held at HR without a finance decision) carries on from where it is; NEXT_OF never sends it back.
  * A clarification request is not a rejection: the request returns to the employee to reply, amend or attach a receipt. A plain reply goes back to the stage that asked, with the approvals before it kept; an amended request (dates or type changed) restarts from the beginning, because what was approved is no longer the same request.
  * The process itself (stages, who holds a request) is shown only to `seesProcess` accounts; the employee and other staff see a request as under review until it is decided or returned with a question.
  */
 const { rolesOfSection, isManager } = require('../config/roles');
 
-const STAGES = ['manager', 'finance', 'hr', 'executive', 'chairman'];
+const STAGES = ['manager', 'finance', 'hr', 'executive'];
 const PENDING_OF = {
   manager: 'pending_manager',
   finance: 'pending_finance',
   hr: 'pending_hr',
   executive: 'pending_executive',
-  chairman: 'pending_chairman',
 };
 // A request is 'open' until finally decided: at any stage, or returned to the employee for a reply. This is the measure used to count pending requests on every dashboard.
 const PENDING_STATUSES = Object.values(PENDING_OF);
 const OPEN_STATUSES = [...PENDING_STATUSES, 'info_requested'];
 
-const NEXT_OF = { manager: 'finance', finance: 'hr', hr: 'executive', executive: 'chairman', chairman: 'done' };
+const NEXT_OF = { manager: 'finance', finance: 'hr', hr: 'executive', executive: 'done' };
 // Where a request starts once the direct manager is satisfied (no manager, or he filed it himself).
 const AFTER_MANAGER = NEXT_OF.manager;
 const DECISION_FIELD = {
@@ -64,7 +64,6 @@ function canActAt(stage, user, leave) {
   if (stage === 'finance') return FINANCE_ROLES.includes(role);
   if (stage === 'hr') return HR_ROLES.includes(role);
   if (stage === 'executive') return isTopManagement(user);
-  if (stage === 'chairman') return isChairman(user);
   return false;
 }
 
@@ -79,7 +78,6 @@ function stagesFor(user) {
   if (FINANCE_ROLES.includes(role)) out.push('finance');
   if (HR_ROLES.includes(role)) out.push('hr');
   if (isTopManagement(user)) out.push('executive');
-  if (isChairman(user)) out.push('chairman');
   return out;
 }
 

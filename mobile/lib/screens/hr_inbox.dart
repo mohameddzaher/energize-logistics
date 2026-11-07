@@ -549,7 +549,6 @@ class _LeaveStatsStrip extends StatelessWidget {
       ('pending_manager', 'عند المدير المباشر', 'With the manager', n((l) => l['status'] == 'pending_manager'), T.inkSoft),
       ('pending_finance', 'عند الإدارة المالية', 'With finance', n((l) => l['status'] == 'pending_finance'), T.inkSoft),
       ('pending_executive', 'عند الإدارة العليا', 'With top management', n((l) => l['status'] == 'pending_executive'), T.inkSoft),
-      ('pending_chairman', 'عند رئيس مجلس الإدارة', 'With the chairman', n((l) => l['status'] == 'pending_chairman'), T.inkSoft),
       ('info_requested', 'مطلوب إيضاح من الموظف', 'Awaiting the employee', n((l) => l['status'] == 'info_requested'), const Color(0xFFEA580C)),
       ('approved_month', 'معتمدة هذا الشهر', 'Approved this month', n((l) => _HrLeavesScreenState._decidedThisMonth(l, 'approved')), T.success),
       ('rejected_month', 'مرفوضة هذا الشهر', 'Rejected this month', n((l) => _HrLeavesScreenState._decidedThisMonth(l, 'rejected')), T.danger),

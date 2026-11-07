@@ -64,7 +64,7 @@ class _StageBar extends StatelessWidget {
 class _TopLeavesScreenState extends State<TopLeavesScreen> {
   // Stages are shown to process viewers only (seesLeaveProcess); the finance desk reads «قيد المراجعة».
   bool get _full => seesLeaveProcess(context.read<AuthProvider>().user);
-  List<(String, String, String)> get _tabs => [('awaiting', 'تنتظر قرارك', 'Awaiting you'), _full ? ('in_chain', 'قيد المسار', 'In the chain') : ('in_chain', 'قيد المراجعة', 'Under review'), ('approved', 'معتمدة', 'Approved'), ('rejected', 'مرفوضة', 'Rejected'), ('all', 'الكل', 'All')];
+  List<(String, String, String)> get _tabs => [widget.canDecide ? ('awaiting', 'تنتظر قرارك', 'Awaiting you') : ('awaiting', 'عند الإدارة العليا', 'With top management'), _full ? ('in_chain', 'قيد المسار', 'In the chain') : ('in_chain', 'قيد المراجعة', 'Under review'), ('approved', 'معتمدة', 'Approved'), ('rejected', 'مرفوضة', 'Rejected'), ('all', 'الكل', 'All')];
   String _tab = 'awaiting';
   List<Map<String, dynamic>> _rows = [];
   bool _loading = true;

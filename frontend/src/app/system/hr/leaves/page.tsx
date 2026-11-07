@@ -46,7 +46,6 @@ function LeaveStats({ leaves, ar, active, onPick }: { leaves: LeaveRequest[]; ar
     { k: 'pending_manager', ar: 'عند المدير المباشر', en: 'With the manager', v: n((l) => l.status === 'pending_manager') },
     { k: 'pending_finance', ar: 'عند الإدارة المالية', en: 'With finance', v: n((l) => l.status === 'pending_finance') },
     { k: 'pending_executive', ar: 'عند الإدارة العليا', en: 'With top management', v: n((l) => l.status === 'pending_executive') },
-    { k: 'pending_chairman', ar: 'عند رئيس مجلس الإدارة', en: 'With the chairman', v: n((l) => l.status === 'pending_chairman') },
     { k: 'info_requested', ar: 'مطلوب إيضاح من الموظف', en: 'Awaiting the employee', v: n((l) => l.status === 'info_requested'), accent: 'text-orange-700' },
     { k: 'approved', ar: 'معتمدة هذا الشهر', en: 'Approved this month', v: n((l) => decidedThisMonth(l, 'approved')), accent: 'text-green-700' },
     { k: 'rejected', ar: 'مرفوضة هذا الشهر', en: 'Rejected this month', v: n((l) => decidedThisMonth(l, 'rejected')), accent: 'text-red-600' },

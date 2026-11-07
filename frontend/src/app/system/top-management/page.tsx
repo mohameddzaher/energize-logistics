@@ -1,5 +1,5 @@
 'use client';
-// Top management (the general manager): every leave in the company; it decides its stage after HR, before the chairman.
+// Top management (the general manager): every leave in the company; it decides its stage after HR, and its approval is final.
 import { useAuth } from '@/context/AuthContext';
 import LeaveDesk from '@/components/hr/LeaveDesk';
 
@@ -10,6 +10,6 @@ export default function TopManagementLeavesPage() {
   return (
     <LeaveDesk base="/api/top-management" stage="executive" canDecide={canDecide}
       title={{ ar: 'طلبات الإجازات — الإدارة العليا', en: 'Leave Requests — Top Management' }}
-      subtitle={{ ar: 'كل إجازات الشركة. قرارك بعد الموارد البشرية، وبعده تذهب إلى رئيس مجلس الإدارة.', en: 'Every leave in the company. You decide after HR; the chairman decides last.' }} />
+      subtitle={{ ar: 'كل إجازات الشركة. قرارك بعد الموارد البشرية، وموافقتك هي الاعتماد النهائي.', en: 'Every leave in the company. You decide after HR; your approval is final.' }} />
   );
 }

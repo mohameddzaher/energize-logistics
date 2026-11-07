@@ -26,12 +26,11 @@ router.get('/', async (req, res) => {
     const hr = chain.HR_ROLES.includes(role) || isTopRole(role);
     const top = req.user.isTopManagement === true || isTopRole(role);
     const fin = chain.FINANCE_ROLES.includes(role) || isTopRole(role);
-    const chair = chain.isChairman(req.user) || isTopRole(role);
     // Small collections, counted live and uncached so a decision clears its badge at once.
     const OPEN_REQ = { status: { $in: ['open', 'in_progress'] } };
     // Same filter as the approvals inbox, so the badge and the list agree (archived staff wait on nobody).
     const { withoutArchivedRef } = require('../utils/archivedHidden');
-    const [mine, atHr, openReq, atTop, atFin, atChair] = await Promise.all([
+    const [mine, atHr, openReq, atTop, atFin] = await Promise.all([
       // Leave approvals: what waits on this reader's own stations (team as manager, HR, top management).
       withoutArchivedRef(chain.inboxFilter(req.user)).then((f) => LeaveRequest.countDocuments(f)).catch(() => 0),
       // HR follows every request from filing to the end, so its page counts all open ones, not only those at its stage.
@@ -39,7 +38,6 @@ router.get('/', async (req, res) => {
       hr || top || fin ? HRRequest.countDocuments(OPEN_REQ) : 0,
       top ? LeaveRequest.countDocuments({ status: 'pending_executive' }) : 0,
       fin ? LeaveRequest.countDocuments({ status: 'pending_finance' }) : 0,
-      chair ? LeaveRequest.countDocuments({ status: 'pending_chairman' }) : 0,
     ]);
     if (mine) out['/system/hr/leave-approvals'] = mine;
     if (atHr) out['/system/hr/leaves'] = atHr;
@@ -48,7 +46,6 @@ router.get('/', async (req, res) => {
     if (openReq && top) out['/system/top-management/requests'] = openReq;
     if (atFin) out['/system/finance/leaves'] = atFin;
     if (openReq && fin) out['/system/finance/staff-requests'] = openReq;
-    if (atChair) out['/system/chairman'] = atChair;
     // Selling-price change requests waiting on an approver.
     const spr = require('../config/sellingPriceRequests');
     if (spr.canApproveSelling(req.user)) {

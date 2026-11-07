@@ -1,15 +1,31 @@
 'use client';
-// Chairman of the board: the final leave stage; a request arrives only after top management approves it.
-import { useAuth } from '@/context/AuthContext';
+// Chairman's office: every leave and every staff request, for information only. The chairman left the leave chain on 2026-11-07; top management's approval is final.
+import { useState } from 'react';
+import { useLanguage } from '@/context/LanguageContext';
+import { Tabs } from '@/components/hr/HRKit';
 import LeaveDesk from '@/components/hr/LeaveDesk';
+import StaffRequestsDesk from '@/components/hr/StaffRequestsDesk';
 
-export default function ChairmanLeavesPage() {
-  const { user } = useAuth();
-  // role-only: the final stage belongs to the chairman account (and super admins), not to a section grant.
-  const canDecide = (user as any)?.isChairman === true || ['super_admin', 'admin', 'it_manager', 'it_specialist'].includes(user?.role || '');
+export default function ChairmanOfficePage() {
+  const { lang } = useLanguage();
+  const ar = lang === 'ar';
+  const [tab, setTab] = useState<'leaves' | 'requests'>('leaves');
   return (
-    <LeaveDesk base="/api/chairman" stage="chairman" canDecide={canDecide}
-      title={{ ar: 'اعتماد الإجازات — رئيس مجلس الإدارة', en: 'Leave Approval — Chairman of the Board' }}
-      subtitle={{ ar: 'تصلك الإجازة بعد موافقة المدير المباشر والإدارة المالية والموارد البشرية والإدارة العليا. موافقتك هي الاعتماد النهائي.', en: 'A leave reaches you after the direct manager, finance, HR and top management. Your approval is final.' }} />
+    <div className="space-y-3 w-full">
+      <Tabs active={tab} onChange={(k) => setTab(k as 'leaves' | 'requests')}
+        tabs={[
+          { key: 'leaves', label: ar ? 'طلبات الإجازات' : 'Leave requests' },
+          { key: 'requests', label: ar ? 'طلبات الموظفين' : 'Staff requests' },
+        ]} />
+      {tab === 'leaves' ? (
+        <LeaveDesk base="/api/chairman" stage="executive" canDecide={false}
+          title={{ ar: 'رئاسة مجلس الإدارة — طلبات الإجازات', en: "Chairman's Office — Leave Requests" }}
+          subtitle={{ ar: 'كل إجازات الشركة للاطّلاع: تُعتمد الإجازة بموافقة الإدارة العليا.', en: 'Every leave in the company, for information: top management approval is final.' }} />
+      ) : (
+        <StaffRequestsDesk base="/api/chairman"
+          title={{ ar: 'رئاسة مجلس الإدارة — طلبات الموظفين', en: "Chairman's Office — Staff Requests" }}
+          subtitle={{ ar: 'كل ما طلبه الموظفون من الموارد البشرية وحالته الآن، للاطّلاع.', en: 'Everything staff asked HR for and where it stands, for information.' }} />
+      )}
+    </div>
   );
 }

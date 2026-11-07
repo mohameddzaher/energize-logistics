@@ -12,8 +12,8 @@ const leaveStages = <({String key, String ar, String en, String decision})>[
   (key: 'finance', ar: 'الإدارة المالية', en: 'Finance', decision: 'financeDecision'),
   (key: 'hr', ar: 'الموارد البشرية', en: 'HR', decision: 'hrDecision'),
   (key: 'executive', ar: 'الإدارة العليا', en: 'Top Management', decision: 'executiveDecision'),
-  (key: 'chairman', ar: 'رئيس مجلس الإدارة', en: 'Chairman', decision: 'chairmanDecision'),
 ];
+// Four stages: top management's approval is final; the chairman left the chain on 2026-11-07 (backend utils/leaveChain).
 
 /// Status to name and color. Read through [leaveStatusOf] so it is never empty: reading a color from a missing key crashes the screen.
 const leaveStatusMeta = <String, (String, String, Color)>{
@@ -76,7 +76,6 @@ bool canDecideLeave(Map<String, dynamic>? user, Map<String, dynamic> l, {require
     case 'pending_finance': return const ['cfo', 'accounting_manager', 'accountant'].contains(role);
     case 'pending_hr': return hrStaff;
     case 'pending_executive': return user?['isTopManagement'] == true;
-    case 'pending_chairman': return user?['isChairman'] == true;
   }
   return false;
 }

@@ -75,7 +75,7 @@ async function liveSignatures(ids) {
 const idOf = (x) => (x && typeof x === 'object' ? String(x._id || '') : String(x || ''));
 
 /**
- * The six signature boxes, in the owner's layout: employee, direct manager, finance on the first row; HR, top management (general manager), chairman on the second.
+ * The five signature boxes, in the owner's layout: employee, direct manager, finance on the first row; HR and the general manager (final approval) on the second. The chairman left the chain on 2026-11-07, so he has no box.
  * A box is filled by the stage's approval only; a rejection or a question leaves it unsigned.
  * `fullView` false (the employee and staff outside the process) leaves the stage boxes of an open request empty, so the sheet does not tell where it stands.
  */
@@ -103,7 +103,6 @@ async function signatureBoxes(leave, { fullView = true } = {}) {
     ['finance', 'المدير المالي', 'Finance Manager'],
     ['hr', 'مدير الموارد البشرية', 'HR Manager'],
     ['executive', 'المدير العام', 'General Manager'],
-    ['chairman', 'رئيس مجلس الإدارة', 'Chairman of the Board'],
   ];
   for (const [stage, label, en] of STAGE_BOX) {
     const d = decided(chain.DECISION_FIELD[stage]);

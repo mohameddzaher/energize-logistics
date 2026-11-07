@@ -120,14 +120,6 @@ const notifyTopManagement = async ({ title, message, relatedEntity, relatedEntit
   users.forEach((u) => { try { emitToUser(String(u._id), event || 'hr:leave', { id: String(relatedEntityId || '') }); } catch (e) {} });
 };
 
-/** The chairman account(s) (User.isChairman), who sign the final leave stage. */
-const notifyChairman = async ({ title, message, relatedEntity, relatedEntityId, event }) => {
-  const users = await User.find({ isChairman: true, isActive: true }).select('_id').lean();
-  await Promise.all(users.map((u) =>
-    createNotification({ recipient: u._id, type: 'system_alert', title, message, relatedEntity, relatedEntityId }).catch(() => {})));
-  users.forEach((u) => { try { emitToUser(String(u._id), event || 'hr:leave', { id: String(relatedEntityId || '') }); } catch (e) {} });
-};
-
 /** Tells the owners of `stage` that a request now waits on them; one place, so a stage added to the chain is announced everywhere it can be reached from. */
 const notifyStage = async (stage, leave, message) => {
   const ref = { relatedEntity: 'LeaveRequest', relatedEntityId: leave._id, event: 'hr:leave' };
@@ -136,7 +128,6 @@ const notifyStage = async (stage, leave, message) => {
   if (stage === 'finance') return notifyRoles(chain.FINANCE_ROLES, { title, message, ...ref });
   if (stage === 'hr') return notifyHR({ title, message, ...ref });
   if (stage === 'executive') return notifyTopManagement({ title, message, ...ref });
-  if (stage === 'chairman') return notifyChairman({ title, message, ...ref });
   return null;
 };
 
@@ -1395,7 +1386,7 @@ exports.getLeave = async (req, res) => {
 
 /**
  * The official sheet as a PDF (services/leaveSheet), the same file on web and mobile.
- * Readable by whoever may open the request, plus every stage desk: finance, top management and the chairman follow requests before they reach them.
+ * Readable by whoever may open the request, plus every stage desk: finance and top management follow requests before they reach them, and the chairman's office reads them all.
  */
 exports.getLeaveSheet = async (req, res) => {
   try {
@@ -1408,7 +1399,7 @@ exports.getLeaveSheet = async (req, res) => {
     if (!leave) return res.status(404).json({ message: 'Leave request not found' });
     const uid = String(req.user._id);
     const own = [leave.requester, leave.manager, leave.filedBy].some((x) => x && String(x._id || x) === uid);
-    const desk = chain.STAGES.some((st) => st !== 'manager' && chain.canActAt(st, req.user, leave));
+    const desk = chain.isChairman(req.user) || chain.STAGES.some((st) => st !== 'manager' && chain.canActAt(st, req.user, leave));
     if (!own && !desk && !hrStaffReq(req)) return res.status(403).json({ message: 'Not allowed' });
     const pdf = await require('../services/leaveSheet').renderLeaveSheet(leave, { fullView: chain.seesProcess(req.user) });
     const who = (leave.employee?.employeeNumber || String(leave._id)).replace(/[^\w-]/g, '');

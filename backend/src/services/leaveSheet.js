@@ -75,7 +75,7 @@ async function liveSignatures(ids) {
 const idOf = (x) => (x && typeof x === 'object' ? String(x._id || '') : String(x || ''));
 
 /**
- * The five signature boxes, in the owner's layout: employee, direct manager, finance on the first row; HR and the general manager (final approval) on the second. The chairman left the chain on 2026-11-07, so he has no box.
+ * The five signature boxes (the order on the page is sheetOrder): employee and direct manager, then finance, the general manager (final approval) and HR. The chairman left the chain on 2026-11-07, so he has no box.
  * A box is filled by the stage's approval only; a rejection or a question leaves it unsigned.
  * `fullView` false (the employee and staff outside the process) leaves the stage boxes of an open request empty, so the sheet does not tell where it stands.
  */
@@ -130,14 +130,24 @@ async function registerName(value) {
   return v;
 }
 
+/**
+ * The owner's layout (2026-11-07): the employee and the direct manager on the first row; finance, the general manager in the middle as the final approver, and HR below.
+ * The page is right-to-left, so the first box of a row is on the right.
+ */
+function sheetOrder(boxes) {
+  const by = (label) => boxes.find((b) => b.label === label);
+  const order = [by('الموظف'), by('المدير المباشر'), by('المدير المالي'), by('المدير العام'), by('مدير الموارد البشرية')].filter(Boolean);
+  return order.length === boxes.length ? order : boxes;
+}
+
 function field(label, value, { wide = false, tone = '' } = {}) {
   const shown = String(value ?? '').trim();
   return `<div class="f${wide ? ' wide' : ''}"><div class="k">${esc(label)}</div><div class="v ${tone}">${shown ? esc(shown) : '—'}</div></div>`;
 }
 
-function sigBox(b) {
+function sigBox(b, top = false) {
   const ink = b.ink ? `<img src="${esc(b.ink)}" alt="" />` : '';
-  return `<div class="sig">
+  return `<div class="sig${top ? ' top' : ''}">
     <div class="ink">${ink}</div>
     <div class="line"></div>
     <div class="role">${esc(b.label)} <span>${esc(b.en)}</span></div>
@@ -187,7 +197,9 @@ ${getFontCss()}
   .f .v { font-size: 12.5px; font-weight: 700; color: #0f172a; margin-top: .6mm; unicode-bidi: plaintext; text-align: right; }
   .f .v.warn { color: #b45309; }
   .f .v.bad { color: #b91c1c; }
-  .sigs { margin-top: auto; display: grid; grid-template-columns: repeat(3, 1fr); gap: 3mm 5mm; }
+  .sigs { margin-top: auto; display: grid; grid-template-columns: repeat(6, 1fr); gap: 3mm 5mm; }
+  .sig { grid-column: span 2; }
+  .sig.top { grid-column: span 3; }
   .sig { text-align: center; }
   .sig .ink { height: 15mm; display: flex; align-items: flex-end; justify-content: center; }
   .sig .ink img { max-height: 14mm; max-width: 40mm; object-fit: contain; }
@@ -231,7 +243,7 @@ ${getFontCss()}
       </div>
     </div>
 
-    <div class="sigs">${boxes.map(sigBox).join('')}</div>
+    <div class="sigs">${sheetOrder(boxes).map((b, i) => sigBox(b, i < 2)).join('')}</div>
   </div>
 </div></body></html>`;
 }

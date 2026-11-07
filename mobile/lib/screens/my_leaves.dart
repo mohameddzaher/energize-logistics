@@ -588,8 +588,8 @@ class _NewLeaveSheetState extends State<_NewLeaveSheet> {
               style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
           const SizedBox(height: 14),
           if (widget.members != null) ...[
-            Text(tr('تُسجَّل موافقتك كمديرٍ مباشر عند التقديم ويوضع توقيعك مكان الموظف ومكانك.',
-                    'Your manager approval is recorded with the filing, and your signature goes in the employee box and yours.'),
+            Text(tr('تُسجَّل موافقتك كمديرٍ مباشر عند التقديم ويوضع توقيعك في خانة المدير المباشر. خانة الموظف تحمل توقيعه إن كان له حساب، وإلا اسمه.',
+                    'Your manager approval is recorded with the filing and your signature goes in the direct manager box. The employee box carries his signature if he has an account, else his name.'),
                 style: const TextStyle(fontSize: 11.5, color: T.inkFaint)),
             const SizedBox(height: 8),
             DropdownButtonFormField<String>(

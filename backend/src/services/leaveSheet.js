@@ -80,8 +80,10 @@ const idOf = (x) => (x && typeof x === 'object' ? String(x._id || '') : String(x
  * `fullView` false (the employee and staff outside the process) leaves the stage boxes of an open request empty, so the sheet does not tell where it stands.
  */
 async function signatureBoxes(leave, { fullView = true } = {}) {
+  // Filed by the manager for someone under him (owner's rule, 2026-11-07): the employee's box carries the employee's own saved signature when he has an account, else his name in its place; the manager signs only his own box.
   const filer = leave.filedByManager ? leave.filedBy : null;
-  const employeeSigner = filer || leave.requester;
+  const empUser = idOf(leave.employee?.user);
+  const employeeSigner = filer ? empUser : leave.requester;
   const hidden = !fullView && leave.status !== 'approved';
   const decided = (f) => (!hidden && leave[f] && leave[f].at && leave[f].decision === 'approved' ? leave[f] : null);
   const [live, heads] = await Promise.all([
@@ -90,12 +92,14 @@ async function signatureBoxes(leave, { fullView = true } = {}) {
   ]);
 
   const emp = leave.employee || {};
+  const empInk = filer ? (empUser ? live.get(empUser) || '' : '') : (leave.employeeSignature || live.get(idOf(employeeSigner)) || '');
   const boxes = [{
     label: 'الموظف', en: 'Employee',
-    ink: leave.employeeSignature || live.get(idOf(employeeSigner)) || '',
+    ink: empInk,
+    // No signature to show (no account, or none saved): the employee's name stands in the signature place.
+    inkText: filer && !empInk ? (nameOf(emp) || '') : '',
     name: nameOf(emp) || nameOf(leave.requester),
-    // The manager who filed it signs in the employee's place, and says so.
-    note: filer ? `وقّع عنه مديره ${nameOf(filer, false)}` : '',
+    note: filer ? `قدّمها مديره ${nameOf(filer, false)}` : '',
     date: dmy(leave.createdAt),
   }];
   const STAGE_BOX = [
@@ -146,7 +150,7 @@ function field(label, value, { wide = false, tone = '' } = {}) {
 }
 
 function sigBox(b, top = false) {
-  const ink = b.ink ? `<img src="${esc(b.ink)}" alt="" />` : '';
+  const ink = b.ink ? `<img src="${esc(b.ink)}" alt="" />` : b.inkText ? `<span class="ink-name">${esc(b.inkText)}</span>` : '';
   return `<div class="sig${top ? ' top' : ''}">
     <div class="ink">${ink}</div>
     <div class="line"></div>
@@ -203,6 +207,7 @@ ${getFontCss()}
   .sig { text-align: center; }
   .sig .ink { height: 15mm; display: flex; align-items: flex-end; justify-content: center; }
   .sig .ink img { max-height: 14mm; max-width: 40mm; object-fit: contain; }
+  .sig .ink-name { font-size: 15px; font-weight: 700; color: #1e3a8a; padding-bottom: 1mm; }
   .sig .line { border-top: 1px solid #1f2937; margin: 1mm 3mm 0; }
   .sig .role { font-size: 11px; font-weight: 800; color: #12325C; margin-top: 1mm; }
   .sig .role span { font-size: 8.5px; font-weight: 700; color: #94a3b8; }

@@ -595,8 +595,8 @@ export default function MyLeavesPage() {
         </>}>
         <div className="space-y-3">
           <p className="rounded-lg border border-indigo-200 bg-indigo-50 p-2.5 text-xs text-indigo-800">
-            {ar ? 'تُسجَّل موافقتك كمديرٍ مباشر عند التقديم ويوضع توقيعك مكان الموظف ومكانك.'
-                : 'Your manager approval is recorded with the filing, and your signature goes in the employee box and yours.'}
+            {ar ? 'تُسجَّل موافقتك كمديرٍ مباشر عند التقديم ويوضع توقيعك في خانة المدير المباشر. خانة الموظف تحمل توقيعه إن كان له حساب، وإلا اسمه.'
+                : 'Your manager approval is recorded with the filing and your signature goes in the direct manager box. The employee box carries his signature if he has an account, else his name.'}
           </p>
           <Field label={ar ? 'الموظّف *' : 'Employee *'}>
             <SearchableSelect value={teamForm.employee} onChange={(v) => setTeamForm((f) => ({ ...f, employee: v }))}

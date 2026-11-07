@@ -1391,7 +1391,7 @@ exports.getLeave = async (req, res) => {
 exports.getLeaveSheet = async (req, res) => {
   try {
     const leave = await LeaveRequest.findById(req.params.id)
-      .populate('employee', 'firstName lastName arabicName iqamaNumber nationalId idType employeeNumber department jobTitle registerNumber iqamaExpiry iqamaExpiryHijri')
+      .populate('employee', 'firstName lastName arabicName iqamaNumber nationalId idType employeeNumber department jobTitle registerNumber iqamaExpiry iqamaExpiryHijri user')
       .populate('requester filedBy', 'firstName lastName')
       .populate('leaveType', 'nameEn nameAr')
       .populate(Object.values(chain.DECISION_FIELD).map((f) => `${f}.by`).join(' '), 'firstName lastName')

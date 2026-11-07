@@ -87,8 +87,8 @@ function Info({ k, v, wide = false, ltr = false }: { k: string; v?: React.ReactN
   );
 }
 
-/** The whole request in one window: who, what, when, the process, the conversation and the papers; the stage decides from its footer. */
-function LeaveDetail({ l, ar, full }: { l: Leave; ar: boolean; full: boolean }) {
+/** The whole request in one window: who, what, when, the process, the conversation and the papers; the stage decides from its footer. Shared with the HR leaves page. */
+export function LeaveDetail({ l, ar, full }: { l: Leave; ar: boolean; full: boolean }) {
   const t = (a: string, e: string) => (ar ? a : e);
   const e = l.employee || {};
   const snap = l.balanceSnapshot || {};
@@ -113,6 +113,7 @@ function LeaveDetail({ l, ar, full }: { l: Leave; ar: boolean; full: boolean }) 
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
           <Info k={t('النوع', 'Type')} v={<TypeChip l={l} ar={ar} />} />
           <Info k={t('تاريخ الطلب', 'Requested on')} v={bothDates(l.createdAt, ar)} />
+          {l.filedByManager && <Info wide k={t('مقدّم الطلب', 'Filed by')} v={`${nameOf(l.filedBy) || l.filedByName || nameOf(l.requester) || '—'} — ${t('قدّمها المدير نيابةً عن الموظف', 'filed by the manager for the employee')}`} />}
           <Info k={t('من', 'From')} v={bothDates(l.startDate, ar)} />
           <Info k={t('إلى', 'To')} v={bothDates(l.endDate, ar)} />
           {excluded.length > 0 && <Info wide k={t('أيام جمعة لا تُحسب إجازة', 'Fridays not counted')} v={excluded.map((d) => d.split('-').reverse().join('/')).join('  ·  ')} />}

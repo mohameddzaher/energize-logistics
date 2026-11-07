@@ -134,7 +134,7 @@ class _TopLeavesScreenState extends State<TopLeavesScreen> {
       shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
       builder: (c) => DraggableScrollableSheet(
         expand: false, initialChildSize: 0.88, maxChildSize: 0.96, minChildSize: 0.5,
-        builder: (c, sc) => _LeaveDetailSheet(
+        builder: (c, sc) => LeaveDetailSheet(
           leave: l, full: _full, canAct: _canAct(l), scroll: sc,
           onDecide: (d) async { final ok = await _decide(l, d); if (ok && c.mounted) Navigator.pop(c); },
         ),
@@ -213,9 +213,9 @@ class _TopLeavesScreenState extends State<TopLeavesScreen> {
   }
 }
 
-/// The whole request: who, what, when, the process, the conversation and the papers; the stage decides at the bottom.
-class _LeaveDetailSheet extends StatelessWidget {
-  const _LeaveDetailSheet({required this.leave, required this.full, required this.canAct, required this.scroll, required this.onDecide});
+/// The whole request: who, what, when, the process, the conversation and the papers; the stage decides at the bottom. Also opened from the HR leaves screen (read-only there; HR decides from the card).
+class LeaveDetailSheet extends StatelessWidget {
+  const LeaveDetailSheet({super.key, required this.leave, required this.full, required this.canAct, required this.scroll, required this.onDecide});
   final Map<String, dynamic> leave;
   final bool full;
   final bool canAct;

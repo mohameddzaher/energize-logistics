@@ -1241,7 +1241,8 @@ async function defaultSignatureOf(userId, pickId) {
   } catch (e) { return ''; }
 }
 const populateLeave = (q) => q
-  .populate('employee', 'firstName lastName arabicName iqamaNumber nationalId idType employeeNumber department')
+  // Job title and nationality feed the HR review window (components/hr/LeaveDesk LeaveDetail).
+  .populate('employee', 'firstName lastName arabicName iqamaNumber nationalId idType employeeNumber department jobTitle nationality')
   .populate('requester', 'firstName lastName email')
   .populate('manager', 'firstName lastName')
   .populate('leaveType', 'nameEn nameAr code color affectsBalance')

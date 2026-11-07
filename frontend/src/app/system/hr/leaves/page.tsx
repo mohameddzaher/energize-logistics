@@ -8,17 +8,17 @@ import api from '@/lib/api';
 import { CalendarCheck, Check, X, HelpCircle, FileDown, PenTool, CalendarPlus, History, Pencil, Trash2, BellRing, Hourglass } from 'lucide-react';
 import { isHRStaff, LeaveRequest, empName, userName, leaveTypeLabel, LEAVE_OPEN, LEAVE_PENDING, canDecideLeave, leaveWaitNote, leaveStatusStyle, seesLeaveProcess, leaveStatusOptions, fridaysOf, countLeaveDays, fridaysNote } from '@/lib/hr';
 import DatePair from '@/components/hr/DatePair';
-import { bothDates, gregCell, hijriCell, pairLabels, exportDatePair } from '@/lib/hrDates';
-import { LeaveChainBar, LeaveThread } from '@/components/hr/LeaveChain';
+import { gregCell, hijriCell, pairLabels, exportDatePair } from '@/lib/hrDates';
 import { Spinner, PageHeader, SearchInput, Badge, Modal, TextArea, PrimaryButton, SearchableSelect, Loader2, StatCard } from '@/components/hr/HRKit';
 import ExportMenu, { exportScopeLabels, type ExportColumn } from '@/components/ls2/ExportMenu';
 import { getHrLeavesTranslations } from '@/lib/translations';
 import { downloadLeaveSheet } from '@/lib/leavePdf';
 import type { Signature } from '@/components/SignatureManager';
-import FilePicker, { AttachmentList, type PickedFile } from '@/components/system/FilePicker';
+import FilePicker, { type PickedFile } from '@/components/system/FilePicker';
 import ScrollX from '@/components/system/ScrollX';
 import { LeaveReturnChip, LeaveReturnPanel } from '@/components/hr/LeaveReturn';
 import FridayPicker from '@/components/hr/FridayPicker';
+import { LeaveDetail } from '@/components/hr/LeaveDesk';
 import { DeductionChoice, DeductionBadge, needsDeductionChoice, useDeductionAsk } from '@/components/hr/LeaveDeduction';
 import PeriodFilter from '@/components/system/PeriodFilter';
 import Link from 'next/link';
@@ -469,96 +469,82 @@ export default function HRLeavesPage() {
         )}
       </Modal>
 
-      <Modal open={!!review} onClose={() => setReview(null)} title={tx.reviewTitle}
-        footer={review && canActNow(review) ? <div className="flex flex-wrap items-center justify-end gap-2">
-          <button type="button" onClick={() => decide('rejected')} disabled={busy} className="flex items-center gap-2 px-4 py-2 bg-red-500/20 text-red-600 rounded-lg text-sm font-medium hover:bg-red-500/30 disabled:opacity-50"><X className="w-4 h-4" /> {tx.reject}</button>
-          <button type="button" onClick={() => decide('info')} disabled={busy} className="flex items-center gap-2 px-4 py-2 bg-orange-500/20 text-orange-700 rounded-lg text-sm font-medium hover:bg-orange-500/30 disabled:opacity-50"><HelpCircle className="w-4 h-4" /> {ar ? 'استفسار / طلب تعديل' : 'Ask / request change'}</button>
-          <PrimaryButton onClick={() => decide('approved')} disabled={busy}>{busy ? <Loader2 className="w-4 h-4 animate-spin" /> : <Check className="w-4 h-4" />} {tx.approve}</PrimaryButton>
+      {/* Wide review window: the request on one side, HR's decision and tools on the other (stacked on narrow screens). */}
+      <Modal open={!!review} onClose={() => setReview(null)} title={tx.reviewTitle} wide="xl"
+        footer={review && canActNow(review) ? <div className="flex flex-wrap items-center justify-between gap-2">
+          <span className="inline-flex items-center gap-1.5 text-xs text-slate-500"><PenTool className="h-3.5 w-3.5 text-[#f37121]" />{t('Your signature is applied to the approval', 'يُوضع توقيعك على الموافقة تلقائيًا')}</span>
+          <div className="flex flex-wrap items-center gap-2">
+            <button type="button" onClick={() => decide('rejected')} disabled={busy} className="flex items-center gap-2 px-4 py-2 bg-red-50 text-red-600 rounded-lg text-sm font-semibold hover:bg-red-100 disabled:opacity-50"><X className="w-4 h-4" /> {tx.reject}</button>
+            <button type="button" onClick={() => decide('info')} disabled={busy} className="flex items-center gap-2 px-4 py-2 bg-orange-50 text-orange-700 rounded-lg text-sm font-semibold hover:bg-orange-100 disabled:opacity-50"><HelpCircle className="w-4 h-4" /> {ar ? 'استفسار / طلب تعديل' : 'Ask / request change'}</button>
+            <PrimaryButton onClick={() => decide('approved')} disabled={busy}>{busy ? <Loader2 className="w-4 h-4 animate-spin" /> : <Check className="w-4 h-4" />} {tx.approve}</PrimaryButton>
+          </div>
         </div> : (review && LEAVE_OPEN.includes(review.status) ? <p className="text-xs text-slate-500">{leaveWaitNote(review, ar, full)}</p> : undefined)}>
         {review && (
-          <div className="space-y-3 text-sm">
-            {/* Where the request stands and who signed, before any other field. */}
-            <LeaveChainBar leave={review} lang={ar ? 'ar' : 'en'} full={full} />
-            <Row k={tx.fieldEmployee} v={empName(review.employee, lang)} />
-            <Row k={tx.fieldRequester} v={userName(review.requester)} />
-            <Row k={tx.fieldType} v={leaveTypeLabel(review.leaveType, lang)} />
-            <Row k={FROM_LABEL} v={bothDates(review.startDate, ar)} />
-            <Row k={TO_LABEL} v={bothDates(review.endDate, ar)} />
-            <Row k={tx.colDays} v={`${review.days} ${tx.dayUnit}`} />
-            <Row k={tx.fieldAccrued} v={`${review.balanceSnapshot?.accrued ?? '—'} ${tx.dayUnit}`} />
-            <Row k={tx.fieldRemainingAfter} v={`${review.balanceSnapshot?.remainingAfter ?? '—'} ${tx.dayUnit}`} danger={typeof review.balanceSnapshot?.remainingAfter === 'number' && review.balanceSnapshot.remainingAfter < 0} />
-            <Row k={tx.fieldStatus} v={<span className="inline-flex flex-wrap items-center gap-1.5"><Badge style={leaveStatusStyle(review, false, full, canActNow(review))} lang={lang} /><DeductionBadge leave={review} ar={ar} /></span>} />
-            {/* Each text has its owner in its label: the employee's request text versus the reviewer's decision note were both generic and read as duplicates. */}
-            {review.reason && (
-              <div className="border-t border-slate-200 pt-3">
-                <span className="text-slate-500">{ar ? 'سبب الموظّف في طلبه' : 'Employee’s reason'}: </span>
-                <span className="text-slate-900">{review.reason}</span>
+          <div className="grid grid-cols-1 gap-5 lg:grid-cols-[minmax(0,1fr)_20rem]">
+            <div className="min-w-0 space-y-4">
+              <div className="flex flex-wrap items-center gap-2">
+                <Badge style={leaveStatusStyle(review, false, full, canActNow(review))} lang={lang} />
+                <LeaveReturnChip leave={review} ar={ar} />
+                {(review as any).backdated && <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-semibold bg-slate-200 text-slate-600"><History className="w-3 h-3" /> {ar ? 'قيد رجعيّ' : 'Back-dated'}</span>}
               </div>
-            )}
-            {/* The supporting document is read before deciding, so approval is never given on a doctor's report requested over chat. */}
-            {!!((review as any).attachments || []).length && (
-              <div className="border-t border-slate-200 pt-3">
-                <p className="text-slate-500 text-xs mb-1">{ar ? 'مرفقات الموظّف' : 'Employee attachments'}</p>
-                <AttachmentList items={(review as any).attachments} />
-              </div>
-            )}
-            <LeaveReturnPanel leave={review} ar={ar} canAct={staff} onDone={load} />
-            <LeaveThread leave={review} lang={ar ? 'ar' : 'en'} full={full} />
-            {review && canActNow(review) && (
-              <div className="border-t border-slate-200 pt-3 space-y-3">
-                {review.status === 'pending_hr' && <FridayPicker startDate={review.startDate} endDate={review.endDate} value={offFridays} onChange={setOffFridays} ar={ar} />}
-                {needsDeductionChoice(review) && <DeductionChoice value={deduct} onChange={setDeduct} leave={review} ar={ar} />}
-                <div>
-                  <label className="text-slate-500 text-xs mb-1 block">
-                    {ar ? 'ملاحظتك على القرار — مطلوبة مع الاستفسار' : 'Your note — required when asking a question'}
-                  </label>
-                  <TextArea rows={2} value={note} onChange={(e) => setNote(e.target.value)}
-                    placeholder={ar ? 'تُحفظ مع موافقتك أو رفضك ويقرؤها الموظّف' : 'saved with your approval or rejection'} />
-                </div>
-                <div>
-                  <label className="text-slate-500 text-xs mb-1 block">{ar ? 'مرفقات القرار (اختياري)' : 'Decision attachments (optional)'}</label>
-                  <FilePicker files={files} onChange={setFiles} max={5} />
-                </div>
-                {/* Every approval is signed with the approver's signature (default one unless another is picked); no box to tick. */}
-                <div>
-                  <p className="flex items-center gap-2 text-sm text-slate-700">
-                    <PenTool className="w-4 h-4 text-[#f37121]" /> {t('Your signature is applied to the approval', 'يُوضع توقيعك على الموافقة تلقائيًا')}
-                  </p>
+              <LeaveDetail l={review as any} ar={ar} full={full} />
+            </div>
+
+            <aside className="min-w-0 space-y-4 lg:sticky lg:top-0 lg:self-start">
+              {canActNow(review) && (
+                <section className="space-y-3 rounded-2xl border border-[#f37121]/30 bg-white p-4 shadow-sm">
+                  <h4 className="text-sm font-bold text-slate-900">{ar ? 'قرارك' : 'Your decision'}</h4>
+                  {review.status === 'pending_hr' && <FridayPicker startDate={review.startDate} endDate={review.endDate} value={offFridays} onChange={setOffFridays} ar={ar} />}
+                  {needsDeductionChoice(review) && <DeductionChoice value={deduct} onChange={setDeduct} leave={review} ar={ar} />}
+                  <div>
+                    <label className="text-slate-500 text-xs mb-1 block">{ar ? 'ملاحظتك — مطلوبة مع الاستفسار' : 'Your note — required when asking'}</label>
+                    <TextArea rows={3} value={note} onChange={(e) => setNote(e.target.value)}
+                      placeholder={ar ? 'تُحفظ مع قرارك ويقرؤها الموظّف' : 'saved with your decision'} />
+                  </div>
+                  <div>
+                    <label className="text-slate-500 text-xs mb-1 block">{ar ? 'مرفقات القرار (اختياري)' : 'Decision attachments (optional)'}</label>
+                    <FilePicker files={files} onChange={setFiles} max={5} />
+                  </div>
                   {mySigs.length === 0 && (
-                    <p className="text-xs text-slate-500 mt-1">
+                    <p className="text-xs text-slate-500">
                       {t('You have no signature yet — ', 'ما عندكش توقيع لسه — ')}
-                      <a href="/system/settings" target="_blank" rel="noopener noreferrer"
-                        className="font-semibold text-[#f37121] hover:underline">
-                        {t('create one in Settings', 'اعمل واحد من الإعدادات')}
-                      </a>
-                      {t(' (opens in a new tab).', ' (هيفتح في تبويب جديد).')}
+                      <a href="/system/settings" target="_blank" rel="noopener noreferrer" className="font-semibold text-[#f37121] hover:underline">{t('create one in Settings', 'اعمل واحد من الإعدادات')}</a>
                     </p>
                   )}
                   {mySigs.length > 1 && (
-                    <div className="flex gap-2 mt-2 flex-wrap">
-                      {mySigs.map((s) => (
-                        <button key={s._id} type="button" onClick={() => setSignWith(s._id)} className={`border rounded-lg p-1 bg-white ${(signWith || mySigs.find((x) => x.isDefault)?._id || mySigs[0]?._id) === s._id ? 'border-[#f37121] ring-1 ring-[#f37121]' : 'border-slate-200'}`}>
-                          {/* eslint-disable-next-line @next/next/no-img-element */}
-                          <img src={s.dataUrl} alt={s.name} className="h-9 w-20 object-contain" />
-                          <div className="text-[10px] text-slate-500 text-center truncate w-20">{s.name}</div>
-                        </button>
-                      ))}
+                    <div>
+                      <p className="text-slate-500 text-xs mb-1">{ar ? 'التوقيع' : 'Signature'}</p>
+                      <div className="flex gap-2 flex-wrap">
+                        {mySigs.map((s) => (
+                          <button key={s._id} type="button" onClick={() => setSignWith(s._id)} className={`border rounded-lg p-1 bg-white ${(signWith || mySigs.find((x) => x.isDefault)?._id || mySigs[0]?._id) === s._id ? 'border-[#f37121] ring-1 ring-[#f37121]' : 'border-slate-200'}`}>
+                            {/* eslint-disable-next-line @next/next/no-img-element */}
+                            <img src={s.dataUrl} alt={s.name} className="h-9 w-20 object-contain" />
+                            <div className="text-[10px] text-slate-500 text-center truncate w-20">{s.name}</div>
+                          </button>
+                        ))}
+                      </div>
                     </div>
                   )}
-                </div>
-              </div>
-            )}
-            <div className="border-t border-slate-200 pt-3 flex flex-wrap gap-2">
-              <button type="button" onClick={() => downloadPdf(review._id)} className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 text-sm">
-                {pdfBusy === review._id ? <Loader2 className="w-4 h-4 animate-spin" /> : <FileDown className="w-4 h-4" />} {t('Download PDF sheet', 'تحميل ورقة الإجازة PDF')}
-              </button>
-              <button type="button" onClick={() => { const l = review; setReview(null); openEdit(l); }} className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg bg-slate-100 hover:bg-blue-50 hover:text-blue-600 text-slate-700 text-sm">
-                <Pencil className="w-4 h-4" /> {t('Edit', 'تعديل')}
-              </button>
-              <button type="button" onClick={() => removeLeave(review)} className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg bg-red-50 hover:bg-red-100 text-red-600 text-sm">
-                <Trash2 className="w-4 h-4" /> {t('Delete', 'حذف')}
-              </button>
-            </div>
+                </section>
+              )}
+
+              <section className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+                <LeaveReturnPanel leave={review} ar={ar} canAct={staff} onDone={load} />
+              </section>
+
+              <section className="space-y-2 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+                <h4 className="text-sm font-bold text-slate-900">{ar ? 'أدوات' : 'Tools'}</h4>
+                <button type="button" onClick={() => downloadPdf(review._id)} className="flex w-full items-center gap-2 rounded-lg bg-slate-50 px-3 py-2 text-sm text-slate-700 hover:bg-[#f37121]/10 hover:text-[#f37121]">
+                  {pdfBusy === review._id ? <Loader2 className="w-4 h-4 animate-spin" /> : <FileDown className="w-4 h-4" />} {t('Download PDF sheet', 'تحميل ورقة الإجازة PDF')}
+                </button>
+                <button type="button" onClick={() => { const l = review; setReview(null); openEdit(l); }} className="flex w-full items-center gap-2 rounded-lg bg-slate-50 px-3 py-2 text-sm text-slate-700 hover:bg-blue-50 hover:text-blue-600">
+                  <Pencil className="w-4 h-4" /> {t('Edit', 'تعديل')}
+                </button>
+                <button type="button" onClick={() => removeLeave(review)} className="flex w-full items-center gap-2 rounded-lg bg-red-50 px-3 py-2 text-sm text-red-600 hover:bg-red-100">
+                  <Trash2 className="w-4 h-4" /> {t('Delete', 'حذف')}
+                </button>
+              </section>
+            </aside>
           </div>
         )}
       </Modal>
@@ -567,6 +553,3 @@ export default function HRLeavesPage() {
   );
 }
 
-function Row({ k, v, danger }: { k: string; v: React.ReactNode; danger?: boolean }) {
-  return <div className="flex justify-between gap-4"><span className="text-slate-500">{k}</span><span className={danger ? 'text-red-600 font-medium' : 'text-slate-900'}>{v}</span></div>;
-}

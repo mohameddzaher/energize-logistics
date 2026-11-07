@@ -14,6 +14,7 @@ import '../ui/export_sheet.dart';
 import 'hr_leave_pdf.dart';
 import 'hr_leave_register.dart';
 import '../ui/search_field.dart';
+import 'top_management.dart';
 
 /// HR inboxes, native: leave requests (HR decisions) and employee requests (reply and status change).
 
@@ -444,6 +445,17 @@ class _HrLeavesScreenState extends State<HrLeavesScreen> {
                                 final actionable = canAct;
                                 return FadeSlideIn(
                                   delayMs: (i * 15).clamp(0, 150),
+                                  // Tapping the card opens the whole request (same sheet as the top management desk).
+                                  child: InkWell(
+                                  borderRadius: BorderRadius.circular(16),
+                                  onTap: () => showModalBottomSheet(
+                                    context: context, isScrollControlled: true, useSafeArea: true, backgroundColor: Colors.white,
+                                    shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
+                                    builder: (c) => DraggableScrollableSheet(
+                                      expand: false, initialChildSize: 0.88, maxChildSize: 0.96, minChildSize: 0.5,
+                                      builder: (c, sc) => LeaveDetailSheet(leave: l, full: _full, canAct: false, scroll: sc, onDecide: (_) async {}),
+                                    ),
+                                  ),
                                   child: AppCard(
                                     // Waiting on HR now shows in orange, as the web row is marked.
                                     topAccent: _hrMark(l) == 'now' ? T.orange : st.$3,
@@ -522,7 +534,7 @@ class _HrLeavesScreenState extends State<HrLeavesScreen> {
                                         )),
                                       ],
                                     ]),
-                                  ),
+                                  )),
                                 );
                               },
                             ),

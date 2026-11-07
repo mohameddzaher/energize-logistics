@@ -98,6 +98,7 @@ export default function CollectionsInvoicesPage({ kind }: { kind: InvoiceKind })
   // Collection state sits above the table, not inside filters. Both faces are asked every day what is left and how much was collected, so the choice is visible and not hidden behind a button, and the cards above move with it. There are three states, not two: partial stays so until the amount received reaches the value.
   const [collected, setCollected] = useState<'' | 'no' | 'partial' | 'yes'>('');
   const [stateCounts, setStateCounts] = useState<{ all?: number; no?: number; partial?: number; yes?: number }>({});
+  const [debt, setDebt] = useState<{ total: number; none: number; partial: number; openCount: number; partialCount: number } | null>(null);
   const [q, setQ] = useState('');
   const [age, setAge] = useState('');
   const [customer, setCustomer] = useState('');
@@ -174,6 +175,7 @@ export default function CollectionsInvoicesPage({ kind }: { kind: InvoiceKind })
       setElsewhere(d.elsewhere || null);
       setTotals(d.totals || {});
       setStateCounts(d.stateCounts || {});
+      setDebt(d.debt || null);
       setTotal(d.total || 0);
       setPages(d.pages || 1);
     } catch (e: any) {
@@ -534,15 +536,16 @@ export default function CollectionsInvoicesPage({ kind }: { kind: InvoiceKind })
       { header: t('التسليم للعميل', 'To customer'), key: 'deliveryDate', width: 14, type: 'date', filter: 'deliveryDate', transform: (v: any) => dt(v) },
       { header: t('العمر (يوم)', 'Age (days)'), key: 'ageDays', width: 12, align: 'end', cell: (r) => ageChip(r.ageDays) },
       { header: t('تاريخ التحصيل', 'Collected on'), key: 'collectionDate', width: 14, type: 'date', filter: 'collectionDate',
-        transform: (v: any) => dt(v),
-        cell: (r) => (
-          <span className={r.fullyCollected ? 'text-emerald-700' : r.collectionState === 'partial' ? 'text-amber-600' : 'text-red-500'}>
-            {r.fullyCollected ? dt(r.collectionDate) : r.collectionState === 'partial' ? t('جزئي', 'partial') : t('لم تُحصَّل', 'open')}
+        transform: (v: any, r: any) => (v ? dt(v) : r?.collectionState === 'partial' && lastPayDate(r) ? `${dt(lastPayDate(r))} (${t('جزئي', 'partial')})` : ''),
+        cell: (r) => (r.collectionState === 'partial' ? partialDate(r) : (
+          <span className={r.fullyCollected ? 'text-emerald-700' : 'text-red-500'}>
+            {r.fullyCollected ? (r.collectionDate ? dt(r.collectionDate) : t('محصَّلة — بلا تاريخ', 'Collected — no date')) : t('لم تُحصَّل', 'open')}
           </span>
-        ) },
+        )) },
       { header: t('حالة التحصيل', 'Collection status'), key: 'collectionState', width: 16, align: 'center',
         transform: (v: any) => stateLabel(v), cell: (r) => stateChip(r.collectionState) },
-      { header: t('الحالة', 'Status'), key: 'status', width: 14, filter: 'status' },
+      { header: t('الحالة', 'Status'), key: 'status', width: 14, filter: 'status', transform: (v: any) => ledgerStatus(v),
+        cell: (r) => <span className="text-slate-600">{ledgerStatus(r.status) || '—'}</span> },
       attachCol,
     ];
 
@@ -575,6 +578,26 @@ export default function CollectionsInvoicesPage({ kind }: { kind: InvoiceKind })
     </span>
   ) : <span className="text-[11px] text-slate-400">{t('لا أوامر نقل', 'no reports')}</span>);
 
+  /** Latest payment day of a partial; the column showed the word 'partial' with no date at all. */
+  const lastPayDate = (r: any): string | null => {
+    const ds = ((r.payments || []) as Payment[]).map((p) => p.date || p.at).filter(Boolean) as string[];
+    return ds.length ? ds.sort()[ds.length - 1] : null;
+  };
+  const partialDate = (r: any) => {
+    const d = lastPayDate(r);
+    return (
+      <span className="text-amber-600" title={t('آخر دفعة مستلمة؛ الفاتورة لم تُحصَّل بالكامل بعد', 'Latest payment received; not fully collected yet')}>
+        {d ? <>{dt(d)} <span className="text-[11px]">({t('جزئي', 'partial')})</span></> : t('جزئي', 'partial')}
+      </span>
+    );
+  };
+  /** Ledger status words are stored in English as the workbook wrote them; shown translated. */
+  const ledgerStatus = (v: any) => {
+    const s = String(v || '').trim();
+    if (/^collected$/i.test(s)) return t('محصَّلة', 'Collected');
+    if (/^delivered$/i.test(s)) return t('مُسلَّمة للعميل', 'Delivered');
+    return s;
+  };
   const collectedCell = (r: any) => (
     <span className={r.collectionDate || r.collectedNoDate ? 'text-emerald-700' : r.collectionState === 'partial' ? 'text-amber-600' : 'text-red-500'}>
       {r.collectionDate ? dt(r.collectionDate)
@@ -582,7 +605,7 @@ export default function CollectionsInvoicesPage({ kind }: { kind: InvoiceKind })
           ? <span title={t('دفترُ التحصيل يقول إنّها حُصّلت ولا يذكر اليوم', 'The collections book says collected but not when')}>
               {t('محصَّل — بلا تاريخ', 'Collected — no date')}
             </span>
-          : r.collectionState === 'partial' ? t('جزئي', 'partial') : t('لم يُحصَّل', 'open')}
+          : r.collectionState === 'partial' ? partialDate(r) : t('لم يُحصَّل', 'open')}
     </span>
   );
 
@@ -651,6 +674,31 @@ export default function CollectionsInvoicesPage({ kind }: { kind: InvoiceKind })
       <p className={`text-xl font-bold tabular-nums break-words ${accent || 'text-slate-900'}`}>{value}</p>
     </div>
   );
+
+  // Called as a function, not rendered as a component, so it is never remounted.
+  const debtCard = () => {
+    if (!debt) return null;
+    const who = customer || (q.trim() && !/^\d+$/.test(q.trim()) ? q.trim() : '');
+    return (
+      <div className={`rounded-xl border px-4 py-3 shadow-sm flex flex-wrap items-center gap-x-6 gap-y-2 ${debt.total ? 'bg-red-50/60 border-red-200' : 'bg-emerald-50/60 border-emerald-200'}`}>
+        <div className="min-w-0">
+          <p className="text-[12px] font-bold text-slate-600 truncate">
+            {who ? t(`إجمالي المديونية على «${who}»`, `Total owed by "${who}"`) : t('إجمالي المديونية حسب الفلاتر', 'Total owed (filtered)')}
+          </p>
+          <p className={`text-2xl font-extrabold tabular-nums ${debt.total ? 'text-red-700' : 'text-emerald-700'}`}>{money(debt.total)}</p>
+        </div>
+        <div className="flex flex-wrap gap-x-5 gap-y-1 text-[13px]">
+          <span className="text-slate-600">{t('لم تُحصَّل بعد', 'Not collected')}: <b className="tabular-nums text-red-600">{money(debt.none)}</b>
+            <span className="text-slate-400"> ({money(debt.openCount - debt.partialCount)})</span></span>
+          <span className="text-slate-600">{t('متبقّي الجزئي', 'Partial balance')}: <b className="tabular-nums text-amber-700">{money(debt.partial)}</b>
+            <span className="text-slate-400"> ({money(debt.partialCount)})</span></span>
+        </div>
+        <p className="text-[11px] text-slate-500 basis-full">
+          {t('يجمع كل ما لم يُحصَّل بالكامل تحت البحث والفلاتر الحالية، أيًّا كان تبويب الحالة المختار.', 'Everything not fully collected under the current search and filters, whatever status tab is selected.')}
+        </p>
+      </div>
+    );
+  };
 
   const ageChip = (d: number | null) => {
     if (d == null) return null;
@@ -728,6 +776,8 @@ export default function CollectionsInvoicesPage({ kind }: { kind: InvoiceKind })
           </button>
         ))}
       </div>
+
+      {debtCard()}
 
       <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
         <Stat label={isCash ? t('أوامر نقل', 'Reports') : t('فواتير', 'Invoices')} value={money(total)} />

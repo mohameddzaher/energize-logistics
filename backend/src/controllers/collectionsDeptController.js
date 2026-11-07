@@ -1232,6 +1232,16 @@ async function locateNumber(q) {
   };
 }
 
+/** Outstanding under every filter except the status tab: not-collected and partial together. */
+const debtOf = (sc) => {
+  const total = r2(sc.remaining || 0);
+  const partial = r2(sc.partialRemaining || 0);
+  return {
+    total, partial, none: r2(total - partial),
+    openCount: (sc.all || 0) - (sc.yes || 0), partialCount: sc.partial || 0,
+  };
+};
+
 exports.cashInvoices = async (req, res) => {
   try {
     // A cash statement is collectable whether or not we know what we paid: 'payment amount' is what we paid the supplier, not what the customer owes, so the condition is the cash type alone (requiring it hid all but five of 1,834).
@@ -1272,6 +1282,9 @@ exports.cashInvoices = async (req, res) => {
           all: { $sum: 1 },
           yes: { $sum: { $cond: [cashCollectedExpr, 1, 0] } },
           partial: { $sum: { $cond: [cashPartialExpr, 1, 0] } },
+          // Debt across every state: the status tab splits it, the collector needs the sum.
+          remaining: { $sum: cashRemainingExpr },
+          partialRemaining: { $sum: { $cond: [cashPartialExpr, cashRemainingExpr, 0] } },
         } },
       ]) : [],
     ]);
@@ -1327,7 +1340,7 @@ exports.cashInvoices = async (req, res) => {
         collectedCount: t.collectedCount, partialCount: t.partialCount || 0,
         pendingCount: total - t.collectedCount, noneCount: total - t.collectedCount - (t.partialCount || 0),
       },
-      ...(stateFilter ? { stateCounts: { all: sc.all, no: sc.all - sc.yes - sc.partial, partial: sc.partial, yes: sc.yes } } : {}),
+      ...(stateFilter ? { stateCounts: { all: sc.all, no: sc.all - sc.yes - sc.partial, partial: sc.partial, yes: sc.yes }, debt: debtOf(sc) } : {}),
     });
   } catch (e) {
     res.status(500).json({ message: 'تعذّر تحميل فواتير الكاش', error: e.message });
@@ -1364,6 +1377,7 @@ exports.taxInvoices = async (req, res) => {
     }
     const collectedExpr = { $regexMatch: { input: { $ifNull: ['$status', ''] }, regex: /collected/i } };
     const partialExpr = { $and: [{ $not: [collectedExpr] }, { $gt: [{ $ifNull: ['$collectedAmount', 0] }, 0] }] };
+    const taxRemainingExpr = { $subtract: [{ $ifNull: ['$total', 0] }, { $ifNull: ['$collectedAmount', 0] }] };
     const [rows, total, totalsAgg, stateAgg] = await Promise.all([
       CollectionInvoice.find(f).sort({ invoiceDate: -1, _id: -1 })
         .skip((page - 1) * limit).limit(limit).lean(),
@@ -1387,6 +1401,9 @@ exports.taxInvoices = async (req, res) => {
           all: { $sum: 1 },
           yes: { $sum: { $cond: [collectedExpr, 1, 0] } },
           partial: { $sum: { $cond: [partialExpr, 1, 0] } },
+          // Debt across every state, same rule as CollectionInvoice.remainingOf.
+          remaining: { $sum: { $cond: [collectedExpr, 0, taxRemainingExpr] } },
+          partialRemaining: { $sum: { $cond: [partialExpr, taxRemainingExpr, 0] } },
         } },
       ]) : [],
     ]);
@@ -1461,7 +1478,7 @@ exports.taxInvoices = async (req, res) => {
         partial: t.partial || 0, pending: t.invoices - t.fullyCollected, none: t.invoices - t.fullyCollected - (t.partial || 0),
         collected: r2(t.collected), remaining: r2(t.value - t.collected),
       },
-      ...(sf ? { stateCounts: { all: sc.all, no: sc.all - sc.yes - sc.partial, partial: sc.partial, yes: sc.yes } } : {}),
+      ...(sf ? { stateCounts: { all: sc.all, no: sc.all - sc.yes - sc.partial, partial: sc.partial, yes: sc.yes }, debt: debtOf(sc) } : {}),
     });
   } catch (e) {
     res.status(500).json({ message: 'تعذّر تحميل الفواتير الضريبية', error: e.message });

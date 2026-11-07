@@ -83,6 +83,7 @@ class _CollectionsInvoicesScreenState extends State<CollectionsInvoicesScreen> {
   Map<String, dynamic>? _elsewhere;
   Map<String, dynamic> _totals = {};
   Map<String, dynamic> _stateCounts = {};
+  Map<String, dynamic>? _debt;
   int _total = 0, _pages = 1, _page = 1;
   bool _loading = true, _refreshing = false;
   String? _error;
@@ -187,6 +188,7 @@ class _CollectionsInvoicesScreenState extends State<CollectionsInvoicesScreen> {
         _elsewhere = d['elsewhere'] is Map ? Map<String, dynamic>.from(d['elsewhere'] as Map) : null;
         _totals = Map<String, dynamic>.from((d['totals'] as Map?) ?? const {});
         _stateCounts = Map<String, dynamic>.from((d['stateCounts'] as Map?) ?? const {});
+        _debt = d['debt'] is Map ? Map<String, dynamic>.from(d['debt'] as Map) : null;
         _total = _num(d['total']).toInt();
         _pages = _num(d['pages']).toInt().clamp(1, 1 << 30);
         _error = null;
@@ -499,7 +501,7 @@ class _CollectionsInvoicesScreenState extends State<CollectionsInvoicesScreen> {
           ExportCol('العمر (يوم)', 'Age (days)', (r) => r['ageDays']),
           ExportCol('تاريخ التحصيل', 'Collected on', (r) => _dt(r['collectionDate'])),
           ExportCol('حالة التحصيل', 'Collection status', (r) => _stateLabel(_s(r, 'collectionState'))),
-          ExportCol('الحالة', 'Status', (r) => r['status']),
+          ExportCol('الحالة', 'Status', (r) => _ledgerStatus('${r['status'] ?? ''}')),
           ExportCol('عدد المرفقات', 'Attachments count', (r) => _num(r['attachments']).toInt()),
         ];
 
@@ -615,6 +617,56 @@ class _CollectionsInvoicesScreenState extends State<CollectionsInvoicesScreen> {
         ),
       );
 
+  /// Outstanding across every status tab under the current search and filters.
+  Widget _debtCard() {
+    final d = _debt;
+    if (d == null) return const SizedBox.shrink();
+    final total = _num(d['total']);
+    final who = _customer.isNotEmpty ? _customer : (_q.trim().isNotEmpty && !RegExp(r'^\d+$').hasMatch(_q.trim()) ? _q.trim() : '');
+    final color = total > 0 ? T.danger : T.success;
+    return Container(
+      margin: const EdgeInsets.only(bottom: 10),
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.06),
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: color.withValues(alpha: 0.3)),
+      ),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Text(who.isNotEmpty ? tr('إجمالي المديونية على «$who»', 'Total owed by "$who"') : tr('إجمالي المديونية حسب الفلاتر', 'Total owed (filtered)'),
+            style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: T.inkSoft), maxLines: 1, overflow: TextOverflow.ellipsis),
+        const SizedBox(height: 2),
+        FittedBox(fit: BoxFit.scaleDown, alignment: AlignmentDirectional.centerStart,
+            child: Text(_m(total), style: TextStyle(fontSize: 24, fontWeight: FontWeight.w900, color: color))),
+        const SizedBox(height: 4),
+        Wrap(spacing: 14, runSpacing: 2, children: [
+          Text('${tr('لم تُحصَّل بعد', 'Not collected')}: ${_m(d['none'])} (${_m(_num(d['openCount']) - _num(d['partialCount']))})',
+              style: const TextStyle(fontSize: 12, color: T.danger, fontWeight: FontWeight.w600)),
+          Text('${tr('متبقّي الجزئي', 'Partial balance')}: ${_m(d['partial'])} (${_m(d['partialCount'])})',
+              style: const TextStyle(fontSize: 12, color: T.warn, fontWeight: FontWeight.w600)),
+        ]),
+        const SizedBox(height: 4),
+        Text(tr('يجمع كل ما لم يُحصَّل بالكامل تحت البحث والفلاتر الحالية، أيًّا كان تبويب الحالة المختار.',
+                'Everything not fully collected under the current search and filters, whatever status tab is selected.'),
+            style: const TextStyle(fontSize: 10.5, color: T.inkFaint)),
+      ]),
+    );
+  }
+
+  /// Latest payment day of a partial invoice.
+  String _lastPayDate(Map r) {
+    final ds = ((r['payments'] as List?) ?? const []).map((p) => '${(p as Map)['date'] ?? p['at'] ?? ''}').where((x) => x.isNotEmpty).toList()..sort();
+    return ds.isEmpty ? '' : ds.last;
+  }
+
+  /// Ledger status words are stored in English; shown translated.
+  String _ledgerStatus(String v) {
+    final s = v.trim().toLowerCase();
+    if (s == 'collected') return tr('محصَّلة', 'Collected');
+    if (s == 'delivered') return tr('مُسلَّمة للعميل', 'Delivered');
+    return v;
+  }
+
   Widget _stats() {
     final t = _totals;
     final none = t['noneCount'] ?? t['pendingCount'];
@@ -692,11 +744,12 @@ class _CollectionsInvoicesScreenState extends State<CollectionsInvoicesScreen> {
                     if (_s(r, 'deliveryDate').isEmpty) Chip2(tr('لم تُسلَّم', 'Not delivered'), T.warn)
                     else Chip2('${tr('سُلِّمت', 'Delivered')} ${_dt(r['deliveryDate'])}', T.info),
                     if (_cash && r['collectedNoDate'] == true) Chip2(tr('محصَّل — بلا تاريخ', 'Collected — no date'), T.success)
-                    else if (_s(r, 'collectionDate').isNotEmpty) Chip2('${tr('حُصّلت', 'Collected')} ${_dt(r['collectionDate'])}', T.success),
+                    else if (_s(r, 'collectionDate').isNotEmpty) Chip2('${tr('حُصّلت', 'Collected')} ${_dt(r['collectionDate'])}', T.success)
+                    else if (st == 'partial' && _lastPayDate(r).isNotEmpty) Chip2('${tr('آخر دفعة', 'Last payment')} ${_dt(_lastPayDate(r))}', T.warn),
                     if (_cash && _s(r, 'paymentDate').isNotEmpty) Chip2('${tr('السداد', 'Paid')} ${_dt(r['paymentDate'])}', T.inkSoft),
                     if (!_cash && _s(r, 'invoiceDate').isNotEmpty) Chip2(_dt(r['invoiceDate']), T.inkSoft),
                     if (_cash && _s(r, 'collectionDetail').isNotEmpty) Chip2(_s(r, 'collectionDetail'), T.navy),
-                    if (!_cash && _s(r, 'status').isNotEmpty) Chip2(_s(r, 'status'), T.inkSoft),
+                    if (!_cash && _s(r, 'status').isNotEmpty) Chip2(_ledgerStatus(_s(r, 'status')), T.inkSoft),
                     if (_num(r['attachments']) > 0) Chip2('${_num(r['attachments']).toInt()} ${tr('مرفقات', 'files')}', T.orange, icon: Icons.attach_file_rounded),
                     if (_cash && r['customs'] is Map) CustomsLinkChip(r['customs'], compact: true),
                     if (!_cash && r['customs'] is List && (r['customs'] as List).isNotEmpty) CustomsLinkChips(r['customs']),
@@ -757,6 +810,7 @@ class _CollectionsInvoicesScreenState extends State<CollectionsInvoicesScreen> {
                           ]),
                         ),
                         const SizedBox(height: 8),
+                        _debtCard(),
                         _stats(),
                         const SizedBox(height: 10),
                         Row(children: [

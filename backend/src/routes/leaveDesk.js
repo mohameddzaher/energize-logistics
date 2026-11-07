@@ -25,7 +25,8 @@ function leaveDesk({ stage, allow, denyMessage, requests = false }) {
           : tab === 'approved' ? { status: 'approved' }
             : tab === 'rejected' ? { status: 'rejected' } : {};
       const rows = await LeaveRequest.find(filter)
-        .populate('employee', 'firstName lastName arabicName employeeNumber department jobTitle')
+        // Identity and nationality feed the request's detail view on the desk.
+        .populate('employee', 'firstName lastName arabicName employeeNumber department jobTitle idType iqamaNumber nationalId nationality')
         .populate('leaveType', 'nameAr nameEn color affectsBalance')
         .populate('manager', 'firstName lastName')
         .populate(Object.values(chain.DECISION_FIELD).map((f) => `${f}.by`).join(' '), 'firstName lastName')

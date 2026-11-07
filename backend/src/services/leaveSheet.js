@@ -107,7 +107,8 @@ async function signatureBoxes(leave, { fullView = true } = {}) {
   ];
   for (const [stage, label, en] of STAGE_BOX) {
     const d = decided(chain.DECISION_FIELD[stage]);
-    const head = d ? heads[stage] : null;
+    // The department head signs the box when set and signed up; without a saved signature the approver's own stands, so an approved box is never blank.
+    const head = d && heads[stage] && heads[stage].ink ? heads[stage] : null;
     boxes.push({
       label, en,
       ink: head ? head.ink : d ? (d.signature || live.get(idOf(d.by)) || '') : '',

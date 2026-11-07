@@ -188,11 +188,11 @@ class _HrLeavesScreenState extends State<HrLeavesScreen> {
                 initialValue: sigId,
                 isExpanded: true,
                 decoration: InputDecoration(labelText: tr('التوقيع', 'Signature'), prefixIcon: const Icon(Icons.draw_outlined, size: 18)),
+                // Every approval is signed; the approver only chooses which of his signatures.
                 items: [
-                  const DropdownMenuItem(value: null, child: Text('— بدون —')),
                   ...signatures.map((s) => DropdownMenuItem(value: (s['_id']).toString(), child: Text((s['name'] ?? 'توقيع').toString()))),
                 ],
-                onChanged: (v) => setD(() => sigId = v),
+                onChanged: (v) => setD(() => sigId = v ?? sigId),
               ),
           ],
         ]),

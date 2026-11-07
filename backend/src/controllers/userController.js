@@ -265,6 +265,11 @@ exports.updateUser = async (req, res) => {
     if (req.body.leaveSheetSigner !== undefined && String(req.body.leaveSheetSigner || '') !== String(user.leaveSheetSigner || '')) {
       if (!require('../config/constants').isTopRole(req.user.role)) return res.status(403).json({ message: 'موقّع ورقة الإجازة يحدّده مدير النظام فقط' });
       const box = ['finance', 'hr'].includes(req.body.leaveSheetSigner) ? req.body.leaveSheetSigner : '';
+      // Each box belongs to its department head: one pick on a specialist's account silently moved the HR box away from the HR manager (2026-11-05).
+      const ELIGIBLE = { hr: ['hr_manager'], finance: ['cfo', 'accounting_manager'] };
+      if (box && !ELIGIBLE[box].includes(role || user.role)) {
+        return res.status(400).json({ code: 'SIGNER_ROLE', message: box === 'hr' ? 'توقيع الموارد البشرية لمدير الموارد البشرية فقط' : 'توقيع المالية للمدير المالي أو مدير الحسابات فقط' });
+      }
       if (box && user.leaveSheetSigner !== box) await User.updateMany({ _id: { $ne: user._id }, leaveSheetSigner: box }, { $set: { leaveSheetSigner: '' } });
       user.leaveSheetSigner = box;
     }

@@ -520,14 +520,11 @@ export default function HRLeavesPage() {
                   <label className="text-slate-500 text-xs mb-1 block">{ar ? 'مرفقات القرار (اختياري)' : 'Decision attachments (optional)'}</label>
                   <FilePicker files={files} onChange={setFiles} max={5} />
                 </div>
-                {/* Optional: sign this approval with one of your signatures */}
+                {/* Every approval is signed with the approver's signature (default one unless another is picked); no box to tick. */}
                 <div>
-                  <label className="flex items-center gap-2 text-sm text-slate-700 cursor-pointer">
-                    <input type="checkbox" checked={!!signWith} disabled={mySigs.length === 0}
-                      onChange={(e) => setSignWith(e.target.checked ? (mySigs.find((s) => s.isDefault)?._id || mySigs[0]?._id || '') : '')} />
-                    <PenTool className="w-4 h-4 text-[#f37121]" /> {t('Sign this approval', 'أوقّع على الموافقة')}
-                  </label>
-                  {/* The disabled field referred to Settings with no link, and Settings was hidden from most roles. It is now a link opening Settings in a new tab, so the review text is not lost. */}
+                  <p className="flex items-center gap-2 text-sm text-slate-700">
+                    <PenTool className="w-4 h-4 text-[#f37121]" /> {t('Your signature is applied to the approval', 'يُوضع توقيعك على الموافقة تلقائيًا')}
+                  </p>
                   {mySigs.length === 0 && (
                     <p className="text-xs text-slate-500 mt-1">
                       {t('You have no signature yet — ', 'ما عندكش توقيع لسه — ')}
@@ -535,13 +532,13 @@ export default function HRLeavesPage() {
                         className="font-semibold text-[#f37121] hover:underline">
                         {t('create one in Settings', 'اعمل واحد من الإعدادات')}
                       </a>
-                      {t(' (opens in a new tab), then reopen this review.', ' (هيفتح في تبويب جديد)، وبعدين افتح المراجعة تاني.')}
+                      {t(' (opens in a new tab).', ' (هيفتح في تبويب جديد).')}
                     </p>
                   )}
-                  {signWith && (
+                  {mySigs.length > 1 && (
                     <div className="flex gap-2 mt-2 flex-wrap">
                       {mySigs.map((s) => (
-                        <button key={s._id} type="button" onClick={() => setSignWith(s._id)} className={`border rounded-lg p-1 bg-white ${signWith === s._id ? 'border-[#f37121] ring-1 ring-[#f37121]' : 'border-slate-200'}`}>
+                        <button key={s._id} type="button" onClick={() => setSignWith(s._id)} className={`border rounded-lg p-1 bg-white ${(signWith || mySigs.find((x) => x.isDefault)?._id || mySigs[0]?._id) === s._id ? 'border-[#f37121] ring-1 ring-[#f37121]' : 'border-slate-200'}`}>
                           {/* eslint-disable-next-line @next/next/no-img-element */}
                           <img src={s.dataUrl} alt={s.name} className="h-9 w-20 object-contain" />
                           <div className="text-[10px] text-slate-500 text-center truncate w-20">{s.name}</div>

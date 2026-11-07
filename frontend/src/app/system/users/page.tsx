@@ -478,7 +478,8 @@ export default function UsersPage() {
       payload.linkedEmployee = formData.linkedEmployee || null;
       payload.isTopManagement = !!formData.isTopManagement;
       if (currentUser?.role === 'super_admin') payload.isChairman = !!formData.isChairman;
-      payload.leaveSheetSigner = formData.leaveSheetSigner || '';
+      // Sent only for the eligible roles, so editing anyone else never clears or moves a box.
+      if (['hr_manager', 'cfo', 'accounting_manager'].includes(formData.role)) payload.leaveSheetSigner = formData.leaveSheetSigner || '';
       await api.put(`/api/users/${selectedUser._id}`, payload);
       setShowEditModal(false);
       setSelectedUser(null);
@@ -985,14 +986,15 @@ export default function UsersPage() {
       )}
 
       {/* The finance and HR boxes of the leave sheet carry this account's name and signature once the stage approves, whoever in the department clicked. */}
-      {selectedUser && formData.role !== 'client' && (
+      {/* Only a department head can hold its box (the server checks the same): HR manager for HR, financial or accounts manager for finance. */}
+      {selectedUser && ['hr_manager', 'cfo', 'accounting_manager'].includes(formData.role) && (
         <div>
           <label className="block text-slate-700 text-sm font-medium mb-1.5">{lang === 'ar' ? 'يوقّع ورقة الإجازة عن' : 'Signs the leave sheet as'}</label>
           <select value={formData.leaveSheetSigner || ''} onChange={(e) => setFormData({ ...formData, leaveSheetSigner: e.target.value })}
             className="w-full px-3 py-2.5 rounded-lg bg-white border border-slate-200 text-slate-900 text-sm">
             <option value="">{lang === 'ar' ? '— لا يوقّع عن قسم —' : '— none —'}</option>
-            <option value="finance">{lang === 'ar' ? 'المدير المالي' : 'Finance Manager'}</option>
-            <option value="hr">{lang === 'ar' ? 'مدير الموارد البشرية' : 'HR Manager'}</option>
+            {formData.role !== 'hr_manager' && <option value="finance">{lang === 'ar' ? 'المدير المالي' : 'Finance Manager'}</option>}
+            {formData.role === 'hr_manager' && <option value="hr">{lang === 'ar' ? 'مدير الموارد البشرية' : 'HR Manager'}</option>}
           </select>
           <p className="mt-1 text-xs text-slate-500">{lang === 'ar' ? 'حساب واحد لكل خانة؛ اختياره هنا يرفعه عن الحساب السابق.' : 'One account per box; choosing it here clears the previous one.'}</p>
         </div>

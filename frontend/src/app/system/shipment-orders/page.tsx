@@ -411,6 +411,8 @@ function ShipmentOrdersInner() {
     { header: 'Plate', key: 'vehiclePlate', width: 12 },
     { header: 'Driver', key: 'driverName', width: 18 },
     { header: 'Driver phone', key: 'driverPhone', width: 14 },
+    { header: 'Driver nationality', key: 'driverNationality', width: 14 },
+    { header: 'Driver iqama', key: 'driverIqama', width: 14 },
     { header: 'Branch', key: 'branch', width: 12 },
     { header: 'Pickup', key: 'pickupTime', transform: (v: any) => fmtDate(v), width: 14 },
     { header: 'Sell', key: 'sellPrice', width: 10 },
@@ -993,6 +995,8 @@ function ShipmentOrdersInner() {
                   <Row k={ar ? 'نوع الحمولة' : 'Cargo type'} v={d.cargoType} />
                   <Row k={ar ? 'السائق' : 'Driver'} v={d.driverName} />
                   <Row k={ar ? 'جوال السائق' : 'Driver phone'} v={d.driverPhone} />
+                  <Row k={ar ? 'جنسية السائق' : 'Driver nationality'} v={(d as any).driverNationality} />
+                  <Row k={ar ? 'رقم إقامة السائق' : 'Driver iqama no.'} v={(d as any).driverIqama} />
                   <Row k={ar ? 'المركبة' : 'Vehicle'} v={d.vehicleName} />
                   <Row k={ar ? 'اللوحة' : 'Plate'} v={(d as any).vehiclePlate} />
                   <Row k={ar ? 'الوسيط' : 'Agent'} v={d.agentName} />

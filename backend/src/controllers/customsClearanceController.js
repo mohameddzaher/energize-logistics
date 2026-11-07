@@ -1157,9 +1157,10 @@ exports.upcomingAlerts = async (req, res) => {
 
     // All upcoming ones in the same window
     // The upcoming transactions page was raised at the section's request: the window is enough. It carries every upcoming one, not only near ones, each with days remaining and its five papers, so papers are marked and the date edited from the window without opening the transaction.
+    // Newest entered first (the section's request): the bill of lading just added is the first row. The near-date alerts above keep their date order.
     const all = await CustomsClearance.find({ upcoming: true, cancelled: { $ne: true } })
-      .select('refNumber blNumber customerName shippingAgent expectedDate containerCount branch notes documents')
-      .sort({ expectedDate: 1 }).lean();
+      .select('refNumber blNumber customerName shippingAgent expectedDate containerCount branch notes documents createdAt')
+      .sort({ createdAt: -1, _id: -1 }).lean();
     const t0 = startOfDay(today).getTime();
     const daysLeft = (d) => (d ? Math.round((startOfDay(d).getTime() - t0) / DAY_MS) : null);
 

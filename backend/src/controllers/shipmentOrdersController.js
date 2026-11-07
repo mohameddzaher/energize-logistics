@@ -280,8 +280,11 @@ exports.getWaybillsPdf = async (req, res) => {
         row.carColor = v.color || twin?.color || '';
         row.carType = v.truckType || row.carType || twin?.truckType || '';
       }
+      // The order's own copy first (what was typed for this shipment), then the driver register / HR file.
       const d = drvByName.get(String(o.driverName || '').trim());
-      if (d) { row.driverIqama = d.residenceNumber || ''; row.driverNationality = d.nationality || ''; row.driverPhone = row.driverPhone || d.phone || ''; }
+      row.driverIqama = o.driverIqama || d?.residenceNumber || d?.hr?.idNumber || '';
+      row.driverNationality = o.driverNationality || d?.nationality || '';
+      if (d) row.driverPhone = row.driverPhone || d.phone || '';
       return row;
     }));
     res.setHeader('Content-Type', 'application/pdf');
@@ -638,21 +641,30 @@ exports.orderFilterOptions = async (req, res) => {
 };
 
 /**
- * Waybill details typed on the shipment form go to their registers, so the suppliers
- * page and every waybill read the same values. A driver linked to HR keeps HR's data.
+ * Waybill details typed on the shipment form are kept on the order (what its waybill prints) and written to the registers, so the drivers and suppliers pages read the same values.
+ * A driver missing from the register is added to it under the order's supplier; a driver linked to HR keeps HR's data, which the order's own copy still overrides on its waybill.
  */
 async function saveWaybillDetails(order, details) {
   if (!details || typeof details !== 'object') return;
   const clean = (v) => String(v ?? '').trim();
   const brand = clean(details.vehicleBrand); const color = clean(details.vehicleColor);
   const nationality = clean(details.driverNationality); const residenceNumber = clean(details.driverIqama);
+  const own = {};
+  if ('driverNationality' in details) own.driverNationality = nationality;
+  if ('driverIqama' in details) own.driverIqama = residenceNumber;
+  if (Object.keys(own).length) await ShipmentOrder.updateOne({ _id: order._id }, { $set: own });
   if (order.vehicle && (brand || color)) {
     await ShipmentOrderVehicle.updateOne({ _id: order.vehicle }, { $set: { ...(brand ? { brand } : {}), ...(color ? { color } : {}) } });
   }
   const name = clean(order.driverName);
   if (name && (nationality || residenceNumber)) {
     const set = { ...(nationality ? { nationality } : {}), ...(residenceNumber ? { residenceNumber } : {}) };
-    await ShipmentOrderDriver.updateOne({ name, employee: null }, { $set: set });
+    const hit = await ShipmentOrderDriver.findOne({ name }).select('_id employee').lean();
+    if (!hit) {
+      await ShipmentOrderDriver.create({ name, phone: clean(order.driverPhone), ...set, ...(order.supplier ? { supplier: order.supplier } : {}) });
+    } else if (!hit.employee) {
+      await ShipmentOrderDriver.updateOne({ _id: hit._id }, { $set: set });
+    }
   }
   cache.clear('so:registry:');
 }

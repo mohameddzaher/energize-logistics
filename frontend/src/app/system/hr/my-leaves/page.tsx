@@ -29,6 +29,42 @@ function DaysPreview({ start, end, countFridays, ar }: { start: string; end: str
   );
 }
 
+type MemberBal = { entitlement: number; accrued: number; taken: number; carried?: number; available: number; accrualFrom?: string };
+
+/**
+ * The picked employee's balance in the team filing form, so the manager sees what is left before filing: annual entitlement, accrued, used, available, and what remains after this request when its type deducts.
+ * Module level so the form's inputs never remount.
+ */
+function MemberBalanceCard({ b, days, deducts, ar }: { b: MemberBal | null; days: number; deducts: boolean | null; ar: boolean }) {
+  if (!b) return <p className="text-xs text-slate-500">{ar ? 'لا عقد ساريًا لهذا الموظف — لا يُحسب له رصيد.' : 'No active contract — no balance.'}</p>;
+  const n = (v: number) => (Math.round((Number(v) || 0) * 100) / 100).toLocaleString('en-US');
+  const after = deducts && days ? b.available - days : null;
+  const cell = (label: string, value: string, cls = 'text-slate-900') => (
+    <div className="rounded-lg bg-white border border-slate-200 px-2.5 py-2 text-center">
+      <p className="text-[11px] text-slate-500">{label}</p>
+      <p className={`text-base font-bold tabular-nums ${cls}`}>{value}</p>
+    </div>
+  );
+  return (
+    <div className="rounded-lg border border-emerald-200 bg-emerald-50/60 p-3 space-y-2">
+      <p className="text-xs font-semibold text-emerald-900">{ar ? 'رصيد إجازات الموظف' : 'Employee leave balance'}{b.accrualFrom ? <span className="font-normal text-emerald-800"> — {ar ? 'محسوب من' : 'counted from'} <span dir="ltr">{b.accrualFrom.split('-').reverse().join('/')}</span></span> : null}</p>
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+        {cell(ar ? 'الاستحقاق السنوي' : 'Annual', `${n(b.entitlement)} ${ar ? 'يوم' : 'd'}`)}
+        {cell(ar ? 'المتراكم حتى اليوم' : 'Accrued', `${n(b.accrued + (b.carried || 0))} ${ar ? 'يوم' : 'd'}`, 'text-blue-700')}
+        {cell(ar ? 'المستخدم' : 'Used', `${n(b.taken)} ${ar ? 'يوم' : 'd'}`, 'text-amber-700')}
+        {cell(ar ? 'المتاح' : 'Available', `${n(b.available)} ${ar ? 'يوم' : 'd'}`, b.available < 0 ? 'text-red-600' : 'text-emerald-700')}
+      </div>
+      {after !== null && (
+        <p className={`text-sm font-semibold ${after < 0 ? 'text-red-600' : 'text-slate-800'}`}>
+          {ar ? `بعد هذه الإجازة (${days} يوم): ${n(after)} يوم` : `After this leave (${days} d): ${n(after)} d`}
+          {after < 0 ? (ar ? ' — تتجاوز الرصيد المتاح' : ' — exceeds the available balance') : ''}
+        </p>
+      )}
+      {deducts === false && days > 0 && <p className="text-xs text-slate-600">{ar ? 'هذا النوع لا يُخصم من الرصيد.' : 'This type does not come off the balance.'}</p>}
+    </div>
+  );
+}
+
 export default function MyLeavesPage() {
   const { confirm, notify } = useDialog();
   const { user } = useAuth();
@@ -63,6 +99,7 @@ export default function MyLeavesPage() {
   // A manager files leave for the people under him (backend utils/leaveTeam); it starts at HR.
   const [members, setMembers] = useState<any[]>([]);
   const [memberBalances, setMemberBalances] = useState<Record<string, number | null>>({});
+  const [memberDetails, setMemberDetails] = useState<Record<string, MemberBal | null>>({});
   const [teamFormOpen, setTeamFormOpen] = useState(false);
   const [teamForm, setTeamForm] = useState({ employee: '', leaveType: '', startDate: '', endDate: '', reason: '' });
   const [teamFiles, setTeamFiles] = useState<PickedFile[]>([]);
@@ -88,8 +125,8 @@ export default function MyLeavesPage() {
     api.get<{ hasTeam: boolean }>('/api/hr/me/team').then((d) => setHasTeam(!!d.hasTeam)).catch(() => {});
   }, []);
   const loadMembers = useCallback(() => {
-    api.get<{ members: any[]; balances: Record<string, number | null> }>('/api/hr/team/leave-members')
-      .then((d) => { setMembers(d.members || []); setMemberBalances(d.balances || {}); }).catch(() => {});
+    api.get<{ members: any[]; balances: Record<string, number | null>; balanceDetails?: Record<string, MemberBal | null> }>('/api/hr/team/leave-members')
+      .then((d) => { setMembers(d.members || []); setMemberBalances(d.balances || {}); setMemberDetails(d.balanceDetails || {}); }).catch(() => {});
   }, []);
   useEffect(() => { if (hasTeam) loadMembers(); }, [hasTeam, loadMembers]);
   useSocket('hr:leave', useCallback(() => { if (hasTeam) loadMembers(); }, [hasTeam, loadMembers]));
@@ -572,6 +609,10 @@ export default function MyLeavesPage() {
                 };
               })} />
           </Field>
+          {teamForm.employee && (
+            <MemberBalanceCard b={memberDetails[String(teamForm.employee)] || null} ar={ar}
+              days={countLeaveDays(teamForm.startDate, teamForm.endDate)} deducts={teamType ? teamType.affectsBalance !== false : null} />
+          )}
           <Field label={tx.leaveTypeRequired}>
             <Select value={teamForm.leaveType} onChange={(e) => {
               const id = e.target.value;

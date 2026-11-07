@@ -33,6 +33,7 @@ class _MyLeavesScreenState extends State<MyLeavesScreen> {
   List<Map<String, dynamic>> _team = [];
   // People this manager may file leave for (backend utils/leaveTeam); a filed request starts at HR.
   List<Map<String, dynamic>> _members = [];
+  Map<String, dynamic> _memberBalances = {};
   int _tab = 0;
   int _seq = 0;
   late final void Function() _onLive;
@@ -80,7 +81,12 @@ class _MyLeavesScreenState extends State<MyLeavesScreen> {
   Future<void> _loadMembers() async {
     try {
       final d = await Api.instance.get('/api/hr/team/leave-members');
-      if (mounted) setState(() => _members = List<Map<String, dynamic>>.from(((d as Map)['members'] as List? ?? const []).map((e) => Map<String, dynamic>.from(e as Map))));
+      if (mounted) {
+        setState(() {
+          _members = List<Map<String, dynamic>>.from(((d as Map)['members'] as List? ?? const []).map((e) => Map<String, dynamic>.from(e as Map)));
+          _memberBalances = d['balanceDetails'] is Map ? Map<String, dynamic>.from(d['balanceDetails'] as Map) : {};
+        });
+      }
     } catch (_) { /* no team */ }
   }
 
@@ -90,7 +96,7 @@ class _MyLeavesScreenState extends State<MyLeavesScreen> {
       isScrollControlled: true,
       backgroundColor: Colors.white,
       shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
-      builder: (c) => _NewLeaveSheet(types: _types, onDone: _load, members: _members),
+      builder: (c) => _NewLeaveSheet(types: _types, onDone: _load, members: _members, balances: _memberBalances),
     );
   }
 
@@ -460,7 +466,9 @@ class _NewLeaveSheet extends StatefulWidget {
   final Map<String, dynamic>? editing;
   /// Set when a manager files for his team (POST /api/hr/team/leaves): an employee picker is shown.
   final List<Map<String, dynamic>>? members;
-  const _NewLeaveSheet({required this.types, required this.onDone, this.editing, this.members});
+  /// The team's balances by employee id (GET /api/hr/team/leave-members balanceDetails), shown once one is picked.
+  final Map<String, dynamic> balances;
+  const _NewLeaveSheet({required this.types, required this.onDone, this.editing, this.members, this.balances = const {}});
   @override
   State<_NewLeaveSheet> createState() => _NewLeaveSheetState();
 }
@@ -595,6 +603,14 @@ class _NewLeaveSheetState extends State<_NewLeaveSheet> {
               }).toList(),
               onChanged: (v) => setState(() => _employee = v),
             ),
+            if (_employee != null) ...[
+              const SizedBox(height: 8),
+              _MemberBalanceCard(
+                b: widget.balances[_employee] is Map ? Map<String, dynamic>.from(widget.balances[_employee] as Map) : null,
+                days: countLeaveDays(_start, _end),
+                deducts: _type.isEmpty ? null : widget.types.where((t) => t['_id'] == _type).firstOrNull?['affectsBalance'] != false,
+              ),
+            ],
             const SizedBox(height: 10),
           ],
           DropdownButtonFormField<String>(
@@ -863,6 +879,62 @@ class _ReplyDialogState extends State<_ReplyDialog> {
           child: Text(tr('إرسال الردّ', 'Send reply')),
         ),
       ],
+    );
+  }
+}
+
+
+/// The picked employee's balance in the team filing sheet (twin of web MemberBalanceCard): entitlement, accrued, used, available, and what remains after this request when its type deducts.
+class _MemberBalanceCard extends StatelessWidget {
+  final Map<String, dynamic>? b;
+  final int days;
+  final bool? deducts;
+  const _MemberBalanceCard({required this.b, required this.days, required this.deducts});
+
+  num _n(dynamic v) => v is num ? v : num.tryParse('${v ?? ''}') ?? 0;
+  String _f(num v) { final r = (v * 100).round() / 100; return r == r.roundToDouble() ? r.round().toString() : r.toString(); }
+
+  @override
+  Widget build(BuildContext context) {
+    final b = this.b;
+    if (b == null) {
+      return Text(tr('لا عقد ساريًا لهذا الموظف — لا يُحسب له رصيد.', 'No active contract — no balance.'), style: const TextStyle(fontSize: 11.5, color: T.inkFaint));
+    }
+    final available = _n(b['available']);
+    final after = deducts == true && days > 0 ? available - days : null;
+    Widget cell(String label, num v, Color c) => Expanded(
+          child: Container(
+            padding: const EdgeInsets.symmetric(vertical: 6, horizontal: 4),
+            decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(8), border: Border.all(color: T.line)),
+            child: Column(children: [
+              Text(label, style: const TextStyle(fontSize: 10.5, color: T.inkFaint), textAlign: TextAlign.center),
+              Text(_f(v), style: TextStyle(fontSize: 15, fontWeight: FontWeight.w800, color: c)),
+            ]),
+          ),
+        );
+    return Container(
+      padding: const EdgeInsets.all(10),
+      decoration: BoxDecoration(color: T.success.withValues(alpha: 0.06), borderRadius: BorderRadius.circular(10), border: Border.all(color: T.success.withValues(alpha: 0.3))),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Text(tr('رصيد إجازات الموظف', 'Employee leave balance'), style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w800)),
+        const SizedBox(height: 6),
+        Row(children: [
+          cell(tr('الاستحقاق السنوي', 'Annual'), _n(b['entitlement']), T.ink),
+          const SizedBox(width: 4),
+          cell(tr('المتراكم', 'Accrued'), _n(b['accrued']) + _n(b['carried']), T.info),
+          const SizedBox(width: 4),
+          cell(tr('المستخدم', 'Used'), _n(b['taken']), T.warn),
+          const SizedBox(width: 4),
+          cell(tr('المتاح', 'Available'), available, available < 0 ? T.danger : T.success),
+        ]),
+        if (after != null) ...[
+          const SizedBox(height: 6),
+          Text('${tr('بعد هذه الإجازة', 'After this leave')} ($days ${tr('يوم', 'd')}): ${_f(after)} ${tr('يوم', 'd')}${after < 0 ? tr(' — تتجاوز الرصيد المتاح', ' — exceeds the available balance') : ''}',
+              style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.w700, color: after < 0 ? T.danger : T.ink)),
+        ],
+        if (deducts == false && days > 0)
+          Padding(padding: const EdgeInsets.only(top: 4), child: Text(tr('هذا النوع لا يُخصم من الرصيد.', 'This type does not come off the balance.'), style: const TextStyle(fontSize: 11.5, color: T.inkFaint))),
+      ]),
     );
   }
 }

@@ -110,7 +110,13 @@ class _ShipmentOrderCreateScreenState extends State<ShipmentOrderCreateScreen> {
       if (v is Map && mounted) {
         setState(() { _form['vehicleBrand'] = soRealVal(v['brand']); _form['vehicleColor'] = soRealVal(v['color']); });
       }
-      _fillDriverDetails();
+      // The order's own driver details are what its waybill prints; the register fills them only when the order has none.
+      final o = widget.order;
+      if (o != null && ('${o['driverNationality'] ?? ''}'.isNotEmpty || '${o['driverIqama'] ?? ''}'.isNotEmpty)) {
+        if (mounted) setState(() { _form['driverNationality'] = '${o['driverNationality'] ?? ''}'; _form['driverIqama'] = '${o['driverIqama'] ?? ''}'; });
+      } else {
+        _fillDriverDetails();
+      }
     });
     _loadMoneyEditors();
     Live.instance.on('shipmentOrders:fields', _onFields);

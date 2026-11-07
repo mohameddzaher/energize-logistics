@@ -215,6 +215,8 @@ class _ShipmentOrdersScreenState extends State<ShipmentOrdersScreen> {
         ExportCol('اللوحة', 'Plate', (r) => r['vehiclePlate']),
         ExportCol('السائق', 'Driver', (r) => r['driverName']),
         ExportCol('جوال السائق', 'Driver phone', (r) => r['driverPhone']),
+        ExportCol('جنسية السائق', 'Driver nationality', (r) => r['driverNationality']),
+        ExportCol('رقم إقامة السائق', 'Driver iqama', (r) => r['driverIqama']),
         ExportCol('الفرع', 'Branch', (r) => r['branch']),
         ExportCol('الاستلام', 'Pickup', (r) => soFmtDate(r['pickupTime'])),
         ExportCol('البيع', 'Sell', (r) => r['sellPrice']),

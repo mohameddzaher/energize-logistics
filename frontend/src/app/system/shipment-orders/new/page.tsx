@@ -60,6 +60,8 @@ function CreateShipmentInner() {
   const router = useRouter();
   const params = useSearchParams();
   const editId = params?.get('id') || null;
+  // The edited order's own driver details (see the driver-name effect below).
+  const savedDriver = useRef<{ name: string; nat: string; iqama: string } | null>(null);
   // Money after save is writable only for roles the server allows. On create the creator writes it; on edit it is locked except for system admins and the operations manager. The role list comes from the server (MONEY_EDIT_ROLES), not duplicated here.
   // `editable` fields are written directly after save, `byRequest` ones go to approval (the data team's selling price).
   const [moneyEdit, setMoneyEdit] = useState<{ fields: string[]; canEdit: boolean; editable: string[]; byRequest: string[] }>({ fields: [], canEdit: true, editable: [], byRequest: [] });
@@ -144,6 +146,9 @@ function CreateShipmentInner() {
             setSalesRep(o.salesRep ? String(typeof o.salesRep === 'object' ? o.salesRep._id : o.salesRep) : '');
             setVehicleId(typeof o.vehicle === 'object' ? o.vehicle?._id : (o.vehicle || ''));
             setSupplierId(typeof o.supplier === 'object' ? (o.supplier?._id || '') : (o.supplier || ''));
+            // The order's own driver details: they are what its waybill prints, so the edit shows them rather than the register's.
+            savedDriver.current = { name: String(o.driverName || '').trim(), nat: o.driverNationality || '', iqama: o.driverIqama || '' };
+            if (o.driverNationality || o.driverIqama) setDetails((dd) => ({ ...dd, driverNationality: o.driverNationality || '', driverIqama: o.driverIqama || '' }));
             // Seed the selected item into its list: the list is one page of a large register, so an item outside it would show an empty field while selected.
             if (o.vehicle && typeof o.vehicle === 'object') {
               setVehicles((p) => (p.some((x) => x._id === o.vehicle._id) ? p : [o.vehicle, ...p]));
@@ -325,6 +330,12 @@ function CreateShipmentInner() {
   useEffect(() => {
     const name = String(form.driverName || '').trim();
     if (!name) { setDetails((d) => ({ ...d, driverNationality: '', driverIqama: '' })); return undefined; }
+    // Editing with the same driver: keep what the order holds.
+    const saved = savedDriver.current;
+    if (saved && saved.name === name && (saved.nat || saved.iqama)) {
+      setDetails((d) => ({ ...d, driverNationality: saved.nat, driverIqama: saved.iqama }));
+      return undefined;
+    }
     const t = setTimeout(() => {
       api.get<{ drivers: any[] }>(`/api/shipment-orders/drivers?q=${encodeURIComponent(name)}&limit=10`).then((r) => {
         const hit = (r.drivers || []).find((x) => String(x.name || '').trim() === name);

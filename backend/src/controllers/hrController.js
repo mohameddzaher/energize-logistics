@@ -1598,14 +1598,21 @@ exports.listLeaveTeamMembers = async (req, res) => {
   try {
     const team = await require('../utils/leaveTeam').teamOf(req.user);
     team.sort((a, b) => String(a.arabicName || a.firstName || '').localeCompare(String(b.arabicName || b.firstName || ''), 'ar'));
+    // `balances` (id -> available) stays for older app builds; `balanceDetails` carries the whole figure the filing form shows.
     const balances = {};
+    const balanceDetails = {};
     for (let i = 0; i < team.length; i += 8) {
       // eslint-disable-next-line no-await-in-loop
       await Promise.all(team.slice(i, i + 8).map(async (e) => {
-        try { balances[String(e._id)] = (await computeEmployeeBalance(e._id)).balance?.available ?? null; } catch (_) { balances[String(e._id)] = null; }
+        const id = String(e._id);
+        try {
+          const b = (await computeEmployeeBalance(e._id)).balance;
+          balances[id] = b?.available ?? null;
+          balanceDetails[id] = b ? { entitlement: b.entitlement, accrued: b.accrued, taken: b.taken, carried: b.carried, available: b.available, accrualFrom: b.accrualFrom || '' } : null;
+        } catch (_) { balances[id] = null; balanceDetails[id] = null; }
       }));
     }
-    res.json({ members: team, balances });
+    res.json({ members: team, balances, balanceDetails });
   } catch (error) {
     console.error('listLeaveTeamMembers error:', error);
     res.status(500).json({ message: 'تعذّر تحميل فريقك' });

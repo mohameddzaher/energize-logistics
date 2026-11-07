@@ -157,6 +157,8 @@ class _ShipmentOrderDetailScreenState extends State<ShipmentOrderDetailScreen> {
             (tr('نوع الحمولة', 'Cargo type'), d['cargoType']),
             (tr('السائق', 'Driver'), d['driverName']),
             (tr('جوال السائق', 'Driver phone'), d['driverPhone']),
+            (tr('جنسية السائق', 'Driver nationality'), d['driverNationality']),
+            (tr('رقم إقامة السائق', 'Driver iqama no.'), d['driverIqama']),
             (tr('المركبة', 'Vehicle'), d['vehicleName']),
             (tr('اللوحة', 'Plate'), d['vehiclePlate']),
             (tr('الوسيط', 'Agent'), d['agentName']),

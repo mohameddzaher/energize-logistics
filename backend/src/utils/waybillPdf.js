@@ -346,7 +346,7 @@ function rowFromOrder(o, opts = {}) {
     blNumber: o.blNumber || '', containerNumber: o.containerNumber || '',
     carType: o.truckType || '', plateNumber: o.vehiclePlate || o.vehicleName || '',
     driverAdvance: o.driverRentPrice != null ? String(o.driverRentPrice) : '',
-    driverPhone: o.driverPhone || '', driverIqama: '', driverNationality: '',
+    driverPhone: o.driverPhone || '', driverIqama: o.driverIqama || '', driverNationality: o.driverNationality || '',
     driverName: o.driverName || '', customerName: o.customerName || '', branch: o.branch || '',
     toLocation: o.toCity || '', fromLocation: o.fromCity || '',
     date: `${dt.getDate()}/${dt.getMonth() + 1}/${dt.getFullYear()}`,

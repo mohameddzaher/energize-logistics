@@ -37,6 +37,9 @@ const shipmentOrderSchema = new mongoose.Schema(
 
     driverName: { type: String, trim: true, default: '' },
     driverPhone: { type: String, trim: true, default: '' },
+    // What the waybill prints for the driver, as typed on the order (a new name had no register row and an HR-linked driver was never written, so these printed empty). The register and HR file fill them only when blank.
+    driverNationality: { type: String, trim: true, default: '' },
+    driverIqama: { type: String, trim: true, default: '' },
     vehicleName: { type: String, trim: true, default: '' }, // Snapshot: vehicle / plate number
     vehiclePlate: { type: String, trim: true, default: '', index: true },
     // Platform reference number, stored as is and not confused with our waybill number.

@@ -2357,14 +2357,16 @@ const roleNames = () => require('../config/roles').LABELS_AR;
 /** GET /branch-access — the people limited by branch and what each one has. */
 exports.getBranchAccess = async (req, res) => {
   try {
-    const { SHIPMENT_BRANCH_ROLES } = require('../config/shipmentBranchRoles');
+    const { SHIPMENT_BRANCH_ROLES, TEAM_BRANCH_EDITORS } = require('../config/shipmentBranchRoles');
     const users = await require('../models/User').find({ role: { $in: SHIPMENT_BRANCH_ROLES }, isActive: { $ne: false } })
       .select('firstName lastName role email shipmentBranches').sort({ firstName: 1 }).lean();
     res.json({
       branches: await companyBranchOptions(),
       users: users.map((u) => ({
         _id: u._id, name: fullName(u), email: u.email, role: u.role, roleAr: roleNames()[u.role] || u.role, branches: u.shipmentBranches || [],
+        self: String(u._id) === String(req.user._id || req.user.id),
       })),
+      selfLocked: TEAM_BRANCH_EDITORS.includes(req.user.role),
     });
   } catch (error) {
     res.status(500).json({ message: 'تعذّر تحميل صلاحيات الفروع' });
@@ -2374,10 +2376,14 @@ exports.getBranchAccess = async (req, res) => {
 /** PUT /branch-access/:id { branches } — same field as the user form, so both always agree. */
 exports.setBranchAccess = async (req, res) => {
   try {
-    const { SHIPMENT_BRANCH_ROLES } = require('../config/shipmentBranchRoles');
+    const { SHIPMENT_BRANCH_ROLES, TEAM_BRANCH_EDITORS } = require('../config/shipmentBranchRoles');
     const User = require('../models/User');
     const target = await User.findById(req.params.id);
     if (!target || !SHIPMENT_BRANCH_ROLES.includes(target.role)) return res.status(404).json({ message: 'المستخدم غير موجود' });
+    // An empty list means every branch, so a branch-limited editor changing their own row could lift their own limit.
+    if (TEAM_BRANCH_EDITORS.includes(req.user.role) && String(target._id) === String(req.user._id || req.user.id)) {
+      return res.status(403).json({ message: 'لا يمكنك تعديل فروعك بنفسك؛ يعدّلها مديرك أو الإدارة' });
+    }
     const known = new Set((await companyBranchOptions()).map((b) => b.key));
     const asked = [...new Set((Array.isArray(req.body.branches) ? req.body.branches : []).map((b) => String(b).trim()))];
     const unknown = asked.filter((b) => !known.has(b));

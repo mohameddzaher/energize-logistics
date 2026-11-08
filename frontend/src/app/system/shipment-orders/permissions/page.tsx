@@ -11,7 +11,7 @@ import { Spinner, PageHeader } from '@/components/hr/HRKit';
 import { ShieldCheck } from 'lucide-react';
 
 type Branch = { key: string; ar: string; en: string };
-type Row = { _id: string; name: string; email: string; roleAr: string; role: string; branches: string[] };
+type Row = { _id: string; name: string; email: string; roleAr: string; role: string; branches: string[]; self?: boolean };
 
 export default function ShipmentBranchPermissionsPage() {
   const { user } = useAuth();
@@ -20,13 +20,15 @@ export default function ShipmentBranchPermissionsPage() {
   const { notify } = useDialog();
   const [branches, setBranches] = useState<Branch[]>([]);
   const [rows, setRows] = useState<Row[] | null>(null);
+  const [selfLocked, setSelfLocked] = useState(false);
   const [q, setQ] = useState('');
-  // role-only: the owner gave this to management and the operations manager alone.
-  const allowed = ['super_admin', 'admin', 'it_manager', 'it_specialist', 'operations_manager'].includes(user?.role || '');
+  // role-only: management, the operations manager, and the data team for its own people.
+  const allowed = ['super_admin', 'admin', 'it_manager', 'it_specialist', 'operations_manager', 'data_manager', 'data_analyst'].includes(user?.role || '');
 
   const load = useCallback(async () => {
-    const d = await api.get<{ branches: Branch[]; users: Row[] }>('/api/shipment-orders/branch-access');
+    const d = await api.get<{ branches: Branch[]; users: Row[]; selfLocked?: boolean }>('/api/shipment-orders/branch-access');
     setBranches(d.branches);
+    setSelfLocked(!!d.selfLocked);
     setRows(d.users);
   }, []);
   useEffect(() => { if (allowed) load().catch(() => setRows([])); }, [allowed, load]);
@@ -43,7 +45,7 @@ export default function ShipmentBranchPermissionsPage() {
     }
   };
 
-  if (!allowed) return <div className="p-6 text-slate-600">{ar ? 'هذه الصفحة للإدارة ومدير التشغيل' : 'For management and the operations manager'}</div>;
+  if (!allowed) return <div className="p-6 text-slate-600">{ar ? 'هذه الصفحة للإدارة ومدير التشغيل وإدارة البيانات' : 'For management, the operations manager and the data team'}</div>;
   if (!rows) return <Spinner />;
   const shown = rows.filter((r) => `${r.name} ${r.email} ${r.roleAr}`.toLowerCase().includes(q.trim().toLowerCase()));
 
@@ -59,6 +61,7 @@ export default function ShipmentBranchPermissionsPage() {
             <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
               <span className="font-bold text-slate-900">{r.name}</span>
               <span className="text-xs text-slate-500">{r.roleAr}</span>
+              {selfLocked && r.self && <span className="text-[11px] px-2 py-0.5 rounded bg-slate-100 text-slate-500">{ar ? 'حسابك — يعدّله مديرك أو الإدارة' : 'Your account — set by your manager or management'}</span>}
               <span className="text-xs text-slate-500 ms-auto">
                 {r.branches.length ? (ar ? `${r.branches.length} فرع` : `${r.branches.length} branches`) : (ar ? 'كل الفروع' : 'All branches')}
               </span>
@@ -67,8 +70,8 @@ export default function ShipmentBranchPermissionsPage() {
               {branches.map((b) => {
                 const on = r.branches.includes(b.key);
                 return (
-                  <button key={b.key} type="button" onClick={() => toggle(r, b.key)} aria-pressed={on}
-                    className={`px-3 py-1.5 rounded-lg text-sm font-semibold border transition-colors ${on
+                  <button key={b.key} type="button" onClick={() => toggle(r, b.key)} aria-pressed={on} disabled={selfLocked && r.self}
+                    className={`px-3 py-1.5 rounded-lg text-sm font-semibold border transition-colors disabled:opacity-50 disabled:cursor-not-allowed ${on
                       ? 'bg-[#f37121] border-[#f37121] text-white' : 'bg-white border-slate-300 text-slate-700 hover:bg-slate-50'}`}>
                     {ar ? b.ar : b.en}
                   </button>

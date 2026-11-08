@@ -35,9 +35,9 @@ router.patch('/orders/:id/status', authorize(...EDIT_ROLES), so.patchStatus); //
 router.post('/orders/:id/note', authorize(...EDIT_ROLES), so.addNote); // Follow-up note without a status change.
 router.put('/orders/:id/note/:logId', authorize(...EDIT_ROLES), so.editNote); // Its author or the section manager.
 router.delete('/orders/:id/note/:logId', authorize(...EDIT_ROLES), so.deleteNote);
-const { BRANCH_ACCESS_EDITORS } = require('../config/shipmentBranchRoles');
-router.get('/branch-access', authorize.strict(...BRANCH_ACCESS_EDITORS), so.getBranchAccess);
-router.put('/branch-access/:id', authorize.strict(...BRANCH_ACCESS_EDITORS), so.setBranchAccess);
+const { BRANCH_PAGE_EDITORS } = require('../config/shipmentBranchRoles');
+router.get('/branch-access', authorize.strict(...BRANCH_PAGE_EDITORS), so.getBranchAccess);
+router.put('/branch-access/:id', authorize.strict(...BRANCH_PAGE_EDITORS), so.setBranchAccess);
 router.delete('/orders/:id', authorize.strict(...require('../services/shipmentOrderWorkflowLink').SHIPMENT_DELETE_ROLES), so.deleteOrder);
 
 // Customers (their price-per-route lists feed the create form).

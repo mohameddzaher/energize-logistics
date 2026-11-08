@@ -678,7 +678,7 @@ List<AppSection> sectionsFor(AuthProvider auth) {
         AppPage('الشاحنات', 'Vehicles', Icons.local_shipping_outlined, (c) => ResourceScreen(config: shipmentOrdersVehiclesCfg), path: '/system/shipment-orders/fleet'),
         // Driver: a third register in the same page on the web (a tab), a screen here.
         AppPage('السوّاق', 'Drivers', Icons.badge_outlined, (c) => ResourceScreen(config: shipmentOrdersDriversCfg), path: '/system/shipment-orders/fleet'),
-        if (const ['super_admin', 'admin', 'it_manager', 'it_specialist', 'operations_manager'].contains(role))
+        if (const ['super_admin', 'admin', 'it_manager', 'it_specialist', 'operations_manager', 'data_manager', 'data_analyst'].contains(role))
           AppPage('الصلاحيات', 'Permissions', Icons.verified_user_outlined, (c) => const ShipmentBranchAccessScreen(), path: '/system/shipment-orders/permissions'),
         if (const ['super_admin', 'admin', 'it_manager', 'operations_manager', 'shipment_orders_manager'].contains(role) || auth.canEditSection('Shipment Orders'))
           AppPage('إعدادات القسم', 'Section Settings', Icons.tune_outlined, (c) => const ShipmentOrdersSettingsScreen(), path: '/system/shipment-orders/settings'),

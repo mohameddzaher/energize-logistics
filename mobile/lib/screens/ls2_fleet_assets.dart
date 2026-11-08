@@ -1540,7 +1540,7 @@ class _Ls2FleetAssetsScreenState extends State<Ls2FleetAssetsScreen> {
     return showDialog<String>(
       context: context,
       builder: (c) => AlertDialog(
-        title: Text(tr('التيدر $occupant اللي على العربية يروح فين؟', 'Where does trailer $occupant go?')),
+        title: Text(tr('أين يذهب التيدر $occupant المركَّب على الشاحنة؟', 'Where does trailer $occupant go?')),
         content: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.stretch, children: [
           OutlinedButton(onPressed: () => Navigator.pop(c, 'standing'),
               child: Text(tr('يقف لوحده بكاوتشه', 'Stands alone with its tires'))),

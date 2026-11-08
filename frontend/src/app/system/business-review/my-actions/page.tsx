@@ -8,9 +8,9 @@ import { useSocket } from '@/hooks/useSocket';
 import { ClipboardList, AlertTriangle, CheckCircle2, Clock, Filter } from 'lucide-react';
 import { Spinner, PageHeader } from '@/components/hr/HRKit';
 import { KpiTile } from '@/components/system/Scorecard';
-import { ActionCard } from '@/components/system/BusinessReviewKit';
+import { ActionCard, TaskCard } from '@/components/system/BusinessReviewKit';
 import {
-  brMeta, brMyActions, brUpdateAction, brDelegate,
+  brMeta, brMyActions, brUpdateAction, brDelegate, brMyTasks, brUpdateTask,
   type BrMeta, type BrAction, type Lang, tx, OPEN_STATUSES,
 } from '@/lib/businessReview';
 
@@ -23,21 +23,27 @@ export default function MyActionsPage() {
   const [meta, setMeta] = useState<BrMeta | null>(null);
   const [actions, setActions] = useState<BrAction[]>([]);
   const [summary, setSummary] = useState<any>(null);
+  // Parts of a colleague's task handed to me; they count as mine here too.
+  const [handed, setHanded] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState<'open' | 'overdue' | 'done' | 'all'>('open');
 
   const load = useCallback(async () => {
     try {
-      const [m, r] = await Promise.all([brMeta().catch(() => null), brMyActions()]);
+      const [m, r, h] = await Promise.all([brMeta().catch(() => null), brMyActions(), brMyTasks().catch(() => null)]);
       if (m) setMeta(m);
       setActions(r.actions || []);
-      setSummary(r.summary);
+      const mine = (h as any)?.assignments || [];
+      setHanded(mine);
+      const hs = (h as any)?.summary || { total: 0, open: 0, overdue: 0, done: 0 };
+      setSummary({ total: r.summary.total + hs.total, open: r.summary.open + hs.open, overdue: r.summary.overdue + hs.overdue, done: r.summary.done + hs.done });
     } catch { /* keep the last good view */ }
     setLoading(false);
   }, []);
   useEffect(() => { load(); }, [load]);
   useSocket('br:action', load);
   useSocket('br:updated', load);
+  useSocket('br:assignment', load);
 
   const shown = useMemo(() => {
     if (filter === 'all') return actions;
@@ -45,6 +51,11 @@ export default function MyActionsPage() {
     if (filter === 'overdue') return actions.filter((a) => a.isOverdue && OPEN_STATUSES.includes(a.status));
     return actions.filter((a) => OPEN_STATUSES.includes(a.status));
   }, [actions, filter]);
+
+  const shownHanded = handed.filter((a) => (filter === 'all' ? true
+    : filter === 'done' ? a.status === 'done'
+      : filter === 'overdue' ? a.isOverdue && OPEN_STATUSES.includes(a.status)
+        : OPEN_STATUSES.includes(a.status)));
 
   if (loading) return <Spinner />;
 
@@ -101,7 +112,19 @@ export default function MyActionsPage() {
             }}
           />
         ))}
-        {!shown.length && (
+        {meta && !!shownHanded.length && (
+          <>
+            <h2 className="pt-2 text-[15px] font-black text-slate-900">{t('Handed to me by a colleague', 'مهام موزّعة عليّ من زميل')}</h2>
+            {shownHanded.map((task) => (
+              <TaskCard key={task._id} task={task} meta={meta} lang={L}
+                onUpdate={async (v) => {
+                  try { await brUpdateTask(task._id, v); await load(); notify(t('Updated', 'تم التحديث'), 'success'); }
+                  catch (e: any) { notify(e?.message || t('Failed', 'فشل'), 'error'); }
+                }} />
+            ))}
+          </>
+        )}
+        {!shown.length && !shownHanded.length && (
           <p className="text-slate-400 text-sm text-center py-12">
             {filter === 'open'
               ? t('Nothing open — you are clear.', 'لا يوجد شيء مفتوح — كل شيء منجز.')

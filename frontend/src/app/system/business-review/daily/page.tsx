@@ -1,5 +1,6 @@
 'use client';
-// The daily meeting: today's meeting in detail (each department's minutes and tasks, attendance) and the record of past days.
+// Meetings and department follow-up, one page: the meeting type and its settings, today's meeting, each department as a
+// card (its tasks by state and deadline, its part of today's minutes, actions in place), and the past days.
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import { useLanguage } from '@/context/LanguageContext';
@@ -7,12 +8,13 @@ import { useDialog } from '@/components/system/DialogProvider';
 import { useSocket } from '@/hooks/useSocket';
 import api from '@/lib/api';
 import {
-  CalendarClock, FileText, Users, CheckCircle2, Clock, Settings2, CalendarPlus, ListChecks, ChevronLeft, Circle, LayoutDashboard,
+  CalendarClock, FileText, Users, Settings2, CalendarPlus, ListChecks, ChevronLeft, Circle,
 } from 'lucide-react';
 import { Spinner, PageHeader } from '@/components/hr/HRKit';
-import { StatusPill } from '@/components/system/BusinessReviewKit';
+
 import BrSeriesModal, { WEEKDAYS } from '@/components/system/BrSeriesModal';
-import { brMeta, brSeriesDay, type BrMeta, type Lang, tx, deptLabel, fmtDate } from '@/lib/businessReview';
+import BrMeetingDepartments from '@/components/system/BrMeetingDepartments';
+import { brMeta, brSeriesDay, type BrMeta, type Lang, tx, fmtDate } from '@/lib/businessReview';
 
 const ATT = { attended: ['حضر', 'Present', 'bg-emerald-100 text-emerald-700'], absent: ['لم يحضر', 'Absent', 'bg-red-100 text-red-700'], excused: ['اعتذر', 'Excused', 'bg-amber-100 text-amber-700'], invited: ['مدعو', 'Invited', 'bg-slate-100 text-slate-500'] } as const;
 
@@ -28,6 +30,9 @@ export default function DailyMeetingPage() {
   const [series, setSeries] = useState('');
   const [edit, setEdit] = useState<'' | 'settings' | 'new'>('');
   const [busy, setBusy] = useState(false);
+  // A link that names a department (the old board's ?dept=) opens its card.
+  const [initialDept, setInitialDept] = useState('');
+  useEffect(() => { const v = new URLSearchParams(window.location.search).get('dept'); if (v) setInitialDept(v); }, []);
   const seq = useRef(0);
 
   const load = useCallback(async () => {
@@ -64,15 +69,11 @@ export default function DailyMeetingPage() {
   return (
     <div className="space-y-5">
       <PageHeader icon={<CalendarClock className="w-5 h-5 text-[#f37121]" />}
-        title={s?.title || t('Daily meeting', 'الاجتماع اليومي')}
+        title={t('Meetings & department follow-up', 'الاجتماعات ومتابعة الأقسام')}
         subtitle={s
-          ? `${s.time} · ${WEEKDAYS.filter(([k]) => s.weekdays.includes(Number(k))).map(([, en, ar]) => t(en, ar)).join('، ')} · ${s.departments.length} ${t('departments', 'أقسام')} · ${s.attendees.length} ${t('attendees', 'مدعو')}`
+          ? `${s.title} · ${s.time} · ${WEEKDAYS.filter(([k]) => s.weekdays.includes(Number(k))).map(([, en, ar]) => t(en, ar)).join('، ')} · ${s.departments.length} ${t('departments', 'أقسام')} · ${s.attendees.length} ${t('attendees', 'مدعو')}`
           : t('No daily meeting is scheduled yet.', 'لم يُجدول اجتماع يومي بعد.')}>
         <div className="flex items-center gap-2 flex-wrap">
-          <button type="button" onClick={() => router.push('/system/business-review/board')}
-            className="inline-flex items-center gap-1.5 border border-slate-200 bg-white text-slate-700 text-sm font-medium rounded-lg px-3.5 py-2">
-            <LayoutDashboard className="w-4 h-4" />{t('Department board', 'لوحة الأقسام')}
-          </button>
           {d?.canEdit && meta && s && (
             <button type="button" onClick={() => setEdit('settings')}
               className="inline-flex items-center gap-1.5 border border-slate-200 bg-white text-slate-700 text-sm font-medium rounded-lg px-3.5 py-2">
@@ -90,7 +91,8 @@ export default function DailyMeetingPage() {
 
       {/* One tab per meeting type (daily, weekly managers, ...). */}
       {(d?.list || []).length > 1 && (
-        <div className="flex flex-wrap gap-2">
+        <div className="flex flex-wrap items-center gap-2">
+          <span className="text-sm font-bold text-slate-700">{t('Meeting type', 'نوع الاجتماع')}:</span>
           {d.list.map((x: any) => {
             const on = String(x._id) === String(s?._id);
             return (
@@ -134,41 +136,11 @@ export default function DailyMeetingPage() {
             </div>
             <button type="button" onClick={() => open(today._id)}
               className="w-full sm:w-auto justify-center inline-flex items-center gap-1.5 bg-[#f37121] text-white text-sm font-semibold rounded-lg px-4 py-2.5">
-              <FileText className="w-4 h-4" />{t('Open today’s minutes', 'فتح محضر اليوم')}
+              <FileText className="w-4 h-4" />{t('Open the meeting: minutes, agenda and attendance', 'فتح الاجتماع: المحضر والأجندة والحضور')}
             </button>
           </div>
 
-          {/* Each department: its part of the minutes and the tasks it took today. */}
-          <div className="grid gap-3 p-4 md:grid-cols-2 xl:grid-cols-3">
-            {today.departments.map((dep: any) => (
-              <div key={dep.key} className={`rounded-xl border p-3 ${dep.minutes ? 'border-emerald-200 bg-emerald-50/30' : 'border-slate-200 bg-white'}`}>
-                <div className="flex items-center justify-between gap-2">
-                  {/* The department's whole record (all its tasks, not only today's) is on the department board. */}
-                  <button type="button" onClick={() => router.push(`/system/business-review/board?dept=${encodeURIComponent(dep.key)}`)}
-                    className="font-bold text-slate-900 hover:text-[#f37121] hover:underline text-start">
-                    {dep.key === 'Unassigned' ? t('No department', 'بدون قسم') : deptLabel(dep.key, L)}
-                  </button>
-                  {dep.minutes
-                    ? <span className="inline-flex items-center gap-1 text-[11px] font-bold text-emerald-700"><CheckCircle2 className="w-3.5 h-3.5" />{t('Reported', 'تم التسجيل')}</span>
-                    : <span className="inline-flex items-center gap-1 text-[11px] font-bold text-slate-400"><Clock className="w-3.5 h-3.5" />{t('Waiting', 'بانتظار التسجيل')}</span>}
-                </div>
-                {dep.minutes && <p className="mt-1.5 text-[12.5px] text-slate-700 whitespace-pre-wrap line-clamp-4">{dep.minutes}</p>}
-                <div className="mt-2 space-y-1">
-                  {dep.tasks.map((a: any) => (
-                    <div key={a._id} className="flex items-center gap-2 text-[12px]">
-                      <ListChecks className="w-3.5 h-3.5 text-slate-400 shrink-0" />
-                      <span className="flex-1 min-w-0 truncate text-slate-800">{a.title}</span>
-                      <span className="text-slate-400 shrink-0">{fmtDate(a.dueDate)}</span>
-                      <StatusPill statuses={meta?.actionStatuses} value={a.status} lang={L} />
-                    </div>
-                  ))}
-                  {!dep.tasks.length && <p className="text-[11.5px] text-slate-400">{t('No tasks yet', 'لا بنود بعد')}</p>}
-                </div>
-              </div>
-            ))}
-          </div>
-
-          <div className="px-4 pb-4">
+          <div className="px-4 py-4">
             <p className="text-xs font-bold text-slate-600 mb-1.5 flex items-center gap-1.5"><Users className="w-3.5 h-3.5" />{t('Attendance', 'الحضور')}</p>
             <div className="flex flex-wrap gap-1.5">
               {today.attendees.map((a: any, i: number) => {
@@ -181,6 +153,18 @@ export default function DailyMeetingPage() {
               })}
             </div>
           </div>
+        </section>
+      )}
+
+      {/* Department follow-up: every task this meeting has raised, by department. Today's meeting, else the latest one. */}
+      {s && (today?._id || d.days?.[0]?._id) && meta && (
+        <section className="space-y-3">
+          <h2 className="text-lg font-black text-slate-900 flex items-center gap-2">
+            <ListChecks className="w-5 h-5 text-[#f37121]" />{t('Department follow-up', 'متابعة الأقسام')}
+            {!today && <span className="text-[12px] font-semibold text-slate-500">({t('from the latest meeting', 'من آخر اجتماع')} {fmtDate(d.days[0].scheduledAt)})</span>}
+          </h2>
+          <BrMeetingDepartments meetingId={String(today?._id || d.days[0]._id)} meta={meta} L={L} notify={notify} initialDept={initialDept}
+            minutesLabel={today ? t('Today’s minutes', 'محضر القسم اليوم') : t('Minutes of that day', 'محضر القسم في ذلك اليوم')} />
         </section>
       )}
 

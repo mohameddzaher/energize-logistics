@@ -89,8 +89,8 @@ class _BusinessReviewScreenState extends State<BusinessReviewScreen> {
 
     // Tabs follow the tier — an employee only ever gets "my tasks".
     final tabs = <(String, Widget)>[
-      if (participant) (tr('لوحة الأقسام', 'Departments'), BrBoardTab(meta: _meta!)),
-      if (participant) (tr('الاجتماعات', 'Meetings'), BrDailyTab(meta: _meta!)),
+      // Meetings and department follow-up are one tab, as on the web (the board was merged into it).
+      if (participant) (tr('الاجتماعات ومتابعة الأقسام', 'Meetings & departments'), BrDailyTab(meta: _meta!)),
       if (participant) (tr('بنودي', 'My actions'), _ActionsTab(meta: _meta!, mine: true)),
       if (runner) (tr('سجل المتابعة', 'Register'), _ActionsTab(meta: _meta!, mine: false)),
       (tr('مهامي', 'My tasks'), _TasksTab(meta: _meta!)),
@@ -586,6 +586,8 @@ class _ActionsTab extends StatefulWidget {
 
 class _ActionsTabState extends State<_ActionsTab> {
   List<Map<String, dynamic>> _rows = [];
+  // My items also list parts of a colleague's task handed to me, counted with mine.
+  List<Map<String, dynamic>> _handed = [];
   Map<String, dynamic> _summary = {};
   List<Map<String, dynamic>> _byPerson = [];
   bool _loading = true;
@@ -629,16 +631,34 @@ class _ActionsTabState extends State<_ActionsTab> {
     try {
       final path = widget.mine ? '/api/business-review/my-actions' : '/api/business-review/actions${_registerQs()}';
       final d = await Api.instance.get(path);
+      final h = widget.mine ? await Api.instance.get('/api/business-review/my-tasks').then<dynamic>((v) => v, onError: (_) => null) : null;
       if (!mounted || my != _seq) return;
       setState(() {
         _rows = List<Map<String, dynamic>>.from(d['actions'] ?? []);
         _summary = Map<String, dynamic>.from(d['summary'] ?? {});
+        _handed = h == null ? [] : List<Map<String, dynamic>>.from(h['assignments'] ?? []);
+        if (h != null) {
+          final hs = Map<String, dynamic>.from(h['summary'] ?? {});
+          for (final k in ['total', 'open', 'overdue', 'done']) {
+            _summary[k] = ((_summary[k] ?? 0) as num) + ((hs[k] ?? 0) as num);
+          }
+        }
         _byPerson = List<Map<String, dynamic>>.from(d['byPerson'] ?? []);
         _loading = false; _error = null;
       });
     } catch (e) {
       if (mounted && my == _seq) setState(() { _loading = false; _error = e is ApiException ? e.message : e.toString(); });
     }
+  }
+
+  List<Map<String, dynamic>> get _shownHanded {
+    if (!widget.mine) return const [];
+    return _handed.where((a) => switch (_filter) {
+      'all' => true,
+      'done' => a['status'] == 'done',
+      'overdue' => a['isOverdue'] == true && _open.contains(a['status']),
+      _ => _open.contains(a['status']),
+    }).toList();
   }
 
   List<Map<String, dynamic>> get _shown {
@@ -837,7 +857,7 @@ class _ActionsTabState extends State<_ActionsTab> {
         else
           _registerFilters(),
         if (_loading) const Padding(padding: EdgeInsets.symmetric(horizontal: 14, vertical: 4), child: LinearProgressIndicator(minHeight: 2)),
-        if (rows.isEmpty)
+        if (rows.isEmpty && _shownHanded.isEmpty)
           Padding(
             padding: const EdgeInsets.only(top: 50),
             child: EmptyState(
@@ -859,6 +879,15 @@ class _ActionsTabState extends State<_ActionsTab> {
                 canDelegate: widget.mine || a['assignee'] == meId || runner,
                 canDelete: !widget.mine,
               ),
+            if (_shownHanded.isNotEmpty) ...[
+              Align(alignment: AlignmentDirectional.centerStart, child: Padding(
+                padding: const EdgeInsets.only(top: 10, bottom: 6),
+                child: Text(tr('مهام موزّعة عليّ من زميل', 'Handed to me by a colleague'), style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 15)),
+              )),
+              for (final a in _shownHanded)
+                _WorkCard(key: ValueKey('h-${a['_id']}'), row: a, meta: widget.meta, isAction: false,
+                    subtitle: '${tr('من', 'From')}: ${a['assignedByName']}', onSaved: _load),
+            ],
           ]),
         ),
       ]),
@@ -972,7 +1001,7 @@ class _WorkCard extends StatelessWidget {
   final bool isAction;
   final String subtitle;
   final Future<void> Function() onSaved;
-  const _WorkCard({required this.row, required this.meta, required this.isAction,
+  const _WorkCard({super.key, required this.row, required this.meta, required this.isAction,
     required this.subtitle, required this.onSaved});
 
   bool get _overdue => row['isOverdue'] == true && _open.contains(row['status']);

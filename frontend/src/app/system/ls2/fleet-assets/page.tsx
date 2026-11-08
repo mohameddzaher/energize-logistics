@@ -248,8 +248,7 @@ export default function Ls2FleetAssetsPage() {
     .replace(/ؤ/g, 'و').replace(/ئ/g, 'ي').replace(/ـ/g, '')
     .replace(/[ً-ْ]/g, '')
     .toLowerCase().trim();
-  // السطحات: الأسئلة اللي بتتسأل على الشاشة دي — مين ناقص كاوتش، ومين ماشي
-  // من غير تيدر، ومين لسه ما اتجردش أصلاً.
+  // Flatbed questions this screen answers: which lack tires, which run without a trailer, which were never counted.
   const [flatbedFilter, setFlatbedFilter] = useState('');
   const FLATBED_CHIPS: Chip[] = useMemo(() => [
     { key: '', label: ar ? 'الكل' : 'All' },
@@ -1203,7 +1202,7 @@ function DismountTireModal({ tire, tires, ar, busy, onClose, onSubmit }: {
   const [swap, setSwap] = useState(false);
   const [reason, setReason] = useState('');
   const [date, setDate] = useState('');
-  // الاستبن هو الموقع الوحيد اللي مسموح يفضل فاضي — العربية بتمشي من غيره.
+  // The spare is the only slot allowed to stay empty: the truck runs without it.
   // أي موقع تاني لازم يتملي، فالبديل إجباري (أو تبديل متبادل).
   const spareSlot = tire.isSpare || /استبن/.test(tire.section || '');
   const needsReplacement = !spareSlot;
@@ -1355,7 +1354,7 @@ function MoveTireModal({ tire, flatbeds, tires, ar, busy, onClose, onSubmit }: {
             placeholder={ar ? (toPlate ? '— اختر الموقع —' : '— اختر السطحة أولًا —') : '— choose position —'}
             searchPlaceholder={ar ? 'ابحث عن الموقع…' : 'Search position…'} />
         </div>
-        {/* شاحنة لسه مادخلناش كاوتشاتها — نصارح المستخدم عشان ميتغرش بـ«فارغ». */}
+        {/* A truck whose tires were never entered: say so, so an empty list is not read as no tires. */}
         {toPlate && !truckHasTires && (
           <p className="text-xs text-amber-800 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2 font-medium">
             {ar
@@ -1718,7 +1717,7 @@ function HitchTruckModal({ flatbed, trailers, ar, busy, onClose, onSubmit }: {
         {current && chosen && (
           <div className="rounded-lg border border-amber-200 bg-amber-50 p-2.5 space-y-1.5">
             <p className="text-xs text-amber-800 font-semibold">
-              {ar ? `التيدر ${current.trailerNumber} اللي عليها دلوقتي يروح فين؟` : `Where does trailer ${current.trailerNumber} go?`}
+              {ar ? `أين يذهب التيدر ${current.trailerNumber} المركَّب عليها الآن؟` : `Where does trailer ${current.trailerNumber} go?`}
             </p>
             {([
               { key: 'standing' as const, ar: 'يقف لوحده بكاوتشه (من غير عربية)', en: 'Stands alone with its tires' },
@@ -1768,8 +1767,7 @@ function MoveTrailerModal({ trailer, flatbeds, ar, busy, onClose, onSubmit }: {
   const [toPlate, setToPlate] = useState('');
   const [reason, setReason] = useState('');
   const [date, setDate] = useState('');
-  // التيدر اللي على العربية المستقبِلة لازم يروح مكان محدّد — زي الداخل ⇐ الخارج
-  // بتاع الكاوتش بالظبط. من غير الاختيار ده، تيدر بيختفي من غير ما حد يقول راح فين.
+  // The receiving truck's trailer must go somewhere stated, like a tire's in/out; without it a trailer vanishes untracked.
   const [displacedTo, setDisplacedTo] = useState<'standing' | 'swap'>('standing');
   const target = flatbeds.find((f) => f.plate === toPlate);
   const occupied = !!target?.currentTrailerNumber;

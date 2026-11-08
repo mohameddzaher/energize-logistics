@@ -13,7 +13,11 @@ import 'business_review_kit.dart';
 class BrMeetingDepartmentsTab extends StatefulWidget {
   final String meetingId;
   final Map<String, dynamic> meta;
-  const BrMeetingDepartmentsTab({super.key, required this.meetingId, required this.meta});
+  /// Inside another scrolling page (the meetings tab): a plain column instead of its own list.
+  final bool embedded;
+  /// Heading of each department's part of the minutes.
+  final String? minutesLabel;
+  const BrMeetingDepartmentsTab({super.key, required this.meetingId, required this.meta, this.embedded = false, this.minutesLabel});
   @override
   State<BrMeetingDepartmentsTab> createState() => _BrMeetingDepartmentsTabState();
 }
@@ -26,6 +30,29 @@ final _chips = <(String, String, String, Color, bool Function(Map))>[
   ('postponed', 'مؤجَّل', 'Postponed', T.warn, (t) => t['status'] == 'postponed'),
   ('blocked', 'متعثر', 'Blocked', const Color(0xFFE11D48), (t) => t['status'] == 'blocked'),
   ('done', 'تم', 'Done', T.success, (t) => t['status'] == 'done'),
+];
+
+const _horizon = [('h48', 'خلال ٤٨ ساعة', 'Within 48h'), ('week', 'خلال أسبوع', 'Within a week'), ('later', 'لاحقًا', 'Later'), ('nodate', 'بلا موعد', 'No date')];
+
+/// A company day; Friday is the weekend, so it moves to Saturday.
+String _dayAfter(int n) {
+  var d = DateTime.now().add(Duration(days: n));
+  if (d.weekday == DateTime.friday) d = d.add(const Duration(days: 1));
+  return brIsoDay(d);
+}
+String _next(int weekday) {
+  final now = DateTime.now();
+  var add = (weekday - now.weekday + 7) % 7;
+  if (add == 0) add = 7;
+  return brIsoDay(now.add(Duration(days: add)));
+}
+final _quickDates = <(String, String, String Function())>[
+  ('غدًا', 'Tomorrow', () => _dayAfter(1)),
+  ('بعد يومين', 'In 2 days', () => _dayAfter(2)),
+  ('الأحد القادم', 'Next Sunday', () => _next(DateTime.sunday)),
+  ('نهاية الأسبوع (الخميس)', 'End of week (Thu)', () => _next(DateTime.thursday)),
+  ('بعد أسبوع', 'In a week', () => _dayAfter(7)),
+  ('بعد أسبوعين', 'In 2 weeks', () => _dayAfter(14)),
 ];
 
 class _BrMeetingDepartmentsTabState extends State<BrMeetingDepartmentsTab> {
@@ -84,6 +111,12 @@ class _BrMeetingDepartmentsTabState extends State<BrMeetingDepartmentsTab> {
         child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
           Text('${tr('تأجيل', 'Postpone')}: ${t['title']}', style: const TextStyle(fontWeight: FontWeight.w900)),
           const SizedBox(height: 10),
+          Wrap(spacing: 6, runSpacing: 6, children: [
+            for (final q in _quickDates)
+              ChoiceChip(label: Text('${tr(q.$1, q.$2)} · ${q.$3().split('-').reversed.join('/')}', style: const TextStyle(fontSize: 12)),
+                  selected: newDue == q.$3(), onSelected: (_) => setS(() => newDue = q.$3())),
+          ]),
+          const SizedBox(height: 8),
           OutlinedButton.icon(
             onPressed: () async {
               final d = await showDatePicker(context: c, initialDate: DateTime.now().add(const Duration(days: 1)), firstDate: DateTime.now(), lastDate: DateTime(2100));
@@ -93,21 +126,21 @@ class _BrMeetingDepartmentsTabState extends State<BrMeetingDepartmentsTab> {
             label: Text(newDue.isEmpty ? tr('الموعد الجديد *', 'New date *') : newDue),
           ),
           const SizedBox(height: 8),
-          TextField(controller: reason, decoration: InputDecoration(labelText: tr('السبب *', 'Reason *'))),
+          TextField(controller: reason, decoration: InputDecoration(labelText: tr('سبب التأجيل *', 'Reason *'))),
           const SizedBox(height: 12),
           SizedBox(width: double.infinity, child: FilledButton(
             onPressed: () { if (newDue.isNotEmpty && reason.text.trim().isNotEmpty) Navigator.pop(c, true); },
-            child: Text(tr('حفظ', 'Save')),
+            child: Text(tr('تسجيل التأجيل', 'Save postponement')),
           )),
         ]),
       )),
     );
-    if (ok == true) _patch('${t['_id']}', {'status': 'postponed', 'newDueDate': newDue, 'postponeReason': reason.text.trim()}, tr('اتأجّل', 'Postponed'));
+    if (ok == true) _patch('${t['_id']}', {'status': 'postponed', 'newDueDate': newDue, 'postponeReason': reason.text.trim()}, tr('تم تأجيل البند', 'Postponed'));
   }
 
   Future<void> _update(Map t) async {
     final v = await brProgressSheet(context, widget.meta, '${t['title']}', '${t['status']}', (t['progress'] ?? 0) as num, expectedDate: t['expectedDate']);
-    if (v != null) _patch('${t['_id']}', v, tr('اتحدّث', 'Updated'));
+    if (v != null) _patch('${t['_id']}', v, tr('تم تحديث البند', 'Updated'));
   }
 
   /// A new task for a department, or a follow-up on one task (same owner by default).
@@ -131,7 +164,7 @@ class _BrMeetingDepartmentsTabState extends State<BrMeetingDepartmentsTab> {
             Text(followUpOf != null ? '${tr('بند متابعة على', 'Follow-up on')}: ${followUpOf['title']}' : '${tr('بند جديد لقسم', 'New task for')} ${brDept(context, dept)}',
                 style: const TextStyle(fontWeight: FontWeight.w900)),
             const SizedBox(height: 10),
-            TextField(controller: title, decoration: InputDecoration(labelText: tr('المطلوب *', 'What needs doing *'))),
+            TextField(controller: title, decoration: InputDecoration(labelText: tr('نص البند *', 'Task *'))),
             const SizedBox(height: 8),
             TextField(controller: desc, maxLines: 2, decoration: InputDecoration(labelText: tr('تفاصيل (اختياري)', 'Details (optional)'))),
             const SizedBox(height: 8),
@@ -168,7 +201,7 @@ class _BrMeetingDepartmentsTabState extends State<BrMeetingDepartmentsTab> {
         if (due.isNotEmpty) 'dueDate': due,
         if (followUpOf != null) 'followUpOf': '${followUpOf['_id']}',
       });
-      if (mounted) brSnack(context, tr('اتضاف البند', 'Task added'));
+      if (mounted) brSnack(context, tr('أُضيف البند', 'Task added'));
       _load();
     } catch (e) {
       if (mounted) brSnack(context, brErr(e));
@@ -185,20 +218,25 @@ class _BrMeetingDepartmentsTabState extends State<BrMeetingDepartmentsTab> {
     int sum(String k) => cards.fold(0, (a, c) => a + ((c['counts']?[k] ?? 0) as num).toInt());
     final active = sum('in_progress') + sum('open') + sum('blocked') + sum('postponed');
 
-    return RefreshIndicator(
-      onRefresh: _load,
-      child: ListView(padding: const EdgeInsets.all(12), children: [
+    final children = <Widget>[
         Wrap(spacing: 6, runSpacing: 6, children: [
           Chip2('${tr('كل البنود', 'All tasks')}: ${sum('total')}', T.navy),
           Chip2('${tr('تم', 'Done')}: ${sum('done')}', T.success),
-          Chip2('${tr('لسه شغالة', 'Still open')}: $active', T.info),
+          Chip2('${tr('مفتوحة', 'Open')}: $active', T.info),
           Chip2('${tr('متأخر', 'Overdue')}: ${sum('overdue')}', T.danger),
+          Chip2('${tr('للنقاش اليوم', 'For discussion today')}: ${sum('agenda')}', T.orange),
         ]),
+        const SizedBox(height: 6),
+        Text(d['scope'] == 'series'
+            ? tr('جميع البنود التي أُسندت في هذا الاجتماع منذ بدايته، موزّعة على الأقسام. اضغط على القسم لعرض بنوده.', 'Every task raised in this recurring meeting, by department. Tap a department to see its tasks.')
+            : tr('بنود هذا الاجتماع موزّعة على الأقسام. اضغط على القسم لعرض بنوده.', 'This meeting’s tasks by department. Tap a department to see its tasks.'),
+            style: const TextStyle(fontSize: 12, color: Color(0xFF334155))),
         const SizedBox(height: 10),
         for (final c in cards) _card(c, canEdit),
-        if (cards.isEmpty) Padding(padding: const EdgeInsets.all(24), child: Center(child: Text(tr('مفيش أقسام في الاجتماع ده.', 'No departments in this meeting.')))),
-      ]),
-    );
+        if (cards.isEmpty) Padding(padding: const EdgeInsets.all(24), child: Center(child: Text(tr('لا توجد أقسام في هذا الاجتماع.', 'No departments in this meeting.')))),
+    ];
+    if (widget.embedded) return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: children);
+    return RefreshIndicator(onRefresh: _load, child: ListView(padding: const EdgeInsets.all(12), children: children));
   }
 
   Widget _card(Map<String, dynamic> c, bool canEdit) {
@@ -208,7 +246,7 @@ class _BrMeetingDepartmentsTabState extends State<BrMeetingDepartmentsTab> {
     final open = _openDept == key;
     final f = _filter[key] ?? '';
     final chip = _chips.where((x) => x.$1 == f).firstOrNull;
-    final shown = chip == null ? tasks : tasks.where((t) => chip.$5(t)).toList();
+    final shown = chip != null ? tasks.where((t) => chip.$5(t)).toList() : f.isNotEmpty ? tasks.where((t) => t['horizon'] == f).toList() : tasks;
     final total = (counts['total'] ?? 0) as num;
     final done = (counts['done'] ?? 0) as num;
     final pct = total == 0 ? 0.0 : done / total;
@@ -226,8 +264,12 @@ class _BrMeetingDepartmentsTabState extends State<BrMeetingDepartmentsTab> {
               const SizedBox(width: 8),
               Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                 Text(key == 'Unassigned' ? tr('بدون قسم', 'No department') : brDept(context, key), style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 16.5)),
+                if (List.from(c['managers'] ?? []).isNotEmpty)
+                  Text('${tr('المدير', 'Manager')}: ${List.from(c['managers']).join('، ')}', style: const TextStyle(fontSize: 12.5, color: Color(0xFF334155))),
+                Text(((counts['agenda'] ?? 0) as num) > 0 ? '${tr('للنقاش اليوم', 'For discussion today')}: ${counts['agenda']}' : tr('لا بنود للنقاش اليوم', 'Nothing for discussion today'),
+                    style: TextStyle(fontSize: 12, fontWeight: FontWeight.w900, color: ((counts['agenda'] ?? 0) as num) > 0 ? T.orange : T.inkFaint)),
                 Text('$total ${tr('بند', 'tasks')} · ${tr('تم', 'done')} $done (${(pct * 100).round()}%)'
-                    '${((counts['today'] ?? 0) as num) > 0 ? ' · ${tr('اتاخد النهارده', 'raised today')} ${counts['today']}' : ''}',
+                    '${((counts['today'] ?? 0) as num) > 0 ? ' · ${tr('أُسند في هذا الاجتماع', 'raised in this meeting')} ${counts['today']}' : ''}',
                     style: const TextStyle(fontSize: 12.5, fontWeight: FontWeight.w700, color: Color(0xFF334155))),
               ])),
               Icon(open ? Icons.expand_less : Icons.expand_more, color: T.inkFaint),
@@ -241,14 +283,51 @@ class _BrMeetingDepartmentsTabState extends State<BrMeetingDepartmentsTab> {
             for (final x in _chips) _countChip(x, (counts[x.$1] ?? 0) as num, f == x.$1, () => setState(() { _filter[key] = f == x.$1 ? '' : x.$1; _openDept = key; })),
           ]),
         ),
+        Padding(
+          padding: const EdgeInsets.fromLTRB(10, 0, 10, 10),
+          child: Row(children: [
+            for (final h in _horizon)
+              Expanded(child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 2),
+                child: InkWell(
+                  onTap: ((counts[h.$1] ?? 0) as num) == 0 ? null : () => setState(() { _filter[key] = f == h.$1 ? '' : h.$1; _openDept = key; }),
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(vertical: 6),
+                    decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(8),
+                        border: Border.all(color: f == h.$1 ? T.orange : const Color(0xFFCBD5E1), width: f == h.$1 ? 2 : 1)),
+                    child: Column(children: [
+                      Text('${counts[h.$1] ?? 0}', style: TextStyle(fontWeight: FontWeight.w900, fontSize: 16, color: ((counts[h.$1] ?? 0) as num) > 0 ? (h.$1 == 'h48' ? T.orange : T.ink) : T.inkFaint)),
+                      Text(tr(h.$2, h.$3), style: const TextStyle(fontSize: 10.5, fontWeight: FontWeight.w700, color: Color(0xFF475569)), textAlign: TextAlign.center),
+                    ]),
+                  ),
+                ),
+              )),
+          ]),
+        ),
+        if (c['inMinutes'] == true)
+          Container(
+            margin: const EdgeInsets.fromLTRB(10, 0, 10, 10),
+            padding: const EdgeInsets.all(10),
+            decoration: BoxDecoration(
+              color: '${c['minutes'] ?? ''}'.isNotEmpty ? T.success.withValues(alpha: 0.06) : const Color(0xFFF8FAFC),
+              borderRadius: BorderRadius.circular(8),
+              border: Border.all(color: '${c['minutes'] ?? ''}'.isNotEmpty ? T.success.withValues(alpha: 0.4) : const Color(0xFFE2E8F0)),
+            ),
+            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Text('${widget.minutesLabel ?? tr('محضر القسم في هذا الاجتماع', 'This meeting’s minutes')}: ${'${c['minutes'] ?? ''}'.isNotEmpty ? tr('مكتوب', 'written') : tr('لم يُكتب بعد', 'not written yet')}',
+                  style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.w900, color: '${c['minutes'] ?? ''}'.isNotEmpty ? T.success : const Color(0xFF475569))),
+              if ('${c['minutes'] ?? ''}'.isNotEmpty)
+                Text('${c['minutes']}', maxLines: open ? null : 2, overflow: open ? null : TextOverflow.ellipsis, style: const TextStyle(fontSize: 12.5)),
+            ]),
+          ),
         if (open) ...[
           const Divider(height: 1),
-          if (shown.isEmpty) Padding(padding: const EdgeInsets.all(16), child: Center(child: Text(tr('مفيش بنود هنا.', 'No tasks here.'), style: const TextStyle(color: T.inkFaint)))),
+          if (shown.isEmpty) Padding(padding: const EdgeInsets.all(16), child: Center(child: Text(tr('لا توجد بنود هنا.', 'No tasks here.'), style: const TextStyle(color: T.inkFaint)))),
           for (final t in shown) _task(t, key, canEdit),
           if (canEdit)
             Padding(
               padding: const EdgeInsets.all(8),
-              child: TextButton.icon(onPressed: () => _newTask(key), icon: const Icon(Icons.add), label: Text(tr('بند جديد للقسم ده', 'New task for this department'))),
+              child: TextButton.icon(onPressed: () => _newTask(key), icon: const Icon(Icons.add), label: Text(tr('إضافة بند لهذا القسم', 'New task for this department'))),
             ),
         ],
       ]),
@@ -291,12 +370,19 @@ class _BrMeetingDepartmentsTabState extends State<BrMeetingDepartmentsTab> {
                   child: Text('${t['description']}', style: const TextStyle(fontSize: 13)),
                 ),
               _line(tr('المسؤول', 'Owner'), '${t['assigneeName']}'),
-              if ('${t['raisedByName'] ?? ''}'.isNotEmpty) _line(tr('طلبه', 'Requested by'), '${t['raisedByName']}'),
-              _line(tr('اتاخد في', 'Raised in'), '${t['meetingRef']} · ${brDate(t['meetingDate'] ?? t['createdAt'])}${t['fromThisMeeting'] == true ? ' (${tr('الاجتماع ده', 'this meeting')})' : ''}'),
+              if ('${t['raisedByName'] ?? ''}'.isNotEmpty) _line(tr('بطلب من', 'Requested by'), '${t['raisedByName']}'),
+              _line(tr('أُسند في', 'Raised in'), '${t['meetingRef']} · ${brDate(t['meetingDate'] ?? t['createdAt'])}${t['fromThisMeeting'] == true ? ' (${tr('هذا الاجتماع', 'this meeting')})' : ''}'),
               _line(tr('التسليم', 'Due'), brDate(t['dueDate']), color: overdue ? T.danger : null),
-              if (t['completedAt'] != null) _line(tr('اتنفّذ', 'Completed'), brDate(t['completedAt']), color: T.success),
+              if (t['completedAt'] != null) _line(tr('أُنجز في', 'Completed'), brDate(t['completedAt']), color: T.success),
               if (brDatesLine(t).isNotEmpty) Text(brDatesLine(t), style: const TextStyle(fontSize: 11.5, color: T.inkSoft)),
               if ('${t['postponeReason'] ?? ''}'.isNotEmpty) _line(tr('سبب التأجيل', 'Postponed because'), '${t['postponeReason']}', color: T.warn),
+              if (List.from(t['delegations'] ?? []).isNotEmpty) ...[
+                const SizedBox(height: 4),
+                Text(tr('موزّع على الفريق', 'Handed to the team'), style: const TextStyle(fontSize: 12.5, fontWeight: FontWeight.w900)),
+                for (final x in List<Map<String, dynamic>>.from(t['delegations']))
+                  Text('• ${x['assigneeName']} — ${x['title']} · ${brVocab(widget.meta['actionStatuses'] as List?, '${x['status']}').label} ${x['progress'] ?? 0}%',
+                      style: const TextStyle(fontSize: 12.5, color: Color(0xFF334155))),
+              ],
               if (t['followUpOf'] != null) _line(tr('متابعة لـ', 'Follow-up of'), '${t['followUpOf']['title']}', color: T.violet),
               if (List.from(t['followUps'] ?? []).isNotEmpty)
                 _line(tr('بنود متابعة', 'Follow-ups'), List.from(t['followUps']).map((x) => '${x['title']} (${brVocab(widget.meta['actionStatuses'] as List?, '${x['status']}').label})').join('، '), color: T.violet),
@@ -304,12 +390,12 @@ class _BrMeetingDepartmentsTabState extends State<BrMeetingDepartmentsTab> {
                 const SizedBox(height: 8),
                 Wrap(spacing: 6, runSpacing: 6, children: [
                   if (!done) FilledButton.icon(style: FilledButton.styleFrom(backgroundColor: T.success),
-                      onPressed: () => _patch('${t['_id']}', {'status': 'done', 'progress': 100}, tr('اتسجّل إنه تم', 'Marked done')),
-                      icon: const Icon(Icons.check, size: 16), label: Text(tr('تم', 'Done'))),
+                      onPressed: () => _patch('${t['_id']}', {'status': 'done', 'progress': 100}, tr('سُجّل البند منجزًا', 'Marked done')),
+                      icon: const Icon(Icons.check, size: 16), label: Text(tr('تم الإنجاز', 'Mark done'))),
                   if (!done) FilledButton.icon(style: FilledButton.styleFrom(backgroundColor: T.warn),
                       onPressed: () => _postpone(t), icon: const Icon(Icons.pause, size: 16), label: Text(tr('تأجيل', 'Postpone'))),
                   OutlinedButton.icon(onPressed: () => _update(t), icon: const Icon(Icons.trending_up, size: 16), label: Text(tr('تحديث الحالة', 'Update status'))),
-                  OutlinedButton.icon(onPressed: () => _newTask(dept, followUpOf: t), icon: const Icon(Icons.add, size: 16), label: Text(tr('بند متابعة عليه', 'Follow-up task'))),
+                  OutlinedButton.icon(onPressed: () => _newTask(dept, followUpOf: t), icon: const Icon(Icons.add, size: 16), label: Text(tr('إضافة بند متابعة', 'Follow-up task'))),
                 ]),
               ],
               BrUpdateLog(updates: List.from(t['updates'] ?? []).reversed.toList(), meta: widget.meta),

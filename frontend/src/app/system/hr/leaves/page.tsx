@@ -507,7 +507,7 @@ export default function HRLeavesPage() {
                   </div>
                   {mySigs.length === 0 && (
                     <p className="text-xs text-slate-500">
-                      {t('You have no signature yet — ', 'ما عندكش توقيع لسه — ')}
+                      {t('You have no signature yet — ', 'لا يوجد لديك توقيع بعد — ')}
                       <a href="/system/settings" target="_blank" rel="noopener noreferrer" className="font-semibold text-[#f37121] hover:underline">{t('create one in Settings', 'اعمل واحد من الإعدادات')}</a>
                     </p>
                   )}

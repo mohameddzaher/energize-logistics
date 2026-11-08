@@ -81,7 +81,7 @@ export default function RegisterServiceModal({
         })),
       });
       onSaved();
-      if (!res.syncedToWialon) notify(ar ? 'اتسجّلت عندنا، بس الكتابة في Location Solutions فشلت — راجع الصلاحيات.' : 'Saved locally, but the Location Solutions write failed — check permissions.');
+      if (!res.syncedToWialon) notify(ar ? 'سُجّلت الصيانة في النظام، لكن تعذّر تسجيلها في Location Solutions — راجع الصلاحيات.' : 'Saved locally, but the Location Solutions write failed — check permissions.');
     } catch (e: any) { notify(e?.message || 'Failed', 'error'); }
     setSaving(false);
   };

@@ -162,7 +162,7 @@ exports.getBoard = async (req, res) => {
  */
 exports.getMeetingDepartments = async (req, res) => {
   try {
-    const meeting = await BrMeeting.findById(req.params.id).select('series departments attendees refNumber seriesDay scheduledAt').lean();
+    const meeting = await BrMeeting.findById(req.params.id).select('series departments attendees refNumber seriesDay scheduledAt minutes').lean();
     if (!meeting) return res.status(404).json({ message: 'Meeting not found' });
     const runner = canRunMeetings(req.user);
     const wasThere = (meeting.attendees || []).some((a) => String(a.user) === String(req.user._id));
@@ -176,11 +176,28 @@ exports.getMeetingDepartments = async (req, res) => {
     const ownerSection = await sectionsOfUserIds(actions.map((a) => a.assignee));
     const deptOf = (a) => ownerSection.get(String(a.assignee)) || sectionOfRole(a.assigneeRole) || a.department || NO_DEPT;
     const titleOf = new Map(actions.map((a) => [String(a._id), a.title]));
+    // Parts handed to the owner's team ("توزيع على الفريق"): shown on the task with each person's own state.
+    const dels = actions.length ? await BrAssignment.find({ action: { $in: actions.map((a) => a._id) } })
+      .select('action assigneeName title status progress dueDate isOverdue').lean() : [];
+    const delsOf = new Map();
+    for (const x of dels) { const k = String(x.action); if (!delsOf.has(k)) delsOf.set(k, []); delsOf.get(k).push(x); }
+    // The department's head(s), named on its card.
+    const managers = await User.find({ isActive: { $ne: false }, role: /_manager$/ }).select('firstName lastName role').lean();
+    const headOf = new Map();
+    for (const u of managers) { const sec = sectionOfRole(u.role); if (sec && !headOf.has(sec)) headOf.set(sec, []); if (sec) headOf.get(sec).push(fullName(u)); }
     const followUps = new Map();
     for (const a of actions) if (a.followUpOf) { const k = String(a.followUpOf); if (!followUps.has(k)) followUps.set(k, []); followUps.get(k).push({ _id: a._id, title: a.title, status: a.status }); }
 
     const now = Date.now();
-    const overdue = (a) => a.status !== 'done' && a.status !== 'cancelled' && a.dueDate && new Date(a.dueDate).getTime() < now;
+    const isOpen = (a) => a.status !== 'done' && a.status !== 'cancelled';
+    const overdue = (a) => isOpen(a) && a.dueDate && new Date(a.dueDate).getTime() < now;
+    // Where an open task's deadline falls: late, within 48 hours, within a week, later, or no date yet.
+    const horizon = (a) => {
+      if (!isOpen(a)) return '';
+      if (!a.dueDate) return 'nodate';
+      const ms = new Date(a.dueDate).getTime() - now;
+      return ms < 0 ? 'late' : ms <= 2 * DAY ? 'h48' : ms <= 7 * DAY ? 'week' : 'later';
+    };
     const rank = (a) => (overdue(a) ? 0 : a.status === 'blocked' ? 1 : a.status === 'in_progress' ? 2 : a.status === 'open' ? 3 : a.status === 'postponed' ? 4 : 5);
     const keys = [...new Set([...(meeting.departments || []), ...actions.map(deptOf)])];
     const cards = keys.map((key) => {
@@ -198,7 +215,19 @@ exports.getMeetingDepartments = async (req, res) => {
           blocked: n((a) => a.status === 'blocked'),
           overdue: n(overdue),
           today: n((a) => String(a.meeting) === String(meeting._id)),
+          // For discussion today: late, or due within 48 hours.
+          agenda: n((a) => ['late', 'h48'].includes(horizon(a))),
+          h48: n((a) => horizon(a) === 'h48'),
+          week: n((a) => horizon(a) === 'week'),
+          later: n((a) => horizon(a) === 'later'),
+          nodate: n((a) => horizon(a) === 'nodate'),
+          // Of the tasks done, how many landed without being postponed.
+          onTime: n((a) => a.status === 'done' && !a.postponeCount),
         },
+        managers: headOf.get(key) || [],
+        // The department's part of this meeting's minutes.
+        minutes: String(((meeting.minutes || []).find((x) => x.department === key) || {}).body || '').trim(),
+        inMinutes: (meeting.minutes || []).some((x) => x.department === key),
         tasks: list.map((a) => ({
           _id: a._id, title: a.title, description: a.description, status: a.status, progress: a.progress, priority: a.priority,
           assignee: a.assignee, assigneeName: a.assigneeName, raisedByName: a.raisedByName, createdByName: a.createdByName,
@@ -206,6 +235,8 @@ exports.getMeetingDepartments = async (req, res) => {
           postponeReason: a.postponeReason, postponeCount: a.postponeCount, completedAt: a.completedAt, createdAt: a.createdAt,
           meeting: a.meeting, meetingRef: a.meetingRef, meetingDate: a.meetingDate, fromThisMeeting: String(a.meeting) === String(meeting._id),
           overdue: overdue(a),
+          horizon: horizon(a),
+          delegations: delsOf.get(String(a._id)) || [],
           followUpOf: a.followUpOf ? { _id: a.followUpOf, title: titleOf.get(String(a.followUpOf)) || '' } : null,
           followUps: followUps.get(String(a._id)) || [],
           updates: (a.updates || []).slice(-15).reverse(),

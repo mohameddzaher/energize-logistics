@@ -950,16 +950,10 @@
       "en": "KPIs"
     },
     {
-      "key": "/system/business-review/board",
-      "section": "Business Review",
-      "ar": "لوحة الأقسام",
-      "en": "Department Board"
-    },
-    {
       "key": "/system/business-review/daily",
       "section": "Business Review",
-      "ar": "الاجتماعات",
-      "en": "Meetings"
+      "ar": "الاجتماعات ومتابعة الأقسام",
+      "en": "Meetings & departments"
     },
     {
       "key": "/system/business-review/my-actions",

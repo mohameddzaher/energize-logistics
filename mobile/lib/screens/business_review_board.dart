@@ -7,6 +7,7 @@ import '../ui/theme.dart';
 import '../ui/widgets.dart';
 import 'business_review_kit.dart';
 import 'business_review_meeting.dart';
+import 'business_review_meeting_depts.dart';
 
 /// Department board: tasks of every department with dates and status; /system/business-review/board on the web.
 class BrBoardTab extends StatefulWidget {
@@ -436,7 +437,7 @@ class _SeriesFormState extends State<_SeriesForm> {
       }
       if (mounted) {
         if (widget.series != null) {
-          ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(tr('تم الحفظ — واتحدّث اجتماع اليوم', 'Saved — today’s meeting updated'))));
+          ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(tr('تم الحفظ وتحديث اجتماع اليوم', 'Saved — today’s meeting updated'))));
         }
         Navigator.pop(context, true);
       }
@@ -459,7 +460,7 @@ class _SeriesFormState extends State<_SeriesForm> {
           Container(
             padding: const EdgeInsets.all(10),
             decoration: BoxDecoration(color: T.info.withValues(alpha: 0.07), borderRadius: BorderRadius.circular(10)),
-            child: Text(tr('التعديل يسري على اجتماع اليوم والأيام الجاية. الأيام اللي فاتت تفضل زي ما اتعقدت، والقسم اللي كتب محضره النهارده يفضل في اجتماع النهارده.',
+            child: Text(tr('يسري التعديل على اجتماع اليوم والأيام القادمة، وتبقى الاجتماعات السابقة كما عُقدت. والقسم الذي كتب محضره اليوم يبقى في اجتماع اليوم.',
                 'Changes apply to today’s meeting and the coming days. Past days stay as held; a department that already wrote today’s minutes stays in today’s meeting.'),
                 style: const TextStyle(fontSize: 12, color: T.info)),
           ),
@@ -525,6 +526,8 @@ class BrDailyTab extends StatefulWidget {
 
 class _BrDailyTabState extends State<BrDailyTab> {
   Map<String, dynamic>? _d;
+  // Bumped on pull-to-refresh and on return from a meeting, so the embedded department cards reload too.
+  int _rev = 0;
   String _series = '';
   String? _error;
   Timer? _tick;
@@ -543,7 +546,7 @@ class _BrDailyTabState extends State<BrDailyTab> {
     } catch (e) { if (mounted) setState(() => _error = e is ApiException ? e.message : '$e'); }
   }
 
-  void _open(String id) => Navigator.push(context, MaterialPageRoute(builder: (_) => BusinessReviewMeetingScreen(id: id))).then((_) => _load());
+  void _open(String id) => Navigator.push(context, MaterialPageRoute(builder: (_) => BusinessReviewMeetingScreen(id: id))).then((_) { _rev++; _load(); });
 
   Future<void> _createToday() async {
     try {
@@ -560,9 +563,8 @@ class _BrDailyTabState extends State<BrDailyTab> {
     final s = d['series'] as Map?;
     final today = d['today'] as Map?;
     final days = List<Map<String, dynamic>>.from(d['days'] ?? []);
-    final statuses = widget.meta['actionStatuses'] as List?;
     return RefreshIndicator(
-      onRefresh: _load,
+      onRefresh: () async { _rev++; await _load(); },
       child: ListView(padding: const EdgeInsets.all(14), children: [
         Row(children: [
           Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
@@ -610,40 +612,10 @@ class _BrDailyTabState extends State<BrDailyTab> {
                 if ((today['attendance']['absent'] ?? 0) > 0) Chip2('${tr('غاب', 'Absent')} ${today['attendance']['absent']}', T.danger),
               ]),
               const SizedBox(height: 8),
-              SizedBox(width: double.infinity, child: FilledButton.icon(onPressed: () => _open('${today['_id']}'), icon: const Icon(Icons.description_outlined), label: Text(tr('فتح محضر اليوم', 'Open today’s minutes')))),
+              SizedBox(width: double.infinity, child: FilledButton.icon(onPressed: () => _open('${today['_id']}'), icon: const Icon(Icons.description_outlined), label: Text(tr('فتح الاجتماع: المحضر والأجندة والحضور', 'Open the meeting: minutes, agenda, attendance')))),
             ]),
           ),
           const SizedBox(height: 10),
-          for (final dep in List<Map<String, dynamic>>.from(today['departments'] ?? []))
-            Container(
-              margin: const EdgeInsets.only(bottom: 8),
-              padding: const EdgeInsets.all(12),
-              decoration: BoxDecoration(color: '${dep['minutes']}'.isNotEmpty ? T.success.withValues(alpha: 0.04) : T.card, borderRadius: BorderRadius.circular(12),
-                  border: Border.all(color: '${dep['minutes']}'.isNotEmpty ? T.success.withValues(alpha: 0.35) : T.line)),
-              child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                Row(children: [
-                  Expanded(child: InkWell(
-                    // The department's whole record is on the department board tab.
-                    onTap: () {
-                      brBoardDept.value = '${dep['key']}';
-                      DefaultTabController.maybeOf(context)?.animateTo(0);
-                    },
-                    child: Text(dep['key'] == 'Unassigned' ? tr('بدون قسم', 'No department') : brDept(context, '${dep['key']}'),
-                        style: const TextStyle(fontWeight: FontWeight.w900, decoration: TextDecoration.underline)),
-                  )),
-                  Text('${dep['minutes']}'.isNotEmpty ? tr('✓ تم التسجيل', '✓ Reported') : tr('بانتظار التسجيل', 'Waiting'),
-                      style: TextStyle(fontSize: 11, fontWeight: FontWeight.w800, color: '${dep['minutes']}'.isNotEmpty ? T.success : T.inkFaint)),
-                ]),
-                if ('${dep['minutes']}'.isNotEmpty) Padding(padding: const EdgeInsets.only(top: 4), child: Text('${dep['minutes']}', maxLines: 4, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 12.5))),
-                for (final a in List<Map<String, dynamic>>.from(dep['tasks'] ?? []))
-                  Padding(padding: const EdgeInsets.only(top: 4), child: Row(children: [
-                    const Icon(Icons.checklist, size: 14, color: T.inkFaint),
-                    const SizedBox(width: 4),
-                    Expanded(child: Text('${a['title']}', style: const TextStyle(fontSize: 12), overflow: TextOverflow.ellipsis)),
-                    Chip2(brVocab(statuses, '${a['status']}').label, brVocab(statuses, '${a['status']}').color),
-                  ])),
-              ]),
-            ),
           Text(tr('الحضور', 'Attendance'), style: const TextStyle(fontWeight: FontWeight.w800)),
           const SizedBox(height: 4),
           Wrap(spacing: 5, runSpacing: 4, children: [
@@ -651,6 +623,18 @@ class _BrDailyTabState extends State<BrDailyTab> {
               Chip2('${a['name']} · ${{'attended': tr('حضر', 'Present'), 'absent': tr('غاب', 'Absent'), 'excused': tr('اعتذر', 'Excused')}[a['attendance']] ?? tr('مدعو', 'Invited')}',
                   a['attendance'] == 'attended' ? T.success : a['attendance'] == 'absent' ? T.danger : a['attendance'] == 'excused' ? T.warn : T.inkFaint),
           ]),
+        ],
+        // Department follow-up: every task this meeting has raised, by department; today's meeting, else the latest one.
+        if (s != null && (today != null || days.isNotEmpty)) ...[
+          const SizedBox(height: 16),
+          Text(tr('متابعة الأقسام', 'Department follow-up'), style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 16)),
+          if (today == null) Text('${tr('من آخر اجتماع', 'from the latest meeting')} ${brDate(days.first['scheduledAt'])}', style: const TextStyle(fontSize: 12, color: T.inkSoft)),
+          const SizedBox(height: 8),
+          BrMeetingDepartmentsTab(
+            key: ValueKey('depts-${today?['_id'] ?? days.first['_id']}-$_rev'),
+            meetingId: '${today?['_id'] ?? days.first['_id']}', meta: widget.meta, embedded: true,
+            minutesLabel: today != null ? tr('محضر القسم اليوم', 'Today’s minutes') : tr('محضر القسم في ذلك اليوم', 'Minutes of that day'),
+          ),
         ],
         const SizedBox(height: 14),
         if (s != null) Text(tr('الأيام السابقة', 'Previous days'), style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 15)),

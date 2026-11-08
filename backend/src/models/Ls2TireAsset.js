@@ -72,4 +72,15 @@ ls2TireAssetSchema.pre('save', async function deriveTrailer(next) {
   } catch (e) { next(e); }
 });
 
+// A mounted tire must sit on a truck or a trailer. A tire saved as mounted on neither shows nowhere and cannot be
+// picked as a replacement (the state the old trailer move left two spares in); refuse it instead of storing it.
+ls2TireAssetSchema.pre('save', function mountedSomewhere(next) {
+  if (this.status === 'mounted' && !this.plateKey && !this.trailerNumber) {
+    const e = new Error(`الفردة ${this.serial || ''} لا تُسجَّل مركّبة بدون عربية ولا تيدر — ركّبها على عربية أو أرجعها للمستودع`);
+    e.status = 400; e.code = 'MOUNTED_NOWHERE';
+    return next(e);
+  }
+  next();
+});
+
 module.exports = mongoose.models.Ls2TireAsset || mongoose.model('Ls2TireAsset', ls2TireAssetSchema);

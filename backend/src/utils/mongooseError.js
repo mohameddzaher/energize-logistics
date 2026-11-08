@@ -57,6 +57,8 @@ function describeMongooseError(error, fallback = 'تعذّر الحفظ') {
     };
   }
 
+  // A model hook that refuses a save says why with its own 4xx status.
+  if (error.status >= 400 && error.status < 500) return { status: error.status, message: error.message, fields: [] };
   return { status: 500, message: error.message || fallback, fields: [] };
 }
 

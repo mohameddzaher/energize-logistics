@@ -242,3 +242,77 @@ exports.seriesDay = async (req, res) => {
     return sendMongooseError(res, e, 'تعذّر فتح اجتماع اليوم');
   }
 };
+
+/**
+ * The daily meeting page: the schedule, today's meeting in detail (minutes and tasks per department, attendance) and the past days.
+ * Visible to the board, the secretariat and the schedule's attendees.
+ */
+exports.getDaily = async (req, res) => {
+  try {
+    const runner = canRunMeetings(req.user);
+    if (!runner && !isParticipant(req.user)) return res.status(403).json({ message: 'Not allowed' });
+    const all = await BrSeries.find(runner ? {} : { attendees: req.user._id }).sort({ active: -1, createdAt: 1 }).lean();
+    const series = all.find((s) => String(s._id) === String(req.query.series)) || all[0] || null;
+    if (!series) return res.json({ series: null, list: [], today: null, days: [], canEdit: runner });
+
+    const meetings = await BrMeeting.find({ series: series._id }).sort({ seriesDay: -1 }).limit(Math.min(120, Number(req.query.limit) || 60))
+      .select('refNumber title seriesDay scheduledAt status attendees minutes departments').lean();
+    const ids = meetings.map((m) => m._id);
+    const acts = ids.length ? await BrAction.find({ meeting: { $in: ids } })
+      .select('meeting department assignee assigneeName assigneeRole status title dueDate progress').lean() : [];
+    const byMeeting = new Map();
+    for (const a of acts) { const k = String(a.meeting); if (!byMeeting.has(k)) byMeeting.set(k, []); byMeeting.get(k).push(a); }
+    const deptOfAction = (a) => sectionOfRole(a.assigneeRole) || a.department || NO_DEPT;
+
+    const summary = (m) => {
+      const list = byMeeting.get(String(m._id)) || [];
+      const att = m.attendees || [];
+      return {
+        _id: m._id, refNumber: m.refNumber, day: m.seriesDay, scheduledAt: m.scheduledAt, status: m.status,
+        attendance: {
+          invited: att.length,
+          attended: att.filter((a) => a.attendance === 'attended').length,
+          absent: att.filter((a) => a.attendance === 'absent').length,
+          excused: att.filter((a) => a.attendance === 'excused').length,
+        },
+        minutesWritten: (m.minutes || []).filter((x) => String(x.body || '').trim()).length,
+        minutesTotal: (m.minutes || []).length,
+        tasks: list.length,
+        tasksDone: list.filter((a) => a.status === 'done').length,
+      };
+    };
+    const today = todayKey();
+    const todayMeeting = meetings.find((m) => m.seriesDay === today) || null;
+    let todayDetail = null;
+    if (todayMeeting) {
+      const list = byMeeting.get(String(todayMeeting._id)) || [];
+      const depts = [...new Set([...(todayMeeting.departments || []), ...list.map(deptOfAction)])];
+      todayDetail = {
+        ...summary(todayMeeting),
+        title: todayMeeting.title,
+        attendees: (todayMeeting.attendees || []).map((a) => ({ name: a.name, attendance: a.attendance, excuseReason: a.excuseReason, department: sectionOfRole(a.role) || '' })),
+        departments: depts.map((d) => {
+          const min = (todayMeeting.minutes || []).find((x) => x.department === d);
+          const tasks = list.filter((a) => deptOfAction(a) === d);
+          return {
+            key: d,
+            minutes: min ? String(min.body || '').trim() : '',
+            tasks: tasks.map((a) => ({ _id: a._id, title: a.title, assigneeName: a.assigneeName, status: a.status, dueDate: a.dueDate, progress: a.progress })),
+          };
+        }),
+      };
+    }
+    res.json({
+      series,
+      list: all.map((s) => ({ _id: s._id, title: s.title, active: s.active })),
+      today: todayDetail,
+      todayKey: today,
+      scheduledToday: (series.weekdays || []).includes(brSeries.weekdayOf(today)),
+      days: meetings.filter((m) => m.seriesDay !== today).map(summary),
+      canEdit: runner,
+    });
+  } catch (error) {
+    console.error('br daily error:', error);
+    res.status(500).json({ message: 'تعذّر تحميل الاجتماع اليومي' });
+  }
+};

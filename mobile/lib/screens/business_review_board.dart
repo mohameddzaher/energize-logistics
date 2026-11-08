@@ -473,3 +473,135 @@ class _SeriesFormState extends State<_SeriesForm> {
     );
   }
 }
+
+/// The daily meeting: today's meeting per department (minutes, tasks), attendance and past days; /system/business-review/daily on the web.
+class BrDailyTab extends StatefulWidget {
+  final Map<String, dynamic> meta;
+  const BrDailyTab({super.key, required this.meta});
+  @override
+  State<BrDailyTab> createState() => _BrDailyTabState();
+}
+
+class _BrDailyTabState extends State<BrDailyTab> {
+  Map<String, dynamic>? _d;
+  String? _error;
+  Timer? _tick;
+  static const _events = ['br:meeting', 'br:action', 'br:series'];
+  void _soon([dynamic _]) { _tick?.cancel(); _tick = Timer(const Duration(milliseconds: 400), _load); }
+
+  @override
+  void initState() { super.initState(); for (final e in _events) { Live.instance.on(e, _soon); } _load(); }
+  @override
+  void dispose() { for (final e in _events) { Live.instance.off(e, _soon); } _tick?.cancel(); super.dispose(); }
+
+  Future<void> _load() async {
+    try {
+      final d = await Api.instance.get('/api/business-review/daily');
+      if (mounted) setState(() { _d = Map<String, dynamic>.from(d); _error = null; });
+    } catch (e) { if (mounted) setState(() => _error = e is ApiException ? e.message : '$e'); }
+  }
+
+  void _open(String id) => Navigator.push(context, MaterialPageRoute(builder: (_) => BusinessReviewMeetingScreen(id: id))).then((_) => _load());
+
+  Future<void> _createToday() async {
+    try {
+      final d = await Api.instance.post('/api/business-review/series/${_d!['series']['_id']}/day', {'day': _d!['todayKey']});
+      _open('${d['meeting']['_id']}');
+    } catch (e) { if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e is ApiException ? e.message : '$e'))); }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (_error != null) return ErrorRetry(message: _error!, onRetry: _load);
+    final d = _d;
+    if (d == null) return ListView(padding: const EdgeInsets.all(14), children: const [Shimmer(height: 80), SizedBox(height: 10), Shimmer()]);
+    final s = d['series'] as Map?;
+    final today = d['today'] as Map?;
+    final days = List<Map<String, dynamic>>.from(d['days'] ?? []);
+    final statuses = widget.meta['actionStatuses'] as List?;
+    return RefreshIndicator(
+      onRefresh: _load,
+      child: ListView(padding: const EdgeInsets.all(14), children: [
+        Row(children: [
+          Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Text('${s?['title'] ?? tr('الاجتماع اليومي', 'Daily meeting')}', style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 16)),
+            if (s != null)
+              Text('${s['time']} · ${_weekdays.where((w) => List.from(s['weekdays'] ?? []).contains(w.$1)).map((w) => tr(w.$2, w.$3)).join('، ')} · ${List.from(s['attendees'] ?? []).length} ${tr('مدعو', 'attendees')}',
+                  style: const TextStyle(fontSize: 11.5, color: T.inkSoft)),
+          ])),
+          if (d['canEdit'] == true)
+            IconButton(icon: const Icon(Icons.tune), tooltip: tr('إعدادات الاجتماع', 'Settings'),
+                onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (_) => BrSeriesScreen(meta: widget.meta))).then((_) => _load())),
+        ]),
+        const SizedBox(height: 10),
+        if (s == null) Padding(padding: const EdgeInsets.all(24), child: Center(child: Text(tr('لم يُجدول اجتماع يومي بعد.', 'No daily meeting yet.')))),
+        if (s != null && today == null)
+          AppCard(child: Column(children: [
+            Text(d['scheduledToday'] == true ? tr('اجتماع اليوم يُجهَّز الآن.', 'Today’s meeting is being prepared.') : tr('لا اجتماع اليوم — ليس من أيام الاجتماع.', 'No meeting today.'),
+                style: const TextStyle(fontWeight: FontWeight.w700)),
+            if (d['canEdit'] == true) ...[const SizedBox(height: 8), FilledButton(onPressed: _createToday, child: Text(tr('إنشاء اجتماع اليوم', 'Hold a meeting today')))],
+          ])),
+        if (today != null) ...[
+          Container(
+            padding: const EdgeInsets.all(12),
+            decoration: BoxDecoration(color: T.orange.withValues(alpha: 0.06), borderRadius: BorderRadius.circular(14), border: Border.all(color: T.orange.withValues(alpha: 0.35))),
+            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Text('${tr('اجتماع اليوم', 'Today')} · ${today['refNumber']}', style: const TextStyle(fontSize: 11, color: T.orange, fontWeight: FontWeight.w800)),
+              Text(brDateTime(today['scheduledAt']), style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 15)),
+              const SizedBox(height: 6),
+              Wrap(spacing: 6, runSpacing: 4, children: [
+                Chip2('${tr('المحضر', 'Minutes')} ${today['minutesWritten']}/${today['minutesTotal']}', T.navy),
+                Chip2('${tr('البنود', 'Tasks')} ${today['tasks']}', T.navy),
+                Chip2('${tr('حضر', 'Present')} ${today['attendance']['attended']}/${today['attendance']['invited']}', T.success),
+                if ((today['attendance']['excused'] ?? 0) > 0) Chip2('${tr('اعتذر', 'Excused')} ${today['attendance']['excused']}', T.warn),
+                if ((today['attendance']['absent'] ?? 0) > 0) Chip2('${tr('غاب', 'Absent')} ${today['attendance']['absent']}', T.danger),
+              ]),
+              const SizedBox(height: 8),
+              SizedBox(width: double.infinity, child: FilledButton.icon(onPressed: () => _open('${today['_id']}'), icon: const Icon(Icons.description_outlined), label: Text(tr('فتح محضر اليوم', 'Open today’s minutes')))),
+            ]),
+          ),
+          const SizedBox(height: 10),
+          for (final dep in List<Map<String, dynamic>>.from(today['departments'] ?? []))
+            Container(
+              margin: const EdgeInsets.only(bottom: 8),
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(color: '${dep['minutes']}'.isNotEmpty ? T.success.withValues(alpha: 0.04) : T.card, borderRadius: BorderRadius.circular(12),
+                  border: Border.all(color: '${dep['minutes']}'.isNotEmpty ? T.success.withValues(alpha: 0.35) : T.line)),
+              child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                Row(children: [
+                  Expanded(child: Text(dep['key'] == 'Unassigned' ? tr('بدون قسم', 'No department') : brDept(context, '${dep['key']}'), style: const TextStyle(fontWeight: FontWeight.w900))),
+                  Text('${dep['minutes']}'.isNotEmpty ? tr('✓ تم التسجيل', '✓ Reported') : tr('بانتظار التسجيل', 'Waiting'),
+                      style: TextStyle(fontSize: 11, fontWeight: FontWeight.w800, color: '${dep['minutes']}'.isNotEmpty ? T.success : T.inkFaint)),
+                ]),
+                if ('${dep['minutes']}'.isNotEmpty) Padding(padding: const EdgeInsets.only(top: 4), child: Text('${dep['minutes']}', maxLines: 4, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 12.5))),
+                for (final a in List<Map<String, dynamic>>.from(dep['tasks'] ?? []))
+                  Padding(padding: const EdgeInsets.only(top: 4), child: Row(children: [
+                    const Icon(Icons.checklist, size: 14, color: T.inkFaint),
+                    const SizedBox(width: 4),
+                    Expanded(child: Text('${a['title']}', style: const TextStyle(fontSize: 12), overflow: TextOverflow.ellipsis)),
+                    Chip2(brVocab(statuses, '${a['status']}').label, brVocab(statuses, '${a['status']}').color),
+                  ])),
+              ]),
+            ),
+          Text(tr('الحضور', 'Attendance'), style: const TextStyle(fontWeight: FontWeight.w800)),
+          const SizedBox(height: 4),
+          Wrap(spacing: 5, runSpacing: 4, children: [
+            for (final a in List<Map<String, dynamic>>.from(today['attendees'] ?? []))
+              Chip2('${a['name']} · ${{'attended': tr('حضر', 'Present'), 'absent': tr('غاب', 'Absent'), 'excused': tr('اعتذر', 'Excused')}[a['attendance']] ?? tr('مدعو', 'Invited')}',
+                  a['attendance'] == 'attended' ? T.success : a['attendance'] == 'absent' ? T.danger : a['attendance'] == 'excused' ? T.warn : T.inkFaint),
+          ]),
+        ],
+        const SizedBox(height: 14),
+        if (s != null) Text(tr('الأيام السابقة', 'Previous days'), style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 15)),
+        for (final m in days)
+          Card(child: ListTile(
+            onTap: () => _open('${m['_id']}'),
+            title: Text(brDate(m['scheduledAt']), style: const TextStyle(fontWeight: FontWeight.w800)),
+            subtitle: Text('${tr('المحضر', 'Minutes')} ${m['minutesWritten']}/${m['minutesTotal']} · ${tr('البنود', 'Tasks')} ${m['tasks']} · ${tr('حضر', 'Present')} ${m['attendance']['attended']}/${m['attendance']['invited']}'),
+            trailing: const Icon(Icons.chevron_left),
+          )),
+        if (s != null && days.isEmpty) Padding(padding: const EdgeInsets.all(16), child: Center(child: Text(tr('لا أيام سابقة بعد.', 'No previous days yet.'), style: const TextStyle(color: T.inkFaint)))),
+      ]),
+    );
+  }
+}

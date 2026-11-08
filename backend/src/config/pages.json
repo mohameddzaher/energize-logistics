@@ -956,10 +956,10 @@
       "en": "Department Board"
     },
     {
-      "key": "/system/business-review",
+      "key": "/system/business-review/daily",
       "section": "Business Review",
-      "ar": "اجتماعات المراجعة",
-      "en": "Review Meetings"
+      "ar": "الاجتماع اليومي",
+      "en": "Daily Meeting"
     },
     {
       "key": "/system/business-review/my-actions",

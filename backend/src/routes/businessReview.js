@@ -24,6 +24,7 @@ router.get('/dashboard', br.getDashboard);
 // Department board and recurring meetings (the daily meeting).
 const board = require('../controllers/businessReviewBoardController');
 router.get('/board', board.getBoard);
+router.get('/daily', board.getDaily);
 router.get('/series', board.listSeries);
 router.post('/series', board.createSeries);
 router.put('/series/:id', board.updateSeries);

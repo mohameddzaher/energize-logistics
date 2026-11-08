@@ -64,7 +64,10 @@ export default function BusinessReviewPage() {
     return meetings.filter((m) => `${m.title} ${m.refNumber} ${m.location || ''}`.toLowerCase().includes(s));
   }, [meetings, q]);
 
-  if (loading) return <Spinner />;
+  // Managers and the board work in the daily meeting; the general meetings list is retired.
+  useEffect(() => { if (!loading && participant) router.replace('/system/business-review/daily'); }, [loading, participant, router]);
+
+  if (loading || participant) return <Spinner />;
 
   // ── An employee's front door: their own work, nothing else ────────────────
   if (!participant) {

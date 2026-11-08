@@ -1484,12 +1484,11 @@
       ],
       "wildcard": false
     },
-    "/system/business-review": {
+    "/system/business-review/daily": {
       "apis": [
-        "/api/business-review/actions",
-        "/api/business-review/dashboard",
-        "/api/business-review/meetings",
-        "/api/business-review/meta"
+        "/api/business-review/daily",
+        "/api/business-review/meta",
+        "/api/business-review/series"
       ],
       "wildcard": false
     },

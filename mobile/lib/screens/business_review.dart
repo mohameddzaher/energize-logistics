@@ -90,7 +90,7 @@ class _BusinessReviewScreenState extends State<BusinessReviewScreen> {
     // Tabs follow the tier — an employee only ever gets "my tasks".
     final tabs = <(String, Widget)>[
       if (participant) (tr('لوحة الأقسام', 'Departments'), BrBoardTab(meta: _meta!)),
-      if (participant) (tr('الاجتماعات', 'Meetings'), _MeetingsTab(meta: _meta!)),
+      if (participant) (tr('الاجتماع اليومي', 'Daily meeting'), BrDailyTab(meta: _meta!)),
       if (participant) (tr('بنودي', 'My actions'), _ActionsTab(meta: _meta!, mine: true)),
       if (runner) (tr('سجل المتابعة', 'Register'), _ActionsTab(meta: _meta!, mine: false)),
       (tr('مهامي', 'My tasks'), _TasksTab(meta: _meta!)),
@@ -102,18 +102,6 @@ class _BusinessReviewScreenState extends State<BusinessReviewScreen> {
         title: Text(tr('مراجعة الأعمال', 'Business Review')),
         appBarBottom: tabs.length > 1
             ? TabBar(isScrollable: true, tabAlignment: TabAlignment.start, labelColor: Colors.white, unselectedLabelColor: Colors.white70, indicatorColor: T.orange, indicatorWeight: 3, tabs: tabs.map((t) => Tab(text: t.$1)).toList())
-            : null,
-        floatingActionButton: runner
-            ? FloatingActionButton.extended(
-                onPressed: () async {
-                  final id = await Navigator.push<String>(context, MaterialPageRoute(builder: (_) => _NewMeetingScreen(meta: _meta!)));
-                  if (id != null && context.mounted) {
-                    Navigator.push(context, MaterialPageRoute(builder: (_) => BusinessReviewMeetingScreen(id: id)));
-                  }
-                },
-                icon: const Icon(Icons.add),
-                label: Text(tr('جدولة اجتماع', 'Schedule')),
-              )
             : null,
         body: TabBarView(children: tabs.map((t) => t.$2).toList()),
       ),

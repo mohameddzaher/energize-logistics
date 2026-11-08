@@ -137,6 +137,8 @@ export interface BrAction {
   progress: number; isOverdue?: boolean; completedAt?: string | null;
   startDate?: string | null; expectedDate?: string | null;
   originalDueDate?: string | null; postponeReason?: string; postponeCount?: number;
+  /** The same task held by other department heads; each reports its own part. */
+  sharedWith?: { _id: string; assigneeName: string; department?: string; status: string; progress: number }[];
   updates?: BrUpdate[];
   delegations?: BrDelegation[];
 }
@@ -187,6 +189,8 @@ export const brCreateAction = (meetingId: string, body: any) =>
   api.post<{ action: BrAction }>(`/api/business-review/meetings/${meetingId}/actions`, body);
 export const brUpdateAction = (actionId: string, body: any) =>
   api.patch<{ action: BrAction }>(`/api/business-review/actions/${actionId}`, body);
+export const brShareAction = (actionId: string, assignee: string) =>
+  api.post<{ action: BrAction }>(`/api/business-review/actions/${actionId}/share`, { assignee });
 export const brDeleteAction = (actionId: string) => api.delete(`/api/business-review/actions/${actionId}`);
 export const brDelegate = (actionId: string, assignments: any[]) =>
   api.post<{ assignments: BrDelegation[] }>(`/api/business-review/actions/${actionId}/delegate`, { assignments });

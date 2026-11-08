@@ -891,7 +891,7 @@ function ActionsTab({ meeting, meta, actions, lang, canRaise, onChanged, notify 
   const [adding, setAdding] = useState(false);
   const [busy, setBusy] = useState(false);
   const [form, setForm] = useState({
-    title: '', description: '', assignee: '', raisedBy: '',
+    title: '', description: '', assignee: '', assignees: [] as string[], raisedBy: '',
     department: meeting.departments?.[0] || '', startDate: isoDay(new Date(meeting.scheduledAt || Date.now())), dueDate: '', priority: 'high',
   });
 
@@ -908,14 +908,14 @@ function ActionsTab({ meeting, meta, actions, lang, canRaise, onChanged, notify 
   ];
 
   const submit = async () => {
-    if (!form.title.trim() || !form.assignee) {
+    if (!form.title.trim() || !form.assignees.length) {
       notify(t('A title and an owner are required', 'عنوان البند والمكلَّف مطلوبان'), 'error');
       return;
     }
     setBusy(true);
     try {
-      await brCreateAction(meeting._id, { ...form, title: form.title.trim() });
-      setForm({ ...form, title: '', description: '', dueDate: '' });
+      await brCreateAction(meeting._id, { ...form, assignee: form.assignees[0], title: form.title.trim() });
+      setForm({ ...form, title: '', description: '', dueDate: '', assignees: [] });
       setAdding(false);
       onChanged();
     } catch (e: any) { notify(e?.message || t('Failed', 'فشل'), 'error'); }
@@ -942,12 +942,24 @@ function ActionsTab({ meeting, meta, actions, lang, canRaise, onChanged, notify 
             className="w-full px-3 py-2 rounded-lg border border-slate-200 text-sm text-slate-800" />
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2">
             <div>
-              <span className="text-[11px] text-slate-500">{t('Owner *', 'المكلَّف *')}</span>
+              <span className="text-[11px] text-slate-500">{t('Owners * (one or more departments)', 'المكلَّفون * (قسم أو أكثر)')}</span>
               <div className="mt-1">
-                <PersonSelect people={owners} value={form.assignee} lang={lang}
-                  placeholder={t('Pick an attendee…', 'اختر من الحاضرين…')}
-                  onChange={(id) => setForm({ ...form, assignee: id })} />
+                {/* Picking adds an owner; a task given to two heads appears under both departments. */}
+                <PersonSelect people={owners} value="" lang={lang} exclude={form.assignees}
+                  placeholder={form.assignees.length ? t('Add another owner…', 'إضافة مكلَّف آخر…') : t('Pick an attendee…', 'اختر من الحاضرين…')}
+                  onChange={(id) => id && setForm({ ...form, assignees: [...new Set([...form.assignees, id])] })} />
               </div>
+              {!!form.assignees.length && (
+                <div className="mt-1.5 flex flex-wrap gap-1">
+                  {form.assignees.map((id: string) => (
+                    <span key={id} className="inline-flex items-center gap-1 text-[11px] px-2 py-0.5 rounded bg-orange-50 border border-orange-200 text-slate-800">
+                      {owners.find((o: any) => String(o._id) === String(id))?.name || id}
+                      <button type="button" onClick={() => setForm({ ...form, assignees: form.assignees.filter((x: string) => x !== id) })}
+                        className="text-slate-400 hover:text-red-600" aria-label="remove">×</button>
+                    </span>
+                  ))}
+                </div>
+              )}
             </div>
             <div>
               <span className="text-[11px] text-slate-500">{t('Requested by', 'بطلب من')}</span>

@@ -41,6 +41,7 @@ router.get('/actions', br.allActions);
 router.patch('/actions/:actionId', br.updateAction);
 router.delete('/actions/:actionId', br.deleteAction);
 router.post('/actions/:actionId/delegate', br.delegate);
+router.post('/actions/:actionId/share', br.shareAction);
 
 // ── Meetings ───────────────────────────────────────────────────────────────
 router.get('/meetings', br.listMeetings);

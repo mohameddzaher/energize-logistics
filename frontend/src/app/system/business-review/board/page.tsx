@@ -11,9 +11,9 @@ import {
   CircleDashed, Ban, ChevronDown, ChevronRight, ArrowUpRight, Repeat, Plus, Trash2, Users, FileText, Loader2,
 } from 'lucide-react';
 import { Spinner, PageHeader, Modal } from '@/components/hr/HRKit';
-import { StatusPill, ProgressForm, Progress } from '@/components/system/BusinessReviewKit';
+import { StatusPill, ProgressForm, Progress, SharedWith, PersonSelect } from '@/components/system/BusinessReviewKit';
 import {
-  brMeta, brBoard, brUpdateAction, brSeriesList, brCreateSeries, brUpdateSeries, brDeleteSeries, brSeriesDay,
+  brMeta, brBoard, brUpdateAction, brShareAction, brSeriesList, brCreateSeries, brUpdateSeries, brDeleteSeries, brSeriesDay,
   type BrMeta, type Lang, type ProgressReport,
   vocabColor, fmtDate, tx, deptLabel, isoDay,
 } from '@/lib/businessReview';
@@ -247,6 +247,11 @@ export default function BusinessReviewBoardPage() {
                 <tbody>
                   {rows.map((r) => (
                     <BoardRow key={r._id} r={r} L={L} statuses={statuses} open={openRow === r._id}
+                      people={data?.canRunMeetings ? meta?.participants || [] : null}
+                      onShare={async (id) => {
+                        try { await brShareAction(r._id, id); notify(t('Shared', 'تمت المشاركة'), 'success'); load(); }
+                        catch (e: any) { notify(e?.message || t('Could not share', 'تعذّرت المشاركة'), 'error'); }
+                      }}
                       onToggle={() => setOpenRow(openRow === r._id ? '' : r._id)}
                       editing={editing === r._id} setEditing={(v) => setEditing(v ? r._id : '')}
                       busy={busy} onReport={(v) => report(r, v)} onMeeting={() => router.push(`/system/business-review/${r.meeting}`)} />
@@ -263,6 +268,7 @@ export default function BusinessReviewBoardPage() {
                     <StatusPill statuses={statuses} value={r.status} lang={L} />
                   </div>
                   <p className="text-[11px] text-slate-500 mt-0.5">{r.assigneeName}{r.meetingRef ? ` · ${r.meetingRef}` : ''}</p>
+                  <SharedWith list={r.sharedWith} lang={L} statuses={statuses} />
                   <p className="text-[11px] text-slate-600 mt-1 flex flex-wrap gap-x-3">
                     <span>{t('Start', 'البداية')}: {fmtDate(r.startDate)}</span>
                     <span className={r.overdue ? 'text-red-600 font-bold' : ''}>{t('Due', 'التسليم')}: {fmtDate(r.dueDate)}</span>
@@ -293,8 +299,8 @@ export default function BusinessReviewBoardPage() {
   );
 }
 
-function BoardRow({ r, L, statuses, open, onToggle, editing, setEditing, busy, onReport, onMeeting }: {
-  r: Row; L: Lang; statuses: any; open: boolean; onToggle: () => void;
+function BoardRow({ r, L, statuses, open, onToggle, editing, setEditing, busy, onReport, onMeeting, people, onShare }: {
+  r: Row; L: Lang; statuses: any; open: boolean; onToggle: () => void; people: any[] | null; onShare: (id: string) => void;
   editing: boolean; setEditing: (v: boolean) => void; busy: boolean; onReport: (v: ProgressReport) => void; onMeeting: () => void;
 }) {
   const t = (en: string, ar: string) => tx(L, en, ar);
@@ -307,6 +313,7 @@ function BoardRow({ r, L, statuses, open, onToggle, editing, setEditing, busy, o
             <div className="min-w-0">
               <p className="font-semibold text-slate-900">{r.title}</p>
               <p className="text-[11px] text-slate-400">{r.meetingRef} · {fmtDate(r.meetingDate)}</p>
+              <SharedWith list={r.sharedWith} lang={L} statuses={statuses} />
             </div>
           </div>
         </td>
@@ -357,6 +364,14 @@ function BoardRow({ r, L, statuses, open, onToggle, editing, setEditing, busy, o
                 <button type="button" onClick={onMeeting} className="inline-flex items-center gap-1 text-[#f37121] font-semibold">
                   {t('Open the meeting', 'فتح الاجتماع')} <ArrowUpRight className="w-3.5 h-3.5" />
                 </button>
+                {people && (
+                  <div className="pt-1 max-w-xs" onClick={(e) => e.stopPropagation()}>
+                    <p className="text-[11px] text-slate-500 mb-1">{t('Also give it to another department head', 'مشاركة البند مع مدير قسم آخر')}</p>
+                    <PersonSelect people={people.filter((p: any) => /_manager$/.test(p.role))} value="" lang={L}
+                      exclude={[String(r.assignee), ...(r.sharedWith || []).map((x: any) => String(x.assignee || ''))]}
+                      placeholder={t('Pick a manager…', 'اختر مديرًا…')} onChange={(id) => id && onShare(id)} />
+                  </div>
+                )}
               </div>
               <div>
                 {r.mine && !editing && (

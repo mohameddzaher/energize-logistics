@@ -2,6 +2,7 @@
  * businessReviewController: business review meetings. Executives and the secretary see everything; a department manager sees invited meetings, own actions and delegations handed out; an employee sees ONLY delegations addressed to them.
  * The employee rule is enforced by the data model (models/BusinessReview.js): that endpoint reads BrAssignment, which holds no meeting content.
  */
+const mongoose = require('mongoose');
 const { BrMeeting, BrAction, BrAssignment } = require('../models/BusinessReview');
 const { sendMongooseError, stripEmpty } = require('../utils/mongooseError');
 const { startOfDay, endOfDay } = require('../utils/companyDay');
@@ -246,9 +247,10 @@ exports.getMeeting = async (req, res) => {
       byAction.get(k).push(d);
     }
 
+    const shared = await siblingsOf(actions);
     res.json({
       meeting,
-      actions: actions.map((a) => ({ ...a, delegations: byAction.get(String(a._id)) || [] })),
+      actions: actions.map((a) => ({ ...a, delegations: byAction.get(String(a._id)) || [], sharedWith: shared.get(String(a._id)) || [] })),
       can: {
         edit: canRunMeetings(req.user),
         writeMinutes: canRunMeetings(req.user),
@@ -494,51 +496,99 @@ exports.deleteMeeting = async (req, res) => {
 
 // ── Actions ─────────────────────────────────────────────────────────────────
 
+/** Build one action row for an owner; shared tasks repeat this per owner with the same shareGroup. */
+async function actionFor(meeting, target, body, actor, shareGroup = null) {
+  const raiser = body.raisedBy ? await User.findById(body.raisedBy).select('firstName lastName').lean() : null;
+  return BrAction.create({
+    meeting: meeting._id,
+    meetingRef: meeting.refNumber,
+    meetingTitle: meeting.title,
+    meetingDate: meeting.scheduledAt,
+    title: body.title, description: body.description || '',
+    // The owner's section wins: the form defaulted to the meeting's first department and filed HR work under IT.
+    department: require('../config/roles').sectionOfRole(target.role) || body.department || '',
+    assignee: target._id, assigneeName: fullName(target), assigneeRole: target.role,
+    raisedBy: raiser?._id || null, raisedByName: fullName(raiser),
+    startDate: dayOf(body.startDate) || meeting.scheduledAt || new Date(),
+    dueDate: dueOf(body.dueDate),
+    expectedDate: dueOf(body.expectedDate),
+    priority: body.priority || 'medium',
+    shareGroup,
+    createdBy: actor._id, createdByName: fullName(actor),
+  });
+}
+
+async function announceAction(action, meeting) {
+  emit('br:action', { id: String(action._id) });
+  const due = action.dueDate ? ` — التسليم ${new Date(action.dueDate).toLocaleDateString('en-GB')}` : '';
+  await notify(action.assignee, {
+    title: 'بند تنفيذي جديد مُسند إليك',
+    message: `${action.title}${due} (${meeting.refNumber || action.meetingRef})`,
+    entity: 'BrAction', entityId: action._id,
+  });
+}
+
 exports.createAction = async (req, res) => {
   try {
     if (!canRunMeetings(req.user)) return deny(res, 'Only the administration can raise actions');
     const meeting = await BrMeeting.findById(req.params.id).lean();
     if (!meeting) return res.status(404).json({ message: 'Meeting not found' });
 
-    const { title, description, assignee, dueDate, priority, department, raisedBy, startDate, expectedDate } = req.body;
-    if (!title || !assignee) return res.status(400).json({ message: 'عنوان البند والمكلَّف مطلوبان' });
+    // One owner or several (`assignees`): a task handed to two department heads appears under both departments.
+    const ids = [...new Set([...(Array.isArray(req.body.assignees) ? req.body.assignees : []), req.body.assignee].filter(Boolean).map(String))];
+    if (!req.body.title || !ids.length) return res.status(400).json({ message: 'عنوان البند والمكلَّف مطلوبان' });
+    const targets = await User.find({ _id: { $in: ids } }).select('firstName lastName role').lean();
+    if (targets.length !== ids.length) return res.status(400).json({ message: 'المكلَّف غير موجود' });
 
-    const target = await User.findById(assignee).select('firstName lastName role').lean();
-    if (!target) return res.status(400).json({ message: 'المكلَّف غير موجود' });
-
-    const raiser = raisedBy ? await User.findById(raisedBy).select('firstName lastName').lean() : null;
-
-    const action = await BrAction.create({
-      meeting: meeting._id,
-      meetingRef: meeting.refNumber,
-      meetingTitle: meeting.title,
-      meetingDate: meeting.scheduledAt,
-      title, description: description || '',
-      // The owner's section wins: the form defaulted to the meeting's first department and filed HR work under IT.
-      department: require('../config/roles').sectionOfRole(target.role) || department || '',
-      assignee: target._id, assigneeName: fullName(target), assigneeRole: target.role,
-      raisedBy: raiser?._id || null, raisedByName: fullName(raiser),
-      startDate: dayOf(startDate) || meeting.scheduledAt || new Date(),
-      dueDate: dueOf(dueDate),
-      expectedDate: dueOf(expectedDate),
-      priority: priority || 'medium',
-      createdBy: req.user._id, createdByName: fullName(req.user),
-    });
-
-    emit('br:action', { id: String(action._id) });
-    const due = action.dueDate ? ` — التسليم ${new Date(action.dueDate).toLocaleDateString('en-GB')}` : '';
-    await notify(target._id, {
-      title: 'بند تنفيذي جديد مُسند إليك',
-      message: `${action.title}${due} (${meeting.refNumber})`,
-      entity: 'BrAction', entityId: action._id,
-    });
-
-    res.status(201).json({ action });
+    const group = targets.length > 1 ? new mongoose.Types.ObjectId() : null;
+    const actions = [];
+    for (const target of targets) actions.push(await actionFor(meeting, target, req.body, req.user, group));
+    for (const a of actions) await announceAction(a, meeting);
+    res.status(201).json({ action: actions[0], actions });
   } catch (error) {
     console.error('br create action error:', error);
     return sendMongooseError(res, error, 'تعذّر إنشاء البند');
   }
 };
+
+/** Give an existing task to another department head as well; both share one group from now on. */
+exports.shareAction = async (req, res) => {
+  try {
+    if (!canRunMeetings(req.user)) return deny(res, 'Only the administration can share an action');
+    const action = await BrAction.findById(req.params.actionId);
+    if (!action) return res.status(404).json({ message: 'Action not found' });
+    const target = await User.findById(req.body.assignee).select('firstName lastName role').lean();
+    if (!target) return res.status(400).json({ message: 'المكلَّف غير موجود' });
+    if (!action.shareGroup) { action.shareGroup = new mongoose.Types.ObjectId(); await action.save(); }
+    const taken = await BrAction.exists({ shareGroup: action.shareGroup, assignee: target._id });
+    if (taken) return res.status(409).json({ message: 'البند مُسند إليه بالفعل' });
+    const meeting = await BrMeeting.findById(action.meeting).lean() || { _id: action.meeting, refNumber: action.meetingRef, title: action.meetingTitle, scheduledAt: action.meetingDate };
+    const copy = await actionFor(meeting, target, {
+      title: action.title, description: action.description, raisedBy: action.raisedBy, priority: action.priority,
+      startDate: action.startDate, dueDate: action.dueDate,
+    }, req.user, action.shareGroup);
+    await announceAction(copy, meeting);
+    res.status(201).json({ action: copy });
+  } catch (error) {
+    console.error('br share action error:', error);
+    return sendMongooseError(res, error, 'تعذّر مشاركة البند');
+  }
+};
+
+/** The other owners of each shared action, for "shared with" on cards and the board. */
+async function siblingsOf(actions) {
+  const groups = [...new Set(actions.map((a) => a.shareGroup && String(a.shareGroup)).filter(Boolean))];
+  if (!groups.length) return new Map();
+  const rows = await BrAction.find({ shareGroup: { $in: groups } }).select('shareGroup assignee assigneeName department status progress').lean();
+  const by = new Map();
+  for (const a of actions) {
+    if (!a.shareGroup) continue;
+    by.set(String(a._id), rows.filter((r) => String(r.shareGroup) === String(a.shareGroup) && String(r._id) !== String(a._id))
+      .map((r) => ({ _id: r._id, assignee: r.assignee, assigneeName: r.assigneeName, department: r.department, status: r.status, progress: r.progress })));
+  }
+  return by;
+}
+exports.siblingsOf = siblingsOf;
 
 /**
  * Update an action. The owner may move its status and progress; only the people
@@ -582,6 +632,12 @@ exports.updateAction = async (req, res) => {
     if (bad) return res.status(400).json({ message: bad, code: 'POSTPONE_NEEDS_DATE_REASON' });
     logUpdate(action, req.user, req.body, before);
     await action.save();
+    // What the task is stays the same for every department sharing it; each keeps its own status and dates.
+    if (runner && action.shareGroup) {
+      const same = {};
+      ['title', 'description', 'priority'].forEach((f) => { if (req.body[f] !== undefined) same[f] = action[f]; });
+      if (Object.keys(same).length) await BrAction.updateMany({ shareGroup: action.shareGroup, _id: { $ne: action._id } }, { $set: same });
+    }
     emit('br:action', { id: String(action._id) });
 
     // Closing the loop: whoever asked for it hears that it landed.
@@ -631,8 +687,9 @@ exports.myActions = async (req, res) => {
       if (!byAction.has(k)) byAction.set(k, []);
       byAction.get(k).push(d);
     }
+    const shared = await siblingsOf(actions);
     res.json({
-      actions: actions.map((a) => ({ ...a, delegations: byAction.get(String(a._id)) || [] })),
+      actions: actions.map((a) => ({ ...a, delegations: byAction.get(String(a._id)) || [], sharedWith: shared.get(String(a._id)) || [] })),
       summary: {
         total: actions.length,
         open: actions.filter((a) => OPEN_ACTION_STATUSES.includes(a.status)).length,
@@ -682,8 +739,9 @@ exports.allActions = async (req, res) => {
       byPerson.set(k, cur);
     }
 
+    const shared = await siblingsOf(actions);
     res.json({
-      actions: actions.map((a) => ({ ...a, delegations: byAction.get(String(a._id)) || [] })),
+      actions: actions.map((a) => ({ ...a, delegations: byAction.get(String(a._id)) || [], sharedWith: shared.get(String(a._id)) || [] })),
       summary: {
         total: actions.length,
         open: open.length,

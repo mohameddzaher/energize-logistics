@@ -742,7 +742,9 @@ class _ActionsTab extends StatelessWidget {
     ];
     final title = TextEditingController();
     final desc = TextEditingController();
-    Map<String, dynamic>? assignee, raisedBy;
+    Map<String, dynamic>? raisedBy;
+    // One owner or several: a task given to two department heads appears under both departments.
+    final assignees = <Map<String, dynamic>>[];
     String due = '';
     var start = brIsoDay(DateTime.tryParse('${meeting['scheduledAt'] ?? ''}')?.toLocal() ?? DateTime.now());
     String priority = 'high';
@@ -770,11 +772,16 @@ class _ActionsTab extends StatelessWidget {
                   // The task belongs to the owner's department, as the server records it.
                   final sec = List<Map<String, dynamic>>.from(meta['participants'] ?? [])
                       .firstWhere((x) => '${x['_id']}' == '${p['_id'] ?? p['user']}', orElse: () => const {})['section']?.toString() ?? '';
-                  setS(() { assignee = p; if (sec.isNotEmpty) department = sec; });
+                  setS(() { if (!assignees.any((x) => '${x['_id']}' == '${p['_id']}')) assignees.add(p); if (sec.isNotEmpty && assignees.length == 1) department = sec; });
                 },
                 icon: const Icon(Icons.person_outline, size: 18),
-                label: Text(assignee == null ? tr('المكلَّف * — اختر من الحاضرين…', 'Owner * — pick an attendee…') : '${tr('المكلَّف', 'Owner')}: ${assignee!['name']}'),
+                label: Text(assignees.isEmpty ? tr('المكلَّف * — اختر من الحاضرين…', 'Owner * — pick an attendee…') : tr('+ إضافة مكلَّف من قسم آخر', '+ Add an owner from another department')),
               ),
+              if (assignees.isNotEmpty)
+                Wrap(spacing: 6, runSpacing: 4, children: [
+                  for (final a in assignees)
+                    InputChip(label: Text('${a['name']}'), onDeleted: () => setS(() => assignees.remove(a))),
+                ]),
               OutlinedButton.icon(
                 onPressed: () async { final p = await brPickPerson(c, requesters); if (p != null) setS(() => raisedBy = p); },
                 icon: const Icon(Icons.record_voice_over_outlined, size: 18),
@@ -830,7 +837,7 @@ class _ActionsTab extends StatelessWidget {
                   onPressed: busy
                       ? null
                       : () async {
-                          if (title.text.trim().isEmpty || assignee == null) {
+                          if (title.text.trim().isEmpty || assignees.isEmpty) {
                             brSnack(c, tr('عنوان البند والمكلَّف مطلوبان', 'A title and an owner are required'));
                             return;
                           }
@@ -839,7 +846,8 @@ class _ActionsTab extends StatelessWidget {
                             await Api.instance.post('/api/business-review/meetings/${meeting['_id']}/actions', {
                               'title': title.text.trim(),
                               'description': desc.text,
-                              'assignee': assignee!['_id'],
+                              'assignee': assignees.first['_id'],
+                              'assignees': assignees.map((a) => a['_id']).toList(),
                               'raisedBy': raisedBy?['_id'] ?? '',
                               'department': department,
                               'startDate': start,

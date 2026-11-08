@@ -50,7 +50,7 @@ exports.getBoard = async (req, res) => {
     // Open work is always current; finished or cancelled work counts when it closed inside the period.
     const match = { ...scope };
     const actions = await BrAction.find(match)
-      .select('meeting meetingRef meetingTitle meetingDate title description department assignee assigneeName assigneeRole raisedByName startDate dueDate expectedDate originalDueDate postponeReason postponeCount priority status progress completedAt isOverdue createdAt updatedAt updates')
+        .select('shareGroup meeting meetingRef meetingTitle meetingDate title description department assignee assigneeName assigneeRole raisedByName startDate dueDate expectedDate originalDueDate postponeReason postponeCount priority status progress completedAt isOverdue createdAt updatedAt updates')
       .sort({ dueDate: 1, createdAt: -1 }).limit(3000).lean();
     const shown = actions.filter((a) => OPEN_ACTION_STATUSES.includes(a.status)
       || (a.status === 'done' && inPeriod(a.completedAt || a.updatedAt))
@@ -65,6 +65,7 @@ exports.getBoard = async (req, res) => {
     }
 
     const ids = shown.map((a) => a._id);
+    const shared = await require('./businessReviewController').siblingsOf(shown);
     const dels = ids.length ? await BrAssignment.find({ action: { $in: ids } })
       .select('action assigneeName status dueDate progress isOverdue').lean() : [];
     const delBy = new Map();
@@ -112,6 +113,7 @@ exports.getBoard = async (req, res) => {
         overdue: !!late,
         lastUpdate: last ? { at: last.at, byName: last.byName, text: last.text, statusTo: last.statusTo } : null,
         delegations: delBy.get(String(a._id)) || [],
+        sharedWith: shared.get(String(a._id)) || [],
         mine: String(a.assignee) === String(req.user._id),
       };
       g.items.push(row);

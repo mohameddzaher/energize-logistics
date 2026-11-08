@@ -76,6 +76,21 @@ class _BrBoardTabState extends State<BrBoardTab> {
     }
   }
 
+  /// Give the task to another department head as well.
+  Future<void> _share(Map r) async {
+    final taken = {'${r['assignee']}', ...List.from(r['sharedWith'] ?? []).map((x) => '${x['assignee']}')};
+    final heads = List<Map<String, dynamic>>.from(widget.meta['participants'] ?? [])
+        .where((p) => '${p['role']}'.endsWith('_manager') && !taken.contains('${p['_id']}')).toList();
+    final p = await brPickPerson(context, heads);
+    if (p == null) return;
+    try {
+      await Api.instance.post('/api/business-review/actions/${r['_id']}/share', {'assignee': p['_id']});
+      _load();
+    } catch (e) {
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e is ApiException ? e.message : '$e')));
+    }
+  }
+
   Widget _kpi(String label, num v, Color c, String g) {
     final on = _group == g;
     return InkWell(
@@ -220,6 +235,7 @@ class _BrBoardTabState extends State<BrBoardTab> {
           if (late) ...[const SizedBox(width: 4), Chip2(tr('متأخر', 'Late'), T.danger)],
         ]),
         Text('${r['assigneeName'] ?? ''} · ${r['meetingRef'] ?? ''}', style: const TextStyle(fontSize: 11, color: T.inkFaint)),
+        if (brSharedLine(r, widget.meta).isNotEmpty) Text(brSharedLine(r, widget.meta), style: const TextStyle(fontSize: 11, color: T.violet)),
         const SizedBox(height: 4),
         Wrap(spacing: 10, runSpacing: 2, children: [
           Text('${tr('البداية', 'Start')}: ${brDate(r['startDate'])}', style: const TextStyle(fontSize: 11.5)),
@@ -240,6 +256,7 @@ class _BrBoardTabState extends State<BrBoardTab> {
             onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (_) => BusinessReviewMeetingScreen(id: '${r['meeting']}'))),
             child: Text(tr('الاجتماع', 'Meeting')),
           ),
+          if (_d?['canRunMeetings'] == true) IconButton(tooltip: tr('مشاركة مع مدير قسم آخر', 'Share with another head'), icon: const Icon(Icons.group_add_outlined), onPressed: () => _share(r)),
           if (r['mine'] == true) FilledButton.tonal(onPressed: () => _report(r), child: Text(tr('تحديث الحالة', 'Update'))),
         ]),
       ]),

@@ -234,6 +234,13 @@ Future<Map<String, dynamic>?> brProgressSheet(BuildContext context, Map<String, 
   );
 }
 
+/// Other department heads holding the same task, with their own progress; SharedWith on the web.
+String brSharedLine(Map a, Map meta) {
+  final list = List<Map>.from(a['sharedWith'] ?? []);
+  if (list.isEmpty) return '';
+  return '${tr('مشترك مع', 'Shared with')}: ${list.map((s) => '${s['assigneeName']} (${brVocab(meta['actionStatuses'] as List?, '${s['status']}').label} ${s['progress']}%)').join('، ')}';
+}
+
 /// Start, expected and postponement, one line; DatesLine on the web.
 String brDatesLine(Map a) {
   final parts = <String>[
@@ -485,6 +492,8 @@ class _BrActionCardState extends State<BrActionCard> {
             '${widget.showMeeting && a['meetingRef'] != null ? ' · ${a['meetingRef']}' : ''}',
             style: const TextStyle(fontSize: 11, color: T.inkFaint),
           ),
+          if (brSharedLine(a, widget.meta).isNotEmpty)
+            Padding(padding: const EdgeInsets.only(top: 3), child: Text(brSharedLine(a, widget.meta), style: const TextStyle(fontSize: 11, color: T.violet))),
           if (brDatesLine(a).isNotEmpty)
             Padding(padding: const EdgeInsets.only(top: 3), child: Text(brDatesLine(a), style: TextStyle(fontSize: 11, color: a['status'] == 'postponed' ? T.warn : T.inkSoft))),
           const SizedBox(height: 8),

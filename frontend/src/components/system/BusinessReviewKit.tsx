@@ -9,7 +9,7 @@ import {
 } from 'lucide-react';
 import {
   type BrAction, type BrDelegation, type Vocab, type BrPerson, type Lang, type ProgressReport,
-  vocabLabel, vocabColor, fmtDate, fmtDateTime, dueLabel, TONE_CLASS, OPEN_STATUSES, tx, isoDay,
+  vocabLabel, vocabColor, fmtDate, fmtDateTime, dueLabel, TONE_CLASS, OPEN_STATUSES, tx, isoDay, deptLabel,
 } from '@/lib/businessReview';
 
 /**
@@ -199,6 +199,22 @@ export function ProgressForm({
   );
 }
 
+/** Other department heads holding the same task, with their own progress. */
+export function SharedWith({ list, lang, statuses }: { list?: any[]; lang: Lang; statuses?: Vocab[] }) {
+  if (!list?.length) return null;
+  const t = (en: string, ar: string) => tx(lang, en, ar);
+  return (
+    <p className="text-[11px] text-violet-700 mt-1 flex flex-wrap items-center gap-1.5">
+      <Users className="w-3.5 h-3.5" />{t('Shared with', 'مشترك مع')}:
+      {list.map((s) => (
+        <span key={s._id} className="px-1.5 py-0.5 rounded bg-violet-50 border border-violet-200">
+          {s.assigneeName}{s.department ? ` · ${deptLabel(s.department, lang)}` : ''} · {vocabLabel(statuses, s.status, lang)} {s.progress}%
+        </span>
+      ))}
+    </p>
+  );
+}
+
 /** Start, due, expected and postponement, in one line. */
 export function DatesLine({ item, lang }: { item: any; lang: Lang }) {
   const t = (en: string, ar: string) => tx(lang, en, ar);
@@ -370,6 +386,7 @@ export function ActionCard({
             {showMeeting && action.meetingRef && <> · {action.meetingRef}</>}
           </p>
           <DatesLine item={action} lang={lang} />
+          <SharedWith list={action.sharedWith} lang={lang} statuses={meta.actionStatuses} />
           {action.status === 'postponed' && action.postponeReason && (
             <p className="text-[11px] text-amber-700 mt-0.5">{t('Postponement reason', 'سبب التأجيل')}: {action.postponeReason}</p>
           )}

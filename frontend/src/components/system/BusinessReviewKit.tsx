@@ -140,8 +140,8 @@ export function ProgressForm({
   const t = (en: string, ar: string) => tx(lang, en, ar);
   const postponing = s === 'postponed';
   const submit = () => {
-    if (s === 'postponed' && status !== 'postponed' && (!newDue || !note.trim())) {
-      setErr(t('A postponement needs the new date and the reason.', 'التأجيل يحتاج الموعد الجديد وسبب التأجيل.'));
+    if (s === 'postponed' && status !== 'postponed' && !newDue) {
+      setErr(t('Pick the new date for the postponement.', 'حدّد الموعد الجديد للتأجيل.'));
       return;
     }
     setErr('');
@@ -183,7 +183,7 @@ export function ProgressForm({
       </div>
       <textarea value={note} onChange={(e) => setNote(e.target.value)} rows={2}
         placeholder={s === 'postponed'
-          ? t('Reason for postponing *', 'سبب التأجيل *')
+          ? t('Reason for postponing (optional)', 'سبب التأجيل (اختياري)')
           : t('What happened? (optional)', 'ما الذي تم؟ (اختياري)')}
         className={`w-full px-2.5 py-1.5 rounded-lg border text-sm text-slate-800 ${postponing ? 'border-amber-300' : 'border-slate-200'}`} />
       {err && <p className="text-xs text-red-600">{err}</p>}

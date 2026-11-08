@@ -126,10 +126,10 @@ class _BrMeetingDepartmentsTabState extends State<BrMeetingDepartmentsTab> {
             label: Text(newDue.isEmpty ? tr('الموعد الجديد *', 'New date *') : newDue),
           ),
           const SizedBox(height: 8),
-          TextField(controller: reason, decoration: InputDecoration(labelText: tr('سبب التأجيل *', 'Reason *'))),
+          TextField(controller: reason, decoration: InputDecoration(labelText: tr('سبب التأجيل (اختياري)', 'Reason (optional)'))),
           const SizedBox(height: 12),
           SizedBox(width: double.infinity, child: FilledButton(
-            onPressed: () { if (newDue.isNotEmpty && reason.text.trim().isNotEmpty) Navigator.pop(c, true); },
+            onPressed: () { if (newDue.isNotEmpty) Navigator.pop(c, true); },
             child: Text(tr('تسجيل التأجيل', 'Save postponement')),
           )),
         ]),

@@ -305,11 +305,11 @@ function TaskRow({ task, meta, L, meetingId, canEdit, dept, open, onToggle, onCh
                 <input type="date" value={newDue} min={isoDay(new Date())} onChange={(e) => setNewDue(e.target.value)}
                   className="w-full mt-1 px-2 py-1.5 rounded-lg border border-amber-300 bg-white text-sm" />
               </label>
-              <label className="block text-xs font-semibold text-amber-900">{t('Reason', 'سبب التأجيل')}
+              <label className="block text-xs font-semibold text-amber-900">{t('Reason (optional)', 'سبب التأجيل (اختياري)')}
                 <input value={reason} onChange={(e) => setReason(e.target.value)}
                   className="w-full mt-1 px-2 py-1.5 rounded-lg border border-amber-300 bg-white text-sm" />
               </label>
-              <button type="button" disabled={busy || !newDue || !reason.trim()}
+              <button type="button" disabled={busy || !newDue}
                 onClick={() => send({ status: 'postponed', newDueDate: newDue, postponeReason: reason.trim() }, t('Postponed', 'تم تأجيل البند'))}
                 className="bg-amber-600 text-white text-xs font-bold rounded-lg px-3 py-2 disabled:opacity-50">{t('Save postponement', 'تسجيل التأجيل')}</button>
             </div>

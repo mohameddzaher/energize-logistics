@@ -25,7 +25,7 @@ const dueOf = (v) => (v ? (/^\d{4}-\d{2}-\d{2}$/.test(String(v)) ? endOfDay(Stri
 
 /**
  * Status, progress, expected date and postponement, shared by actions and delegated tasks.
- * Postponing needs a new date and a reason: the new date becomes the due date (so overdue follows it) and the first committed date is kept.
+ * Postponing needs a new date (a reason is optional): the new date becomes the due date (so overdue follows it) and the first committed date is kept.
  * Returns an error message, or '' when applied.
  */
 function applyProgress(item, body) {
@@ -35,9 +35,9 @@ function applyProgress(item, body) {
     const to = dueOf(body.newDueDate || body.postponedTo);
     const reason = String(body.postponeReason || body.note || '').trim();
     if (!to || Number.isNaN(to.getTime())) return 'حدّد الموعد الجديد للتأجيل';
-    if (!reason) return 'اكتب سبب التأجيل';
     if (!item.originalDueDate) item.originalDueDate = item.dueDate || null;
     item.dueDate = to;
+    // The reason is optional (owner's call); a postponement without one clears the previous reason.
     item.postponeReason = reason;
     item.postponeCount = (item.postponeCount || 0) + 1;
     item.isOverdue = false; item.overdueNotifiedAt = null; item.dueSoonNotifiedAt = null;

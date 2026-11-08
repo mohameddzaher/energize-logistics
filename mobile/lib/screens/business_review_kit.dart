@@ -207,15 +207,15 @@ Future<Map<String, dynamic>?> brProgressSheet(BuildContext context, Map<String, 
             ],
             const SizedBox(height: 8),
             TextField(controller: note, maxLines: 2, decoration: InputDecoration(
-                labelText: st == 'postponed' ? tr('سبب التأجيل *', 'Reason for postponing *') : tr('ملاحظة (اختياري)', 'Note (optional)'))),
+                labelText: st == 'postponed' ? tr('سبب التأجيل (اختياري)', 'Reason for postponing (optional)') : tr('ملاحظة (اختياري)', 'Note (optional)'))),
             if (err != null) Padding(padding: const EdgeInsets.only(top: 6), child: Text(err!, style: const TextStyle(color: T.danger, fontSize: 12))),
             const SizedBox(height: 14),
             SizedBox(
               width: double.infinity,
               child: FilledButton(
                 onPressed: () {
-                  if (st == 'postponed' && status != 'postponed' && (newDue.isEmpty || note.text.trim().isEmpty)) {
-                    setS(() => err = tr('التأجيل يحتاج الموعد الجديد وسبب التأجيل.', 'A postponement needs the new date and the reason.'));
+                  if (st == 'postponed' && status != 'postponed' && newDue.isEmpty) {
+                    setS(() => err = tr('حدّد الموعد الجديد للتأجيل.', 'Pick the new date for the postponement.'));
                     return;
                   }
                   Navigator.pop(c, {

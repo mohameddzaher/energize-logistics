@@ -9,6 +9,7 @@ import '../ui/export_sheet.dart';
 import '../ui/theme.dart';
 import '../ui/widgets.dart';
 import 'business_review_kit.dart';
+import 'business_review_meeting_depts.dart';
 
 /// One whole meeting, /system/business-review/[id] on the web. Four tabs in the order things happen in a meeting: full record, agenda and attendance, minutes, executive items. What is allowed (`can`) is decided by the server per user.
 class BusinessReviewMeetingScreen extends StatefulWidget {
@@ -258,7 +259,7 @@ class _BusinessReviewMeetingScreenState extends State<BusinessReviewMeetingScree
     final status = m['status']?.toString();
     final st = brVocab(meta['meetingStatuses'] as List?, status);
     return DefaultTabController(
-      length: 4,
+      length: 5,
       child: AppScaffold(
         title: Text(m['title'].toString(), overflow: TextOverflow.ellipsis),
         actions: [
@@ -282,6 +283,7 @@ class _BusinessReviewMeetingScreenState extends State<BusinessReviewMeetingScree
           isScrollable: true,
           tabAlignment: TabAlignment.start,
           tabs: [
+            Tab(text: tr('الأقسام', 'Departments')),
             Tab(text: tr('السجل الشامل', 'Full record')),
             Tab(text: tr('الأجندة والحضور', 'Agenda & attendees')),
             Tab(text: '${tr('المحضر', 'Minutes')} (${List.from(m['minutes'] ?? []).length})'),
@@ -334,6 +336,7 @@ class _BusinessReviewMeetingScreenState extends State<BusinessReviewMeetingScree
           ),
           Expanded(
             child: TabBarView(children: [
+              BrMeetingDepartmentsTab(meetingId: '${m['_id']}', meta: meta),
               _RecordTab(meeting: m, meta: meta, actions: _actions, onPrint: _print, onRefresh: _load),
               _AgendaTab(meeting: m, canEdit: canEdit, onAttendance: (userId, attendance, reason) {
                 final attendees = List<Map<String, dynamic>>.from(m['attendees'] ?? []).map((a) =>

@@ -515,6 +515,7 @@ async function actionFor(meeting, target, body, actor, shareGroup = null) {
     expectedDate: dueOf(body.expectedDate),
     priority: body.priority || 'medium',
     shareGroup,
+    followUpOf: mongoose.isValidObjectId(body.followUpOf) ? body.followUpOf : null,
     createdBy: actor._id, createdByName: fullName(actor),
   });
 }

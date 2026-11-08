@@ -144,6 +144,8 @@ const brActionSchema = new mongoose.Schema({
 
   // One task given to several department heads is one action per owner sharing this id: each department reports its own part, and the board lists it under each.
   shareGroup: { type: mongoose.Schema.Types.ObjectId, default: null, index: true },
+  // A task raised about another task (a follow-up); the meeting's department cards show the link both ways.
+  followUpOf: { type: mongoose.Schema.Types.ObjectId, ref: 'BrAction', default: null, index: true },
 
   // Start and due give the task's duration; expected is the owner's own estimate of when it lands.
   startDate: { type: Date, default: null },

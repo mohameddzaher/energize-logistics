@@ -10,9 +10,10 @@ import { useSocket } from '@/hooks/useSocket';
 import {
   ArrowRight, CalendarDays, MapPin, Users, FileText, ClipboardList, Plus,
   Loader2, Save, Video, Trash2, UserCheck, UserX, Crown, ScrollText, Clock,
-  CheckCircle2, AlertTriangle, MessageSquare, Printer, Lock, Unlock,
+  CheckCircle2, AlertTriangle, MessageSquare, Printer, Lock, Unlock, LayoutGrid,
 } from 'lucide-react';
 import { Spinner } from '@/components/hr/HRKit';
+import BrMeetingDepartments from '@/components/system/BrMeetingDepartments';
 import ExportMenu, { type ExportColumn, type ExportSheet } from '@/components/ls2/ExportMenu';
 import { StatusPill, ActionCard, PersonSelect, DueBadge, Progress } from '@/components/system/BusinessReviewKit';
 import {
@@ -26,7 +27,7 @@ import { openReportPdf } from '@/lib/reports';
 import ScrollX from '@/components/system/ScrollX';
 
 // The comprehensive record comes FIRST: open a meeting and you see the whole story - who came and when that was recorded, what was said, what was decided, who owes what, and how far they've got. The other tabs are where you go to WORK on one part of it.
-type Tab = 'record' | 'agenda' | 'minutes' | 'actions';
+type Tab = 'departments' | 'record' | 'agenda' | 'minutes' | 'actions';
 
 export default function MeetingPage() {
   const params = useParams();
@@ -43,7 +44,8 @@ export default function MeetingPage() {
   const [can, setCan] = useState({ edit: false, writeMinutes: false, raiseActions: false });
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
-  const [tab, setTab] = useState<Tab>('record');
+  // The departments' cards come first: what each department holds is what a meeting is held for.
+  const [tab, setTab] = useState<Tab>('departments');
   const [printing, setPrinting] = useState(false);
   const [closing, setClosing] = useState(false);
 
@@ -249,6 +251,7 @@ export default function MeetingPage() {
   ];
 
   const tabs: { key: Tab; label: string; icon: any; badge?: number }[] = [
+    { key: 'departments', label: t('Departments', 'الأقسام'), icon: LayoutGrid },
     { key: 'record', label: t('Full record', 'السجل الشامل'), icon: ScrollText },
     { key: 'agenda', label: t('Agenda & attendees', 'الأجندة والحضور'), icon: Users },
     { key: 'minutes', label: t('Minutes', 'محضر الاجتماع'), icon: FileText, badge: meeting.minutes?.length || 0 },
@@ -378,6 +381,10 @@ export default function MeetingPage() {
           );
         })}
       </div>
+
+      {tab === 'departments' && meta && (
+        <BrMeetingDepartments meetingId={meeting._id} meta={meta} L={L} notify={notify} />
+      )}
 
       {tab === 'record' && meta && (
         <RecordTab meeting={meeting} meta={meta} actions={actions} lang={L}

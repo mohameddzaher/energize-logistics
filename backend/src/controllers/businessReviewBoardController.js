@@ -155,6 +155,73 @@ exports.getBoard = async (req, res) => {
   }
 };
 
+/**
+ * A meeting's departments as cards: every task each department holds in this meeting's series (a daily meeting carries
+ * its tasks from day to day; a one-off meeting has only its own), with counts by state, overdue included, and each
+ * task's full detail so the page opens it in place. Same visibility as the meeting: its runners and attendees.
+ */
+exports.getMeetingDepartments = async (req, res) => {
+  try {
+    const meeting = await BrMeeting.findById(req.params.id).select('series departments attendees refNumber seriesDay scheduledAt').lean();
+    if (!meeting) return res.status(404).json({ message: 'Meeting not found' });
+    const runner = canRunMeetings(req.user);
+    const wasThere = (meeting.attendees || []).some((a) => String(a.user) === String(req.user._id));
+    if (!runner && !wasThere) return res.status(403).json({ message: 'You did not attend this meeting' });
+
+    const meetingIds = meeting.series
+      ? (await BrMeeting.find({ series: meeting.series }).select('_id').lean()).map((m) => m._id)
+      : [meeting._id];
+    const actions = await BrAction.find({ meeting: { $in: meetingIds } })
+      .select('-__v').sort({ createdAt: -1 }).limit(3000).lean();
+    const owners = await User.find({ _id: { $in: [...new Set(actions.map((a) => String(a.assignee)))] } }).select('role').lean();
+    const ownerSection = new Map(owners.map((u) => [String(u._id), sectionOfRole(u.role)]));
+    const deptOf = (a) => ownerSection.get(String(a.assignee)) || sectionOfRole(a.assigneeRole) || a.department || NO_DEPT;
+    const titleOf = new Map(actions.map((a) => [String(a._id), a.title]));
+    const followUps = new Map();
+    for (const a of actions) if (a.followUpOf) { const k = String(a.followUpOf); if (!followUps.has(k)) followUps.set(k, []); followUps.get(k).push({ _id: a._id, title: a.title, status: a.status }); }
+
+    const now = Date.now();
+    const overdue = (a) => a.status !== 'done' && a.status !== 'cancelled' && a.dueDate && new Date(a.dueDate).getTime() < now;
+    const rank = (a) => (overdue(a) ? 0 : a.status === 'blocked' ? 1 : a.status === 'in_progress' ? 2 : a.status === 'open' ? 3 : a.status === 'postponed' ? 4 : 5);
+    const keys = [...new Set([...(meeting.departments || []), ...actions.map(deptOf)])];
+    const cards = keys.map((key) => {
+      const list = actions.filter((a) => deptOf(a) === key)
+        .sort((x, y) => rank(x) - rank(y) || new Date(x.dueDate || 8.64e15) - new Date(y.dueDate || 8.64e15));
+      const n = (f) => list.filter(f).length;
+      return {
+        key,
+        counts: {
+          total: list.length,
+          done: n((a) => a.status === 'done'),
+          in_progress: n((a) => a.status === 'in_progress'),
+          open: n((a) => a.status === 'open'),
+          postponed: n((a) => a.status === 'postponed'),
+          blocked: n((a) => a.status === 'blocked'),
+          overdue: n(overdue),
+          today: n((a) => String(a.meeting) === String(meeting._id)),
+        },
+        tasks: list.map((a) => ({
+          _id: a._id, title: a.title, description: a.description, status: a.status, progress: a.progress, priority: a.priority,
+          assignee: a.assignee, assigneeName: a.assigneeName, raisedByName: a.raisedByName, createdByName: a.createdByName,
+          startDate: a.startDate, dueDate: a.dueDate, expectedDate: a.expectedDate, originalDueDate: a.originalDueDate,
+          postponeReason: a.postponeReason, postponeCount: a.postponeCount, completedAt: a.completedAt, createdAt: a.createdAt,
+          meeting: a.meeting, meetingRef: a.meetingRef, meetingDate: a.meetingDate, fromThisMeeting: String(a.meeting) === String(meeting._id),
+          overdue: overdue(a),
+          followUpOf: a.followUpOf ? { _id: a.followUpOf, title: titleOf.get(String(a.followUpOf)) || '' } : null,
+          followUps: followUps.get(String(a._id)) || [],
+          updates: (a.updates || []).slice(-15).reverse(),
+        })),
+      };
+    });
+    // Departments with something to discuss first; quiet ones keep the meeting's order after them.
+    cards.sort((x, y) => (y.counts.overdue - x.counts.overdue) || ((y.counts.total - y.counts.done) - (x.counts.total - x.counts.done)));
+    res.json({ departments: cards, scope: meeting.series ? 'series' : 'meeting', canEdit: runner });
+  } catch (error) {
+    console.error('br meeting departments error:', error);
+    res.status(500).json({ message: 'تعذّر تحميل أقسام الاجتماع' });
+  }
+};
+
 // ── Recurring schedules ─────────────────────────────────────────────────────
 
 const SERIES_FIELDS = ['title', 'cadence', 'weekdays', 'time', 'durationMinutes', 'departments', 'attendees', 'location', 'meetingLink', 'active'];

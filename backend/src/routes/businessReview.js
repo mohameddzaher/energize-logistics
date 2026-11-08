@@ -48,6 +48,7 @@ router.post('/actions/:actionId/share', br.shareAction);
 router.get('/meetings', br.listMeetings);
 router.post('/meetings', br.createMeeting);
 router.get('/meetings/:id', br.getMeeting);
+router.get('/meetings/:id/departments', board.getMeetingDepartments);
 router.put('/meetings/:id', br.updateMeeting);
 // Closing has its own route because it checks that all meeting work is done before marking it complete.
 router.post('/meetings/:id/complete', br.completeMeeting);

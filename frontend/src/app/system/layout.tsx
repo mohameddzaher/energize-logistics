@@ -777,6 +777,10 @@ function SystemLayoutInner({ children }: { children: React.ReactNode }) {
 
   // The page door closes on those who type the path: hiding a link blocks nobody. The real data guard is the section on the API, but a screen that was denied and then half-opened makes the setting lie to whoever configured it.
   // Compared against the longest matching path: `/system/vehicles/registry/123` is the `registry` page, and 'no catalogue page matches' means a screen outside the sidebar (a record detail), which follows its nearest ancestor.
+  // Detail screens reachable from pages other than the one their path sits under (page key -> the other pages that open its records).
+  const DETAIL_OPENED_FROM: Record<string, string[]> = {
+    '/system/ls2/tires': ['/system/ls2/fleet-assets'],
+  };
   const pageBlocked = (() => {
     if (!user || !user.pageAccess) return false;
     const keys = Object.keys(user.pageAccess);
@@ -786,7 +790,13 @@ function SystemLayoutInner({ children }: { children: React.ReactNode }) {
         if (k.length > best.length) best = k;
       }
     }
-    return !!best && user.pageAccess[best] === false;
+    if (!best || user.pageAccess[best] !== false) return false;
+    // A record opened from another page follows that page too: a tire's file lives under «الكاوتش» but opens from «السطحات والكاوتشات», so either open page lets it through.
+    if (pathname !== best) {
+      const openers = DETAIL_OPENED_FROM[best] || [];
+      if (openers.some((k) => user.pageAccess?.[k] !== false)) return false;
+    }
+    return true;
   })();
 
   // Sidebar section order is explicit, not accidental: sections used to appear in the order of their first page in the `nav` array, so adding a page in its natural place could move a whole section to the top.

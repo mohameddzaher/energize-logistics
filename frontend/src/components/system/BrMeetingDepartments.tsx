@@ -340,7 +340,9 @@ function NewTask({ meta, L, meetingId, dept, followUpOf, inline, onDone, notify 
   const t = (en: string, ar: string) => tx(L, en, ar);
   // The department's heads first, then everyone else who can own a task.
   const people = [...meta.participants].sort((a, b) => Number(b.section === dept) - Number(a.section === dept));
-  const head = people.find((p) => p.section === dept && /_manager$/.test(p.role)) || people.find((p) => p.section === dept);
+  // The department head: the CFO for finance, else the section's manager.
+  const head = people.find((p) => p.section === dept && p.role === 'cfo')
+    || people.find((p) => p.section === dept && /_manager$/.test(p.role)) || people.find((p) => p.section === dept);
   const [open, setOpen] = useState(!!inline);
   const [title, setTitle] = useState('');
   const [desc, setDesc] = useState('');

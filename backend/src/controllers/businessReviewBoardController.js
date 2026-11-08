@@ -182,9 +182,12 @@ exports.getMeetingDepartments = async (req, res) => {
     const delsOf = new Map();
     for (const x of dels) { const k = String(x.action); if (!delsOf.has(k)) delsOf.set(k, []); delsOf.get(k).push(x); }
     // The department's head(s), named on its card.
-    const managers = await User.find({ isActive: { $ne: false }, role: /_manager$/ }).select('firstName lastName role').lean();
+    const managers = await User.find({ isActive: { $ne: false }, role: { $in: [/_manager$/, 'cfo'] } }).select('firstName lastName role').lean();
     const headOf = new Map();
     for (const u of managers) { const sec = sectionOfRole(u.role); if (sec && !headOf.has(sec)) headOf.set(sec, []); if (sec) headOf.get(sec).push(fullName(u)); }
+    // The CFO heads the finance department, above the accounting manager.
+    const cfos = managers.filter((u) => u.role === 'cfo').map(fullName);
+    if (cfos.length) headOf.set('Accounting', cfos);
     const followUps = new Map();
     for (const a of actions) if (a.followUpOf) { const k = String(a.followUpOf); if (!followUps.has(k)) followUps.set(k, []); followUps.get(k).push({ _id: a._id, title: a.title, status: a.status }); }
 

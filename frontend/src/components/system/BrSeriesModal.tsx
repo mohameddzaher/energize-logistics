@@ -75,7 +75,9 @@ export default function BrSeriesModal({ meta, L, onClose, onOpenMeeting, notify,
   const pickDept = (d: string) => {
     setForm((f: any) => {
       const adding = !f.departments.includes(d);
-      const heads = meta.participants.filter((p) => p.section === d && /_manager$/.test(p.role));
+      // The department's head: the CFO for finance, else the section's manager.
+      const cfo = meta.participants.filter((p) => p.section === d && p.role === 'cfo');
+      const heads = cfo.length ? cfo : meta.participants.filter((p) => p.section === d && /_manager$/.test(p.role));
       return {
         ...f,
         departments: adding ? [...f.departments, d] : f.departments.filter((x: string) => x !== d),

@@ -147,7 +147,9 @@ class _BrMeetingDepartmentsTabState extends State<BrMeetingDepartmentsTab> {
   Future<void> _newTask(String dept, {Map? followUpOf}) async {
     final people = List<Map<String, dynamic>>.from(widget.meta['participants'] ?? [])
       ..sort((a, b) => (b['section'] == dept ? 1 : 0) - (a['section'] == dept ? 1 : 0));
-    final head = people.where((p) => p['section'] == dept && '${p['role']}'.endsWith('_manager')).firstOrNull
+    // The department head: the CFO for finance, else the section's manager.
+    final head = people.where((p) => p['section'] == dept && p['role'] == 'cfo').firstOrNull
+        ?? people.where((p) => p['section'] == dept && '${p['role']}'.endsWith('_manager')).firstOrNull
         ?? people.where((p) => p['section'] == dept).firstOrNull;
     String who = followUpOf != null ? '${followUpOf['assignee']}' : '${head?['_id'] ?? ''}';
     String due = '';

@@ -416,8 +416,10 @@ class _SeriesFormState extends State<_SeriesForm> {
       if (_depts.contains(d)) { _depts.remove(d); return; }
       _depts.add(d);
       // Choosing a department invites its head.
-      for (final p in _participants) {
-        if (p['section'] == d && '${p['role']}'.endsWith('_manager') && !_people.contains('${p['_id']}')) _people.add('${p['_id']}');
+      // The department's head: the CFO for finance, else the section's manager.
+      final cfo = _participants.where((p) => p['section'] == d && p['role'] == 'cfo').toList();
+      for (final p in (cfo.isNotEmpty ? cfo : _participants.where((p) => p['section'] == d && '${p['role']}'.endsWith('_manager')))) {
+        if (!_people.contains('${p['_id']}')) _people.add('${p['_id']}');
       }
     });
   }

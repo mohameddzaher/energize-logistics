@@ -248,11 +248,10 @@
 //         <div className="grid sm:grid-cols-2 md:grid-cols-3 gap-6 justify-center max-w-6xl mx-auto">
 //           {[
 //             { name: "Mohamed Al Zahrani", role: "HR Manager", img: "/images/zaa.png" },
-//             { name: "Haitham Omar", role: "B2B HOD", img: "/images/haithamomar.jpeg" },
 //             { name: "Islam Suror", role: "B2C HOD", img: "/images/eslam.jpeg" },
 //             { name: "Mohamed Zaher", role: "Software Head", img: "/images/darr.png" },
 //             { name: "Ahmed Mahmoud", role: "Head of Operation", img: "/images/ahmedmahmoud.jpeg" },
-//             { name: "Adel Hasaballah", role: "BDM", img: "/images/adel.jpeg" },
+//             { name: "Adel Hasaballah", role: "Sales Manager", img: "/images/adel.jpeg" },
 //           ].map((head) => (
 //             <motion.div
 //               key={head.name}
@@ -589,11 +588,10 @@ export default function AboutPage() {
         <div className="grid sm:grid-cols-2 md:grid-cols-3 gap-6 justify-center max-w-6xl mx-auto">
           {[
             { name: "Mohamed Al Zahrani", role: "HR Manager", img: "/images/zaa.png" },
-            { name: "Haitham Omar", role: "B2B HOD", img: "/images/haithamomar.jpeg" },
             { name: "Islam Suror", role: "B2C HOD", img: "/images/eslam.jpeg" },
             { name: "Mohamed Zaher", role: "Software Head", img: "/images/darr.png" },
             { name: "Ahmed Mahmoud", role: "Head of Operation", img: "/images/ahmedmahmoud.jpeg" },
-            { name: "Adel Hasaballah", role: "BDM", img: "/images/adel.jpeg" },
+            { name: "Adel Hasaballah", role: "Sales Manager", img: "/images/adel.jpeg" },
           ].map((head) => (
             <div
               key={head.name}

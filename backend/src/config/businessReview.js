@@ -43,11 +43,13 @@ const ACTION_STATUSES = [
   { key: 'open', ar: 'لم يبدأ', en: 'Not started', color: '#94a3b8' },
   { key: 'in_progress', ar: 'قيد التنفيذ', en: 'In progress', color: '#0ea5e9' },
   { key: 'blocked', ar: 'متعثر', en: 'Blocked', color: '#dc2626' },
+  // Moved to a later date with a reason; still open work, counted against its new date.
+  { key: 'postponed', ar: 'مؤجَّل', en: 'Postponed', color: '#d97706' },
   { key: 'done', ar: 'مكتمل', en: 'Completed', color: '#16a34a' },
   { key: 'cancelled', ar: 'ملغي', en: 'Cancelled', color: '#64748b' },
 ];
 const ACTION_STATUS_KEYS = ACTION_STATUSES.map((s) => s.key);
-const OPEN_ACTION_STATUSES = ['open', 'in_progress', 'blocked'];
+const OPEN_ACTION_STATUSES = ['open', 'in_progress', 'blocked', 'postponed'];
 
 const PRIORITIES = [
   { key: 'low', ar: 'منخفضة', en: 'Low', color: '#94a3b8' },

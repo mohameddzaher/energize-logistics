@@ -18,6 +18,60 @@ const { createNotification } = require('../services/notificationService');
 const { emitToAll, emitToUser } = require('../websocket/socketManager');
 
 const fullName = (u) => (u ? `${u.firstName || ''} ${u.lastName || ''}`.trim() : '');
+// A day typed as YYYY-MM-DD is a company day; a due date is due by the end of it, a start date begins at its start.
+const dayOf = (v) => (v ? (/^\d{4}-\d{2}-\d{2}$/.test(String(v)) ? startOfDay(String(v)) : new Date(v)) : null);
+const dueOf = (v) => (v ? (/^\d{4}-\d{2}-\d{2}$/.test(String(v)) ? endOfDay(String(v)) : new Date(v)) : null);
+
+/**
+ * Status, progress, expected date and postponement, shared by actions and delegated tasks.
+ * Postponing needs a new date and a reason: the new date becomes the due date (so overdue follows it) and the first committed date is kept.
+ * Returns an error message, or '' when applied.
+ */
+function applyProgress(item, body) {
+  const before = item.status;
+  if (body.expectedDate !== undefined) item.expectedDate = dueOf(body.expectedDate);
+  if (body.status === 'postponed') {
+    const to = dueOf(body.newDueDate || body.postponedTo);
+    const reason = String(body.postponeReason || body.note || '').trim();
+    if (!to || Number.isNaN(to.getTime())) return 'حدّد الموعد الجديد للتأجيل';
+    if (!reason) return 'اكتب سبب التأجيل';
+    if (!item.originalDueDate) item.originalDueDate = item.dueDate || null;
+    item.dueDate = to;
+    item.postponeReason = reason;
+    item.postponeCount = (item.postponeCount || 0) + 1;
+    item.isOverdue = false; item.overdueNotifiedAt = null; item.dueSoonNotifiedAt = null;
+  }
+  if (body.status !== undefined) item.status = body.status;
+  if (body.progress !== undefined) item.progress = Math.max(0, Math.min(100, Number(body.progress) || 0));
+  if (item.status === 'done') {
+    item.completedAt = item.completedAt || new Date();
+    item.progress = 100;
+    item.isOverdue = false;
+  } else if (before === 'done' && item.status !== 'done') {
+    item.completedAt = null;
+  }
+  return '';
+}
+
+/** The update log line; a postponement names its new date. */
+function logUpdate(item, user, body, before) {
+  let note = (body.note || '').trim();
+  if (body.status === 'postponed' && item.dueDate) {
+    const to = new Date(item.dueDate).toLocaleDateString('en-GB');
+    note = `أُجِّل إلى ${to}${item.postponeReason ? ` — ${item.postponeReason}` : ''}`;
+  } else if (body.expectedDate !== undefined && item.expectedDate && !note) {
+    note = `الإنجاز المتوقَّع: ${new Date(item.expectedDate).toLocaleDateString('en-GB')}`;
+  }
+  if (note || before !== item.status) {
+    item.updates.push({
+      by: user._id, byName: fullName(user), text: note,
+      statusFrom: before !== item.status ? before : '',
+      statusTo: before !== item.status ? item.status : '',
+      progress: body.progress !== undefined ? item.progress : null,
+      at: new Date(),
+    });
+  }
+}
 const sameId = (a, b) => a && b && String(a._id || a) === String(b._id || b);
 const deny = (res, msg = 'Insufficient permissions') => res.status(403).json({ message: msg });
 
@@ -60,6 +114,8 @@ exports.getMeta = async (req, res) => {
         _id: String(u._id), name: fullName(u), role: u.role,
         department: u.linkedEmployee?.department || '',
         jobTitle: u.linkedEmployee?.jobTitle || '',
+        // The section the role heads, so choosing a department can invite its manager.
+        section: require('../config/roles').sectionOfRole(u.role) || '',
         // The board tier. The GM is nearly always the one ASKING for an action,
         // so the UI pre-selects them as attendees and always offers them in the
         // "requested by" picker — even for a round they could not attend.
@@ -444,7 +500,7 @@ exports.createAction = async (req, res) => {
     const meeting = await BrMeeting.findById(req.params.id).lean();
     if (!meeting) return res.status(404).json({ message: 'Meeting not found' });
 
-    const { title, description, assignee, dueDate, priority, department, raisedBy } = req.body;
+    const { title, description, assignee, dueDate, priority, department, raisedBy, startDate, expectedDate } = req.body;
     if (!title || !assignee) return res.status(400).json({ message: 'عنوان البند والمكلَّف مطلوبان' });
 
     const target = await User.findById(assignee).select('firstName lastName role').lean();
@@ -458,10 +514,13 @@ exports.createAction = async (req, res) => {
       meetingTitle: meeting.title,
       meetingDate: meeting.scheduledAt,
       title, description: description || '',
-      department: department || '',
+      // An action without a department belongs to its owner's section, so the board can place it.
+      department: department || require('../config/roles').sectionOfRole(target.role) || '',
       assignee: target._id, assigneeName: fullName(target), assigneeRole: target.role,
       raisedBy: raiser?._id || null, raisedByName: fullName(raiser),
-      dueDate: dueDate ? new Date(dueDate) : null,
+      startDate: dayOf(startDate) || meeting.scheduledAt || new Date(),
+      dueDate: dueOf(dueDate),
+      expectedDate: dueOf(expectedDate),
       priority: priority || 'medium',
       createdBy: req.user._id, createdByName: fullName(req.user),
     });
@@ -497,9 +556,11 @@ exports.updateAction = async (req, res) => {
     const before = action.status;
 
     if (runner) {
-      ['title', 'description', 'department', 'priority', 'dueDate'].forEach((f) => {
-        if (req.body[f] !== undefined) action[f] = f === 'dueDate' ? (req.body[f] ? new Date(req.body[f]) : null) : req.body[f];
+      ['title', 'description', 'department', 'priority'].forEach((f) => {
+        if (req.body[f] !== undefined) action[f] = req.body[f];
       });
+      if (req.body.dueDate !== undefined && req.body.status !== 'postponed') action.dueDate = dueOf(req.body.dueDate);
+      if (req.body.startDate !== undefined) action.startDate = dayOf(req.body.startDate);
       if (req.body.assignee && !sameId(action.assignee, req.body.assignee)) {
         const target = await User.findById(req.body.assignee).select('firstName lastName role').lean();
         if (target) {
@@ -515,27 +576,10 @@ exports.updateAction = async (req, res) => {
       }
     }
 
-    // The owner reports progress — that is the point of the board.
-    if (req.body.status !== undefined) action.status = req.body.status;
-    if (req.body.progress !== undefined) action.progress = Math.max(0, Math.min(100, Number(req.body.progress) || 0));
-    if (action.status === 'done') {
-      action.completedAt = action.completedAt || new Date();
-      action.progress = 100;
-      action.isOverdue = false;
-    } else if (before === 'done' && action.status !== 'done') {
-      action.completedAt = null;
-    }
-
-    const note = (req.body.note || '').trim();
-    if (note || before !== action.status) {
-      action.updates.push({
-        by: req.user._id, byName: fullName(req.user), text: note,
-        statusFrom: before !== action.status ? before : '',
-        statusTo: before !== action.status ? action.status : '',
-        progress: req.body.progress !== undefined ? action.progress : null,
-        at: new Date(),
-      });
-    }
+    // The owner reports progress, expected date and postponement; the board reads it live.
+    const bad = applyProgress(action, req.body);
+    if (bad) return res.status(400).json({ message: bad, code: 'POSTPONE_NEEDS_DATE_REASON' });
+    logUpdate(action, req.user, req.body, before);
     await action.save();
     emit('br:action', { id: String(action._id) });
 
@@ -689,7 +733,7 @@ exports.delegate = async (req, res) => {
         assignedByName: fullName(req.user),
         title: (row.title || action.title).trim(),
         instructions: row.instructions || '',
-        dueDate: row.dueDate ? new Date(row.dueDate) : action.dueDate,
+        dueDate: row.dueDate ? dueOf(row.dueDate) : action.dueDate,
         priority: row.priority || action.priority,
       });
       created.push(a);
@@ -756,28 +800,11 @@ exports.updateAssignment = async (req, res) => {
     const before = a.status;
     if (boss) {
       ['title', 'instructions', 'priority'].forEach((f) => { if (req.body[f] !== undefined) a[f] = req.body[f]; });
-      if (req.body.dueDate !== undefined) a.dueDate = req.body.dueDate ? new Date(req.body.dueDate) : null;
+      if (req.body.dueDate !== undefined && req.body.status !== 'postponed') a.dueDate = dueOf(req.body.dueDate);
     }
-    if (req.body.status !== undefined) a.status = req.body.status;
-    if (req.body.progress !== undefined) a.progress = Math.max(0, Math.min(100, Number(req.body.progress) || 0));
-    if (a.status === 'done') {
-      a.completedAt = a.completedAt || new Date();
-      a.progress = 100;
-      a.isOverdue = false;
-    } else if (before === 'done' && a.status !== 'done') {
-      a.completedAt = null;
-    }
-
-    const note = (req.body.note || '').trim();
-    if (note || before !== a.status) {
-      a.updates.push({
-        by: req.user._id, byName: fullName(req.user), text: note,
-        statusFrom: before !== a.status ? before : '',
-        statusTo: before !== a.status ? a.status : '',
-        progress: req.body.progress !== undefined ? a.progress : null,
-        at: new Date(),
-      });
-    }
+    const bad = applyProgress(a, req.body);
+    if (bad) return res.status(400).json({ message: bad, code: 'POSTPONE_NEEDS_DATE_REASON' });
+    logUpdate(a, req.user, req.body, before);
     await a.save();
     emit('br:assignment', { id: String(a._id) });
 

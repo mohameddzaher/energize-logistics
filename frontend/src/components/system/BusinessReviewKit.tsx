@@ -8,8 +8,8 @@ import {
   Loader2, MessageSquare, Trash2, Search,
 } from 'lucide-react';
 import {
-  type BrAction, type BrDelegation, type Vocab, type BrPerson, type Lang,
-  vocabLabel, vocabColor, fmtDate, fmtDateTime, dueLabel, TONE_CLASS, OPEN_STATUSES, tx,
+  type BrAction, type BrDelegation, type Vocab, type BrPerson, type Lang, type ProgressReport,
+  vocabLabel, vocabColor, fmtDate, fmtDateTime, dueLabel, TONE_CLASS, OPEN_STATUSES, tx, isoDay,
 } from '@/lib/businessReview';
 
 /**
@@ -122,18 +122,35 @@ export function Progress({ value, color = '#f37121' }: { value: number; color?: 
   );
 }
 
-/** The small "report progress" form used by both actions and delegated tasks. */
+/** The small "report progress" form used by both actions and delegated tasks: status, progress, expected finish, and a postponement with its new date and reason. */
 export function ProgressForm({
-  status, progress, statuses, lang, busy, onSubmit, onCancel,
+  status, progress, statuses, lang, busy, onSubmit, onCancel, expectedDate,
 }: {
   status: string; progress: number; statuses?: Vocab[]; lang: Lang; busy?: boolean;
-  onSubmit: (v: { status: string; progress: number; note: string }) => void;
+  onSubmit: (v: ProgressReport) => void;
   onCancel: () => void;
+  expectedDate?: string | null;
 }) {
   const [s, setS] = useState(status);
   const [p, setP] = useState(progress);
   const [note, setNote] = useState('');
+  const [expected, setExpected] = useState(expectedDate ? isoDay(new Date(expectedDate)) : '');
+  const [newDue, setNewDue] = useState('');
+  const [err, setErr] = useState('');
   const t = (en: string, ar: string) => tx(lang, en, ar);
+  const postponing = s === 'postponed';
+  const submit = () => {
+    if (s === 'postponed' && status !== 'postponed' && (!newDue || !note.trim())) {
+      setErr(t('A postponement needs the new date and the reason.', 'التأجيل يحتاج الموعد الجديد وسبب التأجيل.'));
+      return;
+    }
+    setErr('');
+    onSubmit({
+      status: s, progress: p, note,
+      ...(expected !== (expectedDate ? isoDay(new Date(expectedDate)) : '') ? { expectedDate: expected } : {}),
+      ...(s === 'postponed' && newDue ? { newDueDate: newDue, postponeReason: note.trim() } : {}),
+    });
+  };
   return (
     <div className="bg-slate-50 border border-slate-200 rounded-lg p-3 space-y-2.5 mt-2">
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
@@ -149,12 +166,29 @@ export function ProgressForm({
           <input type="range" min={0} max={100} step={5} value={p} onChange={(e) => setP(Number(e.target.value))}
             className="w-full mt-2 accent-[#f37121]" />
         </label>
+        {s !== 'done' && s !== 'cancelled' && (
+          <label className="block">
+            <span className="text-[11px] text-slate-500">{t('Expected to finish', 'متوقَّع الانتهاء')}</span>
+            <input type="date" value={expected} onChange={(e) => setExpected(e.target.value)}
+              className="w-full mt-1 px-2 py-1.5 rounded-lg border border-slate-200 text-sm text-slate-800" />
+          </label>
+        )}
+        {s === 'postponed' && (
+          <label className="block">
+            <span className="text-[11px] text-amber-700 font-semibold">{t('Postponed to *', 'مؤجَّل إلى *')}</span>
+            <input type="date" value={newDue} min={isoDay(new Date())} onChange={(e) => setNewDue(e.target.value)}
+              className="w-full mt-1 px-2 py-1.5 rounded-lg border border-amber-300 text-sm text-slate-800" />
+          </label>
+        )}
       </div>
       <textarea value={note} onChange={(e) => setNote(e.target.value)} rows={2}
-        placeholder={t('What happened? (optional)', 'ما الذي تم؟ (اختياري)')}
-        className="w-full px-2.5 py-1.5 rounded-lg border border-slate-200 text-sm text-slate-800" />
+        placeholder={s === 'postponed'
+          ? t('Reason for postponing *', 'سبب التأجيل *')
+          : t('What happened? (optional)', 'ما الذي تم؟ (اختياري)')}
+        className={`w-full px-2.5 py-1.5 rounded-lg border text-sm text-slate-800 ${postponing ? 'border-amber-300' : 'border-slate-200'}`} />
+      {err && <p className="text-xs text-red-600">{err}</p>}
       <div className="flex gap-2">
-        <button type="button" disabled={busy} onClick={() => onSubmit({ status: s, progress: p, note })}
+        <button type="button" disabled={busy} onClick={submit}
           className="inline-flex items-center gap-1.5 bg-[#f37121] text-white text-xs font-medium rounded-lg px-3 py-1.5 disabled:opacity-50">
           {busy ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <CheckCircle2 className="w-3.5 h-3.5" />}
           {t('Save update', 'حفظ التحديث')}
@@ -163,6 +197,17 @@ export function ProgressForm({
       </div>
     </div>
   );
+}
+
+/** Start, due, expected and postponement, in one line. */
+export function DatesLine({ item, lang }: { item: any; lang: Lang }) {
+  const t = (en: string, ar: string) => tx(lang, en, ar);
+  const parts: React.ReactNode[] = [];
+  if (item.startDate) parts.push(<span key="s">{t('Start', 'البداية')}: {fmtDate(item.startDate)}</span>);
+  if (item.expectedDate && OPEN_STATUSES.includes(item.status)) parts.push(<span key="e" className="text-sky-700">{t('Expected', 'متوقَّع')}: {fmtDate(item.expectedDate)}</span>);
+  if (item.originalDueDate) parts.push(<span key="o" className="text-amber-700">{t('Originally due', 'الموعد الأصلي')}: {fmtDate(item.originalDueDate)}{item.postponeCount > 1 ? ` (${t('postponed', 'أُجِّل')} ${item.postponeCount}×)` : ''}</span>);
+  if (!parts.length) return null;
+  return <p className="text-[11px] text-slate-500 mt-1 flex flex-wrap gap-x-3">{parts}</p>;
 }
 
 /** The update log — who said what, and when the status moved. */
@@ -283,7 +328,7 @@ export function ActionCard({
   canDelegate?: boolean;
   canEdit?: boolean;
   people?: BrPerson[];
-  onUpdate?: (v: { status: string; progress: number; note: string }) => Promise<void>;
+  onUpdate?: (v: ProgressReport) => Promise<void>;
   onDelegate?: (rows: any[]) => Promise<void>;
   onDelete?: () => void;
   showMeeting?: boolean;
@@ -324,6 +369,10 @@ export function ActionCard({
             {action.raisedByName && <> · {t('Requested by', 'بطلب من')}: {action.raisedByName}</>}
             {showMeeting && action.meetingRef && <> · {action.meetingRef}</>}
           </p>
+          <DatesLine item={action} lang={lang} />
+          {action.status === 'postponed' && action.postponeReason && (
+            <p className="text-[11px] text-amber-700 mt-0.5">{t('Postponement reason', 'سبب التأجيل')}: {action.postponeReason}</p>
+          )}
         </div>
         <div className="text-end shrink-0">
           <DueBadge due={action.dueDate} status={action.status} lang={lang} />
@@ -408,7 +457,7 @@ export function ActionCard({
       )}
 
       {mode === 'update' && onUpdate && (
-        <ProgressForm status={action.status} progress={action.progress} statuses={meta.actionStatuses}
+        <ProgressForm status={action.status} progress={action.progress} statuses={meta.actionStatuses} expectedDate={action.expectedDate}
           lang={lang} busy={busy} onCancel={() => setMode('')}
           onSubmit={(v) => run(() => onUpdate(v))} />
       )}
@@ -428,7 +477,7 @@ export function TaskCard({
   task: BrDelegation;
   meta: { actionStatuses?: Vocab[]; priorities?: Vocab[] };
   lang: Lang;
-  onUpdate?: (v: { status: string; progress: number; note: string }) => Promise<void>;
+  onUpdate?: (v: ProgressReport) => Promise<void>;
   showAssignee?: boolean;
 }) {
   const t = (en: string, ar: string) => tx(lang, en, ar);
@@ -484,7 +533,7 @@ export function TaskCard({
         </button>
       )}
       {onUpdate && editing && (
-        <ProgressForm status={task.status} progress={task.progress} statuses={meta.actionStatuses}
+        <ProgressForm status={task.status} progress={task.progress} statuses={meta.actionStatuses} expectedDate={(task as any).expectedDate}
           lang={lang} busy={busy} onCancel={() => setEditing(false)}
           onSubmit={async (v) => { setBusy(true); try { await onUpdate(v); setEditing(false); } finally { setBusy(false); } }} />
       )}

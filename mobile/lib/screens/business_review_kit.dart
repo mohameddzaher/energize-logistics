@@ -10,7 +10,7 @@ import '../ui/search_field.dart';
 
 /// Business review: tools shared by the list and the meeting page (BusinessReviewKit on the web).
 
-const brOpenStatuses = ['open', 'in_progress', 'blocked'];
+const brOpenStatuses = ['open', 'in_progress', 'blocked', 'postponed'];
 
 /// Section keys are English from the server ('Software & IT') and are not printed raw; they are translated from the section titles in the list.
 Map<String, (String, String)>? _deptLabels;
@@ -153,44 +153,96 @@ Future<Map<String, dynamic>?> brPickPerson(BuildContext context, List<Map<String
   );
 }
 
-/// Update status and percentage with a note; ProgressForm on the web.
-Future<Map<String, dynamic>?> brProgressSheet(BuildContext context, Map<String, dynamic> meta, String title, String status, num progress) {
+/// Update status, progress, expected finish and postponement (new date + reason); ProgressForm on the web.
+Future<Map<String, dynamic>?> brProgressSheet(BuildContext context, Map<String, dynamic> meta, String title, String status, num progress, {dynamic expectedDate}) {
   var st = status;
   var pr = progress.toDouble();
   final note = TextEditingController();
+  final exp0 = expectedDate == null ? '' : (DateTime.tryParse(expectedDate.toString()) == null ? '' : brIsoDay(DateTime.parse(expectedDate.toString()).toLocal()));
+  var expected = exp0;
+  var newDue = '';
+  String? err;
+  Future<String?> pick(BuildContext c, String current) async {
+    final now = DateTime.now();
+    final d = await showDatePicker(context: c, initialDate: DateTime.tryParse(current) ?? now,
+        firstDate: DateTime(now.year - 1), lastDate: DateTime(now.year + 3));
+    return d == null ? null : brIsoDay(d);
+  }
   return showModalBottomSheet<Map<String, dynamic>>(
     context: context,
     isScrollControlled: true,
     builder: (c) => StatefulBuilder(
       builder: (c, setS) => Padding(
         padding: EdgeInsets.fromLTRB(18, 18, 18, MediaQuery.of(c).viewInsets.bottom + 18),
-        child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
-          Text(title, style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w800)),
-          const SizedBox(height: 14),
-          DropdownButtonFormField<String>(
-            initialValue: st,
-            decoration: InputDecoration(labelText: tr('الحالة', 'Status')),
-            items: List<Map<String, dynamic>>.from(meta['actionStatuses'] ?? [])
-                .map((s) => DropdownMenuItem(value: s['key'].toString(), child: Text(tr((s['ar'] ?? '').toString(), (s['en'] ?? '').toString()))))
-                .toList(),
-            onChanged: (v) => setS(() { st = v ?? st; if (st == 'done') pr = 100; }),
-          ),
-          const SizedBox(height: 14),
-          Text('${tr('نسبة الإنجاز', 'Progress')}: ${pr.round()}%', style: const TextStyle(fontSize: 12.5, fontWeight: FontWeight.w700)),
-          Slider(value: pr, min: 0, max: 100, divisions: 20, activeColor: T.orange, label: '${pr.round()}%', onChanged: (v) => setS(() => pr = v)),
-          TextField(controller: note, maxLines: 2, decoration: InputDecoration(labelText: tr('ملاحظة (اختياري)', 'Note (optional)'))),
-          const SizedBox(height: 14),
-          SizedBox(
-            width: double.infinity,
-            child: FilledButton(
-              onPressed: () => Navigator.pop(c, {'status': st, 'progress': pr.round(), 'note': note.text}),
-              child: Text(tr('حفظ التحديث', 'Save update')),
+        child: SingleChildScrollView(
+          child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Text(title, style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w800)),
+            const SizedBox(height: 14),
+            DropdownButtonFormField<String>(
+              initialValue: st,
+              decoration: InputDecoration(labelText: tr('الحالة', 'Status')),
+              items: List<Map<String, dynamic>>.from(meta['actionStatuses'] ?? [])
+                  .map((s) => DropdownMenuItem(value: s['key'].toString(), child: Text(tr((s['ar'] ?? '').toString(), (s['en'] ?? '').toString()))))
+                  .toList(),
+              onChanged: (v) => setS(() { st = v ?? st; if (st == 'done') pr = 100; }),
             ),
-          ),
-        ]),
+            const SizedBox(height: 14),
+            Text('${tr('نسبة الإنجاز', 'Progress')}: ${pr.round()}%', style: const TextStyle(fontSize: 12.5, fontWeight: FontWeight.w700)),
+            Slider(value: pr, min: 0, max: 100, divisions: 20, activeColor: T.orange, label: '${pr.round()}%', onChanged: (v) => setS(() => pr = v)),
+            if (st != 'done' && st != 'cancelled')
+              OutlinedButton.icon(
+                style: OutlinedButton.styleFrom(minimumSize: const Size(double.infinity, 44), alignment: AlignmentDirectional.centerStart),
+                onPressed: () async { final d = await pick(c, expected); if (d != null) setS(() => expected = d); },
+                icon: const Icon(Icons.event_available_outlined, size: 18),
+                label: Text(expected.isEmpty ? tr('متوقَّع الانتهاء (اختياري)', 'Expected to finish (optional)') : '${tr('متوقَّع الانتهاء', 'Expected')}: $expected'),
+              ),
+            if (st == 'postponed') ...[
+              const SizedBox(height: 8),
+              OutlinedButton.icon(
+                style: OutlinedButton.styleFrom(minimumSize: const Size(double.infinity, 44), alignment: AlignmentDirectional.centerStart, foregroundColor: T.warn),
+                onPressed: () async { final d = await pick(c, newDue); if (d != null) setS(() => newDue = d); },
+                icon: const Icon(Icons.update, size: 18),
+                label: Text(newDue.isEmpty ? tr('مؤجَّل إلى * (اختر التاريخ)', 'Postponed to * (pick a date)') : '${tr('مؤجَّل إلى', 'Postponed to')}: $newDue'),
+              ),
+            ],
+            const SizedBox(height: 8),
+            TextField(controller: note, maxLines: 2, decoration: InputDecoration(
+                labelText: st == 'postponed' ? tr('سبب التأجيل *', 'Reason for postponing *') : tr('ملاحظة (اختياري)', 'Note (optional)'))),
+            if (err != null) Padding(padding: const EdgeInsets.only(top: 6), child: Text(err!, style: const TextStyle(color: T.danger, fontSize: 12))),
+            const SizedBox(height: 14),
+            SizedBox(
+              width: double.infinity,
+              child: FilledButton(
+                onPressed: () {
+                  if (st == 'postponed' && status != 'postponed' && (newDue.isEmpty || note.text.trim().isEmpty)) {
+                    setS(() => err = tr('التأجيل يحتاج الموعد الجديد وسبب التأجيل.', 'A postponement needs the new date and the reason.'));
+                    return;
+                  }
+                  Navigator.pop(c, {
+                    'status': st, 'progress': pr.round(), 'note': note.text,
+                    if (expected != exp0) 'expectedDate': expected,
+                    if (st == 'postponed' && newDue.isNotEmpty) ...{'newDueDate': newDue, 'postponeReason': note.text.trim()},
+                  });
+                },
+                child: Text(tr('حفظ التحديث', 'Save update')),
+              ),
+            ),
+          ]),
+        ),
       ),
     ),
   );
+}
+
+/// Start, expected and postponement, one line; DatesLine on the web.
+String brDatesLine(Map a) {
+  final parts = <String>[
+    if (a['startDate'] != null) '${tr('البداية', 'Start')}: ${brDate(a['startDate'])}',
+    if (a['expectedDate'] != null && brOpenStatuses.contains(a['status'])) '${tr('متوقَّع', 'Expected')}: ${brDate(a['expectedDate'])}',
+    if (a['originalDueDate'] != null) '${tr('الموعد الأصلي', 'Originally due')}: ${brDate(a['originalDueDate'])}',
+    if (a['status'] == 'postponed' && (a['postponeReason'] ?? '').toString().isNotEmpty) '${tr('سبب التأجيل', 'Reason')}: ${a['postponeReason']}',
+  ];
+  return parts.join(' · ');
 }
 
 /// Delegate an item to the team; DelegateForm on the web: one row per employee.
@@ -384,7 +436,7 @@ class _BrActionCardState extends State<BrActionCard> {
   }
 
   Future<void> _update() async {
-    final v = await brProgressSheet(context, widget.meta, a['title'].toString(), (a['status'] ?? 'open').toString(), (a['progress'] ?? 0) as num);
+    final v = await brProgressSheet(context, widget.meta, a['title'].toString(), (a['status'] ?? 'open').toString(), (a['progress'] ?? 0) as num, expectedDate: a['expectedDate']);
     if (v == null) return;
     await _run(() => Api.instance.patch('/api/business-review/actions/${a['_id']}', v), 'تم التحديث', 'Updated');
   }
@@ -433,6 +485,8 @@ class _BrActionCardState extends State<BrActionCard> {
             '${widget.showMeeting && a['meetingRef'] != null ? ' · ${a['meetingRef']}' : ''}',
             style: const TextStyle(fontSize: 11, color: T.inkFaint),
           ),
+          if (brDatesLine(a).isNotEmpty)
+            Padding(padding: const EdgeInsets.only(top: 3), child: Text(brDatesLine(a), style: TextStyle(fontSize: 11, color: a['status'] == 'postponed' ? T.warn : T.inkSoft))),
           const SizedBox(height: 8),
           ClipRRect(
             borderRadius: BorderRadius.circular(4),

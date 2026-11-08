@@ -34,6 +34,17 @@ async function sweepOnce({ log = true } = {}) {
   let overdue = 0; let dueSoon = 0; let cleared = 0;
 
   try {
+    // Today's recurring meetings first, so the day's meeting exists from the first sweep of the day.
+    try {
+      const made = await require('../services/brSeries').generateToday();
+      for (const m of made) {
+        for (const a of m.attendees || []) {
+          await ping(a.user, 'اجتماع اليوم', `${m.title} — ${new Date(m.scheduledAt).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', timeZone: 'Asia/Riyadh' })}`, 'BrMeeting', m._id);
+        }
+      }
+      if (made.length) { try { require('../websocket/socketManager').emitToAll('br:meeting', { at: Date.now() }); } catch (_) { /* */ } }
+    } catch (e) { console.error('businessReviewSweep series:', e.message); }
+
     // ── Actions ────────────────────────────────────────────────────────────
     const lateActions = await BrAction.find({
       status: { $in: OPEN_ACTION_STATUSES },

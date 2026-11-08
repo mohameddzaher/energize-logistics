@@ -31,7 +31,7 @@ export const tx = (lang: Lang, en: string, ar: string) => (lang === 'ar' ? ar : 
 export interface Vocab { key: string; ar: string; en: string; color?: string; days?: number | null }
 
 export interface BrPerson {
-  _id: string; name: string; role: string; department?: string; jobTitle?: string;
+  _id: string; name: string; role: string; department?: string; jobTitle?: string; section?: string;
   /** The board tier — pre-selected as attendees and always offered as "requested by". */
   isExecutive?: boolean;
 }
@@ -135,8 +135,16 @@ export interface BrAction {
   raisedBy?: string | null; raisedByName?: string;
   dueDate?: string | null; priority: string; status: string;
   progress: number; isOverdue?: boolean; completedAt?: string | null;
+  startDate?: string | null; expectedDate?: string | null;
+  originalDueDate?: string | null; postponeReason?: string; postponeCount?: number;
   updates?: BrUpdate[];
   delegations?: BrDelegation[];
+}
+
+/** One status report: status, progress and note, plus the expected date and a postponement (new date and reason). */
+export interface ProgressReport {
+  status: string; progress: number; note: string;
+  expectedDate?: string; newDueDate?: string; postponeReason?: string;
 }
 
 // ── Client ──────────────────────────────────────────────────────────────────
@@ -183,6 +191,18 @@ export const brDeleteAction = (actionId: string) => api.delete(`/api/business-re
 export const brDelegate = (actionId: string, assignments: any[]) =>
   api.post<{ assignments: BrDelegation[] }>(`/api/business-review/actions/${actionId}/delegate`, { assignments });
 
+// Department board and recurring meetings.
+export const brBoard = (q: Record<string, string> = {}) => {
+  const qs = new URLSearchParams(Object.entries(q).filter(([, v]) => v)).toString();
+  return api.get<any>(`/api/business-review/board${qs ? `?${qs}` : ''}`);
+};
+export const brSeriesList = () => api.get<{ series: any[]; canEdit: boolean }>('/api/business-review/series');
+export const brCreateSeries = (body: any) => api.post<{ series: any; today: any }>('/api/business-review/series', body);
+export const brUpdateSeries = (id: string, body: any) => api.put<{ series: any }>(`/api/business-review/series/${id}`, body);
+export const brDeleteSeries = (id: string) => api.delete(`/api/business-review/series/${id}`);
+export const brSeriesDay = (id: string, day?: string) =>
+  api.post<{ meeting: { _id: string }; created: boolean }>(`/api/business-review/series/${id}/day`, day ? { day } : {});
+
 export const brMyActions = (open = false) =>
   api.get<{ actions: BrAction[]; summary: any }>(`/api/business-review/my-actions${open ? '?open=1' : ''}`);
 export const brAllActions = (q: Record<string, string> = {}) => {
@@ -226,7 +246,7 @@ export const TONE_CLASS = {
   ok: 'bg-green-100 text-green-700',
 } as const;
 
-export const OPEN_STATUSES = ['open', 'in_progress', 'blocked'];
+export const OPEN_STATUSES = ['open', 'in_progress', 'blocked', 'postponed'];
 
 /** Local YYYY-MM-DD (never via toISOString — that shifts the day in +03). */
 export const isoDay = (d: Date) => {

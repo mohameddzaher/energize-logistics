@@ -892,7 +892,7 @@ function ActionsTab({ meeting, meta, actions, lang, canRaise, onChanged, notify 
   const [busy, setBusy] = useState(false);
   const [form, setForm] = useState({
     title: '', description: '', assignee: '', raisedBy: '',
-    department: meeting.departments?.[0] || '', dueDate: '', priority: 'high',
+    department: meeting.departments?.[0] || '', startDate: isoDay(new Date(meeting.scheduledAt || Date.now())), dueDate: '', priority: 'high',
   });
 
   // An action lands on someone who was in the room.
@@ -957,6 +957,11 @@ function ActionsTab({ meeting, meta, actions, lang, canRaise, onChanged, notify 
                   onChange={(id) => setForm({ ...form, raisedBy: id })} />
               </div>
             </div>
+            <label className="block">
+              <span className="text-[11px] text-slate-500">{t('Start date', 'تاريخ البداية')}</span>
+              <input type="date" value={form.startDate} onChange={(e) => setForm({ ...form, startDate: e.target.value })}
+                className="w-full mt-1 px-2 py-1.5 rounded-lg border border-slate-200 text-sm text-slate-800" />
+            </label>
             <label className="block">
               <span className="text-[11px] text-slate-500">{t('Due date', 'موعد التسليم')}</span>
               <input type="date" value={form.dueDate} min={isoDay(new Date())}

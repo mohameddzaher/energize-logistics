@@ -7,12 +7,13 @@ import '../ui/export_sheet.dart';
 import '../ui/theme.dart';
 import '../ui/widgets.dart';
 import '../ui/search_field.dart';
+import 'business_review_board.dart';
 import 'business_review_kit.dart';
 import 'business_review_meeting.dart';
 
 /// Business review meetings, the mobile half. Same contract as the web (the business-review API) and the same visibility rule, enforced server-side: a department head gets the meetings they sat in and the actions they own; an ordinary employee gets ONLY the tasks delegated to them, and the tabs they don't qualify for simply never appear. The vocabularies (statuses, priorities, cadences) come from `/meta`, so a new status added on the server shows up here without an app release.
 
-const _open = ['open', 'in_progress', 'blocked'];
+const _open = ['open', 'in_progress', 'blocked', 'postponed'];
 
 Color _hex(String? s, [Color fb = T.inkFaint]) {
   if (s == null || !s.startsWith('#') || s.length != 7) return fb;
@@ -88,6 +89,7 @@ class _BusinessReviewScreenState extends State<BusinessReviewScreen> {
 
     // Tabs follow the tier — an employee only ever gets "my tasks".
     final tabs = <(String, Widget)>[
+      if (participant) (tr('لوحة الأقسام', 'Departments'), BrBoardTab(meta: _meta!)),
       if (participant) (tr('الاجتماعات', 'Meetings'), _MeetingsTab(meta: _meta!)),
       if (participant) (tr('بنودي', 'My actions'), _ActionsTab(meta: _meta!, mine: true)),
       if (runner) (tr('سجل المتابعة', 'Register'), _ActionsTab(meta: _meta!, mine: false)),
@@ -987,74 +989,18 @@ class _WorkCard extends StatelessWidget {
 
   bool get _overdue => row['isOverdue'] == true && _open.contains(row['status']);
 
-  void _report(BuildContext context) {
-    var status = row['status']?.toString() ?? 'open';
-    var progress = ((row['progress'] ?? 0) as num).toDouble();
-    final note = TextEditingController();
-    var busy = false;
-
-    showModalBottomSheet(
-      context: context,
-      isScrollControlled: true,
-      backgroundColor: Colors.white,
-      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
-      builder: (c) => StatefulBuilder(
-        builder: (c, setSheet) => Padding(
-          padding: EdgeInsets.fromLTRB(18, 18, 18, MediaQuery.of(c).viewInsets.bottom + 18),
-          child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
-            Text(row['title'].toString(), style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w800)),
-            const SizedBox(height: 14),
-            DropdownButtonFormField<String>(
-              initialValue: status,
-              decoration: InputDecoration(labelText: tr('الحالة', 'Status')),
-              items: List<Map<String, dynamic>>.from(meta['actionStatuses'] ?? [])
-                  .map((s) => DropdownMenuItem(value: s['key'].toString(),
-                      child: Text(tr(s['ar'] ?? '', s['en'] ?? '')))).toList(),
-              onChanged: (v) => setSheet(() => status = v ?? status),
-            ),
-            const SizedBox(height: 14),
-            Text('${tr('نسبة الإنجاز', 'Progress')}: ${progress.round()}%',
-                style: const TextStyle(fontSize: 12.5, fontWeight: FontWeight.w700)),
-            Slider(
-              value: progress, min: 0, max: 100, divisions: 20,
-              activeColor: T.orange, label: '${progress.round()}%',
-              onChanged: (v) => setSheet(() => progress = v),
-            ),
-            TextField(controller: note, maxLines: 2,
-                decoration: InputDecoration(labelText: tr('ملاحظة (اختياري)', 'Note (optional)'))),
-            const SizedBox(height: 14),
-            SizedBox(
-              width: double.infinity,
-              child: FilledButton(
-                onPressed: busy ? null : () async {
-                  setSheet(() => busy = true);
-                  final path = isAction
-                      ? '/api/business-review/actions/${row['_id']}'
-                      : '/api/business-review/assignments/${row['_id']}';
-                  try {
-                    await Api.instance.patch(path, {
-                      'status': status, 'progress': progress.round(), 'note': note.text,
-                    });
-                    if (c.mounted) Navigator.pop(c);
-                    await onSaved();
-                  } catch (e) {
-                    setSheet(() => busy = false);
-                    if (c.mounted) {
-                      ScaffoldMessenger.of(c).showSnackBar(SnackBar(
-                        content: Text(e is ApiException ? e.message : tr('تعذّر الحفظ', 'Could not save')),
-                      ));
-                    }
-                  }
-                },
-                child: busy
-                    ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
-                    : Text(tr('حفظ التحديث', 'Save update')),
-              ),
-            ),
-          ]),
-        ),
-      ),
-    );
+  Future<void> _report(BuildContext context) async {
+    final v = await brProgressSheet(context, meta, row['title'].toString(), row['status']?.toString() ?? 'open', (row['progress'] ?? 0) as num, expectedDate: row['expectedDate']);
+    if (v == null) return;
+    final path = isAction ? '/api/business-review/actions/${row['_id']}' : '/api/business-review/assignments/${row['_id']}';
+    try {
+      await Api.instance.patch(path, v);
+      await onSaved();
+    } catch (e) {
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e is ApiException ? e.message : tr('تعذّر الحفظ', 'Could not save'))));
+      }
+    }
   }
 
   @override

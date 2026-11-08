@@ -1475,6 +1475,15 @@
       ],
       "wildcard": false
     },
+    "/system/business-review/board": {
+      "apis": [
+        "/api/business-review/actions",
+        "/api/business-review/board",
+        "/api/business-review/meta",
+        "/api/business-review/series"
+      ],
+      "wildcard": false
+    },
     "/system/business-review": {
       "apis": [
         "/api/business-review/actions",

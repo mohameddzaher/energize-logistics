@@ -744,6 +744,7 @@ class _ActionsTab extends StatelessWidget {
     final desc = TextEditingController();
     Map<String, dynamic>? assignee, raisedBy;
     String due = '';
+    var start = brIsoDay(DateTime.tryParse('${meeting['scheduledAt'] ?? ''}')?.toLocal() ?? DateTime.now());
     String priority = 'high';
     final depts = List<String>.from((meeting['departments'] ?? []).map((e) => e.toString()));
     String department = depts.isNotEmpty ? depts.first : '';
@@ -771,6 +772,14 @@ class _ActionsTab extends StatelessWidget {
                 onPressed: () async { final p = await brPickPerson(c, requesters); if (p != null) setS(() => raisedBy = p); },
                 icon: const Icon(Icons.record_voice_over_outlined, size: 18),
                 label: Text(raisedBy == null ? tr('بطلب من…', 'Requested by…') : '${tr('بطلب من', 'Requested by')}: ${raisedBy!['name']}'),
+              ),
+              OutlinedButton.icon(
+                onPressed: () async {
+                  final v = await showDatePicker(context: c, initialDate: DateTime.tryParse(start) ?? DateTime.now(), firstDate: DateTime.now().subtract(const Duration(days: 365)), lastDate: DateTime.now().add(const Duration(days: 730)));
+                  if (v != null) setS(() => start = brIsoDay(v));
+                },
+                icon: const Icon(Icons.play_circle_outline, size: 16),
+                label: Text('${tr('تاريخ البداية', 'Start date')}: $start'),
               ),
               Row(children: [
                 Expanded(
@@ -825,6 +834,7 @@ class _ActionsTab extends StatelessWidget {
                               'assignee': assignee!['_id'],
                               'raisedBy': raisedBy?['_id'] ?? '',
                               'department': department,
+                              'startDate': start,
                               'dueDate': due,
                               'priority': priority,
                             });

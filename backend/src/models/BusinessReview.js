@@ -89,9 +89,15 @@ const brMeetingSchema = new mongoose.Schema({
 
   createdBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
   createdByName: { type: String, trim: true, default: '' },
+
+  // Set on meetings generated from a recurring schedule; one per schedule per company day.
+  series: { type: mongoose.Schema.Types.ObjectId, ref: 'BrSeries', default: null },
+  seriesDay: { type: String, default: null },
 }, { timestamps: true });
 
 brMeetingSchema.index({ scheduledAt: -1 });
+// Two workers or a double click must not create the same day twice.
+brMeetingSchema.index({ series: 1, seriesDay: 1 }, { unique: true, partialFilterExpression: { series: { $type: 'objectId' } } });
 brMeetingSchema.index({ status: 1, scheduledAt: -1 });
 brMeetingSchema.index({ 'attendees.user': 1 });
 
@@ -136,7 +142,14 @@ const brActionSchema = new mongoose.Schema({
   raisedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User', default: null },
   raisedByName: { type: String, trim: true, default: '' },
 
+  // Start and due give the task's duration; expected is the owner's own estimate of when it lands.
+  startDate: { type: Date, default: null },
   dueDate: { type: Date, default: null, index: true },
+  expectedDate: { type: Date, default: null },
+  // Postponement keeps the first committed date so the board sees how far it slipped.
+  originalDueDate: { type: Date, default: null },
+  postponeReason: { type: String, trim: true, default: '' },
+  postponeCount: { type: Number, default: 0 },
   priority: { type: String, enum: PRIORITY_KEYS, default: 'medium' },
   status: { type: String, enum: ACTION_STATUS_KEYS, default: 'open', index: true },
   progress: { type: Number, default: 0, min: 0, max: 100 },
@@ -177,6 +190,10 @@ const brAssignmentSchema = new mongoose.Schema({
   instructions: { type: String, trim: true, default: '' },
 
   dueDate: { type: Date, default: null, index: true },
+  expectedDate: { type: Date, default: null },
+  originalDueDate: { type: Date, default: null },
+  postponeReason: { type: String, trim: true, default: '' },
+  postponeCount: { type: Number, default: 0 },
   priority: { type: String, enum: PRIORITY_KEYS, default: 'medium' },
   status: { type: String, enum: ACTION_STATUS_KEYS, default: 'open', index: true },
   progress: { type: Number, default: 0, min: 0, max: 100 },
@@ -192,7 +209,25 @@ const brAssignmentSchema = new mongoose.Schema({
 brAssignmentSchema.index({ assignee: 1, status: 1 });
 brAssignmentSchema.index({ action: 1, assignee: 1 });
 
+// Recurring schedule: generates one meeting per working day (or chosen weekdays) with its own minutes and actions.
+const brSeriesSchema = new mongoose.Schema({
+  title: { type: String, required: true, trim: true },
+  cadence: { type: String, enum: CADENCE_KEYS, default: 'daily' },
+  // 0 = Sunday … 6 = Saturday, in company time.
+  weekdays: { type: [Number], default: [0, 1, 2, 3, 4] },
+  time: { type: String, default: '09:00', match: /^\d{2}:\d{2}$/ },
+  durationMinutes: { type: Number, default: 30 },
+  departments: { type: [String], default: [] },
+  attendees: [{ type: mongoose.Schema.Types.ObjectId, ref: 'User' }],
+  location: { type: String, trim: true, default: '' },
+  meetingLink: { type: String, trim: true, default: '' },
+  active: { type: Boolean, default: true, index: true },
+  createdBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
+  createdByName: { type: String, trim: true, default: '' },
+}, { timestamps: true });
+
 module.exports = {
+  BrSeries: mongoose.models.BrSeries || mongoose.model('BrSeries', brSeriesSchema),
   BrMeeting: mongoose.models.BrMeeting || mongoose.model('BrMeeting', brMeetingSchema),
   BrAction: mongoose.models.BrAction || mongoose.model('BrAction', brActionSchema),
   BrAssignment: mongoose.models.BrAssignment || mongoose.model('BrAssignment', brAssignmentSchema),

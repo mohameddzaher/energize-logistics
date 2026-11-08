@@ -21,6 +21,15 @@ router.use((req, res, next) => (req.user.role === 'client' ? res.status(403).jso
 router.get('/meta', br.getMeta);
 router.get('/dashboard', br.getDashboard);
 
+// Department board and recurring meetings (the daily meeting).
+const board = require('../controllers/businessReviewBoardController');
+router.get('/board', board.getBoard);
+router.get('/series', board.listSeries);
+router.post('/series', board.createSeries);
+router.put('/series/:id', board.updateSeries);
+router.delete('/series/:id', board.deleteSeries);
+router.post('/series/:id/day', board.seriesDay);
+
 // ── My work ────────────────────────────────────────────────────────────────
 router.get('/my-actions', br.myActions);        // manager: actions I own
 router.get('/my-tasks', br.myAssignments);      // employee: work delegated to me

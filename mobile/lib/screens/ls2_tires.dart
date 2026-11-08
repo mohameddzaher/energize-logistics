@@ -8,6 +8,7 @@ import '../ui/report_button.dart';
 import '../ui/theme.dart';
 import '../ui/tire_states.dart';
 import '../ui/widgets.dart';
+import 'ls2_fleet_assets.dart' show tireLastSeenText;
 import '../ui/search_field.dart';
 import 'ls2_common.dart';
 import 'ls2_vehicle_assets.dart';
@@ -422,8 +423,7 @@ class _Ls2TireProfileScreenState extends State<Ls2TireProfileScreen> {
       const SizedBox(height: 10),
       _section(tr('أين هي الآن', 'Where it is now'), null, [
         if (ti['status'] == 'mounted' && ti['placeUnknown'] == true)
-          Text(tr('مسجّلة مركّبة لكن بدون عربية ولا تيدر — مكانها غير معروف. حدِّد مكانها الفعلي من صفحة الكاوتشات: نقلها لعربيتها أو إرجاعها للمستودع.',
-                  'Recorded as mounted but on no vehicle and no trailer — location unknown. Set its real place from the tires page: move it to its truck or return it to store.'),
+          Text('${tireLastSeenText(ti['lastSeen'])}\n${tr('لم يُسجَّل تركيبها على عربية بعد هذه الحركة.', 'No mounting was recorded after this move.')}',
               style: const TextStyle(fontWeight: FontWeight.w800, color: T.warn))
         else if (ti['status'] == 'mounted')
           Wrap(crossAxisAlignment: WrapCrossAlignment.center, spacing: 4, runSpacing: 4, children: [

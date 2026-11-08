@@ -1109,9 +1109,7 @@ class _Ls2FleetAssetsScreenState extends State<Ls2FleetAssetsScreen> {
     if (k == 'mounted') {
       final trailerNo = (t['trailerNumber'] ?? '').toString();
       // Mounted on no truck and no trailer: "on the spare slot" would hide that nobody knows which truck.
-      if ((t['plate'] ?? '').toString().isEmpty && trailerNo.isEmpty) {
-        return tr('مسجّلة مركّبة بدون عربية — مكانها غير معروف', 'Recorded mounted, no vehicle — location unknown');
-      }
+      if ((t['plate'] ?? '').toString().isEmpty && trailerNo.isEmpty) return tireLastSeenText(t['lastSeen']);
       String plate = (t['plate'] ?? '').toString();
       if (plate.isEmpty && trailerNo.isNotEmpty) {
         final tr0 = _l(_d?['trailers']).firstWhere((x) => (x['trailerNumber'] ?? '').toString() == trailerNo, orElse: () => <String, dynamic>{});
@@ -1675,4 +1673,18 @@ class _Ls2FleetAssetsScreenState extends State<Ls2FleetAssetsScreen> {
       if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.toString())));
     }
   }
+}
+
+/// Where a tyre on no truck and no trailer went last, from its recorded move.
+String tireLastSeenText(dynamic s) {
+  if (s is! Map) return tr('مركّبة بدون عربية ولا تيدر — لا توجد حركة مسجّلة', 'Mounted on no vehicle or trailer — no recorded move');
+  final day = (s['date'] ?? '').toString().length >= 10 ? s['date'].toString().substring(0, 10) : '';
+  final from = (s['fromPlate'] ?? '').toString();
+  final trl = (s['trailerNumber'] ?? '').toString();
+  final on = (s['trailerOnPlate'] ?? '').toString();
+  if (trl.isNotEmpty) {
+    return tr('آخر حركة: نزلت${from.isNotEmpty ? ' من $from' : ''} مع تيدر $trl يوم $day${on.isNotEmpty ? ' — والتيدر الآن على $on' : ' — والتيدر واقف'}',
+        'Last move: left${from.isNotEmpty ? ' $from' : ''} with trailer $trl on $day${on.isNotEmpty ? ' — the trailer is now on $on' : ' — the trailer is parked'}');
+  }
+  return tr('آخر حركة: ${from.isNotEmpty ? 'نزلت من $from ' : ''}يوم $day', 'Last move: ${from.isNotEmpty ? 'left $from ' : ''}on $day');
 }

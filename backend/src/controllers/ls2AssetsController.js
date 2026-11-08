@@ -117,6 +117,30 @@ async function logEvent(req, data) {
 // Cached 20s (cleared instantly on any asset mutation via emitAssetsChanged) so
 // the throttled-Atlas triple-find (the tires set alone is ~260KB) runs once per
 // window instead of on every page load — the page opens warm in ~2ms.
+/**
+ * Mounted tires that sit on no truck and no trailer: their last recorded move says where they went (which truck they
+ * left, the trailer they went with, the day), so the screen states that instead of an empty place.
+ */
+async function lastSeenOf(tires) {
+  const lost = tires.filter((t) => t.status === 'mounted' && !t.plateKey && !t.trailerNumber);
+  if (!lost.length) return new Map();
+  const rows = await Ls2AssetEvent.aggregate([
+    { $match: { entityType: 'tire', refId: { $in: lost.map((t) => t._id) }, action: { $in: ['mounted', 'transferred'] } } },
+    { $sort: { date: -1, createdAt: -1, _id: -1 } },
+    { $group: { _id: '$refId', e: { $first: '$$ROOT' } } },
+  ]);
+  const trailerNos = rows.map((r) => (String(r.e.toPosition || '').match(/تيدر\s*([\w-]+)/) || [])[1]).filter(Boolean);
+  const trailers = trailerNos.length ? await Ls2Trailer.find({ trailerNumber: { $in: trailerNos } }).select('trailerNumber currentPlate').lean() : [];
+  const onPlate = new Map(trailers.map((x) => [String(x.trailerNumber), x.currentPlate || null]));
+  return new Map(rows.map((r) => {
+    const trailerNumber = (String(r.e.toPosition || '').match(/تيدر\s*([\w-]+)/) || [])[1] || null;
+    return [String(r._id), {
+      date: r.e.date, fromPlate: r.e.fromPlate || null, toPlate: r.e.toPlate || null,
+      trailerNumber, trailerOnPlate: trailerNumber ? onPlate.get(String(trailerNumber)) || null : null,
+    }];
+  }));
+}
+
 exports.getOverview = async (req, res) => {
   try {
     const body = await cache.wrap('ls2assets:overview', 20000, async () => {
@@ -145,6 +169,8 @@ exports.getOverview = async (req, res) => {
           odometerKm: live?.odometerKm ?? null,
         };
       });
+      const seen = await lastSeenOf(tires);
+      for (const t of tires) { const s = seen.get(String(t._id)); if (s) t.lastSeen = s; }
       return {
         flatbeds: out,
         trailers,
@@ -1442,6 +1468,7 @@ exports.getTireProfile = async (req, res) => {
         state: tireState(tire),
         // Recorded as mounted but on no truck and no trailer: its place has to be confirmed by the workshop.
         placeUnknown: tire.status === 'mounted' && !tire.plateKey && !tire.trailerNumber,
+        lastSeen: (await lastSeenOf([tire])).get(String(tire._id)) || null,
         // The truck currently pulling the trailer, shown with its current location.
         trailerOnPlate: currentTrailer?.currentPlate || null,
       },

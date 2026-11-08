@@ -1,4 +1,5 @@
 'use client';
+import { lastSeenText } from '@/components/ls2/tireLastSeen';
 // The life of a tire, not only its current position. The question this screen answers is not 'where is it now' (a table row) but how long it lived, on what, and how far it ran
 // A two-year-old tire on four trucks is not like one on a single truck; the difference only reads from the summed record. Mounting periods are built from the movement log: each mount opens a period and the first exit after it closes it
 // Distance = the truck's odometer at dismount minus at mount, read from the daily-odometer table, not from the event time (an event may be recorded a day late and carry a late odometer). What happened to the truck WHILE the tire was on it is attributed to the tire: maintenance that day, repairs likewise. That is the difference between a tire record and a truck record, and it only shows by intersecting dates with the periods.
@@ -175,8 +176,8 @@ export default function TireProfilePage() {
         </p>
         {ti.status === 'mounted' && ti.placeUnknown ? (
           <p className="text-[13.5px] font-bold text-amber-800 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">
-            {t('مسجّلة مركّبة لكن بدون عربية ولا تيدر — مكانها غير معروف. حدِّد مكانها الفعلي من صفحة الكاوتشات: نقلها لعربيتها أو إرجاعها للمستودع.',
-              'Recorded as mounted but on no vehicle and no trailer — location unknown. Set its real place from the tires page: move it to its truck or return it to store.')}
+            {lastSeenText((ti as any).lastSeen, ar)}
+            <span className="block text-[12px] font-normal text-amber-700 mt-0.5">{t('لم يُسجَّل تركيبها على عربية بعد هذه الحركة.', 'No mounting was recorded after this move.')}</span>
           </p>
         ) : ti.status === 'mounted' ? (
           <p className="text-[13.5px] text-slate-800">

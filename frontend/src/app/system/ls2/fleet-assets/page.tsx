@@ -1,4 +1,5 @@
 'use client';
+import { lastSeenText } from '@/components/ls2/tireLastSeen';
 // Fleet Assets — سجل السطحات والتيدرات وفردات الكاوتش.
 //
 // The live Wialon mirror knows sensors, not hardware: it cannot tell you WHICH
@@ -296,8 +297,8 @@ export default function Ls2FleetAssetsPage() {
   const placeOf = useCallback((ti: TireAsset): string => {
     const k = tireState(ti);
     if (k === 'mounted') {
-      // Mounted on no truck and no trailer: saying "on the spare slot" hid that nobody knows which truck.
-      if (!ti.plate && !ti.trailerNumber) return ar ? 'مسجّلة مركّبة بدون عربية — مكانها غير معروف' : 'Recorded mounted, no vehicle — location unknown';
+      // On no truck and no trailer: state its last recorded move rather than "on the spare slot".
+      if (!ti.plate && !ti.trailerNumber) return lastSeenText((ti as any).lastSeen, ar);
       const onTrailer = /تيدر|تريلة/.test(ti.section || '');
       const where = ti.isSpare || /استبن/.test(ti.section || '')
         ? (ar ? 'الاستبن' : 'the spare slot')

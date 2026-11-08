@@ -61,6 +61,58 @@ async function ensureDay(series, ymd = todayKey(), { force = false, actor = null
   }
 }
 
+/**
+ * Applies a schedule's current settings to one of its meetings that is still open (today's, after the settings are edited).
+ * Departments and invitees that were added appear at once; a removed department keeps its section only if its minutes
+ * were already written, and a removed invitee stays only if his attendance was already marked, so nothing recorded is lost.
+ * Ended or cancelled meetings are left as they were held.
+ */
+async function syncDay(series, meeting) {
+  if (!series || !meeting || ['completed', 'cancelled'].includes(meeting.status)) return false;
+  const ymd = meeting.seriesDay;
+  meeting.title = `${series.title} — ${dmy(ymd)}`;
+  meeting.cadence = series.cadence || 'daily';
+  meeting.scheduledAt = at(ymd, series.time);
+  meeting.durationMinutes = series.durationMinutes || 30;
+  meeting.location = series.location || '';
+  meeting.meetingLink = series.meetingLink || '';
+
+  const want = series.departments || [];
+  const written = (meeting.minutes || []).filter((x) => String(x.body || '').trim()).map((x) => x.department);
+  const keep = [...want, ...written.filter((d) => d && !want.includes(d))];
+  const oldMin = new Map((meeting.minutes || []).map((x) => [x.department, x]));
+  const oldAgenda = new Map((meeting.agenda || []).map((x) => [x.department, x]));
+  meeting.departments = keep;
+  meeting.minutes = [
+    ...keep.map((d, i) => {
+      const o = oldMin.get(d);
+      return o ? Object.assign(o.toObject ? o.toObject() : o, { order: i }) : { heading: sectionLabel(d, 'ar'), body: '', department: d, order: i };
+    }),
+    // Sections added by hand (no department) stay.
+    ...(meeting.minutes || []).filter((x) => !x.department).map((x) => (x.toObject ? x.toObject() : x)),
+  ];
+  meeting.agenda = [
+    ...keep.map((d, i) => {
+      const o = oldAgenda.get(d);
+      return o ? Object.assign(o.toObject ? o.toObject() : o, { order: i }) : { title: `متابعة ${sectionLabel(d, 'ar')}`, department: d, order: i };
+    }),
+    // Agenda items added by hand (no department) stay.
+    ...(meeting.agenda || []).filter((x) => !x.department).map((x) => (x.toObject ? x.toObject() : x)),
+  ];
+
+  const ids = (series.attendees || []).map(String);
+  const have = new Set((meeting.attendees || []).map((a) => String(a.user)));
+  const added = ids.filter((id) => !have.has(id));
+  const users = added.length ? await User.find({ _id: { $in: added }, isActive: { $ne: false } })
+    .select('firstName lastName role linkedEmployee').populate('linkedEmployee', 'department').lean() : [];
+  meeting.attendees = [
+    ...(meeting.attendees || []).filter((a) => ids.includes(String(a.user)) || (a.attendance && a.attendance !== 'invited')),
+    ...users.map((u) => ({ user: u._id, name: fullName(u), role: u.role, department: u.linkedEmployee?.department || '', attendance: 'invited' })),
+  ];
+  await meeting.save();
+  return true;
+}
+
 /** Today's meetings for every active schedule; called by the hourly sweep and at boot. */
 async function generateToday() {
   const ymd = todayKey();
@@ -75,4 +127,4 @@ async function generateToday() {
   return created;
 }
 
-module.exports = { ensureDay, generateToday, weekdayOf, COMPANY_TZ };
+module.exports = { ensureDay, syncDay, generateToday, weekdayOf, COMPANY_TZ };

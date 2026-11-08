@@ -7,7 +7,7 @@ import { useDialog } from '@/components/system/DialogProvider';
 import { useSocket } from '@/hooks/useSocket';
 import api from '@/lib/api';
 import {
-  CalendarClock, FileText, Users, CheckCircle2, Clock, Settings2, CalendarPlus, ListChecks, ChevronLeft, Circle,
+  CalendarClock, FileText, Users, CheckCircle2, Clock, Settings2, CalendarPlus, ListChecks, ChevronLeft, Circle, LayoutDashboard,
 } from 'lucide-react';
 import { Spinner, PageHeader } from '@/components/hr/HRKit';
 import { StatusPill } from '@/components/system/BusinessReviewKit';
@@ -69,6 +69,10 @@ export default function DailyMeetingPage() {
           ? `${s.time} · ${WEEKDAYS.filter(([k]) => s.weekdays.includes(Number(k))).map(([, en, ar]) => t(en, ar)).join('، ')} · ${s.departments.length} ${t('departments', 'أقسام')} · ${s.attendees.length} ${t('attendees', 'مدعو')}`
           : t('No daily meeting is scheduled yet.', 'لم يُجدول اجتماع يومي بعد.')}>
         <div className="flex items-center gap-2 flex-wrap">
+          <button type="button" onClick={() => router.push('/system/business-review/board')}
+            className="inline-flex items-center gap-1.5 border border-slate-200 bg-white text-slate-700 text-sm font-medium rounded-lg px-3.5 py-2">
+            <LayoutDashboard className="w-4 h-4" />{t('Department board', 'لوحة الأقسام')}
+          </button>
           {d?.canEdit && meta && s && (
             <button type="button" onClick={() => setEdit('settings')}
               className="inline-flex items-center gap-1.5 border border-slate-200 bg-white text-slate-700 text-sm font-medium rounded-lg px-3.5 py-2">
@@ -139,7 +143,11 @@ export default function DailyMeetingPage() {
             {today.departments.map((dep: any) => (
               <div key={dep.key} className={`rounded-xl border p-3 ${dep.minutes ? 'border-emerald-200 bg-emerald-50/30' : 'border-slate-200 bg-white'}`}>
                 <div className="flex items-center justify-between gap-2">
-                  <p className="font-bold text-slate-900">{dep.key === 'Unassigned' ? t('No department', 'بدون قسم') : deptLabel(dep.key, L)}</p>
+                  {/* The department's whole record (all its tasks, not only today's) is on the department board. */}
+                  <button type="button" onClick={() => router.push(`/system/business-review/board?dept=${encodeURIComponent(dep.key)}`)}
+                    className="font-bold text-slate-900 hover:text-[#f37121] hover:underline text-start">
+                    {dep.key === 'Unassigned' ? t('No department', 'بدون قسم') : deptLabel(dep.key, L)}
+                  </button>
                   {dep.minutes
                     ? <span className="inline-flex items-center gap-1 text-[11px] font-bold text-emerald-700"><CheckCircle2 className="w-3.5 h-3.5" />{t('Reported', 'تم التسجيل')}</span>
                     : <span className="inline-flex items-center gap-1 text-[11px] font-bold text-slate-400"><Clock className="w-3.5 h-3.5" />{t('Waiting', 'بانتظار التسجيل')}</span>}

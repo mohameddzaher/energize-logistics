@@ -40,7 +40,10 @@ export default function BusinessReviewBoardPage() {
   const [data, setData] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [period, setPeriod] = useState('month');
+  // Opened from a department on the meetings page: start on that department.
   const [dept, setDept] = useState('');
+  // Read after mount so the server render and the first client render agree.
+  useEffect(() => { const v = new URLSearchParams(window.location.search).get('dept'); if (v) setDept(v); }, []);
   const [group, setGroup] = useState('');
   const [openRow, setOpenRow] = useState('');
   const [editing, setEditing] = useState('');
@@ -145,6 +148,10 @@ export default function BusinessReviewBoardPage() {
               <button type="button" onClick={() => router.push(`/system/business-review/${m._id}`)}
                 className="w-full sm:w-auto justify-center shrink-0 inline-flex items-center gap-1.5 bg-[#f37121] text-white text-sm font-semibold rounded-lg px-3 py-2">
                 <FileText className="w-4 h-4" />{t('Open minutes', 'فتح المحضر')}
+              </button>
+              <button type="button" onClick={() => router.push('/system/business-review/daily')}
+                className="w-full sm:w-auto justify-center shrink-0 inline-flex items-center gap-1.5 border border-orange-200 bg-white text-[#f37121] text-sm font-semibold rounded-lg px-3 py-2">
+                <CalendarClock className="w-4 h-4" />{t('Meetings page', 'صفحة الاجتماعات')}
               </button>
             </div>
           ))}

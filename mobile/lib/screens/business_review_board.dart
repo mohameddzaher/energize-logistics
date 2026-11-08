@@ -16,6 +16,9 @@ class BrBoardTab extends StatefulWidget {
   State<BrBoardTab> createState() => _BrBoardTabState();
 }
 
+/// A department picked on the meetings tab, opened on the department board tab.
+final brBoardDept = ValueNotifier<String>('');
+
 const _periods = [('today', 'اليوم', 'Today'), ('week', '٧ أيام', '7 days'), ('month', 'هذا الشهر', 'Month'), ('all', 'الكل', 'All')];
 const _groups = [
   ('', 'الكل', 'All'), ('overdue', 'متأخر', 'Overdue'), ('in_progress', 'قيد التنفيذ', 'In progress'), ('open', 'لم يبدأ', 'Not started'),
@@ -41,12 +44,22 @@ class _BrBoardTabState extends State<BrBoardTab> {
   void initState() {
     super.initState();
     for (final e in _events) { Live.instance.on(e, _soon); }
+    brBoardDept.addListener(_pickDept);
+    // The tab may be built after the department was picked (tab views rebuild off-screen tabs).
+    if (brBoardDept.value.isNotEmpty) { _dept = brBoardDept.value; brBoardDept.value = ''; }
     _load();
+  }
+
+  void _pickDept() {
+    if (brBoardDept.value.isEmpty) return;
+    setState(() => _dept = brBoardDept.value);
+    brBoardDept.value = '';
   }
 
   @override
   void dispose() {
     for (final e in _events) { Live.instance.off(e, _soon); }
+    brBoardDept.removeListener(_pickDept);
     _tick?.cancel();
     super.dispose();
   }
@@ -421,7 +434,12 @@ class _SeriesFormState extends State<_SeriesForm> {
       } else {
         await Api.instance.put('/api/business-review/series/${widget.series!['_id']}', body);
       }
-      if (mounted) Navigator.pop(context, true);
+      if (mounted) {
+        if (widget.series != null) {
+          ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(tr('تم الحفظ — واتحدّث اجتماع اليوم', 'Saved — today’s meeting updated'))));
+        }
+        Navigator.pop(context, true);
+      }
     } catch (e) {
       if (mounted) {
         setState(() => _busy = false);
@@ -437,6 +455,16 @@ class _SeriesFormState extends State<_SeriesForm> {
     return Scaffold(
       appBar: AppBar(title: Text(widget.series == null ? tr('اجتماع دوري جديد', 'New recurring meeting') : tr('تعديل الاجتماع الدوري', 'Edit recurring meeting'))),
       body: ListView(padding: const EdgeInsets.all(14), children: [
+        if (widget.series != null) ...[
+          Container(
+            padding: const EdgeInsets.all(10),
+            decoration: BoxDecoration(color: T.info.withValues(alpha: 0.07), borderRadius: BorderRadius.circular(10)),
+            child: Text(tr('التعديل يسري على اجتماع اليوم والأيام الجاية. الأيام اللي فاتت تفضل زي ما اتعقدت، والقسم اللي كتب محضره النهارده يفضل في اجتماع النهارده.',
+                'Changes apply to today’s meeting and the coming days. Past days stay as held; a department that already wrote today’s minutes stays in today’s meeting.'),
+                style: const TextStyle(fontSize: 12, color: T.info)),
+          ),
+          const SizedBox(height: 10),
+        ],
         TextField(controller: _title, decoration: InputDecoration(labelText: tr('اسم الاجتماع', 'Name'))),
         const SizedBox(height: 10),
         OutlinedButton.icon(
@@ -594,7 +622,15 @@ class _BrDailyTabState extends State<BrDailyTab> {
                   border: Border.all(color: '${dep['minutes']}'.isNotEmpty ? T.success.withValues(alpha: 0.35) : T.line)),
               child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                 Row(children: [
-                  Expanded(child: Text(dep['key'] == 'Unassigned' ? tr('بدون قسم', 'No department') : brDept(context, '${dep['key']}'), style: const TextStyle(fontWeight: FontWeight.w900))),
+                  Expanded(child: InkWell(
+                    // The department's whole record is on the department board tab.
+                    onTap: () {
+                      brBoardDept.value = '${dep['key']}';
+                      DefaultTabController.maybeOf(context)?.animateTo(0);
+                    },
+                    child: Text(dep['key'] == 'Unassigned' ? tr('بدون قسم', 'No department') : brDept(context, '${dep['key']}'),
+                        style: const TextStyle(fontWeight: FontWeight.w900, decoration: TextDecoration.underline)),
+                  )),
                   Text('${dep['minutes']}'.isNotEmpty ? tr('✓ تم التسجيل', '✓ Reported') : tr('بانتظار التسجيل', 'Waiting'),
                       style: TextStyle(fontSize: 11, fontWeight: FontWeight.w800, color: '${dep['minutes']}'.isNotEmpty ? T.success : T.inkFaint)),
                 ]),

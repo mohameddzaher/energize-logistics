@@ -53,7 +53,9 @@ export default function BrSeriesModal({ meta, L, onClose, onOpenMeeting, notify,
     setSaving(true);
     try {
       if (form._id) await brUpdateSeries(form._id, form); else await brCreateSeries(form);
-      notify(t('Saved', 'تم الحفظ'), 'success');
+      notify(form._id ? t('Saved — today’s meeting updated', 'تم الحفظ — واتحدّث اجتماع اليوم') : t('Saved', 'تم الحفظ'), 'success');
+      // Opened for one meeting (its settings, or a new type): close back to the page instead of the full list.
+      if (editId || startNew) { onClose(); return; }
       setForm(null); load();
     } catch (e: any) { notify(e?.message || t('Could not save', 'تعذّر الحفظ'), 'error'); }
     setSaving(false);
@@ -84,7 +86,8 @@ export default function BrSeriesModal({ meta, L, onClose, onOpenMeeting, notify,
   const people = meta.participants.filter((p) => `${p.name} ${p.role}`.toLowerCase().includes(q.trim().toLowerCase()));
 
   return (
-    <Modal open onClose={onClose} wide="xl" title={t('Recurring meetings', 'الاجتماعات الدورية')}>
+    <Modal open onClose={onClose} wide="xl"
+      title={form?._id ? `${t('Settings', 'إعدادات')}: ${form.title}` : form ? t('New meeting type', 'نوع اجتماع جديد') : t('Recurring meetings', 'الاجتماعات الدورية')}>
       {!form && (
         <>
           <p className="text-sm text-slate-600">
@@ -129,6 +132,12 @@ export default function BrSeriesModal({ meta, L, onClose, onOpenMeeting, notify,
 
       {form && (
         <div className="space-y-4">
+          {form._id && (
+            <p className="text-[12.5px] text-sky-800 bg-sky-50 border border-sky-100 rounded-lg px-3 py-2">
+              {t('Changes apply to today’s meeting and the coming days. Past days stay as they were held; a department that already wrote today’s minutes stays in today’s meeting.',
+                'التعديل يسري على اجتماع اليوم والأيام الجاية. الأيام اللي فاتت تفضل زي ما اتعقدت، والقسم اللي كتب محضره النهارده يفضل في اجتماع النهارده.')}
+            </p>
+          )}
           <div className="grid gap-3 sm:grid-cols-[minmax(0,1fr)_8rem_8rem]">
             <label className="block">
               <span className="text-xs font-semibold text-slate-600">{t('Name', 'اسم الاجتماع')}</span>

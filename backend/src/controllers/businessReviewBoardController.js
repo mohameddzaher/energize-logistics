@@ -205,8 +205,14 @@ exports.updateSeries = async (req, res) => {
     if (!series) return res.status(404).json({ message: 'غير موجود' });
     Object.assign(series, pickSeries(req.body));
     await series.save();
+    // The settings take effect on today's meeting too; before, only tomorrow's picked them up.
+    const ymd = todayKey();
+    let today = await BrMeeting.findOne({ series: series._id, seriesDay: ymd });
+    if (today) await brSeries.syncDay(series, today);
+    else today = (await brSeries.ensureDay(series, ymd, { actor: req.user })).meeting;
     emit('br:series', { id: String(series._id) });
-    res.json({ series });
+    if (today) emit('br:meeting', { id: String(today._id) });
+    res.json({ series, today });
   } catch (e) {
     return sendMongooseError(res, e, 'تعذّر تعديل الاجتماع الدوري');
   }

@@ -868,6 +868,8 @@ exports.moneyEditors = (req, res) => res.json({
   // Per field: written directly after save, or sent for approval.
   editable: moneyEditable(req.user),
   byRequest: moneyByRequest(req.user),
+  // Customer of a saved shipment: same editors as money; the team edits times and the rest freely.
+  customerLocked: !canEditMoney(req.user),
 });
 
 /**
@@ -892,6 +894,19 @@ exports.updateOrder = async (req, res) => {
     if (!order) return res.status(404).json({ message: 'Shipment order not found' });
 
     const data = pick(req.body, ORDER_EDITABLE);
+
+    // The customer of a saved shipment is fixed for the team; only money editors move it to another customer.
+    if (!canEditMoney(req.user)) {
+      const newInline = !data.customer && req.body.newCustomer && String(req.body.newCustomer.name || '').trim();
+      const moved = ('customer' in data && String(data.customer || '') !== String(order.customer || '')) || newInline;
+      if (moved) {
+        return res.status(403).json({
+          message: 'عميلُ الشحنة لا يتغيّر بعد الحفظ إلّا من الإدارة ومدير التشغيل',
+          code: 'CUSTOMER_LOCKED', fields: ['customer'],
+        });
+      }
+      delete data.customer;
+    }
 
     // Money after creation: MONEY_EDIT_ROLES write all of it; the data team writes the purchase price and requests the selling price.
     // The form sends all its fields, so only what really changed counts: a value equal to the stored one (or empty equal to empty) passes.

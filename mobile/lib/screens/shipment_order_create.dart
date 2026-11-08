@@ -77,6 +77,9 @@ class _ShipmentOrderCreateScreenState extends State<ShipmentOrderCreateScreen> {
   List<String> _moneyEditable = const [];
   List<String> _moneyByRequest = const [];
   bool _canEditMoney = true;
+  // Customer of a saved shipment: fixed for the team, editable by management and the operations manager.
+  bool _customerLockedRole = false;
+  bool get _customerLocked => _editing && _customerLockedRole;
   bool _moneyLocked(String k) => _editing && !_canEditMoney && _moneyFields.contains(k) && !_moneyEditable.contains(k) && !_moneyByRequest.contains(k);
   bool _moneyNeedsApproval(String k) => _editing && _moneyByRequest.contains(k);
   Future<void> _loadMoneyEditors() async {
@@ -86,6 +89,7 @@ class _ShipmentOrderCreateScreenState extends State<ShipmentOrderCreateScreen> {
       setState(() {
         _moneyFields = [for (final x in (d['fields'] as List? ?? const [])) '$x'];
         _canEditMoney = d['canEdit'] == true;
+        _customerLockedRole = d['customerLocked'] == true;
         _moneyEditable = [for (final x in (d['editable'] as List? ?? const [])) '$x'];
         _moneyByRequest = [for (final x in (d['byRequest'] as List? ?? const [])) '$x'];
       });
@@ -1010,7 +1014,7 @@ class _ShipmentOrderCreateScreenState extends State<ShipmentOrderCreateScreen> {
                           const SizedBox(width: 6),
                           Text(tr('العميل والمورّد', 'Customer & supplier'), style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 14)),
                           const Spacer(),
-                          TextButton(
+                          if (!_customerLocked) TextButton(
                             onPressed: () => setState(() { _newCustomer = !_newCustomer; if (_newCustomer) _customer = null; }),
                             child: Text(_newCustomer ? tr('اختيار من القائمة', 'Pick existing') : tr('+ عميل جديد', '+ New'), style: const TextStyle(fontSize: 12.5, fontWeight: FontWeight.w700)),
                           ),
@@ -1030,7 +1034,19 @@ class _ShipmentOrderCreateScreenState extends State<ShipmentOrderCreateScreen> {
                               style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w700)),
                         ),
                         const SizedBox(height: 8),
-                        if (!_newCustomer)
+                        if (_customerLocked)
+                          Container(
+                            width: double.infinity,
+                            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+                            decoration: BoxDecoration(color: T.line.withValues(alpha: 0.35), borderRadius: BorderRadius.circular(10)),
+                            child: Row(children: [
+                              Expanded(child: Text((_customer?['name'] ?? '—').toString(), style: const TextStyle(fontSize: 13.5, fontWeight: FontWeight.w700))),
+                              const Icon(Icons.lock_outline, size: 15, color: T.inkFaint),
+                              const SizedBox(width: 4),
+                              Text(tr('مقفول', 'locked'), style: const TextStyle(fontSize: 11, color: T.inkFaint)),
+                            ]),
+                          )
+                        else if (!_newCustomer)
                           OutlinedButton.icon(
                             style: OutlinedButton.styleFrom(alignment: AlignmentDirectional.centerStart, minimumSize: const Size(double.infinity, 46)),
                             onPressed: () async {

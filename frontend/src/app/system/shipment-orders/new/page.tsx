@@ -64,14 +64,16 @@ function CreateShipmentInner() {
   const savedDriver = useRef<{ name: string; nat: string; iqama: string } | null>(null);
   // Money after save is writable only for roles the server allows. On create the creator writes it; on edit it is locked except for system admins and the operations manager. The role list comes from the server (MONEY_EDIT_ROLES), not duplicated here.
   // `editable` fields are written directly after save, `byRequest` ones go to approval (the data team's selling price).
-  const [moneyEdit, setMoneyEdit] = useState<{ fields: string[]; canEdit: boolean; editable: string[]; byRequest: string[] }>({ fields: [], canEdit: true, editable: [], byRequest: [] });
+  const [moneyEdit, setMoneyEdit] = useState<{ fields: string[]; canEdit: boolean; editable: string[]; byRequest: string[]; customerLocked?: boolean }>({ fields: [], canEdit: true, editable: [], byRequest: [] });
   useEffect(() => {
-    api.get<{ fields: string[]; canEdit: boolean; editable?: string[]; byRequest?: string[] }>('/api/shipment-orders/money-editors')
-      .then((d) => setMoneyEdit({ fields: d.fields || [], canEdit: !!d.canEdit, editable: d.editable || [], byRequest: d.byRequest || [] }))
+    api.get<{ fields: string[]; canEdit: boolean; editable?: string[]; byRequest?: string[]; customerLocked?: boolean }>('/api/shipment-orders/money-editors')
+      .then((d) => setMoneyEdit({ fields: d.fields || [], canEdit: !!d.canEdit, editable: d.editable || [], byRequest: d.byRequest || [], customerLocked: !!d.customerLocked }))
       .catch(() => {});
   }, []);
   const moneyLocked = (key: string) => !!editId && !moneyEdit.canEdit && moneyEdit.fields.includes(key)
     && !moneyEdit.editable.includes(key) && !moneyEdit.byRequest.includes(key);
+  // Customer of a saved shipment: fixed for the team, editable by management and the operations manager.
+  const customerLocked = !!editId && !!moneyEdit.customerLocked;
   const moneyByRequest = (key: string) => !!editId && moneyEdit.byRequest.includes(key);
   const { notify } = useDialog();
 
@@ -789,7 +791,13 @@ function CreateShipmentInner() {
               emptyLabel={ar ? 'لا نتائج' : 'No matches'}
               options={salesReps.map((u) => ({ value: u.value, label: u.label, hint: u.roleAr || '' }))} />
           </div>
-          {!newCustomerOpen ? (
+          {customerLocked ? (
+            <div className={`${inputCls} flex items-center justify-between bg-slate-50 cursor-not-allowed`}
+              title={ar ? 'عميل الشحنة لا يتغيّر بعد الحفظ إلّا من الإدارة ومدير التشغيل' : 'Only management and the operations manager change the customer after saving'}>
+              <span className="font-semibold text-slate-800">{customer?.name || '—'}</span>
+              <span className="inline-flex items-center gap-1 text-[11px] text-slate-400"><Lock className="w-3 h-3" />{ar ? 'مقفول' : 'locked'}</span>
+            </div>
+          ) : !newCustomerOpen ? (
             <div className="flex flex-col sm:flex-row gap-3">
               <div className={`flex-1 ${miss('customer') ? 'rounded-lg ring-2 ring-red-400/60' : ''}`}>
                 <SearchableSelect value={customerId} onChange={applyCustomer} searchAfter={0}

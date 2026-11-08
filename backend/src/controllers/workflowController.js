@@ -901,7 +901,12 @@ function buildWorkflowFilter(queryIn, skipField, allowMoney = true, allowSelling
       const numeric = /^[\d\s+()\-]+$/.test(tk) && bare.length > 0;
       const rx = arabicSearchRegex(tk);
       if (numeric && query && query._exactId === bare) {
-        return ID_EXACT.map((f) => ({ [f]: bare }));  // reportNumber / documentNumber (and invoiceNumber for money readers), all indexed
+        // Short numbers are also truck plates (517 is a report and a truck): the plate fields stay in, both indexed, so the truck's loads are not hidden behind a report with the same number.
+        const rxPlate = new RegExp(bare);
+        return [
+          ...ID_EXACT.map((f) => ({ [f]: bare })),
+          { carNumber: rxPlate }, { plateNumber: rxPlate },
+        ];
       }
       if (numeric) {
         const rxBare = new RegExp(bare.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'));

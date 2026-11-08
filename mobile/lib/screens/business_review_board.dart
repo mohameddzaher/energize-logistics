@@ -356,7 +356,9 @@ class _BrSeriesScreenState extends State<BrSeriesScreen> {
 class _SeriesForm extends StatefulWidget {
   final Map<String, dynamic> meta;
   final Map<String, dynamic>? series;
-  const _SeriesForm({required this.meta, this.series});
+  /// A new meeting type: starts weekly and empty instead of the daily defaults.
+  final bool newType;
+  const _SeriesForm({required this.meta, this.series, this.newType = false});
   @override
   State<_SeriesForm> createState() => _SeriesFormState();
 }
@@ -365,6 +367,7 @@ class _SeriesFormState extends State<_SeriesForm> {
   late final TextEditingController _title;
   late final TextEditingController _location;
   String _time = '09:00';
+  String _cadence = 'daily';
   List<int> _days = [0, 1, 2, 3, 4];
   List<String> _depts = [];
   List<String> _people = [];
@@ -377,10 +380,12 @@ class _SeriesFormState extends State<_SeriesForm> {
   void initState() {
     super.initState();
     final s = widget.series;
-    _title = TextEditingController(text: s?['title']?.toString() ?? tr('الاجتماع اليومي', 'Daily meeting'));
+    _title = TextEditingController(text: s?['title']?.toString() ?? (widget.newType ? '' : tr('الاجتماع اليومي', 'Daily meeting')));
+    if (widget.newType && s == null) { _cadence = 'weekly'; _days = [0]; _time = '10:00'; }
     _location = TextEditingController(text: s?['location']?.toString() ?? '');
     if (s != null) {
       _time = '${s['time'] ?? '09:00'}';
+      _cadence = (s['cadence'] ?? 'daily').toString() == 'weekly' ? 'weekly' : 'daily';
       _days = List<int>.from((s['weekdays'] as List? ?? []).map((e) => (e as num).toInt()));
       _depts = List<String>.from((s['departments'] as List? ?? []).map((e) => '$e'));
       _people = List<String>.from((s['attendees'] as List? ?? []).map((e) => '$e'));
@@ -409,7 +414,7 @@ class _SeriesFormState extends State<_SeriesForm> {
       return;
     }
     setState(() => _busy = true);
-    final body = {'title': _title.text.trim(), 'time': _time, 'weekdays': _days, 'departments': _depts, 'attendees': _people, 'location': _location.text.trim(), 'durationMinutes': 30};
+    final body = {'title': _title.text.trim(), 'cadence': _cadence, 'time': _time, 'weekdays': _days, 'departments': _depts, 'attendees': _people, 'location': _location.text.trim(), 'durationMinutes': 30};
     try {
       if (widget.series == null) {
         await Api.instance.post('/api/business-review/series', body);
@@ -444,7 +449,15 @@ class _SeriesFormState extends State<_SeriesForm> {
           label: Text('${tr('الوقت', 'Time')}: $_time'),
         ),
         const SizedBox(height: 10),
-        Text(tr('الأيام', 'Days'), style: const TextStyle(fontWeight: FontWeight.w800)),
+        Row(children: [
+          Text(tr('التكرار', 'Repeats'), style: const TextStyle(fontWeight: FontWeight.w800)),
+          const SizedBox(width: 8),
+          ChoiceChip(label: Text(tr('يومي', 'Daily')), selected: _cadence == 'daily', onSelected: (_) => setState(() { _cadence = 'daily'; _days = [0, 1, 2, 3, 4]; })),
+          const SizedBox(width: 6),
+          ChoiceChip(label: Text(tr('أسبوعي', 'Weekly')), selected: _cadence == 'weekly', onSelected: (_) => setState(() { _cadence = 'weekly'; _days = [_days.isEmpty ? 0 : _days.first]; })),
+        ]),
+        const SizedBox(height: 6),
+        Text(_cadence == 'weekly' ? tr('يوم الاجتماع', 'Meeting day(s)') : tr('الأيام', 'Days'), style: const TextStyle(fontWeight: FontWeight.w800)),
         Wrap(spacing: 6, children: [
           for (final w in _weekdays)
             FilterChip(label: Text(tr(w.$2, w.$3)), selected: _days.contains(w.$1),
@@ -464,7 +477,7 @@ class _SeriesFormState extends State<_SeriesForm> {
             value: _people.contains('${p['_id']}'),
             onChanged: (v) => setState(() => v == true ? _people.add('${p['_id']}') : _people.remove('${p['_id']}')),
             title: Text('${p['name']}'),
-            subtitle: Text('${(p['jobTitle'] ?? '').toString().isNotEmpty ? p['jobTitle'] : p['role']}'),
+            subtitle: Text([p['roleAr'] ?? p['role'], p['jobTitle']].where((x) => (x ?? '').toString().isNotEmpty).join(' · ')),
           ),
         TextField(controller: _location, decoration: InputDecoration(labelText: tr('المكان', 'Location'))),
         const SizedBox(height: 14),
@@ -484,6 +497,7 @@ class BrDailyTab extends StatefulWidget {
 
 class _BrDailyTabState extends State<BrDailyTab> {
   Map<String, dynamic>? _d;
+  String _series = '';
   String? _error;
   Timer? _tick;
   static const _events = ['br:meeting', 'br:action', 'br:series'];
@@ -496,7 +510,7 @@ class _BrDailyTabState extends State<BrDailyTab> {
 
   Future<void> _load() async {
     try {
-      final d = await Api.instance.get('/api/business-review/daily');
+      final d = await Api.instance.get('/api/business-review/daily${_series.isEmpty ? '' : '?series=$_series'}');
       if (mounted) setState(() { _d = Map<String, dynamic>.from(d); _error = null; });
     } catch (e) { if (mounted) setState(() => _error = e is ApiException ? e.message : '$e'); }
   }
@@ -529,10 +543,21 @@ class _BrDailyTabState extends State<BrDailyTab> {
               Text('${s['time']} · ${_weekdays.where((w) => List.from(s['weekdays'] ?? []).contains(w.$1)).map((w) => tr(w.$2, w.$3)).join('، ')} · ${List.from(s['attendees'] ?? []).length} ${tr('مدعو', 'attendees')}',
                   style: const TextStyle(fontSize: 11.5, color: T.inkSoft)),
           ])),
+          if (d['canEdit'] == true && s != null)
+            IconButton(icon: const Icon(Icons.tune), tooltip: tr('إعدادات هذا الاجتماع', 'Settings'),
+                onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (_) => _SeriesForm(meta: widget.meta, series: Map<String, dynamic>.from(s)))).then((_) => _load())),
           if (d['canEdit'] == true)
-            IconButton(icon: const Icon(Icons.tune), tooltip: tr('إعدادات الاجتماع', 'Settings'),
-                onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (_) => BrSeriesScreen(meta: widget.meta))).then((_) => _load())),
+            IconButton(icon: const Icon(Icons.add_circle_outline), tooltip: tr('نوع اجتماع جديد', 'New meeting type'),
+                onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (_) => _SeriesForm(meta: widget.meta, newType: true))).then((_) => _load())),
         ]),
+        if (List.from(d['list'] ?? []).length > 1) ...[
+          const SizedBox(height: 8),
+          Wrap(spacing: 6, runSpacing: 6, children: [
+            for (final x in List<Map<String, dynamic>>.from(d['list']))
+              ChoiceChip(label: Text('${x['title']}'), selected: '${x['_id']}' == '${s?['_id']}',
+                  onSelected: (_) { setState(() => _series = '${x['_id']}'); _load(); }),
+          ]),
+        ],
         const SizedBox(height: 10),
         if (s == null) Padding(padding: const EdgeInsets.all(24), child: Center(child: Text(tr('لم يُجدول اجتماع يومي بعد.', 'No daily meeting yet.')))),
         if (s != null && today == null)

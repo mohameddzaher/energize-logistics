@@ -4,6 +4,7 @@
  * It does not settle for endpoints returning 200: it reads the sheet itself and compares what the server returns: account count, limit totals, aging buckets and invoice total. What is not measured against its source is not checked.
  */
 require('dotenv').config();
+const fs = require('fs');
 const path = require('path');
 const XLSX = require('xlsx');
 const mongoose = require('mongoose');
@@ -31,6 +32,8 @@ const near = (a, b, tol) => Math.abs(Number(a) - Number(b)) <= tol;
   const CollectionTask = require('../models/CollectionTask');
   const CreditAlertAck = require('../models/CreditAlertAck');
 
+  // The workbook is read before the test user exists: it lives only on the dev machine, and a failed read after creation left the user behind on production.
+  if (!fs.existsSync(FILE)) { console.error(`Workbook not found: ${FILE}`); process.exit(1); }
   await User.deleteMany({ email: /^zz-ledger/ });
   const mgr = await User.create({ email: 'zz-ledger-mgr@example.invalid', password: PW, firstName: 'م', lastName: 'ت', role: 'collections_manager' });
   const login = await fetch(`${BASE}/api/auth/login`, {
@@ -256,4 +259,9 @@ const near = (a, b, tol) => Math.abs(Number(a) - Number(b)) <= tol;
   console.log(`\n${pass} passed, ${fail} failed`);
   await mongoose.disconnect();
   process.exit(fail ? 1 : 0);
-})().catch((e) => { console.error('FATAL', e); process.exit(1); });
+})().catch(async (e) => {
+  console.error('FATAL', e);
+  // The test user never outlives a failed run.
+  try { await require('../models/User').deleteMany({ email: /^zz-ledger/ }); } catch (_) { /* */ }
+  process.exit(1);
+});

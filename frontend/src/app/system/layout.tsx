@@ -450,7 +450,7 @@ function SystemLayoutInner({ children }: { children: React.ReactNode }) {
     // Contracts.
     // Business review meetings: the managers/board forum. `my-tasks` is listed for EVERY role because ordinary employees receive delegated work there; the other three pages check their own tier server-side.
     { href: '/system/business-review/board', label: lang === 'ar' ? 'لوحة الأقسام' : 'Department Board', icon: <LayoutDashboard className="w-5 h-5" />, roles: [], section: 'Business Review', visible: (u) => isBrParticipant(u.role) },
-    { href: '/system/business-review/daily', label: lang === 'ar' ? 'الاجتماع اليومي' : 'Daily Meeting', icon: <CalendarCheck className="w-5 h-5" />, roles: [], section: 'Business Review', visible: (u) => isBrParticipant(u.role) },
+    { href: '/system/business-review/daily', label: lang === 'ar' ? 'الاجتماعات' : 'Meetings', icon: <CalendarCheck className="w-5 h-5" />, roles: [], section: 'Business Review', visible: (u) => isBrParticipant(u.role) },
     { href: '/system/business-review/my-actions', label: lang === 'ar' ? 'البنود المسندة إليّ' : 'My Actions', icon: <ClipboardList className="w-5 h-5" />, roles: [], section: 'Business Review', visible: (u) => isBrParticipant(u.role) },
     { href: '/system/business-review/actions', label: lang === 'ar' ? 'سجل المتابعة' : 'Action Register', icon: <ListTodo className="w-5 h-5" />, roles: [], section: 'Business Review', visible: (u) => isBrRunner(u.role) },
     // Everyone — an ordinary employee's ONLY link into this section.

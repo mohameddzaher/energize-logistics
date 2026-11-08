@@ -1,6 +1,6 @@
 'use client';
 // Recurring business review meetings (the daily meeting): list, open or create today's meeting, and create or edit a schedule.
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { Repeat, Plus, Trash2, FileText, Loader2, CheckCircle2 } from 'lucide-react';
 import { Modal } from '@/components/hr/HRKit';
 import { useSocket } from '@/hooks/useSocket';
@@ -11,8 +11,10 @@ import {
 
 export const WEEKDAYS = [['0', 'Sun', 'الأحد'], ['1', 'Mon', 'الإثنين'], ['2', 'Tue', 'الثلاثاء'], ['3', 'Wed', 'الأربعاء'], ['4', 'Thu', 'الخميس'], ['5', 'Fri', 'الجمعة'], ['6', 'Sat', 'السبت']] as const;
 
-export default function BrSeriesModal({ meta, L, onClose, onOpenMeeting, notify, confirm }: {
+export default function BrSeriesModal({ meta, L, onClose, onOpenMeeting, notify, confirm, startNew, editId }: {
   meta: BrMeta; L: Lang; onClose: () => void; onOpenMeeting: (id: string) => void; notify: any; confirm: any;
+  /** Open straight on an empty form (a new meeting type) or on one schedule's settings. */
+  startNew?: boolean; editId?: string;
 }) {
   const t = (en: string, ar: string) => tx(L, en, ar);
   const [list, setList] = useState<any[] | null>(null);
@@ -21,11 +23,25 @@ export default function BrSeriesModal({ meta, L, onClose, onOpenMeeting, notify,
   const [saving, setSaving] = useState(false);
   const [q, setQ] = useState('');
 
-  const load = useCallback(() => brSeriesList().then((d) => { setList(d.series); setCanEdit(d.canEdit); }).catch(() => setList([])), []);
-  useEffect(() => { load(); }, [load]);
+  const load = useCallback(() => brSeriesList().then((d) => { setList(d.series); setCanEdit(d.canEdit); return d.series; }).catch(() => { setList([]); return []; }), []);
+  const opened = useRef(false);
+  useEffect(() => {
+    load().then((rows: any[]) => {
+      if (opened.current) return;
+      opened.current = true;
+      if (startNew) setForm(blankNew());
+      else if (editId) { const x = rows.find((r) => r._id === editId); if (x) setForm({ ...x, attendees: x.attendees.map(String) }); }
+    });
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [load]);
   useSocket('br:series', load);
   useSocket('br:meeting', load);
 
+  // A new meeting type starts empty except for the board, which attends every forum.
+  const blankNew = () => ({
+    title: '', cadence: 'weekly', time: '10:00', durationMinutes: 60, weekdays: [0],
+    departments: [] as string[], attendees: meta.participants.filter((p) => p.isExecutive).map((p) => p._id), location: '', active: true,
+  });
   const blank = () => ({
     title: t('Daily meeting', 'الاجتماع اليومي'), time: '09:00', durationMinutes: 30, weekdays: [0, 1, 2, 3, 4],
     departments: [] as string[], attendees: meta.participants.filter((p) => p.isExecutive).map((p) => p._id), location: '', active: true,
@@ -131,7 +147,15 @@ export default function BrSeriesModal({ meta, L, onClose, onOpenMeeting, notify,
             </label>
           </div>
           <div>
-            <p className="text-xs font-semibold text-slate-600 mb-1.5">{t('Days', 'الأيام')}</p>
+            <div className="flex items-center gap-2 mb-2">
+              <span className="text-xs font-semibold text-slate-600">{t('Repeats', 'التكرار')}</span>
+              {([['daily', 'Daily', 'يومي'], ['weekly', 'Weekly', 'أسبوعي']] as const).map(([k, en, ar]) => (
+                <button key={k} type="button"
+                  onClick={() => setForm({ ...form, cadence: k, weekdays: k === 'daily' ? [0, 1, 2, 3, 4] : [form.weekdays?.[0] ?? 0] })}
+                  className={`px-3 py-1.5 rounded-lg text-xs font-semibold border ${(form.cadence || 'daily') === k ? 'bg-slate-900 border-slate-900 text-white' : 'bg-white border-slate-200 text-slate-600'}`}>{t(en, ar)}</button>
+              ))}
+            </div>
+            <p className="text-xs font-semibold text-slate-600 mb-1.5">{(form.cadence || 'daily') === 'weekly' ? t('Meeting day(s)', 'يوم الاجتماع') : t('Days', 'الأيام')}</p>
             <div className="flex flex-wrap gap-1.5">
               {WEEKDAYS.map(([k, en, ar]) => {
                 const on = form.weekdays.includes(Number(k));
@@ -162,7 +186,7 @@ export default function BrSeriesModal({ meta, L, onClose, onOpenMeeting, notify,
                 return (
                   <label key={p._id} className={`flex items-center gap-2 px-2.5 py-1.5 rounded-lg border text-xs cursor-pointer ${on ? 'border-[#f37121] bg-orange-50' : 'border-slate-200 bg-white'}`}>
                     <input type="checkbox" checked={on} onChange={() => toggle('attendees', p._id)} className="accent-[#f37121]" />
-                    <span className="min-w-0"><span className="font-semibold text-slate-800 block truncate">{p.name}</span><span className="text-slate-400 truncate block">{p.jobTitle || p.role}</span></span>
+                    <span className="min-w-0"><span className="font-semibold text-slate-800 block truncate">{p.name}</span><span className="text-slate-400 truncate block">{[(p as any).roleAr || p.role, p.jobTitle].filter(Boolean).join(' · ')}</span></span>
                   </label>
                 );
               })}

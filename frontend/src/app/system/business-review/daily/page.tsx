@@ -26,7 +26,7 @@ export default function DailyMeetingPage() {
   const [d, setD] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [series, setSeries] = useState('');
-  const [edit, setEdit] = useState(false);
+  const [edit, setEdit] = useState<'' | 'settings' | 'new'>('');
   const [busy, setBusy] = useState(false);
   const seq = useRef(0);
 
@@ -69,20 +69,35 @@ export default function DailyMeetingPage() {
           ? `${s.time} · ${WEEKDAYS.filter(([k]) => s.weekdays.includes(Number(k))).map(([, en, ar]) => t(en, ar)).join('، ')} · ${s.departments.length} ${t('departments', 'أقسام')} · ${s.attendees.length} ${t('attendees', 'مدعو')}`
           : t('No daily meeting is scheduled yet.', 'لم يُجدول اجتماع يومي بعد.')}>
         <div className="flex items-center gap-2 flex-wrap">
-          {(d?.list || []).length > 1 && (
-            <select value={series || s?._id || ''} onChange={(e) => setSeries(e.target.value)}
-              className="px-3 py-2 rounded-lg border border-slate-200 bg-white text-sm">
-              {d.list.map((x: any) => <option key={x._id} value={x._id}>{x.title}</option>)}
-            </select>
+          {d?.canEdit && meta && s && (
+            <button type="button" onClick={() => setEdit('settings')}
+              className="inline-flex items-center gap-1.5 border border-slate-200 bg-white text-slate-700 text-sm font-medium rounded-lg px-3.5 py-2">
+              <Settings2 className="w-4 h-4" />{t('Meeting settings', 'إعدادات هذا الاجتماع')}
+            </button>
           )}
           {d?.canEdit && meta && (
-            <button type="button" onClick={() => setEdit(true)}
+            <button type="button" onClick={() => setEdit('new')}
               className="inline-flex items-center gap-1.5 bg-slate-900 text-white text-sm font-medium rounded-lg px-3.5 py-2">
-              <Settings2 className="w-4 h-4" />{t('Schedule settings', 'إعدادات الاجتماع')}
+              <CalendarPlus className="w-4 h-4" />{t('New meeting type', 'نوع اجتماع جديد')}
             </button>
           )}
         </div>
       </PageHeader>
+
+      {/* One tab per meeting type (daily, weekly managers, ...). */}
+      {(d?.list || []).length > 1 && (
+        <div className="flex flex-wrap gap-2">
+          {d.list.map((x: any) => {
+            const on = String(x._id) === String(s?._id);
+            return (
+              <button key={x._id} type="button" onClick={() => setSeries(x._id)}
+                className={`px-4 py-2 rounded-xl text-sm font-bold border transition-colors ${on ? 'bg-[#f37121] border-[#f37121] text-white' : 'bg-white border-slate-200 text-slate-700 hover:border-slate-300'}`}>
+                {x.title}{!x.active && <span className="ms-1 text-[11px] opacity-70">({t('paused', 'موقوف')})</span>}
+              </button>
+            );
+          })}
+        </div>
+      )}
 
       {s && !today && (
         <div className="bg-white border border-slate-200 rounded-2xl p-6 text-center shadow-sm">
@@ -183,7 +198,8 @@ export default function DailyMeetingPage() {
       )}
 
       {edit && meta && (
-        <BrSeriesModal meta={meta} L={L} onClose={() => { setEdit(false); load(); }}
+        <BrSeriesModal meta={meta} L={L} onClose={() => { setEdit(''); load(); }}
+          startNew={edit === 'new'} editId={edit === 'settings' ? s?._id : undefined}
           onOpenMeeting={(id) => router.push(`/system/business-review/${id}`)} notify={notify} confirm={confirm} />
       )}
     </div>

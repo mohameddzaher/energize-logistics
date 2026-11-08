@@ -958,8 +958,8 @@
     {
       "key": "/system/business-review/daily",
       "section": "Business Review",
-      "ar": "الاجتماع اليومي",
-      "en": "Daily Meeting"
+      "ar": "الاجتماعات",
+      "en": "Meetings"
     },
     {
       "key": "/system/business-review/my-actions",

@@ -100,7 +100,7 @@ async function notify(userId, { title, message, entity, entityId }) {
 exports.getMeta = async (req, res) => {
   try {
     const { endedStaff, userArchived } = require('../utils/endedStaff');
-    const [allUsers, archSets] = await Promise.all([User.find({ isActive: true, role: { $nin: require('../config/scopedRoles').EXTERNAL_ROLES } })
+    const [allUsers, archSets] = await Promise.all([User.find({ isActive: true, role: { $nin: require('../config/scopedRoles').EXTERNAL_ROLES }, email: { $not: /@example\.invalid$/i } })
       .select('firstName lastName role linkedEmployee')
       .populate('linkedEmployee', 'department jobTitle')
       .sort({ firstName: 1 }).lean(), endedStaff()]);
@@ -117,6 +117,7 @@ exports.getMeta = async (req, res) => {
         jobTitle: u.linkedEmployee?.jobTitle || '',
         // The section the role heads, so choosing a department can invite its manager.
         section: require('../config/roles').sectionOfRole(u.role) || '',
+        roleAr: require('../config/roles').LABELS_AR[u.role] || u.role,
         // The board tier. The GM is nearly always the one ASKING for an action,
         // so the UI pre-selects them as attendees and always offers them in the
         // "requested by" picker — even for a round they could not attend.

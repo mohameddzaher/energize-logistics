@@ -90,7 +90,7 @@ class _BusinessReviewScreenState extends State<BusinessReviewScreen> {
     // Tabs follow the tier — an employee only ever gets "my tasks".
     final tabs = <(String, Widget)>[
       if (participant) (tr('لوحة الأقسام', 'Departments'), BrBoardTab(meta: _meta!)),
-      if (participant) (tr('الاجتماع اليومي', 'Daily meeting'), BrDailyTab(meta: _meta!)),
+      if (participant) (tr('الاجتماعات', 'Meetings'), BrDailyTab(meta: _meta!)),
       if (participant) (tr('بنودي', 'My actions'), _ActionsTab(meta: _meta!, mine: true)),
       if (runner) (tr('سجل المتابعة', 'Register'), _ActionsTab(meta: _meta!, mine: false)),
       (tr('مهامي', 'My tasks'), _TasksTab(meta: _meta!)),

@@ -1985,6 +1985,47 @@ const _oids = (arr) => arr.map((x) => (mongoose.Types.ObjectId.isValid(x) ? new 
 // Current month in Riyadh; period boundaries are Riyadh midnight (21:00 GMT of the previous day).
 const _monthIndex = (d) => { const [y, m] = dayKeyOf(d).split('-').map(Number); return y * 12 + (m - 1); };
 
+/**
+ * Options of each analytics filter with how many loads each value holds under every other filter (its own excluded).
+ * Trucks are listed from the register so a truck without loads in the period can still be picked or excluded.
+ */
+async function analyticsFilterOptions({ buildFilter, searchClause, scope }) {
+  const group = (omit, field, labelField) => {
+    const and = [...buildFilter(omit), ...(searchClause ? [searchClause] : [])];
+    const g = { _id: '$' + field, count: { $sum: 1 } };
+    if (labelField) g.label = { $first: '$' + labelField };
+    return FleetShipment.aggregate([...(and.length ? [{ $match: { $and: and } }] : []), { $group: g }]);
+  };
+  const [veh, cust, sup, trailer, ctype, status, register] = await Promise.all([
+    group('vehicle', 'vehicle', 'vehiclePlate'),
+    group('customer', 'customer', 'customerName'),
+    group('supervisor', 'supervisor', 'supervisorName'),
+    group('trailerType', 'trailerType'),
+    group('customerType', 'customerType'),
+    group('status', 'status'),
+    FleetVehicle.find({ isActive: { $ne: false }, ...(scope ? { _id: { $in: scope } } : {}) }).select('plate').lean(),
+  ]);
+  const vCount = new Map(veh.map((r) => [String(r._id), r.count]));
+  const inRegister = new Set(register.map((v) => String(v._id)));
+  const vehicles = register
+    .map((v) => ({ value: String(v._id), label: v.plate, count: vCount.get(String(v._id)) || 0 }))
+    .concat(veh.filter((r) => r._id && !inRegister.has(String(r._id)))
+      .map((r) => ({ value: String(r._id), label: r.label || String(r._id), count: r.count })))
+    .sort((a, b) => b.count - a.count || String(a.label).localeCompare(String(b.label)));
+  const byCount = (rows, withLabel) => rows.filter((r) => r._id != null && r._id !== '')
+    .map((r) => ({ value: String(r._id), ...(withLabel ? { label: r.label || '—' } : {}), count: r.count }))
+    .sort((a, b) => b.count - a.count);
+  return {
+    vehicle: vehicles,
+    excludeVehicle: vehicles,
+    customer: byCount(cust, true),
+    supervisor: byCount(sup, true),
+    trailerType: byCount(trailer),
+    customerType: byCount(ctype),
+    status: byCount(status),
+  };
+}
+
 exports.getAnalytics = async (req, res) => {
   try {
     const scope = await supervisorVehicleIds(req); // null = no restriction
@@ -2000,6 +2041,9 @@ exports.getAnalytics = async (req, res) => {
     const customerTypes = _multi(req.query.customerType);
     const supervisors = _multi(req.query.supervisor);
     const vehicleF = _multi(req.query.vehicle);
+    // Everything except these trucks: the analysis of the fleet without one or two that would skew it.
+    const vehicleX = _multi(req.query.excludeVehicle);
+    const customersF = _multi(req.query.customer);
     const trailerTypes = _multi(req.query.trailerType);
     const statuses = _multi(req.query.status);
 
@@ -2012,15 +2056,22 @@ exports.getAnalytics = async (req, res) => {
 
     // Build the Mongo filter: effective date (loadDate else createdAt) in range,
     // supervisor scope, plus the explicit multi-value filters.
-    const filter = { $and: [] };
-    if (period.preset !== 'all') filter.$and.push(effectiveDateMatch(start, end));
-    if (scope) filter.$and.push({ vehicle: { $in: scope } });
-    if (vehicleF.length) filter.$and.push({ vehicle: { $in: vehicleF } });
-    if (supervisors.length) filter.$and.push({ supervisor: { $in: supervisors } });
-    if (customerTypes.length) filter.$and.push({ customerType: { $in: customerTypes } });
-    if (trailerTypes.length) filter.$and.push({ trailerType: { $in: trailerTypes } });
-    if (statuses.length) filter.$and.push({ status: { $in: statuses } });
-    if (!includeCancelled && !statuses.length) filter.$and.push({ status: { $ne: 'cancelled' } });
+    // Built per omitted key too: each filter's option counts use every other filter but its own, so a picked value never hides the rest.
+    const buildFilter = (omit = '') => {
+      const and = [];
+      if (period.preset !== 'all') and.push(effectiveDateMatch(start, end));
+      if (scope) and.push({ vehicle: { $in: scope } });
+      if (omit !== 'vehicle' && vehicleF.length) and.push({ vehicle: { $in: _oids(vehicleF) } });
+      if (omit !== 'vehicle' && vehicleX.length) and.push({ vehicle: { $nin: _oids(vehicleX) } });
+      if (omit !== 'customer' && customersF.length) and.push({ customer: { $in: _oids(customersF) } });
+      if (omit !== 'supervisor' && supervisors.length) and.push({ supervisor: { $in: _oids(supervisors) } });
+      if (omit !== 'customerType' && customerTypes.length) and.push({ customerType: { $in: customerTypes } });
+      if (omit !== 'trailerType' && trailerTypes.length) and.push({ trailerType: { $in: trailerTypes } });
+      if (omit !== 'status' && statuses.length) and.push({ status: { $in: statuses } });
+      if (!includeCancelled && !(omit !== 'status' && statuses.length)) and.push({ status: { $ne: 'cancelled' } });
+      return and;
+    };
+    const filter = { $and: buildFilter() };
     // The same search tolerance as the list: a plate typed in Indian digits or with spaced letters used to fail here and the screen came out all zeros.
     const qRx = q && q.trim() ? arRx(q) : null;
     if (qRx) {
@@ -2031,6 +2082,7 @@ exports.getAnalytics = async (req, res) => {
       if (Number.isFinite(qn)) or.push({ waybillNumber: qn });
       filter.$and.push({ $or: or });
     }
+    const searchClause = qRx ? filter.$and[filter.$and.length - 1] : null;
 
     if (!filter.$and.length) delete filter.$and; // Mongo rejects `$and: []`
 
@@ -2039,6 +2091,7 @@ exports.getAnalytics = async (req, res) => {
     const vFilter = { isActive: { $ne: false } }; // Deleted ones are not counted as below target
     if (scope) vFilter._id = { $in: scope };
     if (vehicleF.length) vFilter._id = { $in: vehicleF.filter((v) => !scope || scope.some((s) => String(s) === v)) };
+    if (vehicleX.length) vFilter._id = { ...(vFilter._id || {}), $nin: vehicleX };
     if (supervisors.length) vFilter.supervisor = { $in: supervisors };
     if (trailerTypes.length) vFilter.trailerType = { $in: trailerTypes };
 
@@ -2161,6 +2214,12 @@ exports.getAnalytics = async (req, res) => {
     const trendFilter = { $and: [{ $or: [{ loadDate: { $gte: trendStart } }, { $and: [{ loadDate: null }, { createdAt: { $gte: trendStart } }] }] }, { status: { $ne: 'cancelled' } }] };
     if (scope) trendFilter.$and.push({ vehicle: { $in: scope } });
     if (customerTypes.length) trendFilter.$and.push({ customerType: { $in: customerTypes } });
+    // The trend follows the truck and customer choice too, so "all but this truck" holds on every chart.
+    if (vehicleF.length) trendFilter.$and.push({ vehicle: { $in: _oids(vehicleF) } });
+    if (vehicleX.length) trendFilter.$and.push({ vehicle: { $nin: _oids(vehicleX) } });
+    if (customersF.length) trendFilter.$and.push({ customer: { $in: _oids(customersF) } });
+    if (supervisors.length) trendFilter.$and.push({ supervisor: { $in: _oids(supervisors) } });
+    if (trailerTypes.length) trendFilter.$and.push({ trailerType: { $in: trailerTypes } });
     const trendDocs = await FleetShipment.find(trendFilter).select('price loadDate createdAt').lean();
     const trendMap = new Map();
     const firstMonth = _monthKeyShift(todayKey().slice(0, 7), -11);
@@ -2184,6 +2243,7 @@ exports.getAnalytics = async (req, res) => {
       topDrivers, supervisors: supervisorsOut,
       customers: customersOut, topHeavyCustomers, topBranchCustomers,
       monthlyTrend,
+      filterOptions: await analyticsFilterOptions({ buildFilter, searchClause, scope }),
     };
     cache.set(cacheKey, body, 12000);
     res.json(body);
@@ -3000,6 +3060,8 @@ exports.getLoadsAnalysis = async (req, res) => {
     if (scope) and.push({ vehicle: { $in: scope } });
     // Ids, not strings: this match is also used in `aggregate` (see `_oids`).
     if (vehicleF.length) and.push({ vehicle: { $in: _oids(vehicleF) } });
+    const vehicleX = _multi(req.query.excludeVehicle);
+    if (vehicleX.length) and.push({ vehicle: { $nin: _oids(vehicleX) } });
     if (supervisors.length) and.push({ supervisor: { $in: _oids(supervisors) } });
     if (customersF.length) and.push({ customer: { $in: _oids(customersF) } });
     if (customerTypes.length) and.push({ customerType: { $in: customerTypes } });

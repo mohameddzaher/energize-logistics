@@ -14,11 +14,24 @@ import {
 import { Spinner, PageHeader, StatCard } from '@/components/hr/HRKit';
 import ExportMenu from '@/components/ls2/ExportMenu';
 import PeriodFilter, { PeriodBanner, periodParams, periodFromParams, EMPTY_PERIOD, type Period } from '@/components/fleet/PeriodFilter';
-import { canViewFleet, FLEET_STATUSES, TRAILER_TYPES, fleetStatus, fleetStatusLabel, fmtD, type Lang } from '@/lib/fleet';
+import { canViewFleet, fleetStatus, fleetStatusLabel, fmtD, type Lang } from '@/lib/fleet';
 import { BarChart3, TrendingUp, RotateCcw, Search, Star, CalendarClock, PackageSearch, ChevronDown, ChevronRight, Loader2 } from 'lucide-react';
 import LoadsAnalysis from '@/components/fleet/LoadsAnalysis';
 import { syncUrl } from '@/lib/urlSync';
 import ScrollX from '@/components/system/ScrollX';
+import HrQuickFilters from '@/components/hr/HrQuickFilters';
+import { EyeOff, Crosshair } from 'lucide-react';
+
+// The analytics filters, in the HR quick-filter style. Each is multi-select with search and a count per value.
+const QF_KEYS = [
+  { key: 'vehicle', ar: 'السيارات', en: 'Trucks' },
+  { key: 'excludeVehicle', ar: 'استبعاد سيارات', en: 'Exclude trucks' },
+  { key: 'customer', ar: 'العميل', en: 'Customer' },
+  { key: 'supervisor', ar: 'المشرف', en: 'Supervisor' },
+  { key: 'trailerType', ar: 'التيدر', en: 'Trailer' },
+  { key: 'customerType', ar: 'نوع العميل', en: 'Customer type' },
+  { key: 'status', ar: 'الحالة', en: 'Status' },
+];
 
 type Cust = { _id: string | null; name: string; customerType: string; rating: number; trips: number; income: number };
 type Analytics = {
@@ -33,6 +46,7 @@ type Analytics = {
   topHeavyCustomers: Cust[];
   topBranchCustomers: Cust[];
   monthlyTrend: { month: string; income: number; trips: number }[];
+  filterOptions?: Record<string, { value: string; label?: string; count: number }[]>;
 };
 
 /** A load row in the per-vehicle detail; same fields as the loads page. */
@@ -134,16 +148,20 @@ function FleetAnalyticsInner({ active = true }: { active?: boolean }) {
 
   const [data, setData] = useState<Analytics | null>(null);
   const [loading, setLoading] = useState(true);
-  const [supers, setSupers] = useState<{ _id: string; name: string }[]>([]);
 
   // Filters all live in the page URL so an analysis can be shared by one link
   const multi = (k: string) => (sp?.get(k) ? sp!.get(k)!.split(',').filter(Boolean) : []);
   const [period, setPeriod] = useState<Period>(() => periodFromParams(sp));
-  const [customerType, setCustomerType] = useState<string[]>(() => multi('customerType'));
-  const [trailerType, setTrailerType] = useState<string[]>(() => multi('trailerType'));
-  const [status, setStatus] = useState<string[]>(() => multi('status'));
-  const [supervisor, setSupervisor] = useState<string[]>(() => multi('supervisor'));
-  const [vehicle] = useState<string[]>(() => multi('vehicle'));
+  // One object for every list filter, written to the URL as comma-separated values.
+  const [qf, setQf] = useState<Record<string, string>>(() => Object.fromEntries(
+    QF_KEYS.map((k) => [k.key, multi(k.key).join(',')]).filter(([, v]) => v),
+  ));
+  const listOf = (k: string) => String(qf[k] || '').split(',').filter(Boolean);
+  const setList = (k: string, vals: string[]) => setQf((f) => {
+    const n = { ...f };
+    if (vals.length) n[k] = [...new Set(vals)].join(','); else delete n[k];
+    return n;
+  });
   const [q, setQ] = useState(() => sp?.get('q') || '');
   const [vehSort, setVehSort] = useState<'income' | 'trips' | 'achievedPct'>('income');
   // Show the vehicles that missed target: the question that follows the card, which had no answer.
@@ -156,19 +174,13 @@ function FleetAnalyticsInner({ active = true }: { active?: boolean }) {
   };
   const [custTab, setCustTab] = useState<'all' | 'heavy' | 'branch'>('all');
 
-  const toggle = (arr: string[], set: (v: string[]) => void, v: string) =>
-    set(arr.includes(v) ? arr.filter((x) => x !== v) : [...arr, v]);
 
   const query = useMemo(() => {
     const p = new URLSearchParams(periodParams(period));
-    if (customerType.length) p.set('customerType', customerType.join(','));
-    if (trailerType.length) p.set('trailerType', trailerType.join(','));
-    if (status.length) p.set('status', status.join(','));
-    if (supervisor.length) p.set('supervisor', supervisor.join(','));
-    if (vehicle.length) p.set('vehicle', vehicle.join(','));
+    for (const k of QF_KEYS) if (qf[k.key]) p.set(k.key, qf[k.key]);
     if (q.trim()) p.set('q', q.trim());
     return p.toString();
-  }, [period, customerType, trailerType, status, supervisor, vehicle, q]);
+  }, [period, qf, q]);
 
   const load = useCallback(async () => {
     try { setData(await api.get<Analytics>(`/api/fleet/analytics?${query}`)); } catch { /* keep last */ }
@@ -181,14 +193,6 @@ function FleetAnalyticsInner({ active = true }: { active?: boolean }) {
     const t = setTimeout(load, 250);
     return () => clearTimeout(t);
   }, [load, active]);
-  useEffect(() => {
-    (async () => {
-      try {
-        const s = await api.get<{ users: { _id: string; firstName: string; lastName: string }[] }>('/api/fleet/supervisors').catch(() => ({ users: [] }));
-        setSupers((s.users || []).map((u) => ({ _id: u._id, name: `${u.firstName || ''} ${u.lastName || ''}`.trim() })));
-      } catch { /* noop */ }
-    })();
-  }, []);
   useSocket('fleet:updated', useCallback(() => load(), [load]));
   // Trucks come from the vehicle register and drivers from HR: refetch when either changes.
   useSocket('vreg:updated', useCallback(() => load(), [load]));
@@ -204,7 +208,10 @@ function FleetAnalyticsInner({ active = true }: { active?: boolean }) {
     syncUrl('/system/fleet/dashboard', q);
   }, [query, active]);
 
-  const reset = () => { setPeriod(EMPTY_PERIOD); setCustomerType([]); setTrailerType([]); setStatus([]); setSupervisor([]); setQ(''); };
+  const reset = () => { setPeriod(EMPTY_PERIOD); setQf({}); setQ(''); };
+  // From a table row: drop this truck from every figure, or look at it alone.
+  const excludeVeh = (id: string) => { setList('vehicle', listOf('vehicle').filter((x) => x !== id)); setList('excludeVehicle', [...listOf('excludeVehicle'), id]); };
+  const onlyVeh = (id: string) => { setList('excludeVehicle', listOf('excludeVehicle').filter((x) => x !== id)); setList('vehicle', [id]); };
 
   /**
    * Loads under each vehicle. The table says a vehicle carried eleven loads worth a given amount, and the next question is which eleven; the answer used to be on another screen with a hand-built filter, so a plate search showed an aggregate and not a single waybill.
@@ -218,6 +225,7 @@ function FleetAnalyticsInner({ active = true }: { active?: boolean }) {
     try {
       const p = new URLSearchParams(query);
       p.set('vehicle', id);          // Overrides any existing vehicle filter: this row is the target
+      p.delete('excludeVehicle');
       p.set('limit', '500');
       const d = await api.get<{ shipments: VehLoad[]; totals: VehLoads['totals']; truncated: boolean }>(`/api/fleet/loads-analysis?${p}`);
       setVehLoads((m) => ({ ...m, [id]: { loading: false, rows: d.shipments || [], totals: d.totals, truncated: !!d.truncated } }));
@@ -290,6 +298,14 @@ function FleetAnalyticsInner({ active = true }: { active?: boolean }) {
   if (!canViewFleet(user)) return <div className="text-slate-500 p-8">{ar ? 'لا تملك صلاحية.' : 'Not authorized.'}</div>;
   if (loading && !data) return <Spinner />;
 
+  // Labels for keys the server sends as raw values (status, customer type).
+  const qfOptions = (() => {
+    const o = { ...(data?.filterOptions || {}) };
+    if (o.status) o.status = o.status.map((x) => ({ ...x, label: fleetStatusLabel(x.value, lang as Lang) }));
+    if (o.customerType) o.customerType = o.customerType.map((x) => ({ ...x, label: x.value === 'branch' ? (ar ? 'فروع' : 'Branch') : x.value === 'heavy' ? (ar ? 'نقل ثقيل' : 'Heavy') : x.value }));
+    return o;
+  })();
+
   const chip = (active: boolean) =>
     `px-3 py-1.5 rounded-full text-xs font-semibold border transition-colors ${active ? 'bg-[#f37121] text-white border-[#f37121]' : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-50'}`;
   const trailerData = data ? Object.entries(data.byTrailerType).map(([name, value]) => ({ name, value })) : [];
@@ -321,22 +337,15 @@ function FleetAnalyticsInner({ active = true }: { active?: boolean }) {
             <RotateCcw className="w-3.5 h-3.5" /> {ar ? 'مسح' : 'Reset'}
           </button>
         </div>
-        <div className="flex flex-wrap gap-1.5">
-          <span className="text-[11px] text-slate-400 self-center me-1">{ar ? 'نوع العميل:' : 'Customer:'}</span>
-          <button type="button" onClick={() => toggle(customerType, setCustomerType, 'heavy')} className={chip(customerType.includes('heavy'))}>{ar ? 'نقل ثقيل' : 'Heavy'}</button>
-          <button type="button" onClick={() => toggle(customerType, setCustomerType, 'branch')} className={chip(customerType.includes('branch'))}>{ar ? 'فروع' : 'Branch'}</button>
-          <span className="text-[11px] text-slate-400 self-center mx-1">{ar ? 'التيدر:' : 'Trailer:'}</span>
-          {TRAILER_TYPES.map((t) => <button key={t} type="button" onClick={() => toggle(trailerType, setTrailerType, t)} className={chip(trailerType.includes(t))}>{t}</button>)}
-        </div>
-        <div className="flex flex-wrap gap-1.5">
-          <span className="text-[11px] text-slate-400 self-center me-1">{ar ? 'الحالة:' : 'Status:'}</span>
-          {FLEET_STATUSES.map((s) => <button key={s.key} type="button" onClick={() => toggle(status, setStatus, s.key)} className={chip(status.includes(s.key))}>{ar ? s.ar : s.en}</button>)}
-        </div>
-        {supers.length > 0 && (
-          <div className="flex flex-wrap gap-1.5">
-            <span className="text-[11px] text-slate-400 self-center me-1">{ar ? 'المشرف:' : 'Supervisor:'}</span>
-            {supers.map((s) => <button key={s._id} type="button" onClick={() => toggle(supervisor, setSupervisor, s._id)} className={chip(supervisor.includes(s._id))}>{s.name}</button>)}
-          </div>
+        {/* Filters as dropdowns with search and counts; "exclude trucks" gives the whole fleet but the chosen ones. */}
+        <HrQuickFilters ar={ar} keys={QF_KEYS} value={qf}
+          onChange={(v) => setQf(Object.fromEntries(Object.entries(v).filter(([, x]) => x != null && x !== '')) as Record<string, string>)}
+          options={qfOptions} />
+        {listOf('excludeVehicle').length > 0 && (
+          <p className="text-[12px] text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-3 py-1.5 inline-flex items-center gap-1.5">
+            <EyeOff className="w-3.5 h-3.5" />
+            {ar ? `التحليلات بدون ${listOf('excludeVehicle').length} سيارة مستبعدة` : `Analytics without ${listOf('excludeVehicle').length} excluded truck(s)`}
+          </p>
         )}
       </div>
 
@@ -488,13 +497,25 @@ function FleetAnalyticsInner({ active = true }: { active?: boolean }) {
             <ScrollX>
               <table className="w-full text-sm">
                 <thead className="table-head">
-                  <tr>{[ar ? 'الحالة' : 'Status', ar ? 'اللوحة' : 'Plate', ar ? 'التيدر' : 'Trailer', ar ? 'المشرف' : 'Supervisor', ar ? 'الحمولات' : 'Loads', ar ? 'شغّالة من' : 'Active from', ar ? 'المحقَّق' : 'Achieved', ar ? 'الهدف' : 'Target', ar ? 'الناقص' : 'Shortfall', ar ? 'التحقيق' : 'Attained'].map((h) => <th key={h} className="px-3 py-2 text-start font-semibold whitespace-nowrap">{h}</th>)}</tr>
+                  <tr>{['', ar ? 'الحالة' : 'Status', ar ? 'اللوحة' : 'Plate', ar ? 'التيدر' : 'Trailer', ar ? 'المشرف' : 'Supervisor', ar ? 'الحمولات' : 'Loads', ar ? 'شغّالة من' : 'Active from', ar ? 'المحقَّق' : 'Achieved', ar ? 'الهدف' : 'Target', ar ? 'الناقص' : 'Shortfall', ar ? 'التحقيق' : 'Attained'].map((h) => <th key={h} className="px-3 py-2 text-start font-semibold whitespace-nowrap">{h}</th>)}</tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100">
                   {sortedVehicles.map((v) => (
                     <Fragment key={v._id}>
                     <tr className={`cursor-pointer ${openVeh === v._id ? 'bg-orange-50' : v.achieved === false ? 'bg-red-50/40 hover:bg-red-50/70' : 'hover:bg-slate-50'}`}
                       onClick={() => toggleVeh(v._id)}>
+                      <td className="px-2 py-2 whitespace-nowrap" onClick={(e) => e.stopPropagation()}>
+                        <span className="inline-flex gap-1">
+                          <button type="button" onClick={() => excludeVeh(v._id)} title={ar ? 'استبعاد من التحليلات' : 'Exclude from analytics'}
+                            className="inline-flex items-center gap-1 px-2 py-1 rounded-md border border-slate-200 text-[11px] font-semibold text-slate-600 hover:border-amber-400 hover:text-amber-700 hover:bg-amber-50">
+                            <EyeOff className="w-3.5 h-3.5" />{ar ? 'استبعاد' : 'Exclude'}
+                          </button>
+                          <button type="button" onClick={() => onlyVeh(v._id)} title={ar ? 'تحليلات هذه السيارة فقط' : 'This truck only'}
+                            className="inline-flex items-center gap-1 px-2 py-1 rounded-md border border-slate-200 text-[11px] font-semibold text-slate-600 hover:border-[#f37121] hover:text-[#f37121] hover:bg-orange-50">
+                            <Crosshair className="w-3.5 h-3.5" />{ar ? 'هذه فقط' : 'Only'}
+                          </button>
+                        </span>
+                      </td>
                       {/* Status read at a glance. It used to be inferred from the attainment color in the last column, so finding the under-target vehicles meant scanning column by column and comparing colors. Now it is a word at the row start and an under-target row is fully shaded. */}
                       <td className="px-3 py-2 whitespace-nowrap">
                         {v.achieved == null ? (
@@ -547,14 +568,14 @@ function FleetAnalyticsInner({ active = true }: { active?: boolean }) {
                     </tr>
                     {openVeh === v._id && (
                       <tr className="bg-orange-50/40">
-                        <td colSpan={10} className="px-3 pb-4 pt-1">
+                        <td colSpan={11} className="px-3 pb-4 pt-1">
                           <VehicleLoads state={vehLoads[v._id]} plate={v.plate} ar={ar} lang={lang as Lang} />
                         </td>
                       </tr>
                     )}
                     </Fragment>
                   ))}
-                  {sortedVehicles.length === 0 && <tr><td colSpan={10} className="px-3 py-8 text-center text-slate-400">{ar ? 'لا توجد بيانات لهذه الفلاتر' : 'No data'}</td></tr>}
+                  {sortedVehicles.length === 0 && <tr><td colSpan={11} className="px-3 py-8 text-center text-slate-400">{ar ? 'لا توجد بيانات لهذه الفلاتر' : 'No data'}</td></tr>}
                 </tbody>
               </table>
             </ScrollX>

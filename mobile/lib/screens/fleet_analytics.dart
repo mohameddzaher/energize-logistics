@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../ui/hr_quick.dart';
 import '../services/api.dart';
 import '../services/lang.dart';
 import '../services/live.dart';
@@ -36,6 +37,27 @@ class _FleetAnalyticsScreenState extends State<FleetAnalyticsScreen> {
   // The field is destroyed on loading and scrolling; text kept in a controller survives with the word.
   final _searchCtl = TextEditingController();
   String _preset = 'thisMonth'; // thisMonth | lastMonth | all
+  // List filters, same keys as the web (vehicle, excludeVehicle, customer, supervisor, trailerType, customerType, status).
+  Map<String, String> _qf = {};
+  static const _qfKeys = [
+    ('vehicle', 'السيارات', 'Trucks'),
+    ('excludeVehicle', 'استبعاد سيارات', 'Exclude trucks'),
+    ('customer', 'العميل', 'Customer'),
+    ('supervisor', 'المشرف', 'Supervisor'),
+    ('trailerType', 'التيدر', 'Trailer'),
+    ('customerType', 'نوع العميل', 'Customer type'),
+    ('status', 'الحالة', 'Status'),
+  ];
+  List<String> _list(String k) => (_qf[k] ?? '').split(',').where((x) => x.isNotEmpty).toList();
+  void _setList(String k, List<String> v) {
+    final n = Map<String, String>.from(_qf);
+    if (v.isEmpty) { n.remove(k); } else { n[k] = v.toSet().join(','); }
+    _qf = n;
+  }
+  /// From a vehicle card: drop it from every figure, or look at it alone.
+  void _exclude(String id) { setState(() { _setList('vehicle', _list('vehicle')..remove(id)); _setList('excludeVehicle', [..._list('excludeVehicle'), id]); _loading = true; }); _load(); }
+  void _only(String id) { setState(() { _setList('excludeVehicle', _list('excludeVehicle')..remove(id)); _setList('vehicle', [id]); _loading = true; }); _load(); }
+  String _qfQuery() => _qf.entries.where((e) => e.value.isNotEmpty).map((e) => '${e.key}=${Uri.encodeComponent(e.value)}').join('&');
   late final void Function() _onLive;
 
   /// Under each vehicle are its loads. The card says a load count and an amount, and the next question is which loads, so the card opens onto its waybills: number, customer, from-to and price, from the same load-analysis call the web reads, with the same selected period.
@@ -72,7 +94,8 @@ class _FleetAnalyticsScreenState extends State<FleetAnalyticsScreen> {
   Future<void> _load() async {
     try {
       final mp = _monthParam();
-      final qs = mp.isEmpty ? '' : '?month=$mp';
+      final parts = [if (mp.isNotEmpty) 'month=$mp', if (_qfQuery().isNotEmpty) _qfQuery()];
+      final qs = parts.isEmpty ? '' : '?${parts.join('&')}';
       final d = await Api.instance.get('/api/fleet/analytics$qs');
       if (!mounted) return;
       setState(() { _data = Map<String, dynamic>.from(d); _loading = false; _error = null; });
@@ -155,6 +178,24 @@ class _FleetAnalyticsScreenState extends State<FleetAnalyticsScreen> {
             _presetChip('all', tr('الكل', 'All time')),
           ]),
         ),
+        const SizedBox(height: 10),
+        Builder(builder: (_) {
+          const ar = {'requesting': 'قيد الطلب', 'loading': 'جاري التحميل', 'uploaded': 'تم التحميل', 'on_way': 'في الطريق', 'arrived': 'وصلت',
+            'bond_sent': 'أُرسل السند', 'bond_received': 'استُلم السند', 'late': 'متأخرة', 'invoiced': 'تمت الفوترة', 'cancelled': 'ملغاة', 'heavy': 'نقل ثقيل', 'branch': 'فروع'};
+          final opts = Map<String, dynamic>.from(d['filterOptions'] ?? {});
+          final facets = [
+            for (final e in opts.entries)
+              {'key': e.key, 'values': [for (final v in List<Map<String, dynamic>>.from(e.value ?? [])) {...v, if (v['label'] == null && ar[v['value']] != null) 'label': ar[v['value']]}]},
+          ];
+          return HrQuickFilters(value: _qf, keys: _qfKeys, facets: facets,
+              onChanged: (n) { setState(() { _qf = n; _loading = true; }); _load(); });
+        }),
+        if (_list('excludeVehicle').isNotEmpty)
+          Padding(
+            padding: const EdgeInsets.only(top: 6),
+            child: Text(tr('التحليلات بدون ${_list('excludeVehicle').length} سيارة مستبعدة', 'Without ${_list('excludeVehicle').length} excluded truck(s)'),
+                style: const TextStyle(fontSize: 12, color: T.warn, fontWeight: FontWeight.w700)),
+          ),
         const SizedBox(height: 10),
         SearchField(
           controller: _searchCtl,
@@ -356,7 +397,15 @@ class _FleetAnalyticsScreenState extends State<FleetAnalyticsScreen> {
             Text(pct == null ? '—' : '$pct%', style: TextStyle(fontSize: 11.5, fontWeight: FontWeight.w700, color: c)),
           ]),
           const SizedBox(height: 4),
-          Text('${v['trips'] ?? 0} ${tr('رحلة', 'trips')} · ${tr('الهدف', 'target')} ${_money(v['target'])}', style: const TextStyle(fontSize: 11, color: T.inkFaint)),
+          Row(children: [
+            Expanded(child: Text('${v['trips'] ?? 0} ${tr('رحلة', 'trips')} · ${tr('الهدف', 'target')} ${_money(v['target'])}', style: const TextStyle(fontSize: 11, color: T.inkFaint))),
+            if (id.isNotEmpty) ...[
+              TextButton.icon(onPressed: () => _exclude(id), icon: const Icon(Icons.visibility_off_outlined, size: 15), label: Text(tr('استبعاد', 'Exclude'), style: const TextStyle(fontSize: 11.5)),
+                  style: TextButton.styleFrom(visualDensity: VisualDensity.compact, foregroundColor: T.warn)),
+              TextButton.icon(onPressed: () => _only(id), icon: const Icon(Icons.center_focus_strong_outlined, size: 15), label: Text(tr('هذه فقط', 'Only'), style: const TextStyle(fontSize: 11.5)),
+                  style: TextButton.styleFrom(visualDensity: VisualDensity.compact)),
+            ],
+          ]),
           if (open) ...[
             const Divider(height: 16),
             _vehLoadsView((v['plate'] ?? '—').toString()),

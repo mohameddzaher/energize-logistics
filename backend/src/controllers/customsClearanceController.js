@@ -237,6 +237,9 @@ async function searchClearances(text) {
   const idx = await searchIndex();
   return idx.filter((r) => r.blob.includes(whole) || (words.length > 1 && words.every((w) => r.blob.includes(w))));
 }
+
+// Newest period first; within a month the latest entered first.
+const PERIOD_ORDER = { periodYear: -1, periodMonth: -1, createdAt: -1, _id: -1 };
 exports._search = { searchValuesOf, searchClearances, SEARCH_INDEX_FIELDS };
 
 /**
@@ -355,8 +358,9 @@ exports.getClearances = async (req, res) => {
     const ck = `customs:list:${JSON.stringify(Object.keys(q).sort().reduce((o, k) => (SKIP.has(k) ? o : (o[k] = q[k], o)), {}))}`;
     // Heavy fields are excluded from the list: attachments alone can reach forty lines per transaction and the list shows none of them. They load only when the transaction opens. This greatly reduces transfer on the constrained Atlas tier.
     let list = await cache.wrap(ck, 30000, async () => {
+      // Ordered by the period column (newest month first), not entry time: imported rows were all entered on one day.
       const rows = await CustomsClearance.find(filter)
-        .select(LIST_FIELDS).sort({ createdAt: -1 }).lean();
+        .select(LIST_FIELDS).sort(PERIOD_ORDER).lean();
       // Only the last note is sent
       // The table shows the last one, not the whole log; sending ten notes per row over a constrained link is wasted transfer. The log is read in the transaction.
       return rows.map((r) => {
@@ -1027,7 +1031,7 @@ exports.getPartyProfile = async (req, res) => {
     const field = partyField(party.kind);
 
     const deals = await CustomsClearance.find({ [field]: party._id })
-      .select('-documents -attachments -containers -stageLog').sort({ createdAt: -1 }).lean();
+      .select('-documents -attachments -containers -stageLog').sort(PERIOD_ORDER).lean();
     const { moneyOf } = require('../utils/customsInvoice');
     for (const d of deals) d._m = moneyOf(d);
     const money = seesMoney(req);

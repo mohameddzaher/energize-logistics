@@ -764,7 +764,14 @@ class _ActionsTab extends StatelessWidget {
               TextField(controller: desc, maxLines: 2, decoration: InputDecoration(labelText: tr('تفاصيل (اختياري)', 'Detail (optional)'))),
               const SizedBox(height: 8),
               OutlinedButton.icon(
-                onPressed: () async { final p = await brPickPerson(c, owners); if (p != null) setS(() => assignee = p); },
+                onPressed: () async {
+                  final p = await brPickPerson(c, owners);
+                  if (p == null) return;
+                  // The task belongs to the owner's department, as the server records it.
+                  final sec = List<Map<String, dynamic>>.from(meta['participants'] ?? [])
+                      .firstWhere((x) => '${x['_id']}' == '${p['_id'] ?? p['user']}', orElse: () => const {})['section']?.toString() ?? '';
+                  setS(() { assignee = p; if (sec.isNotEmpty) department = sec; });
+                },
                 icon: const Icon(Icons.person_outline, size: 18),
                 label: Text(assignee == null ? tr('المكلَّف * — اختر من الحاضرين…', 'Owner * — pick an attendee…') : '${tr('المكلَّف', 'Owner')}: ${assignee!['name']}'),
               ),
@@ -808,10 +815,11 @@ class _ActionsTab extends StatelessWidget {
               if (depts.isNotEmpty) ...[
                 const SizedBox(height: 8),
                 DropdownButtonFormField<String>(
-                  initialValue: department,
+                  key: ValueKey('dept-$department'),
+                  initialValue: department.isEmpty ? null : department,
                   isExpanded: true,
                   decoration: InputDecoration(labelText: tr('القسم', 'Department'), isDense: true),
-                  items: [for (final d in depts) DropdownMenuItem(value: d, child: Text(brDept(context, d)))],
+                  items: [for (final d in {...depts, if (department.isNotEmpty) department}) DropdownMenuItem(value: d, child: Text(brDept(context, d)))],
                   onChanged: (v) => setS(() => department = v ?? department),
                 ),
               ],

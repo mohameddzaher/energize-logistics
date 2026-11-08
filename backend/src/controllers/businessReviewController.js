@@ -514,8 +514,8 @@ exports.createAction = async (req, res) => {
       meetingTitle: meeting.title,
       meetingDate: meeting.scheduledAt,
       title, description: description || '',
-      // An action without a department belongs to its owner's section, so the board can place it.
-      department: department || require('../config/roles').sectionOfRole(target.role) || '',
+      // The owner's section wins: the form defaulted to the meeting's first department and filed HR work under IT.
+      department: require('../config/roles').sectionOfRole(target.role) || department || '',
       assignee: target._id, assigneeName: fullName(target), assigneeRole: target.role,
       raisedBy: raiser?._id || null, raisedByName: fullName(raiser),
       startDate: dayOf(startDate) || meeting.scheduledAt || new Date(),
@@ -567,6 +567,7 @@ exports.updateAction = async (req, res) => {
           action.assignee = target._id;
           action.assigneeName = fullName(target);
           action.assigneeRole = target.role;
+          action.department = require('../config/roles').sectionOfRole(target.role) || action.department;
           await notify(target._id, {
             title: 'أُعيد إسناد بند تنفيذي إليك',
             message: `${action.title} (${action.meetingRef})`,

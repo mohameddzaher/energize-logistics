@@ -49,13 +49,20 @@ exports.getBoard = async (req, res) => {
 
     // Open work is always current; finished or cancelled work counts when it closed inside the period.
     const match = { ...scope };
-    if (req.query.department) match.department = req.query.department === NO_DEPT ? { $in: ['', null] } : req.query.department;
     const actions = await BrAction.find(match)
       .select('meeting meetingRef meetingTitle meetingDate title description department assignee assigneeName assigneeRole raisedByName startDate dueDate expectedDate originalDueDate postponeReason postponeCount priority status progress completedAt isOverdue createdAt updatedAt updates')
       .sort({ dueDate: 1, createdAt: -1 }).limit(3000).lean();
     const shown = actions.filter((a) => OPEN_ACTION_STATUSES.includes(a.status)
       || (a.status === 'done' && inPeriod(a.completedAt || a.updatedAt))
       || (a.status === 'cancelled' && inPeriod(a.updatedAt)));
+
+    // A task belongs to its owner's department: the manager speaks for it. The stored department was the meeting's first department on older tasks, so it is only the fallback for owners without a section (board, secretariat).
+    const owners = await User.find({ _id: { $in: [...new Set(shown.map((a) => String(a.assignee)))] } }).select('role').lean();
+    const ownerSection = new Map(owners.map((u) => [String(u._id), sectionOfRole(u.role)]));
+    const deptOf = (a) => ownerSection.get(String(a.assignee)) || sectionOfRole(a.assigneeRole) || a.department || NO_DEPT;
+    if (req.query.department) {
+      for (let i = shown.length - 1; i >= 0; i -= 1) if (deptOf(shown[i]) !== req.query.department) shown.splice(i, 1);
+    }
 
     const ids = shown.map((a) => a._id);
     const dels = ids.length ? await BrAssignment.find({ action: { $in: ids } })
@@ -80,7 +87,7 @@ exports.getBoard = async (req, res) => {
     const byDept = new Map();
     const totals = blank();
     const items = shown.map((a) => {
-      const dept = a.department || NO_DEPT;
+      const dept = deptOf(a);
       if (!byDept.has(dept)) byDept.set(dept, { key: dept, heads: headsOf.get(dept) || [], counts: blank(), items: [] });
       const g = byDept.get(dept);
       const open = OPEN_ACTION_STATUSES.includes(a.status);

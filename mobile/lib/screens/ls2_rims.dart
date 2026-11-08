@@ -146,7 +146,9 @@ class Ls2RimsTabState extends State<Ls2RimsTab> with AutomaticKeepAliveClientMix
 
   Future<void> _hide(Map<String, dynamic> r) async {
     final go = await showDialog<bool>(context: context, builder: (c) => AlertDialog(
-      content: Text(tr('حذف «${r['name']}» من القائمة؟ يبقى سجله محفوظًا.', 'Remove ${r['name']}? Its log is kept.')),
+      content: Text(((r['quantity'] as num?) ?? 0) > 0
+          ? tr('حذف «${r['name']}» من القائمة؟ سيُلغى رصيده (${r['quantity']}) الذي أُضيف به. يبقى سجله محفوظًا.', 'Remove ${r['name']}? Its opening ${r['quantity']} is reversed. Its log is kept.')
+          : tr('حذف «${r['name']}» من القائمة؟ يبقى سجله محفوظًا.', 'Remove ${r['name']}? Its log is kept.')),
       actions: [
         TextButton(onPressed: () => Navigator.pop(c, false), child: Text(tr('إلغاء', 'Cancel'))),
         FilledButton(style: FilledButton.styleFrom(backgroundColor: T.danger), onPressed: () => Navigator.pop(c, true), child: Text(tr('حذف', 'Remove'))),
@@ -175,7 +177,7 @@ class Ls2RimsTabState extends State<Ls2RimsTab> with AutomaticKeepAliveClientMix
         ],
         ListTile(leading: const Icon(Icons.history), title: Text(tr('سجل الحركات', 'Movement log')),
             onTap: () { Navigator.pop(c); _openLog(r); }),
-        if (widget.admin && qty == 0) ListTile(leading: const Icon(Icons.delete_outline, color: T.danger), title: Text(tr('حذف من القائمة', 'Remove')),
+        if (widget.admin && (qty == 0 || r['deletable'] == true)) ListTile(leading: const Icon(Icons.delete_outline, color: T.danger), title: Text(tr('حذف من القائمة', 'Remove')),
             onTap: () { Navigator.pop(c); _hide(r); }),
       ])),
     );

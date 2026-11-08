@@ -81,10 +81,27 @@ async function activeTwin(fields, exceptId) {
   return Ls2Rim.findOne({ key: rimKey(fields), isActive: true, ...(exceptId ? { _id: { $ne: exceptId } } : {}) }).select('name').lean();
 }
 
+/**
+ * A rim type whose balance came only from the purchase recorded when it was added: nothing was issued, moved or
+ * reversed since. Deleting it undoes a wrong entry; anything with real movements must be moved out first.
+ */
+async function onlyCreation(rimIds) {
+  const rows = await Ls2RimMovement.aggregate([
+    { $match: { rim: { $in: rimIds }, legacy: { $ne: true } } },
+    { $group: { _id: '$rim', n: { $sum: 1 }, first: { $first: '$$ROOT' } } },
+  ]);
+  return new Map(rows.map((r) => [String(r._id), r.n === 1 && r.first.type === 'in' && !r.first.reversed ? r.first : null]));
+}
+
 // GET /assets/rims
 exports.listRims = async (req, res) => {
   try {
     const rows = (await Ls2Rim.find({ isActive: { $ne: false } }).sort({ brand: 1, size: 1, condition: 1 }).lean()).map(decorate);
+    const fresh = await onlyCreation(rows.filter((r) => r.quantity > 0).map((r) => r._id));
+    for (const r of rows) {
+      const first = fresh.get(String(r._id));
+      r.deletable = r.quantity === 0 || (!!first && first.quantity === r.quantity);
+    }
     const byCondition = Object.fromEntries(RIM_CONDITIONS.map((c) => [c, rows.filter((r) => r.condition === c).reduce((a, r) => a + (r.quantity || 0), 0)]));
     res.json({
       rims: rows,
@@ -210,7 +227,23 @@ exports.updateRim = async (req, res) => {
 // DELETE /assets/rims/:id - hide an empty rim type; stock must be moved out first so nothing vanishes silently.
 exports.hideRim = async (req, res) => {
   try {
-    const rim = await Ls2Rim.findOneAndUpdate({ _id: req.params.id, isActive: true, quantity: 0 }, { $set: { isActive: false } }, { new: true });
+    let rim = await Ls2Rim.findOneAndUpdate({ _id: req.params.id, isActive: true, quantity: 0 }, { $set: { isActive: false } }, { new: true });
+    // An entry added by mistake: its only movement is the opening purchase, which is reversed so the log still adds up.
+    if (!rim) {
+      const cur = await Ls2Rim.findOne({ _id: req.params.id, isActive: true }).select('quantity').lean();
+      const first = cur && cur.quantity > 0 ? (await onlyCreation([cur._id])).get(String(cur._id)) : null;
+      if (first && first.quantity === cur.quantity) {
+        rim = await Ls2Rim.findOneAndUpdate({ _id: cur._id, isActive: true, quantity: cur.quantity }, { $set: { isActive: false, quantity: 0 } }, { new: true });
+        if (rim) {
+          const reason = str(req.body?.reason, 300) || 'حذف صنف أُضيف بالخطأ';
+          await Ls2RimMovement.create({
+            rim: rim._id, rimName: rim.name, type: 'out', reason: 'reversal', quantity: first.quantity, balanceAfter: 0,
+            date: todayKey(), notes: reason, reversalOf: first._id, ...actor(req),
+          });
+          await Ls2RimMovement.updateOne({ _id: first._id }, { $set: { reversed: true, reversedAt: new Date(), reversedByName: actor(req).performedByName, reversalReason: reason } });
+        }
+      }
+    }
     if (!rim) {
       const cur = await Ls2Rim.findById(req.params.id).select('quantity isActive name').lean();
       if (!cur || cur.isActive === false) return res.status(404).json({ message: 'الجنط غير موجود' });

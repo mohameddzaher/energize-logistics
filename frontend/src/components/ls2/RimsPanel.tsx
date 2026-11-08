@@ -17,6 +17,8 @@ export interface Rim {
   _id: string; name: string; brand: string; size: string; condition: 'new' | 'used' | 'scrap';
   quantity: number; unit: string; unitPrice: number; minQuantity: number; notes: string;
   status: 'ok' | 'low' | 'out'; value: number; conditionAr?: string;
+  // Empty, or holding only the quantity it was added with (a wrong entry): the server allows deleting it.
+  deletable?: boolean;
 }
 interface RimMovement {
   _id: string; rim: string; rimName: string; type: 'in' | 'out' | 'edit'; reason: string; reasonAr: string; reasonEn: string;
@@ -474,7 +476,9 @@ export default function RimsPanel({ ar, lang, admin, query, onQuery, plateOption
 
   const saved = (msg: string) => { setForm(null); setMove(null); setTransfer(null); setVehicleMove(null); load(); setRefreshKey((k) => k + 1); notify(msg, 'success'); };
   const hide = async (r: Rim) => {
-    if (!(await confirm(ar ? `حذف «${r.name}» من القائمة؟ يبقى سجله محفوظًا.` : `Remove ${r.name}? Its log is kept.`))) return;
+    const undo = r.quantity > 0
+      ? (ar ? ` سيُلغى رصيده (${r.quantity}) الذي أُضيف به.` : ` Its opening ${r.quantity} is reversed.`) : '';
+    if (!(await confirm(ar ? `حذف «${r.name}» من القائمة؟${undo} يبقى سجله محفوظًا.` : `Remove ${r.name}?${undo} Its log is kept.`))) return;
     try { await api.delete(`/api/ls2/assets/rims/${r._id}`); load(); } catch (e: any) { notify(e?.message || 'Failed', 'error'); }
   };
 
@@ -570,7 +574,7 @@ export default function RimsPanel({ ar, lang, admin, query, onQuery, plateOption
                         <button type="button" title={ar ? 'تعديل' : 'Edit'} onClick={() => setForm({ rim: r })} className="p-1.5 rounded-md hover:bg-slate-100 text-slate-400 hover:text-slate-700"><Pencil className="w-4 h-4" /></button>
                       </>}
                       <button type="button" title={ar ? 'السجل' : 'Log'} onClick={() => setLog({ rim: r })} className="p-1.5 rounded-md hover:bg-slate-100 text-slate-400 hover:text-slate-700"><History className="w-4 h-4" /></button>
-                      {admin && r.quantity === 0 && (
+                      {admin && (r.quantity === 0 || r.deletable) && (
                         <button type="button" title={ar ? 'حذف من القائمة' : 'Remove'} onClick={() => hide(r)} className="p-1.5 rounded-md hover:bg-red-50 text-slate-400 hover:text-red-600"><Trash2 className="w-4 h-4" /></button>
                       )}
                     </div>

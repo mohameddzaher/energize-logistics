@@ -253,6 +253,7 @@ const _actionAr = {
 const _endAr = {
   'removed': 'نزلت', 'transferred': 'نُقلت', 'to_repair': 'ذهبت للتجديد',
   'scrapped': 'سكراب', 'damaged': 'تلفت', 'sold': 'بيعت', 'retired': 'خرجت',
+  'to_store': 'دخلت المستودع', 'untracked': 'لا حركة مسجّلة بعدها',
 };
 
 String _day(dynamic d) => d == null ? '—' : (DateTime.tryParse('$d')?.toUtc().toIso8601String().substring(0, 10) ?? '—');
@@ -420,7 +421,11 @@ class _Ls2TireProfileScreenState extends State<Ls2TireProfileScreen> {
       ]),
       const SizedBox(height: 10),
       _section(tr('أين هي الآن', 'Where it is now'), null, [
-        if (ti['status'] == 'mounted')
+        if (ti['status'] == 'mounted' && ti['placeUnknown'] == true)
+          Text(tr('مسجّلة مركّبة لكن بدون عربية ولا تيدر — مكانها غير معروف. حدِّد مكانها الفعلي من صفحة الكاوتشات: نقلها لعربيتها أو إرجاعها للمستودع.',
+                  'Recorded as mounted but on no vehicle and no trailer — location unknown. Set its real place from the tires page: move it to its truck or return it to store.'),
+              style: const TextStyle(fontWeight: FontWeight.w800, color: T.warn))
+        else if (ti['status'] == 'mounted')
           Wrap(crossAxisAlignment: WrapCrossAlignment.center, spacing: 4, runSpacing: 4, children: [
             Text(tr('مركَّبة على', 'Mounted on')),
             if ((ti['plate'] ?? '').toString().isNotEmpty)
@@ -465,6 +470,7 @@ class _Ls2TireProfileScreenState extends State<Ls2TireProfileScreen> {
                   const Text('—'),
                 if (s['current'] == true && s['preSystem'] != true) Chip2(tr('الآن', 'now'), T.success),
                 if (s['preSystem'] == true) Chip2(tr('قبل النظام', 'pre-system'), T.inkFaint),
+                if (s['untracked'] == true) Chip2(tr('بدون حركة مسجّلة', 'no recorded move'), T.warn),
                 if ((s['position'] ?? '').toString().isNotEmpty) Text('${s['position']}', style: const TextStyle(fontSize: 11.5, color: T.inkSoft)),
               ]),
               const SizedBox(height: 4),

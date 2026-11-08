@@ -26,11 +26,12 @@ interface Stint {
   km: number | null; days: number | null; driver: string; current: boolean;
   /** Mounted before the system began: no mount event and no odometer for that day. */
   preSystem?: boolean;
+  untracked?: boolean;
 }
 interface Ev { _id: string; action: string; date: string; fromPlate: string | null; toPlate: string | null; fromPosition: string; toPosition: string; reason: string; notes: string; performedByName: string; odometerKm: number | null }
 interface WhileOn { kind: 'repair' | 'service'; date: string; plate: string; title: string; detail: string; cost?: number | null; by: string }
 interface Profile {
-  tire: { _id: string; serial: string; tireNumber: string; type: string; size: string; sensor: string; status: string; condition: string; conditionPercent: number | null; plate: string | null; positionLabel: string; section: string; trailerNumber: string | null; trailerOnPlate: string | null; unitId?: number | null; trailerOnUnitId?: number | null; isSpare: boolean; notes: string; createdAt: string };
+  tire: { _id: string; serial: string; tireNumber: string; type: string; size: string; sensor: string; status: string; condition: string; conditionPercent: number | null; plate: string | null; positionLabel: string; section: string; trailerNumber: string | null; trailerOnPlate: string | null; unitId?: number | null; trailerOnUnitId?: number | null; isSpare: boolean; notes: string; createdAt: string; placeUnknown?: boolean };
   stints: Stint[]; events: Ev[]; whileOn: WhileOn[];
   totals: { stints: number; vehicles: number; km: number; days: number; mountedDays: number; repairs: number; services: number; ageDays: number; preSystem: boolean };
 }
@@ -43,6 +44,7 @@ const ACTION_AR: Record<string, string> = {
 const END_AR: Record<string, string> = {
   removed: 'نزلت', transferred: 'نُقلت', to_repair: 'ذهبت للتجديد',
   scrapped: 'سكراب', damaged: 'تلفت', sold: 'بيعت', retired: 'خرجت',
+  to_store: 'دخلت المستودع', untracked: 'لا حركة مسجّلة بعدها',
 };
 
 /** Truck link: its page by unit number. A truck outside the tracking system has no page, so its tire table in fleet assets opens instead of an empty page. */
@@ -171,7 +173,12 @@ export default function TireProfilePage() {
         <p className="font-extrabold text-slate-900 text-[14.5px] flex items-center gap-1.5 mb-2">
           <MapPin className="w-4 h-4 text-slate-400" />{t('أين هي الآن', 'Where it is now')}
         </p>
-        {ti.status === 'mounted' ? (
+        {ti.status === 'mounted' && ti.placeUnknown ? (
+          <p className="text-[13.5px] font-bold text-amber-800 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">
+            {t('مسجّلة مركّبة لكن بدون عربية ولا تيدر — مكانها غير معروف. حدِّد مكانها الفعلي من صفحة الكاوتشات: نقلها لعربيتها أو إرجاعها للمستودع.',
+              'Recorded as mounted but on no vehicle and no trailer — location unknown. Set its real place from the tires page: move it to its truck or return it to store.')}
+          </p>
+        ) : ti.status === 'mounted' ? (
           <p className="text-[13.5px] text-slate-800">
             {t('مركَّبة على', 'Mounted on')}{' '}
             {ti.plate
@@ -229,6 +236,7 @@ export default function TireProfilePage() {
                         : <span className="text-slate-400">—</span>}
                     {s.current && !s.preSystem && <span className="ms-1.5 px-1.5 py-0.5 rounded bg-emerald-100 text-emerald-700 text-[10px] font-bold">{t('الآن', 'now')}</span>}
                     {s.preSystem && <span className="ms-1.5 px-1.5 py-0.5 rounded bg-slate-200 text-slate-600 text-[10px] font-bold">{t('قبل النظام', 'pre-system')}</span>}
+                    {s.untracked && <span className="ms-1.5 px-1.5 py-0.5 rounded bg-amber-100 text-amber-700 text-[10px] font-bold">{t('بدون حركة مسجّلة', 'no recorded move')}</span>}
                   </td>
                   <td className="px-3 py-2.5 text-slate-600 text-[12px]">{s.position || '—'}</td>
                   <td className="px-3 py-2.5 font-mono text-slate-700 whitespace-nowrap">

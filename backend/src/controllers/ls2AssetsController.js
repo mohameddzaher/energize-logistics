@@ -1280,33 +1280,50 @@ exports.getTireProfile = async (req, res) => {
     const Ls2Repair = require('../models/Ls2Repair');
     const Ls2ServiceLog = require('../models/Ls2ServiceLog');
 
+    // Chained swaps share one operation date, so creation order breaks the tie; date alone returned them shuffled.
     const events = await Ls2AssetEvent.find({ entityType: 'tire', refId: tire._id })
-      .sort({ date: 1 }).limit(2000).lean();
+      .sort({ date: 1, createdAt: 1, _id: 1 }).limit(2000).lean();
 
     // Periods: from mounting to removal.
     const MOUNTS = new Set(['mounted', 'transferred']);
+    const ENDS = new Set(['removed', 'to_repair', 'to_store', 'scrapped', 'damaged', 'sold', 'retired']);
     const stints = [];
     let open = null;
     for (const e of events) {
+      // A tire on a trailer travels with it; a move onto a parked trailer has no plate but is still a move.
+      const trailerNo = (String(e.toPosition || '').match(/تيدر\s*([\w-]+)/) || [])[1] || null;
       const landed = e.toPlate || e.toPlateKey;
-      if (MOUNTS.has(e.action) && landed) {
+      if (MOUNTS.has(e.action) && (landed || trailerNo)) {
         if (open) { open.to = e.date; open.endReason = 'transferred'; stints.push(open); }
         open = {
-          plate: e.toPlate, plateKey: e.toPlateKey, position: e.toPosition || '',
-          // The trailer number is taken from the position text when mounted on a trailer: the tire travels with the trailer, not the truck, and without it its real location is unknown.
-          trailerNumber: (String(e.toPosition || '').match(/تيدر\s*([\w-]+)/) || [])[1] || null,
+          plate: landed ? e.toPlate || null : null,
+          plateKey: landed ? e.toPlateKey || plateKey(e.toPlate) || null : null,
+          position: e.toPosition || '', trailerNumber: trailerNo,
           from: e.date, to: null, endReason: null,
           odoStart: e.odometerKm ?? null, odoEnd: null, by: e.performedByName || '',
         };
         continue;
       }
-      if (open && ['removed', 'to_repair', 'scrapped', 'damaged', 'sold', 'retired'].includes(e.action)) {
+      if (open && ENDS.has(e.action)) {
         open.to = e.date; open.endReason = e.action; open.odoEnd = e.odometerKm ?? null;
         stints.push(open); open = null;
       }
     }
-    // An open period means the tire is mounted now.
-    if (open) stints.push(open);
+    // The tire record is the truth for where it is now. A period left open on another truck (an older move that
+    // logged no event) is closed at the last recorded event instead of reading as still on that truck.
+    if (open) {
+      const onPlate = tire.status === 'mounted' && tire.plateKey && open.plateKey === tire.plateKey;
+      const onTrailer = tire.status === 'mounted' && !tire.plateKey && !open.plateKey && tire.trailerNumber
+        && String(open.trailerNumber || '') === String(tire.trailerNumber);
+      if (onPlate || onTrailer) stints.push(open);
+      else {
+        open.to = events.length ? events[events.length - 1].date : tire.updatedAt;
+        if (open.to < open.from) open.to = open.from;
+        open.endReason = tire.status === 'mounted' ? 'untracked' : (tire.status === 'sold' ? 'sold' : 'removed');
+        stints.push(open);
+        open = null;
+      }
+    }
     // Tires mounted before the system existed: the log starts when the system did, so such a tire has no mount event and would show an empty profile. An open, flagged period starts at the day it entered the system (the true mounting day is unknown) and gets no kilometers, since the truck odometer on mounting day is unknown and a difference from an unknown reading invents a number. Later mounts or replacements open real periods with known odometers at both ends.
     if (!stints.length && tire.status === 'mounted' && (tire.plate || tire.trailerNumber)) {
       stints.push({
@@ -1314,6 +1331,14 @@ exports.getTireProfile = async (req, res) => {
         trailerNumber: tire.trailerNumber || null,
         from: tire.createdAt, to: null, endReason: null, odoStart: null, odoEnd: null, by: '',
         preSystem: true,
+      });
+    } else if (!open && tire.status === 'mounted' && (tire.plate || tire.trailerNumber)) {
+      // Mounted where no event put it: shown as current from its last record change, without kilometres.
+      stints.push({
+        plate: tire.plate, plateKey: tire.plateKey, position: tire.positionLabel || '',
+        trailerNumber: tire.trailerNumber || null,
+        from: events.length ? events[events.length - 1].date : tire.updatedAt,
+        to: null, endReason: null, odoStart: null, odoEnd: null, by: '', untracked: true,
       });
     }
 
@@ -1347,13 +1372,13 @@ exports.getTireProfile = async (req, res) => {
     for (const s of stints) {
       const u = unitByKey.get(s.plateKey);
       const uid = u?.unitId;
-      if (uid != null && !s.preSystem) {
+      if (uid != null && !s.preSystem && !s.untracked) {
         s.odoStart = s.odoStart ?? odoAt.get(`${uid}|${dayKey(s.from)}`) ?? null;
         s.odoEnd = s.to
           ? (s.odoEnd ?? odoAt.get(`${uid}|${dayKey(s.to)}`) ?? null)
           : (u.odometerKm ?? null);
       }
-      s.km = (!s.preSystem && s.odoStart != null && s.odoEnd != null && s.odoEnd >= s.odoStart)
+      s.km = (!s.preSystem && !s.untracked && s.odoStart != null && s.odoEnd != null && s.odoEnd >= s.odoStart)
         ? Math.round(s.odoEnd - s.odoStart) : null;
       const end = s.to ? new Date(s.to) : now;
       s.days = s.from ? Math.max(0, Math.round((end - new Date(s.from)) / 86400000)) : null;
@@ -1415,6 +1440,8 @@ exports.getTireProfile = async (req, res) => {
         unitId: unitOf(tire.plateKey),
         trailerOnUnitId: unitOf(currentTrailer?.currentPlateKey),
         state: tireState(tire),
+        // Recorded as mounted but on no truck and no trailer: its place has to be confirmed by the workshop.
+        placeUnknown: tire.status === 'mounted' && !tire.plateKey && !tire.trailerNumber,
         // The truck currently pulling the trailer, shown with its current location.
         trailerOnPlate: currentTrailer?.currentPlate || null,
       },

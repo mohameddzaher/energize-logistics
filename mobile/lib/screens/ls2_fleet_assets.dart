@@ -1108,6 +1108,10 @@ class _Ls2FleetAssetsScreenState extends State<Ls2FleetAssetsScreen> {
     final section = (t['section'] ?? '').toString();
     if (k == 'mounted') {
       final trailerNo = (t['trailerNumber'] ?? '').toString();
+      // Mounted on no truck and no trailer: "on the spare slot" would hide that nobody knows which truck.
+      if ((t['plate'] ?? '').toString().isEmpty && trailerNo.isEmpty) {
+        return tr('مسجّلة مركّبة بدون عربية — مكانها غير معروف', 'Recorded mounted, no vehicle — location unknown');
+      }
       String plate = (t['plate'] ?? '').toString();
       if (plate.isEmpty && trailerNo.isNotEmpty) {
         final tr0 = _l(_d?['trailers']).firstWhere((x) => (x['trailerNumber'] ?? '').toString() == trailerNo, orElse: () => <String, dynamic>{});

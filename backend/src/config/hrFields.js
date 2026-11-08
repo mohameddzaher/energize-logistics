@@ -132,7 +132,7 @@ const GROUPS = [
     key: 'iqama', ar: 'الإقامات', en: 'Iqama', icon: 'id', document: true,
     expiryField: 'iqamaExpiry',
     fields: [
-      { key: 'iqamaIssueDate', ar: 'تاريخ الإصدار', en: 'Issue date', type: 'date' },
+      // Iqama issue date is not shown in HR (owner's decision); the stored value stays for other sections.
       { key: 'iqamaExpiry', ar: 'تاريخ الانتهاء', en: 'Expiry', type: 'date' },
       // No stored Hijri column here. `iqamaExpiryHijri` was a typed/imported text field, then every date generated a derived Hijri twin under the same key, producing two columns with one key.
       // The stored values are wrong: about half precede the correct one by roughly three months and a day, a systematic error from a faulty conversion in the first import. Only the derived column remains; stored values stay in the database unread. The Gregorian expiry date is the source for alerts and renewals.
@@ -234,7 +234,7 @@ const GROUPS = [
     key: 'drivingLicense', ar: 'رخص القيادة', en: 'Driving licences', icon: 'license', document: true,
     expiryField: 'licenseExpiry',
     fields: [
-      { key: 'licenseNumber', ar: 'رقم الرخصة', en: 'Licence no.', type: 'text' },
+      // Licence number is not shown in HR (owner's decision); the stored value stays for other sections.
       { key: 'licenseType', ar: 'نوع الرخصة', en: 'Licence type', type: 'text', groupable: true, choice: true },
       { key: 'licenseExpiry', ar: 'تاريخ الانتهاء', en: 'Expiry', type: 'date' },
     ],

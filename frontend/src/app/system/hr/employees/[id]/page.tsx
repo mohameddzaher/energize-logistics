@@ -1159,7 +1159,6 @@ function profileRows(e: Employee, tx: ReturnType<typeof getHrEmployeesIdTranslat
     [vtx.classification, e.classification],
     [vtx.fileStatus, e.fileStatus],
     [vtx.vehiclePlate, e.vehiclePlate],
-    [vtx.licenseNumber, e.licenseNumber],
     [vtx.licenseType, e.licenseType],
     [vtx.licenseExpiry, ...D(e.licenseExpiry)],
     [vtx.driverCardNumber, e.driverCardNumber],

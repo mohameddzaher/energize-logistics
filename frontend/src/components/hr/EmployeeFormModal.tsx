@@ -26,9 +26,9 @@ export const EMPTY_EMPLOYEE = {
   iban: '', bank: '', project: '', registerNumber: '', absherNumber: '', companyNumber: '', originCountryNumber: '',
   fileStatus: '', systemStatus: '', workStatusText: '', penaltyClause: 0, iqamaProfession: '', classification: '',
   insuranceCompany: '', insuranceExpiry: '', socialInsuranceStatus: '', visaExpiry: '', lastTravelDate: '', lastReturnDate: '',
-  vehiclePlate: '', licenseNumber: '', licenseType: '', licenseExpiry: '',
+  vehiclePlate: '', licenseType: '', licenseExpiry: '',
   driverCardNumber: '', driverCardType: '', driverCardStatus: '', driverCardExpiry: '', workCard: '', ajeerStatus: '', ajeerExpiry: '',
-  companyEmail: '', employerNumber: '', isOutsideKingdom: false, iqamaIssueDate: '', iqamaProfessionRequirements: '',
+  companyEmail: '', employerNumber: '', isOutsideKingdom: false, iqamaProfessionRequirements: '',
   contractOccupation: '', contractStartDate: '', contractEndDate: '', annualLeaveDays: '', probationPeriod: '',
   insuranceClass: '', medicalInsuranceNumber: '', medicalInsuranceRegister: '', insuranceRequirements: '',
   healthCertNumber: '', healthCertExpiry: '',
@@ -221,7 +221,6 @@ export function EmployeeFormModal({ open, employee, onClose, onSaved }: {
         ) : (
           <>
             <Field label={tx.iqamaNumber}><TextInput value={form.iqamaNumber} onChange={(e) => set('iqamaNumber', e.target.value)} /></Field>
-            <DatePair label={ar ? 'تاريخ إصدار الإقامة' : 'Iqama issue date'} value={form.iqamaIssueDate || ''} onChange={(v) => set('iqamaIssueDate', v)} ar={ar} />
             <DocInput k="iqamaExpiry" label={tx.iqamaExpiry} type="date" form={form} set={set} mark={marks['iqamaExpiry'] || ''} setMark={setMark} choices={choices} ar={ar} />
           </>
         )}
@@ -358,7 +357,6 @@ export function EmployeeFormModal({ open, employee, onClose, onSaved }: {
             title={ar ? 'تُقرأ من سجل المركبات — تُعدَّل بالتفويض' : 'Read from the vehicle registry — change it through the authorisation'} />
           <p className="mt-1 text-[11px] text-slate-500">{ar ? 'تُقرأ من سجل المركبات — تُعدَّل بالتفويض' : 'Read from the vehicle registry — change it through the authorisation'}</p>
         </Field>
-        <Field label={vtx.licenseNumber}><TextInput value={form.licenseNumber} onChange={(e) => set('licenseNumber', e.target.value)} /></Field>
         <DocInput k="licenseType" label={vtx.licenseType} form={form} set={set} mark={marks['licenseType'] || ''} setMark={setMark} choices={choices} ar={ar} />
         <DocInput k="licenseExpiry" label={vtx.licenseExpiry} type="date" form={form} set={set} mark={marks['licenseExpiry'] || ''} setMark={setMark} choices={choices} ar={ar} />
         <DocInput k="driverCardNumber" label={vtx.driverCardNumber} form={form} set={set} mark={marks['driverCardNumber'] || ''} setMark={setMark} choices={choices} ar={ar} />

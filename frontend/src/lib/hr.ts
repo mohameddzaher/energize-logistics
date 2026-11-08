@@ -151,7 +151,7 @@ export interface LeaveRequest {
   chairmanDecision?: LeaveDecision;
   // Request dialogue: a stage's question and the requester's reply, oldest first.
   thread?: LeaveThreadEntry[];
-  balanceSnapshot?: { accrued?: number; requested?: number; remainingAfter?: number };
+  balanceSnapshot?: { accrued?: number; available?: number; requested?: number; remainingAfter?: number };
   // HR's choice at its stage; null on older records, where the leave type decides (backend utils/leaveBalance.leaveDeducts).
   deductsBalance?: boolean | null;
   // Filed by a manager for someone under him; his stage was stamped at filing.

@@ -374,7 +374,7 @@ export default function HRLeavesPage() {
                       <span className="block text-[10.5px] text-sky-700 whitespace-nowrap">{ar ? `بدون ${(l as any).excludedFridays.length} جمعة` : `${(l as any).excludedFridays.length} Fri not counted`}</span>
                     )}
                   </td>
-                  <td className="px-4 py-3"><span className={over ? 'text-red-600' : 'text-slate-700'}>{l.balanceSnapshot?.accrued ?? '—'}{over ? ` ${tx.over}` : ''}</span></td>
+                  <td className="px-4 py-3"><span className={over ? 'text-red-600' : 'text-slate-700'}>{l.balanceSnapshot?.available ?? '—'}{over ? ` ${tx.over}` : ''}</span></td>
                   <td className="px-4 py-3">
                     <div className="flex items-center gap-1.5 flex-wrap">
                       <Badge style={leaveStatusStyle(l, false, full, canActNow(l))} lang={lang} />

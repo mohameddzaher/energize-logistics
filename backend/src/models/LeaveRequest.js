@@ -131,6 +131,8 @@ const leaveRequestSchema = new mongoose.Schema(
     // requested days exceed what the employee had accrued.
     balanceSnapshot: {
       accrued: Number,
+      // What was left to take when the request was filed; accrued alone counts days already used.
+      available: Number,
       requested: Number,
       remainingAfter: Number,
     },

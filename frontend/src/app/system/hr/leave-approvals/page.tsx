@@ -174,9 +174,12 @@ export default function LeaveApprovalsPage() {
               <Row label={ar ? 'الموظف' : 'Employee'} value={`${empName(review.employee, lang)} (${userName(review.requester)})`} />
               <Row label={ar ? 'النوع' : 'Type'} value={leaveTypeLabel(review.leaveType, lang)} />
               <Row label={ar ? 'الفترة' : 'Period'} value={`${bothPeriod(review.startDate, review.endDate, ar)} (${review.days} ${ar ? 'يوم' : 'd'})`} />
-              <Row label={ar ? 'الرصيد المستحق' : 'Accrued balance'}
+              <Row label={ar ? 'الرصيد المتاح' : 'Available balance'}
                 value={<>
-                  {review.balanceSnapshot?.accrued ?? '—'} {ar ? 'يوم' : 'd'}
+                  {review.balanceSnapshot?.available ?? '—'} {ar ? 'يوم' : 'd'}
+                  {typeof review.balanceSnapshot?.remainingAfter === 'number' && (
+                    <span className="text-slate-500"> · {ar ? 'بعد الإجازة' : 'after'} {review.balanceSnapshot.remainingAfter} {ar ? 'يوم' : 'd'}</span>
+                  )}
                   {typeof review.balanceSnapshot?.remainingAfter === 'number' && review.balanceSnapshot.remainingAfter < 0 && (
                     <span className="text-red-600"> ({ar ? 'يتجاوز الرصيد' : 'exceeds balance'})</span>
                   )}

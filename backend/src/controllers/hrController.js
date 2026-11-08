@@ -1560,6 +1560,7 @@ exports.createMyLeave = async (req, res) => {
       ...chain.startOf(hasManager),
       balanceSnapshot: {
         accrued: balance.accrued,
+        available: balance.available,
         requested: days,
         remainingAfter: lt.affectsBalance ? Math.round((balance.available - days) * 100) / 100 : balance.available,
       },
@@ -1665,6 +1666,7 @@ exports.createTeamLeave = async (req, res) => {
       managerDecision: { by: req.user._id, at: new Date(), decision: 'approved', note: `قدّم الطلبَ المديرُ ${filer} بنفسه | Filed by the manager`, signature: await defaultSignatureOf(req.user._id) },
       balanceSnapshot: {
         accrued: balance.accrued,
+        available: balance.available,
         requested: days,
         remainingAfter: lt.affectsBalance ? Math.round((balance.available - days) * 100) / 100 : balance.available,
       },
@@ -1758,6 +1760,7 @@ exports.createBackdatedLeave = async (req, res) => {
       recordedAt: now,
       balanceSnapshot: {
         accrued: balance.accrued,
+        available: balance.available,
         requested: days,
         remainingAfter: affects ? Math.round((balance.available - days) * 100) / 100 : balance.available,
       },
@@ -2130,7 +2133,7 @@ exports.replyToLeave = async (req, res) => {
         const { balance } = await computeEmployeeBalance(leave.employee);
         const lt = await LeaveType.findById(leave.leaveType).select('affectsBalance').lean();
         leave.balanceSnapshot = {
-          accrued: balance.accrued, requested: leave.days,
+          accrued: balance.accrued, available: balance.available, requested: leave.days,
           remainingAfter: lt?.affectsBalance ? Math.round((balance.available - leave.days) * 100) / 100 : balance.available,
         };
       } catch (e) { /* the snapshot is informative only */ }

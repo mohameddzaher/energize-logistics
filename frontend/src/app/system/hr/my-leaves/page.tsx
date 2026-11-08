@@ -653,7 +653,7 @@ export default function MyLeavesPage() {
             <p><span className="text-slate-500">{tx.colEmployee}: </span><span className="text-slate-900">{empName(review.employee, lang)} ({userName(review.requester)})</span></p>
             <p><span className="text-slate-500">{tx.colType}: </span><span className="text-slate-900">{leaveTypeLabel(review.leaveType, lang)}</span></p>
             <p><span className="text-slate-500">{tx.colPeriod}: </span><span className="text-slate-900">{bothPeriod(review.startDate, review.endDate, ar)} ({review.days} {tx.dayShort})</span></p>
-            <p><span className="text-slate-500">{tx.accruedBalance}: </span><span className="text-slate-900">{review.balanceSnapshot?.accrued ?? '—'} {tx.dayShort}</span> {typeof review.balanceSnapshot?.remainingAfter === 'number' && review.balanceSnapshot.remainingAfter < 0 && <span className="text-red-600">({tx.exceedsBalance})</span>}</p>
+            <p><span className="text-slate-500">{ar ? 'الرصيد المتاح' : 'Available balance'}: </span><span className="text-slate-900">{review.balanceSnapshot?.available ?? '—'} {tx.dayShort}</span> {typeof review.balanceSnapshot?.remainingAfter === 'number' && review.balanceSnapshot.remainingAfter < 0 && <span className="text-red-600">({tx.exceedsBalance})</span>}</p>
             {review.reason && <p className="border-t border-slate-200 pt-2"><span className="text-slate-500">{tx.reason}: </span><span className="text-slate-900">{review.reason}</span></p>}
             {!!((review as any)?.attachments || []).length && (
               <div className="border-t border-slate-200 pt-2">

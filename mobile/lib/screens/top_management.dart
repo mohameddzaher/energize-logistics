@@ -271,7 +271,7 @@ class LeaveDetailSheet extends StatelessWidget {
         _info(tr('تاريخ الطلب', 'Requested on'), bothDates(l['createdAt'], ar: Lang.instance.ar)),
         if (ex.isNotEmpty) _info(tr('أيام جمعة لا تُحسب إجازة', 'Fridays not counted'), ex.map((d) => d.split('-').reversed.join('/')).join('  ·  ')),
         if ('${l['reason'] ?? ''}'.isNotEmpty) _info(tr('السبب', 'Reason'), '${l['reason']}'),
-        if (snap['accrued'] != null) _info(tr('الرصيد المتراكم عند الطلب', 'Accrued at request'), '${snap['accrued']} ${tr('يوم', 'd')}'),
+        if (snap['available'] != null) _info(tr('الرصيد المتاح عند الطلب', 'Available at request'), '${snap['available']} ${tr('يوم', 'd')}'),
         if (snap['remainingAfter'] != null) _info(tr('المتبقي بعد الإجازة', 'Remaining after'), '${snap['remainingAfter']} ${tr('يوم', 'd')}'),
         LeaveDeductionBadge(leave: l, full: full),
         _head(tr('بيانات الموظف', 'Employee')),

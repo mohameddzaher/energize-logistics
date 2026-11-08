@@ -118,7 +118,7 @@ export function LeaveDetail({ l, ar, full }: { l: Leave; ar: boolean; full: bool
           <Info k={t('إلى', 'To')} v={bothDates(l.endDate, ar)} />
           {excluded.length > 0 && <Info wide k={t('أيام جمعة لا تُحسب إجازة', 'Fridays not counted')} v={excluded.map((d) => d.split('-').reverse().join('/')).join('  ·  ')} />}
           {l.reason && <Info wide k={t('السبب', 'Reason')} v={l.reason} />}
-          {typeof snap.accrued === 'number' && <Info k={t('الرصيد المتراكم عند الطلب', 'Accrued at request')} v={`${snap.accrued} ${t('يوم', 'd')}`} />}
+          {typeof snap.available === 'number' && <Info k={t('الرصيد المتاح عند الطلب', 'Available at request')} v={`${snap.available} ${t('يوم', 'd')}`} />}
           {typeof snap.remainingAfter === 'number' && (
             <Info k={t('المتبقي بعد الإجازة', 'Remaining after')} v={<span className={snap.remainingAfter < 0 ? 'text-red-600' : ''}>{snap.remainingAfter} {t('يوم', 'd')}</span>} />
           )}

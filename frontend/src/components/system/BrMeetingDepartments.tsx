@@ -19,12 +19,12 @@ type Card = { key: string; counts: Counts; tasks: Task[] };
 
 // The state chips of a card; each one filters the card's list.
 const CHIPS: { key: keyof Counts; ar: string; en: string; cls: string; icon: any; test: (t: Task) => boolean }[] = [
-  { key: 'overdue', ar: 'متأخر', en: 'Overdue', cls: 'bg-red-50 text-red-700 border-red-200', icon: AlertTriangle, test: (t) => t.overdue },
-  { key: 'in_progress', ar: 'قيد التنفيذ', en: 'In progress', cls: 'bg-sky-50 text-sky-700 border-sky-200', icon: PlayCircle, test: (t) => t.status === 'in_progress' },
-  { key: 'open', ar: 'لم يبدأ', en: 'Not started', cls: 'bg-slate-50 text-slate-600 border-slate-200', icon: CircleDashed, test: (t) => t.status === 'open' },
-  { key: 'postponed', ar: 'مؤجَّل', en: 'Postponed', cls: 'bg-amber-50 text-amber-700 border-amber-200', icon: PauseCircle, test: (t) => t.status === 'postponed' },
-  { key: 'blocked', ar: 'متعثر', en: 'Blocked', cls: 'bg-rose-50 text-rose-700 border-rose-200', icon: Ban, test: (t) => t.status === 'blocked' },
-  { key: 'done', ar: 'تم', en: 'Done', cls: 'bg-emerald-50 text-emerald-700 border-emerald-200', icon: CheckCircle2, test: (t) => t.status === 'done' },
+  { key: 'overdue', ar: 'متأخر', en: 'Overdue', cls: 'bg-red-600 text-white border-red-600', icon: AlertTriangle, test: (t) => t.overdue },
+  { key: 'in_progress', ar: 'قيد التنفيذ', en: 'In progress', cls: 'bg-sky-600 text-white border-sky-600', icon: PlayCircle, test: (t) => t.status === 'in_progress' },
+  { key: 'open', ar: 'لم يبدأ', en: 'Not started', cls: 'bg-slate-700 text-white border-slate-700', icon: CircleDashed, test: (t) => t.status === 'open' },
+  { key: 'postponed', ar: 'مؤجَّل', en: 'Postponed', cls: 'bg-amber-500 text-white border-amber-500', icon: PauseCircle, test: (t) => t.status === 'postponed' },
+  { key: 'blocked', ar: 'متعثر', en: 'Blocked', cls: 'bg-rose-700 text-white border-rose-700', icon: Ban, test: (t) => t.status === 'blocked' },
+  { key: 'done', ar: 'تم', en: 'Done', cls: 'bg-emerald-600 text-white border-emerald-600', icon: CheckCircle2, test: (t) => t.status === 'done' },
 ];
 
 export default function BrMeetingDepartments({ meetingId, meta, L, notify }: {
@@ -62,10 +62,10 @@ export default function BrMeetingDepartments({ meetingId, meta, L, notify }: {
     <div className="space-y-4">
       <div className="flex flex-wrap items-center gap-2 text-[12.5px]">
         <span className="px-2.5 py-1 rounded-lg bg-slate-900 text-white font-bold">{t('All tasks', 'كل البنود')}: {all.total}</span>
-        <span className="px-2.5 py-1 rounded-lg bg-emerald-50 text-emerald-700 border border-emerald-200 font-bold">{t('Done', 'تم')}: {all.done}</span>
-        <span className="px-2.5 py-1 rounded-lg bg-sky-50 text-sky-700 border border-sky-200 font-bold">{t('Still open', 'لسه شغالة')}: {all.active}</span>
-        <span className="px-2.5 py-1 rounded-lg bg-red-50 text-red-700 border border-red-200 font-bold">{t('Overdue', 'متأخر')}: {all.overdue}</span>
-        <span className="text-slate-500">
+        <span className="px-2.5 py-1 rounded-lg bg-emerald-600 text-white font-bold">{t('Done', 'تم')}: {all.done}</span>
+        <span className="px-2.5 py-1 rounded-lg bg-sky-600 text-white font-bold">{t('Still open', 'لسه شغالة')}: {all.active}</span>
+        <span className={`px-2.5 py-1 rounded-lg font-bold ${all.overdue ? 'bg-red-600 text-white' : 'bg-slate-100 text-slate-700'}`}>{t('Overdue', 'متأخر')}: {all.overdue}</span>
+        <span className="text-slate-700 font-medium">
           {d.scope === 'series'
             ? t('Every task this recurring meeting has raised, by department.', 'كل البنود اللي اتاخدت في الاجتماع ده من أوله، مقسومة على الأقسام.')
             : t('This meeting’s tasks, by department.', 'بنود الاجتماع ده، مقسومة على الأقسام.')}
@@ -80,20 +80,20 @@ export default function BrMeetingDepartments({ meetingId, meta, L, notify }: {
           const shown = chip ? c.tasks.filter(chip.test) : c.tasks;
           const pct = c.counts.total ? Math.round((c.counts.done / c.counts.total) * 100) : 0;
           return (
-            <section key={c.key} className={`bg-white rounded-2xl border shadow-sm overflow-hidden ${c.counts.overdue ? 'border-red-200' : 'border-slate-200'} ${open ? 'lg:col-span-2' : ''}`}>
+            <section key={c.key} className={`bg-white rounded-2xl border-2 shadow-sm overflow-hidden ${c.counts.overdue ? 'border-red-400' : c.counts.total ? 'border-slate-300' : 'border-slate-200'} ${open ? 'lg:col-span-2' : ''}`}>
               <button type="button" onClick={() => { setOpenDept(open ? '' : c.key); setOpenTask(''); }}
-                className="w-full text-start px-4 py-3 flex items-center gap-3 hover:bg-slate-50">
+                className="w-full text-start px-4 py-3 flex items-center gap-3 bg-slate-50 hover:bg-orange-50 border-b border-slate-200">
                 <Layers className="w-5 h-5 text-[#f37121] shrink-0" />
                 <div className="min-w-0 flex-1">
-                  <p className="font-extrabold text-slate-900">{c.key === 'Unassigned' ? t('No department', 'بدون قسم') : deptLabel(c.key, L)}</p>
-                  <p className="text-[11.5px] text-slate-500">
+                  <p className="font-black text-[16px] text-slate-900">{c.key === 'Unassigned' ? t('No department', 'بدون قسم') : deptLabel(c.key, L)}</p>
+                  <p className="text-[12.5px] font-semibold text-slate-700">
                     {c.counts.total} {t('tasks', 'بند')} · {t('done', 'تم')} {c.counts.done} ({pct}%)
                     {!!c.counts.today && <> · {t('raised today', 'اتاخد النهارده')} {c.counts.today}</>}
                   </p>
                 </div>
                 <ChevronDown className={`w-5 h-5 text-slate-400 transition-transform ${open ? 'rotate-180' : ''}`} />
               </button>
-              <div className="px-4"><Progress value={pct} color="#16a34a" /></div>
+              <div className="px-4 pt-3"><Progress value={pct} color="#16a34a" /></div>
 
               <div className="px-4 py-3 flex flex-wrap gap-1.5">
                 {CHIPS.map((x) => {
@@ -103,8 +103,9 @@ export default function BrMeetingDepartments({ meetingId, meta, L, notify }: {
                   return (
                     <button key={x.key} type="button" disabled={!n}
                       onClick={() => { setFilter((p) => ({ ...p, [c.key]: on ? '' : x.key })); setOpenDept(c.key); }}
-                      className={`inline-flex items-center gap-1 px-2 py-1 rounded-lg border text-[12px] font-bold disabled:opacity-40 ${x.cls} ${on ? 'ring-2 ring-offset-1 ring-[#f37121]' : ''}`}>
-                      <Icon className="w-3.5 h-3.5" />{t(x.en, x.ar)} {n}
+                      className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg border text-[12.5px] font-extrabold ${n ? x.cls : 'bg-slate-100 text-slate-600 border-slate-200 cursor-default'} ${on ? 'ring-2 ring-offset-1 ring-[#f37121]' : ''}`}>
+                      <Icon className="w-3.5 h-3.5" />{t(x.en, x.ar)}
+                      <span className={`min-w-[1.25rem] text-center rounded px-1 ${n ? 'bg-white/25' : 'bg-white text-slate-700'}`}>{n}</span>
                     </button>
                   );
                 })}

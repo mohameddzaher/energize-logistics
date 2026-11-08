@@ -215,7 +215,7 @@ class _BrMeetingDepartmentsTabState extends State<BrMeetingDepartmentsTab> {
     return Container(
       margin: const EdgeInsets.only(bottom: 10),
       decoration: BoxDecoration(color: T.card, borderRadius: BorderRadius.circular(14),
-          border: Border.all(color: ((counts['overdue'] ?? 0) as num) > 0 ? T.danger.withValues(alpha: 0.4) : T.line)),
+          border: Border.all(color: ((counts['overdue'] ?? 0) as num) > 0 ? T.danger : const Color(0xFFCBD5E1), width: 1.5)),
       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
         InkWell(
           onTap: () => setState(() { _openDept = open ? '' : key; _openTask = ''; }),
@@ -225,10 +225,10 @@ class _BrMeetingDepartmentsTabState extends State<BrMeetingDepartmentsTab> {
               const Icon(Icons.layers_outlined, color: T.orange),
               const SizedBox(width: 8),
               Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                Text(key == 'Unassigned' ? tr('بدون قسم', 'No department') : brDept(context, key), style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 15)),
+                Text(key == 'Unassigned' ? tr('بدون قسم', 'No department') : brDept(context, key), style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 16.5)),
                 Text('$total ${tr('بند', 'tasks')} · ${tr('تم', 'done')} $done (${(pct * 100).round()}%)'
                     '${((counts['today'] ?? 0) as num) > 0 ? ' · ${tr('اتاخد النهارده', 'raised today')} ${counts['today']}' : ''}',
-                    style: const TextStyle(fontSize: 11.5, color: T.inkSoft)),
+                    style: const TextStyle(fontSize: 12.5, fontWeight: FontWeight.w700, color: Color(0xFF334155))),
               ])),
               Icon(open ? Icons.expand_less : Icons.expand_more, color: T.inkFaint),
             ]),
@@ -238,12 +238,7 @@ class _BrMeetingDepartmentsTabState extends State<BrMeetingDepartmentsTab> {
         Padding(
           padding: const EdgeInsets.all(10),
           child: Wrap(spacing: 6, runSpacing: 6, children: [
-            for (final x in _chips)
-              ChoiceChip(
-                label: Text('${tr(x.$2, x.$3)} ${counts[x.$1] ?? 0}', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w800, color: x.$4)),
-                selected: f == x.$1,
-                onSelected: ((counts[x.$1] ?? 0) as num) == 0 ? null : (_) => setState(() { _filter[key] = f == x.$1 ? '' : x.$1; _openDept = key; }),
-              ),
+            for (final x in _chips) _countChip(x, (counts[x.$1] ?? 0) as num, f == x.$1, () => setState(() { _filter[key] = f == x.$1 ? '' : x.$1; _openDept = key; })),
           ]),
         ),
         if (open) ...[
@@ -322,6 +317,25 @@ class _BrMeetingDepartmentsTabState extends State<BrMeetingDepartmentsTab> {
           ),
         const Divider(height: 1),
       ]),
+    );
+  }
+
+  /// Solid colour with white text when there is something to count; grey but readable at zero.
+  Widget _countChip((String, String, String, Color, bool Function(Map)) x, num n, bool on, VoidCallback onTap) {
+    final has = n > 0;
+    return InkWell(
+      onTap: has ? onTap : null,
+      borderRadius: BorderRadius.circular(8),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+        decoration: BoxDecoration(
+          color: has ? x.$4 : const Color(0xFFF1F5F9),
+          borderRadius: BorderRadius.circular(8),
+          border: Border.all(color: on ? T.orange : (has ? x.$4 : const Color(0xFFE2E8F0)), width: on ? 2.5 : 1),
+        ),
+        child: Text('${tr(x.$2, x.$3)}  ${n.toInt()}',
+            style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.w900, color: has ? Colors.white : const Color(0xFF475569))),
+      ),
     );
   }
 

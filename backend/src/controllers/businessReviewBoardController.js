@@ -12,6 +12,7 @@ const {
   canRunMeetings, isParticipant, isManagerRole, OPEN_ACTION_STATUSES, CADENCE_KEYS, departments,
 } = require('../config/businessReview');
 const { sectionOfRole } = require('../config/roles');
+const { sectionsOfUserIds } = require('../utils/userSection');
 const { sendMongooseError } = require('../utils/mongooseError');
 const { emitToAll } = require('../websocket/socketManager');
 const brSeries = require('../services/brSeries');
@@ -57,8 +58,7 @@ exports.getBoard = async (req, res) => {
       || (a.status === 'cancelled' && inPeriod(a.updatedAt)));
 
     // A task belongs to its owner's department: the manager speaks for it. The stored department was the meeting's first department on older tasks, so it is only the fallback for owners without a section (board, secretariat).
-    const owners = await User.find({ _id: { $in: [...new Set(shown.map((a) => String(a.assignee)))] } }).select('role').lean();
-    const ownerSection = new Map(owners.map((u) => [String(u._id), sectionOfRole(u.role)]));
+    const ownerSection = await sectionsOfUserIds(shown.map((a) => a.assignee));
     const deptOf = (a) => ownerSection.get(String(a.assignee)) || sectionOfRole(a.assigneeRole) || a.department || NO_DEPT;
     if (req.query.department) {
       for (let i = shown.length - 1; i >= 0; i -= 1) if (deptOf(shown[i]) !== req.query.department) shown.splice(i, 1);
@@ -173,8 +173,7 @@ exports.getMeetingDepartments = async (req, res) => {
       : [meeting._id];
     const actions = await BrAction.find({ meeting: { $in: meetingIds } })
       .select('-__v').sort({ createdAt: -1 }).limit(3000).lean();
-    const owners = await User.find({ _id: { $in: [...new Set(actions.map((a) => String(a.assignee)))] } }).select('role').lean();
-    const ownerSection = new Map(owners.map((u) => [String(u._id), sectionOfRole(u.role)]));
+    const ownerSection = await sectionsOfUserIds(actions.map((a) => a.assignee));
     const deptOf = (a) => ownerSection.get(String(a.assignee)) || sectionOfRole(a.assigneeRole) || a.department || NO_DEPT;
     const titleOf = new Map(actions.map((a) => [String(a._id), a.title]));
     const followUps = new Map();
@@ -335,7 +334,8 @@ exports.getDaily = async (req, res) => {
       .select('meeting department assignee assigneeName assigneeRole status title dueDate progress').lean() : [];
     const byMeeting = new Map();
     for (const a of acts) { const k = String(a.meeting); if (!byMeeting.has(k)) byMeeting.set(k, []); byMeeting.get(k).push(a); }
-    const deptOfAction = (a) => sectionOfRole(a.assigneeRole) || a.department || NO_DEPT;
+    const actOwner = await sectionsOfUserIds(acts.map((a) => a.assignee));
+    const deptOfAction = (a) => actOwner.get(String(a.assignee)) || sectionOfRole(a.assigneeRole) || a.department || NO_DEPT;
 
     const summary = (m) => {
       const list = byMeeting.get(String(m._id)) || [];

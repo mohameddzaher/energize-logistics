@@ -109,6 +109,7 @@ exports.getMeta = async (req, res) => {
 
     // Participants are derived from the ROLE RULE, not from a stored list — add
     // a `x_manager` role tomorrow and its holders appear here with no code change.
+    const sectionByUser = await require('../utils/userSection').sectionsOfUserIds(users.filter((u) => isManagerRole(u.role)).map((u) => u._id));
     const participants = users
       .filter((u) => isManagerRole(u.role))
       .map((u) => ({
@@ -116,7 +117,7 @@ exports.getMeta = async (req, res) => {
         department: u.linkedEmployee?.department || '',
         jobTitle: u.linkedEmployee?.jobTitle || '',
         // The section the role heads, so choosing a department can invite its manager.
-        section: require('../config/roles').sectionOfRole(u.role) || '',
+        section: sectionByUser.get(String(u._id)) || '',
         roleAr: require('../config/roles').LABELS_AR[u.role] || u.role,
         // The board tier. The GM is nearly always the one ASKING for an action,
         // so the UI pre-selects them as attendees and always offers them in the
@@ -507,7 +508,7 @@ async function actionFor(meeting, target, body, actor, shareGroup = null) {
     meetingDate: meeting.scheduledAt,
     title: body.title, description: body.description || '',
     // The owner's section wins: the form defaulted to the meeting's first department and filed HR work under IT.
-    department: require('../config/roles').sectionOfRole(target.role) || body.department || '',
+    department: (await require('../utils/userSection').sectionsOfUserIds([target._id])).get(String(target._id)) || body.department || '',
     assignee: target._id, assigneeName: fullName(target), assigneeRole: target.role,
     raisedBy: raiser?._id || null, raisedByName: fullName(raiser),
     startDate: dayOf(body.startDate) || meeting.scheduledAt || new Date(),
@@ -619,7 +620,7 @@ exports.updateAction = async (req, res) => {
           action.assignee = target._id;
           action.assigneeName = fullName(target);
           action.assigneeRole = target.role;
-          action.department = require('../config/roles').sectionOfRole(target.role) || action.department;
+          action.department = (await require('../utils/userSection').sectionsOfUserIds([target._id])).get(String(target._id)) || action.department;
           await notify(target._id, {
             title: 'أُعيد إسناد بند تنفيذي إليك',
             message: `${action.title} (${action.meetingRef})`,

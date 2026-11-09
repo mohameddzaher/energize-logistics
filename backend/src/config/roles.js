@@ -48,6 +48,16 @@ const SECTION_ROLES = [
           + 'ويتّصل بالسائق ويكتب ملاحظةَ متابعة. وشاشتُه الشحناتُ بطاقاتٍ كبيرةً للجوّال أوّلًا.' },
     ] },
 
+  // Vendors management: the 3PL carriers we buy loads from. The team leader holds the manager's rights in the section without sitting in management meetings, so its key is not *_manager.
+  { section: 'Vendors Management',
+    manager: { key: 'vendors_manager', ar: 'مدير قسم الموردين', en: 'Vendors Manager' },
+    staff: [
+      { key: 'vendors_team_leader', ar: 'قائد فريق الموردين', en: 'Vendors Team Leader',
+        distinct: 'له صلاحيّاتُ مدير القسم كاملةً داخل القسم وفي سير عمل التشغيل، '
+          + 'ولا يجلس في اجتماعات الإدارة.' },
+      { key: 'vendors_staff', ar: 'موظف قسم الموردين', en: 'Vendors Officer' },
+    ] },
+
   { section: 'Fleet Management',
     manager: { key: 'fleet_manager', ar: 'مدير الأسطول', en: 'Fleet Manager' },
     staff: [{ key: 'fleet_supervisor', ar: 'مشرف الأسطول', en: 'Fleet Supervisor' }] },

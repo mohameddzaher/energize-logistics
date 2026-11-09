@@ -80,7 +80,13 @@ class _ShipmentOrderCreateScreenState extends State<ShipmentOrderCreateScreen> {
   // Customer of a saved shipment: fixed for the team, editable by management and the operations manager.
   bool _customerLockedRole = false;
   bool get _customerLocked => _editing && _customerLockedRole;
-  bool _moneyLocked(String k) => _editing && !_canEditMoney && _moneyFields.contains(k) && !_moneyEditable.contains(k) && !_moneyByRequest.contains(k);
+  // The supplier of a saved shipment is fixed like its customer, for all but management and the operations manager.
+  bool _supplierLockedRole = false;
+  bool get _supplierLocked => _editing && _supplierLockedRole;
+  // Sales and the vendors team each edit only their half of a saved order (`owned` from the server; null = all).
+  List<String>? _owned;
+  bool _notOwned(String k) => _editing && _owned != null && !_owned!.contains(k);
+  bool _moneyLocked(String k) => _notOwned(k) || (_editing && !_canEditMoney && _moneyFields.contains(k) && !_moneyEditable.contains(k) && !_moneyByRequest.contains(k));
   bool _moneyNeedsApproval(String k) => _editing && _moneyByRequest.contains(k);
   Future<void> _loadMoneyEditors() async {
     try {
@@ -90,6 +96,8 @@ class _ShipmentOrderCreateScreenState extends State<ShipmentOrderCreateScreen> {
         _moneyFields = [for (final x in (d['fields'] as List? ?? const [])) '$x'];
         _canEditMoney = d['canEdit'] == true;
         _customerLockedRole = d['customerLocked'] == true;
+        _supplierLockedRole = d['supplierLocked'] == true;
+        _owned = d['owned'] is List ? [for (final x in d['owned'] as List) '$x'] : null;
         _moneyEditable = [for (final x in (d['editable'] as List? ?? const [])) '$x'];
         _moneyByRequest = [for (final x in (d['byRequest'] as List? ?? const [])) '$x'];
       });
@@ -161,6 +169,7 @@ class _ShipmentOrderCreateScreenState extends State<ShipmentOrderCreateScreen> {
 
   /// As on the web: the truck's drivers first; if it has none, the supplier's drivers.
   Future<void> _chooseDriver({bool startWithNew = false}) async {
+    if (_notOwned('driverName')) return;
     final d = await pickShipmentDriver(context,
         local: _drivers, supplierId: _supplier?['_id']?.toString(), vehicleId: _vehicle?['_id']?.toString(), startWithNew: startWithNew);
     if (d == null || !mounted) return;
@@ -383,7 +392,8 @@ class _ShipmentOrderCreateScreenState extends State<ShipmentOrderCreateScreen> {
 
   void _applyRoutePrice() {
     final c = _customer;
-    if (c == null) return;
+    // The route suggests a price only while creating: an edited order with no price used to get the route's price saved without anyone choosing it.
+    if (c == null || _editing) return;
     final from = (_form['fromCity'] ?? '').toString();
     final to = (_form['toCity'] ?? '').toString();
     if (from.isEmpty || to.isEmpty) return;
@@ -731,6 +741,8 @@ class _ShipmentOrderCreateScreenState extends State<ShipmentOrderCreateScreen> {
       }
     }
     if (_customer == null && !(_newCustomer && _ncName.text.trim().isNotEmpty)) _missing.add('customer');
+    // The selling price is required at creation (the server refuses without it).
+    if (!_editing && !((num.tryParse('${_form['sellPrice'] ?? ''}') ?? 0) > 0)) _missing.add('sellPrice');
     if (_missing.isNotEmpty) {
       setState(() {});
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(tr('أكمل الحقول المحددة بالأحمر', 'Fill the highlighted fields'))));
@@ -761,7 +773,7 @@ class _ShipmentOrderCreateScreenState extends State<ShipmentOrderCreateScreen> {
       payload['newCustomer'] = {'name': _ncName.text.trim(), 'phone': saPhone(_ncPhone.text)};
     }
     // The chosen supplier is sent even if the truck is registered: thousands of trucks have an unknown owner, and whoever books the load knows it, so the server writes it to the registry once.
-    if (_supplier != null) payload['supplierChoice'] = _supplier!['_id'];
+    if (_supplier != null && !_supplierLocked) payload['supplierChoice'] = _supplier!['_id'];
     if (_vehicle != null) payload['vehicle'] = _vehicle!['_id'];
     if (_newVehicle && _nvPlate.text.trim().isNotEmpty) {
       payload['newVehicle'] = {
@@ -836,7 +848,7 @@ class _ShipmentOrderCreateScreenState extends State<ShipmentOrderCreateScreen> {
     final label = tr((f['labelAr'] ?? k).toString(), (f['labelEn'] ?? '').toString().isEmpty ? (f['labelAr'] ?? k).toString() : (f['labelEn'] ?? '').toString());
     final miss = _missing.contains(k);
     final deco = InputDecoration(
-      labelText: f['required'] == true ? '$label *' : label,
+      labelText: f['required'] == true || (k == 'sellPrice' && !_editing) ? '$label *' : label,
       helperText: _moneyNeedsApproval(k) ? tr('التعديل يُرسَل للاعتماد', 'A change needs approval') : null,
       labelStyle: miss ? const TextStyle(color: T.danger, fontWeight: FontWeight.w700) : null,
       enabledBorder: miss ? OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: const BorderSide(color: T.danger)) : null,
@@ -847,8 +859,9 @@ class _ShipmentOrderCreateScreenState extends State<ShipmentOrderCreateScreen> {
       final v = _form[k];
       final n = v == null || '$v'.isEmpty ? null : num.tryParse('$v');
       return InputDecorator(
-        decoration: InputDecoration(labelText: label, suffixIcon: const Icon(Icons.lock_outline, size: 18), helperText: tr('التعديل لمدير النظام والإدارة ومدير التشغيل فقط', 'Only admins and the operations manager can change it')),
-        child: Text(n == null ? '—' : (n == n.roundToDouble() ? n.toInt().toString() : n.toStringAsFixed(2)),
+        decoration: InputDecoration(labelText: label, suffixIcon: const Icon(Icons.lock_outline, size: 18),
+            helperText: _notOwned(k) ? tr('يعدّله الفريقُ الآخر', 'Edited by the other team') : tr('التعديل لمدير النظام والإدارة ومدير التشغيل فقط', 'Only admins and the operations manager can change it')),
+        child: Text(n == null ? (v == null || '$v'.isEmpty ? '—' : '$v') : (n == n.roundToDouble() ? n.toInt().toString() : n.toStringAsFixed(2)),
             style: const TextStyle(fontWeight: FontWeight.w700, color: T.ink)),
       );
     }
@@ -1077,7 +1090,7 @@ class _ShipmentOrderCreateScreenState extends State<ShipmentOrderCreateScreen> {
                           Expanded(
                             child: OutlinedButton.icon(
                               style: OutlinedButton.styleFrom(alignment: AlignmentDirectional.centerStart, minimumSize: const Size(double.infinity, 46)),
-                              onPressed: () async {
+                              onPressed: _supplierLocked || _notOwned('vehicle') ? null : () async {
                                 final sp = await _pickRemote(
                                   tr('الموردين', 'suppliers'),
                                   (q) async {
@@ -1100,7 +1113,7 @@ class _ShipmentOrderCreateScreenState extends State<ShipmentOrderCreateScreen> {
                           ),
                           IconButton(
                             tooltip: tr('مورّد جديد', 'New supplier'),
-                            onPressed: _savingSupplier ? null : _addSupplier,
+                            onPressed: _savingSupplier || _supplierLocked || _notOwned('vehicle') ? null : _addSupplier,
                             icon: _savingSupplier
                                 ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2))
                                 : const Icon(Icons.add_circle_outline, color: T.orange),
@@ -1122,7 +1135,7 @@ class _ShipmentOrderCreateScreenState extends State<ShipmentOrderCreateScreen> {
                           Text(tr('مالك السيارة', 'Truck owner'), style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 14)),
                           const Spacer(),
                           TextButton(
-                            onPressed: () => setState(() { _newVehicle = !_newVehicle; if (_newVehicle) _vehicle = null; }),
+                            onPressed: _notOwned('vehicle') ? null : () => setState(() { _newVehicle = !_newVehicle; if (_newVehicle) _vehicle = null; }),
                             child: Text(_newVehicle ? tr('اختيار من السجل', 'Pick existing') : tr('+ شاحنة جديدة', '+ New'), style: const TextStyle(fontSize: 12.5, fontWeight: FontWeight.w700)),
                           ),
                         ]),
@@ -1130,7 +1143,7 @@ class _ShipmentOrderCreateScreenState extends State<ShipmentOrderCreateScreen> {
                         if (!_newVehicle)
                           OutlinedButton.icon(
                             style: OutlinedButton.styleFrom(alignment: AlignmentDirectional.centerStart, minimumSize: const Size(double.infinity, 46)),
-                            onPressed: () async {
+                            onPressed: _notOwned('vehicle') ? null : () async {
                               // The chosen supplier's trucks, or every truck including our own fleet.
                               final sid = _supplier?['_id'];
                               final v = await _pickRemote(

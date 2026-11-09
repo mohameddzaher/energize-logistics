@@ -326,16 +326,28 @@
       "en": "Car Colors"
     },
     {
-      "key": "/system/shipment-orders/dashboard",
+      "key": "/system/shipment-orders/analytics",
       "section": "Shipment Orders",
-      "ar": "لوحة الشحنات",
-      "en": "Dashboard"
+      "ar": "التحليلات",
+      "en": "Analytics"
     },
     {
       "key": "/system/shipment-orders",
       "section": "Shipment Orders",
       "ar": "الشحنات",
       "en": "Shipments"
+    },
+    {
+      "key": "/system/shipment-orders/request",
+      "section": "Shipment Orders",
+      "ar": "طلب شحنة",
+      "en": "Shipment Request"
+    },
+    {
+      "key": "/system/shipment-orders/requests",
+      "section": "Shipment Orders",
+      "ar": "الطلبات من المبيعات",
+      "en": "Requests from Sales"
     },
     {
       "key": "/system/shipment-orders/chat",
@@ -354,12 +366,6 @@
       "section": "Shipment Orders",
       "ar": "الموردون والمركبات",
       "en": "Suppliers & Vehicles"
-    },
-    {
-      "key": "/system/shipment-orders/analytics",
-      "section": "Shipment Orders",
-      "ar": "التحليلات",
-      "en": "Analytics"
     },
     {
       "key": "/system/shipment-orders/permissions",
@@ -400,6 +406,90 @@
     {
       "key": "/system/shipment-orders/kpis",
       "section": "Shipment Orders",
+      "ar": "تقييم الأداء",
+      "en": "KPIs"
+    },
+    {
+      "key": "/system/vendors-mgmt",
+      "section": "Vendors Management",
+      "ar": "تحليل القسم",
+      "en": "Section Analysis"
+    },
+    {
+      "key": "/system/vendors-mgmt/daily",
+      "section": "Vendors Management",
+      "ar": "التحليل التشغيلي اليومي",
+      "en": "Daily Operations"
+    },
+    {
+      "key": "/system/vendors-mgmt/requests",
+      "section": "Vendors Management",
+      "ar": "الطلبات من المبيعات",
+      "en": "Requests from Sales"
+    },
+    {
+      "key": "/system/vendors-mgmt/vendors",
+      "section": "Vendors Management",
+      "ar": "الموردون",
+      "en": "Carriers"
+    },
+    {
+      "key": "/system/vendors-mgmt/vehicles",
+      "section": "Vendors Management",
+      "ar": "السيارات",
+      "en": "Trucks"
+    },
+    {
+      "key": "/system/vendors-mgmt/drivers",
+      "section": "Vendors Management",
+      "ar": "السائقون الأفراد",
+      "en": "Freelance Drivers"
+    },
+    {
+      "key": "/system/vendors-mgmt/alerts",
+      "section": "Vendors Management",
+      "ar": "التنبيهات",
+      "en": "Alerts"
+    },
+    {
+      "key": "/system/vendors-mgmt/routes",
+      "section": "Vendors Management",
+      "ar": "المسارات والأسعار المعتمدة",
+      "en": "Routes & Approved Prices"
+    },
+    {
+      "key": "/system/vendors-mgmt/settings",
+      "section": "Vendors Management",
+      "ar": "إعدادات القسم",
+      "en": "Section Settings"
+    },
+    {
+      "key": "/system/vendors-mgmt/jp",
+      "section": "Vendors Management",
+      "ar": "خطّة العمل (JP)",
+      "en": "JP"
+    },
+    {
+      "key": "/system/vendors-mgmt/jp-dashboard",
+      "section": "Vendors Management",
+      "ar": "لوحة JP",
+      "en": "JP Dashboard"
+    },
+    {
+      "key": "/system/vendors-mgmt/management-jp",
+      "section": "Vendors Management",
+      "ar": "خطّة الإدارة (Management JP)",
+      "en": "Management JP"
+    },
+    {
+      "key": "/system/vendors-mgmt/complaints",
+      "section": "Vendors Management",
+      "ar": "الشكاوى",
+      "en": "Complaints"
+    },
+    {
+      "key": "/system/vendors-mgmt/kpis",
+      "section": "Vendors Management",
       "ar": "تقييم الأداء",
       "en": "KPIs"
     },
@@ -1758,6 +1848,12 @@
       "section": "CRM",
       "ar": "تقييم الأداء",
       "en": "KPIs"
+    },
+    {
+      "key": "/system/sales/shipment-request",
+      "section": "Sales",
+      "ar": "طلب شحنة",
+      "en": "Shipment Request"
     },
     {
       "key": "/system/sales/jp",

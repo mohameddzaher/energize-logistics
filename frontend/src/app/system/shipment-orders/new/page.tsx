@@ -64,12 +64,20 @@ function CreateShipmentInner() {
   const savedDriver = useRef<{ name: string; nat: string; iqama: string } | null>(null);
   // Money after save is writable only for roles the server allows. On create the creator writes it; on edit it is locked except for system admins and the operations manager. The role list comes from the server (MONEY_EDIT_ROLES), not duplicated here.
   // `editable` fields are written directly after save, `byRequest` ones go to approval (the data team's selling price).
-  const [moneyEdit, setMoneyEdit] = useState<{ fields: string[]; canEdit: boolean; editable: string[]; byRequest: string[]; customerLocked?: boolean }>({ fields: [], canEdit: true, editable: [], byRequest: [] });
+  // `owned`: the half of the order this reader writes after saving (sales vs the vendors team; null = all). `priceView`: which side of the price it may see.
+  type MoneyEdit = { fields: string[]; canEdit: boolean; editable: string[]; byRequest: string[]; customerLocked?: boolean;
+    owned?: string[] | null; priceView?: { sell: boolean; buy: boolean }; supplierLocked?: boolean; directCreate?: boolean };
+  const [moneyEdit, setMoneyEdit] = useState<MoneyEdit>({ fields: [], canEdit: true, editable: [], byRequest: [], directCreate: true });
   useEffect(() => {
-    api.get<{ fields: string[]; canEdit: boolean; editable?: string[]; byRequest?: string[]; customerLocked?: boolean }>('/api/shipment-orders/money-editors')
-      .then((d) => setMoneyEdit({ fields: d.fields || [], canEdit: !!d.canEdit, editable: d.editable || [], byRequest: d.byRequest || [], customerLocked: !!d.customerLocked }))
+    api.get<MoneyEdit>('/api/shipment-orders/money-editors')
+      .then((d) => setMoneyEdit({ ...d, fields: d.fields || [], canEdit: !!d.canEdit, editable: d.editable || [], byRequest: d.byRequest || [], customerLocked: !!d.customerLocked }))
       .catch(() => {});
   }, []);
+  const pv = moneyEdit.priceView || { sell: true, buy: true };
+  const hiddenPrice = (key: string) => (key === 'sellPrice' && !pv.sell) || (['buyPrice', 'advanceAmount', 'driverRentPrice'].includes(key) && !pv.buy);
+  const notOwned = (key: string) => !!editId && !!moneyEdit.owned && !moneyEdit.owned.includes(key);
+  const lockSupplier = !!editId && (!!moneyEdit.supplierLocked || notOwned('vehicle'));
+  const lockTruck = notOwned('vehicle');
   const moneyLocked = (key: string) => !!editId && !moneyEdit.canEdit && moneyEdit.fields.includes(key)
     && !moneyEdit.editable.includes(key) && !moneyEdit.byRequest.includes(key);
   // Customer of a saved shipment: fixed for the team, editable by management and the operations manager.
@@ -270,7 +278,8 @@ function CreateShipmentInner() {
         .forEach((k) => { if (!next[k] && d[k]) next[k] = d[k]; });
       const route = findRoute(c, next.fromCity, next.toCity);
       // A price already typed stays; the route only fills an empty box.
-      if (route?.price != null && (next.sellPrice == null || next.sellPrice === '')) next.sellPrice = route.price;
+      // Only on a new shipment: on an edit an empty price stays empty rather than taking a number nobody chose.
+      if (!editId && route?.price != null && (next.sellPrice == null || next.sellPrice === '')) next.sellPrice = route.price;
       return next;
     });
   };
@@ -421,18 +430,22 @@ function CreateShipmentInner() {
   useEffect(() => {
     if (!customer) return;
     const route = findRoute(customer, form.fromCity, form.toCity);
-    if (route?.price != null && (form.sellPrice == null || form.sellPrice === '')) set('sellPrice', route.price);
+    if (!editId && route?.price != null && (form.sellPrice == null || form.sellPrice === '')) set('sellPrice', route.price);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [form.fromCity, form.toCity, customerId]);
 
   const missingKeys = useMemo(() => {
     const missing = new Set<string>();
     fields.forEach((f) => {
+      if (hiddenPrice(f.key) || notOwned(f.key)) return;
       if (f.required && !FIXED_KEYS.has(f.key) && !String(form[f.key] ?? '').trim()) missing.add(f.key);
     });
+    // The selling price is required on a new shipment, whatever the form settings say.
+    if (!editId && pv.sell && !(Number(form.sellPrice) > 0)) missing.add('sellPrice');
     if (!customerId && !newCustomer.name.trim()) missing.add('customer');
     return missing;
-  }, [fields, form, customerId, newCustomer.name]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [fields, form, customerId, newCustomer.name, moneyEdit, editId]);
 
   const save = async () => {
     if (!vehicleId && newPlate.trim() && !supplierId) {
@@ -527,6 +540,20 @@ function CreateShipmentInner() {
 
   if (!canEditOrders(user)) return <div className="text-slate-500 p-8">{ar ? 'لا تملك صلاحية.' : 'Not authorized.'}</div>;
   if (loading) return <Spinner />;
+  // Sales and the vendors team create in two steps: sales asks, the vendors team places.
+  if (!editId && moneyEdit.directCreate === false) {
+    return (
+      <div className="max-w-xl mx-auto mt-10 rounded-2xl border border-slate-200 bg-white p-6 text-center shadow-sm" dir={isRTL ? 'rtl' : 'ltr'}>
+        <PackagePlus className="w-8 h-8 mx-auto text-[#f37121]" />
+        <p className="mt-3 font-bold text-slate-900">{ar ? 'تُنشأ الشحنة على خطوتين' : 'Shipments are created in two steps'}</p>
+        <p className="mt-1 text-sm text-slate-600">{ar ? 'يكتب فريقُ المبيعات «طلبَ شحنة»، ويُكمله فريقُ الموردين بالمورّد والسيارة والسائق وسعر الشراء فيصير أمرَ نقل.' : 'Sales writes a shipment request; the vendors team completes it into a transport order.'}</p>
+        <button type="button" onClick={() => router.push(user && ['vendors_manager', 'vendors_team_leader', 'vendors_staff', 'vendors_trainee'].includes(user.role) ? '/system/shipment-orders/requests' : '/system/shipment-orders/request')}
+          className="mt-4 inline-flex items-center gap-1.5 px-4 py-2.5 rounded-xl bg-[#f37121] text-white text-sm font-bold">
+          {user && ['vendors_manager', 'vendors_team_leader', 'vendors_staff', 'vendors_trainee'].includes(user.role) ? (ar ? 'الطلبات من المبيعات' : 'Requests from sales') : (ar ? 'طلب شحنة' : 'Shipment request')}
+        </button>
+      </div>
+    );
+  }
 
   const miss = (k: string) => showErrors && missingKeys.has(k);
 
@@ -551,6 +578,20 @@ function CreateShipmentInner() {
     const label = fieldLabel(f, lang as Lang);
     const v = form[f.key] ?? '';
     const bad = miss(f.key);
+    if (hiddenPrice(f.key)) return null;
+    // The other team's half: shown, not editable.
+    if (notOwned(f.key)) {
+      const opt = (f.options || []).find((o) => o.key === v);
+      return (
+        <div key={f._id} className={f.inputType === 'cards' || f.inputType === 'textarea' ? 'col-span-full' : ''}>
+          <label className={labelCls}>{label}</label>
+          <div className={`${inputCls} flex items-center justify-between bg-slate-50 cursor-not-allowed`} title={ar ? 'يعدّله الفريقُ صاحبُ هذا الجزء من أمر النقل' : 'Edited by the team that owns this part'}>
+            <span className={v !== '' && v != null ? 'font-semibold text-slate-800' : 'text-slate-400'}>{opt ? optionLabel(opt, lang as Lang) : (v !== '' && v != null ? String(v) : '—')}</span>
+            <span className="inline-flex items-center gap-1 text-[11px] text-slate-400"><Lock className="w-3 h-3" />{ar ? 'للفريق الآخر' : 'other team'}</span>
+          </div>
+        </div>
+      );
+    }
     const lab = (
       <label className={bad ? labelMissCls : labelCls}>{label}{f.required && <span className="text-red-500"> *</span>}
         {moneyByRequest(f.key) && <span className="ms-1.5 text-[11px] font-normal text-amber-700">{ar ? '(التعديل يُرسَل للاعتماد)' : '(change needs approval)'}</span>}
@@ -692,7 +733,7 @@ function CreateShipmentInner() {
   // The one number a broker books against. It is derived from two inputs three
   // cards apart, so it is shown where the eye already is: on the save bar.
   const sell = Number(form.sellPrice); const buy = Number(form.buyPrice);
-  const hasDeal = Number.isFinite(sell) && sell > 0 && Number.isFinite(buy) && buy > 0;
+  const hasDeal = pv.sell && pv.buy && Number.isFinite(sell) && sell > 0 && Number.isFinite(buy) && buy > 0;
   const dealMargin = hasDeal ? sell - buy : null;
   const money = (n: number) => n.toLocaleString(ar ? 'ar-EG-u-nu-latn' : 'en-US', { maximumFractionDigits: 2 });
 
@@ -837,8 +878,9 @@ function CreateShipmentInner() {
           {/* The approved-routes shortcut was removed: destinations are typed in the two fields as on every shipment, and the buttons above them were redundant. */}
 
           {/* Supplier below it in the same shape: same question and button, a list searched on the server and a new-supplier button that registers on the suppliers page immediately, without waiting for the shipment save, along with its driver if known. Choosing it here filters its trucks in the next card. */}
-          <div className="pt-3 border-t border-slate-200/70 space-y-3">
-            <label className={labelCls}>{ar ? 'المورّد' : 'Supplier'}</label>
+          {/* The supplier of a saved order is fixed for the team, and it is the vendors team's half. */}
+          <fieldset disabled={lockSupplier} className={`pt-3 border-t border-slate-200/70 space-y-3 ${lockSupplier ? 'opacity-70' : ''}`}>
+            <label className={labelCls}>{ar ? 'المورّد' : 'Supplier'}{lockSupplier && <span className="ms-1.5 inline-flex items-center gap-1 text-[11px] font-normal text-slate-400"><Lock className="w-3 h-3" />{ar ? 'مقفول بعد الحفظ' : 'locked after save'}</span>}</label>
             {!addingSupplier ? (
               <div className="flex flex-col sm:flex-row gap-3">
                 <div className="flex-1">
@@ -903,13 +945,13 @@ function CreateShipmentInner() {
                 </div>
               </div>
             )}
-          </div>
+          </fieldset>
         </div>
       ), { id: SEC.customer, missing: missingKeys.has('customer') ? 1 : 0, filled: !!customer || !!supplierId })}
 
       {/* 2. Vehicle owner: the truck, who owns it and its driver. The supplier is a deal party now beside the customer; here is the truck itself, its plate and its owner in the register. They need not be the same, since a supplier may carry our load on someone else's truck. Then the driver and his mobile. */}
       {sectionCard(Truck, 2, ar ? 'مالك السيارة' : 'Truck owner', (
-        <div className="space-y-4">
+        <fieldset disabled={lockTruck} className={`space-y-4 ${lockTruck ? 'opacity-70' : ''}`}>
           {/* The card is half the page from xl, so its fields are one column there and two only on very wide screens; otherwise each field would be a quarter of the screen with clipped text. */}
           <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-1 2xl:grid-cols-2 gap-4">
             <div>
@@ -989,11 +1031,11 @@ function CreateShipmentInner() {
               )}
             </div>
           </div>
-        </div>
+        </fieldset>
       ), { id: SEC.truck, filled: !!vehicleId || hasVal(newPlate) || hasVal(form.driverName) })}
       </div>
 
-      <div className="bg-white border border-slate-200 rounded-xl p-5">
+      <fieldset disabled={lockTruck} className={`bg-white border border-slate-200 rounded-xl p-5 ${lockTruck ? 'opacity-70' : ''}`}>
         <p className="font-bold text-slate-900 mb-1">{ar ? 'بيانات أمر النقل' : 'Transport order details'}</p>
         <p className="text-xs text-slate-500 mb-3">{ar ? 'تُملأ من السائق والشاحنة المختارين، وما تعدّله هنا يُحفظ في سجلّهما ويظهر في أمر النقل.' : 'Filled from the chosen driver and truck. Edits save to their records and print on the waybill.'}</p>
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
@@ -1009,7 +1051,7 @@ function CreateShipmentInner() {
             </div>
           ))}
         </div>
-      </div>
+      </fieldset>
 
       {/* 3..6 ── the config-driven groups */}
       {activeGroups.map((g, i) => {
@@ -1026,9 +1068,9 @@ function CreateShipmentInner() {
                 {g === 'pickup_delivery' && (
                   <div className="col-span-full">
                     <label className={labelCls}>{ar ? 'ملاحظة الرحلة' : 'Trip note'}</label>
-                    <input value={form.notes || ''} onChange={(e) => set('notes', e.target.value)}
+                    <input value={form.notes || ''} onChange={(e) => set('notes', e.target.value)} disabled={notOwned('notes')}
                       placeholder={ar ? 'تظهر في أمر النقل (أمر النقل) إن كُتبت' : 'Printed on the waybill when written'}
-                      className={inputCls} />
+                      className={`${inputCls} disabled:bg-slate-50 disabled:cursor-not-allowed`} />
                   </div>
                 )}
                 {/* Waybill and container are optional and linked to customs. Written here, they link the shipment to the customs file carrying them (and its transport order); written on the customs side, they fill here by themselves. See services/customsOpsLink. */}
@@ -1036,13 +1078,13 @@ function CreateShipmentInner() {
                   <div className="col-span-full grid grid-cols-1 sm:grid-cols-2 gap-4">
                     <div>
                       <label className={labelCls}>{ar ? 'رقم البوليصة' : 'B/L number'} <span className="text-slate-400 font-normal text-xs">{ar ? '(اختياري)' : '(optional)'}</span></label>
-                      <input value={form.blNumber || ''} onChange={(e) => set('blNumber', e.target.value)} dir="ltr"
-                        placeholder="COSU6444523620" className={`${inputCls} font-mono`} />
+                      <input value={form.blNumber || ''} onChange={(e) => set('blNumber', e.target.value)} dir="ltr" disabled={notOwned('blNumber')}
+                        placeholder="COSU6444523620" className={`${inputCls} font-mono disabled:bg-slate-50 disabled:cursor-not-allowed`} />
                     </div>
                     <div>
                       <label className={labelCls}>{ar ? 'رقم الحاوية' : 'Container number'} <span className="text-slate-400 font-normal text-xs">{ar ? '(اختياري)' : '(optional)'}</span></label>
-                      <input value={form.containerNumber || ''} onChange={(e) => set('containerNumber', e.target.value)} dir="ltr"
-                        placeholder="MRKU7016023" className={`${inputCls} font-mono`} />
+                      <input value={form.containerNumber || ''} onChange={(e) => set('containerNumber', e.target.value)} dir="ltr" disabled={notOwned('containerNumber')}
+                        placeholder="MRKU7016023" className={`${inputCls} font-mono disabled:bg-slate-50 disabled:cursor-not-allowed`} />
                     </div>
                     {form.customsLink?.clearance ? (
                       <p className="col-span-full text-[12.5px] text-emerald-700 bg-emerald-50 border border-emerald-200 rounded-lg px-3 py-2">

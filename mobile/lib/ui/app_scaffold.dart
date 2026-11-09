@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../nav/sections.dart';
-import '../services/api.dart';
+import '../services/nav_badges.dart';
 import '../services/auth.dart';
 import '../services/lang.dart';
 import '../services/live.dart';
@@ -225,22 +225,24 @@ class AppDrawer extends StatefulWidget {
 class _AppDrawerState extends State<AppDrawer> {
   String _q = '';
   // Numbers beside pages (/api/nav-badges), like the web: items waiting on the page owner.
-  Map<String, int> _badges = const {};
+  Map<String, int> _badges = NavBadges.instance.value;
+
+  void _onBadges() { if (mounted) setState(() => _badges = NavBadges.instance.value); }
 
   @override
   void initState() {
     super.initState();
-    Api.instance.get('/api/nav-badges').then((d) {
-      if (!mounted || d is! Map) return;
-      setState(() => _badges = {for (final e in d.entries) '${e.key}': (e.value as num).toInt()});
-    }).catchError((_) {});
+    NavBadges.instance.addListener(_onBadges);
+    NavBadges.instance.refresh();
   }
 
-  Widget? _badge(int n) => n <= 0 ? null : Container(
-        padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
-        decoration: BoxDecoration(color: T.danger, borderRadius: BorderRadius.circular(20)),
-        child: Text(n > 99 ? '99+' : '$n', style: const TextStyle(color: Colors.white, fontSize: 11, fontWeight: FontWeight.w800)),
-      );
+  @override
+  void dispose() {
+    NavBadges.instance.removeListener(_onBadges);
+    super.dispose();
+  }
+
+  Widget? _badge(int n) => navBadgePill(n);
 
   String _fold(String s) => s
       .replaceAll(RegExp('[أإآ]'), 'ا').replaceAll('ى', 'ي').replaceAll('ة', 'ه')

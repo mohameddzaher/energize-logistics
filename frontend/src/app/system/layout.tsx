@@ -26,6 +26,7 @@ import {
   KeySquare,
   Archive,
   MonitorPlay, Clapperboard, BadgeDollarSign,
+  UserRound, BellRing, Route as RouteIcon,
 } from 'lucide-react';
 import api from '@/lib/api';
 import { downloadExportJob } from '@/lib/backgroundExport';
@@ -35,6 +36,8 @@ import { homeRouteForRole, landingFor } from '@/lib/roleRoutes';
 import { OPS_SECTION_ROLES as OPS_ROLES } from '@/lib/ops';
 import { isBrParticipant, isBrRunner } from '@/lib/businessReview';
 import { SO_EDIT_ROLES as SO_ROLES } from '@/lib/shipmentOrders';
+import { canAsk as canAskShipment, canPlace as canPlaceShipment, isSalesUser, isVendorUser } from '@/lib/shipmentRequests';
+import { VENDOR_NAV_ROLES } from '@/lib/vendors';
 import { FLEET_EDIT_ROLES as FLEET_ROLES, FLEET_ADMIN_ROLES } from '@/lib/fleet';
 import { LS2_SECTION_ROLES } from '@/lib/ls2';
 
@@ -254,7 +257,7 @@ function SystemLayoutInner({ children }: { children: React.ReactNode }) {
     // Arrears page removed: it belonged to a deleted section, read the empty `Invoice` and `Customer` collections, and crashed after its endpoint changed. Collections -> debt aging answers it from real invoices with buckets, filters and credit limit.
     { href: '/system/credit-alerts', label: L.creditAlerts, icon: <Shield className="w-5 h-5" />, roles: ['super_admin', 'it_manager', 'it_specialist', 'admin', 'operations_manager', 'employee', 'moderator'], section: 'Main' },
     // Operations
-    { href: '/system/operations', label: L.operations, icon: <ClipboardList className="w-5 h-5" />, roles: ['super_admin', 'it_manager', 'it_specialist', 'admin', 'employee', 'operations_manager', 'operations_staff', 'moderator', 'collections_manager', 'collections_staff'], section: 'Operations' },
+    { href: '/system/operations', label: L.operations, icon: <ClipboardList className="w-5 h-5" />, roles: ['super_admin', 'it_manager', 'it_specialist', 'admin', 'employee', 'operations_manager', 'operations_staff', 'moderator', 'collections_manager', 'collections_staff'], section: 'Operations', pageOpens: true },
     // Margin is not shown to everyone who opens the section: the private operations page shows our profit per load, so it is narrower than the workflow (management and finance). `restrict` keeps the menu honest, since a link the page rejects is worse than none. The guard is server-side (routes/operationsPrivate).
     // Loads board: the workflow without billing and collection columns. Opened by its page, so sales reach it without the rest of Operations (config/opsBoard).
     { href: '/system/operations/loads', label: lang === 'ar' ? 'متابعة الحمولات والشحنات' : 'Loads & Shipments', icon: <Truck className="w-5 h-5" />, roles: ['super_admin', 'admin', 'it_manager', 'it_specialist', 'operations_manager', 'operations_staff', 'sales_manager', 'sales_rep', 'data_manager', 'data_analyst'], section: 'Operations', pageOpens: true },
@@ -320,14 +323,16 @@ function SystemLayoutInner({ children }: { children: React.ReactNode }) {
     { href: '/system/ops/car-colors', label: lang === 'ar' ? 'ألوان المركبات' : 'Car Colors', icon: <Palette className="w-5 h-5" />, roles: OPS_ROLES, section: 'Operations Platform' },
 
     // Shipment Orders: standalone trial. Creates shipments natively instead of on the external UPL system, fully independent from the Operations Platform; if the trial works the team moves here and the integration is retired.
-    // Department dashboard first: opening it asks how it is today, not for the first table row.
-    { href: '/system/shipment-orders/dashboard', label: lang === 'ar' ? 'لوحة الشحنات' : 'Dashboard', icon: <LayoutDashboard className="w-5 h-5" />, roles: SO_ROLES, section: 'Shipment Orders' },
+    // Analytics first (the dashboard was merged into it): opening the section asks how it is doing.
+    { href: '/system/shipment-orders/analytics', label: lang === 'ar' ? 'التحليلات' : 'Analytics', icon: <BarChart3 className="w-5 h-5" />, roles: SO_ROLES, section: 'Shipment Orders' },
     { href: '/system/shipment-orders', label: lang === 'ar' ? 'الشحنات' : 'Shipments', icon: <PackageSearch className="w-5 h-5" />, roles: SO_ROLES, section: 'Shipment Orders' },
-    { href: '/system/shipment-orders/chat', label: lang === 'ar' ? 'مساعد الإنشاء' : 'Create Assistant', icon: <Bot className="w-5 h-5" />, roles: SO_ROLES, section: 'Shipment Orders' },
+    // Two-step creation: sales asks, the vendors team places. Each sees only its own step.
+    { href: '/system/shipment-orders/request', label: lang === 'ar' ? 'طلب شحنة' : 'Shipment Request', icon: <ClipboardList className="w-5 h-5" />, roles: [], section: 'Shipment Orders', visible: (u) => canAskShipment(u) && !isVendorUser(u) },
+    { href: '/system/shipment-orders/requests', label: lang === 'ar' ? 'الطلبات من المبيعات' : 'Requests from Sales', icon: <Inbox className="w-5 h-5" />, roles: [], section: 'Shipment Orders', visible: (u) => canPlaceShipment(u) && !isSalesUser(u) },
+    { href: '/system/shipment-orders/chat', label: lang === 'ar' ? 'مساعد الإنشاء' : 'Create Assistant', icon: <Bot className="w-5 h-5" />, roles: [], section: 'Shipment Orders', visible: (u) => SO_ROLES.includes(u?.role || '') && !isSalesUser(u) && !isVendorUser(u) },
     { href: '/system/shipment-orders/customers', label: lang === 'ar' ? 'العملاء' : 'Customers', icon: <Users className="w-5 h-5" />, roles: SO_ROLES, section: 'Shipment Orders' },
     { href: '/system/shipment-orders/fleet', label: lang === 'ar' ? 'الموردون والمركبات' : 'Suppliers & Vehicles', icon: <Truck className="w-5 h-5" />, roles: SO_ROLES, section: 'Shipment Orders' },
     // Department settings gather what was scattered: waybill numbering, department lists and the status cycle. The form settings used to be a page of their own.
-    { href: '/system/shipment-orders/analytics', label: lang === 'ar' ? 'التحليلات' : 'Analytics', icon: <BarChart3 className="w-5 h-5" />, roles: SO_ROLES, section: 'Shipment Orders' },
     { href: '/system/shipment-orders/permissions', label: lang === 'ar' ? 'الصلاحيات' : 'Permissions', icon: <ShieldCheck className="w-5 h-5" />, roles: ['super_admin', 'admin', 'it_manager', 'it_specialist', 'operations_manager', 'data_manager', 'data_analyst'], section: 'Shipment Orders' },
     { href: '/system/shipment-orders/settings', label: lang === 'ar' ? 'إعدادات القسم' : 'Section Settings', icon: <SlidersHorizontal className="w-5 h-5" />, roles: ['super_admin', 'admin', 'it_manager', 'operations_manager', 'shipment_orders_manager'], section: 'Shipment Orders' },
     { href: '/system/shipment-orders/jp', label: lang === 'ar' ? 'خطّة العمل (JP)' : 'JP', icon: <CalendarCheck className="w-5 h-5" />, roles: [], section: 'Shipment Orders', visible: (u) => jpMember(u, 'Shipment Orders') },
@@ -335,6 +340,22 @@ function SystemLayoutInner({ children }: { children: React.ReactNode }) {
     { href: '/system/shipment-orders/management-jp', label: lang === 'ar' ? 'خطّة الإدارة (Management JP)' : 'Management JP', icon: <Crown className="w-5 h-5" />, roles: [], section: 'Shipment Orders', visible: (u) => jpManager(u, 'Shipment Orders') && !jpTop(u) },
     { href: '/system/shipment-orders/complaints', label: lang === 'ar' ? 'الشكاوى' : 'Complaints', icon: <MessageSquare className="w-5 h-5" />, roles: ['super_admin', 'admin', 'it_manager', 'operations_manager'], section: 'Shipment Orders' },
     { href: '/system/shipment-orders/kpis', label: lang === 'ar' ? 'تقييم الأداء' : 'KPIs', icon: <Target className="w-5 h-5" />, roles: kpiRoles(['super_admin', 'admin', 'it_manager', 'operations_manager']), section: 'Shipment Orders', restrict: true },
+
+    // Vendors management: the carriers we buy loads from, their register, the sales requests to place, and the section's two analyses.
+    { href: '/system/vendors-mgmt', label: lang === 'ar' ? 'تحليل القسم' : 'Section Analysis', icon: <BarChart3 className="w-5 h-5" />, roles: VENDOR_NAV_ROLES, section: 'Vendors Management' },
+    { href: '/system/vendors-mgmt/daily', label: lang === 'ar' ? 'التحليل التشغيلي اليومي' : 'Daily Operations', icon: <Activity className="w-5 h-5" />, roles: VENDOR_NAV_ROLES, section: 'Vendors Management' },
+    { href: '/system/vendors-mgmt/requests', label: lang === 'ar' ? 'الطلبات من المبيعات' : 'Requests from Sales', icon: <Inbox className="w-5 h-5" />, roles: VENDOR_NAV_ROLES, section: 'Vendors Management' },
+    { href: '/system/vendors-mgmt/vendors', label: lang === 'ar' ? 'الموردون' : 'Carriers', icon: <Building2 className="w-5 h-5" />, roles: VENDOR_NAV_ROLES, section: 'Vendors Management' },
+    { href: '/system/vendors-mgmt/vehicles', label: lang === 'ar' ? 'السيارات' : 'Trucks', icon: <Truck className="w-5 h-5" />, roles: VENDOR_NAV_ROLES, section: 'Vendors Management' },
+    { href: '/system/vendors-mgmt/drivers', label: lang === 'ar' ? 'السائقون الأفراد' : 'Freelance Drivers', icon: <UserRound className="w-5 h-5" />, roles: VENDOR_NAV_ROLES, section: 'Vendors Management' },
+    { href: '/system/vendors-mgmt/alerts', label: lang === 'ar' ? 'التنبيهات' : 'Alerts', icon: <BellRing className="w-5 h-5" />, roles: VENDOR_NAV_ROLES, section: 'Vendors Management' },
+    { href: '/system/vendors-mgmt/routes', label: lang === 'ar' ? 'المسارات والأسعار المعتمدة' : 'Routes & Approved Prices', icon: <RouteIcon className="w-5 h-5" />, roles: VENDOR_NAV_ROLES, section: 'Vendors Management' },
+    { href: '/system/vendors-mgmt/settings', label: lang === 'ar' ? 'إعدادات القسم' : 'Section Settings', icon: <SlidersHorizontal className="w-5 h-5" />, roles: VENDOR_NAV_ROLES, section: 'Vendors Management' },
+    { href: '/system/vendors-mgmt/jp', label: lang === 'ar' ? 'خطّة العمل (JP)' : 'JP', icon: <CalendarCheck className="w-5 h-5" />, roles: [], section: 'Vendors Management', visible: (u) => jpMember(u, 'Vendors Management') },
+    { href: '/system/vendors-mgmt/jp-dashboard', label: lang === 'ar' ? 'لوحة JP' : 'JP Dashboard', icon: <BarChart3 className="w-5 h-5" />, roles: [], section: 'Vendors Management', visible: (u) => jpManager(u, 'Vendors Management') },
+    { href: '/system/vendors-mgmt/management-jp', label: lang === 'ar' ? 'خطّة الإدارة (Management JP)' : 'Management JP', icon: <Crown className="w-5 h-5" />, roles: [], section: 'Vendors Management', visible: (u) => jpManager(u, 'Vendors Management') && !jpTop(u) },
+    { href: '/system/vendors-mgmt/complaints', label: lang === 'ar' ? 'الشكاوى' : 'Complaints', icon: <MessageSquare className="w-5 h-5" />, roles: VENDOR_NAV_ROLES, section: 'Vendors Management' },
+    { href: '/system/vendors-mgmt/kpis', label: lang === 'ar' ? 'تقييم الأداء' : 'KPIs', icon: <Target className="w-5 h-5" />, roles: kpiRoles(['super_admin', 'admin', 'it_manager', 'vendors_manager']), section: 'Vendors Management', restrict: true },
 
     // Fleet Management: our own trucks.
     { href: '/system/fleet/board', label: lang === 'ar' ? 'اللوحة الرئيسية' : 'Fleet Board', icon: <LayoutGrid className="w-5 h-5" />, roles: FLEET_ROLES, section: 'Fleet Management' },
@@ -619,6 +640,7 @@ function SystemLayoutInner({ children }: { children: React.ReactNode }) {
     { href: '/system/crm/management-jp', label: lang === 'ar' ? 'خطّة الإدارة (Management JP)' : 'Management JP', icon: <Crown className="w-5 h-5" />, roles: [], section: 'CRM', visible: (u) => jpManager(u, 'CRM') && !jpTop(u) },
     { href: '/system/crm/complaints', label: lang === 'ar' ? 'الشكاوى' : 'Complaints', icon: <MessageSquare className="w-5 h-5" />, roles: ['super_admin', 'it_manager', 'it_specialist', 'admin', 'crm_manager', 'crm_team_lead', 'crm_specialist', 'crm_agent', 'operations_manager', 'operations_staff'], section: 'CRM' },
     { href: '/system/crm/kpis', label: lang === 'ar' ? 'تقييم الأداء' : 'KPIs', icon: <Target className="w-5 h-5" />, roles: kpiRoles(['super_admin', 'it_manager', 'it_specialist', 'admin', 'crm_manager', 'crm_team_lead', 'crm_specialist', 'crm_agent', 'operations_manager', 'operations_staff']), section: 'CRM', restrict: true },
+    { href: '/system/sales/shipment-request', label: lang === 'ar' ? 'طلب شحنة' : 'Shipment Request', icon: <ClipboardList className="w-5 h-5" />, roles: [], section: 'Sales', visible: (u) => canAskShipment(u) },
     { href: '/system/sales/jp', label: lang === 'ar' ? 'خطّة العمل (JP)' : 'JP', icon: <CalendarCheck className="w-5 h-5" />, roles: [], section: 'Sales', visible: (u) => jpMember(u, 'Sales') },
     { href: '/system/sales/jp-dashboard', label: lang === 'ar' ? 'لوحة JP' : 'JP Dashboard', icon: <BarChart3 className="w-5 h-5" />, roles: [], section: 'Sales', visible: (u) => jpManager(u, 'Sales') },
     { href: '/system/sales/management-jp', label: lang === 'ar' ? 'خطّة الإدارة (Management JP)' : 'Management JP', icon: <Crown className="w-5 h-5" />, roles: [], section: 'Sales', visible: (u) => jpManager(u, 'Sales') && !jpTop(u) },
@@ -710,6 +732,7 @@ function SystemLayoutInner({ children }: { children: React.ReactNode }) {
   useSocket('hr:leave', badgesSoon);
   useSocket('hr:request', badgesSoon);
   useSocket('sellingRequests:changed', badgesSoon);
+  useSocket('shipmentRequests:changed', badgesSoon);
 
   // Real-time notification updates
   useSocket('notification:new', useCallback(() => {

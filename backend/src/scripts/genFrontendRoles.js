@@ -16,7 +16,7 @@ const HEAD = `// ⚠️ مولَّد من backend/src/config/roles.js — متع
 // الهيكل الوظيفي: كل قسم له مدير وموظف. المديرين بينتهوا بـ \`_manager\`
 // والموظفين لأ — القاعدة دي هي اللي بيتحدد بيها مين يقعد في اجتماعات الإدارة.
 
-export interface RoleDef { key: string; ar: string; en: string }
+export interface RoleDef { key: string; ar: string; en: string; distinct?: string }
 export interface SectionRoles { section: string; manager: RoleDef; staff: RoleDef[]; trainee: RoleDef }
 
 export const GLOBAL_ROLES: RoleDef[] = ${JSON.stringify(R.GLOBAL_ROLES, null, 2)};

@@ -307,6 +307,9 @@ app.use('/api/crm-vendors', authenticate, sectionGate('CRM'), crmVendorRoutes);
 app.use('/api/ls2/custody', authenticate, require('./middleware/custodyGate')({ roles: () => require('./controllers/htCustodyController').CUSTODY_ROLES, section: 'Location Solutions', page: '/system/ls2/custody' }), require('./routes/htCustody'));
 app.use('/api/ls2', authenticate, sectionGate('Location Solutions'), ls2Routes);
 app.use('/api/shipment-orders', authenticate, sectionGate('Shipment Orders'), shipmentOrderRoutes);
+// Shipment requests belong to three sections at once (Shipment Orders, Sales, Vendors Management), like the customer register: pageGate opens them to anyone with one of their pages and the route lists decide each action.
+app.use('/api/shipment-requests', authenticate, require('./routes/shipmentRequests'));
+app.use('/api/vendors-mgmt', authenticate, sectionGate('Vendors Management'), require('./routes/vendorsMgmt'));
 // The customer register is read from three sections. The same screen appears in shipment orders, operations and sales, so it belongs to no single section: pageGate opens it to anyone with one of the three pages, and editing is guarded by the route's role list (routes/customerRegistry).
 app.use('/api/customer-registry', authenticate, require('./routes/customerRegistry'));
 // Large exports are built in the background and delivered to the requester by notification; see exportJobsController.

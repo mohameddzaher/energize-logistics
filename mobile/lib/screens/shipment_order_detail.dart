@@ -178,8 +178,8 @@ class _ShipmentOrderDetailScreenState extends State<ShipmentOrderDetailScreen> {
             (tr('تاريخ الإنشاء', 'Created at'), soFmtDT(d['createdAt'])),
           ]),
           _group(tr('الأجرة والدفع', 'Fare & payment'), [
-            (tr('سعر البيع', 'Selling price'), d['sellPrice'] == null ? null : soMoney(d['sellPrice'])),
-            (tr('سعر الشراء', 'Buying price'), d['buyPrice'] == null ? null : soMoney(d['buyPrice'])),
+            if (d.containsKey('sellPrice')) (tr('سعر البيع', 'Selling price'), d['sellPrice'] == null ? null : soMoney(d['sellPrice'])),
+            if (d.containsKey('buyPrice')) (tr('سعر الشراء', 'Buying price'), d['buyPrice'] == null ? null : soMoney(d['buyPrice'])),
             (tr('نوع الدفع', 'Payment type'), soPaymentKindLabel(d['paymentSubtype'])),
             (tr('نوع تأجير السائق', 'Driver rent type'), d['driverRentType']),
             (tr('أجرة السائق', 'Driver rent'), d['driverRentPrice'] == null ? null : soMoney(d['driverRentPrice'])),

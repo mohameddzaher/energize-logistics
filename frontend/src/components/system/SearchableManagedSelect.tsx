@@ -4,6 +4,7 @@ import { useEffect, useState, useCallback, useRef } from 'react';
 import { Plus, Check, ChevronDown, Search, Loader2 } from 'lucide-react';
 import { useLanguage } from '@/context/LanguageContext';
 import api from '@/lib/api';
+import { useSocket } from '@/hooks/useSocket';
 import type { LookupItem } from '@/components/system/ManagedSelect';
 
 const foldAr = (s: string) => s.toLowerCase()
@@ -20,9 +21,11 @@ const loadCanManage = (): Promise<Record<string, boolean>> => {
 };
 
 export default function SearchableManagedSelect({
-  type, value, onChange, placeholder, disabled,
+  type, value, onChange, placeholder, disabled, storeLabel,
 }: {
   type: string; value: string; onChange: (v: string) => void; placeholder?: string; disabled?: boolean;
+  /** Stores the Arabic name instead of the key, for fields that have always held the Arabic text (see ManagedSelect). */
+  storeLabel?: boolean;
 }) {
   const { lang } = useLanguage();
   const ar = lang === 'ar';
@@ -39,13 +42,16 @@ export default function SearchableManagedSelect({
   }, [type]);
 
   useEffect(() => { load(); loadCanManage().then((m) => setCanManage(!!m[type])); }, [load, type]);
+  // An item added from section settings or by a colleague appears in the open list at once.
+  useSocket('lookup:changed', useCallback((d: { type?: string }) => { if (!d?.type || d.type === type) load(); }, [load, type]));
   useEffect(() => {
     const h = (e: MouseEvent) => { if (box.current && !box.current.contains(e.target as Node)) setOpen(false); };
     document.addEventListener('mousedown', h);
     return () => document.removeEventListener('mousedown', h);
   }, []);
 
-  const selected = items.find((i) => i.key === value);
+  const valueOf = (i: LookupItem) => (storeLabel ? i.nameAr : i.key);
+  const selected = items.find((i) => valueOf(i) === value);
   const label = selected ? (ar ? selected.nameAr : selected.nameEn) : (value || '');
   const fq = foldAr(q.trim());
   const filtered = items.filter((i) => !fq || foldAr(`${i.nameAr} ${i.nameEn} ${i.key}`).includes(fq));
@@ -58,7 +64,7 @@ export default function SearchableManagedSelect({
     try {
       const { item } = await api.post<{ item: LookupItem }>('/api/lookups', { type, nameEn: name, nameAr: name });
       await load();
-      onChange(item.key);
+      onChange(valueOf(item));
       setQ(''); setOpen(false);
     } catch { /* keep */ }
     setSaving(false);
@@ -86,10 +92,10 @@ export default function SearchableManagedSelect({
               <button type="button" onClick={() => { onChange(''); setOpen(false); }} className="w-full text-start px-3 py-1.5 text-sm text-slate-400 hover:bg-slate-50">{ar ? '— بدون —' : '— none —'}</button>
             )}
             {filtered.map((i) => (
-              <button key={i._id} type="button" onClick={() => { onChange(i.key); setOpen(false); setQ(''); }}
-                className={`w-full text-start px-3 py-2 text-sm hover:bg-slate-50 flex items-center justify-between ${i.key === value ? 'bg-[#f37121]/5 text-[#f37121] font-semibold' : 'text-slate-700'}`}>
+              <button key={i._id} type="button" onClick={() => { onChange(valueOf(i)); setOpen(false); setQ(''); }}
+                className={`w-full text-start px-3 py-2 text-sm hover:bg-slate-50 flex items-center justify-between ${valueOf(i) === value ? 'bg-[#f37121]/5 text-[#f37121] font-semibold' : 'text-slate-700'}`}>
                 {ar ? i.nameAr : i.nameEn}
-                {i.key === value && <Check className="w-4 h-4" />}
+                {valueOf(i) === value && <Check className="w-4 h-4" />}
               </button>
             ))}
             {filtered.length === 0 && !canManage && <p className="px-3 py-3 text-sm text-slate-400 text-center">{ar ? 'لا نتائج' : 'No matches'}</p>}

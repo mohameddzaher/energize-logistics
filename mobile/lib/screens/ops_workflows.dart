@@ -155,6 +155,8 @@ class _OpsWorkflowsScreenState extends State<OpsWorkflowsScreen> {
   bool get _canEditOpsReview => _full || _has('operationsReview');
   bool get _canEditAccReview => _full || _has('accountingReview');
   bool get _canSeeSelling => _has('sellingValue') || _seesSelling;
+  // Sales never see the purchase side (server: view.purchase false and the values stripped).
+  bool _seesPurchase = true;
   bool _owns(String f) => _myFields == null || _full || _myFields!.contains(f);
   // Platform rows and rows owned by a shipment created here both have a status to change.
   bool _hasStatus(Map w) => (w['externalSource'] ?? '') == 'ops_upl' || (w['shipmentOrder'] ?? '').toString().isNotEmpty || (w['fleetShipment'] ?? '').toString().isNotEmpty;
@@ -219,6 +221,7 @@ class _OpsWorkflowsScreenState extends State<OpsWorkflowsScreen> {
         _myFields = Set<String>.from((list ?? const []).map((e) => '$e'));
         _seesAmounts = view['amounts'] == true;
         _seesSelling = view['selling'] == true;
+        _seesPurchase = view['purchase'] != false;
         _sellingByRequest = d is Map && d['sellingByRequest'] == true;
         _approvesSelling = d is Map && d['canApproveSelling'] == true;
       });
@@ -326,7 +329,7 @@ class _OpsWorkflowsScreenState extends State<OpsWorkflowsScreen> {
   }
 
   Future<void> _pickColumn() async {
-    final fields = [for (final f in _colFields) if (!f.$4 || _canViewFinancials) if (f.$1 != 'sellingValue' || _canSeeSelling) (f.$1, f.$2, f.$3)];
+    final fields = [for (final f in _colFields) if (!f.$4 || _canViewFinancials) if (f.$1 != 'sellingValue' || _canSeeSelling) if (f.$1 != 'purchaseValue' || _seesPurchase) (f.$1, f.$2, f.$3)];
     final k = await opsPickFilterField(context, fields, _cf);
     if (k == null || !mounted) return;
     final f = fields.firstWhere((x) => x.$1 == k);
@@ -766,7 +769,7 @@ class _OpsWorkflowsScreenState extends State<OpsWorkflowsScreen> {
   void _exportLocal(List<Map<String, dynamic>> rows) {
     final cols = [
       for (final c in _exportCols)
-        if ((_canViewFinancials || !_moneyExportKeys.contains(c.$1)) && (_canSeeSelling || c.$1 != 'sellingValue'))
+        if ((_canViewFinancials || !_moneyExportKeys.contains(c.$1)) && (_canSeeSelling || c.$1 != 'sellingValue') && (_seesPurchase || c.$1 != 'purchaseValue'))
           ExportCol(c.$2, c.$3, (r) => _exportValue(r, c.$1)),
     ];
     exportExcel(context, fileName: 'operations', sheets: [(tr('الطلبات', 'Workflows'), cols, rows)]);
@@ -947,7 +950,7 @@ class _OpsWorkflowsScreenState extends State<OpsWorkflowsScreen> {
                 onTap: () { _origin = _origin == 'orders' ? '' : 'orders'; _reload(); }),
             _statCard(tr('إدارة الأسطول', 'Fleet management'), '${_stats['byOrigin']?['fleet'] ?? 0}', T.inkFaint, active: _origin == 'fleet',
                 onTap: () { _origin = _origin == 'fleet' ? '' : 'fleet'; _reload(); }),
-            if (_full || _has('purchaseValue'))
+            if ((_full || _has('purchaseValue')) && _seesPurchase && _stats['sumPurchaseValue'] != null)
               _statCard(tr('مجموع قيمة الشراء (حسب الفلتر)', 'Total purchase value (filtered)'), opsMoney(_stats['sumPurchaseValue'] ?? 0), T.inkFaint),
             if (_checks != null && _canViewFinancials)
               for (final k in _checkKinds)

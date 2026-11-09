@@ -21,6 +21,7 @@ import {
   ShipmentOrder, OrderCustomer, orderStatus, statusLabel,
   fmtDT, money, canEditOrders, canAdminOrders, canDeleteShipments, Lang, vocabLabel,
 } from '@/lib/shipmentOrders';
+import { isSalesUser, isVendorUser } from '@/lib/shipmentRequests';
 import { useOrderStatuses } from '@/hooks/useOrderStatuses';
 import { useLatestRequest } from '@/hooks/useLatestRequest';
 import ScrollX from '@/components/system/ScrollX';
@@ -91,6 +92,9 @@ function ShipmentOrdersInner() {
   const [customers, setCustomers] = useState<OrderCustomer[]>([]);
   const [otherBranches, setOtherBranches] = useState<string[]>([]);
   const [stats, setStats] = useState<{ byStatus: Record<string, number>; sellTotal: number; buyTotal: number } | null>(null);
+  // Which side of the price this reader sees, as the server decided (sales: selling only; vendors team: purchase only).
+  const [pv, setPv] = useState<{ sell: boolean; buy: boolean }>({ sell: true, buy: true });
+  const hiddenCol = (key: string) => (!pv.buy && ['buy', 'advance', 'rent', 'margin'].includes(key)) || (!pv.sell && ['sell', 'margin'].includes(key));
   const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -289,6 +293,7 @@ function ShipmentOrdersInner() {
       setOrders(d.orders || []);
       setTotal(d.total || 0);
       setStats(d.stats || null);
+      if ((d as any).priceView) setPv((d as any).priceView);
       setOtherBranches((d as any).otherBranches || []);
       setError('');
     } catch (e: any) { setError(e?.message || 'Request failed'); }
@@ -392,9 +397,10 @@ function ShipmentOrdersInner() {
     [ar ? 'تاريخ الإنشاء' : 'Created', null, 'created'],
     [ar ? 'إجراءات' : 'Actions', null, 'actions'],
   ];
-  const chooserCols = useMemo(() => HEADS.map(([label, , key]) => ({ key, label, locked: key === 'reference' || key === 'actions' })),
-    [ar]); // eslint-disable-line react-hooks/exhaustive-deps
-  const { visible, setVisible, isOn: on } = useVisibleColumns('so:shipments:columns', chooserCols, { defaults: DEFAULT_COLS });
+  const chooserCols = useMemo(() => HEADS.filter(([, , key]) => !hiddenCol(key)).map(([label, , key]) => ({ key, label, locked: key === 'reference' || key === 'actions' })),
+    [ar, pv]); // eslint-disable-line react-hooks/exhaustive-deps
+  const { visible, setVisible, isOn: shownOn } = useVisibleColumns('so:shipments:columns', chooserCols, { defaults: DEFAULT_COLS });
+  const on = (key: string) => !hiddenCol(key) && shownOn(key);
   const shownHeads = HEADS.filter(([, , key]) => key === 'reference' || key === 'actions' || on(key));
 
   const togglePick = (id: string) =>
@@ -415,9 +421,9 @@ function ShipmentOrdersInner() {
     { header: 'Driver iqama', key: 'driverIqama', width: 14 },
     { header: 'Branch', key: 'branch', width: 12 },
     { header: 'Pickup', key: 'pickupTime', transform: (v: any) => fmtDate(v), width: 14 },
-    { header: 'Sell', key: 'sellPrice', width: 10 },
-    { header: 'Buy', key: 'buyPrice', width: 10 },
-    { header: 'Margin', key: 'margin', width: 10, transform: (_v: any, r: any) => ((Number(r?.sellPrice) || 0) - (Number(r?.buyPrice) || 0)) },
+    ...(pv.sell ? [{ header: 'Sell', key: 'sellPrice', width: 10 }] : []),
+    ...(pv.buy ? [{ header: 'Buy', key: 'buyPrice', width: 10 }] : []),
+    ...(pv.sell && pv.buy ? [{ header: 'Margin', key: 'margin', width: 10, transform: (_v: any, r: any) => ((Number(r?.sellPrice) || 0) - (Number(r?.buyPrice) || 0)) }] : []),
     { header: 'Status', key: 'status', transform: (v: any) => statusLabel(v, 'en'), width: 14 },
     { header: 'Agent', key: 'agentName', width: 16 },
     { header: 'Note', key: 'notes', width: 30 },
@@ -484,7 +490,18 @@ function ShipmentOrdersInner() {
         {/* Columns sit with the page's actions in the header, so less stands between the filters and the table. */}
         {view === 'table' && <ColumnChooser columns={chooserCols} visible={visible} onChange={setVisible} ar={ar} />}
         <ExportMenu fileName="shipment-orders" lang={ar ? 'ar' : 'en'} variant="subtle" options={exportOptions} />
-        {editor && (
+        {/* Sales and the vendors team create in two steps (request, then placing), so their button opens their step. */}
+        {editor && isSalesUser(user) && (
+          <PrimaryButton onClick={() => router.push('/system/shipment-orders/request')}>
+            <Plus className="w-4 h-4" /> {ar ? 'طلب شحنة' : 'Shipment request'}
+          </PrimaryButton>
+        )}
+        {editor && isVendorUser(user) && (
+          <PrimaryButton onClick={() => router.push('/system/shipment-orders/requests')}>
+            <Plus className="w-4 h-4" /> {ar ? 'الطلبات من المبيعات' : 'Requests from sales'}
+          </PrimaryButton>
+        )}
+        {editor && !isSalesUser(user) && !isVendorUser(user) && (
           <PrimaryButton onClick={() => router.push('/system/shipment-orders/new')}>
             <Plus className="w-4 h-4" /> {ar ? 'إنشاء شحنة' : 'Create shipment'}
           </PrimaryButton>
@@ -1025,11 +1042,11 @@ function ShipmentOrdersInner() {
 
                 {/* Money figures only for those who have them; the table shows them to the same people. */}
                 <Group title={ar ? 'الأجرة والدفع' : 'Fare & payment'}>
-                  <Row k={ar ? 'سعر البيع' : 'Selling price'} v={money(d.sellPrice)} />
-                  <Row k={ar ? 'سعر الشراء' : 'Buying price'} v={money(d.buyPrice)} />
+                  {pv.sell && <Row k={ar ? 'سعر البيع' : 'Selling price'} v={money(d.sellPrice)} />}
+                  {pv.buy && <Row k={ar ? 'سعر الشراء' : 'Buying price'} v={money(d.buyPrice)} />}
                   <Row k={ar ? 'نوع الدفع' : 'Payment type'} v={paymentKindLabel(d.paymentSubtype, ar)} />
                   <Row k={ar ? 'نوع تأجير السائق' : 'Driver rent type'} v={d.driverRentType} />
-                  <Row k={ar ? 'أجرة السائق' : 'Driver rent'} v={money(d.driverRentPrice)} />
+                  {pv.buy && <Row k={ar ? 'أجرة السائق' : 'Driver rent'} v={money(d.driverRentPrice)} />}
                   <Row k={ar ? 'طريقة الدفع' : 'Payment method'} v={d.paymentMethod} />
                 </Group>
 

@@ -377,7 +377,7 @@ export default function OperationsWorkflowPage() {
     if (!role) return;
     let alive = true;
     // `myFields` is this reader's fields as computed by the server; it alone knows roles created from the permissions screen (no key in `roleAccess`). `roleAccess` stays as a fallback for an older server.
-    api.get<{ roleAccess: Record<string, string[]>; myFields?: string[]; view?: { amounts?: boolean; selling?: boolean }; canApproveSelling?: boolean }>('/api/workflows/permissions')
+    api.get<{ roleAccess: Record<string, string[]>; myFields?: string[]; view?: { amounts?: boolean; selling?: boolean; purchase?: boolean }; canApproveSelling?: boolean }>('/api/workflows/permissions')
       .then((d) => { if (alive) { setMyFields(new Set(d?.myFields || d?.roleAccess?.[role] || [])); setView(d?.view || {}); setCanApproveSelling(!!d?.canApproveSelling); } })
       // A failed read opens nothing: an empty set means no fields, so financial columns stay hidden until the answer is known.
       .catch(() => { if (alive) setMyFields(new Set()); });
@@ -392,6 +392,8 @@ export default function OperationsWorkflowPage() {
   // Selling value: only for users on its list
   // The server neither sends it to others nor accepts writes from them, and the column is hidden with it so an empty cell is not read as no price.
   const canSeeSelling = has('sellingValue') || !!view.selling;
+  // Purchase value: hidden from sales (the server strips it too).
+  const canSeePurchase = (view as any).purchase !== false;
 
   // Columns a role may not see never reach the chooser, so it cannot offer them.
   const chooserColumns = useMemo<ChooserColumn[]>(() => {
@@ -401,7 +403,7 @@ export default function OperationsWorkflowPage() {
       { key: 'reportDate', label: T.thReportDate }, { key: 'fromLocation', label: T.thFrom }, { key: 'toLocation', label: T.thTo },
       { key: 'branch', label: T.thBranch }, { key: 'carOwner', label: T.thCarOwner }, { key: 'carNumber', label: T.thCarNumber },
       { key: 'applicationStatus', label: T.thApplication }, { key: 'username', label: T.thUsername }, { key: 'userPhone', label: T.thUserPhone },
-      { key: 'purchaseValue', label: T.thPurchaseValue },
+      ...(canSeePurchase ? [{ key: 'purchaseValue', label: T.thPurchaseValue }] : []),
       ...(canSeeSelling ? [{ key: 'sellingValue', label: T.thSellingValue }] : []),
       { key: 'driverName', label: T.thDriverName }, { key: 'truckType', label: T.thTruckType }, { key: 'truckSize', label: T.thTruckSize },
       { key: 'representativeName', label: T.thRepresentative }, { key: 'operationsReview', label: T.thOpsReview },
@@ -415,7 +417,7 @@ export default function OperationsWorkflowPage() {
       { key: 'deliveryDate', label: T.thDeliveryDate },
       ...(canViewFinancials ? [{ key: 'collectedAmount', label: T.thCollectedAmount }, { key: 'collectionDate', label: T.thCollectionDate }] : []),
     ];
-  }, [T, lang, canSeeSelling, canViewFinancials]);
+  }, [T, lang, canSeeSelling, canSeePurchase, canViewFinancials]);
   const { visible: visibleCols, setVisible: setVisibleCols, isOn: colOn } = useVisibleColumns('ops:workflowColumns', chooserColumns);
 
   // Aggregates over the WHOLE matching dataset (all ~27k rows, not one page).
@@ -1504,7 +1506,7 @@ export default function OperationsWorkflowPage() {
                 {ColHead('applicationStatus', T.thApplication)}
                 {ColHead('username', T.thUsername)}
                 {ColHead('userPhone', T.thUserPhone)}
-                {ColHead('purchaseValue', T.thPurchaseValue)}
+                {canSeePurchase && ColHead('purchaseValue', T.thPurchaseValue)}
                 {ColHead('sellingValue', T.thSellingValue)}
                 {ColHead('driverName', T.thDriverName)}
                 {ColHead('truckType', T.thTruckType)}
@@ -1809,7 +1811,7 @@ export default function OperationsWorkflowPage() {
                           </td>
                         ) : textCell('username')}
                         {colOn('userPhone') && textCell('userPhone')}
-                        {colOn('purchaseValue') && numCell('purchaseValue')}
+                        {canSeePurchase && colOn('purchaseValue') && numCell('purchaseValue')}
                         {/* Written to the operations platform first, then here; see pushSellingValue. */}
                         {colOn('sellingValue') && numCell('sellingValue', 'text-emerald-700')}
                         {colOn('driverName') && textCell('driverName')}

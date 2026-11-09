@@ -10,6 +10,7 @@ const JP_SECTIONS = {
   collections: { roleSection: 'Collections', path: '/system/collections-dept', ar: 'التحصيل', en: 'Collections' },
   ops: { roleSection: 'Operations Platform', path: '/system/ops', ar: 'منصّة التشغيل', en: 'Operations Platform' },
   'shipment-orders': { roleSection: 'Shipment Orders', path: '/system/shipment-orders', ar: 'طلبات الشحنات', en: 'Shipment Orders' },
+  vendors: { roleSection: 'Vendors Management', path: '/system/vendors-mgmt', ar: 'إدارة الموردين', en: 'Vendors Management' },
   fleet: { roleSection: 'Fleet Management', path: '/system/fleet', ar: 'إدارة الأسطول', en: 'Fleet Management' },
   customs: { roleSection: 'Customs', path: '/system/customs', ar: 'التخليص الجمركي', en: 'Customs' },
   vehicles: { roleSection: 'Vehicles', path: '/system/vehicles', ar: 'المركبات والتفاويض', en: 'Vehicles' },

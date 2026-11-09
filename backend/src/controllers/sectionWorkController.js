@@ -38,7 +38,7 @@ const SECTIONS = [
   'crm', 'sales', 'accounting', 'procurement', 'hr', 'ops', 'customs',
   'marketing', 'bd', 'it', 'fleet', 'contracts', 'vehicles',
   'operations', 'shipment-orders', 'ls2', 'administration', 'b2c', 'remote',
-  'collections',
+  'collections', 'vendors',
 ];
 
 /**
@@ -52,7 +52,7 @@ const SECTION_KEY_OF = {
   contracts: 'Contracts', vehicles: 'Vehicles', operations: 'Operations',
   'shipment-orders': 'Shipment Orders', ls2: 'Location Solutions',
   administration: 'Administration', b2c: 'B2C', remote: 'Remote',
-  collections: 'Collections',
+  collections: 'Collections', vendors: 'Vendors Management',
 };
 
 const isSuper = (u) => u && require('../config/constants').isTopRole(u.role);

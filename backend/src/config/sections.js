@@ -25,7 +25,9 @@ const SECTIONS = [
     // Operations workflows section. The workflows API had no owning section, so the permission matrix could neither grant nor deny it; a role line in the route alone guarded it. Adding it was verified not to remove access from anyone: roles with operations denied are not in the route's role list already.
     apiPrefixes: ['/api/wallet', '/api/workflows', '/api/customer-requests'],
     // Accounting and collections are included: custody is a financial entry that is reviewed and closed, and the section guard runs before the route's role list, so leaving them out returns 403 even when the endpoint is open to them.
-    defaultRoles: ['admin', 'it_manager', 'it_specialist', 'employee', 'operations_manager', 'operations_staff', 'moderator', 'procurement_manager', 'procurement_staff', 'cfo', 'accounting_manager', 'accountant', 'collections_manager', 'collections_staff'],
+    defaultRoles: ['admin', 'it_manager', 'it_specialist', 'employee', 'operations_manager', 'operations_staff', 'moderator', 'procurement_manager', 'procurement_staff', 'cfo', 'accounting_manager', 'accountant', 'collections_manager', 'collections_staff',
+      // Vendors manager and team leader: operations rights on the workflow (owner's rule).
+      'vendors_manager', 'vendors_team_leader'],
   },
   {
     // Collections section: customers we collect from and vendors we pay. The prefix is /api/collections-dept, not /api/collections (taken by collection follow-ups under customers and finance). express matches on segment boundaries so they do not clash, but the explicit name avoids confusion.
@@ -43,7 +45,15 @@ const SECTIONS = [
     // Independent from Operations Platform on purpose.
     key: 'Shipment Orders',
     apiPrefixes: ['/api/shipment-orders'],
-    defaultRoles: ['admin', 'it_manager', 'it_specialist', 'operations_manager', 'operations_staff', 'moderator'],
+    // Sales asks for shipments and the vendors team places them, both from this section (owner, 2026-11-09).
+    defaultRoles: ['admin', 'it_manager', 'it_specialist', 'operations_manager', 'operations_staff', 'moderator',
+      'sales_manager', 'sales_rep', 'vendors_manager', 'vendors_team_leader', 'vendors_staff'],
+  },
+  {
+    // Vendors management: carrier register, their trucks and freelance drivers, sales requests to place, and the section's analysis.
+    key: 'Vendors Management',
+    apiPrefixes: ['/api/vendors-mgmt'],
+    defaultRoles: ['admin', 'it_manager', 'it_specialist', 'operations_manager'],
   },
   {
     // Our own trucks — booking, drivers, follow-up calls. Sibling of the
@@ -161,6 +171,7 @@ const SECTION_LABELS_AR = {
   'Collections': 'التحصيل',
   'Operations Platform': 'منصة الأوبريشن',
   'Shipment Orders': 'طلبات الشحنات',
+  'Vendors Management': 'إدارة الموردين',
   'Fleet Management': 'إدارة الأسطول',
   'Customs': 'التخليص الجمركي',
   'Vehicles': 'المركبات والتفاويض',

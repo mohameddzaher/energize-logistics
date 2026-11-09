@@ -201,9 +201,15 @@ export function OrderCard({
               {paymentKindLabel((o as any).paymentSubtype, ar) || (o as any).paymentMethod}
             </InfoRow>
           ) : null}
-          {(o.sellPrice != null || o.buyPrice != null) && (
+          {/* A side the server did not send (sales see no purchase, the vendors team no selling) is absent from the row, so only what came is shown. */}
+          {('sellPrice' in o && 'buyPrice' in o) && (o.sellPrice != null || o.buyPrice != null) && (
             <InfoRow compact={compact} label={ar ? 'بيع / شراء' : 'Sell / buy'}>
               <span className="tabular-nums">{money(o.sellPrice)} / {money(o.buyPrice)}</span>
+            </InfoRow>
+          )}
+          {('sellPrice' in o) !== ('buyPrice' in o) && ((o as any).sellPrice ?? (o as any).buyPrice) != null && (
+            <InfoRow compact={compact} label={'sellPrice' in o ? (ar ? 'سعر البيع' : 'Selling') : (ar ? 'سعر الشراء' : 'Purchase')}>
+              <span className="tabular-nums">{money((o as any).sellPrice ?? (o as any).buyPrice)}</span>
             </InfoRow>
           )}
           {(o as any).supplierName || (o as any).ownerKind ? (

@@ -21,6 +21,9 @@ export interface RegistryRow {
   _id: string;
   customerCode?: string;
   name: string;
+  /** Rating over the last 90 days of shipments (the analytics page's score). */
+  rating?: { grade: string; score: number; trend: string; live: number; cancelRate: number; last?: string } | null;
+  ratingScore?: number | null;
   phone?: string;
   email?: string;
   isActive: boolean;
@@ -156,6 +159,7 @@ export type RegistryCol = {
 export const REGISTRY_COLS: RegistryCol[] = [
   { key: 'customerCode', ar: 'كود العميل', en: 'Code', width: 12 },
   { key: 'name', ar: 'العميل', en: 'Customer', width: 28 },
+  { key: 'ratingScore', ar: 'التقييم (90 يومًا)', en: 'Rating (90 days)', num: true },
   { key: 'phone', ar: 'الجوال', en: 'Phone', width: 16 },
   { key: 'email', ar: 'البريد', en: 'Email', width: 24 },
   { key: 'routesCount', ar: 'المسارات', en: 'Routes', num: true },

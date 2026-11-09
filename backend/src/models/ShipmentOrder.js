@@ -140,6 +140,13 @@ const shipmentOrderSchema = new mongoose.Schema(
     // field's key. Mixed on purpose: those fields are the user's to invent.
     customFields: { type: mongoose.Schema.Types.Mixed, default: () => ({}) },
 
+    // The sales request this transport order was placed from, when it came through the two-step flow (models/ShipmentRequest).
+    shipmentRequest: { type: mongoose.Schema.Types.ObjectId, ref: 'ShipmentRequest', default: null, index: true },
+    requestNumber: { type: Number, default: null },
+    // Who on the sales team asked for it; the creator (`createdBy`) is the vendors member who placed it.
+    requestedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User', default: null },
+    requestedByName: { type: String, trim: true, default: '' },
+
     createdBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
   },
   { timestamps: true }

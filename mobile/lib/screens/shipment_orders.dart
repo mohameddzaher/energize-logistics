@@ -79,6 +79,8 @@ class _ShipmentOrdersScreenState extends State<ShipmentOrdersScreen> {
   String _from = '';
   String _to = '';
   final Map<String, Set<String>> _colFilters = {};
+  // Price sides this reader may see, and whether it creates shipments directly (sales and the vendors team go through requests).
+  bool _pvSell = true, _pvBuy = true, _directCreate = true;
   bool _customsOnly = false;
   bool _excludeCancelled = false;
 
@@ -105,6 +107,9 @@ class _ShipmentOrdersScreenState extends State<ShipmentOrdersScreen> {
     _customsOnly = widget.customsLinked;
     _load();
     loadSoStatuses().then((v) { if (mounted) setState(() => _vocab = v); });
+    Api.instance.get('/api/shipment-orders/money-editors').then((d) {
+      if (mounted && d is Map && d['directCreate'] == false) setState(() => _directCreate = false);
+    }).catchError((_) {});
     Live.instance.on('shipmentOrders:updated', _onLive);
   }
 
@@ -146,6 +151,8 @@ class _ShipmentOrdersScreenState extends State<ShipmentOrdersScreen> {
         _rows = List<Map<String, dynamic>>.from(d['orders'] ?? []);
         _total = (d['total'] as num?)?.toInt() ?? 0;
         _stats = d['stats'] is Map ? Map<String, dynamic>.from(d['stats']) : null;
+        final pv = d['priceView'];
+        if (pv is Map) { _pvSell = pv['sell'] != false; _pvBuy = pv['buy'] != false; }
         _loading = false;
         _error = null;
       });
@@ -219,9 +226,9 @@ class _ShipmentOrdersScreenState extends State<ShipmentOrdersScreen> {
         ExportCol('رقم إقامة السائق', 'Driver iqama', (r) => r['driverIqama']),
         ExportCol('الفرع', 'Branch', (r) => r['branch']),
         ExportCol('الاستلام', 'Pickup', (r) => soFmtDate(r['pickupTime'])),
-        ExportCol('البيع', 'Sell', (r) => r['sellPrice']),
-        ExportCol('الشراء', 'Buy', (r) => r['buyPrice']),
-        ExportCol('الهامش', 'Margin', (r) => (num.tryParse('${r['sellPrice'] ?? 0}') ?? 0) - (num.tryParse('${r['buyPrice'] ?? 0}') ?? 0)),
+        if (_pvSell) ExportCol('البيع', 'Sell', (r) => r['sellPrice']),
+        if (_pvBuy) ExportCol('الشراء', 'Buy', (r) => r['buyPrice']),
+        if (_pvSell && _pvBuy) ExportCol('الهامش', 'Margin', (r) => (num.tryParse('${r['sellPrice'] ?? 0}') ?? 0) - (num.tryParse('${r['buyPrice'] ?? 0}') ?? 0)),
         ExportCol('الحالة', 'Status', (r) => soStatusOf(_vocab, r['status']).$3),
         ExportCol('الوسيط', 'Agent', (r) => r['agentName']),
         ExportCol('ملاحظة', 'Note', (r) => r['notes']),
@@ -262,7 +269,7 @@ class _ShipmentOrdersScreenState extends State<ShipmentOrdersScreen> {
   Future<void> _columnFilter() async {
     final field = await showModalBottomSheet<String>(context: context, builder: (c) => SafeArea(child: Column(mainAxisSize: MainAxisSize.min, children: [
       Padding(padding: const EdgeInsets.all(14), child: Text(tr('فلترة بعمود', 'Filter by column'), style: const TextStyle(fontWeight: FontWeight.w800))),
-      for (final f in _colFields)
+      for (final f in _colFields.where((f) => (f.$1 != 'sellPrice' || _pvSell) && (f.$1 != 'buyPrice' || _pvBuy)))
         ListTile(
           title: Text(tr(f.$2, f.$3)),
           trailing: (_colFilters[f.$1]?.isNotEmpty ?? false) ? Chip2('${_colFilters[f.$1]!.length}', T.orange) : const Icon(Icons.chevron_left),
@@ -363,7 +370,7 @@ class _ShipmentOrdersScreenState extends State<ShipmentOrdersScreen> {
           ],
         ),
       ],
-      floatingActionButton: editor
+      floatingActionButton: editor && _directCreate
           ? FloatingActionButton.extended(
               onPressed: () async {
                 final created = await Navigator.push<bool>(context, MaterialPageRoute(builder: (_) => const ShipmentOrderCreateScreen()));
@@ -659,7 +666,7 @@ class _ShipmentOrdersScreenState extends State<ShipmentOrdersScreen> {
             if ('${r['truckType'] ?? ''}'.isNotEmpty) Chip2('${r['truckType']}', T.navy, icon: Icons.local_shipping_outlined),
             if ('${r['vehiclePlate'] ?? ''}'.isNotEmpty) Chip2('${r['vehiclePlate']}', T.inkSoft),
             if ('${r['pickupTime'] ?? ''}'.isNotEmpty) Chip2(soFmtDT(r['pickupTime']), T.inkFaint, icon: Icons.schedule),
-            Chip2('${soMoney(r['sellPrice'])} / ${soMoney(r['buyPrice'])}', T.success),
+            if (soPriceLine(r).isNotEmpty) Chip2(soPriceLine(r), T.success),
             if ('${r['supplierName'] ?? ''}'.isNotEmpty)
               Chip2('${r['ownerKind'] == 'freelancer' ? tr('فريلانسر', 'Freelancer') : r['ownerKind'] == 'ours' ? tr('أسطولنا', 'Our fleet') : tr('شركة', 'Company')}: ${r['supplierName']}', T.navy),
           ]),

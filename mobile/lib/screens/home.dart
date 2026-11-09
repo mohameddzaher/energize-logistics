@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../services/nav_badges.dart';
 import 'package:provider/provider.dart';
 import '../nav/sections.dart';
 import '../nav/home_insights.dart';
@@ -41,6 +42,7 @@ class _HomeScreenState extends State<HomeScreen> {
     super.initState();
     Live.instance.connect();
     NotificationService.instance.init(); // Live notifications, sound and badge.
+    NavBadges.instance.refresh(); // Page counters, live afterwards (services/nav_badges).
     _loadStats();
     Live.instance.on('admintasks:updated', _loadStats);
     Live.instance.on('hr:leave', _loadStats);
@@ -324,8 +326,14 @@ class _HomeScreenState extends State<HomeScreen> {
                         ),
                         const Spacer(),
                         Text(s.title, style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 14)),
-                        Text(tr('${s.pages.length} صفحة', '${s.pages.length} pages'),
-                            style: const TextStyle(fontSize: 11, color: T.inkFaint)),
+                        Row(children: [
+                          Expanded(child: Text(tr('${s.pages.length} صفحة', '${s.pages.length} pages'),
+                              style: const TextStyle(fontSize: 11, color: T.inkFaint))),
+                          ValueListenableBuilder<Map<String, int>>(
+                            valueListenable: NavBadges.instance,
+                            builder: (_, b, __) => navBadgePill(s.pages.fold<int>(0, (n, p) => n + (b[p.path] ?? 0))) ?? const SizedBox.shrink(),
+                          ),
+                        ]),
                       ]),
                     ),
                   ),
@@ -361,7 +369,10 @@ class _HomeScreenState extends State<HomeScreen> {
           ...s.pages.map((p) => ListTile(
                 leading: Icon(p.icon, color: T.inkSoft),
                 title: Text(p.title, style: const TextStyle(fontWeight: FontWeight.w600)),
-                trailing: Icon(Lang.instance.ar ? Icons.chevron_left : Icons.chevron_right, color: T.inkFaint),
+                trailing: Row(mainAxisSize: MainAxisSize.min, children: [
+                  navBadgePill(NavBadges.instance.of(p.path)) ?? const SizedBox.shrink(),
+                  Icon(Lang.instance.ar ? Icons.chevron_left : Icons.chevron_right, color: T.inkFaint),
+                ]),
                 onTap: () {
                   Navigator.pop(c);
                   Navigator.push(context, MaterialPageRoute(builder: p.builder));

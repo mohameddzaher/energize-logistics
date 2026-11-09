@@ -59,10 +59,35 @@ const fullName = (u) => (u ? `${u.firstName || ''} ${u.lastName || ''}`.trim() :
 const MONEY_FIELDS = ['sellPrice', 'buyPrice', 'advanceAmount', 'driverRentPrice'];
 const MONEY_EDIT_ROLES = ['super_admin', 'admin', 'it_manager', 'it_specialist', 'operations_manager'];
 const canEditMoney = (user) => !!user && MONEY_EDIT_ROLES.includes(user.role);
-const { sellingByRequest } = require('../config/sellingPriceRequests');
+const { sellingByRequest, canApproveSelling } = require('../config/sellingPriceRequests');
+const PV = require('../config/priceView');
 // The data team writes the purchase price directly; its selling-price edits go to approval.
-const moneyEditable = (user) => (canEditMoney(user) ? MONEY_FIELDS : sellingByRequest(user) ? ['buyPrice'] : []);
-const moneyByRequest = (user) => (!canEditMoney(user) && sellingByRequest(user) ? ['sellPrice'] : []);
+// Sales owns the selling price (its manager writes it, the rest request it); the vendors team owns the purchase side.
+const moneyEditable = (user) => {
+  if (canEditMoney(user)) return MONEY_FIELDS;
+  if (PV.isSalesRole(user)) return canApproveSelling(user) ? ['sellPrice'] : [];
+  if (PV.isVendorRole(user)) return PV.BUY_FIELDS;
+  return sellingByRequest(user) ? ['buyPrice'] : [];
+};
+const moneyByRequest = (user) => {
+  if (canEditMoney(user)) return [];
+  if (PV.isSalesRole(user)) return canApproveSelling(user) ? [] : ['sellPrice'];
+  return sellingByRequest(user) ? ['sellPrice'] : [];
+};
+
+/**
+ * Each team edits its own half of a transport order, never the other's (owner's rule).
+ * Sales owns the load as sold: route, timing, truck asked for, payment, documents, selling price.
+ * The vendors team owns how it is executed: truck, driver and the purchase side.
+ * null = no split (operations, data team, management keep the whole order).
+ */
+const SALES_OWNED = ['fromCity', 'toCity', 'addressFrom', 'addressTo', 'branch', 'notes', 'blNumber', 'containerNumber',
+  'truckType', 'cargoType', 'truckLength', 'quantity', 'pickupTime', 'startTime', 'arrivalTime',
+  'paymentSubtype', 'paymentMethod', 'driverRentType', 'customFields', 'sellPrice'];
+const VENDOR_OWNED = ['vehicle', 'vehicleName', 'driverName', 'driverPhone', 'buyPrice', 'advanceAmount', 'driverRentPrice', 'supplier'];
+const ownedFields = (user) => (PV.isSalesRole(user) ? SALES_OWNED : PV.isVendorRole(user) ? VENDOR_OWNED : null);
+exports.SALES_OWNED = SALES_OWNED;
+exports.VENDOR_OWNED = VENDOR_OWNED;
 exports.MONEY_FIELDS = MONEY_FIELDS;
 exports.MONEY_EDIT_ROLES = MONEY_EDIT_ROLES;
 
@@ -555,15 +580,17 @@ exports.listOrders = async (req, res) => {
     sourceAgg.forEach((r) => { bySource[r._id === 'platform' ? 'platform' : 'system'] = r.n; });
     bySource.total = bySource.system + bySource.platform;
 
+    const pv = PV.priceView(req.user);
     res.json({
       bySource,
-      orders,
+      orders: PV.stripOrderPrices(req.user, orders),
       total,
       otherBranches,
+      priceView: pv,
       stats: {
         byStatus,
-        sellTotal: priceAgg[0]?.sell || 0,
-        buyTotal: priceAgg[0]?.buy || 0,
+        sellTotal: pv.sell ? (priceAgg[0]?.sell || 0) : null,
+        buyTotal: pv.buy ? (priceAgg[0]?.buy || 0) : null,
       },
     });
   } catch (error) {
@@ -584,6 +611,8 @@ exports.orderFilterOptions = async (req, res) => {
     const key = String(req.query.field || '');
     const field = ORDER_COLUMNS[key];
     if (!field) return res.status(400).json({ message: 'عمودٌ غير معروف' });
+    const pvf = PV.priceView(req.user);
+    if ((key === 'sellPrice' && !pvf.sell) || (key === 'buyPrice' && !pvf.buy)) return res.status(403).json({ message: 'Insufficient permissions' });
 
     // Only the other columns' filters, so what is displayed can be selected.
     const base = { ...columnFilters(req.query, key) };
@@ -696,6 +725,11 @@ async function learnRoute(customerId, route) {
 async function createOneOrder(req, body) {
   const inner = { ...req, body };
   const data = pick(body, ORDER_EDITABLE);
+  // The selling price is required at creation: an empty one was later filled by a route suggestion nobody chose.
+  const sell = Number(data.sellPrice);
+  if (data.sellPrice === '' || data.sellPrice == null || !Number.isFinite(sell) || sell <= 0) {
+    const e = new Error('سعرُ البيع مطلوبٌ عند إنشاء الشحنة'); e.status = 400; e.code = 'SELL_REQUIRED'; throw e;
+  }
   applyPaymentSubtype(data);
   const branchError = await require('../utils/branchList').applyBranchList(data);
   if (branchError) { const e = new Error(branchError); e.status = 400; throw e; }
@@ -750,6 +784,11 @@ async function createOneOrder(req, body) {
   return order;
 }
 
+exports.createOneOrder = createOneOrder;
+exports.applySalesRep = (data, body) => applySalesRep(data, body);
+exports.resolveInlineCustomer = (req, data) => resolveInlineCustomer(req, data);
+exports.applyPaymentSubtype = (data) => applyPaymentSubtype(data);
+
 /** Operational sales: eligible are the sales and operations teams (their managers and staff). Anyone whose service HR ended is not selectable. The name is taken from the account, not from what was sent. */
 const SALES_REP_ROLES = () => {
   const { rolesOfSection } = require('../config/roles');
@@ -781,12 +820,25 @@ exports.salesReps = async (req, res) => {
   catch (e) { res.status(500).json({ message: 'تعذّر تحميل القائمة' }); }
 };
 
+/** Sales and the vendors team create through a shipment request, never directly: each sees only its side of the price. */
+const directCreateBlocked = (req, res) => {
+  if (!PV.isSalesRole(req.user) && !PV.isVendorRole(req.user)) return false;
+  res.status(403).json({
+    code: 'USE_SHIPMENT_REQUEST',
+    message: PV.isSalesRole(req.user)
+      ? 'فريقُ المبيعات يُنشئ «طلبَ شحنة»، ويُكمله فريقُ الموردين إلى أمر نقل.'
+      : 'فريقُ الموردين يُكمل الشحنات من «الطلبات الواردة من المبيعات».',
+  });
+  return true;
+};
+
 exports.createOrder = async (req, res) => {
   try {
+    if (directCreateBlocked(req, res)) return;
     const order = await createOneOrder(req, req.body);
     res.status(201).json({ order });
   } catch (error) {
-    if (error.status === 400) return res.status(400).json({ message: error.message });
+    if (error.status === 400) return res.status(400).json({ message: error.message, ...(error.code ? { code: error.code, fields: ['sellPrice'] } : {}) });
     console.error('Error creating shipment order:', error);
     return sendMongooseError(res, error, 'Failed to create the shipment order');
   }
@@ -800,6 +852,7 @@ exports.createOrder = async (req, res) => {
  */
 exports.createOrdersBatch = async (req, res) => {
   try {
+    if (directCreateBlocked(req, res)) return;
     const trucks = Array.isArray(req.body?.trucks) ? req.body.trucks : [];
     if (!trucks.length) return res.status(400).json({ message: 'لا شاحناتٍ في الطلب' });
     if (trucks.length > 25) return res.status(400).json({ message: 'الحدُّ الأقصى خمسٌ وعشرون شاحنةً في المرّة' });
@@ -854,7 +907,7 @@ exports.getOrder = async (req, res) => {
       .populate('supplier', 'name type phone')
       .lean();
     if (!order) return res.status(404).json({ message: 'Shipment order not found' });
-    res.json({ order });
+    res.json({ order: PV.stripOrderPrices(req.user, order), priceView: PV.priceView(req.user), owned: ownedFields(req.user) });
   } catch (error) {
     res.status(500).json({ message: 'Failed to load the shipment order' });
   }
@@ -862,6 +915,10 @@ exports.getOrder = async (req, res) => {
 
 /** Who edits money after saving; read by the create/edit screens (web and phone). */
 exports.moneyEditors = (req, res) => res.json({
+  priceView: PV.priceView(req.user),
+  owned: ownedFields(req.user),
+  supplierLocked: !canEditMoney(req.user) && !PV.isVendorRole(req.user),
+  directCreate: !PV.isSalesRole(req.user) && !PV.isVendorRole(req.user),
   fields: MONEY_FIELDS,
   roles: MONEY_EDIT_ROLES,
   canEdit: canEditMoney(req.user),
@@ -894,6 +951,19 @@ exports.updateOrder = async (req, res) => {
     if (!order) return res.status(404).json({ message: 'Shipment order not found' });
 
     const data = pick(req.body, ORDER_EDITABLE);
+
+    // Sales and the vendors team each write their own half; the other half is dropped, not rejected, because the form sends every field.
+    const owned = ownedFields(req.user);
+    if (owned) {
+      for (const k of Object.keys(data)) if (!owned.includes(k)) delete data[k];
+      if (!owned.includes('vehicle')) { delete req.body.newVehicle; delete req.body.waybillDetails; }
+      if (!owned.includes('fromCity')) delete req.body.salesRep;
+      delete req.body.newCustomer;
+    }
+
+    // The supplier of a saved shipment is the vendors team's to change (with management and the operations manager); everyone else keeps it.
+    const supplierLocked = !canEditMoney(req.user) && !PV.isVendorRole(req.user);
+    if (supplierLocked) delete req.body.supplierChoice;
 
     // The customer of a saved shipment is fixed for the team; only money editors move it to another customer.
     if (!canEditMoney(req.user)) {
@@ -949,6 +1019,9 @@ exports.updateOrder = async (req, res) => {
       if (chosenId) data.supplier = chosenId;
       await applySupplierName(data);
     }
+    // A locked supplier stays whatever truck snapshot ran above.
+    if (supplierLocked && order.supplier) { data.supplier = order.supplier; data.supplierName = order.supplierName; }
+    else if (supplierLocked && !order.supplier && order.supplierName) { delete data.supplier; delete data.supplierName; }
 
     if (data.status && !(await isValidStatus(data.status))) {
       return res.status(400).json({ message: `حالةٌ غير معروفة: ${data.status}` });
@@ -975,6 +1048,14 @@ exports.updateOrder = async (req, res) => {
     }
     announceOrderChange(order._id);
     linkCustomsSoon(order._id);
+    // A placed truck shows on its sales request too: keep that copy of supplier, plate and driver in step.
+    if (order.shipmentRequest) {
+      await require('../models/ShipmentRequest').updateOne(
+        { _id: order.shipmentRequest, 'placed.order': order._id },
+        { $set: { 'placed.$.supplierName': order.supplierName || '', 'placed.$.vehiclePlate': order.vehiclePlate || '', 'placed.$.driverName': order.driverName || '' } },
+      ).catch(() => {});
+      try { emitToAll('shipmentRequests:changed', { id: String(order.shipmentRequest) }); } catch (_) { /* */ }
+    }
 
     // The operations workflow row for this shipment follows at once: it is one shipment read on two screens, so it must not show two statuses. See syncShipmentsById.
     require('../services/shipmentOrderWorkflowLink').mirrorPlatformSoon(order._id, Object.keys(data));
@@ -1214,7 +1295,7 @@ async function analyticsOf(query = {}) {
 exports.getAnalytics = async (req, res) => {
   try {
     const key = `so:analytics:${JSON.stringify(req.query || {})}`;
-    res.json(await cache.wrapStale(key, 60 * 1000, 10 * 60 * 1000, async () => analyticsOf(req.query)));
+    res.json(PV.maskMoney(req.user, await cache.wrapStale(key, 60 * 1000, 10 * 60 * 1000, async () => analyticsOf(req.query))));
   } catch (error) {
     console.error('shipmentOrders analytics error:', error);
     res.status(500).json({ message: error.message || 'Failed to load analytics' });
@@ -1449,7 +1530,7 @@ exports.getDashboard = async (req, res) => {
         },
       };
     });
-    res.json(out);
+    res.json(PV.maskMoney(req.user, out));
   } catch (error) {
     console.error('shipmentOrders dashboard error:', error);
     res.status(500).json({ message: 'تعذّر تحميل اللوحة' });
@@ -1725,7 +1806,7 @@ const plateScope = (filter, q) => {
 const REGISTRY_TTL = 2 * 60 * 1000;
 const CUSTOMER_LIST_FIELDS = 'customerCode name phone email notes routes defaults';
 // Its financial papers are read from the row: commercial register, IBAN and its manager by number are what is requested at his first payment, and a card used to be opened for each supplier.
-const SUPPLIER_LIST_FIELDS = 'name type phone email notes commercialRegister taxCard iban bankName managerName managerPhone paymentTerms';
+const SUPPLIER_LIST_FIELDS = 'name type phone email notes commercialRegister taxCard iban bankName managerName managerPhone paymentTerms inMaster followOwner contractStatus vendorSigned ourSigned headOffice vehicleTypes fleetSize rating';
 const VEHICLE_LIST_FIELDS = 'plate name truckType brand color supplier ownership vehicleMaster defaultDriverName defaultDriverPhone operationCardNumber operationCardExpiry modelYear notes';
 const DRIVER_LIST_FIELDS = 'name phone nationality residenceNumber driverCardNumber driverCardExpiry supplier vehicle employee sponsorName notes';
 const registryKey = (kind, req, extra = '') => `so:registry:${kind}:${String(req.query.q || '')}:${req.query.limit || ''}:${extra}`;
@@ -1945,7 +2026,10 @@ const cleanVehicle = (v) => cleanFields(v, ['defaultDriverName', 'defaultDriverP
 exports.listSuppliers = async (req, res) => {
   try {
     const { q } = req.query;
-    const filter = { isActive: { $ne: false } };
+    const filter = { isActive: { $ne: false }, mergedInto: null };
+    // Companies or freelance drivers only (the vendors section lists the two apart).
+    if (['company', 'freelancer'].includes(String(req.query.type || ''))) filter.type = req.query.type;
+    if (req.query.inMaster === '1') filter.inMaster = true;
     if (q && q.trim()) {
       Object.assign(filter, anyOf(q, ['name', 'phone', 'email', 'ownerName', 'ownerPhone',
         'managerName', 'managerPhone', 'accountantName', 'commercialRegister', 'iban', 'externalId']));
@@ -1982,7 +2066,7 @@ exports.listSuppliers = async (req, res) => {
         total,
       };
     };
-    const out = String(req.query.fresh || '') === '1' ? await build() : await cache.wrap(registryKey('suppliers', req), REGISTRY_TTL, build);
+    const out = String(req.query.fresh || '') === '1' ? await build() : await cache.wrap(registryKey('suppliers', req, `${req.query.type || ''}:${req.query.inMaster || ''}`), REGISTRY_TTL, build);
     res.json(out);
   } catch (error) {
     res.status(500).json({ message: 'Failed to load suppliers' });
@@ -2564,7 +2648,7 @@ const SYSTEM_FIELDS = [
   // Buying price is required and selling optional, see migratePriceRequired.
   // Buying comes before selling, see migratePriceOrder.
   { key: 'buyPrice', labelAr: 'سعر الشراء', labelEn: 'Buy price', group: 'pricing_time', inputType: 'number', required: true, order: 4 },
-  { key: 'sellPrice', labelAr: 'سعر البيع', labelEn: 'Sell price', group: 'pricing_time', inputType: 'number', order: 5 },
+  { key: 'sellPrice', labelAr: 'سعر البيع', labelEn: 'Sell price', group: 'pricing_time', inputType: 'number', required: true, order: 5 },
   // Advance to the driver: an optional number.
   { key: 'advanceAmount', labelAr: 'السلفة', labelEn: 'Advance', group: 'pricing_time', inputType: 'number', order: 6 },
   // Payments
@@ -2632,6 +2716,15 @@ async function migratePriceOrder() {
   await marks.updateOne({ _id: id }, { $setOnInsert: { at: new Date() } }, { upsert: true });
 }
 
+/** The selling price becomes required at creation (owner, 2026-11-09); once with a flag, then belongs to settings. */
+async function migrateSellRequired() {
+  const marks = mongoose.connection.collection('migrations');
+  const id = 'so-sell-required-2026-11-09';
+  if (await marks.findOne({ _id: id })) return;
+  await ShipmentOrderField.updateOne({ key: 'sellPrice' }, { $set: { required: true } });
+  await marks.updateOne({ _id: id }, { $setOnInsert: { at: new Date() } }, { upsert: true });
+}
+
 async function migrateBranchGroup() {
   const marks = mongoose.connection.collection('migrations');
   const id = 'so-branch-to-pickup-delivery-2026-10-26';
@@ -2657,6 +2750,7 @@ exports.ensureShipmentOrderDefaults = async () => {
   await migratePriceRequired();
   await migrateBranchGroup();
   await migratePriceOrder();
+  await migrateSellRequired();
 
   for (const f of SYSTEM_FIELDS) {
     // eslint-disable-next-line no-await-in-loop

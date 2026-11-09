@@ -52,6 +52,18 @@ router.get('/', async (req, res) => {
       const n = await require('../models/SellingPriceChangeRequest').countDocuments({ status: 'pending' }).catch(() => 0);
       if (n) out[spr.PAGE] = n;
     }
+    // Sales requests waiting for the vendors team (open ones), and rejected requests back with the sales member who asked.
+    const SR = require('../controllers/shipmentRequestsController');
+    const ShipmentRequest = require('../models/ShipmentRequest');
+    if (SR.PLACERS.includes(role)) {
+      const n = await ShipmentRequest.countDocuments({ status: { $in: ['pending', 'in_progress'] } }).catch(() => 0);
+      if (n) { out['/system/vendors-mgmt/requests'] = n; out['/system/shipment-orders/requests'] = n; }
+    }
+    // Anyone who asks (sales or the section team) sees their rejected requests waiting for an amendment.
+    if (SR.ASKERS.includes(role)) {
+      const n = await ShipmentRequest.countDocuments({ status: 'rejected', $or: [{ createdBy: req.user._id }, { salesRep: req.user._id }] }).catch(() => 0);
+      if (n) { out['/system/sales/shipment-request'] = n; out['/system/shipment-orders/request'] = n; }
+    }
     res.json(out);
   } catch (e) {
     res.json({});

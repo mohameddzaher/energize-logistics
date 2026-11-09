@@ -137,14 +137,31 @@ exports.list = async (req, res) => {
         },
       };
     });
-    // Purchase totals follow the selling-price list (the pricing view of a customer).
-    if (!canSeeSelling(req.user.role)) {
+    // The customer's rating over the last 90 days of shipments (volume, revenue, regularity, cancellations, recency): the same score as the analytics page.
+    let ratings = {};
+    try {
+      ratings = await cache.wrapStale('so:analytics:customer-rating:90', 60 * 1000, 15 * 60 * 1000, async () => {
+        const ins = require('./shipmentInsightsController');
+        const { todayKey } = require('../utils/companyDay');
+        const to = todayKey();
+        const d = new Date(`${to}T12:00:00Z`); d.setUTCDate(d.getUTCDate() - 89);
+        const out = await ins.compute({ from: d.toISOString().slice(0, 10), to });
+        return Object.fromEntries(out.customers.map((c) => [ins.fold(c.name), { grade: c.grade, score: c.score, trend: c.trend, live: c.live, cancelRate: c.cancelRate, last: c.last }]));
+      });
+    } catch (e) { console.error('customer registry rating:', e.message); }
+    const ratingOf = (name) => ratings[require('./shipmentInsightsController').fold(name)] || null;
+    const withRating = (list) => list.map((r) => {
+      const g = ratingOf(r.name);
+      return { ...r, rating: g, ratingScore: g ? g.score : null };
+    });
+    // Purchase totals follow the selling-price list (the pricing view of a customer), and never reach sales, who see no cost.
+    if (!canSeeSelling(req.user.role) || require('../config/priceView').isSalesRole(req.user)) {
       return res.json({
-        customers: body.customers.map(({ purchaseTotal, ...r }) => r),
+        customers: withRating(body.customers.map(({ purchaseTotal, ...r }) => r)),
         summary: { ...body.summary, purchaseTotal: undefined },
       });
     }
-    res.json(body);
+    res.json({ ...body, customers: withRating(body.customers) });
   } catch (e) {
     console.error('customer registry list:', e);
     res.status(500).json({ message: 'تعذّر تحميل سجل العملاء' });
@@ -160,7 +177,8 @@ exports.profile = async (req, res) => {
     const c = await ShipmentOrderCustomer.findById(req.params.id).lean();
     if (!c) return res.status(404).json({ message: 'العميل غير موجود' });
     const key = fold(c.name);
-    const money = canSeeSelling(req.user.role);
+    // Purchase figures on the customer file: the selling-price list, never sales (who see no cost).
+    const money = canSeeSelling(req.user.role) && !require('../config/priceView').isSalesRole(req.user);
     const page = Math.max(1, Number(req.query.page) || 1);
     const limit = Math.min(200, Math.max(1, Number(req.query.limit) || 50));
 
@@ -272,7 +290,8 @@ exports.profile = async (req, res) => {
             monthly: monthly.map((m) => ({ month: m._id, sheets: m.sheets, purchase: money ? r2(m.purchase) : undefined })),
           },
           routes,
-          sheets: { rows: sheetsPage, total, page, pages: Math.max(1, Math.ceil(total / limit)) },
+          // A reader without the purchase side gets the sheets without it too, not only the totals.
+          sheets: { rows: money ? sheetsPage : sheetsPage.map(({ purchaseValue, ...r }) => r), total, page, pages: Math.max(1, Math.ceil(total / limit)) },
           orders,
         };
       },

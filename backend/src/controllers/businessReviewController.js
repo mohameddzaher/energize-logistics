@@ -639,6 +639,8 @@ exports.updateAction = async (req, res) => {
     if (runner && action.shareGroup) {
       const same = {};
       ['title', 'description', 'priority'].forEach((f) => { if (req.body[f] !== undefined) same[f] = action[f]; });
+      // An edited due date (not a postponement, which is one owner's own) moves with the task for every owner.
+      if (req.body.dueDate !== undefined && req.body.status !== 'postponed') same.dueDate = action.dueDate;
       if (Object.keys(same).length) await BrAction.updateMany({ shareGroup: action.shareGroup, _id: { $ne: action._id } }, { $set: same });
     }
     emit('br:action', { id: String(action._id) });

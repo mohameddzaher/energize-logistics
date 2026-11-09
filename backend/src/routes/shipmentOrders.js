@@ -14,7 +14,9 @@ const EDIT_ROLES = ['super_admin', 'admin', 'it_manager', 'it_specialist', 'oper
   // The section's own team; it used to edit through the section grant alone, now explicit and includes the follow-up role.
   'shipment_orders_manager', 'shipment_orders_staff', 'shipment_orders_followup',
   // The data team creates and corrects shipments too.
-  ...require('../config/roles').DATA_ROLES];
+  ...require('../config/roles').DATA_ROLES,
+  // Sales and the vendors team work the section too, each on its own half (controller: ownedFields).
+  ...require('../config/priceView').SALES_ROLES, ...require('../config/priceView').VENDOR_ROLES];
 const ADMIN_ROLES = ['super_admin', 'admin', 'it_manager', 'operations_manager'];
 
 router.use(authenticate);
@@ -45,12 +47,21 @@ router.delete('/orders/:id', authorize.strict(...require('../services/shipmentOr
 // Section dashboard: one call for browser and phone, same analytics computation.
 router.get('/dashboard', so.getDashboard);
 router.get('/analytics', so.getAnalytics);
+// The section's analytics page: one computation under every filter (controllers/shipmentInsightsController).
+const insights = require('../controllers/shipmentInsightsController');
+router.get('/insights', insights.insights);
+router.get('/insights/options', insights.options);
 // Sales and operations team, for the operational sales field.
 router.get('/sales-reps', so.salesReps);
 // The operations manager's dashboard is also read here. It is the same one read in the private operations page: one computation and one endpoint (controllers/opsAnalyticsController), so no number differs between the two screens.
 const opsAn = require('../controllers/opsAnalyticsController');
-router.get('/ops-analytics', opsAn.analytics);
-router.get('/ops-analytics/filters', opsAn.filters);
+// The branch report carries revenue and profit together, so it is for readers who see both sides of the price.
+const bothSides = (req, res, next) => {
+  const v = require('../config/priceView').priceView(req.user);
+  return v.sell && v.buy ? next() : res.status(403).json({ message: 'تقريرُ الفروع يجمع البيعَ والشراء — خارج صلاحيّتك', code: 'PRICE_SIDE' });
+};
+router.get('/ops-analytics', bothSides, opsAn.analytics);
+router.get('/ops-analytics/filters', bothSides, opsAn.filters);
 router.get('/ops-analytics/targets', opsAn.getTargets);
 router.put('/ops-analytics/targets', authorize(...EDIT_ROLES), opsAn.setTargets);
 

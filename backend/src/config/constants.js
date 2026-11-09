@@ -117,6 +117,8 @@ module.exports = {
     h.data_manager = 'admin';
     h.data_analyst = 'data_manager';
     h.data_entry = 'data_manager';
+    // Vendors officers report to the team leader, who reports to the section manager.
+    h.vendors_staff = 'vendors_team_leader';
     return h;
   })(),
 

@@ -29,10 +29,14 @@ const allWorkflowRoles = [
   'employee', 'operations_manager', 'operations_staff',
   'moderator', 'cfo', 'accounting_manager', 'accountant',
   'collections_manager', 'collections_staff',
+  // Vendors manager and team leader work the sheet like operations (purchase side only).
+  ...require('../config/priceView').VENDOR_LEADS,
 ];
 // Readers: the data team and shipment follow-up open every manifest in full
 // (minus what the controller strips: selling price, invoice amounts).
-const readWorkflowRoles = [...allWorkflowRoles, ...require('../config/roles').DATA_ROLES, 'shipment_orders_followup', 'fleet_manager', 'fleet_supervisor'];
+// Sales and the vendors officers read it too: sales without the purchase side, vendors without the selling value (config/priceView).
+const readWorkflowRoles = [...allWorkflowRoles, ...require('../config/roles').DATA_ROLES, 'shipment_orders_followup', 'fleet_manager', 'fleet_supervisor',
+  ...require('../config/priceView').SALES_ROLES, ...require('../config/priceView').VENDOR_ROLES];
 
 // List & export
 router.get('/export', authorize(...readWorkflowRoles), workflowController.exportWorkflows);

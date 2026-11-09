@@ -9,6 +9,7 @@ import { useRouter } from 'next/navigation';
 import { useAuth } from '@/context/AuthContext';
 import { useLanguage } from '@/context/LanguageContext';
 import { useSocket } from '@/hooks/useSocket';
+import { Grade, TrendChip } from '@/components/analytics/AnalyticsKit';
 import { useLatestRequest } from '@/hooks/useLatestRequest';
 import api from '@/lib/api';
 import { useDialog } from '@/components/system/DialogProvider';
@@ -108,6 +109,11 @@ export default function CustomersRegister({ basePath }: { basePath: string }) {
     custTimer.current = setTimeout(() => { setFullById(null); load(); }, 800);
   }, [load]));
   useEffect(() => () => { if (custTimer.current) clearTimeout(custTimer.current); }, []);
+  // A shipment saved anywhere moves the customer's rating; refreshed after a quiet moment.
+  useSocket('shipmentOrders:updated', useCallback(() => {
+    if (custTimer.current) clearTimeout(custTimer.current);
+    custTimer.current = setTimeout(() => load(), 2500);
+  }, [load]));
 
   const money = !!summary && summary.purchaseTotal !== undefined;
   const cols = useMemo(() => REGISTRY_COLS.filter((c) => !c.money || money), [money]);
@@ -319,6 +325,13 @@ export default function CustomersRegister({ basePath }: { basePath: string }) {
                             className="inline-flex items-center gap-1 hover:text-[#f37121]">
                             {r.name}<ExternalLink className="w-3 h-3 text-slate-300" />
                           </Link>
+                        </td>
+                      );
+                    }
+                    if (c.key === 'ratingScore') {
+                      return (
+                        <td key="ratingScore" className="px-3 py-2 whitespace-nowrap" title={r.rating ? (ar ? `${r.rating.live} شحنة منفّذة · إلغاء ${r.rating.cancelRate}%` : `${r.rating.live} executed · ${r.rating.cancelRate}% cancelled`) : ''}>
+                          {r.rating ? <span className="inline-flex items-center gap-2"><Grade g={r.rating.grade} score={r.rating.score} /><TrendChip t={r.rating.trend} ar={ar} /></span> : <span className="text-slate-300">—</span>}
                         </td>
                       );
                     }

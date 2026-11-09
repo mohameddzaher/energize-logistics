@@ -713,6 +713,23 @@ class _CustomsDetailScreenState extends State<CustomsDetailScreen> {
                               backgroundColor: T.inkFaint.withValues(alpha: 0.12), color: T.success),
                           ),
                           const SizedBox(height: 10),
+                          // Transaction type, chosen at creation and corrected here; the stage list follows it on the server (vehicles have no container return).
+                          Row(children: [
+                            Text(tr('نوع المعاملة', 'Transaction type'), style: const TextStyle(fontSize: 12.5, color: T.inkSoft, fontWeight: FontWeight.w700)),
+                            const SizedBox(width: 8),
+                            for (final x in const [('containers', 'حاويات', 'Containers'), ('vehicles', 'سيّارات', 'Vehicles')])
+                              Padding(
+                                padding: const EdgeInsetsDirectional.only(end: 6),
+                                child: ChoiceChip(
+                                  label: Text(tr(x.$2, x.$3), style: const TextStyle(fontSize: 12)),
+                                  selected: cargo == x.$1,
+                                  onSelected: !canEditCustoms(context) || _saving || cargo == x.$1
+                                      ? null
+                                      : (_) => _patch({'cargoType': x.$1}, tr('تغيّر نوع المعاملة إلى ${x.$2}', 'Type changed to ${x.$3}')),
+                                ),
+                              ),
+                          ]),
+                          const SizedBox(height: 8),
                           for (final e in baseSteps.asMap().entries)
                             stepRow(e.value, last: !perUnit && e.key == baseSteps.length - 1),
                           if (perUnit) ...[

@@ -143,6 +143,9 @@ const effectivePages = async (role) => {
     out[p.key] = pageFollowsSection(p, sections, custom);
   }
   // The loads board opens by its page, not its section: its default roles include sales, who have no Operations section. A saved choice still wins.
+  // The operations workflow opens by its page for sales and the vendors team, who have no Operations section: they read it with their side of the price only (config/priceView). A saved choice still wins.
+  const pv = require('../config/priceView');
+  if ([...pv.SALES_ROLES, ...pv.VENDOR_ROLES].includes(role) && !Object.prototype.hasOwnProperty.call(pages, '/system/operations')) out['/system/operations'] = true;
   const board = require('../config/opsBoard');
   if (board.DEFAULT_ROLES.includes(role) && !Object.prototype.hasOwnProperty.call(pages, board.PAGE)) out[board.PAGE] = true;
   // The two wallet pages are always view-only for the collections section (config/walletViewOnly). They were open unless explicitly closed, but saving the page matrix writes every page into the role, so all operations pages including the wallet were saved as closed for collections staff. They are now always open; writes are rejected at the gate by role.

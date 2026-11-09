@@ -34,8 +34,8 @@ const EMPTY = { nameEn: '', nameAr: '', color: '#f37121', isActive: true };
 /** The same screen serves two places: the global page for all lists, and a tab inside a section's settings when `module` is passed. Copying it would let a fix land in one and not the other, and reference lists cannot tolerate two diverging screens. */
 export default function ReferenceDataManager({ module: onlyModule, type: onlyType, alsoType, embedded }: {
   module?: string;
-  /** A list from another module shown with the section's lists: work-plan tasks (jp_task_<section>). */
-  alsoType?: string;
+  /** Lists from another module shown with the section's lists: work-plan tasks (jp_task_<section>), a shared list. */
+  alsoType?: string | string[];
   /**
    * A single specific list.
    * A settings tab about one thing (e.g. shipment statuses) does not need the list-selection column; the list is known from the tab title.
@@ -62,17 +62,20 @@ export default function ReferenceDataManager({ module: onlyModule, type: onlyTyp
   const current = types.find((t) => t.type === activeType) || null;
   const canManage = !!current?.canManage;
 
+  // A string key, so an array prop written inline does not change identity every render and refetch in a loop.
+  const alsoKey = Array.isArray(alsoType) ? alsoType.join(',') : (alsoType || '');
   const loadTypes = useCallback(async () => {
     try {
       const d = await api.get<{ types: LookupType[] }>('/api/lookups/types');
+      const extra = alsoKey ? alsoKey.split(',') : [];
       const all = (d.types || [])
-        .filter((t) => !onlyModule || t.module === onlyModule || (!!alsoType && t.type === alsoType))
+        .filter((t) => !onlyModule || t.module === onlyModule || extra.includes(t.type))
         .filter((t) => !onlyType || t.type === onlyType);
       setTypes(all);
       if (all.length && !activeType) setActiveType(all[0].type);
     } catch {}
     setLoading(false);
-  }, [activeType, onlyModule, onlyType, alsoType]);
+  }, [activeType, onlyModule, onlyType, alsoKey]);
 
   const loadItems = useCallback(async (type: string) => {
     if (!type) return;

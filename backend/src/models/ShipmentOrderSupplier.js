@@ -38,12 +38,63 @@ const shipmentOrderSupplierSchema = new mongoose.Schema(
     externalIds: { type: [String], default: [], index: true },
     mergedInto: { type: mongoose.Schema.Types.ObjectId, ref: 'ShipmentOrderSupplier', default: null },
     isActive: { type: Boolean, default: true },
+
+    // Vendors management: the master-sheet profile the vendors team keeps on each carrier (imported once from their
+    // sheets, then worked here). Activity is never stored: it is read from the shipments every time.
+    inMaster: { type: Boolean, default: false, index: true },
+    masterNo: { type: Number, default: null },
+    isNewVendor: { type: Boolean, default: false },
+    /** The vendors team member who follows this vendor (name as the team writes it, and the account when known). */
+    followOwner: { type: String, trim: true, default: '', index: true },
+    followUser: { type: mongoose.Schema.Types.ObjectId, ref: 'User', default: null },
+    /** Our operations rep who brought or deals with the vendor. */
+    energizeRep: { type: String, trim: true, default: '' },
+    taxClass: { type: String, trim: true, default: '' },
+    representative: { type: String, trim: true, default: '' },
+    destinations: { type: String, trim: true, default: '' },
+    headOffice: { type: String, trim: true, default: '' },
+    vehicleTypes: { type: String, trim: true, default: '' },
+    fleetSize: { type: Number, default: null },
+    hasPapers: { type: Boolean, default: false },
+    vendorSigned: { type: Boolean, default: false },
+    ourSigned: { type: Boolean, default: false },
+    contractDate: { type: String, trim: true, default: '' },
+    contractStatus: { type: String, trim: true, default: '', index: true },
+    paymentTermDays: { type: Number, default: null },
+    financeCode: { type: String, trim: true, default: '' },
+    financeClass: { type: String, trim: true, default: '' },
+    previousName: { type: String, trim: true, default: '' },
+    /** Follow-up priority for an active carrier not yet on the master (أولوية 1/2/3). */
+    leadPriority: { type: String, trim: true, default: '' },
+    /** The other names this carrier is written under in shipments; their folded keys join shipments to this row. */
+    aliases: { type: [String], default: [] },
+    aliasKeys: { type: [String], default: [], index: true },
+    /** The team's own rating (1-5) beside the computed one. */
+    rating: { type: Number, default: null, min: 1, max: 5 },
+    ratingNote: { type: String, trim: true, default: '' },
+    lastFollowUpAt: { type: Date, default: null },
     createdBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
   },
   { timestamps: true }
 );
 
 shipmentOrderSupplierSchema.index({ name: 1 });
+
+/** The folded key every carrier name is joined by (alef forms, ta marbuta, ya, Persian letters, spaces). */
+const foldName = (v) => String(v || '')
+  .replace(/[٠-٩]/g, (d) => '٠١٢٣٤٥٦٧٨٩'.indexOf(d))
+  .replace(/[أإآٱ]/g, 'ا').replace(/ى/g, 'ي').replace(/ة/g, 'ه')
+  .replace(/چ/g, 'ج').replace(/گ/g, 'ك').replace(/ڤ/g, 'ف').replace(/پ/g, 'ب')
+  .replace(/[\u064B-\u0652\u0640]/g, '')
+  .replace(/[\s\u00a0]+/g, ' ').trim().toLowerCase();
+shipmentOrderSupplierSchema.statics.foldName = foldName;
+
+shipmentOrderSupplierSchema.pre('save', function keys(next) {
+  if (this.isModified('name') || this.isModified('aliases') || !this.aliasKeys?.length) {
+    this.aliasKeys = [...new Set([this.name, ...(this.aliases || [])].map(foldName).filter(Boolean))];
+  }
+  next();
+});
 
 // Saved shipment-order lists are cleared on every write.
 // The suppliers and trucks lists are cached for two minutes (so:registry) because reading them from the cluster is slow. A supplier appears inside the trucks list and its truck count in its own list, so any write to either, from any screen or script, clears the whole prefix.

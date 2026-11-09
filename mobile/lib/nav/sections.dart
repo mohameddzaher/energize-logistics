@@ -99,9 +99,10 @@ import '../screens/sales_dashboard.dart';
 import '../screens/marketing_dashboard.dart';
 import '../screens/admin_audit.dart';
 import '../screens/admin_complaints.dart';
-import '../screens/shipment_orders_dashboard.dart';
+import '../screens/so_insights.dart';
+import '../screens/shipment_requests.dart';
+import '../screens/vendors_mgmt.dart';
 import '../screens/shipment_orders_chat.dart';
-import '../screens/shipment_orders_analytics.dart';
 import '../screens/shipment_orders_fleet.dart';
 import '../screens/shipment_orders_settings.dart';
 import '../screens/shipment_branch_access.dart';
@@ -178,6 +179,9 @@ const _admins = ['super_admin', 'admin', 'it_manager', 'it_specialist'];
 /// Light transport custody, vehicles and staff adding: for the sector manager, deputy, system admin and finance, by role alone and not by section grant, like the server guard (authorize.strict in routes/lightTransport) and the website menu entries.
 const _ltOwners = ['super_admin', 'admin', 'it_manager', 'it_specialist', 'b2c_manager', 'b2c_deputy', 'cfo', 'accounting_manager', 'accountant'];
 const _b2cSupervisors = ['b2c_rep_supervisor', 'b2c_inspection_supervisor'];
+// Sales and the vendors team see only their half of a shipment (server: config/priceView).
+const _salesRoles = ['sales_manager', 'sales_rep', 'sales_trainee'];
+const _vendorRoles = ['vendors_manager', 'vendors_team_leader', 'vendors_staff', 'vendors_trainee'];
 
 /// Heavy transport custody: for the Location Solutions manager, system admin and finance, by role alone, like the server guard (authorize.strict in routes/htCustody).
 /// Custody ledgers are shown where the server opens them (`custodyPages` from login and /me: owner roles or a permissions-screen grant); an older server without the list falls back to the owner roles.
@@ -193,6 +197,7 @@ const _sectionOrder = <String>[
   'Top Management',
   'Operations',
   'Shipment Orders',
+  'Vendors Management',
   'Operations Platform',
   'Collections',
   'Fleet Management',
@@ -229,6 +234,8 @@ List<AppSection> sectionsFor(AuthProvider auth) {
     if (s.pages.any((p) => auth.isPageGranted(p.path))) return true;
     // The loads board opens by its page, not its section: sales reach it without the rest of Operations (config/opsBoard). The other Operations pages stay closed by their own page access.
     if (s.key == 'Operations' && canOpenOpsBoard(auth)) return true;
+    // Sales and the vendors team read the operations workflow by its page, each with its side of the price (config/priceView).
+    if (s.key == 'Operations' && (_salesRoles.contains(role) || _vendorRoles.contains(role)) && auth.pageAccess['/system/operations'] == true) return true;
     // Top management is an account flag, not a role (User.isTopManagement).
     if (s.key == 'Top Management' && (auth.user?['isTopManagement'] == true || auth.user?['isChairman'] == true)) return true;
     return false;
@@ -516,6 +523,7 @@ List<AppSection> sectionsFor(AuthProvider auth) {
         AppPage('مسار البيع', 'Pipeline', Icons.view_kanban_outlined, (c) => const SalesPipelineScreen(), path: '/system/sales/pipeline'),
         AppPage('الأهداف', 'Targets', Icons.track_changes_outlined, (c) => ResourceScreen(config: salesTargetsCfg(canEdit: canSetTargets)), path: '/system/sales/targets'),
         AppPage('الأداء', 'Performance', Icons.leaderboard_outlined, (c) => const SalesPerformanceScreen(), path: '/system/sales/performance'),
+        AppPage('طلب شحنة', 'Shipment request', Icons.post_add_outlined, (c) => const ShipmentRequestsScreen(mode: 'ask'), path: '/system/sales/shipment-request'),
         // Selling-price approvals: the sales manager, top roles and flagged top-management accounts; the server checks again.
         if (canApproveSelling(auth)) AppPage('طلبات تعديل سعر البيع', 'Selling-price requests', Icons.price_check_outlined, (c) => const SellingRequestsScreen(), path: sellingRequestsPath),
         if (jpMember(role, 'sales')) AppPage('خطّة العمل (JP)', 'JP', Icons.event_available_outlined, (c) => const JpScreen(section: 'sales'), path: '/system/sales/jp'),
@@ -665,13 +673,20 @@ List<AppSection> sectionsFor(AuthProvider auth) {
     ),
     AppSection(
       key: 'Shipment Orders', arTitle: 'طلبات الشحنات', enTitle: 'Shipment Orders', icon: Icons.assignment_outlined,
-      roles: const [..._admins, 'operations_manager', 'operations_staff', 'moderator', 'shipment_orders_manager', 'shipment_orders_staff', 'shipment_orders_followup'],
+      roles: const [..._admins, 'operations_manager', 'operations_staff', 'moderator', 'shipment_orders_manager', 'shipment_orders_staff', 'shipment_orders_followup',
+        'sales_manager', 'sales_rep', 'vendors_manager', 'vendors_team_leader', 'vendors_staff'],
       pages: [
-        // Section dashboard first, as on the web: how it is doing today, before the table.
-        AppPage('لوحة الشحنات', 'Dashboard', Icons.dashboard_outlined, (c) => const ShipmentOrdersDashboardScreen(), path: '/system/shipment-orders/dashboard'),
+        // One analytics page: it replaced the dashboard and the old analytics, as on the web.
+        AppPage('التحليلات', 'Analytics', Icons.bar_chart, (c) => const SoInsightsScreen(), path: '/system/shipment-orders/analytics'),
         AppPage('الشحنات', 'Orders', Icons.assignment_outlined, (c) => const ShipmentOrdersScreen(), path: '/system/shipment-orders'),
-        AppPage('مساعد الإنشاء', 'Create Assistant', Icons.smart_toy_outlined, (c) => const ShipmentOrdersChatScreen(), path: '/system/shipment-orders/chat'),
-        AppPage('التحليلات', 'Analytics', Icons.bar_chart, (c) => const ShipmentOrdersAnalyticsScreen(), path: '/system/shipment-orders/analytics'),
+        // Sales asks; the vendors team places. Each sees its own entry.
+        if (!_vendorRoles.contains(role))
+          AppPage('طلب شحنة', 'Shipment request', Icons.post_add_outlined, (c) => const ShipmentRequestsScreen(mode: 'ask'), path: '/system/shipment-orders/request'),
+        if (!_salesRoles.contains(role))
+          AppPage('الطلبات من المبيعات', 'Requests from sales', Icons.move_to_inbox_outlined, (c) => const ShipmentRequestsScreen(mode: 'place'), path: '/system/shipment-orders/requests'),
+        // Direct creation is for the shipments team; sales and vendors go through requests.
+        if (!_salesRoles.contains(role) && !_vendorRoles.contains(role))
+          AppPage('مساعد الإنشاء', 'Create Assistant', Icons.smart_toy_outlined, (c) => const ShipmentOrdersChatScreen(), path: '/system/shipment-orders/chat'),
         AppPage('الموردون والمركبات', 'Suppliers & Vehicles', Icons.local_shipping_outlined, (c) => const ShipmentOrdersFleetScreen(), path: '/system/shipment-orders/fleet'),
         AppPage('العملاء', 'Customers', Icons.people_outline, (c) => ResourceScreen(config: customersCfg), path: '/system/shipment-orders/customers'),
         AppPage('الموردون', 'Suppliers', Icons.business_outlined, (c) => ResourceScreen(config: shipmentOrdersSuppliersCfg), path: '/system/shipment-orders/fleet'),
@@ -687,6 +702,23 @@ List<AppSection> sectionsFor(AuthProvider auth) {
         if (jpMember(role, 'shipment-orders')) AppPage('خطّة العمل (JP)', 'JP', Icons.event_available_outlined, (c) => const JpScreen(section: 'shipment-orders'), path: '/system/shipment-orders/jp'),
         if (jpManager(role, 'shipment-orders')) AppPage('لوحة JP', 'JP Dashboard', Icons.insights_outlined, (c) => const JpDashScreen(section: 'shipment-orders'), path: '/system/shipment-orders/jp-dashboard'),
         if (jpManager(role, 'shipment-orders') && !_top.contains(role)) AppPage('خطّة الإدارة (Management JP)', 'Management JP', Icons.workspace_premium_outlined, (c) => const JpScreen(scope: 'management'), path: '/system/shipment-orders/management-jp'),
+      ],
+    ),
+    AppSection(
+      key: 'Vendors Management', arTitle: 'إدارة الموردين', enTitle: 'Vendors Management', icon: Icons.handshake_outlined,
+      roles: const [..._admins, 'operations_manager', 'vendors_manager', 'vendors_team_leader', 'vendors_staff'],
+      pages: [
+        AppPage('تحليل القسم', 'Section analysis', Icons.insights_outlined, (c) => const VendorsOverviewScreen(), path: '/system/vendors-mgmt'),
+        AppPage('التحليل التشغيلي اليومي', 'Daily operations', Icons.today_outlined, (c) => const VendorsDailyScreen(), path: '/system/vendors-mgmt/daily'),
+        AppPage('الطلبات من المبيعات', 'Requests from sales', Icons.move_to_inbox_outlined, (c) => const ShipmentRequestsScreen(mode: 'place'), path: '/system/vendors-mgmt/requests'),
+        AppPage('الموردون', 'Vendors', Icons.business_outlined, (c) => const VendorsListScreen(), path: '/system/vendors-mgmt/vendors'),
+        AppPage('السيارات', 'Trucks', Icons.local_shipping_outlined, (c) => const VendorsVehiclesScreen(), path: '/system/vendors-mgmt/vehicles'),
+        AppPage('السائقون الأفراد', 'Freelance drivers', Icons.badge_outlined, (c) => const VendorsListScreen(kind: 'freelancer'), path: '/system/vendors-mgmt/drivers'),
+        AppPage('التنبيهات', 'Alerts', Icons.notifications_active_outlined, (c) => const VendorsAlertsScreen(), path: '/system/vendors-mgmt/alerts'),
+        AppPage('بحث بالمسار', 'Route search', Icons.alt_route_outlined, (c) => const VendorsRouteSearchScreen(), path: '/system/vendors-mgmt/routes'),
+        if (jpMember(role, 'vendors')) AppPage('خطّة العمل (JP)', 'JP', Icons.event_available_outlined, (c) => const JpScreen(section: 'vendors'), path: '/system/vendors-mgmt/jp'),
+        if (jpManager(role, 'vendors')) AppPage('لوحة JP', 'JP Dashboard', Icons.insights_outlined, (c) => const JpDashScreen(section: 'vendors'), path: '/system/vendors-mgmt/jp-dashboard'),
+        if (jpManager(role, 'vendors') && !_top.contains(role)) AppPage('خطّة الإدارة (Management JP)', 'Management JP', Icons.workspace_premium_outlined, (c) => const JpScreen(scope: 'management'), path: '/system/vendors-mgmt/management-jp'),
       ],
     ),
     AppSection(

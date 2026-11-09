@@ -138,6 +138,83 @@ class _BrMeetingDepartmentsTabState extends State<BrMeetingDepartmentsTab> {
     if (ok == true) _patch('${t['_id']}', {'status': 'postponed', 'newDueDate': newDue, 'postponeReason': reason.text.trim()}, tr('تم تأجيل البند', 'Postponed'));
   }
 
+  /// Edit what the task is: title, details, owner, due date and priority. Shared owners get the same text, priority and date.
+  Future<void> _edit(Map t) async {
+    final people = List<Map<String, dynamic>>.from(widget.meta['participants'] ?? []);
+    final prios = List<Map<String, dynamic>>.from(widget.meta['priorities'] ?? []);
+    final title = TextEditingController(text: '${t['title'] ?? ''}');
+    final desc = TextEditingController(text: '${t['description'] ?? ''}');
+    String who = '${t['assignee'] is Map ? t['assignee']['_id'] : t['assignee'] ?? ''}';
+    String due = t['dueDate'] == null ? '' : brIsoDay(DateTime.parse('${t['dueDate']}').toLocal());
+    String prio = '${t['priority'] ?? 'medium'}';
+    final ok = await showModalBottomSheet<bool>(
+      context: context,
+      isScrollControlled: true,
+      builder: (c) => StatefulBuilder(builder: (c, setS) {
+        final whoName = people.where((p) => '${p['_id']}' == who).map((p) => '${p['name']}').firstOrNull ?? '${t['assigneeName'] ?? ''}';
+        return Padding(
+          padding: EdgeInsets.fromLTRB(16, 16, 16, MediaQuery.of(c).viewInsets.bottom + 16),
+          child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Text(tr('تعديل البند', 'Edit task'), style: const TextStyle(fontWeight: FontWeight.w900)),
+            const SizedBox(height: 10),
+            TextField(controller: title, decoration: InputDecoration(labelText: tr('نص البند *', 'Task *'))),
+            const SizedBox(height: 8),
+            TextField(controller: desc, maxLines: 3, decoration: InputDecoration(labelText: tr('التفاصيل', 'Details'))),
+            const SizedBox(height: 8),
+            OutlinedButton.icon(
+              onPressed: () async {
+                final p = await brPickPerson(c, people, title: tr('المسؤول', 'Owner'));
+                if (p != null) setS(() => who = '${p['_id']}');
+              },
+              icon: const Icon(Icons.person_outline), label: Text(whoName),
+            ),
+            const SizedBox(height: 8),
+            OutlinedButton.icon(
+              onPressed: () async {
+                final d = await showDatePicker(context: c, initialDate: DateTime.tryParse(due) ?? DateTime.now(), firstDate: DateTime(2020), lastDate: DateTime(2100));
+                if (d != null) setS(() => due = brIsoDay(d));
+              },
+              icon: const Icon(Icons.event), label: Text(due.isEmpty ? tr('موعد التسليم', 'Due date') : due),
+            ),
+            if (prios.isNotEmpty) ...[
+              const SizedBox(height: 8),
+              Wrap(spacing: 6, children: [
+                for (final pr in prios)
+                  ChoiceChip(label: Text(tr('${pr['ar']}', '${pr['en']}'), style: const TextStyle(fontSize: 12)), selected: prio == '${pr['key']}', onSelected: (_) => setS(() => prio = '${pr['key']}')),
+              ]),
+            ],
+            if (List.from(t['sharedWith'] ?? []).isNotEmpty)
+              Padding(padding: const EdgeInsets.only(top: 6), child: Text(tr('النصُّ والتفاصيلُ والأولويّةُ والموعدُ تتغيّر عند كلّ المشتركين فيه.', 'Text, details, priority and date change for every owner sharing it.'), style: const TextStyle(fontSize: 11.5, color: T.info))),
+            const SizedBox(height: 12),
+            SizedBox(width: double.infinity, child: FilledButton(
+              onPressed: () { if (title.text.trim().isNotEmpty) Navigator.pop(c, true); },
+              child: Text(tr('حفظ التعديل', 'Save')),
+            )),
+          ]),
+        );
+      }),
+    );
+    if (ok == true) {
+      _patch('${t['_id']}', {'title': title.text.trim(), 'description': desc.text.trim(), 'assignee': who, 'dueDate': due.isEmpty ? null : due, 'priority': prio}, tr('حُفظ تعديل البند', 'Saved'));
+    }
+  }
+
+  /// Give the same task to another owner too; it appears in their department card and their own list.
+  Future<void> _share(Map t) async {
+    final people = List<Map<String, dynamic>>.from(widget.meta['participants'] ?? []);
+    final owner = '${t['assignee'] is Map ? t['assignee']['_id'] : t['assignee'] ?? ''}';
+    final taken = [owner, ...List<Map>.from(t['sharedWith'] ?? []).map((x) => '${x['assignee']}')];
+    final p = await brPickPerson(context, people, exclude: taken, title: tr('إسناده لمسؤولٍ آخر أيضًا', 'Also assign to'));
+    if (p == null) return;
+    try {
+      await Api.instance.post('/api/business-review/actions/${t['_id']}/share', {'assignee': '${p['_id']}'});
+      if (mounted) brSnack(context, tr('أُسند البند إليه أيضًا وظهر في قسمه', 'Shared'));
+      _load();
+    } catch (e) {
+      if (mounted) brSnack(context, brErr(e));
+    }
+  }
+
   Future<void> _update(Map t) async {
     final v = await brProgressSheet(context, widget.meta, '${t['title']}', '${t['status']}', (t['progress'] ?? 0) as num, expectedDate: t['expectedDate']);
     if (v != null) _patch('${t['_id']}', v, tr('تم تحديث البند', 'Updated'));
@@ -152,6 +229,12 @@ class _BrMeetingDepartmentsTabState extends State<BrMeetingDepartmentsTab> {
         ?? people.where((p) => p['section'] == dept && '${p['role']}'.endsWith('_manager')).firstOrNull
         ?? people.where((p) => p['section'] == dept).firstOrNull;
     String who = followUpOf != null ? '${followUpOf['assignee']}' : '${head?['_id'] ?? ''}';
+    // Other owners from any department: one task, a row per owner, each in its own department card.
+    final also = <String>[];
+    String nameOf(String id) {
+      final p = people.where((x) => '${x['_id']}' == id).firstOrNull;
+      return p == null ? id : '${p['name']}${'${p['section'] ?? ''}'.isNotEmpty ? ' — ${brDept(context, '${p['section']}')}' : ''}';
+    }
     String due = '';
     final title = TextEditingController();
     final desc = TextEditingController();
@@ -187,6 +270,19 @@ class _BrMeetingDepartmentsTabState extends State<BrMeetingDepartmentsTab> {
               icon: const Icon(Icons.event),
               label: Text(due.isEmpty ? tr('موعد التسليم', 'Due date') : due),
             ),
+            const SizedBox(height: 8),
+            Text(tr('وإسناده أيضًا إلى', 'Also assign to'), style: const TextStyle(fontSize: 12.5, fontWeight: FontWeight.w800)),
+            Wrap(spacing: 6, runSpacing: 4, children: [
+              for (final id in also) InputChip(label: Text(nameOf(id), style: const TextStyle(fontSize: 12)), onDeleted: () => setS(() => also.remove(id))),
+              ActionChip(
+                avatar: const Icon(Icons.person_add_alt, size: 16),
+                label: Text(tr('مسؤولٌ آخر (أيّ قسم)', 'Another owner (any department)'), style: const TextStyle(fontSize: 12)),
+                onPressed: () async {
+                  final p = await brPickPerson(c, people, exclude: [who, ...also], title: tr('وإسناده أيضًا إلى', 'Also assign to'));
+                  if (p != null) setS(() => also.add('${p['_id']}'));
+                },
+              ),
+            ]),
             const SizedBox(height: 12),
             SizedBox(width: double.infinity, child: FilledButton(
               onPressed: () { if (title.text.trim().isNotEmpty && who.isNotEmpty) Navigator.pop(c, true); },
@@ -200,6 +296,7 @@ class _BrMeetingDepartmentsTabState extends State<BrMeetingDepartmentsTab> {
     try {
       await Api.instance.post('/api/business-review/meetings/${widget.meetingId}/actions', {
         'title': title.text.trim(), 'description': desc.text.trim(), 'assignee': who, 'department': dept,
+        'assignees': [who, ...also.where((x) => x != who)],
         if (due.isNotEmpty) 'dueDate': due,
         if (followUpOf != null) 'followUpOf': '${followUpOf['_id']}',
       });
@@ -372,6 +469,9 @@ class _BrMeetingDepartmentsTabState extends State<BrMeetingDepartmentsTab> {
                   child: Text('${t['description']}', style: const TextStyle(fontSize: 13)),
                 ),
               _line(tr('المسؤول', 'Owner'), '${t['assigneeName']}'),
+              if (List.from(t['sharedWith'] ?? []).isNotEmpty)
+                _line(tr('مشترك مع', 'Shared with'), List<Map>.from(t['sharedWith']).map((x) =>
+                    '${x['assigneeName']} (${brDept(context, '${x['department'] ?? ''}')} · ${brVocab(widget.meta['actionStatuses'] as List?, '${x['status']}').label} ${x['progress'] ?? 0}%)').join('، '), color: T.info),
               if ('${t['raisedByName'] ?? ''}'.isNotEmpty) _line(tr('بطلب من', 'Requested by'), '${t['raisedByName']}'),
               _line(tr('أُسند في', 'Raised in'), '${t['meetingRef']} · ${brDate(t['meetingDate'] ?? t['createdAt'])}${t['fromThisMeeting'] == true ? ' (${tr('هذا الاجتماع', 'this meeting')})' : ''}'),
               _line(tr('التسليم', 'Due'), brDate(t['dueDate']), color: overdue ? T.danger : null),
@@ -398,6 +498,8 @@ class _BrMeetingDepartmentsTabState extends State<BrMeetingDepartmentsTab> {
                       onPressed: () => _postpone(t), icon: const Icon(Icons.pause, size: 16), label: Text(tr('تأجيل', 'Postpone'))),
                   OutlinedButton.icon(onPressed: () => _update(t), icon: const Icon(Icons.trending_up, size: 16), label: Text(tr('تحديث الحالة', 'Update status'))),
                   OutlinedButton.icon(onPressed: () => _newTask(dept, followUpOf: t), icon: const Icon(Icons.add, size: 16), label: Text(tr('إضافة بند متابعة', 'Follow-up task'))),
+                  OutlinedButton.icon(onPressed: () => _edit(t), icon: const Icon(Icons.edit_outlined, size: 16), label: Text(tr('تعديل البند', 'Edit task'))),
+                  OutlinedButton.icon(onPressed: () => _share(t), icon: const Icon(Icons.group_add_outlined, size: 16), label: Text(tr('إسناده لمسؤولٍ آخر أيضًا', 'Also assign to…'))),
                 ]),
               ],
               BrUpdateLog(updates: List.from(t['updates'] ?? []).reversed.toList(), meta: widget.meta),

@@ -21,7 +21,9 @@ List<Map<String, dynamic>> soLogFiles(Map h) {
 
 /// Same roles as routes/shipmentOrders.js, or an edit grant from the permissions matrix.
 const soEditRoles = ['super_admin', 'admin', 'it_manager', 'it_specialist', 'operations_manager', 'operations_staff', 'moderator',
-  'shipment_orders_manager', 'shipment_orders_staff', 'shipment_orders_followup', 'data_manager', 'data_analyst', 'data_entry'];
+  'shipment_orders_manager', 'shipment_orders_staff', 'shipment_orders_followup', 'data_manager', 'data_analyst', 'data_entry',
+  // Sales asks for shipments and the vendors team places them (server: config/priceView).
+  'sales_manager', 'sales_rep', 'vendors_manager', 'vendors_team_leader', 'vendors_staff'];
 const soAdminRoles = ['super_admin', 'admin', 'it_manager', 'operations_manager'];
 bool canEditOrders(BuildContext c) {
   final a = c.read<AuthProvider>();
@@ -94,6 +96,15 @@ String soMoney(dynamic n) {
   if (v == null) return '$n';
   final s = v == v.roundToDouble() ? v.toInt().toString() : v.toStringAsFixed(2);
   return s.replaceAllMapped(RegExp(r'\B(?=(\d{3})+(?!\d))'), (_) => ',');
+}
+
+/// The prices this reader may see: the server drops the side a role may not see (sales: no buy; vendors: no sell).
+String soPriceLine(Map o) {
+  final parts = <String>[
+    if (o.containsKey('sellPrice')) '${tr('بيع', 'Sell')} ${soMoney(o['sellPrice'])}',
+    if (o.containsKey('buyPrice')) '${tr('شراء', 'Buy')} ${soMoney(o['buyPrice'])}',
+  ];
+  return parts.join(' / ');
 }
 
 /// Payment type: keys of the operations workflow (utils/paymentType on the server).

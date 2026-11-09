@@ -409,7 +409,7 @@ class ShipmentOrderBigCard extends StatelessWidget {
             _line(Icons.schedule, tr('الاستلام', 'Pickup'), soFmtDT(o['pickupTime'])),
             _line(Icons.inventory_2_outlined, tr('الحمولة', 'Cargo'), _s(o['cargoType'])),
             if (hasMoney)
-              _line(Icons.payments_outlined, tr('بيع / شراء', 'Sell / Buy'), '${soMoney(o['sellPrice'])} / ${soMoney(o['buyPrice'])}'),
+              _line(Icons.payments_outlined, tr('السعر', 'Price'), soPriceLine(o)),
             // The two notes, each under its own name
             if (tripNote.isNotEmpty)
               _noteBox(Icons.description_outlined, tr('ملاحظة أمر النقل', 'Transport order note'), tripNote, T.inkSoft),

@@ -202,6 +202,8 @@ exports.getMeetingDepartments = async (req, res) => {
       return ms < 0 ? 'late' : ms <= 2 * DAY ? 'h48' : ms <= 7 * DAY ? 'week' : 'later';
     };
     const rank = (a) => (overdue(a) ? 0 : a.status === 'blocked' ? 1 : a.status === 'in_progress' ? 2 : a.status === 'open' ? 3 : a.status === 'postponed' ? 4 : 5);
+    // A task given to several owners shows each owner's part on every card that carries it.
+    const shared = await require('./businessReviewController').siblingsOf(actions);
     const keys = [...new Set([...(meeting.departments || []), ...actions.map(deptOf)])];
     const cards = keys.map((key) => {
       const list = actions.filter((a) => deptOf(a) === key)
@@ -242,6 +244,8 @@ exports.getMeetingDepartments = async (req, res) => {
           delegations: delsOf.get(String(a._id)) || [],
           followUpOf: a.followUpOf ? { _id: a.followUpOf, title: titleOf.get(String(a.followUpOf)) || '' } : null,
           followUps: followUps.get(String(a._id)) || [],
+          sharedWith: shared.get(String(a._id)) || [],
+          shareGroup: a.shareGroup || null,
           updates: (a.updates || []).slice(-15).reverse(),
         })),
       };

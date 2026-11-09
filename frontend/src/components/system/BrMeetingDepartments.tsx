@@ -4,13 +4,13 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import {
   CheckCircle2, PlayCircle, CircleDashed, PauseCircle, AlertTriangle, Ban, ChevronDown, Plus, CornerDownLeft,
-  Loader2, Link2, CalendarDays, User, Layers,
+  Loader2, Link2, CalendarDays, User, Layers, Pencil, Users, X,
 } from 'lucide-react';
 import api from '@/lib/api';
 import { useSocket } from '@/hooks/useSocket';
 import { StatusPill, ProgressForm, Progress, DatesLine, UpdateLog } from '@/components/system/BusinessReviewKit';
 import {
-  brCreateAction, brUpdateAction, type BrMeta, type Lang, type ProgressReport, tx, deptLabel, fmtDate, isoDay,
+  brCreateAction, brUpdateAction, brShareAction, type BrMeta, type Lang, type ProgressReport, tx, deptLabel, fmtDate, isoDay,
 } from '@/lib/businessReview';
 
 type Counts = { total: number; done: number; in_progress: number; open: number; postponed: number; blocked: number; overdue: number; today: number; agenda: number; h48: number; week: number; later: number; nodate: number; onTime: number };
@@ -196,7 +196,17 @@ function TaskRow({ task, meta, L, meetingId, canEdit, dept, open, onToggle, onCh
   onToggle: () => void; onChanged: () => void; notify: (m: string, k?: any) => void;
 }) {
   const t = (en: string, ar: string) => tx(L, en, ar);
-  const [mode, setMode] = useState<'' | 'update' | 'postpone' | 'followup'>('');
+  const [mode, setMode] = useState<'' | 'update' | 'postpone' | 'followup' | 'edit' | 'share'>('');
+  const [ed, setEd] = useState({ title: task.title || '', description: task.description || '', assignee: String(task.assignee?._id || task.assignee || ''), dueDate: task.dueDate ? isoDay(new Date(task.dueDate)) : '', priority: task.priority || 'medium' });
+  const [shareTo, setShareTo] = useState('');
+  const people = [...meta.participants].sort((a, b) => String(a.section || '').localeCompare(String(b.section || '')));
+  const share = async () => {
+    if (!shareTo) return;
+    setBusy(true);
+    try { await brShareAction(task._id, shareTo); notify(t('Shared', 'أُسند البند إليه أيضًا وظهر في قسمه'), 'success'); setMode(''); setShareTo(''); onChanged(); }
+    catch (e: any) { notify(e?.message || t('Failed', 'تعذّر'), 'error'); }
+    setBusy(false);
+  };
   const [busy, setBusy] = useState(false);
   const [newDue, setNewDue] = useState('');
   const [reason, setReason] = useState('');
@@ -228,6 +238,16 @@ function TaskRow({ task, meta, L, meetingId, canEdit, dept, open, onToggle, onCh
           {task.description && <p className="text-[13px] text-slate-700 whitespace-pre-wrap bg-white border border-slate-200 rounded-lg p-2.5">{task.description}</p>}
           <div className="grid gap-x-6 gap-y-1 sm:grid-cols-2 text-[12.5px] text-slate-600">
             <p>{t('Owner', 'المسؤول')}: <b className="text-slate-800">{task.assigneeName}</b></p>
+            {!!task.sharedWith?.length && (
+              <p className="sm:col-span-2 inline-flex flex-wrap items-center gap-1.5">
+                <Users className="w-3.5 h-3.5 text-sky-600" />{t('Shared with', 'مشترك مع')}:
+                {task.sharedWith.map((x: any) => (
+                  <span key={x._id} className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-sky-50 border border-sky-200 text-sky-800">
+                    <b>{x.assigneeName}</b> · {deptLabel(x.department, L)} · <StatusPill statuses={meta.actionStatuses} value={x.status} lang={L} /> {x.progress || 0}%
+                  </span>
+                ))}
+              </p>
+            )}
             {task.raisedByName && <p>{t('Requested by', 'بطلب من')}: <b className="text-slate-800">{task.raisedByName}</b></p>}
             <p>{t('Raised in', 'أُسند في')}: <b className="text-slate-800">{task.meetingRef}</b> · {fmtDate(task.meetingDate || task.createdAt)}{task.fromThisMeeting ? ` (${t('this meeting', 'هذا الاجتماع')})` : ''}</p>
             <p>{t('Due', 'التسليم')}: <b className={task.overdue ? 'text-red-700' : 'text-slate-800'}>{fmtDate(task.dueDate)}</b></p>
@@ -284,6 +304,14 @@ function TaskRow({ task, meta, L, meetingId, canEdit, dept, open, onToggle, onCh
                 className="inline-flex items-center gap-1.5 border border-violet-300 bg-white text-violet-700 text-xs font-bold rounded-lg px-3 py-1.5">
                 <Plus className="w-3.5 h-3.5" />{t('Follow-up task', 'إضافة بند متابعة')}
               </button>
+              <button type="button" onClick={() => setMode(mode === 'edit' ? '' : 'edit')}
+                className="inline-flex items-center gap-1.5 border border-slate-300 bg-white text-slate-700 text-xs font-bold rounded-lg px-3 py-1.5">
+                <Pencil className="w-3.5 h-3.5" />{t('Edit task', 'تعديل البند')}
+              </button>
+              <button type="button" onClick={() => setMode(mode === 'share' ? '' : 'share')}
+                className="inline-flex items-center gap-1.5 border border-sky-300 bg-white text-sky-700 text-xs font-bold rounded-lg px-3 py-1.5">
+                <Users className="w-3.5 h-3.5" />{t('Also assign to…', 'إسناده لمسؤولٍ آخر أيضًا')}
+              </button>
             </div>
           )}
 
@@ -313,6 +341,41 @@ function TaskRow({ task, meta, L, meetingId, canEdit, dept, open, onToggle, onCh
                 onClick={() => send({ status: 'postponed', newDueDate: newDue, postponeReason: reason.trim() }, t('Postponed', 'تم تأجيل البند'))}
                 className="bg-amber-600 text-white text-xs font-bold rounded-lg px-3 py-2 disabled:opacity-50">{t('Save postponement', 'تسجيل التأجيل')}</button>
             </div>
+            </div>
+          )}
+          {mode === 'edit' && (
+            <div className="bg-white border border-slate-200 rounded-lg p-3 space-y-2">
+              <input value={ed.title} onChange={(e) => setEd({ ...ed, title: e.target.value })} placeholder={t('Task', 'نص البند')}
+                className="w-full px-2.5 py-1.5 rounded-lg border border-slate-200 text-sm" />
+              <textarea value={ed.description} onChange={(e) => setEd({ ...ed, description: e.target.value })} rows={2} placeholder={t('Details', 'التفاصيل')}
+                className="w-full px-2.5 py-1.5 rounded-lg border border-slate-200 text-sm" />
+              <div className="grid gap-2 sm:grid-cols-3">
+                <select value={ed.assignee} onChange={(e) => setEd({ ...ed, assignee: e.target.value })} className="px-2.5 py-1.5 rounded-lg border border-slate-200 bg-white text-sm">
+                  {people.map((p) => <option key={p._id} value={p._id}>{p.name}{p.section ? ` — ${deptLabel(p.section, L)}` : ''}</option>)}
+                </select>
+                <input type="date" value={ed.dueDate} onChange={(e) => setEd({ ...ed, dueDate: e.target.value })} className="px-2.5 py-1.5 rounded-lg border border-slate-200 text-sm" title={t('Due', 'التسليم')} />
+                <select value={ed.priority} onChange={(e) => setEd({ ...ed, priority: e.target.value })} className="px-2.5 py-1.5 rounded-lg border border-slate-200 bg-white text-sm">
+                  {(meta.priorities || []).map((p: any) => <option key={p.key} value={p.key}>{L === 'ar' ? p.ar : p.en}</option>)}
+                </select>
+              </div>
+              {!!task.sharedWith?.length && <p className="text-[11.5px] text-sky-700">{t('Title, details, priority and due date change for every owner sharing it.', 'نصُّ البند وتفاصيلُه وأولويّتُه وموعدُه تتغيّر عند كلّ المشتركين فيه.')}</p>}
+              <div className="flex gap-2">
+                <button type="button" disabled={busy || !ed.title.trim()} onClick={() => send({ title: ed.title.trim(), description: ed.description.trim(), assignee: ed.assignee, dueDate: ed.dueDate || null, priority: ed.priority }, t('Saved', 'حُفظ تعديل البند'))}
+                  className="bg-[#f37121] text-white text-xs font-bold rounded-lg px-3 py-1.5 disabled:opacity-50">{t('Save', 'حفظ التعديل')}</button>
+                <button type="button" onClick={() => setMode('')} className="text-xs text-slate-500 px-2">{t('Cancel', 'إلغاء')}</button>
+              </div>
+            </div>
+          )}
+          {mode === 'share' && (
+            <div className="bg-sky-50 border border-sky-200 rounded-lg p-3 flex flex-wrap items-center gap-2">
+              <span className="text-xs font-bold text-sky-900">{t('Also assign this task to', 'أسنِد البندَ نفسَه أيضًا إلى')}</span>
+              <select value={shareTo} onChange={(e) => setShareTo(e.target.value)} className="flex-1 min-w-[14rem] px-2.5 py-1.5 rounded-lg border border-sky-300 bg-white text-sm">
+                <option value="">{t('Choose…', 'اختر…')}</option>
+                {people.filter((p) => String(p._id) !== String(task.assignee?._id || task.assignee) && !(task.sharedWith || []).some((x: any) => String(x.assignee) === String(p._id)))
+                  .map((p) => <option key={p._id} value={p._id}>{p.name}{p.section ? ` — ${deptLabel(p.section, L)}` : ''}</option>)}
+              </select>
+              <button type="button" disabled={busy || !shareTo} onClick={share} className="bg-sky-600 text-white text-xs font-bold rounded-lg px-3 py-1.5 disabled:opacity-50">{t('Assign', 'إسناد')}</button>
+              <p className="w-full text-[11.5px] text-sky-800">{t('It appears in their department card and their own list; each reports progress on their part.', 'يظهر في بطاقة قسمه وفي «بنودي» عنده، ويُحدِّث كلٌّ منهما حالةَ جزئه، ويرى كلٌّ منهما حالةَ الآخر.')}</p>
             </div>
           )}
           {mode === 'update' && (
@@ -348,6 +411,8 @@ function NewTask({ meta, L, meetingId, dept, followUpOf, inline, onDone, notify 
   const [desc, setDesc] = useState('');
   const [due, setDue] = useState('');
   const [who, setWho] = useState(String(followUpOf?.assignee || head?._id || ''));
+  // Other owners in any department: one task, one row per owner, shown in each owner's department card.
+  const [also, setAlso] = useState<string[]>([]);
   const [busy, setBusy] = useState(false);
 
   const save = async () => {
@@ -355,11 +420,11 @@ function NewTask({ meta, L, meetingId, dept, followUpOf, inline, onDone, notify 
     setBusy(true);
     try {
       await brCreateAction(meetingId, {
-        title: title.trim(), description: desc.trim(), assignee: who, department: dept,
+        title: title.trim(), description: desc.trim(), assignee: who, assignees: [who, ...also.filter((x) => x !== who)], department: dept,
         ...(due ? { dueDate: due } : {}), ...(followUpOf ? { followUpOf: followUpOf._id } : {}),
       });
       notify(t('Task added', 'أُضيف البند'), 'success');
-      setTitle(''); setDesc(''); setDue(''); if (!inline) setOpen(false);
+      setTitle(''); setDesc(''); setDue(''); setAlso([]); if (!inline) setOpen(false);
       onDone();
     } catch (e: any) { notify(e?.message || t('Failed', 'تعذّر'), 'error'); }
     setBusy(false);
@@ -391,6 +456,23 @@ function NewTask({ meta, L, meetingId, dept, followUpOf, inline, onDone, notify 
         </select>
         <input type="date" value={due} onChange={(e) => setDue(e.target.value)} title={t('Due', 'التسليم')}
           className="px-2.5 py-1.5 rounded-lg border border-slate-200 bg-white text-sm" />
+      </div>
+      <div className="flex flex-wrap items-center gap-1.5">
+        <span className="text-[12px] font-semibold text-slate-600">{t('Also assign to', 'وإسناده أيضًا إلى')}:</span>
+        {also.map((id) => {
+          const p = people.find((x) => String(x._id) === id);
+          return (
+            <span key={id} className="inline-flex items-center gap-1 rounded-full bg-sky-50 border border-sky-200 px-2 py-0.5 text-[12px] text-sky-800">
+              {p?.name}{p?.section ? ` — ${deptLabel(p.section, L)}` : ''}
+              <button type="button" onClick={() => setAlso((a) => a.filter((x) => x !== id))}><X className="w-3 h-3" /></button>
+            </span>
+          );
+        })}
+        <select value="" onChange={(e) => { const v = e.target.value; if (v) setAlso((a) => (a.includes(v) ? a : [...a, v])); }}
+          className="px-2 py-1 rounded-lg border border-slate-200 bg-white text-[12px]">
+          <option value="">{t('+ another owner (any department)', '+ مسؤولٌ آخر (أيّ قسم)')}</option>
+          {people.filter((p) => String(p._id) !== who && !also.includes(String(p._id))).map((p) => <option key={p._id} value={p._id}>{p.name}{p.section ? ` — ${deptLabel(p.section, L)}` : ''}</option>)}
+        </select>
       </div>
       <div className="flex gap-2">
         <button type="button" disabled={busy} onClick={save}

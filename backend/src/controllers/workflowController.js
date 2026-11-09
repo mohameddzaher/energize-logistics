@@ -89,6 +89,9 @@ const ROLE_FIELD_ACCESS = {
   moderator: [...FIELD_GROUPS.application, ...FIELD_GROUPS.manual_moderator],
   operations_manager: [...OPS_FIELDS, ...SELLING_FIELDS],
   operations_staff: OPS_FIELDS,
+  // Vendors manager and team leader work the sheet like operations and own the purchase side (owner's rule); they never see the selling value.
+  vendors_manager: OPS_FIELDS,
+  vendors_team_leader: OPS_FIELDS,
   // Senior management sits above accounting, not below it.
   admin: FULL_FIELDS,
   // Sales owns selling value only. It opens the workflow to price the report, writes nothing else and sees no invoice columns.
@@ -107,8 +110,11 @@ const ROLE_FIELD_ACCESS = {
 };
 // Purchase price is for those who see selling price only (company owner): whoever is not in SELLING_ROLES cannot write purchaseValue (can see it, cannot edit). Applies to this map and to fields of created roles (fieldsForRole), and the screen reads the same map.
 const PURCHASE_FIELDS = ['purchaseValue'];
+const { VENDOR_LEADS, isSalesRole } = require('../config/priceView');
+// Writers of the purchase price: the selling list plus the vendors leads, who own the purchase side.
+const PURCHASE_WRITERS = [...SELLING_ROLES, ...VENDOR_LEADS];
 for (const [r, f] of Object.entries(ROLE_FIELD_ACCESS)) {
-  if (!SELLING_ROLES.includes(r)) ROLE_FIELD_ACCESS[r] = f.filter((x) => !PURCHASE_FIELDS.includes(x));
+  if (!PURCHASE_WRITERS.includes(r)) ROLE_FIELD_ACCESS[r] = f.filter((x) => !PURCHASE_FIELDS.includes(x));
 }
 // Invoice amounts are written only by the roles that may see them.
 for (const [r, f] of Object.entries(ROLE_FIELD_ACCESS)) {
@@ -116,7 +122,7 @@ for (const [r, f] of Object.entries(ROLE_FIELD_ACCESS)) {
 }
 // The map and the list state the same thing; checked at load so they cannot diverge.
 for (const [r, f] of Object.entries(ROLE_FIELD_ACCESS)) {
-  if (PURCHASE_FIELDS.some((x) => f.includes(x)) && !SELLING_ROLES.includes(r)) {
+  if (PURCHASE_FIELDS.some((x) => f.includes(x)) && !PURCHASE_WRITERS.includes(r)) {
     throw new Error(`[workflow] سعرُ الشراء: ${r} يكتبه وليس في SELLING_ROLES`);
   }
   if (AMOUNT_FIELDS.some((x) => f.includes(x)) && !MONEY_VIEW_ROLES.includes(r)) {
@@ -190,8 +196,11 @@ const stripMoneyFor = (role, docs) => {
   return Array.isArray(docs) ? docs.map(stripMoney) : stripMoney(docs);
 };
 
-/** Whether this role sees selling value; the list is named roles (SELLING_ROLES). */
-const canSeeSelling = (role) => SELLING_ROLES.includes(role);
+/** Whether this role sees selling value: the named writers (SELLING_ROLES) plus sales, who read it and write nothing here. */
+const canSeeSelling = (role) => SELLING_ROLES.includes(role) || isSalesRole(role);
+/** Whether this role sees the purchase side; sales never does (config/priceView). */
+const PURCHASE_SIDE = ['purchaseValue', 'driverCost'];
+const canSeePurchase = (role) => !isSalesRole(role);
 const stripSelling = (doc) => {
   if (!doc) return doc;
   const plain = typeof doc.toObject === 'function' ? doc.toObject() : { ...doc };
@@ -199,11 +208,18 @@ const stripSelling = (doc) => {
   delete plain.sellingValueSource;
   return plain;
 };
-/** The row as this role receives it: without money columns for roles without them, and without selling value for roles outside its list. (stripMoneyFor stays as it is: the private page reads it, where selling value is a different price.) */
+const stripPurchase = (doc) => {
+  if (!doc) return doc;
+  const plain = typeof doc.toObject === 'function' ? doc.toObject() : { ...doc };
+  for (const f of PURCHASE_SIDE) delete plain[f];
+  return plain;
+};
+/** The row as this role receives it: without money columns for roles without them, without selling value outside its list, and without the purchase side for sales. (stripMoneyFor stays as it is: the private page reads it, where selling value is a different price.) */
 const stripRowFor = (role, docs) => {
-  const out = stripMoneyFor(role, docs);
-  if (canSeeSelling(role)) return out;
-  return Array.isArray(out) ? out.map(stripSelling) : stripSelling(out);
+  let out = stripMoneyFor(role, docs);
+  if (!canSeeSelling(role)) out = Array.isArray(out) ? out.map(stripSelling) : stripSelling(out);
+  if (!canSeePurchase(role)) out = Array.isArray(out) ? out.map(stripPurchase) : stripPurchase(out);
+  return out;
 };
 
 /** Billing rules, enforced on the server and not only on the screen. The screen helps users do the right thing; the server guarantees it, since a rule in the UI alone can be bypassed by bulk update, import or a direct call. */
@@ -1027,7 +1043,7 @@ exports.getWorkflowStats = async (req, res) => {
       pendingAsOf: pendingAsOfCount,
       pendingAsOfDate: asOf,
       pendingAsOfFrom: asOfQuery(req.query).dateFrom || '',
-      sumPurchaseValue: agg[0]?.sumPurchaseValue || 0,
+      sumPurchaseValue: canSeePurchase(req.user.role) ? (agg[0]?.sumPurchaseValue || 0) : null,
       byStage: stages.reduce((acc, r) => { acc[r._id || 'draft'] = r.count; return acc; }, {}),
       byStatus,
       statusTotal,
@@ -1054,6 +1070,9 @@ exports.filterOptions = async (req, res) => {
       return res.status(403).json({ message: 'Insufficient permissions' });
     }
     if (SELLING_FIELDS.includes(field) && !canSeeSelling(req.user.role)) {
+      return res.status(403).json({ message: 'Insufficient permissions' });
+    }
+    if (PURCHASE_SIDE.includes(field) && !canSeePurchase(req.user.role)) {
       return res.status(403).json({ message: 'Insufficient permissions' });
     }
     // The key carries the permission. The condition now varies by role (money column filters are dropped for roles without them), so a key without it would serve one role a result computed for another, in the first second after an accountant opens the same list.
@@ -2291,7 +2310,7 @@ exports.bulkDelete = async (req, res) => {
  * A filtered export is not stored since its condition differs per request.
  * Columns and translations are exactly those of the workflow page; only scope=all bypasses the filter.
  */
-async function buildWorkflowWorkbook(filter, money, selling = true) {
+async function buildWorkflowWorkbook(filter, money, selling = true, purchase = true) {
   {
     const { SHIPMENT_STATUS_AR } = require('../config/constants');
 
@@ -2321,7 +2340,7 @@ async function buildWorkflowWorkbook(filter, money, selling = true) {
       ['طريقة الدفع', (w) => PAYMENT_AR[w.paymentMethod] || w.paymentMethod || ''],
       ['العميل', (w) => w.username || ''],
       ['هاتف العميل', (w) => w.userPhone || ''],
-      ['قيمة الشراء', (w) => w.purchaseValue || 0],
+      ['قيمة الشراء', (w) => w.purchaseValue || 0, 'purchase'],
       ['قيمة البيع', (w) => w.sellingValue || 0, 'selling'],
       ['السائق', (w) => w.driverName || ''],
       ['جوال السائق', (w) => w.driverPhone || ''],
@@ -2358,7 +2377,7 @@ async function buildWorkflowWorkbook(filter, money, selling = true) {
     ];
 
     // The file is opened outside the system where there is no guard, so what is not shown on screen does not leave in it; otherwise hiding would be decoration bypassed by an export button. Selling value only for those in its list (see SELLING_ROLES).
-    const cols = COLUMNS.filter(([, , tag]) => (tag !== 'money' || money) && (tag !== 'selling' || selling));
+    const cols = COLUMNS.filter(([, , tag]) => (tag !== 'money' || money) && (tag !== 'selling' || selling) && (tag !== 'purchase' || purchase));
     const headers = cols.map(([h]) => h);
 
     // Fields with no column are not read: the query used to fetch the whole document including long free-text notes that never enter the file.
@@ -2431,7 +2450,9 @@ exports.exportWorkflows = async (req, res) => {
   try {
     const money = canSeeMoney(req.user.role);
     const selling = canSeeSelling(req.user.role);
-    const wantsAll = String(req.query.scope || '') === 'all';
+    const purchase = canSeePurchase(req.user.role);
+    // The stored whole-sheet files carry the purchase column; a role without it builds its own copy on the spot.
+    const wantsAll = String(req.query.scope || '') === 'all' && purchase;
     const name = `operations-${new Date().toISOString().split('T')[0]}.xlsx`;
     const head = (len, ageMs) => {
       res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
@@ -2463,8 +2484,8 @@ exports.exportWorkflows = async (req, res) => {
     }
 
     // A filtered export is built on the spot; its condition belongs to its requester.
-    const filter = buildWorkflowFilter(req.query, undefined, money, selling);
-    const { buf } = await buildWorkflowWorkbook(filter, money, selling);
+    const filter = String(req.query.scope || '') === 'all' ? {} : buildWorkflowFilter(req.query, undefined, money, selling);
+    const { buf } = await buildWorkflowWorkbook(filter, money, selling, purchase);
     head(buf.length, 0);
     return res.send(buf);
   } catch (error) {
@@ -2479,7 +2500,7 @@ exports.buildExportFile = async (query = {}, user = {}) => {
   const selling = canSeeSelling(user.role);
   const all = String(query.scope || '') === 'all';
   const filter = all ? {} : buildWorkflowFilter(query, undefined, money, selling);
-  const { buf, rows } = await buildWorkflowWorkbook(filter, money, selling);
+  const { buf, rows } = await buildWorkflowWorkbook(filter, money, selling, canSeePurchase(user.role));
   return { buf, rows, name: `operations-${new Date().toISOString().slice(0, 10)}.xlsx` };
 };
 
@@ -2619,7 +2640,7 @@ exports.getFieldPermissions = async (req, res) => {
     roleAccess: ROLE_FIELD_ACCESS,
     myFields: await fieldsForRole(req.user.role),
     // What this reader may see, independent of what it may write.
-    view: { amounts: canSeeMoney(req.user.role), selling: canSeeSelling(req.user.role) },
+    view: { amounts: canSeeMoney(req.user.role), selling: canSeeSelling(req.user.role), purchase: canSeePurchase(req.user.role) },
     // Selling-price edits from this reader go to approval; and whether this reader approves them.
     sellingByRequest: sellingByRequest(req.user),
     canApproveSelling: canApproveSelling(req.user),
@@ -2641,6 +2662,7 @@ module.exports.MONEY_VIEW_ROLES = MONEY_VIEW_ROLES;
 module.exports.fieldsForRole = fieldsForRole;
 module.exports.stripMoneyFor = stripMoneyFor;
 module.exports.canSeeSelling = canSeeSelling;
+module.exports.canSeePurchase = canSeePurchase;
 module.exports.SELLING_ROLES = SELLING_ROLES;
 // The report is shown whole on the clearance transaction page, with the same hiding and fields.
 module.exports.stripRowFor = stripRowFor;

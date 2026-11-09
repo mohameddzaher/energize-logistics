@@ -504,9 +504,10 @@
       ],
       "wildcard": false
     },
-    "/system/shipment-orders/dashboard": {
+    "/system/shipment-orders/analytics": {
       "apis": [
-        "/api/shipment-orders/dashboard",
+        "/api/shipment-orders/insights",
+        "/api/shipment-orders/insights/options",
         "/api/shipment-orders/ops-analytics",
         "/api/shipment-orders/statuses"
       ],
@@ -541,6 +542,32 @@
       ],
       "wildcard": false
     },
+    "/system/shipment-orders/request": {
+      "apis": [
+        "/api/lookups/types",
+        "/api/shipment-orders/customers",
+        "/api/shipment-orders/drivers",
+        "/api/shipment-orders/fields",
+        "/api/shipment-orders/sales-reps",
+        "/api/shipment-orders/suppliers",
+        "/api/shipment-orders/vehicles",
+        "/api/shipment-requests"
+      ],
+      "wildcard": false
+    },
+    "/system/shipment-orders/requests": {
+      "apis": [
+        "/api/lookups/types",
+        "/api/shipment-orders/customers",
+        "/api/shipment-orders/drivers",
+        "/api/shipment-orders/fields",
+        "/api/shipment-orders/sales-reps",
+        "/api/shipment-orders/suppliers",
+        "/api/shipment-orders/vehicles",
+        "/api/shipment-requests"
+      ],
+      "wildcard": false
+    },
     "/system/shipment-orders/chat": {
       "apis": [
         "/api/shipment-orders/customers",
@@ -567,13 +594,6 @@
         "/api/shipment-orders/fleet-summary",
         "/api/shipment-orders/suppliers",
         "/api/shipment-orders/vehicles"
-      ],
-      "wildcard": false
-    },
-    "/system/shipment-orders/analytics": {
-      "apis": [
-        "/api/shipment-orders/analytics",
-        "/api/shipment-orders/statuses"
       ],
       "wildcard": false
     },
@@ -631,6 +651,132 @@
       "wildcard": false
     },
     "/system/shipment-orders/kpis": {
+      "apis": [
+        "/api/performance/team"
+      ],
+      "wildcard": false
+    },
+    "/system/vendors-mgmt": {
+      "apis": [
+        "/api/lookups/types",
+        "/api/vendors-mgmt/follow-ups",
+        "/api/vendors-mgmt/overview",
+        "/api/vendors-mgmt/settings",
+        "/api/vendors-mgmt/vendors",
+        "/api/vendors-mgmt/vendors/by-name"
+      ],
+      "wildcard": false
+    },
+    "/system/vendors-mgmt/daily": {
+      "apis": [
+        "/api/vendors-mgmt/daily"
+      ],
+      "wildcard": false
+    },
+    "/system/vendors-mgmt/requests": {
+      "apis": [
+        "/api/lookups/types",
+        "/api/shipment-orders/customers",
+        "/api/shipment-orders/drivers",
+        "/api/shipment-orders/fields",
+        "/api/shipment-orders/sales-reps",
+        "/api/shipment-orders/suppliers",
+        "/api/shipment-orders/vehicles",
+        "/api/shipment-requests"
+      ],
+      "wildcard": false
+    },
+    "/system/vendors-mgmt/vendors": {
+      "apis": [
+        "/api/lookups/types",
+        "/api/vendors-mgmt/compare",
+        "/api/vendors-mgmt/follow-ups",
+        "/api/vendors-mgmt/settings",
+        "/api/vendors-mgmt/vendors",
+        "/api/vendors-mgmt/vendors/by-name"
+      ],
+      "wildcard": false
+    },
+    "/system/vendors-mgmt/vehicles": {
+      "apis": [
+        "/api/shipment-orders/drivers",
+        "/api/shipment-orders/fields",
+        "/api/shipment-orders/fleet-summary",
+        "/api/shipment-orders/suppliers",
+        "/api/shipment-orders/vehicles"
+      ],
+      "wildcard": false
+    },
+    "/system/vendors-mgmt/drivers": {
+      "apis": [
+        "/api/shipment-orders/drivers",
+        "/api/shipment-orders/fields",
+        "/api/shipment-orders/fleet-summary",
+        "/api/shipment-orders/suppliers",
+        "/api/shipment-orders/vehicles"
+      ],
+      "wildcard": false
+    },
+    "/system/vendors-mgmt/alerts": {
+      "apis": [
+        "/api/vendors-mgmt/alerts",
+        "/api/vendors-mgmt/alerts/state"
+      ],
+      "wildcard": false
+    },
+    "/system/vendors-mgmt/routes": {
+      "apis": [
+        "/api/vendors-mgmt/prices",
+        "/api/vendors-mgmt/route-search"
+      ],
+      "wildcard": false
+    },
+    "/system/vendors-mgmt/settings": {
+      "apis": [
+        "/api/lookups/types",
+        "/api/vendors-mgmt/settings"
+      ],
+      "wildcard": false
+    },
+    "/system/vendors-mgmt/jp": {
+      "apis": [
+        "/api/customs-clearance",
+        "/api/customs-clearance/parties",
+        "/api/jp/link-options",
+        "/api/jp/me",
+        "/api/jp/projects",
+        "/api/jp/tasks",
+        "/api/lookups/types"
+      ],
+      "wildcard": false
+    },
+    "/system/vendors-mgmt/jp-dashboard": {
+      "apis": [
+        "/api/jp/daily",
+        "/api/jp/dashboard"
+      ],
+      "wildcard": false
+    },
+    "/system/vendors-mgmt/management-jp": {
+      "apis": [
+        "/api/customs-clearance",
+        "/api/customs-clearance/parties",
+        "/api/jp/link-options",
+        "/api/jp/me",
+        "/api/jp/projects",
+        "/api/jp/tasks",
+        "/api/lookups/types"
+      ],
+      "wildcard": false
+    },
+    "/system/vendors-mgmt/complaints": {
+      "apis": [
+        "/api/section-work",
+        "/api/section-work/assignees"
+      ],
+      "wildcard": false
+    },
+    "/system/vendors-mgmt/kpis": {
       "apis": [
         "/api/performance/team"
       ],
@@ -2576,6 +2722,19 @@
     "/system/crm/kpis": {
       "apis": [
         "/api/performance/team"
+      ],
+      "wildcard": false
+    },
+    "/system/sales/shipment-request": {
+      "apis": [
+        "/api/lookups/types",
+        "/api/shipment-orders/customers",
+        "/api/shipment-orders/drivers",
+        "/api/shipment-orders/fields",
+        "/api/shipment-orders/sales-reps",
+        "/api/shipment-orders/suppliers",
+        "/api/shipment-orders/vehicles",
+        "/api/shipment-requests"
       ],
       "wildcard": false
     },

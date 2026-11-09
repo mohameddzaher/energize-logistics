@@ -14,6 +14,9 @@ const BY_ID: Record<string, (id: string) => string> = {
   // An HR request to Finance arrives in Finance's inbox, and the reply reaches the requester in the Finance follow-up page: two entities, two destinations, and the id opens the request itself.
   HrFinanceRequest: (id) => `/system/finance/hr/residency?tab=requests&id=${id}`,
   HrFinanceRequestReply: (id) => `/system/hr/finance-follow?tab=requests&id=${id}`,
+  // A sales request reaches the vendors team's inbox; the answer (placed or rejected) reaches the sales member's requests.
+  ShipmentRequest: (id) => `/system/vendors-mgmt/requests?id=${id}`,
+  ShipmentRequestReply: (id) => `/system/shipment-orders/request?id=${id}`,
 };
 
 /** Entities that open on their section's screen. */

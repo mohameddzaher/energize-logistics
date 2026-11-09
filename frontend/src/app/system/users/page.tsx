@@ -231,6 +231,8 @@ export default function UsersPage() {
     { header: T.lastName, key: 'lastName', width: 16 },
     { header: T.email, key: 'email', width: 28 },
     { header: T.role, key: 'role', transform: (v: string) => roleLabels[v] || v?.replace('_', ' '), width: 20 },
+    { header: lang === 'ar' ? 'المدير المباشر' : 'Direct manager', key: 'manager', transform: (_: any, row: any) => (row.manager ? `${row.manager.firstName} ${row.manager.lastName}` : ''), width: 22 },
+    { header: lang === 'ar' ? 'ملف الموظف' : 'HR file', key: 'linkedEmployee', transform: (_: any, row: any) => (row.linkedEmployee ? `${row.linkedEmployee.firstName} ${row.linkedEmployee.lastName}${row.linkedEmployee.employeeNumber ? ` (${row.linkedEmployee.employeeNumber})` : ''}` : (lang === 'ar' ? 'غير مرتبط' : 'Not linked')), width: 26 },
     { header: T.branch, key: 'branch.name', width: 16 },
     { header: T.status, key: 'status', transform: (_: any, row: any) => statusLabels[getUserStatus(row)] || getUserStatus(row), width: 10 },
     { header: T.lastLogin, key: 'lastLogin', transform: fmt.datetime, width: 22 },
@@ -714,6 +716,39 @@ export default function UsersPage() {
             {roleLabels[row.role] || row.role.replace('_', ' ')}
           </span>
         );
+      },
+    },
+    {
+      key: 'manager',
+      label: lang === 'ar' ? 'المدير المباشر' : 'Direct manager',
+      search: (row: UserRecord) => (row.manager ? `${row.manager.firstName} ${row.manager.lastName}` : ''),
+      render: (_: any, row: UserRecord) => (row.manager
+        ? (
+          <div>
+            <p className="text-slate-900 text-sm font-medium">{row.manager.firstName} {row.manager.lastName}</p>
+            <p className="text-slate-500 text-[11px]">{roleLabels[row.manager.role] || row.manager.role}</p>
+          </div>
+        )
+        : <span className="text-slate-400 text-xs">—</span>),
+    },
+    {
+      // Whether the login is tied to an HR employee file; a click opens the file.
+      key: 'hrFile',
+      label: lang === 'ar' ? 'ملف الموظف' : 'HR file',
+      search: (row: UserRecord) => (row.linkedEmployee
+        ? `${lang === 'ar' ? 'مرتبط' : 'linked'} ${row.linkedEmployee.firstName} ${row.linkedEmployee.lastName} ${row.linkedEmployee.employeeNumber || ''}`
+        : (lang === 'ar' ? 'غير مرتبط' : 'not linked')),
+      render: (_: any, row: UserRecord) => {
+        if (row.accountType === 'customer' || row.accountType === 'vendor' || row.role === 'client') return <span className="text-slate-400 text-xs">—</span>;
+        return row.linkedEmployee
+          ? (
+            <a href={`/system/hr/employees/${row.linkedEmployee._id}`} onClick={(e) => e.stopPropagation()}
+              className="inline-flex flex-col rounded-md border border-emerald-200 bg-emerald-50 px-2 py-0.5 hover:border-emerald-400">
+              <span className="text-[11px] font-bold text-emerald-700">{lang === 'ar' ? 'مرتبط' : 'Linked'}</span>
+              <span className="text-[11.5px] text-slate-800">{row.linkedEmployee.firstName} {row.linkedEmployee.lastName}{row.linkedEmployee.employeeNumber ? ` · ${row.linkedEmployee.employeeNumber}` : ''}</span>
+            </a>
+          )
+          : <span className="inline-block rounded-md border border-amber-200 bg-amber-50 px-2 py-0.5 text-[11px] font-bold text-amber-700">{lang === 'ar' ? 'غير مرتبط' : 'Not linked'}</span>;
       },
     },
     {

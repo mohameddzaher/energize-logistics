@@ -127,6 +127,8 @@ class _AdminUsersScreenState extends State<AdminUsersScreen> {
     ExportCol('اسم العائلة', 'Last name', (u) => u['lastName']),
     ExportCol('البريد', 'Email', (u) => u['email']),
     ExportCol('الدور', 'Role', (u) => roleLabel(u['role'])),
+    ExportCol('المدير المباشر', 'Direct manager', (u) => u['manager'] is Map ? '${u['manager']['firstName'] ?? ''} ${u['manager']['lastName'] ?? ''}'.trim() : ''),
+    ExportCol('ملف الموظف', 'HR file', (u) => u['linkedEmployee'] is Map ? '${u['linkedEmployee']['firstName'] ?? ''} ${u['linkedEmployee']['lastName'] ?? ''}'.trim() : tr('غير مرتبط', 'Not linked')),
     ExportCol('الفرع', 'Branch', (u) => u['branch'] is Map ? u['branch']['name'] : ''),
     ExportCol('الحالة', 'Status', (u) => switch (_status(u)) {
           'active' => tr('نشط', 'Active'), 'locked' => tr('مقفول', 'Locked'), 'inactive' => tr('موقوف', 'Inactive'), final x => x,
@@ -286,13 +288,19 @@ class _AdminUsersScreenState extends State<AdminUsersScreen> {
                                           child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                                             Text('${u['firstName'] ?? ''} ${u['lastName'] ?? ''}'.trim(), style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 13.5)),
                                             Text((u['email'] ?? '').toString(), style: const TextStyle(fontSize: 11.5, color: T.inkSoft)),
+                                            if (u['manager'] is Map)
+                                              Text('${tr('المدير المباشر', 'Direct manager')}: ${u['manager']['firstName'] ?? ''} ${u['manager']['lastName'] ?? ''}',
+                                                  style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: Color(0xFF334155))),
                                             const SizedBox(height: 4),
                                             Wrap(spacing: 6, children: [
                                               Chip2(roleLabel(u['role']), T.navy),
                                               if (!active) Chip2(tr('موقوف', 'Inactive'), T.danger),
                                               if (u['isLocked'] == true) Chip2(tr('مقفول', 'Locked'), T.warn),
                                               if (u['branch'] is Map) Chip2('${u['branch']['name'] ?? ''}', T.inkSoft, icon: Icons.store_mall_directory_outlined),
-                                              if (u['linkedEmployee'] is Map) Chip2(tr('مرتبط بملف موظف', 'HR linked'), T.success, icon: Icons.badge_outlined),
+                                              if (u['linkedEmployee'] is Map)
+                                                Chip2('${tr('ملف الموظف', 'HR file')}: ${u['linkedEmployee']['firstName'] ?? ''} ${u['linkedEmployee']['lastName'] ?? ''}'.trim(), T.success, icon: Icons.badge_outlined)
+                                              else if (u['partner'] is! Map && u['role'] != 'client')
+                                                Chip2(tr('غير مرتبط بملف موظف', 'No HR file'), T.warn, icon: Icons.badge_outlined),
                                               if (u['partner'] is Map) Chip2('${u['partner']['name'] ?? ''}', T.orange, icon: Icons.storefront_outlined),
                                             ]),
                                           ]),

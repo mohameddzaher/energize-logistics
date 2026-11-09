@@ -1,8 +1,10 @@
 // Contract management: types, vocabulary and access gates. Mirrors backend/src/routes/contracts.js and models/ContractModels.js.
 import { canAccessSection, canEditSection, roleOf, permsOf, type RoleOrUser } from './sections';
 
-export const CONTRACTS_STAFF_ROLES = ['super_admin', 'admin', 'contracts_manager', 'it_manager', 'it_specialist', 'operations_manager'];
-export const CONTRACTS_EDIT_ROLES = ['super_admin', 'admin', 'contracts_manager', 'it_manager', 'it_specialist'];
+// Sales (customer contracts) and the vendors team (carrier contracts) work the section in full.
+const CONTRACT_TEAMS = ['sales_manager', 'sales_rep', 'vendors_manager', 'vendors_team_leader', 'vendors_staff'];
+export const CONTRACTS_STAFF_ROLES = ['super_admin', 'admin', 'contracts_manager', 'contracts_staff', 'it_manager', 'it_specialist', 'operations_manager', ...CONTRACT_TEAMS];
+export const CONTRACTS_EDIT_ROLES = ['super_admin', 'admin', 'contracts_manager', 'contracts_staff', 'it_manager', 'it_specialist', ...CONTRACT_TEAMS];
 
 export const canViewContracts = (u: RoleOrUser) => CONTRACTS_STAFF_ROLES.includes(roleOf(u)) || canAccessSection(permsOf(u), 'Contracts');
 export const canEditContracts = (u: RoleOrUser) => CONTRACTS_EDIT_ROLES.includes(roleOf(u)) || canEditSection(permsOf(u), 'Contracts');

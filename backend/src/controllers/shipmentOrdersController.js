@@ -346,6 +346,7 @@ const ORDER_COLUMNS = {
   status: 'status',
   notes: 'notes',
   salesRepName: 'salesRepName',
+  sourcingRepName: 'sourcingRepName',
   cargoType: 'cargoType',
   blNumber: 'blNumber',
   containerNumber: 'containerNumber',
@@ -505,7 +506,7 @@ exports.listOrders = async (req, res) => {
         // The plate in its own field as well as in the vehicle name, so either finds it.
         { vehicleName: r }, { vehiclePlate: r }, { supplierName: r }, { agentName: r }, { notes: r },
         { truckType: r }, { branch: r }, { reference: r },
-        { salesRepName: r }, { cargoType: r }, { addressFrom: r }, { addressTo: r }, { cancelReason: r },
+        { salesRepName: r }, { sourcingRepName: r }, { cargoType: r }, { addressFrom: r }, { addressTo: r }, { cancelReason: r },
         { externalRef: r }, { 'statusLog.note': r }, { 'statusLog.byName': r },
       ];
       // A run of digits is almost always a waybill lookup: match it exactly, not as a substring of prices. The settlement statement number is also searched, as it is the number the team knows for platform shipments.
@@ -767,6 +768,9 @@ async function createOneOrder(req, body) {
   }
 
   await applySalesRep(data, body);
+  // The vendors team member creating it is the sourcing person unless another is chosen.
+  const srcBody = body.sourcingRep === undefined && PV.isVendorRole(req.user) ? { sourcingRep: String(req.user._id) } : body;
+  await applySourcingRep(data, srcBody);
   data.agentName = fullName(req.user); // The sales rep (Arabic label): stamped, never typed
   data.createdBy = req.user._id;
 
@@ -815,6 +819,38 @@ async function applySalesRep(data, body) {
   if (!u) { const e = new Error('السيلز التشغيلي يُختار من فريق المبيعات أو العمليات'); e.status = 400; throw e; }
   data.salesRep = u._id; data.salesRepName = fullName(u);
 }
+/** Sourcing: who found the carrier and the truck owner — the vendors team and operations (managers and staff), never someone whose service ended. */
+const SOURCING_REP_ROLES = () => {
+  const { rolesOfSection } = require('../config/roles');
+  return [...rolesOfSection('Vendors Management'), ...rolesOfSection('Operations'), ...rolesOfSection('Shipment Orders')];
+};
+async function sourcingRepOptions() {
+  const User = require('../models/User');
+  const { endedStaff, userEnded } = require('../utils/endedStaff');
+  const [users, ended] = await Promise.all([
+    User.find({ role: { $in: SOURCING_REP_ROLES() }, isActive: { $ne: false } }).select('firstName lastName role').lean(),
+    endedStaff(),
+  ]);
+  const { LABELS_AR } = require('../config/roles');
+  return users.filter((u) => !userEnded(ended, u))
+    .map((u) => ({ value: String(u._id), label: fullName(u), role: u.role, roleAr: LABELS_AR[u.role] || u.role }))
+    .sort((a, b) => a.label.localeCompare(b.label, 'ar'));
+}
+async function applySourcingRep(data, body) {
+  if (body.sourcingRep === undefined) return;
+  if (!body.sourcingRep) { data.sourcingRep = null; data.sourcingRepName = ''; return; }
+  const User = require('../models/User');
+  const u = mongoose.isValidObjectId(body.sourcingRep)
+    ? await User.findOne({ _id: body.sourcingRep, role: { $in: SOURCING_REP_ROLES() } }).select('firstName lastName').lean() : null;
+  if (!u) { const e = new Error('مسؤول التوريد يُختار من فريق الموردين أو العمليات'); e.status = 400; throw e; }
+  data.sourcingRep = u._id; data.sourcingRepName = fullName(u);
+}
+exports.applySourcingRep = (data, body) => applySourcingRep(data, body);
+exports.sourcingReps = async (req, res) => {
+  try { res.json({ options: await sourcingRepOptions() }); }
+  catch (e) { res.status(500).json({ message: 'تعذّر تحميل القائمة' }); }
+};
+
 exports.salesReps = async (req, res) => {
   try { res.json({ options: await salesRepOptions() }); }
   catch (e) { res.status(500).json({ message: 'تعذّر تحميل القائمة' }); }
@@ -958,6 +994,7 @@ exports.updateOrder = async (req, res) => {
       for (const k of Object.keys(data)) if (!owned.includes(k)) delete data[k];
       if (!owned.includes('vehicle')) { delete req.body.newVehicle; delete req.body.waybillDetails; }
       if (!owned.includes('fromCity')) delete req.body.salesRep;
+      if (!owned.includes('vehicle')) delete req.body.sourcingRep;
       delete req.body.newCustomer;
     }
 
@@ -1002,7 +1039,7 @@ exports.updateOrder = async (req, res) => {
 
     // An edit can introduce a first-time customer or a fresh truck exactly like
     // the create form — the same inline registration applies.
-    try { await applySalesRep(data, req.body); } catch (e) { return res.status(400).json({ message: e.message }); }
+    try { await applySalesRep(data, req.body); await applySourcingRep(data, req.body); } catch (e) { return res.status(400).json({ message: e.message }); }
     await resolveInlineCustomer(req, data);
     if (data.customer && String(data.customer) !== String(order.customer)) {
       const c = await ShipmentOrderCustomer.findById(data.customer).select('name').lean();

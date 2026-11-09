@@ -376,6 +376,7 @@ exports.place = async (req, res) => {
         supplierChoice: t.supplierChoice,
         ...(t.vehicle ? { vehicle: t.vehicle } : { newVehicle: { plate: String(t.newVehicle.plate).trim(), name: '', supplierId: t.supplierChoice, newSupplier: null } }),
         driverName: String(t.driverName || '').trim(),
+        ...(t.sourcingRep !== undefined ? { sourcingRep: t.sourcingRep } : {}),
         driverPhone: String(t.driverPhone || '').trim(),
         buyPrice: Number(t.buyPrice),
         advanceAmount: numOrNull(t.advanceAmount),

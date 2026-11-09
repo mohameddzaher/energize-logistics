@@ -112,6 +112,10 @@ function CreateShipmentInner() {
   // Operational sales: who brought the load, from the sales or operations team, via search.
   const [salesRep, setSalesRep] = useState('');
   const [salesReps, setSalesReps] = useState<{ value: string; label: string; roleAr?: string }[]>([]);
+  // Sourcing: who found the carrier and the truck owner (vendors or operations team), the counterpart of the sales rep.
+  const [sourcingRep, setSourcingRep] = useState('');
+  const [sourcingReps, setSourcingReps] = useState<{ value: string; label: string; roleAr?: string }[]>([]);
+  useEffect(() => { api.get<{ options: { value: string; label: string; roleAr?: string }[] }>('/api/shipment-orders/sourcing-reps').then((d) => setSourcingReps(d.options || [])).catch(() => {}); }, []);
   useEffect(() => { api.get<{ options: { value: string; label: string; roleAr?: string }[] }>('/api/shipment-orders/sales-reps').then((d) => setSalesReps(d.options || [])).catch(() => {}); }, []);
   const [customerId, setCustomerId] = useState('');
   const [newCustomerOpen, setNewCustomerOpen] = useState(false);
@@ -154,6 +158,7 @@ function CreateShipmentInner() {
             });
             setCustomerId(typeof o.customer === 'object' ? o.customer?._id : (o.customer || ''));
             setSalesRep(o.salesRep ? String(typeof o.salesRep === 'object' ? o.salesRep._id : o.salesRep) : '');
+            setSourcingRep(o.sourcingRep ? String(typeof o.sourcingRep === 'object' ? o.sourcingRep._id : o.sourcingRep) : '');
             setVehicleId(typeof o.vehicle === 'object' ? o.vehicle?._id : (o.vehicle || ''));
             setSupplierId(typeof o.supplier === 'object' ? (o.supplier?._id || '') : (o.supplier || ''));
             // The order's own driver details: they are what its waybill prints, so the edit shows them rather than the register's.
@@ -483,6 +488,7 @@ function CreateShipmentInner() {
       if (supplierId) payload.supplierChoice = supplierId;
       // Operational sales: who brought the load.
       payload.salesRep = salesRep || null;
+      if (!lockTruck) payload.sourcingRep = sourcingRep || null;
       if (vehicleId) payload.vehicle = vehicleId;
       else if (newPlate.trim()) {
         // The new plate is registered on the chosen supplier, which was registered before it.
@@ -952,6 +958,13 @@ function CreateShipmentInner() {
       {/* 2. Vehicle owner: the truck, who owns it and its driver. The supplier is a deal party now beside the customer; here is the truck itself, its plate and its owner in the register. They need not be the same, since a supplier may carry our load on someone else's truck. Then the driver and his mobile. */}
       {sectionCard(Truck, 2, ar ? 'مالك السيارة' : 'Truck owner', (
         <fieldset disabled={lockTruck} className={`space-y-4 ${lockTruck ? 'opacity-70' : ''}`}>
+          <div>
+            <label className="mb-1 block text-[12.5px] font-semibold text-slate-600">{ar ? 'مسؤول التوريد — مَن جاء بالمورّد ومالك السيارة' : 'Sourcing — who found the carrier and truck owner'}</label>
+            <SearchableSelect value={sourcingRep} onChange={setSourcingRep} searchAfter={0}
+              placeholder={ar ? 'اختر من فريق الموردين أو العمليات…' : 'Pick from the vendors or operations team…'}
+              searchPlaceholder={ar ? 'اكتب الاسم للبحث…' : 'Type a name…'} emptyLabel={ar ? 'لا نتائج' : 'No matches'}
+              options={sourcingReps.map((u) => ({ value: u.value, label: u.label, hint: u.roleAr || '' }))} />
+          </div>
           {/* The card is half the page from xl, so its fields are one column there and two only on very wide screens; otherwise each field would be a quarter of the screen with clipped text. */}
           <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-1 2xl:grid-cols-2 gap-4">
             <div>

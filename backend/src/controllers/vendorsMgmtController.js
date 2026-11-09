@@ -268,7 +268,7 @@ exports.daily = async (req, res) => {
           const rep = o.agentName || '—';
           const op = add(opsReps, rep, () => ({ name: rep, trips: 0, buy: 0 })); op.trips += 1; op.buy += price;
         }
-        const helper = placer.get(String(o._id)) || vendorUser.get(String(o.createdBy || '')) || '';
+        const helper = o.sourcingRepName || placer.get(String(o._id)) || vendorUser.get(String(o.createdBy || '')) || '';
         if (helper) {
           const h = add(helpers, helper, () => ({ name: helper, trips: 0, buy: 0 })); h.trips += 1; h.buy += price;
           const hb = add(helperBranch, br, () => ({ branch: br, done: 0, byHelper: {} }));

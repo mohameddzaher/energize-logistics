@@ -72,7 +72,8 @@ const IT_ROLES = ['super_admin', 'admin', 'it_manager', 'it_specialist'];
 // Administrative affairs (secretariat): the shared office task board.
 const ADMINISTRATION_ROLES = ['super_admin', 'admin', 'administration_staff', 'bd_manager', 'it_manager', 'it_specialist'];
 // Contracts management: 3PL vendor contracts, analysis and other departments' contracts.
-const CONTRACTS_ROLES = ['super_admin', 'admin', 'contracts_manager', 'it_manager', 'it_specialist', 'operations_manager'];
+const CONTRACTS_ROLES = ['super_admin', 'admin', 'contracts_manager', 'contracts_staff', 'it_manager', 'it_specialist', 'operations_manager',
+  'sales_manager', 'sales_rep', 'vendors_manager', 'vendors_team_leader', 'vendors_staff'];
 
 // Self service (my profile / my leaves / my requests) belongs to EVERY employee, managers included, and the only non-employee login is `client`, an external customer-portal account.
 // The rule is every internal role, so new roles get self service without a hand-written list; external partners are excluded. The Media Go account is also an external partner and sees one screen (MEDIAGO_ROLE below).

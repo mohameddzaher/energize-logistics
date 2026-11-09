@@ -53,6 +53,8 @@ router.get('/insights', insights.insights);
 router.get('/insights/options', insights.options);
 // Sales and operations team, for the operational sales field.
 router.get('/sales-reps', so.salesReps);
+// Vendors and operations team, for the sourcing field (who found the carrier).
+router.get('/sourcing-reps', so.sourcingReps);
 // The operations manager's dashboard is also read here. It is the same one read in the private operations page: one computation and one endpoint (controllers/opsAnalyticsController), so no number differs between the two screens.
 const opsAn = require('../controllers/opsAnalyticsController');
 // The branch report carries revenue and profit together, so it is for readers who see both sides of the price.

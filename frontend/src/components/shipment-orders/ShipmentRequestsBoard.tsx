@@ -256,8 +256,8 @@ function Btn({ onClick, children, icon: Icon, primary, danger, busy }: { onClick
   );
 }
 
-type TruckRow = { supplierId: string; supplierName: string; vehicleId: string; newPlate: string; driverName: string; driverPhone: string; buyPrice: string; advanceAmount: string; blNumber: string; containerNumber: string };
-const blankTruck = (r: ShipmentRequest): TruckRow => ({ supplierId: '', supplierName: '', vehicleId: '', newPlate: '', driverName: '', driverPhone: '', buyPrice: '', advanceAmount: '', blNumber: r.blNumber || '', containerNumber: r.containerNumber || '' });
+type TruckRow = { sourcingRep: string; supplierId: string; supplierName: string; vehicleId: string; newPlate: string; driverName: string; driverPhone: string; buyPrice: string; advanceAmount: string; blNumber: string; containerNumber: string };
+const blankTruck = (r: ShipmentRequest, me = ''): TruckRow => ({ sourcingRep: me, supplierId: '', supplierName: '', vehicleId: '', newPlate: '', driverName: '', driverPhone: '', buyPrice: '', advanceAmount: '', blNumber: r.blNumber || '', containerNumber: r.containerNumber || '' });
 
 /** The vendors half: one row per truck, each becomes a transport order. */
 function PlaceModal({ req, onClose, onDone }: { req: ShipmentRequest; onClose: () => void; onDone: () => void }) {
@@ -265,7 +265,18 @@ function PlaceModal({ req, onClose, onDone }: { req: ShipmentRequest; onClose: (
   const ar = lang === 'ar';
   const t = (a: string, e: string) => (ar ? a : e);
   const { notify } = useDialog();
+  const { user } = useAuth();
+  // Sourcing: who found the carrier for each truck; defaults to the vendors member placing it.
+  const [reps, setReps] = useState<{ value: string; label: string; roleAr?: string }[]>([]);
+  const me = String(user?._id || '');
   const [rows, setRows] = useState<TruckRow[]>([blankTruck(req)]);
+  useEffect(() => {
+    api.get<{ options: { value: string; label: string; roleAr?: string }[] }>('/api/shipment-orders/sourcing-reps').then((d) => {
+      setReps(d.options || []);
+      if ((d.options || []).some((o) => o.value === me)) setRows((p) => p.map((r) => (r.sourcingRep ? r : { ...r, sourcingRep: me })));
+    }).catch(() => {});
+  }, [me]);
+  const defRep = reps.some((o) => o.value === me) ? me : '';
   const [saving, setSaving] = useState(false);
   const [tried, setTried] = useState(false);
   const setRow = (i: number, patch: Partial<TruckRow>) => setRows((p) => p.map((r, j) => (j === i ? { ...r, ...patch } : r)));
@@ -278,7 +289,7 @@ function PlaceModal({ req, onClose, onDone }: { req: ShipmentRequest; onClose: (
       const d = await api.post<{ waybills: number[]; failed: any[] }>(`/api/shipment-requests/${req._id}/place`, {
         trucks: rows.map((r) => ({
           supplierChoice: r.supplierId, ...(r.vehicleId ? { vehicle: r.vehicleId } : { newVehicle: { plate: r.newPlate.trim() } }),
-          driverName: r.driverName.trim(), driverPhone: r.driverPhone, buyPrice: Number(r.buyPrice), advanceAmount: r.advanceAmount === '' ? null : Number(r.advanceAmount),
+          driverName: r.driverName.trim(), driverPhone: r.driverPhone, sourcingRep: r.sourcingRep || null, buyPrice: Number(r.buyPrice), advanceAmount: r.advanceAmount === '' ? null : Number(r.advanceAmount),
           blNumber: r.blNumber, containerNumber: r.containerNumber,
         })),
       });
@@ -304,19 +315,19 @@ function PlaceModal({ req, onClose, onDone }: { req: ShipmentRequest; onClose: (
           <span>{t('التحميل', 'Pickup')} {day(req.pickupTime)}</span>{req.branch && <span>{req.branch}</span>}
         </div>
         {rows.map((r, i) => (
-          <TruckEditor key={i} i={i} row={r} miss={tried ? problems[i] : []} onChange={(p) => setRow(i, p)}
+          <TruckEditor key={i} i={i} row={r} reps={reps} miss={tried ? problems[i] : []} onChange={(p) => setRow(i, p)}
             onRemove={rows.length > 1 ? () => setRows((p) => p.filter((_, j) => j !== i)) : undefined} ar={ar} />
         ))}
         <div className="flex flex-wrap gap-2">
-          {rows.length < req.open && <button type="button" onClick={() => setRows((p) => [...p, blankTruck(req)])} className="inline-flex items-center gap-1 px-3 py-2 rounded-lg border border-dashed border-slate-300 text-[12.5px] font-semibold text-slate-700 hover:border-[#f37121] hover:text-[#f37121]"><Plus className="w-4 h-4" />{t('شاحنةٌ أخرى', 'Another truck')}</button>}
-          {rows.length < req.open && rows[0].supplierId && <button type="button" onClick={() => setRows((p) => [...p, { ...blankTruck(req), supplierId: p[0].supplierId, supplierName: p[0].supplierName, buyPrice: p[0].buyPrice }])} className="inline-flex items-center gap-1 px-3 py-2 rounded-lg border border-dashed border-slate-300 text-[12.5px] font-semibold text-slate-700 hover:border-[#f37121] hover:text-[#f37121]"><Copy className="w-4 h-4" />{t('شاحنةٌ أخرى من نفس المورّد', 'Another from the same supplier')}</button>}
+          {rows.length < req.open && <button type="button" onClick={() => setRows((p) => [...p, blankTruck(req, defRep)])} className="inline-flex items-center gap-1 px-3 py-2 rounded-lg border border-dashed border-slate-300 text-[12.5px] font-semibold text-slate-700 hover:border-[#f37121] hover:text-[#f37121]"><Plus className="w-4 h-4" />{t('شاحنةٌ أخرى', 'Another truck')}</button>}
+          {rows.length < req.open && rows[0].supplierId && <button type="button" onClick={() => setRows((p) => [...p, { ...blankTruck(req, p[0].sourcingRep), supplierId: p[0].supplierId, supplierName: p[0].supplierName, buyPrice: p[0].buyPrice }])} className="inline-flex items-center gap-1 px-3 py-2 rounded-lg border border-dashed border-slate-300 text-[12.5px] font-semibold text-slate-700 hover:border-[#f37121] hover:text-[#f37121]"><Copy className="w-4 h-4" />{t('شاحنةٌ أخرى من نفس المورّد', 'Another from the same supplier')}</button>}
         </div>
       </div>
     </Modal>
   );
 }
 
-function TruckEditor({ i, row, miss, onChange, onRemove, ar }: { i: number; row: TruckRow; miss: string[]; onChange: (p: Partial<TruckRow>) => void; onRemove?: () => void; ar: boolean }) {
+function TruckEditor({ i, row, reps, miss, onChange, onRemove, ar }: { i: number; row: TruckRow; reps: { value: string; label: string; roleAr?: string }[]; miss: string[]; onChange: (p: Partial<TruckRow>) => void; onRemove?: () => void; ar: boolean }) {
   const t = (a: string, e: string) => (ar ? a : e);
   const [sups, setSups] = useState<OrderSupplier[]>([]);
   const [vehs, setVehs] = useState<OrderVehicle[]>([]);
@@ -353,6 +364,12 @@ function TruckEditor({ i, row, miss, onChange, onRemove, ar }: { i: number; row:
         {onRemove && <button type="button" onClick={onRemove} className="ms-auto text-slate-400 hover:text-red-600"><Trash2 className="w-4 h-4" /></button>}
       </div>
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+        <div className="sm:col-span-2 lg:col-span-3">
+          <label className="block text-[12.5px] font-semibold mb-1 text-slate-700">{t('مسؤول التوريد — مَن جاء بالمورّد ومالك السيارة', 'Sourcing — who found the carrier and truck owner')}</label>
+          <SearchableSelect value={row.sourcingRep} searchAfter={0} onChange={(v) => onChange({ sourcingRep: v })}
+            placeholder={t('اختر من فريق الموردين أو العمليات', 'Pick from the vendors or operations team')}
+            options={reps.map((o) => ({ value: o.value, label: o.label, hint: o.roleAr || '' }))} />
+        </div>
         <div>
           <label className={`block text-[12.5px] font-semibold mb-1 ${bad('supplier') ? 'text-red-600' : 'text-slate-700'}`}>{t('المورّد', 'Supplier')} *</label>
           <div className={bad('supplier') ? 'rounded-lg ring-2 ring-red-400/60' : ''}>

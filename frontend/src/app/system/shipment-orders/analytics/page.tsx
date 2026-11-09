@@ -36,7 +36,7 @@ interface Insights {
   totals: Row; previous: Row; trend: Row[]; byStatus: Record<string, number>;
   customers: Row[]; suppliers: Row[]; routes: Row[]; fromCities: Row[]; toCities: Row[]; branches: Row[];
   truckTypes: Row[]; truckLengths: Row[]; cargoTypes: Row[]; payments: Row[]; salesReps: Row[]; agents: Row[];
-  supplierKinds: Row[]; cancelReasons: { reason: string; count: number; pct: number }[];
+  supplierKinds: Row[]; sourcingReps?: Row[]; cancelReasons: { reason: string; count: number; pct: number }[];
   cancelByBranch: { branch: string; reason: string; n: number }[]; weekday: Row[];
   duration: { trips: number; avgHours: number | null; buckets: { key: string; n: number }[] };
   marginBands?: { key: string; n: number }[]; losing?: Row[]; requests: Row;
@@ -48,7 +48,7 @@ const DIMS: [string, string, string][] = [
   ['customer', 'العميل', 'Customer'], ['route', 'المسار', 'Route'], ['fromCity', 'من', 'From'], ['toCity', 'إلى', 'To'],
   ['branch', 'الفرع', 'Branch'], ['truckType', 'نوع الشاحنة', 'Truck type'], ['truckLength', 'طول الشاحنة', 'Truck length'],
   ['cargoType', 'نوع الحمولة', 'Cargo type'], ['payment', 'نوع الدفع', 'Payment'], ['salesRep', 'مندوب المبيعات', 'Ops sales'],
-  ['supplier', 'المورّد', 'Supplier'], ['supplierType', 'نوع المورّد', 'Supplier kind'], ['agent', 'مُنشئ الشحنة', 'Created by'],
+  ['sourcingRep', 'مسؤول التوريد', 'Sourcing'], ['supplier', 'المورّد', 'Supplier'], ['supplierType', 'نوع المورّد', 'Supplier kind'], ['agent', 'مُنشئ الشحنة', 'Created by'],
   ['status', 'الحالة', 'Status'], ['cancelReason', 'سبب الإلغاء', 'Cancel reason'], ['source', 'المصدر', 'Source'], ['request', 'طلبات المبيعات', 'Sales requests'],
 ];
 const DIM_KEYS = DIMS.map((d) => d[0]);
@@ -439,6 +439,10 @@ function Inner() {
           <Panel title={t('مندوب المبيعات', 'Operational sales')} subtitle={t('من جاء بالحمولة — مرتّبون بالمنفّذ', 'Who brought the load — ranked by executed')} pad={false}>
             <DataGrid ar={ar} rows={d.salesReps} onRow={(r) => addTo('salesRep', r.name === '—' ? '__blank__' : r.name)} rowKey={(r) => r.key}
               cols={volCols<Row>(t('مندوب المبيعات', 'Ops sales'))} />
+          </Panel>
+          <Panel title={t('مسؤولو التوريد', 'Sourcing')} subtitle={t('مَن جاء بالمورّد ومالك السيارة لكلّ شحنة — مرتّبون بالمنفّذ', 'Who found the carrier — ranked by executed')} pad={false}>
+            <DataGrid ar={ar} rows={d.sourcingReps || []} onRow={(r) => addTo('sourcingRep', r.name === '—' ? '__blank__' : r.name)} rowKey={(r) => r.key}
+              cols={volCols<Row>(t('مسؤول التوريد', 'Sourcing'))} />
           </Panel>
           <Panel title={t('مُنشئو الشحنات', 'Created by')} subtitle={t('من سجّل الشحنة على النظام (مندوب التشغيل)', 'Who registered the shipment')} pad={false}>
             <DataGrid ar={ar} rows={d.agents} onRow={(r) => addTo('agent', r.name === '—' ? '__blank__' : r.name)} rowKey={(r) => r.key}

@@ -160,7 +160,7 @@ async function spanRows({ from, to, branch, extra = {} }) {
   const match = { pickupTime: { $gte: startOfDay(from), $lte: endOfDay(to) }, ...extra };
   if (branch) match.branch = branch;
   return ShipmentOrder.find(match)
-    .select('pickupTime createdAt branch customerName fromCity toCity status cancelReason buyPrice sellPrice supplier supplierName vehiclePlate driverName agentName paymentSubtype salesRepName truckType shipmentRequest waybillNumber createdBy')
+    .select('pickupTime createdAt branch customerName fromCity toCity status cancelReason buyPrice sellPrice supplier supplierName vehiclePlate driverName agentName paymentSubtype salesRepName sourcingRepName truckType shipmentRequest waybillNumber createdBy')
     .lean();
 }
 

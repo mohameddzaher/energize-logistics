@@ -20,6 +20,8 @@ const TARGET = {
 };
 // Operations is opened page by page for the other team roles (utils/permissions.effectivePages); a closure there still blocks the workflow.
 const EXTRA_PAGES = ['/system/operations'];
+// Team-internal and admin pages keep whatever the super admin chose for the role.
+const KEEP_CLOSED = /\/(jp-dashboard|management-jp|jp|kpis|complaints|settings|private|fleet)(\/|$)/;
 
 (async () => {
   await mongoose.connect(process.env.MONGODB_URI);
@@ -35,7 +37,7 @@ const EXTRA_PAGES = ['/system/operations'];
     for (const s of sections) if (sec[s] !== 'edit') set[`sections.${s}`] = 'edit';
     const paths = new Set([...sections.flatMap((s) => pagesOfSection(s).map((p) => p.key)), ...EXTRA_PAGES]);
     for (const [p, v] of Object.entries(pages)) {
-      if (v === false && [...paths].some((x) => p === x || p.startsWith(`${x}/`))) unset[`pages.${p}`] = '';
+      if (v === false && paths.has(p) && !KEEP_CLOSED.test(p)) unset[`pages.${p}`] = '';
     }
     const changes = [...Object.keys(set).map((k) => `${k}: ${sec[k.slice(9)] || '—'} → edit`), ...Object.keys(unset).map((k) => `يُفتح ${k.slice(6)}`)];
     console.log(`${role} (${users} مستخدم): ${changes.length ? `\n   ${changes.join('\n   ')}` : 'مفتوحٌ أصلًا'}`);

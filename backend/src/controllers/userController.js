@@ -5,11 +5,11 @@ const { emitToAll } = require('../websocket/socketManager');
 const { invalidateUserCache } = require('../middleware/auth');
 
 /**
- * Creating a system admin, promoting an account to it, or editing one is limited to system admins.
+ * Creating a system admin, promoting an account to it, or editing one is limited to the super-admin tier (TOP_ROLES: admin and IT included, the owner's rule).
  * The check lives in the controller so it applies whichever route grants page access (see middleware/rbac).
  */
 const guardSuperAdminRole = (req, res, { currentRole, nextRole } = {}) => {
-  if (canonicalRole(req.user?.role) === 'super_admin') return false;
+  if (require('../config/constants').isTopRole(canonicalRole(req.user?.role))) return false;
   const touches = canonicalRole(currentRole) === 'super_admin' || canonicalRole(nextRole) === 'super_admin';
   if (!touches) return false;
   res.status(403).json({

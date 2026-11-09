@@ -480,7 +480,7 @@ export default function UsersPage() {
       // HR: link/unlink this login to an employee profile.
       payload.linkedEmployee = formData.linkedEmployee || null;
       payload.isTopManagement = !!formData.isTopManagement;
-      if (currentUser?.role === 'super_admin') payload.isChairman = !!formData.isChairman;
+      if (['super_admin', 'admin', 'it_manager', 'it_specialist'].includes(currentUser?.role || '')) payload.isChairman = !!formData.isChairman;
       // Sent only for the eligible roles, so editing anyone else never clears or moves a box.
       if (['hr_manager', 'cfo', 'accounting_manager'].includes(formData.role)) payload.leaveSheetSigner = formData.leaveSheetSigner || '';
       await api.put(`/api/users/${selectedUser._id}`, payload);
@@ -960,11 +960,11 @@ export default function UsersPage() {
           onChange={(role) => {
             setFormData({ ...formData, role, linkedCustomer: '', assignedCustomers: [] });
             // Auto-suggest a manager by org chart when creating a new user.
-            if (!selectedUser && !['super_admin', 'admin', 'it_manager', 'it_specialist', 'client'].includes(role)) {
+            if (!selectedUser && !['super_admin', 'admin', 'client'].includes(role)) {
               api.get<{ manager: { _id: string } | null }>(`/api/users/suggest-manager?role=${role}`)
                 .then((d) => { if (d.manager) setFormData((prev) => ({ ...prev, manager: d.manager!._id })); })
                 .catch(() => {});
-            } else if (['super_admin', 'admin', 'it_manager', 'it_specialist', 'client'].includes(role)) {
+            } else if (['super_admin', 'admin', 'client'].includes(role)) {
               setFormData((prev) => ({ ...prev, manager: '' }));
             }
           }}
@@ -976,10 +976,8 @@ export default function UsersPage() {
       </div>
       )}
 
-      {/* Direct manager — org chart. Hidden for top roles (super_admin/admin are
-          the CEO/COO — they have no manager) and roles with their own pickers
-          below. Optional everywhere; the system auto-suggests one by role. */}
-      {!['client', 'super_admin', 'admin', 'it_manager', 'it_specialist', 'b2c_project_lead', 'remote_employee'].includes(formData.role) && (
+      {/* Direct manager. Hidden for super_admin/admin (the company heads) and roles with their own pickers below; IT shares super-admin powers but still reports to a manager. */}
+      {!['client', 'super_admin', 'admin', 'b2c_project_lead', 'remote_employee'].includes(formData.role) && (
         <div>
           <label className="block text-slate-700 text-sm font-medium mb-1.5">
             {lang === 'ar' ? 'المدير المباشر' : 'Direct Manager'}
@@ -1012,7 +1010,7 @@ export default function UsersPage() {
       )}
 
       {/* The chairman is a super admin account with the final leave stage; only a super admin can tick it, and ticking it makes the account super admin. */}
-      {selectedUser && formData.role !== 'client' && currentUser?.role === 'super_admin' && (
+      {selectedUser && formData.role !== 'client' && ['super_admin', 'admin', 'it_manager', 'it_specialist'].includes(currentUser?.role || '') && (
         <label className="flex items-center gap-2 px-3 py-2.5 rounded-lg border border-slate-200 bg-slate-50 cursor-pointer">
           <input type="checkbox" className="w-4 h-4 accent-[#f37121]" checked={!!formData.isChairman}
             onChange={(e) => setFormData({ ...formData, isChairman: e.target.checked, ...(e.target.checked ? { role: 'super_admin' } : {}) })} />

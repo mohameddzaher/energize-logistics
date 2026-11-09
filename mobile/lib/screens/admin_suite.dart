@@ -995,7 +995,7 @@ class _UserFormScreenState extends State<_UserFormScreen> {
   // The manager is suggested from the org chart on create; suggested, not forced.
   Future<void> _onRole(String role) async {
     setState(() { _role = role; _linkedCustomer = ''; _customers = []; });
-    if (const ['super_admin', 'admin', 'it_manager', 'it_specialist', 'client'].contains(role)) { setState(() => _manager = ''); return; }
+    if (const ['super_admin', 'admin', 'client'].contains(role)) { setState(() => _manager = ''); return; }
     if (_u != null) return;
     try {
       final d = await Api.instance.get('/api/users/suggest-manager?role=$role');
@@ -1149,7 +1149,7 @@ class _UserFormScreenState extends State<_UserFormScreen> {
   Widget build(BuildContext context) {
     final isNew = _u == null;
     final mgr = widget.users.firstWhere((x) => x['_id'] == _manager, orElse: () => const {});
-    final showManager = _accountType == 'employee' && !const ['client', 'super_admin', 'admin', 'it_manager', 'it_specialist', 'b2c_project_lead', 'remote_employee'].contains(_role);
+    final showManager = _accountType == 'employee' && !const ['client', 'super_admin', 'admin', 'b2c_project_lead', 'remote_employee'].contains(_role);
     return AppScaffold(
       title: Text(isNew ? tr('مستخدم جديد', 'New user') : tr('تعديل المستخدم', 'Edit user')),
       body: ListView(padding: const EdgeInsets.fromLTRB(16, 12, 16, 40), children: [

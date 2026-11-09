@@ -92,7 +92,8 @@ async function signatureBoxes(leave, { fullView = true } = {}) {
   ]);
 
   const emp = leave.employee || {};
-  const empInk = filer ? (empUser ? live.get(empUser) || '' : '') : (leave.employeeSignature || live.get(idOf(employeeSigner)) || '');
+  // The current saved signature wins over the one stored at filing (owner's rule): a sheet downloaded today carries today's signature.
+  const empInk = filer ? (empUser ? live.get(empUser) || '' : '') : (live.get(idOf(employeeSigner)) || leave.employeeSignature || '');
   const boxes = [{
     label: 'الموظف', en: 'Employee',
     ink: empInk,
@@ -114,7 +115,7 @@ async function signatureBoxes(leave, { fullView = true } = {}) {
     const head = d && heads[stage] && heads[stage].ink ? heads[stage] : null;
     boxes.push({
       label, en,
-      ink: head ? head.ink : d ? (d.signature || live.get(idOf(d.by)) || '') : '',
+      ink: head ? head.ink : d ? (live.get(idOf(d.by)) || d.signature || '') : '',
       name: head ? nameOf(head, false) : d ? nameOf(d.by, false) : '',
       note: '',
       date: d ? dmy(d.at) : '',

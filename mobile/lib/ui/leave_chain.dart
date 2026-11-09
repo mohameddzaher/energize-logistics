@@ -68,11 +68,15 @@ bool canDecideLeave(Map<String, dynamic>? user, Map<String, dynamic> l, {require
   final st = (l['status'] ?? '').toString();
   if (!leaveIsActionable(st)) return false;
   final role = (user?['role'] ?? '').toString();
+  // The manager stage is the request's own direct manager only; the chairman decides nothing; other super admins may push the later stages.
+  if (st == 'pending_manager') {
+    final m = l['manager'];
+    final mid = '${m is Map ? m['_id'] : (m ?? '')}';
+    return mid.isNotEmpty && mid == '${user?['_id']}';
+  }
+  if (user?['isChairman'] == true) return false;
   if (const ['super_admin', 'admin', 'it_manager', 'it_specialist'].contains(role)) return true;
   switch (st) {
-    case 'pending_manager':
-      final m = l['manager'];
-      return '${m is Map ? m['_id'] : m}' == '${user?['_id']}';
     case 'pending_finance': return const ['cfo', 'accounting_manager', 'accountant'].contains(role);
     case 'pending_hr': return hrStaff;
     case 'pending_executive': return user?['isTopManagement'] == true;

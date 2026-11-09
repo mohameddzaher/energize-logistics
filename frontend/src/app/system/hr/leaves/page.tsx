@@ -255,7 +255,7 @@ export default function HRLeavesPage() {
   const pendingCount = allLeaves.filter((l) => LEAVE_OPEN.includes(l.status)).length;
   // Decisions are made only at an existing stage; the server verifies it is the reader's stage.
   const actionable = (l: LeaveRequest | null) => !!l && LEAVE_PENDING.includes(l.status);
-  // Row buttons only where this reader decides now, as the server checks (utils/leaveChain canActAt): HR at the HR stage, top management and the chairman at theirs, super admins anywhere.
+  // Row buttons only where this reader decides now, as the server checks (utils/leaveChain canActAt): the direct manager at his stage only, HR and top management at theirs, other super admins past the manager stage.
   const top = ['super_admin', 'admin', 'it_manager', 'it_specialist'].includes(user?.role || '');
   const canActNow = (l: LeaveRequest) => actionable(l) && canDecideLeave(user, l, staff);
 

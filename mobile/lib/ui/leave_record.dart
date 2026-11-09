@@ -95,15 +95,12 @@ Future<bool> showLeaveRecordSheet(BuildContext context, {String? employeeId}) as
                   initialValue: typeId,
                   isExpanded: true,
                   decoration: InputDecoration(labelText: tr('نوع الإجازة', 'Leave type')),
-                  // Deduction is a property of the type, stated in the name so it is known before recording.
+                  // No deduction hint here: HR's own choice decides it, and a type default beside it read as a contradiction.
                   items: types.map((t) {
                     final nm = tr('${t['nameAr']}', '${t['nameEn']}');
-                    final hint = t['affectsBalance'] == false
-                        ? tr(' — لا تُخصَم', ' — no deduction')
-                        : tr(' — تُخصَم من الرصيد', ' — deducted');
                     return DropdownMenuItem(
                       value: t['_id'] as String,
-                      child: Text('$nm$hint', overflow: TextOverflow.ellipsis),
+                      child: Text(nm, overflow: TextOverflow.ellipsis),
                     );
                   }).toList(),
                   onChanged: (v) => setSt(() => typeId = v),

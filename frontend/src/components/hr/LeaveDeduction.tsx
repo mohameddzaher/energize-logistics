@@ -16,7 +16,6 @@ export function DeductionChoice({ value, onChange, leave, ar }: {
   value: boolean | null; onChange: (v: boolean) => void; leave?: LeaveRequest | null; ar: boolean;
 }) {
   const days = leave?.days ?? 0;
-  const typeDeducts = leave?.leaveType?.affectsBalance !== false;
   const opt = (v: boolean, label: string, hint: string, Icon: any) => (
     <button type="button" onClick={() => onChange(v)}
       className={`flex-1 min-w-[10rem] rounded-lg border p-2.5 text-start transition-colors ${value === v
@@ -35,9 +34,6 @@ export function DeductionChoice({ value, onChange, leave, ar }: {
         {opt(true, ar ? 'تُخصم من الرصيد' : 'Deduct from balance', ar ? `يُخصم ${days} يوم من الرصيد عند اعتمادها` : `${days} day(s) come off once approved`, MinusCircle)}
         {opt(false, ar ? 'بدون خصم من الرصيد' : 'Without deduction', ar ? 'تُسجَّل الإجازة ولا يتغيّر الرصيد' : 'Recorded; the balance does not change', CircleSlash)}
       </div>
-      <p className="mt-1 text-[11px] text-slate-500">
-        {ar ? `نوع الإجازة في الإعدادات: ${typeDeducts ? 'يُخصم' : 'لا يُخصم'}` : `Leave type default: ${typeDeducts ? 'deducted' : 'not deducted'}`}
-      </p>
     </div>
   );
 }

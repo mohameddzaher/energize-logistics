@@ -460,8 +460,10 @@ const FINANCE_STAGE_ROLES = ['cfo', 'accounting_manager', 'accountant'];
 export function canDecideLeave(user: any, l: any, hrStaff: boolean): boolean {
   if (!l || !LEAVE_PENDING.includes(l.status)) return false;
   const role = user?.role || '';
+  // The manager stage is the request's own direct manager only; the chairman decides nothing; other super admins may push the later stages.
+  if (l.status === 'pending_manager') return !!(l.manager?._id || l.manager) && String(l.manager?._id || l.manager) === String(user?._id || '');
+  if (user?.isChairman === true) return false;
   if (['super_admin', 'admin', 'it_manager', 'it_specialist'].includes(role)) return true;
-  if (l.status === 'pending_manager') return String(l.manager?._id || l.manager || '') === String(user?._id || '');
   if (l.status === 'pending_finance') return FINANCE_STAGE_ROLES.includes(role);
   if (l.status === 'pending_hr') return hrStaff;
   if (l.status === 'pending_executive') return user?.isTopManagement === true;

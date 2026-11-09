@@ -36,7 +36,7 @@ const HR_ROLES = rolesOfSection('HR');
 // The CFO sits above the accounting department, so he is added from financeAuthority rather than the section list.
 const FINANCE_ROLES = [...new Set([...rolesOfSection('Accounting'), ...require('../config/financeAuthority').FINANCE_FULL_ROLES])];
 const EXEC_ROLES = ['super_admin', 'admin', 'it_manager', 'it_specialist'];
-/** Top management and the chairman are named accounts, not roles; any super admin can still push a stalled request (OVERRIDE_ROLES). */
+/** Top management and the chairman are named accounts, not roles; any super admin other than the chairman can push a stalled request past finance, HR or top management (OVERRIDE_ROLES), never past the direct manager. */
 const isTopManagement = (user) => user?.isTopManagement === true;
 const isChairman = (user) => user?.isChairman === true;
 
@@ -61,8 +61,11 @@ const selfManagerDecision = (user, signature = '') => ({ by: user._id || user, a
 /** Can this user decide this request at this stage? */
 function canActAt(stage, user, leave) {
   const role = user?.role || '';
+  // The manager stage belongs to the request's own direct manager only: an override here let a super admin sign as someone else's manager and skip him.
+  if (stage === 'manager') return !!leave.manager && String(leave.manager) === String(user?._id);
+  // The chairman's office is read-only; he decides no stage.
+  if (isChairman(user)) return false;
   if (OVERRIDE_ROLES.includes(role)) return true;
-  if (stage === 'manager') return String(leave.manager || '') === String(user._id);
   if (stage === 'finance') return FINANCE_ROLES.includes(role);
   if (stage === 'hr') return HR_ROLES.includes(role);
   if (stage === 'executive') return isTopManagement(user);
@@ -75,6 +78,7 @@ function canActAt(stage, user, leave) {
  */
 function stagesFor(user) {
   const role = user?.role || '';
+  if (isChairman(user)) return ['manager'];
   if (OVERRIDE_ROLES.includes(role)) return [...STAGES];
   const out = ['manager'];
   if (FINANCE_ROLES.includes(role)) out.push('finance');
@@ -88,7 +92,7 @@ function inboxFilter(user) {
   const stages = stagesFor(user);
   const or = [];
   for (const st of stages) {
-    if (st === 'manager' && !OVERRIDE_ROLES.includes(user?.role)) {
+    if (st === 'manager') {
       or.push({ status: 'pending_manager', manager: user._id });
     } else {
       or.push({ status: PENDING_OF[st] });

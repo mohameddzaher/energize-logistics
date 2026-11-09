@@ -133,7 +133,7 @@ export default function LeaveRecordModal({ open, onClose, onSaved, ar, employeeI
               searchPlaceholder={ar ? 'ابحث…' : 'search…'}
               options={types.map((t) => ({
                 value: t._id,
-                label: `${ar ? t.nameAr : t.nameEn}${t.affectsBalance === false ? (ar ? ' — لا تُخصَم من الرصيد' : ' — no balance deduction') : (ar ? ' — تُخصَم من الرصيد' : ' — deducted from balance')}`,
+                label: ar ? t.nameAr : t.nameEn,
               }))}
             />
           </div>

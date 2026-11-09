@@ -52,6 +52,9 @@ class _ShipmentOrderCreateScreenState extends State<ShipmentOrderCreateScreen> {
   // Operational sales: who brought the load, from the sales team or operations.
   Map<String, dynamic>? _salesRep;
   List<Map<String, dynamic>> _salesReps = const [];
+  // Sourcing: who found the carrier and the truck owner ({value,label}); owned with the truck fields.
+  Map<String, dynamic>? _sourcingRep;
+  List<Map<String, dynamic>> _sourcingReps = const [];
   // Supplier first, then its truck. As on the web: the supplier is known first and then which of its trucks, so the list is limited to its own instead of hundreds of plates together.
   Map<String, dynamic>? _supplier;
   Map<String, dynamic>? _vehicle;
@@ -353,6 +356,10 @@ class _ShipmentOrderCreateScreenState extends State<ShipmentOrderCreateScreen> {
             for (final c in _customers) {
               if (c['_id'] == cid) _customer = c;
             }
+          }
+          final sr = o['sourcingRep'];
+          if (sr != null) {
+            _sourcingRep = {'value': '${sr is Map ? sr['_id'] : sr}', 'label': '${o['sourcingRepName'] ?? (sr is Map ? '${sr['firstName'] ?? ''} ${sr['lastName'] ?? ''}'.trim() : '')}'};
           }
           // The truck and supplier arrive named from `getOrder`, so seed them into the two lists; otherwise two empty fields would show while both are selected.
           if (o['vehicle'] is Map) {
@@ -769,6 +776,8 @@ class _ShipmentOrderCreateScreenState extends State<ShipmentOrderCreateScreen> {
     payload['waybillDetails'] = details;
     if (_customer != null) payload['customer'] = _customer!['_id'];
     if (_salesRep != null) payload['salesRep'] = _salesRep!['value'];
+    // Left out on create when empty so the server defaults it to a vendors-team creator.
+    if (!_notOwned('vehicle') && (_editing || _sourcingRep != null)) payload['sourcingRep'] = _sourcingRep?['value'];
     if (_newCustomer && _ncName.text.trim().isNotEmpty) {
       payload['newCustomer'] = {'name': _ncName.text.trim(), 'phone': saPhone(_ncPhone.text)};
     }
@@ -1085,6 +1094,21 @@ class _ShipmentOrderCreateScreenState extends State<ShipmentOrderCreateScreen> {
                           ),
                         ],
                         const Divider(height: 18),
+                        OutlinedButton.icon(
+                          style: OutlinedButton.styleFrom(alignment: AlignmentDirectional.centerStart, minimumSize: const Size(double.infinity, 44)),
+                          onPressed: _notOwned('vehicle') ? null : () async {
+                            if (_sourcingReps.isEmpty) {
+                              try { final d = await Api.instance.get('/api/shipment-orders/sourcing-reps'); _sourcingReps = List<Map<String, dynamic>>.from(d['options'] ?? []); } catch (_) {}
+                            }
+                            if (!mounted) return;
+                            final u = await _pickSheet<Map<String, dynamic>>(tr('مسؤول التوريد', 'sourcing'), _sourcingReps, (u) => (u['label'] ?? '').toString(), sub: (u) => (u['roleAr'] ?? '').toString());
+                            if (u != null) setState(() => _sourcingRep = u);
+                          },
+                          icon: const Icon(Icons.person_search_outlined, size: 17),
+                          label: Text(_sourcingRep == null || '${_sourcingRep!['label'] ?? ''}'.isEmpty ? tr('مسؤول التوريد — مَن جاء بالمورّد ومالك السيارة…', 'Sourcing — who found the carrier…') : '${tr('مسؤول التوريد', 'Sourcing')}: ${_sourcingRep!['label']}',
+                              style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w700)),
+                        ),
+                        const SizedBox(height: 8),
                         // Supplier below it, as on the web. The two parties of the deal are in one card: who it is hauled for and who it is hauled from. The supplier used to sit in the truck card, so it read as a description of the truck rather than a party to the contract.
                         Row(children: [
                           Expanded(

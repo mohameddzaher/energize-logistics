@@ -53,6 +53,7 @@ const _colFields = [
   ('cargoType', 'نوع الحمولة', 'Cargo'),
   ('paymentSubtype', 'نوع الدفع', 'Payment'),
   ('salesRepName', 'مندوب المبيعات', 'Sales rep'),
+  ('sourcingRepName', 'مسؤول التوريد', 'Sourcing'),
   ('agentName', 'المندوب', 'Agent'),
   ('notes', 'ملاحظة أمر النقل', 'Transport order note'),
 ];

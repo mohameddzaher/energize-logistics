@@ -9,7 +9,7 @@ import '../ui/file_upload.dart';
 import '../ui/theme.dart';
 
 /// Section contract attachments, the counterpart of the contract attachments dialog in /system/contracts/agreements: files are listed and opened, and whoever can edit uploads and deletes the contract file.
-const _contractsEditRoles = ['super_admin', 'admin', 'contracts_manager', 'it_manager', 'it_specialist'];
+const _contractsEditRoles = ['super_admin', 'admin', 'contracts_manager', 'contracts_staff', 'it_manager', 'it_specialist', 'sales_manager', 'sales_rep', 'vendors_manager', 'vendors_team_leader', 'vendors_staff'];
 
 Future<bool> openAgreementFiles(BuildContext context, Map<String, dynamic> row) async {
   await showModalBottomSheet(

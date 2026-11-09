@@ -375,7 +375,7 @@ List<AppSection> sectionsFor(AuthProvider auth) {
     ),
     AppSection(
       key: 'Contracts', arTitle: 'إدارة العقود', enTitle: 'Contracts', icon: Icons.history_edu_outlined,
-      roles: const [..._admins, 'contracts_manager', 'operations_manager', 'contracts_staff'],
+      roles: const [..._admins, 'contracts_manager', 'operations_manager', 'contracts_staff', 'sales_manager', 'sales_rep', 'vendors_manager', 'vendors_team_leader', 'vendors_staff'],
       pages: [
         AppPage('لوحة القسم', 'Dashboard', Icons.space_dashboard_outlined, (c) => const ContractsDashboardScreen(), path: '/system/contracts'),
         AppPage('سجل موردي 3PL', '3PL Vendors', Icons.business_outlined, (c) => ResourceScreen(config: contractsVendorsCfg), path: '/system/contracts/vendors'),

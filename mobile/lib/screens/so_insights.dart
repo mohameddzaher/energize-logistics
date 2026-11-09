@@ -31,6 +31,7 @@ const _dims = <(String, String, String)>[
   ('cargoType', 'نوع الحمولة', 'Cargo type'),
   ('payment', 'نوع الدفع', 'Payment'),
   ('salesRep', 'مندوب المبيعات', 'Operational sales'),
+  ('sourcingRep', 'مسؤول التوريد', 'Sourcing'),
   ('agent', 'مُنشئ الشحنة', 'Created by'),
   ('supplier', 'المورّد', 'Supplier'),
   ('status', 'الحالة', 'Status'),
@@ -48,6 +49,7 @@ const _tabs = <(String, String, String)>[
   ('truckTypes', 'أنواع الشاحنات', 'Truck types'),
   ('payments', 'أنواع الدفع', 'Payments'),
   ('salesReps', 'مندوب المبيعات', 'Operational sales'),
+  ('sourcingReps', 'مسؤولو التوريد', 'Sourcing'),
   ('agents', 'مُنشئو الشحنات', 'Creators'),
   ('toCities', 'الوجهات', 'Destinations'),
   ('cargoTypes', 'أنواع الحمولة', 'Cargo types'),
@@ -232,7 +234,7 @@ class _SoInsightsScreenState extends State<SoInsightsScreen> {
       if (has(r, 'minBuy')) '${tr('الشراء', 'Buy')} ${soMoney(r['minBuy'])}–${soMoney(r['maxBuy'])}',
       if (has(r, 'minSell')) '${tr('البيع', 'Sell')} ${soMoney(r['minSell'])}–${soMoney(r['maxSell'])}',
     ];
-    return Padding(
+    final body = Padding(
       padding: const EdgeInsets.symmetric(vertical: 6),
       child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
         Row(children: [
@@ -252,6 +254,13 @@ class _SoInsightsScreenState extends State<SoInsightsScreen> {
           ].join(' · '), style: const TextStyle(fontSize: 11, color: T.inkSoft)),
       ]),
     );
+    if (tab != 'sourcingReps') return body;
+    // Tapping a sourcing person filters the whole analysis to them.
+    return InkWell(onTap: () {
+      final n = '${r['name'] ?? ''}';
+      setState(() => _f['sourcingRep'] = [n.isEmpty || n == '—' ? '__blank__' : n]);
+      _load();
+    }, child: body);
   }
 
   List<Map<String, dynamic>> _list(dynamic v) => List<Map<String, dynamic>>.from(((v as List?) ?? const []).map((e) => Map<String, dynamic>.from(e)));

@@ -1,6 +1,8 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
 import '../services/api.dart';
+import '../services/auth.dart';
 import '../services/lang.dart';
 import '../services/live.dart';
 import '../ui/app_scaffold.dart';
@@ -879,6 +881,8 @@ class PlaceTrucksScreen extends StatefulWidget {
 }
 
 class _Truck {
+  // Who found the carrier and the truck owner; defaults to the placer.
+  String? sourcingRep;
   Map<String, dynamic>? supplier;
   Map<String, dynamic>? vehicle;
   final plate = TextEditingController();
@@ -895,6 +899,8 @@ class _Truck {
 class _PlaceTrucksScreenState extends State<PlaceTrucksScreen> {
   final List<_Truck> _trucks = [];
   bool _saving = false;
+  List<Map<String, dynamic>> _reps = const [];
+  String _me = '';
 
   int get _open {
     final r = widget.request;
@@ -904,7 +910,41 @@ class _PlaceTrucksScreenState extends State<PlaceTrucksScreen> {
   @override
   void initState() {
     super.initState();
+    _me = '${context.read<AuthProvider>().user?['_id'] ?? context.read<AuthProvider>().user?['id'] ?? ''}';
     _add();
+    _loadReps();
+  }
+
+  Future<void> _loadReps() async {
+    try {
+      final d = await Api.instance.get('/api/shipment-orders/sourcing-reps');
+      final rows = List<Map<String, dynamic>>.from(((d['options'] as List?) ?? const []).map((e) => Map<String, dynamic>.from(e)));
+      if (!mounted) return;
+      setState(() {
+        _reps = rows;
+        if (rows.any((o) => '${o['value']}' == _me)) {
+          for (final t in _trucks) { t.sourcingRep ??= _me; }
+        }
+      });
+    } catch (_) {/* optional field */}
+  }
+
+  String _repLabel(String? id) {
+    final o = _reps.where((x) => '${x['value']}' == id);
+    return o.isEmpty ? '' : '${o.first['label'] ?? ''}';
+  }
+
+  Future<void> _pickRep(_Truck t) async {
+    final v = await pickRemote(context,
+      title: tr('مسؤول التوريد', 'Sourcing'),
+      fetch: (q) async {
+        final f = q.trim().toLowerCase();
+        return _reps.where((x) => f.isEmpty || '${x['label']}'.toLowerCase().contains(f)).toList();
+      },
+      label: (x) => '${x['label'] ?? ''}',
+      sub: (x) => '${x['roleAr'] ?? ''}',
+    );
+    if (v != null) setState(() => t.sourcingRep = '${v['value']}');
   }
 
   @override
@@ -916,7 +956,8 @@ class _PlaceTrucksScreenState extends State<PlaceTrucksScreen> {
     t.bl.text = '${widget.request['blNumber'] ?? ''}';
     t.container.text = '${widget.request['containerNumber'] ?? ''}';
     // A second truck usually goes to the same supplier at the same price.
-    if (_trucks.isNotEmpty) { t.supplier = _trucks.last.supplier; t.buy.text = _trucks.last.buy.text; }
+    if (_trucks.isNotEmpty) { t.supplier = _trucks.last.supplier; t.buy.text = _trucks.last.buy.text; t.sourcingRep = _trucks.first.sourcingRep; }
+    else if (_reps.any((o) => '${o['value']}' == _me)) { t.sourcingRep = _me; }
     setState(() => _trucks.add(t));
   }
 
@@ -997,6 +1038,7 @@ class _PlaceTrucksScreenState extends State<PlaceTrucksScreen> {
               if (t.vehicle != null) 'vehicle': t.vehicle!['_id'] else 'newVehicle': {'plate': t.plate.text.trim()},
               'driverName': t.driver.text.trim(),
               'driverPhone': t.phone.text.trim(),
+              'sourcingRep': (t.sourcingRep ?? '').isEmpty ? null : t.sourcingRep,
               'buyPrice': num.tryParse(t.buy.text.trim()),
               if (t.advance.text.trim().isNotEmpty) 'advanceAmount': num.tryParse(t.advance.text.trim()),
               'blNumber': t.bl.text.trim(),
@@ -1029,6 +1071,13 @@ class _PlaceTrucksScreenState extends State<PlaceTrucksScreen> {
           const Spacer(),
           if (_trucks.length > 1) IconButton(onPressed: () => setState(() { _trucks.removeAt(i).dispose(); }), icon: const Icon(Icons.delete_outline, color: T.danger)),
         ]),
+        OutlinedButton.icon(
+          style: OutlinedButton.styleFrom(alignment: AlignmentDirectional.centerStart, minimumSize: const Size(double.infinity, 46)),
+          onPressed: _reps.isEmpty ? null : () => _pickRep(t),
+          icon: const Icon(Icons.person_search_outlined, size: 17),
+          label: Text(_repLabel(t.sourcingRep).isEmpty ? tr('مسؤول التوريد — مَن جاء بالمورّد ومالك السيارة…', 'Sourcing — who found the carrier…') : '${tr('مسؤول التوريد', 'Sourcing')}: ${_repLabel(t.sourcingRep)}', style: const TextStyle(fontWeight: FontWeight.w700), overflow: TextOverflow.ellipsis),
+        ),
+        const SizedBox(height: 8),
         OutlinedButton.icon(
           style: OutlinedButton.styleFrom(alignment: AlignmentDirectional.centerStart, minimumSize: const Size(double.infinity, 46)),
           onPressed: () => _pickSupplier(t),

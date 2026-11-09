@@ -21,7 +21,7 @@ class ContractsVendorProfileScreen extends StatefulWidget {
 }
 
 // canEditContracts on the web: the role or an edit permission on the section.
-const _contractsEditRoles = ['super_admin', 'admin', 'contracts_manager', 'it_manager', 'it_specialist'];
+const _contractsEditRoles = ['super_admin', 'admin', 'contracts_manager', 'contracts_staff', 'it_manager', 'it_specialist', 'sales_manager', 'sales_rep', 'vendors_manager', 'vendors_team_leader', 'vendors_staff'];
 
 // Fields edited in place, the same ones saved by PATCH /api/contracts/vendors/:id.
 const _editFields = <(String, String, String, bool)>[

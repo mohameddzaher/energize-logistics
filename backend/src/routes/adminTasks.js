@@ -9,7 +9,7 @@ const ctrl = require('../controllers/adminTaskController');
 const authorize = require('../middleware/rbac');
 
 const EDIT_ROLES = ['super_admin', 'admin', 'administration_staff', 'bd_manager', 'it_manager', 'it_specialist'];
-const DELETE_ROLES = ['super_admin', 'admin', 'bd_manager', 'it_manager'];
+const DELETE_ROLES = ['super_admin', 'admin', 'bd_manager', 'it_manager', 'it_specialist'];
 
 // authenticate + sectionGate('Administration') are mounted in server.js.
 router.get('/', ctrl.listTasks);

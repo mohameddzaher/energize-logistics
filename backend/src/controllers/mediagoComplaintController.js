@@ -139,7 +139,7 @@ async function notifyOurSide(doc, { type, title, message }) {
     await notifySection('B2C', { type, title, message, relatedEntity: 'MediaGoComplaint', relatedEntityId: doc._id });
     if (doc.createdBy) {
       const creator = await User.findById(doc.createdBy).select('role isActive').lean();
-      if (creator && creator.isActive && !['super_admin', 'b2c_manager'].includes(creator.role)) {
+      if (creator && creator.isActive && !['super_admin', 'admin', 'it_manager', 'it_specialist', 'b2c_manager'].includes(creator.role)) {
         await createNotification({ recipient: creator._id, type, title, message, relatedEntity: 'MediaGoComplaint', relatedEntityId: doc._id });
       }
     }

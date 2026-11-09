@@ -11,7 +11,7 @@ const authorize = require('../middleware/rbac');
 
 // authenticate + sectionGate('B2C') are applied at mount time in server.js.
 // Section roles first; users granted the section via the permissions matrix pass the same `authorize` (it reads `req.sectionAccess`); see middleware/sectionGate.
-const EDIT = ['super_admin', 'admin', 'b2c_manager', 'b2c_deputy', 'b2c_project_lead', 'it_manager', ...require('../config/financeAuthority').FINANCE_FULL_ROLES];
+const EDIT = ['super_admin', 'admin', 'b2c_manager', 'b2c_deputy', 'b2c_project_lead', 'it_manager', 'it_specialist', ...require('../config/financeAuthority').FINANCE_FULL_ROLES];
 
 // Section dashboard: one call computes staff, vehicles and housing together.
 router.get('/overview', c.overview);

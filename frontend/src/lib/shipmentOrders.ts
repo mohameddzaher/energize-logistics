@@ -214,7 +214,7 @@ export const SO_EDIT_ROLES = ['super_admin', 'admin', 'it_manager', 'it_speciali
   'sales_manager', 'sales_rep', 'sales_trainee', 'vendors_manager', 'vendors_team_leader', 'vendors_staff', 'vendors_trainee'];
 /** One shipment is one record: only these delete it, from either screen. */
 export const canDeleteShipments = (u: RoleOrUser) => ['super_admin', 'admin', 'it_manager', 'it_specialist', 'operations_manager'].includes(roleOf(u));
-export const SO_ADMIN_ROLES = ['super_admin', 'admin', 'it_manager', 'operations_manager'];
+export const SO_ADMIN_ROLES = ['super_admin', 'admin', 'it_manager', 'it_specialist', 'operations_manager'];
 /** Merging suppliers is by role only; counterpart of authorize.strict on the server (not to be loosened). */
 export const canMergeSuppliers = (u: RoleOrUser) => [...SO_ADMIN_ROLES, 'shipment_orders_manager'].includes(roleOf(u));
 export const canEditOrders = (u: RoleOrUser) => SO_EDIT_ROLES.includes(roleOf(u)) || canEditSection(permsOf(u), 'Shipment Orders');

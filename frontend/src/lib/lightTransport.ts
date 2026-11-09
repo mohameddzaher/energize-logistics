@@ -438,7 +438,7 @@ export const LT_COLUMNS: LTCol[] = [
 export const LT_PINNED = ['plate'];
 
 export const canEditLT = (u?: { role?: string | null; permissions?: Record<string, string> | null } | null) =>
-  ['super_admin', 'admin', 'b2c_manager', 'b2c_deputy', 'b2c_project_lead', 'it_manager'].includes(String(u?.role || ''))
+  ['super_admin', 'admin', 'b2c_manager', 'b2c_deputy', 'b2c_project_lead', 'it_manager', 'it_specialist'].includes(String(u?.role || ''))
   || u?.permissions?.B2C === 'edit';
 
 /** Project transfer is the only way to change a rider's project: deputy head of the individuals sector, the department manager, super admin and admin, plus finance as a system manager. The server also decides it (utils/b2cEntry.canTransfer). */

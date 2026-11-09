@@ -106,7 +106,7 @@ class _Ls2SuppliersScreenState extends State<Ls2SuppliersScreen> {
   Widget build(BuildContext context) {
     // Same gating as the store screen: section writers can edit suppliers; read-only users get no buttons that would be rejected.
     final auth = context.watch<AuthProvider>();
-    final canEdit = const ['super_admin', 'admin', 'it_manager', 'operations_manager',
+    final canEdit = const ['super_admin', 'admin', 'it_manager', 'it_specialist', 'operations_manager',
       'operations_staff', 'moderator'].contains(auth.role)
         || auth.canEditSection('Location Solutions');
     final k = _q.trim().toLowerCase();

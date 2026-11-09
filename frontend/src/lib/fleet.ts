@@ -244,7 +244,7 @@ import { canAccessSection, canEditSection, roleOf, permsOf, type RoleOrUser } fr
 // Mirrors EDIT_ROLES in backend/src/routes/fleet.js, data team included.
 export const FLEET_EDIT_ROLES = ['super_admin', 'admin', 'it_manager', 'it_specialist', 'operations_manager', 'operations_staff', 'moderator', 'fleet_manager', 'fleet_supervisor',
   'data_manager', 'data_analyst', 'data_entry'];
-export const FLEET_ADMIN_ROLES = ['super_admin', 'admin', 'it_manager', 'operations_manager', 'fleet_manager'];
+export const FLEET_ADMIN_ROLES = ['super_admin', 'admin', 'it_manager', 'it_specialist', 'operations_manager', 'fleet_manager'];
 
 // Card status on the main board; computed automatically on the server.
 export const BOARD_STATES: Record<string, { ar: string; en: string; card: string; chip: string; dot: string }> = {

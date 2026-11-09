@@ -420,7 +420,7 @@ exports.submit = async (req, res) => {
 
     // What does not go out is notified immediately: a damaged vehicle or a rep blocked from work.
     if (doc.hasDamage || outcome === 'blocked') {
-      const heads = await User.find({ role: { $in: ['b2c_manager', 'b2c_deputy', 'super_admin'] }, isActive: true })
+      const heads = await User.find({ role: { $in: ['b2c_manager', 'b2c_deputy', ...require('../config/constants').TOP_ROLES] }, isActive: true })
         .select('_id').lean();
       await Promise.all(heads.map((h) => createNotification({
         recipient: h._id, type: 'system_alert',

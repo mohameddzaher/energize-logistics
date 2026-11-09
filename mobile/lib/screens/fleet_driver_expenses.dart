@@ -23,7 +23,7 @@ class FleetDriverExpensesScreen extends StatefulWidget {
 
 // Paying money: for Finance and the fleet manager by their roles (= PAY_ROLES on the web and EXPENSE_PAY_ROLES on the server).
 const _payRoles = {
-  'super_admin', 'admin', 'it_manager', 'cfo', 'accounting_manager',
+  'super_admin', 'admin', 'it_manager', 'it_specialist', 'cfo', 'accounting_manager',
   'accountant', 'fleet_manager', 'operations_manager',
 };
 

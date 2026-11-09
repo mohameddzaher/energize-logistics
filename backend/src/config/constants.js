@@ -130,7 +130,7 @@ module.exports = {
   // Administration section (secretariat): the office task board.
   ADMINISTRATION_STAFF_ROLES: ['super_admin', 'admin', 'administration_staff', 'bd_manager', 'it_manager', 'it_specialist'],
   IT_STAFF_ROLES: ['super_admin', 'admin', 'it_manager', 'it_specialist'],
-  IT_ADMIN_ROLES: ['super_admin', 'admin', 'it_manager'],
+  IT_ADMIN_ROLES: ['super_admin', 'admin', 'it_manager', 'it_specialist'],
   FINANCE_STAFF_ROLES: ['super_admin', 'admin', 'it_manager', 'it_specialist', 'cfo', 'accounting_manager', 'accountant'],
   // Roles that can access the Sales section (+ the operations team — they need
   // visibility across CRM/Sales for the 3PL workflow).

@@ -17,7 +17,7 @@ const { emitToAll } = require('../websocket/socketManager');
 // Who may SEE everything (read-only oversight).
 // it_specialist removed (owner, 2026-10-27): every employee's grade and bonus is
 // for the top roles and the IT manager only.
-const FULL_ACCESS = ['super_admin', 'admin', 'it_manager'];
+const FULL_ACCESS = ['super_admin', 'admin', 'it_manager', 'it_specialist'];
 // Who may EDIT the grading rules AND override a locked evaluation AND decide
 // edit requests. Deliberately just super_admin: these are compensation
 // decisions, and a submitted grade the employee has been told must not be

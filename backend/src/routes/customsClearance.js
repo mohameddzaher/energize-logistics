@@ -39,7 +39,7 @@ router.delete('/parties/:id/attachments/:attId', authorize(...EDIT_ROLES), ctrl.
 const FINANCE_ROLES = ['super_admin', 'admin', 'it_manager', 'it_specialist', 'cfo', 'accounting_manager', 'accountant'];
 
 router.get('/settings', ctrl.getSettings);
-router.put('/settings', authorize('super_admin', 'admin', 'it_manager', 'customs_manager'), ctrl.updateSettings);
+router.put('/settings', authorize('super_admin', 'admin', 'it_manager', 'it_specialist', 'customs_manager'), ctrl.updateSettings);
 router.get('/upcoming-alerts', ctrl.upcomingAlerts);
 // Disbursement requests: clearance reads them to follow its request; only finance decides.
 router.get('/payment-requests', ctrl.listPaymentRequests);

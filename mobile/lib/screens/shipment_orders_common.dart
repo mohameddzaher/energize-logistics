@@ -24,7 +24,7 @@ const soEditRoles = ['super_admin', 'admin', 'it_manager', 'it_specialist', 'ope
   'shipment_orders_manager', 'shipment_orders_staff', 'shipment_orders_followup', 'data_manager', 'data_analyst', 'data_entry',
   // Sales asks for shipments and the vendors team places them (server: config/priceView).
   'sales_manager', 'sales_rep', 'vendors_manager', 'vendors_team_leader', 'vendors_staff'];
-const soAdminRoles = ['super_admin', 'admin', 'it_manager', 'operations_manager'];
+const soAdminRoles = ['super_admin', 'admin', 'it_manager', 'it_specialist', 'operations_manager'];
 bool canEditOrders(BuildContext c) {
   final a = c.read<AuthProvider>();
   return soEditRoles.contains(a.role) || a.canEditSection('Shipment Orders');

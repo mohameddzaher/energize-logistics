@@ -29,7 +29,7 @@ interface Rental {
 }
 interface Payload { items: Rental[]; counts: { active: number; byProject: Record<string, number> }; canDelete: boolean; today: string }
 
-const EDIT_ROLES = ['super_admin', 'admin', 'b2c_manager', 'b2c_deputy', 'b2c_project_lead', 'it_manager', 'cfo', 'accounting_manager', 'accountant'];
+const EDIT_ROLES = ['super_admin', 'admin', 'b2c_manager', 'b2c_deputy', 'b2c_project_lead', 'it_manager', 'it_specialist', 'cfo', 'accounting_manager', 'accountant'];
 const fmt = (d?: string) => (d ? d.slice(0, 10).split('-').reverse().join('/') : '—');
 type Form = Partial<Rental>;
 

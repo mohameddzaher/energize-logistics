@@ -16,7 +16,7 @@ export const COLLECTIONS_EDIT_ROLES = [
 ];
 
 // Section settings and deleting parties are for its manager: disabling a party hides a debt from every report.
-export const COLLECTIONS_ADMIN_ROLES = ['super_admin', 'admin', 'it_manager', 'collections_manager'];
+export const COLLECTIONS_ADMIN_ROLES = ['super_admin', 'admin', 'it_manager', 'it_specialist', 'collections_manager'];
 
 export const canViewCollections = (u: RoleOrUser): boolean =>
   COLLECTIONS_ROLES.includes(roleOf(u)) || canAccessSection(permsOf(u), SECTION);

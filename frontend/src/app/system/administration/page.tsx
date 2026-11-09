@@ -20,7 +20,7 @@ import { useDialog } from '@/components/system/DialogProvider';
 
 // ── Access ──────────────────────────────────────────────────────────────────
 const STAFF = ['super_admin', 'admin', 'administration_staff', 'bd_manager', 'it_manager', 'it_specialist'];
-const DELETE_ROLES = ['super_admin', 'admin', 'bd_manager', 'it_manager'];
+const DELETE_ROLES = ['super_admin', 'admin', 'bd_manager', 'it_manager', 'it_specialist'];
 
 // The navy the whole page keys off.
 const NAVY = '#12325c';

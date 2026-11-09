@@ -7,14 +7,14 @@ export type Lang = 'en' | 'ar';
 
 // Who opens the evaluation board is derived, not written. The server decides with one rule (`/(_manager|_head|_lead|moderator)/` in `performanceController`); a hand-written list here dropped six managers created after it was written.
 export const PERF_STAFF_ROLES = [
-  'super_admin', 'admin', 'it_manager', 'moderator',
+  'super_admin', 'admin', 'it_manager', 'it_specialist', 'moderator',
   ...MANAGER_ROLES,
   // Employees who take part in evaluation through their work, not their management.
   'hr_specialist', 'crm_team_lead', 'b2c_project_lead', 'cfo',
 ];
 // Full visibility across every department.
 // it_specialist removed (owner, 2026-10-27) — grades and bonuses are not for it.
-export const PERF_FULL_ROLES = ['super_admin', 'admin', 'it_manager'];
+export const PERF_FULL_ROLES = ['super_admin', 'admin', 'it_manager', 'it_specialist'];
 // May edit the forms, weights, bands and bonus tiers. Deliberately just one role:
 // these are the company's compensation rules.
 export const PERF_CONFIG_ROLES = ['super_admin', 'admin', 'it_manager', 'it_specialist'];

@@ -28,7 +28,7 @@ class IssueCfg {
 const ltIssueCfg = IssueCfg(
   base: '/api/light-transport/store/issue-requests', itemsBase: '/api/light-transport/store',
   titleAr: 'مخزن النقل الخفيف — طلبات الصرف', titleEn: 'Light Transport Store — Issue Requests', vehiclesKind: 'light', section: 'B2C',
-  editRoles: ['super_admin', 'admin', 'b2c_manager', 'b2c_deputy', 'b2c_project_lead', 'it_manager', 'cfo', 'accounting_manager', 'accountant'],
+  editRoles: ['super_admin', 'admin', 'b2c_manager', 'b2c_deputy', 'b2c_project_lead', 'it_manager', 'it_specialist', 'cfo', 'accounting_manager', 'accountant'],
 );
 const htIssueCfg = IssueCfg(
   base: '/api/ls2/store/issue-requests', itemsBase: '/api/ls2/store',

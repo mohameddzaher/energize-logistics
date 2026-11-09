@@ -12,7 +12,7 @@ const authorize = require('../middleware/rbac');
 // The data team creates loads as it creates shipment orders (routes/shipmentOrders EDIT_ROLES).
 const EDIT_ROLES = ['super_admin', 'admin', 'it_manager', 'it_specialist', 'operations_manager', 'operations_staff', 'moderator', 'fleet_manager', 'fleet_supervisor',
   ...require('../config/roles').DATA_ROLES];
-const ADMIN_ROLES = ['super_admin', 'admin', 'it_manager', 'operations_manager', 'fleet_manager'];
+const ADMIN_ROLES = ['super_admin', 'admin', 'it_manager', 'it_specialist', 'operations_manager', 'fleet_manager'];
 
 router.use(authenticate);
 
@@ -62,7 +62,7 @@ router.get('/loads-analysis', fleet.getLoadsAnalysis);
 // Vehicle status: live figures of our trucks in their section (tyres and their temperature, coolant temperature, maintenance, alerts), read from `Ls2Vehicle` itself: one source, no copy.
 router.get('/health', fleet.getFleetHealth);
 // Driver expenses. Reading is for anyone who opens the section; marking paid is a financial act, limited to accounts and administration. The fleet supervisor sees what is due but does not decide it was paid.
-const EXPENSE_PAY_ROLES = ['super_admin', 'admin', 'it_manager', 'cfo', 'accounting_manager', 'accountant', 'fleet_manager', 'operations_manager'];
+const EXPENSE_PAY_ROLES = ['super_admin', 'admin', 'it_manager', 'it_specialist', 'cfo', 'accounting_manager', 'accountant', 'fleet_manager', 'operations_manager'];
 router.get('/driver-expenses', fleet.getDriverExpenses);
 // strict: the section 'edit' a supervisor holds is not the right to mark money paid.
 router.patch('/driver-expenses/paid', authorize.strict(...EXPENSE_PAY_ROLES), fleet.setDriverExpensePaid);

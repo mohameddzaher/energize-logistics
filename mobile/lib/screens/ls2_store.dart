@@ -685,7 +685,7 @@ Future<Map<String, dynamic>?> pickStorePlate(BuildContext context, List<Map<Stri
 
 // The API lets an edit grant on Location Solutions through and refuses a view one; offer the write actions on exactly that line, so a read-only user isn't handed buttons that 403.
 bool _canEditStore(AuthProvider auth) =>
-    const ['super_admin', 'admin', 'it_manager', 'operations_manager', 'operations_staff', 'moderator'].contains(auth.role)
+    const ['super_admin', 'admin', 'it_manager', 'it_specialist', 'operations_manager', 'operations_staff', 'moderator'].contains(auth.role)
     || auth.canEditSection('Location Solutions');
 
 // Helpers shared by the forms: date, supplier, period.

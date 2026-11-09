@@ -173,7 +173,7 @@ Map<String, int> _faceted(List<Map<String, dynamic>> rows, Map<String, String> f
 
 /// Who edits the register (canEditLT on the web).
 bool canEditLtUser(AuthProvider a) =>
-    const ['super_admin', 'admin', 'b2c_manager', 'b2c_deputy', 'b2c_project_lead', 'it_manager'].contains(a.role) || a.canEditSection('B2C');
+    const ['super_admin', 'admin', 'b2c_manager', 'b2c_deputy', 'b2c_project_lead', 'it_manager', 'it_specialist'].contains(a.role) || a.canEditSection('B2C');
 
 class _LightTransportListScreenState extends State<LightTransportListScreen> {
   List<Map<String, dynamic>> _rows = [];

@@ -5,7 +5,7 @@ import { canAccessSection, canEditSection } from '@/lib/sections';
 export type Lang = 'en' | 'ar';
 
 export const IT_STAFF_ROLES = ['super_admin', 'admin', 'it_manager', 'it_specialist'];
-export const IT_ADMIN_ROLES = ['super_admin', 'admin', 'it_manager'];
+export const IT_ADMIN_ROLES = ['super_admin', 'admin', 'it_manager', 'it_specialist'];
 
 export const isItStaff = (role?: string | null) => !!role && IT_STAFF_ROLES.includes(role);
 export const isItAdmin = (role?: string | null) => !!role && IT_ADMIN_ROLES.includes(role);

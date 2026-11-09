@@ -17,7 +17,7 @@ const EDIT_ROLES = ['super_admin', 'admin', 'it_manager', 'it_specialist', 'oper
   ...require('../config/roles').DATA_ROLES,
   // Sales and the vendors team work the section too, each on its own half (controller: ownedFields).
   ...require('../config/priceView').SALES_ROLES, ...require('../config/priceView').VENDOR_ROLES];
-const ADMIN_ROLES = ['super_admin', 'admin', 'it_manager', 'operations_manager'];
+const ADMIN_ROLES = ['super_admin', 'admin', 'it_manager', 'it_specialist', 'operations_manager'];
 
 router.use(authenticate);
 

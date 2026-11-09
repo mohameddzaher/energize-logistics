@@ -309,7 +309,7 @@ List<AppSection> sectionsFor(AuthProvider auth) {
           AppPage('محفظة الفروع (عرض)', 'Branch wallets (view)', Icons.account_balance_wallet_outlined, (c) => const CashWalletScreen(), path: '/system/wallet'),
           AppPage('لوحة المحفظة (عرض)', 'Wallet dashboard (view)', Icons.pie_chart_outline, (c) => const WalletDashboardScreen(), path: '/system/wallet-dashboard'),
         ],
-        if (const ['super_admin', 'admin', 'it_manager', 'collections_manager'].contains(role))
+        if (const ['super_admin', 'admin', 'it_manager', 'it_specialist', 'collections_manager'].contains(role))
           AppPage('إعدادات القسم', 'Section Settings', Icons.tune_rounded, (c) => const CollectionsSettingsScreen(), path: '/system/collections-dept/settings'),
         if (jpMember(role, 'collections')) AppPage('خطّة العمل (JP)', 'JP', Icons.event_available_outlined, (c) => const JpScreen(section: 'collections'), path: '/system/collections-dept/jp'),
         if (jpManager(role, 'collections')) AppPage('لوحة JP', 'JP Dashboard', Icons.insights_outlined, (c) => const JpDashScreen(section: 'collections'), path: '/system/collections-dept/jp-dashboard'),
@@ -360,10 +360,10 @@ List<AppSection> sectionsFor(AuthProvider auth) {
         AppPage('سجلّات السيارات', 'Vehicle Logs', Icons.assignment_outlined, (c) => const FleetVehicleLogsScreen(), path: '/system/fleet/vehicle-logs'),
         AppPage('مصاريف السوّاق', 'Driver Expenses', Icons.account_balance_wallet_outlined, (c) => const FleetDriverExpensesScreen(), path: '/system/fleet/driver-expenses'),
         // Supervisor distribution: for the section manager and anyone granted edit (canAdminFleet on the web).
-        if (const ['super_admin', 'admin', 'it_manager', 'operations_manager', 'fleet_manager'].contains(role) || auth.canEditSection('Fleet Management'))
+        if (const ['super_admin', 'admin', 'it_manager', 'it_specialist', 'operations_manager', 'fleet_manager'].contains(role) || auth.canEditSection('Fleet Management'))
           AppPage('توزيع المشرفين', 'Assign Supervisors', Icons.manage_accounts_outlined, (c) => const FleetAssignScreen(), path: '/system/fleet/assign'),
         AppPage('العملاء', 'Customers', Icons.people_outline, (c) => ResourceScreen(config: fleetCustomersCfg), path: '/system/fleet/customers'),
-        if (const ['super_admin', 'admin', 'it_manager', 'operations_manager', 'fleet_manager'].contains(role) || auth.canEditSection('Fleet Management'))
+        if (const ['super_admin', 'admin', 'it_manager', 'it_specialist', 'operations_manager', 'fleet_manager'].contains(role) || auth.canEditSection('Fleet Management'))
           AppPage('العملاء المؤرشفون', 'Archived Customers', Icons.archive_outlined, (c) => ResourceScreen(config: fleetCustomersArchivedCfg), path: '/system/fleet/customers'),
         if (jpMember(role, 'fleet')) AppPage('خطّة العمل (JP)', 'JP', Icons.event_available_outlined, (c) => const JpScreen(section: 'fleet'), path: '/system/fleet/jp'),
         if (jpManager(role, 'fleet')) AppPage('لوحة JP', 'JP Dashboard', Icons.insights_outlined, (c) => const JpDashScreen(section: 'fleet'), path: '/system/fleet/jp-dashboard'),
@@ -604,10 +604,10 @@ List<AppSection> sectionsFor(AuthProvider auth) {
           AppPage('وثائق تأمين الشركة', 'Company Policies', Icons.verified_user_outlined, (c) => const VehicleCorporatePoliciesScreen(), path: '/system/vehicles/registry/corporate'),
           AppPage('سجلّات القسم', 'Registers', Icons.inventory_2_outlined, (c) => const VehicleRecordsScreen(), path: '/system/vehicles/registry/records'),
         ],
-        if (const ['super_admin', 'it_manager', 'admin', 'vehicles_manager', 'vehicles_staff', 'hr_manager', 'hr_specialist'].contains(role))
+        if (const ['super_admin', 'it_manager', 'it_specialist', 'admin', 'vehicles_manager', 'vehicles_staff', 'hr_manager', 'hr_specialist'].contains(role))
           AppPage('بطاقات السائقين', 'Driver Cards', Icons.badge_outlined, (c) => const VehicleDriverCardsScreen(), path: '/system/vehicles/driver-cards'),
         AppPage('الانتهاءات والتجديد', 'Expiries & Renewals', Icons.event_available_outlined, (c) => const VehicleRegistryAlertsScreen(), path: '/system/vehicles/registry/expiring'),
-        if (const ['super_admin', 'admin', 'it_manager', 'vehicles_manager'].contains(role))
+        if (const ['super_admin', 'admin', 'it_manager', 'it_specialist', 'vehicles_manager'].contains(role))
           AppPage('إعدادات القسم', 'Section Settings', Icons.settings_outlined, (c) => const VehicleRegistrySettingsScreen(), path: '/system/vehicles/settings'),
         AppPage('الشكاوى', 'Complaints', Icons.report_outlined, (c) => const SectionWorkScreen(section: 'vehicles', complaints: true), path: '/system/vehicles/complaints'),
         AppPage('تقييم الأداء', 'KPIs', Icons.leaderboard_outlined, (c) => const TeamBoardScreen(section: 'Vehicles'), path: '/system/vehicles/kpis'),
@@ -625,7 +625,7 @@ List<AppSection> sectionsFor(AuthProvider auth) {
         if (_top.contains(role) || role == 'customs_manager') AppPage('تحليلات قسم التخليص', 'Customs Analytics', Icons.insights_outlined, (c) => const CustomsAnalyticsScreen(), path: '/system/customs/analytics'),
         AppPage('الدليل', 'Guide', Icons.menu_book_outlined, (c) => const CustomsGuideScreen(), path: '/system/customs/guide'),
         AppPage('التخليص الجمركي', 'Clearances', Icons.directions_boat_outlined, (c) => const CustomsListScreen(), path: '/system/customs'),
-        if (const ['super_admin', 'admin', 'it_manager', 'customs_manager'].contains(role))
+        if (const ['super_admin', 'admin', 'it_manager', 'it_specialist', 'customs_manager'].contains(role))
           AppPage('إعدادات القسم', 'Section Settings', Icons.tune_outlined, (c) => const CustomsSettingsScreen(), path: '/system/customs/settings'),
         AppPage('العملاء', 'Customers', Icons.people_outline, (c) => ResourceScreen(config: customsCustomersCfg), path: '/system/customs/customers'),
         AppPage('وكلاء الشحن', 'Shipping Agents', Icons.anchor_outlined, (c) => ResourceScreen(config: customsAgentsCfg), path: '/system/customs/agents'),
@@ -695,7 +695,7 @@ List<AppSection> sectionsFor(AuthProvider auth) {
         AppPage('السوّاق', 'Drivers', Icons.badge_outlined, (c) => ResourceScreen(config: shipmentOrdersDriversCfg), path: '/system/shipment-orders/fleet'),
         if (const ['super_admin', 'admin', 'it_manager', 'it_specialist', 'operations_manager', 'data_manager', 'data_analyst'].contains(role))
           AppPage('الصلاحيات', 'Permissions', Icons.verified_user_outlined, (c) => const ShipmentBranchAccessScreen(), path: '/system/shipment-orders/permissions'),
-        if (const ['super_admin', 'admin', 'it_manager', 'operations_manager', 'shipment_orders_manager'].contains(role) || auth.canEditSection('Shipment Orders'))
+        if (const ['super_admin', 'admin', 'it_manager', 'it_specialist', 'operations_manager', 'shipment_orders_manager'].contains(role) || auth.canEditSection('Shipment Orders'))
           AppPage('إعدادات القسم', 'Section Settings', Icons.tune_outlined, (c) => const ShipmentOrdersSettingsScreen(), path: '/system/shipment-orders/settings'),
         AppPage('الشكاوى', 'Complaints', Icons.report_outlined, (c) => const SectionWorkScreen(section: 'shipment-orders', complaints: true), path: '/system/shipment-orders/complaints'),
         AppPage('تقييم الأداء', 'KPIs', Icons.leaderboard_outlined, (c) => const TeamBoardScreen(section: 'Shipment Orders'), path: '/system/shipment-orders/kpis'),

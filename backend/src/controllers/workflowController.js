@@ -1718,7 +1718,7 @@ exports.updateStage = async (req, res) => {
       submitted_to_ops: ['moderator', 'super_admin', 'admin', 'it_manager', 'it_specialist', ...FINANCE_FULL_ROLES],
       ops_completed: ['operations_manager', 'super_admin', 'admin', 'it_manager', 'it_specialist', ...FINANCE_FULL_ROLES],
       submitted_to_collections: ['operations_manager', 'super_admin', 'admin', 'it_manager', 'it_specialist', ...FINANCE_FULL_ROLES],
-      completed: ['admin', 'employee', 'super_admin', ...FINANCE_FULL_ROLES],
+      completed: ['admin', 'employee', 'super_admin', 'it_manager', 'it_specialist', ...FINANCE_FULL_ROLES],
       draft: ['moderator', 'operations_manager', 'super_admin', 'admin', 'it_manager', 'it_specialist', ...FINANCE_FULL_ROLES], // rollback
     };
 

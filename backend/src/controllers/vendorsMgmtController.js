@@ -553,7 +553,8 @@ exports.updateVendor = async (req, res) => {
       const R = await VA.resolver();
       for (const n of [data.name, ...(data.aliases || [])].filter(Boolean)) {
         const owner = R.byKey.get(fold(n));
-        if (owner && String(owner._id) !== String(doc._id)) return res.status(409).json({ code: 'ALIAS_TAKEN', message: `الاسم «${n}» مسجَّلٌ لمورّدٍ آخر: «${owner.name}» — ادمجهما بدلًا من ذلك` });
+        // A master carrier may take a name from a non-master row (same carrier, older spelling); never from another master carrier.
+        if (owner && String(owner._id) !== String(doc._id) && (owner.inMaster || !doc.inMaster)) return res.status(409).json({ code: 'ALIAS_TAKEN', message: `الاسم «${n}» مسجَّلٌ لمورّدٍ آخر: «${owner.name}» — ادمجهما بدلًا من ذلك` });
       }
     }
     const before = {};

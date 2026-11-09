@@ -22,9 +22,17 @@ async function resolver() {
       .lean();
     const byKey = new Map();
     const byId = new Map();
-    for (const r of rows) {
+    // Master carriers claim their names first: the same carrier often has older register rows under other spellings, and its trips belong to the master row.
+    const ordered = [...rows.filter((r) => r.inMaster), ...rows.filter((r) => !r.inMaster)];
+    for (const r of ordered) {
       byId.set(String(r._id), r);
       for (const k of [fold(r.name), ...(r.aliasKeys || [])]) if (k && !byKey.has(k)) byKey.set(k, r);
+    }
+    // A non-master row whose name a master carrier claims is that carrier.
+    for (const r of rows) {
+      if (r.inMaster) continue;
+      const m = [fold(r.name), ...(r.aliasKeys || [])].map((k) => byKey.get(k)).find((x) => x && x.inMaster);
+      if (m) byId.set(String(r._id), m);
     }
     // Merged rows point at their survivor; their names still resolve to it.
     const merged = await ShipmentOrderSupplier.find({ mergedInto: { $ne: null } }).select('name mergedInto aliasKeys').lean();
@@ -51,10 +59,14 @@ function classify(R, supplierId, supplierName, plate) {
   let plateKey = '';
   try { plateKey = plate ? require('../utils/plateKey').canonicalPlateKey(plate) : ''; } catch (_) { /* */ }
   if (FLEET_RX.test(name) || (plateKey && R.plates.has(plateKey))) return { kind: 'fleet', vendor: null, name: 'أسطول تنشيط' };
-  const v = (supplierId && R.byId.get(String(supplierId))) || (name ? R.byKey.get(fold(name)) : null);
+  const byName = name ? R.byKey.get(fold(name)) : null;
+  const byRef = supplierId ? R.byId.get(String(supplierId)) : null;
+  // The master carrier wins when either the reference or the written name points at it.
+  const v = (byName && byName.inMaster ? byName : null) || byRef || byName;
   if (v) {
     if (FLEET_RX.test(v.name)) return { kind: 'fleet', vendor: null, name: 'أسطول تنشيط' };
-    const kind = v.type === 'freelancer' ? 'freelancer' : v.inMaster ? 'master' : 'outside';
+    // Platform owners were all registered as companies; a non-master row named like a person is a freelance driver.
+    const kind = v.inMaster ? 'master' : (v.type === 'freelancer' || !COMPANY_RX.test(v.name)) ? 'freelancer' : 'outside';
     return { kind, vendor: v, name: v.name };
   }
   if (!name) return { kind: 'none', vendor: null, name: '' };

@@ -39,6 +39,7 @@ const dateOf = (s) => {
   const byKey = new Map();
   for (const s of all) for (const k of [fold(s.name), ...(s.aliasKeys || [])]) if (k && !byKey.has(k)) byKey.set(k, s);
   const aliasGroupOf = new Map(Object.entries(data.aliases || {}).map(([g, names]) => [fold(g), names]));
+  const createdNames = [];
   const stats = { matched: 0, created: 0, updatedFields: 0, aliasesAdded: 0, aliasConflicts: [], followUps: 0, leads: 0, leadsCreated: 0, prices: 0 };
   const touched = new Map();
   const seedNotes = new Map();
@@ -53,7 +54,8 @@ const dateOf = (s) => {
       const k = fold(n);
       if (!k || k === fold(doc.name)) continue;
       const owner = byKey.get(k);
-      if (owner && String(owner._id) !== String(doc._id)) { stats.aliasConflicts.push({ name: n, carrier: doc.name, owner: owner.name }); continue; }
+      // A master carrier claims the name from a non-master row (that row stays, untouched); two master rows keep their own.
+      if (owner && String(owner._id) !== String(doc._id) && (owner.inMaster || !doc.inMaster)) { stats.aliasConflicts.push({ name: n, carrier: doc.name, owner: owner.name }); continue; }
       if ((doc.aliases || []).some((a) => fold(a) === k)) continue;
       doc.aliases = [...(doc.aliases || []), n];
       byKey.set(k, doc);
@@ -78,6 +80,7 @@ const dateOf = (s) => {
     else {
       doc = new ShipmentOrderSupplier({ name: m.name, type: 'company' });
       stats.created += 1;
+      createdNames.push(m.name);
       byKey.set(fold(m.name), doc);
       touched.set(String(doc._id), doc);
     }
@@ -159,6 +162,7 @@ const dateOf = (s) => {
     console.log('\nNames claimed by two register rows (candidates for a merge):');
     for (const c of stats.aliasConflicts.slice(0, 60)) console.log(`  ${c.name}  →  ${c.carrier}  /  already: ${c.owner}`);
   }
+  if (process.argv.includes('--list')) console.log('\nNew register rows:\n' + createdNames.join('\n'));
   console.log(apply ? '\napplied' : '\ndry run — add --apply to write');
   await mongoose.disconnect();
 })().catch((e) => { console.error(e); process.exit(1); });

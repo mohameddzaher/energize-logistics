@@ -17,7 +17,7 @@ const TEAM = [
   { key: 'nariman', role: 'vendors_team_leader', rx: /ناريمان|نريمان|narim[ae]n/i },
   { key: 'aisha', role: 'vendors_staff', rx: /عائشة|عايشة|عائشه|عايشه|a[iy]sha|aysha/i },
   { key: 'hossam', role: 'vendors_staff', rx: /حسام\s*(مدحت|عبد\s*الله)|hossam\s*(medhat|abd[ue]?l+ah)|hosam\s*(medhat|abd[ue]?l+ah)/i },
-  { key: 'saja', role: 'vendors_staff', rx: /سجى|سجا|saja/i },
+  { key: 'saja', role: 'vendors_staff', rx: /سجى|سجا|saja|saga/i },
 ];
 
 (async () => {

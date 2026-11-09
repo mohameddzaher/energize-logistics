@@ -658,7 +658,7 @@ class _ShipmentOrderCreateScreenState extends State<ShipmentOrderCreateScreen> {
           PhoneSA(controller: phoneC, label: tr('الجوال', 'Phone')),
           const SizedBox(height: 10),
           Row(children: [
-            for (final t in const [('company', 'شركة', 'Company'), ('freelancer', 'فريلانسر', 'Freelancer')])
+            for (final t in const [('company', 'شركة', 'Company'), ('freelancer', 'سائق فرد', 'Freelancer')])
               Padding(
                 padding: const EdgeInsets.only(left: 6),
                 child: ChoiceChip(
@@ -1039,11 +1039,11 @@ class _ShipmentOrderCreateScreenState extends State<ShipmentOrderCreateScreen> {
                               try { final d = await Api.instance.get('/api/shipment-orders/sales-reps'); _salesReps = List<Map<String, dynamic>>.from(d['options'] ?? []); } catch (_) {}
                             }
                             if (!mounted) return;
-                            final u = await _pickSheet<Map<String, dynamic>>(tr('السيلز التشغيلي', 'operational sales'), _salesReps, (u) => (u['label'] ?? '').toString(), sub: (u) => (u['roleAr'] ?? '').toString());
+                            final u = await _pickSheet<Map<String, dynamic>>(tr('مندوب المبيعات', 'operational sales'), _salesReps, (u) => (u['label'] ?? '').toString(), sub: (u) => (u['roleAr'] ?? '').toString());
                             if (u != null) setState(() => _salesRep = u);
                           },
                           icon: const Icon(Icons.badge_outlined, size: 17),
-                          label: Text(_salesRep == null ? tr('السيلز التشغيلي — مَن جاء بالحمولة…', 'Operational sales — who brought the load…') : (_salesRep!['label'] ?? '').toString(),
+                          label: Text(_salesRep == null ? tr('مندوب المبيعات — مَن جاء بالحمولة…', 'Operational sales — who brought the load…') : (_salesRep!['label'] ?? '').toString(),
                               style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w700)),
                         ),
                         const SizedBox(height: 8),
@@ -1099,7 +1099,7 @@ class _ShipmentOrderCreateScreenState extends State<ShipmentOrderCreateScreen> {
                                     return List<Map<String, dynamic>>.from(d['suppliers'] ?? []);
                                   },
                                   (x) => (x['name'] ?? '').toString(),
-                                  sub: (x) => [x['phone'], x['type'] == 'freelancer' ? tr('فريلانسر', 'Freelancer') : tr('شركة', 'Company')]
+                                  sub: (x) => [x['phone'], x['type'] == 'freelancer' ? tr('سائق فرد', 'Freelancer') : tr('شركة', 'Company')]
                                       .where((e) => (e ?? '').toString().isNotEmpty).join(' · '),
                                   hint: tr('الاسم أو الجوّال أو السجل…', 'Name, phone or CR…'),
                                   initial: _suppliers,

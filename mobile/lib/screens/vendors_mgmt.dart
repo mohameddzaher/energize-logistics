@@ -20,8 +20,8 @@ const _monthsEn = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep'
 String _mon(dynamic m) { final i = (inum(m).toInt() - 1).clamp(0, 11); return tr(_months[i], _monthsEn[i]); }
 
 const vmKinds = <String, (String, String, Color)>{
-  'master': ('ضمن الماستر', 'On the master', T.success),
-  'outside': ('خارج الماستر', 'Outside the master', T.warn),
+  'master': ('معتمد', 'On the master', T.success),
+  'outside': ('غير معتمد', 'Outside the master', T.warn),
   'freelancer': ('سائق فرد', 'Freelancer', T.violet),
   'fleet': ('أسطول تنشيط', 'Our fleet', T.navy),
   'none': ('غير محدّد', 'Unknown', T.inkFaint),
@@ -41,10 +41,168 @@ mixin _LiveLoad<W extends StatefulWidget> on State<W> {
   Timer? _liveT;
   void _onLiveEvt() { _liveT?.cancel(); _liveT = Timer(const Duration(milliseconds: 600), reload); }
   late final void Function() _liveCb = _onLiveEvt;
-  List<String> get liveEvents => const [vmEvent, 'shipmentOrders:updated', 'shipmentRequests:changed'];
+  List<String> get liveEvents => const [vmEvent, 'shipmentOrders:updated', 'shipmentOrders:fleet', 'shipmentRequests:changed'];
   Future<void> reload();
   void startLive() { for (final e in liveEvents) { Live.instance.on(e, _liveCb); } }
   void stopLive() { _liveT?.cancel(); for (final e in liveEvents) { Live.instance.off(e, _liveCb); } }
+}
+
+// Chart colours, same as the web: approved, outside, freelancers, our fleet, approved-share line.
+const vmColMaster = Color(0xFFF37121);
+const vmColOutside = Color(0xFFFBBF77);
+const vmColFreelancer = Color(0xFFCBD5E1);
+const vmColFleet = Color(0xFF334155);
+const vmColShare = Color(0xFF0EA5E9);
+
+/// Filters as repeated `f_<dim>` query parameters.
+String vmFilterQuery(Map<String, List<String>> f) => [
+  for (final e in f.entries) for (final v in e.value) 'f_${e.key}=${Uri.encodeQueryComponent(v)}',
+].join('&');
+
+const _vmDims = [
+  ('branch', 'الفرع', 'Branch'), ('customer', 'العميل', 'Customer'), ('fromCity', 'مدينة التحميل', 'Loading city'), ('toCity', 'مدينة الوصول', 'Destination'),
+  ('truckType', 'نوع الشاحنة', 'Truck type'), ('agent', 'مندوب التشغيل', 'Operations rep'), ('payment', 'نوع الدفع', 'Payment type'),
+  ('kind', 'نوع المورّد', 'Carrier kind'), ('owner', 'مسؤول المتابعة', 'Follow-up owner'), ('contract', 'حالة التعاقد', 'Contract status'),
+];
+
+/// Filter bar shared by the section analysis and the daily page: shipment dimensions narrow the trips, carrier dimensions narrow the carriers.
+class VmFilterBar extends StatefulWidget {
+  final Map<String, List<String>> value;
+  final ValueChanged<Map<String, List<String>>> onChanged;
+  final String from;
+  final String to;
+  const VmFilterBar({super.key, required this.value, required this.onChanged, required this.from, required this.to});
+  @override
+  State<VmFilterBar> createState() => _VmFilterBarState();
+}
+
+class _VmFilterBarState extends State<VmFilterBar> {
+  Map<String, List<Map<String, dynamic>>> _opts = {};
+  List<Map<String, dynamic>> _owners = [];
+  List<Map<String, dynamic>> _contracts = [];
+  String _span = '';
+
+  @override
+  void initState() { super.initState(); _loadCarrier(); _loadOpts(); }
+  @override
+  void didUpdateWidget(covariant VmFilterBar old) { super.didUpdateWidget(old); if (old.from != widget.from || old.to != widget.to) _loadOpts(); }
+
+  Future<void> _loadOpts() async {
+    final span = '${widget.from}:${widget.to}';
+    if (span == _span) return;
+    _span = span;
+    try {
+      final d = await Api.instance.get('/api/shipment-orders/insights/options?from=${widget.from}&to=${widget.to}');
+      final o = Map<String, dynamic>.from(d['options'] ?? {});
+      if (mounted) setState(() => _opts = {for (final e in o.entries) e.key: _list(e.value)});
+    } catch (_) {}
+  }
+  Future<void> _loadCarrier() async {
+    try {
+      final d = await Api.instance.get('/api/vendors-mgmt/filter-options');
+      if (mounted) setState(() { _owners = _list(d['owners']); _contracts = _list(d['contracts']); });
+    } catch (_) {}
+  }
+
+  String _label(String k, String v) {
+    if (v == '__blank__' || v == '__none') return tr('— غير محدّد —', '— not set —');
+    if (k == 'payment') return soPaymentKindLabel(v);
+    if (k == 'kind') { final x = vmKinds[v]; return x == null ? v : tr(x.$1, x.$2); }
+    return v;
+  }
+  List<Map<String, dynamic>> _optionsOf(String k) {
+    if (k == 'kind') return [for (final v in ['master', 'outside', 'freelancer', 'fleet']) {'value': v, 'count': null}];
+    if (k == 'owner') return _owners;
+    if (k == 'contract') return _contracts;
+    return _opts[k] ?? const [];
+  }
+
+  void _set(String k, List<String> v) {
+    final n = {for (final e in widget.value.entries) e.key: [...e.value]};
+    if (v.isEmpty) { n.remove(k); } else { n[k] = v; }
+    widget.onChanged(n);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final f = widget.value;
+    final active = f.values.fold<int>(0, (a, v) => a + v.length);
+    return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+      SingleChildScrollView(scrollDirection: Axis.horizontal, child: Row(children: [
+        for (final dm in _vmDims)
+          Padding(padding: const EdgeInsetsDirectional.only(end: 5), child: FilterChip(
+            label: Text('${tr(dm.$2, dm.$3)}${(f[dm.$1] ?? const []).isEmpty ? '' : ' (${f[dm.$1]!.length})'}'),
+            selected: (f[dm.$1] ?? const []).isNotEmpty,
+            onSelected: (_) async {
+              final r = await pickValues(context, title: tr(dm.$2, dm.$3), options: _optionsOf(dm.$1), selected: f[dm.$1] ?? const [], labelOf: (v) => _label(dm.$1, v));
+              if (r != null) _set(dm.$1, r);
+            },
+          )),
+      ])),
+      if (active > 0)
+        Padding(padding: const EdgeInsets.only(top: 4), child: Wrap(spacing: 5, runSpacing: 4, children: [
+          for (final e in f.entries)
+            for (final v in e.value)
+              InputChip(
+                label: Text(_label(e.key, v), style: const TextStyle(fontSize: 11.5)),
+                onDeleted: () => _set(e.key, e.value.where((x) => x != v).toList()),
+                visualDensity: VisualDensity.compact,
+              ),
+          ActionChip(avatar: const Icon(Icons.restart_alt, size: 15), label: Text(tr('مسح الفلاتر', 'Clear filters')), onPressed: () => widget.onChanged({})),
+        ])),
+    ]);
+  }
+}
+
+/// Monthly trips stacked by carrier kind, with the approved share above each column.
+class _KindStackChart extends StatelessWidget {
+  final List<Map<String, dynamic>> months;
+  const _KindStackChart(this.months);
+  @override
+  Widget build(BuildContext context) {
+    if (months.isEmpty) return const SizedBox.shrink();
+    const h = 130.0;
+    num max = 1;
+    for (final m in months) {
+      final t = inum(m['master']) + inum(m['outside']) + inum(m['freelancer']) + inum(m['fleet']);
+      if (t > max) max = t;
+    }
+    Widget seg(num v, Color c, {bool top = false}) => Container(width: 20, height: h * (v / max),
+        decoration: BoxDecoration(color: c, borderRadius: top ? const BorderRadius.vertical(top: Radius.circular(4)) : null));
+    Widget legend(Color c, String a, String e) => Row(mainAxisSize: MainAxisSize.min, children: [
+      Container(width: 10, height: 10, decoration: BoxDecoration(color: c, borderRadius: BorderRadius.circular(3))),
+      const SizedBox(width: 4), Text(tr(a, e), style: const TextStyle(fontSize: 11, color: T.inkSoft)),
+    ]);
+    return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+      SizedBox(height: h + 40, child: SingleChildScrollView(scrollDirection: Axis.horizontal, reverse: Lang.instance.ar, child: Row(crossAxisAlignment: CrossAxisAlignment.end, children: [
+        for (final m in months)
+          Padding(padding: const EdgeInsets.symmetric(horizontal: 4), child: Column(mainAxisAlignment: MainAxisAlignment.end, children: [
+            Text('${m['masterShare'] ?? 0}%', style: const TextStyle(fontSize: 9.5, fontWeight: FontWeight.w800, color: vmColShare)),
+            const SizedBox(height: 2),
+            seg(inum(m['fleet']), vmColFleet, top: true),
+            seg(inum(m['freelancer']), vmColFreelancer),
+            seg(inum(m['outside']), vmColOutside),
+            seg(inum(m['master']), vmColMaster),
+            const SizedBox(height: 3),
+            Text(_mon(m['month']), style: const TextStyle(fontSize: 9, color: T.inkFaint)),
+          ])),
+      ]))),
+      const SizedBox(height: 6),
+      Wrap(spacing: 10, runSpacing: 4, children: [
+        legend(vmColMaster, 'المعتمدون', 'Approved'), legend(vmColOutside, 'غير معتمدين', 'Outside'),
+        legend(vmColFreelancer, 'سائقون أفراد', 'Freelancers'), legend(vmColFleet, 'أسطول تنشيط', 'Our fleet'),
+        legend(vmColShare, 'حصّة المعتمدين %', 'Approved share %'),
+      ]),
+    ]);
+  }
+}
+
+String _monthEnd(String ym) {
+  final y = int.tryParse(ym.substring(0, 4)) ?? DateTime.now().year;
+  final m = int.tryParse(ym.substring(5, 7)) ?? DateTime.now().month;
+  final d = DateTime(y, m + 1, 0);
+  final now = DateTime.now();
+  return ymd(d.isAfter(now) ? now : d);
 }
 
 String _thisMonth() { final n = DateTime.now(); return '${n.year}-${n.month.toString().padLeft(2, '0')}'; }
@@ -70,6 +228,7 @@ class _VendorsOverviewScreenState extends State<VendorsOverviewScreen> with _Liv
   String _month = _thisMonth();
   int _actMonth = -1;
   int _seq = 0;
+  Map<String, List<String>> _filters = {};
 
   @override
   void initState() { super.initState(); reload(); startLive(); }
@@ -80,7 +239,8 @@ class _VendorsOverviewScreenState extends State<VendorsOverviewScreen> with _Liv
   Future<void> reload() async {
     final mine = ++_seq;
     try {
-      final d = await Api.instance.get('/api/vendors-mgmt/overview?month=$_month');
+      final fq = vmFilterQuery(_filters);
+      final d = await Api.instance.get('/api/vendors-mgmt/overview?month=$_month${fq.isEmpty ? '' : '&$fq'}');
       if (!mounted || mine != _seq) return;
       setState(() { _d = Map<String, dynamic>.from(d); _error = null; if (_actMonth < 0) _actMonth = inum(_d!['curMonth']).toInt(); });
     } catch (e) {
@@ -108,8 +268,10 @@ class _VendorsOverviewScreenState extends State<VendorsOverviewScreen> with _Liv
           : RefreshIndicator(onRefresh: reload, child: ListView(padding: const EdgeInsets.all(14), children: [
               Text('${tr('حتى نهاية', 'As of end of')} ${_mon(d['curMonth'])} ${d['year']}', style: const TextStyle(fontSize: 12, color: T.inkFaint)),
               const SizedBox(height: 6),
+              VmFilterBar(value: _filters, from: '${_month.substring(0, 4)}-01-01', to: _monthEnd(_month), onChanged: (f) { setState(() => _filters = f); reload(); }),
+              const SizedBox(height: 6),
               TileWrap([
-                KpiTile(tr('موردو الماستر', 'Master vendors'), fmtNum(k['masterVendors']), color: T.navy),
+                KpiTile(tr('الموردون المعتمدون', 'Master vendors'), fmtNum(k['masterVendors']), color: T.navy),
                 KpiTile(tr('نشطون آخر 3 أشهر', 'Active last 3 months'), fmtNum(k['masterActive3']), color: T.success),
                 KpiTile(tr('نشطون هذا الشهر', 'Active this month'), fmtNum(k['masterActiveMonth']), color: T.success),
                 KpiTile(tr('عقودٌ موقّعة', 'Signed contracts'), fmtNum(k['masterSigned'])),
@@ -117,25 +279,26 @@ class _VendorsOverviewScreenState extends State<VendorsOverviewScreen> with _Liv
                 KpiTile(tr('نشطون دون عقد', 'Active, unsigned'), fmtNum(k['activeUnsigned']), color: T.warn),
                 KpiTile(tr('متوقفون', 'Stopped'), fmtNum(k['masterStopped']), color: T.danger),
                 KpiTile(tr('لم يعملوا هذا العام', 'Not worked this year'), fmtNum(k['masterNever']), color: T.inkFaint),
-                KpiTile(tr('شركاتٌ نشطة خارج الماستر', 'Active outside master'), fmtNum(k['leadsActive3']), color: T.warn),
+                KpiTile(tr('شركاتٌ نشطة غير معتمد', 'Active outside master'), fmtNum(k['leadsActive3']), color: T.warn),
                 KpiTile(tr('سائقون أفراد نشطون', 'Active freelancers'), fmtNum(k['freelancersActive3']), color: T.violet),
                 KpiTile(tr('رحلات التشغيل الخارجي', 'External trips'), fmtNum(k['externalTrips'])),
                 KpiTile(tr('رحلات أسطول تنشيط', 'Our fleet trips'), fmtNum(k['fleetTrips']), color: T.navy),
-                KpiTile(tr('حصّة الماستر', 'Master share'), '${k['masterShare'] ?? 0}%', color: T.success),
+                KpiTile(tr('حصّة المعتمدين', 'Master share'), '${k['masterShare'] ?? 0}%', color: T.success),
                 if (has(k, 'purchase')) KpiTile(tr('إجمالي الشراء', 'Total purchase'), soMoney(k['purchase'])),
                 if (has(k, 'avgTrip')) KpiTile(tr('متوسط الرحلة', 'Avg trip'), soMoney(k['avgTrip'])),
                 KpiTile(tr('جددٌ هذا الشهر', 'New this month'), fmtNum(k['newThisMonth']), color: T.violet),
               ]),
               SectionCard(
-                title: tr('الرحلات شهريًا ونسبة الماستر', 'Trips per month and master share'),
-                note: tr('الماستر (أخضر) والتشغيل الخارجي الآخر (برتقالي)', 'Master (green) and other external (orange)'),
+                title: tr('الرحلات شهريًا ونسبة القائمة المعتمدة', 'Trips per month and master share'),
+                note: tr('الرقم فوق كلّ عمود = حصّة المعتمدين من التشغيل الخارجي (دون أسطول تنشيط)', 'Number above each column = approved share of external trips (excluding our fleet)'),
                 child: Column(children: [
-                  ColumnChart(labels: [for (final m in months) _mon(m['month'])], a: [for (final m in months) inum(m['outside']) + inum(m['freelancer'])], b: [for (final m in months) inum(m['master'])], colorA: T.orange, colorB: T.success),
+                  _KindStackChart(months),
+                  const SizedBox(height: 6),
                   for (final m in months.where((m) => inum(m['external']) > 0))
                     Row(children: [
                       SizedBox(width: 64, child: Text(_mon(m['month']), style: const TextStyle(fontSize: 12))),
-                      Expanded(child: Text('${tr('ماستر', 'M')} ${fmtNum(m['master'])} · ${tr('خارج', 'O')} ${fmtNum(m['outside'])} · ${tr('أفراد', 'F')} ${fmtNum(m['freelancer'])} · ${tr('أسطول', 'Fleet')} ${fmtNum(m['fleet'])}', style: const TextStyle(fontSize: 11.5, color: T.inkSoft))),
-                      Text('${m['masterShare']}%', style: const TextStyle(fontWeight: FontWeight.w800, color: T.success)),
+                      Expanded(child: Text('${tr('معتمدون', 'A')} ${fmtNum(m['master'])} · ${tr('خارج', 'O')} ${fmtNum(m['outside'])} · ${tr('أفراد', 'F')} ${fmtNum(m['freelancer'])} · ${tr('أسطول', 'Fleet')} ${fmtNum(m['fleet'])}', style: const TextStyle(fontSize: 11.5, color: T.inkSoft))),
+                      Text('${m['masterShare']}%', style: const TextStyle(fontWeight: FontWeight.w800, color: vmColShare)),
                     ]),
                 ]),
               ),
@@ -150,7 +313,7 @@ class _VendorsOverviewScreenState extends State<VendorsOverviewScreen> with _Liv
                         onSelected: (_) => setState(() => _actMonth = inum(a['month']).toInt()))),
                   ])),
                   if (act.isNotEmpty) ...[
-                    Text('${tr('ماستر', 'Master')} ${act['master'] ?? 0} · ${tr('خارج الماستر', 'Outside')} ${act['outside'] ?? 0} · ${tr('أفراد', 'Freelancers')} ${act['freelancer'] ?? 0}', style: const TextStyle(fontSize: 12, color: T.inkSoft)),
+                    Text('${tr('معتمدون', 'Approved')} ${act['master'] ?? 0} · ${tr('غير معتمد', 'Outside')} ${act['outside'] ?? 0} · ${tr('أفراد', 'Freelancers')} ${act['freelancer'] ?? 0}', style: const TextStyle(fontSize: 12, color: T.inkSoft)),
                     for (final v in _list(act['list']))
                       ListTile(
                         dense: true, contentPadding: EdgeInsets.zero,
@@ -163,7 +326,7 @@ class _VendorsOverviewScreenState extends State<VendorsOverviewScreen> with _Liv
                 ]),
               ),
               SectionCard(
-                title: tr('أداء الفريق على موردي الماستر', 'Team performance on master vendors'),
+                title: tr('أداء الفريق على الموردين المعتمدين', 'Team performance on master vendors'),
                 child: Column(children: [
                   for (final t in _list(d['team']))
                     ListTile(
@@ -179,7 +342,7 @@ class _VendorsOverviewScreenState extends State<VendorsOverviewScreen> with _Liv
                 child: BarList([for (final x in _list(d['kinds'])) (tr(vmKinds['${x['kind']}']!.$1, vmKinds['${x['kind']}']!.$2), inum(x['trips']), '${fmtNum(x['trips'])} · ${x['share']}% · ${tr('موردون', 'vendors')} ${x['vendors']}')], color: T.navy),
               ),
               SectionCard(
-                title: tr('اتجاه موردي الماستر', 'Master vendors trend'),
+                title: tr('اتجاه الموردين المعتمدين', 'Master vendors trend'),
                 child: Wrap(spacing: 6, runSpacing: 6, children: [
                   for (final e in Map<String, dynamic>.from(d['trendMaster'] ?? {}).entries)
                     Chip2('${tr((trendLabels[e.key] ?? (e.key, e.key, T.ink)).$1, (trendLabels[e.key] ?? (e.key, e.key, T.ink)).$2)} · ${e.value}', (trendLabels[e.key] ?? (e.key, e.key, T.ink)).$3),
@@ -217,7 +380,7 @@ class _VendorsOverviewScreenState extends State<VendorsOverviewScreen> with _Liv
                 ]),
               ),
               SectionCard(
-                title: tr('موردو الماستر النشطون (آخر 3 أشهر)', 'Active master vendors (last 3 months)'),
+                title: tr('الموردون المعتمدون النشطون (آخر 3 أشهر)', 'Active master vendors (last 3 months)'),
                 child: Column(children: [
                   for (final v in _list(d['activeLast3List']))
                     ListTile(
@@ -250,7 +413,9 @@ class _VendorsDailyScreenState extends State<VendorsDailyScreen> with _LiveLoad 
   String? _error;
   late String _from;
   late String _to;
-  String _branch = '';
+  Map<String, List<String>> _filters = {};
+  // One chosen branch also sets the branch target the page measures against.
+  String get _branch => (_filters['branch']?.length ?? 0) == 1 ? _filters['branch']!.first : '';
   int _seq = 0;
   String _custCat = '';
 
@@ -270,7 +435,8 @@ class _VendorsDailyScreenState extends State<VendorsDailyScreen> with _LiveLoad 
   Future<void> reload() async {
     final mine = ++_seq;
     try {
-      final d = await Api.instance.get('/api/vendors-mgmt/daily?from=$_from&to=$_to${_branch.isEmpty ? '' : '&branch=${Uri.encodeQueryComponent(_branch)}'}');
+      final fq = vmFilterQuery(_filters);
+      final d = await Api.instance.get('/api/vendors-mgmt/daily?from=$_from&to=$_to${_branch.isEmpty ? '' : '&branch=${Uri.encodeQueryComponent(_branch)}'}${fq.isEmpty ? '' : '&$fq'}');
       if (!mounted || mine != _seq) return;
       setState(() { _d = Map<String, dynamic>.from(d); _error = null; });
     } catch (e) {
@@ -307,11 +473,8 @@ class _VendorsDailyScreenState extends State<VendorsDailyScreen> with _LiveLoad 
                   if (r != null) _setRange(r.start, r.end);
                 }),
               ])),
-              SingleChildScrollView(scrollDirection: Axis.horizontal, child: Row(children: [
-                Padding(padding: const EdgeInsetsDirectional.only(end: 5), child: ChoiceChip(label: Text(tr('كل الفروع', 'All branches')), selected: _branch.isEmpty, onSelected: (_) { setState(() => _branch = ''); reload(); })),
-                for (final b in branches.map((b) => '${b['branch']}').where((b) => b != '—'))
-                  Padding(padding: const EdgeInsetsDirectional.only(end: 5), child: ChoiceChip(label: Text(b), selected: _branch == b, onSelected: (_) { setState(() => _branch = b); reload(); })),
-              ])),
+              const SizedBox(height: 4),
+              VmFilterBar(value: _filters, from: _from, to: _to, onChanged: (f) { setState(() => _filters = f); reload(); }),
               const SizedBox(height: 6),
               TileWrap([
                 KpiTile(tr('الطلبات', 'Requests'), fmtNum(t['requests'])),
@@ -319,13 +482,13 @@ class _VendorsDailyScreenState extends State<VendorsDailyScreen> with _LiveLoad 
                 KpiTile(tr('غير محقّق', 'Not fulfilled'), fmtNum(t['failed']), color: T.danger),
                 KpiTile(tr('نسبة التحقيق', 'Fulfilment'), '${t['rate'] ?? 0}%', color: T.navy),
                 KpiTile(tr('محقّق في اليوم', 'Fulfilled per day'), fmtNum(t['perDay'], digits: 1)),
-                if (t['vsTarget'] != null) KpiTile(tr('مقابل التارجت', 'Vs target'), '${t['vsTarget']}%', color: inum(t['vsTarget']) >= 100 ? T.success : T.warn),
+                if (t['vsTarget'] != null) KpiTile(tr('مقابل المستهدَف', 'Vs target'), '${t['vsTarget']}%', color: inum(t['vsTarget']) >= 100 ? T.success : T.warn),
                 if (has(t, 'buy')) KpiTile(tr('سعر الشراء', 'Purchase'), soMoney(t['buy'])),
                 if (has(t, 'buyExt')) KpiTile(tr('شراءٌ بدون تنشيط', 'Purchase excl. fleet'), soMoney(t['buyExt'])),
                 KpiTile(tr('حصّة أسطول تنشيط', 'Our fleet share'), '${t['fleetShare'] ?? 0}%', color: T.navy),
                 KpiTile(tr('الأفراد من التشغيل الخارجي', 'Freelancers of external'), '${t['freelancerShareExt'] ?? 0}%', color: T.violet),
               ]),
-              if (inum(d['target']?['daily']) > 0) Text('${tr('التارجت اليومي', 'Daily target')}: ${d['target']['daily']} · ${tr('تارجت الفترة', 'Period target')}: ${d['target']['period']}', style: const TextStyle(fontSize: 12, color: T.inkFaint)),
+              if (inum(d['target']?['daily']) > 0) Text('${tr('المستهدَف اليومي', 'Daily target')}: ${d['target']['daily']} · ${tr('مستهدَف الفترة', 'Period target')}: ${d['target']['period']}', style: const TextStyle(fontSize: 12, color: T.inkFaint)),
               if (days.length > 1)
                 SectionCard(
                   title: tr('حسب اليوم', 'By day'),
@@ -335,7 +498,7 @@ class _VendorsDailyScreenState extends State<VendorsDailyScreen> with _LiveLoad 
                     for (final x in days.reversed)
                       Padding(padding: const EdgeInsets.symmetric(vertical: 2), child: Row(children: [
                         SizedBox(width: 82, child: Text('${x['day']}', style: const TextStyle(fontSize: 11.5))),
-                        Expanded(child: Text('${x['requests']} / ${x['done']} / ${x['failed']} · ${x['rate']}%${x['vsTarget'] != null ? ' · ${tr('التارجت', 'target')} ${x['vsTarget']}%' : ''}${has(x, 'buy') ? ' · ${soMoney(x['buy'])}' : ''}', style: const TextStyle(fontSize: 11.5, color: T.inkSoft))),
+                        Expanded(child: Text('${x['requests']} / ${x['done']} / ${x['failed']} · ${x['rate']}%${x['vsTarget'] != null ? ' · ${tr('المستهدَف', 'target')} ${x['vsTarget']}%' : ''}${has(x, 'buy') ? ' · ${soMoney(x['buy'])}' : ''}', style: const TextStyle(fontSize: 11.5, color: T.inkSoft))),
                       ])),
                   ]),
                 ),
@@ -372,7 +535,7 @@ class _VendorsDailyScreenState extends State<VendorsDailyScreen> with _LiveLoad 
                   for (final b in branches)
                     ListTile(dense: true, contentPadding: EdgeInsets.zero,
                       title: Text('${b['branch']}', style: const TextStyle(fontWeight: FontWeight.w800)),
-                      subtitle: Text('${tr('طلبات', 'Requests')} ${b['requests']} · ${tr('محقّق', 'Done')} ${b['done']} · ${tr('غير محقّق', 'Failed')} ${b['failed']} · ${b['rate']}% · ${tr('في اليوم', '/day')} ${b['perDay']}${b['vsTarget'] != null ? ' · ${tr('التارجت', 'target')} ${b['vsTarget']}%' : ''}${has(b, 'buy') ? ' · ${soMoney(b['buy'])}' : ''}${'${b['topReason'] ?? ''}'.isEmpty ? '' : ' · ${tr('أكبر سبب', 'top reason')}: ${b['topReason']}'}')),
+                      subtitle: Text('${tr('طلبات', 'Requests')} ${b['requests']} · ${tr('محقّق', 'Done')} ${b['done']} · ${tr('غير محقّق', 'Failed')} ${b['failed']} · ${b['rate']}% · ${tr('في اليوم', '/day')} ${b['perDay']}${b['vsTarget'] != null ? ' · ${tr('المستهدَف', 'target')} ${b['vsTarget']}%' : ''}${has(b, 'buy') ? ' · ${soMoney(b['buy'])}' : ''}${'${b['topReason'] ?? ''}'.isEmpty ? '' : ' · ${tr('أكبر سبب', 'top reason')}: ${b['topReason']}'}')),
                 ]),
               ),
               SectionCard(
@@ -646,7 +809,7 @@ class _VendorCardScreenState extends State<VendorCardScreen> with _LiveLoad {
                   if (d['grade'] != null) gradeBadge(d['grade'], score: d['score']),
                   vmKindChip(v['kind'] ?? 'none'),
                   trendChip(d['trend']),
-                  if (v['inMaster'] == true) Chip2('${tr('ماستر رقم', 'Master no.')} ${v['masterNo'] ?? ''}', T.success),
+                  if (v['inMaster'] == true) Chip2('${tr('معتمد · رقم', 'Approved no.')} ${v['masterNo'] ?? ''}', T.success),
                   if ('${v['contractStatus'] ?? ''}'.isNotEmpty) Chip2('${tr('العقد', 'Contract')}: ${v['contractStatus']}', v['signed'] == true ? T.success : T.warn),
                   if ('${v['followOwner'] ?? ''}'.isNotEmpty) Chip2('${tr('مسؤول المتابعة', 'Owner')}: ${v['followOwner']}', T.info),
                   if (!registered) Chip2(tr('غير مسجّل في السجلّ', 'Not in the register'), T.danger),
@@ -857,7 +1020,7 @@ class _VendorEditScreenState extends State<VendorEditScreen> {
             ChoiceChip(label: Text(tr('شركة / مؤسسة', 'Company')), selected: _type == 'company', onSelected: (_) => setState(() => _type = 'company')),
             ChoiceChip(label: Text(tr('سائق فرد', 'Freelancer')), selected: _type == 'freelancer', onSelected: (_) => setState(() => _type = 'freelancer')),
           ]),
-          SwitchListTile(contentPadding: EdgeInsets.zero, title: Text(tr('ضمن الماستر', 'On the master')), value: _inMaster, onChanged: (v) => setState(() => _inMaster = v)),
+          SwitchListTile(contentPadding: EdgeInsets.zero, title: Text(tr('معتمد', 'On the master')), value: _inMaster, onChanged: (v) => setState(() => _inMaster = v)),
           for (final f in _textFields)
             Padding(padding: const EdgeInsets.only(bottom: 6), child: TextField(
               controller: _c[f.$1], maxLines: f.$1 == 'notes' ? 3 : 1,
@@ -1026,7 +1189,7 @@ class _VendorsRouteSearchScreenState extends State<VendorsRouteSearchScreen> {
               for (final v in _list(d['returnTrip'])) ListTile(dense: true, contentPadding: EdgeInsets.zero, title: Text('${v['name']}'), subtitle: Text('${tr('رحلات', 'Trips')} ${v['trips']} · ${tr('آخر', 'Last')} ${v['last']} · ${tr('من', 'From')} ${v['from']}'), onTap: () => openVendor(context, id: v['id'], name: v['name'])),
             ])),
           if (_list(d['masterNearby']).isNotEmpty)
-            SectionCard(title: tr('موردو الماستر الذين يشمل مقرُّهم أو وجهاتُهم المكان', 'Master vendors covering the place'), child: Column(children: [
+            SectionCard(title: tr('الموردون المعتمدون الذين يشمل مقرُّهم أو وجهاتُهم المكان', 'Master vendors covering the place'), child: Column(children: [
               for (final v in _list(d['masterNearby']).take(40)) ListTile(dense: true, contentPadding: EdgeInsets.zero, title: Text('${v['name']}'), subtitle: Text([v['owner'], v['contract'], v['headOffice'], v['vehicleTypes'], v['phone']].where((e) => '${e ?? ''}'.isNotEmpty).join(' · ')), onTap: () => openVendor(context, id: v['id'])),
             ])),
         ],

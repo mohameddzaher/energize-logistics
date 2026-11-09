@@ -21,13 +21,13 @@ import { ArrowRight, Pencil, Phone, MessageCircle, Plus, Trash2, AlertTriangle, 
 
 type Row = Record<string, any>;
 const FILE: [string, string, string, ('text' | 'number' | 'bool' | 'textarea' | 'owner' | 'contract' | 'tax' | 'type')?][] = [
-  ['name', 'الاسم', 'Name'], ['type', 'النوع', 'Type', 'type'], ['masterNo', 'رقم الماستر', 'Master no.', 'number'], ['followOwner', 'مسؤول المتابعة', 'Follow-up owner', 'owner'],
+  ['name', 'الاسم', 'Name'], ['type', 'النوع', 'Type', 'type'], ['masterNo', 'الرقم في القائمة المعتمدة', 'Master no.', 'number'], ['followOwner', 'مسؤول المتابعة', 'Follow-up owner', 'owner'],
   ['contractStatus', 'حالة التعاقد', 'Contract status', 'contract'], ['contractDate', 'تاريخ التعاقد', 'Contract date'], ['vendorSigned', 'عقد طرف المورد', 'Signed by carrier', 'bool'], ['ourSigned', 'عقد طرفنا', 'Signed by us', 'bool'],
   ['hasPapers', 'الأوراق مكتملة', 'Papers complete', 'bool'], ['taxClass', 'التصنيف الضريبي', 'Tax classification', 'tax'], ['financeCode', 'كود المورد (المالية)', 'Finance code'], ['paymentTermDays', 'مدّة السداد (يوم)', 'Payment term (days)', 'number'],
   ['representative', 'ممثّل المورد', 'Representative'], ['phone', 'الجوال', 'Phone'], ['email', 'البريد', 'Email'], ['energizeRep', 'مندوب تنشيط', 'Our rep'],
   ['headOffice', 'المقرّ الرئيسي', 'Head office'], ['destinations', 'الوجهات', 'Destinations'], ['vehicleTypes', 'نوع السيارات', 'Truck types'], ['fleetSize', 'عدد السيارات', 'Fleet size', 'number'],
   ['commercialRegister', 'السجلّ التجاري', 'Commercial register'], ['taxCard', 'الرقم الضريبي', 'Tax number'], ['iban', 'الآيبان', 'IBAN'], ['bankName', 'البنك', 'Bank'],
-  ['leadPriority', 'أولويّة المتابعة', 'Follow-up priority'], ['previousName', 'الاسم السابق في الماستر', 'Previous master name'], ['rating', 'تقييم الفريق (1-5)', 'Team rating (1-5)', 'number'], ['ratingNote', 'ملاحظة التقييم', 'Rating note'],
+  ['leadPriority', 'أولويّة المتابعة', 'Follow-up priority'], ['previousName', 'الاسم السابق في القائمة المعتمدة', 'Previous master name'], ['rating', 'تقييم الفريق (1-5)', 'Team rating (1-5)', 'number'], ['ratingNote', 'ملاحظة التقييم', 'Rating note'],
   ['notes', 'ملاحظات', 'Notes', 'textarea'],
 ];
 
@@ -102,7 +102,7 @@ export default function VendorCard({ id, name }: { id?: string; name?: string })
               <h1 className="text-xl font-extrabold text-slate-900">{v.name}</h1>
               {v.kind && <span className={`px-2 py-0.5 rounded-full border text-[11.5px] font-semibold ${KIND[v.kind]?.cls}`}>{kindLabel(v.kind, ar)}</span>}
               {v.unregistered && <span className="px-2 py-0.5 rounded-full border border-red-200 bg-red-50 text-red-700 text-[11.5px] font-semibold">{t('غير مسجّل في السجلّ', 'Not in the register')}</span>}
-              {v.inMaster && <span className="px-2 py-0.5 rounded-full border border-emerald-200 bg-emerald-50 text-emerald-700 text-[11.5px] font-semibold">{t(`ضمن الماستر${v.masterNo ? ` · رقم ${v.masterNo}` : ''}`, `On the master${v.masterNo ? ` · #${v.masterNo}` : ''}`)}</span>}
+              {v.inMaster && <span className="px-2 py-0.5 rounded-full border border-emerald-200 bg-emerald-50 text-emerald-700 text-[11.5px] font-semibold">{t(`معتمد${v.masterNo ? ` · رقم ${v.masterNo}` : ''}`, `On the master${v.masterNo ? ` · #${v.masterNo}` : ''}`)}</span>}
               {v.contractStatus && <span className={`px-2 py-0.5 rounded-full border text-[11.5px] ${contractTone(v.contractStatus)}`}>{t('العقد', 'Contract')}: {v.contractStatus}</span>}
               {d.trend && <TrendChip t={d.trend} ar={ar} />}
             </div>
@@ -211,7 +211,7 @@ export default function VendorCard({ id, name }: { id?: string; name?: string })
                   <span className="absolute -start-1.5 mt-1.5 w-3 h-3 rounded-full bg-[#f37121] border-2 border-white" />
                   <div className="flex flex-wrap items-center gap-2 text-[12px] text-slate-500">
                     <span className="tabular-nums">{fmtDay(f.at)}</span><span className="px-1.5 py-0.5 rounded bg-slate-100 text-slate-700">{(CHANNELS[f.channel] || CHANNELS.other)[ar ? 'ar' : 'en']}</span>
-                    <span>{f.byName}</span>{f.source === 'import' && <span className="text-slate-400">{t('من الماستر شيت', 'from the master sheet')}</span>}
+                    <span>{f.byName}</span>{f.source === 'import' && <span className="text-slate-400">{t('من القائمة المعتمدة', 'from the master sheet')}</span>}
                     {f.contractStatus && <span className={`px-2 py-0.5 rounded-full border text-[11px] ${contractTone(f.contractStatus)}`}>{f.contractStatus}</span>}
                     {f.nextAt && <span className="text-amber-700">{t('المتابعة القادمة', 'Next')} {fmtDay(f.nextAt)}</span>}
                     {editor && (String(f.by) === String(user?._id) || isVendorLead(user)) && <button type="button" onClick={() => delFollow(f)} className="ms-auto text-slate-400 hover:text-red-600"><Trash2 className="w-3.5 h-3.5" /></button>}
@@ -260,7 +260,7 @@ export default function VendorCard({ id, name }: { id?: string; name?: string })
         <Modal open wide onClose={() => setEditing(null)} title={v.unregistered ? t('تسجيل المورّد في السجلّ', 'Register the carrier') : t('تعديل ملف المورّد', 'Edit carrier file')}
           footer={<button type="button" onClick={saveFile} className="ms-auto px-5 py-2.5 rounded-xl bg-[#f37121] text-white text-sm font-bold">{t('حفظ', 'Save')}</button>}>
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-            <label className="flex items-center gap-2 text-sm font-semibold sm:col-span-2 lg:col-span-3"><input type="checkbox" checked={!!editing.inMaster} onChange={(e) => setEditing({ ...editing, inMaster: e.target.checked })} className="accent-[#f37121]" />{t('ضمن الماستر', 'On the master')}</label>
+            <label className="flex items-center gap-2 text-sm font-semibold sm:col-span-2 lg:col-span-3"><input type="checkbox" checked={!!editing.inMaster} onChange={(e) => setEditing({ ...editing, inMaster: e.target.checked })} className="accent-[#f37121]" />{t('معتمد', 'On the master')}</label>
             {FILE.map(([k, a, e, kind]) => (
               <Field key={k} label={ar ? a : e} span2={kind === 'textarea'}>
                 {kind === 'bool' ? <input type="checkbox" checked={!!editing[k]} onChange={(ev) => setEditing({ ...editing, [k]: ev.target.checked })} className="accent-[#f37121] w-5 h-5" />

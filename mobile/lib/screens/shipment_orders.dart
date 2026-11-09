@@ -52,7 +52,7 @@ const _colFields = [
   ('plate', 'اللوحة', 'Plate'),
   ('cargoType', 'نوع الحمولة', 'Cargo'),
   ('paymentSubtype', 'نوع الدفع', 'Payment'),
-  ('salesRepName', 'السيلز', 'Sales rep'),
+  ('salesRepName', 'مندوب المبيعات', 'Sales rep'),
   ('agentName', 'المندوب', 'Agent'),
   ('notes', 'ملاحظة أمر النقل', 'Transport order note'),
 ];
@@ -668,7 +668,7 @@ class _ShipmentOrdersScreenState extends State<ShipmentOrdersScreen> {
             if ('${r['pickupTime'] ?? ''}'.isNotEmpty) Chip2(soFmtDT(r['pickupTime']), T.inkFaint, icon: Icons.schedule),
             if (soPriceLine(r).isNotEmpty) Chip2(soPriceLine(r), T.success),
             if ('${r['supplierName'] ?? ''}'.isNotEmpty)
-              Chip2('${r['ownerKind'] == 'freelancer' ? tr('فريلانسر', 'Freelancer') : r['ownerKind'] == 'ours' ? tr('أسطولنا', 'Our fleet') : tr('شركة', 'Company')}: ${r['supplierName']}', T.navy),
+              Chip2('${r['ownerKind'] == 'freelancer' ? tr('سائق فرد', 'Freelancer') : r['ownerKind'] == 'ours' ? tr('أسطولنا', 'Our fleet') : tr('شركة', 'Company')}: ${r['supplierName']}', T.navy),
           ]),
           if ('${r['notes'] ?? ''}'.trim().isNotEmpty)
             Padding(padding: const EdgeInsets.only(top: 4), child: Text('${tr('ملاحظة أمر النقل', 'Transport order note')}: ${r['notes']}', maxLines: 2, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 12, color: T.inkSoft))),

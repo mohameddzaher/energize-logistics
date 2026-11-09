@@ -19,6 +19,7 @@ router.use(authenticate);
 // Every endpoint is the team's; a role granted the section from the permissions matrix passes through the section stamp.
 router.use(authorize(...TEAM));
 router.get('/overview', c.overview);
+router.get('/filter-options', c.filterOptions);
 router.get('/daily', c.daily);
 router.get('/alerts', c.alerts);
 router.post('/alerts/state', authorize(...TEAM), c.setAlertState);

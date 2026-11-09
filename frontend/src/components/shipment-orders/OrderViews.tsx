@@ -93,7 +93,7 @@ import { paymentKindLabel } from '@/lib/paymentKind';
 
 /** Who owns the truck, as a word: company, freelancer or our fleet. */
 export const ownerKindLabel = (k: unknown, ar: boolean) => (
-  { company: ar ? 'شركة' : 'Company', freelancer: ar ? 'فريلانسر' : 'Freelancer', ours: ar ? 'أسطولنا' : 'Our fleet' } as Record<string, string>)[String(k || '')] || '';
+  { company: ar ? 'شركة' : 'Company', freelancer: ar ? 'سائق فرد' : 'Freelancer', ours: ar ? 'أسطولنا' : 'Our fleet' } as Record<string, string>)[String(k || '')] || '';
 
 export interface OrderCardProps {
   order: ShipmentOrder;

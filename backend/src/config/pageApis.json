@@ -659,6 +659,8 @@
     "/system/vendors-mgmt": {
       "apis": [
         "/api/lookups/types",
+        "/api/shipment-orders/insights/options",
+        "/api/vendors-mgmt/filter-options",
         "/api/vendors-mgmt/follow-ups",
         "/api/vendors-mgmt/overview",
         "/api/vendors-mgmt/settings",
@@ -669,7 +671,9 @@
     },
     "/system/vendors-mgmt/daily": {
       "apis": [
-        "/api/vendors-mgmt/daily"
+        "/api/shipment-orders/insights/options",
+        "/api/vendors-mgmt/daily",
+        "/api/vendors-mgmt/filter-options"
       ],
       "wildcard": false
     },

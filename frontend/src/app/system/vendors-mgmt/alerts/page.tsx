@@ -47,6 +47,7 @@ export default function VendorsAlertsPage() {
   const soon = useCallback(() => { clearTimeout(timer.current); timer.current = setTimeout(load, 1000); }, [load]);
   useSocket('vendors:changed', soon);
   useSocket('shipmentOrders:updated', soon);
+  useSocket('shipmentOrders:fleet', soon);
 
   const setState = async (key: string, state: string) => {
     try { await api.post('/api/vendors-mgmt/alerts/state', { key, state }); load(); }

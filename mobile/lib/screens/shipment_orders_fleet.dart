@@ -77,7 +77,7 @@ class _ShipmentOrdersFleetScreenState extends State<ShipmentOrdersFleetScreen> {
       ];
   List<ExportCol> get _supplierCols => [
         ExportCol('الاسم', 'Name', (r) => r['name']),
-        ExportCol('النوع', 'Type', (r) => r['type'] == 'freelancer' ? tr('فريلانسر', 'Freelancer') : tr('شركة', 'Company')),
+        ExportCol('النوع', 'Type', (r) => r['type'] == 'freelancer' ? tr('سائق فرد', 'Freelancer') : tr('شركة', 'Company')),
         ExportCol('الجوال', 'Phone', (r) => r['phone']),
         ExportCol('البريد', 'Email', (r) => r['email']),
         ExportCol('عدد السيارات', 'Vehicles', (r) => num.tryParse(_s(r['vehicleCount'])) ?? 0),

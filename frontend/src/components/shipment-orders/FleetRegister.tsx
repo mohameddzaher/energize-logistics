@@ -279,7 +279,7 @@ export default function FleetRegister({ initialTab = 'suppliers', supplierType, 
   ];
   const supplierCols: ExportColumn[] = [
     { header: ar ? 'الاسم' : 'Name', key: 'name', width: 30 },
-    { header: ar ? 'النوع' : 'Type', key: 'type', width: 14, transform: (v) => (v === 'freelancer' ? (ar ? 'فريلانسر' : 'Freelancer') : (ar ? 'شركة' : 'Company')) },
+    { header: ar ? 'النوع' : 'Type', key: 'type', width: 14, transform: (v) => (v === 'freelancer' ? (ar ? 'سائق فرد' : 'Freelancer') : (ar ? 'شركة' : 'Company')) },
     { header: ar ? 'الجوال' : 'Phone', key: 'phone', width: 16 },
     { header: ar ? 'البريد' : 'Email', key: 'email', width: 26 },
     { header: ar ? 'عدد السيارات' : 'Vehicles', key: 'vehicleCount', width: 12, transform: (v) => Number(v || 0) },
@@ -548,7 +548,7 @@ export default function FleetRegister({ initialTab = 'suppliers', supplierType, 
                           <IdCard className="w-3 h-3" />{ar ? 'البطاقة' : 'Card'}
                         </Link>
                       )}
-                      {(s as any).inMaster && <span className="shrink-0 rounded-md bg-emerald-50 border border-emerald-200 text-emerald-700 px-1.5 py-0.5 text-[10.5px] font-semibold">{ar ? 'ماستر' : 'Master'}</span>}
+                      {(s as any).inMaster && <span className="shrink-0 rounded-md bg-emerald-50 border border-emerald-200 text-emerald-700 px-1.5 py-0.5 text-[10.5px] font-semibold">{ar ? 'معتمد' : 'Approved'}</span>}
                       {(s as any).contractStatus && <span className="shrink-0 rounded-md bg-slate-50 border border-slate-200 text-slate-600 px-1.5 py-0.5 text-[10.5px]">{(s as any).contractStatus}</span>}
                       {dupKeys.has(supplierNameKey(s.name)) && (
                         canMergeSuppliers(user)
@@ -563,7 +563,7 @@ export default function FleetRegister({ initialTab = 'suppliers', supplierType, 
                   </td>
                   <td className="px-4 py-3">
                     {s.type === 'freelancer'
-                      ? <SmallBadge bg="bg-violet-500/15" text="text-violet-700" label={ar ? 'فريلانسر' : 'Freelancer'} />
+                      ? <SmallBadge bg="bg-violet-500/15" text="text-violet-700" label={ar ? 'سائق فرد' : 'Freelancer'} />
                       : <SmallBadge bg="bg-blue-500/15" text="text-blue-700" label={ar ? 'شركة' : 'Company'} />}
                   </td>
                   <td className="px-4 py-3 text-slate-700 whitespace-nowrap">
@@ -719,7 +719,7 @@ export default function FleetRegister({ initialTab = 'suppliers', supplierType, 
           <div>
             <label className={labelCls}>{ar ? 'النوع' : 'Type'}</label>
             <div className="flex gap-2">
-              {([['company', ar ? 'شركة' : 'Company', Building2], ['freelancer', ar ? 'فريلانسر' : 'Freelancer', UserIcon]] as const).map(([k, label, Ic]) => (
+              {([['company', ar ? 'شركة' : 'Company', Building2], ['freelancer', ar ? 'سائق فرد' : 'Freelancer', UserIcon]] as const).map(([k, label, Ic]) => (
                 <button key={k} type="button" onClick={() => setSupForm((f: any) => ({ ...f, type: k }))}
                   className={`flex-1 flex items-center justify-center gap-1.5 px-3 py-2.5 rounded-xl border-2 text-sm font-semibold ${supForm.type === k
                     ? 'border-[#f37121] bg-[#f37121]/10 text-[#f37121]' : 'border-slate-200 bg-white text-slate-700'}`}>
@@ -834,7 +834,7 @@ export default function FleetRegister({ initialTab = 'suppliers', supplierType, 
                 { value: '#ours', label: ar ? 'أسطولنا' : 'Our fleet' },
                 ...modalSups.map((sp) => ({
                   value: sp._id, label: sp.name,
-                  hint: sp.type === 'freelancer' ? (ar ? 'فريلانسر' : 'Freelancer') : (ar ? 'شركة' : 'Company'),
+                  hint: sp.type === 'freelancer' ? (ar ? 'سائق فرد' : 'Freelancer') : (ar ? 'شركة' : 'Company'),
                 })),
               ]} />
           </div>

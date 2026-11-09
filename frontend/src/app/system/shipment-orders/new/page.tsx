@@ -825,7 +825,7 @@ function CreateShipmentInner() {
       {sectionCard(UserIcon, 1, ar ? 'العميل والمورّد' : 'Customer & supplier', (
         <div className="space-y-3">
           <div>
-            <label className="mb-1 block text-[12.5px] font-semibold text-slate-600">{ar ? 'السيلز التشغيلي — مَن جاء بهذه الحمولة' : 'Operational sales — who brought this load'}</label>
+            <label className="mb-1 block text-[12.5px] font-semibold text-slate-600">{ar ? 'مندوب المبيعات — مَن جاء بهذه الحمولة' : 'Operational sales — who brought this load'}</label>
             <SearchableSelect value={salesRep} onChange={setSalesRep} searchAfter={0}
               placeholder={ar ? 'اختر من فريق المبيعات أو العمليات…' : 'Pick from sales or operations…'}
               searchPlaceholder={ar ? 'اكتب الاسم للبحث…' : 'Type a name…'}
@@ -894,7 +894,7 @@ function CreateShipmentInner() {
                       : (ar ? `${suppliers.length} مورّدًا` : `${suppliers.length} suppliers`)}
                     options={suppliers.map((sp) => ({
                       value: sp._id, label: sp.name,
-                      hint: [sp.type === 'freelancer' ? (ar ? 'فريلانسر' : 'Freelancer') : (ar ? 'شركة' : 'Company'), sp.phone].filter(Boolean).join(' · '),
+                      hint: [sp.type === 'freelancer' ? (ar ? 'سائق فرد' : 'Freelancer') : (ar ? 'شركة' : 'Company'), sp.phone].filter(Boolean).join(' · '),
                     }))} />
                 </div>
                 <button type="button" onClick={() => { setAddingSupplier(true); setSupplierId(''); setVehicleId(''); }}
@@ -910,7 +910,7 @@ function CreateShipmentInner() {
                   <div className="sm:w-56">
                     <PhoneSA value={newSupplier.phone} onChange={(v) => setNewSupplier((x) => ({ ...x, phone: v }))} />
                   </div>
-                  {([['company', ar ? 'شركة' : 'Company'], ['freelancer', ar ? 'فريلانسر' : 'Freelancer']] as const).map(([k, label]) => (
+                  {([['company', ar ? 'شركة' : 'Company'], ['freelancer', ar ? 'سائق فرد' : 'Freelancer']] as const).map(([k, label]) => (
                     <button key={k} type="button" onClick={() => setNewSupplier((v) => ({ ...v, type: k }))}
                       className={`px-4 py-2 rounded-full border text-sm font-semibold shrink-0 ${newSupplier.type === k
                         ? 'border-[#f37121] bg-[#f37121] text-white' : 'border-slate-300 bg-white text-slate-600'}`}>
@@ -1229,7 +1229,7 @@ function CreateShipmentInner() {
                     searchPlaceholder={ar ? 'اسمه أو جوّاله…' : 'Name or phone…'}
                     options={suppliers.map((sp) => ({
                       value: sp._id, label: sp.name,
-                      hint: [sp.type === 'freelancer' ? (ar ? 'فريلانسر' : 'Freelancer') : (ar ? 'شركة' : 'Company'), sp.phone].filter(Boolean).join(' · '),
+                      hint: [sp.type === 'freelancer' ? (ar ? 'سائق فرد' : 'Freelancer') : (ar ? 'شركة' : 'Company'), sp.phone].filter(Boolean).join(' · '),
                     }))} />
                 </div>
                 <div>

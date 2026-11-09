@@ -25,8 +25,8 @@ const pct = (a, b) => (b ? r2((a / b) * 100) : 0);
 const fullName = (u) => (u ? `${u.firstName || ''} ${u.lastName || ''}`.trim() : '');
 const announce = (payload = {}) => {
   cache.clear('so:registry:');
-  cache.clear('so:analytics:vendor');
-  cache.clear('vm:');
+  cache.clear('so:analytics:vendor-yearly');
+  cache.clear('so:analytics:vm-');
   try { emitToAll(EVENT, payload); } catch (_) { /* */ }
   try { emitToAll('shipmentOrders:fleet', {}); } catch (_) { /* */ }
 };
@@ -42,17 +42,37 @@ const asOfOf = (q) => {
 };
 const yearOf = (q) => { const a = asOfOf(q); return { year: Number(a.slice(0, 4)), asOf: a }; };
 
-const KIND_AR = { fleet: 'أسطول تنشيط', master: 'ضمن الماستر', outside: 'خارج الماستر (شركات)', freelancer: 'سائق فرد', none: 'غير محدّد' };
+/** The page filters on the shipments themselves (branch, customer, route, truck, ops rep, payment), as one match or null. */
+async function shipmentFilter(q) {
+  const and = await require('./shipmentInsightsController').filterMatch(q || {});
+  return and.length ? { $and: and } : null;
+}
+const listOf = (v) => (v == null || v === '' ? [] : (Array.isArray(v) ? v : [v]).map(String).filter(Boolean));
+/** Filters on the carrier itself: kind, follow-up owner, contract status. */
+const carrierFilter = (q) => {
+  const kinds = listOf(q.f_kind); const owners = listOf(q.f_owner); const contracts = listOf(q.f_contract);
+  if (!kinds.length && !owners.length && !contracts.length) return null;
+  return (kind, reg) => (!kinds.length || kinds.includes(kind))
+    && (!owners.length || owners.includes(reg?.followOwner || '__none'))
+    && (!contracts.length || contracts.includes(reg?.contractStatus || '__none'));
+};
+
+const KIND_AR = { fleet: 'أسطول تنشيط', master: 'معتمد', outside: 'غير معتمد (شركات)', freelancer: 'سائق فرد', none: 'غير محدّد' };
 
 // ── Section picture ─────────────────────────────────────────────────────────
 
 /** GET /overview?year= — the section as the vendors manager reads it. */
 exports.overview = async (req, res) => {
   try {
-    const Y = await VA.yearly(yearOf(req.query));
-    const out = await cache.wrapStale(`vm:overview:${Y.year}:${Y.curMonth}:${Y.vendors.length}`, 60 * 1000, 10 * 60 * 1000, async () => {
-      const master = await ShipmentOrderSupplier.find({ inMaster: true, mergedInto: null })
-        .select('name followOwner contractStatus vendorSigned ourSigned taxClass phone representative headOffice vehicleTypes fleetSize financeCode contractDate destinations masterNo').lean();
+    const extra = await shipmentFilter(req.query);
+    const keepC = carrierFilter(req.query);
+    const Y0 = await VA.yearly({ ...yearOf(req.query), extra });
+    const R0 = keepC ? await VA.resolver() : null;
+    const Y = keepC ? { ...Y0, vendors: Y0.vendors.filter((v) => keepC(v.kind, v.vendorId ? R0.byId.get(v.vendorId) : null)) } : Y0;
+    const out = await cache.wrapStale(`so:analytics:vm-overview:${Y.year}:${Y.curMonth}:${JSON.stringify(req.query || {})}`, 60 * 1000, 10 * 60 * 1000, async () => {
+      const master = (await ShipmentOrderSupplier.find({ inMaster: true, mergedInto: null })
+        .select('name followOwner contractStatus vendorSigned ourSigned taxClass phone representative headOffice vehicleTypes fleetSize financeCode contractDate destinations masterNo').lean())
+        .filter((m) => !keepC || keepC('master', m));
       const actById = new Map(Y.vendors.filter((v) => v.vendorId).map((v) => [v.vendorId, v]));
       const cm = Y.curMonth;
       const masterRows = master.map((m) => {
@@ -164,10 +184,13 @@ exports.daily = async (req, res) => {
     const from = /^\d{4}-\d{2}-\d{2}$/.test(String(req.query.from || '')) ? req.query.from : `${today.slice(0, 7)}-01`;
     const to = /^\d{4}-\d{2}-\d{2}$/.test(String(req.query.to || '')) ? req.query.to : today;
     const branch = String(req.query.branch || '');
-    const key = `vm:daily:${from}:${to}:${branch}`;
+    const key = `so:analytics:vm-daily:${JSON.stringify(req.query || {})}:${from}:${to}`;
     const out = await cache.wrapStale(key, 45 * 1000, 10 * 60 * 1000, async () => {
       const R = await VA.resolver();
-      const [rows, T] = await Promise.all([VA.spanRows({ from, to, branch }), targets()]);
+      const extra = await shipmentFilter(req.query);
+      const keepC = carrierFilter(req.query);
+      const [rows0, T] = await Promise.all([VA.spanRows({ from, to, branch, extra: extra || {} }), targets()]);
+      const rows = keepC ? rows0.filter((o) => { const c = VA.classify(R, o.supplier, o.supplierName, o.vehiclePlate); return keepC(c.kind, c.vendor); }) : rows0;
       // Who on the vendors team placed each shipment: the request's placer, or a vendors-role creator.
       const reqIds = [...new Set(rows.map((o) => o.shipmentRequest && String(o.shipmentRequest)).filter(Boolean))];
       const reqs = reqIds.length ? await ShipmentRequest.find({ _id: { $in: reqIds } }).select('placed').lean() : [];
@@ -752,7 +775,7 @@ exports.alerts = async (req, res) => {
     const topRep = (v) => Object.entries(v.reps).sort((a, b) => b[1] - a[1])[0]?.[0] || '';
     const mk = (type, key, extra) => ({ type, key: `${type}:${key}`, state: state(`${type}:${key}`), ...extra });
     const groups = [
-      { type: 'notInMaster', ar: 'موردون نشطون غير مسجّلين بالماستر', action: 'الإضافة للماستر والإسناد لأحد أعضاء الفريق',
+      { type: 'notInMaster', ar: 'موردون نشطون غير مسجّلين بالقائمة المعتمدة', action: 'الإضافة للماستر والإسناد لأحد أعضاء الفريق',
         items: vs.filter((v) => v.kind === 'outside' || (withInd && v.kind === 'freelancer')).sort((a, b) => b.trips - a.trips)
           .map((v) => mk('notInMaster', v.key, { id: v.id, name: v.name, kind: v.kind, trips: v.trips, last: isoDay(v.last), detail: topRep(v) })) },
       { type: 'unsigned', ar: 'موردون نشطون دون عقدٍ موقّع', action: 'استكمال توقيع العقد',
@@ -837,6 +860,18 @@ exports.compare = async (req, res) => {
     }
     res.json(PV.maskMoney(req.user, { vendors: out }));
   } catch (e) { res.status(500).json({ message: 'تعذّرت المقارنة' }); }
+};
+
+/** GET /filter-options — the carrier filters' values with counts: follow-up owner and contract status. */
+exports.filterOptions = async (req, res) => {
+  try {
+    const [owners, contracts] = await Promise.all([
+      ShipmentOrderSupplier.aggregate([{ $match: { inMaster: true, mergedInto: null } }, { $group: { _id: { $ifNull: ['$followOwner', ''] }, n: { $sum: 1 } } }, { $sort: { n: -1 } }]),
+      ShipmentOrderSupplier.aggregate([{ $match: { inMaster: true, mergedInto: null } }, { $group: { _id: { $ifNull: ['$contractStatus', ''] }, n: { $sum: 1 } } }, { $sort: { n: -1 } }]),
+    ]);
+    const shape = (rows) => rows.map((x) => ({ value: String(x._id || '').trim() || '__none', count: x.n }));
+    res.json({ owners: shape(owners), contracts: shape(contracts) });
+  } catch (e) { res.status(500).json({ message: 'تعذّر تحميل قيم الفلاتر' }); }
 };
 
 module.exports.EVENT = EVENT;

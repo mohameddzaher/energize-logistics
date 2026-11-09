@@ -4,7 +4,7 @@
  * tiers, which carriers recently delivered to the loading place (a return trip), and which master carriers are based
  * at or serve either end. The approved list is kept here by the team leads and is what the price alerts measure.
  */
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import Link from 'next/link';
 import { useAuth } from '@/context/AuthContext';
 import { useLanguage } from '@/context/LanguageContext';
@@ -47,6 +47,11 @@ export default function VendorRoutesPage() {
   const loadPrices = useCallback(() => { api.get<{ prices: Row[] }>('/api/vendors-mgmt/prices').then((r) => setPrices(r.prices || [])).catch(() => setPrices([])); }, []);
   useEffect(() => { loadPrices(); }, [loadPrices]);
   useSocket('vendors:changed', loadPrices);
+  // A shipped or edited trip moves the route's carriers and prices: an open search refreshes by itself.
+  const resRef = useRef(res); resRef.current = res;
+  const searchRef = useRef(search); searchRef.current = search;
+  const timer = useRef<any>(null);
+  useSocket('shipmentOrders:updated', useCallback(() => { if (!resRef.current) return; clearTimeout(timer.current); timer.current = setTimeout(() => searchRef.current(), 1200); }, []));
 
   const savePrice = async () => {
     try {
@@ -107,7 +112,7 @@ export default function VendorRoutesPage() {
                 { key: 'last', label: t('آخر وصول', 'Last arrival'), render: (r) => fmtDay(r.last) }, { key: 'from', label: t('حمّل من', 'Loaded at') },
               ]} />
             </Panel>
-            <Panel title={<span className="inline-flex items-center gap-1.5"><Home className="w-4 h-4 text-[#f37121]" />{t('موردو الماستر الذين يشمل مقرُّهم أو وجهاتُهم المكان', 'Master carriers based at or serving the place')}</span>} pad={false}>
+            <Panel title={<span className="inline-flex items-center gap-1.5"><Home className="w-4 h-4 text-[#f37121]" />{t('الموردون المعتمدون الذين يشمل مقرُّهم أو وجهاتُهم المكان', 'Master carriers based at or serving the place')}</span>} pad={false}>
               <DataGrid ar={ar} rows={res.masterNearby} rowKey={(r) => r.id} cols={[
                 { key: 'name', label: t('المورّد', 'Carrier'), render: (r) => <Link href={vendorHref(r)} className="font-semibold hover:text-[#f37121]">{r.name}</Link> },
                 { key: 'owner', label: t('المسؤول', 'Owner') },

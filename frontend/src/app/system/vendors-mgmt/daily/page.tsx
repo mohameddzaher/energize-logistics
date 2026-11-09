@@ -15,6 +15,7 @@ import { Spinner, PageHeader, ErrorNotice, SearchInput } from '@/components/hr/H
 import ExportMenu from '@/components/ls2/ExportMenu';
 import { Kpi, Panel, BarList, DataGrid, LiveDot, PRESETS, presetRange, fmtInt, fmtMoney, fmtPct, ORANGE } from '@/components/analytics/AnalyticsKit';
 import { KIND, kindLabel, vendorHref } from '@/lib/vendors';
+import VendorFilters, { vendorFilterQuery, type VendorFilterState } from '@/components/vendors/VendorFilters';
 import { PAYMENT_SUBTYPES } from '@/lib/paymentKind';
 import { ResponsiveContainer, ComposedChart, Bar, Line, XAxis, YAxis, Tooltip, CartesianGrid, Legend, ReferenceLine } from 'recharts';
 import { Activity, Printer } from 'lucide-react';
@@ -27,7 +28,11 @@ export default function VendorsDailyPage() {
   const ar = lang === 'ar';
   const t = (a: string, e: string) => (ar ? a : e);
   const [[from, to], setRange] = useState<[string, string]>(presetRange('month'));
-  const [branch, setBranch] = useState('');
+  const [filters, setFilters] = useState<VendorFilterState>({});
+  // One chosen branch also sets the branch target the page measures against.
+  const branch = filters.branch?.length === 1 ? filters.branch[0] : '';
+  const setBranch = (b: string) => setFilters((f) => { const n = { ...f }; if (b) n.branch = [b]; else delete n.branch; return n; });
+  const fq = vendorFilterQuery(filters);
   const [d, setD] = useState<Row | null>(null);
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
@@ -42,17 +47,19 @@ export default function VendorsDailyPage() {
   const load = useCallback(async () => {
     const my = guard.begin(); setBusy(true);
     try {
-      const r = await api.get<Row>(`/api/vendors-mgmt/daily?from=${from}&to=${to}${branch ? `&branch=${encodeURIComponent(branch)}` : ''}`);
+      const r = await api.get<Row>(`/api/vendors-mgmt/daily?from=${from}&to=${to}${branch ? `&branch=${encodeURIComponent(branch)}` : ''}${fq ? `&${fq}` : ''}`);
       if (guard.isCurrent(my)) { setD(r); setError(''); }
     } catch (e: any) { if (guard.isCurrent(my)) setError(e?.message || t('تعذّر التحميل', 'Could not load')); }
     if (guard.isCurrent(my)) setBusy(false);
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [from, to, branch, guard]);
+  }, [from, to, branch, fq, guard]);
   useEffect(() => { load(); }, [load]);
   const timer = useRef<any>(null);
   const soon = useCallback(() => { clearTimeout(timer.current); timer.current = setTimeout(load, 1000); }, [load]);
   useSocket('shipmentOrders:updated', soon);
   useSocket('vendors:changed', soon);
+  useSocket('shipmentOrders:fleet', soon);
+  useSocket('shipmentRequests:changed', soon);
 
   const routes = useMemo(() => (d?.routes || []).filter((r: Row) => (!dest || r.to === dest) && (!routeQ || `${r.route}`.includes(routeQ))), [d, dest, routeQ]);
   const vendRows = useMemo(() => (d?.purchaseByVendor || []).filter((v: Row) => (!vendKind || v.kind === vendKind) && (!vendQ || v.name.includes(vendQ))), [d, vendKind, vendQ]);
@@ -62,7 +69,6 @@ export default function VendorsDailyPage() {
   if (!d) return <ErrorNotice error={error} onRetry={load} lang={ar ? 'ar' : 'en'} />;
   const T = d.totals;
   const activePreset = PRESETS.find(([k]) => { const [a, b] = presetRange(k); return a === from && b === to; })?.[0] || '';
-  const branchesAll = d.branches.map((b: Row) => b.branch).filter((b: string) => b && b !== '—');
   const money = T.buy != null;
 
   return (
@@ -73,9 +79,9 @@ export default function VendorsDailyPage() {
         <button type="button" onClick={() => window.print()} className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg border border-slate-200 bg-white text-sm font-semibold text-slate-700 hover:bg-slate-50 print:hidden"><Printer className="w-4 h-4" />{t('طباعة / PDF', 'Print / PDF')}</button>
         <ExportMenu fileName="vendors-daily" lang={ar ? 'ar' : 'en'} options={[{
           key: 'all', label: t('كلّ الجداول', 'All tables'), sheets: [
-            { name: t('حسب اليوم', 'By day'), rows: d.byDay, columns: [{ header: t('اليوم', 'Day'), key: 'day' }, { header: t('طلبات', 'Requests'), key: 'requests' }, { header: t('محقّق', 'Done'), key: 'done' }, { header: t('غير محقّق', 'Failed'), key: 'failed' }, { header: t('نسبة التحقيق', 'Rate'), key: 'rate' }, { header: t('التارجت', 'Target'), key: 'target' }, ...(money ? [{ header: t('الشراء', 'Purchase'), key: 'buy' }, { header: t('شراء بدون تنشيط', 'External purchase'), key: 'buyExt' }] : []), { header: t('أسطول تنشيط', 'Our fleet'), key: 'fleet' }] },
+            { name: t('حسب اليوم', 'By day'), rows: d.byDay, columns: [{ header: t('اليوم', 'Day'), key: 'day' }, { header: t('طلبات', 'Requests'), key: 'requests' }, { header: t('محقّق', 'Done'), key: 'done' }, { header: t('غير محقّق', 'Failed'), key: 'failed' }, { header: t('نسبة التحقيق', 'Rate'), key: 'rate' }, { header: t('المستهدَف', 'Target'), key: 'target' }, ...(money ? [{ header: t('الشراء', 'Purchase'), key: 'buy' }, { header: t('شراء بدون تنشيط', 'External purchase'), key: 'buyExt' }] : []), { header: t('أسطول تنشيط', 'Our fleet'), key: 'fleet' }] },
             { name: t('الفروع', 'Branches'), rows: d.branches, columns: [{ header: t('الفرع', 'Branch'), key: 'branch' }, { header: t('طلبات', 'Requests'), key: 'requests' }, { header: t('محقّق', 'Done'), key: 'done' }, { header: t('غير محقّق', 'Failed'), key: 'failed' }, { header: t('النسبة', 'Rate'), key: 'rate' }, { header: t('محقّق/يوم', 'Per day'), key: 'perDay' }, ...(money ? [{ header: t('الشراء', 'Purchase'), key: 'buy' }] : []), { header: t('أكبر سبب', 'Top reason'), key: 'topReason' }] },
-            { name: t('العملاء', 'Customers'), rows: d.customers, columns: [{ header: t('العميل', 'Customer'), key: 'name' }, { header: t('الفرع', 'Branch'), key: 'branch' }, { header: t('السيلز', 'Sales'), key: 'sales' }, { header: t('طلبات', 'Requests'), key: 'requests' }, { header: t('محقّق', 'Done'), key: 'done' }, { header: t('غير محقّق', 'Failed'), key: 'failed' }, { header: t('النسبة', 'Rate'), key: 'rate' }] },
+            { name: t('العملاء', 'Customers'), rows: d.customers, columns: [{ header: t('العميل', 'Customer'), key: 'name' }, { header: t('الفرع', 'Branch'), key: 'branch' }, { header: t('المبيعات', 'Sales'), key: 'sales' }, { header: t('طلبات', 'Requests'), key: 'requests' }, { header: t('محقّق', 'Done'), key: 'done' }, { header: t('غير محقّق', 'Failed'), key: 'failed' }, { header: t('النسبة', 'Rate'), key: 'rate' }] },
             { name: t('الموردون', 'Carriers'), rows: d.purchaseByVendor, columns: [{ header: t('المورّد', 'Carrier'), key: 'name' }, { header: t('النوع', 'Kind'), key: 'kind', transform: (v: string) => kindLabel(v, ar) }, { header: t('الفرع', 'Branch'), key: 'branch' }, { header: t('رحلات', 'Trips'), key: 'trips' }, ...(money ? [{ header: t('الشراء', 'Purchase'), key: 'buy' }, { header: t('متوسط', 'Avg'), key: 'avg' }] : [])] },
             { name: t('المسارات', 'Routes'), rows: d.routes.map((r: Row) => ({ ...r, priceList: r.prices.map((p: Row) => `${p.price}(${p.n})`).join(' · ') })), columns: [{ header: t('المسار', 'Route'), key: 'route' }, { header: t('محقّق', 'Done'), key: 'done' }, { header: t('أسطول', 'Fleet'), key: 'fleet' }, { header: t('شركات', 'Companies'), key: 'companies' }, { header: t('أفراد', 'Freelancers'), key: 'freelancer' }, { header: t('الجهات المنفّذة', 'Executors'), key: 'executors' }, ...(money ? [{ header: t('الأسعار', 'Prices'), key: 'priceList' }, { header: t('السعر الأكثر', 'Mode'), key: 'modePrice' }] : [])] },
           ],
@@ -89,26 +95,25 @@ export default function VendorsDailyPage() {
         <input type="date" value={from} max={to} onChange={(e) => e.target.value && setRange([e.target.value, to])} className="px-2.5 py-1.5 rounded-lg border border-slate-200 text-[12.5px] [color-scheme:light]" />
         <span className="text-slate-400">—</span>
         <input type="date" value={to} min={from} onChange={(e) => e.target.value && setRange([from, e.target.value])} className="px-2.5 py-1.5 rounded-lg border border-slate-200 text-[12.5px] [color-scheme:light]" />
-        <select value={branch} onChange={(e) => setBranch(e.target.value)} className="px-3 py-1.5 rounded-lg border border-slate-200 text-[12.5px] bg-white">
-          <option value="">{t('كلّ الفروع', 'All branches')}</option>
-          {[...new Set([...branchesAll, ...(branch ? [branch] : [])])].map((b) => <option key={b as string} value={b as string}>{b as string}</option>)}
-        </select>
-        <span className="ms-auto text-[12px] text-slate-500">{d.target.daily ? t(`التارجت اليوميّ ${d.target.daily} رحلة · للفترة ${fmtInt(d.target.period)}`, `Daily target ${d.target.daily} · period ${fmtInt(d.target.period)}`) : <Link href="/system/vendors-mgmt/settings" className="text-[#f37121] hover:underline">{t('حدّد التارجت من إعدادات القسم', 'Set the target in section settings')}</Link>}</span>
+
+        <span className="ms-auto text-[12px] text-slate-500">{d.target.daily ? t(`المستهدَف اليوميّ ${d.target.daily} رحلة · للفترة ${fmtInt(d.target.period)}`, `Daily target ${d.target.daily} · period ${fmtInt(d.target.period)}`) : <Link href="/system/vendors-mgmt/settings" className="text-[#f37121] hover:underline">{t('حدِّد المستهدَف من إعدادات القسم', 'Set the target in section settings')}</Link>}</span>
       </div>
+
+      <div className="print:hidden"><VendorFilters value={filters} onChange={setFilters} from={from} to={to} ar={ar} /></div>
 
       <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
         <Kpi ar={ar} label={t('الطلبات', 'Requests')} value={fmtInt(T.requests)} />
         <Kpi ar={ar} label={t('المحقّق', 'Fulfilled')} value={fmtInt(T.done)} tone="good" sub={t(`${fmtInt(T.perDay)} يوميًّا`, `${fmtInt(T.perDay)}/day`)} />
         <Kpi ar={ar} label={t('غير المحقّق', 'Not fulfilled')} value={fmtInt(T.failed)} tone="bad" />
         <Kpi ar={ar} label={t('نسبة التحقيق', 'Fulfilment rate')} value={fmtPct(T.rate)} tone={T.rate >= 80 ? 'good' : 'warn'} />
-        <Kpi ar={ar} label={t('مقابل التارجت', 'Against target')} value={T.vsTarget != null ? fmtPct(T.vsTarget) : '—'} tone={T.vsTarget >= 100 ? 'good' : T.vsTarget != null ? 'warn' : 'muted'} />
+        <Kpi ar={ar} label={t('مقابل المستهدَف', 'Against target')} value={T.vsTarget != null ? fmtPct(T.vsTarget) : '—'} tone={T.vsTarget >= 100 ? 'good' : T.vsTarget != null ? 'warn' : 'muted'} />
         <Kpi ar={ar} label={t('حصّة أسطول تنشيط', 'Our fleet share')} value={fmtPct(T.fleetShare)} sub={t(`${fmtInt(T.fleet)} رحلة`, `${fmtInt(T.fleet)} trips`)} />
         {money && <Kpi ar={ar} label={t('سعر الشراء', 'Purchase')} value={fmtMoney(T.buy)} sub={t(`متوسط ${fmtMoney(T.avgTrip)}`, `avg ${fmtMoney(T.avgTrip)}`)} />}
         {money && <Kpi ar={ar} label={t('شراءٌ بدون تنشيط', 'Purchase excl. our fleet')} value={fmtMoney(T.buyExt)} />}
         <Kpi ar={ar} label={t('اعتمادٌ على الأفراد', 'Reliance on freelancers')} value={fmtPct(T.freelancerShareExt)} tone={T.freelancerShareExt > 35 ? 'warn' : undefined} sub={t('من التشغيل الخارجي', 'of external work')} />
       </div>
 
-      <Panel title={t('حسب اليوم', 'By day')} subtitle={t('المحقّق وغير المحقّق يوميًّا، والخطّ المتقطّع = التارجت', 'Fulfilled and not, daily; dashed line = target')}>
+      <Panel title={t('حسب اليوم', 'By day')} subtitle={t('المحقّق وغير المحقّق يوميًّا، والخطّ المتقطّع = المستهدَف', 'Fulfilled and not, daily; dashed line = target')}>
         <div className="h-72">
           <ResponsiveContainer width="100%" height="100%">
             <ComposedChart data={d.byDay.map((x: Row) => ({ ...x, label: x.day.slice(5) }))}>
@@ -116,7 +121,7 @@ export default function VendorsDailyPage() {
               <Bar dataKey="done" stackId="a" name={t('محقّق', 'Fulfilled')} fill="#10b981" />
               <Bar dataKey="failed" stackId="a" name={t('غير محقّق', 'Not fulfilled')} fill="#fca5a5" radius={[4, 4, 0, 0]} />
               <Line dataKey="fleet" name={t('أسطول تنشيط', 'Our fleet')} stroke="#64748b" strokeWidth={2} dot={false} />
-              {d.target.daily ? <ReferenceLine y={d.target.daily} stroke={ORANGE} strokeDasharray="6 4" label={{ value: t('التارجت', 'Target'), fill: ORANGE, fontSize: 11 }} /> : null}
+              {d.target.daily ? <ReferenceLine y={d.target.daily} stroke={ORANGE} strokeDasharray="6 4" label={{ value: t('المستهدَف', 'Target'), fill: ORANGE, fontSize: 11 }} /> : null}
             </ComposedChart>
           </ResponsiveContainer>
         </div>
@@ -124,7 +129,7 @@ export default function VendorsDailyPage() {
           { key: 'day', label: t('اليوم', 'Day'), render: (r) => <span className="tabular-nums font-semibold">{r.day}</span> },
           { key: 'requests', label: t('طلبات', 'Requests'), num: true }, { key: 'done', label: t('محقّق', 'Done'), num: true }, { key: 'failed', label: t('غير محقّق', 'Failed'), num: true },
           { key: 'rate', label: t('التحقيق', 'Rate'), num: true, render: (r) => fmtPct(r.rate) },
-          { key: 'vsTarget', label: t('مقابل التارجت', 'vs target'), num: true, render: (r) => (r.vsTarget != null ? <span className={r.vsTarget >= 100 ? 'text-emerald-700 font-semibold' : 'text-amber-700'}>{fmtPct(r.vsTarget)}</span> : '—') },
+          { key: 'vsTarget', label: t('مقابل المستهدَف', 'vs target'), num: true, render: (r) => (r.vsTarget != null ? <span className={r.vsTarget >= 100 ? 'text-emerald-700 font-semibold' : 'text-amber-700'}>{fmtPct(r.vsTarget)}</span> : '—') },
           ...(money ? [{ key: 'buy', label: t('الشراء', 'Purchase'), num: true, render: (r: Row) => fmtMoney(r.buy) }, { key: 'buyExt', label: t('بدون تنشيط', 'Excl. fleet'), num: true, render: (r: Row) => fmtMoney(r.buyExt) }] : []),
           { key: 'fleetShare', label: t('حصّة تنشيط', 'Fleet share'), num: true, render: (r) => fmtPct(r.fleetShare) },
         ]} />
@@ -171,7 +176,7 @@ export default function VendorsDailyPage() {
             { key: 'branch', label: t('الفرع', 'Branch'), render: (r) => <button type="button" onClick={() => setBranch(r.branch === '—' ? '' : r.branch)} className="font-semibold hover:text-[#f37121]">{r.branch}</button> },
             { key: 'requests', label: t('طلبات', 'Requests'), num: true }, { key: 'done', label: t('محقّق', 'Done'), num: true }, { key: 'failed', label: t('غير محقّق', 'Failed'), num: true },
             { key: 'rate', label: t('التحقيق', 'Rate'), num: true, render: (r) => fmtPct(r.rate) }, { key: 'perDay', label: t('محقّق/يوم', 'Per day'), num: true },
-            { key: 'vsTarget', label: t('مقابل التارجت', 'vs target'), num: true, render: (r) => (r.vsTarget != null ? fmtPct(r.vsTarget) : '—') },
+            { key: 'vsTarget', label: t('مقابل المستهدَف', 'vs target'), num: true, render: (r) => (r.vsTarget != null ? fmtPct(r.vsTarget) : '—') },
             ...(money ? [{ key: 'buy', label: t('الشراء', 'Purchase'), num: true, render: (r: Row) => fmtMoney(r.buy) }] : []),
             { key: 'topReason', label: t('أكبر سببٍ لعدم التحقيق', 'Top reason'), render: (r) => r.topReason || '—' },
           ]} />

@@ -283,7 +283,7 @@ export default function ShipmentRequestForm({ editId, onDone }: { editId?: strin
       )}
       {locked && <div className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-600">{t('الطلبُ مغلق؛ تُعدَّل أوامرُ النقل نفسُها من صفحة الشحنات.', 'This request is closed; edit its transport orders from the shipments page.')}</div>}
 
-      {card(1, Users, t('العميل والسيلز التشغيلي', 'Customer & operational sales'), missing.has('customer') ? 1 : 0, (
+      {card(1, Users, t('العميل ومندوب المبيعات', 'Customer & operational sales'), missing.has('customer') ? 1 : 0, (
         <>
           <div className="sm:col-span-2">
             <label className={miss('customer') ? labelMissCls : labelCls}>{t('العميل', 'Customer')}<span className="text-red-500"> *</span></label>
@@ -306,7 +306,7 @@ export default function ShipmentRequestForm({ editId, onDone }: { editId?: strin
             ))}
           </div>
           <div>
-            <label className={labelCls}>{t('السيلز التشغيلي — من جاء بالحمولة', 'Operational sales — who brought the load')}</label>
+            <label className={labelCls}>{t('مندوب المبيعات — مَن جاء بالحمولة', 'Operational sales — who brought the load')}</label>
             <SearchableSelect value={salesRep} onChange={setSalesRep} searchAfter={0} placeholder={t('اختر', 'Choose')}
               options={reps.map((r) => ({ value: r.value, label: r.label, hint: r.roleAr || '' }))} />
           </div>

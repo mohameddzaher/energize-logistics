@@ -10,10 +10,10 @@ export const isVendorLead = (u: RoleOrUser) => [...TOP, ...VENDOR_LEADS, 'operat
 export const canEditVendors = (u: RoleOrUser) => VENDOR_NAV_ROLES.includes(roleOf(u)) || canEditSection(permsOf(u), 'Vendors Management');
 
 export const KIND: Record<string, { ar: string; en: string; cls: string; color: string }> = {
-  master: { ar: 'ضمن الماستر', en: 'On the master', cls: 'bg-emerald-50 text-emerald-700 border-emerald-200', color: '#10b981' },
-  outside: { ar: 'خارج الماستر', en: 'Outside the master', cls: 'bg-amber-50 text-amber-800 border-amber-200', color: '#f59e0b' },
-  freelancer: { ar: 'سائق فرد', en: 'Freelance driver', cls: 'bg-sky-50 text-sky-700 border-sky-200', color: '#0ea5e9' },
-  fleet: { ar: 'أسطول تنشيط', en: 'Our fleet', cls: 'bg-slate-100 text-slate-700 border-slate-200', color: '#64748b' },
+  master: { ar: 'معتمد', en: 'On the master', cls: 'bg-orange-50 text-orange-800 border-orange-200', color: '#f37121' },
+  outside: { ar: 'غير معتمد', en: 'Outside the master', cls: 'bg-amber-50 text-amber-800 border-amber-200', color: '#fbbf77' },
+  freelancer: { ar: 'سائق فرد', en: 'Freelance driver', cls: 'bg-slate-50 text-slate-700 border-slate-200', color: '#cbd5e1' },
+  fleet: { ar: 'أسطول تنشيط', en: 'Our fleet', cls: 'bg-slate-100 text-slate-800 border-slate-300', color: '#334155' },
   none: { ar: 'غير محدّد', en: 'Unknown', cls: 'bg-slate-50 text-slate-500 border-slate-200', color: '#94a3b8' },
 };
 export const kindLabel = (k: string, ar: boolean) => (KIND[k] ? (ar ? KIND[k].ar : KIND[k].en) : k);

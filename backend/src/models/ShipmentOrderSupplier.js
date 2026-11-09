@@ -99,7 +99,13 @@ shipmentOrderSupplierSchema.pre('save', function keys(next) {
 // Saved shipment-order lists are cleared on every write.
 // The suppliers and trucks lists are cached for two minutes (so:registry) because reading them from the cluster is slow. A supplier appears inside the trucks list and its truck count in its own list, so any write to either, from any screen or script, clears the whole prefix.
 const clearRegistry = () => {
-  try { require('../utils/ttlCache').clear('so:registry:'); } catch (_) { /* */ }
+  try {
+    const c = require('../utils/ttlCache');
+    c.clear('so:registry:');
+    // A carrier's kind, master flag, owner or contract moves the vendors section's numbers.
+    c.clear('so:analytics:vendor-yearly');
+    c.clear('so:analytics:vm-');
+  } catch (_) { /* */ }
 };
 for (const op of ['save', 'findOneAndUpdate', 'updateOne', 'updateMany', 'insertMany', 'bulkWrite', 'deleteOne', 'deleteMany', 'findOneAndDelete']) {
   shipmentOrderSupplierSchema.post(op, clearRegistry);

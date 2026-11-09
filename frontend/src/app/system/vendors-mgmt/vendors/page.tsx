@@ -20,7 +20,7 @@ import { Users, Plus, GitCompare, X } from 'lucide-react';
 
 type Row = Record<string, any>;
 const QUICK: [string, string, string][] = [
-  ['', 'الكلّ', 'All'], ['master', 'موردو الماستر', 'Master'], ['stopped', 'ماستر متوقّفون', 'Master stopped'], ['leads', 'نشطون خارج الماستر', 'Active outside master'],
+  ['', 'الكلّ', 'All'], ['master', 'الموردون المعتمدون', 'Master'], ['stopped', 'معتمدون متوقّفون', 'Master stopped'], ['leads', 'نشطون غير معتمدين', 'Active outside master'],
   ['signedIdle', 'موقّعون غير نشطين', 'Signed, idle'], ['unsigned', 'نشطون دون عقد', 'Active unsigned'], ['freelancers', 'السائقون الأفراد', 'Freelancers'], ['incomplete', 'ملفٌّ ناقص', 'Incomplete file'],
 ];
 
@@ -125,7 +125,7 @@ export default function VendorsRegisterPage() {
         <ExportMenu fileName="carriers" lang={ar ? 'ar' : 'en'} options={[{
           key: 'shown', label: t('تصدير المعروض', 'Export shown'), sheets: [{ name: t('الموردون', 'Carriers'), rows, columns: [
             { header: t('المورّد', 'Carrier'), key: 'name', width: 34 }, { header: t('النوع', 'Kind'), key: 'kind', transform: (v: string) => kindLabel(v, ar) },
-            { header: t('رقم الماستر', 'Master no.'), key: 'masterNo' }, { header: t('مسؤول المتابعة', 'Owner'), key: 'followOwner' }, { header: t('حالة العقد', 'Contract'), key: 'contractStatus' },
+            { header: t('الرقم في القائمة المعتمدة', 'Master no.'), key: 'masterNo' }, { header: t('مسؤول المتابعة', 'Owner'), key: 'followOwner' }, { header: t('حالة العقد', 'Contract'), key: 'contractStatus' },
             { header: t('التصنيف الضريبي', 'Tax class'), key: 'taxClass' }, { header: t('المقر', 'HQ'), key: 'headOffice' }, { header: t('الوجهات', 'Destinations'), key: 'destinations' },
             { header: t('نوع السيارات', 'Truck types'), key: 'vehicleTypes' }, { header: t('عدد السيارات', 'Fleet'), key: 'fleetSize' }, { header: t('ممثل المورد', 'Representative'), key: 'representative' }, { header: t('الجوال', 'Phone'), key: 'phone' },
             ...(Array.from({ length: cm }, (_, i) => ({ header: monthName(i + 1, ar), key: `m${i}`, transform: (_v: any, r: Row) => r.mon?.[i] || 0 }))),
@@ -192,7 +192,7 @@ export default function VendorsRegisterPage() {
             <Field label={t('النوع', 'Type')}><select value={newV.type} onChange={(e) => setNewV({ ...newV, type: e.target.value })} className="w-full px-3 py-2 rounded-lg border border-slate-200 text-sm"><option value="company">{t('شركة / مؤسسة', 'Company')}</option><option value="freelancer">{t('سائق فرد', 'Freelance driver')}</option></select></Field>
             <Field label={t('الجوال', 'Phone')}><TextInput value={newV.phone} onChange={(e) => setNewV({ ...newV, phone: e.target.value })} /></Field>
             <Field label={t('مسؤول المتابعة', 'Owner')}><TextInput list="vm-owners" value={newV.followOwner} onChange={(e) => setNewV({ ...newV, followOwner: e.target.value })} /><datalist id="vm-owners">{d.owners.map((o) => <option key={o} value={o} />)}</datalist></Field>
-            <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={newV.inMaster} onChange={(e) => setNewV({ ...newV, inMaster: e.target.checked })} className="accent-[#f37121]" />{t('ضمن الماستر', 'On the master')}</label>
+            <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={newV.inMaster} onChange={(e) => setNewV({ ...newV, inMaster: e.target.checked })} className="accent-[#f37121]" />{t('معتمد', 'On the master')}</label>
           </div>
         </Modal>
       )}

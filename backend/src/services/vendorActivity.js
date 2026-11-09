@@ -91,14 +91,15 @@ function trendOf(mon, firstMonthIdx, total, curMonth) {
  * Per-vendor yearly picture: trips per month, purchase, first and last trip, and the trend.
  * Executed shipments only (cancelled are not trips). `year` defaults to the current one; `curMonth` is the month of `asOf`.
  */
-async function yearly({ year, asOf } = {}) {
+async function yearly({ year, asOf, extra = null } = {}) {
   const today = asOf || todayKey();
   const y = Number(year) || Number(today.slice(0, 4));
-  const key = `so:analytics:vendor-yearly:${y}:${today}`;
+  // `extra`: the page's shipment filters (branch, customer, route, truck, ops rep, payment) as one match.
+  const key = `so:analytics:vendor-yearly:${y}:${today}:${extra ? JSON.stringify(extra) : ''}`;
   return cache.wrapStale(key, 60 * 1000, 10 * 60 * 1000, async () => {
     const R = await resolver();
     const rows = await ShipmentOrder.aggregate([
-      { $match: { pickupTime: { $gte: startOfDay(`${y}-01-01`), $lte: endOfDay(`${y}-12-31`) }, status: { $ne: 'cancelled' } } },
+      { $match: { pickupTime: { $gte: startOfDay(`${y}-01-01`), $lte: endOfDay(`${y}-12-31`) }, status: { $ne: 'cancelled' }, ...(extra || {}) } },
       { $group: {
         _id: { s: '$supplier', n: '$supplierName', p: '$vehiclePlate', m: { $month: { date: '$pickupTime', timezone: TZ } } },
         trips: { $sum: 1 }, buy: { $sum: { $ifNull: ['$buyPrice', 0] } },

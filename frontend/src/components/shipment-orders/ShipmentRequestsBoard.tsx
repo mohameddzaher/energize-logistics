@@ -156,7 +156,7 @@ export default function ShipmentRequestsBoard({ mode }: { mode: 'sales' | 'vendo
                     {r.cargoType && <Chip icon={Package}>{r.cargoType}</Chip>}
                     <Chip icon={Calendar}>{t('التحميل', 'Pickup')} {day(r.pickupTime)}</Chip>
                     {r.paymentSubtype && <Chip>{(PAYMENT_SUBTYPES as any)[r.paymentSubtype]?.[ar ? 'ar' : 'en'] || r.paymentSubtype}</Chip>}
-                    {r.salesRepName && <Chip icon={UserIcon}>{t('السيلز', 'Sales')}: {r.salesRepName}</Chip>}
+                    {r.salesRepName && <Chip icon={UserIcon}>{t('المبيعات', 'Sales')}: {r.salesRepName}</Chip>}
                     {r.handlerName && <Chip icon={Hand}>{t('يعمل عليه', 'Handled by')}: {r.handlerName}</Chip>}
                     {(r.blNumber || r.containerNumber) && <Chip>{[r.blNumber, r.containerNumber].filter(Boolean).join(' · ')}</Chip>}
                   </div>

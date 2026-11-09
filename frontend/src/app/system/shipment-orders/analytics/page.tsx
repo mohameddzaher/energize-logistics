@@ -47,7 +47,7 @@ interface Insights {
 const DIMS: [string, string, string][] = [
   ['customer', 'العميل', 'Customer'], ['route', 'المسار', 'Route'], ['fromCity', 'من', 'From'], ['toCity', 'إلى', 'To'],
   ['branch', 'الفرع', 'Branch'], ['truckType', 'نوع الشاحنة', 'Truck type'], ['truckLength', 'طول الشاحنة', 'Truck length'],
-  ['cargoType', 'نوع الحمولة', 'Cargo type'], ['payment', 'نوع الدفع', 'Payment'], ['salesRep', 'السيلز التشغيلي', 'Ops sales'],
+  ['cargoType', 'نوع الحمولة', 'Cargo type'], ['payment', 'نوع الدفع', 'Payment'], ['salesRep', 'مندوب المبيعات', 'Ops sales'],
   ['supplier', 'المورّد', 'Supplier'], ['supplierType', 'نوع المورّد', 'Supplier kind'], ['agent', 'مُنشئ الشحنة', 'Created by'],
   ['status', 'الحالة', 'Status'], ['cancelReason', 'سبب الإلغاء', 'Cancel reason'], ['source', 'المصدر', 'Source'], ['request', 'طلبات المبيعات', 'Sales requests'],
 ];
@@ -57,7 +57,7 @@ const WEEKDAY_EN = ['', 'Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 const KIND_AR: Record<string, string> = { company: 'شركات', freelancer: 'سائقون أفراد', none: 'بلا مورّد مسجَّل' };
 const TABS: [string, string, string][] = [
   ['overview', 'نظرة عامة', 'Overview'], ['requests', 'طلبات المبيعات والموردين', 'Sales requests & vendors'], ['customers', 'العملاء وتقييمهم', 'Customers & rating'], ['routes', 'المسارات والمدن', 'Routes & cities'],
-  ['suppliers', 'الموردون', 'Suppliers'], ['team', 'السيلز والفريق', 'Sales & team'], ['cancel', 'الإلغاء', 'Cancellations'],
+  ['suppliers', 'الموردون', 'Suppliers'], ['team', 'المبيعات والفريق', 'Sales & team'], ['cancel', 'الإلغاء', 'Cancellations'],
   ['losing', 'الشحنات الخاسرة', 'Losing shipments'], ['branchReport', 'تقرير الفروع', 'Branch report'],
 ];
 
@@ -184,7 +184,7 @@ function Inner() {
   ];
   const sheets = [
     ['customers', t('العملاء', 'Customers')], ['routes', t('المسارات', 'Routes')], ['suppliers', t('الموردون', 'Suppliers')], ['branches', t('الفروع', 'Branches')],
-    ['truckTypes', t('أنواع الشاحنات', 'Truck types')], ['payments', t('أنواع الدفع', 'Payments')], ['salesReps', t('السيلز التشغيلي', 'Ops sales')],
+    ['truckTypes', t('أنواع الشاحنات', 'Truck types')], ['payments', t('أنواع الدفع', 'Payments')], ['salesReps', t('مندوب المبيعات', 'Ops sales')],
     ['fromCities', t('مدن التحميل', 'From cities')], ['toCities', t('مدن الوصول', 'To cities')], ['cargoTypes', t('أنواع الحمولة', 'Cargo')],
   ].map(([k, n]) => ({ name: n, rows: ((d as any)[k] || []).map((r: Row) => (k === 'payments' ? { ...r, name: payName(r.key) } : r)), columns: k === 'customers'
     ? [...exportCols, { header: t('التقييم', 'Grade'), key: 'grade' }, { header: t('الدرجة', 'Score'), key: 'score' }, { header: t('آخر شحنة', 'Last'), key: 'last', transform: (v: any) => fmtDay(v) }]
@@ -275,7 +275,7 @@ function Inner() {
         <Kpi ar={ar} label={t('المسارات', 'Routes')} value={fmtInt(T.routes)} onClick={() => setTab('routes')} />
         <Kpi ar={ar} label={t('من طلبات المبيعات', 'From sales requests')} value={fmtInt(T.fromRequests)} sub={fmtPct(T.orders ? (T.fromRequests / T.orders) * 100 : 0)} onClick={() => setTab('requests')} />
         {pv.buy && <Kpi ar={ar} label={t('السُّلف للسائقين', 'Driver advances')} value={fmtMoney(T.advances)} />}
-        <Kpi ar={ar} label={t('بلا سيلز تشغيلي', 'No ops sales')} value={fmtInt(T.noSalesRep)} tone={T.noSalesRep ? 'warn' : 'muted'} />
+        <Kpi ar={ar} label={t('بلا مندوب مبيعات', 'No ops sales')} value={fmtInt(T.noSalesRep)} tone={T.noSalesRep ? 'warn' : 'muted'} />
       </div>
 
       {/* Missing prices are counted, not hidden: a total without them would read as complete. */}
@@ -436,9 +436,9 @@ function Inner() {
 
       {tab === 'team' && (
         <div className="space-y-4">
-          <Panel title={t('السيلز التشغيلي', 'Operational sales')} subtitle={t('من جاء بالحمولة — مرتّبون بالمنفّذ', 'Who brought the load — ranked by executed')} pad={false}>
+          <Panel title={t('مندوب المبيعات', 'Operational sales')} subtitle={t('من جاء بالحمولة — مرتّبون بالمنفّذ', 'Who brought the load — ranked by executed')} pad={false}>
             <DataGrid ar={ar} rows={d.salesReps} onRow={(r) => addTo('salesRep', r.name === '—' ? '__blank__' : r.name)} rowKey={(r) => r.key}
-              cols={volCols<Row>(t('السيلز التشغيلي', 'Ops sales'))} />
+              cols={volCols<Row>(t('مندوب المبيعات', 'Ops sales'))} />
           </Panel>
           <Panel title={t('مُنشئو الشحنات', 'Created by')} subtitle={t('من سجّل الشحنة على النظام (مندوب التشغيل)', 'Who registered the shipment')} pad={false}>
             <DataGrid ar={ar} rows={d.agents} onRow={(r) => addTo('agent', r.name === '—' ? '__blank__' : r.name)} rowKey={(r) => r.key}
@@ -469,13 +469,13 @@ function Inner() {
             <Kpi ar={ar} label={t('نسبة التحقيق', 'Fulfilment')} value={fmtPct(R.fulfilment)} tone={R.fulfilment >= 80 ? 'good' : 'warn'} sub={t('من المحسوم (بدون المفتوح والمسحوب)', 'of decided trucks')} />
             <Kpi ar={ar} label={t('مرفوضة', 'Rejected')} value={fmtInt(R.rejectedTrucks)} tone="bad" sub={t('شاحنة', 'trucks')} />
             <Kpi ar={ar} label={t('ما زالت مفتوحة', 'Still open')} value={fmtInt(R.openTrucks)} tone="warn" sub={t('شاحنة تنتظر', 'trucks waiting')} />
-            <Kpi ar={ar} label={t('سحبها السيلز', 'Withdrawn by sales')} value={fmtInt(R.cancelledTrucks)} tone="muted" />
+            <Kpi ar={ar} label={t('سحبها فريق المبيعات', 'Withdrawn by sales')} value={fmtInt(R.cancelledTrucks)} tone="muted" />
             <Kpi ar={ar} label={t('أوّل إسنادٍ بعد', 'First placement after')} value={R.avgHoursToFirstPlace != null ? `${fmtInt(R.avgHoursToFirstPlace)} ${t('ساعة', 'h')}` : '—'} />
             <Kpi ar={ar} label={t('إكمال الطلب بعد', 'Request completed after')} value={R.avgHoursToComplete != null ? `${fmtInt(R.avgHoursToComplete)} ${t('ساعة', 'h')}` : '—'} />
             <Kpi ar={ar} label={t('أُعيد إرسالها بعد الرفض', 'Resent after rejection')} value={fmtInt(R.resubmitted?.requests)} sub={t(`نُفّذ منها ${fmtInt(R.resubmitted?.placedAfter)}`, `${fmtInt(R.resubmitted?.placedAfter)} placed after`)} />
           </div>
           <Panel title={t('الفجوة بين المطلوب والمحقَّق — وأسبابها', 'The gap between asked and placed — and why')}
-            subtitle={t('كلّ شاحنةٍ طلبها السيلز ولم تصر أمرَ نقل: مرفوضةٌ بسببها، أو مفتوحةٌ بعد، أو سحبها السيلز', 'Every asked truck that did not become an order')}>
+            subtitle={t('كلّ شاحنةٍ طلبها فريق المبيعات ولم تصر أمرَ نقل: مرفوضةٌ بسببها، أو مفتوحةٌ بعد، أو سحبها فريق المبيعات', 'Every asked truck that did not become an order')}>
             <BarList ar={ar} color="#ef4444" limit={12} rows={[
               ...Object.entries(R.reasonTrucks || {}).map(([k, v]) => ({ key: k, label: `${t('رفض', 'Rejected')}: ${k}`, value: Number(v) })),
               ...(R.openTrucks ? [{ key: '__open', label: t('مفتوحة لم يُسند لها مورّدٌ بعد', 'Open, not yet placed'), value: R.openTrucks }] : []),
@@ -497,7 +497,7 @@ function Inner() {
             </Panel>
           )}
           <Panel title={t('ماذا جاب كلُّ موظّف مبيعات، وكم تحقّق منه', 'What each sales member brought, and how much was placed')} pad={false}>
-            <DataGrid ar={ar} rows={R.bySalesRep || []} rowKey={(r) => r.name} cols={reqCols(t('السيلز التشغيلي', 'Ops sales'))} />
+            <DataGrid ar={ar} rows={R.bySalesRep || []} rowKey={(r) => r.name} cols={reqCols(t('مندوب المبيعات', 'Ops sales'))} />
           </Panel>
           <Panel title={t('أسباب الرفض لكلّ موظّف مبيعات', 'Rejection reasons per sales member')} pad={false}>
             <DataGrid ar={ar} rows={R.reasonBySales || []} rowKey={(r, i) => `${r.sales}-${r.reason}-${i}`} empty={t('لا رفض في الفترة', 'No rejections')} cols={[

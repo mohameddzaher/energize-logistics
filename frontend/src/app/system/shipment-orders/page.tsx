@@ -378,7 +378,7 @@ function ShipmentOrdersInner() {
     [ar ? 'نوع الحمولة' : 'Cargo', 'cargoType', 'cargo'],
     [ar ? 'الكمية' : 'Quantity', null, 'quantity'],
     [ar ? 'نوع الدفع' : 'Payment', 'paymentSubtype', 'payment'],
-    [ar ? 'السيلز' : 'Sales rep', 'salesRepName', 'sales'],
+    [ar ? 'مندوب المبيعات' : 'Sales rep', 'salesRepName', 'sales'],
     [ar ? 'المندوب' : 'Agent', 'agentName', 'agent'],
     [ar ? 'سعر الشراء' : 'Buy', 'buyPrice', 'buy'],
     [ar ? 'سعر البيع' : 'Sell', 'sellPrice', 'sell'],
@@ -590,7 +590,7 @@ function ShipmentOrdersInner() {
             [ar ? 'العميل' : 'Customer', 'customerName'], [ar ? 'المورد' : 'Supplier', 'supplierName'],
             [ar ? 'السائق' : 'Driver', 'driverName'], [ar ? 'اللوحة' : 'Plate', 'plate'],
             [ar ? 'نوع الشاحنة' : 'Truck type', 'truckType'], [ar ? 'نوع الحمولة' : 'Cargo', 'cargoType'],
-            [ar ? 'نوع الدفع' : 'Payment', 'paymentSubtype'], [ar ? 'السيلز' : 'Sales rep', 'salesRepName'],
+            [ar ? 'نوع الدفع' : 'Payment', 'paymentSubtype'], [ar ? 'مندوب المبيعات' : 'Sales rep', 'salesRepName'],
             [ar ? 'المندوب' : 'Agent', 'agentName'],
           ] as const).map(([label, col]) => {
             return (

@@ -28,7 +28,11 @@ const READERS = [...new Set([...ASKERS, ...PLACERS, 'shipment_orders_followup'])
 const isAsker = (u) => ASKERS.includes(u?.role);
 const isPlacer = (u) => PLACERS.includes(u?.role);
 const fullName = (u) => (u ? `${u.firstName || ''} ${u.lastName || ''}`.trim() : '');
-const emit = (payload) => { try { emitToAll(EVENT, payload || {}); } catch (_) { /* */ } };
+// A request change moves the analytics (requests funnel, vendors daily page): their caches go before the event.
+const emit = (payload) => {
+  try { require('../utils/ttlCache').clear('so:analytics:'); } catch (_) { /* */ }
+  try { emitToAll(EVENT, payload || {}); } catch (_) { /* */ }
+};
 const OPEN = ['pending', 'in_progress'];
 
 /** The sales half as written on a request: the shipment form's fields that belong to sales. */

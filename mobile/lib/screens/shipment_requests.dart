@@ -392,7 +392,7 @@ class _ShipmentRequestFormScreenState extends State<ShipmentRequestFormScreen> {
                       Text(tr('عدّل ما يلزم ثم اضغط «حفظ وإعادة الإرسال».', 'Amend what is needed, then press “Save and resend”.'), style: const TextStyle(fontSize: 11.5, color: T.inkFaint)),
                     ]))),
                   AppCard(child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-                    Text(tr('العميل والسيلز التشغيلي', 'Customer & operational sales'), style: const TextStyle(fontWeight: FontWeight.w800)),
+                    Text(tr('العميل ومندوب المبيعات', 'Customer & operational sales'), style: const TextStyle(fontWeight: FontWeight.w800)),
                     const SizedBox(height: 8),
                     if (!_newCustomer)
                       OutlinedButton.icon(
@@ -415,7 +415,7 @@ class _ShipmentRequestFormScreenState extends State<ShipmentRequestFormScreen> {
                     DropdownButtonFormField<String>(
                       initialValue: _reps.any((r) => '${r['value']}' == _salesRep) ? _salesRep : null,
                       isExpanded: true,
-                      decoration: InputDecoration(labelText: tr('السيلز التشغيلي — من جاء بهذه الحمولة', 'Operational sales — who brought this load')),
+                      decoration: InputDecoration(labelText: tr('مندوب المبيعات — من جاء بهذه الحمولة', 'Operational sales — who brought this load')),
                       items: [for (final r in _reps) DropdownMenuItem(value: '${r['value']}', child: Text('${r['label']} · ${r['roleAr'] ?? ''}', overflow: TextOverflow.ellipsis))],
                       onChanged: (v) => setState(() => _salesRep = v),
                     ),
@@ -759,7 +759,7 @@ class _ShipmentRequestDetailScreenState extends State<ShipmentRequestDetailScree
                       if (r['arrivalTime'] != null) _kv(tr('الوصول', 'Arrival'), soFmtDate(r['arrivalTime'])),
                       if (r.containsKey('sellPrice')) _kv(tr('سعر البيع', 'Selling price'), soMoney(r['sellPrice'])),
                       _kv(tr('نوع الدفع', 'Payment'), '${r['paymentSubtype'] ?? ''}'.isEmpty ? '' : soPaymentKindLabel(r['paymentSubtype'])),
-                      _kv(tr('السيلز التشغيلي', 'Operational sales'), r['salesRepName']),
+                      _kv(tr('مندوب المبيعات', 'Operational sales'), r['salesRepName']),
                       _kv(tr('طلبه', 'Requested by'), r['createdByName']),
                       _kv(tr('ملاحظة الرحلة', 'Trip note'), r['notes']),
                       _kv(tr('رقم البوليصة', 'B/L'), r['blNumber']),

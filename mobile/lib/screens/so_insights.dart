@@ -30,7 +30,7 @@ const _dims = <(String, String, String)>[
   ('truckLength', 'طول الشاحنة', 'Truck length'),
   ('cargoType', 'نوع الحمولة', 'Cargo type'),
   ('payment', 'نوع الدفع', 'Payment'),
-  ('salesRep', 'السيلز التشغيلي', 'Operational sales'),
+  ('salesRep', 'مندوب المبيعات', 'Operational sales'),
   ('agent', 'مُنشئ الشحنة', 'Created by'),
   ('supplier', 'المورّد', 'Supplier'),
   ('status', 'الحالة', 'Status'),
@@ -47,7 +47,7 @@ const _tabs = <(String, String, String)>[
   ('branches', 'الفروع', 'Branches'),
   ('truckTypes', 'أنواع الشاحنات', 'Truck types'),
   ('payments', 'أنواع الدفع', 'Payments'),
-  ('salesReps', 'السيلز التشغيلي', 'Operational sales'),
+  ('salesReps', 'مندوب المبيعات', 'Operational sales'),
   ('agents', 'مُنشئو الشحنات', 'Creators'),
   ('toCities', 'الوجهات', 'Destinations'),
   ('cargoTypes', 'أنواع الحمولة', 'Cargo types'),
@@ -330,14 +330,14 @@ class _SoInsightsScreenState extends State<SoInsightsScreen> {
         KpiTile(tr('نسبة التحقيق', 'Fulfilment'), '${req['fulfilment'] ?? 0}%', color: inum(req['fulfilment']) >= 80 ? T.success : T.warn),
         KpiTile(tr('مرفوضة', 'Rejected'), fmtNum(req['rejectedTrucks']), color: T.danger),
         KpiTile(tr('ما زالت مفتوحة', 'Still open'), fmtNum(req['openTrucks']), color: T.warn),
-        KpiTile(tr('سحبها السيلز', 'Withdrawn'), fmtNum(req['cancelledTrucks']), color: T.inkSoft),
+        KpiTile(tr('سحبها فريق المبيعات', 'Withdrawn'), fmtNum(req['cancelledTrucks']), color: T.inkSoft),
         KpiTile(tr('أوّل إسنادٍ بعد', 'First placement after'), req['avgHoursToFirstPlace'] == null ? '—' : '${fmtNum(req['avgHoursToFirstPlace'])} ${tr('ساعة', 'h')}'),
         KpiTile(tr('إكمال الطلب بعد', 'Completed after'), req['avgHoursToComplete'] == null ? '—' : '${fmtNum(req['avgHoursToComplete'])} ${tr('ساعة', 'h')}'),
         KpiTile(tr('أُعيد إرسالها بعد الرفض', 'Resent after rejection'), fmtNum(resub['requests']), foot: Text('${tr('نُفّذ منها', 'placed')} ${fmtNum(resub['placedAfter'])}', style: const TextStyle(fontSize: 10.5, color: T.inkFaint))),
       ]),
       SectionCard(
         title: tr('الفجوة بين المطلوب والمحقَّق وأسبابها', 'The gap between asked and placed, and why'),
-        note: tr('كلّ شاحنةٍ طلبها السيلز ولم تصر أمرَ نقل', 'Every asked truck that did not become an order'),
+        note: tr('كلّ شاحنةٍ طلبها فريق المبيعات ولم تصر أمرَ نقل', 'Every asked truck that did not become an order'),
         child: gap.isEmpty ? Text(tr('لا فجوة — كلّ المطلوب تحقّق', 'No gap'), style: const TextStyle(color: T.success)) : BarList(gap, color: T.danger),
       ),
       if (trend.length > 1)
@@ -451,7 +451,7 @@ class _SoInsightsScreenState extends State<SoInsightsScreen> {
                       if (has(t, 'noSell') && has(t, 'sell')) KpiTile(tr('بلا سعر بيع', 'No sell price'), fmtNum(t['noSell']), color: inum(t['noSell']) > 0 ? T.warn : T.ink),
                       if (has(t, 'noBuy') && has(t, 'buy')) KpiTile(tr('بلا سعر شراء', 'No buy price'), fmtNum(t['noBuy']), color: inum(t['noBuy']) > 0 ? T.warn : T.ink),
                       KpiTile(tr('من طلبات المبيعات', 'From sales requests'), fmtNum(t['fromRequests'])),
-                      KpiTile(tr('بلا سيلز تشغيلي', 'No operational sales'), fmtNum(t['noSalesRep']), color: inum(t['noSalesRep']) > 0 ? T.warn : T.ink),
+                      KpiTile(tr('بلا مندوب مبيعات', 'No operational sales'), fmtNum(t['noSalesRep']), color: inum(t['noSalesRep']) > 0 ? T.warn : T.ink),
                     ]),
                     if (money && has(t, 'margin') && inum(t['priced']) < inum(t['live']))
                       Padding(padding: const EdgeInsets.only(top: 4), child: Text(

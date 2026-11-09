@@ -50,7 +50,7 @@ const DIMS = {
   truckLength: { field: 'truckLength', ar: 'طول الشاحنة' },
   cargoType: { field: 'cargoType', ar: 'نوع الحمولة' },
   payment: { field: 'paymentSubtype', ar: 'نوع الدفع' },
-  salesRep: { field: 'salesRepName', fold: true, ar: 'السيلز التشغيلي' },
+  salesRep: { field: 'salesRepName', fold: true, ar: 'مندوب المبيعات' },
   agent: { field: 'agentName', fold: true, ar: 'مُنشئ الشحنة' },
   status: { field: 'status', ar: 'الحالة' },
   cancelReason: { field: 'cancelReason', ar: 'سبب الإلغاء' },
@@ -496,5 +496,6 @@ exports.options = async (req, res) => {
 };
 
 module.exports.compute = compute;
+module.exports.filterMatch = filterMatch;
 module.exports.fold = fold;
 module.exports.foldedExact = foldedExact;

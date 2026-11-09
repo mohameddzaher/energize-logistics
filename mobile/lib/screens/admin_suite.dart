@@ -105,6 +105,10 @@ class _AdminUsersScreenState extends State<AdminUsersScreen> {
   String? _error;
   String _q = '';
   String _role = '';
+  // In-memory filters, as on the web: HR file, status, direct manager.
+  String _hr = '';
+  String _st = '';
+  String _mgr = '';
   final _searchCtl = TextEditingController(); // Text stays equal to _q after loading.
 
   late final void Function() _onLive;
@@ -220,10 +224,22 @@ class _AdminUsersScreenState extends State<AdminUsersScreen> {
   @override
   Widget build(BuildContext context) {
     final q = _fold(_q.trim());
+    bool partner(Map u) => u['partner'] is Map || u['role'] == 'client' || u['accountType'] == 'customer' || u['accountType'] == 'vendor';
+    String hrOf(Map<String, dynamic> u) => partner(u) ? 'partner' : (u['linkedEmployee'] is Map ? 'linked' : 'unlinked');
+    String mgrOf(Map<String, dynamic> u) => u['manager'] is Map ? '${u['manager']['_id']}' : '__none';
+    final managers = <String, String>{};
+    for (final u in _rows) {
+      if (u['manager'] is Map) managers['${u['manager']['_id']}'] = '${u['manager']['firstName'] ?? ''} ${u['manager']['lastName'] ?? ''}'.trim();
+    }
     final filtered = _rows.where((u) {
+      if (_hr.isNotEmpty && hrOf(u) != _hr) return false;
+      if (_st.isNotEmpty && _status(u) != _st) return false;
+      if (_mgr.isNotEmpty && mgrOf(u) != _mgr) return false;
       if (q.isEmpty) return true;
       return _fold('${u['firstName'] ?? ''} ${u['lastName'] ?? ''} ${u['email'] ?? ''}').contains(q);
     }).toList();
+    int countHr(String v) => _rows.where((u) => hrOf(u) == v).length;
+    int countSt(String v) => _rows.where((u) => _status(u) == v).length;
 
     return AppScaffold(
       title: Text(tr('المستخدمون', 'Users')),
@@ -263,6 +279,37 @@ class _AdminUsersScreenState extends State<AdminUsersScreen> {
                         onChanged: (v) { setState(() { _role = v ?? ''; _loading = true; }); _load(); },
                       ),
                     ),
+                  ),
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(14, 4, 14, 0),
+                    child: SizedBox(
+                      height: 40,
+                      child: DropdownButtonFormField<String>(
+                        initialValue: _mgr.isEmpty ? null : _mgr,
+                        isExpanded: true,
+                        hint: Text(tr('كل المديرين المباشرين', 'Any direct manager'), style: const TextStyle(fontSize: 12.5)),
+                        decoration: const InputDecoration(isDense: true, contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 8)),
+                        items: [
+                          DropdownMenuItem(value: '', child: Text(tr('كل المديرين المباشرين', 'Any direct manager'))),
+                          DropdownMenuItem(value: '__none', child: Text(tr('بدون مدير مباشر', 'No direct manager'))),
+                          ...managers.entries.map((e) => DropdownMenuItem(value: e.key, child: Text(e.value, overflow: TextOverflow.ellipsis))),
+                        ],
+                        onChanged: (v) => setState(() => _mgr = v ?? ''),
+                      ),
+                    ),
+                  ),
+                  SizedBox(
+                    height: 46,
+                    child: ListView(scrollDirection: Axis.horizontal, padding: const EdgeInsets.fromLTRB(14, 6, 14, 0), children: [
+                      for (final x in [('linked', tr('مرتبط بملف موظف', 'Linked')), ('unlinked', tr('غير مرتبط', 'Not linked'))])
+                        Padding(padding: const EdgeInsetsDirectional.only(end: 6), child: FilterChip(
+                          label: Text('${x.$2} (${countHr(x.$1)})'), selected: _hr == x.$1,
+                          onSelected: (_) => setState(() => _hr = _hr == x.$1 ? '' : x.$1))),
+                      for (final x in [('active', tr('نشط', 'Active')), ('inactive', tr('موقوف', 'Inactive')), ('locked', tr('مقفول', 'Locked'))])
+                        Padding(padding: const EdgeInsetsDirectional.only(end: 6), child: FilterChip(
+                          label: Text('${x.$2} (${countSt(x.$1)})'), selected: _st == x.$1,
+                          onSelected: (_) => setState(() => _st = _st == x.$1 ? '' : x.$1))),
+                    ]),
                   ),
                   Expanded(
                     child: RefreshIndicator(

@@ -17,6 +17,7 @@ import ExportMenu, { exportScopeLabels, type ExportColumn } from '@/components/l
 import { ALL_ROLE_DEFS, rolesGroupedBySection } from '@/lib/roles';
 import { getSectionLabel } from '@/lib/translations';
 import { SearchableSelect } from '@/components/hr/HRKit';
+import HrQuickFilters from '@/components/hr/HrQuickFilters';
 
 interface UserRecord {
   _id: string;
@@ -140,6 +141,8 @@ export default function UsersPage() {
   const T = getUsersTranslations(lang);
   const txx = getUsersExtraTranslations(lang);
   const [users, setUsers] = useState<UserRecord[]>([]);
+  // Quick filters (role, department, manager, HR file, status, account type, branch); values are comma lists.
+  const [qf, setQf] = useState<Record<string, string>>({});
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
 
@@ -240,9 +243,7 @@ export default function UsersPage() {
   ];
   // /api/users has no paging or filtering and the screen shows everything returned, so the in-memory list is the full set.
   const scope = exportScopeLabels(lang === 'ar');
-  const exportOptions = [
-    { key: 'all', label: scope.all, sheets: [{ name: T.title, rows: users, columns: exportColumns }] },
-  ];
+  const exportAll = { key: 'all', label: scope.all, sheets: [{ name: T.title, rows: users, columns: exportColumns }] };
 
   // Real-time updates
   useSocket('user:deleted', fetchUsers);
@@ -1291,13 +1292,73 @@ export default function UsersPage() {
     </>
   );
 
+  // Each filter reads one value per user; counts per value apply every other filter, as in HR.
+  const QF_KEYS = [
+    { key: 'role', ar: 'الدور', en: 'Role' },
+    { key: 'section', ar: 'القسم', en: 'Department' },
+    { key: 'manager', ar: 'المدير المباشر', en: 'Direct manager' },
+    { key: 'hrFile', ar: 'ملف الموظف', en: 'HR file' },
+    { key: 'status', ar: 'الحالة', en: 'Status' },
+    { key: 'accountType', ar: 'نوع الحساب', en: 'Account type' },
+    { key: 'branch', ar: 'الفرع', en: 'Branch' },
+  ];
+  const NONE = '__none';
+  const isPartner = (u: UserRecord) => u.accountType === 'customer' || u.accountType === 'vendor' || u.role === 'client';
+  const qfValue = (u: UserRecord, key: string): string => {
+    switch (key) {
+      case 'role': return u.role || '';
+      case 'section': return serverRoles.find((r) => r.key === u.role)?.section || NONE;
+      case 'manager': return u.manager?._id || NONE;
+      case 'hrFile': return isPartner(u) ? 'partner' : u.linkedEmployee ? 'linked' : 'unlinked';
+      case 'status': return getUserStatus(u);
+      case 'accountType': return u.accountType === 'customer' || u.accountType === 'vendor' ? u.accountType : (u.role === 'client' ? 'customer' : 'employee');
+      case 'branch': return u.branch?._id || NONE;
+      default: return '';
+    }
+  };
+  const qfLabel = (key: string, v: string, sample?: UserRecord): string => {
+    const ar = lang === 'ar';
+    if (v === NONE) return key === 'manager' ? (ar ? 'بدون مدير مباشر' : 'No direct manager') : key === 'branch' ? (ar ? 'بدون فرع' : 'No branch') : (ar ? 'بدون قسم' : 'No department');
+    if (key === 'role') return roleLabels[v] || v;
+    if (key === 'section') return getSectionLabel(v, ar ? 'ar' : 'en');
+    if (key === 'manager') return sample?.manager ? `${sample.manager.firstName} ${sample.manager.lastName}` : v;
+    if (key === 'hrFile') return ({ linked: ar ? 'مرتبط بملف موظف' : 'Linked', unlinked: ar ? 'غير مرتبط' : 'Not linked', partner: ar ? 'حساب عميل أو مورد' : 'Partner account' } as Record<string, string>)[v] || v;
+    if (key === 'status') return statusLabels[v] || v;
+    if (key === 'accountType') return ({ employee: ar ? 'موظف' : 'Employee', customer: ar ? 'عميل' : 'Customer', vendor: ar ? 'مورد' : 'Supplier' } as Record<string, string>)[v] || v;
+    if (key === 'branch') return sample?.branch?.name || v;
+    return v;
+  };
+  const passes = (u: UserRecord, skip?: string) => QF_KEYS.every(({ key }) => {
+    if (key === skip || !qf[key]) return true;
+    return qf[key].split(',').includes(qfValue(u, key));
+  });
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  const shownUsers = useMemo(() => users.filter((u) => passes(u)), [users, qf, serverRoles]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  const qfOptions = useMemo(() => Object.fromEntries(QF_KEYS.map(({ key }) => {
+    const by = new Map<string, { n: number; sample: UserRecord }>();
+    for (const u of users) {
+      if (!passes(u, key)) continue;
+      const v = qfValue(u, key);
+      const cur = by.get(v);
+      if (cur) cur.n += 1; else by.set(v, { n: 1, sample: u });
+    }
+    return [key, [...by.entries()].map(([value, x]) => ({ value, count: x.n, label: qfLabel(key, value, x.sample) }))
+      .sort((a, b) => b.count - a.count)];
+  })), [users, qf, serverRoles, lang]);
+
+  // With filters on, the shown rows are offered first.
+  const exportOptions = Object.keys(qf).length
+    ? [{ key: 'shown', label: scope.shown, sheets: [{ name: T.title, rows: shownUsers, columns: exportColumns }] }, exportAll]
+    : [exportAll];
+
   const menuRow = actionMenuId ? users.find((u) => u._id === actionMenuId) || null : null;
   // The table depends only on the list, language and role names. Rebuilt on every render, each keystroke in the create/edit form re-rendered every user row, which is what made the page hang.
   // eslint-disable-next-line react-hooks/exhaustive-deps
   const table = useMemo(() => (
     <DataTable
       columns={columns}
-      data={users}
+      data={shownUsers}
       searchable
       pageSize={50}
       searchPlaceholder={T.searchUsers}
@@ -1317,7 +1378,7 @@ export default function UsersPage() {
         </button>
       )}
     />
-  ), [users, lang, serverRoles]);
+  ), [shownUsers, lang, serverRoles]);
 
   if (loading) {
     return (
@@ -1364,6 +1425,14 @@ export default function UsersPage() {
           </button>
         </div>
       )}
+
+      <div className="flex flex-wrap items-center gap-2">
+        <HrQuickFilters ar={lang === 'ar'} keys={QF_KEYS} value={qf} options={qfOptions}
+          onChange={(v) => setQf(Object.fromEntries(Object.entries(v).filter(([, x]) => x != null && x !== '')) as Record<string, string>)} />
+        {Object.keys(qf).length > 0 && (
+          <span className="text-sm font-semibold text-slate-700">{lang === 'ar' ? `${shownUsers.length} من ${users.length} مستخدم` : `${shownUsers.length} of ${users.length} users`}</span>
+        )}
+      </div>
 
       {/* Data Table — memoized so typing in a form does not re-render every user row. */}
       {table}

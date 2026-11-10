@@ -71,6 +71,16 @@ const _logLabels = <String, (String, String)>{
 };
 
 /// Keys of the shipment form that belong to the vendors half or are derived; the request form leaves them out.
+/// Truck types sales accepts on a request (any of them); old rows carry only the joined `truckType`.
+List<String> srTruckTypes(Map r) {
+  final l = [for (final x in (r['truckTypes'] as List?) ?? const []) if ('$x'.trim().isNotEmpty) '$x'.trim()];
+  if (l.isNotEmpty) return l;
+  return '${r['truckType'] ?? ''}'.split(' / ').map((x) => x.trim()).where((x) => x.isNotEmpty).toList();
+}
+
+/// Types actually sent by the vendors team, from the placed trucks.
+String srTypesSent(Map r) => {for (final p in (r['placed'] as List?) ?? const []) if ('${(p as Map)['truckType'] ?? ''}'.isNotEmpty) '${p['truckType']}'}.join('، ');
+
 const _vendorKeys = {'buyPrice', 'advanceAmount', 'driverRentPrice', 'driverName', 'driverPhone', 'vehicleName', 'driverRentType', 'status', 'paymentMethod'};
 /// Keys written on the request itself; any other configured field goes in customFields.
 const _salesKeys = {'fromCity', 'toCity', 'branch', 'notes', 'blNumber', 'containerNumber', 'truckType', 'cargoType', 'truckLength', 'quantity', 'pickupTime', 'startTime', 'arrivalTime', 'sellPrice', 'paymentSubtype'};
@@ -173,6 +183,7 @@ class _ShipmentRequestFormScreenState extends State<ShipmentRequestFormScreen> {
   final Map<String, dynamic> _form = {};
   final Map<String, TextEditingController> _ctrls = {};
   final Set<String> _missing = {};
+  List<String> get _types => [for (final x in (_form['truckTypes'] as List?) ?? const []) '$x'];
   bool _loading = true;
   bool _saving = false;
   String? _error;
@@ -191,6 +202,7 @@ class _ShipmentRequestFormScreenState extends State<ShipmentRequestFormScreen> {
         _form[k] = const {'pickupTime', 'startTime', 'arrivalTime'}.contains(k) ? _dateOnly(v) : v;
       }
       (r['customFields'] as Map?)?.forEach((k, v) => _form['$k'] = v);
+      _form['truckTypes'] = srTruckTypes(r);
       _trucks = inum(r['trucks']).toInt().clamp(1, 25);
       if (r['customer'] != null) _customer = {'_id': r['customer'] is Map ? r['customer']['_id'] : r['customer'], 'name': r['customerName']};
       _salesRep = r['salesRep'] == null ? null : '${r['salesRep'] is Map ? r['salesRep']['_id'] : r['salesRep']}';
@@ -253,9 +265,10 @@ class _ShipmentRequestFormScreenState extends State<ShipmentRequestFormScreen> {
       _customer = c;
       _newCustomer = false;
       final d = (c['defaults'] as Map?) ?? const {};
-      for (final k in ['truckType', 'cargoType', 'branch', 'paymentSubtype']) {
+      for (final k in ['cargoType', 'branch', 'paymentSubtype']) {
         if ('${d[k] ?? ''}'.isNotEmpty && '${_form[k] ?? ''}'.isEmpty) { _form[k] = d[k]; _ctrls.remove(k); }
       }
+      if (_types.isEmpty && '${d['truckType'] ?? ''}'.isNotEmpty) _form['truckTypes'] = ['${d['truckType']}'];
       _routePrice();
     });
   }
@@ -308,6 +321,33 @@ class _ShipmentRequestFormScreenState extends State<ShipmentRequestFormScreen> {
       enabledBorder: miss ? OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: const BorderSide(color: T.danger)) : null,
     );
     final type = '${f['inputType'] ?? 'text'}';
+    // Truck type on a request is a multi-choice: any ticked type suits the load; vendors fix the final one per truck.
+    if (k == 'truckType') {
+      final options = List<Map<String, dynamic>>.from(((f['options'] as List?) ?? const []).map((e) => Map<String, dynamic>.from(e)));
+      return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Text(req ? '$label *' : label, style: TextStyle(fontWeight: FontWeight.w700, fontSize: 13, color: miss ? T.danger : T.ink)),
+        const SizedBox(height: 2),
+        Text(tr('اختر نوعًا أو أكثر يصلح لهذه الحمولة، ويحدّد فريق الموردين النوعَ النهائيّ لكلّ شاحنة.', 'Tick one or more types that suit this load; the vendors team fixes the final type per truck.'),
+            style: const TextStyle(fontSize: 11.5, color: T.inkFaint)),
+        const SizedBox(height: 6),
+        Wrap(spacing: 6, runSpacing: 6, children: [
+          for (final o in options)
+            FilterChip(
+              label: Text(tr('${o['ar'] ?? o['key']}', '${o['en'] ?? o['ar'] ?? o['key']}')),
+              selected: _types.contains('${o['key']}'),
+              selectedColor: T.orange.withValues(alpha: 0.18),
+              checkmarkColor: T.orange,
+              side: BorderSide(color: miss ? T.danger : Colors.black12),
+              onSelected: (on) => setState(() {
+                final l = [..._types];
+                if (on) { if (!l.contains('${o['key']}')) l.add('${o['key']}'); } else { l.remove('${o['key']}'); }
+                _form['truckTypes'] = l;
+                _missing.remove(k);
+              }),
+            ),
+        ]),
+      ]);
+    }
     if (type == 'select' || type == 'cards') {
       final options = List<Map<String, dynamic>>.from(((f['options'] as List?) ?? const []).map((e) => Map<String, dynamic>.from(e)));
       final cur = '${_form[k] ?? ''}';
@@ -359,6 +399,7 @@ class _ShipmentRequestFormScreenState extends State<ShipmentRequestFormScreen> {
     _missing.clear();
     for (final f in _fields) {
       final k = '${f['key']}';
+      if (k == 'truckType') { if (f['required'] == true && _types.isEmpty) _missing.add(k); continue; }
       if ((f['required'] == true || k == 'sellPrice') && '${_form[k] ?? ''}'.trim().isEmpty) _missing.add(k);
     }
     if (!((num.tryParse('${_form['sellPrice'] ?? ''}') ?? 0) > 0)) _missing.add('sellPrice');
@@ -372,10 +413,12 @@ class _ShipmentRequestFormScreenState extends State<ShipmentRequestFormScreen> {
     final body = <String, dynamic>{'customFields': <String, dynamic>{}, 'trucks': _trucks};
     for (final f in _fields) {
       final k = '${f['key']}';
+      if (k == 'truckType') continue;
       final v = _form[k];
       if (v == null || '$v'.trim().isEmpty) continue;
       if (_salesKeys.contains(k)) { body[k] = v; } else { body['customFields'][k] = v; }
     }
+    body['truckTypes'] = _types;
     for (final k in ['notes', 'blNumber', 'containerNumber']) {
       if (_form.containsKey(k)) body[k] = '${_form[k] ?? ''}'.trim();
     }
@@ -588,6 +631,7 @@ class _ShipmentRequestsScreenState extends State<ShipmentRequestsScreen> {
       ExportCol('من', 'From', (r) => r['fromCity']),
       ExportCol('إلى', 'To', (r) => r['toCity']),
       ExportCol('نوع الشاحنة', 'Truck type', (r) => r['truckType']),
+      ExportCol('النوع المنفَّذ', 'Type sent', (r) => srTypesSent(r)),
       ExportCol('الطول', 'Length', (r) => r['truckLength']),
       ExportCol('نوع الحمولة', 'Cargo', (r) => r['cargoType']),
       ExportCol('موعد التحميل', 'Pickup', (r) => _dateOnly(r['pickupTime'])),
@@ -989,6 +1033,7 @@ class _ShipmentRequestDetailScreenState extends State<ShipmentRequestDetailScree
                       _kv(tr('الفرع', 'Branch'), r['branch']),
                       _kv(tr('الشاحنات', 'Trucks'), '${(r['placed'] as List?)?.length ?? 0} ${tr('من', 'of')} ${r['trucks']}${left > 0 && open ? ' · ${tr('بقي', 'left')} $left' : ''}'),
                       _kv(tr('نوع الشاحنة', 'Truck type'), r['truckType']),
+                      if (srTypesSent(r).isNotEmpty) _kv(tr('النوع المنفَّذ', 'Type sent'), srTypesSent(r)),
                       _kv(tr('نوع الحمولة', 'Cargo'), r['cargoType']),
                       _kv(tr('طول الشاحنة', 'Truck length'), r['truckLength']),
                       _kv(tr('الكمية', 'Quantity'), r['quantity']),
@@ -1018,7 +1063,7 @@ class _ShipmentRequestDetailScreenState extends State<ShipmentRequestDetailScree
                               dense: true, contentPadding: EdgeInsets.zero,
                               leading: Text('${o['waybillNumber'] ?? ''}', style: const TextStyle(fontWeight: FontWeight.w900, color: T.orange)),
                               title: Text('${o['supplierName'] ?? '—'} · ${o['vehiclePlate'] ?? ''}', style: const TextStyle(fontWeight: FontWeight.w700)),
-                              subtitle: Text([o['driverName'], soPriceLine(o)].where((x) => '${x ?? ''}'.isNotEmpty).join(' · ')),
+                              subtitle: Text([o['truckType'], o['driverName'], soPriceLine(o)].where((x) => '${x ?? ''}'.isNotEmpty).join(' · ')),
                               trailing: Chip2(tr(soStatusOf(_vocab, o['status']).$2, soStatusOf(_vocab, o['status']).$3), soStatusOf(_vocab, o['status']).$4),
                             ),
                         ]),
@@ -1116,6 +1161,8 @@ class PlaceTrucksScreen extends StatefulWidget {
 }
 
 class _Truck {
+  // The type actually sent, one of the types sales accepted.
+  String truckType = '';
   // Who found the carrier and the truck owner; defaults to the placer.
   String? sourcingRep;
   Map<String, dynamic>? supplier;
@@ -1136,6 +1183,8 @@ class _PlaceTrucksScreenState extends State<PlaceTrucksScreen> {
   bool _saving = false;
   List<Map<String, dynamic>> _reps = const [];
   String _me = '';
+
+  List<String> get _reqTypes => srTruckTypes(widget.request);
 
   int get _open {
     final r = widget.request;
@@ -1188,6 +1237,7 @@ class _PlaceTrucksScreenState extends State<PlaceTrucksScreen> {
   void _add() {
     if (_trucks.length >= _open) return;
     final t = _Truck();
+    if (_reqTypes.length == 1) t.truckType = _reqTypes.first;
     t.bl.text = '${widget.request['blNumber'] ?? ''}';
     t.container.text = '${widget.request['containerNumber'] ?? ''}';
     // A second truck usually goes to the same supplier at the same price.
@@ -1254,6 +1304,7 @@ class _PlaceTrucksScreenState extends State<PlaceTrucksScreen> {
     for (var i = 0; i < _trucks.length; i++) {
       final t = _trucks[i];
       final n = i + 1;
+      if (_reqTypes.length > 1 && t.truckType.isEmpty) problems.add(tr('الشاحنة $n: حدّد نوعَ الشاحنة المنفَّذ', 'Truck $n: truck type sent'));
       if (t.supplier == null) problems.add(tr('الشاحنة $n: اختر المورّد', 'Truck $n: supplier'));
       if (t.vehicle == null && t.plate.text.trim().isEmpty) problems.add(tr('الشاحنة $n: اختر السيارة أو اكتب لوحتها', 'Truck $n: truck or plate'));
       if (t.driver.text.trim().isEmpty) problems.add(tr('الشاحنة $n: اسم السائق', 'Truck $n: driver'));
@@ -1269,6 +1320,7 @@ class _PlaceTrucksScreenState extends State<PlaceTrucksScreen> {
         'trucks': [
           for (final t in _trucks)
             {
+              if (t.truckType.isNotEmpty) 'truckType': t.truckType,
               'supplierChoice': t.supplier!['_id'],
               if (t.vehicle != null) 'vehicle': t.vehicle!['_id'] else 'newVehicle': {'plate': t.plate.text.trim()},
               'driverName': t.driver.text.trim(),
@@ -1306,6 +1358,21 @@ class _PlaceTrucksScreenState extends State<PlaceTrucksScreen> {
           const Spacer(),
           if (_trucks.length > 1) IconButton(onPressed: () => setState(() { _trucks.removeAt(i).dispose(); }), icon: const Icon(Icons.delete_outline, color: T.danger)),
         ]),
+        if (_reqTypes.isNotEmpty) ...[
+          Text('${tr('نوع الشاحنة المنفَّذ', 'Truck type sent')}${_reqTypes.length > 1 ? ' *' : ''}',
+              style: TextStyle(fontWeight: FontWeight.w700, fontSize: 12.5, color: _reqTypes.length > 1 && t.truckType.isEmpty ? T.danger : T.ink)),
+          const SizedBox(height: 4),
+          Wrap(spacing: 6, runSpacing: 6, children: [
+            for (final ty in _reqTypes)
+              ChoiceChip(
+                label: Text(ty),
+                selected: t.truckType == ty,
+                selectedColor: T.orange.withValues(alpha: 0.18),
+                onSelected: (_) => setState(() => t.truckType = ty),
+              ),
+          ]),
+          const SizedBox(height: 8),
+        ],
         OutlinedButton.icon(
           style: OutlinedButton.styleFrom(alignment: AlignmentDirectional.centerStart, minimumSize: const Size(double.infinity, 46)),
           onPressed: _reps.isEmpty ? null : () => _pickRep(t),

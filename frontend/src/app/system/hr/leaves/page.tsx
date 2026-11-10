@@ -5,14 +5,14 @@ import { useAuth } from '@/context/AuthContext';
 import { useLanguage } from '@/context/LanguageContext';
 import { useSocket } from '@/hooks/useSocket';
 import api from '@/lib/api';
-import { CalendarCheck, Check, X, HelpCircle, FileDown, PenTool, CalendarPlus, History, Pencil, Trash2, BellRing, Hourglass } from 'lucide-react';
+import { CalendarCheck, Check, X, HelpCircle, FileDown, PenTool, CalendarPlus, History, Pencil, Trash2, BellRing, Hourglass, Eye } from 'lucide-react';
 import { isHRStaff, LeaveRequest, empName, userName, leaveTypeLabel, LEAVE_OPEN, LEAVE_PENDING, canDecideLeave, leaveWaitNote, leaveStatusStyle, seesLeaveProcess, leaveStatusOptions, fridaysOf, countLeaveDays, fridaysNote } from '@/lib/hr';
 import DatePair from '@/components/hr/DatePair';
 import { gregCell, hijriCell, pairLabels, exportDatePair } from '@/lib/hrDates';
 import { Spinner, PageHeader, SearchInput, Badge, Modal, TextArea, PrimaryButton, SearchableSelect, Loader2, StatCard } from '@/components/hr/HRKit';
 import ExportMenu, { exportScopeLabels, type ExportColumn } from '@/components/ls2/ExportMenu';
 import { getHrLeavesTranslations } from '@/lib/translations';
-import { downloadLeaveSheet } from '@/lib/leavePdf';
+import { downloadLeaveSheet, previewLeaveSheet } from '@/lib/leavePdf';
 import type { Signature } from '@/components/SignatureManager';
 import FilePicker, { type PickedFile } from '@/components/system/FilePicker';
 import ScrollX from '@/components/system/ScrollX';
@@ -238,6 +238,11 @@ export default function HRLeavesPage() {
     } catch (e: any) { notify(e.message || 'PDF failed', 'error'); }
     setPdfBusy('');
   };
+  const previewPdf = async (id: string) => {
+    setPdfBusy(id);
+    try { await previewLeaveSheet(id, ar); } catch (e: any) { notify(e.message || 'Preview failed', 'error'); }
+    setPdfBusy('');
+  };
 
   const leaveTypes = [...new Map(allLeaves.filter((l) => l.leaveType?._id).map((l) => [l.leaveType._id, l.leaveType])).values()];
   const depts = [...new Set(allLeaves.map((l) => l.employee?.department).filter(Boolean))].sort() as string[];
@@ -408,6 +413,7 @@ export default function HRLeavesPage() {
                       {!canActNow(l) && LEAVE_OPEN.includes(l.status) && (
                         <span className="max-w-[260px] text-[11px] leading-snug text-slate-500" title={leaveWaitNote(l, ar, full)}>{leaveWaitNote(l, ar, full)}</span>
                       )}
+                      <button type="button" title={t('Preview with signatures', 'معاينة الورقة بالتوقيعات')} onClick={(e) => { e.stopPropagation(); previewPdf(l._id); }} className="p-1.5 rounded-lg bg-slate-100 hover:bg-[#f37121]/10 hover:text-[#f37121] text-slate-600"><Eye className="w-3.5 h-3.5" /></button>
                       <button type="button" title={t('Download PDF', 'تحميل PDF')} onClick={(e) => { e.stopPropagation(); downloadPdf(l._id); }} className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-slate-100 hover:bg-[#f37121]/10 hover:text-[#f37121] text-slate-600 text-xs">
                         {pdfBusy === l._id ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <FileDown className="w-3.5 h-3.5" />} PDF
                       </button>
@@ -534,6 +540,9 @@ export default function HRLeavesPage() {
 
               <section className="space-y-2 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
                 <h4 className="text-sm font-bold text-slate-900">{ar ? 'أدوات' : 'Tools'}</h4>
+                <button type="button" onClick={() => previewPdf(review._id)} className="flex w-full items-center gap-2 rounded-lg bg-slate-50 px-3 py-2 text-sm text-slate-700 hover:bg-[#f37121]/10 hover:text-[#f37121]">
+                  <Eye className="w-4 h-4" /> {t('Preview the sheet with signatures', 'معاينة ورقة الإجازة بالتوقيعات')}
+                </button>
                 <button type="button" onClick={() => downloadPdf(review._id)} className="flex w-full items-center gap-2 rounded-lg bg-slate-50 px-3 py-2 text-sm text-slate-700 hover:bg-[#f37121]/10 hover:text-[#f37121]">
                   {pdfBusy === review._id ? <Loader2 className="w-4 h-4 animate-spin" /> : <FileDown className="w-4 h-4" />} {t('Download PDF sheet', 'تحميل ورقة الإجازة PDF')}
                 </button>

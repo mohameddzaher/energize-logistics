@@ -72,10 +72,17 @@ async function liveSignatures(ids) {
   }));
 }
 
+/** The chairman account (`isChairman`) with his current default signature. */
+async function chairmanSigner() {
+  const u = await require('../models/User').findOne({ isChairman: true, isActive: { $ne: false } }).select('firstName lastName +signatures').lean();
+  if (!u) return null;
+  const sig = (u.signatures || []).find((x) => x.isDefault) || (u.signatures || [])[0];
+  return { ...u, ink: sig ? sig.dataUrl || '' : '' };
+}
 const idOf = (x) => (x && typeof x === 'object' ? String(x._id || '') : String(x || ''));
 
 /**
- * The five signature boxes (the order on the page is sheetOrder): employee and direct manager, then finance, the general manager (final approval) and HR. The chairman left the chain on 2026-11-07, so he has no box.
+ * The signature boxes (order on the page: sheetOrder): employee, direct manager (when the request has one), finance, HR, the general manager (final approval) and the chairman, whose box is signed with the general manager's approval.
  * A box is filled by the stage's approval only; a rejection or a question leaves it unsigned.
  * `fullView` false (the employee and staff outside the process) leaves the stage boxes of an open request empty, so the sheet does not tell where it stands.
  * `signedUpTo`: for someone who signed a stage of this request (owner, 2026-11-10), the boxes up to and including their stage show even while it is open.
@@ -126,6 +133,17 @@ async function signatureBoxes(leave, { fullView = true, signedUpTo = -1 } = {}) 
       date: d ? dmy(d.at) : '',
     });
   }
+  // The chairman's box (owner, 2026-11-10): the general manager runs the company, so his final approval stands for the chairman too and the chairman's own signature is printed with it. An old request the chairman decided himself keeps that decision.
+  const own = leave.chairmanDecision && leave.chairmanDecision.at && leave.chairmanDecision.decision === 'approved' && !hidden ? leave.chairmanDecision : null;
+  const gm = own || decided(chain.DECISION_FIELD.executive);
+  const chair = gm ? await chairmanSigner() : null;
+  boxes.push({
+    label: 'رئيس مجلس الإدارة', en: 'Chairman of the Board',
+    ink: chair ? chair.ink : '',
+    name: chair ? nameOf(chair, false) : '',
+    note: '',
+    date: gm ? dmy(gm.at) : '',
+  });
   return boxes;
 }
 
@@ -146,16 +164,15 @@ async function registerName(value) {
  */
 function sheetOrder(boxes) {
   const by = (label) => boxes.find((b) => b.label === label);
-  // Four boxes (no direct manager): employee, finance and HR on top, the general manager alone below.
-  if (!by('المدير المباشر')) {
-    const four = [by('الموظف'), by('المدير المالي'), by('مدير الموارد البشرية'), by('المدير العام')].filter(Boolean);
-    return four.length === boxes.length ? four : boxes;
-  }
-  const order = [by('الموظف'), by('المدير المباشر'), by('المدير المالي'), by('المدير العام'), by('مدير الموارد البشرية')].filter(Boolean);
-  return order.length === boxes.length ? order : boxes;
+  // Without a direct manager: employee, finance and HR on top; the general manager and the chairman below.
+  const order = by('المدير المباشر')
+    ? [by('الموظف'), by('المدير المباشر'), by('المدير المالي'), by('مدير الموارد البشرية'), by('المدير العام'), by('رئيس مجلس الإدارة')]
+    : [by('الموظف'), by('المدير المالي'), by('مدير الموارد البشرية'), by('المدير العام'), by('رئيس مجلس الإدارة')];
+  const list = order.filter(Boolean);
+  return list.length === boxes.length ? list : boxes;
 }
-/** Box classes per layout: five = two on top then three; four = three on top then the general manager centred alone. */
-const boxClass = (count, i) => (count === 4 ? (i === 3 ? 'solo' : '') : (i < 2 ? 'top' : ''));
+/** Box classes per layout: six = two rows of three; five = three on top, then two centred. */
+const boxClass = (count, i) => (count === 5 ? (i === 3 ? 'p1' : i === 4 ? 'p2' : '') : '');
 
 function field(label, value, { wide = false, tone = '' } = {}) {
   const shown = String(value ?? '').trim();
@@ -217,7 +234,8 @@ ${getFontCss()}
   .sigs { margin-top: auto; display: grid; grid-template-columns: repeat(6, 1fr); gap: 3mm 5mm; }
   .sig { grid-column: span 2; }
   .sig.top { grid-column: span 3; }
-  .sig.solo { grid-column: 3 / span 2; }
+  .sig.p1 { grid-column: 2 / span 2; }
+  .sig.p2 { grid-column: 4 / span 2; }
   .sig { text-align: center; }
   .sig .ink { height: 15mm; display: flex; align-items: flex-end; justify-content: center; }
   .sig .ink img { max-height: 14mm; max-width: 40mm; object-fit: contain; }

@@ -19,11 +19,11 @@ export default function ChairmanOfficePage() {
         ]} />
       {tab === 'leaves' ? (
         <LeaveDesk base="/api/chairman" stage="executive" canDecide={false}
-          title={{ ar: 'رئاسة مجلس الإدارة — طلبات الإجازات', en: "Chairman's Office — Leave Requests" }}
-          subtitle={{ ar: 'كل إجازات الشركة للاطّلاع: تُعتمد الإجازة بموافقة الإدارة العليا.', en: 'Every leave in the company, for information: top management approval is final.' }} />
+          title={{ ar: 'اعتمادات رئيس مجلس الإدارة — الإجازات', en: "Chairman's Approvals — Leaves" }}
+          subtitle={{ ar: 'إجازات الشركة وحالتها.', en: 'Company leaves and where they stand.' }} />
       ) : (
         <StaffRequestsDesk base="/api/chairman"
-          title={{ ar: 'رئاسة مجلس الإدارة — طلبات الموظفين', en: "Chairman's Office — Staff Requests" }}
+          title={{ ar: 'اعتمادات رئيس مجلس الإدارة — طلبات الموظفين', en: "Chairman's Approvals — Staff Requests" }}
           subtitle={{ ar: 'كل ما طلبه الموظفون من الموارد البشرية وحالته الآن، للاطّلاع.', en: 'Everything staff asked HR for and where it stands, for information.' }} />
       )}
     </div>

@@ -5,7 +5,7 @@
  */
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
-import { CalendarDays, CalendarPlus, ExternalLink, FileDown } from 'lucide-react';
+import { CalendarDays, CalendarPlus, ExternalLink, FileDown, Eye } from 'lucide-react';
 import api from '@/lib/api';
 import { useAuth } from '@/context/AuthContext';
 import { useLanguage } from '@/context/LanguageContext';
@@ -21,7 +21,7 @@ import PeriodFilter from '@/components/system/PeriodFilter';
 import ScrollX from '@/components/system/ScrollX';
 import { AttachmentList } from '@/components/system/FilePicker';
 import ExportMenu, { exportScopeLabels, type ExportColumn } from '@/components/ls2/ExportMenu';
-import { downloadLeaveSheet } from '@/lib/leavePdf';
+import { downloadLeaveSheet, previewLeaveSheet } from '@/lib/leavePdf';
 
 type Row = LeaveRequest & { state: string; source: string; approvedByName?: string; approvedAt?: string };
 
@@ -223,7 +223,13 @@ export default function LeaveRegisterPage() {
             )}
             <LeaveReturnPanel leave={open} ar={ar} canAct={staff} onDone={load} />
             <LeaveThread leave={open} lang={ar ? 'ar' : 'en'} />
-            <div className="border-t border-slate-200 pt-3">
+            <div className="flex flex-wrap gap-2 border-t border-slate-200 pt-3">
+              <button type="button" onClick={async () => {
+                try { await previewLeaveSheet(open._id, ar); } catch (e: any) { notify(e?.message || (ar ? 'تعذّرت المعاينة' : 'Could not open the preview'), 'error'); }
+              }}
+                className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 text-sm">
+                <Eye className="w-4 h-4" /> {ar ? 'معاينة الورقة' : 'Preview sheet'}
+              </button>
               <button type="button" onClick={async () => {
                 try {
                   await downloadLeaveSheet(open._id);

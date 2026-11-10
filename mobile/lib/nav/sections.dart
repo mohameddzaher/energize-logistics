@@ -250,8 +250,8 @@ List<AppSection> sectionsFor(AuthProvider auth) {
         AppPage('طلبات الموظفين', 'Staff Requests', Icons.mark_email_unread_outlined, (c) => const TopRequestsScreen(), path: '/system/top-management/requests'),
         // The chairman's office: every leave and staff request for information; top management's approval is final.
         if (auth.user?['isChairman'] == true || _top.contains(role)) ...[
-          AppPage('رئاسة مجلس الإدارة — الإجازات', 'Chairman’s Office — Leaves', Icons.verified_outlined, (c) => const TopLeavesScreen(base: '/api/chairman', stage: 'executive', canDecide: false, title: ('رئاسة مجلس الإدارة — الإجازات', 'Chairman’s Office — Leaves')), path: '/system/chairman'),
-          AppPage('رئاسة مجلس الإدارة — طلبات الموظفين', 'Chairman’s Office — Staff Requests', Icons.mark_email_read_outlined, (c) => const TopRequestsScreen(base: '/api/chairman'), path: '/system/chairman'),
+          AppPage('اعتمادات رئيس مجلس الإدارة — الإجازات', 'Chairman’s Approvals — Leaves', Icons.verified_outlined, (c) => const TopLeavesScreen(base: '/api/chairman', stage: 'executive', canDecide: false, title: ('رئاسة مجلس الإدارة — الإجازات', 'Chairman’s Office — Leaves')), path: '/system/chairman'),
+          AppPage('اعتمادات رئيس مجلس الإدارة — طلبات الموظفين', 'Chairman’s Approvals — Staff Requests', Icons.mark_email_read_outlined, (c) => const TopRequestsScreen(base: '/api/chairman'), path: '/system/chairman'),
         ],
         AppPage('نشاط الشركة المباشر', 'Live Company Activity', Icons.timeline_outlined, (c) => const TopActivityScreen(), path: '/system/top-management/activity'),
       ],

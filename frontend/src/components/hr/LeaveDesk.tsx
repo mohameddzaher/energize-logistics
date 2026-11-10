@@ -3,7 +3,7 @@
 // Layout: a one-line-per-cell table on wide screens and cards on phones; the five stages are one compact progress bar; a request opens into a detail window where the stage decides. Other stages are shown to process viewers only (seesLeaveProcess).
 // Components live at module level so no input remounts on a keystroke (see inline-components-remount).
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { CalendarCheck, Check, X, Loader2, FileDown, Search, PenTool, Paperclip, User, CalendarDays } from 'lucide-react';
+import { CalendarCheck, Check, X, Loader2, FileDown, Search, PenTool, Paperclip, User, CalendarDays, Eye } from 'lucide-react';
 import api from '@/lib/api';
 import { useLanguage } from '@/context/LanguageContext';
 import { useAuth } from '@/context/AuthContext';
@@ -15,7 +15,7 @@ import { LeaveChainBar, LeaveThread } from '@/components/hr/LeaveChain';
 import { AttachmentList } from '@/components/system/FilePicker';
 import { bothDates } from '@/lib/hrDates';
 import { LEAVE_STAGES, LEAVE_OPEN, LeaveStage, leaveWaitNote, leaveStatusStyle, seesLeaveProcess } from '@/lib/hr';
-import { downloadLeaveSheet } from '@/lib/leavePdf';
+import { downloadLeaveSheet, previewLeaveSheet } from '@/lib/leavePdf';
 
 type Decision = { by?: { firstName?: string; lastName?: string }; at?: string; decision?: string; note?: string };
 type Leave = {
@@ -241,6 +241,11 @@ export default function LeaveDesk({ base, stage, canDecide, title, subtitle }: {
     try { await downloadLeaveSheet(id); } catch (e: any) { notify(e?.message || 'PDF failed', 'error'); }
     setPdfBusy(null);
   };
+  const peek = async (id: string) => {
+    setPdfBusy(id);
+    try { await previewLeaveSheet(id, ar); } catch (e: any) { notify(e?.message || 'Preview failed', 'error'); }
+    setPdfBusy(null);
+  };
 
   const countOf = (statuses: string[]) => (statuses.length ? statuses.reduce((n, s) => n + (counts[s] || 0), 0)
     : Object.values(counts).reduce((a, b) => a + b, 0));
@@ -327,6 +332,8 @@ export default function LeaveDesk({ base, stage, canDecide, title, subtitle }: {
                       <td className="px-4 py-3">
                         <div className="flex items-center justify-end gap-1.5">
                           {canActOn(l) && rowActions(l)}
+                          <button type="button" title={t('معاينة ورقة الإجازة بالتوقيعات', 'Preview the sheet with signatures')} onClick={(e) => { e.stopPropagation(); peek(l._id); }} disabled={pdfBusy === l._id}
+                            className="inline-flex items-center rounded-lg bg-slate-100 p-1.5 text-slate-600 hover:bg-[#f37121]/10 hover:text-[#f37121] disabled:opacity-50"><Eye className="h-4 w-4" /></button>
                           <button type="button" title={t('ورقة الإجازة PDF', 'Leave sheet PDF')} onClick={(e) => { e.stopPropagation(); sheet(l._id); }} disabled={pdfBusy === l._id}
                             className="inline-flex items-center rounded-lg bg-slate-100 p-1.5 text-slate-600 hover:bg-[#f37121]/10 hover:text-[#f37121] disabled:opacity-50">
                             {pdfBusy === l._id ? <Loader2 className="h-4 w-4 animate-spin" /> : <FileDown className="h-4 w-4" />}
@@ -368,10 +375,16 @@ export default function LeaveDesk({ base, stage, canDecide, title, subtitle }: {
       <Modal open={!!open} onClose={() => setOpen(null)} wide title={t('تفاصيل طلب الإجازة', 'Leave request')}
         footer={open ? (
           <div className="flex flex-wrap items-center justify-between gap-2">
+            <div className="flex items-center gap-2">
+            <button type="button" onClick={() => peek(open._id)} disabled={pdfBusy === open._id}
+              className="inline-flex items-center gap-1.5 rounded-lg bg-white border border-slate-200 px-3 py-2 text-sm text-slate-700 hover:border-[#f37121] hover:text-[#f37121] disabled:opacity-50">
+              <Eye className="h-4 w-4" />{t('معاينة الورقة', 'Preview sheet')}
+            </button>
             <button type="button" onClick={() => sheet(open._id)} disabled={pdfBusy === open._id}
               className="inline-flex items-center gap-1.5 rounded-lg bg-white border border-slate-200 px-3 py-2 text-sm text-slate-700 hover:border-[#f37121] hover:text-[#f37121] disabled:opacity-50">
               {pdfBusy === open._id ? <Loader2 className="h-4 w-4 animate-spin" /> : <FileDown className="h-4 w-4" />}{t('ورقة الإجازة PDF', 'Leave sheet PDF')}
             </button>
+            </div>
             {canActOn(open) ? (
               <div className="flex flex-wrap items-center gap-2">
                 <span className="inline-flex items-center gap-1 text-xs text-slate-500"><PenTool className="h-3.5 w-3.5 text-[#f37121]" />{t('يُوضع توقيعك تلقائيًا عند الموافقة', 'Your signature is applied on approval')}</span>

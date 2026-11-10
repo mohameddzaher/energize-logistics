@@ -6,7 +6,7 @@ import { useLanguage } from '@/context/LanguageContext';
 import { useSocket } from '@/hooks/useSocket';
 import api from '@/lib/api';
 import { CalendarDays, Plus, Check, X, XCircle, AlertTriangle, ShieldCheck, Pencil, Trash2, HelpCircle, Eye, Send, FileDown } from 'lucide-react';
-import { downloadLeaveSheet } from '@/lib/leavePdf';
+import { downloadLeaveSheet, previewLeaveSheet } from '@/lib/leavePdf';
 import { LeaveRequest, LeaveType, LeaveBalance, LEAVE_STATUS, empName, userName, leaveTypeLabel, today, earliestStartDate, noticeBlocks, daysUntil, LEAVE_OPEN, leaveUntouched, leaveStatusStyle, leaveWaitNote, countLeaveDays, fridaysNote, seesLeaveProcess } from '@/lib/hr';
 import DatePair from '@/components/hr/DatePair';
 import { bothPeriod, gregCell, hijriCell, pairLabels, exportDatePair } from '@/lib/hrDates';
@@ -161,6 +161,11 @@ export default function MyLeavesPage() {
   const sheet = async (id: string) => {
     setSheetBusy(id);
     try { await downloadLeaveSheet(id); } catch (e: any) { notify(e?.message || (ar ? 'تعذّر التحميل' : 'Could not download'), 'error'); }
+    setSheetBusy('');
+  };
+  const peek = async (id: string) => {
+    setSheetBusy(id);
+    try { await previewLeaveSheet(id, ar); } catch (e: any) { notify(e?.message || (ar ? 'تعذّرت المعاينة' : 'Could not open the preview'), 'error'); }
     setSheetBusy('');
   };
   // Cancel is available while the request is not closed, at any stage or returned for reply.
@@ -358,6 +363,7 @@ export default function MyLeavesPage() {
                           </button>
                         )}
                         <button type="button" onClick={() => setDetail(l)} className="text-slate-400 hover:text-[#f37121]" title={full ? (ar ? 'مسار الطلب' : 'Request trail') : (ar ? 'تفاصيل الطلب' : 'Request details')}><Eye className="w-4 h-4" /></button>
+                        <button type="button" onClick={() => peek(l._id)} disabled={sheetBusy === l._id} className="text-slate-400 hover:text-[#f37121] disabled:opacity-50" title={ar ? 'معاينة ورقة الإجازة بالتوقيعات' : 'Preview the sheet with signatures'}><Eye className="w-4 h-4" /></button>
                         <button type="button" onClick={() => sheet(l._id)} disabled={sheetBusy === l._id} className="text-slate-400 hover:text-[#f37121] disabled:opacity-50" title={ar ? 'ورقة الإجازة PDF' : 'Leave sheet PDF'}>
                           {sheetBusy === l._id ? <Loader2 className="w-4 h-4 animate-spin" /> : <FileDown className="w-4 h-4" />}
                         </button>
@@ -410,6 +416,7 @@ export default function MyLeavesPage() {
                           </button>
                         )}
                         <button type="button" onClick={() => setDetail(l)} className="text-slate-400 hover:text-[#f37121]" title={full ? (ar ? 'مسار الطلب' : 'Request trail') : (ar ? 'تفاصيل الطلب' : 'Request details')}><Eye className="w-4 h-4" /></button>
+                        <button type="button" onClick={() => peek(l._id)} disabled={sheetBusy === l._id} className="text-slate-400 hover:text-[#f37121] disabled:opacity-50" title={ar ? 'معاينة ورقة الإجازة بالتوقيعات' : 'Preview the sheet with signatures'}><Eye className="w-4 h-4" /></button>
                         <button type="button" onClick={() => sheet(l._id)} disabled={sheetBusy === l._id} className="text-slate-400 hover:text-[#f37121] disabled:opacity-50" title={ar ? 'ورقة الإجازة PDF' : 'Leave sheet PDF'}>
                           {sheetBusy === l._id ? <Loader2 className="w-4 h-4 animate-spin" /> : <FileDown className="w-4 h-4" />}
                         </button>

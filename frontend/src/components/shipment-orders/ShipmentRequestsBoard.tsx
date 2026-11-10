@@ -196,6 +196,17 @@ export default function ShipmentRequestsBoard({ mode }: { mode: 'sales' | 'vendo
     { key: 'viewAll', label: t('المعروض بعد الفلاتر — كلّ الأعمدة', 'Filtered view — all columns'), sheets: [{ name: t('طلبات الشحن', 'Requests'), rows: shown, columns: exportCols(COLS) }] },
     { key: 'all', label: t('كلّ المُحمَّل بلا فلاتر', 'Everything loaded, no filters'), sheets: [{ name: t('طلبات الشحن', 'Requests'), rows, columns: exportCols(COLS) }] },
   ];
+  const sum = useMemo(() => shown.reduce((a, r) => {
+    const placed = (r.placed || []).length;
+    const rest = Math.max(0, r.trucks - placed);
+    const openReq = ['pending', 'in_progress'].includes(r.status);
+    return { requests: a.requests + 1, asked: a.asked + r.trucks, placed: a.placed + placed, closed: a.closed + (openReq ? 0 : rest), waiting: a.waiting + (openReq ? rest : 0) };
+  }, { requests: 0, asked: 0, placed: 0, closed: 0, waiting: 0 }), [shown]);
+  const rDay = (back = 0) => new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Riyadh' }).format(new Date(Date.now() - back * 864e5));
+  const QUICK: [string, string, string, string][] = [
+    ['اليوم', 'Today', rDay(), rDay()], ['أمس', 'Yesterday', rDay(1), rDay(1)],
+    ['آخر 7 أيام', 'Last 7 days', rDay(6), rDay()], ['هذا الشهر', 'This month', `${rDay().slice(0, 8)}01`, rDay()],
+  ];
   const anyFilter = topActive + cf.activeCount + (from ? 1 : 0) + (to ? 1 : 0);
   const resetFilters = () => { setTop({}); cf.clear(); setFrom(''); setTo(''); };
 
@@ -256,6 +267,16 @@ export default function ShipmentRequestsBoard({ mode }: { mode: 'sales' | 'vendo
 
       {/* Top filters for every detail, plus the view, columns and export. */}
       <div className="rounded-2xl border border-slate-200 bg-white p-3 shadow-sm space-y-2">
+        {/* Quick days: the range is the request date (when sales asked). */}
+        <div className="flex flex-wrap items-center gap-1.5">
+          {QUICK.map(([a, e, f, tt]) => {
+            const on = from === f && to === tt;
+            return (
+              <button key={a} type="button" onClick={() => { if (on) { setFrom(''); setTo(''); } else { setFrom(f); setTo(tt); } }}
+                className={`rounded-lg px-3 py-1.5 text-[12.5px] font-semibold ${on ? 'bg-[#f37121] text-white' : 'bg-slate-100 text-slate-700 hover:bg-slate-200'}`}>{ar ? a : e}</button>
+            );
+          })}
+        </div>
         <div className="flex flex-wrap items-end gap-2">
           <label className="block">
             <span className="mb-1 block text-[11px] font-semibold text-slate-500">{t('من تاريخ', 'From date')}</span>
@@ -277,7 +298,7 @@ export default function ShipmentRequestsBoard({ mode }: { mode: 'sales' | 'vendo
           ))}
         </div>
         <div className="flex flex-wrap items-center gap-2 border-t border-slate-100 pt-2">
-          <span className="text-[12.5px] text-slate-600">{t(`${shown.length} طلب · ${shown.reduce((a, r) => a + r.trucks, 0)} شاحنة مطلوبة · ${shown.reduce((a, r) => a + (r.placed || []).length, 0)} أُسندت`, `${shown.length} requests · ${shown.reduce((a, r) => a + r.trucks, 0)} trucks · ${shown.reduce((a, r) => a + (r.placed || []).length, 0)} placed`)}</span>
+          <span className="text-[12.5px] text-slate-600">{from || to ? t(`طلبات ${from === to ? `يوم ${from}` : `من ${from || '…'} إلى ${to || '…'}`}`, `Requests ${from || '…'} → ${to || '…'}`) : t('كلّ الطلبات المعروضة', 'All shown requests')}</span>
           {anyFilter > 0 && (
             <button type="button" onClick={resetFilters} className="inline-flex items-center gap-1 rounded-lg bg-slate-100 px-2.5 py-1 text-[12px] font-semibold text-slate-700 hover:text-[#f37121]">
               <RotateCcw className="h-3.5 w-3.5" />{t(`مسح الفلاتر (${anyFilter})`, `Clear filters (${anyFilter})`)}
@@ -296,6 +317,15 @@ export default function ShipmentRequestsBoard({ mode }: { mode: 'sales' | 'vendo
             <ExportMenu fileName={mode === 'vendors' ? 'shipment-requests-vendors' : 'shipment-requests'} lang={ar ? 'ar' : 'en'} label={t('تصدير Excel', 'Export Excel')} options={exportOptions} />
           </div>
         </div>
+      </div>
+
+      {/* What the filtered requests came to, in trucks: asked, done by vendors, rejected or withdrawn, still waiting. */}
+      <div className="grid grid-cols-2 sm:grid-cols-5 gap-2">
+        <Stat label={t('طلبات', 'Requests')} value={sum.requests} tone="orange" />
+        <Stat label={t('شاحنات مطلوبة', 'Trucks asked')} value={sum.asked} tone="amber" />
+        <Stat label={t('نُفِّذت (أوامر نقل)', 'Done (orders)')} value={sum.placed} tone="green" />
+        <Stat label={t('رُفضت أو سُحبت', 'Rejected or withdrawn')} value={sum.closed} tone="red" />
+        <Stat label={t('لم تُنفَّذ بعد', 'Not done yet')} value={sum.waiting} tone="amber" />
       </div>
 
       {error && <ErrorNotice error={error} onRetry={load} lang={ar ? 'ar' : 'en'} />}

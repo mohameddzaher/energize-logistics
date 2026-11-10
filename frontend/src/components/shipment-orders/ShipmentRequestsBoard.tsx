@@ -25,7 +25,7 @@ import ColumnChooser, { useVisibleColumns, type ChooserColumn } from '@/componen
 import ExportMenu, { type ExportColumn } from '@/components/ls2/ExportMenu';
 import {
   Truck, MapPin, Calendar, User as UserIcon, CheckCircle2, XCircle, Send, Pencil, Undo2, Hand, Loader2, Plus, Trash2, Copy, History, Package, AlertCircle, Inbox,
-  LayoutGrid, Table2, RotateCcw,
+  LayoutGrid, Table2, RotateCcw, SlidersHorizontal, X,
 } from 'lucide-react';
 
 const money = (n?: number | null) => (n == null ? '—' : Number(n).toLocaleString('en-US'));
@@ -51,6 +51,14 @@ export default function ShipmentRequestsBoard({ mode }: { mode: 'sales' | 'vendo
   const [from, setFrom] = useState('');
   const [to, setTo] = useState('');
   const [top, setTop] = useState<Record<string, string>>({});
+  const [filtersOpen, setFiltersOpen] = useState(false);
+  const filtersRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!filtersOpen) return;
+    const close = (e: MouseEvent) => { if (filtersRef.current && !filtersRef.current.contains(e.target as Node)) setFiltersOpen(false); };
+    document.addEventListener('mousedown', close);
+    return () => document.removeEventListener('mousedown', close);
+  }, [filtersOpen]);
   // Cards or table, remembered per browser and per board (sales vs vendors).
   const viewKey = `shipmentRequests:view:${mode}`;
   const [view, setView] = useState<'cards' | 'table'>('cards');
@@ -241,69 +249,75 @@ export default function ShipmentRequestsBoard({ mode }: { mode: 'sales' | 'vendo
     );
   };
 
+  const activeChips = [
+    ...(from || to ? [{ key: '__date', label: from === to ? `${t('يوم', 'Day')} ${from}` : `${from || '…'} → ${to || '…'}`, clear: () => { setFrom(''); setTo(''); } }] : []),
+    ...TOP_FILTERS.filter((f) => top[f.key]).map((f) => ({ key: f.key, label: `${ar ? f.ar : f.en}: ${top[f.key]}`, clear: () => setTop((p) => ({ ...p, [f.key]: '' })) })),
+  ];
+  const inputSm = 'h-9 rounded-lg border border-slate-200 bg-white px-2.5 text-[12.5px] text-slate-800 focus:outline-none focus:ring-2 focus:ring-[#f37121]/40';
+
   return (
     <div className="space-y-3" dir={isRTL ? 'rtl' : 'ltr'}>
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-        <Stat label={t('طلباتٌ مفتوحة', 'Open requests')} value={counts.open || 0} tone="amber" />
-        <Stat label={t('شاحناتٌ تنتظر الإسناد', 'Trucks waiting')} value={openTrucks} tone="orange" />
-        <Stat label={t('مرفوضة', 'Rejected')} value={byStatus.rejected || 0} tone="red" />
-        <Stat label={t('مكتملة', 'Completed')} value={byStatus.completed || 0} tone="green" />
-      </div>
-      <div className="rounded-2xl border border-slate-200 bg-white p-3 shadow-sm flex flex-wrap items-center gap-2">
-        <div className="flex flex-wrap gap-1">
-          {TABS.map(([k, a, e]) => (
-            <button key={k} type="button" onClick={() => setTab(k)}
-              className={`px-3 py-1.5 rounded-lg text-[12.5px] font-semibold ${tab === k ? 'bg-slate-900 text-white' : 'bg-slate-100 text-slate-700 hover:bg-slate-200'}`}>
-              {ar ? a : e}<span className="ms-1.5 tabular-nums opacity-70">{k === 'all' ? all : (counts[k] || 0)}</span>
-            </button>
-          ))}
+      {/* One toolbar on top: status, search, period, detail filters (in a panel), view, columns and export. */}
+      <div className="rounded-2xl border border-slate-200 bg-white shadow-sm">
+        <div className="flex flex-wrap items-center gap-2 p-3">
+          <div className="flex flex-wrap gap-1">
+            {TABS.map(([k, a, e]) => (
+              <button key={k} type="button" onClick={() => setTab(k)}
+                className={`px-3 py-1.5 rounded-lg text-[12.5px] font-semibold ${tab === k ? 'bg-slate-900 text-white' : 'bg-slate-100 text-slate-700 hover:bg-slate-200'}`}>
+                {ar ? a : e}<span className="ms-1.5 tabular-nums opacity-70">{k === 'all' ? all : (counts[k] || 0)}</span>
+              </button>
+            ))}
+          </div>
+          <label className="inline-flex items-center gap-1.5 text-[12.5px] text-slate-600 ms-1">
+            <input type="checkbox" checked={mine} onChange={(e) => setMine(e.target.checked)} className="accent-[#f37121]" />
+            {mode === 'vendors' ? t('التي أعمل عليها', 'Mine') : t('طلباتي أنا فقط', 'Only mine')}
+          </label>
+          <div className="flex-1 min-w-[220px]"><SearchInput value={q} onChange={setQ} placeholder={t('رقم الطلب، العميل، المدينة، رقم أمر النقل…', 'Request no., customer, city, order no.…')} /></div>
         </div>
-        <label className="inline-flex items-center gap-1.5 text-[12.5px] text-slate-600 ms-1">
-          <input type="checkbox" checked={mine} onChange={(e) => setMine(e.target.checked)} className="accent-[#f37121]" />
-          {mode === 'vendors' ? t('التي أعمل عليها', 'Mine') : t('طلباتي أنا فقط', 'Only mine')}
-        </label>
-        <div className="flex-1 min-w-[200px]"><SearchInput value={q} onChange={setQ} placeholder={t('رقم الطلب، العميل، المدينة، رقم أمر النقل…', 'Request no., customer, city, order no.…')} /></div>
-      </div>
 
-      {/* Top filters for every detail, plus the view, columns and export. */}
-      <div className="rounded-2xl border border-slate-200 bg-white p-3 shadow-sm space-y-2">
-        {/* Quick days: the range is the request date (when sales asked). */}
-        <div className="flex flex-wrap items-center gap-1.5">
-          {QUICK.map(([a, e, f, tt]) => {
-            const on = from === f && to === tt;
-            return (
-              <button key={a} type="button" onClick={() => { if (on) { setFrom(''); setTo(''); } else { setFrom(f); setTo(tt); } }}
-                className={`rounded-lg px-3 py-1.5 text-[12.5px] font-semibold ${on ? 'bg-[#f37121] text-white' : 'bg-slate-100 text-slate-700 hover:bg-slate-200'}`}>{ar ? a : e}</button>
-            );
-          })}
-        </div>
-        <div className="flex flex-wrap items-end gap-2">
-          <label className="block">
-            <span className="mb-1 block text-[11px] font-semibold text-slate-500">{t('من تاريخ', 'From date')}</span>
-            <input type="date" value={from} onChange={(e) => setFrom(e.target.value)} className="rounded-lg border border-slate-200 px-2 py-1.5 text-[12.5px]" />
-          </label>
-          <label className="block">
-            <span className="mb-1 block text-[11px] font-semibold text-slate-500">{t('إلى تاريخ', 'To date')}</span>
-            <input type="date" value={to} onChange={(e) => setTo(e.target.value)} className="rounded-lg border border-slate-200 px-2 py-1.5 text-[12.5px]" />
-          </label>
-          {TOP_FILTERS.map((f) => (
-            <label key={f.key} className="block min-w-[9rem]">
-              <span className="mb-1 block text-[11px] font-semibold text-slate-500">{ar ? f.ar : f.en}</span>
-              <select value={top[f.key] || ''} onChange={(e) => setTop((p) => ({ ...p, [f.key]: e.target.value }))}
-                className={`w-full rounded-lg border px-2 py-1.5 text-[12.5px] ${top[f.key] ? 'border-[#f37121] bg-orange-50' : 'border-slate-200 bg-white'}`}>
-                <option value="">{t('الكلّ', 'All')}</option>
-                {(topOptions[f.key] || []).map((v) => <option key={v} value={v}>{v}</option>)}
-              </select>
-            </label>
-          ))}
-        </div>
-        <div className="flex flex-wrap items-center gap-2 border-t border-slate-100 pt-2">
-          <span className="text-[12.5px] text-slate-600">{from || to ? t(`طلبات ${from === to ? `يوم ${from}` : `من ${from || '…'} إلى ${to || '…'}`}`, `Requests ${from || '…'} → ${to || '…'}`) : t('كلّ الطلبات المعروضة', 'All shown requests')}</span>
-          {anyFilter > 0 && (
-            <button type="button" onClick={resetFilters} className="inline-flex items-center gap-1 rounded-lg bg-slate-100 px-2.5 py-1 text-[12px] font-semibold text-slate-700 hover:text-[#f37121]">
-              <RotateCcw className="h-3.5 w-3.5" />{t(`مسح الفلاتر (${anyFilter})`, `Clear filters (${anyFilter})`)}
+        <div className="flex flex-wrap items-center gap-2 border-t border-slate-100 px-3 py-2.5">
+          {/* Quick days: the range is the request date (when sales asked). */}
+          <div className="inline-flex rounded-lg border border-slate-200 p-0.5">
+            {QUICK.map(([a, e, f, tt]) => {
+              const on = from === f && to === tt;
+              return (
+                <button key={a} type="button" onClick={() => { if (on) { setFrom(''); setTo(''); } else { setFrom(f); setTo(tt); } }}
+                  className={`rounded-md px-2.5 py-1 text-[12.5px] font-semibold whitespace-nowrap ${on ? 'bg-[#f37121] text-white' : 'text-slate-600 hover:bg-slate-100'}`}>{ar ? a : e}</button>
+              );
+            })}
+          </div>
+          <div className="inline-flex items-center gap-1.5">
+            <input type="date" value={from} onChange={(e) => setFrom(e.target.value)} title={t('من تاريخ', 'From date')} className={inputSm} />
+            <span className="text-slate-400">→</span>
+            <input type="date" value={to} onChange={(e) => setTo(e.target.value)} title={t('إلى تاريخ', 'To date')} className={inputSm} />
+          </div>
+          <div className="relative" ref={filtersRef}>
+            <button type="button" onClick={() => setFiltersOpen((v) => !v)}
+              className={`inline-flex h-9 items-center gap-1.5 rounded-lg border px-3 text-[12.5px] font-semibold ${topActive ? 'border-[#f37121] bg-orange-50 text-[#c2410c]' : 'border-slate-200 bg-white text-slate-700 hover:bg-slate-50'}`}>
+              <SlidersHorizontal className="h-4 w-4" />{t('الفلاتر', 'Filters')}
+              {topActive > 0 && <span className="rounded-full bg-[#f37121] px-1.5 text-[11px] text-white tabular-nums">{topActive}</span>}
             </button>
-          )}
+            {filtersOpen && (
+              <div className="absolute z-30 mt-2 w-[min(680px,92vw)] rounded-2xl border border-slate-200 bg-white p-4 shadow-xl start-0">
+                <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+                  {TOP_FILTERS.map((f) => (
+                    <label key={f.key} className="block">
+                      <span className="mb-1 block text-[11.5px] font-semibold text-slate-500">{ar ? f.ar : f.en}</span>
+                      <select value={top[f.key] || ''} onChange={(e) => setTop((p) => ({ ...p, [f.key]: e.target.value }))}
+                        className={`w-full ${inputSm} ${top[f.key] ? '!border-[#f37121] !bg-orange-50' : ''}`}>
+                        <option value="">{t('الكلّ', 'All')}</option>
+                        {(topOptions[f.key] || []).map((v) => <option key={v} value={v}>{v}</option>)}
+                      </select>
+                    </label>
+                  ))}
+                </div>
+                <div className="mt-4 flex items-center justify-between border-t border-slate-100 pt-3">
+                  <button type="button" onClick={() => setTop({})} disabled={!topActive} className="text-[12.5px] font-semibold text-slate-500 hover:text-[#f37121] disabled:opacity-40">{t('مسح هذه الفلاتر', 'Clear these filters')}</button>
+                  <button type="button" onClick={() => setFiltersOpen(false)} className="rounded-lg bg-slate-900 px-4 py-1.5 text-[12.5px] font-semibold text-white">{t('تم', 'Done')}</button>
+                </div>
+              </div>
+            )}
+          </div>
           <div className="ms-auto flex flex-wrap items-center gap-2">
             <div className="inline-flex rounded-lg border border-slate-200 p-0.5">
               {([['cards', 'بطاقات', 'Cards', LayoutGrid], ['table', 'جدول', 'Table', Table2]] as const).map(([k, a, e, Icon]) => (
@@ -317,15 +331,37 @@ export default function ShipmentRequestsBoard({ mode }: { mode: 'sales' | 'vendo
             <ExportMenu fileName={mode === 'vendors' ? 'shipment-requests-vendors' : 'shipment-requests'} lang={ar ? 'ar' : 'en'} label={t('تصدير Excel', 'Export Excel')} options={exportOptions} />
           </div>
         </div>
+
+        {/* Active filters as removable chips, so what narrows the list is always visible. */}
+        {(activeChips.length > 0 || cf.activeCount > 0) && (
+          <div className="flex flex-wrap items-center gap-1.5 border-t border-slate-100 px-3 py-2">
+            {activeChips.map((c) => (
+              <span key={c.key} className="inline-flex items-center gap-1 rounded-full bg-orange-50 px-2.5 py-0.5 text-[12px] font-semibold text-[#c2410c]">
+                {c.label}<button type="button" onClick={c.clear} className="hover:text-red-600"><X className="h-3 w-3" /></button>
+              </span>
+            ))}
+            {cf.activeCount > 0 && <span className="rounded-full bg-slate-100 px-2.5 py-0.5 text-[12px] font-semibold text-slate-700">{t(`فلاتر أعمدة: ${cf.activeCount}`, `Column filters: ${cf.activeCount}`)}</span>}
+            <button type="button" onClick={resetFilters} className="ms-1 inline-flex items-center gap-1 text-[12px] font-semibold text-slate-500 hover:text-[#f37121]">
+              <RotateCcw className="h-3.5 w-3.5" />{t('مسح الكلّ', 'Clear all')}
+            </button>
+          </div>
+        )}
       </div>
 
-      {/* What the filtered requests came to, in trucks: asked, done by vendors, rejected or withdrawn, still waiting. */}
-      <div className="grid grid-cols-2 sm:grid-cols-5 gap-2">
-        <Stat label={t('طلبات', 'Requests')} value={sum.requests} tone="orange" />
-        <Stat label={t('شاحنات مطلوبة', 'Trucks asked')} value={sum.asked} tone="amber" />
-        <Stat label={t('نُفِّذت (أوامر نقل)', 'Done (orders)')} value={sum.placed} tone="green" />
-        <Stat label={t('رُفضت أو سُحبت', 'Rejected or withdrawn')} value={sum.closed} tone="red" />
-        <Stat label={t('لم تُنفَّذ بعد', 'Not done yet')} value={sum.waiting} tone="amber" />
+      {/* What the shown requests came to, in trucks: asked, done by vendors, rejected or withdrawn, still waiting. */}
+      <div className="grid grid-cols-2 overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm sm:grid-cols-5 sm:divide-x sm:divide-slate-100 rtl:sm:divide-x-reverse">
+        {([
+          [t('طلبات', 'Requests'), sum.requests, 'text-slate-900'],
+          [t('شاحنات مطلوبة', 'Trucks asked'), sum.asked, 'text-[#f37121]'],
+          [t('نُفِّذت (أوامر نقل)', 'Done (orders)'), sum.placed, 'text-emerald-700'],
+          [t('رُفضت أو سُحبت', 'Rejected or withdrawn'), sum.closed, 'text-red-600'],
+          [t('لم تُنفَّذ بعد', 'Not done yet'), sum.waiting, 'text-amber-700'],
+        ] as const).map(([label, value, cls]) => (
+          <div key={label} className="px-4 py-2.5">
+            <p className="text-[11.5px] font-semibold text-slate-500">{label}</p>
+            <p className={`text-xl font-extrabold tabular-nums ${cls}`}>{Number(value).toLocaleString('en-US')}</p>
+          </div>
+        ))}
       </div>
 
       {error && <ErrorNotice error={error} onRetry={load} lang={ar ? 'ar' : 'en'} />}

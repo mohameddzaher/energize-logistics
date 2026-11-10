@@ -335,8 +335,17 @@ exports.updateCompany = async (req, res) => {
       const taken = await codeTaken(req.body.customerCode, company._id);
       if (taken) return res.status(409).json({ message: `الكود ${req.body.customerCode} مستخدم للعميل «${taken.name}»`, code: 'CODE_TAKEN' });
     }
+    const oldName = company.name;
     applyFields(company, req.body, COMPANY_FIELDS);
     await company.save();
+    // A CRM rename reaches the shared customer list (shipment orders, sales, operations, fleet) and every name-keyed register.
+    if (company.name !== oldName) {
+      const linked = await require('../models/ShipmentOrderCustomer').find({ crmCompany: company._id }).select('_id name').lean();
+      for (const s of linked) {
+        // eslint-disable-next-line no-await-in-loop
+        await require('../utils/customerSync').renameCustomer(s._id, s.name, company.name, { skipCrm: true }).catch((e) => console.error('[customerSync]', e.message));
+      }
+    }
     await emitCrm('crm:company', { id: String(id) });
     const full = await popCompany(CrmCompany.findById(id)).lean();
     res.json({ company: full });

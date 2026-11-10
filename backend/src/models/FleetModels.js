@@ -90,6 +90,8 @@ const fleetCustomerSchema = new mongoose.Schema({
   nameKey: { type: String, trim: true, default: '', index: true },
   // Copy of the master's customer code (utils/customerCode).
   customerCode: require('../utils/customerCode').codeField(),
+  // The shared customer (shipment orders, sales, operations): the identity lives there; this row keeps only what is the fleet's own (utils/customerSync).
+  shipmentCustomer: { type: mongoose.Schema.Types.ObjectId, ref: 'ShipmentOrderCustomer', default: null },
   routes: [{
     fromCity: { type: String, trim: true, default: '' },
     toCity: { type: String, trim: true, default: '' },
@@ -100,6 +102,7 @@ const fleetCustomerSchema = new mongoose.Schema({
   createdBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
 }, { timestamps: true });
 fleetCustomerSchema.index({ name: 1 });
+fleetCustomerSchema.index({ shipmentCustomer: 1 }, { unique: true, partialFilterExpression: { shipmentCustomer: { $type: 'objectId' } } });
 
 // Shipments (loads).
 const fleetShipmentSchema = new mongoose.Schema({

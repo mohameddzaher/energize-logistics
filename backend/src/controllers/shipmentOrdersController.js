@@ -1964,7 +1964,8 @@ exports.updateCustomer = async (req, res) => {
     await ShipmentOrder.updateMany({ customer: customer._id }, { customerName: customer.name });
     // The name also keys the workflow, collections and shipments without a customer ref.
     if (customer.name !== oldName) {
-      await require('../utils/renameOpsCustomer').renameOpsCustomer(oldName, customer.name);
+      // The rename reaches the fleet row, the linked CRM company and every name-keyed register (utils/customerSync).
+      await require('../utils/customerSync').renameCustomer(customer._id, oldName, customer.name);
       require('../services/shipmentOrderWorkflowLink').announceRename();
     }
     emit('shipmentOrders:customers', {});

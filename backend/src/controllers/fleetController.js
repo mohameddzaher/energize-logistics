@@ -497,11 +497,9 @@ exports.createShipment = async (req, res) => {
     const data = pick(req.body, SHIPMENT_EDITABLE);
 
     if (!data.customer && req.body.newCustomer && String(req.body.newCustomer.name || '').trim()) {
-      const c = await FleetCustomer.create({
-        name: String(req.body.newCustomer.name).trim(),
-        phone: String(req.body.newCustomer.phone || '').trim(),
-        createdBy: req.user._id,
-      });
+      const nm = String(req.body.newCustomer.name).trim();
+      const existing = await FleetCustomer.findOne({ nameKey: nameKey(nm) }).select('_id').lean();
+      const c = existing || await createSharedCustomer({ name: nm, phone: String(req.body.newCustomer.phone || '').trim(), createdBy: req.user._id, ...(await linkCrm({ name: nm })) });
       data.customer = c._id;
       emit('fleet:customers', {});
     }
@@ -590,11 +588,9 @@ exports.updateShipment = async (req, res) => {
 
     // An edit can switch the load to a first-time customer, exactly like create.
     if (!data.customer && req.body.newCustomer && String(req.body.newCustomer.name || '').trim()) {
-      const c = await FleetCustomer.create({
-        name: String(req.body.newCustomer.name).trim(),
-        phone: String(req.body.newCustomer.phone || '').trim(),
-        createdBy: req.user._id,
-      });
+      const nm = String(req.body.newCustomer.name).trim();
+      const existing = await FleetCustomer.findOne({ nameKey: nameKey(nm) }).select('_id').lean();
+      const c = existing || await createSharedCustomer({ name: nm, phone: String(req.body.newCustomer.phone || '').trim(), createdBy: req.user._id, ...(await linkCrm({ name: nm })) });
       data.customer = c._id;
       emit('fleet:customers', {});
     }
@@ -1384,6 +1380,20 @@ const CUSTOMER_EDITABLE = [
 ];
 
 /** Links the customer to the CRM company by normalized name and stores the key. The two registers were entered each in its own section with no shared id, so the name is the only link; nearly all follow-up sheet customers were found in the CRM this way. The link is not forced: one a user linked manually stays. */
+/**
+ * A customer added in the fleet joins the shared list: the shipment customer is created first (it is the identity seen in
+ * shipment orders, sales and operations), then its fleet row carries the fleet's own fields.
+ */
+async function createSharedCustomer(body) {
+  const ShipmentOrderCustomer = require('../models/ShipmentOrderCustomer');
+  const sc = new ShipmentOrderCustomer({ name: body.name, phone: body.phone || '', email: body.email || '', address: body.address || '', crmCompany: body.crmCompany || undefined });
+  sc.$locals.skipFleetMirror = true;
+  await sc.save();
+  const id = await require('../utils/customerSync').mirrorShipmentToFleet(sc.toObject());
+  const own = pick(body, ['customerType', 'rating', 'paymentType', 'taxNumber', 'routes', 'notes', 'createdBy']);
+  return FleetCustomer.findByIdAndUpdate(id, { $set: own }, { new: true });
+}
+
 async function linkCrm(doc) {
   const key = nameKey(doc.name || '');
   const patch = { nameKey: key };
@@ -1476,6 +1486,7 @@ function applyCustomerFilters(rows, query) {
 
 exports.listCustomers = async (req, res) => {
   try {
+    await require('../utils/customerSync').syncAll().catch((e) => console.error('[customerSync]', e.message));
     const rows = await customerRows(req);
     // Default hides disabled ones, unless explicitly requested or filtered by status.
     const all = req.query.includeInactive === '1' || req.query.includeInactive === 'true' || !!req.query.state;
@@ -1519,7 +1530,7 @@ exports.createCustomer = async (req, res) => {
 
     const body = { ...pick(req.body, CUSTOMER_EDITABLE), name, createdBy: req.user._id };
     Object.assign(body, await linkCrm(body));
-    const customer = await FleetCustomer.create(body);
+    const customer = await createSharedCustomer(body);
     await logAudit({ user: req.user, action: 'create', entity: 'FleetCustomer', entityId: customer._id, changes: { name }, ipAddress: req.ip });
     emit('fleet:customers', {});
     res.status(201).json({ customer });
@@ -1539,8 +1550,16 @@ exports.updateCustomer = async (req, res) => {
       if (clash) return res.status(400).json({ message: `عميلٌ بهذا الاسم موجود: «${clash.name}»` });
       Object.assign(body, await linkCrm({ ...body, crmCompany: req.body.crmCompany }));
     }
+    const before = await FleetCustomer.findById(req.params.id).lean();
+    if (!before) return res.status(404).json({ message: 'Customer not found' });
+    // Identity fields belong to the shared customer: written there and mirrored back, so shipment orders, sales and the CRM see the same.
+    const sync = require('../utils/customerSync');
+    const shared = await sync.shipmentForFleet(before);
+    const idPatch = {};
+    for (const k of ['phone', 'email', 'address']) if (body[k] !== undefined) idPatch[k] = String(body[k] || '').trim();
+    if (Object.keys(idPatch).length) await require('../models/ShipmentOrderCustomer').findByIdAndUpdate(shared._id, { $set: idPatch });
+    if (body.name && body.name !== shared.name) await sync.renameCustomer(shared._id, shared.name, body.name);
     const customer = await FleetCustomer.findByIdAndUpdate(req.params.id, body, { new: true });
-    if (!customer) return res.status(404).json({ message: 'Customer not found' });
     if (body.name) await FleetShipment.updateMany({ customer: customer._id }, { customerName: customer.name });
     await logAudit({ user: req.user, action: 'update', entity: 'FleetCustomer', entityId: customer._id, changes: body, ipAddress: req.ip });
     emit('fleet:customers', {});

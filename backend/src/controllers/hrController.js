@@ -1395,7 +1395,7 @@ exports.getLeaveSheet = async (req, res) => {
       .populate('employee', 'firstName lastName arabicName iqamaNumber nationalId idType employeeNumber department jobTitle registerNumber iqamaExpiry iqamaExpiryHijri user')
       .populate('requester filedBy', 'firstName lastName')
       .populate('leaveType', 'nameEn nameAr')
-      .populate(Object.values(chain.DECISION_FIELD).map((f) => `${f}.by`).join(' '), 'firstName lastName')
+      .populate(Object.values(chain.DECISION_FIELD).map((f) => `${f}.by`).join(' '), 'firstName lastName isTopManagement')
       .lean();
     if (!leave) return res.status(404).json({ message: 'Leave request not found' });
     const uid = String(req.user._id);
@@ -1547,8 +1547,9 @@ exports.createMyLeave = async (req, res) => {
     const clash = await findLeaveClash(employeeId, startDate, endDate);
     if (clash) return res.status(400).json({ message: clashMessage(clash), code: 'LEAVE_OVERLAP' });
     const { balance } = await computeEmployeeBalance(employeeId);
-    // A department manager is his own direct manager (utils/leaveChain.selfManaged): no manager stage, his approval recorded at once.
-    const ownManager = chain.selfManaged(req.user);
+    // No direct-manager stage for a department manager or for someone whose manager is top management (utils/leaveChain.skipsManagerStage): it starts at finance.
+    const managerUser = req.user.manager ? await User.findById(req.user.manager).select('isTopManagement').lean() : null;
+    const ownManager = chain.skipsManagerStage(req.user, managerUser);
     const hasManager = !!req.user.manager && !ownManager;
 
     // The requester's signature: the one picked, else the default. Saved later in self-service, it is still read on the sheet (services/leaveSheet).
@@ -1564,7 +1565,7 @@ exports.createMyLeave = async (req, res) => {
       employee: employeeId,
       requester: req.user._id,
       manager: ownManager ? undefined : (req.user.manager || undefined),
-      ...(ownManager ? { managerDecision: chain.selfManagerDecision(req.user, employeeSignature) } : {}),
+      ...(ownManager ? { noManagerStage: true } : {}),
       leaveType,
       leaveTypeCode: lt.code,
       startDate, endDate, days, reason, countsFridays,
@@ -1674,8 +1675,10 @@ exports.createTeamLeave = async (req, res) => {
       leaveTypeCode: lt.code,
       startDate, endDate, days, countsFridays, reason: String(reason || '').trim(),
       ...chain.startOf(false),
-      // The manager filed it, so he signs both the employee's and his own box (resolved live on the sheet, see services/leaveSheet).
-      managerDecision: { by: req.user._id, at: new Date(), decision: 'approved', note: `قدّم الطلبَ المديرُ ${filer} بنفسه | Filed by the manager`, signature: await defaultSignatureOf(req.user._id) },
+      // The manager filed it, so he signs his own box (resolved live on the sheet, see services/leaveSheet). Top management filing for someone under it signs once, as general manager, so there is no manager stage.
+      ...(chain.isTopManagement(req.user)
+        ? { noManagerStage: true }
+        : { managerDecision: { by: req.user._id, at: new Date(), decision: 'approved', note: `قدّم الطلبَ المديرُ ${filer} بنفسه | Filed by the manager`, signature: await defaultSignatureOf(req.user._id) } }),
       balanceSnapshot: {
         accrued: balance.accrued,
         available: balance.available,

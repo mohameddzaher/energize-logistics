@@ -110,6 +110,9 @@ export function earliestStartDate(t?: LeaveType | null): string {
 export const noticeBlocks = (t: LeaveType | null | undefined, start: string) =>
   !!(t && start && start >= today() && start < earliestStartDate(t));
 
+/** No direct-manager stage: a department manager or someone under top management (backend utils/leaveChain.hasNoManagerStage). */
+export const leaveHasNoManagerStage = (l: any) => !!l && (l.noManagerStage === true || String(l.managerDecision?.note || '').startsWith('مدير القسم — هو مديره المباشر'));
+
 export interface LeaveBalance { entitlement: number; daysElapsed: number; accrued: number; taken: number; available: number; }
 
 export type LeaveStage = 'manager' | 'finance' | 'hr' | 'executive' | 'chairman';

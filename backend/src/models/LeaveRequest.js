@@ -37,6 +37,8 @@ const leaveRequestSchema = new mongoose.Schema(
     manager: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
     // Filed by a manager on behalf of someone under him (utils/leaveTeam): his own stage is stamped approved at creation.
     filedByManager: { type: Boolean, default: false },
+    // No direct-manager stage (owner, 2026-11-10): the requester heads a department, or his direct manager is top management, who signs once as general manager. The sheet then prints four boxes.
+    noManagerStage: { type: Boolean, default: false },
     filedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
     filedByName: { type: String, default: '' },
 

@@ -111,7 +111,10 @@ async function signatureBoxes(leave, { fullView = true, signedUpTo = -1 } = {}) 
     ['hr', 'مدير الموارد البشرية', 'HR Manager'],
     ['executive', 'المدير العام', 'General Manager'],
   ];
+  // No direct-manager box (owner, 2026-11-10) for a department manager or someone under top management, including older requests where the general manager signed as direct manager, so his signature is never printed twice.
+  const fourBox = !leave.filedByManager && (chain.hasNoManagerStage(leave) || leave.managerDecision?.by?.isTopManagement === true);
   for (const [stage, label, en] of STAGE_BOX) {
+    if (fourBox && stage === 'manager') continue;
     const d = decided(chain.DECISION_FIELD[stage]);
     // The department head signs the box when set and signed up; without a saved signature the approver's own stands, so an approved box is never blank.
     const head = d && heads[stage] && heads[stage].ink ? heads[stage] : null;
@@ -143,18 +146,25 @@ async function registerName(value) {
  */
 function sheetOrder(boxes) {
   const by = (label) => boxes.find((b) => b.label === label);
+  // Four boxes (no direct manager): employee, finance and HR on top, the general manager alone below.
+  if (!by('المدير المباشر')) {
+    const four = [by('الموظف'), by('المدير المالي'), by('مدير الموارد البشرية'), by('المدير العام')].filter(Boolean);
+    return four.length === boxes.length ? four : boxes;
+  }
   const order = [by('الموظف'), by('المدير المباشر'), by('المدير المالي'), by('المدير العام'), by('مدير الموارد البشرية')].filter(Boolean);
   return order.length === boxes.length ? order : boxes;
 }
+/** Box classes per layout: five = two on top then three; four = three on top then the general manager centred alone. */
+const boxClass = (count, i) => (count === 4 ? (i === 3 ? 'solo' : '') : (i < 2 ? 'top' : ''));
 
 function field(label, value, { wide = false, tone = '' } = {}) {
   const shown = String(value ?? '').trim();
   return `<div class="f${wide ? ' wide' : ''}"><div class="k">${esc(label)}</div><div class="v ${tone}">${shown ? esc(shown) : '—'}</div></div>`;
 }
 
-function sigBox(b, top = false) {
+function sigBox(b, cls = '') {
   const ink = b.ink ? `<img src="${esc(b.ink)}" alt="" />` : b.inkText ? `<span class="ink-name">${esc(b.inkText)}</span>` : '';
-  return `<div class="sig${top ? ' top' : ''}">
+  return `<div class="sig${cls ? ` ${cls}` : ''}">
     <div class="ink">${ink}</div>
     <div class="line"></div>
     <div class="role">${esc(b.label)} <span>${esc(b.en)}</span></div>
@@ -207,6 +217,7 @@ ${getFontCss()}
   .sigs { margin-top: auto; display: grid; grid-template-columns: repeat(6, 1fr); gap: 3mm 5mm; }
   .sig { grid-column: span 2; }
   .sig.top { grid-column: span 3; }
+  .sig.solo { grid-column: 3 / span 2; }
   .sig { text-align: center; }
   .sig .ink { height: 15mm; display: flex; align-items: flex-end; justify-content: center; }
   .sig .ink img { max-height: 14mm; max-width: 40mm; object-fit: contain; }
@@ -251,7 +262,7 @@ ${getFontCss()}
       </div>
     </div>
 
-    <div class="sigs">${sheetOrder(boxes).map((b, i) => sigBox(b, i < 2)).join('')}</div>
+    <div class="sigs">${(() => { const o = sheetOrder(boxes); return o.map((b, i) => sigBox(b, boxClass(o.length, i))).join(''); })()}</div>
   </div>
 </div></body></html>`;
 }

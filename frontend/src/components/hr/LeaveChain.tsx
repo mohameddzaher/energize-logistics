@@ -3,7 +3,7 @@
  * Approval chain as shown: four-station stepper and request dialog.
  * A request has a history (who approved and when, who asked and the reply), not one status. Kept in one place so the four pages do not drift apart.
  */
-import { LeaveRequest, LEAVE_STAGES, LeaveStage, userName } from '@/lib/hr';
+import { LeaveRequest, LEAVE_STAGES, LeaveStage, userName, leaveHasNoManagerStage } from '@/lib/hr';
 import { bothDatesShort } from '@/lib/hrDates';
 import { Check, X, HelpCircle, Clock, MessageSquare, Paperclip } from 'lucide-react';
 
@@ -39,7 +39,7 @@ export function LeaveChainBar({ leave, lang, full = false }: { leave: LeaveReque
   // A cancelled or rejected request has no advancing stepper; stations are shown as they stopped.
   return (
     <div className="flex flex-wrap items-stretch gap-1.5">
-      {LEAVE_STAGES.map((s, i) => {
+      {LEAVE_STAGES.filter((s) => !(s.key === 'manager' && leaveHasNoManagerStage(leave))).map((s, i) => {
         const st = stageState(leave, s.key);
         const look = LOOK[st];
         const Icon = look.icon;

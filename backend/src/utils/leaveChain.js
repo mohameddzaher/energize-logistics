@@ -55,6 +55,14 @@ const OVERRIDE_ROLES = ['super_admin', 'admin', 'it_manager', 'it_specialist'];
 const selfManaged = (user) => !!user && (isManager(user.role) || /_manager$/.test(String(user.role || '')) || user.role === 'cfo'
   || (['super_admin', 'admin'].includes(user.role) && !user.manager));
 const SELF_MANAGER_NOTE = 'مدير القسم — هو مديره المباشر | Department manager: his own direct manager';
+/**
+ * No direct-manager stage (owner, 2026-11-10): a department manager, or anyone whose direct manager is top management (the general manager signs once, at the last stage, not twice).
+ * `managerUser` is the requester's manager account (needs `isTopManagement`).
+ */
+const skipsManagerStage = (user, managerUser) => selfManaged(user) || isTopManagement(managerUser);
+/** Does this leave run without a direct-manager stage? Older department-manager requests carry the self-approval note instead of the flag. */
+const hasNoManagerStage = (leave) => !!leave && (leave.noManagerStage === true
+  || String(leave.managerDecision?.note || '') === SELF_MANAGER_NOTE);
 /** The manager-stage stamp for a self-managed requester. */
 const selfManagerDecision = (user, signature = '') => ({ by: user._id || user, at: new Date(), decision: 'approved', note: SELF_MANAGER_NOTE, signature });
 
@@ -151,8 +159,10 @@ function restart(leave, replier, { amended = true } = {}) {
   for (const f of Object.values(DECISION_FIELD)) leave[f] = undefined;
   leave.deductsBalance = null;
   leave.excludedFridays = undefined;
-  if (replier && selfManaged(replier) && String(replier._id || replier) === String(leave.requester)) {
-    leave.managerDecision = selfManagerDecision(replier, leave.employeeSignature || '');
+  // No direct-manager stage: the restart goes straight to finance, with nothing stamped at the manager stage.
+  if (leave.noManagerStage || (replier && selfManaged(replier) && String(replier._id || replier) === String(leave.requester))) {
+    leave.noManagerStage = true;
+    leave.manager = undefined;
     Object.assign(leave, startOf(false));
     return 'restarted';
   }
@@ -168,6 +178,6 @@ function restart(leave, replier, { amended = true } = {}) {
 
 module.exports = {
   STAGES, PENDING_OF, PENDING_STATUSES, OPEN_STATUSES, NEXT_OF, AFTER_MANAGER, DECISION_FIELD, STAGE_AR,
-  HR_ROLES, FINANCE_ROLES, EXEC_ROLES, OVERRIDE_ROLES, isTopManagement, isChairman, selfManaged, selfManagerDecision, seesProcess, askedStage,
+  HR_ROLES, FINANCE_ROLES, EXEC_ROLES, OVERRIDE_ROLES, isTopManagement, isChairman, selfManaged, selfManagerDecision, skipsManagerStage, hasNoManagerStage, SELF_MANAGER_NOTE, seesProcess, askedStage,
   canActAt, stagesFor, inboxFilter, startOf, advance, askEmployee, restart,
 };

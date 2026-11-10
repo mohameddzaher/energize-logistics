@@ -152,10 +152,16 @@ String _stageState(Map<String, dynamic> l, String stage, String decisionField) {
 }
 
 /// Strip of the steps: where the request stopped and who signed. Shown to process viewers only ([full]).
+/// No direct-manager stage: a department manager or someone under top management (backend utils/leaveChain.hasNoManagerStage).
+bool leaveHasNoManagerStage(Map l) => l['noManagerStage'] == true
+    || '${(l['managerDecision'] is Map ? l['managerDecision']['note'] : '') ?? ''}'.startsWith('مدير القسم — هو مديره المباشر');
+
 class LeaveChainBar extends StatelessWidget {
   const LeaveChainBar({super.key, required this.leave, this.full = false});
   final Map<String, dynamic> leave;
   final bool full;
+  List<({String key, String ar, String en, String decision})> get _stages =>
+      leaveStages.where((s) => !(s.key == 'manager' && leaveHasNoManagerStage(leave))).toList();
 
   @override
   Widget build(BuildContext context) {
@@ -164,8 +170,8 @@ class LeaveChainBar extends StatelessWidget {
       spacing: 6,
       runSpacing: 6,
       children: [
-        for (var i = 0; i < leaveStages.length; i++)
-          _chip(leaveStages[i], i, _stageState(leave, leaveStages[i].key, leaveStages[i].decision)),
+        for (var i = 0; i < _stages.length; i++)
+          _chip(_stages[i], i, _stageState(leave, _stages[i].key, _stages[i].decision)),
       ],
     );
   }

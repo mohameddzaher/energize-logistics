@@ -268,6 +268,21 @@ exports.update = async (req, res) => {
     }
     if (r.status === 'in_progress' && r.placed.length >= r.trucks) { r.status = 'completed'; r.closedAt = r.closedAt || new Date(); }
     await r.save();
+    // The load as sold also changes on the transport orders already created from this request, so the order, the operations row and the printed waybill match the request. Truck type stays per truck (the vendors team fixed it) and the selling price keeps its approval path.
+    const SHARED = ['fromCity', 'toCity', 'branch', 'notes', 'blNumber', 'containerNumber', 'cargoType', 'truckLength', 'quantity',
+      'pickupTime', 'startTime', 'arrivalTime', 'paymentSubtype', 'paymentMethod', 'customFields'];
+    const carry = changed.filter((k) => SHARED.includes(k));
+    if (carry.length && r.placed.length) {
+      const patch = Object.fromEntries(carry.map((k) => [k, r[k]]));
+      if (patch.customFields) patch.customFields = r.customFields || {};
+      if (carry.includes('paymentSubtype') && r.paymentMethod) patch.paymentMethod = r.paymentMethod;
+      const ids = r.placed.map((p) => p.order);
+      await ShipmentOrder.updateMany({ _id: { $in: ids } }, { $set: patch });
+      for (const id of ids) {
+        so.announceOrderChange(id);
+        require('../services/shipmentOrderWorkflowLink').mirrorPlatformSoon(id, carry);
+      }
+    }
     await logAudit({ user: req.user, action: 'update', entity: 'ShipmentRequest', entityId: r._id, changes: { fields: changed, resent }, ipAddress: req.ip });
     emit({ id: String(r._id), status: r.status });
     if (resent) await notifyVendors(`أُعيد طلبُ الشحنة رقم ${r.number} بعد تعديله`, `${r.customerName} · ${r.fromCity} ← ${r.toCity}`, r._id);

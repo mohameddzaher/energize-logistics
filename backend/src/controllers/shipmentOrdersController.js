@@ -806,6 +806,7 @@ exports.createOneOrder = createOneOrder;
 exports.applySalesRep = (data, body) => applySalesRep(data, body);
 exports.resolveInlineCustomer = (req, data) => resolveInlineCustomer(req, data);
 exports.applyPaymentSubtype = (data) => applyPaymentSubtype(data);
+exports.announceOrderChange = (id) => { announceOrderChange(id); linkCustomsSoon(id); };
 
 /** Operational sales: eligible are the sales and operations teams (their managers and staff). Anyone whose service HR ended is not selectable. The name is taken from the account, not from what was sent. */
 const SALES_REP_ROLES = () => {

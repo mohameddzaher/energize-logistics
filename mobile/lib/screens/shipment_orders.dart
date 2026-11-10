@@ -65,6 +65,8 @@ class _ShipmentOrdersScreenState extends State<ShipmentOrdersScreen> {
   List<Map<String, dynamic>> _rows = [];
   Map<String, dynamic>? _stats;
   int _total = 0;
+  // A searched number that is a fleet shipment or an operations report, not a shipment order (server `elsewhere`).
+  List _elsewhere = const [];
   int _page = 1;
   int _pageSize = 50;
   bool _loading = true;
@@ -151,6 +153,7 @@ class _ShipmentOrdersScreenState extends State<ShipmentOrdersScreen> {
       setState(() {
         _rows = List<Map<String, dynamic>>.from(d['orders'] ?? []);
         _total = (d['total'] as num?)?.toInt() ?? 0;
+        _elsewhere = (d['elsewhere'] as List?) ?? const [];
         _stats = d['stats'] is Map ? Map<String, dynamic>.from(d['stats']) : null;
         final pv = d['priceView'];
         if (pv is Map) { _pvSell = pv['sell'] != false; _pvBuy = pv['buy'] != false; }
@@ -465,7 +468,10 @@ class _ShipmentOrdersScreenState extends State<ShipmentOrdersScreen> {
                             Text(tr('محدد ${_picked.length}', '${_picked.length} selected'), style: const TextStyle(fontSize: 12, color: T.orange, fontWeight: FontWeight.w700)),
                         ]),
                       if (_rows.isEmpty)
-                        Padding(padding: const EdgeInsets.only(top: 40), child: EmptyState(icon: Icons.assignment_outlined, title: tr('لا توجد شحنات مطابقة', 'No matching shipments')))
+                        Padding(padding: const EdgeInsets.only(top: 40), child: EmptyState(icon: Icons.assignment_outlined, title: tr('لا توجد شحنات مطابقة', 'No matching shipments'),
+                            subtitle: _elsewhere.isEmpty ? null : (_elsewhere.any((x) => x is Map && x['kind'] == 'fleet')
+                                ? tr('الرقم ${(_elsewhere.first as Map)['number']} ليس طلبَ شحنة؛ هو شحنةٌ من «إدارة الأسطول»، وتقريرها في «سير عمل التشغيل».', 'This number is a fleet shipment; its report is in the operations workflow.')
+                                : tr('الرقم ${(_elsewhere.first as Map)['number']} ليس طلبَ شحنة؛ هو تقريرٌ في «سير عمل التشغيل».', 'This number is an operations report.'))))
                       else if (_view == 'cards')
                         _bigCards(editor)
                       else

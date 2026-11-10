@@ -1096,17 +1096,66 @@ function pastPercent(e, tire) {
   return noted ? Number(noted[1]) : (tire?.conditionPercent ?? null);
 }
 
+const SHELF_PLACE = {
+  new: ['المخزن (جديدة)', 'Store (new)'], used: ['المخزن (مستعملة)', 'Store (used)'],
+  under_renewal: ['تحت التجديد', 'Under renewal'], at_factory: ['في المصنع', 'At the factory'],
+  scrap: ['السكراب', 'Scrap'], damaged: ['تالفة', 'Damaged'], sold: ['مباعة', 'Sold'],
+};
+const onVehicle = (plate, pos) => [`مركّبة على ${plate}${pos ? ` · ${pos}` : ''}`, `On ${plate}${pos ? ` · ${pos}` : ''}`];
+
+/** Where the asset sits right after event `e`: a vehicle (with its position) or a store/renewal/factory state. */
+function placeAfter(e, tire) {
+  if (e.entityType === 'tire') {
+    const st = pastState(e, tire);
+    if (st === 'mounted') return onVehicle(e.toPlate || e.fromPlate || '—', e.toPosition || e.fromPosition);
+    return SHELF_PLACE[st] || ['', ''];
+  }
+  if (['mounted', 'transferred'].includes(e.action) || (e.action === 'registered' && e.toPlate)) return onVehicle(e.toPlate || '—', e.toPosition);
+  if (['retired', 'scrapped'].includes(e.action)) return ['مُعدَمة', 'Retired'];
+  if (e.action === 'updated') return null;   // an edit does not move the asset
+  return ['المخزن', 'Store'];
+}
+
+/**
+ * Adds tire details and, for every event, where the asset was before it and where it went (owner: a mount must say
+ * whether it came from the store, from renewal or from another truck). "Before" is the place after the asset's previous
+ * event, read from its full history, so a filtered or limited list still knows it.
+ */
 async function withTireDetails(events) {
   const ids = [...new Set(events.filter((e) => e.entityType === 'tire').map((e) => String(e.refId)))];
-  const tires = await Ls2TireAsset.find({ _id: { $in: ids } }).select('tireNumber type size sensor status condition conditionPercent').lean();
+  const allIds = [...new Set(events.map((e) => String(e.refId)))];
+  const [tires, history] = await Promise.all([
+    Ls2TireAsset.find({ _id: { $in: ids } }).select('tireNumber type size sensor status condition conditionPercent').lean(),
+    Ls2AssetEvent.find({ refId: { $in: allIds } })
+      .select('entityType refId action toPlate toPosition fromPlate fromPosition date createdAt stateAfter notes').sort({ date: 1, createdAt: 1 }).lean(),
+  ]);
   const byId = new Map(tires.map((t) => [String(t._id), t]));
+  // Before-place per event id, walking each asset's history in time order; edits carry the place through.
+  const before = new Map();
+  const last = new Map();
+  for (const h of history) {
+    const k = String(h.refId);
+    const prev = last.get(k);
+    before.set(String(h._id), prev || null);
+    const after = placeAfter(h, byId.get(k));
+    if (after) last.set(k, { place: after, date: h.date });
+    else if (!prev) last.set(k, null);
+  }
   return events.map((e) => {
-    if (e.entityType !== 'tire') return e;
-    const tire = byId.get(String(e.refId));
+    const tire = e.entityType === 'tire' ? byId.get(String(e.refId)) : null;
+    const prev = before.get(String(e._id));
+    const fromPlace = prev ? prev.place : (e.fromPlate ? onVehicle(e.fromPlate, e.fromPosition) : ['لا حركة سابقة مسجّلة', 'No earlier movement']);
+    const toPlace = placeAfter(e, tire) || fromPlace;
+    const days = prev && prev.date && e.date ? Math.max(0, Math.round((new Date(e.date) - new Date(prev.date)) / 864e5)) : null;
+    const place = {
+      placeBeforeAr: fromPlace[0], placeBeforeEn: fromPlace[1], placeAfterAr: toPlace[0], placeAfterEn: toPlace[1],
+      prevDate: prev ? prev.date : null, daysAtPrev: days,
+    };
+    if (e.entityType !== 'tire') return { ...e, ...place };
     const key = pastState(e, tire);
     const st = TIRE_STATES.find((x) => x.key === key);
     return {
-      ...e, tireNumber: tire?.tireNumber || '', tireType: tire?.type || '', tireSize: tire?.size || '', tireSensor: tire?.sensor || '',
+      ...e, ...place, tireNumber: tire?.tireNumber || '', tireType: tire?.type || '', tireSize: tire?.size || '', tireSensor: tire?.sensor || '',
       stateAfter: key, stateAfterAr: st?.ar || '', stateAfterEn: st?.en || '', percentAfter: pastPercent(e, tire),
     };
   });

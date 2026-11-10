@@ -42,7 +42,7 @@ import RimsPanel, { type Rim } from '@/components/ls2/RimsPanel';
 interface Flatbed { _id: string; numbering: number | null; plate: string; plateKey: string; batch: string; brand: string; currentTrailerNumber: string | null; notes: string; tireCount: number; unitId: number | null; driver: string; odometerKm: number | null; vehicleMaster?: string | null; registryPlate?: string }
 interface Trailer { _id: string; trailerNumber: string; currentPlate: string | null; currentPlateKey?: string | null; status: string; notes: string }
 interface TireAsset { _id: string; tireNumber: string; serial: string; type: string; size?: string; sensor: 'yes' | 'no' | 'unknown'; condition?: 'new' | 'used'; conditionPercent?: number | null; status: string; plate: string | null; positionNumber: number | null; positionLabel: string; section: string; plateKey?: string | null; isSpare?: boolean; trailerNumber?: string | null; notes: string }
-interface AssetEvent { _id: string; entityType: string; label: string; action: string; fromPlate: string | null; fromPosition: string; toPlate: string | null; toPosition: string; date: string; createdAt?: string; odometerKm: number | null; reason: string; notes: string; performedByName: string }
+interface AssetEvent { _id: string; entityType: string; label: string; action: string; fromPlate: string | null; fromPosition: string; toPlate: string | null; toPosition: string; date: string; createdAt?: string; odometerKm: number | null; reason: string; notes: string; performedByName: string; placeBeforeAr?: string; placeBeforeEn?: string; placeAfterAr?: string; placeAfterEn?: string; prevDate?: string | null; daysAtPrev?: number | null }
 interface SensorRow { plate: string; unitId: number | null; driver: string; registeredTotal: number; registeredWithSensor: number; registeredSensorPositions: { positionNumber: number | null; positionLabel: string; section: string; serial: string }[]; liveReporting: number; liveTotal: number; livePositions: { axle: number; position: number }[]; match: boolean | null; hasLive: boolean }
 
 // The workshop's 14-position scheme (matches the collected JSON exactly).
@@ -319,7 +319,7 @@ export default function Ls2FleetAssetsPage() {
     return ar ? v[0] : v[1];
   }, [ar]);
   const fTires = useMemo(() => tires.filter((ti) => matchesTireFilter(ti) && (!q || [ti.serial, ti.tireNumber, ti.type, ti.size, ti.condition, ti.plate, vehicleOf(ti)?.plate, ti.trailerNumber, ti.section, ti.positionLabel, ti.status].some((x) => norm(x).includes(norm(q))))), [tires, q, matchesTireFilter, vehicleOf]);
-  const fEvents = useMemo(() => !q ? events : events.filter((e) => [e.label, e.fromPlate, e.toPlate, e.reason, e.action, e.performedByName].some((x) => norm(x).includes(norm(q)))), [events, q]);
+  const fEvents = useMemo(() => !q ? events : events.filter((e) => [e.label, e.fromPlate, e.toPlate, e.placeBeforeAr, e.placeAfterAr, e.reason, e.action, e.performedByName].some((x) => norm(x).includes(norm(q)))), [events, q]);
   const fSensors = useMemo(() => !q ? sensorRows : sensorRows.filter((r) => [r.plate, r.driver].some((x) => norm(x).includes(norm(q)))), [sensorRows, q]);
 
   // ---- Export columns --------------------------------------------------------
@@ -367,8 +367,13 @@ export default function Ls2FleetAssetsPage() {
     { header: ar ? 'المقاس' : 'Size', key: 'tireSize', width: 12 },
     { header: ar ? 'السينسور' : 'Sensor', key: 'tireSensor', transform: (v) => (v === 'yes' ? (ar ? 'يوجد' : 'Yes') : v === 'no' ? (ar ? 'لا يوجد' : 'No') : ''), width: 10 },
     { header: ar ? 'الحركة' : 'Action', key: 'action', transform: (v) => (ACTION_LABELS[v] ? (ar ? ACTION_LABELS[v].ar : ACTION_LABELS[v].en) : v), width: 9 },
-    { header: ar ? 'من' : 'From', key: 'fromPlate', transform: (v, r) => [v, r.fromPosition].filter(Boolean).join(' · '), width: 22 },
-    { header: ar ? 'إلى' : 'To', key: 'toPlate', transform: (v, r) => [v, r.toPosition].filter(Boolean).join(' · '), width: 22 },
+    // Where it was and where it went, from the asset's own history: a mount says whether it came from the store, renewal or another truck.
+    { header: ar ? 'مكانها قبل الحركة' : 'Where it was before', key: ar ? 'placeBeforeAr' : 'placeBeforeEn', width: 30 },
+    { header: ar ? 'مكانها بعد الحركة' : 'Where it went', key: ar ? 'placeAfterAr' : 'placeAfterEn', width: 30 },
+    { header: ar ? 'من (العربية · الموضع)' : 'From (vehicle · position)', key: 'fromPlate', transform: (v, r) => [v, r.fromPosition].filter(Boolean).join(' · '), width: 22 },
+    { header: ar ? 'إلى (العربية · الموضع)' : 'To (vehicle · position)', key: 'toPlate', transform: (v, r) => [v, r.toPosition].filter(Boolean).join(' · '), width: 22 },
+    { header: ar ? 'تاريخ الحركة السابقة' : 'Previous movement', key: 'prevDate', transform: (v) => opDay(v), width: 13 },
+    { header: ar ? 'أيام في المكان السابق' : 'Days at previous place', key: 'daysAtPrev', type: 'number', transform: (v) => v ?? '', width: 11 },
     { header: ar ? 'الحالة بعد الحركة' : 'State after move', key: ar ? 'stateAfterAr' : 'stateAfterEn', width: 14 },
     { header: ar ? 'نسبة الحالة %' : 'Condition %', key: 'percentAfter', transform: (v) => (v == null ? '' : `${v}%`), width: 10 },
     { header: ar ? 'العداد (كم)' : 'Odometer', key: 'odometerKm', transform: (v) => v ?? '', width: 11 },
@@ -883,8 +888,8 @@ export default function Ls2FleetAssetsPage() {
                       <td className="px-4 py-3 text-xs text-slate-500 whitespace-nowrap">{fmtDateTime(e.createdAt || e.date, lang as Lang)}</td>
                       <td className="px-4 py-3"><span className="text-xs text-slate-400">{ar ? ent.ar : ent.en}</span> <span className="font-mono text-xs font-medium text-slate-800">{e.label}</span></td>
                       <td className="px-4 py-3 text-center"><span className={`px-2 py-0.5 rounded-full text-[11px] font-medium ${act.cls}`}>{ar ? act.ar : act.en}</span></td>
-                      <td className="px-4 py-3 text-xs text-slate-600">{[e.fromPlate, e.fromPosition].filter(Boolean).join(' · ') || '—'}</td>
-                      <td className="px-4 py-3 text-xs text-slate-600">{[e.toPlate, e.toPosition].filter(Boolean).join(' · ') || '—'}</td>
+                      <td className="px-4 py-3 text-xs text-slate-600">{(ar ? e.placeBeforeAr : e.placeBeforeEn) || [e.fromPlate, e.fromPosition].filter(Boolean).join(' · ') || '—'}</td>
+                      <td className="px-4 py-3 text-xs text-slate-600">{(ar ? e.placeAfterAr : e.placeAfterEn) || [e.toPlate, e.toPosition].filter(Boolean).join(' · ') || '—'}</td>
                       <td className="px-4 py-3 text-xs text-slate-500 max-w-[260px]">{e.reason || e.notes || '—'}</td>
                       <td className="px-4 py-3 text-xs text-slate-500">{e.performedByName || '—'}</td>
                     </tr>

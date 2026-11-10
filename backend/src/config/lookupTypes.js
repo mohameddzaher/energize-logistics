@@ -650,9 +650,11 @@ const REGISTRY = [
       { key: 'transportPortToCustomer', nameAr: 'فاتورة النقل من الميناء إلى العميل', nameEn: 'Transport: port → customer' },
       { key: 'transportPortToYard', nameAr: 'فاتورة النقل من الميناء إلى الساحة', nameEn: 'Transport: port → yard' },
       { key: 'transportYardToCustomer', nameAr: 'فاتورة النقل من الساحة إلى العميل', nameEn: 'Transport: yard → customer' },
+      { key: 'transportYardToAgent', nameAr: 'فاتورة النقل من الساحة إلى الوكيل', nameEn: 'Transport: yard → agent' },
       { key: 'dutyPaid', nameAr: 'التخليص الجمركي', nameEn: 'Customs clearance' },
       { key: 'appointmentBooking', nameAr: 'حجز الموعد', nameEn: 'Appointment booking' },
       { key: 'labourExpenses', nameAr: 'مصاريف عمال', nameEn: 'Labour expenses' },
+      { key: 'storageUnloading', nameAr: 'تخزين وتفريغ', nameEn: 'Storage & unloading' },
     ]],
     ['customs_city', 'مدن التخليص', 'Customs Cities', [
       { key: 'jeddah', nameAr: 'جدة', nameEn: 'Jeddah' },

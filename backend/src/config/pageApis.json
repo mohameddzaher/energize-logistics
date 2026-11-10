@@ -971,6 +971,7 @@
     },
     "/system/customs": {
       "apis": [
+        "/api/collections-dept/invoices",
         "/api/customer-hub/presence",
         "/api/customs-clearance",
         "/api/customs-clearance/:id",
@@ -1018,6 +1019,8 @@
     },
     "/system/customs/settings": {
       "apis": [
+        "/api/collections-dept/email-template",
+        "/api/customs-clearance/email-template",
         "/api/customs-clearance/settings",
         "/api/lookups/types"
       ],

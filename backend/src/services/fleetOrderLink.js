@@ -3,7 +3,7 @@
  * Shipment orders (3PL) treats the fleet as a supplier: when the order's supplier is our company («تنشيط»), the same
  * load appears in «إدارة الأسطول» as a linked FleetShipment (same transport order number, `shipmentOrder` ref), so the
  * fleet works it like its own: status, driver, follow-ups. Both sides follow each other at once.
- * Money: the fleet's price («إيجار السيارة», its selling price) is the company's purchase price on the order; the fleet
+ * Money: the fleet's selling figure («الإيجار كامل» when written, else «إيجار السيارة») is the company's purchase price on the order; the fleet
  * never sees the order's selling price. The order keeps the one operations-workflow row (the fleet load does not create
  * its own), so the workflow reads purchase = fleet price and sale = what sales wrote.
  * Writes are diffed updateOne calls that do not call back, so the two sides settle instead of looping.
@@ -85,8 +85,8 @@ async function orderToFleet(orderId) {
     notes: str(o.notes),
   };
   if (FLEET_STATUSES.has(str(o.status))) wanted.status = str(o.status);
-  // The order's purchase price is the fleet's price; an empty purchase price leaves what the fleet wrote.
-  if (num(o.buyPrice) > 0) wanted.price = num(o.buyPrice);
+  // The order's purchase price is the fleet's selling figure; an empty purchase price leaves what the fleet wrote.
+  if (num(o.buyPrice) > 0) wanted[load ? require('./shipmentOrderWorkflowLink').fleetPriceField(load) : 'price'] = num(o.buyPrice);
   if (refs.vehicle && refs.vehicle.supervisor) { wanted.supervisor = refs.vehicle.supervisor; wanted.supervisorName = refs.supervisorName; }
 
   if (!load) {
@@ -123,7 +123,8 @@ async function fleetToOrder(loadId, actor) {
   const wanted = {
     driverName: str(load.driverName), driverPhone: str(load.driverPhone), vehiclePlate: str(load.vehiclePlate),
   };
-  if (num(load.price) > 0) wanted.buyPrice = num(load.price);
+  const eff = require('./shipmentOrderWorkflowLink').fleetPrice(load);
+  if (eff > 0) wanted.buyPrice = eff;
   const set = Object.fromEntries(Object.entries(wanted).filter(([k, v]) => !same(o[k], v)));
   const push = {};
   if (str(load.status) && str(load.status) !== str(o.status)) {

@@ -574,18 +574,22 @@ exports.updateShipment = async (req, res) => {
     let sellingRequest = null;
     // A branch customer's load, or one carrying a shipment order, prices what the company pays its fleet (a purchase), not a sale: no selling-price approval.
     const purchaseSide = shipment.shipmentOrder || (data.customerType || shipment.customerType) === 'branch';
-    if (!purchaseSide && data.price !== undefined && require('../config/sellingPriceRequests').sellingByRequest(req.user)) {
-      const v = data.price === '' || data.price === null ? 0 : Number(data.price);
-      if (Math.round(v * 100) !== Math.round((Number(shipment.price) || 0) * 100)) {
+    // The selling figure is «الإيجار كامل» when written, else «إيجار السيارة»; a change to either that moves it goes to approval.
+    if (!purchaseSide && (data.price !== undefined || data.fullRent !== undefined) && require('../config/sellingPriceRequests').sellingByRequest(req.user)) {
+      const { fleetPrice } = require('../services/shipmentOrderWorkflowLink');
+      const n = (x) => (x === '' || x == null ? 0 : Number(x) || 0);
+      const before = fleetPrice(shipment);
+      const v = fleetPrice({ price: data.price !== undefined ? n(data.price) : shipment.price, fullRent: data.fullRent !== undefined ? n(data.fullRent) : shipment.fullRent });
+      if (Math.round(v * 100) !== Math.round(before * 100)) {
         const link = require('../services/shipmentOrderWorkflowLink');
         await link.mirrorFleet(shipment._id);
         const row = await require('../models/OperationsWorkflow').findOne({ fleetShipment: shipment._id }).lean();
         if (!row) return res.status(409).json({ message: 'لا يوجد سطر في سير العمل لهذه الحمولة بعد — أعد المحاولة بعد قليل.' });
-        const r = await require('../services/sellingPriceRequests').createRequest({ workflow: row, origin: 'workflow', raw: data.price, user: req.user });
+        const r = await require('../services/sellingPriceRequests').createRequest({ workflow: row, origin: 'workflow', raw: v, user: req.user });
         if (r.error) return res.status(r.error.status).json(r.error.body);
         sellingRequest = r.request || null;
+        delete data.price; delete data.fullRent;
       }
-      delete data.price;
     }
 
     // An edit can switch the load to a first-time customer, exactly like create.

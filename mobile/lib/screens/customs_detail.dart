@@ -11,6 +11,7 @@ import '../ui/file_upload.dart';
 import '../ui/customs_link.dart';
 import 'jp.dart' show JpTaskPanel;
 import 'customs_party.dart';
+import 'customs_email.dart';
 
 /// Customs clearance details: the stage cycle as computed by the server (`pipeline`), the units (containers or cars) and their transport data, issuing the invoice and the transport invoice, completion tasks with dates, documents, payment stages and costs.
 class CustomsDetailScreen extends StatefulWidget {
@@ -660,6 +661,18 @@ class _CustomsDetailScreenState extends State<CustomsDetailScreen> {
                         ]),
                       ),
                       const SizedBox(height: 12),
+                    ],
+                    // Daily follow-up to the customer on where the shipment stands, from the customs mailbox.
+                    if (canEditCustoms(context) && !cancelled) ...[
+                      SizedBox(
+                        width: double.infinity,
+                        child: OutlinedButton.icon(
+                          onPressed: () => openCustomsFollowUpEmail(context, widget.clearanceId),
+                          icon: const Icon(Icons.mail_outline, size: 18),
+                          label: Text(tr('إرسال بريد للعميل', 'Email the customer')),
+                        ),
+                      ),
+                      const SizedBox(height: 8),
                     ],
                     // Invoicing and finishing are two separate actions.
                     if (completed)
@@ -1950,14 +1963,17 @@ class _InvoiceSheetState extends State<_InvoiceSheet> {
     super.dispose();
   }
 
+  bool _optional(Map<String, dynamic> d) => d['optional'] == true;
+
   void _done() {
     final items = <Map<String, dynamic>>[];
     for (final d in widget.defs) {
       final key = '${d['key']}';
       final text = _amount[key]!.text.trim();
-      // All three items are required; they are not taken from the payment stages.
+      // Optional lines (transport legs, labour) may stay empty; every other line is required.
       if (text.isEmpty) {
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(tr('اكتب سعرَ «${d['nameAr']}» — البنودُ الثلاثةُ مطلوبة', 'Enter "${d['nameEn'] ?? d['nameAr']}" — all three items are required'))));
+        if (_optional(d)) continue;
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(tr('اكتب سعرَ «${d['nameAr']}»', 'Enter the price of "${d['nameEn'] ?? d['nameAr']}"'))));
         return;
       }
       final amount = num.tryParse(text);
@@ -1969,6 +1985,10 @@ class _InvoiceSheetState extends State<_InvoiceSheet> {
         'key': key, 'amount': amount,
         if (_file[key] != null) ...{'file': _file[key]!.dataUrl, 'fileName': _file[key]!.fileName},
       });
+    }
+    if (items.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(tr('اكتب سعرَ بندٍ واحدٍ على الأقلّ', 'Enter at least one price'))));
+      return;
     }
     Navigator.pop(context, items);
   }
@@ -1982,8 +2002,8 @@ class _InvoiceSheetState extends State<_InvoiceSheet> {
           child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
             Text(tr('طلب فوترة من الإدارة الماليّة', 'Request invoicing from Finance'), style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 15)),
             const SizedBox(height: 4),
-            Text(tr('هذه البنودُ الثلاثةُ مستقلّةٌ عن أيّ خانةٍ في المعاملة: اكتب سعرَ كلٍّ منها، وعليها وحدها تُحسَب ضريبة 15%.',
-                    'These three lines stand alone — no link to any field in the transaction. Enter each price; the 15% VAT applies to them only.'),
+            Text(tr('اكتب الأسعارَ التي سيُحاسَب بها العميل. هذه البنودُ مستقلّةٌ عن مراحل السداد (ما ندفعه نحن)، وعليها تُحسَب ضريبة 15%. البنودُ المعلَّمة «اختياري» يجوز تركُها فارغة.',
+                    'Enter the prices the customer will be billed. These lines are separate from the payment stages (what we pay); 15% VAT applies to them. Lines marked optional may be left empty.'),
                 style: const TextStyle(fontSize: 11.5, color: T.inkFaint)),
             const SizedBox(height: 12),
             for (final d in widget.defs) ...[
@@ -1993,7 +2013,11 @@ class _InvoiceSheetState extends State<_InvoiceSheet> {
                     controller: _amount['${d['key']}'],
                     keyboardType: const TextInputType.numberWithOptions(decimal: true),
                     textDirection: TextDirection.ltr,
-                    decoration: InputDecoration(labelText: tr('${d['nameAr'] ?? d['key']}', '${d['nameEn'] ?? d['nameAr'] ?? d['key']}')),
+                    onChanged: (_) => setState(() {}),
+                    decoration: InputDecoration(
+                      labelText: tr('${d['nameAr'] ?? d['key']}', '${d['nameEn'] ?? d['nameAr'] ?? d['key']}'),
+                      helperText: _optional(d) ? tr('اختياري', 'optional') : null,
+                    ),
                   ),
                 ),
                 IconButton(
@@ -2006,17 +2030,28 @@ class _InvoiceSheetState extends State<_InvoiceSheet> {
                   },
                 ),
               ]),
-              // The transport invoice is not required to issue, but its absence is stated here.
-              if (customsTransportInvoiceKeys.contains('${d['key']}') && !widget.transportReceived
-                  && !customsTransportInvoiceKeys.any(_hasFile))
-                Padding(
-                  padding: const EdgeInsets.only(top: 4),
-                  child: Text(tr('فاتورة النقل لم تُستلَم بعد — تُرفَق لاحقًا فتُنهى المعاملة', 'Transport invoice not received yet — attach it later and the transaction closes'),
-                      style: const TextStyle(fontSize: 11.5, color: T.danger, fontWeight: FontWeight.w700)),
-                ),
               const SizedBox(height: 8),
             ],
-            const SizedBox(height: 8),
+            // Preview with the server rule (utils/customsInvoice): typed lines x 1.15; payment stages play no part.
+            Builder(builder: (_) {
+              final net = widget.defs.fold<num>(0, (a, d) => a + (num.tryParse(_amount['${d['key']}']!.text.trim()) ?? 0));
+              final vat = (net * 0.15 * 100).round() / 100;
+              Widget row(String l, num v, {bool bold = false}) => Row(children: [
+                    Expanded(child: Text(l, style: TextStyle(fontSize: 12.5, fontWeight: bold ? FontWeight.w800 : FontWeight.w500))),
+                    Text(v.toStringAsFixed(2), style: TextStyle(fontSize: 12.5, fontWeight: bold ? FontWeight.w800 : FontWeight.w500)),
+                  ]);
+              return Container(
+                padding: const EdgeInsets.all(10),
+                decoration: BoxDecoration(color: const Color(0xFFF8FAFC), borderRadius: BorderRadius.circular(10), border: Border.all(color: const Color(0xFFE2E8F0))),
+                child: Column(children: [
+                  row(tr('البنود (قبل الضريبة)', 'Lines (before VAT)'), net),
+                  row(tr('ضريبة 15%', '15% VAT'), vat),
+                  const Divider(height: 12),
+                  row(tr('إجمالي الفاتورة', 'Invoice total'), net + vat, bold: true),
+                ]),
+              );
+            }),
+            const SizedBox(height: 12),
             SizedBox(
               width: double.infinity,
               child: FilledButton(onPressed: _done, child: Text(tr('إرسال طلب الفوترة', 'Send invoice request'))),

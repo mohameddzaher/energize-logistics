@@ -7,6 +7,9 @@ import '../ui/app_scaffold.dart';
 import '../ui/theme.dart';
 import '../ui/widgets.dart';
 import 'reference_data.dart' show LookupValuesScreen;
+import 'collections_settings.dart' show EmailTemplateTab;
+import 'package:provider/provider.dart';
+import '../services/auth.dart';
 
 /// Customs section settings, counterpart of `/system/customs/settings` on the web.
 /// Three areas as on the web: dropdown lists (lists of the `customs` module plus the work-plan tasks `jp_task_customs`), customers and agents (files, not lists), and the upcoming-transactions alert period (`PUT /api/customs-clearance/settings`).
@@ -176,6 +179,7 @@ class _CustomsSettingsScreenState extends State<CustomsSettingsScreen> {
             ('lists', tr('القوائم المنسدلة', 'Dropdown lists')),
             ('parties', tr('العملاء والوكلاء', 'Customers & agents')),
             ('alerts', tr('التنبيهات', 'Alerts')),
+            ('email', tr('قالب البريد', 'Email template')),
           ])
             ChoiceChip(label: Text(t.$2), selected: _tab == t.$1, onSelected: (_) => setState(() => _tab = t.$1)),
         ]),
@@ -183,6 +187,13 @@ class _CustomsSettingsScreenState extends State<CustomsSettingsScreen> {
         if (_tab == 'lists') _lists(),
         if (_tab == 'parties') _parties(),
         if (_tab == 'alerts') _alerts(),
+        // Customer follow-up email template, sent from the customs mailbox; edited by the section heads only.
+        if (_tab == 'email')
+          EmailTemplateTab(
+            endpoint: '/api/customs-clearance/email-template', liveEvent: 'customs:email-template', embedded: true,
+            titleAr: 'قالب بريد المتابعة للعميل', titleEn: 'Customer follow-up email template',
+            canEdit: const ['super_admin', 'admin', 'it_manager', 'it_specialist', 'customs_manager'].contains(context.watch<AuthProvider>().role),
+          ),
       ]),
     );
   }

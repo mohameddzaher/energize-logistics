@@ -1179,21 +1179,41 @@ class _CustomsInvoiceRequestsState extends State<_CustomsInvoiceRequests> {
                     margin: const EdgeInsets.only(top: 6),
                     padding: const EdgeInsets.all(8),
                     decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(8)),
+                    // The prices billed to the customer as typed in the request; payment stages are not part of it.
                     child: Column(children: [
+                      Row(children: [
+                        Expanded(child: Text(tr('البند', 'Line'), style: const TextStyle(fontSize: 10.5, color: T.inkFaint, fontWeight: FontWeight.w700))),
+                        SizedBox(width: 62, child: Text(tr('السعر', 'Price'), textAlign: TextAlign.end, style: const TextStyle(fontSize: 10.5, color: T.inkFaint, fontWeight: FontWeight.w700))),
+                        SizedBox(width: 62, child: Text(tr('الضريبة 15%', 'VAT 15%'), textAlign: TextAlign.end, style: const TextStyle(fontSize: 10.5, color: T.inkFaint, fontWeight: FontWeight.w700))),
+                        SizedBox(width: 68, child: Text(tr('الإجمالي', 'Total'), textAlign: TextAlign.end, style: const TextStyle(fontSize: 10.5, color: T.inkFaint, fontWeight: FontWeight.w700))),
+                      ]),
                       for (final l in lines)
                         Padding(
-                          padding: const EdgeInsets.symmetric(vertical: 2),
-                          child: Row(children: [
-                            Expanded(child: Text('${l['label'] ?? ''}${l['from'] == 'stage' ? ' (${tr('مرحلة سداد', 'payment stage')})' : ''}', style: const TextStyle(fontSize: 11.5))),
-                            if ('${l['fileUrl'] ?? ''}'.isNotEmpty)
-                              InkWell(onTap: () => _openUrl('${l['fileUrl']}'), child: const Icon(Icons.attach_file, size: 14, color: T.info)),
-                            const SizedBox(width: 6),
-                            Text(_fmtAmt(l['amount']), style: const TextStyle(fontSize: 11.5)),
-                            if (((l['vat'] as num?) ?? 0) != 0) Text('  +${_fmtAmt(l['vat'])}', style: const TextStyle(fontSize: 11, color: T.inkFaint)),
-                            const SizedBox(width: 6),
-                            Text(_fmtAmt(l['total']), style: const TextStyle(fontSize: 11.5, fontWeight: FontWeight.w800)),
+                          padding: const EdgeInsets.symmetric(vertical: 3),
+                          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                            Row(children: [
+                              Expanded(child: Row(children: [
+                                Flexible(child: Text('${l['label'] ?? ''}', style: const TextStyle(fontSize: 11.5))),
+                                if ('${l['fileUrl'] ?? ''}'.isNotEmpty)
+                                  InkWell(onTap: () => _openUrl('${l['fileUrl']}'), child: const Padding(padding: EdgeInsets.symmetric(horizontal: 3), child: Icon(Icons.attach_file, size: 14, color: T.info))),
+                              ])),
+                              SizedBox(width: 62, child: Text(_fmtAmt(l['amount']), textAlign: TextAlign.end, style: const TextStyle(fontSize: 11.5))),
+                              SizedBox(width: 62, child: Text(_fmtAmt(l['vat']), textAlign: TextAlign.end, style: const TextStyle(fontSize: 11.5, color: T.inkSoft))),
+                              SizedBox(width: 68, child: Text(_fmtAmt(l['total']), textAlign: TextAlign.end, style: const TextStyle(fontSize: 11.5, fontWeight: FontWeight.w800))),
+                            ]),
+                            if ('${l['note'] ?? ''}'.isNotEmpty) Text('${l['note']}', style: const TextStyle(fontSize: 10.5, color: T.inkFaint)),
                           ]),
                         ),
+                      const Divider(height: 10),
+                      Row(children: [
+                        Expanded(child: Text(tr('إجمالي الفاتورة', 'Invoice total'), style: const TextStyle(fontSize: 11.5, fontWeight: FontWeight.w900))),
+                        SizedBox(width: 62, child: Text(_fmtAmt(r['net'] ?? (((r['total'] as num?) ?? 0) - ((r['vat'] as num?) ?? 0))), textAlign: TextAlign.end, style: const TextStyle(fontSize: 11.5, fontWeight: FontWeight.w900))),
+                        SizedBox(width: 62, child: Text(_fmtAmt(r['vat']), textAlign: TextAlign.end, style: const TextStyle(fontSize: 11.5, fontWeight: FontWeight.w900))),
+                        SizedBox(width: 68, child: Text(_fmtAmt(r['total']), textAlign: TextAlign.end, style: const TextStyle(fontSize: 11.5, fontWeight: FontWeight.w900))),
+                      ]),
+                      if ('${r['note'] ?? ''}'.isNotEmpty)
+                        Align(alignment: AlignmentDirectional.centerStart, child: Padding(padding: const EdgeInsets.only(top: 4),
+                            child: Text('${tr('ملاحظة الطلب:', 'Request note:')} ${r['note']}', style: const TextStyle(fontSize: 11, color: T.inkSoft)))),
                     ]),
                   ),
                 Text('${tr('طلبها', 'By')} ${r['requestedByName'] ?? '—'} · ${_dmy(r['requestedAt'])}${'${r['note'] ?? ''}'.isNotEmpty ? ' · «${r['note']}»' : ''}',

@@ -36,7 +36,7 @@ class _CollectionsSettingsScreenState extends State<CollectionsSettingsScreen> {
             Tab(icon: const Icon(Icons.mail_outline, size: 18), text: tr('قالب البريد', 'Email template')),
           ],
         ),
-        body: const TabBarView(children: [_ListsTab(), _RegistersTab(), _EmailTemplateTab()]),
+        body: const TabBarView(children: [_ListsTab(), _RegistersTab(), EmailTemplateTab()]),
       ),
     );
   }
@@ -143,14 +143,21 @@ class _RegistersTab extends StatelessWidget {
   }
 }
 
-/// Account statement email template: placeholders in braces are filled on send, and a save applies from the next message (EmailTemplateEditor on the web).
-class _EmailTemplateTab extends StatefulWidget {
-  const _EmailTemplateTab();
+/// Department email template: placeholders in braces are filled on send, and a save applies from the next message (EmailTemplateEditor on the web).
+/// Collections by default; customs passes its own endpoint, live event, title and edit right.
+class EmailTemplateTab extends StatefulWidget {
+  final String endpoint;
+  final String liveEvent;
+  final String? titleAr;
+  final String? titleEn;
+  final bool? canEdit;
+  final bool embedded;
+  const EmailTemplateTab({super.key, this.endpoint = '/api/collections-dept/email-template', this.liveEvent = 'collections:changed', this.titleAr, this.titleEn, this.canEdit, this.embedded = false});
   @override
-  State<_EmailTemplateTab> createState() => _EmailTemplateTabState();
+  State<EmailTemplateTab> createState() => _EmailTemplateTabState();
 }
 
-class _EmailTemplateTabState extends State<_EmailTemplateTab> {
+class _EmailTemplateTabState extends State<EmailTemplateTab> {
   Map<String, dynamic>? _tpl;
   final _subject = TextEditingController();
   final _body = TextEditingController();
@@ -167,12 +174,12 @@ class _EmailTemplateTabState extends State<_EmailTemplateTab> {
     for (final c in [_subject, _body, _sig]) { c.addListener(_changed); }
     // A colleague saved the template from another screen; the new one is read unless there is an unsaved local edit.
     _onLive = () { if (!_dirty) _load(); };
-    Live.instance.on('collections:changed', _onLive);
+    Live.instance.on(widget.liveEvent, _onLive);
   }
 
   @override
   void dispose() {
-    Live.instance.off('collections:changed', _onLive);
+    Live.instance.off(widget.liveEvent, _onLive);
     _subject.dispose(); _body.dispose(); _sig.dispose();
     super.dispose();
   }
@@ -181,7 +188,7 @@ class _EmailTemplateTabState extends State<_EmailTemplateTab> {
 
   Future<void> _load() async {
     try {
-      final d = Map<String, dynamic>.from(await Api.instance.get('/api/collections-dept/email-template'));
+      final d = Map<String, dynamic>.from(await Api.instance.get(widget.endpoint));
       if (!mounted) return;
       setState(() {
         _tpl = d;
@@ -210,7 +217,7 @@ class _EmailTemplateTabState extends State<_EmailTemplateTab> {
   Future<void> _save() async {
     setState(() => _saving = true);
     try {
-      final r = await Api.instance.put('/api/collections-dept/email-template', {
+      final r = await Api.instance.put(widget.endpoint, {
         'subject': _subject.text, 'body': _body.text, 'signature': _sig.text,
         'signatureImage': _sigImg, 'signatureImageName': _sigImgName,
       });
@@ -260,16 +267,16 @@ class _EmailTemplateTabState extends State<_EmailTemplateTab> {
     if (_error != null && _tpl == null) return ErrorRetry(message: _error!, onRetry: _load);
     final t = _tpl;
     if (t == null) return const Center(child: CircularProgressIndicator());
-    final canEdit = collectionsCanEdit;
+    final canEdit = widget.canEdit ?? collectionsCanEdit;
     final placeholders = (t['placeholders'] as List? ?? const []).whereType<List>().where((p) => p.isNotEmpty).toList();
     final defaults = (t['defaults'] as Map?) ?? const {};
     final preview = _sigPreview();
-    return ListView(padding: const EdgeInsets.all(14), children: [
+    final children = <Widget>[
       AppCard(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
         Row(children: [
           const Icon(Icons.mail_outline, color: T.orange),
           const SizedBox(width: 8),
-          Expanded(child: Text(tr('قالب بريد كشف الحساب', 'Statement email template'), style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 15))),
+          Expanded(child: Text(tr(widget.titleAr ?? 'قالب بريد كشف الحساب', widget.titleEn ?? 'Statement email template'), style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 15))),
         ]),
         const SizedBox(height: 4),
         Text('${tr('يُرسَل من', 'Sent from')} ${t['mailbox'] ?? ''}', style: const TextStyle(fontSize: 12.5, color: T.inkSoft), textDirection: TextDirection.ltr),
@@ -337,6 +344,8 @@ class _EmailTemplateTabState extends State<_EmailTemplateTab> {
           ),
         ]),
       ],
-    ]);
+    ];
+    // Embedded inside another scrolling page (customs settings) it must not scroll by itself.
+    return widget.embedded ? Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: children) : ListView(padding: const EdgeInsets.all(14), children: children);
   }
 }

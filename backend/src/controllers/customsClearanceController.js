@@ -1616,10 +1616,8 @@ const saleItemDefs = async () => {
   // Seeded lines keep the seed order (new seeds are appended with clashing `order` values); lines added by hand follow.
   const rank = (k) => { const i = seed.findIndex((x) => x.key === k); return i < 0 ? 100 : i; };
   return [...list].sort((a, b) => rank(a.key) - rank(b.key))
-    .map((r) => ({ key: r.key, nameAr: r.nameAr, nameEn: r.nameEn, optional: OPTIONAL_SALE_ITEMS.has(r.key) }));
+    .map((r) => ({ key: r.key, nameAr: r.nameAr, nameEn: r.nameEn, optional: true }));
 };
-/** Lines that may be left empty in an invoicing request: the three transport legs and labour. Every other line is required. */
-const OPTIONAL_SALE_ITEMS = new Set(['transportPortToCustomer', 'transportPortToYard', 'transportYardToCustomer', 'labourExpenses']);
 
 /** New invoice number: a clearance-specific sequence ("CUS-1001") not confused with others. The largest issued is read and incremented; a number is never reused or changed once given. */
 const nextSaleInvoiceNumber = async () => {
@@ -1790,10 +1788,7 @@ exports.issueInvoice = async (req, res) => {
     const sent = Array.isArray(req.body.saleItems) ? req.body.saleItems : [];
     const err = await writeSaleItems(clearance, sent, req);
     if (err) return res.status(400).json({ message: err });
-    // These are the prices billed to the customer, unrelated to payment stages (what we pay). Only the optional lines may be left empty.
-    const defs = await saleItemDefs();
-    const missing = defs.filter((d) => !d.optional && !clearance.saleItems.some((x) => x.key === d.key));
-    if (missing.length) return res.status(400).json({ message: `اكتب سعرَ: ${missing.map((d) => d.nameAr).join('، ')}`, code: 'SALE_ITEMS_REQUIRED' });
+    // The prices billed to the customer, unrelated to payment stages (what we pay). No line is required: the officer writes only what applies (owner, 2026-11-10).
     if (!clearance.saleItems.length) {
       return res.status(400).json({ message: 'طلبُ فوترةٍ بلا بنود — اكتب سعرَ بندٍ واحدٍ على الأقلّ' });
     }

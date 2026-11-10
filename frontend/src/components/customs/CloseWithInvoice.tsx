@@ -2,10 +2,10 @@
 /**
  * Invoicing request to Finance: the prices billed to the customer, one per line, with an optional note and attachment.
  * Payment stages are what we pay and play no part here. Invoice total = these lines x 1.15, computed by backend/utils/customsInvoice; the preview mirrors that rule.
- * Lines flagged `optional` by the server (transport legs, labour) may stay empty.
+ * No line is required: the officer fills only the lines that apply, at least one.
  */
 import { useState, useMemo, useRef, useEffect } from 'react';
-import { X, Loader2, Paperclip, Receipt, AlertTriangle } from 'lucide-react';
+import { X, Loader2, Paperclip, Receipt } from 'lucide-react';
 import api from '@/lib/api';
 
 export interface SaleDef { key: string; nameAr: string; nameEn: string; optional?: boolean }
@@ -71,7 +71,6 @@ export default function CloseWithInvoice({
       saleNet: Math.round(saleNet * 100) / 100,
       vat: Math.round(vat * 100) / 100,
       grand: Math.round((saleNet + vat) * 100) / 100,
-      missing: defs.filter((d) => !d.optional && !have.has(d.key)).map((d) => (ar ? d.nameAr : d.nameEn)),
       empty: priced.length === 0,
     };
   }, [rows, defs, ar]);
@@ -82,7 +81,6 @@ export default function CloseWithInvoice({
       .filter(([, v]) => String(v.amount).trim() !== '')
       .map(([key, v]) => ({ key, amount: Number(v.amount), note: v.note, file: v.file?.dataUrl, fileName: v.file?.fileName }));
     if (preview.empty) { notify(t('اكتب سعرَ بندٍ واحدٍ على الأقلّ', 'Enter at least one price'), 'error'); return; }
-    if (preview.missing.length) { notify(t(`اكتب سعرَ: ${preview.missing.join('، ')}`, `Enter the price of: ${preview.missing.join(', ')}`), 'error'); return; }
     setBusy(true);
     try {
       const d = await api.patch<any>(`/api/customs-clearance/${clearanceId}/invoice`, { saleItems });
@@ -109,8 +107,8 @@ export default function CloseWithInvoice({
 
         <div className="p-5 space-y-4 overflow-auto">
           <p className="text-[12px] text-slate-500">
-            {t('اكتب الأسعارَ التي سيُحاسَب بها العميل. هذه البنودُ مستقلّةٌ عن مراحل السداد (ما ندفعه نحن)، وعليها تُحسَب ضريبة 15%. البنودُ المعلَّمة «اختياري» يجوز تركُها فارغة.',
-               'Enter the prices the customer will be billed. These lines are separate from the payment stages (what we pay); 15% VAT applies to them. Lines marked optional may be left empty.')}
+            {t('اكتب سعرَ البنود التي تخصّ هذه المعاملة فقط واترك الباقي فارغًا. هذه الأسعارُ هي ما سيُحاسَب به العميل، ومستقلّةٌ عن مراحل السداد، وعليها تُحسَب ضريبة 15%.',
+               'Enter only the lines that apply and leave the rest empty. These are the prices billed to the customer, separate from the payment stages; 15% VAT applies.')}
           </p>
 
           <div className="space-y-2">
@@ -120,8 +118,7 @@ export default function CloseWithInvoice({
                 <div key={d.key} className="rounded-xl border border-slate-200 p-3">
                   <div className="flex flex-wrap items-end gap-2">
                     <div className="min-w-[9rem] flex-1">
-                      <p className="text-[13px] font-semibold text-slate-800">{ar ? d.nameAr : d.nameEn}
-                        {d.optional && <span className="ms-1.5 rounded bg-slate-100 px-1.5 py-0.5 text-[10px] font-semibold text-slate-500">{t('اختياري', 'optional')}</span>}</p>
+                      <p className="text-[13px] font-semibold text-slate-800">{ar ? d.nameAr : d.nameEn}</p>
                       <p className="text-[11px] text-slate-400">{t('+ ضريبة 15%', '+ 15% VAT')}</p>
                     </div>
                     <label className="block">
@@ -164,12 +161,6 @@ export default function CloseWithInvoice({
               <span>{t('إجمالي الفاتورة', 'Invoice total')}</span>
               <span className="tabular-nums">{money(preview.grand)}</span>
             </div>
-            {!!preview.missing.length && (
-              <p className="text-[11px] text-red-700 flex items-center gap-1.5 pt-1">
-                <AlertTriangle className="w-3.5 h-3.5" />
-                {t(`مطلوبٌ قبل الإرسال: ${preview.missing.join('، ')}`, `Required before sending: ${preview.missing.join(', ')}`)}
-              </p>
-            )}
           </div>
         </div>
 
@@ -179,8 +170,8 @@ export default function CloseWithInvoice({
                'The request goes to Customs Finance; the transaction counts as invoiced only when Finance marks it invoiced.')}
           </p>
           <button type="button" onClick={onClose} className="px-4 py-2 text-slate-500 hover:text-slate-900 text-sm">{t('إلغاء', 'Cancel')}</button>
-          <button type="button" onClick={save} disabled={busy || !!preview.missing.length || preview.empty}
-            title={preview.missing.length ? t(`اكتب سعرَ: ${preview.missing.join('، ')}`, `Enter: ${preview.missing.join(', ')}`) : undefined}
+          <button type="button" onClick={save} disabled={busy || preview.empty}
+            title={preview.empty ? t('اكتب سعرَ بندٍ واحدٍ على الأقلّ', 'Enter at least one price') : undefined}
             className="inline-flex items-center gap-1.5 rounded-lg bg-[#f37121] px-4 py-2 text-xs font-bold text-white disabled:opacity-40">
             {busy ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Receipt className="h-3.5 w-3.5" />}
             {t('طلب الفوترة وإغلاق المعاملة', 'Request invoicing & close')}

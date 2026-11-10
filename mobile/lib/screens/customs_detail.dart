@@ -1963,19 +1963,13 @@ class _InvoiceSheetState extends State<_InvoiceSheet> {
     super.dispose();
   }
 
-  bool _optional(Map<String, dynamic> d) => d['optional'] == true;
-
   void _done() {
     final items = <Map<String, dynamic>>[];
     for (final d in widget.defs) {
       final key = '${d['key']}';
       final text = _amount[key]!.text.trim();
-      // Optional lines (transport legs, labour) may stay empty; every other line is required.
-      if (text.isEmpty) {
-        if (_optional(d)) continue;
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(tr('اكتب سعرَ «${d['nameAr']}»', 'Enter the price of "${d['nameEn'] ?? d['nameAr']}"'))));
-        return;
-      }
+      // No line is required: only the lines that apply are written.
+      if (text.isEmpty) continue;
       final amount = num.tryParse(text);
       if (amount == null || amount < 0) {
         ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(tr('اكتب سعرَ «${d['nameAr']}» رقمًا صحيحًا', 'Enter a valid amount for "${d['nameEn'] ?? d['nameAr']}"'))));
@@ -2002,8 +1996,8 @@ class _InvoiceSheetState extends State<_InvoiceSheet> {
           child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
             Text(tr('طلب فوترة من الإدارة الماليّة', 'Request invoicing from Finance'), style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 15)),
             const SizedBox(height: 4),
-            Text(tr('اكتب الأسعارَ التي سيُحاسَب بها العميل. هذه البنودُ مستقلّةٌ عن مراحل السداد (ما ندفعه نحن)، وعليها تُحسَب ضريبة 15%. البنودُ المعلَّمة «اختياري» يجوز تركُها فارغة.',
-                    'Enter the prices the customer will be billed. These lines are separate from the payment stages (what we pay); 15% VAT applies to them. Lines marked optional may be left empty.'),
+            Text(tr('اكتب سعرَ البنود التي تخصّ هذه المعاملة فقط واترك الباقي فارغًا. هذه الأسعارُ هي ما سيُحاسَب به العميل، ومستقلّةٌ عن مراحل السداد، وعليها تُحسَب ضريبة 15%.',
+                    'Enter only the lines that apply and leave the rest empty. These are the prices billed to the customer, separate from the payment stages; 15% VAT applies.'),
                 style: const TextStyle(fontSize: 11.5, color: T.inkFaint)),
             const SizedBox(height: 12),
             for (final d in widget.defs) ...[
@@ -2016,7 +2010,6 @@ class _InvoiceSheetState extends State<_InvoiceSheet> {
                     onChanged: (_) => setState(() {}),
                     decoration: InputDecoration(
                       labelText: tr('${d['nameAr'] ?? d['key']}', '${d['nameEn'] ?? d['nameAr'] ?? d['key']}'),
-                      helperText: _optional(d) ? tr('اختياري', 'optional') : null,
                     ),
                   ),
                 ),

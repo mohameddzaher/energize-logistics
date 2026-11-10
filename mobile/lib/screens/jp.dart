@@ -12,7 +12,6 @@ import '../ui/file_upload.dart';
 import '../ui/theme.dart';
 import '../ui/widgets.dart';
 import '../ui/search_field.dart';
-import '../ui/stat_grid.dart';
 import 'customs_detail.dart';
 
 /// Work plan (JP), counterpart of `JpBoard` and `JpDashboard` on the web.
@@ -870,6 +869,8 @@ class _JpDashScreenState extends State<JpDashScreen> {
   String _assignee = '';
   // Dashboard filters as on the web: range, project, type and contact method, all on the server.
   String _from = '', _to = '', _project = '', _kind = '', _action = '';
+  // Section-specific filters: task type (the section's own titles) and what the task is linked to.
+  String _title = '', _link = '';
   int _seq = 0;
   // Daily view: who worked on what on a given day and how long it took.
   Map<String, dynamic>? _daily;
@@ -891,6 +892,8 @@ class _JpDashScreenState extends State<JpDashScreen> {
         if (_project.isNotEmpty) 'project=$_project',
         if (_kind.isNotEmpty) 'kind=$_kind',
         if (_action.isNotEmpty) 'action=$_action',
+        if (_title.isNotEmpty) 'title=${Uri.encodeQueryComponent(_title)}',
+        if (_link.isNotEmpty) 'link=$_link',
       ].map((x) => '&$x').join();
       final d = Map<String, dynamic>.from(await Api.instance.get('/api/jp/dashboard?${_qs(widget.scope, widget.section)}$f'));
       if (mounted && mine == _seq) setState(() { _d = d; _error = null; });
@@ -911,7 +914,9 @@ class _JpDashScreenState extends State<JpDashScreen> {
 
   Widget _filters(Map<String, dynamic> d, bool management) {
     final projects = List<Map<String, dynamic>>.from(d['projectOptions'] ?? const []);
-    final active = [_from, _to, _project, _kind, _action, _assignee].any((x) => x.isNotEmpty);
+    final active = [_from, _to, _project, _kind, _action, _assignee, _title, _link].any((x) => x.isNotEmpty);
+    final titles = List<String>.from((d['titleOptions'] as List? ?? const []).map((x) => '$x'));
+    final links = List<Map<String, dynamic>>.from(d['linkOptions'] ?? const []);
     Widget drop(String label, String value, List<(String, String)> items, void Function(String) on) => DropdownButtonFormField<String>(
       initialValue: items.any((x) => x.$1 == value) ? value : '', isExpanded: true,
       decoration: InputDecoration(isDense: true, labelText: label, border: const OutlineInputBorder()),
@@ -927,9 +932,25 @@ class _JpDashScreenState extends State<JpDashScreen> {
         )),
         if (active) TextButton.icon(
           icon: const Icon(Icons.close, size: 16), label: Text(tr('إزالة الفلاتر', 'Clear')),
-          onPressed: () { setState(() { _from = _to = _project = _kind = _action = _assignee = ''; }); _load(); },
+          onPressed: () { setState(() { _from = _to = _project = _kind = _action = _assignee = _title = _link = ''; }); _load(); },
         ),
       ]),
+      if (titles.isNotEmpty || links.isNotEmpty) ...[
+        const SizedBox(height: 8),
+        Row(children: [
+          if (titles.isNotEmpty) Expanded(child: drop(tr('نوع المهمّة', 'Task type'), _title, [
+            ('', tr('كلُّ أنواع المهامّ', 'All task types')),
+            for (final x in titles) (x, x),
+            if (_title.isNotEmpty && !titles.contains(_title)) (_title, _title),
+          ], (v) => _title = v)),
+          if (titles.isNotEmpty && links.isNotEmpty) const SizedBox(width: 8),
+          if (links.isNotEmpty) Expanded(child: drop(tr('مرتبطة بـ', 'Linked to'), _link, [
+            ('', tr('مرتبطة بأيّ شيء', 'Linked to anything')),
+            for (final l in links) ('${l['kind']}', '${tr('مرتبطة بـ ${l['ar']}', 'Linked to ${l['en']}')} (${l['count'] ?? 0})'),
+            ('none', tr('بلا ارتباط', 'Not linked')),
+          ], (v) => _link = v)),
+        ]),
+      ],
       const SizedBox(height: 8),
       Row(children: [
         if (projects.isNotEmpty) ...[
@@ -964,11 +985,32 @@ class _JpDashScreenState extends State<JpDashScreen> {
   Widget _dailyCard() {
     final d = _daily;
     final rows = List<Map<String, dynamic>>.from(d?['rows'] ?? const []);
-    final people = List<Map<String, dynamic>>.from(d?['people'] ?? const []);
     const st = {'todo': ('لم تبدأ', 'Not started'), 'doing': ('جارية', 'In progress'), 'paused': ('متوقّفة', 'Paused'), 'done': ('تمّت', 'Done')};
+    const dot = {'todo': T.inkFaint, 'doing': T.success, 'paused': T.warn, 'done': T.info};
+    final multiDay = d != null && '${d['from']}' != '${d['to']}';
+    // One block per person; identical lines (same day, title, status and kind) merged with a count.
+    final groups = <String, Map<String, dynamic>>{};
+    for (final r in rows) {
+      final key = '${r['assignedTo'] ?? r['assignedToName'] ?? '—'}';
+      final g = groups.putIfAbsent(key, () => {'name': '${r['assignedToName'] ?? '—'}', 'tasks': 0, 'done': 0, 'minutes': 0.0, 'running': false, 'lines': <String, Map<String, dynamic>>{}});
+      g['tasks'] = (g['tasks'] as int) + 1;
+      if (r['status'] == 'done') g['done'] = (g['done'] as int) + 1;
+      g['minutes'] = (g['minutes'] as double) + ((r['minutes'] ?? 0) as num).toDouble();
+      if (r['running'] == true) g['running'] = true;
+      final lk = '${r['day']}|${r['title']}|${r['status']}|${r['kind']}';
+      final lines = g['lines'] as Map<String, Map<String, dynamic>>;
+      final line = lines[lk];
+      if (line == null) {
+        lines[lk] = {'day': '${r['day']}', 'title': '${r['title']}', 'status': '${r['status']}', 'count': 1, 'minutes': ((r['minutes'] ?? 0) as num).toDouble(), 'expected': r['expectedMinutes'], 'request': r['kind'] == 'request'};
+      } else {
+        line['count'] = (line['count'] as int) + 1;
+        line['minutes'] = (line['minutes'] as double) + ((r['minutes'] ?? 0) as num).toDouble();
+      }
+    }
+    final ordered = groups.values.toList()..sort((a, b) => (b['minutes'] as double).compareTo(a['minutes'] as double));
     return AppCard(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
       Row(children: [
-        Expanded(child: Text(tr('اليوميّة — مَن عمل على ماذا', 'Daily log'), style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 14))),
+        Expanded(child: Text(tr('اليوميّة', 'Daily log'), style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 14))),
         TextButton.icon(
           icon: const Icon(Icons.event, size: 16),
           label: Text(_day.isEmpty ? tr('اليوم', 'Today') : _day),
@@ -978,30 +1020,87 @@ class _JpDashScreenState extends State<JpDashScreen> {
           },
         ),
       ]),
-      if (people.isNotEmpty) Wrap(spacing: 6, runSpacing: 6, children: [
-        for (final p in people) Chip2('${p['name']}: ${_fmtMin(p['minutes'])} · ${p['tasks']} ${tr('مهمّة', 'tasks')}', T.navy, icon: Icons.person_outline),
-      ]),
-      const SizedBox(height: 6),
+      Text(tr('ما عمل عليه كلُّ موظّف والوقت المسجّل', 'What each person worked on and the time logged'), style: const TextStyle(fontSize: 11.5, color: T.inkSoft)),
+      const SizedBox(height: 8),
       if (rows.isEmpty) Padding(padding: const EdgeInsets.all(8), child: Text(tr('لا شيء مسجّل في هذا اليوم', 'Nothing logged for this day'), style: const TextStyle(fontSize: 12, color: T.inkFaint)))
-      else for (final r in rows) ListTile(
-        dense: true, contentPadding: EdgeInsets.zero,
-        title: Text('${r['title']}', style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 13)),
-        subtitle: Text('${r['assignedToName']} · ${tr(st[r['status']]?.$1 ?? '', st[r['status']]?.$2 ?? '')}', style: const TextStyle(fontSize: 11.5, color: T.inkSoft)),
-        trailing: Text('${_fmtMin(r['minutes'])}${r['expectedMinutes'] != null ? ' / ${_fmtMin(r['expectedMinutes'])}' : ''}', style: TextStyle(fontWeight: FontWeight.w800, fontSize: 12.5, color: r['running'] == true ? T.success : T.ink)),
+      else for (final g in ordered) Container(
+        margin: const EdgeInsets.only(bottom: 8),
+        decoration: BoxDecoration(border: Border.all(color: T.line), borderRadius: BorderRadius.circular(10)),
+        clipBehavior: Clip.antiAlias,
+        child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+          Container(
+            color: T.line.withValues(alpha: 0.35),
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+            child: Row(children: [
+              Expanded(child: Text.rich(TextSpan(children: [
+                TextSpan(text: '${g['name']}', style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 13.5)),
+                TextSpan(text: '  ${tr('${g['tasks']} مهمّة · ${g['done']} تمّت', '${g['tasks']} tasks · ${g['done']} done')}', style: const TextStyle(fontSize: 11.5, color: T.inkSoft)),
+              ]))),
+              if (g['running'] == true) Container(width: 8, height: 8, margin: const EdgeInsetsDirectional.only(end: 6), decoration: const BoxDecoration(color: T.success, shape: BoxShape.circle)),
+              (g['minutes'] as double) > 0
+                  ? Text(_fmtMin(g['minutes']), style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 13))
+                  : Text(tr('لم يُسجَّل وقت', 'No time logged'), style: const TextStyle(fontSize: 11.5, color: T.inkFaint)),
+            ]),
+          ),
+          for (final l in (g['lines'] as Map<String, Map<String, dynamic>>).values) Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
+            child: Row(children: [
+              if (multiDay) SizedBox(width: 74, child: Text('${l['day']}'.split('-').reversed.join('/'), style: const TextStyle(fontSize: 11.5, color: T.inkSoft))),
+              Expanded(child: Text.rich(TextSpan(children: [
+                TextSpan(text: '${l['title']}', style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 12.5)),
+                if ((l['count'] as int) > 1) TextSpan(text: '  ×${l['count']}', style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: T.inkSoft)),
+                if (l['request'] == true) TextSpan(text: '  ${tr('طلب', 'request')}', style: const TextStyle(fontSize: 11, color: T.inkFaint)),
+              ]))),
+              Container(width: 8, height: 8, decoration: BoxDecoration(color: dot[l['status']] ?? T.inkFaint, borderRadius: BorderRadius.circular(2))),
+              const SizedBox(width: 5),
+              Text(tr(st[l['status']]?.$1 ?? '', st[l['status']]?.$2 ?? ''), style: const TextStyle(fontSize: 11.5, fontWeight: FontWeight.w700, color: T.inkSoft)),
+              const SizedBox(width: 10),
+              SizedBox(width: 78, child: Text(
+                (l['minutes'] as double) > 0
+                    ? '${_fmtMin(l['minutes'])}${l['expected'] != null ? ' / ${_fmtMin(l['expected'])}' : ''}'
+                    : tr('بلا مؤقّت', 'not timed'),
+                textAlign: TextAlign.end,
+                style: TextStyle(fontSize: 12, fontWeight: (l['minutes'] as double) > 0 ? FontWeight.w800 : FontWeight.w400, color: (l['minutes'] as double) > 0 ? T.ink : T.inkFaint),
+              )),
+            ]),
+          ),
+        ]),
       ),
     ]));
   }
 
-  Widget _stat(String label, String value, Color c) => Container(
-    padding: const EdgeInsets.all(12),
-    decoration: BoxDecoration(color: T.card, borderRadius: BorderRadius.circular(14), border: Border.all(color: T.line)),
-    child: Column(crossAxisAlignment: CrossAxisAlignment.start, mainAxisAlignment: MainAxisAlignment.center, children: [
-      Text(label, style: const TextStyle(fontSize: 11.5, color: T.inkSoft), maxLines: 1, overflow: TextOverflow.ellipsis),
+  /// One cell of the numbers strip: label, value and an optional short line.
+  Widget _cell(String label, String value, Color c, {String? hint}) => Padding(
+    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+    child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+      Text(label, style: const TextStyle(fontSize: 11.5, fontWeight: FontWeight.w600, color: T.inkSoft), maxLines: 1, overflow: TextOverflow.ellipsis),
       const SizedBox(height: 4),
       FittedBox(fit: BoxFit.scaleDown, alignment: AlignmentDirectional.centerStart,
           child: Text(value, style: TextStyle(fontSize: 20, fontWeight: FontWeight.w800, color: c))),
+      if (hint != null) Text(hint, style: const TextStyle(fontSize: 10.5, color: T.inkFaint), maxLines: 1, overflow: TextOverflow.ellipsis),
     ]),
   );
+
+  /// The numbers as one bordered strip divided into cells, two or four per row.
+  Widget _strip(List<Widget> cells) => LayoutBuilder(builder: (c, box) {
+    final cols = box.maxWidth >= 560 ? 4 : 2;
+    final rows = <Widget>[];
+    for (var i = 0; i < cells.length; i += cols) {
+      final part = cells.sublist(i, i + cols > cells.length ? cells.length : i + cols);
+      rows.add(IntrinsicHeight(child: Row(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+        for (var k = 0; k < cols; k++) ...[
+          if (k > 0) const VerticalDivider(width: 1, thickness: 1, color: T.line),
+          Expanded(child: k < part.length ? part[k] : const SizedBox()),
+        ],
+      ])));
+      if (i + cols < cells.length) rows.add(const Divider(height: 1, thickness: 1, color: T.line));
+    }
+    return Container(
+      decoration: BoxDecoration(color: T.card, borderRadius: BorderRadius.circular(14), border: Border.all(color: T.line)),
+      clipBehavior: Clip.antiAlias,
+      child: Column(children: rows),
+    );
+  });
 
   Widget _head(String s) => Padding(padding: const EdgeInsets.fromLTRB(2, 18, 2, 8), child: Text(s, style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 14.5)));
   String _pct(dynamic v) => v == null ? '—' : '$v%';
@@ -1025,16 +1124,34 @@ class _JpDashScreenState extends State<JpDashScreen> {
                   final idle = List<Map<String, dynamic>>.from(d['idle'] ?? []);
                   Widget line(Map<String, dynamic> r) {
                     final dl = jpDeadline({...r, 'deadlineKind': 'hours', 'status': r['doneAt'] != null ? 'done' : 'open'});
-                    return ListTile(
-                      dense: true, contentPadding: EdgeInsets.zero,
-                      title: Text((r['title'] ?? '').toString(), style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 13.5)),
-                      subtitle: Text('${r['assignedToName']} · ${dl.$1}', style: TextStyle(fontSize: 12, color: dl.$2)),
+                    const stw = {'open': ('قائمة', 'Open'), 'overdue': ('متأخّرة', 'Late'), 'done': ('تمّت', 'Done')};
+                    const stc = {'open': T.info, 'overdue': T.danger, 'done': T.success};
+                    final state = '${r['state'] ?? 'open'}';
+                    final spent = ((r['spentMinutes'] ?? 0) as num);
+                    final lks = List<Map<String, dynamic>>.from(r['links'] ?? const []);
+                    return Padding(
+                      padding: const EdgeInsets.symmetric(vertical: 7),
+                      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                        Row(children: [
+                          Expanded(child: Text((r['title'] ?? '').toString(), style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 13.5))),
+                          // Status as plain text with a small square marker.
+                          Container(width: 8, height: 8, decoration: BoxDecoration(color: stc[state] ?? T.inkFaint, borderRadius: BorderRadius.circular(2))),
+                          const SizedBox(width: 5),
+                          Text(tr(stw[state]?.$1 ?? '', stw[state]?.$2 ?? ''), style: const TextStyle(fontSize: 11.5, fontWeight: FontWeight.w700, color: T.inkSoft)),
+                        ]),
+                        if (lks.isNotEmpty) Padding(
+                          padding: const EdgeInsets.only(top: 2),
+                          child: Text(lks.map((l) => '${l['label']}').where((x) => x.isNotEmpty).join(' · '), style: const TextStyle(fontSize: 11.5, fontWeight: FontWeight.w600, color: T.orange)),
+                        ),
+                        const SizedBox(height: 2),
+                        Text('${r['assignedToName']} · ${dl.$1}${spent > 0 ? ' · ${_fmtMin(spent)}${r['expectedMinutes'] != null ? ' / ${_fmtMin(r['expectedMinutes'])}' : ''}' : ''}', style: TextStyle(fontSize: 12, color: dl.$2)),
+                      ]),
                     );
                   }
+                  final byTitle = List<Map<String, dynamic>>.from(d['byTitle'] ?? []);
+                  final t2 = Map<String, dynamic>.from(d['totals2'] ?? {});
                   final team = List<Map<String, dynamic>>.from(d['team'] ?? []);
                   return ListView(padding: const EdgeInsets.fromLTRB(14, 12, 14, 30), children: [
-                    _dailyCard(),
-                    const SizedBox(height: 12),
                     // The whole dashboard for one specific employee, as on the web.
                     JpPersonField(
                       label: management ? tr('المدير', 'Manager') : tr('الموظّف', 'Employee'),
@@ -1048,17 +1165,55 @@ class _JpDashScreenState extends State<JpDashScreen> {
                     const SizedBox(height: 8),
                     _filters(d, management),
                     const SizedBox(height: 10),
-                    StatGrid(
-                      spacing: 8, minTileWidth: 100, minColumns: 3, maxColumns: 6,
-                      children: [
-                        _stat(tr('القائمة', 'Open'), '${t['open'] ?? 0}', T.ink),
-                        _stat(tr('المتأخّرة', 'Late'), '${t['overdue'] ?? 0}', (t['overdue'] ?? 0) > 0 ? T.danger : T.ink),
-                        _stat(tr('خلال 24 ساعة', 'Within 24h'), '${t['dueSoon'] ?? 0}', (t['dueSoon'] ?? 0) > 0 ? T.warn : T.ink),
-                        _stat(tr('التي تمّت', 'Done'), '${t['done'] ?? 0}', T.success),
-                        _stat(tr('نسبة الإتمام', 'Completion'), _pct(t['completionRate']), T.ink),
-                        _stat(tr('في موعدها', 'On time'), _pct(t['onTimeRate']), T.ink),
-                      ],
-                    ),
+                    _strip([
+                      _cell(tr('الإجمالي', 'Total'), '${t['total'] ?? 0}', T.ink, hint: tr('${t['tasks'] ?? 0} مهمّة · ${t['requests'] ?? 0} طلب', '${t['tasks'] ?? 0} tasks · ${t['requests'] ?? 0} requests')),
+                      _cell(tr('قائمة', 'Open'), '${((t['open'] ?? 0) as num) - ((t['overdue'] ?? 0) as num)}', T.info),
+                      _cell(tr('متأخّرة', 'Late'), '${t['overdue'] ?? 0}', (t['overdue'] ?? 0) > 0 ? T.danger : T.ink),
+                      _cell(tr('خلال 24 ساعة', 'Due in 24h'), '${t['dueSoon'] ?? 0}', (t['dueSoon'] ?? 0) > 0 ? T.warn : T.ink),
+                      _cell(tr('تمّت', 'Done'), '${t['done'] ?? 0}', T.success, hint: tr('${t['onTime'] ?? 0} في موعدها · ${t['late'] ?? 0} بعده', '${t['onTime'] ?? 0} on time · ${t['late'] ?? 0} late')),
+                      _cell(tr('نسبة الإتمام', 'Completion'), _pct(t['completionRate']), T.ink),
+                      _cell(tr('في موعدها', 'On time'), _pct(t['onTimeRate']), T.ink),
+                      _cell(tr('الوقت المسجّل', 'Time logged'), ((t2['minutes'] ?? 0) as num) > 0 ? _fmtMin(t2['minutes']) : '—', T.ink),
+                    ]),
+                    if (byTitle.isNotEmpty) ...[
+                      _head(tr('حسب نوع المهمّة', 'By task type')),
+                      AppCard(padding: EdgeInsets.zero, child: Column(children: [
+                        for (var k = 0; k < byTitle.length; k++) ...[
+                          if (k > 0) const Divider(height: 1, color: T.line),
+                          InkWell(
+                            onTap: () { setState(() => _title = _title == '${byTitle[k]['title']}' ? '' : '${byTitle[k]['title']}'); _load(); },
+                            child: Container(
+                              color: _title == '${byTitle[k]['title']}' ? T.orange.withValues(alpha: 0.06) : null,
+                              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                              child: Builder(builder: (_) {
+                                final b = byTitle[k];
+                                final total = ((b['total'] ?? 0) as num).toInt();
+                                final done = ((b['done'] ?? 0) as num).toInt();
+                                final late = ((b['overdue'] ?? 0) as num).toInt();
+                                final mins = ((b['minutes'] ?? 0) as num);
+                                return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+                                  Row(children: [
+                                    Expanded(child: Text('${b['title']}', style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 13))),
+                                    Text(tr('$total · تمّت $done', '$total · $done done'), style: const TextStyle(fontSize: 12, color: T.inkSoft)),
+                                    if (late > 0) Text(tr('  · متأخّرة $late', '  · $late late'), style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w800, color: T.danger)),
+                                  ]),
+                                  const SizedBox(height: 6),
+                                  ClipRRect(borderRadius: BorderRadius.circular(4), child: LinearProgressIndicator(value: total > 0 ? done / total : 0, minHeight: 5, backgroundColor: T.line, color: T.success)),
+                                  const SizedBox(height: 4),
+                                  Text(
+                                    mins > 0
+                                        ? tr('الوقت ${_fmtMin(mins)}${b['avgMinutes'] != null ? ' · متوسّط المهمّة ${_fmtMin(b['avgMinutes'])}' : ''}', 'Time ${_fmtMin(mins)}${b['avgMinutes'] != null ? ' · avg ${_fmtMin(b['avgMinutes'])}' : ''}')
+                                        : tr('لم يُسجَّل وقت', 'No time logged'),
+                                    style: const TextStyle(fontSize: 11.5, color: T.inkSoft)),
+                                ]);
+                              }),
+                            ),
+                          ),
+                        ],
+                      ])),
+                    ],
+                    const SizedBox(height: 12),
+                    _dailyCard(),
                     _head(management ? tr('المديرون', 'Managers') : tr('الفريق', 'Team')),
                     for (final m in members) AppCard(padding: const EdgeInsets.all(12), child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                       Row(children: [

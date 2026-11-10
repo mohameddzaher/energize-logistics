@@ -408,7 +408,7 @@ function FleetShipmentsInner() {
       case 'customerType': return s.customerType === 'heavy'
         ? <span className="px-2 py-0.5 rounded-full bg-orange-100 text-orange-700 text-[11px] font-semibold">{ar ? 'نقل ثقيل' : 'Heavy'}</span>
         : s.customerType === 'branch'
-          ? <span className="px-2 py-0.5 rounded-full bg-blue-100 text-blue-700 text-[11px] font-semibold">{ar ? 'فروع' : 'Branch'}</span>
+          ? <span className="inline-flex items-center gap-1 whitespace-nowrap px-2 py-0.5 rounded-full bg-blue-100 text-blue-700 text-[11px] font-semibold" title={s.shipmentOrder ? (ar ? 'جاءت من طلبات الشحنات: العميل والمسار منها، وإيجار السيارة هنا هو سعر الشراء هناك' : 'From shipment orders: customer and route come from there; the rent here is the purchase price there') : undefined}>{ar ? 'فروع' : 'Branch'}{s.shipmentOrder ? (ar ? ' · من طلبات الشحنات' : ' · from shipment orders') : ''}</span>
           : dash;
       case 'loadType': return <span className="text-xs text-slate-600 whitespace-nowrap">{lkp('fleet_load_type', s.loadType) || '—'}</span>;
       case 'loadDate': case 'expectedArrival': case 'createdAt': return <span className="text-xs text-slate-700 whitespace-nowrap">{x[key] ? fmtD(x[key]) : '—'}</span>;

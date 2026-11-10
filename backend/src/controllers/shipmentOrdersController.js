@@ -42,6 +42,8 @@ const announceOrderChange = (id) => {
   cache.clear('so:analytics:');
   emit('shipmentOrders:updated', id ? { id: String(id) } : {});
   if (id) require('../services/shipmentOrderWorkflowLink').mirrorSoon(id);
+  // Carried by our own fleet (supplier «تنشيط»): its fleet load follows (services/fleetOrderLink).
+  if (id) require('../services/fleetOrderLink').orderToFleetSoon(id);
 };
 
 const pick = (body, fields) => {
@@ -1645,6 +1647,7 @@ exports.addNote = async (req, res) => {
       $push: { statusLog: { from: cur.status, to: cur.status, note, at: new Date(), by, byName } },
     }, { new: true });
     announceOrderChange(order._id);
+    require('../services/fleetOrderLink').noteToFleet(order._id, note, req.user).catch((e) => console.error('[fleet-order-link]', e.message));
     res.json({ order });
   } catch (error) {
     console.error('shipment order note:', error);

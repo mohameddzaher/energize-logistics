@@ -58,7 +58,8 @@ function rowOfFleet(f) {
       : str(f.paymentType) === 'cash' ? 'cash' : 'late',
     driverRentalType: str(f.rentType),
     driverCost: num(f.driverExpense),
-    sellingValue: num(f.price),
+    // A branch customer is a 3PL customer carried by our truck: the fleet's price is what the company pays its fleet (purchase), and the real selling price is written in the workflow by sales, operations or the data team, so it is never written from here.
+    ...(f.customerType === 'branch' ? { purchaseValue: num(f.price) } : { sellingValue: num(f.price) }),
   };
 }
 
@@ -205,6 +206,8 @@ function announceFleet() {
 /** Fleet load → workflow row. Creates the row on the first call. */
 async function mirrorFleet(loadOrId) {
   const f = loadOrId?.createdAt ? loadOrId : await fleetModel().findById(loadOrId).lean();
+  // A load carrying a shipment order has no workflow row of its own: the order's row is the one record (services/fleetOrderLink).
+  if (f && f.shipmentOrder) return require('./fleetOrderLink').fleetToOrder(f._id);
   if (!f || f.waybillNumber == null) return null;
   const wf = await OperationsWorkflow.findOne({ fleetShipment: f._id }).lean();
   // A load saved before it carried one of the four types takes the workflow's, so the two agree and the loads page shows it.
@@ -247,7 +250,8 @@ async function pullFleet(w) {
   const wanted = {
     fromCity: str(w.fromLocation), toCity: str(w.toLocation), customerName: str(w.username), vehiclePlate: str(w.plateNumber),
     driverName: str(w.driverName), driverPhone: str(w.driverPhone), trailerType: str(w.truckType), loadType: str(w.loadType),
-    price: num(w.sellingValue), driverExpense: num(w.driverCost), status: str(w.applicationStatus) || load.status,
+    // Branch customer: the fleet's price is the row's purchase; the row's selling price is the company's and stays there.
+    price: num(load.customerType === 'branch' ? w.purchaseValue : w.sellingValue), driverExpense: num(w.driverCost), status: str(w.applicationStatus) || load.status,
   };
   if (w.reportDate) wanted.loadDate = w.reportDate;
   if (isSubtype(w.paymentSubtype)) { wanted.paymentSubtype = w.paymentSubtype; wanted.paymentType = subtypeFamily(w.paymentSubtype); }
@@ -292,6 +296,7 @@ async function pullWorkflow(wfOrId, actor) {
   if (!Object.keys(update).length) return { changed: false };
   await ShipmentOrder.updateOne(filter, update);
   announceOrders();
+  require('./fleetOrderLink').orderToFleetSoon(o._id);
   return { changed: true };
 }
 
@@ -372,6 +377,8 @@ async function deleteShipments({ rows = [], orders = [] }) {
   const rowList = [...rowIds]; const orderList = [...orderIds];
   for (let i = 0; i < rowList.length; i += 5000) await OperationsWorkflow.deleteMany({ _id: { $in: rowList.slice(i, i + 5000) } });
   for (let i = 0; i < orderList.length; i += 5000) await ShipmentOrder.deleteMany({ _id: { $in: orderList.slice(i, i + 5000) } });
+  // Loads our fleet was carrying for these orders go with them.
+  if (orderList.length) await fleetModel().deleteMany({ shipmentOrder: { $in: orderList } });
   announceWorkflow();
   announceOrders();
   for (const _id of rowList.slice(0, 500)) { try { emitToAll('workflow:deleted', { _id }); } catch (_) { /* */ } }

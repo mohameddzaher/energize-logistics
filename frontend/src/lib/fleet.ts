@@ -140,6 +140,8 @@ export interface FleetCustomer {
 export interface FleetShipment {
   _id: string;
   waybillNumber: number; // Shipping waybill: its own 100001+ series
+  /** Set when the load carries a shipment order (3PL customer, our truck as supplier); the order owns customer, route and selling price. */
+  shipmentOrder?: string | null;
   customer?: FleetCustomer | string | null;
   customerName?: string;
   vehicle?: FleetVehicle | string | null;

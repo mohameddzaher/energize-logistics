@@ -180,9 +180,12 @@ const fleetShipmentSchema = new mongoose.Schema({
   expectedArrival: { type: Date, default: null }, // Expected arrival, optional.
 
   notes: { type: String, trim: true, default: '' },
+  // A shipment order carried by our own truck (services/fleetOrderLink): the order is the record of the sale, this load is how the fleet works it.
+  shipmentOrder: { type: mongoose.Schema.Types.ObjectId, ref: 'ShipmentOrder', default: null },
   createdBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
 }, { timestamps: true });
 fleetShipmentSchema.index({ createdAt: -1 });
+fleetShipmentSchema.index({ shipmentOrder: 1 }, { unique: true, partialFilterExpression: { shipmentOrder: { $type: 'objectId' } } });
 // The board and the vehicle picker resolve each truck's active trip; the list
 // filters by status + sorts by recency; the follow-up sweep scans in-flight
 // loads by last contact.

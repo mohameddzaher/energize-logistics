@@ -457,7 +457,7 @@ class _FleetShipmentsScreenState extends State<FleetShipmentsScreen> {
                                           if (_on('customerType') && s['customerType'] == 'heavy')
                                             Chip2(tr('نقل ثقيل', 'Heavy'), T.violet, icon: Icons.workspace_premium_outlined),
                                           if (_on('customerType') && s['customerType'] == 'branch')
-                                            Chip2(tr('عميل فروع', 'Branch'), T.info, icon: Icons.store_outlined),
+                                            Chip2(s['shipmentOrder'] != null ? tr('عميل فروع · من طلبات الشحنات', 'Branch · from shipment orders') : tr('عميل فروع', 'Branch'), T.info, icon: Icons.store_outlined),
                                           if (_on('loadType') && _loadTypeLabel((s['loadType'] ?? '').toString()).isNotEmpty)
                                             Chip2(_loadTypeLabel((s['loadType'] ?? '').toString()), T.inkSoft, icon: Icons.category_outlined),
                                           if (_on('supervisorName') && (s['supervisorName'] ?? '').toString().isNotEmpty)

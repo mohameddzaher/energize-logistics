@@ -572,7 +572,9 @@ exports.updateShipment = async (req, res) => {
 
     // The load price is the selling price of its workflow row; from these roles it goes to approval (config/sellingPriceRequests).
     let sellingRequest = null;
-    if (data.price !== undefined && require('../config/sellingPriceRequests').sellingByRequest(req.user)) {
+    // A branch customer's load, or one carrying a shipment order, prices what the company pays its fleet (a purchase), not a sale: no selling-price approval.
+    const purchaseSide = shipment.shipmentOrder || (data.customerType || shipment.customerType) === 'branch';
+    if (!purchaseSide && data.price !== undefined && require('../config/sellingPriceRequests').sellingByRequest(req.user)) {
       const v = data.price === '' || data.price === null ? 0 : Number(data.price);
       if (Math.round(v * 100) !== Math.round((Number(shipment.price) || 0) * 100)) {
         const link = require('../services/shipmentOrderWorkflowLink');
@@ -645,6 +647,7 @@ exports.updateShipment = async (req, res) => {
       await notifyStatus(req, shipment, fromStatus);
     }
     for (const line of moveNotes) await logEvent(req, shipment._id, 'driver_change', { text: line });
+    if (shipment.shipmentOrder) await require('../services/fleetOrderLink').fleetToOrder(shipment._id, req.user).catch((e) => console.error('[fleet-order-link]', e.message));
     emit('fleet:updated', { id: String(shipment._id) });
     if (sellingRequest) {
       return res.json({ shipment, sellingRequest, sellingRequestMessage: require('../services/sellingPriceRequests').PENDING_MESSAGE });
@@ -682,6 +685,8 @@ exports.patchStatus = async (req, res) => {
     await logEvent(req, shipment._id, 'status', { from, to: shipment.status });
     emit('fleet:updated', { id: String(shipment._id) });
     await notifyStatus(req, shipment, from);
+    // A load carrying a shipment order moves the order too (services/fleetOrderLink).
+    if (shipment.shipmentOrder) await require('../services/fleetOrderLink').fleetToOrder(shipment._id, req.user).catch((e) => console.error('[fleet-order-link]', e.message));
     res.json({ shipment });
   } catch (error) {
     res.status(400).json({ message: 'Invalid status' });
@@ -840,6 +845,7 @@ exports.addFollowUp = async (req, res) => {
     if (!shipment.lastContactAt || contactTime > shipment.lastContactAt) shipment.lastContactAt = contactTime;
     if (data.expectedArrival) shipment.expectedArrival = data.expectedArrival;
     await shipment.save();
+    if (shipment.shipmentOrder) await require('../services/fleetOrderLink').followUpToOrder(shipment._id, data, req.user).catch((e) => console.error('[fleet-order-link]', e.message));
 
     emit('fleet:updated', { id: String(shipment._id) });
     res.status(201).json({ shipment });

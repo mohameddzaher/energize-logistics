@@ -161,6 +161,7 @@ export default function ShipmentRequestsBoard({ mode }: { mode: 'sales' | 'vendo
       { key: 'fromCity', ar: 'من', en: 'From', read: (r) => r.fromCity || '' },
       { key: 'toCity', ar: 'إلى', en: 'To', read: (r) => r.toCity || '' },
       { key: 'truckType', ar: 'نوع الشاحنة', en: 'Truck type', read: (r) => r.truckType || '' },
+      { key: 'typesSent', ar: 'النوع المنفَّذ', en: 'Type sent', read: (r) => [...new Set((r.placed || []).map((p: any) => p.truckType).filter(Boolean))].join('، ') },
       { key: 'truckLength', ar: 'الطول', en: 'Length', read: (r) => r.truckLength || '' },
       { key: 'cargoType', ar: 'نوع الحمولة', en: 'Cargo', read: (r) => r.cargoType || '' },
       { key: 'pickup', ar: 'موعد التحميل', en: 'Pickup', read: (r) => day(r.pickupTime), date: true },
@@ -452,8 +453,9 @@ function Btn({ onClick, children, icon: Icon, primary, danger, busy }: { onClick
   );
 }
 
-type TruckRow = { sourcingRep: string; supplierId: string; supplierName: string; vehicleId: string; newPlate: string; driverName: string; driverPhone: string; buyPrice: string; advanceAmount: string; blNumber: string; containerNumber: string };
-const blankTruck = (r: ShipmentRequest, me = ''): TruckRow => ({ sourcingRep: me, supplierId: '', supplierName: '', vehicleId: '', newPlate: '', driverName: '', driverPhone: '', buyPrice: '', advanceAmount: '', blNumber: r.blNumber || '', containerNumber: r.containerNumber || '' });
+type TruckRow = { truckType: string; sourcingRep: string; supplierId: string; supplierName: string; vehicleId: string; newPlate: string; driverName: string; driverPhone: string; buyPrice: string; advanceAmount: string; blNumber: string; containerNumber: string };
+const typesOfReq = (r: ShipmentRequest) => ((r as any).truckTypes?.length ? (r as any).truckTypes as string[] : (r.truckType ? [r.truckType] : []));
+const blankTruck = (r: ShipmentRequest, me = ''): TruckRow => ({ truckType: typesOfReq(r).length === 1 ? typesOfReq(r)[0] : '', sourcingRep: me, supplierId: '', supplierName: '', vehicleId: '', newPlate: '', driverName: '', driverPhone: '', buyPrice: '', advanceAmount: '', blNumber: r.blNumber || '', containerNumber: r.containerNumber || '' });
 
 /** The vendors half: one row per truck, each becomes a transport order. */
 function PlaceModal({ req, onClose, onDone }: { req: ShipmentRequest; onClose: () => void; onDone: () => void }) {
@@ -476,16 +478,17 @@ function PlaceModal({ req, onClose, onDone }: { req: ShipmentRequest; onClose: (
   const [saving, setSaving] = useState(false);
   const [tried, setTried] = useState(false);
   const setRow = (i: number, patch: Partial<TruckRow>) => setRows((p) => p.map((r, j) => (j === i ? { ...r, ...patch } : r)));
-  const problems = rows.map((r) => [!r.supplierId && 'supplier', !r.vehicleId && !r.newPlate.trim() && 'vehicle', !r.driverName.trim() && 'driver', !(Number(r.buyPrice) > 0) && 'buy'].filter(Boolean) as string[]);
+  const reqTypes = typesOfReq(req);
+  const problems = rows.map((r) => [reqTypes.length > 1 && !r.truckType && 'type', !r.supplierId && 'supplier', !r.vehicleId && !r.newPlate.trim() && 'vehicle', !r.driverName.trim() && 'driver', !(Number(r.buyPrice) > 0) && 'buy'].filter(Boolean) as string[]);
   const submit = async () => {
     setTried(true);
-    if (problems.some((p) => p.length)) { notify(t('أكمِل المورّد والسيارة والسائق وسعر الشراء لكلّ شاحنة', 'Fill supplier, truck, driver and purchase price for each truck'), 'error'); return; }
+    if (problems.some((p) => p.length)) { notify(t('أكمِل نوع الشاحنة والمورّد والسيارة والسائق وسعر الشراء لكلّ شاحنة', 'Fill truck type, supplier, truck, driver and purchase price for each truck'), 'error'); return; }
     setSaving(true);
     try {
       const d = await api.post<{ waybills: number[]; failed: any[] }>(`/api/shipment-requests/${req._id}/place`, {
         trucks: rows.map((r) => ({
           supplierChoice: r.supplierId, ...(r.vehicleId ? { vehicle: r.vehicleId } : { newVehicle: { plate: r.newPlate.trim() } }),
-          driverName: r.driverName.trim(), driverPhone: r.driverPhone, sourcingRep: r.sourcingRep || null, buyPrice: Number(r.buyPrice), advanceAmount: r.advanceAmount === '' ? null : Number(r.advanceAmount),
+          driverName: r.driverName.trim(), driverPhone: r.driverPhone, truckType: r.truckType || undefined, sourcingRep: r.sourcingRep || null, buyPrice: Number(r.buyPrice), advanceAmount: r.advanceAmount === '' ? null : Number(r.advanceAmount),
           blNumber: r.blNumber, containerNumber: r.containerNumber,
         })),
       });
@@ -511,7 +514,7 @@ function PlaceModal({ req, onClose, onDone }: { req: ShipmentRequest; onClose: (
           <span>{t('التحميل', 'Pickup')} {day(req.pickupTime)}</span>{req.branch && <span>{req.branch}</span>}
         </div>
         {rows.map((r, i) => (
-          <TruckEditor key={i} i={i} row={r} reps={reps} miss={tried ? problems[i] : []} onChange={(p) => setRow(i, p)}
+          <TruckEditor key={i} i={i} row={r} reps={reps} types={reqTypes} miss={tried ? problems[i] : []} onChange={(p) => setRow(i, p)}
             onRemove={rows.length > 1 ? () => setRows((p) => p.filter((_, j) => j !== i)) : undefined} ar={ar} />
         ))}
         <div className="flex flex-wrap gap-2">
@@ -523,7 +526,7 @@ function PlaceModal({ req, onClose, onDone }: { req: ShipmentRequest; onClose: (
   );
 }
 
-function TruckEditor({ i, row, reps, miss, onChange, onRemove, ar }: { i: number; row: TruckRow; reps: { value: string; label: string; roleAr?: string }[]; miss: string[]; onChange: (p: Partial<TruckRow>) => void; onRemove?: () => void; ar: boolean }) {
+function TruckEditor({ i, row, reps, types, miss, onChange, onRemove, ar }: { i: number; row: TruckRow; reps: { value: string; label: string; roleAr?: string }[]; types: string[]; miss: string[]; onChange: (p: Partial<TruckRow>) => void; onRemove?: () => void; ar: boolean }) {
   const t = (a: string, e: string) => (ar ? a : e);
   const [sups, setSups] = useState<OrderSupplier[]>([]);
   const [vehs, setVehs] = useState<OrderVehicle[]>([]);
@@ -563,9 +566,21 @@ function TruckEditor({ i, row, reps, miss, onChange, onRemove, ar }: { i: number
         <div className="sm:col-span-2 lg:col-span-3">
           <label className="block text-[12.5px] font-semibold mb-1 text-slate-700">{t('مسؤول التوريد — مَن جاء بالمورّد ومالك السيارة', 'Sourcing — who found the carrier and truck owner')}</label>
           <SearchableSelect value={row.sourcingRep} searchAfter={0} onChange={(v) => onChange({ sourcingRep: v })}
-            placeholder={t('اختر من فريق الموردين أو العمليات', 'Pick from the vendors or operations team')}
+            placeholder={t('اختر من فرق الموردين أو المبيعات أو العمليات أو البيانات', 'Pick from vendors, sales, operations or data')}
             options={reps.map((o) => ({ value: o.value, label: o.label, hint: o.roleAr || '' }))} />
         </div>
+        {/* Sales accepted these types; the vendors team states the one actually sent. */}
+        {types.length > 0 && (
+          <div className="sm:col-span-2 lg:col-span-3">
+            <label className={`block text-[12.5px] font-semibold mb-1 ${bad('type') ? 'text-red-600' : 'text-slate-700'}`}>{t('نوع الشاحنة المنفَّذ', 'Truck type sent')}{types.length > 1 && ' *'}</label>
+            <div className={`flex flex-wrap gap-1.5 ${bad('type') ? 'rounded-lg p-1 ring-2 ring-red-400/60' : ''}`}>
+              {types.map((ty) => (
+                <button key={ty} type="button" onClick={() => onChange({ truckType: ty })}
+                  className={`rounded-lg border px-3 py-1.5 text-[12.5px] font-semibold ${row.truckType === ty ? 'border-[#f37121] bg-[#f37121] text-white' : 'border-slate-200 bg-white text-slate-700 hover:border-[#f37121]/50'}`}>{ty}</button>
+              ))}
+            </div>
+          </div>
+        )}
         <div>
           <label className={`block text-[12.5px] font-semibold mb-1 ${bad('supplier') ? 'text-red-600' : 'text-slate-700'}`}>{t('المورّد', 'Supplier')} *</label>
           <div className={bad('supplier') ? 'rounded-lg ring-2 ring-red-400/60' : ''}>

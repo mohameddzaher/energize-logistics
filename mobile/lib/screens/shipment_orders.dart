@@ -599,8 +599,8 @@ class _ShipmentOrdersScreenState extends State<ShipmentOrdersScreen> {
             title(tr('الفترة', 'Period')),
             Wrap(spacing: 6, children: [
               for (final p in [(tr('اليوم', 'Today'), 0, 0), (tr('أمس', 'Yesterday'), 1, 1), (tr('آخر 7 أيام', '7 days'), 6, 0)])
-                OutlinedButton(onPressed: () => apply(() { _dateBy = 'activity'; _from = _riyadhDay(p.$2); _to = _riyadhDay(p.$3); }), child: Text(p.$1)),
-              if (_dateBy.isNotEmpty) TextButton(onPressed: () => apply(() { _dateBy = ''; _from = ''; _to = ''; }), child: Text(tr('إلغاء الفترة', 'Clear period'))),
+                OutlinedButton(onPressed: () => apply(() { _from = _riyadhDay(p.$2); _to = _riyadhDay(p.$3); }), child: Text(p.$1)),
+              if (_dateBy.isNotEmpty || _from.isNotEmpty || _to.isNotEmpty) TextButton(onPressed: () => apply(() { _dateBy = ''; _from = ''; _to = ''; }), child: Text(tr('إلغاء الفترة', 'Clear period'))),
             ]),
             title(tr('الملاحظة', 'Note')),
             SingleChildScrollView(scrollDirection: Axis.horizontal, child: _seg(

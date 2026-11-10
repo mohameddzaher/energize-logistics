@@ -55,8 +55,9 @@ const STATUS_NEEDS_FILE = new Set(['bond_sent']);
 
 const fmtDate = (v?: string | null) => {
   if (!v) return '';
-  const d = new Date(v);
-  return `${d.getDate()}/${d.getMonth() + 1}/${d.getFullYear()}`;
+  // The company day (Riyadh), the same day the server filters by, whatever the reader's own time zone.
+  const [y, m, d] = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Riyadh' }).format(new Date(v)).split('-');
+  return `${Number(d)}/${Number(m)}/${y}`;
 };
 
 // The row is no longer built here. `toSheetRow` converted the order into a waybill row for the browser to draw; drawing is now on the server from the order itself (utils/waybillPdf, rowFromOrder), so a conversion here would be a second copy of the rule that ages alone: notes, sale price and the declaration were added there and never reached this one.
@@ -133,9 +134,9 @@ function ShipmentOrdersInner() {
   const [toDate, setToDate] = useState(() => sp?.get('to') || '');
   // `dateBy=pickup`: the range is by pickup day, not registration day, which is how the dashboard counts, so its number opens its own rows. Cleared when the range is cleared.
   const [dateBy, setDateBy] = useState(() => (['pickup', 'created', 'activity'].includes(sp?.get('dateBy') || '') ? sp!.get('dateBy')! : 'pickup'));
-  // Quick periods ask what happened in them: created, or moved to a status.
+  // Quick periods fill the range only; the date basis stays the one shown in the selector. They used to switch it silently to «activity», so a period showed and exported shipments whose pickup date fell outside it (moved in the period).
   const riyadhDay = (back = 0) => new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Riyadh' }).format(new Date(Date.now() - back * 86400000));
-  const setPeriod = (from: string, to: string) => { setDateBy('activity'); setFromDate(from); setToDate(to); setPage(1); };
+  const setPeriod = (from: string, to: string) => { setFromDate(from); setToDate(to); setPage(1); };
   const today = riyadhDay();
   const monthStart = `${today.slice(0, 8)}01`;
   // `customs=linked`: shipments linked to a customs file, from a dashboard card.
@@ -422,6 +423,8 @@ function ShipmentOrdersInner() {
     { header: 'Driver iqama', key: 'driverIqama', width: 14 },
     { header: 'Branch', key: 'branch', width: 12 },
     { header: 'Pickup', key: 'pickupTime', transform: (v: any) => fmtDate(v), width: 14 },
+    { header: 'Created', key: 'createdAt', transform: (v: any) => fmtDate(v), width: 14 },
+    { header: 'Last status change', key: 'statusLog', transform: (v: any) => { const l = Array.isArray(v) && v.length ? v[v.length - 1] : null; return l?.at ? fmtDate(l.at) : ''; }, width: 16 },
     ...(pv.sell ? [{ header: 'Sell', key: 'sellPrice', width: 10 }] : []),
     ...(pv.buy ? [{ header: 'Buy', key: 'buyPrice', width: 10 }] : []),
     ...(pv.sell && pv.buy ? [{ header: 'Margin', key: 'margin', width: 10, transform: (_v: any, r: any) => ((Number(r?.sellPrice) || 0) - (Number(r?.buyPrice) || 0)) }] : []),
@@ -447,7 +450,11 @@ function ShipmentOrdersInner() {
       if (noteFilter) qs.set('note', noteFilter);
     }
     const d = await api.get<{ orders: ShipmentOrder[]; total: number }>(`/api/shipment-orders/orders?${qs}`);
-    return [{ name: 'Orders', rows: d.orders || [], columns: exportColumns }];
+    // The file states which date the range filtered on, so a pickup date outside it (activity or created basis) is explained.
+    const basis = dateBy === 'activity' ? (ar ? 'حركة الشحنة (أُنشئت أو تغيّرت حالتها في الفترة)' : 'Activity (created or status changed in the period)')
+      : dateBy === 'created' ? (ar ? 'تاريخ الإنشاء' : 'Created date') : (ar ? 'تاريخ الاستلام' : 'Pickup date');
+    const title = withFilters && (fromDate || toDate) ? `${ar ? 'الفترة حسب' : 'Range by'} ${basis}: ${fromDate || '…'} → ${toDate || '…'}` : undefined;
+    return [{ name: 'Orders', rows: d.orders || [], columns: exportColumns, title }];
   };
   const hasActiveFilters = !!(debounced.trim() || statusFilter || customerFilter || fromDate || toDate || customsOnly);
   const scope = exportScopeLabels(ar);
@@ -614,7 +621,7 @@ function ShipmentOrdersInner() {
               [ar ? 'آخر 7 أيام' : '7 days', riyadhDay(6), today],
               [ar ? 'هذا الشهر' : 'This month', monthStart, today],
             ] as const).map(([label, f, t]) => {
-              const on = dateBy === 'activity' && fromDate === f && toDate === t;
+              const on = fromDate === f && toDate === t;
               return (
                 <button key={label} type="button" aria-pressed={on}
                   onClick={() => (on ? setPeriod('', '') : setPeriod(f, t))}

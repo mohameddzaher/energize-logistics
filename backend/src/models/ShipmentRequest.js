@@ -28,6 +28,7 @@ const placedTruck = new mongoose.Schema({
   supplierName: { type: String, default: '' },
   vehiclePlate: { type: String, default: '' },
   driverName: { type: String, default: '' },
+  truckType: { type: String, default: '' },   // the type the vendors team actually sent
   at: { type: Date, default: Date.now },
   by: { type: mongoose.Schema.Types.ObjectId, ref: 'User', default: null },
   byName: { type: String, default: '' },
@@ -54,6 +55,8 @@ const shipmentRequestSchema = new mongoose.Schema({
   blNumber: { type: String, trim: true, default: '' },
   containerNumber: { type: String, trim: true, default: '' },
   truckType: { type: String, trim: true, default: '' },
+  /** Truck types sales accepts for this load (any of them will do); the vendors team fixes the actual one per truck. `truckType` mirrors them joined for display and search. */
+  truckTypes: { type: [String], default: [] },
   cargoType: { type: String, trim: true, default: '' },
   truckLength: { type: String, trim: true, default: '' },
   quantity: { type: Number, default: null },

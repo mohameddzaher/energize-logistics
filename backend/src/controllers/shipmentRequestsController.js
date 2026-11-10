@@ -37,8 +37,19 @@ const OPEN = ['pending', 'in_progress'];
 
 /** The sales half as written on a request: the shipment form's fields that belong to sales. */
 const SALES_FIELDS = ['customer', 'fromCity', 'toCity', 'branch', 'notes', 'blNumber', 'containerNumber',
-  'truckType', 'cargoType', 'truckLength', 'quantity', 'pickupTime', 'startTime', 'arrivalTime',
+  'truckType', 'truckTypes', 'cargoType', 'truckLength', 'quantity', 'pickupTime', 'startTime', 'arrivalTime',
   'sellPrice', 'paymentSubtype', 'paymentMethod', 'customFields'];
+const TYPE_SEP = ' / ';
+/** Accepted truck types: a list from the multi-choice, or the legacy single value; `truckType` becomes their joined label. */
+function applyTruckTypes(data) {
+  if (data.truckTypes === undefined && data.truckType === undefined) return;
+  const raw = data.truckTypes !== undefined ? data.truckTypes : String(data.truckType || '').split(TYPE_SEP);
+  const list = [...new Set((Array.isArray(raw) ? raw : [raw]).map((x) => String(x || '').trim()).filter(Boolean))].slice(0, 10);
+  data.truckTypes = list;
+  data.truckType = list.join(TYPE_SEP);
+}
+/** Types a request accepts, including old rows that only have the single field. */
+const typesOf = (r) => ((r.truckTypes && r.truckTypes.length) ? r.truckTypes : String(r.truckType || '').split(TYPE_SEP).map((x) => x.trim()).filter(Boolean));
 /** Keys of the shipment form that the vendors team answers when placing. */
 const VENDOR_FORM_KEYS = new Set(['buyPrice', 'advanceAmount', 'driverRentPrice', 'driverName', 'driverPhone', 'vehicleName', 'driverRentType']);
 const DATE_KEYS = ['pickupTime', 'startTime', 'arrivalTime'];
@@ -58,6 +69,7 @@ const scopeFor = (user) => {
 const shape = (user, doc) => {
   if (!doc) return doc;
   const o = typeof doc.toObject === 'function' ? doc.toObject({ virtuals: true }) : { ...doc };
+  o.truckTypes = typesOf(o);
   o.open = Math.max(0, (o.trucks || 0) - (o.placed || []).length);
   if (!PV.priceView(user).sell) delete o.sellPrice;
   delete o.lockUntil;
@@ -71,6 +83,7 @@ async function prepareSalesHalf(req, data, { creating }) {
   for (const k of DATE_KEYS) if (k in data) data[k] = data[k] ? new Date(data[k]) : null;
   if ('quantity' in data) data.quantity = numOrNull(data.quantity);
   if ('sellPrice' in data) data.sellPrice = numOrNull(data.sellPrice);
+  applyTruckTypes(data);
   if ('trucks' in req.body) {
     const n = Math.floor(Number(req.body.trucks));
     if (!Number.isFinite(n) || n < 1 || n > 25) return 'عددُ الشاحنات بين واحدةٍ وخمسٍ وعشرين';
@@ -354,6 +367,19 @@ exports.place = async (req, res) => {
       return res.status(409).json({ code: 'BUSY', message: 'زميلٌ يُنشئ أوامرَ نقلٍ على هذا الطلب الآن — حاول بعد لحظات' });
     }
     const r = locked;
+    // The vendors team fixes each truck's actual type, from the types sales accepted.
+    const accepted = typesOf(r);
+    const typeProblems = [];
+    trucks.forEach((t, i) => {
+      const pickedType = String(t.truckType || '').trim() || (accepted.length === 1 ? accepted[0] : '');
+      if (accepted.length > 1 && !pickedType) typeProblems.push(`الشاحنة ${i + 1}: حدّد نوعَ الشاحنة المنفَّذ`);
+      else if (pickedType && accepted.length && !accepted.includes(pickedType)) typeProblems.push(`الشاحنة ${i + 1}: «${pickedType}» ليس من الأنواع التي طلبها فريق المبيعات`);
+      t.truckType = pickedType;
+    });
+    if (typeProblems.length) {
+      await ShipmentRequest.updateOne({ _id: r._id }, { $set: { lockUntil: null } });
+      return bad(res, typeProblems.join(' · '), { problems: typeProblems });
+    }
     const open = r.trucks - r.placed.length;
     if (trucks.length > open) {
       await ShipmentRequest.updateOne({ _id: r._id }, { $set: { lockUntil: null } });
@@ -373,6 +399,7 @@ exports.place = async (req, res) => {
     for (const [i, t] of trucks.entries()) {
       const body = {
         ...shared,
+        truckType: t.truckType || r.truckType,
         supplierChoice: t.supplierChoice,
         ...(t.vehicle ? { vehicle: t.vehicle } : { newVehicle: { plate: String(t.newVehicle.plate).trim(), name: '', supplierId: t.supplierChoice, newSupplier: null } }),
         driverName: String(t.driverName || '').trim(),
@@ -392,7 +419,7 @@ exports.place = async (req, res) => {
           shipmentRequest: r._id, requestNumber: r.number, requestedBy: r.createdBy, requestedByName: r.createdByName,
         } });
         created.push(order);
-        r.placed.push({ order: order._id, waybillNumber: order.waybillNumber, supplierName: order.supplierName, vehiclePlate: order.vehiclePlate, driverName: order.driverName, by: req.user._id, byName: who });
+        r.placed.push({ order: order._id, waybillNumber: order.waybillNumber, supplierName: order.supplierName, vehiclePlate: order.vehiclePlate, driverName: order.driverName, truckType: order.truckType || t.truckType || '', by: req.user._id, byName: who });
         r.log.push({ action: 'placed', by: req.user._id, byName: who, order: order._id, waybillNumber: order.waybillNumber, note: order.supplierName || '' });
       } catch (e) {
         failed.push({ index: i, message: e.message || 'تعذّر الإنشاء' });

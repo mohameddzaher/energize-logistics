@@ -73,7 +73,7 @@ export default function ShipmentRequestForm({ editId, onDone }: { editId?: strin
           const d = await api.get<{ request: ShipmentRequest }>(`/api/shipment-requests/${editId}`);
           const q = d.request;
           setLoaded(q);
-          setForm({ ...q, ...(q.customFields || {}), pickupTime: toDateInput(q.pickupTime), startTime: toDateInput(q.startTime), arrivalTime: toDateInput(q.arrivalTime) });
+          setForm({ ...q, ...(q.customFields || {}), truckTypes: (q as any).truckTypes?.length ? (q as any).truckTypes : (q.truckType ? [q.truckType] : []), pickupTime: toDateInput(q.pickupTime), startTime: toDateInput(q.startTime), arrivalTime: toDateInput(q.arrivalTime) });
           setCustomerId(String(q.customer || ''));
           setSalesRep(String(q.salesRep || ''));
           setTrucks(q.trucks || 1);
@@ -109,7 +109,8 @@ export default function ShipmentRequestForm({ editId, onDone }: { editId?: strin
     const dflt = (c as any)?.defaults || {};
     setForm((f) => {
       const n = { ...f };
-      (['truckType', 'cargoType', 'branch'] as const).forEach((k) => { if (!n[k] && dflt[k]) n[k] = dflt[k]; });
+      (['cargoType', 'branch'] as const).forEach((k) => { if (!n[k] && dflt[k]) n[k] = dflt[k]; });
+      if (!(n.truckTypes || []).length && dflt.truckType) n.truckTypes = [dflt.truckType];
       return n;
     });
   };
@@ -129,7 +130,7 @@ export default function ShipmentRequestForm({ editId, onDone }: { editId?: strin
   const missing = useMemo(() => {
     const m = new Set<string>();
     if (!customerId) m.add('customer');
-    fields.forEach((f) => { if (f.required && !String(form[f.key] ?? '').trim()) m.add(f.key); });
+    fields.forEach((f) => { if (f.required && (f.key === 'truckType' ? !(form.truckTypes || []).length : !String(form[f.key] ?? '').trim())) m.add(f.key); });
     if (!(Number(form.sellPrice) > 0)) m.add('sellPrice');
     ['fromCity', 'toCity'].forEach((k) => { if (!String(form[k] ?? '').trim()) m.add(k); });
     return m;
@@ -152,6 +153,7 @@ export default function ShipmentRequestForm({ editId, onDone }: { editId?: strin
     try {
       const body: Record<string, any> = { customFields: {} };
       fields.forEach((f) => {
+        if (f.key === 'truckType') return;
         const v = form[f.key];
         if (v === undefined) return;
         if (SYSTEM_KEYS.has(f.key)) body[f.key] = v; else body.customFields[f.key] = v;
@@ -163,13 +165,15 @@ export default function ShipmentRequestForm({ editId, onDone }: { editId?: strin
       body.customer = customerId;
       body.salesRep = salesRep || null;
       body.trucks = trucks;
+      // Sales may accept several truck types; the vendors team fixes the one actually sent.
+      body.truckTypes = form.truckTypes || [];
       let d: { request: ShipmentRequest };
       if (editId) d = await api.put(`/api/shipment-requests/${editId}`, { ...body, resubmit });
       else d = await api.post('/api/shipment-requests', body);
       notify(editId
         ? (resubmit ? t(`أُعيد إرسال الطلب رقم ${d.request.number} إلى فريق الموردين`, `Request ${d.request.number} resent`) : t('حُفظ الطلب', 'Saved'))
         : t(`أُرسل طلب الشحنة رقم ${d.request.number} إلى فريق الموردين`, `Request ${d.request.number} sent to the vendors team`), 'success');
-      if (!editId) { setForm({ pickupTime: today(), startTime: today() }); setCustomerId(''); setTrucks(1); setShowErrors(false); }
+      if (!editId) { setForm({ pickupTime: today(), startTime: today(), truckTypes: [] }); setCustomerId(''); setTrucks(1); setShowErrors(false); }
       onDone?.(d.request);
     } catch (e: any) { notify(e?.message || t('تعذّر الحفظ', 'Could not save'), 'error'); }
     setSaving(false);
@@ -184,6 +188,31 @@ export default function ShipmentRequestForm({ editId, onDone }: { editId?: strin
     const bad = miss(f.key);
     const required = f.required || f.key === 'sellPrice' || f.key === 'fromCity' || f.key === 'toCity';
     const lab = <label className={bad ? labelMissCls : labelCls}>{label}{required && <span className="text-red-500"> *</span>}</label>;
+    // Truck type is a multi-choice on a request: any ticked type is acceptable for this load.
+    if (f.key === 'truckType') {
+      const picked: string[] = form.truckTypes || [];
+      const toggle = (k: string) => set('truckTypes', picked.includes(k) ? picked.filter((x) => x !== k) : [...picked, k]);
+      return (
+        <div key={f._id} className="col-span-full">
+          {lab}
+          <p className="-mt-0.5 mb-1.5 text-[11.5px] text-slate-500">{t('اختر نوعًا أو أكثر يصلح لهذه الحمولة، ويحدّد فريق الموردين النوعَ النهائيّ لكلّ شاحنة.', 'Tick one or more types that suit this load; the vendors team fixes the final type per truck.')}</p>
+          <div className={`flex flex-wrap gap-2 ${bad ? 'p-2 rounded-xl border border-red-300 bg-red-50/50' : ''}`}>
+            {f.options.map((o) => {
+              const on = picked.includes(o.key);
+              return (
+                <button key={o.key} type="button" onClick={() => toggle(o.key)}
+                  className={`flex items-center gap-2 px-4 py-2.5 rounded-xl border text-sm font-semibold transition-all ${on
+                    ? 'border-[#f37121] bg-[#f37121] text-white shadow-md shadow-[#f37121]/25'
+                    : 'border-slate-200 bg-white text-slate-700 hover:border-[#f37121]/40 hover:bg-[#f37121]/[0.04]'}`}>
+                  <span className={`w-4 h-4 rounded border flex items-center justify-center ${on ? 'border-white bg-white/20' : 'border-slate-300'}`}>{on && <Check className="w-3 h-3" />}</span>
+                  {optionLabel(o, lang as Lang)}
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      );
+    }
     switch (f.inputType) {
       case 'cards':
         return (

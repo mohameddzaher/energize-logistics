@@ -208,6 +208,7 @@ class _FleetAnalyticsScreenState extends State<FleetAnalyticsScreen> {
           spacing: 8,
           children: [
             _tile(tr('إجمالي سعر البيع', 'Total selling price'), _money(totals['totalIncome']), T.success, Icons.payments_outlined),
+            _tile(tr('حصة قسم الفروع', 'Branch dept share'), _money(totals['branchShare']), T.warn, Icons.call_split_rounded),
             _tile(tr('عدد الرحلات', 'Trips'), '${totals['tripCount'] ?? 0}', T.navy, Icons.route_outlined),
             _tile(tr('متوسط الرحلة', 'Avg / trip'), _money(totals['avgTripIncome']), T.info, Icons.trending_up_rounded),
             _tile(tr('سيارات حققت الهدف', 'On target'), '${totals['vehiclesAchieved'] ?? 0}', T.success, Icons.check_circle_outline),
@@ -437,7 +438,7 @@ class _FleetAnalyticsScreenState extends State<FleetAnalyticsScreen> {
     return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
       Wrap(spacing: 6, runSpacing: 6, children: [
         Chip2('${tr('حمولات', 'Loads')} ${totals['loads'] ?? rows.length}', T.navy),
-        Chip2('${tr('سعر البيع', 'Selling')} ${_money(totals['income'])}', T.success),
+        Chip2('${tr('الإيجار', 'Rent')} ${_money(totals['income'])}', T.success),
         Chip2('${tr('مصروف السائق', 'Driver exp.')} ${_money(totals['driverExpense'])}', T.warn),
       ]),
       const SizedBox(height: 8),

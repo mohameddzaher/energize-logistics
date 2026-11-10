@@ -93,7 +93,7 @@ function VehicleLoads({ state, plate, ar, lang }: { state?: VehLoads; plate: str
       <div className="px-3 py-2 bg-orange-50 border-b border-orange-100 flex flex-wrap items-center gap-x-4 gap-y-1 text-[11.5px]">
         <b className="text-slate-900 text-xs">{ar ? `حمولات ${plate}` : `Loads of ${plate}`}</b>
         <span className="text-slate-600">{ar ? 'العدد' : 'Loads'} <b className="tabular-nums">{state.totals?.loads ?? state.rows.length}</b></span>
-        <span className="text-emerald-700">{ar ? 'سعر البيع' : 'Selling price'} <b className="tabular-nums">{money(state.totals?.income || 0)}</b></span>
+        <span className="text-emerald-700">{ar ? 'الإيجار' : 'Rent'} <b className="tabular-nums">{money(state.totals?.income || 0)}</b></span>
         <span className="text-amber-700">{ar ? 'مصروف السائق' : 'Driver expense'} <b className="tabular-nums">{money(state.totals?.driverExpense || 0)}</b></span>
         {state.truncated && <span className="text-slate-400">{ar ? 'معروضٌ أوّل 500 صفّ' : 'first 500 rows shown'}</span>}
       </div>
@@ -354,8 +354,9 @@ function FleetAnalyticsInner({ active = true }: { active?: boolean }) {
 
       {data && (
         <>
-          <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">
+          <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-7 gap-3">
             <StatCard label={ar ? 'إجمالي سعر البيع' : 'Total selling price'} value={money(data.totals.totalIncome)} accent="text-emerald-600" />
+            <StatCard label={ar ? 'حصة قسم الفروع' : 'Branches’ share'} value={money(data.totals.branchShare)} accent="text-amber-600" />
             <StatCard label={ar ? 'عدد الرحلات' : 'Trips'} value={data.totals.tripCount} accent="text-[#f37121]" />
             <StatCard label={ar ? 'متوسط دخل الرحلة' : 'Avg / trip'} value={money(data.totals.avgTripIncome)} />
             {/* A card is a question, so make it an answer. 'Seven vehicles under target' is followed by 'which ones?'. The card used to stop at the number; now clicking it filters the table. */}

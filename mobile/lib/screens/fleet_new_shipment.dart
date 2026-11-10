@@ -78,6 +78,14 @@ class _FleetNewShipmentScreenState extends State<FleetNewShipmentScreen> {
       ? ''
       : (Lang.instance.ar ? (it['nameAr'] ?? it['nameEn']) : (it['nameEn'] ?? it['nameAr'])).toString();
 
+  // The difference between full rent and vehicle rent goes to the branches section (3PL scenario).
+  int get _branchShare {
+    final rent = num.tryParse(_vehicleRent.text.trim()) ?? 0;
+    final full = num.tryParse(_fullRent.text.trim()) ?? 0;
+    final diff = full - rent;
+    return diff > 0 ? diff.round() : 0;
+  }
+
   // Chip-style choice button (customer type).
   Widget _segBtn(String label, bool active, VoidCallback onTap) => Pressable(
         onTap: onTap,
@@ -703,8 +711,16 @@ class _FleetNewShipmentScreenState extends State<FleetNewShipmentScreen> {
                   Expanded(child: _segBtn(tr('عملاء الفروع', 'Branch'), _customerType == 'branch', () => setState(() => _customerType = 'branch'))),
                 ]),
                 const SizedBox(height: 10),
-                TextField(controller: _vehicleRent, keyboardType: const TextInputType.numberWithOptions(decimal: true), onChanged: (_) => setState(() {}), decoration: InputDecoration(labelText: tr('سعر البيع', 'Selling price'),
-                    helperText: _customerType == 'branch' ? tr('لعميل الفروع: يُسجَّل سعرَ شراءٍ في أمر النقل وسير عمل التشغيل.', 'Branch customer: recorded as the purchase price on the transport order and workflow.') : null)),
+                Row(children: [
+                  Expanded(child: TextField(controller: _vehicleRent, keyboardType: const TextInputType.numberWithOptions(decimal: true), onChanged: (_) => setState(() {}), decoration: InputDecoration(labelText: tr('سعر البيع', 'Selling price')))),
+                  const SizedBox(width: 10),
+                  Expanded(child: TextField(controller: _fullRent, keyboardType: const TextInputType.numberWithOptions(decimal: true), onChanged: (_) => setState(() {}), decoration: InputDecoration(labelText: tr('الإيجار كامل (اختياري)', 'Full rent (optional)')))),
+                ]),
+                if (_branchShare > 0) Padding(
+                  padding: const EdgeInsets.only(top: 6),
+                  child: Text(tr('حصة قسم الفروع من الفرق: $_branchShare', 'Branch dept share of difference: $_branchShare'),
+                      style: const TextStyle(fontSize: 12, color: T.warn, fontWeight: FontWeight.w600)),
+                ),
                 const SizedBox(height: 10),
                 _lkPicker(tr('نوع الدفع', 'Payment type'), _paymentTypeItem, _paymentTypes, (v) => setState(() => _paymentTypeItem = v)),
                 const SizedBox(height: 10),

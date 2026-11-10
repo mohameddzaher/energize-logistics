@@ -165,7 +165,7 @@ function ArrivalsInner() {
         ar ? 'أمر النقل' : 'Transport order', ar ? 'اللوحة' : 'Plate', ar ? 'السائقون' : 'Drivers',
         ar ? 'العميل' : 'Customer', ar ? 'المسار' : 'Route', ar ? 'تاريخ التحميل' : 'Load date',
         ar ? 'الوصول المتوقع' : 'Expected arrival', ar ? 'الحالة' : 'Status',
-        ar ? 'المشرف' : 'Supervisor', ar ? 'آخر تواصل' : 'Last contact', ar ? 'سعر البيع' : 'Selling price',
+        ar ? 'المشرف' : 'Supervisor', ar ? 'آخر تواصل' : 'Last contact', ar ? 'الإيجار' : 'Rent',
       ].map((h, i) => <th key={i} className={th}>{h}</th>)}
     </tr>
   );

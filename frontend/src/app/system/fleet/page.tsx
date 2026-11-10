@@ -351,6 +351,7 @@ function FleetShipmentsInner() {
     { key: 'driverIqama', label: ar ? 'إقامة السائق' : 'Driver iqama' },
     { key: 'driverNationality', label: ar ? 'جنسية السائق' : 'Driver nationality', filter: true },
     { key: 'price', label: ar ? 'سعر البيع' : 'Selling price', filter: true },
+    { key: 'fullRent', label: ar ? 'الإيجار كامل' : 'Full rent', filter: true },
     { key: 'driverExpense', label: ar ? 'مصروف السائق' : 'Driver expense', filter: true },
     { key: 'driverExpensePaid', label: ar ? 'صُرف المصروف' : 'Expense paid', filter: true },
     { key: 'fridayBonus', label: ar ? 'بدل الجمعة' : 'Friday bonus', filter: true },

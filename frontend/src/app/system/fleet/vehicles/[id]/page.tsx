@@ -192,12 +192,13 @@ function VehicleAnalyticsInner() {
 
       <PeriodBanner period={d.period} lang={ar ? 'ar' : 'en'} count={t.trips} />
 
-      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-3">
+      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">
         <StatCard label={ar ? 'عدد الرحلات' : 'Trips'} value={t.trips} accent="text-[#f37121]" />
         <StatCard label={ar ? 'الدخل (سعر البيع)' : 'Income'} value={money(t.income)} accent="text-emerald-600" />
         <StatCard label={ar ? 'مصروف السائقين' : 'Driver expense'} value={money(t.driverExpense)} accent="text-amber-600" />
         <StatCard label={ar ? 'الصافي' : 'Net'} value={money(t.net)} />
         <StatCard label={ar ? 'متوسط دخل الرحلة' : 'Avg / trip'} value={money(t.avgTripIncome)} />
+        <StatCard label={ar ? 'حصة قسم الفروع' : 'Branches’ share'} value={money(t.branchShare)} accent="text-blue-600" />
       </div>
 
       {/* Target scaled by the number of months in the period, not a single month; otherwise a three-month vehicle would show 300% while exactly on target. */}
@@ -382,7 +383,7 @@ function VehicleAnalyticsInner() {
           <table className="w-full text-sm">
             <thead><tr className="bg-slate-900 border-b border-slate-200 text-slate-300">
               {[ar ? 'أمر النقل' : 'Transport order', ar ? 'التاريخ' : 'Date', ar ? 'العميل' : 'Customer', ar ? 'المسار' : 'Route',
-                ar ? 'السائق' : 'Driver', ar ? 'نوع الحمولة' : 'Load type', ar ? 'سعر البيع' : 'Selling price',
+                ar ? 'السائق' : 'Driver', ar ? 'نوع الحمولة' : 'Load type', ar ? 'الإيجار' : 'Rent',
                 ar ? 'مصروف السائق' : 'Driver expense', ar ? 'الحالة' : 'Status',
               ].map((h, i) => <th key={i} className={th}>{h}</th>)}
             </tr></thead>
@@ -402,7 +403,7 @@ function VehicleAnalyticsInner() {
                     <td className="px-3 py-3 text-xs text-slate-700 max-w-[150px] truncate">{[s.driverName, s.secondDriverName].filter(Boolean).join(' + ') || '—'}</td>
                     <td className="px-3 py-3 text-xs text-slate-600">{lkp('fleet_load_type', s.loadType) || '—'}</td>
                     <td className="px-3 py-3 text-xs font-semibold text-emerald-700 tabular-nums whitespace-nowrap">
-                      {money(s.price)}
+                      {money(s.price)}{s.fullRent ? <span className="text-slate-400 font-normal"> / {money(s.fullRent)}</span> : null}
                     </td>
                     <td className="px-3 py-3 text-xs font-bold text-amber-700 tabular-nums">{money(s.driverExpense)}</td>
                     <td className="px-3 py-3 text-xs whitespace-nowrap">

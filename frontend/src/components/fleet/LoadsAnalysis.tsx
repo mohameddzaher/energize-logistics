@@ -300,7 +300,7 @@ export default function LoadsAnalysis({ active = true }: { active?: boolean }) {
                 <thead><tr className="bg-slate-900 border-b border-slate-200 text-slate-300">
                   {[ar ? 'أمر النقل' : 'Transport order', ar ? 'التاريخ' : 'Date', ar ? 'العميل' : 'Customer', ar ? 'المشرف' : 'Supervisor',
                     ar ? 'اللوحة' : 'Plate', ar ? 'السائق' : 'Driver', ar ? 'من' : 'From', ar ? 'إلى' : 'To', ar ? 'نوع الحمولة' : 'Load type',
-                    ar ? 'سعر البيع' : 'Selling price', ar ? 'مصروف السائق' : 'Driver expense', ar ? 'الحالة' : 'Status',
+                    ar ? 'الإيجار' : 'Rent', ar ? 'مصروف السائق' : 'Driver expense', ar ? 'الحالة' : 'Status',
                   ].map((h, i) => <th key={i} className={th}>{h}</th>)}
                 </tr></thead>
                 <tbody>
@@ -325,7 +325,7 @@ export default function LoadsAnalysis({ active = true }: { active?: boolean }) {
                         <td className="px-3 py-3 text-xs text-slate-700 whitespace-nowrap">{s.toCity || '—'}</td>
                         <td className="px-3 py-3 text-xs text-slate-600">{lkp('fleet_load_type', s.loadType) || '—'}</td>
                         <td className="px-3 py-3 text-xs font-semibold text-emerald-700 tabular-nums whitespace-nowrap">
-                          {money(s.price)}
+                          {money(s.price)}{s.fullRent ? <span className="text-slate-400 font-normal"> / {money(s.fullRent)}</span> : null}
                         </td>
                         <td className="px-3 py-3 text-xs font-bold text-amber-700 tabular-nums">
                           {money(s.driverExpense)}

@@ -123,8 +123,11 @@ export default function FleetCustomerProfilePage() {
         <StatCard label={ar ? 'آخر رحلة' : 'Last trip'} value={data.stats.lastTrip ? fmtD(data.stats.lastTrip) : '—'} />
       </div>
 
-      {data.stats.driverExpense > 0 && (
-        <div className="grid grid-cols-2 gap-3">
+      {/* Money: full rent is what the driver receives from the customer, income is our share of it; the difference is the branches department's share. Keeping them apart prevents reading one as the other. */}
+      {(data.stats.fullRent > 0 || data.stats.driverExpense > 0) && (
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+          <StatCard label={ar ? 'الإيجار كامل' : 'Full rent'} value={money(data.stats.fullRent)} />
+          <StatCard label={ar ? 'حصّة الفروع' : 'Branch share'} value={money(data.stats.branchShare)} />
           <StatCard label={ar ? 'مصروف السائقين' : 'Driver expense'} value={money(data.stats.driverExpense)} accent="text-rose-600" />
           <StatCard label={ar ? 'الصافي لنا' : 'Net to us'} value={money(data.stats.income - data.stats.driverExpense)} accent="text-emerald-600" />
         </div>

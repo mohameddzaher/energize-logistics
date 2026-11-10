@@ -496,9 +496,19 @@ function CreateFleetShipmentInner() {
             <label className={labelCls}>{ar ? 'سعر البيع' : 'Selling price'}</label>
             <input type="number" min={0} value={form.price ?? ''} onChange={(e) => set('price', e.target.value)}
               className={inputCls} placeholder="0" />
-            <p className="text-[11px] text-slate-500 mt-1">{form.customerType === 'branch'
-              ? (ar ? 'لعميل الفروع: يُسجَّل سعرَ شراءٍ في أمر النقل وسير عمل التشغيل، ويبقى سعر البيع هناك لفريق المبيعات.' : 'Branch customer: recorded as the purchase price on the transport order and the operations workflow; sales fills the selling price there.')
-              : (ar ? 'ما يدخل لقسم إدارة الأسطول من هذه الحمولة.' : 'What this load brings into the fleet section.')}</p>
+            <p className="text-[11px] text-slate-500 mt-1">{ar ? 'الفلوس الداخلة لقسم إدارة الأسطول من هذه الحمولة.' : 'The money that goes into the fleet section.'}</p>
+          </div>
+          <div>
+            <label className={labelCls}>{ar ? 'الإيجار كامل (اختياري)' : 'Full rent (optional)'}</label>
+            <input type="number" min={0} value={form.fullRent ?? ''} onChange={(e) => set('fullRent', e.target.value)}
+              className={inputCls} placeholder={ar ? 'ما يستلمه السائق من العميل' : 'what the driver collects'} />
+            {(() => {
+              const vr = Number(form.price) || 0; const fr = Number(form.fullRent) || 0;
+              const diff = fr - vr;
+              if (fr > 0 && diff > 0) return <p className="text-[11px] text-amber-700 mt-1">{ar ? `الفرق ${diff.toLocaleString('en-US')} ر.س يذهب لقسم الفروع.` : `Difference ${diff.toLocaleString('en-US')} SAR goes to the branches dept.`}</p>;
+              if (fr > 0 && diff < 0) return <p className="text-[11px] text-red-600 mt-1">{ar ? 'الإيجار كامل أقل من سعر البيع — تحقّق.' : 'Full rent is below the selling price — check.'}</p>;
+              return <p className="text-[11px] text-slate-500 mt-1">{ar ? 'يستلمه السائق من العميل — عادةً مع «قدام». الفرق لقسم الفروع.' : 'Collected by the driver — usually with “forward”. The gap goes to branches.'}</p>;
+            })()}
           </div>
           <div>
             <label className={labelCls}>{ar ? 'نوع العميل' : 'Customer type'}</label>

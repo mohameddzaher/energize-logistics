@@ -1187,6 +1187,8 @@ class _RejectSheet extends StatefulWidget {
 class _RejectSheetState extends State<_RejectSheet> {
   final _reason = TextEditingController();
   final _note = TextEditingController();
+  // A reason missing from the list is typed and joins the list on submit.
+  bool _typed = false;
   @override
   void dispose() { _reason.dispose(); _note.dispose(); super.dispose(); }
   @override
@@ -1198,7 +1200,18 @@ class _RejectSheetState extends State<_RejectSheet> {
           Text(tr('يصل السببُ إلى فريق المبيعات ليعدّل الطلب ويعيده.', 'The reason reaches sales, who can amend and resend.'), style: const TextStyle(fontSize: 12, color: T.inkFaint)),
           const SizedBox(height: 10),
           // The list is managed in section settings and extended here (search, then add).
-          LookupField(type: 'sr_reject_reason', controller: _reason, label: tr('سبب الرفض *', 'Reason *'), onChanged: () => setState(() {})),
+          if (_typed)
+            TextField(controller: _reason, autofocus: true, onChanged: (_) => setState(() {}), decoration: InputDecoration(labelText: tr('سبب الرفض *', 'Reason *'), helperText: tr('يُضاف إلى القائمة', 'Joins the list')))
+          else
+            LookupField(type: 'sr_reject_reason', controller: _reason, label: tr('سبب الرفض *', 'Reason *'), onChanged: () => setState(() {})),
+          Align(
+            alignment: AlignmentDirectional.centerStart,
+            child: TextButton.icon(
+              onPressed: () => setState(() { _typed = !_typed; _reason.clear(); }),
+              icon: Icon(_typed ? Icons.list_rounded : Icons.add_rounded, size: 18),
+              label: Text(_typed ? tr('الاختيار من القائمة', 'Pick from the list') : tr('سببٌ غير موجود في القائمة', 'Reason not in the list')),
+            ),
+          ),
           const SizedBox(height: 8),
           TextField(controller: _note, maxLines: 2, decoration: InputDecoration(labelText: tr('ملاحظة للمبيعات', 'Note to sales'))),
           const SizedBox(height: 12),
@@ -1470,12 +1483,6 @@ class _PlaceTrucksScreenState extends State<PlaceTrucksScreen> {
           Expanded(child: TextField(controller: t.buy, keyboardType: TextInputType.number, decoration: InputDecoration(labelText: tr('سعر الشراء *', 'Buying price *')))),
           const SizedBox(width: 8),
           Expanded(child: TextField(controller: t.advance, keyboardType: TextInputType.number, decoration: InputDecoration(labelText: tr('السلفة', 'Advance')))),
-        ]),
-        const SizedBox(height: 6),
-        Row(children: [
-          Expanded(child: TextField(controller: t.bl, decoration: InputDecoration(labelText: tr('رقم البوليصة', 'B/L')))),
-          const SizedBox(width: 8),
-          Expanded(child: TextField(controller: t.container, decoration: InputDecoration(labelText: tr('رقم الحاوية', 'Container')))),
         ]),
       ])),
     );

@@ -713,10 +713,6 @@ function TruckEditor({ i, row, reps, types, miss, onChange, onRemove, ar }: { i:
           <label className="block text-[12.5px] font-semibold mb-1 text-slate-700">{t('السلفة', 'Advance')}</label>
           <input type="number" min={0} value={row.advanceAmount} onChange={(e) => onChange({ advanceAmount: e.target.value })} className={inputCls} />
         </div>
-        <div className="grid grid-cols-2 gap-2">
-          <div><label className="block text-[12.5px] font-semibold mb-1 text-slate-700">{t('البوليصة', 'B/L')}</label><input value={row.blNumber} onChange={(e) => onChange({ blNumber: e.target.value })} className={inputCls} /></div>
-          <div><label className="block text-[12.5px] font-semibold mb-1 text-slate-700">{t('الحاوية', 'Container')}</label><input value={row.containerNumber} onChange={(e) => onChange({ containerNumber: e.target.value })} className={inputCls} /></div>
-        </div>
       </div>
     </div>
   );
@@ -729,12 +725,14 @@ function RejectModal({ req, onClose, onDone }: { req: ShipmentRequest; onClose: 
   const t = (a: string, e: string) => (ar ? a : e);
   const { notify } = useDialog();
   const [reason, setReason] = useState('');
+  // A reason missing from the list is typed here and joins the list on submit.
+  const [typed, setTyped] = useState(false);
   const [note, setNote] = useState('');
   const [saving, setSaving] = useState(false);
   const submit = async () => {
-    if (!reason) { notify(t('اختر سبب الرفض', 'Pick a reason'), 'error'); return; }
+    if (!reason.trim()) { notify(t('اختر سبب الرفض', 'Pick a reason'), 'error'); return; }
     setSaving(true);
-    try { await api.post(`/api/shipment-requests/${req._id}/reject`, { reason, note }); notify(t('رُفض الطلب وأُبلغ فريق المبيعات بالسبب', 'Rejected; sales was told why'), 'success'); onDone(); }
+    try { await api.post(`/api/shipment-requests/${req._id}/reject`, { reason: reason.trim(), note }); notify(t('رُفض الطلب وأُبلغ فريق المبيعات بالسبب', 'Rejected; sales was told why'), 'success'); onDone(); }
     catch (e: any) { notify(e?.message || t('تعذّر الرفض', 'Failed'), 'error'); }
     setSaving(false);
   };
@@ -745,7 +743,12 @@ function RejectModal({ req, onClose, onDone }: { req: ShipmentRequest; onClose: 
         {!!req.placed.length && <p className="flex items-start gap-1.5 rounded-lg bg-amber-50 border border-amber-200 px-3 py-2 text-[12.5px] text-amber-800"><AlertCircle className="w-4 h-4 mt-0.5" />{t(`أُنشئ ${req.placed.length} أمرُ نقل من هذا الطلب ويبقى؛ يُرفض الباقي (${req.open}).`, `${req.placed.length} order(s) already created stay; the remaining ${req.open} are rejected.`)}</p>}
         <div>
           <label className="block text-sm font-semibold text-slate-800 mb-1.5">{t('سبب الرفض', 'Reason')} *</label>
-          <SearchableManagedSelect storeLabel type="sr_reject_reason" value={reason} onChange={setReason} placeholder={t('اختر السبب أو ابحث', 'Pick or search a reason')} />
+          {typed
+            ? <input autoFocus value={reason} onChange={(e) => setReason(e.target.value)} className={inputCls} placeholder={t('اكتب السبب — يُضاف إلى القائمة', 'Type the reason — it joins the list')} />
+            : <SearchableManagedSelect storeLabel type="sr_reject_reason" value={reason} onChange={setReason} placeholder={t('اختر السبب أو ابحث', 'Pick or search a reason')} />}
+          <button type="button" onClick={() => { setTyped((v) => !v); setReason(''); }} className="mt-1.5 inline-flex items-center gap-1 text-[12.5px] font-semibold text-[#f37121] hover:underline">
+            {typed ? t('الاختيار من القائمة', 'Pick from the list') : <><Plus className="w-3.5 h-3.5" />{t('سببٌ غير موجود في القائمة', 'Reason not in the list')}</>}
+          </button>
         </div>
         <div>
           <label className="block text-sm font-semibold text-slate-800 mb-1.5">{t('ملاحظة لفريق المبيعات', 'Note to sales')}</label>

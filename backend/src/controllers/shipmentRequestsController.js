@@ -422,8 +422,9 @@ exports.place = async (req, res) => {
         driverPhone: String(t.driverPhone || '').trim(),
         buyPrice: Number(t.buyPrice),
         advanceAmount: numOrNull(t.advanceAmount),
-        blNumber: String(t.blNumber ?? r.blNumber ?? '').trim(),
-        containerNumber: String(t.containerNumber ?? r.containerNumber ?? '').trim(),
+        // B/L and container are written by sales on the request; vendors do not set them.
+        blNumber: String(r.blNumber || '').trim(),
+        containerNumber: String(r.containerNumber || '').trim(),
         waybillDetails: t.waybillDetails,
       };
       try {
@@ -477,8 +478,13 @@ exports.reject = async (req, res) => {
     const note = String(req.body?.note || '').trim();
     if (!reason) return bad(res, 'اختر سببَ الرفض', { fields: ['reason'] });
     const Lookup = require('../models/Lookup');
-    const known = await Lookup.findOne({ type: 'sr_reject_reason', deleted: { $ne: true }, $or: [{ nameAr: reason }, { nameEn: reason }, { key: reason }] }).select('nameAr').lean();
-    if (!known) return bad(res, 'السببُ غير موجود في قائمة أسباب الرفض — أضِفه إلى القائمة أوّلًا', { fields: ['reason'] });
+    let known = await Lookup.findOne({ type: 'sr_reject_reason', deleted: { $ne: true }, $or: [{ nameAr: reason }, { nameEn: reason }, { key: reason }] }).select('nameAr').lean();
+    // A reason typed in the reject dialog joins the list, so the next rejection can pick it.
+    if (!known) {
+      const count = await Lookup.countDocuments({ type: 'sr_reject_reason' });
+      known = await Lookup.create({ type: 'sr_reject_reason', key: `custom_${Date.now().toString(36)}`, nameAr: reason, nameEn: reason, order: count, isActive: true, isSystem: false, createdBy: req.user._id });
+      try { require('../websocket/socketManager').emitToAll('lookup:changed', { type: 'sr_reject_reason' }); } catch (_) { /* */ }
+    }
     const r = await ShipmentRequest.findById(req.params.id);
     if (!r) return res.status(404).json({ message: 'الطلب غير موجود' });
     if (!OPEN.includes(r.status)) return bad(res, 'الطلبُ ليس مفتوحًا');

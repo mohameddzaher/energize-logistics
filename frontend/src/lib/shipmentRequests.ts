@@ -71,18 +71,28 @@ export const VENDOR_FORM_KEYS = new Set(['buyPrice', 'advanceAmount', 'driverRen
  * Where the vendors team stands on a request, in one line for sales: not started, partly placed (x of y), done,
  * rejected (with how many were placed first) or withdrawn. Read by the table, its filter and the export.
  */
-export function vendorProgress(r: Pick<ShipmentRequest, 'status' | 'trucks' | 'placed' | 'handlerName'>, ar: boolean) {
+export function vendorProgress(r: Pick<ShipmentRequest, 'status' | 'trucks' | 'placed' | 'handlerName'>, ar: boolean, mode: 'sales' | 'vendors' = 'sales') {
   const n = (r.placed || []).length;
   const of = r.trucks || 0;
   const pct = of ? Math.round((n / of) * 100) : 0;
   const t = (a: string, e: string) => (ar ? a : e);
+  // The vendors team reads its own work, so the words name the work, not "the vendors".
+  const v = mode === 'vendors';
   switch (r.status) {
-    case 'completed': return { label: t(`أنجزها الموردون (${n} من ${of})`, `Done by vendors (${n} of ${of})`), tone: 'text-emerald-700', pct: 100 };
+    case 'completed': return { label: v ? t(`اكتمل (${n} من ${of})`, `Done (${n} of ${of})`) : t(`أنجزها الموردون (${n} من ${of})`, `Done by vendors (${n} of ${of})`), tone: 'text-emerald-700', pct: 100 };
     case 'in_progress': return { label: t(`جارٍ: أُسندت ${n} من ${of}`, `In progress: ${n} of ${of}`), tone: 'text-sky-700', pct };
-    case 'rejected': return { label: n ? t(`رُفض الباقي بعد إسناد ${n} من ${of}`, `Rest rejected after ${n} of ${of}`) : t('رفضها الموردون', 'Rejected by vendors'), tone: 'text-red-700', pct };
-    case 'cancelled': return { label: n ? t(`سُحب الباقي بعد إسناد ${n} من ${of}`, `Rest withdrawn after ${n} of ${of}`) : t('سُحب الطلب', 'Withdrawn'), tone: 'text-slate-500', pct };
+    case 'rejected': return { label: n ? t(`رُفض الباقي بعد إسناد ${n} من ${of}`, `Rest rejected after ${n} of ${of}`) : (v ? t('مرفوض', 'Rejected') : t('رفضها الموردون', 'Rejected by vendors')), tone: 'text-red-700', pct };
+    case 'cancelled': return { label: n ? t(`سحب فريق المبيعات الباقي بعد إسناد ${n} من ${of}`, `Sales withdrew the rest after ${n} of ${of}`) : t('سحبه فريق المبيعات', 'Withdrawn by sales'), tone: 'text-slate-500', pct };
     default: return r.handlerName
       ? { label: t(`يعمل عليه ${r.handlerName} — 0 من ${of}`, `With ${r.handlerName} — 0 of ${of}`), tone: 'text-amber-700', pct: 0 }
-      : { label: t(`لم يبدأ الموردون — 0 من ${of}`, `Not started — 0 of ${of}`), tone: 'text-amber-700', pct: 0 };
+      : { label: v ? t(`لم يبدأ بعد — 0 من ${of}`, `Not started — 0 of ${of}`) : t(`لم يبدأ الموردون — 0 من ${of}`, `Not started by vendors — 0 of ${of}`), tone: 'text-amber-700', pct: 0 };
   }
 }
+
+/** Status words as each side reads them: on the vendors page a pending request is simply new. */
+export const statusLabel = (st: RequestStatus, ar: boolean, mode: 'sales' | 'vendors') => {
+  if (mode === 'vendors' && st === 'pending') return ar ? 'جديد' : 'New';
+  if (mode === 'vendors' && st === 'cancelled') return ar ? 'سحبه فريق المبيعات' : 'Withdrawn by sales';
+  const d = REQUEST_STATUS[st];
+  return d ? (ar ? d.ar : d.en) : st;
+};

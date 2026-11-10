@@ -19,7 +19,7 @@ import DriverPicker from '@/components/shipment-orders/DriverPicker';
 import ShipmentRequestForm from '@/components/shipment-orders/ShipmentRequestForm';
 import { PAYMENT_SUBTYPES } from '@/lib/paymentKind';
 import type { OrderSupplier, OrderVehicle, OrderDriver } from '@/lib/shipmentOrders';
-import { REQUEST_STATUS, LOG_LABEL, canAsk, canPlace, vendorProgress, type ShipmentRequest, type RequestStatus } from '@/lib/shipmentRequests';
+import { REQUEST_STATUS, LOG_LABEL, canAsk, canPlace, vendorProgress, statusLabel, type ShipmentRequest, type RequestStatus } from '@/lib/shipmentRequests';
 import { useColumnFilters } from '@/hooks/useColumnFilters';
 import ColumnChooser, { useVisibleColumns, type ChooserColumn } from '@/components/system/ColumnChooser';
 import ExportMenu, { type ExportColumn } from '@/components/ls2/ExportMenu';
@@ -36,7 +36,7 @@ const inputCls = 'w-full px-3 py-2 rounded-lg bg-white border border-slate-200 t
 type Tab = 'open' | RequestStatus | 'all';
 
 export default function ShipmentRequestsBoard({ mode }: { mode: 'sales' | 'vendors' }) {
-  const { user } = useAuth();
+  const { user, refreshUser } = useAuth() as any;
   const { lang, isRTL } = useLanguage();
   const ar = lang === 'ar';
   const t = (a: string, e: string) => (ar ? a : e);
@@ -59,11 +59,16 @@ export default function ShipmentRequestsBoard({ mode }: { mode: 'sales' | 'vendo
     document.addEventListener('mousedown', close);
     return () => document.removeEventListener('mousedown', close);
   }, [filtersOpen]);
-  // Cards or table, remembered per browser and per board (sales vs vendors).
-  const viewKey = `shipmentRequests:view:${mode}`;
-  const [view, setView] = useState<'cards' | 'table'>('cards');
-  useEffect(() => { try { const v = localStorage.getItem(viewKey); if (v === 'table' || v === 'cards') setView(v); } catch { /* */ } }, [viewKey]);
-  const changeView = (v: 'cards' | 'table') => { setView(v); try { localStorage.setItem(viewKey, v); } catch { /* */ } };
+  // Cards or table, saved on the account per board (the same keys as mobile); the table is the default.
+  const prefKey = `shipmentRequests.view.${mode === 'vendors' ? 'place' : 'ask'}`;
+  const [viewLocal, setViewLocal] = useState<'cards' | 'table' | null>(null);
+  const savedView = String((user as any)?.uiPrefs?.[prefKey.replace(/\./g, ':')] || '');
+  const view: 'cards' | 'table' = viewLocal ?? (savedView === 'cards' ? 'cards' : 'table');
+  const changeView = (v: 'cards' | 'table') => {
+    if (v === view) return;
+    setViewLocal(v);
+    api.patch('/api/auth/me/prefs', { key: prefKey, value: v }).then(() => refreshUser?.().catch(() => {})).catch(() => {});
+  };
   const [rows, setRows] = useState<ShipmentRequest[]>([]);
   const [byStatus, setByStatus] = useState<Record<string, number>>({});
   const [openTrucks, setOpenTrucks] = useState(0);
@@ -128,7 +133,7 @@ export default function ShipmentRequestsBoard({ mode }: { mode: 'sales' | 'vendo
     { key: 'customer', ar: 'العميل', en: 'Customer', read: (r) => r.customerName || '' },
     { key: 'salesRep', ar: 'السيلز', en: 'Sales rep', read: (r) => r.salesRepName || r.createdByName || '' },
     { key: 'handler', ar: 'مسؤول الموردين', en: 'Vendors handler', read: (r) => r.handlerName || '' },
-    { key: 'progress', ar: 'إنجاز الموردين', en: 'Vendor progress', read: (r) => vendorProgress(r, ar).label },
+    { key: 'progress', ar: mode === 'vendors' ? 'الإنجاز' : 'إنجاز الموردين', en: 'Progress', read: (r) => vendorProgress(r, ar, mode).label },
     { key: 'fromCity', ar: 'من', en: 'From', read: (r) => r.fromCity || '' },
     { key: 'toCity', ar: 'إلى', en: 'To', read: (r) => r.toCity || '' },
     { key: 'truckType', ar: 'نوع الشاحنة', en: 'Truck type', read: (r) => r.truckType || '' },
@@ -159,8 +164,8 @@ export default function ShipmentRequestsBoard({ mode }: { mode: 'sales' | 'vendo
   const COLS = useMemo(() => {
     const c: { key: string; ar: string; en: string; read: (r: ShipmentRequest) => any; num?: boolean; date?: boolean }[] = [
       { key: 'number', ar: 'رقم الطلب', en: 'Request', read: (r) => r.number, num: true },
-      { key: 'status', ar: 'الحالة', en: 'Status', read: (r) => (ar ? REQUEST_STATUS[r.status]?.ar : REQUEST_STATUS[r.status]?.en) || r.status },
-      { key: 'progress', ar: 'إنجاز الموردين', en: 'Vendor progress', read: (r) => vendorProgress(r, ar).label },
+      { key: 'status', ar: 'الحالة', en: 'Status', read: (r) => statusLabel(r.status, ar, mode) },
+      { key: 'progress', ar: mode === 'vendors' ? 'الإنجاز' : 'إنجاز الموردين', en: 'Progress', read: (r) => vendorProgress(r, ar, mode).label },
       { key: 'trucks', ar: 'الشاحنات المطلوبة', en: 'Trucks asked', read: (r) => r.trucks, num: true },
       { key: 'placedCount', ar: 'أُسندت', en: 'Placed', read: (r) => (r.placed || []).length, num: true },
       { key: 'openCount', ar: 'متبقّية', en: 'Remaining', read: (r) => (['pending', 'in_progress'].includes(r.status) ? r.open : 0), num: true },
@@ -372,7 +377,7 @@ export default function ShipmentRequestsBoard({ mode }: { mode: 'sales' | 'vendo
       ) : view === 'table' ? (
         <div className="rounded-2xl border border-slate-200 bg-white shadow-sm overflow-auto max-h-[75vh]">
           <table className="w-full text-[12.5px]">
-            <thead className="sticky top-0 z-10 bg-slate-50 text-slate-600">
+            <thead className="sticky top-0 z-10 bg-slate-900 text-slate-200">
               <tr>
                 {visCols.map((c) => (
                   <th key={c.key} className={`whitespace-nowrap px-3 py-2 font-semibold ${c.num ? 'text-end' : 'text-start'}`}>{cf.head(c.key, ar ? c.ar : c.en)}</th>
@@ -383,12 +388,12 @@ export default function ShipmentRequestsBoard({ mode }: { mode: 'sales' | 'vendo
             <tbody>
               {shown.map((r) => {
                 const st = REQUEST_STATUS[r.status];
-                const vp = vendorProgress(r, ar);
+                const vp = vendorProgress(r, ar, mode);
                 return (
                   <tr key={r._id} className={`border-t border-slate-100 hover:bg-slate-50/60 ${r.status === 'rejected' ? 'bg-red-50/40' : ''}`}>
                     {visCols.map((c) => {
                       if (c.key === 'number') return <td key={c.key} className="px-3 py-2 font-mono font-bold text-slate-900">#{r.number}</td>;
-                      if (c.key === 'status') return <td key={c.key} className="px-3 py-2"><span className={`inline-flex items-center gap-1.5 whitespace-nowrap px-2 py-0.5 rounded-full border text-[11.5px] font-semibold ${st.cls}`}><span className={`w-1.5 h-1.5 rounded-full ${st.dot}`} />{ar ? st.ar : st.en}</span></td>;
+                      if (c.key === 'status') return <td key={c.key} className="px-3 py-2"><span className={`inline-flex items-center gap-1.5 whitespace-nowrap px-2 py-0.5 rounded-full border text-[11.5px] font-semibold ${st.cls}`}><span className={`w-1.5 h-1.5 rounded-full ${st.dot}`} />{statusLabel(r.status, ar, mode)}</span></td>;
                       if (c.key === 'progress') return (
                         <td key={c.key} className="px-3 py-2 min-w-[150px]">
                           <p className={`whitespace-nowrap text-[12px] font-semibold ${vp.tone}`}>{vp.label}</p>
@@ -421,8 +426,8 @@ export default function ShipmentRequestsBoard({ mode }: { mode: 'sales' | 'vendo
               <div key={r._id} className={`rounded-2xl border bg-white shadow-sm overflow-hidden ${r.status === 'rejected' ? 'border-red-200' : 'border-slate-200'}`}>
                 <div className="px-4 py-3 flex flex-wrap items-center gap-2 border-b border-slate-100 bg-slate-50/60">
                   <span className="font-mono font-extrabold text-slate-900">#{r.number}</span>
-                  <span className={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full border text-[11.5px] font-semibold ${st.cls}`}><span className={`w-1.5 h-1.5 rounded-full ${st.dot}`} />{ar ? st.ar : st.en}</span>
-                  <span className={`text-[12px] font-semibold ${vendorProgress(r, ar).tone}`}>{vendorProgress(r, ar).label}</span>
+                  <span className={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full border text-[11.5px] font-semibold ${st.cls}`}><span className={`w-1.5 h-1.5 rounded-full ${st.dot}`} />{statusLabel(r.status, ar, mode)}</span>
+                  <span className={`text-[12px] font-semibold ${vendorProgress(r, ar, mode).tone}`}>{vendorProgress(r, ar, mode).label}</span>
                   {r.resubmits ? <span className="text-[11px] text-slate-500">{t(`أُعيد ${r.resubmits}×`, `resent ${r.resubmits}×`)}</span> : null}
                   <span className="ms-auto text-[11.5px] text-slate-500">{when(r.createdAt)} · {r.createdByName}</span>
                 </div>

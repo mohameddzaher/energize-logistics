@@ -27,30 +27,33 @@ const srStatuses = <String, (String, String, Color)>{
   'rejected': ('مرفوض', 'Rejected', T.danger),
   'cancelled': ('مسحوب', 'Withdrawn', T.inkFaint),
 };
-Widget srStatusChip(dynamic s) {
-  final x = srStatuses['$s'] ?? ('$s', '$s', T.inkFaint);
+/// On the vendors list a pending request is simply new, and a withdrawn one was withdrawn by sales.
+Widget srStatusChip(dynamic s, {bool vendors = false}) {
+  var x = srStatuses['$s'] ?? ('$s', '$s', T.inkFaint);
+  if (vendors && '$s' == 'pending') x = ('جديد', 'New', T.warn);
+  if (vendors && '$s' == 'cancelled') x = ('سحبه فريق المبيعات', 'Withdrawn by sales', T.inkFaint);
   return Chip2(tr(x.$1, x.$2), x.$3);
 }
 
 /// Where the vendors team stands on a request, one line for sales (twin of web `vendorProgress`): label, colour, 0..1.
-(String, Color, double) srVendorProgress(Map<String, dynamic> r) {
+(String, Color, double) srVendorProgress(Map<String, dynamic> r, {bool vendors = false}) {
   final n = (r['placed'] as List?)?.length ?? 0;
   final of = inum(r['trucks']).toInt();
   final pct = of > 0 ? n / of : 0.0;
   final handler = '${r['handlerName'] ?? ''}';
   switch ('${r['status']}') {
-    case 'completed': return (tr('أنجزها الموردون ($n من $of)', 'Done by vendors ($n of $of)'), T.success, 1.0);
+    case 'completed': return (vendors ? tr('اكتمل ($n من $of)', 'Done ($n of $of)') : tr('أنجزها الموردون ($n من $of)', 'Done by vendors ($n of $of)'), T.success, 1.0);
     case 'in_progress': return (tr('جارٍ: أُسندت $n من $of', 'In progress: $n of $of'), T.info, pct);
-    case 'rejected': return (n > 0 ? tr('رُفض الباقي بعد إسناد $n من $of', 'Rest rejected after $n of $of') : tr('رفضها الموردون', 'Rejected by vendors'), T.danger, pct);
-    case 'cancelled': return (n > 0 ? tr('سُحب الباقي بعد إسناد $n من $of', 'Rest withdrawn after $n of $of') : tr('سُحب الطلب', 'Withdrawn'), T.inkFaint, pct);
+    case 'rejected': return (n > 0 ? tr('رُفض الباقي بعد إسناد $n من $of', 'Rest rejected after $n of $of') : (vendors ? tr('مرفوض', 'Rejected') : tr('رفضها الموردون', 'Rejected by vendors')), T.danger, pct);
+    case 'cancelled': return (n > 0 ? tr('سحب فريق المبيعات الباقي بعد إسناد $n من $of', 'Sales withdrew the rest after $n of $of') : tr('سحبه فريق المبيعات', 'Withdrawn by sales'), T.inkFaint, pct);
     default: return handler.isNotEmpty
         ? (tr('يعمل عليه $handler — 0 من $of', 'With $handler — 0 of $of'), T.warn, 0.0)
-        : (tr('لم يبدأ الموردون — 0 من $of', 'Not started — 0 of $of'), T.warn, 0.0);
+        : (vendors ? tr('لم يبدأ بعد — 0 من $of', 'Not started — 0 of $of') : tr('لم يبدأ الموردون — 0 من $of', 'Not started by vendors — 0 of $of'), T.warn, 0.0);
   }
 }
 
-Widget srProgressLine(Map<String, dynamic> r) {
-  final p = srVendorProgress(r);
+Widget srProgressLine(Map<String, dynamic> r, {bool vendors = false}) {
+  final p = srVendorProgress(r, vendors: vendors);
   return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
     Text(p.$1, style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: p.$2)),
     const SizedBox(height: 3),
@@ -565,12 +568,13 @@ class _ShipmentRequestsScreenState extends State<ShipmentRequestsScreen> {
   String _to = '';
   final Map<String, String> _flt = {};
   late final String _viewKey = 'shipmentRequests.view.${widget.mode}';
-  String _view = 'cards';
+  String _view = 'list';
 
   @override
   void initState() {
     super.initState();
-    _view = context.read<AuthProvider>().pref(_viewKey) == 'list' ? 'list' : 'cards';
+    // The list is the default view; cards only when the user chose them (web saves 'table', mobile 'list').
+    _view = context.read<AuthProvider>().pref(_viewKey) == 'cards' ? 'cards' : 'list';
     _load();
     Live.instance.on(srEvent, _onLive);
   }
@@ -591,7 +595,7 @@ class _ShipmentRequestsScreenState extends State<ShipmentRequestsScreen> {
         ('customer', 'العميل', 'Customer', (r) => '${r['customerName'] ?? ''}'),
         ('salesRep', 'السيلز', 'Sales rep', (r) => '${r['salesRepName'] ?? r['createdByName'] ?? ''}'),
         ('handler', 'مسؤول الموردين', 'Vendors handler', (r) => '${r['handlerName'] ?? ''}'),
-        ('progress', 'إنجاز الموردين', 'Vendor progress', (r) => srVendorProgress(r).$1),
+        ('progress', widget.mode == 'place' ? 'الإنجاز' : 'إنجاز الموردين', 'Progress', (r) => srVendorProgress(r, vendors: widget.mode == 'place').$1),
         ('fromCity', 'من', 'From', (r) => '${r['fromCity'] ?? ''}'),
         ('toCity', 'إلى', 'To', (r) => '${r['toCity'] ?? ''}'),
         ('truckType', 'نوع الشاحنة', 'Truck type', (r) => '${r['truckType'] ?? ''}'),
@@ -622,7 +626,7 @@ class _ShipmentRequestsScreenState extends State<ShipmentRequestsScreen> {
     return [
       ExportCol('رقم الطلب', 'Request', (r) => r['number']),
       ExportCol('الحالة', 'Status', (r) { final x = srStatuses['${r['status']}']; return x == null ? '${r['status']}' : tr(x.$1, x.$2); }),
-      ExportCol('إنجاز الموردين', 'Vendor progress', (r) => srVendorProgress(r).$1),
+      ExportCol(widget.mode == 'place' ? 'الإنجاز' : 'إنجاز الموردين', 'Progress', (r) => srVendorProgress(r, vendors: widget.mode == 'place').$1),
       ExportCol('الشاحنات المطلوبة', 'Trucks asked', (r) => inum(r['trucks'])),
       ExportCol('أُسندت', 'Placed', (r) => (r['placed'] as List?)?.length ?? 0),
       ExportCol('متبقّية', 'Remaining', (r) => ['pending', 'in_progress'].contains('${r['status']}') ? _openCount(r) : 0),
@@ -881,7 +885,7 @@ class _ShipmentRequestsScreenState extends State<ShipmentRequestsScreen> {
             Text('#${r['number']}', style: const TextStyle(fontWeight: FontWeight.w900, color: T.orange)),
             const SizedBox(width: 8),
             Expanded(child: Text('${r['customerName'] ?? '—'}', style: const TextStyle(fontWeight: FontWeight.w800), overflow: TextOverflow.ellipsis)),
-            srStatusChip(r['status']),
+            srStatusChip(r['status'], vendors: widget.mode == 'place'),
           ]),
           const SizedBox(height: 4),
           Text('${r['fromCity'] ?? '—'} ← ${r['toCity'] ?? '—'} · ${r['truckType'] ?? ''}${'${r['branch'] ?? ''}'.isEmpty ? '' : ' · ${r['branch']}'}', style: const TextStyle(fontSize: 12.5, color: T.inkSoft)),
@@ -894,7 +898,7 @@ class _ShipmentRequestsScreenState extends State<ShipmentRequestsScreen> {
             if ('${r['createdByName'] ?? ''}'.isNotEmpty && widget.mode == 'place') Chip2('${tr('من', 'By')} ${r['createdByName']}', T.inkSoft),
           ]),
           const SizedBox(height: 6),
-          srProgressLine(r),
+          srProgressLine(r, vendors: widget.mode == 'place'),
           if (r['status'] == 'rejected')
             Padding(padding: const EdgeInsets.only(top: 6), child: Text('${tr('سبب الرفض', 'Reason')}: ${r['rejectReason'] ?? ''}${'${r['rejectNote'] ?? ''}'.isEmpty ? '' : ' — ${r['rejectNote']}'}',
                 style: const TextStyle(fontSize: 12, color: T.danger, fontWeight: FontWeight.w700))),
@@ -920,7 +924,7 @@ extension on _ShipmentRequestsScreenState {
             Text('#${r['number']}', style: const TextStyle(fontWeight: FontWeight.w900, color: T.orange, fontSize: 13)),
             const SizedBox(width: 6),
             Expanded(child: Text('${r['customerName'] ?? '—'}', style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 13), overflow: TextOverflow.ellipsis)),
-            srStatusChip(r['status']),
+            srStatusChip(r['status'], vendors: widget.mode == 'place'),
           ]),
           const SizedBox(height: 3),
           Row(children: [
@@ -930,7 +934,7 @@ extension on _ShipmentRequestsScreenState {
                 style: const TextStyle(fontSize: 11.5, fontWeight: FontWeight.w700, color: T.navy)),
           ]),
           const SizedBox(height: 4),
-          srProgressLine(r),
+          srProgressLine(r, vendors: widget.mode == 'place'),
         ]),
       ),
     );

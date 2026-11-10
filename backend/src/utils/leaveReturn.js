@@ -185,7 +185,9 @@ async function recordReturn(leaveId, { returnDate, startsSameDay = false, note =
   if (returnDate > todayKey()) throw new LeaveReturnError('لا تُسجَّل عودةٌ في يومٍ لم يأتِ بعد');
   const newEnd = startsSameDay ? addDays(returnDate, -1) : returnDate;
   if (newEnd < leave.startDate) throw new LeaveReturnError('عاد في يوم بداية الإجازة نفسه — ألغِ الإجازة بدلًا من تسجيل عودة');
-  const before = { endDate: leave.endDate, days: leave.days };
+  // Recording again corrects an earlier return (HR typed the wrong day); the same rules apply.
+  const editing = leave.returnState === 'returned' && !leave.returnAuto;
+  const before = { endDate: leave.endDate, days: leave.days, returnedOn: leave.returnedOn, workStartsOn: leave.workStartsOn };
   leave.endDate = newEnd;
   leave.days = leaveDaysOf(leave, leave.startDate, newEnd);
   leave.returnState = 'returned';
@@ -206,6 +208,12 @@ async function recordReturn(leaveId, { returnDate, startsSameDay = false, note =
     emp.leaveStatusSource = '';
     emp.leaveStatusLeave = null;
   }
+  // A corrected return that moves work start past today puts the employee back on this leave until then.
+  if (emp && editing && emp.employmentStatus === 'active' && leave.workStartsOn > todayKey()) {
+    emp.employmentStatus = 'on_leave';
+    emp.leaveStatusSource = 'leave';
+    emp.leaveStatusLeave = leave._id;
+  }
   if (emp && String(emp.leaveViolation?.leave || '') === String(leave._id)) emp.leaveViolation = { leave: null, since: '', note: '' };
   if (emp) { emp.workStatusText = require('./hrEngagement').workStatusTextOf(emp); await emp.save(); }
   await syncEmployee(leave.employee, { quiet: true });
@@ -220,8 +228,8 @@ async function recordReturn(leaveId, { returnDate, startsSameDay = false, note =
   if (emp) {
     const n = empName(emp);
     await announce(leave, emp, {
-      title: `سُجِّلت عودة ${n} من الإجازة`,
-      message: `عاد في ${returnDate} — يباشر العمل من ${leave.workStartsOn}.`
+      title: editing ? `عُدِّل تاريخ عودة ${n} من الإجازة` : `سُجِّلت عودة ${n} من الإجازة`,
+      message: (editing && before.returnedOn ? `كان ${before.returnedOn} · ` : '') + `عاد في ${returnDate} — يباشر العمل من ${leave.workStartsOn}.`
         + (early ? ` عاد قبل موعده بـ ${delta} يوم — تُعاد إلى رصيده.` : '')
         + (late ? ` تجاوز موعده بـ ${delta} يوم — تُخصَم من رصيده.` : '')
         + (note ? ` ملاحظة: ${note}` : ''),
@@ -229,7 +237,7 @@ async function recordReturn(leaveId, { returnDate, startsSameDay = false, note =
   }
   bustHrCaches();
   emit('hr:leave', { id: String(leave._id) });
-  return { leave, before, early, late, deltaDays: delta };
+  return { leave, before, early, late, deltaDays: delta, edited: editing };
 }
 
 /** Extend an approved leave to a later end date (charged to the balance). */

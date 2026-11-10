@@ -92,9 +92,9 @@ export function LeaveReturnPanel({ leave, ar, canAct, onDone }: { leave: LeaveRe
   const open = (m: Mode) => {
     setMode(mode === m ? '' : m);
     setNote('');
-    // The return day is still leave by default, so an on-time return date is the end date.
-    setReturnDate(end < today ? end : today);
-    setSameDay(false);
+    // Editing a recorded return starts from what was recorded; otherwise the return day is still leave by default, so an on-time return date is the end date.
+    setReturnDate(manualReturn && leave.returnedOn ? ymd(leave.returnedOn) : (end < today ? end : today));
+    setSameDay(manualReturn ? !!leave.returnCountsAsWork : false);
     setNewEnd(addDays(end, 1));
   };
 
@@ -112,7 +112,7 @@ export function LeaveReturnPanel({ leave, ar, canAct, onDone }: { leave: LeaveRe
 
   const submitReturn = () => {
     if (!returnDate) return;
-    send('return', { returnDate, startsSameDay: sameDay, note }, ar ? 'سُجِّلت العودة' : 'Return recorded');
+    send('return', { returnDate, startsSameDay: sameDay, note }, manualReturn ? (ar ? 'عُدِّل تاريخ العودة' : 'Return date updated') : (ar ? 'سُجِّلت العودة' : 'Return recorded'));
   };
   const submitExtend = () => {
     if (!newEnd || newEnd <= end) { notify(ar ? 'اختر تاريخ نهاية بعد النهاية الحالية' : 'Pick an end date after the current one', 'error'); return; }
@@ -167,6 +167,11 @@ export function LeaveReturnPanel({ leave, ar, canAct, onDone }: { leave: LeaveRe
           {canReturn && (
             <button type="button" onClick={() => open('return')} className={`${btn} ${mode === 'return' ? 'bg-emerald-600 text-white' : 'bg-emerald-50 text-emerald-700 hover:bg-emerald-100'}`}>
               <LogIn className="w-4 h-4" /> {ar ? 'تسجيل عودة' : 'Record return'}
+            </button>
+          )}
+          {manualReturn && (
+            <button type="button" onClick={() => open('return')} className={`${btn} ${mode === 'return' ? 'bg-emerald-600 text-white' : 'bg-emerald-50 text-emerald-700 hover:bg-emerald-100'}`}>
+              <LogIn className="w-4 h-4" /> {ar ? 'تعديل تاريخ العودة والمباشرة' : 'Edit return date'}
             </button>
           )}
           {canExtend && (

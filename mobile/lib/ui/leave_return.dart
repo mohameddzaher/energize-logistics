@@ -97,8 +97,10 @@ class _LeaveReturnSheetState extends State<_LeaveReturnSheet> {
   void initState() {
     super.initState();
     final today = companyToday();
-    // The return day is still leave by default, so an on-time return date is the end date.
-    _returnDate = _end.compareTo(today) < 0 ? _end : today;
+    // Editing a recorded return starts from it; otherwise the return day is still leave by default, so an on-time return date is the end date.
+    final recorded = l['returnState'] == 'returned' && l['returnAuto'] != true && _ymd(l['returnedOn']).length == 10;
+    _returnDate = recorded ? _ymd(l['returnedOn']) : (_end.compareTo(today) < 0 ? _end : today);
+    if (recorded) _sameDay = l['returnCountsAsWork'] == true;
     _newEnd = _addDays(_end, 1);
   }
 
@@ -165,10 +167,11 @@ class _LeaveReturnSheetState extends State<_LeaveReturnSheet> {
           const SizedBox(height: 12),
           Wrap(spacing: 8, runSpacing: 8, children: [
             if (canReturn) ChoiceChip(label: Text(tr('تسجيل عودة', 'Record return')), selected: _mode == 'return', onSelected: (_) => setState(() => _mode = 'return')),
+            if (manualReturn) ChoiceChip(label: Text(tr('تعديل تاريخ العودة والمباشرة', 'Edit return date')), selected: _mode == 'return', onSelected: (_) => setState(() => _mode = 'return')),
             if (canExtend) ChoiceChip(label: Text(tr('تمديد', 'Extend')), selected: _mode == 'extend', onSelected: (_) => setState(() => _mode = 'extend')),
             if (canNoShow) ChoiceChip(label: Text(tr('مخالفة — لم يعد', 'No-show')), selected: _mode == 'noshow', onSelected: (_) => setState(() => _mode = 'noshow')),
           ]),
-          if (!canReturn && !canExtend && !canNoShow)
+          if (!canReturn && !manualReturn && !canExtend && !canNoShow)
             Text(tr('لا إجراءات متاحة على هذه الإجازة.', 'No actions available on this leave.'), style: const TextStyle(color: T.inkFaint)),
           if (_mode == 'return') ...[
             const SizedBox(height: 12),
@@ -198,7 +201,7 @@ class _LeaveReturnSheetState extends State<_LeaveReturnSheet> {
             const SizedBox(height: 10),
             FilledButton(
               style: FilledButton.styleFrom(backgroundColor: T.success),
-              onPressed: _busy || previewDays == 0 ? null : () => _send('return', {'returnDate': _returnDate, 'startsSameDay': _sameDay, 'note': _note.text.trim()}, tr('سُجِّلت العودة', 'Return recorded')),
+              onPressed: _busy || previewDays == 0 ? null : () => _send('return', {'returnDate': _returnDate, 'startsSameDay': _sameDay, 'note': _note.text.trim()}, manualReturn ? tr('عُدِّل تاريخ العودة', 'Return date updated') : tr('سُجِّلت العودة', 'Return recorded')),
               child: Text(tr('حفظ العودة', 'Save return')),
             ),
           ],

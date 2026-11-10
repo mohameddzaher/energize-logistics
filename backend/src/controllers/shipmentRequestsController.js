@@ -134,7 +134,7 @@ exports.list = async (req, res) => {
   try {
     const { status, q, from, to, branch, customer, handler, mine } = req.query;
     const page = Math.max(1, parseInt(req.query.page, 10) || 1);
-    const limit = Math.min(200, Math.max(1, parseInt(req.query.limit, 10) || 50));
+    const limit = Math.min(1000, Math.max(1, parseInt(req.query.limit, 10) || 50));
     const base = { ...scopeFor(req.user) };
     const and = [];
     if (from || to) {

@@ -66,3 +66,23 @@ export const findRoute = (c: any, from: string, to: string) => {
 
 /** Keys of the shipment form that the vendors team answers when placing; the request form never shows them. */
 export const VENDOR_FORM_KEYS = new Set(['buyPrice', 'advanceAmount', 'driverRentPrice', 'driverName', 'driverPhone', 'vehicleName', 'driverRentType', 'status', 'customer', 'waybillNumber', 'agentName']);
+
+/**
+ * Where the vendors team stands on a request, in one line for sales: not started, partly placed (x of y), done,
+ * rejected (with how many were placed first) or withdrawn. Read by the table, its filter and the export.
+ */
+export function vendorProgress(r: Pick<ShipmentRequest, 'status' | 'trucks' | 'placed' | 'handlerName'>, ar: boolean) {
+  const n = (r.placed || []).length;
+  const of = r.trucks || 0;
+  const pct = of ? Math.round((n / of) * 100) : 0;
+  const t = (a: string, e: string) => (ar ? a : e);
+  switch (r.status) {
+    case 'completed': return { label: t(`أنجزها الموردون (${n} من ${of})`, `Done by vendors (${n} of ${of})`), tone: 'text-emerald-700', pct: 100 };
+    case 'in_progress': return { label: t(`جارٍ: أُسندت ${n} من ${of}`, `In progress: ${n} of ${of}`), tone: 'text-sky-700', pct };
+    case 'rejected': return { label: n ? t(`رُفض الباقي بعد إسناد ${n} من ${of}`, `Rest rejected after ${n} of ${of}`) : t('رفضها الموردون', 'Rejected by vendors'), tone: 'text-red-700', pct };
+    case 'cancelled': return { label: n ? t(`سُحب الباقي بعد إسناد ${n} من ${of}`, `Rest withdrawn after ${n} of ${of}`) : t('سُحب الطلب', 'Withdrawn'), tone: 'text-slate-500', pct };
+    default: return r.handlerName
+      ? { label: t(`يعمل عليه ${r.handlerName} — 0 من ${of}`, `With ${r.handlerName} — 0 of ${of}`), tone: 'text-amber-700', pct: 0 }
+      : { label: t(`لم يبدأ الموردون — 0 من ${of}`, `Not started — 0 of ${of}`), tone: 'text-amber-700', pct: 0 };
+  }
+}

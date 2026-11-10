@@ -19,9 +19,13 @@ import DriverPicker from '@/components/shipment-orders/DriverPicker';
 import ShipmentRequestForm from '@/components/shipment-orders/ShipmentRequestForm';
 import { PAYMENT_SUBTYPES } from '@/lib/paymentKind';
 import type { OrderSupplier, OrderVehicle, OrderDriver } from '@/lib/shipmentOrders';
-import { REQUEST_STATUS, LOG_LABEL, canAsk, canPlace, type ShipmentRequest, type RequestStatus } from '@/lib/shipmentRequests';
+import { REQUEST_STATUS, LOG_LABEL, canAsk, canPlace, vendorProgress, type ShipmentRequest, type RequestStatus } from '@/lib/shipmentRequests';
+import { useColumnFilters } from '@/hooks/useColumnFilters';
+import ColumnChooser, { useVisibleColumns, type ChooserColumn } from '@/components/system/ColumnChooser';
+import ExportMenu, { type ExportColumn } from '@/components/ls2/ExportMenu';
 import {
   Truck, MapPin, Calendar, User as UserIcon, CheckCircle2, XCircle, Send, Pencil, Undo2, Hand, Loader2, Plus, Trash2, Copy, History, Package, AlertCircle, Inbox,
+  LayoutGrid, Table2, RotateCcw,
 } from 'lucide-react';
 
 const money = (n?: number | null) => (n == null ? '—' : Number(n).toLocaleString('en-US'));
@@ -43,6 +47,15 @@ export default function ShipmentRequestsBoard({ mode }: { mode: 'sales' | 'vendo
   const [qd, setQd] = useState('');
   useEffect(() => { const h = setTimeout(() => setQd(q), 300); return () => clearTimeout(h); }, [q]);
   const [mine, setMine] = useState(false);
+  // Request date range, filtered on the server; the other top filters narrow the loaded rows.
+  const [from, setFrom] = useState('');
+  const [to, setTo] = useState('');
+  const [top, setTop] = useState<Record<string, string>>({});
+  // Cards or table, remembered per browser and per board (sales vs vendors).
+  const viewKey = `shipmentRequests:view:${mode}`;
+  const [view, setView] = useState<'cards' | 'table'>('cards');
+  useEffect(() => { try { const v = localStorage.getItem(viewKey); if (v === 'table' || v === 'cards') setView(v); } catch { /* */ } }, [viewKey]);
+  const changeView = (v: 'cards' | 'table') => { setView(v); try { localStorage.setItem(viewKey, v); } catch { /* */ } };
   const [rows, setRows] = useState<ShipmentRequest[]>([]);
   const [byStatus, setByStatus] = useState<Record<string, number>>({});
   const [openTrucks, setOpenTrucks] = useState(0);
@@ -63,6 +76,9 @@ export default function ShipmentRequestsBoard({ mode }: { mode: 'sales' | 'vendo
     else if (tab !== 'all') p.set('status', tab);
     if (qd.trim()) p.set('q', qd.trim());
     if (mine) p.set(mode === 'vendors' ? 'handler' : 'mine', mode === 'vendors' ? 'me' : '1');
+    if (from) p.set('from', from);
+    if (to) p.set('to', to);
+    p.set('limit', '1000');
     try {
       const d = await api.get<{ requests: ShipmentRequest[]; byStatus: Record<string, number>; openTrucks: number }>(`/api/shipment-requests?${p}`);
       if (!guard.isCurrent(my)) return;
@@ -70,7 +86,7 @@ export default function ShipmentRequestsBoard({ mode }: { mode: 'sales' | 'vendo
     } catch (e: any) { if (guard.isCurrent(my)) setError(e?.message || t('تعذّر التحميل', 'Could not load')); }
     if (guard.isCurrent(my)) setLoading(false);
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [tab, qd, mine, mode, guard]);
+  }, [tab, qd, mine, mode, guard, from, to]);
   useEffect(() => { load(); }, [load]);
   const timer = useRef<any>(null);
   useSocket('shipmentRequests:changed', useCallback(() => { clearTimeout(timer.current); timer.current = setTimeout(load, 400); }, [load]));
@@ -99,6 +115,120 @@ export default function ShipmentRequestsBoard({ mode }: { mode: 'sales' | 'vendo
     ? [['open', 'المفتوحة', 'Open'], ['pending', 'جديدة', 'New'], ['in_progress', 'قيد الإنجاز', 'In progress'], ['rejected', 'مرفوضة', 'Rejected'], ['completed', 'مكتملة', 'Completed'], ['cancelled', 'مسحوبة', 'Withdrawn'], ['all', 'الكلّ', 'All']]
     : [['all', 'كلّ طلباتي', 'All'], ['open', 'لدى الموردين', 'With vendors'], ['rejected', 'مرفوضة', 'Rejected'], ['completed', 'مكتملة', 'Completed'], ['cancelled', 'مسحوبة', 'Withdrawn']];
 
+  // Top filters (as on the HR pages): each value list is read from the loaded rows.
+  const TOP_FILTERS: { key: string; ar: string; en: string; read: (r: ShipmentRequest) => string }[] = [
+    { key: 'customer', ar: 'العميل', en: 'Customer', read: (r) => r.customerName || '' },
+    { key: 'salesRep', ar: 'السيلز', en: 'Sales rep', read: (r) => r.salesRepName || r.createdByName || '' },
+    { key: 'handler', ar: 'مسؤول الموردين', en: 'Vendors handler', read: (r) => r.handlerName || '' },
+    { key: 'progress', ar: 'إنجاز الموردين', en: 'Vendor progress', read: (r) => vendorProgress(r, ar).label },
+    { key: 'fromCity', ar: 'من', en: 'From', read: (r) => r.fromCity || '' },
+    { key: 'toCity', ar: 'إلى', en: 'To', read: (r) => r.toCity || '' },
+    { key: 'truckType', ar: 'نوع الشاحنة', en: 'Truck type', read: (r) => r.truckType || '' },
+    { key: 'branch', ar: 'الفرع', en: 'Branch', read: (r) => r.branch || '' },
+    { key: 'supplier', ar: 'المورّد', en: 'Supplier', read: (r) => (r.placed || []).map((p) => p.supplierName).filter(Boolean).join('، ') },
+  ];
+  const topActive = Object.values(top).filter(Boolean).length;
+  const topRows = useMemo(() => rows.filter((r) => TOP_FILTERS.every((f) => !top[f.key] || (f.key === 'supplier'
+    ? (r.placed || []).some((p) => p.supplierName === top[f.key]) : f.read(r) === top[f.key]))),
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  [rows, top, ar]);
+  const topOptions = useMemo(() => {
+    const out: Record<string, string[]> = {};
+    for (const f of TOP_FILTERS) {
+      const set = new Set<string>();
+      for (const r of rows) {
+        if (f.key === 'supplier') (r.placed || []).forEach((p) => p.supplierName && set.add(p.supplierName));
+        else { const v = f.read(r); if (v) set.add(v); }
+      }
+      out[f.key] = [...set].sort((a, b) => a.localeCompare(b, 'ar'));
+    }
+    return out;
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [rows, ar]);
+
+  // Table columns: one list drives the header, the Excel-style filter, the column chooser and the export.
+  const showSell = rows.some((r) => r.sellPrice !== undefined);
+  const COLS = useMemo(() => {
+    const c: { key: string; ar: string; en: string; read: (r: ShipmentRequest) => any; num?: boolean; date?: boolean }[] = [
+      { key: 'number', ar: 'رقم الطلب', en: 'Request', read: (r) => r.number, num: true },
+      { key: 'status', ar: 'الحالة', en: 'Status', read: (r) => (ar ? REQUEST_STATUS[r.status]?.ar : REQUEST_STATUS[r.status]?.en) || r.status },
+      { key: 'progress', ar: 'إنجاز الموردين', en: 'Vendor progress', read: (r) => vendorProgress(r, ar).label },
+      { key: 'trucks', ar: 'الشاحنات المطلوبة', en: 'Trucks asked', read: (r) => r.trucks, num: true },
+      { key: 'placedCount', ar: 'أُسندت', en: 'Placed', read: (r) => (r.placed || []).length, num: true },
+      { key: 'openCount', ar: 'متبقّية', en: 'Remaining', read: (r) => (['pending', 'in_progress'].includes(r.status) ? r.open : 0), num: true },
+      { key: 'closedCount', ar: 'مرفوضة/مسحوبة', en: 'Rejected/withdrawn', read: (r) => (['rejected', 'cancelled'].includes(r.status) ? r.open : 0), num: true },
+      { key: 'customer', ar: 'العميل', en: 'Customer', read: (r) => r.customerName || '' },
+      { key: 'fromCity', ar: 'من', en: 'From', read: (r) => r.fromCity || '' },
+      { key: 'toCity', ar: 'إلى', en: 'To', read: (r) => r.toCity || '' },
+      { key: 'truckType', ar: 'نوع الشاحنة', en: 'Truck type', read: (r) => r.truckType || '' },
+      { key: 'truckLength', ar: 'الطول', en: 'Length', read: (r) => r.truckLength || '' },
+      { key: 'cargoType', ar: 'نوع الحمولة', en: 'Cargo', read: (r) => r.cargoType || '' },
+      { key: 'pickup', ar: 'موعد التحميل', en: 'Pickup', read: (r) => day(r.pickupTime), date: true },
+      ...(showSell ? [{ key: 'sellPrice', ar: 'سعر البيع للشاحنة', en: 'Sell / truck', read: (r: ShipmentRequest) => r.sellPrice ?? '', num: true }] : []),
+      { key: 'payment', ar: 'طريقة الدفع', en: 'Payment', read: (r) => (r.paymentSubtype ? ((PAYMENT_SUBTYPES as any)[r.paymentSubtype]?.[ar ? 'ar' : 'en'] || r.paymentSubtype) : '') },
+      { key: 'salesRep', ar: 'السيلز', en: 'Sales rep', read: (r) => r.salesRepName || '' },
+      { key: 'createdBy', ar: 'أنشأه', en: 'Created by', read: (r) => r.createdByName || '' },
+      { key: 'createdAt', ar: 'تاريخ الطلب', en: 'Requested', read: (r) => day(r.createdAt), date: true },
+      { key: 'handler', ar: 'مسؤول الموردين', en: 'Vendors handler', read: (r) => r.handlerName || '' },
+      { key: 'orders', ar: 'أوامر النقل', en: 'Transport orders', read: (r) => (r.placed || []).map((p) => p.waybillNumber).join('، ') },
+      { key: 'supplier', ar: 'المورّدون', en: 'Suppliers', read: (r) => [...new Set((r.placed || []).map((p) => p.supplierName).filter(Boolean))].join('، ') },
+      { key: 'plates', ar: 'السيارات', en: 'Trucks', read: (r) => (r.placed || []).map((p) => p.vehiclePlate).filter(Boolean).join('، ') },
+      { key: 'drivers', ar: 'السائقون', en: 'Drivers', read: (r) => (r.placed || []).map((p) => p.driverName).filter(Boolean).join('، ') },
+      { key: 'rejectReason', ar: 'سبب الرفض', en: 'Reject reason', read: (r) => r.rejectReason || '' },
+      { key: 'branch', ar: 'الفرع', en: 'Branch', read: (r) => r.branch || '' },
+      { key: 'blNumber', ar: 'رقم البوليصة', en: 'BL', read: (r) => r.blNumber || '' },
+      { key: 'containerNumber', ar: 'رقم الحاوية', en: 'Container', read: (r) => r.containerNumber || '' },
+      { key: 'notes', ar: 'ملاحظات', en: 'Notes', read: (r) => r.notes || '' },
+    ];
+    return c;
+  }, [ar, showSell]);
+  const readers = useMemo(() => Object.fromEntries(COLS.map((c) => [c.key, (r: ShipmentRequest) => { const v = c.read(r); return v === null || v === undefined ? '' : String(v); }])), [COLS]);
+  const cf = useColumnFilters<ShipmentRequest>(readers, topRows, ar ? 'ar' : 'en');
+  const shown = useMemo(() => cf.apply(topRows), [cf, topRows]);
+  const chooserCols: ChooserColumn[] = useMemo(() => COLS.map((c) => ({ key: c.key, label: ar ? c.ar : c.en, locked: c.key === 'number' })), [COLS, ar]);
+  const DEFAULT_COLS = ['number', 'status', 'progress', 'trucks', 'placedCount', 'openCount', 'customer', 'fromCity', 'toCity', 'truckType', 'pickup', 'sellPrice', 'salesRep', 'handler', 'orders', 'createdAt'];
+  const { visible, setVisible } = useVisibleColumns(`shipmentRequests:cols:${mode}`, chooserCols, { defaults: DEFAULT_COLS });
+  const visCols = COLS.filter((c) => visible.includes(c.key));
+  const exportCols = (cols: typeof COLS): ExportColumn[] => cols.map((c) => ({ header: ar ? c.ar : c.en, key: c.key, transform: (_v: any, r: any) => c.read(r), type: c.num ? 'number' : 'text' }));
+  const exportOptions = [
+    { key: 'view', label: t('المعروض بعد الفلاتر — الأعمدة الظاهرة', 'Filtered view — visible columns'), sheets: [{ name: t('طلبات الشحن', 'Requests'), rows: shown, columns: exportCols(visCols) }] },
+    { key: 'viewAll', label: t('المعروض بعد الفلاتر — كلّ الأعمدة', 'Filtered view — all columns'), sheets: [{ name: t('طلبات الشحن', 'Requests'), rows: shown, columns: exportCols(COLS) }] },
+    { key: 'all', label: t('كلّ المُحمَّل بلا فلاتر', 'Everything loaded, no filters'), sheets: [{ name: t('طلبات الشحن', 'Requests'), rows, columns: exportCols(COLS) }] },
+  ];
+  const anyFilter = topActive + cf.activeCount + (from ? 1 : 0) + (to ? 1 : 0);
+  const resetFilters = () => { setTop({}); cf.clear(); setFrom(''); setTo(''); };
+
+  // The same actions on a card and in a table row; called as a function, not mounted as a component.
+  const actions = (r: ShipmentRequest, compact = false) => {
+    const open = ['pending', 'in_progress'].includes(r.status);
+    const held = !!r.handler && String(r.handler) !== String(user?._id);
+    return (
+      <>
+        {mode === 'vendors' && placer && open && (
+          <>
+            <Btn primary onClick={() => setPlacing(r)} icon={CheckCircle2}>{t('إكمال الشحنة', 'Complete')}</Btn>
+            <Btn onClick={() => setRejecting(r)} icon={XCircle} danger>{t('رفض', 'Reject')}</Btn>
+            {!r.handler || held
+              ? <Btn onClick={() => act(r, 'claim', {}, t('تولّيتَ الطلب', 'Taken'))} icon={Hand} busy={busyId === r._id}>{held ? t('تولِّيه بدلًا من زميل', 'Take over') : t('أتولّاه', 'Take it')}</Btn>
+              : <Btn onClick={() => act(r, 'release')} icon={Undo2} busy={busyId === r._id}>{t('تخلٍّ', 'Release')}</Btn>}
+          </>
+        )}
+        {mode === 'sales' && asker && ['pending', 'in_progress', 'rejected'].includes(r.status) && (
+          <>
+            {r.status === 'rejected' && <Btn primary onClick={() => setEditing(r)} icon={Pencil}>{t('تعديل وإعادة الإرسال', 'Amend and resend')}</Btn>}
+            {r.status !== 'rejected' && <Btn onClick={() => setEditing(r)} icon={Pencil}>{t('تعديل', 'Edit')}</Btn>}
+            {r.status === 'rejected' && <Btn onClick={() => act(r, 'resubmit', {}, t('أُعيد الإرسال', 'Resent'))} icon={Send} busy={busyId === r._id}>{t('إعادة الإرسال كما هو', 'Resend as is')}</Btn>}
+            <Btn danger icon={Trash2} busy={busyId === r._id} onClick={async () => {
+              if (await confirm({ title: t('سحب الطلب', 'Withdraw'), message: r.placed.length ? t('أوامرُ النقل المُنشأة تبقى، ويُسحب الباقي فقط.', 'Created transport orders stay; only the rest is withdrawn.') : t('يُسحب الطلب من فريق الموردين.', 'The request is withdrawn.'), tone: 'danger' as any }))
+                act(r, 'cancel', {}, t('سُحب الطلب', 'Withdrawn'));
+            }}>{t('سحب', 'Withdraw')}</Btn>
+          </>
+        )}
+        <button type="button" onClick={() => setHistory(r)} className={`${compact ? '' : 'ms-auto '}inline-flex items-center gap-1 text-[12px] font-semibold text-slate-500 hover:text-slate-900`}><History className="w-3.5 h-3.5" />{t('السجلّ', 'History')}</button>
+      </>
+    );
+  };
+
   return (
     <div className="space-y-3" dir={isRTL ? 'rtl' : 'ltr'}>
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
@@ -123,23 +253,109 @@ export default function ShipmentRequestsBoard({ mode }: { mode: 'sales' | 'vendo
         <div className="flex-1 min-w-[200px]"><SearchInput value={q} onChange={setQ} placeholder={t('رقم الطلب، العميل، المدينة، رقم أمر النقل…', 'Request no., customer, city, order no.…')} /></div>
       </div>
 
+      {/* Top filters for every detail, plus the view, columns and export. */}
+      <div className="rounded-2xl border border-slate-200 bg-white p-3 shadow-sm space-y-2">
+        <div className="flex flex-wrap items-end gap-2">
+          <label className="block">
+            <span className="mb-1 block text-[11px] font-semibold text-slate-500">{t('من تاريخ', 'From date')}</span>
+            <input type="date" value={from} onChange={(e) => setFrom(e.target.value)} className="rounded-lg border border-slate-200 px-2 py-1.5 text-[12.5px]" />
+          </label>
+          <label className="block">
+            <span className="mb-1 block text-[11px] font-semibold text-slate-500">{t('إلى تاريخ', 'To date')}</span>
+            <input type="date" value={to} onChange={(e) => setTo(e.target.value)} className="rounded-lg border border-slate-200 px-2 py-1.5 text-[12.5px]" />
+          </label>
+          {TOP_FILTERS.map((f) => (
+            <label key={f.key} className="block min-w-[9rem]">
+              <span className="mb-1 block text-[11px] font-semibold text-slate-500">{ar ? f.ar : f.en}</span>
+              <select value={top[f.key] || ''} onChange={(e) => setTop((p) => ({ ...p, [f.key]: e.target.value }))}
+                className={`w-full rounded-lg border px-2 py-1.5 text-[12.5px] ${top[f.key] ? 'border-[#f37121] bg-orange-50' : 'border-slate-200 bg-white'}`}>
+                <option value="">{t('الكلّ', 'All')}</option>
+                {(topOptions[f.key] || []).map((v) => <option key={v} value={v}>{v}</option>)}
+              </select>
+            </label>
+          ))}
+        </div>
+        <div className="flex flex-wrap items-center gap-2 border-t border-slate-100 pt-2">
+          <span className="text-[12.5px] text-slate-600">{t(`${shown.length} طلب · ${shown.reduce((a, r) => a + r.trucks, 0)} شاحنة مطلوبة · ${shown.reduce((a, r) => a + (r.placed || []).length, 0)} أُسندت`, `${shown.length} requests · ${shown.reduce((a, r) => a + r.trucks, 0)} trucks · ${shown.reduce((a, r) => a + (r.placed || []).length, 0)} placed`)}</span>
+          {anyFilter > 0 && (
+            <button type="button" onClick={resetFilters} className="inline-flex items-center gap-1 rounded-lg bg-slate-100 px-2.5 py-1 text-[12px] font-semibold text-slate-700 hover:text-[#f37121]">
+              <RotateCcw className="h-3.5 w-3.5" />{t(`مسح الفلاتر (${anyFilter})`, `Clear filters (${anyFilter})`)}
+            </button>
+          )}
+          <div className="ms-auto flex flex-wrap items-center gap-2">
+            <div className="inline-flex rounded-lg border border-slate-200 p-0.5">
+              {([['cards', 'بطاقات', 'Cards', LayoutGrid], ['table', 'جدول', 'Table', Table2]] as const).map(([k, a, e, Icon]) => (
+                <button key={k} type="button" onClick={() => changeView(k)}
+                  className={`inline-flex items-center gap-1 rounded-md px-2.5 py-1 text-[12px] font-semibold ${view === k ? 'bg-slate-900 text-white' : 'text-slate-600 hover:text-slate-900'}`}>
+                  <Icon className="h-3.5 w-3.5" />{ar ? a : e}
+                </button>
+              ))}
+            </div>
+            {view === 'table' && <ColumnChooser columns={chooserCols} visible={visible} onChange={setVisible} ar={ar} />}
+            <ExportMenu fileName={mode === 'vendors' ? 'shipment-requests-vendors' : 'shipment-requests'} lang={ar ? 'ar' : 'en'} label={t('تصدير Excel', 'Export Excel')} options={exportOptions} />
+          </div>
+        </div>
+      </div>
+
       {error && <ErrorNotice error={error} onRetry={load} lang={ar ? 'ar' : 'en'} />}
-      {loading ? <Spinner /> : !rows.length ? (
+      {loading ? <Spinner /> : !shown.length && !(view === 'table' && cf.activeCount) ? (
         <div className="rounded-2xl border border-dashed border-slate-300 bg-white py-14 text-center text-slate-500">
-          <Inbox className="w-8 h-8 mx-auto mb-2 text-slate-300" />{t('لا طلبات هنا', 'No requests here')}
+          <Inbox className="w-8 h-8 mx-auto mb-2 text-slate-300" />{rows.length ? t('لا طلبات تطابق الفلاتر', 'No requests match the filters') : t('لا طلبات هنا', 'No requests here')}
+        </div>
+      ) : view === 'table' ? (
+        <div className="rounded-2xl border border-slate-200 bg-white shadow-sm overflow-auto max-h-[75vh]">
+          <table className="w-full text-[12.5px]">
+            <thead className="sticky top-0 z-10 bg-slate-50 text-slate-600">
+              <tr>
+                {visCols.map((c) => (
+                  <th key={c.key} className={`whitespace-nowrap px-3 py-2 font-semibold ${c.num ? 'text-end' : 'text-start'}`}>{cf.head(c.key, ar ? c.ar : c.en)}</th>
+                ))}
+                <th className="px-3 py-2 text-start font-semibold">{t('إجراءات', 'Actions')}</th>
+              </tr>
+            </thead>
+            <tbody>
+              {shown.map((r) => {
+                const st = REQUEST_STATUS[r.status];
+                const vp = vendorProgress(r, ar);
+                return (
+                  <tr key={r._id} className={`border-t border-slate-100 hover:bg-slate-50/60 ${r.status === 'rejected' ? 'bg-red-50/40' : ''}`}>
+                    {visCols.map((c) => {
+                      if (c.key === 'number') return <td key={c.key} className="px-3 py-2 font-mono font-bold text-slate-900">#{r.number}</td>;
+                      if (c.key === 'status') return <td key={c.key} className="px-3 py-2"><span className={`inline-flex items-center gap-1.5 whitespace-nowrap px-2 py-0.5 rounded-full border text-[11.5px] font-semibold ${st.cls}`}><span className={`w-1.5 h-1.5 rounded-full ${st.dot}`} />{ar ? st.ar : st.en}</span></td>;
+                      if (c.key === 'progress') return (
+                        <td key={c.key} className="px-3 py-2 min-w-[150px]">
+                          <p className={`whitespace-nowrap text-[12px] font-semibold ${vp.tone}`}>{vp.label}</p>
+                          <div className="mt-1 h-1.5 rounded-full bg-slate-100"><div className="h-1.5 rounded-full bg-emerald-500" style={{ width: `${vp.pct}%` }} /></div>
+                        </td>
+                      );
+                      if (c.key === 'orders') return (
+                        <td key={c.key} className="px-3 py-2 min-w-[220px]">
+                          <div className="flex flex-wrap gap-1">{(r.placed || []).map((p) => <Link key={p.order} href={`/system/shipment-orders?q=${p.waybillNumber}`} title={`${p.supplierName} · ${p.vehiclePlate} · ${p.driverName}`} className="rounded bg-emerald-50 px-1.5 py-0.5 font-semibold text-emerald-800 hover:bg-emerald-100">{p.waybillNumber}</Link>)}</div>
+                        </td>
+                      );
+                      const v = c.read(r);
+                      return <td key={c.key} className={`px-3 py-2 ${c.num ? 'text-end tabular-nums' : ''} ${['notes', 'drivers', 'plates', 'supplier'].includes(c.key) ? 'max-w-[220px] truncate' : 'whitespace-nowrap'}`} title={['notes', 'drivers', 'plates', 'supplier'].includes(c.key) ? String(v) : undefined}>{c.key === 'sellPrice' ? money(r.sellPrice) : (v === '' ? '—' : v)}</td>;
+                    })}
+                    <td className="px-3 py-2 whitespace-nowrap"><div className="flex flex-nowrap items-center gap-1.5">{actions(r, true)}</div></td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+          {!shown.length && <p className="py-8 text-center text-slate-500">{t('لا طلبات تطابق الفلاتر', 'No requests match the filters')}</p>}
         </div>
       ) : (
         <div className="grid grid-cols-1 xl:grid-cols-2 gap-3">
-          {rows.map((r) => {
+          {shown.map((r) => {
             const st = REQUEST_STATUS[r.status];
             const open = ['pending', 'in_progress'].includes(r.status);
-            const held = r.handler && String(r.handler) !== String(user?._id);
             const pct = r.trucks ? Math.round((r.placed.length / r.trucks) * 100) : 0;
             return (
               <div key={r._id} className={`rounded-2xl border bg-white shadow-sm overflow-hidden ${r.status === 'rejected' ? 'border-red-200' : 'border-slate-200'}`}>
                 <div className="px-4 py-3 flex flex-wrap items-center gap-2 border-b border-slate-100 bg-slate-50/60">
                   <span className="font-mono font-extrabold text-slate-900">#{r.number}</span>
                   <span className={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full border text-[11.5px] font-semibold ${st.cls}`}><span className={`w-1.5 h-1.5 rounded-full ${st.dot}`} />{ar ? st.ar : st.en}</span>
+                  <span className={`text-[12px] font-semibold ${vendorProgress(r, ar).tone}`}>{vendorProgress(r, ar).label}</span>
                   {r.resubmits ? <span className="text-[11px] text-slate-500">{t(`أُعيد ${r.resubmits}×`, `resent ${r.resubmits}×`)}</span> : null}
                   <span className="ms-auto text-[11.5px] text-slate-500">{when(r.createdAt)} · {r.createdByName}</span>
                 </div>
@@ -186,27 +402,7 @@ export default function ShipmentRequestsBoard({ mode }: { mode: 'sales' | 'vendo
                     </div>
                   )}
                   <div className="flex flex-wrap items-center gap-1.5 pt-1">
-                    {mode === 'vendors' && placer && open && (
-                      <>
-                        <Btn primary onClick={() => setPlacing(r)} icon={CheckCircle2}>{t('إكمال الشحنة', 'Complete')}</Btn>
-                        <Btn onClick={() => setRejecting(r)} icon={XCircle} danger>{t('رفض', 'Reject')}</Btn>
-                        {!r.handler || held
-                          ? <Btn onClick={() => act(r, 'claim', {}, t('تولّيتَ الطلب', 'Taken'))} icon={Hand} busy={busyId === r._id}>{held ? t('تولِّيه بدلًا من زميل', 'Take over') : t('أتولّاه', 'Take it')}</Btn>
-                          : <Btn onClick={() => act(r, 'release')} icon={Undo2} busy={busyId === r._id}>{t('تخلٍّ', 'Release')}</Btn>}
-                      </>
-                    )}
-                    {mode === 'sales' && asker && ['pending', 'in_progress', 'rejected'].includes(r.status) && (
-                      <>
-                        {r.status === 'rejected' && <Btn primary onClick={() => setEditing(r)} icon={Pencil}>{t('تعديل وإعادة الإرسال', 'Amend and resend')}</Btn>}
-                        {r.status !== 'rejected' && <Btn onClick={() => setEditing(r)} icon={Pencil}>{t('تعديل', 'Edit')}</Btn>}
-                        {r.status === 'rejected' && <Btn onClick={() => act(r, 'resubmit', {}, t('أُعيد الإرسال', 'Resent'))} icon={Send} busy={busyId === r._id}>{t('إعادة الإرسال كما هو', 'Resend as is')}</Btn>}
-                        <Btn danger icon={Trash2} busy={busyId === r._id} onClick={async () => {
-                          if (await confirm({ title: t('سحب الطلب', 'Withdraw'), message: r.placed.length ? t('أوامرُ النقل المُنشأة تبقى، ويُسحب الباقي فقط.', 'Created transport orders stay; only the rest is withdrawn.') : t('يُسحب الطلب من فريق الموردين.', 'The request is withdrawn.'), tone: 'danger' as any }))
-                            act(r, 'cancel', {}, t('سُحب الطلب', 'Withdrawn'));
-                        }}>{t('سحب', 'Withdraw')}</Btn>
-                      </>
-                    )}
-                    <button type="button" onClick={() => setHistory(r)} className="ms-auto inline-flex items-center gap-1 text-[12px] font-semibold text-slate-500 hover:text-slate-900"><History className="w-3.5 h-3.5" />{t('السجلّ', 'History')}</button>
+                    {actions(r)}
                   </div>
                 </div>
               </div>

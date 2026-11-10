@@ -819,10 +819,11 @@ async function applySalesRep(data, body) {
   if (!u) { const e = new Error('السيلز التشغيلي يُختار من فريق المبيعات أو العمليات'); e.status = 400; throw e; }
   data.salesRep = u._id; data.salesRepName = fullName(u);
 }
-/** Sourcing: who found the carrier and the truck owner — the vendors team and operations (managers and staff), never someone whose service ended. */
+/** Sourcing: who found the carrier and the truck owner — the vendors, sales, operations and data teams (owner, 2026-11-10), never someone whose service ended. */
 const SOURCING_REP_ROLES = () => {
-  const { rolesOfSection } = require('../config/roles');
-  return [...rolesOfSection('Vendors Management'), ...rolesOfSection('Operations'), ...rolesOfSection('Shipment Orders')];
+  const { rolesOfSection, DATA_ROLES } = require('../config/roles');
+  return [...new Set([...rolesOfSection('Vendors Management'), ...rolesOfSection('Sales'), ...rolesOfSection('Operations'),
+    ...rolesOfSection('Shipment Orders'), ...DATA_ROLES])];
 };
 async function sourcingRepOptions() {
   const User = require('../models/User');
@@ -842,7 +843,7 @@ async function applySourcingRep(data, body) {
   const User = require('../models/User');
   const u = mongoose.isValidObjectId(body.sourcingRep)
     ? await User.findOne({ _id: body.sourcingRep, role: { $in: SOURCING_REP_ROLES() } }).select('firstName lastName').lean() : null;
-  if (!u) { const e = new Error('مسؤول التوريد يُختار من فريق الموردين أو العمليات'); e.status = 400; throw e; }
+  if (!u) { const e = new Error('مسؤول التوريد يُختار من فرق الموردين أو المبيعات أو العمليات أو البيانات'); e.status = 400; throw e; }
   data.sourcingRep = u._id; data.sourcingRepName = fullName(u);
 }
 exports.applySourcingRep = (data, body) => applySourcingRep(data, body);

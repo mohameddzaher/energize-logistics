@@ -3,7 +3,7 @@
  * Daily log: what each person worked on each day and how long it took.
  * One row per task per day: what was planned, what was worked with the timer (a span across midnight is split between its two days), the manager's correction, and what was done. Filter by day or range, employee, task and status. All computation is on the server (GET /api/jp/daily).
  */
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import api from '@/lib/api';
 import { useSocket } from '@/hooks/useSocket';
 import { useLatestRequest } from '@/hooks/useLatestRequest';
@@ -20,11 +20,11 @@ interface Person { assignedTo: string | null; name: string; tasks: number; done:
 interface Daily { from: string; to: string; rows: Row[]; people: Person[]; titles: { title: string; minutes: number }[]; team: { _id: string; name: string }[] }
 
 const today = () => new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Riyadh' }).format(new Date());
-const STATUS: Record<Row['status'], { ar: string; en: string; cls: string }> = {
-  todo: { ar: 'لم تبدأ', en: 'Not started', cls: 'bg-slate-100 text-slate-600' },
-  doing: { ar: 'جارية', en: 'In progress', cls: 'bg-emerald-50 text-emerald-700' },
-  paused: { ar: 'متوقّفة', en: 'Paused', cls: 'bg-amber-50 text-amber-800' },
-  done: { ar: 'تمّت', en: 'Done', cls: 'bg-sky-50 text-sky-700' },
+const STATUS: Record<Row['status'], { ar: string; en: string; dot: string }> = {
+  todo: { ar: 'لم تبدأ', en: 'Not started', dot: 'bg-slate-300' },
+  doing: { ar: 'جارية', en: 'In progress', dot: 'bg-emerald-500' },
+  paused: { ar: 'متوقّفة', en: 'Paused', dot: 'bg-amber-500' },
+  done: { ar: 'تمّت', en: 'Done', dot: 'bg-sky-600' },
 };
 
 export default function JpDaily({ scope, section, ar }: { scope: JpScope; section?: string; ar: boolean }) {
@@ -57,14 +57,31 @@ export default function JpDaily({ scope, section, ar }: { scope: JpScope; sectio
     if (!x || (x.scope === scope && (scope === 'management' || x.section === section))) load();
   }, [load, scope, section]));
 
-  const sel = 'rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-[13px]';
+  const sel = 'h-9 rounded-lg border border-slate-200 bg-white px-2.5 text-[13px] text-slate-700';
+  // Lines grouped per person; identical tasks (same title, status and day) are one line with a count.
+  const multiDay = !!d && d.from !== d.to;
+  const groups = useMemo(() => {
+    const out = new Map<string, { key: string; name: string; tasks: number; done: number; minutes: number; running: boolean; lines: { key: string; day: string; title: string; status: Row['status']; count: number; minutes: number; expected: number | null; request: boolean; carried: boolean }[] }>();
+    for (const r of d?.rows || []) {
+      const key = r.assignedTo || r.assignedToName || '—';
+      const g = out.get(key) || { key, name: r.assignedToName || '—', tasks: 0, done: 0, minutes: 0, running: false, lines: [] };
+      g.tasks += 1; if (r.status === 'done') g.done += 1; g.minutes += r.minutes || 0; if (r.running) g.running = true;
+      const lk = `${r.day}|${r.title}|${r.status}|${r.kind}|${r.planned}`;
+      const line = g.lines.find((x) => x.key === lk);
+      if (line) { line.count += 1; line.minutes += r.minutes || 0; if (r.expectedMinutes != null) line.expected = (line.expected || 0) + r.expectedMinutes; }
+      else g.lines.push({ key: lk, day: r.day, title: r.title, status: r.status, count: 1, minutes: r.minutes || 0, expected: r.expectedMinutes, request: r.kind === 'request', carried: !r.planned });
+      out.set(key, g);
+    }
+    return [...out.values()].sort((a, b) => b.minutes - a.minutes || b.tasks - a.tasks);
+  }, [d]);
   const titles = [...new Set([...(d?.titles || []).map((x) => x.title), ...(title ? [title] : [])])];
 
   return (
     <section className="rounded-2xl border border-slate-200 bg-white shadow-sm">
       <div className="flex flex-wrap items-center gap-2 border-b border-slate-100 px-4 py-3">
         <CalendarClock className="h-4 w-4 text-[#f37121]" />
-        <h2 className="text-[15px] font-bold text-slate-900">{t('اليوميّة — مَن عمل على ماذا وكم أخذ', 'Daily log — who worked on what, and for how long')}</h2>
+        <h2 className="text-[15px] font-bold text-slate-900">{t('اليوميّة', 'Daily log')}</h2>
+        <span className="text-[12.5px] text-slate-500">{t('ما عمل عليه كلُّ موظّف والوقت المسجّل', 'What each person worked on and the time logged')}</span>
         {loading && <Loader2 className="h-4 w-4 animate-spin text-slate-400" />}
       </div>
       <div className="flex flex-wrap items-center gap-2 px-4 py-3">
@@ -86,60 +103,48 @@ export default function JpDaily({ scope, section, ar }: { scope: JpScope; sectio
       </div>
 
       {d && (
-        <>
-          {/* Per employee: time in the range, what was planned, and what was done. */}
-          {d.people.length > 0 && (
-            <div className="grid grid-cols-1 gap-2 px-4 pb-3 sm:grid-cols-2 lg:grid-cols-4">
-              {d.people.map((p) => (
-                <button key={p.assignedTo || p.name} type="button" onClick={() => setAssignee(assignee === p.assignedTo ? '' : (p.assignedTo || ''))}
-                  className={`rounded-xl border px-3 py-2.5 text-start transition-colors ${assignee && assignee === p.assignedTo ? 'border-slate-900 bg-slate-50' : 'border-slate-200 hover:bg-slate-50'}`}>
-                  <p className="truncate text-[13px] font-bold text-slate-900">{p.name}{p.running ? <span className="ms-1.5 inline-block h-2 w-2 animate-pulse rounded-full bg-emerald-500" /> : null}</p>
-                  <p className="text-[18px] font-extrabold tabular-nums text-slate-900">{fmtMinutes(p.minutes, ar)}</p>
-                  <p className="text-[11.5px] text-slate-500">
-                    {t(`${p.tasks} مهمّة · ${p.done} تمّت`, `${p.tasks} tasks · ${p.done} done`)}
-                    {p.expected ? ` · ${t('المتوقّع', 'planned')} ${fmtMinutes(p.expected, ar)}` : ''}
-                  </p>
-                </button>
+        <div className="px-4 pb-4">
+          {!d.rows.length ? (
+            <p className="rounded-xl border border-dashed border-slate-200 py-8 text-center text-[13px] text-slate-400">{t('لا شيء مسجّل في هذه الفترة', 'Nothing logged in this period')}</p>
+          ) : (
+            <div className="space-y-3">
+              {groups.map((g) => (
+                <div key={g.key} className="overflow-hidden rounded-xl border border-slate-200">
+                  {/* One block per person: total time and counts on the header, his tasks below. */}
+                  <button type="button" onClick={() => setAssignee(assignee === g.key ? '' : g.key)}
+                    className="flex w-full flex-wrap items-center gap-x-4 gap-y-1 bg-slate-50 px-4 py-2.5 text-start hover:bg-slate-100">
+                    <span className="text-[14px] font-bold text-slate-900">{g.name}{g.running ? <span className="ms-2 inline-block h-2 w-2 animate-pulse rounded-full bg-emerald-500" title={t('يعمل الآن', 'Working now')} /> : null}</span>
+                    <span className="text-[12.5px] text-slate-500">{t(`${g.tasks} مهمّة`, `${g.tasks} tasks`)} · {t(`${g.done} تمّت`, `${g.done} done`)}</span>
+                    <span className="ms-auto text-[13px] font-bold tabular-nums text-slate-900">{g.minutes ? fmtMinutes(g.minutes, ar) : <span className="font-normal text-slate-400">{t('لم يُسجَّل وقت', 'No time logged')}</span>}</span>
+                  </button>
+                  <table className="w-full text-[13px]">
+                    <tbody className="divide-y divide-slate-100">
+                      {g.lines.map((r) => {
+                        const over = r.expected != null && r.minutes > r.expected;
+                        return (
+                          <tr key={r.key}>
+                            {multiDay && <td className="w-24 px-4 py-2 tabular-nums text-slate-500">{r.day.split('-').reverse().join('/')}</td>}
+                            <td className="px-4 py-2 text-slate-800">
+                              <button type="button" onClick={() => setTitle(title === r.title ? '' : r.title)} className="font-medium hover:text-[#f37121]">{r.title}</button>
+                              {r.count > 1 && <span className="ms-1.5 text-[12px] font-semibold text-slate-500">×{r.count}</span>}
+                              {r.request && <span className="ms-2 text-[11.5px] text-slate-400">{t('طلب', 'request')}</span>}
+                              {r.carried && <span className="ms-2 text-[11.5px] text-slate-400">{t('من يومٍ سابق', 'carried over')}</span>}
+                            </td>
+                            <td className="w-36 px-4 py-2"><span className="inline-flex items-center gap-2 text-[12.5px] font-semibold text-slate-700"><span className={`h-2 w-2 rounded-[2px] ${STATUS[r.status].dot}`} />{ar ? STATUS[r.status].ar : STATUS[r.status].en}</span></td>
+                            <td className={`w-40 px-4 py-2 text-end tabular-nums ${over ? 'font-bold text-red-600' : 'text-slate-800'}`}>
+                              {r.minutes ? fmtMinutes(r.minutes, ar) : <span className="text-[12px] text-slate-400">{t('بلا مؤقّت', 'not timed')}</span>}
+                              {r.expected != null && <span className="ms-1.5 text-[11.5px] font-normal text-slate-400">/ {fmtMinutes(r.expected, ar)}</span>}
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
               ))}
             </div>
           )}
-          <div className="overflow-x-auto">
-            <table className="w-full min-w-[720px] text-[13px]">
-              <thead className="bg-slate-50 text-[12px] text-slate-500">
-                <tr>
-                  <th className="px-3 py-2 text-start font-semibold">{t('اليوم', 'Day')}</th>
-                  <th className="px-3 py-2 text-start font-semibold">{t('الموظّف', 'Employee')}</th>
-                  <th className="px-3 py-2 text-start font-semibold">{t('المهمّة', 'Task')}</th>
-                  <th className="px-3 py-2 text-start font-semibold">{t('الحالة', 'Status')}</th>
-                  <th className="px-3 py-2 text-start font-semibold">{t('الوقت في اليوم', 'Time that day')}</th>
-                  <th className="px-3 py-2 text-start font-semibold">{t('المتوقّع', 'Expected')}</th>
-                  <th className="px-3 py-2 text-start font-semibold">{t('الإجمالي', 'Total')}</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-100">
-                {d.rows.map((r) => {
-                  const over = r.expectedMinutes != null && r.totalMinutes > r.expectedMinutes;
-                  return (
-                    <tr key={`${r.taskId}-${r.day}`} className="hover:bg-slate-50/60">
-                      <td className="px-3 py-2 tabular-nums text-slate-600">{r.day.split('-').reverse().join('/')}</td>
-                      <td className="px-3 py-2 font-semibold text-slate-800">{r.assignedToName || '—'}</td>
-                      <td className="px-3 py-2 text-slate-800">
-                        <button type="button" onClick={() => setTitle(title === r.title ? '' : r.title)} className="hover:underline">{r.title}</button>
-                        {r.kind === 'request' && <span className="ms-1 text-[11px] text-sky-600">{t('طلب', 'request')}</span>}
-                        {!r.planned && <span className="ms-1 text-[11px] text-slate-400">{t('(من يومٍ سابق)', '(carried over)')}</span>}
-                      </td>
-                      <td className="px-3 py-2"><span className={`rounded-full px-2 py-0.5 text-[11.5px] font-bold ${STATUS[r.status].cls}`}>{ar ? STATUS[r.status].ar : STATUS[r.status].en}</span></td>
-                      <td className="px-3 py-2 font-bold tabular-nums text-slate-900">{r.minutes ? fmtMinutes(r.minutes, ar) : '—'}</td>
-                      <td className="px-3 py-2 tabular-nums text-slate-500">{r.expectedMinutes != null ? fmtMinutes(r.expectedMinutes, ar) : '—'}</td>
-                      <td className={`px-3 py-2 tabular-nums ${over ? 'font-bold text-red-600' : 'text-slate-600'}`}>{fmtMinutes(r.totalMinutes, ar)}</td>
-                    </tr>
-                  );
-                })}
-                {!d.rows.length && <tr><td colSpan={7} className="py-8 text-center text-slate-400">{t('لا شيء مسجّل في هذا اليوم', 'Nothing logged for this day')}</td></tr>}
-              </tbody>
-            </table>
-          </div>
-        </>
+        </div>
       )}
     </section>
   );

@@ -9,18 +9,20 @@ import { useLanguage } from '@/context/LanguageContext';
 import { useSocket } from '@/hooks/useSocket';
 import { useLatestRequest } from '@/hooks/useLatestRequest';
 import api from '@/lib/api';
-import { type JpScope, ACTION_WORDS, deadlineLine, TONE_CLASS, qs, spanWords } from '@/lib/jp';
+import { type JpScope, ACTION_WORDS, deadlineLine, TONE_CLASS, qs, spanWords, fmtMinutes } from '@/lib/jp';
+import Link from 'next/link';
 import { Spinner, PageHeader } from '@/components/hr/HRKit';
 import DateRangeFilter from '@/components/system/DateRangeFilter';
 import JpDaily from '@/components/jp/JpDaily';
 import {
-  BarChart3, AlertTriangle, Clock, FolderKanban, Users, CheckCircle2, UserX, ListChecks, X, Timer, Paperclip, MessageSquare,
+  BarChart3, Clock, FolderKanban, Users, UserX, ListChecks, X, Paperclip, MessageSquare, Tags, Link2,
 } from 'lucide-react';
 
 interface Row {
   _id: string; title: string; kind: 'task' | 'request'; assignedToName: string; createdByName: string;
   deadlineAt: string | null; doneAt: string | null; createdAt: string; project: string; files: number; doneNote: string;
   state: 'open' | 'overdue' | 'done'; action: string; comments: number; dueSoon: boolean;
+  spentMinutes?: number; expectedMinutes?: number | null; links?: { kind: string; label: string; href: string }[];
 }
 interface Member {
   _id: string; name: string; roleAr: string; roleEn: string; former?: boolean;
@@ -41,11 +43,15 @@ interface Dash {
   tasks: Row[];
   team: { _id: string; name: string }[];
   projectOptions: { _id: string; name: string }[];
+  byTitle?: { title: string; total: number; done: number; overdue: number; minutes: number; avgMinutes: number | null }[];
+  titleOptions?: string[];
+  linkOptions?: { kind: string; ar: string; en: string; count: number }[];
+  totals2?: { minutes: number };
 }
 
 type StatusKey = '' | 'open' | 'overdue' | 'soon' | 'done';
 const pctText = (v: number | null) => (v == null ? '—' : `${v}%`);
-const selectCls = 'px-3 py-2 rounded-lg bg-white border border-slate-200 text-[13px] text-slate-700 focus:outline-none focus:ring-2 focus:ring-[#f37121]/40';
+const selectCls = 'h-9 px-2.5 rounded-lg bg-white border border-slate-200 text-[13px] text-slate-700 focus:outline-none focus:ring-2 focus:ring-[#f37121]/40';
 
 function Panel({ title, icon, right, children, className = '' }: {
   title: string; icon: React.ReactNode; right?: React.ReactNode; children: React.ReactNode; className?: string;
@@ -61,40 +67,26 @@ function Panel({ title, icon, right, children, className = '' }: {
   );
 }
 
-/** Number card: colored icon, large number, an explanatory line; clicking filters the list. */
-function Kpi({ icon, tone, label, value, hint, on, onClick }: {
-  icon: React.ReactNode; tone: string; label: string; value: string; hint?: string; on?: boolean; onClick?: () => void;
+/** One cell of the numbers strip: label, number, a short line; clicking a status cell filters the task list. */
+function Stat({ label, value, hint, tone = 'text-slate-900', on, onClick }: {
+  label: string; value: string; hint?: string; tone?: string; on?: boolean; onClick?: () => void;
 }) {
-  return (
-    <button type="button" onClick={onClick}
-      className={`text-start bg-white border rounded-2xl p-4 shadow-sm transition-all hover:shadow-md ${on ? 'border-[#f37121] ring-1 ring-[#f37121]/40' : 'border-slate-200'}`}>
-      <div className="flex items-center gap-2">
-        <span className={`w-9 h-9 rounded-xl flex items-center justify-center ${tone}`}>{icon}</span>
-        <p className="text-[12px] font-semibold text-slate-500">{label}</p>
-      </div>
-      <p className="mt-2 text-[26px] leading-none font-extrabold tabular-nums text-slate-900">{value}</p>
-      {hint && <p className="mt-1.5 text-[11.5px] text-slate-400 truncate">{hint}</p>}
-    </button>
+  const body = (
+    <>
+      <p className="text-[12px] font-semibold text-slate-500">{label}</p>
+      <p className={`mt-1 text-[24px] leading-none font-extrabold tabular-nums ${tone}`}>{value}</p>
+      {hint && <p className="mt-1.5 truncate text-[11.5px] text-slate-400">{hint}</p>}
+    </>
   );
+  return onClick ? (
+    <button type="button" onClick={onClick} className={`px-4 py-3 text-start transition-colors hover:bg-slate-50 ${on ? 'bg-orange-50/60 shadow-[inset_0_-2px_0_#f37121]' : ''}`}>{body}</button>
+  ) : <div className="px-4 py-3">{body}</div>;
 }
 
-/** Percentage ring without a library: a conic-gradient circle with the number in the middle. */
-function Ring({ value, color, label }: { value: number | null; color: string; label: string }) {
-  const v = Math.max(0, Math.min(100, value || 0));
-  return (
-    <div className="flex items-center gap-3">
-      <div className="w-16 h-16 rounded-full flex items-center justify-center shrink-0" style={{ background: `conic-gradient(${color} ${v * 3.6}deg, #e2e8f0 0deg)` }}>
-        <div className="w-12 h-12 rounded-full bg-white flex items-center justify-center text-[13px] font-extrabold tabular-nums text-slate-900">{pctText(value)}</div>
-      </div>
-      <p className="text-[12.5px] text-slate-600">{label}</p>
-    </div>
-  );
-}
-
-const STATE_BADGE: Record<string, { ar: string; en: string; cls: string }> = {
-  open: { ar: 'قائمة', en: 'Open', cls: 'bg-sky-50 text-sky-700' },
-  overdue: { ar: 'متأخّرة', en: 'Late', cls: 'bg-red-50 text-red-700' },
-  done: { ar: 'تمّت', en: 'Done', cls: 'bg-emerald-50 text-emerald-700' },
+const STATE_BADGE: Record<string, { ar: string; en: string; dot: string }> = {
+  open: { ar: 'قائمة', en: 'Open', dot: 'bg-sky-500' },
+  overdue: { ar: 'متأخّرة', en: 'Late', dot: 'bg-red-500' },
+  done: { ar: 'تمّت', en: 'Done', dot: 'bg-emerald-500' },
 };
 
 export default function JpDashboard({ scope, section }: { scope: JpScope; section?: string }) {
@@ -109,6 +101,8 @@ export default function JpDashboard({ scope, section }: { scope: JpScope; sectio
   const [project, setProject] = useState('');
   const [kind, setKind] = useState('');
   const [action, setAction] = useState('');
+  const [title, setTitle] = useState('');
+  const [link, setLink] = useState('');
   const [status, setStatus] = useState<StatusKey>('');
   const [search, setSearch] = useState('');
   const [now, setNow] = useState(() => Date.now());
@@ -125,13 +119,15 @@ export default function JpDashboard({ scope, section }: { scope: JpScope; sectio
       if (project) p.set('project', project);
       if (kind) p.set('kind', kind);
       if (action) p.set('action', action);
+      if (title) p.set('title', title);
+      if (link) p.set('link', link);
       const d = await api.get<Dash>(`/api/jp/dashboard?${p.toString()}`);
       if (isCurrent(token)) { setData(d); setDenied(''); setNow(Date.now()); }
     } catch (e) {
       if (isCurrent(token)) setDenied((e as { message?: string })?.message || t('تعذّر التحميل', 'Could not load'));
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [q, from, to, assignee, project, kind, action]);
+  }, [q, from, to, assignee, project, kind, action, title, link]);
   useEffect(() => { load(); }, [load]);
   useSocket('jp:changed', useCallback((d: { scope?: string; section?: string }) => {
     if (!d || (d.scope === scope && (scope === 'management' || d.section === section))) load();
@@ -153,8 +149,8 @@ export default function JpDashboard({ scope, section }: { scope: JpScope; sectio
   const management = scope === 'management';
   const dayMax = Math.max(1, ...data.daily.map((d) => Math.max(d.created, d.done)));
   const person = management ? t('المدير', 'Manager') : t('الموظّف', 'Employee');
-  const active = [from, to, assignee, project, kind, action].filter(Boolean).length;
-  const clear = () => { setFrom(''); setTo(''); setAssignee(''); setProject(''); setKind(''); setAction(''); setStatus(''); setSearch(''); };
+  const active = [from, to, assignee, project, kind, action, title, link].filter(Boolean).length;
+  const clear = () => { setFrom(''); setTo(''); setAssignee(''); setProject(''); setKind(''); setAction(''); setTitle(''); setLink(''); setStatus(''); setSearch(''); };
   const pick = (k: StatusKey) => setStatus((cur) => (cur === k ? '' : k));
 
   return (
@@ -168,16 +164,26 @@ export default function JpDashboard({ scope, section }: { scope: JpScope; sectio
         </span>
       </PageHeader>
 
-      {/* Daily log first: who worked on what today and how long it took */}
-      <JpDaily scope={scope} section={section} ar={ar} />
-
-      {/* 1. Filters */}
-      <div className="bg-white border border-slate-200 rounded-2xl px-4 py-3 shadow-sm flex flex-wrap items-center gap-2.5">
+      {/* 1. Filters: one bar, including the section's own task types and linked records. */}
+      <div className="bg-white border border-slate-200 rounded-2xl px-4 py-3 shadow-sm flex flex-wrap items-center gap-2">
+        <DateRangeFilter from={from} to={to} onFrom={setFrom} onTo={setTo} ar={ar} />
         <select value={assignee} onChange={(e) => setAssignee(e.target.value)} className={selectCls} aria-label={person}>
           <option value="">{management ? t('كلُّ المديرين', 'All managers') : t('كلُّ الموظّفين', 'All employees')}</option>
           {data.team.map((m) => <option key={m._id} value={m._id}>{m.name}</option>)}
         </select>
-        <DateRangeFilter from={from} to={to} onFrom={setFrom} onTo={setTo} ar={ar} />
+        {!!(data.titleOptions || []).length && (
+          <select value={title} onChange={(e) => setTitle(e.target.value)} className={selectCls} aria-label={t('نوع المهمّة', 'Task type')}>
+            <option value="">{t('كلُّ أنواع المهامّ', 'All task types')}</option>
+            {data.titleOptions!.map((x) => <option key={x} value={x}>{x}</option>)}
+          </select>
+        )}
+        {!!(data.linkOptions || []).length && (
+          <select value={link} onChange={(e) => setLink(e.target.value)} className={selectCls} aria-label={t('مرتبطة بـ', 'Linked to')}>
+            <option value="">{t('مرتبطة بأيّ شيء', 'Linked to anything')}</option>
+            {data.linkOptions!.map((x) => <option key={x.kind} value={x.kind}>{t(`مرتبطة بـ ${x.ar}`, `Linked to ${x.en}`)} ({x.count})</option>)}
+            <option value="none">{t('بلا ارتباط', 'Not linked')}</option>
+          </select>
+        )}
         {data.projectOptions.length > 0 && (
           <select value={project} onChange={(e) => setProject(e.target.value)} className={selectCls} aria-label={t('المشروع', 'Project')}>
             <option value="">{t('كلُّ المشروعات', 'All projects')}</option>
@@ -196,38 +202,32 @@ export default function JpDashboard({ scope, section }: { scope: JpScope; sectio
           <option value="none">{t('بلا تواصل', 'No contact')}</option>
         </select>
         {(active > 0 || status || search) && (
-          <button type="button" onClick={clear} className="inline-flex items-center gap-1 px-3 py-2 text-[13px] text-slate-400 hover:text-red-600">
-            <X className="w-4 h-4" />{t('إزالة الفلاتر', 'Clear')}
+          <button type="button" onClick={clear} className="inline-flex items-center gap-1 px-2 py-2 text-[13px] font-semibold text-slate-500 hover:text-red-600">
+            <X className="w-4 h-4" />{t('مسح الفلاتر', 'Clear')}
           </button>
         )}
       </div>
 
-      {/* 2. Numbers */}
-      <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-6 gap-3">
-        <Kpi icon={<ListChecks className="w-5 h-5" />} tone="bg-slate-100 text-slate-700" label={t('الإجمالي', 'Total')} value={String(T.total)}
-          hint={t(`${T.tasks} مهمّة · ${T.requests} طلب`, `${T.tasks} tasks · ${T.requests} requests`)} on={status === ''} onClick={() => setStatus('')} />
-        <Kpi icon={<Clock className="w-5 h-5" />} tone="bg-sky-50 text-sky-700" label={t('قائمة', 'Open')} value={String(T.open - T.overdue)}
-          hint={t(`${T.noDeadline} بلا موعد`, `${T.noDeadline} without deadline`)} on={status === 'open'} onClick={() => pick('open')} />
-        <Kpi icon={<AlertTriangle className="w-5 h-5" />} tone="bg-red-50 text-red-600" label={t('متأخّرة', 'Late')} value={String(T.overdue)}
-          hint={t('فات موعدُها ولم تتمّ', 'Past deadline, not done')} on={status === 'overdue'} onClick={() => pick('overdue')} />
-        <Kpi icon={<Timer className="w-5 h-5" />} tone="bg-amber-50 text-amber-600" label={t('تستحقّ خلال 24 ساعة', 'Due within 24h')} value={String(T.dueSoon)}
-          hint={t('قائمةٌ وموعدُها قريب', 'Open, deadline near')} on={status === 'soon'} onClick={() => pick('soon')} />
-        <Kpi icon={<CheckCircle2 className="w-5 h-5" />} tone="bg-emerald-50 text-emerald-600" label={t('تمّت', 'Done')} value={String(T.done)}
-          hint={t(`${T.onTime} في موعدها · ${T.late} بعده`, `${T.onTime} on time · ${T.late} late`)} on={status === 'done'} onClick={() => pick('done')} />
-        <div className="bg-white border border-slate-200 rounded-2xl p-4 shadow-sm flex flex-col justify-center gap-3">
-          <Ring value={T.completionRate} color="#10b981" label={t('نسبة الإتمام', 'Completion')} />
-          <Ring value={T.onTimeRate} color="#f37121" label={t('في موعدها', 'On time')} />
-        </div>
+      {/* 2. Numbers: one strip; the status cells filter the task list. */}
+      <div className="grid grid-cols-2 overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm sm:grid-cols-4 xl:grid-cols-8 divide-y divide-slate-100 sm:divide-y-0 sm:divide-x rtl:sm:divide-x-reverse">
+        <Stat label={t('الإجمالي', 'Total')} value={String(T.total)} hint={t(`${T.tasks} مهمّة · ${T.requests} طلب`, `${T.tasks} tasks · ${T.requests} requests`)} on={status === ''} onClick={() => setStatus('')} />
+        <Stat label={t('قائمة', 'Open')} value={String(T.open - T.overdue)} tone="text-sky-700" hint={t(`${T.noDeadline} بلا موعد`, `${T.noDeadline} no deadline`)} on={status === 'open'} onClick={() => pick('open')} />
+        <Stat label={t('متأخّرة', 'Late')} value={String(T.overdue)} tone={T.overdue ? 'text-red-600' : 'text-slate-900'} hint={t('فات موعدها', 'Past deadline')} on={status === 'overdue'} onClick={() => pick('overdue')} />
+        <Stat label={t('خلال 24 ساعة', 'Due in 24h')} value={String(T.dueSoon)} tone={T.dueSoon ? 'text-amber-600' : 'text-slate-900'} hint={t('موعدها قريب', 'Deadline near')} on={status === 'soon'} onClick={() => pick('soon')} />
+        <Stat label={t('تمّت', 'Done')} value={String(T.done)} tone="text-emerald-700" hint={t(`${T.onTime} في موعدها · ${T.late} بعده`, `${T.onTime} on time · ${T.late} late`)} on={status === 'done'} onClick={() => pick('done')} />
+        <Stat label={t('نسبة الإتمام', 'Completion')} value={pctText(T.completionRate)} />
+        <Stat label={t('في موعدها', 'On time')} value={pctText(T.onTimeRate)} hint={t('من التي لها موعد', 'of those with a deadline')} />
+        <Stat label={t('الوقت المسجّل', 'Time logged')} value={data.totals2?.minutes ? fmtMinutes(data.totals2.minutes, ar) : '—'} hint={t('بالمؤقّت', 'by timer')} />
       </div>
 
       {/* 3. Team */}
       <div className="grid grid-cols-1 xl:grid-cols-3 gap-4">
         <Panel className="xl:col-span-2" title={management ? t('المديرون', 'Managers') : t('الفريق', 'Team')} icon={<Users className="w-4 h-4" />}
           right={<span className="text-[11px] text-slate-400">{t('اضغط اسمًا لتصفية اللوحة به', 'Click a name to filter by it')}</span>}>
-          <div className="overflow-x-auto -mx-5 px-5">
+          <div className="overflow-x-auto -mx-5 -my-5">
             <table className="w-full text-[13px]">
               <thead>
-                <tr className="text-slate-500 text-[11.5px] border-b border-slate-100">
+                <tr className="bg-slate-900 text-slate-200 text-[11.5px] [&>th]:py-2.5 [&>th]:px-3">
                   <th className="text-start font-medium pb-2">{person}</th>
                   <th className="text-center font-medium pb-2">{t('أُسنِد', 'Assigned')}</th>
                   <th className="text-center font-medium pb-2">{t('قائمة', 'Open')}</th>
@@ -242,7 +242,7 @@ export default function JpDashboard({ scope, section }: { scope: JpScope; sectio
               <tbody className="divide-y divide-slate-100">
                 {data.members.map((m) => (
                   <tr key={m._id} className={`hover:bg-slate-50 ${assignee === m._id ? 'bg-orange-50/50' : ''}`}>
-                    <td className="py-2.5">
+                    <td className="py-2.5 px-3">
                       <button type="button" disabled={m.former} onClick={() => setAssignee(assignee === m._id ? '' : m._id)} className="text-start">
                         <span className="block font-semibold text-slate-900 hover:text-[#f37121]">{m.name}{m.former && <span className="ms-1 text-[11px] text-slate-400">{t('(خارج الفريق)', '(left team)')}</span>}</span>
                         <span className="block text-[11.5px] text-slate-500">{ar ? m.roleAr : m.roleEn}</span>
@@ -298,7 +298,53 @@ export default function JpDashboard({ scope, section }: { scope: JpScope; sectio
         </div>
       </div>
 
-      {/* 4. Projects and daily trend */}
+      {/* 4. By task type: the section's own work, how much of each and how long it took. */}
+      <Panel title={t('حسب نوع المهمّة', 'By task type')} icon={<Tags className="w-4 h-4" />}
+        right={<span className="text-[11px] text-slate-400">{t('اضغط نوعًا لتصفية اللوحة به', 'Click a type to filter by it')}</span>}>
+        {(data.byTitle || []).length ? (
+          <div className="overflow-x-auto -mx-5 -my-5">
+            <table className="w-full text-[13px]">
+              <thead>
+                <tr className="bg-slate-900 text-slate-200 text-[11.5px] [&>th]:py-2.5 [&>th]:px-3">
+                  <th className="text-start font-medium">{t('نوع المهمّة', 'Task type')}</th>
+                  <th className="text-center font-medium">{t('العدد', 'Count')}</th>
+                  <th className="text-center font-medium">{t('تمّت', 'Done')}</th>
+                  <th className="text-center font-medium">{t('متأخّرة', 'Late')}</th>
+                  <th className="text-start font-medium w-48">{t('الإتمام', 'Completion')}</th>
+                  <th className="text-center font-medium">{t('الوقت المسجّل', 'Time logged')}</th>
+                  <th className="text-center font-medium">{t('متوسّط المهمّة', 'Avg per task')}</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-100">
+                {data.byTitle!.map((b) => {
+                  const pctDone = b.total ? Math.round((b.done / b.total) * 100) : 0;
+                  return (
+                    <tr key={b.title} className={`hover:bg-slate-50 ${title === b.title ? 'bg-orange-50/50' : ''}`}>
+                      <td className="px-3 py-2.5"><button type="button" onClick={() => setTitle(title === b.title ? '' : b.title)} className="font-semibold text-slate-900 hover:text-[#f37121]">{b.title}</button></td>
+                      <td className="px-3 text-center tabular-nums">{b.total}</td>
+                      <td className="px-3 text-center tabular-nums text-emerald-700">{b.done}</td>
+                      <td className={`px-3 text-center tabular-nums ${b.overdue ? 'font-bold text-red-600' : 'text-slate-300'}`}>{b.overdue}</td>
+                      <td className="px-3">
+                        <div className="flex items-center gap-2">
+                          <div className="flex-1 h-1.5 rounded-full bg-slate-100 overflow-hidden"><div className="h-full rounded-full bg-emerald-500" style={{ width: `${pctDone}%` }} /></div>
+                          <span className="w-9 text-[11.5px] tabular-nums text-slate-500 text-end">{pctDone}%</span>
+                        </div>
+                      </td>
+                      <td className="px-3 text-center tabular-nums">{b.minutes ? fmtMinutes(b.minutes, ar) : <span className="text-slate-300">—</span>}</td>
+                      <td className="px-3 text-center tabular-nums text-slate-500">{b.avgMinutes ? fmtMinutes(b.avgMinutes, ar) : <span className="text-slate-300">—</span>}</td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        ) : <p className="py-4 text-center text-sm text-slate-400">{t('لا مهامَّ في هذا الاختيار', 'No tasks in this selection')}</p>}
+      </Panel>
+
+      {/* 5. Daily log: who worked on what, and the time logged. */}
+      <JpDaily scope={scope} section={section} ar={ar} />
+
+      {/* 6. Projects and daily trend */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
         <Panel title={t('المشروعات', 'Projects')} icon={<FolderKanban className="w-4 h-4" />}>
           {data.projects.length ? (
@@ -340,7 +386,7 @@ export default function JpDashboard({ scope, section }: { scope: JpScope; sectio
         </Panel>
       </div>
 
-      {/* 5. The tasks themselves */}
+      {/* 7. The tasks themselves */}
       <section className="bg-white border border-slate-200 rounded-2xl shadow-sm overflow-hidden">
         <header className="flex flex-wrap items-center justify-between gap-2 px-5 py-3.5 border-b border-slate-100">
           <h2 className="flex items-center gap-2 text-[14px] font-bold text-slate-900">
@@ -355,13 +401,14 @@ export default function JpDashboard({ scope, section }: { scope: JpScope; sectio
         <div className="overflow-x-auto">
           <table className="w-full text-[13px]">
             <thead>
-              <tr className="bg-slate-50 text-slate-500 text-[11.5px]">
-                <th className="text-start font-medium px-4 py-2">{t('المطلوب', 'Task')}</th>
+              <tr className="bg-slate-900 text-slate-200 text-[11.5px]">
+                <th className="text-start font-medium px-4 py-2.5">{t('المطلوب', 'Task')}</th>
                 <th className="text-start font-medium px-3 py-2">{t('إلى', 'To')}</th>
                 <th className="text-start font-medium px-3 py-2">{t('من', 'From')}</th>
                 <th className="text-start font-medium px-3 py-2">{t('المشروع', 'Project')}</th>
                 <th className="text-start font-medium px-3 py-2">{t('الموعد', 'Deadline')}</th>
                 <th className="text-start font-medium px-3 py-2">{t('الحالة', 'State')}</th>
+                <th className="text-start font-medium px-3 py-2">{t('الوقت', 'Time')}</th>
                 <th className="text-start font-medium px-3 py-2">{t('أُسنِدت في', 'Assigned on')}</th>
               </tr>
             </thead>
@@ -374,22 +421,30 @@ export default function JpDashboard({ scope, section }: { scope: JpScope; sectio
                     <td className="px-4 py-2.5 max-w-[340px]">
                       <p className="font-semibold text-slate-900">{r.title}</p>
                       <p className="mt-0.5 flex items-center gap-2 text-[11.5px] text-slate-400">
-                        <span className={`px-1.5 py-0.5 rounded ${r.kind === 'task' ? 'bg-slate-900 text-white' : 'bg-sky-50 text-sky-700'}`}>{r.kind === 'task' ? t('مهمّة', 'Task') : t('طلب', 'Request')}</span>
+                        <span className="font-semibold text-slate-500">{r.kind === 'task' ? t('مهمّة', 'Task') : t('طلب', 'Request')}</span>
                         {!!r.files && <span className="inline-flex items-center gap-0.5"><Paperclip className="w-3 h-3" />{r.files}</span>}
                         {!!r.comments && <span className="inline-flex items-center gap-0.5"><MessageSquare className="w-3 h-3" />{r.comments}</span>}
                       </p>
+                      {!!(r.links || []).length && (
+                        <p className="mt-1 flex flex-wrap gap-1.5">
+                          {r.links!.map((l, i) => l.href
+                            ? <Link key={i} href={l.href} className="inline-flex items-center gap-1 text-[12px] font-semibold text-[#c2410c] hover:underline"><Link2 className="w-3 h-3" />{l.label}</Link>
+                            : <span key={i} className="inline-flex items-center gap-1 text-[12px] text-slate-500"><Link2 className="w-3 h-3" />{l.label}</span>)}
+                        </p>
+                      )}
                       {r.doneNote && <p className="mt-1 text-[12px] text-emerald-800">{r.doneNote}</p>}
                     </td>
                     <td className="px-3 py-2.5 whitespace-nowrap text-slate-800">{r.assignedToName}</td>
                     <td className="px-3 py-2.5 whitespace-nowrap text-slate-500">{r.createdByName}</td>
                     <td className="px-3 py-2.5 whitespace-nowrap text-slate-500">{r.project || '—'}</td>
                     <td className={`px-3 py-2.5 text-[12.5px] ${TONE_CLASS[dl.tone]}`}>{dl.text}</td>
-                    <td className="px-3 py-2.5"><span className={`px-2 py-0.5 rounded-full text-[11.5px] font-semibold ${b.cls}`}>{ar ? b.ar : b.en}</span></td>
+                    <td className="px-3 py-2.5 whitespace-nowrap"><span className="inline-flex items-center gap-2 text-[12.5px] font-semibold text-slate-700"><span className={`h-2 w-2 rounded-[2px] ${b.dot}`} />{ar ? b.ar : b.en}</span></td>
+                    <td className="px-3 py-2.5 whitespace-nowrap tabular-nums text-slate-700">{r.spentMinutes ? fmtMinutes(r.spentMinutes, ar) : <span className="text-slate-300">—</span>}{r.expectedMinutes ? <span className="ms-1 text-[11px] text-slate-400">/ {fmtMinutes(r.expectedMinutes, ar)}</span> : null}</td>
                     <td className="px-3 py-2.5 whitespace-nowrap text-slate-500 tabular-nums">{new Date(r.createdAt).toLocaleDateString(ar ? 'ar-EG-u-nu-latn' : 'en-GB', { day: 'numeric', month: 'short' })}</td>
                   </tr>
                 );
               })}
-              {!rows.length && <tr><td colSpan={7} className="px-4 py-10 text-center text-slate-400">{t('لا شيء يطابق هذا الاختيار', 'Nothing matches')}</td></tr>}
+              {!rows.length && <tr><td colSpan={8} className="px-4 py-10 text-center text-slate-400">{t('لا شيء يطابق هذا الاختيار', 'Nothing matches')}</td></tr>}
             </tbody>
           </table>
         </div>

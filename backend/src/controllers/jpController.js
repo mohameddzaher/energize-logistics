@@ -886,7 +886,13 @@ exports.dashboard = async (req, res) => {
       teamOf(w),
       JpProject.find({ scope: w.scope, section: w.section }).lean(),
     ]);
-    const tasks = allTasks.filter((t) => assigneeOk(t) && projectOk(t));
+    // Section-specific filters: the task type (the section's own titles) and what the task is linked to (its records, e.g. a clearance, a vehicle, an employee).
+    const titleQ = String(req.query.title || '').trim();
+    const linkQ = String(req.query.link || '').trim();
+    const titleOk = titleQ ? (t) => String(t.title || '').trim() === titleQ : () => true;
+    const linkOk = linkQ === 'none' ? (t) => !(t.links || []).length : linkQ ? (t) => (t.links || []).some((l) => l.kind === linkQ) : () => true;
+    const scoped = allTasks.filter((t) => titleOk(t) && linkOk(t));
+    const tasks = scoped.filter((t) => assigneeOk(t) && projectOk(t));
     const now = Date.now();
     const blank = () => ({ assigned: 0, open: 0, done: 0, overdue: 0, onTime: 0, late: 0, requestsMade: 0, hoursSum: 0, hoursN: 0 });
     const members = new Map(team.map((m) => [String(m._id), { ...m, ...blank() }]));
@@ -919,7 +925,7 @@ exports.dashboard = async (req, res) => {
     }
 
     // Team table: all filters except employee, see above.
-    for (const t of allTasks) {
+    for (const t of scoped) {
       if (!projectOk(t)) continue;
       const s = stateOf(t, now);
       const onTime = s === 'done' && t.deadlineAt ? new Date(t.doneAt) <= new Date(t.deadlineAt) : null;
@@ -936,7 +942,7 @@ exports.dashboard = async (req, res) => {
       if (t.kind === 'request' && members.has(cid)) members.get(cid).requestsMade += 1;
     }
     // Projects: all filters except project.
-    for (const t of allTasks) {
+    for (const t of scoped) {
       if (!assigneeOk(t)) continue;
       const s = stateOf(t, now);
       const aid = assigneeKey(t);
@@ -947,11 +953,30 @@ exports.dashboard = async (req, res) => {
     }
 
     const pct = (a, b) => (b ? Math.round((a / b) * 1000) / 10 : null);
+    const { metaFor, kindsFor } = require('../config/jpLinks');
+    const linkMeta = w.section ? metaFor(w.section) : {};
     const slim = (t) => ({
       _id: t._id, title: t.title, kind: t.kind, assignedToName: assigneeName(t), createdByName: nameOf(t.createdBy),
       deadlineAt: t.deadlineAt, doneAt: t.doneAt, createdAt: t.createdAt, project: t.project?.name || '',
       files: (t.attachments || []).length, doneNote: t.doneNote || '', state: stateOf(t, now),
+      spentMinutes: t.spentMinutes || 0, expectedMinutes: t.expectedMinutes ?? null,
+      links: (t.links || []).map((l) => ({ kind: l.kind, label: l.label, href: linkMeta[l.kind]?.href ? linkMeta[l.kind].href.replace(':id', String(l.ref)) : '' })),
     });
+    // By task type: how much of each the team did and how long it took (the section's own work, whatever it is).
+    const byTitleMap = new Map();
+    for (const t of tasks) {
+      const k = String(t.title || '').trim() || '—';
+      const e = byTitleMap.get(k) || { title: k, total: 0, done: 0, overdue: 0, minutes: 0, timed: 0 };
+      const st = stateOf(t, now);
+      e.total += 1; if (st === 'done') e.done += 1; if (st === 'overdue') e.overdue += 1;
+      if (t.spentMinutes) { e.minutes += t.spentMinutes; e.timed += 1; }
+      byTitleMap.set(k, e);
+    }
+    const byTitle = [...byTitleMap.values()].map((e) => ({ ...e, minutes: Math.round(e.minutes), avgMinutes: e.timed ? Math.round(e.minutes / e.timed) : null }))
+      .sort((a, b) => b.total - a.total);
+    // Options built from the section's tasks before these two filters, so picking one keeps the others selectable.
+    const titleOptions = [...new Set(allTasks.map((t) => String(t.title || '').trim()).filter(Boolean))].sort((a, b) => a.localeCompare(b, 'ar'));
+    const linkOptions = (w.section ? kindsFor(w.section) : []).map((k) => ({ kind: k, ar: linkMeta[k]?.ar || k, en: linkMeta[k]?.en || k, count: allTasks.filter((t) => (t.links || []).some((l) => l.kind === k)).length }));
     res.json({
       sectionAr: w.def ? w.def.ar : 'الإدارة العليا', sectionEn: w.def ? w.def.en : 'Top management',
       totals: { ...totals, completionRate: pct(totals.done, totals.total), onTimeRate: pct(totals.onTime, totals.onTime + totals.late) },
@@ -979,6 +1004,8 @@ exports.dashboard = async (req, res) => {
       })),
       team: team.map((m) => ({ _id: m._id, name: m.name })),
       projectOptions: projects.map((p) => ({ _id: p._id, name: p.name })),
+      byTitle, titleOptions, linkOptions,
+      totals2: { minutes: Math.round(tasks.reduce((a, t) => a + (t.spentMinutes || 0), 0)) },
       generatedAt: new Date(),
     });
   } catch (e) { fail(res, e, 'تعذّر تحميل اللوحة'); }

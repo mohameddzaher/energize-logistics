@@ -13,12 +13,12 @@ import { Receipt, Loader2, Check, Undo2, Ban, X, Paperclip, FileCheck2 } from 'l
 
 type Status = 'pending' | 'invoiced' | 'returned' | 'rejected';
 type Tab = Status | 'all';
-interface Line { label: string; amount: number; vat: number; total: number; from: 'stage' | 'sale'; fileUrl?: string }
+interface Line { key?: string; label: string; amount: number; vat: number; total: number; from: 'stage' | 'sale'; note?: string; fileUrl?: string; fileName?: string }
 interface Req {
   clearanceId: string; refNumber?: string; blNumber?: string; customerName?: string; branch?: string; port?: string;
   isCompleted?: boolean; status: Status; requestedAt?: string; requestedByName?: string; note?: string;
   decidedAt?: string; decidedByName?: string; decisionNote?: string; fileUrl?: string; fileName?: string;
-  invoiceNumber?: string; total: number; vat: number; lines: Line[];
+  invoiceNumber?: string; total: number; vat: number; net?: number; lines: Line[];
 }
 
 const MAX_UPLOAD = 20 * 1024 * 1024;
@@ -151,19 +151,38 @@ export default function CustomsInvoiceRequests({ ar, onOpen }: { ar: boolean; on
                   {openRow === r.clearanceId && (
                     <tr>
                       <td colSpan={6} className="bg-slate-50/70 px-3 py-2">
-                        <table className="w-full max-w-2xl text-[12.5px]">
+                        {/* The prices billed to the customer, as typed in the request; payment stages are not part of it. */}
+                        <table className="w-full max-w-3xl text-[12.5px]">
+                          <thead>
+                            <tr className="text-[11px] text-slate-500">
+                              <th className="py-1 text-start font-semibold">{t('البند', 'Line')}</th>
+                              <th className="py-1 text-end font-semibold">{t('السعر', 'Price')}</th>
+                              <th className="py-1 text-end font-semibold">{t('الضريبة 15%', 'VAT 15%')}</th>
+                              <th className="py-1 text-end font-semibold">{t('الإجمالي', 'Total')}</th>
+                              <th className="py-1 ps-3 text-start font-semibold">{t('ملاحظة', 'Note')}</th>
+                            </tr>
+                          </thead>
                           <tbody>
                             {r.lines.map((l, i) => (
-                              <tr key={i} className="border-b border-slate-100 last:border-0">
-                                <td className="py-1 text-slate-700">{l.label}{l.from === 'stage' ? <span className="ms-1 text-[11px] text-slate-400">({t('مرحلة سداد', 'payment stage')})</span> : null}
-                                  {l.fileUrl && <a href={l.fileUrl} target="_blank" rel="noreferrer" className="ms-1 inline-flex text-sky-700"><Paperclip className="h-3 w-3" /></a>}</td>
+                              <tr key={i} className="border-t border-slate-100">
+                                <td className="py-1 text-slate-700">{l.label}
+                                  {l.fileUrl && <a href={l.fileUrl} target="_blank" rel="noreferrer" title={l.fileName || ''} className="ms-1 inline-flex text-sky-700"><Paperclip className="h-3 w-3" /></a>}</td>
                                 <td className="py-1 text-end tabular-nums">{money(l.amount)}</td>
-                                <td className="py-1 text-end tabular-nums text-slate-400">{l.vat ? `+${money(l.vat)}` : ''}</td>
+                                <td className="py-1 text-end tabular-nums text-slate-500">{money(l.vat)}</td>
                                 <td className="py-1 text-end font-semibold tabular-nums">{money(l.total)}</td>
+                                <td className="py-1 ps-3 text-slate-500">{l.note || ''}</td>
                               </tr>
                             ))}
+                            <tr className="border-t border-slate-300 font-bold text-slate-900">
+                              <td className="py-1">{t('إجمالي الفاتورة', 'Invoice total')}</td>
+                              <td className="py-1 text-end tabular-nums">{money(r.net ?? (r.total - r.vat))}</td>
+                              <td className="py-1 text-end tabular-nums">{money(r.vat)}</td>
+                              <td className="py-1 text-end tabular-nums">{money(r.total)}</td>
+                              <td />
+                            </tr>
                           </tbody>
                         </table>
+                        {r.note && <p className="mt-1.5 text-[12px] text-slate-600">{t('ملاحظة الطلب:', 'Request note:')} {r.note}</p>}
                       </td>
                     </tr>
                   )}

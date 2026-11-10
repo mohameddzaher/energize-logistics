@@ -219,7 +219,7 @@ const customsClearanceSchema = new mongoose.Schema(
     /**
      * The customer invoice is written at closing.
      * Payment stages above are what we pay (requests answered by Finance). This is what we bill: at closing the clearance employee gives the selling price per item (transport invoice, customs fees, appointment booking ...) with its attachment, e.g. "we paid transport 1800 and bill 2200".
-     * Invoice rule (see utils/customsInvoice, where the calculation lives): payment-stage items at their amounts as-is with no tax, except those with a sale item here, which are taken from here and not repeated; plus these sale items summed x 1.15; equals invoice total.
+     * Invoice rule (utils/customsInvoice): these lines, the prices billed to the customer, summed x 1.15. Payment stages (what we pay) are not part of it.
      * The total is not stored: it is derived on read from the items, so it never goes stale after an item edit.
      */
     saleItems: [{
@@ -424,6 +424,18 @@ const customsClearanceSchema = new mongoose.Schema(
         at: { type: Date, default: Date.now },
       },
     ],
+    // Follow-up emails sent to the customer from this transaction (controllers/customsMailController).
+    emailLog: [
+      {
+        at: { type: Date, default: Date.now },
+        by: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
+        byName: { type: String, default: '' },
+        to: { type: [String], default: [] },
+        cc: { type: [String], default: [] },
+        subject: { type: String, default: '' },
+        unit: { type: String, default: '' },   // container number when the email was about one container
+      },
+    ],
 
     createdBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
     lastModifiedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
@@ -449,7 +461,7 @@ function hasTransportInvoice(c) {
   const t = c.transportInvoice || {};
   if (t.notRequired || t.fileUrl) return true;
   if ((c.paymentStages || []).some((p) => p && TRANSPORT_STAGE_KEYS.includes(p.key) && p.fileUrl)) return true;
-  return (c.saleItems || []).some((x) => x && x.key === 'transportInvoice' && x.fileUrl);
+  return (c.saleItems || []).some((x) => x && TRANSPORT_STAGE_KEYS.includes(x.key) && x.fileUrl);
 }
 
 /** Why this stage is closed for this transaction, or '' if it is on its path. */

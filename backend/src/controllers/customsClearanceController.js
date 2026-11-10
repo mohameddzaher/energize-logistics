@@ -1609,12 +1609,17 @@ const saleItemDefs = async () => {
   const Lookup = require('../models/Lookup');
   const rows = await Lookup.find({ type: 'customs_sale_item', isActive: { $ne: false } })
     .sort({ order: 1 }).lean().catch(() => []);
-  if (rows.length) return rows.map((r) => ({ key: r.key, nameAr: r.nameAr, nameEn: r.nameEn }));
-  // A transaction is not blocked from closing because the list was not seeded yet; the definition seed is read.
   const { REGISTRY } = require('../config/lookupTypes');
-  const def = (REGISTRY || []).find((x) => x.type === 'customs_sale_item');
-  return (def?.seed || []).map((r) => ({ key: r.key, nameAr: r.nameAr, nameEn: r.nameEn }));
+  const seed = (REGISTRY || []).find((x) => x.type === 'customs_sale_item')?.seed || [];
+  // A transaction is not blocked from closing because the list was not seeded yet; the definition seed is read.
+  const list = rows.length ? rows : seed;
+  // Seeded lines keep the seed order (new seeds are appended with clashing `order` values); lines added by hand follow.
+  const rank = (k) => { const i = seed.findIndex((x) => x.key === k); return i < 0 ? 100 : i; };
+  return [...list].sort((a, b) => rank(a.key) - rank(b.key))
+    .map((r) => ({ key: r.key, nameAr: r.nameAr, nameEn: r.nameEn, optional: OPTIONAL_SALE_ITEMS.has(r.key) }));
 };
+/** Lines that may be left empty in an invoicing request: the three transport legs and labour. Every other line is required. */
+const OPTIONAL_SALE_ITEMS = new Set(['transportPortToCustomer', 'transportPortToYard', 'transportYardToCustomer', 'labourExpenses']);
 
 /** New invoice number: a clearance-specific sequence ("CUS-1001") not confused with others. The largest issued is read and incremented; a number is never reused or changed once given. */
 const nextSaleInvoiceNumber = async () => {
@@ -1785,13 +1790,11 @@ exports.issueInvoice = async (req, res) => {
     const sent = Array.isArray(req.body.saleItems) ? req.body.saleItems : [];
     const err = await writeSaleItems(clearance, sent, req);
     if (err) return res.status(400).json({ message: err });
-    // All three lines
-    // Transport invoice, customs fees and appointment booking are all written at the selling price; they are unrelated to payment stages, which are what we pay while these are what we invoice.
+    // These are the prices billed to the customer, unrelated to payment stages (what we pay). Only the optional lines may be left empty.
     const defs = await saleItemDefs();
-    const missing = defs.filter((d) => !clearance.saleItems.some((x) => x.key === d.key));
+    const missing = defs.filter((d) => !d.optional && !clearance.saleItems.some((x) => x.key === d.key));
     if (missing.length) return res.status(400).json({ message: `اكتب سعرَ: ${missing.map((d) => d.nameAr).join('، ')}`, code: 'SALE_ITEMS_REQUIRED' });
-    const hasPassThrough = (clearance.paymentStages || []).some((p) => Number(p.amount) > 0);
-    if (!clearance.saleItems.length && !hasPassThrough) {
+    if (!clearance.saleItems.length) {
       return res.status(400).json({ message: 'طلبُ فوترةٍ بلا بنود — اكتب سعرَ بندٍ واحدٍ على الأقلّ' });
     }
     clearance.saleVatRate = 0.15;
@@ -1926,7 +1929,7 @@ exports.listInvoiceRequests = async (req, res) => {
     const status = ['pending', 'invoiced', 'returned', 'rejected', 'all'].includes(String(req.query.status)) ? String(req.query.status) : 'pending';
     const match = { cancelled: { $ne: true }, 'invoiceRequest.status': status === 'all' ? { $in: ['pending', 'invoiced', 'returned', 'rejected'] } : status };
     const rows = await CustomsClearance.find(match)
-      .select(`refNumber blNumber customerName branch port isCompleted invoiceRequest saleInvoiceNumber saleInvoiceAt containerCount ${require('../utils/customsInvoice').MONEY_SELECT} costs revenue`)
+      .select(`refNumber blNumber customerName branch port isCompleted invoiceRequest saleInvoiceNumber saleInvoiceAt containerCount ${require('../utils/customsInvoice').MONEY_SELECT} saleItems.note saleItems.fileUrl saleItems.fileName costs revenue`)
       .sort({ 'invoiceRequest.requestedAt': -1 }).limit(300).lean();
     const { buildClearanceInvoice } = require('../utils/customsInvoice');
     const agg = await CustomsClearance.aggregate([
@@ -1943,7 +1946,7 @@ exports.listInvoiceRequests = async (req, res) => {
           clearanceId: String(c._id), refNumber: c.refNumber, blNumber: c.blNumber, customerName: c.customerName,
           branch: c.branch, port: c.port, isCompleted: !!c.isCompleted, containerCount: c.containerCount,
           ...c.invoiceRequest, invoiceNumber: c.saleInvoiceNumber || '',
-          total: inv.totals.grand, vat: inv.totals.vat, lines: inv.lines.map((l) => ({ label: l.label, amount: l.amount, vat: l.vat, total: l.total, from: l.from, fileUrl: l.fileUrl })),
+          total: inv.totals.grand, vat: inv.totals.vat, net: inv.totals.net, lines: inv.lines.map((l) => ({ key: l.key, label: l.label, amount: l.amount, vat: l.vat, total: l.total, from: l.from, note: l.note, fileUrl: l.fileUrl, fileName: l.fileName })),
         };
       }),
     });

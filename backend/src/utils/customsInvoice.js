@@ -1,53 +1,19 @@
 /**
- * Customer invoice for a clearance transaction: derived, not stored.
- * Total = payment-stage items at their amounts (no tax; an item with a closing sale price takes it from there) + closing items summed x (1 + tax). The lists differ because they are what we pay versus what we bill, so adding both would count transport twice.
- * Computed on read because a stored total would silently go stale after an item edit.
- * Each line states its source (`from`) and whether it is taxable.
+ * Customer invoice for a clearance transaction: derived, not stored, so it cannot go stale after a line edit.
+ * Total = the lines typed in the invoicing request (`saleItems`, the prices billed to the customer) x (1 + VAT).
+ * Payment stages are what we pay out and are not part of the customer invoice (owner, 2026-11-10); they stay the transaction's cost in `moneyOf`.
  */
 
 const round2 = (n) => Math.round((Number(n) || 0) * 100) / 100;
 
 /**
- * Builds a transaction invoice from its items.
  * @param {object} clearance `CustomsClearance` document (lean or document)
- * @returns {{lines:Array, cost:object, sale:object, totals:object, warnings:Array}}
+ * @returns {{lines:Array, billed:object, totals:object, warnings:Array}}
  */
 const buildClearanceInvoice = (clearance) => {
   const vatRate = Number(clearance?.saleVatRate ?? 0.15) || 0;
   const sale = (clearance?.saleItems || []).filter((x) => x && (x.key || x.label));
-  const stages = (clearance?.paymentStages || []).filter((x) => x && (x.key || x.label));
-
-  // The three items are unrelated to the payment stages. A stage such as appointment booking is what we pay the supplier, while the invoice item with the same name is what we bill the customer; neither replaces the other, so nothing is excluded from payment.
-  const overridden = new Set();
-
   const lines = [];
-  const warnings = [];
-
-  // 1. Payment-stage items: at their amounts as they are, no tax.
-  for (const p of stages) {
-    const key = String(p.key || '');
-    if (key && overridden.has(key)) continue;          // Its price comes from the sale item
-    const amount = Number(p.amount);
-    if (!Number.isFinite(amount) || amount === 0) {
-      // A stage with no amount is not an error (a mile sent, a return done): it is left out of the invoice and counted so nobody assumes it was dropped.
-      warnings.push({ code: 'STAGE_NO_AMOUNT', label: p.label || key });
-      continue;
-    }
-    lines.push({
-      from: 'stage',
-      key,
-      label: p.label || key,
-      date: p.date || '',
-      amount: round2(amount),
-      taxable: false,
-      vat: 0,
-      total: round2(amount),
-      fileUrl: p.fileUrl || '',
-      payStatus: p.payStatus || '',
-    });
-  }
-
-  // 2. Closing items: summed together, then tax is added.
   for (const s of sale) {
     const amount = Number(s.amount);
     if (!Number.isFinite(amount)) continue;
@@ -61,30 +27,23 @@ const buildClearanceInvoice = (clearance) => {
       vat,
       total: round2(amount + vat),
       fileUrl: s.fileUrl || '',
+      fileName: s.fileName || '',
       note: s.note || '',
     });
   }
-
-  const stageLines = lines.filter((l) => l.from === 'stage');
-  const saleLines = lines.filter((l) => l.from === 'sale');
-  const stageSum = round2(stageLines.reduce((a, l) => a + l.amount, 0));
-  const saleNet = round2(saleLines.reduce((a, l) => a + l.amount, 0));
-  const saleVat = round2(saleNet * vatRate);
-
+  const net = round2(lines.reduce((a, l) => a + l.amount, 0));
+  const vat = round2(net * vatRate);
+  const billed = { count: lines.length, net, vat, total: round2(net + vat) };
   return {
     invoiceNumber: clearance?.saleInvoiceNumber || '',
     invoiceAt: clearance?.saleInvoiceAt || null,
     vatRate,
     lines,
-    // The two sides are separate in the response as in the rule, so a reviewer sees the split.
-    passThrough: { count: stageLines.length, net: stageSum, vat: 0, total: stageSum },
-    billed: { count: saleLines.length, net: saleNet, vat: saleVat, total: round2(saleNet + saleVat) },
-    totals: {
-      net: round2(stageSum + saleNet),
-      vat: saleVat,
-      grand: round2(stageSum + saleNet + saleVat),
-    },
-    warnings,
+    billed,
+    // Kept for readers of the older two-sided shape; nothing passes through any more.
+    passThrough: { count: 0, net: 0, vat: 0, total: 0 },
+    totals: { net, vat, grand: billed.total },
+    warnings: [],
   };
 };
 

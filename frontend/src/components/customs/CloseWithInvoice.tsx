@@ -1,22 +1,18 @@
 'use client';
 /**
- * Issuing the customer invoice (billing).
- * Payment stages are what we pay (payment requests answered by Finance); this screen is what we collect: a selling price per item, with an optional attachment. One invoice goes to Finance, computed in backend/utils/customsInvoice (not here, so two numbers cannot differ): payment-stage items as they are without tax, except items with a selling price taken from here, plus selling items x 1.15, equals the invoice total.
- * Billing is separate from closing: the invoice issues with what is known, the transport item shows "not received yet", and the transaction closes when the transport invoice is attached later. The preview below uses the same rule before saving.
+ * Invoicing request to Finance: the prices billed to the customer, one per line, with an optional note and attachment.
+ * Payment stages are what we pay and play no part here. Invoice total = these lines x 1.15, computed by backend/utils/customsInvoice; the preview mirrors that rule.
+ * Lines flagged `optional` by the server (transport legs, labour) may stay empty.
  */
 import { useState, useMemo, useRef, useEffect } from 'react';
 import { X, Loader2, Paperclip, Receipt, AlertTriangle } from 'lucide-react';
 import api from '@/lib/api';
-import { TRANSPORT_STAGE_KEYS } from '@/lib/customsPipeline';
 
-export interface SaleDef { key: string; nameAr: string; nameEn: string }
+export interface SaleDef { key: string; nameAr: string; nameEn: string; optional?: boolean }
 export interface StageEntry { key: string; label: string; amount: number | null; date?: string; payStatus?: string }
 
 const money = (n: number) => (Math.round((n || 0) * 100) / 100).toLocaleString('en-US', { minimumFractionDigits: 2 });
 const VAT = 0.15;
-
-// Transport invoice: its legacy item or any of the three transport parts; see TRANSPORT_STAGE_KEYS.
-const isTransportKey = (k: string) => TRANSPORT_STAGE_KEYS.has(k);
 
 export default function CloseWithInvoice({
   open, onClose, clearanceId, stages, ar, onDone, notify, transportReceived,
@@ -64,33 +60,28 @@ export default function CloseWithInvoice({
     fr.readAsDataURL(f);
   };
 
-  // Preview uses the same rule: an item with a selling price is not computed from cost.
   const preview = useMemo(() => {
     const priced = Object.entries(rows)
       .filter(([, v]) => v && String(v.amount).trim() !== '' && Number.isFinite(Number(v.amount)))
       .map(([key, v]) => ({ key, amount: Number(v.amount) }));
-    // The three items are unrelated to payment stages: all payment stages pass through as they are and these items sit on top; neither replaces the other (utils/customsInvoice).
-    const overridden = new Set(priced.map((x) => x.key));
-    const passLines = (stages || [])
-      .filter((p) => Number.isFinite(Number(p.amount)) && Number(p.amount) !== 0);
-    const passSum = passLines.reduce((a, p) => a + Number(p.amount), 0);
+    const have = new Set(priced.map((x) => x.key));
     const saleNet = priced.reduce((a, p) => a + p.amount, 0);
     const vat = saleNet * VAT;
     return {
-      passLines, passSum: Math.round(passSum * 100) / 100,
       saleNet: Math.round(saleNet * 100) / 100,
       vat: Math.round(vat * 100) / 100,
-      grand: Math.round((passSum + saleNet + vat) * 100) / 100,
-      missing: defs.filter((d) => !overridden.has(d.key)).map((d) => (ar ? d.nameAr : d.nameEn)),
-      hasLines: priced.length > 0 || passLines.length > 0,
+      grand: Math.round((saleNet + vat) * 100) / 100,
+      missing: defs.filter((d) => !d.optional && !have.has(d.key)).map((d) => (ar ? d.nameAr : d.nameEn)),
+      empty: priced.length === 0,
     };
-  }, [rows, stages, defs, ar]);
+  }, [rows, defs, ar]);
   // Is the transport invoice present now: arrived earlier or attached in this window.
 
   const save = async () => {
     const saleItems = Object.entries(rows)
       .filter(([, v]) => String(v.amount).trim() !== '')
       .map(([key, v]) => ({ key, amount: Number(v.amount), note: v.note, file: v.file?.dataUrl, fileName: v.file?.fileName }));
+    if (preview.empty) { notify(t('اكتب سعرَ بندٍ واحدٍ على الأقلّ', 'Enter at least one price'), 'error'); return; }
     if (preview.missing.length) { notify(t(`اكتب سعرَ: ${preview.missing.join('، ')}`, `Enter the price of: ${preview.missing.join(', ')}`), 'error'); return; }
     setBusy(true);
     try {
@@ -118,8 +109,8 @@ export default function CloseWithInvoice({
 
         <div className="p-5 space-y-4 overflow-auto">
           <p className="text-[12px] text-slate-500">
-            {t('هذه البنودُ الثلاثةُ مستقلّةٌ عن أيّ خانةٍ في المعاملة: اكتب سعرَ كلٍّ منها، وعليها وحدها تُحسَب ضريبة 15%.',
-               'These three lines stand alone — no link to any field in the transaction. Enter each price; the 15% VAT applies to them only.')}
+            {t('اكتب الأسعارَ التي سيُحاسَب بها العميل. هذه البنودُ مستقلّةٌ عن مراحل السداد (ما ندفعه نحن)، وعليها تُحسَب ضريبة 15%. البنودُ المعلَّمة «اختياري» يجوز تركُها فارغة.',
+               'Enter the prices the customer will be billed. These lines are separate from the payment stages (what we pay); 15% VAT applies to them. Lines marked optional may be left empty.')}
           </p>
 
           <div className="space-y-2">
@@ -129,7 +120,8 @@ export default function CloseWithInvoice({
                 <div key={d.key} className="rounded-xl border border-slate-200 p-3">
                   <div className="flex flex-wrap items-end gap-2">
                     <div className="min-w-[9rem] flex-1">
-                      <p className="text-[13px] font-semibold text-slate-800">{ar ? d.nameAr : d.nameEn}</p>
+                      <p className="text-[13px] font-semibold text-slate-800">{ar ? d.nameAr : d.nameEn}
+                        {d.optional && <span className="ms-1.5 rounded bg-slate-100 px-1.5 py-0.5 text-[10px] font-semibold text-slate-500">{t('اختياري', 'optional')}</span>}</p>
                       <p className="text-[11px] text-slate-400">{t('+ ضريبة 15%', '+ 15% VAT')}</p>
                     </div>
                     <label className="block">
@@ -149,8 +141,6 @@ export default function CloseWithInvoice({
                       {r.file ? r.file.fileName.slice(0, 18) : kept[d.key] ? t('مُرفَق — استبدال', 'Attached — replace') : t('إرفاق', 'Attach')}
                     </button>
                   </div>
-                  {/* The transport invoice is not a precondition. The invoice issues without it, and this states before clicking what happens to the transaction if it is attached now versus not. */}
-
                 </div>
               );
             })}
@@ -162,18 +152,12 @@ export default function CloseWithInvoice({
           {/* Preview before saving, using the same rule the server computes with. */}
           <div className="rounded-xl bg-slate-50 border border-slate-200 p-3.5 space-y-1.5">
             <p className="text-[12px] font-bold text-slate-800">{t('معاينة الفاتورة', 'Invoice preview')}</p>
-            {preview.passLines.map((p, i) => (
-              <div key={`${p.key}-${i}`} className="flex items-center justify-between text-[12px] text-slate-600">
-                <span>{p.label} <span className="text-[10px] text-slate-400">{t('كما هو — بلا ضريبة', 'as-is — no VAT')}</span></span>
-                <span className="tabular-nums">{money(Number(p.amount))}</span>
-              </div>
-            ))}
-            <div className="flex items-center justify-between text-[12px] text-slate-700 border-t border-slate-200 pt-1.5">
-              <span>{t('بنود البيع (قبل الضريبة)', 'Billed items (before VAT)')}</span>
+            <div className="flex items-center justify-between text-[12px] text-slate-700">
+              <span>{t('البنود (قبل الضريبة)', 'Lines (before VAT)')}</span>
               <span className="tabular-nums">{money(preview.saleNet)}</span>
             </div>
             <div className="flex items-center justify-between text-[12px] text-slate-700">
-              <span>{t('ضريبة 15٪ على بنود البيع', '15% VAT on billed items')}</span>
+              <span>{t('ضريبة 15%', '15% VAT')}</span>
               <span className="tabular-nums">{money(preview.vat)}</span>
             </div>
             <div className="flex items-center justify-between text-sm font-extrabold text-slate-900 border-t border-slate-300 pt-1.5">
@@ -183,8 +167,7 @@ export default function CloseWithInvoice({
             {!!preview.missing.length && (
               <p className="text-[11px] text-red-700 flex items-center gap-1.5 pt-1">
                 <AlertTriangle className="w-3.5 h-3.5" />
-                {t(`مطلوبٌ قبل الإرسال: ${preview.missing.join('، ')} — البنودُ الثلاثةُ لا تُؤخذ من مراحل السداد.`,
-                   `Required before sending: ${preview.missing.join(', ')} — these are not taken from the payment stages.`)}
+                {t(`مطلوبٌ قبل الإرسال: ${preview.missing.join('، ')}`, `Required before sending: ${preview.missing.join(', ')}`)}
               </p>
             )}
           </div>
@@ -196,7 +179,7 @@ export default function CloseWithInvoice({
                'The request goes to Customs Finance; the transaction counts as invoiced only when Finance marks it invoiced.')}
           </p>
           <button type="button" onClick={onClose} className="px-4 py-2 text-slate-500 hover:text-slate-900 text-sm">{t('إلغاء', 'Cancel')}</button>
-          <button type="button" onClick={save} disabled={busy || !!preview.missing.length}
+          <button type="button" onClick={save} disabled={busy || !!preview.missing.length || preview.empty}
             title={preview.missing.length ? t(`اكتب سعرَ: ${preview.missing.join('، ')}`, `Enter: ${preview.missing.join(', ')}`) : undefined}
             className="inline-flex items-center gap-1.5 rounded-lg bg-[#f37121] px-4 py-2 text-xs font-bold text-white disabled:opacity-40">
             {busy ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Receipt className="h-3.5 w-3.5" />}

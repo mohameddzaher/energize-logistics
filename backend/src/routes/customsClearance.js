@@ -39,6 +39,10 @@ router.delete('/parties/:id/attachments/:attId', authorize(...EDIT_ROLES), ctrl.
 const FINANCE_ROLES = ['super_admin', 'admin', 'it_manager', 'it_specialist', 'cfo', 'accounting_manager', 'accountant'];
 
 router.get('/settings', ctrl.getSettings);
+// Customer follow-up email from the customs mailbox; the template is edited by the section heads.
+const mail = require('../controllers/customsMailController');
+router.get('/email-template', mail.getTemplate);
+router.put('/email-template', authorize('super_admin', 'admin', 'it_manager', 'it_specialist', 'customs_manager'), mail.saveTemplate);
 router.put('/settings', authorize('super_admin', 'admin', 'it_manager', 'it_specialist', 'customs_manager'), ctrl.updateSettings);
 router.get('/upcoming-alerts', ctrl.upcomingAlerts);
 // Disbursement requests: clearance reads them to follow its request; only finance decides.
@@ -96,6 +100,8 @@ router.patch('/:id/invoice-request/decision', authorize(...FINANCE_ROLES), ctrl.
 
 // Transaction notes: added from the table and from inside the transaction; the latest is shown.
 router.post('/:id/notes', authorize(...EDIT_ROLES), ctrl.addNote);
+router.get('/:id/email-draft', authorize(...EDIT_ROLES), mail.draft);
+router.post('/:id/email', authorize(...EDIT_ROLES), mail.send);
 router.delete('/:id/notes/:noteId', authorize(...EDIT_ROLES), ctrl.deleteNote);
 
 router.get('/:id/parties-card', customsOnly, ctrl.getClearanceParties);   // Customer, agent, carrier and their attachments.

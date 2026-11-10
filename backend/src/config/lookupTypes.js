@@ -645,10 +645,14 @@ const REGISTRY = [
      * Customer invoice items.
      * Payment stages are what we pay; these are what we invoice the customer at closing. The same item can be in both lists at different prices (the transport invoice is paid at 1800 and invoiced at 2200), so an item's price is taken from here and the cost price is not repeated in the invoice. See utils/customsInvoice.
      */
+    // What we bill the customer, typed when invoicing is requested; unrelated to the payment stages (what we pay). The transport invoice is three optional legs (owner, 2026-11-10).
     ['customs_sale_item', 'بنود فاتورة العميل', 'Customer Invoice Items', [
-      { key: 'transportInvoice', nameAr: 'فاتورة النقل', nameEn: 'Transport invoice' },
+      { key: 'transportPortToCustomer', nameAr: 'فاتورة النقل من الميناء إلى العميل', nameEn: 'Transport: port → customer' },
+      { key: 'transportPortToYard', nameAr: 'فاتورة النقل من الميناء إلى الساحة', nameEn: 'Transport: port → yard' },
+      { key: 'transportYardToCustomer', nameAr: 'فاتورة النقل من الساحة إلى العميل', nameEn: 'Transport: yard → customer' },
       { key: 'dutyPaid', nameAr: 'التخليص الجمركي', nameEn: 'Customs clearance' },
       { key: 'appointmentBooking', nameAr: 'حجز الموعد', nameEn: 'Appointment booking' },
+      { key: 'labourExpenses', nameAr: 'مصاريف عمال', nameEn: 'Labour expenses' },
     ]],
     ['customs_city', 'مدن التخليص', 'Customs Cities', [
       { key: 'jeddah', nameAr: 'جدة', nameEn: 'Jeddah' },
@@ -907,6 +911,8 @@ const REMOVED_DEFAULTS = [
   ['customs_payment_stage', 'containersReturned'],
   ['customs_payment_stage', 'returnInvoiceDate'],
   ['customs_payment_stage', 'transportInvoice'],
+  // The single customer transport line became three optional legs; requests already sent keep their stored label.
+  ['customs_sale_item', 'transportInvoice'],
   // so_cancel_reason was registered twice: 'customer' duplicated 'by_customer' (cancelled by customer). Orders store the label, so retiring the key changes no saved shipment.
   ['so_cancel_reason', 'customer'],
 ];

@@ -7,7 +7,7 @@ import { useDialog } from '@/components/system/DialogProvider';
 import { useSocket } from '@/hooks/useSocket';
 import api from '@/lib/api';
 import { canEditSection } from '@/lib/sections';
-import { ArrowLeft, ArrowRight, Check, Loader2, Ship, FileText, Ban, RotateCcw, Trash2, Lock, Unlock, Receipt, Container } from 'lucide-react';
+import { ArrowLeft, ArrowRight, Check, Loader2, Ship, FileText, Ban, RotateCcw, Trash2, Lock, Unlock, Receipt, Container, Mail } from 'lucide-react';
 import Link from 'next/link';
 import { useLanguage } from '@/context/LanguageContext';
 import ExportMenu, { type ExportColumn, type ExportSheet } from '@/components/ls2/ExportMenu';
@@ -17,6 +17,7 @@ import { SearchableSelect } from '@/components/hr/HRKit';
 import ClearanceNotes from '@/components/customs/ClearanceNotes';
 import PaymentStages from '@/components/customs/PaymentStages';
 import CloseWithInvoice from '@/components/customs/CloseWithInvoice';
+import SendFollowUpEmail from '@/components/customs/SendFollowUpEmail';
 import TransportInvoiceBanner from '@/components/customs/TransportInvoice';
 import ContainerUnits from '@/components/customs/ContainerUnits';
 import ClearanceTasks from '@/components/customs/ClearanceTasks';
@@ -43,6 +44,7 @@ export default function CustomsDetailPage() {
   useEffect(() => { loadPayDefs(); }, [loadPayDefs]);
   useSocket('lookup:changed', useCallback((x: any) => { if (x?.type === 'customs_payment_stage') loadPayDefs(); }, [loadPayDefs]));
   const [closing, setClosing] = useState(false);
+  const [mailOpen, setMailOpen] = useState(false);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   // Every state is declared here, before any early return. This screen returns early twice (while loading and when the transaction is missing), and any useState written after those runs on some renders and not others, crashing the whole component with React error #310 (rendered more hooks than previously), a blank screen with no visible cause.
@@ -562,6 +564,14 @@ export default function CustomsDetailPage() {
               <RotateCcw className="w-4 h-4" /> {ar ? 'إرجاع إلى القادمة' : 'Back to upcoming'}
             </button>
           )}
+          {/* Daily follow-up to the customer on where the shipment stands, from the customs mailbox. */}
+          {canEdit && !c.cancelled && (
+            <button type="button" onClick={() => setMailOpen(true)}
+              className="flex items-center gap-1.5 rounded-lg bg-slate-100 px-3 py-2 text-sm font-medium text-slate-700 transition-colors hover:text-[#f37121]">
+              <Mail className="w-4 h-4" /> {ar ? 'إرسال بريد للعميل' : 'Email the customer'}
+            </button>
+          )}
+          {mailOpen && <SendFollowUpEmail clearanceId={String(c._id)} ar={ar} onClose={() => setMailOpen(false)} />}
           <ExportMenu fileName={`customs-${c.refNumber || c.blNumber || c._id}`} lang={lang as 'ar' | 'en'}
             options={[{ key: 'full', label: ar ? 'ملف المعاملة كاملًا' : 'The whole clearance', sheets: exportSheets }]} />
           {/* Issuing the invoice from the header. It is the same window as under the payment stages, opened from both places because whoever finished the work is at the top of the page. The invoice is issued without waiting for the transport invoice; the transaction is closed when it is attached (see the red bar below). */}

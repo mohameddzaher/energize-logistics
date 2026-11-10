@@ -5,7 +5,8 @@ import { useAuth } from '@/context/AuthContext';
 import { useLanguage } from '@/context/LanguageContext';
 import { PageHeader } from '@/components/hr/HRKit';
 import ReferenceDataManager from '@/components/system/ReferenceDataManager';
-import { Settings, Tags, Users, Ship, Bell, Loader2, Check } from 'lucide-react';
+import { Settings, Tags, Users, Ship, Bell, Loader2, Check, Mail } from 'lucide-react';
+import EmailTemplateEditor from '@/components/collections/EmailTemplateEditor';
 import api from '@/lib/api';
 import { useDialog } from '@/components/system/DialogProvider';
 import Link from 'next/link';
@@ -16,12 +17,13 @@ export default function CustomsSettingsPage() {
   const ar = lang === 'ar';
   const t = (a: string, e: string) => (ar ? a : e);
   const { notify } = useDialog();
-  const [tab, setTab] = useState<'lists' | 'parties' | 'alerts'>('lists');
+  const [tab, setTab] = useState<'lists' | 'parties' | 'alerts' | 'email'>('lists');
 
   const TABS: [typeof tab, string, string, any][] = [
     ['lists', 'القوائم المنسدلة', 'Dropdown lists', Tags],
     ['parties', 'العملاء والوكلاء', 'Customers & agents', Users],
     ['alerts', 'التنبيهات', 'Alerts', Bell],
+    ['email', 'قالب البريد', 'Email template', Mail],
   ];
 
   // Alert period for upcoming transactions. One number governs the badge on the department screen; hardcoding it makes changing it a deploy, so it lives here and takes effect on the next call.
@@ -61,6 +63,12 @@ export default function CustomsSettingsPage() {
         ))}
       </div>
 
+      {tab === 'email' && (
+        <EmailTemplateEditor ar={ar} endpoint="/api/customs-clearance/email-template" liveEvent="customs:email-template"
+          canEdit={['super_admin', 'admin', 'it_manager', 'it_specialist', 'customs_manager'].includes(user?.role || '')}
+          title={t('قالب بريد المتابعة للعميل', 'Customer follow-up email template')}
+          signatureHint={t('مثال: إدارة التخليص الجمركي — إنرجايز للخدمات اللوجستية', 'e.g. Customs Clearance — Energize Logistics')} />
+      )}
       {tab === 'lists' && <ReferenceDataManager module="customs" alsoType="jp_task_customs" embedded />}
 
       {tab === 'alerts' && (

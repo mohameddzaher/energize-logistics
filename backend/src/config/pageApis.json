@@ -545,6 +545,7 @@
     },
     "/system/shipment-orders/request": {
       "apis": [
+        "/api/auth/me/prefs",
         "/api/lookups/types",
         "/api/shipment-orders/customers",
         "/api/shipment-orders/drivers",
@@ -559,6 +560,7 @@
     },
     "/system/shipment-orders/requests": {
       "apis": [
+        "/api/auth/me/prefs",
         "/api/lookups/types",
         "/api/shipment-orders/customers",
         "/api/shipment-orders/drivers",
@@ -682,6 +684,7 @@
     },
     "/system/vendors-mgmt/requests": {
       "apis": [
+        "/api/auth/me/prefs",
         "/api/lookups/types",
         "/api/shipment-orders/customers",
         "/api/shipment-orders/drivers",
@@ -2738,6 +2741,7 @@
     },
     "/system/sales/shipment-request": {
       "apis": [
+        "/api/auth/me/prefs",
         "/api/lookups/types",
         "/api/shipment-orders/customers",
         "/api/shipment-orders/drivers",

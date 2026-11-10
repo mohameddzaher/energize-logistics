@@ -14,7 +14,7 @@ import { Loader2, Send, Mail, AlertTriangle } from 'lucide-react';
 interface Sent { at: string; byName?: string; to: string[]; subject?: string; unit?: string }
 interface Draft {
   mailbox: string; customerName: string; to: string[]; subject: string; body: string;
-  signature?: string; signatureImage?: string; units: { index: number; number: string }[]; sent: Sent[];
+  signature?: string; signatureImage?: string; cc?: string[]; companySignature?: string; units: { index: number; number: string }[]; sent: Sent[];
 }
 
 export default function SendFollowUpEmail({ clearanceId, ar, onClose, onSent }: {
@@ -40,6 +40,7 @@ export default function SendFollowUpEmail({ clearanceId, ar, onClose, onSent }: 
         if (!live) return;
         setD(x); setSubject(x.subject); setBody(x.body);
         setTo((prev) => (prev.length ? prev : x.to || []));
+        setCc((prev) => (prev.length ? prev : x.cc || []));
       })
       .catch((e) => { if (live) setErr(e?.message || t('تعذّر إعداد الرسالة', 'Could not prepare the message')); });
     return () => { live = false; };
@@ -87,7 +88,7 @@ export default function SendFollowUpEmail({ clearanceId, ar, onClose, onSent }: 
           )}
           {!d.to.length && (
             <p className="flex items-center gap-1.5 rounded-lg bg-amber-50 px-3 py-2 text-[12.5px] text-amber-800">
-              <AlertTriangle className="h-4 w-4" />{t('لا بريد لهذا العميل في ملفّه بالتخليص — أضفه هنا، ويُفضَّل في ملفّ العميل ليُستخدَم دائمًا.', 'No email on the customer file — add it here, and ideally on the customer file.')}
+              <AlertTriangle className="h-4 w-4" />{t('لا بريد لهذا العميل في أيٍّ من سجلّات العملاء — أضفه هنا، ويُفضَّل في ملفّ العميل ليُستخدَم دائمًا.', 'No email for this customer in any register — add it here, and ideally on the customer file.')}
             </p>
           )}
           <EmailList label={t('إلى — يمكن أكثر من بريد', 'To — more than one allowed')} value={to} onChange={setTo} ar={ar} />
@@ -100,6 +101,12 @@ export default function SendFollowUpEmail({ clearanceId, ar, onClose, onSent }: 
             <span className="mb-1 block text-[12.5px] font-semibold text-slate-700">{t('نصّ الرسالة', 'Message')}</span>
             <textarea rows={12} value={body} onChange={(e) => setBody(e.target.value)} dir="auto" className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm leading-7" />
           </label>
+          {d.companySignature && (
+            <div className="rounded-xl border border-dashed border-slate-200 px-3 py-2">
+              <p className="mb-1 text-[11.5px] font-semibold text-slate-500">{t('توقيع الشركة — يُضاف في آخر الرسالة مع الشعار', 'Company signature — appended with the logo')}</p>
+              <p className="whitespace-pre-wrap text-[12.5px] text-slate-600" dir="ltr">{d.companySignature}</p>
+            </div>
+          )}
           {(d.signature || d.signatureImage) && (
             <div className="rounded-xl border border-dashed border-slate-200 px-3 py-2">
               <p className="mb-1 text-[11.5px] font-semibold text-slate-500">{t('التوقيع (من إعدادات القسم) — يُضاف في آخر الرسالة', 'Signature (from settings) — appended')}</p>

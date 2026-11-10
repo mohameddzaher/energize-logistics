@@ -8,7 +8,7 @@ import { Loader2, Send, X, Plus, FileText, Mail, AlertTriangle } from 'lucide-re
 
 interface Draft {
   mailbox: string; partyName: string; partyId: string | null; partyCode: string;
-  to: string[]; subject: string; body: string; signature?: string; signatureImage?: string; rows: number; openCount: number; openValue: number; multipleCustomers: boolean;
+  to: string[]; subject: string; body: string; signature?: string; signatureImage?: string; cc?: string[]; companySignature?: string; rows: number; openCount: number; openValue: number; multipleCustomers: boolean;
 }
 const RX = /^[^\s@<>()[\],;:"]+@[^\s@<>()[\],;:"]+\.[^\s@<>()[\],;:"]{2,}$/;
 
@@ -70,7 +70,7 @@ export default function SendStatementModal({ kind, params, ar, onClose }: {
   useEffect(() => {
     let live = true;
     api.get<Draft>(`/api/collections-dept/invoices/${kind}/send-draft?${qs}`)
-      .then((x) => { if (!live) return; setD(x); setTo(x.to || []); setSubject(x.subject); setBody(x.body); })
+      .then((x) => { if (!live) return; setD(x); setTo(x.to || []); setCc(x.cc || []); setSubject(x.subject); setBody(x.body); })
       .catch((e) => { if (live) setErr(e?.message || t('تعذّر إعداد الرسالة', 'Could not prepare the message')); });
     return () => { live = false; };
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -137,6 +137,12 @@ export default function SendStatementModal({ kind, params, ar, onClose }: {
             <span className="mb-1 block text-[12.5px] font-semibold text-slate-700">{t('نصّ الرسالة', 'Message')}</span>
             <textarea rows={9} value={body} onChange={(e) => setBody(e.target.value)} dir="auto" className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm leading-7" />
           </label>
+          {d.companySignature && (
+            <div className="rounded-xl border border-dashed border-slate-200 px-3 py-2">
+              <p className="mb-1 text-[11.5px] font-semibold text-slate-500">{t('توقيع الشركة — يُضاف في آخر الرسالة مع الشعار', 'Company signature — appended with the logo')}</p>
+              <p className="whitespace-pre-wrap text-[12.5px] text-slate-600" dir="ltr">{d.companySignature}</p>
+            </div>
+          )}
           {(d.signature || d.signatureImage) && (
             <div className="rounded-xl border border-dashed border-slate-200 px-3 py-2">
               <p className="mb-1 text-[11.5px] font-semibold text-slate-500">{t('التوقيع (من إعدادات القسم) — يُضاف في آخر الرسالة', 'Signature (from settings) — appended')}</p>

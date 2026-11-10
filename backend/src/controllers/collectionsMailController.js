@@ -54,6 +54,7 @@ async function loadTemplate() {
   return {
     subject: t ? t.subject : DEFAULT_TEMPLATE.subject, body: t ? t.body : DEFAULT_TEMPLATE.body,
     signature: t ? t.signature || '' : '', signatureImage: t ? t.signatureImage || '' : '', signatureImageName: t ? t.signatureImageName || '' : '',
+    cc: t ? (t.cc || []) : [],
     updatedAt: t && t.updatedAt, updatedByName: t && t.updatedByName,
   };
 }
@@ -105,11 +106,11 @@ exports.saveTemplate = async (req, res) => {
     if (signatureImage && !/^data:image\/(png|jpe?g|gif|webp);base64,/i.test(signatureImage)) throw bad('صورة التوقيع: PNG أو JPG فقط');
     if (signatureImage.length > 420000) throw bad('صورة التوقيع أكبر من ٣٠٠ ك.ب — صغّرها');
     const doc = await Template.findOneAndUpdate({ key: 'statement' },
-      { $set: { subject, body, signature, signatureImage, signatureImageName: String(req.body.signatureImageName || '').slice(0, 120), updatedBy: req.user._id, updatedByName: nameOf(req.user) } },
+      { $set: { subject, body, signature, signatureImage, signatureImageName: String(req.body.signatureImageName || '').slice(0, 120), cc: normalizeEmails(req.body.cc), updatedBy: req.user._id, updatedByName: nameOf(req.user) } },
       { upsert: true, new: true }).lean();
     logAudit({ user: req.user, action: 'update', entity: 'CollectionsEmailTemplate', entityId: doc._id, changes: { after: { subject } }, ipAddress: req.ip }).catch(() => {});
     try { require('../websocket/socketManager').emitToAll('collections:changed', { source: 'email-template' }); } catch (_) { /* */ }
-    res.json({ subject: doc.subject, body: doc.body, signature: doc.signature, signatureImage: doc.signatureImage, signatureImageName: doc.signatureImageName, updatedAt: doc.updatedAt, updatedByName: doc.updatedByName });
+    res.json({ subject: doc.subject, body: doc.body, signature: doc.signature, signatureImage: doc.signatureImage, signatureImageName: doc.signatureImageName, cc: doc.cc || [], updatedAt: doc.updatedAt, updatedByName: doc.updatedByName });
   } catch (e) { fail(res, e, 'تعذّر حفظ القالب'); }
 };
 
@@ -125,7 +126,8 @@ exports.draft = async (req, res) => {
       mailbox: MAILBOX,
       partyName: m.partyName || '', partyId: party ? party._id : null, partyCode: vals['رقم_الحساب'],
       to: party ? emailsOf(party) : [],
-      subject: fill(tpl.subject, vals), body: fill(tpl.body, vals),
+      subject: fill(tpl.subject, vals), body: fill(tpl.body, vals), cc: tpl.cc || [],
+      companySignature: require('../utils/emailSignature').signatureText('collections'),
       signature: tpl.signature, signatureImage: tpl.signatureImage,
       rows: built.check.rows, openCount: m.openCount || 0, openValue: m.openValue || 0,
       multipleCustomers: !m.partyName && built.check.rows > 0,
@@ -164,12 +166,15 @@ exports.send = async (req, res) => {
     const esc = (s) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
     // The template signature goes at the end of the message, text and image inlined (cid).
     const tpl = await loadTemplate();
+    // The department's company signature (utils/emailSignature) closes every message; the settings' own text and image sit above it.
+    const { signatureHtml, signatureText, signatureAttachments } = require('../utils/emailSignature');
     const sig = String(tpl.signature || '').trim();
     const sigImg = /^data:image\/([a-z+]+);base64,(.+)$/i.exec(tpl.signatureImage || '');
     if (sigImg) attachments.push({ filename: tpl.signatureImageName || `signature.${sigImg[1] === 'jpeg' ? 'jpg' : sigImg[1]}`, content: Buffer.from(sigImg[2], 'base64'), cid: 'sig@energize', contentDisposition: 'inline' });
-    const sigHtml = (sig || sigImg) ? `<div style="margin-top:18px;padding-top:10px;border-top:1px solid #e2e8f0;color:#334155">${sig ? esc(sig).replace(/\n/g, '<br>') : ''}${sigImg ? `<div style="margin-top:8px"><img src="cid:sig@energize" alt="" style="max-width:320px;max-height:140px"></div>` : ''}</div>` : '';
+    attachments.push(...signatureAttachments());
+    const sigHtml = `${sigImg ? '<div style="margin-top:14px"><img src="cid:sig@energize" alt="" style="max-width:320px;max-height:140px"></div>' : ''}${signatureHtml('collections', sig)}`;
     const html = `<div dir="${lang === 'ar' ? 'rtl' : 'ltr'}" style="font-family:Tahoma,Arial,sans-serif;font-size:14px;line-height:1.8;color:#0f172a">${esc(text).replace(/\n/g, '<br>')}${sigHtml}</div>`;
-    const textWithSig = sig ? `${text}\n\n--\n${sig}` : text;
+    const textWithSig = `${text}\n\n--\n${signatureText('collections', sig)}`;
 
     const { sendFromMailbox } = require('../utils/mailer');
     const sent = await sendFromMailbox(MAILBOX, { fromName: 'إنرجايز - إدارة التحصيل', to, cc, subject, text: textWithSig, html, attachments });

@@ -10,6 +10,8 @@ const schema = new mongoose.Schema({
   body: { type: String, default: '', maxlength: 8000 },
   // Signature: text plus an optional image (logo or scanned signature) appended to every message. The image is embedded (cid) so it shows without loading external images.
   signature: { type: String, default: '', maxlength: 2000 },
+  // Addresses copied on every message from this template (e.g. a manager), set once in the department settings.
+  cc: { type: [String], default: [] },
   signatureImage: { type: String, default: '' },          // data:image/...;base64, up to 300 KB
   signatureImageName: { type: String, default: '' },
   updatedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User', default: null },

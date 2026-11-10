@@ -53,8 +53,6 @@ const DEFAULT_TEMPLATE = {
     'وسنوافيكم بأيّ مستجدّات أوّلًا بأوّل. وفي حال وجود أيّ استفسار يُرجى الردّ على هذه الرسالة.',
     '',
     'شاكرين لكم حسن تعاونكم،',
-    'إدارة التخليص الجمركي',
-    'إنرجايز للخدمات اللوجستية',
   ].join('\n'),
 };
 
@@ -73,16 +71,36 @@ async function loadTemplate() {
   return {
     subject: t ? t.subject : DEFAULT_TEMPLATE.subject, body: t ? t.body : DEFAULT_TEMPLATE.body,
     signature: t ? t.signature || '' : '', signatureImage: t ? t.signatureImage || '' : '', signatureImageName: t ? t.signatureImageName || '' : '',
+    cc: t ? (t.cc || []) : [],
     updatedAt: t && t.updatedAt, updatedByName: t && t.updatedByName,
   };
 }
 
-/** Customer addresses: every contact email on the customer's customs file, first contact first. */
+/**
+ * Customer addresses, filled automatically: the customer's customs file (every contact), then the same customer in the
+ * other registers (its linked CRM company, the finance customer on the transaction, the CRM, collections and shipments
+ * registers by folded name). The first register that has an email wins its place; all are merged without duplicates.
+ */
 async function customerEmails(c) {
-  if (!c.customerParty) return [];
-  const party = await require('../models/CustomsParty').findById(c.customerParty).select('email contacts').lean();
-  if (!party) return [];
-  return normalizeEmails([party.email, ...(party.contacts || []).map((x) => x && x.email)]);
+  const fold = require('../models/CollectionsParty').fold;
+  const key = fold(c.customerName || '');
+  const out = [];
+  const add = (...list) => { for (const e of list.flat()) if (e) out.push(e); };
+  let crmId = null;
+  if (c.customerParty) {
+    const party = await require('../models/CustomsParty').findById(c.customerParty).select('email contacts crmCompany').lean();
+    if (party) { add(party.email, (party.contacts || []).map((x) => x && x.email)); crmId = party.crmCompany; }
+  }
+  const CrmCompany = require('../models/CrmCompany');
+  const [crm, cust, crmByName, coll, so] = await Promise.all([
+    crmId ? CrmCompany.findById(crmId).select('email emails').lean() : null,
+    c.customer ? require('../models/Customer').findById(c.customer).select('email').lean().catch(() => null) : null,
+    key ? CrmCompany.findOne({ nameKey: key }).select('email emails').lean() : null,
+    key ? require('../models/CollectionsParty').findOne({ kind: 'customer', $or: [{ nameKey: key }, { aliasKeys: key }] }).select('email emails').lean() : null,
+    c.customerName ? require('../models/ShipmentOrderCustomer').findOne({ name: c.customerName }).select('email').lean() : null,
+  ]);
+  for (const r of [crm, cust, crmByName, coll, so]) if (r) add(r.emails || [], r.email);
+  return normalizeEmails(out);
 }
 
 /** Last done and next step of a step list from `pipelineOf`. */
@@ -157,11 +175,11 @@ exports.saveTemplate = async (req, res) => {
     if (signatureImage && !/^data:image\/(png|jpe?g|gif|webp);base64,/i.test(signatureImage)) throw bad('صورة التوقيع: PNG أو JPG فقط');
     if (signatureImage.length > 420000) throw bad('صورة التوقيع أكبر من 300 ك.ب — صغّرها');
     const doc = await Template.findOneAndUpdate({ key: TEMPLATE_KEY },
-      { $set: { subject, body, signature, signatureImage, signatureImageName: String(req.body.signatureImageName || '').slice(0, 120), updatedBy: req.user._id, updatedByName: nameOf(req.user) } },
+      { $set: { subject, body, signature, signatureImage, signatureImageName: String(req.body.signatureImageName || '').slice(0, 120), cc: normalizeEmails(req.body.cc), updatedBy: req.user._id, updatedByName: nameOf(req.user) } },
       { upsert: true, new: true }).lean();
     try { require('../websocket/socketManager').emitToAll('customs:email-template', { source: 'email-template' }); } catch (_) { /* */ }
     logAudit({ user: req.user, action: 'update', entity: 'CustomsEmailTemplate', entityId: doc._id, changes: { after: { subject } }, ipAddress: req.ip }).catch(() => {});
-    res.json({ subject: doc.subject, body: doc.body, signature: doc.signature, signatureImage: doc.signatureImage, signatureImageName: doc.signatureImageName, updatedAt: doc.updatedAt, updatedByName: doc.updatedByName });
+    res.json({ subject: doc.subject, body: doc.body, signature: doc.signature, signatureImage: doc.signatureImage, signatureImageName: doc.signatureImageName, cc: doc.cc || [], updatedAt: doc.updatedAt, updatedByName: doc.updatedByName });
   } catch (e) { fail(res, e, 'تعذّر حفظ القالب'); }
 };
 
@@ -173,7 +191,8 @@ exports.draft = async (req, res) => {
     const { vals, units } = await buildValues(c, unitOf(req.query.unit));
     const tpl = await loadTemplate();
     res.json({
-      mailbox: MAILBOX, customerName: c.customerName || '', to: await customerEmails(c), units,
+      mailbox: MAILBOX, customerName: c.customerName || '', to: await customerEmails(c), cc: tpl.cc || [], units,
+      companySignature: require('../utils/emailSignature').signatureText('customs'),
       subject: fill(tpl.subject, vals), body: fill(tpl.body, vals),
       signature: tpl.signature, signatureImage: tpl.signatureImage,
       sent: (c.emailLog || []).slice(-5).reverse(),
@@ -196,14 +215,17 @@ exports.send = async (req, res) => {
     const tpl = await loadTemplate();
     const esc = (s) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
     const attachments = [];
+    // The department's company signature (utils/emailSignature) closes every message; the settings' own text and image sit above it.
+    const { signatureHtml, signatureText, signatureAttachments } = require('../utils/emailSignature');
     const sig = String(tpl.signature || '').trim();
     const sigImg = /^data:image\/([a-z+]+);base64,(.+)$/i.exec(tpl.signatureImage || '');
     if (sigImg) attachments.push({ filename: tpl.signatureImageName || `signature.${sigImg[1] === 'jpeg' ? 'jpg' : sigImg[1]}`, content: Buffer.from(sigImg[2], 'base64'), cid: 'sig@energize', contentDisposition: 'inline' });
-    const sigHtml = (sig || sigImg) ? `<div style="margin-top:18px;padding-top:10px;border-top:1px solid #e2e8f0;color:#334155">${sig ? esc(sig).replace(/\n/g, '<br>') : ''}${sigImg ? '<div style="margin-top:8px"><img src="cid:sig@energize" alt="" style="max-width:320px;max-height:140px"></div>' : ''}</div>` : '';
+    attachments.push(...signatureAttachments());
+    const sigHtml = `${sigImg ? '<div style="margin-top:14px"><img src="cid:sig@energize" alt="" style="max-width:320px;max-height:140px"></div>' : ''}${signatureHtml('customs', sig)}`;
     const html = `<div dir="rtl" style="font-family:Tahoma,Arial,sans-serif;font-size:14px;line-height:1.8;color:#0f172a">${esc(text).replace(/\n/g, '<br>')}${sigHtml}</div>`;
 
     const { sendFromMailbox } = require('../utils/mailer');
-    const sent = await sendFromMailbox(MAILBOX, { fromName: FROM_NAME, to, cc, subject, text: sig ? `${text}\n\n--\n${sig}` : text, html, attachments });
+    const sent = await sendFromMailbox(MAILBOX, { fromName: FROM_NAME, to, cc, subject, text: `${text}\n\n--\n${signatureText('customs', sig)}`, html, attachments });
 
     const unit = unitOf(req.body.unit);
     const unitNo = unit !== null && c.containers && c.containers[unit] ? (c.containers[unit].containerNumber || `#${unit + 1}`) : '';

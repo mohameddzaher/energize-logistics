@@ -162,6 +162,8 @@ class _EmailTemplateTabState extends State<EmailTemplateTab> {
   final _subject = TextEditingController();
   final _body = TextEditingController();
   final _sig = TextEditingController();
+  // Standing CC: addresses copied on every message, comma or space separated.
+  final _cc = TextEditingController();
   String _sigImg = '', _sigImgName = '';
   bool _saving = false;
   String? _error;
@@ -171,7 +173,7 @@ class _EmailTemplateTabState extends State<EmailTemplateTab> {
   void initState() {
     super.initState();
     _load();
-    for (final c in [_subject, _body, _sig]) { c.addListener(_changed); }
+    for (final c in [_subject, _body, _sig, _cc]) { c.addListener(_changed); }
     // A colleague saved the template from another screen; the new one is read unless there is an unsaved local edit.
     _onLive = () { if (!_dirty) _load(); };
     Live.instance.on(widget.liveEvent, _onLive);
@@ -180,7 +182,7 @@ class _EmailTemplateTabState extends State<EmailTemplateTab> {
   @override
   void dispose() {
     Live.instance.off(widget.liveEvent, _onLive);
-    _subject.dispose(); _body.dispose(); _sig.dispose();
+    _subject.dispose(); _body.dispose(); _sig.dispose(); _cc.dispose();
     super.dispose();
   }
 
@@ -195,6 +197,7 @@ class _EmailTemplateTabState extends State<EmailTemplateTab> {
         _subject.text = '${d['subject'] ?? ''}';
         _body.text = '${d['body'] ?? ''}';
         _sig.text = '${d['signature'] ?? ''}';
+        _cc.text = ((d['cc'] as List?) ?? const []).join(', ');
         _sigImg = '${d['signatureImage'] ?? ''}';
         _sigImgName = '${d['signatureImageName'] ?? ''}';
         _error = null;
@@ -208,7 +211,7 @@ class _EmailTemplateTabState extends State<EmailTemplateTab> {
     final t = _tpl;
     if (t == null) return false;
     return _subject.text != '${t['subject'] ?? ''}' || _body.text != '${t['body'] ?? ''}'
-        || _sig.text != '${t['signature'] ?? ''}' || _sigImg != '${t['signatureImage'] ?? ''}';
+        || _sig.text != '${t['signature'] ?? ''}' || _cc.text != ((t['cc'] as List?) ?? const []).join(', ') || _sigImg != '${t['signatureImage'] ?? ''}';
   }
 
   void _toast(String s, {bool err = false}) =>
@@ -219,6 +222,7 @@ class _EmailTemplateTabState extends State<EmailTemplateTab> {
     try {
       final r = await Api.instance.put(widget.endpoint, {
         'subject': _subject.text, 'body': _body.text, 'signature': _sig.text,
+        'cc': _cc.text.split(RegExp(r'[\s,;،]+')).where((e) => e.trim().isNotEmpty).toList(),
         'signatureImage': _sigImg, 'signatureImageName': _sigImgName,
       });
       if (!mounted) return;
@@ -299,6 +303,10 @@ class _EmailTemplateTabState extends State<EmailTemplateTab> {
             ),
         ]),
       ])),
+      const SizedBox(height: 10),
+      AppCard(child: TextField(controller: _cc, enabled: canEdit, textDirection: TextDirection.ltr, decoration: InputDecoration(
+          labelText: tr('نسخة CC دائمة — تُضاف إلى كلّ رسالة تلقائيًّا', 'Standing CC — added to every message'),
+          hintText: 'name@energize-logistics.com, …'))),
       const SizedBox(height: 10),
       // Signature: appended to the end of every message
       AppCard(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [

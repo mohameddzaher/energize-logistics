@@ -94,6 +94,7 @@ class _SendStatementScreenState extends State<SendStatementScreen> {
       setState(() {
         _d = m;
         _to..clear()..addAll([for (final e in (m['to'] as List? ?? const [])) '$e']);
+        _cc..clear()..addAll([for (final e in (m['cc'] as List? ?? const [])) '$e']);
         _subject.text = '${m['subject'] ?? ''}';
         _body.text = '${m['body'] ?? ''}';
       });

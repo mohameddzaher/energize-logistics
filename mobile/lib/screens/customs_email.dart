@@ -60,6 +60,7 @@ class _CustomsFollowUpEmailScreenState extends State<CustomsFollowUpEmailScreen>
         _d = m;
         _err = null;
         if (_to.isEmpty) _to.addAll([for (final e in (m['to'] as List? ?? const [])) '$e']);
+        if (_cc.isEmpty) _cc.addAll([for (final e in (m['cc'] as List? ?? const [])) '$e']);
         _subject.text = '${m['subject'] ?? ''}';
         _body.text = '${m['body'] ?? ''}';
       });

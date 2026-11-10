@@ -401,6 +401,7 @@
     "/system/collections-dept/settings": {
       "apis": [
         "/api/collections-dept/email-template",
+        "/api/collections-dept/invoices",
         "/api/lookups/types"
       ],
       "wildcard": false
@@ -1023,6 +1024,7 @@
     "/system/customs/settings": {
       "apis": [
         "/api/collections-dept/email-template",
+        "/api/collections-dept/invoices",
         "/api/customs-clearance/email-template",
         "/api/customs-clearance/settings",
         "/api/lookups/types"

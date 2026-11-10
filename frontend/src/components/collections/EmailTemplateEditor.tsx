@@ -5,8 +5,9 @@ import api from '@/lib/api';
 import { useDialog } from '@/components/system/DialogProvider';
 import { useSocket } from '@/hooks/useSocket';
 import { Loader2, Save, RotateCcw, Mail } from 'lucide-react';
+import { EmailList } from '@/components/collections/SendStatementModal';
 
-interface Tpl { subject: string; body: string; signature?: string; signatureImage?: string; signatureImageName?: string; updatedAt?: string; updatedByName?: string; placeholders: [string, string][]; mailbox: string; defaults: { subject: string; body: string } }
+interface Tpl { subject: string; body: string; cc?: string[]; signature?: string; signatureImage?: string; signatureImageName?: string; updatedAt?: string; updatedByName?: string; placeholders: [string, string][]; mailbox: string; defaults: { subject: string; body: string } }
 
 /** Shared by collections (default) and customs: each department passes its own template endpoint, title and live event. */
 export default function EmailTemplateEditor({ ar, canEdit, endpoint = '/api/collections-dept/email-template', title, liveEvent = 'collections:changed', signatureHint }: {
@@ -18,12 +19,13 @@ export default function EmailTemplateEditor({ ar, canEdit, endpoint = '/api/coll
   const [subject, setSubject] = useState('');
   const [body, setBody] = useState('');
   const [sig, setSig] = useState('');
+  const [cc, setCc] = useState<string[]>([]);
   const [sigImg, setSigImg] = useState('');
   const [sigImgName, setSigImgName] = useState('');
   const [saving, setSaving] = useState(false);
   const bodyRef = useRef<HTMLTextAreaElement>(null);
   const load = useCallback(() => {
-    api.get<Tpl>(endpoint).then((x) => { setTpl(x); setSubject(x.subject); setBody(x.body); setSig(x.signature || ''); setSigImg(x.signatureImage || ''); setSigImgName(x.signatureImageName || ''); }).catch(() => {});
+    api.get<Tpl>(endpoint).then((x) => { setTpl(x); setSubject(x.subject); setBody(x.body); setCc(x.cc || []); setSig(x.signature || ''); setSigImg(x.signatureImage || ''); setSigImgName(x.signatureImageName || ''); }).catch(() => {});
   }, [endpoint]);
   useEffect(() => { load(); }, [load]);
   // A colleague saved the template from another screen; the new one is read unless there is an unsaved local edit.
@@ -31,11 +33,11 @@ export default function EmailTemplateEditor({ ar, canEdit, endpoint = '/api/coll
     if (d?.source === 'email-template' && tpl && subject === tpl.subject && body === tpl.body && sig === (tpl.signature || '') && sigImg === (tpl.signatureImage || '')) load();
   }, [load, tpl, subject, body, sig, sigImg]));
 
-  const dirty = !!tpl && (subject !== tpl.subject || body !== tpl.body || sig !== (tpl.signature || '') || sigImg !== (tpl.signatureImage || ''));
+  const dirty = !!tpl && (subject !== tpl.subject || body !== tpl.body || cc.join() !== (tpl.cc || []).join() || sig !== (tpl.signature || '') || sigImg !== (tpl.signatureImage || ''));
   const save = async () => {
     setSaving(true);
     try {
-      const r = await api.put<Tpl>(endpoint, { subject, body, signature: sig, signatureImage: sigImg, signatureImageName: sigImgName });
+      const r = await api.put<Tpl>(endpoint, { subject, body, cc, signature: sig, signatureImage: sigImg, signatureImageName: sigImgName });
       setTpl((p) => (p ? { ...p, ...r } : p));
       notify(t('حُفظ القالب — يصل أوّلَ رسالةٍ تُرسَل الآن', 'Template saved — used by the next email'), 'success');
     } catch (e: any) { notify(e?.message || t('تعذّر الحفظ', 'Save failed'), 'error'); }
@@ -57,6 +59,10 @@ export default function EmailTemplateEditor({ ar, canEdit, endpoint = '/api/coll
         <h2 className="text-[15px] font-bold text-slate-900">{title || t('قالب بريد كشف الحساب', 'Statement email template')}</h2>
         <span className="text-[12.5px] text-slate-600">{t('يُرسَل من', 'Sent from')} <b dir="ltr">{tpl.mailbox}</b></span>
         {tpl.updatedByName && <span className="ms-auto text-[12px] text-slate-500">{t('آخر تعديل', 'Last edited')}: {tpl.updatedByName}{tpl.updatedAt ? ` · ${new Date(tpl.updatedAt).toLocaleString('en-GB')}` : ''}</span>}
+      </div>
+      {/* Copied on every message: set once here instead of typing the same addresses each time. */}
+      <div className={canEdit ? '' : 'pointer-events-none opacity-70'}>
+        <EmailList label={t('نسخة CC دائمة — تُضاف إلى كلّ رسالة تلقائيًّا', 'Standing CC — added to every message')} value={cc} onChange={setCc} ar={ar} />
       </div>
       <label className="block">
         <span className="mb-1 block text-[12.5px] font-semibold text-slate-700">{t('الموضوع', 'Subject')}</span>

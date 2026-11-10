@@ -60,6 +60,9 @@ async function orderToFleet(orderId) {
     }
     return null;
   }
+  // Only live orders of our own system: imported platform history and orders already finished do not become fleet loads now (they would change the fleet's past income).
+  const CLOSED = ['arrived', 'bond_sent', 'bond_received', 'invoiced', 'cancelled'];
+  if (!load && (o.source === 'platform' || CLOSED.includes(str(o.status)))) return null;
   const refs = await fleetRefs(o);
   const cust = o.customer ? await FleetCustomer.findOne({ shipmentCustomer: o.customer }).select('_id').lean() : null;
   const wanted = {

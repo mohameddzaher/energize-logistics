@@ -194,7 +194,7 @@ function VehicleAnalyticsInner() {
 
       <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">
         <StatCard label={ar ? 'عدد الرحلات' : 'Trips'} value={t.trips} accent="text-[#f37121]" />
-        <StatCard label={ar ? 'الدخل (سعر البيع)' : 'Income'} value={money(t.income)} accent="text-emerald-600" />
+        <StatCard label={ar ? 'الدخل (إيجار السيارة)' : 'Income'} value={money(t.income)} accent="text-emerald-600" />
         <StatCard label={ar ? 'مصروف السائقين' : 'Driver expense'} value={money(t.driverExpense)} accent="text-amber-600" />
         <StatCard label={ar ? 'الصافي' : 'Net'} value={money(t.net)} />
         <StatCard label={ar ? 'متوسط دخل الرحلة' : 'Avg / trip'} value={money(t.avgTripIncome)} />

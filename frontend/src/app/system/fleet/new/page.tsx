@@ -493,7 +493,7 @@ function CreateFleetShipmentInner() {
       {card(ar ? 'بيانات الحمولة والتسعير' : 'Load & pricing', UsersIcon, (
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
           <div>
-            <label className={labelCls}>{ar ? 'سعر البيع' : 'Selling price'}</label>
+            <label className={labelCls}>{ar ? 'إيجار السيارة' : 'Vehicle rent'}</label>
             <input type="number" min={0} value={form.price ?? ''} onChange={(e) => set('price', e.target.value)}
               className={inputCls} placeholder="0" />
             <p className="text-[11px] text-slate-500 mt-1">{ar ? 'الفلوس الداخلة لقسم إدارة الأسطول من هذه الحمولة.' : 'The money that goes into the fleet section.'}</p>
@@ -506,7 +506,7 @@ function CreateFleetShipmentInner() {
               const vr = Number(form.price) || 0; const fr = Number(form.fullRent) || 0;
               const diff = fr - vr;
               if (fr > 0 && diff > 0) return <p className="text-[11px] text-amber-700 mt-1">{ar ? `الفرق ${diff.toLocaleString('en-US')} ر.س يذهب لقسم الفروع.` : `Difference ${diff.toLocaleString('en-US')} SAR goes to the branches dept.`}</p>;
-              if (fr > 0 && diff < 0) return <p className="text-[11px] text-red-600 mt-1">{ar ? 'الإيجار كامل أقل من سعر البيع — تحقّق.' : 'Full rent is below the selling price — check.'}</p>;
+              if (fr > 0 && diff < 0) return <p className="text-[11px] text-red-600 mt-1">{ar ? 'الإيجار كامل أقل من إيجار السيارة — تحقّق.' : 'Full rent is below the vehicle rent — check.'}</p>;
               return <p className="text-[11px] text-slate-500 mt-1">{ar ? 'يستلمه السائق من العميل — عادةً مع «قدام». الفرق لقسم الفروع.' : 'Collected by the driver — usually with “forward”. The gap goes to branches.'}</p>;
             })()}
           </div>

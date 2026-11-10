@@ -46,7 +46,7 @@ const _filterFields = [
 /// Optional fields on a load card; each person hides what they do not need (saved on the account).
 const _cardFields = [
   ('branch', 'الفرع', 'Branch'), ('paymentSubtype', 'نوع الدفع', 'Payment type'), ('vehiclePlate', 'اللوحة', 'Plate'),
-  ('driverName', 'السائق', 'Driver'), ('price', 'سعر البيع', 'Selling price'), ('fullRent', 'الإيجار كامل', 'Full rent'),
+  ('driverName', 'السائق', 'Driver'), ('price', 'إيجار السيارة', 'Vehicle rent'), ('fullRent', 'الإيجار كامل', 'Full rent'),
   ('driverExpense', 'مصروف السائق', 'Driver expense'), ('customerType', 'نوع العميل', 'Customer type'), ('loadType', 'نوع الحمولة', 'Load type'),
   ('supervisorName', 'المشرف', 'Supervisor'), ('loadDate', 'تاريخ التحميل', 'Load date'), ('expectedArrival', 'الوصول المتوقع', 'Expected arrival'),
   ('trailerType', 'نوع السيارة', 'Truck type'), ('lastContactAt', 'آخر تواصل', 'Last contact'), ('notes', 'ملاحظات', 'Notes'),

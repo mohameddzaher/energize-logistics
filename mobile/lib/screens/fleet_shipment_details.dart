@@ -355,7 +355,7 @@ class _FleetShipmentDetailsScreenState extends State<FleetShipmentDetailsScreen>
                               if (s['expectedArrival'] != null)
                                 Chip2('${tr('الوصول المتوقع', 'ETA')}: ${_dt(s['expectedArrival'])}', T.warn, icon: Icons.schedule_outlined),
                               if ((num.tryParse((s['price'] ?? '').toString()) ?? 0) > 0)
-                                Chip2('${tr('سعر البيع', 'Selling price')}: ${s['price']}', T.success, icon: Icons.payments_outlined),
+                                Chip2('${tr('إيجار السيارة', 'Vehicle rent')}: ${s['price']}', T.success, icon: Icons.payments_outlined),
                               if ((num.tryParse((s['fullRent'] ?? '').toString()) ?? 0) > 0)
                                 Chip2('${tr('الإيجار كامل', 'Full rent')}: ${s['fullRent']}', T.cyan, icon: Icons.account_balance_wallet_outlined),
                               if (s['customerType'] == 'heavy')

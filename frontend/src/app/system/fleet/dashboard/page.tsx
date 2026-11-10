@@ -355,7 +355,7 @@ function FleetAnalyticsInner({ active = true }: { active?: boolean }) {
       {data && (
         <>
           <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-7 gap-3">
-            <StatCard label={ar ? 'إجمالي سعر البيع' : 'Total selling price'} value={money(data.totals.totalIncome)} accent="text-emerald-600" />
+            <StatCard label={ar ? 'إجمالي إيجار السيارات' : 'Total vehicle rent'} value={money(data.totals.totalIncome)} accent="text-emerald-600" />
             <StatCard label={ar ? 'حصة قسم الفروع' : 'Branches’ share'} value={money(data.totals.branchShare)} accent="text-amber-600" />
             <StatCard label={ar ? 'عدد الرحلات' : 'Trips'} value={data.totals.tripCount} accent="text-[#f37121]" />
             <StatCard label={ar ? 'متوسط دخل الرحلة' : 'Avg / trip'} value={money(data.totals.avgTripIncome)} />

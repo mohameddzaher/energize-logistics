@@ -712,7 +712,7 @@ class _FleetNewShipmentScreenState extends State<FleetNewShipmentScreen> {
                 ]),
                 const SizedBox(height: 10),
                 Row(children: [
-                  Expanded(child: TextField(controller: _vehicleRent, keyboardType: const TextInputType.numberWithOptions(decimal: true), onChanged: (_) => setState(() {}), decoration: InputDecoration(labelText: tr('سعر البيع', 'Selling price')))),
+                  Expanded(child: TextField(controller: _vehicleRent, keyboardType: const TextInputType.numberWithOptions(decimal: true), onChanged: (_) => setState(() {}), decoration: InputDecoration(labelText: tr('إيجار السيارة', 'Vehicle rent')))),
                   const SizedBox(width: 10),
                   Expanded(child: TextField(controller: _fullRent, keyboardType: const TextInputType.numberWithOptions(decimal: true), onChanged: (_) => setState(() {}), decoration: InputDecoration(labelText: tr('الإيجار كامل (اختياري)', 'Full rent (optional)')))),
                 ]),

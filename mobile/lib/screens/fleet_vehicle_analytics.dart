@@ -278,7 +278,7 @@ class _FleetVehicleAnalyticsScreenState extends State<FleetVehicleAnalyticsScree
           crossAxisSpacing: 8,
           children: [
             _tile(tr('عدد الرحلات', 'Trips'), '${t['trips'] ?? 0}', T.orange, Icons.route_outlined),
-            _tile(tr('الدخل (سعر البيع)', 'Income'), _money(t['income']), T.success, Icons.payments_outlined),
+            _tile(tr('الدخل (إيجار السيارة)', 'Income'), _money(t['income']), T.success, Icons.payments_outlined),
             _tile(tr('مصروف السائقين', 'Driver expense'), _money(t['driverExpense']), T.warn, Icons.account_balance_wallet_outlined),
             _tile(tr('الصافي', 'Net'), _money(t['net']), T.navy, Icons.calculate_outlined),
             _tile(tr('متوسط دخل الرحلة', 'Avg / trip'), _money(t['avgTripIncome']), T.info, Icons.trending_up_rounded),

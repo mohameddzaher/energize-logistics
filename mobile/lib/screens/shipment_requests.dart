@@ -6,6 +6,8 @@ import '../services/auth.dart';
 import '../services/lang.dart';
 import '../services/live.dart';
 import '../ui/app_scaffold.dart';
+import '../ui/export_sheet.dart';
+import '../ui/ops_report_detail.dart' show opsPaymentKindLabel;
 import '../ui/lookup_field.dart';
 import '../ui/search_field.dart';
 import '../ui/theme.dart';
@@ -28,6 +30,32 @@ const srStatuses = <String, (String, String, Color)>{
 Widget srStatusChip(dynamic s) {
   final x = srStatuses['$s'] ?? ('$s', '$s', T.inkFaint);
   return Chip2(tr(x.$1, x.$2), x.$3);
+}
+
+/// Where the vendors team stands on a request, one line for sales (twin of web `vendorProgress`): label, colour, 0..1.
+(String, Color, double) srVendorProgress(Map<String, dynamic> r) {
+  final n = (r['placed'] as List?)?.length ?? 0;
+  final of = inum(r['trucks']).toInt();
+  final pct = of > 0 ? n / of : 0.0;
+  final handler = '${r['handlerName'] ?? ''}';
+  switch ('${r['status']}') {
+    case 'completed': return (tr('أنجزها الموردون ($n من $of)', 'Done by vendors ($n of $of)'), T.success, 1.0);
+    case 'in_progress': return (tr('جارٍ: أُسندت $n من $of', 'In progress: $n of $of'), T.info, pct);
+    case 'rejected': return (n > 0 ? tr('رُفض الباقي بعد إسناد $n من $of', 'Rest rejected after $n of $of') : tr('رفضها الموردون', 'Rejected by vendors'), T.danger, pct);
+    case 'cancelled': return (n > 0 ? tr('سُحب الباقي بعد إسناد $n من $of', 'Rest withdrawn after $n of $of') : tr('سُحب الطلب', 'Withdrawn'), T.inkFaint, pct);
+    default: return handler.isNotEmpty
+        ? (tr('يعمل عليه $handler — 0 من $of', 'With $handler — 0 of $of'), T.warn, 0.0)
+        : (tr('لم يبدأ الموردون — 0 من $of', 'Not started — 0 of $of'), T.warn, 0.0);
+  }
+}
+
+Widget srProgressLine(Map<String, dynamic> r) {
+  final p = srVendorProgress(r);
+  return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+    Text(p.$1, style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: p.$2)),
+    const SizedBox(height: 3),
+    ClipRRect(borderRadius: BorderRadius.circular(4), child: LinearProgressIndicator(value: p.$3, minHeight: 5, backgroundColor: T.line, color: T.success)),
+  ]);
 }
 
 const _logLabels = <String, (String, String)>{
@@ -489,12 +517,157 @@ class _ShipmentRequestsScreenState extends State<ShipmentRequestsScreen> {
   String _q = '';
   Timer? _t;
   late final void Function() _onLive = _load;
+  // Date range goes to the server; the other filters narrow the loaded rows, as on web.
+  String _from = '';
+  String _to = '';
+  final Map<String, String> _flt = {};
+  late final String _viewKey = 'shipmentRequests.view.${widget.mode}';
+  String _view = 'cards';
 
   @override
   void initState() {
     super.initState();
+    _view = context.read<AuthProvider>().pref(_viewKey) == 'list' ? 'list' : 'cards';
     _load();
     Live.instance.on(srEvent, _onLive);
+  }
+
+  /// Switches at once and saves on the account in the background.
+  Future<void> _setView(String v) async {
+    if (v == _view) return;
+    setState(() => _view = v);
+    final auth = context.read<AuthProvider>();
+    try {
+      await Api.instance.patch('/api/auth/me/prefs', {'key': _viewKey, 'value': v});
+      auth.setPref(_viewKey, v);
+    } catch (_) {}
+  }
+
+  /// Client-side filters: (key, Arabic, English, reader).
+  List<(String, String, String, String Function(Map<String, dynamic>))> get _filters => [
+        ('customer', 'العميل', 'Customer', (r) => '${r['customerName'] ?? ''}'),
+        ('salesRep', 'السيلز', 'Sales rep', (r) => '${r['salesRepName'] ?? r['createdByName'] ?? ''}'),
+        ('handler', 'مسؤول الموردين', 'Vendors handler', (r) => '${r['handlerName'] ?? ''}'),
+        ('progress', 'إنجاز الموردين', 'Vendor progress', (r) => srVendorProgress(r).$1),
+        ('fromCity', 'من', 'From', (r) => '${r['fromCity'] ?? ''}'),
+        ('toCity', 'إلى', 'To', (r) => '${r['toCity'] ?? ''}'),
+        ('truckType', 'نوع الشاحنة', 'Truck type', (r) => '${r['truckType'] ?? ''}'),
+        ('branch', 'الفرع', 'Branch', (r) => '${r['branch'] ?? ''}'),
+        ('supplier', 'المورّد', 'Supplier', (r) => _suppliers(r).join('، ')),
+      ];
+
+  static List<String> _suppliers(Map<String, dynamic> r) =>
+      {for (final p in (r['placed'] as List?) ?? const []) if ('${(p as Map)['supplierName'] ?? ''}'.isNotEmpty) '${p['supplierName']}'}.toList();
+  static List<String> _placedField(Map<String, dynamic> r, String k) =>
+      [for (final p in (r['placed'] as List?) ?? const []) if ('${(p as Map)[k] ?? ''}'.isNotEmpty) '${p[k]}'];
+
+  List<Map<String, dynamic>> get _shown => _rows.where((r) {
+        for (final f in _filters) {
+          final want = _flt[f.$1];
+          if (want == null || want.isEmpty) continue;
+          if (f.$1 == 'supplier' ? !_suppliers(r).contains(want) : f.$4(r) != want) return false;
+        }
+        return true;
+      }).toList();
+
+  int get _filterCount => _flt.values.where((v) => v.isNotEmpty).length + (_from.isNotEmpty ? 1 : 0) + (_to.isNotEmpty ? 1 : 0);
+
+  static int _openCount(Map<String, dynamic> r) => inum(r['open'] ?? (inum(r['trucks']) - ((r['placed'] as List?)?.length ?? 0))).toInt();
+
+  List<ExportCol> get _exportCols {
+    final sell = _rows.any((r) => r.containsKey('sellPrice'));
+    return [
+      ExportCol('رقم الطلب', 'Request', (r) => r['number']),
+      ExportCol('الحالة', 'Status', (r) { final x = srStatuses['${r['status']}']; return x == null ? '${r['status']}' : tr(x.$1, x.$2); }),
+      ExportCol('إنجاز الموردين', 'Vendor progress', (r) => srVendorProgress(r).$1),
+      ExportCol('الشاحنات المطلوبة', 'Trucks asked', (r) => inum(r['trucks'])),
+      ExportCol('أُسندت', 'Placed', (r) => (r['placed'] as List?)?.length ?? 0),
+      ExportCol('متبقّية', 'Remaining', (r) => ['pending', 'in_progress'].contains('${r['status']}') ? _openCount(r) : 0),
+      ExportCol('مرفوضة/مسحوبة', 'Rejected/withdrawn', (r) => ['rejected', 'cancelled'].contains('${r['status']}') ? _openCount(r) : 0),
+      ExportCol('العميل', 'Customer', (r) => r['customerName']),
+      ExportCol('من', 'From', (r) => r['fromCity']),
+      ExportCol('إلى', 'To', (r) => r['toCity']),
+      ExportCol('نوع الشاحنة', 'Truck type', (r) => r['truckType']),
+      ExportCol('الطول', 'Length', (r) => r['truckLength']),
+      ExportCol('نوع الحمولة', 'Cargo', (r) => r['cargoType']),
+      ExportCol('موعد التحميل', 'Pickup', (r) => _dateOnly(r['pickupTime'])),
+      if (sell) ExportCol('سعر البيع للشاحنة', 'Sell / truck', (r) => r['sellPrice']),
+      ExportCol('طريقة الدفع', 'Payment', (r) => '${r['paymentSubtype'] ?? ''}'.isEmpty ? '' : opsPaymentKindLabel('${r['paymentSubtype']}')),
+      ExportCol('السيلز', 'Sales rep', (r) => r['salesRepName']),
+      ExportCol('أنشأه', 'Created by', (r) => r['createdByName']),
+      ExportCol('تاريخ الطلب', 'Requested', (r) => _dateOnly(r['createdAt'])),
+      ExportCol('مسؤول الموردين', 'Vendors handler', (r) => r['handlerName']),
+      ExportCol('أوامر النقل', 'Transport orders', (r) => _placedField(r, 'waybillNumber').join('، ')),
+      ExportCol('المورّدون', 'Suppliers', (r) => _suppliers(r).join('، ')),
+      ExportCol('السيارات', 'Trucks', (r) => _placedField(r, 'vehiclePlate').join('، ')),
+      ExportCol('السائقون', 'Drivers', (r) => _placedField(r, 'driverName').join('، ')),
+      ExportCol('سبب الرفض', 'Reject reason', (r) => r['rejectReason']),
+      ExportCol('الفرع', 'Branch', (r) => r['branch']),
+      ExportCol('رقم البوليصة', 'BL', (r) => r['blNumber']),
+      ExportCol('رقم الحاوية', 'Container', (r) => r['containerNumber']),
+      ExportCol('ملاحظات', 'Notes', (r) => r['notes']),
+    ];
+  }
+
+  Future<void> _pickDate(bool from, StateSetter setSheet) async {
+    final cur = DateTime.tryParse(from ? _from : _to) ?? DateTime.now();
+    final d = await showDatePicker(context: context, initialDate: cur, firstDate: DateTime(2020), lastDate: DateTime(2100));
+    if (d == null) return;
+    setState(() => from ? _from = ymd(d) : _to = ymd(d));
+    setSheet(() {});
+    _load();
+  }
+
+  /// Filter sheet: dates (server) and one value per detail (from the loaded rows).
+  Future<void> _openFilters() async {
+    await showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      builder: (sheetCtx) => StatefulBuilder(builder: (sheetCtx, setSheet) {
+        final rows = _rows;
+        return SafeArea(child: Padding(
+          padding: EdgeInsets.fromLTRB(16, 14, 16, MediaQuery.of(sheetCtx).viewInsets.bottom + 14),
+          child: SingleChildScrollView(child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+            Row(children: [
+              Expanded(child: Text(tr('فلاتر', 'Filters'), style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 16))),
+              if (_filterCount > 0)
+                TextButton(onPressed: () { setState(() { _flt.clear(); _from = ''; _to = ''; }); setSheet(() {}); _load(); }, child: Text(tr('مسح الفلاتر', 'Clear filters'))),
+            ]),
+            const SizedBox(height: 8),
+            Wrap(spacing: 6, runSpacing: 6, crossAxisAlignment: WrapCrossAlignment.center, children: [
+              ActionChip(avatar: const Icon(Icons.event, size: 16), label: Text(_from.isEmpty ? tr('من تاريخ', 'From date') : _from), onPressed: () => _pickDate(true, setSheet)),
+              ActionChip(avatar: const Icon(Icons.event, size: 16), label: Text(_to.isEmpty ? tr('إلى تاريخ', 'To date') : _to), onPressed: () => _pickDate(false, setSheet)),
+              if (_from.isNotEmpty || _to.isNotEmpty)
+                IconButton(icon: const Icon(Icons.close, size: 18), onPressed: () { setState(() { _from = ''; _to = ''; }); setSheet(() {}); _load(); }),
+            ]),
+            for (final f in _filters) ...[
+              const SizedBox(height: 10),
+              DropdownButtonFormField<String>(
+                isExpanded: true,
+                initialValue: _flt[f.$1] ?? '',
+                decoration: InputDecoration(labelText: tr(f.$2, f.$3), isDense: true),
+                items: [
+                  DropdownMenuItem(value: '', child: Text(tr('الكل', 'All'))),
+                  // The picked value stays listed even if a reload dropped it, or the dropdown would assert.
+                  for (final v in ({
+                    for (final r in rows)
+                      ...(f.$1 == 'supplier' ? _suppliers(r) : [f.$4(r)]).where((x) => x.isNotEmpty),
+                    if ((_flt[f.$1] ?? '').isNotEmpty) _flt[f.$1]!,
+                  }.toList()..sort()))
+                    DropdownMenuItem(value: v, child: Text(v, overflow: TextOverflow.ellipsis)),
+                ],
+                onChanged: (v) { setState(() => _flt[f.$1] = v ?? ''); setSheet(() {}); },
+              ),
+            ],
+            const SizedBox(height: 16),
+            SizedBox(height: 48, child: FilledButton(
+              onPressed: () => Navigator.pop(sheetCtx),
+              child: Text(tr('عرض ${_shown.length} طلب', 'Show ${_shown.length} requests')),
+            )),
+          ])),
+        ));
+      }),
+    );
   }
 
   @override
@@ -507,7 +680,8 @@ class _ShipmentRequestsScreenState extends State<ShipmentRequestsScreen> {
   Future<void> _load() async {
     final mine = ++_seq;
     try {
-      final p = ['limit=100', if (_status.isNotEmpty) 'status=$_status', if (_q.trim().isNotEmpty) 'q=${Uri.encodeQueryComponent(_q.trim())}'];
+      final p = ['limit=1000', if (_status.isNotEmpty) 'status=$_status', if (_q.trim().isNotEmpty) 'q=${Uri.encodeQueryComponent(_q.trim())}',
+        if (_from.isNotEmpty) 'from=$_from', if (_to.isNotEmpty) 'to=$_to'];
       final d = await Api.instance.get('/api/shipment-requests?${p.join('&')}');
       if (!mounted || mine != _seq) return;
       setState(() {
@@ -534,6 +708,19 @@ class _ShipmentRequestsScreenState extends State<ShipmentRequestsScreen> {
         : [('', 'الكل', 'All', -1), ('pending,in_progress', 'المفتوحة', 'Open', inum(_by['pending']) + inum(_by['in_progress'])), ('rejected', 'مرفوضة', 'Rejected', inum(_by['rejected'])), ('completed', 'مكتملة', 'Completed', inum(_by['completed'])), ('cancelled', 'مسحوبة', 'Withdrawn', inum(_by['cancelled']))];
     return AppScaffold(
       title: Text(widget.mode == 'place' ? tr('الطلبات من المبيعات', 'Requests from sales') : tr('طلبات الشحن', 'Shipment requests')),
+      actions: [
+        IconButton(
+          tooltip: _view == 'cards' ? tr('عرض القائمة', 'List view') : tr('عرض البطاقات', 'Cards view'),
+          icon: Icon(_view == 'cards' ? Icons.view_list_rounded : Icons.view_agenda_outlined),
+          onPressed: () => _setView(_view == 'cards' ? 'list' : 'cards'),
+        ),
+        IconButton(
+          tooltip: tr('فلاتر', 'Filters'),
+          icon: Badge(isLabelVisible: _filterCount > 0, label: Text('$_filterCount'), child: const Icon(Icons.filter_alt_outlined)),
+          onPressed: _openFilters,
+        ),
+        ExportButton(fileName: widget.mode == 'place' ? 'shipment-requests-vendors' : 'shipment-requests', sheetName: tr('طلبات الشحن', 'Requests'), columns: _exportCols, rows: () => _shown),
+      ],
       floatingActionButton: widget.mode == 'ask' && _can['ask'] == true
           ? FloatingActionButton.extended(
               onPressed: () async {
@@ -563,13 +750,26 @@ class _ShipmentRequestsScreenState extends State<ShipmentRequestsScreen> {
                 ? ErrorRetry(message: _error!, onRetry: _load)
                 : RefreshIndicator(
                     onRefresh: _load,
-                    child: _rows.isEmpty
-                        ? ListView(children: [Padding(padding: const EdgeInsets.all(40), child: Text(tr('لا طلبات هنا', 'No requests here'), textAlign: TextAlign.center, style: const TextStyle(color: T.inkFaint)))])
-                        : ListView.builder(
-                            padding: const EdgeInsets.fromLTRB(12, 0, 12, 90),
-                            itemCount: _rows.length,
-                            itemBuilder: (_, i) => _card(_rows[i]),
-                          ),
+                    child: Builder(builder: (_) {
+                      final shown = _shown;
+                      if (shown.isEmpty) {
+                        return ListView(children: [Padding(padding: const EdgeInsets.all(40), child: Text(_rows.isEmpty ? tr('لا طلبات هنا', 'No requests here') : tr('لا طلبات تطابق الفلاتر', 'No requests match the filters'), textAlign: TextAlign.center, style: const TextStyle(color: T.inkFaint)))]);
+                      }
+                      final asked = shown.fold<num>(0, (a, r) => a + inum(r['trucks']));
+                      final placed = shown.fold<int>(0, (a, r) => a + ((r['placed'] as List?)?.length ?? 0));
+                      return ListView.builder(
+                        padding: const EdgeInsets.fromLTRB(12, 0, 12, 90),
+                        itemCount: shown.length + 1,
+                        itemBuilder: (_, i) => i == 0
+                            ? Padding(padding: const EdgeInsets.only(bottom: 6), child: Row(children: [
+                                Expanded(child: Text(tr('${shown.length} طلب · ${fmtNum(asked)} شاحنة مطلوبة · $placed أُسندت', '${shown.length} requests · ${fmtNum(asked)} trucks · $placed placed'),
+                                    style: const TextStyle(fontSize: 12, color: T.inkSoft, fontWeight: FontWeight.w600))),
+                                if (_filterCount > 0)
+                                  TextButton(onPressed: () { setState(() { _flt.clear(); _from = ''; _to = ''; }); _load(); }, child: Text(tr('مسح الفلاتر ($_filterCount)', 'Clear filters ($_filterCount)'))),
+                              ]))
+                            : _view == 'list' ? _row(shown[i - 1]) : _card(shown[i - 1]),
+                      );
+                    }),
                   )),
       ]),
     );
@@ -599,11 +799,46 @@ class _ShipmentRequestsScreenState extends State<ShipmentRequestsScreen> {
             if ('${r['handlerName'] ?? ''}'.isNotEmpty) Chip2('${tr('يعمل عليه', 'Handled by')} ${r['handlerName']}', T.violet),
             if ('${r['createdByName'] ?? ''}'.isNotEmpty && widget.mode == 'place') Chip2('${tr('من', 'By')} ${r['createdByName']}', T.inkSoft),
           ]),
+          const SizedBox(height: 6),
+          srProgressLine(r),
           if (r['status'] == 'rejected')
             Padding(padding: const EdgeInsets.only(top: 6), child: Text('${tr('سبب الرفض', 'Reason')}: ${r['rejectReason'] ?? ''}${'${r['rejectNote'] ?? ''}'.isEmpty ? '' : ' — ${r['rejectNote']}'}',
                 style: const TextStyle(fontSize: 12, color: T.danger, fontWeight: FontWeight.w700))),
         ]),
       )),
+    );
+  }
+}
+
+extension on _ShipmentRequestsScreenState {
+  /// Dense one-row view: number, status, progress, asked/placed/remaining, customer, route, pickup.
+  Widget _row(Map<String, dynamic> r) {
+    final n = (r['placed'] as List?)?.length ?? 0;
+    final open = ['pending', 'in_progress'].contains('${r['status']}') ? _ShipmentRequestsScreenState._openCount(r) : 0;
+    final pickup = _dateOnly(r['pickupTime']);
+    return InkWell(
+      onTap: () => _open(r),
+      child: Container(
+        padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 4),
+        decoration: const BoxDecoration(border: Border(bottom: BorderSide(color: T.line))),
+        child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+          Row(children: [
+            Text('#${r['number']}', style: const TextStyle(fontWeight: FontWeight.w900, color: T.orange, fontSize: 13)),
+            const SizedBox(width: 6),
+            Expanded(child: Text('${r['customerName'] ?? '—'}', style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 13), overflow: TextOverflow.ellipsis)),
+            srStatusChip(r['status']),
+          ]),
+          const SizedBox(height: 3),
+          Row(children: [
+            Expanded(child: Text('${r['fromCity'] ?? '—'} ← ${r['toCity'] ?? '—'}${pickup.isEmpty ? '' : ' · $pickup'}',
+                style: const TextStyle(fontSize: 11.5, color: T.inkSoft), overflow: TextOverflow.ellipsis)),
+            Text(tr('مطلوبة ${fmtNum(inum(r['trucks']))} · أُسندت $n · متبقّية $open', 'Asked ${fmtNum(inum(r['trucks']))} · placed $n · left $open'),
+                style: const TextStyle(fontSize: 11.5, fontWeight: FontWeight.w700, color: T.navy)),
+          ]),
+          const SizedBox(height: 4),
+          srProgressLine(r),
+        ]),
+      ),
     );
   }
 }

@@ -788,6 +788,19 @@ class _ShipmentRequestsScreenState extends State<ShipmentRequestsScreen> {
               onSelected: (_) { setState(() => _status = t.$1); _load(); },
             )),
         ])),
+        // Quick days on the request date (Riyadh); tapping the active one clears it.
+        SingleChildScrollView(scrollDirection: Axis.horizontal, padding: const EdgeInsets.fromLTRB(12, 0, 12, 6), child: Row(children: [
+          for (final q in _quickDays())
+            Padding(padding: const EdgeInsetsDirectional.only(end: 5), child: ChoiceChip(
+              label: Text(q.$1),
+              selected: _from == q.$2 && _to == q.$3,
+              onSelected: (_) {
+                final on = _from == q.$2 && _to == q.$3;
+                setState(() { _from = on ? '' : q.$2; _to = on ? '' : q.$3; });
+                _load();
+              },
+            )),
+        ])),
         Expanded(child: _loading
             ? const Center(child: CircularProgressIndicator())
             : _error != null
@@ -799,17 +812,29 @@ class _ShipmentRequestsScreenState extends State<ShipmentRequestsScreen> {
                       if (shown.isEmpty) {
                         return ListView(children: [Padding(padding: const EdgeInsets.all(40), child: Text(_rows.isEmpty ? tr('لا طلبات هنا', 'No requests here') : tr('لا طلبات تطابق الفلاتر', 'No requests match the filters'), textAlign: TextAlign.center, style: const TextStyle(color: T.inkFaint)))]);
                       }
-                      final asked = shown.fold<num>(0, (a, r) => a + inum(r['trucks']));
-                      final placed = shown.fold<int>(0, (a, r) => a + ((r['placed'] as List?)?.length ?? 0));
+                      // Trucks: asked, done by vendors, rejected/withdrawn (closed requests), still waiting (open requests).
+                      num asked = 0, placed = 0, closed = 0, waiting = 0;
+                      for (final r in shown) {
+                        final n = inum(r['trucks']);
+                        final p = (r['placed'] as List?)?.length ?? 0;
+                        final rest = (n - p) < 0 ? 0 : n - p;
+                        asked += n; placed += p;
+                        if (const ['pending', 'in_progress'].contains('${r['status']}')) { waiting += rest; } else { closed += rest; }
+                      }
                       return ListView.builder(
                         padding: const EdgeInsets.fromLTRB(12, 0, 12, 90),
                         itemCount: shown.length + 1,
                         itemBuilder: (_, i) => i == 0
-                            ? Padding(padding: const EdgeInsets.only(bottom: 6), child: Row(children: [
-                                Expanded(child: Text(tr('${shown.length} طلب · ${fmtNum(asked)} شاحنة مطلوبة · $placed أُسندت', '${shown.length} requests · ${fmtNum(asked)} trucks · $placed placed'),
-                                    style: const TextStyle(fontSize: 12, color: T.inkSoft, fontWeight: FontWeight.w600))),
+                            ? Padding(padding: const EdgeInsets.only(bottom: 6), child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+                                Wrap(spacing: 6, runSpacing: 6, children: [
+                                  _tile(tr('طلبات', 'Requests'), shown.length, T.orange),
+                                  _tile(tr('شاحنات مطلوبة', 'Trucks asked'), asked, T.warn),
+                                  _tile(tr('نُفِّذت (أوامر نقل)', 'Done (orders)'), placed, T.success),
+                                  _tile(tr('رُفضت أو سُحبت', 'Rejected or withdrawn'), closed, T.danger),
+                                  _tile(tr('لم تُنفَّذ بعد', 'Not done yet'), waiting, T.warn),
+                                ]),
                                 if (_filterCount > 0)
-                                  TextButton(onPressed: () { setState(() { _flt.clear(); _from = ''; _to = ''; }); _load(); }, child: Text(tr('مسح الفلاتر ($_filterCount)', 'Clear filters ($_filterCount)'))),
+                                  Align(alignment: AlignmentDirectional.centerEnd, child: TextButton(onPressed: () { setState(() { _flt.clear(); _from = ''; _to = ''; }); _load(); }, child: Text(tr('مسح الفلاتر ($_filterCount)', 'Clear filters ($_filterCount)')))),
                               ]))
                             : _view == 'list' ? _row(shown[i - 1]) : _card(shown[i - 1]),
                       );
@@ -818,6 +843,31 @@ class _ShipmentRequestsScreenState extends State<ShipmentRequestsScreen> {
       ]),
     );
   }
+
+  /// Riyadh calendar day, `back` days ago, as YYYY-MM-DD.
+  String _rDay([int back = 0]) {
+    final d = DateTime.now().toUtc().add(const Duration(hours: 3)).subtract(Duration(days: back));
+    return '${d.year.toString().padLeft(4, '0')}-${d.month.toString().padLeft(2, '0')}-${d.day.toString().padLeft(2, '0')}';
+  }
+
+  List<(String, String, String)> _quickDays() {
+    final today = _rDay();
+    return [
+      (tr('اليوم', 'Today'), today, today),
+      (tr('أمس', 'Yesterday'), _rDay(1), _rDay(1)),
+      (tr('آخر 7 أيام', 'Last 7 days'), _rDay(6), today),
+      (tr('هذا الشهر', 'This month'), '${today.substring(0, 8)}01', today),
+    ];
+  }
+
+  Widget _tile(String label, num value, Color color) => Container(
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+        decoration: BoxDecoration(color: color.withValues(alpha: 0.08), borderRadius: BorderRadius.circular(10), border: Border.all(color: color.withValues(alpha: 0.25))),
+        child: Column(crossAxisAlignment: CrossAxisAlignment.start, mainAxisSize: MainAxisSize.min, children: [
+          Text(label, style: const TextStyle(fontSize: 10.5, color: T.inkSoft, fontWeight: FontWeight.w600)),
+          Text(fmtNum(value), style: TextStyle(fontSize: 15, fontWeight: FontWeight.w800, color: color)),
+        ]),
+      );
 
   Widget _card(Map<String, dynamic> r) {
     final placed = (r['placed'] as List?)?.length ?? 0;

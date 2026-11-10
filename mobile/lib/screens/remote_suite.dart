@@ -119,7 +119,7 @@ class _RemoteLeavesScreenState extends State<RemoteLeavesScreen> {
           final v = await showDatePicker(
             context: c,
             initialDate: isStart ? start : end,
-            firstDate: isStart ? _earliestLeaveStart(type) : start,
+            firstDate: isStart ? DateTime.now().subtract(const Duration(days: 365)) : start,
             lastDate: DateTime.now().add(const Duration(days: 730)),
           );
           if (v != null) setS(() { if (isStart) { start = v; if (end.isBefore(v)) end = v; } else { end = v; } });
@@ -139,7 +139,8 @@ class _RemoteLeavesScreenState extends State<RemoteLeavesScreen> {
                   type = v ?? type;
                   // A planned type must not inherit a date that breaks the rule.
                   final min = _earliestLeaveStart(type);
-                  if (start.isBefore(min)) { start = min; end = min; }
+                  final n = DateTime.now();
+                  if (!start.isBefore(DateTime(n.year, n.month, n.day)) && start.isBefore(min)) { start = min; end = min; }
                 }),
               ),
               const SizedBox(height: 4),
@@ -169,7 +170,9 @@ class _RemoteLeavesScreenState extends State<RemoteLeavesScreen> {
                   onPressed: () async {
                     if (end.isBefore(start)) { setS(() => err = tr('تاريخ النهاية قبل البداية', 'End date is before start date')); return; }
                     final min = _earliestLeaveStart(type);
-                    if (start.isBefore(min)) {
+                    final now = DateTime.now();
+                    // A past start records a leave already taken; only an upcoming date inside the notice window is refused.
+                    if (!start.isBefore(DateTime(now.year, now.month, now.day)) && start.isBefore(min)) {
                       setS(() => err = tr('يجب تقديم هذا الطلب قبل موعد بدايته بـ $_leaveNoticeDays يومًا على الأقل (أقرب بداية ${fmt(min)}). الطارئة والمرضية معفاة.',
                           'This request must be filed at least $_leaveNoticeDays days before it starts (earliest ${fmt(min)}). Emergency and sick leave are exempt.'));
                       return;

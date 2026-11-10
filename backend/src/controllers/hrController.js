@@ -1454,12 +1454,15 @@ const evaluateAdvanceNotice = (leaveType, startDate) => {
   const required = leaveType.requiresAdvanceNotice !== false;
   const requiredDays = required ? Number(leaveType.minAdvanceDays ?? 30) : 0;
   const daysAhead = daysUntil(startDate);
-  const satisfied = !required || daysAhead >= requiredDays;
+  // A start date in the past records a leave already taken (owner, 2026-11-10): notice cannot apply to it.
+  const retroactive = daysAhead < 0;
+  const satisfied = !required || retroactive || daysAhead >= requiredDays;
   return {
     required,
     requiredDays,
     daysAhead,
     satisfied,
+    retroactive,
     message: satisfied ? '' : `يجب تقديم طلب «${leaveType.nameAr}» قبل موعد بدايتها بـ ${requiredDays} يومًا على الأقل. `
       + `تاريخ البداية المطلوب بعد ${daysAhead} يوم فقط. `
       + `الإجازات الطارئة والمرضية معفاة من هذه القاعدة.`

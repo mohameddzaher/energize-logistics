@@ -210,7 +210,8 @@ exports.createLeave = async (req, res) => {
       const daysAhead = Math.round(
         (Date.parse(`${String(startDate).slice(0, 10)}T00:00:00Z`) - Date.parse(`${today}T00:00:00Z`)) / 86400000
       );
-      if (daysAhead < LEAVE_ADVANCE_NOTICE_DAYS) {
+      // A past start date records a leave already taken: notice does not apply.
+      if (daysAhead >= 0 && daysAhead < LEAVE_ADVANCE_NOTICE_DAYS) {
         return res.status(400).json({
           code: 'ADVANCE_NOTICE_REQUIRED',
           policy: { requiredDays: LEAVE_ADVANCE_NOTICE_DAYS, daysAhead, leaveType: kind },

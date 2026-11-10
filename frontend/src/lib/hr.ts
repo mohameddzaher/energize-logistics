@@ -95,8 +95,8 @@ export interface LeaveType {
   minAdvanceDays?: number;
 }
 
-// The earliest start date a given leave type may be requested for, as YYYY-MM-DD.
-// Types exempt from the notice rule can start today.
+// The earliest FUTURE start date a given leave type may be requested for, as YYYY-MM-DD.
+// Past dates are always allowed (a leave already taken is recorded); see noticeBlocks.
 export function earliestStartDate(t?: LeaveType | null): string {
   if (!t || t.requiresAdvanceNotice === false) return today();
   const days = t.minAdvanceDays ?? 30;
@@ -105,6 +105,10 @@ export function earliestStartDate(t?: LeaveType | null): string {
   return d.toISOString().slice(0, 10);
 }
 
+
+/** True when a start date breaks the notice rule: today or later but before the earliest allowed day. Past dates never do. */
+export const noticeBlocks = (t: LeaveType | null | undefined, start: string) =>
+  !!(t && start && start >= today() && start < earliestStartDate(t));
 
 export interface LeaveBalance { entitlement: number; daysElapsed: number; accrued: number; taken: number; available: number; }
 

@@ -7,7 +7,7 @@ import { useSocket } from '@/hooks/useSocket';
 import api from '@/lib/api';
 import { CalendarDays, Plus, Check, X, XCircle, AlertTriangle, ShieldCheck, Pencil, Trash2, HelpCircle, Eye, Send, FileDown } from 'lucide-react';
 import { downloadLeaveSheet } from '@/lib/leavePdf';
-import { LeaveRequest, LeaveType, LeaveBalance, LEAVE_STATUS, empName, userName, leaveTypeLabel, today, earliestStartDate, daysUntil, LEAVE_OPEN, leaveUntouched, leaveStatusStyle, leaveWaitNote, countLeaveDays, fridaysNote, seesLeaveProcess } from '@/lib/hr';
+import { LeaveRequest, LeaveType, LeaveBalance, LEAVE_STATUS, empName, userName, leaveTypeLabel, today, earliestStartDate, noticeBlocks, daysUntil, LEAVE_OPEN, leaveUntouched, leaveStatusStyle, leaveWaitNote, countLeaveDays, fridaysNote, seesLeaveProcess } from '@/lib/hr';
 import DatePair from '@/components/hr/DatePair';
 import { bothPeriod, gregCell, hijriCell, pairLabels, exportDatePair } from '@/lib/hrDates';
 import { Spinner, PageHeader, PrimaryButton, Badge, Modal, Field, Select, TextArea, Tabs, StatCard, Pick, Loader2, SearchableSelect } from '@/components/hr/HRKit';
@@ -152,7 +152,7 @@ export default function MyLeavesPage() {
   const chosenType = types.find((t) => t._id === form.leaveType) || null;
   const minStart = earliestStartDate(chosenType);
   const noticeDays = chosenType?.requiresAdvanceNotice === false ? 0 : (chosenType?.minAdvanceDays ?? 30);
-  const noticeViolated = !!(chosenType && noticeDays > 0 && form.startDate && form.startDate < minStart);
+  const noticeViolated = noticeDays > 0 && noticeBlocks(chosenType, form.startDate);
 
   // While pending, it belongs to its owner. The employee may get a date wrong, and the only fix was to cancel and rewrite, so the manager saw two requests. The door closes as soon as any decision is made: approving one date and then changing it would approve one thing and approve another.
   const [editing, setEditing] = useState<LeaveRequest | null>(null);
@@ -440,14 +440,13 @@ export default function MyLeavesPage() {
               onChange={(e) => {
                 const id = e.target.value;
                 const t = types.find((x) => x._id === id) || null;
-                const min = earliestStartDate(t);
-                // Switching to a type with a longer notice must not silently keep
-                // an illegal date sitting in the form.
+                // Switching to a type with a longer notice must not keep an illegal future date in the form; a past date stays.
+                const bad = noticeBlocks(t, form.startDate);
                 setForm((f) => ({
                   ...f,
                   leaveType: id,
-                  startDate: f.startDate && f.startDate < min ? '' : f.startDate,
-                  endDate: f.startDate && f.startDate < min ? '' : f.endDate,
+                  startDate: bad ? '' : f.startDate,
+                  endDate: bad ? '' : f.endDate,
                 }));
               }}
             >
@@ -468,8 +467,8 @@ export default function MyLeavesPage() {
                 <AlertTriangle className="w-4 h-4 shrink-0 mt-0.5" />
                 <span>
                   {ar
-                    ? `هذه الإجازة تحتاج إخطارًا مسبقًا ${noticeDays} يومًا — أقرب تاريخ بداية متاح ${minStart}.`
-                    : `This leave needs ${noticeDays} days' notice — the earliest start date available is ${minStart}.`}
+                    ? `هذه الإجازة تحتاج إخطارًا مسبقًا ${noticeDays} يومًا — أقرب تاريخ بداية قادم ${minStart}، ويجوز تاريخٌ سابق لإجازةٍ أُخذت بالفعل.`
+                    : `This leave needs ${noticeDays} days' notice — the earliest upcoming start is ${minStart}; a past date is allowed for leave already taken.`}
                 </span>
               </div>
             ) : (
@@ -486,9 +485,9 @@ export default function MyLeavesPage() {
 
           <div className="grid grid-cols-2 gap-3">
             {/* Two cells per date: Gregorian then Hijri. The minimum applies to both together, otherwise a date under the notice period could be entered in Hijri and pass. */}
-            <DatePair label={`${FROM_LABEL} *`} ar={ar} value={form.startDate} min={minStart} disabled={!form.leaveType}
+            <DatePair label={`${FROM_LABEL} *`} ar={ar} value={form.startDate} disabled={!form.leaveType}
               onChange={(v) => setForm((f) => ({ ...f, startDate: v }))} />
-            <DatePair label={`${TO_LABEL} *`} ar={ar} value={form.endDate} min={form.startDate || minStart} disabled={!form.startDate}
+            <DatePair label={`${TO_LABEL} *`} ar={ar} value={form.endDate} min={form.startDate || undefined} disabled={!form.startDate}
               onChange={(v) => setForm((f) => ({ ...f, endDate: v }))} />
           </div>
           <DaysPreview start={form.startDate} end={form.endDate} countFridays={chosenType?.countsFridays === true} ar={ar} />
@@ -616,8 +615,8 @@ export default function MyLeavesPage() {
           <Field label={tx.leaveTypeRequired}>
             <Select value={teamForm.leaveType} onChange={(e) => {
               const id = e.target.value;
-              const min = earliestStartDate(types.find((x) => x._id === id) || null);
-              setTeamForm((f) => ({ ...f, leaveType: id, startDate: f.startDate && f.startDate < min ? '' : f.startDate, endDate: f.startDate && f.startDate < min ? '' : f.endDate }));
+              const bad = noticeBlocks(types.find((x) => x._id === id) || null, teamForm.startDate);
+              setTeamForm((f) => ({ ...f, leaveType: id, startDate: bad ? '' : f.startDate, endDate: bad ? '' : f.endDate }));
             }}>
               <option value="">—</option>
               {types.map((t) => (
@@ -629,9 +628,9 @@ export default function MyLeavesPage() {
             </Select>
           </Field>
           <div className="grid grid-cols-2 gap-3">
-            <DatePair label={`${FROM_LABEL} *`} ar={ar} value={teamForm.startDate} min={teamMinStart} disabled={!teamForm.leaveType}
+            <DatePair label={`${FROM_LABEL} *`} ar={ar} value={teamForm.startDate} disabled={!teamForm.leaveType}
               onChange={(v) => setTeamForm((f) => ({ ...f, startDate: v }))} />
-            <DatePair label={`${TO_LABEL} *`} ar={ar} value={teamForm.endDate} min={teamForm.startDate || teamMinStart} disabled={!teamForm.startDate}
+            <DatePair label={`${TO_LABEL} *`} ar={ar} value={teamForm.endDate} min={teamForm.startDate || undefined} disabled={!teamForm.startDate}
               onChange={(v) => setTeamForm((f) => ({ ...f, endDate: v }))} />
           </div>
           <DaysPreview start={teamForm.startDate} end={teamForm.endDate} countFridays={teamType?.countsFridays === true} ar={ar} />

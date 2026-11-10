@@ -66,7 +66,8 @@ export default function RemoteLeavePage() {
     setErr('');
     if (endDate < startDate) { setErr(tx.endBeforeStart); return; }
     const minStart = earliestLeaveStart(type);
-    if (startDate < minStart) {
+    // A past date records a leave already taken; only an upcoming date inside the notice window is refused.
+    if (startDate >= cairoToday() && startDate < minStart) {
       setErr(ar
         ? `يجب تقديم هذا الطلب قبل موعد بدايته بـ ${LEAVE_ADVANCE_NOTICE_DAYS} يومًا على الأقل (أقرب بداية ${minStart}). الطارئة والمرضية معفاة.`
         : `This request must be filed at least ${LEAVE_ADVANCE_NOTICE_DAYS} days before it starts (earliest ${minStart}). Emergency and sick leave are exempt.`);
@@ -179,7 +180,7 @@ export default function RemoteLeavePage() {
                     setType(k);
                     // A planned type must not inherit a date that breaks the rule.
                     const min = earliestLeaveStart(k);
-                    if (startDate < min) { setStartDate(min); setEndDate(min); }
+                    if (startDate >= cairoToday() && startDate < min) { setStartDate(min); setEndDate(min); }
                   }}
                   className="w-full px-3 py-2.5 rounded-lg bg-slate-50 border border-slate-200 text-slate-900 text-sm"
                 >
@@ -198,11 +199,11 @@ export default function RemoteLeavePage() {
               <div className="grid grid-cols-2 gap-3">
                 <div>
                   <label className="block text-slate-700 text-sm mb-1.5">{tx.from}</label>
-                  <input aria-label={tx.from} type="date" min={earliestLeaveStart(type)} value={startDate} onChange={(e) => setStartDate(e.target.value)} className="w-full px-3 py-2.5 rounded-lg bg-slate-50 border border-slate-200 text-slate-900 text-sm" required />
+                  <input aria-label={tx.from} type="date" value={startDate} onChange={(e) => setStartDate(e.target.value)} className="w-full px-3 py-2.5 rounded-lg bg-slate-50 border border-slate-200 text-slate-900 text-sm" required />
                 </div>
                 <div>
                   <label className="block text-slate-700 text-sm mb-1.5">{tx.to}</label>
-                  <input aria-label={tx.to} type="date" min={startDate || earliestLeaveStart(type)} value={endDate} onChange={(e) => setEndDate(e.target.value)} className="w-full px-3 py-2.5 rounded-lg bg-slate-50 border border-slate-200 text-slate-900 text-sm" required />
+                  <input aria-label={tx.to} type="date" min={startDate || undefined} value={endDate} onChange={(e) => setEndDate(e.target.value)} className="w-full px-3 py-2.5 rounded-lg bg-slate-50 border border-slate-200 text-slate-900 text-sm" required />
                 </div>
               </div>
               <div>

@@ -514,7 +514,9 @@ class _NewLeaveSheetState extends State<_NewLeaveSheet> {
     return _needsNotice ? today.add(Duration(days: _noticeDays)) : today;
   }
 
-  bool get _noticeViolated => _start != null && _start!.isBefore(_minStart);
+  DateTime get _today { final n = DateTime.now(); return DateTime(n.year, n.month, n.day); }
+  // A past start records a leave already taken: only an upcoming date inside the notice window breaks the rule.
+  bool get _noticeViolated => _start != null && !_start!.isBefore(_today) && _start!.isBefore(_minStart);
 
   Future<void> _save() async {
     if (_type.isEmpty || _start == null || _end == null || _busy) return;
@@ -561,14 +563,14 @@ class _NewLeaveSheetState extends State<_NewLeaveSheet> {
   }
 
   Future<DateTime?> _pick(DateTime? initial) {
-    final min = _minStart;
-    final seed = (initial != null && !initial.isBefore(min)) ? initial : min;
+    // Past dates are open (leave already taken); the notice rule is checked on save for upcoming dates.
+    final now = DateTime.now();
+    final first = DateTime(now.year - 1, now.month, now.day);
+    final seed = initial ?? _minStart;
     return showDatePicker(
       context: context,
-      initialDate: seed,
-      // The picker cannot even offer an illegal date — the rule is enforced by
-      // the calendar, not by an error message after the fact.
-      firstDate: min,
+      initialDate: seed.isBefore(first) ? first : seed,
+      firstDate: first,
       lastDate: DateTime.now().add(const Duration(days: 365)),
     );
   }
@@ -623,7 +625,7 @@ class _NewLeaveSheetState extends State<_NewLeaveSheet> {
               _type = v ?? '';
               // Switching to a type with a longer notice must clear a date that
               // is now illegal rather than silently keeping it.
-              if (_start != null && _start!.isBefore(_minStart)) { _start = null; _end = null; }
+              if (_noticeViolated) { _start = null; _end = null; }
             }),
           ),
           if (_type.isNotEmpty) ...[

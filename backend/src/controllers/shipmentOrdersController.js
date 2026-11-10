@@ -303,7 +303,8 @@ exports.getWaybillsPdf = async (req, res) => {
         row.plateNumber = v.plate || row.plateNumber;
         row.carBrand = v.brand || twin?.brand || '';
         row.carColor = v.color || twin?.color || '';
-        row.carType = v.truckType || row.carType || twin?.truckType || '';
+        // The type written on the order wins (it may be edited for this trip); the truck register only fills a blank.
+        row.carType = row.carType || v.truckType || twin?.truckType || '';
       }
       // The order's own copy first (what was typed for this shipment), then the driver register / HR file.
       const d = drvByName.get(String(o.driverName || '').trim());

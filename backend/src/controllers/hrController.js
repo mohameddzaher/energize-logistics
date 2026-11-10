@@ -1402,7 +1402,16 @@ exports.getLeaveSheet = async (req, res) => {
     const own = [leave.requester, leave.manager, leave.filedBy].some((x) => x && String(x._id || x) === uid);
     const desk = chain.isChairman(req.user) || chain.STAGES.some((st) => st !== 'manager' && chain.canActAt(st, req.user, leave));
     if (!own && !desk && !hrStaffReq(req)) return res.status(403).json({ message: 'Not allowed' });
-    const pdf = await require('../services/leaveSheet').renderLeaveSheet(leave, { fullView: chain.seesProcess(req.user) });
+    // Someone who signed a stage (or heads its box on the sheet) sees the signatures up to their stage while the request is open; the employee still sees it under review.
+    let signedUpTo = -1;
+    chain.STAGES.forEach((st, i) => {
+      const d = leave[chain.DECISION_FIELD[st]];
+      if (!d || !d.at || d.decision !== 'approved') return;
+      const byMe = String(d.by?._id || d.by || '') === uid;
+      const myBox = (st === 'finance' || st === 'hr') && req.user.leaveSheetSigner === st;
+      if (byMe || myBox) signedUpTo = i;
+    });
+    const pdf = await require('../services/leaveSheet').renderLeaveSheet(leave, { fullView: chain.seesProcess(req.user), signedUpTo });
     const who = (leave.employee?.employeeNumber || String(leave._id)).replace(/[^\w-]/g, '');
     res.setHeader('Content-Type', 'application/pdf');
     res.setHeader('Content-Disposition', `inline; filename="leave-${who}-${leave.startDate || ''}.pdf"`);

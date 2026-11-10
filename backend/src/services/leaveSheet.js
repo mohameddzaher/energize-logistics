@@ -78,14 +78,16 @@ const idOf = (x) => (x && typeof x === 'object' ? String(x._id || '') : String(x
  * The five signature boxes (the order on the page is sheetOrder): employee and direct manager, then finance, the general manager (final approval) and HR. The chairman left the chain on 2026-11-07, so he has no box.
  * A box is filled by the stage's approval only; a rejection or a question leaves it unsigned.
  * `fullView` false (the employee and staff outside the process) leaves the stage boxes of an open request empty, so the sheet does not tell where it stands.
+ * `signedUpTo`: for someone who signed a stage of this request (owner, 2026-11-10), the boxes up to and including their stage show even while it is open.
  */
-async function signatureBoxes(leave, { fullView = true } = {}) {
+async function signatureBoxes(leave, { fullView = true, signedUpTo = -1 } = {}) {
   // Filed by the manager for someone under him (owner's rule, 2026-11-07): the employee's box carries the employee's own saved signature when he has an account, else his name in its place; the manager signs only his own box.
   const filer = leave.filedByManager ? leave.filedBy : null;
   const empUser = idOf(leave.employee?.user);
   const employeeSigner = filer ? empUser : leave.requester;
   const hidden = !fullView && leave.status !== 'approved';
-  const decided = (f) => (!hidden && leave[f] && leave[f].at && leave[f].decision === 'approved' ? leave[f] : null);
+  const shownStage = (f) => !hidden || chain.STAGES.indexOf(Object.keys(chain.DECISION_FIELD).find((k) => chain.DECISION_FIELD[k] === f)) <= signedUpTo;
+  const decided = (f) => (shownStage(f) && leave[f] && leave[f].at && leave[f].decision === 'approved' ? leave[f] : null);
   const [live, heads] = await Promise.all([
     liveSignatures([idOf(employeeSigner), ...Object.values(chain.DECISION_FIELD).map((f) => idOf(decided(f)?.by))]),
     boxSigners(),
@@ -162,7 +164,7 @@ function sigBox(b, top = false) {
   </div>`;
 }
 
-async function buildLeaveSheetHTML(leave, { fullView = true } = {}) {
+async function buildLeaveSheetHTML(leave, { fullView = true, signedUpTo = -1 } = {}) {
   const emp = leave.employee || {};
   const saudi = emp.idType === 'national_id';
   const idNumber = (saudi ? (emp.nationalId || emp.iqamaNumber) : (emp.iqamaNumber || emp.nationalId)) || '';
@@ -176,7 +178,7 @@ async function buildLeaveSheetHTML(leave, { fullView = true } = {}) {
     else { expiry = `${when}  —  متبقي ${left} يوم`; tone = left <= 60 ? 'warn' : ''; }
   }
   const type = leave.leaveType ? (leave.leaveType.nameAr || leave.leaveType.nameEn) : '';
-  const boxes = await signatureBoxes(leave, { fullView });
+  const boxes = await signatureBoxes(leave, { fullView, signedUpTo });
   const reg = await registerName(emp.registerNumber);
 
   return `<!DOCTYPE html>

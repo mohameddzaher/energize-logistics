@@ -3,6 +3,7 @@
 import { readUploadFiles, type UploadFile } from '@/lib/uploadFiles';
 import { useState, useEffect, useCallback, useRef, Suspense, useMemo } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
+import Link from 'next/link';
 import { useAuth } from '@/context/AuthContext';
 import { ContactButtons } from '@/components/crm/CrmKit';
 import { useLanguage } from '@/context/LanguageContext';
@@ -92,6 +93,8 @@ function ShipmentOrdersInner() {
   const [orders, setOrders] = useState<ShipmentOrder[]>([]);
   const [customers, setCustomers] = useState<OrderCustomer[]>([]);
   const [otherBranches, setOtherBranches] = useState<string[]>([]);
+  // The number searched is a fleet shipment or an operations report, not a shipment order.
+  const [elsewhere, setElsewhere] = useState<{ kind: 'fleet' | 'operations'; number: string; customerName?: string }[]>([]);
   const [stats, setStats] = useState<{ byStatus: Record<string, number>; sellTotal: number; buyTotal: number } | null>(null);
   // Which side of the price this reader sees, as the server decided (sales: selling only; vendors team: purchase only).
   const [pv, setPv] = useState<{ sell: boolean; buy: boolean }>({ sell: true, buy: true });
@@ -296,6 +299,7 @@ function ShipmentOrdersInner() {
       setStats(d.stats || null);
       if ((d as any).priceView) setPv((d as any).priceView);
       setOtherBranches((d as any).otherBranches || []);
+      setElsewhere((d as any).elsewhere || []);
       setError('');
     } catch (e: any) { setError(e?.message || 'Request failed'); }
     setLoading(false);
@@ -736,7 +740,20 @@ function ShipmentOrdersInner() {
           <tbody>
             {orders.length === 0 ? (
               <tr><td colSpan={shownHeads.length + 1} className="text-center text-slate-500 py-14">
-                {otherBranches.length
+                {elsewhere.length ? (
+                  <span className="inline-flex flex-col items-center gap-2">
+                    <span className="font-semibold text-slate-700">
+                      {elsewhere.some((x) => x.kind === 'fleet')
+                        ? (ar ? `الرقم ${elsewhere[0].number} ليس طلبَ شحنة؛ هو شحنةٌ من «إدارة الأسطول»${elsewhere.find((x) => x.customerName)?.customerName ? ` للعميل ${elsewhere.find((x) => x.customerName)!.customerName}` : ''}.` : `${elsewhere[0].number} is not a shipment order; it is a fleet shipment.`)
+                        : (ar ? `الرقم ${elsewhere[0].number} ليس طلبَ شحنة؛ هو تقريرٌ في «سير عمل التشغيل».` : `${elsewhere[0].number} is not a shipment order; it is an operations report.`)}
+                    </span>
+                    {elsewhere.some((x) => x.kind === 'operations') && (
+                      <Link href={`/system/operations?search=${encodeURIComponent(elsewhere[0].number)}`} className="rounded-lg bg-[#f37121] px-3 py-1.5 text-[12.5px] font-bold text-white hover:bg-[#e06010]">
+                        {ar ? 'فتحه في «سير عمل التشغيل»' : 'Open in operations workflow'}
+                      </Link>
+                    )}
+                  </span>
+                ) : otherBranches.length
                   ? (ar ? `موجودة في فرع غير مفتوح لك: ${otherBranches.join('، ')}` : `Found in a branch not open to you: ${otherBranches.join(', ')}`)
                   : (ar ? 'لا توجد شحنات بعد — ابدأ من زر «إنشاء شحنة».' : 'No shipments yet — start with “Create shipment”.')}
               </td></tr>

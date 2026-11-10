@@ -234,8 +234,13 @@ export default function OperationsWorkflowPage() {
   const [pageSize, setPageSize] = useState<number>(() => readPageSize('ops:pageSize'));
   const changePageSize = (n: number) => { setPageSize(n); setPage(1); savePageSize('ops:pageSize', n); };
   const [stageFilter, setStageFilter] = useState('');
+  // `?search=` opens the page already searched (a link from another page, e.g. a number that is not a shipment order).
   const [search, setSearch] = useState('');
   const [searchInput, setSearchInput] = useState('');
+  useEffect(() => {
+    const q = new URLSearchParams(window.location.search).get('search');
+    if (q) { setSearch(q); setSearchInput(q); }
+  }, []);
   const [dateFrom, setDateFrom] = useState('');
   const [dateTo, setDateTo] = useState('');
   // Three period modes

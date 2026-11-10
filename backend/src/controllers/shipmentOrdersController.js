@@ -569,6 +569,18 @@ exports.listOrders = async (req, res) => {
       otherBranches = (await ShipmentOrder.distinct('branch', open)).filter(Boolean).slice(0, 5);
     }
 
+    // A number that is not a shipment order but a fleet shipment or an operations report: say where it is, so a search on this page is not read as "it does not exist".
+    let elsewhere = [];
+    const qNum = String(q || '').trim().replace(/[٠-٩]/g, (d) => '٠١٢٣٤٥٦٧٨٩'.indexOf(d));
+    if (!total && /^\d{3,9}$/.test(qNum)) {
+      const [fleet, report] = await Promise.all([
+        mongoose.connection.db.collection('fleetshipments').findOne({ waybillNumber: Number(qNum) }, { projection: { _id: 1, customerName: 1 } }),
+        mongoose.connection.db.collection('operationsworkflows').findOne({ reportNumber: qNum }, { projection: { _id: 1, fleetShipment: 1 } }),
+      ]);
+      if (fleet) elsewhere.push({ kind: 'fleet', number: qNum, customerName: fleet.customerName || '' });
+      if (report) elsewhere.push({ kind: 'operations', number: qNum });
+    }
+
     const byStatus = {};
     statusAgg.forEach((r) => { byStatus[r._id] = r.n; });
 
@@ -588,6 +600,7 @@ exports.listOrders = async (req, res) => {
       orders: PV.stripOrderPrices(req.user, orders),
       total,
       otherBranches,
+      elsewhere,
       priceView: pv,
       stats: {
         byStatus,

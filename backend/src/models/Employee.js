@@ -68,7 +68,7 @@ const employeeSchema = new mongoose.Schema(
      * Not working means service ended, in one of three states: transfer_pending (awaiting sponsorship transfer; HR alerted daily for a month, then archived), sister_company, final_exit.
      * See utils/hrEngagement (TERMINATION_KINDS) and jobs/hrTransferAlerts.
      */
-    terminationKind: { type: String, enum: ['transfer_pending', 'sister_company', 'final_exit', ''], default: '' },
+    terminationKind: { type: String, enum: ['transfer_pending', 'sister_company', 'final_exit', 'saudi_end', ''], default: '' },
     transferDeadline: { type: Date, default: null },
     // Sister company is a work status, not a termination: a current employee on our sponsorship working for a sister company, treated as a normal employee in every section. See utils/hrEngagement.
     sisterCompany: { type: Boolean, default: false, index: true },

@@ -222,12 +222,15 @@ class _HrDashboardScreenState extends State<HrDashboardScreen> {
                         _halfCard(tr('لا يعمل — خروج نهائي', 'Not working — final exit'), mt['finalExit'], mt, 'finalExit', T.danger,
                             onTap: () => _drill({'employment': 'final_exit'}), onHalf: (k) => _drill({'employment': 'final_exit', 'engagement': k})),
                         const SizedBox(height: 8),
+                        _halfCard(tr('لا يعمل — نهاية خدمة (سعودي)', 'Not working — end of service (Saudi)'), mt['saudiEnd'], mt, 'saudiEnd', T.violet,
+                            onTap: () => _drill({'employment': 'saudi_end'}), onHalf: (k) => _drill({'employment': 'saudi_end', 'engagement': k})),
+                        const SizedBox(height: 8),
                         _halfCard(tr('شركة شقيقة', 'Sister company'), mt['sister'], mt, 'sister', T.cyan,
                             onTap: () => _drill({'employment': 'sister'}), onHalf: (k) => _drill({'employment': 'sister', 'engagement': k})),
                         // The five parts sum to the total employees; stated explicitly.
                         Padding(
                           padding: const EdgeInsets.only(top: 4),
-                          child: Text(tr('المجموع ${((mt['active'] ?? 0) as num) + ((mt['noKind'] ?? 0) as num) + ((mt['transfer'] ?? 0) as num) + ((mt['finalExit'] ?? 0) as num) + ((mt['sister'] ?? 0) as num)} = إجمالي الموظفين ${mt['employees'] ?? 0}',
+                          child: Text(tr('المجموع ${((mt['active'] ?? 0) as num) + ((mt['noKind'] ?? 0) as num) + ((mt['transfer'] ?? 0) as num) + ((mt['finalExit'] ?? 0) as num) + ((mt['saudiEnd'] ?? 0) as num) + ((mt['sister'] ?? 0) as num)} = إجمالي الموظفين ${mt['employees'] ?? 0}',
                               'Sum = total employees ${mt['employees'] ?? 0}'), style: const TextStyle(fontSize: 11, color: T.inkFaint)),
                         ),
                         const Divider(height: 20),

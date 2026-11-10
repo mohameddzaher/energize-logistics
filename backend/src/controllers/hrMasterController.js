@@ -139,8 +139,9 @@ function buildFilter(q) {
   if (employment === 'sister') f.$and.push({ employmentStatus: { $ne: 'terminated' }, sisterCompany: true });
   if (employment === 'transfer') f.$and.push({ employmentStatus: 'terminated', terminationKind: 'transfer_pending' });
   if (employment === 'final_exit') f.$and.push({ employmentStatus: 'terminated', terminationKind: 'final_exit' });
+  if (employment === 'saudi_end') f.$and.push({ employmentStatus: 'terminated', terminationKind: 'saudi_end' });
   // Not working inside the system with no specific state (and the old suspended state with it) - the rest of not-working.
-  if (employment === 'nokind') f.$and.push({ $or: [{ employmentStatus: 'terminated', terminationKind: { $nin: ['transfer_pending', 'final_exit'] } }, { employmentStatus: 'suspended' }] });
+  if (employment === 'nokind') f.$and.push({ $or: [{ employmentStatus: 'terminated', terminationKind: { $nin: ['transfer_pending', 'final_exit', 'saudi_end'] } }, { employmentStatus: 'suspended' }] });
   // On the workforce is not the same as on duty. Someone on leave or suspended is not on duty today but is a current employee whose residency and license are renewed. `inactive` groups him with those whose service ended, so it cannot answer 'whose documents are followed?'. This value does: everyone whose service has not ended. See EXPIRY_SCOPE.
   if (employment === 'current') f.employmentStatus = { $ne: 'terminated' };
   if (employment === 'terminated') f.employmentStatus = 'terminated';
@@ -503,8 +504,9 @@ exports.overview = async (req, res) => {
         onDuty: { $and: [{ $in: ['$employmentStatus', ['active', 'on_leave']] }, { $ne: ['$sisterCompany', true] }] },
         sister: { $and: [{ $ne: ['$employmentStatus', 'terminated'] }, { $eq: ['$sisterCompany', true] }] },
         finalExit: { $and: [{ $eq: ['$employmentStatus', 'terminated'] }, { $eq: ['$terminationKind', 'final_exit'] }] },
+        saudiEnd: { $and: [{ $eq: ['$employmentStatus', 'terminated'] }, { $eq: ['$terminationKind', 'saudi_end'] }] },
         noKind: { $or: [
-          { $and: [{ $eq: ['$employmentStatus', 'terminated'] }, { $not: [{ $in: [{ $ifNull: ['$terminationKind', ''] }, ['transfer_pending', 'final_exit']] }] }] },
+          { $and: [{ $eq: ['$employmentStatus', 'terminated'] }, { $not: [{ $in: [{ $ifNull: ['$terminationKind', ''] }, ['transfer_pending', 'final_exit', 'saudi_end']] }] }] },
           { $eq: ['$employmentStatus', 'suspended'] },
         ] },
         notActive: { $in: ['$employmentStatus', ['terminated', 'suspended']] },
@@ -603,13 +605,14 @@ exports.overview = async (req, res) => {
       // Not working inside the system (waiting to exit) in both states; the archive has its own card.
       transfer: sums.transfer,
       finalExit: sums.finalExit,
+      saudiEnd: sums.saudiEnd,
       noKind: sums.noKind,
       sister: sums.sister,
       archived: archived.all,
       halves: {
         employees: halfOf('all'), active: halfOf('onDuty'), notActive: halfOf('notActive'),
         transfer: halfOf('transfer'), outsideKingdom: halfOf('outsideKingdom'), gosiRegistered: halfOf('gosiRegistered'),
-        finalExit: halfOf('finalExit'), sister: halfOf('sister'), noKind: halfOf('noKind'),
+        finalExit: halfOf('finalExit'), saudiEnd: halfOf('saudiEnd'), sister: halfOf('sister'), noKind: halfOf('noKind'),
         archived: { sponsored: archived.all__s || 0, freelance: archived.all__f || 0 },
         required: { sponsored: requiredOf(reqS), freelance: requiredOf(reqF, 'contract') },
         expiringSoon: { sponsored: attentionOf(stS), freelance: attentionOf(stF, 'contract') },

@@ -40,7 +40,7 @@ export interface Employee {
   employmentStatus?: 'active' | 'on_leave' | 'suspended' | 'terminated';
   terminatedAt?: string; terminationReason?: string;
   /** Not working, with the status: awaiting sponsorship transfer, sister company, or final exit. */
-  terminationKind?: '' | 'transfer_pending' | 'sister_company' | 'final_exit';
+  terminationKind?: '' | 'transfer_pending' | 'sister_company' | 'final_exit' | 'saudi_end';
   transferDeadline?: string | null;
   phone?: string; email?: string; address?: string; emergencyContactName?: string; emergencyContactPhone?: string;
   basicSalary?: number; allowances?: number;

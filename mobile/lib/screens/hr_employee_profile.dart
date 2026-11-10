@@ -328,6 +328,7 @@ class _HrEmployeeProfileScreenState extends State<HrEmployeeProfileScreen> {
     const kinds = [
       ('transfer_pending', 'انتظار نقل الكفالة', 'Awaiting sponsorship transfer'),
       ('final_exit', 'خروج نهائي', 'Final exit'),
+      ('saudi_end', 'نهاية خدمة (سعودي)', 'End of service (Saudi)'),
     ];
     final ok = await showDialog<bool>(
       context: context,

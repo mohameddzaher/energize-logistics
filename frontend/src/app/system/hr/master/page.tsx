@@ -213,13 +213,16 @@ function HrMasterInner() {
         <Big label={t('لا يعمل — خروج نهائي', 'Not working — final exit')} value={d.totals.finalExit ?? 0} c="#b91c1c"
           halves={H('finalExit')} onHalf={(k) => drill({ employment: 'final_exit', engagement: k })} ar={ar}
           onClick={() => drill({ employment: 'final_exit' })} />
+        <Big label={t('لا يعمل — نهاية خدمة (سعودي)', 'Not working — end of service (Saudi)')} value={d.totals.saudiEnd ?? 0} c="#7c3aed"
+          halves={H('saudiEnd')} onHalf={(k) => drill({ employment: 'saudi_end', engagement: k })} ar={ar}
+          onClick={() => drill({ employment: 'saudi_end' })} />
         <Big label={t('شركة شقيقة', 'Sister company')} value={d.totals.sister ?? 0} c="#0d9488"
           halves={H('sister')} onHalf={(k) => drill({ employment: 'sister', engagement: k })} ar={ar}
           onClick={() => drill({ employment: 'sister' })} />
       </div>
       {/* The total is stated explicitly so nobody sums by eye. */}
       {(() => {
-        const sum = (d.totals.active || 0) + (d.totals.noKind || 0) + (d.totals.transfer || 0) + (d.totals.finalExit || 0) + (d.totals.sister || 0);
+        const sum = (d.totals.active || 0) + (d.totals.noKind || 0) + (d.totals.transfer || 0) + (d.totals.finalExit || 0) + (d.totals.saudiEnd || 0) + (d.totals.sister || 0);
         return (
           <p className={`-mt-1 text-[11px] ${sum === d.totals.employees ? 'text-slate-400' : 'font-semibold text-red-600'}`}>
             {t(`المجموع ${sum} = إجمالي الموظفين ${d.totals.employees}`, `Sum ${sum} = total employees ${d.totals.employees}`)}

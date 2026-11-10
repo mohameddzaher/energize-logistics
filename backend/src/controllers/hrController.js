@@ -732,7 +732,7 @@ exports.terminateEmployee = async (req, res) => {
     const kind = String(req.body.kind || '');
     const archivesNow = ENG.archivesOnTermination(employee);
     if (!archivesNow && !ENG.TERMINATION_KINDS[kind]) {
-      return res.status(400).json({ code: 'KIND_REQUIRED', message: 'اختر حالة «لا يعمل»: انتظار نقل الكفالة، أو شركة شقيقة، أو خروج نهائي' });
+      return res.status(400).json({ code: 'KIND_REQUIRED', message: 'اختر حالة «لا يعمل»: انتظار نقل الكفالة، أو خروج نهائي، أو نهاية خدمة (سعودي)' });
     }
     const reason = req.body.reason || '';
     const when = req.body.date ? new Date(req.body.date) : new Date();
@@ -1114,7 +1114,7 @@ exports.terminateContract = async (req, res) => {
     const kind = String(req.body.kind || '');
     const archivesNow = empDoc ? ENG.archivesOnTermination(empDoc) : true;
     if (!archivesNow && !ENG.TERMINATION_KINDS[kind]) {
-      return res.status(400).json({ code: 'KIND_REQUIRED', message: 'فسخُ العقد يُنهي الخدمة — اختر حالة «لا يعمل»: انتظار نقل الكفالة، أو شركة شقيقة، أو خروج نهائي' });
+      return res.status(400).json({ code: 'KIND_REQUIRED', message: 'فسخُ العقد يُنهي الخدمة — اختر حالة «لا يعمل»: انتظار نقل الكفالة، أو خروج نهائي، أو نهاية خدمة (سعودي)' });
     }
 
     // Cancellation ends the contract as expired, with reason and date in their own fields.

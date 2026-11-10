@@ -333,7 +333,7 @@ class _ContractsListState extends State<_ContractsList> with AutomaticKeepAliveC
     final ok = await hrSheet(context, title: tr('إنهاء العقد والخدمة', 'End contract and service'), saveLabel: tr('تأكيد', 'Confirm'), body: (s, setS) => Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
       Text(tr('فسخُ العقد يُنهي خدمة الموظف («لا يعمل»). اختر حالته — ومَن هو خارج النظام أو فريلانسر ينتقل إلى الأرشيف فورًا ولا يحتاج حالة.',
           'Ending the contract ends the service ("not working"). Pick the status — anyone out of the system or freelance goes straight to the archive.'), style: const TextStyle(fontSize: 12, color: T.inkSoft)),
-      for (final k in const [('transfer_pending', 'انتظار نقل الكفالة', 'Awaiting sponsorship transfer'), ('final_exit', 'خروج نهائي', 'Final exit')])
+      for (final k in const [('transfer_pending', 'انتظار نقل الكفالة', 'Awaiting sponsorship transfer'), ('final_exit', 'خروج نهائي', 'Final exit'), ('saudi_end', 'نهاية خدمة (سعودي)', 'End of service (Saudi)')])
         ListTile(
           contentPadding: EdgeInsets.zero,
           leading: Icon(kind == k.$1 ? Icons.radio_button_checked : Icons.radio_button_off, color: kind == k.$1 ? T.danger : T.inkFaint),

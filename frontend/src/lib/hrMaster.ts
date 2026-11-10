@@ -32,7 +32,7 @@ export interface HrOverview {
   // employees/active/notActive are what the current filter shows; roster is the total employment file, shown beside it to show what it was cut from.
   totals: { employees: number; active: number; notActive: number; terminated?: number; roster: number; filtered: number; required: number; expiringSoon: number; expiringStates?: Record<string, number>; outsideKingdom: number; freelancers: number; cashPayroll: number; gosiRegistered: number;
     /** In the sponsorship-transfer stage (suspended) and the archive. */
-    transfer?: number; archived?: number; finalExit?: number; noKind?: number; sister?: number;
+    transfer?: number; archived?: number; finalExit?: number; saudiEnd?: number; noKind?: number; sister?: number;
     /** The two halves of each card: sponsored vs freelance, from the commercial registration number. */
     halves?: Record<string, { sponsored: number; freelance: number }>;
     onDutyDetail?: Record<'sponsored' | 'freelance', { working: number; leave: number }>;

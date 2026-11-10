@@ -49,6 +49,8 @@ const ENGAGEMENT_MATCH = {
 const TERMINATION_KINDS = {
   transfer_pending: { ar: 'انتظار نقل الكفالة', en: 'Awaiting sponsorship transfer' },
   final_exit: { ar: 'خروج نهائي', en: 'Final exit' },
+  // A Saudi citizen has no sponsor to transfer from and no final exit: his service simply ends (owner, 2026-11-10).
+  saudi_end: { ar: 'نهاية خدمة (سعودي)', en: 'End of service (Saudi)' },
 };
 const SISTER = 'شركة شقيقة';
 const TRANSFER_DAYS = 30;

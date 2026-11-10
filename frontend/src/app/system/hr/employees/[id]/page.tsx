@@ -932,6 +932,7 @@ function RenewModal({ open, employeeId, ar, onClose, onDone }: { open: boolean; 
 const TERMINATION_KINDS: { key: string; ar: string; en: string; hint: string; hintEn: string }[] = [
   { key: 'transfer_pending', ar: 'انتظار نقل الكفالة', en: 'Awaiting sponsorship transfer', hint: 'شهر واحد — وتنبيهاتٌ يومية لإخراجه من النظام', hintEn: 'One month — daily reminders to take him out of the system' },
   { key: 'final_exit', ar: 'خروج نهائي', en: 'Final exit', hint: '', hintEn: '' },
+  { key: 'saudi_end', ar: 'نهاية خدمة (سعودي)', en: 'End of service (Saudi)', hint: 'مواطن: لا كفالة تُنقل ولا خروج نهائي', hintEn: 'Citizen: no sponsorship to transfer and no final exit' },
 ];
 
 function TerminateModal({ open, employeeId, ar, onClose, onDone, archivesNow }: { open: boolean; employeeId: string; ar: boolean; onClose: () => void; onDone: () => void;

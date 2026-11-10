@@ -32,7 +32,12 @@ Widget srStatusChip(dynamic s, {bool vendors = false}) {
   var x = srStatuses['$s'] ?? ('$s', '$s', T.inkFaint);
   if (vendors && '$s' == 'pending') x = ('جديد', 'New', T.warn);
   if (vendors && '$s' == 'cancelled') x = ('سحبه فريق المبيعات', 'Withdrawn by sales', T.inkFaint);
-  return Chip2(tr(x.$1, x.$2), x.$3);
+  // Plain text with a small square marker: a work system, not coloured pills.
+  return Row(mainAxisSize: MainAxisSize.min, children: [
+    Container(width: 8, height: 8, decoration: BoxDecoration(color: x.$3, borderRadius: BorderRadius.circular(2))),
+    const SizedBox(width: 6),
+    Text(tr(x.$1, x.$2), style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: T.inkSoft)),
+  ]);
 }
 
 /// Where the vendors team stands on a request, one line for sales (twin of web `vendorProgress`): label, colour, 0..1.
@@ -40,7 +45,8 @@ Widget srStatusChip(dynamic s, {bool vendors = false}) {
   final n = (r['placed'] as List?)?.length ?? 0;
   final of = inum(r['trucks']).toInt();
   final pct = of > 0 ? n / of : 0.0;
-  final handler = '${r['handlerName'] ?? ''}';
+  // A Latin name inside an Arabic sentence is isolated (FSI…PDI) so the words keep their order.
+  final handler = '${r['handlerName'] ?? ''}'.isEmpty ? '' : '\u2068${r['handlerName']}\u2069';
   switch ('${r['status']}') {
     case 'completed': return (vendors ? tr('اكتمل ($n من $of)', 'Done ($n of $of)') : tr('أنجزها الموردون ($n من $of)', 'Done by vendors ($n of $of)'), T.success, 1.0);
     case 'in_progress': return (tr('جارٍ: أُسندت $n من $of', 'In progress: $n of $of'), T.info, pct);
@@ -882,7 +888,7 @@ class _ShipmentRequestsScreenState extends State<ShipmentRequestsScreen> {
         topAccent: (srStatuses['${r['status']}'] ?? ('', '', T.line)).$3,
         child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
           Row(children: [
-            Text('#${r['number']}', style: const TextStyle(fontWeight: FontWeight.w900, color: T.orange)),
+            Text('${r['number']}', style: const TextStyle(fontWeight: FontWeight.w900, color: T.ink)),
             const SizedBox(width: 8),
             Expanded(child: Text('${r['customerName'] ?? '—'}', style: const TextStyle(fontWeight: FontWeight.w800), overflow: TextOverflow.ellipsis)),
             srStatusChip(r['status'], vendors: widget.mode == 'place'),
@@ -921,7 +927,7 @@ extension on _ShipmentRequestsScreenState {
         decoration: const BoxDecoration(border: Border(bottom: BorderSide(color: T.line))),
         child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
           Row(children: [
-            Text('#${r['number']}', style: const TextStyle(fontWeight: FontWeight.w900, color: T.orange, fontSize: 13)),
+            Text('${r['number']}', style: const TextStyle(fontWeight: FontWeight.w900, color: T.ink, fontSize: 13)),
             const SizedBox(width: 6),
             Expanded(child: Text('${r['customerName'] ?? '—'}', style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 13), overflow: TextOverflow.ellipsis)),
             srStatusChip(r['status'], vendors: widget.mode == 'place'),
@@ -1069,7 +1075,7 @@ class _ShipmentRequestDetailScreenState extends State<ShipmentRequestDetailScree
     final ask = widget.mode == 'ask' && _can['ask'] == true;
     final place = widget.mode == 'place' && _can['place'] == true;
     return AppScaffold(
-      title: Text(r == null ? tr('طلب شحنة', 'Shipment request') : '${tr('طلب شحنة', 'Request')} #${r['number']}'),
+      title: Text(r == null ? tr('طلب شحنة', 'Shipment request') : '${tr('طلب شحنة رقم', 'Request')} ${r['number']}'),
       body: _loading
           ? const Center(child: CircularProgressIndicator())
           : _error != null || r == null
@@ -1479,7 +1485,7 @@ class _PlaceTrucksScreenState extends State<PlaceTrucksScreen> {
   Widget build(BuildContext context) {
     final r = widget.request;
     return AppScaffold(
-      title: Text('${tr('إكمال الطلب', 'Complete request')} #${r['number']}'),
+      title: Text('${tr('إكمال الطلب رقم', 'Complete request')} ${r['number']}'),
       body: ListView(padding: const EdgeInsets.fromLTRB(14, 14, 14, 100), children: [
         AppCard(child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
           Text('${r['customerName'] ?? ''}', style: const TextStyle(fontWeight: FontWeight.w900)),

@@ -53,12 +53,32 @@ export default function ShipmentRequestsBoard({ mode }: { mode: 'sales' | 'vendo
   const [top, setTop] = useState<Record<string, string>>({});
   const [filtersOpen, setFiltersOpen] = useState(false);
   const filtersRef = useRef<HTMLDivElement>(null);
+  const panelRef = useRef<HTMLDivElement>(null);
+  // The panel is placed on the viewport (fixed) and clamped inside it, so a narrow window never cuts it off.
+  const [panelPos, setPanelPos] = useState<{ top: number; left: number; width: number; maxHeight: number } | null>(null);
   useEffect(() => {
-    if (!filtersOpen) return;
-    const close = (e: MouseEvent) => { if (filtersRef.current && !filtersRef.current.contains(e.target as Node)) setFiltersOpen(false); };
+    if (!filtersOpen) { setPanelPos(null); return; }
+    const place = () => {
+      const btn = filtersRef.current?.getBoundingClientRect();
+      if (!btn) return;
+      const vw = window.innerWidth; const vh = window.innerHeight;
+      const width = Math.min(680, vw - 24);
+      const anchor = isRTL ? btn.right - width : btn.left;
+      const left = Math.max(12, Math.min(anchor, vw - width - 12));
+      const top = Math.min(btn.bottom + 8, vh - 160);
+      setPanelPos({ top, left, width, maxHeight: vh - top - 12 });
+    };
+    place();
+    const close = (e: MouseEvent) => {
+      const t = e.target as Node;
+      if (filtersRef.current?.contains(t) || panelRef.current?.contains(t)) return;
+      setFiltersOpen(false);
+    };
+    window.addEventListener('resize', place);
+    window.addEventListener('scroll', place, true);
     document.addEventListener('mousedown', close);
-    return () => document.removeEventListener('mousedown', close);
-  }, [filtersOpen]);
+    return () => { window.removeEventListener('resize', place); window.removeEventListener('scroll', place, true); document.removeEventListener('mousedown', close); };
+  }, [filtersOpen, isRTL]);
   // Cards or table, saved on the account per board (the same keys as mobile); the table is the default.
   const prefKey = `shipmentRequests.view.${mode === 'vendors' ? 'place' : 'ask'}`;
   const [viewLocal, setViewLocal] = useState<'cards' | 'table' | null>(null);
@@ -302,8 +322,9 @@ export default function ShipmentRequestsBoard({ mode }: { mode: 'sales' | 'vendo
               <SlidersHorizontal className="h-4 w-4" />{t('الفلاتر', 'Filters')}
               {topActive > 0 && <span className="rounded-full bg-[#f37121] px-1.5 text-[11px] text-white tabular-nums">{topActive}</span>}
             </button>
-            {filtersOpen && (
-              <div className="absolute z-30 mt-2 w-[min(680px,92vw)] rounded-2xl border border-slate-200 bg-white p-4 shadow-xl start-0">
+            {filtersOpen && panelPos && (
+              <div ref={panelRef} style={{ position: 'fixed', top: panelPos.top, left: panelPos.left, width: panelPos.width, maxHeight: panelPos.maxHeight }}
+                className="z-50 overflow-auto rounded-2xl border border-slate-200 bg-white p-4 shadow-xl">
                 <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
                   {TOP_FILTERS.map((f) => (
                     <label key={f.key} className="block">
@@ -392,8 +413,8 @@ export default function ShipmentRequestsBoard({ mode }: { mode: 'sales' | 'vendo
                 return (
                   <tr key={r._id} className={`border-t border-slate-100 hover:bg-slate-50/60 ${r.status === 'rejected' ? 'bg-red-50/40' : ''}`}>
                     {visCols.map((c) => {
-                      if (c.key === 'number') return <td key={c.key} className="px-3 py-2 font-mono font-bold text-slate-900">#{r.number}</td>;
-                      if (c.key === 'status') return <td key={c.key} className="px-3 py-2"><span className={`inline-flex items-center gap-1.5 whitespace-nowrap px-2 py-0.5 rounded-full border text-[11.5px] font-semibold ${st.cls}`}><span className={`w-1.5 h-1.5 rounded-full ${st.dot}`} />{statusLabel(r.status, ar, mode)}</span></td>;
+                      if (c.key === 'number') return <td key={c.key} className="px-3 py-2 font-bold tabular-nums text-slate-900">{r.number}</td>;
+                      if (c.key === 'status') return <td key={c.key} className="px-3 py-2"><StatusText dot={st.dot}>{statusLabel(r.status, ar, mode)}</StatusText></td>;
                       if (c.key === 'progress') return (
                         <td key={c.key} className="px-3 py-2 min-w-[150px]">
                           <p className={`whitespace-nowrap text-[12px] font-semibold ${vp.tone}`}>{vp.label}</p>
@@ -425,8 +446,8 @@ export default function ShipmentRequestsBoard({ mode }: { mode: 'sales' | 'vendo
             return (
               <div key={r._id} className={`rounded-2xl border bg-white shadow-sm overflow-hidden ${r.status === 'rejected' ? 'border-red-200' : 'border-slate-200'}`}>
                 <div className="px-4 py-3 flex flex-wrap items-center gap-2 border-b border-slate-100 bg-slate-50/60">
-                  <span className="font-mono font-extrabold text-slate-900">#{r.number}</span>
-                  <span className={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full border text-[11.5px] font-semibold ${st.cls}`}><span className={`w-1.5 h-1.5 rounded-full ${st.dot}`} />{statusLabel(r.status, ar, mode)}</span>
+                  <span className="font-extrabold tabular-nums text-slate-900">{ar ? 'طلب رقم' : 'Request'} {r.number}</span>
+                  <StatusText dot={st.dot}>{statusLabel(r.status, ar, mode)}</StatusText>
                   <span className={`text-[12px] font-semibold ${vendorProgress(r, ar, mode).tone}`}>{vendorProgress(r, ar, mode).label}</span>
                   {r.resubmits ? <span className="text-[11px] text-slate-500">{t(`أُعيد ${r.resubmits}×`, `resent ${r.resubmits}×`)}</span> : null}
                   <span className="ms-auto text-[11.5px] text-slate-500">{when(r.createdAt)} · {r.createdByName}</span>
@@ -508,6 +529,10 @@ export default function ShipmentRequestsBoard({ mode }: { mode: 'sales' | 'vendo
   );
 }
 
+/** Status as plain text with a small square marker: a work system, not coloured pills. */
+function StatusText({ dot, children }: { dot: string; children: React.ReactNode }) {
+  return <span className="inline-flex items-center gap-2 whitespace-nowrap text-[12.5px] font-semibold text-slate-700"><span className={`h-2 w-2 rounded-[2px] ${dot}`} />{children}</span>;
+}
 function Stat({ label, value, tone }: { label: string; value: number; tone: 'amber' | 'orange' | 'red' | 'green' }) {
   const c = tone === 'amber' ? 'text-amber-700' : tone === 'orange' ? 'text-[#f37121]' : tone === 'red' ? 'text-red-600' : 'text-emerald-700';
   return <div className="rounded-2xl border border-slate-200 bg-white px-4 py-3 shadow-sm"><p className="text-[12px] font-semibold text-slate-600">{label}</p><p className={`mt-1 text-2xl font-extrabold tabular-nums ${c}`}>{value.toLocaleString('en-US')}</p></div>;

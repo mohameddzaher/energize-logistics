@@ -80,6 +80,8 @@ const SELLING_ROLES = [
   'collections_manager', 'collections_staff', 'operations_manager', 'general_manager',
   // Data team; super admin narrows the operations section from the matrix.
   ...require('../config/roles').DATA_ROLES,
+  // Sales writes the selling price: the manager directly, a rep through approval (config/sellingPriceRequests).
+  'sales_manager', 'sales_rep',
 ];
 
 const ROLE_FIELD_ACCESS = {
@@ -88,6 +90,9 @@ const ROLE_FIELD_ACCESS = {
   ...Object.fromEntries(require('../config/roles').DATA_ROLES.map((r) => [r, FULL_FIELDS])),
   moderator: [...FIELD_GROUPS.application, ...FIELD_GROUPS.manual_moderator],
   operations_manager: [...OPS_FIELDS, ...SELLING_FIELDS],
+  // Sales writes only the selling price in the workflow (a 3PL load carried by our fleet waits for it).
+  sales_manager: [...SELLING_FIELDS],
+  sales_rep: [...SELLING_FIELDS],
   operations_staff: OPS_FIELDS,
   // Vendors manager and team leader work the sheet like operations and own the purchase side (owner's rule); they never see the selling value.
   vendors_manager: OPS_FIELDS,

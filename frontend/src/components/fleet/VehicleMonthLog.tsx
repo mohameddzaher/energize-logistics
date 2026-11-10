@@ -285,7 +285,7 @@ export default function VehicleMonthLog({
                   <div className="flex flex-wrap items-center gap-x-3 gap-y-0.5 mt-0.5 text-[11px] text-slate-500">
                     {r.location ? <span>{r.location}</span> : null}
                     {r.driverName ? <span>{r.driverName}</span> : null}
-                    {r.source === 'shipment' && r.price ? <span>{t('الإيجار', 'Rent')} {money(r.price)}</span> : null}
+                    {r.source === 'shipment' && r.price ? <span>{t('سعر البيع', 'Selling')} {money(r.price)}</span> : null}
                     {r.cost ? <span>{t('التكلفة', 'Cost')} {money(r.cost)}</span> : null}
                     {r.byName ? <span>{r.byName}</span> : null}
                   </div>

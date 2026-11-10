@@ -6,7 +6,8 @@
  */
 const { TOP_ROLES } = require('./constants');
 
-const REQUEST_ROLES = ['data_manager', 'data_analyst'];
+// The data team and sales reps change the selling price through the sales manager's approval.
+const REQUEST_ROLES = ['data_manager', 'data_analyst', 'data_entry', 'sales_rep'];
 const APPROVER_ROLES = [...TOP_ROLES, 'sales_manager'];
 
 const sellingByRequest = (user) => !!user && REQUEST_ROLES.includes(user.role);

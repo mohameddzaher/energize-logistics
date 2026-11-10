@@ -144,7 +144,7 @@ export default function FleetSettingsPage() {
             <label className="block text-sm font-semibold text-slate-800 mb-1.5">{ar ? 'الهدف يُقاس بـ' : 'Target is measured against'}</label>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
               {([
-                ['gross', ar ? 'الدخل كما هو' : 'Income as-is', ar ? 'شامل مصاريف السائقين — يُقارَن بإجمالي إيجارات الحمولات.' : 'Includes driver expenses — compared to gross rent.'],
+                ['gross', ar ? 'الدخل كما هو' : 'Income as-is', ar ? 'شامل مصاريف السائقين — يُقارَن بإجمالي أسعار بيع الحمولات.' : 'Includes driver expenses — compared to gross rent.'],
                 ['net', ar ? 'الدخل بعد مصروف السائق' : 'Income after driver expense', ar ? 'غير شامل مصاريف السائقين — يُخصَم مصروف السائق أوّلًا ثمّ يُقارَن.' : 'Excludes driver expenses — deducted first, then compared.'],
               ] as const).map(([k, title, hint]) => (
                 <button key={k} type="button" onClick={() => setTargetBasis(k)}

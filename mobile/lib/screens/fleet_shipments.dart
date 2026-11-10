@@ -46,7 +46,7 @@ const _filterFields = [
 /// Optional fields on a load card; each person hides what they do not need (saved on the account).
 const _cardFields = [
   ('branch', 'الفرع', 'Branch'), ('paymentSubtype', 'نوع الدفع', 'Payment type'), ('vehiclePlate', 'اللوحة', 'Plate'),
-  ('driverName', 'السائق', 'Driver'), ('price', 'إيجار السيارة', 'Vehicle rent'), ('fullRent', 'الإيجار كامل', 'Full rent'),
+  ('driverName', 'السائق', 'Driver'), ('price', 'سعر البيع', 'Selling price'),
   ('driverExpense', 'مصروف السائق', 'Driver expense'), ('customerType', 'نوع العميل', 'Customer type'), ('loadType', 'نوع الحمولة', 'Load type'),
   ('supervisorName', 'المشرف', 'Supervisor'), ('loadDate', 'تاريخ التحميل', 'Load date'), ('expectedArrival', 'الوصول المتوقع', 'Expected arrival'),
   ('trailerType', 'نوع السيارة', 'Truck type'), ('lastContactAt', 'آخر تواصل', 'Last contact'), ('notes', 'ملاحظات', 'Notes'),
@@ -449,9 +449,7 @@ class _FleetShipmentsScreenState extends State<FleetShipmentsScreen> {
                                           if (_on('driverName') && (s['driverName'] ?? '').toString().isNotEmpty)
                                             Chip2(s['driverName'].toString(), T.inkSoft, icon: Icons.person_outline),
                                           if (_on('price') && _num(s['price']).isNotEmpty)
-                                            Chip2('${tr('إيجار', 'Rent')} ${_num(s['price'])}', T.success, icon: Icons.payments_outlined),
-                                          if (_on('fullRent') && _num(s['fullRent']).isNotEmpty)
-                                            Chip2('${tr('الإيجار كامل', 'Full rent')} ${_num(s['fullRent'])}', T.success),
+                                            Chip2('${tr('سعر البيع', 'Selling')} ${_num(s['price'])}', T.success, icon: Icons.payments_outlined),
                                           if (_on('driverExpense') && _num(s['driverExpense']).isNotEmpty)
                                             Chip2('${tr('مصروف السائق', 'Driver expense')} ${_num(s['driverExpense'])}', T.warn),
                                           if (_on('customerType') && s['customerType'] == 'heavy')

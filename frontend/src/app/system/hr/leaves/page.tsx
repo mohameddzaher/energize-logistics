@@ -156,7 +156,7 @@ export default function HRLeavesPage() {
     const ok = await confirm({
       title: ar ? 'حذف الإجازة؟' : 'Delete this leave?',
       message: ar
-        ? `تُحذف إجازة ${empName(l.employee, lang)} (${l.days} يوم، ${String(l.startDate).slice(0, 10)} → ${String(l.endDate).slice(0, 10)}) نهائيًّا، ويعود ما خُصم بها إلى رصيده.`
+        ? `تُحذف إجازة ${empName(l.employee, lang)} (${l.days} يوم، من ${String(l.startDate).slice(0, 10)} إلى ${String(l.endDate).slice(0, 10)}) نهائيًّا، ويعود ما خُصم بها إلى رصيده.`
         : `${empName(l.employee, lang)}'s leave (${l.days} day(s)) is deleted permanently and any deducted days return to the balance.`,
       confirmLabel: ar ? 'حذف' : 'Delete',
     });

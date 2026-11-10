@@ -309,7 +309,8 @@ export default function LeaveDesk({ base, stage, canDecide, title, subtitle }: {
                     <th className="px-4 py-3 text-start font-semibold">{t('الموظف', 'Employee')}</th>
                     <th className="hidden 2xl:table-cell px-4 py-3 text-start font-semibold">{t('القسم', 'Department')}</th>
                     <th className="px-4 py-3 text-start font-semibold">{t('النوع', 'Type')}</th>
-                    <th className="px-4 py-3 text-start font-semibold">{t('الفترة', 'Period')}</th>
+                    <th className="px-4 py-3 text-start font-semibold">{t('من', 'From')}</th>
+                    <th className="px-4 py-3 text-start font-semibold">{t('إلى', 'To')}</th>
                     <th className="px-4 py-3 text-center font-semibold">{t('الأيام', 'Days')}</th>
                     {full && <th className="px-4 py-3 text-start font-semibold">{t('المسار', 'Progress')}</th>}
                     <th className="px-4 py-3 text-start font-semibold">{t('الحالة', 'Status')}</th>
@@ -325,7 +326,8 @@ export default function LeaveDesk({ base, stage, canDecide, title, subtitle }: {
                       </td>
                       <td className="hidden 2xl:table-cell px-4 py-3 whitespace-nowrap text-slate-700">{l.employee?.department || '—'}</td>
                       <td className="px-4 py-3"><TypeChip l={l} ar={ar} /></td>
-                      <td className="px-4 py-3 whitespace-nowrap tabular-nums text-slate-700" dir="ltr">{dm(l.startDate)} → {dm(l.endDate)}</td>
+                      <td className="px-4 py-3 whitespace-nowrap tabular-nums text-slate-700">{dm(l.startDate)}</td>
+                      <td className="px-4 py-3 whitespace-nowrap tabular-nums text-slate-700">{dm(l.endDate)}</td>
                       <td className="px-4 py-3 text-center font-bold tabular-nums">{l.days}</td>
                       {full && <td className="px-4 py-3"><StageProgress l={l} ar={ar} /></td>}
                       <td className="px-4 py-3"><StatusChip l={l} canAct={canActOn(l)} full={full} ar={ar} /></td>
@@ -361,7 +363,7 @@ export default function LeaveDesk({ base, stage, canDecide, title, subtitle }: {
                 </div>
                 <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-1 text-sm">
                   <TypeChip l={l} ar={ar} />
-                  <span className="tabular-nums text-slate-700" dir="ltr">{dm(l.startDate)} → {dm(l.endDate)}</span>
+                  <span className="tabular-nums text-slate-700">{t('من', 'From')} {dm(l.startDate)} {t('إلى', 'to')} {dm(l.endDate)}</span>
                   <span className="font-bold tabular-nums">{l.days} {t('يوم', 'd')}</span>
                 </div>
                 {full && <div className="mt-3"><StageProgress l={l} ar={ar} /></div>}

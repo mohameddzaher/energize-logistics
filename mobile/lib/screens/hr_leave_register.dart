@@ -122,7 +122,7 @@ class _HrLeaveRegisterScreenState extends State<HrLeaveRegisterScreen> {
             const SizedBox(height: 10),
             for (final row in [
               (tr('النوع', 'Type'), _typeName(l)),
-              (tr('المدة', 'Period'), '${_ymd(l['startDate'])} ← ${_ymd(l['endDate'])} · ${l['days'] ?? '—'} ${tr('يوم', 'days')}'),
+              (tr('المدة', 'Period'), '${tr('من', 'From')} ${_ymd(l['startDate'])} ${tr('إلى', 'to')} ${_ymd(l['endDate'])} · ${l['days'] ?? '—'} ${tr('يوم', 'days')}'),
               (tr('المصدر', 'Source'), src == null ? '—' : tr(src.$1, src.$2)),
               (tr('اعتمدها / سجّلها', 'Approved / recorded by'), '${l['approvedByName'] ?? '—'}${_ymd(l['approvedAt']).isEmpty ? '' : ' · ${_ymd(l['approvedAt'])}'}'),
               (tr('الرصيد المتاح الآن', 'Available balance now'), bal == null ? '—' : '$bal'),
@@ -235,7 +235,7 @@ class _HrLeaveRegisterScreenState extends State<HrLeaveRegisterScreen> {
                                         if (bal != null) Text('${tr('الرصيد', 'Bal.')} $bal', style: const TextStyle(fontSize: 12, color: T.inkSoft, fontWeight: FontWeight.w700)),
                                       ]),
                                       const SizedBox(height: 4),
-                                      Text('${_typeName(l)} · ${_ymd(l['startDate'])} ← ${_ymd(l['endDate'])} · ${l['days'] ?? '—'} ${tr('يوم', 'days')}',
+                                      Text('${_typeName(l)} · ${tr('من', 'From')} ${_ymd(l['startDate'])} ${tr('إلى', 'to')} ${_ymd(l['endDate'])} · ${l['days'] ?? '—'} ${tr('يوم', 'days')}',
                                           style: const TextStyle(fontSize: 12.5, color: T.inkSoft)),
                                       const SizedBox(height: 6),
                                       LeaveReturnChip(l),

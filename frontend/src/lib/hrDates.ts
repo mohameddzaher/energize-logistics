@@ -113,4 +113,4 @@ export const duplicateHeaders = (columns: { header: string }[]): string[] => {
 
 /** A period in a detail line, each end shown in both calendars. */
 export const bothPeriod = (from: DateLike, to: DateLike, ar: boolean): string =>
-  `${bothDates(from, ar)} → ${bothDates(to, ar)}`;
+  `${ar ? 'من' : 'From'} ${bothDates(from, ar)} ${ar ? 'إلى' : 'to'} ${bothDates(to, ar)}`;

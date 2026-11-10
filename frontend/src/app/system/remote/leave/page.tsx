@@ -141,7 +141,7 @@ export default function RemoteLeavePage() {
                     <span className="text-slate-700 text-sm">{leaveTypeLabel(l.type, ar ? 'ar' : 'en')}</span>
                     <span className={`px-2 py-0.5 rounded text-xs ${s.bg} ${s.text}`}>{s[ar ? 'ar' : 'en']}</span>
                   </div>
-                  <p className="text-slate-500 text-sm">{l.startDate} → {l.endDate} · {l.days} {tx.days}</p>
+                  <p className="text-slate-500 text-sm">{lang === 'ar' ? 'من' : 'From'} {l.startDate} {lang === 'ar' ? 'إلى' : 'to'} {l.endDate} · {l.days} {tx.days}</p>
                   {l.reason && <p className="text-slate-500 text-sm">{l.reason}</p>}
                   {l.status !== 'pending' && l.reviewedBy && (
                     <p className="text-slate-500 text-xs">{tx.by} {l.reviewedBy.firstName} {l.reviewedBy.lastName}</p>

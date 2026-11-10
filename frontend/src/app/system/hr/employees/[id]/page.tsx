@@ -523,7 +523,7 @@ export default function EmployeeProfilePage() {
           <Modal open={!!rl} onClose={() => setReturnLeaveId('')} title={ar ? 'العودة من الإجازة' : 'Return from leave'}>
             {rl && (
               <div className="space-y-2 text-sm">
-                <p className="text-slate-900 font-semibold">{leaveTypeLabel(rl.leaveType, lang)} · {String(rl.startDate).slice(0, 10)} → {String(rl.endDate).slice(0, 10)} ({rl.days})</p>
+                <p className="text-slate-900 font-semibold">{leaveTypeLabel(rl.leaveType, lang)} · {lang === 'ar' ? 'من' : 'from'} {String(rl.startDate).slice(0, 10)} {lang === 'ar' ? 'إلى' : 'to'} {String(rl.endDate).slice(0, 10)} ({rl.days})</p>
                 <LeaveReturnPanel leave={rl} ar={ar} canAct={staff} onDone={load} />
               </div>
             )}

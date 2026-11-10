@@ -254,7 +254,7 @@ class _ApprovalsScreenState extends State<ApprovalsScreen> {
                 Chip2(tr(badge.$1, badge.$2), badge.$3),
               ]),
               const SizedBox(height: 4),
-              Text('$type · ${_d(l['startDate'])} ← ${_d(l['endDate'])} · ${l['days'] ?? '—'} ${tr('يوم', 'days')}',
+              Text('$type · ${tr('من', 'From')} ${_d(l['startDate'])} ${tr('إلى', 'to')} ${_d(l['endDate'])} · ${l['days'] ?? '—'} ${tr('يوم', 'days')}',
                   style: const TextStyle(fontSize: 13, color: T.inkSoft)),
               if ((l['reason'] ?? '').toString().isNotEmpty)
                 Padding(

@@ -165,7 +165,7 @@ class _MyLeavesScreenState extends State<MyLeavesScreen> {
         content: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
           Text('${tr('الموظف', 'Employee')}: ${_empName(l['employee']).isNotEmpty ? _empName(l['employee']) : _userName(l['requester'])}'),
           Text('${tr('النوع', 'Type')}: ${_typeName(l['leaveType'])}'),
-          Text('${_d(l['startDate'])} ← ${_d(l['endDate'])} · ${l['days'] ?? '—'} ${tr('يوم', 'days')}'),
+          Text('${tr('من', 'From')} ${_d(l['startDate'])} ${tr('إلى', 'to')} ${_d(l['endDate'])} · ${l['days'] ?? '—'} ${tr('يوم', 'days')}'),
           if ('${l['reason'] ?? ''}'.isNotEmpty) Text('${l['reason']}', style: const TextStyle(color: T.inkSoft)),
           const SizedBox(height: 8),
           TextField(controller: note, decoration: InputDecoration(labelText: tr('ملاحظة', 'Note'))),
@@ -201,7 +201,7 @@ class _MyLeavesScreenState extends State<MyLeavesScreen> {
               Expanded(child: Text(_empName(l['employee']).isNotEmpty ? _empName(l['employee']) : _userName(l['requester']), style: const TextStyle(fontWeight: FontWeight.w800))),
               Chip2(_statusName(l['status'], own: _filedByMe(l)), leaveStatusFor(l['status'], own: _filedByMe(l), full: _full, canAct: l['status'] == 'pending_manager').$3),
             ]),
-            Text('${_typeName(l['leaveType'])} · ${_d(l['startDate'])} ← ${_d(l['endDate'])} · ${l['days'] ?? '—'} ${tr('يوم', 'days')}', style: const TextStyle(fontSize: 12.5, color: T.inkSoft)),
+            Text('${_typeName(l['leaveType'])} · ${tr('من', 'From')} ${_d(l['startDate'])} ${tr('إلى', 'to')} ${_d(l['endDate'])} · ${l['days'] ?? '—'} ${tr('يوم', 'days')}', style: const TextStyle(fontSize: 12.5, color: T.inkSoft)),
             const SizedBox(height: 4),
             LeaveDeductionBadge(leave: l, full: _full),
             Wrap(alignment: WrapAlignment.end, spacing: 4, children: [
@@ -335,7 +335,7 @@ class _MyLeavesScreenState extends State<MyLeavesScreen> {
                                     ],
                                   ),
                                   const SizedBox(height: 6),
-                                  Text('${_d(l['startDate'])} ← ${_d(l['endDate'])} · ${l['days'] ?? '—'} ${tr('يوم', 'days')}',
+                                  Text('${tr('من', 'From')} ${_d(l['startDate'])} ${tr('إلى', 'to')} ${_d(l['endDate'])} · ${l['days'] ?? '—'} ${tr('يوم', 'days')}',
                                       style: const TextStyle(fontSize: 13, color: T.inkSoft)),
                                   if ((l['reason'] ?? '').toString().isNotEmpty)
                                     Padding(

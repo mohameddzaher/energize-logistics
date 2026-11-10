@@ -142,7 +142,7 @@ class _MyProfileScreenState extends State<MyProfileScreen> {
                                   Expanded(
                                     child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                                       Text(type.toString(), style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 13)),
-                                      Text('${_d(l['startDate'])} ← ${_d(l['endDate'])} · ${l['days'] ?? '—'} ${tr('يوم', 'd')}', style: const TextStyle(fontSize: 11, color: T.inkSoft)),
+                                      Text('${tr('من', 'From')} ${_d(l['startDate'])} ${tr('إلى', 'to')} ${_d(l['endDate'])} · ${l['days'] ?? '—'} ${tr('يوم', 'd')}', style: const TextStyle(fontSize: 11, color: T.inkSoft)),
                                     ]),
                                   ),
                                   Chip2(st.$1, st.$2),

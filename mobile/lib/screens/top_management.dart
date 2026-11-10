@@ -164,7 +164,7 @@ class _TopLeavesScreenState extends State<TopLeavesScreen> {
             const SizedBox(height: 8),
             Row(children: [
               Expanded(child: Text(tr('${(l['leaveType'] as Map?)?['nameAr'] ?? ''}', '${(l['leaveType'] as Map?)?['nameEn'] ?? ''}'), style: const TextStyle(fontSize: 12.5, fontWeight: FontWeight.w600))),
-              Text('${_dm(l['startDate'])} → ${_dm(l['endDate'])}', textDirection: TextDirection.ltr, style: const TextStyle(fontSize: 12.5, color: T.inkSoft)),
+              Text('${tr('من', 'From')} ${_dm(l['startDate'])} ${tr('إلى', 'to')} ${_dm(l['endDate'])}', style: const TextStyle(fontSize: 12.5, color: T.inkSoft)),
               const SizedBox(width: 10),
               Text('${l['days'] ?? ''} ${tr('يوم', 'd')}', style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w800)),
             ]),

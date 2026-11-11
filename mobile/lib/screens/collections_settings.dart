@@ -292,16 +292,26 @@ class _EmailTemplateTabState extends State<EmailTemplateTab> {
         const SizedBox(height: 10),
         TextField(controller: _body, enabled: canEdit, minLines: 8, maxLines: 18, decoration: InputDecoration(labelText: tr('نصّ الرسالة', 'Message'), alignLabelWithHint: true)),
         const SizedBox(height: 10),
-        Text(tr('خانات تُملأ تلقائيًّا عند الإرسال — اضغط لإدراجها في النصّ', 'Auto-filled fields — tap to insert'),
-            style: const TextStyle(fontSize: 12.5, fontWeight: FontWeight.w700, color: T.inkSoft)),
-        const SizedBox(height: 6),
-        Wrap(spacing: 6, runSpacing: 6, children: [
-          for (final p in placeholders)
-            ActionChip(
-              label: Text('${p[0]}${p.length > 1 ? ' — ${p[1]}' : ''}', style: const TextStyle(fontSize: 11.5)),
-              onPressed: canEdit ? () => _insert('${p[0]}') : null,
+        // One plain button with readable labels; the field fills itself when the email is sent.
+        if (canEdit)
+          Align(
+            alignment: AlignmentDirectional.centerStart,
+            child: PopupMenuButton<String>(
+              onSelected: _insert,
+              itemBuilder: (_) => [for (final p in placeholders) PopupMenuItem(value: '${p[0]}', child: Text('${p.length > 1 ? p[1] : p[0]}'))],
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                decoration: BoxDecoration(color: T.orange.withValues(alpha: 0.08), border: Border.all(color: T.orange), borderRadius: BorderRadius.circular(10)),
+                child: Row(mainAxisSize: MainAxisSize.min, children: [
+                  const Icon(Icons.add, size: 18, color: T.orange), const SizedBox(width: 4),
+                  Text(tr('إدراج معلومة من المعاملة', 'Insert a field'), style: const TextStyle(fontWeight: FontWeight.w800, color: T.orange)),
+                ]),
+              ),
             ),
-        ]),
+          ),
+        const SizedBox(height: 4),
+        Text(tr('ضع المؤشّر حيث تريد ثمّ أدرج المعلومة — تُملأ وحدها عند الإرسال.', 'Place the cursor, then insert — it fills itself on send.'),
+            style: const TextStyle(fontSize: 11.5, color: T.inkFaint)),
       ])),
       const SizedBox(height: 10),
       AppCard(child: TextField(controller: _cc, enabled: canEdit, textDirection: TextDirection.ltr, decoration: InputDecoration(

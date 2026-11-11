@@ -43,7 +43,9 @@ function applyProgress(item, body) {
     item.isOverdue = false; item.overdueNotifiedAt = null; item.dueSoonNotifiedAt = null;
   }
   if (body.status !== undefined) item.status = body.status;
-  if (body.progress !== undefined) item.progress = Math.max(0, Math.min(100, Number(body.progress) || 0));
+  // The percentage follows the status, whatever a client sends.
+  const pct = require('../config/businessReview').PROGRESS_OF[item.status];
+  if (pct !== undefined) item.progress = pct;
   if (item.status === 'done') {
     item.completedAt = item.completedAt || new Date();
     item.progress = 100;

@@ -187,8 +187,16 @@ Future<Map<String, dynamic>?> brProgressSheet(BuildContext context, Map<String, 
               onChanged: (v) => setS(() { st = v ?? st; if (st == 'done') pr = 100; }),
             ),
             const SizedBox(height: 14),
-            Text('${tr('نسبة الإنجاز', 'Progress')}: ${pr.round()}%', style: const TextStyle(fontSize: 12.5, fontWeight: FontWeight.w700)),
-            Slider(value: pr, min: 0, max: 100, divisions: 20, activeColor: T.orange, label: '${pr.round()}%', onChanged: (v) => setS(() => pr = v)),
+            // The percentage follows the status (set on the server).
+            Builder(builder: (_) {
+              final sp = (List<Map>.from(meta['actionStatuses'] ?? const []).firstWhere((s) => '${s['key']}' == st, orElse: () => {})['progress'] as num?) ?? pr;
+              return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                Text('${tr('نسبة الإنجاز (تُحسب من الحالة)', 'Progress (from the status)')}: ${sp.round()}%', style: const TextStyle(fontSize: 12.5, fontWeight: FontWeight.w700)),
+                const SizedBox(height: 6),
+                LinearProgressIndicator(value: (sp / 100).clamp(0.0, 1.0), minHeight: 6, backgroundColor: T.line, valueColor: const AlwaysStoppedAnimation(T.orange)),
+                const SizedBox(height: 8),
+              ]);
+            }),
             if (st != 'done' && st != 'cancelled')
               OutlinedButton.icon(
                 style: OutlinedButton.styleFrom(minimumSize: const Size(double.infinity, 44), alignment: AlignmentDirectional.centerStart),

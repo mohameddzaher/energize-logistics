@@ -203,9 +203,9 @@ export default function CustomsInvoiceRequests({ ar, onOpen }: { ar: boolean; on
                               </div>
                               <div className="grid gap-3 lg:grid-cols-2">
                                 <section className="rounded-xl border border-slate-200 bg-white shadow-sm">
-                                  <header className="flex items-center justify-between gap-2 border-b border-slate-100 px-4 py-2.5">
-                                    <h4 className="flex items-center gap-1.5 text-[13px] font-bold text-slate-800"><Wallet className="h-4 w-4 text-slate-500" />{t('المصروفات — مراحل السداد وطلبات الصرف', 'Expenses — payment stages')}</h4>
-                                    <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[11px] font-bold text-slate-600">{t('بدون ضريبة', 'No VAT')}</span>
+                                  <header className="flex items-center justify-between gap-2 rounded-t-xl bg-slate-900 px-4 py-2.5">
+                                    <h4 className="flex items-center gap-1.5 text-[13px] font-bold text-white"><Wallet className="h-4 w-4 text-[#f37121]" />{t('المصروفات — مراحل السداد وطلبات الصرف', 'Expenses — payment stages')}</h4>
+                                    <span className="rounded-full bg-white/15 px-2 py-0.5 text-[11px] font-bold text-slate-100">{t('بدون ضريبة', 'No VAT')}</span>
                                   </header>
                                   <ul className="divide-y divide-slate-100 px-4 text-[13px]">
                                     {exp.length ? exp.map((l, i) => <Row key={i} l={l} vat={false} />) : <li className="py-3 text-center text-slate-400">{t('لا مصروفات مسجّلة', 'No expenses recorded')}</li>}
@@ -213,9 +213,9 @@ export default function CustomsInvoiceRequests({ ar, onOpen }: { ar: boolean; on
                                   <footer className="flex items-center justify-between border-t border-slate-200 bg-slate-50 px-4 py-2 text-[13px] font-bold"><span>{t('إجمالي المصروفات', 'Expenses total')}</span><span className="tabular-nums">{money(r.expenses || 0)}</span></footer>
                                 </section>
                                 <section className="rounded-xl border border-slate-200 bg-white shadow-sm">
-                                  <header className="flex items-center justify-between gap-2 border-b border-slate-100 px-4 py-2.5">
-                                    <h4 className="flex items-center gap-1.5 text-[13px] font-bold text-slate-800"><FileText className="h-4 w-4 text-slate-500" />{t('بنود طلب الفوترة', 'Invoicing lines')}</h4>
-                                    <span className="rounded-full bg-orange-100 px-2 py-0.5 text-[11px] font-bold text-[#b4471a]">{t('ضريبة 15%', 'VAT 15%')}</span>
+                                  <header className="flex items-center justify-between gap-2 rounded-t-xl bg-slate-900 px-4 py-2.5">
+                                    <h4 className="flex items-center gap-1.5 text-[13px] font-bold text-white"><FileText className="h-4 w-4 text-[#f37121]" />{t('بنود طلب الفوترة', 'Invoicing lines')}</h4>
+                                    <span className="rounded-full bg-[#f37121] px-2 py-0.5 text-[11px] font-bold text-white">{t('ضريبة 15%', 'VAT 15%')}</span>
                                   </header>
                                   <ul className="divide-y divide-slate-100 px-4 text-[13px]">
                                     {items.length ? items.map((l, i) => <Row key={i} l={l} vat />) : <li className="py-3 text-center text-slate-400">{t('لا بنود', 'No lines')}</li>}
@@ -223,18 +223,26 @@ export default function CustomsInvoiceRequests({ ar, onOpen }: { ar: boolean; on
                                   <footer className="flex items-center justify-between border-t border-slate-200 bg-slate-50 px-4 py-2 text-[13px] font-bold"><span>{t('إجمالي البنود شامل الضريبة', 'Lines incl. VAT')}</span><span className="tabular-nums">{money(itemsTotal)}</span></footer>
                                 </section>
                               </div>
-                              <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
-                                {[
-                                  [t('المصروفات', 'Expenses'), r.expenses || 0, 'text-slate-900'],
-                                  [t('البنود قبل الضريبة', 'Lines before VAT'), r.items || 0, 'text-slate-900'],
-                                  [t('الضريبة', 'VAT'), r.vat, 'text-slate-900'],
-                                  [t('إجمالي الفاتورة', 'Invoice total'), r.total, 'text-[#f37121]'],
-                                ].map(([k, v, cls]: any) => (
-                                  <div key={k} className="rounded-xl border border-slate-200 bg-white px-3 py-2">
-                                    <p className="text-[11px] font-semibold text-slate-500">{k}</p>
-                                    <p className={`text-[15px] font-black tabular-nums ${cls}`}>{money(v)}</p>
+                              {/* Expenses | the lines with their VAT, as one card since one depends on the other | the invoice total. */}
+                              <div className="grid gap-2 sm:grid-cols-[1fr_2fr_1fr]">
+                                <div className="rounded-xl border border-slate-200 bg-white px-4 py-3">
+                                  <p className="text-[11.5px] font-semibold text-slate-500">{t('المصروفات (بدون ضريبة)', 'Expenses (no VAT)')}</p>
+                                  <p className="text-[17px] font-black tabular-nums text-slate-900">{money(r.expenses || 0)}</p>
+                                </div>
+                                <div className="rounded-xl border border-slate-200 bg-white px-4 py-3">
+                                  <p className="text-[11.5px] font-semibold text-slate-500">{t('بنود الفوترة وضريبتها', 'Invoicing lines and their VAT')}</p>
+                                  <div className="mt-0.5 flex flex-wrap items-baseline gap-x-2 gap-y-1 tabular-nums">
+                                    <span className="text-[15px] font-black text-slate-900">{money(r.items || 0)}</span><span className="text-[11px] text-slate-500">{t('قبل الضريبة', 'before VAT')}</span>
+                                    <span className="text-slate-400">+</span>
+                                    <span className="text-[15px] font-black text-slate-900">{money(r.vat)}</span><span className="text-[11px] text-slate-500">{t('ضريبة 15%', 'VAT 15%')}</span>
+                                    <span className="text-slate-400">=</span>
+                                    <span className="text-[15px] font-black text-slate-900">{money(itemsTotal)}</span>
                                   </div>
-                                ))}
+                                </div>
+                                <div className="rounded-xl border-2 border-[#f37121] bg-orange-50 px-4 py-3">
+                                  <p className="text-[11.5px] font-bold text-[#b4471a]">{t('إجمالي الفاتورة', 'Invoice total')}</p>
+                                  <p className="text-[17px] font-black tabular-nums text-[#b4471a]">{money(r.total)}</p>
+                                </div>
                               </div>
                             </div>
                           );

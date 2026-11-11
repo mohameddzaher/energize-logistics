@@ -65,106 +65,152 @@ export default function InvoiceImportButton({ ar, onDone }: { ar: boolean; onDon
         <FileUp className="w-4 h-4 text-[#f37121]" /> {t('رفع بيانات فواتير', 'Upload invoice data')}
       </button>
       <Modal open={open} onClose={() => setOpen(false)} wide title={t('رفع بيانات فواتير من إكسل', 'Upload invoice data (Excel)')}>
-        <div className="space-y-3 text-sm" dir={ar ? 'rtl' : 'ltr'}>
-          <p className="rounded-lg border border-blue-200 bg-blue-50 px-3 py-2 text-[12.5px] leading-6 text-blue-900">
-            {t('الأعمدة: «امر الشحن» (رقم الكشف) · «السند» · «رقم الفاتورة» · «اجمالي السعر» (صافي الفاتورة) · «ضريبة البند» · «المجموع الصافي» (إجمالي الفاتورة) · «التاريخ» · «العميل». العميلُ لا يُكتب على الكشف — يُقارَن بعميله. الأحدثُ يكتب فوق القديم، والضريبةُ تُحسب من الصافي، والفاتورةُ الضريبيّة تصل التحصيل فورًا. وتُحفظ أسطرُ الورقة لبطاقات الفحص في سير العمل. وأيُّ عمودٍ آخر باسم عمودٍ في الجدول — «تاريخ التسليم للعميل»، «تاريخ السداد»، «نوع الدفع»، «الفرع المسدد»، «تاريخ الارسال»… — يُكتب كذلك على كشفه، والخانةُ الفارغةُ لا تمحو شيئًا.',
-              'Columns: shipment order (report no.), voucher, invoice no., net, VAT, total, date, customer. The customer is not written — it is compared with the report’s. Newer data overwrites; VAT is computed from the net; tax invoices reach Collections at once. Sheet lines are kept for the workflow check cards. Any other column named like a table column (customer delivery date, payment date, payment type, paying branch…) is written on its report too; blank cells erase nothing.')}
-          </p>
-          <input ref={input} type="file" accept=".xlsx,.xls" hidden onChange={(e) => { pick(e.target.files?.[0]); e.target.value = ''; }} />
-          <button type="button" onClick={() => input.current?.click()} disabled={busy}
-            className="inline-flex items-center gap-1.5 rounded-lg bg-[#f37121] px-3 py-2 text-[13px] font-bold text-white disabled:opacity-50">
-            {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <FileUp className="h-4 w-4" />}
-            {file ? t(`ملفّ آخر (الحالي: ${file.name})`, `Another file (current: ${file.name})`) : t('اختر ملفّ الإكسل', 'Choose the Excel file')}
-          </button>
-
-          {res && (
-            <div className="space-y-3">
-              <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
-                {[
-                  [t('صفوف في الملفّ', 'Rows in file'), res.fileRows, 'text-slate-900'],
-                  [res.preview ? t('ستُكتب', 'Will update') : t('كُتبت', 'Updated'), res.preview ? res.toUpdate : res.updated, 'text-emerald-700'],
-                  [t('بلا تغيير', 'Unchanged'), res.unchanged, 'text-slate-500'],
-                  [t('لا كشفَ بالرقم', 'No such report'), res.notFound.length, 'text-amber-700'],
-                ].map(([l, v, c]) => (
-                  <div key={String(l)} className="rounded-lg border border-slate-200 bg-white px-3 py-2">
-                    <p className={`text-xl font-extrabold tabular-nums ${c}`}>{v as any}</p>
-                    <p className="text-[11.5px] text-slate-500">{l as any}</p>
-                  </div>
-                ))}
-              </div>
-              {!!res.skipped.length && (
-                <div className="rounded-lg border border-amber-200 bg-amber-50 p-2.5 text-[12px] text-amber-900">
-                  <p className="mb-1 flex items-center gap-1 font-bold"><AlertTriangle className="h-3.5 w-3.5" />{t(`لن يُكتب ${res.skipped.length}`, `${res.skipped.length} not written`)}</p>
-                  <div className="max-h-32 overflow-auto">{res.skipped.map((s) => <p key={s.reportNumber}>{s.reportNumber} — {s.reason}</p>)}</div>
-                </div>
-              )}
-              {!!res.notFound.length && (
-                <p className="rounded-lg border border-slate-200 bg-slate-50 p-2.5 text-[12px] text-slate-600">
-                  {t('أرقامُ كشوفٍ غير موجودة في سير العمل: ', 'Not found: ')}{res.notFound.slice(0, 60).join('، ')}{res.notFound.length > 60 ? ' …' : ''}
-                </p>
-              )}
-              {/* Upload warnings: a missing manifest, an invoice whose value differs from its manifests' sum, and a customer differing from the manifest customer. They remain as cards in the workflow after applying and drop out once the manifest is corrected. */}
-              {res.checks && (() => {
-                const c = res.checks;
-                const fmt = (v: any) => (v === null || v === undefined ? '—' : Number(v).toLocaleString('en-US', { maximumFractionDigits: 2 }));
-                const blocks: { n: number; title: string; tone: string; lines: string[] }[] = [
-                  {
-                    n: c.missingReports.length, tone: 'border-amber-200 bg-amber-50 text-amber-900',
-                    title: t('فواتير بكشوفات غير موجودة', 'Invoices citing missing reports'),
-                    lines: c.missingReports.map((m) => `${t('فاتورة', 'Invoice')} ${m.invoiceNumber} — ${t('كشف', 'report')} ${m.reportNumber}${m.customerName ? ` · ${m.customerName}` : ''}`),
-                  },
-                  {
-                    n: c.valueDiffs.length, tone: 'border-rose-200 bg-rose-50 text-rose-900',
-                    title: t('فرق قيمة الفاتورة', 'Invoice value differences'),
-                    lines: c.valueDiffs.map((v) => `${t('فاتورة', 'Invoice')} ${v.invoiceNumber}: ${t('الورقة', 'sheet')} ${fmt(v.uploadedValue)} · ${t('الكشوف', 'reports')} ${fmt(v.reportsValue)} · ${t('الفرق', 'diff')} ${fmt(v.difference)}`),
-                  },
-                  {
-                    n: c.nameMismatches.length, tone: 'border-sky-200 bg-sky-50 text-sky-900',
-                    title: t('عدم تطابق اسم العميل', 'Customer name mismatch'),
-                    lines: c.nameMismatches.map((m) => `${t('كشف', 'Report')} ${m.reportNumber} (${m.invoiceNumber}): ${t('الورقة', 'sheet')} «${m.uploadedCustomer}» ≠ ${t('الكشف', 'report')} «${m.workflowCustomer}»`),
-                  },
-                ];
-                if (!blocks.some((b) => b.n)) {
-                  return <p className="flex items-center gap-1.5 text-[12px] font-semibold text-emerald-700"><CheckCircle2 className="h-3.5 w-3.5" />{t('لا تنبيهات: كلُّ الكشوف موجودة، والقيمُ والعملاءُ مطابقة.', 'No alerts: all reports exist, values and customers match.')}</p>;
-                }
-                return blocks.filter((b) => b.n).map((b) => (
-                  <div key={b.title} className={`rounded-lg border p-2.5 text-[12px] ${b.tone}`}>
-                    <p className="mb-1 flex items-center gap-1 font-bold"><AlertTriangle className="h-3.5 w-3.5" />{b.title} ({b.n})</p>
-                    <div className="max-h-32 overflow-auto">{b.lines.slice(0, 200).map((l, i) => <p key={i}>{l}</p>)}</div>
-                  </div>
-                ));
-              })()}
-              {res.preview && !!res.sample.length && (
-                <div className="max-h-64 overflow-auto rounded-lg border border-slate-200">
-                  <table className="w-full text-[12px]">
-                    <thead className="sticky top-0 bg-slate-900 text-slate-200"><tr><th className="px-2 py-1.5 text-start">{t('الكشف', 'Report')}</th><th className="px-2 py-1.5 text-start">{t('التغيير', 'Change')}</th></tr></thead>
-                    <tbody className="divide-y divide-slate-100">
-                      {res.sample.map((s) => (
-                        <tr key={s.reportNumber}>
-                          <td className="px-2 py-1.5 font-semibold tabular-nums">{s.reportNumber}</td>
-                          <td className="px-2 py-1.5 text-slate-600">
-                            {Object.keys(s.after).map((k) => <span key={k} className="me-3 inline-block">{LABEL[k] || k}: <span className="text-slate-400 line-through">{show(s.before[k])}</span> ← <b className="text-slate-900">{show(s.after[k])}</b></span>)}
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                  {res.toUpdate > res.sample.length && <p className="px-2 py-1 text-[11px] text-slate-400">{t(`أوّل ${res.sample.length} من ${res.toUpdate}`, `first ${res.sample.length} of ${res.toUpdate}`)}</p>}
-                </div>
-              )}
-              {res.preview ? (
-                <div className="flex justify-end gap-2">
-                  <button type="button" onClick={() => setOpen(false)} className="px-3 py-2 text-slate-500">{t('إلغاء', 'Cancel')}</button>
-                  <button type="button" onClick={() => send(true)} disabled={busy || !res.toUpdate}
-                    className="inline-flex items-center gap-1.5 rounded-lg bg-emerald-600 px-4 py-2 text-[13px] font-bold text-white disabled:opacity-40">
-                    {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <CheckCircle2 className="h-4 w-4" />}{t(`تطبيق على ${res.toUpdate} كشفًا`, `Apply to ${res.toUpdate} reports`)}
-                  </button>
-                </div>
-              ) : (
-                <p className="flex items-center gap-1.5 font-semibold text-emerald-700"><CheckCircle2 className="h-4 w-4" />{t('تمّ — والفواتيرُ الضريبيّة في التحصيل.', 'Done — tax invoices are in Collections.')}</p>
-              )}
+        <div className="space-y-4 text-sm" dir={ar ? 'rtl' : 'ltr'}>
+          <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-slate-200 bg-white p-3">
+            <div>
+              <p className="font-bold text-slate-900">{t('ارفع ملفّ إكسل الفواتير', 'Upload the invoices Excel file')}</p>
+              <p className="text-[12.5px] text-slate-500">{t('تظهر لك معاينةٌ أوّلًا، ولا يُكتب شيءٌ قبل أن تضغط «تطبيق».', 'You see a preview first; nothing is written until you press Apply.')}</p>
             </div>
-          )}
+            <input ref={input} type="file" accept=".xlsx,.xls" hidden onChange={(e) => { pick(e.target.files?.[0]); e.target.value = ''; }} />
+            <button type="button" onClick={() => input.current?.click()} disabled={busy}
+              className="inline-flex items-center gap-1.5 rounded-lg bg-[#f37121] px-4 py-2 text-[13px] font-bold text-white disabled:opacity-50">
+              {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <FileUp className="h-4 w-4" />}
+              {file ? t('اختيار ملفّ آخر', 'Choose another file') : t('اختر الملفّ', 'Choose the file')}
+            </button>
+            {file && <p className="w-full text-[12px] text-slate-500">{t('الملفّ الحالي:', 'Current file:')} <b className="text-slate-700">{file.name}</b></p>}
+          </div>
+
+          <details className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-[12.5px] text-slate-700">
+            <summary className="cursor-pointer font-bold">{t('الأعمدة التي يقرؤها النظام من الملفّ', 'Columns read from the file')}</summary>
+            <div className="mt-2 flex flex-wrap gap-1.5">
+              {[['امر الشحن', 'رقم الكشف'], ['السند', ''], ['رقم الفاتورة', ''], ['اجمالي السعر', 'صافي الفاتورة'], ['ضريبة البند', ''], ['المجموع الصافي', 'إجمالي الفاتورة'], ['التاريخ', ''], ['العميل', 'للمقارنة فقط']].map(([c, n]) => (
+                <span key={c} className="rounded-full border border-slate-300 bg-white px-2.5 py-1"><b>{c}</b>{n ? <span className="text-slate-500"> — {n}</span> : null}</span>
+              ))}
+            </div>
+            <p className="mt-2 text-slate-500">{t('أيّ عمودٍ آخر يحمل اسمَ عمودٍ في سير العمل (مثل «تاريخ السداد») يُكتب أيضًا. الخانة الفارغة لا تمسح شيئًا.', 'Any other column named like a workflow column is written too. Empty cells erase nothing.')}</p>
+          </details>
+
+          {res && (() => {
+            const c = res.checks;
+            const fmt = (v: any) => (v === null || v === undefined ? '—' : Number(v).toLocaleString('en-US', { maximumFractionDigits: 2 }));
+            const th = 'px-3 py-2 text-start font-semibold whitespace-nowrap';
+            const td = 'px-3 py-2 whitespace-nowrap';
+            const Block = ({ tone, icon, title, hint, children }: any) => (
+              <section className={`overflow-hidden rounded-xl border ${tone}`}>
+                <header className="px-3 py-2">
+                  <p className="flex items-center gap-1.5 font-bold">{icon}{title}</p>
+                  {hint && <p className="text-[12px] opacity-80">{hint}</p>}
+                </header>
+                <div className="max-h-56 overflow-auto bg-white">{children}</div>
+              </section>
+            );
+            return (
+              <div className="space-y-3">
+                <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+                  {[
+                    [t('أسطر في الملفّ', 'Rows in file'), res.fileRows, 'text-slate-900'],
+                    [res.preview ? t('كشوف ستُحدَّث', 'Will update') : t('كشوف حُدِّثت', 'Updated'), res.preview ? res.toUpdate : res.updated, 'text-emerald-700'],
+                    [t('بلا تغيير', 'Unchanged'), res.unchanged, 'text-slate-500'],
+                    [t('رقم كشف غير موجود', 'No such report'), res.notFound.length, 'text-amber-700'],
+                  ].map(([l, v, cl]) => (
+                    <div key={String(l)} className="rounded-xl border border-slate-200 bg-white px-3 py-2">
+                      <p className={`text-xl font-extrabold tabular-nums ${cl}`}>{v as any}</p>
+                      <p className="text-[11.5px] text-slate-500">{l as any}</p>
+                    </div>
+                  ))}
+                </div>
+
+                {res.preview && !!res.sample.length && (
+                  <Block tone="border-slate-200 bg-slate-900 text-white" icon={<CheckCircle2 className="h-4 w-4 text-emerald-400" />}
+                    title={t('ما سيتغيّر في سير العمل', 'What will change in the workflow')}>
+                    <table className="w-full text-[12.5px] text-slate-800">
+                      <thead className="bg-slate-100 text-slate-600"><tr><th className={th}>{t('رقم الكشف', 'Report')}</th><th className={th}>{t('الخانة', 'Field')}</th><th className={th}>{t('القيمة الحالية', 'Current')}</th><th className={th}>{t('القيمة الجديدة من الملفّ', 'New from file')}</th></tr></thead>
+                      <tbody className="divide-y divide-slate-100">
+                        {res.sample.flatMap((x) => Object.keys(x.after).map((k, i) => (
+                          <tr key={`${x.reportNumber}-${k}`}>
+                            <td className={`${td} font-bold tabular-nums`}>{i === 0 ? x.reportNumber : ''}</td>
+                            <td className={td}>{LABEL[k] || k}</td>
+                            <td className={`${td} text-slate-400 line-through`}>{show(x.before[k])}</td>
+                            <td className={`${td} font-bold text-emerald-700`}>{show(x.after[k])}</td>
+                          </tr>
+                        )))}
+                      </tbody>
+                    </table>
+                    {res.toUpdate > res.sample.length && <p className="px-3 py-1.5 text-[11px] text-slate-400">{t(`أوّل ${res.sample.length} من ${res.toUpdate} كشفًا`, `first ${res.sample.length} of ${res.toUpdate}`)}</p>}
+                  </Block>
+                )}
+
+                {c && !!c.valueDiffs.length && (
+                  <Block tone="border-rose-200 bg-rose-50 text-rose-900" icon={<AlertTriangle className="h-4 w-4" />}
+                    title={t(`فرق في قيمة الفاتورة (${c.valueDiffs.length})`, `Invoice value differences (${c.valueDiffs.length})`)}
+                    hint={t('قيمة الفاتورة في الملفّ لا تساوي مجموع الكشوف المرتبطة بها في سير العمل.', 'The invoice value in the file differs from the sum of its reports in the workflow.')}>
+                    <table className="w-full text-[12.5px] text-slate-800">
+                      <thead className="bg-rose-100/60 text-rose-900"><tr><th className={th}>{t('رقم الفاتورة', 'Invoice')}</th><th className={th}>{t('العميل', 'Customer')}</th><th className={th}>{t('في الملفّ', 'In file')}</th><th className={th}>{t('في سير العمل', 'In workflow')}</th><th className={th}>{t('الفرق', 'Difference')}</th></tr></thead>
+                      <tbody className="divide-y divide-slate-100">
+                        {c.valueDiffs.slice(0, 200).map((v, i) => (
+                          <tr key={i}><td className={`${td} font-bold`}>{v.invoiceNumber}</td><td className={td}>{v.customerName || '—'}</td><td className={`${td} tabular-nums`}>{fmt(v.uploadedValue)}</td><td className={`${td} tabular-nums`}>{fmt(v.reportsValue)}</td><td className={`${td} font-bold tabular-nums text-rose-700`}>{fmt(v.difference)}</td></tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </Block>
+                )}
+
+                {c && !!c.nameMismatches.length && (
+                  <Block tone="border-sky-200 bg-sky-50 text-sky-900" icon={<AlertTriangle className="h-4 w-4" />}
+                    title={t(`اسم العميل مختلف (${c.nameMismatches.length})`, `Customer name differs (${c.nameMismatches.length})`)}
+                    hint={t('للتنبيه فقط: يبقى اسمُ العميل في سير العمل كما هو ولا يتغيّر بالرفع، وتُكتب بيانات الفاتورة فقط.', 'Warning only: the workflow customer stays as it is; only the invoice data is written.')}>
+                    <table className="w-full text-[12.5px] text-slate-800">
+                      <thead className="bg-sky-100/60 text-sky-900"><tr><th className={th}>{t('رقم الكشف', 'Report')}</th><th className={th}>{t('رقم الفاتورة', 'Invoice')}</th><th className={th}>{t('العميل في الملفّ', 'Customer in file')}</th><th className={th}>{t('العميل في سير العمل (يبقى)', 'Customer in workflow (kept)')}</th></tr></thead>
+                      <tbody className="divide-y divide-slate-100">
+                        {c.nameMismatches.slice(0, 200).map((m, i) => (
+                          <tr key={i}><td className={`${td} font-bold tabular-nums`}>{m.reportNumber}</td><td className={td}>{m.invoiceNumber}</td><td className={td}>{m.uploadedCustomer}</td><td className={`${td} font-bold`}>{m.workflowCustomer}</td></tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </Block>
+                )}
+
+                {c && !!c.missingReports.length && (
+                  <Block tone="border-amber-200 bg-amber-50 text-amber-900" icon={<AlertTriangle className="h-4 w-4" />}
+                    title={t(`فواتير برقم كشف غير موجود (${c.missingReports.length})`, `Invoices citing missing reports (${c.missingReports.length})`)}
+                    hint={t('رقم الكشف المكتوب في الملفّ غير موجود في سير العمل، فلن يُكتب شيءٌ لهذه الأسطر.', 'The report number in the file is not in the workflow; nothing is written for these rows.')}>
+                    <table className="w-full text-[12.5px] text-slate-800">
+                      <thead className="bg-amber-100/60 text-amber-900"><tr><th className={th}>{t('رقم الفاتورة', 'Invoice')}</th><th className={th}>{t('رقم الكشف في الملفّ', 'Report no. in file')}</th><th className={th}>{t('العميل', 'Customer')}</th><th className={th}>{t('القيمة', 'Value')}</th></tr></thead>
+                      <tbody className="divide-y divide-slate-100">
+                        {c.missingReports.slice(0, 200).map((m, i) => (
+                          <tr key={i}><td className={`${td} font-bold`}>{m.invoiceNumber}</td><td className={`${td} tabular-nums`}>{m.reportNumber}</td><td className={td}>{m.customerName || '—'}</td><td className={`${td} tabular-nums`}>{fmt(m.total)}</td></tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </Block>
+                )}
+
+                {!!res.skipped.length && (
+                  <Block tone="border-amber-200 bg-amber-50 text-amber-900" icon={<AlertTriangle className="h-4 w-4" />} title={t(`لن تُكتب (${res.skipped.length})`, `Not written (${res.skipped.length})`)}>
+                    <table className="w-full text-[12.5px] text-slate-800"><tbody className="divide-y divide-slate-100">
+                      {res.skipped.map((x) => <tr key={x.reportNumber}><td className={`${td} font-bold tabular-nums`}>{x.reportNumber}</td><td className="px-3 py-2">{x.reason}</td></tr>)}
+                    </tbody></table>
+                  </Block>
+                )}
+
+                {c && !c.valueDiffs.length && !c.nameMismatches.length && !c.missingReports.length && (
+                  <p className="flex items-center gap-1.5 rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2 text-[12.5px] font-semibold text-emerald-800"><CheckCircle2 className="h-4 w-4" />{t('لا فروق: كلّ أرقام الكشوف موجودة، والقيم وأسماء العملاء مطابقة.', 'No differences: all reports exist, values and customers match.')}</p>
+                )}
+
+                {res.preview ? (
+                  <div className="flex items-center justify-end gap-2 border-t border-slate-200 pt-3">
+                    <button type="button" onClick={() => setOpen(false)} className="rounded-lg px-4 py-2 font-semibold text-slate-600 hover:bg-slate-100">{t('إلغاء', 'Cancel')}</button>
+                    <button type="button" onClick={() => send(true)} disabled={busy || !res.toUpdate}
+                      className="inline-flex items-center gap-1.5 rounded-lg bg-emerald-600 px-5 py-2 text-[13px] font-bold text-white disabled:opacity-40">
+                      {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <CheckCircle2 className="h-4 w-4" />}{t(`تطبيق على ${res.toUpdate} كشفًا`, `Apply to ${res.toUpdate} reports`)}
+                    </button>
+                  </div>
+                ) : (
+                  <p className="flex items-center gap-1.5 font-semibold text-emerald-700"><CheckCircle2 className="h-4 w-4" />{t('تمّ التطبيق — والفواتير الضريبيّة وصلت التحصيل.', 'Applied — tax invoices are in Collections.')}</p>
+                )}
+              </div>
+            );
+          })()}
         </div>
       </Modal>
     </>

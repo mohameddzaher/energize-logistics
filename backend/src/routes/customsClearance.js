@@ -42,6 +42,7 @@ router.get('/settings', ctrl.getSettings);
 // Customer follow-up email from the customs mailbox; the template is edited by the section heads.
 const mail = require('../controllers/customsMailController');
 router.get('/email-template', mail.getTemplate);
+router.post('/email-signature-preview', mail.signaturePreview);
 router.put('/email-template', authorize('super_admin', 'admin', 'it_manager', 'it_specialist', 'customs_manager'), mail.saveTemplate);
 router.put('/settings', authorize('super_admin', 'admin', 'it_manager', 'it_specialist', 'customs_manager'), ctrl.updateSettings);
 router.get('/upcoming-alerts', ctrl.upcomingAlerts);

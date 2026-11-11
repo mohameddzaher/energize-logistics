@@ -161,11 +161,14 @@ export function ProgressForm({
             {(statuses || []).map((x) => <option key={x.key} value={x.key}>{lang === 'ar' ? x.ar : x.en}</option>)}
           </select>
         </label>
-        <label className="block">
-          <span className="text-[11px] text-slate-500">{t('Progress', 'نسبة الإنجاز')}: {p}%</span>
-          <input type="range" min={0} max={100} step={5} value={p} onChange={(e) => setP(Number(e.target.value))}
-            className="w-full mt-2 accent-[#f37121]" />
-        </label>
+        {/* The percentage follows the chosen status (set on the server); shown, not typed. */}
+        <div className="block">
+          <span className="text-[11px] text-slate-500">{t('Progress (from the status)', 'نسبة الإنجاز (تُحسب من الحالة)')}</span>
+          <div className="mt-2 flex items-center gap-2">
+            <div className="h-2 flex-1 rounded-full bg-slate-200 overflow-hidden"><div className="h-full rounded-full bg-[#f37121]" style={{ width: `${(statuses || []).find((x) => x.key === s)?.progress ?? p}%` }} /></div>
+            <b className="text-sm tabular-nums text-slate-800">{(statuses || []).find((x) => x.key === s)?.progress ?? p}%</b>
+          </div>
+        </div>
         {s !== 'done' && s !== 'cancelled' && (
           <label className="block">
             <span className="text-[11px] text-slate-500">{t('Expected to finish', 'متوقَّع الانتهاء')}</span>

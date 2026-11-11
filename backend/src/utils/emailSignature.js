@@ -32,7 +32,6 @@ function signatureHtml(dept, note = '') {
 ${note ? `<p dir="auto" style="${line};margin-bottom:10px;white-space:pre-line">${esc(note)}</p>` : ''}
 <p style="${line}">Best regards,</p>
 <p style="${line};font-weight:bold">${esc(d.en)}</p>
-<p style="${line}" dir="rtl">${esc(d.ar)}</p>
 <p style="margin:10px 0 4px"><img src="cid:${CIDS.logo}" alt="Energize Logistics" style="height:40px;vertical-align:middle">&nbsp;&nbsp;<img src="cid:${CIDS.mark}" alt="" style="height:40px;vertical-align:middle"></p>
 <p style="${line};color:#f37121;font-style:italic">Your Logistics Partner…</p>
 <p style="${line}">🌐 <a href="https://energize-logistics.com" style="color:#000;text-decoration:none">Energize-Logistics.com</a></p>
@@ -44,8 +43,22 @@ ${note ? `<p dir="auto" style="${line};margin-bottom:10px;white-space:pre-line">
 /** Plain-text twin for mail clients that show text only. */
 function signatureText(dept, note = '') {
   const d = DEPARTMENTS[dept] || DEPARTMENTS.customs;
-  return [note, 'Best regards,', d.en, d.ar, 'Energize Logistics — Your Logistics Partner…', 'Energize-Logistics.com', 'Hotline: 920031911']
+  return [note, 'Best regards,', d.en, 'Energize Logistics — Your Logistics Partner…', 'Energize-Logistics.com', 'Hotline: 920031911']
     .filter(Boolean).join('\n');
 }
 
-module.exports = { DEPARTMENTS, signatureHtml, signatureText, signatureAttachments };
+/** The same signature for on-screen preview: images inlined as data URLs instead of cid references (the GIF keeps its animation). */
+let inlined = null;
+function signaturePreviewHtml(dept, note = '', image = '') {
+  const fs = require('fs');
+  if (!inlined) {
+    const read = (f, mime) => `data:${mime};base64,${fs.readFileSync(path.join(ASSET_DIR, f)).toString('base64')}`;
+    inlined = { logo: read('logo.png', 'image/png'), mark: read('mark.png', 'image/png'), truck: read('truck.gif', 'image/gif') };
+  }
+  let html = signatureHtml(dept, note);
+  for (const k of Object.keys(CIDS)) html = html.split(`cid:${CIDS[k]}`).join(inlined[k]);
+  const img = /^data:image\//i.test(image || '') ? `<div style="margin-top:14px"><img src="${image}" alt="" style="max-width:320px;max-height:140px"></div>` : '';
+  return img + html;
+}
+
+module.exports = { DEPARTMENTS, signatureHtml, signatureText, signatureAttachments, signaturePreviewHtml };

@@ -28,7 +28,7 @@ export const isBrParticipant = (role?: string | null) => {
 };
 export const tx = (lang: Lang, en: string, ar: string) => (lang === 'ar' ? ar : en);
 
-export interface Vocab { key: string; ar: string; en: string; color?: string; days?: number | null }
+export interface Vocab { key: string; ar: string; en: string; color?: string; days?: number | null; progress?: number }
 
 export interface BrPerson {
   _id: string; name: string; role: string; department?: string; jobTitle?: string; section?: string;

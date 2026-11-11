@@ -39,15 +39,17 @@ const HELD_MEETING_STATUSES = ['held', 'completed'];
 // Still open: work can be done on it. Cancelled is neither open nor completed.
 const OPEN_MEETING_STATUSES = ['scheduled', 'in_progress', 'held'];
 
+// `progress` is the completion percentage a status stands for: progress follows the status, it is never typed.
 const ACTION_STATUSES = [
-  { key: 'open', ar: 'لم يبدأ', en: 'Not started', color: '#94a3b8' },
-  { key: 'in_progress', ar: 'قيد التنفيذ', en: 'In progress', color: '#0ea5e9' },
-  { key: 'blocked', ar: 'متعثر', en: 'Blocked', color: '#dc2626' },
+  { key: 'open', ar: 'لم يبدأ', en: 'Not started', color: '#94a3b8', progress: 0 },
+  { key: 'in_progress', ar: 'قيد التنفيذ', en: 'In progress', color: '#0ea5e9', progress: 50 },
+  { key: 'blocked', ar: 'متعثر', en: 'Blocked', color: '#dc2626', progress: 50 },
   // Moved to a later date with a reason; still open work, counted against its new date.
-  { key: 'postponed', ar: 'مؤجَّل', en: 'Postponed', color: '#d97706' },
-  { key: 'done', ar: 'مكتمل', en: 'Completed', color: '#16a34a' },
-  { key: 'cancelled', ar: 'ملغي', en: 'Cancelled', color: '#64748b' },
+  { key: 'postponed', ar: 'مؤجَّل', en: 'Postponed', color: '#d97706', progress: 25 },
+  { key: 'done', ar: 'مكتمل', en: 'Completed', color: '#16a34a', progress: 100 },
+  { key: 'cancelled', ar: 'ملغي', en: 'Cancelled', color: '#64748b', progress: 0 },
 ];
+const PROGRESS_OF = Object.fromEntries(ACTION_STATUSES.map((s) => [s.key, s.progress]));
 const ACTION_STATUS_KEYS = ACTION_STATUSES.map((s) => s.key);
 const OPEN_ACTION_STATUSES = ['open', 'in_progress', 'blocked', 'postponed'];
 
@@ -110,7 +112,7 @@ const meta = () => ({
 module.exports = {
   CADENCES, CADENCE_KEYS,
   MEETING_STATUSES, MEETING_STATUS_KEYS, HELD_MEETING_STATUSES, OPEN_MEETING_STATUSES,
-  ACTION_STATUSES, ACTION_STATUS_KEYS, OPEN_ACTION_STATUSES,
+  ACTION_STATUSES, ACTION_STATUS_KEYS, OPEN_ACTION_STATUSES, PROGRESS_OF,
   PRIORITIES, PRIORITY_KEYS,
   EXECUTIVE_ROLES, SECRETARY_ROLES, EXTRA_MANAGER_ROLES,
   isManagerRole, isExecutive, isSecretary, canRunMeetings, isParticipant,

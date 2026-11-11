@@ -160,8 +160,19 @@ const unitOf = (raw) => (raw === undefined || raw === null || raw === '' || raw 
 
 // GET /api/customs-clearance/email-template
 exports.getTemplate = async (req, res) => {
-  try { res.json({ ...(await loadTemplate()), placeholders: PLACEHOLDERS, mailbox: MAILBOX, defaults: DEFAULT_TEMPLATE }); }
+  try {
+    const tpl = await loadTemplate();
+    res.json({ ...tpl, placeholders: PLACEHOLDERS, mailbox: MAILBOX, defaults: DEFAULT_TEMPLATE, signatureDept: 'customs' });
+  }
   catch (e) { fail(res, e, 'تعذّر تحميل القالب'); }
+};
+
+// POST /api/customs-clearance/email-signature-preview { signature, signatureImage } — the closing block as it will be sent, for the settings editor while typing.
+exports.signaturePreview = async (req, res) => {
+  try {
+    const img = String(req.body.signatureImage || '');
+    res.json({ html: require('../utils/emailSignature').signaturePreviewHtml('customs', String(req.body.signature || '').slice(0, 2000), /^data:image\//i.test(img) && img.length < 420000 ? img : '') });
+  } catch (e) { fail(res, e, 'تعذّر عرض التوقيع'); }
 };
 
 // PUT /api/customs-clearance/email-template
@@ -193,6 +204,8 @@ exports.draft = async (req, res) => {
     res.json({
       mailbox: MAILBOX, customerName: c.customerName || '', to: await customerEmails(c), cc: tpl.cc || [], units,
       companySignature: require('../utils/emailSignature').signatureText('customs'),
+      // Exactly what closes the email, with the logo and the animated truck, for the dialog to show.
+      signaturePreview: require('../utils/emailSignature').signaturePreviewHtml('customs', tpl.signature, tpl.signatureImage),
       subject: fill(tpl.subject, vals), body: fill(tpl.body, vals),
       signature: tpl.signature, signatureImage: tpl.signatureImage,
       sent: (c.emailLog || []).slice(-5).reverse(),

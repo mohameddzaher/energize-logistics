@@ -64,10 +64,10 @@ export default function CustomsSettingsPage() {
       </div>
 
       {tab === 'email' && (
-        <EmailTemplateEditor ar={ar} endpoint="/api/customs-clearance/email-template" liveEvent="customs:email-template"
+        <EmailTemplateEditor ar={ar} endpoint="/api/customs-clearance/email-template" liveEvent="customs:email-template" previewEndpoint="/api/customs-clearance/email-signature-preview"
           canEdit={['super_admin', 'admin', 'it_manager', 'it_specialist', 'customs_manager'].includes(user?.role || '')}
           title={t('قالب بريد المتابعة للعميل', 'Customer follow-up email template')}
-          signatureHint={t('مثال: إدارة التخليص الجمركي — إنرجايز للخدمات اللوجستية', 'e.g. Customs Clearance — Energize Logistics')} />
+          signatureHint={t('مثال: للاستفسار عن شحنتكم تواصلوا معنا على 920031911', 'e.g. For any question about your shipment call 920031911')} />
       )}
       {tab === 'lists' && <ReferenceDataManager module="customs" alsoType="jp_task_customs" embedded />}
 

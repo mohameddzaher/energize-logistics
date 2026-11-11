@@ -439,7 +439,6 @@ function TaskRow({ task, meta, L, meetingId, canEdit, dept, open, onToggle, onCh
                     <div><span className={lbl}>{t('Add owner', 'إضافة مسؤول')} *</span>
                       <SearchSelect ar={L === 'ar'} value={shareTo} onChange={setShareTo} placeholder={t('Search by name…', 'ابحث بالاسم…')}
                         options={personOpts([String(task.assignee?._id || task.assignee), ...(task.sharedWith || []).map((x: any) => String(x.assignee))])} /></div>
-                    <p className="rounded-lg bg-sky-50 border border-sky-200 px-3 py-2 text-[12px] text-sky-800">{t('Both own the task; each reports progress on their part and sees the other’s.', 'يصبحان مسؤولَين عن البند معًا: يظهر في بطاقة قسمه وفي «بنودي» عنده، ويُحدِّث كلٌّ منهما حالةَ جزئه ويرى حالةَ الآخر.')}</p>
                   </div>
                 ),
                 footer: primary(t('Assign', 'إسناد'), share, !shareTo, 'bg-sky-600 hover:bg-sky-700'),
@@ -456,7 +455,6 @@ function TaskRow({ task, meta, L, meetingId, canEdit, dept, open, onToggle, onCh
                         <SearchSelect ar={L === 'ar'} value={moveTo} onChange={setMoveTo} placeholder={t('Search by name…', 'ابحث بالاسم…')}
                           options={personOpts([String(task.assignee?._id || task.assignee)])} /></div>
                     </div>
-                    <p className="rounded-lg bg-indigo-50 border border-indigo-200 px-3 py-2 text-[12px] text-indigo-800">{t('The task leaves the current owner entirely; the new owner is notified at once.', 'يخرج البند من المسؤول الحالي ويصبح عند المسؤول الجديد وحده، ويصله إشعارٌ فورًا، ويُبلَّغ المسؤول السابق.')}</p>
                   </div>
                 ),
                 footer: primary(t('Move', 'نقل البند'), transfer, !moveTo, 'bg-indigo-600 hover:bg-indigo-700'),

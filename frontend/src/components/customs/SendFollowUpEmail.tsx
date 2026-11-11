@@ -14,7 +14,7 @@ import { Loader2, Send, Mail, AlertTriangle } from 'lucide-react';
 interface Sent { at: string; byName?: string; to: string[]; subject?: string; unit?: string }
 interface Draft {
   mailbox: string; customerName: string; to: string[]; subject: string; body: string;
-  signature?: string; signatureImage?: string; cc?: string[]; companySignature?: string; units: { index: number; number: string }[]; sent: Sent[];
+  signature?: string; signatureImage?: string; cc?: string[]; companySignature?: string; signaturePreview?: string; units: { index: number; number: string }[]; sent: Sent[];
 }
 
 export default function SendFollowUpEmail({ clearanceId, ar, onClose, onSent }: {
@@ -101,20 +101,17 @@ export default function SendFollowUpEmail({ clearanceId, ar, onClose, onSent }: 
             <span className="mb-1 block text-[12.5px] font-semibold text-slate-700">{t('نصّ الرسالة', 'Message')}</span>
             <textarea rows={12} value={body} onChange={(e) => setBody(e.target.value)} dir="auto" className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm leading-7" />
           </label>
-          {d.companySignature && (
+          {/* The closing block exactly as sent: the line from settings, its image, and the company signature with the logo and animated truck. */}
+          {d.signaturePreview ? (
+            <div className="rounded-xl border border-dashed border-slate-300 bg-white px-4 py-2">
+              <p className="mb-1 text-[11.5px] font-semibold text-slate-500">{t('يُضاف في آخر الرسالة كما يظهر هنا — من إعدادات القسم', 'Appended at the end exactly as shown — from section settings')}</p>
+              <div dangerouslySetInnerHTML={{ __html: d.signaturePreview }} />
+            </div>
+          ) : d.companySignature ? (
             <div className="rounded-xl border border-dashed border-slate-200 px-3 py-2">
-              <p className="mb-1 text-[11.5px] font-semibold text-slate-500">{t('توقيع الشركة — يُضاف في آخر الرسالة مع الشعار', 'Company signature — appended with the logo')}</p>
               <p className="whitespace-pre-wrap text-[12.5px] text-slate-600" dir="ltr">{d.companySignature}</p>
             </div>
-          )}
-          {(d.signature || d.signatureImage) && (
-            <div className="rounded-xl border border-dashed border-slate-200 px-3 py-2">
-              <p className="mb-1 text-[11.5px] font-semibold text-slate-500">{t('التوقيع (من إعدادات القسم) — يُضاف في آخر الرسالة', 'Signature (from settings) — appended')}</p>
-              {d.signature && <p className="whitespace-pre-wrap text-[13px] text-slate-700" dir="auto">{d.signature}</p>}
-              {/* eslint-disable-next-line @next/next/no-img-element */}
-              {d.signatureImage && <img src={d.signatureImage} alt="" className="mt-1 max-h-16 max-w-[220px]" />}
-            </div>
-          )}
+          ) : null}
           {d.sent.length > 0 && (
             <div className="rounded-xl border border-slate-200 px-3 py-2">
               <p className="mb-1 text-[12px] font-semibold text-slate-600">{t('آخر ما أُرسل من هذه المعاملة', 'Recently sent from this transaction')}</p>

@@ -69,7 +69,7 @@ const buildClearanceInvoice = (clearance) => {
 
 /**
  * Transaction money in analytics and department finance.
- * Cost = sum of payment-stage amounts (rejected excluded). Revenue = customer invoice total (`buildClearanceInvoice`), none until invoiced. Profit = revenue - its tax - cost, invoiced only.
+ * Cost = cost lines (paid stages summed into them) + stage requests not yet paid (rejected/returned excluded). Revenue = customer invoice total (`buildClearanceInvoice`), none until invoiced. Profit = revenue - its tax - cost, invoiced only.
  * Transactions imported from master are read as written: `costs.total`, `revenue.totalInvoiced`, `revenue.profit`.
  * Needs: paymentStages.key/amount/payStatus, saleItems, saleInvoiceNumber, saleVatRate, costs.total, revenue.
  */
@@ -84,7 +84,9 @@ const moneyOf = (c) => {
     const cost = num(c?.costs?.total);
     return { legacy: true, cost: round2(cost), revenue: round2(revenue), vat: 0, profit: round2(revenue - cost) };
   }
-  const cost = stages.length ? round2(stages.reduce((a, p) => a + Number(p.amount), 0)) : round2(num(c?.costs?.total));
+  // Paid stages are already summed into their cost lines (applyPaidCosts), so cost = every cost line + requests not yet paid; typed lines without a stage (demurrage, yard) still count.
+  const unpaid = stages.filter((p) => p.payStatus !== 'paid' && p.payStatus !== 'returned' && require('../models/CustomsClearance').costFieldOf(p.key));
+  const cost = round2(num(c?.costs?.total) + unpaid.reduce((a, p) => a + Number(p.amount), 0));
   // Not invoiced: its cost stands and its revenue has not come, so no profit or loss is computed yet.
   if (!billed) return { legacy: false, cost, revenue: 0, vat: 0, profit: 0, pending: true };
   const inv = buildClearanceInvoice(c);

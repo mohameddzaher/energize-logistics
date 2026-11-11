@@ -82,7 +82,7 @@ async function chairmanSigner() {
 const idOf = (x) => (x && typeof x === 'object' ? String(x._id || '') : String(x || ''));
 
 /**
- * The signature boxes (order on the page: sheetOrder): employee, direct manager (when the request has one), finance, HR, the general manager (final approval) and the chairman, whose box is signed with the general manager's approval.
+ * The signature boxes (order on the page: sheetOrder): employee, direct manager (when the request has one), HR, finance, the general manager (final approval) and the chairman, whose box is signed with the general manager's approval.
  * A box is filled by the stage's approval only; a rejection or a question leaves it unsigned.
  * `fullView` false (the employee and staff outside the process) leaves the stage boxes of an open request empty, so the sheet does not tell where it stands.
  * `signedUpTo`: for someone who signed a stage of this request (owner, 2026-11-10), the boxes up to and including their stage show even while it is open.
@@ -159,15 +159,15 @@ async function registerName(value) {
 }
 
 /**
- * The owner's layout (2026-11-07): the employee and the direct manager on the first row; finance, the general manager in the middle as the final approver, and HR below.
+ * Boxes follow the approval order: employee, direct manager, HR, finance, the general manager, then the chairman (signed with the general manager's approval).
  * The page is right-to-left, so the first box of a row is on the right.
  */
 function sheetOrder(boxes) {
   const by = (label) => boxes.find((b) => b.label === label);
-  // Without a direct manager: employee, finance and HR on top; the general manager and the chairman below.
+  // Without a direct manager: employee, HR and finance on top; the general manager and the chairman below.
   const order = by('المدير المباشر')
-    ? [by('الموظف'), by('المدير المباشر'), by('المدير المالي'), by('مدير الموارد البشرية'), by('المدير العام'), by('رئيس مجلس الإدارة')]
-    : [by('الموظف'), by('المدير المالي'), by('مدير الموارد البشرية'), by('المدير العام'), by('رئيس مجلس الإدارة')];
+    ? [by('الموظف'), by('المدير المباشر'), by('مدير الموارد البشرية'), by('المدير المالي'), by('المدير العام'), by('رئيس مجلس الإدارة')]
+    : [by('الموظف'), by('مدير الموارد البشرية'), by('المدير المالي'), by('المدير العام'), by('رئيس مجلس الإدارة')];
   const list = order.filter(Boolean);
   return list.length === boxes.length ? list : boxes;
 }

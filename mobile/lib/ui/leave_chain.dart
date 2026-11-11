@@ -9,8 +9,8 @@ import 'theme.dart';
 /// Steps in order: key, the two names, and the document field holding its decision.
 const leaveStages = <({String key, String ar, String en, String decision})>[
   (key: 'manager', ar: 'المدير المباشر', en: 'Direct Manager', decision: 'managerDecision'),
-  (key: 'finance', ar: 'الإدارة المالية', en: 'Finance', decision: 'financeDecision'),
   (key: 'hr', ar: 'الموارد البشرية', en: 'HR', decision: 'hrDecision'),
+  (key: 'finance', ar: 'الإدارة المالية', en: 'Finance', decision: 'financeDecision'),
   (key: 'executive', ar: 'الإدارة العليا', en: 'Top Management', decision: 'executiveDecision'),
 ];
 // Four stages: top management's approval is final; the chairman left the chain on 2026-11-07 (backend utils/leaveChain).

@@ -87,7 +87,7 @@ const leaveRequestSchema = new mongoose.Schema(
       by: { type: mongoose.Schema.Types.ObjectId, ref: 'User' }, byName: String, at: Date,
     },
 
-    // Stages, in order: direct manager, finance, HR, top management, chairman of the board.
+    // Stages, in order: direct manager, HR, finance, top management; the chairman signs with top management.
     // An ask for clarification is not a rejection; the owner's reply restarts the chain, since what was approved changed.
     status: {
       type: String,

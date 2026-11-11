@@ -129,8 +129,8 @@ export interface LeaveThreadEntry {
 // Four stages: top management's approval is final; the chairman left the chain on 2026-11-07 (backend utils/leaveChain). The chairman label stays in LEAVE_STATUS for old records.
 export const LEAVE_STAGES: { key: LeaveStage; ar: string; en: string; decision: keyof LeaveRequest }[] = [
   { key: 'manager', ar: 'المدير المباشر', en: 'Direct Manager', decision: 'managerDecision' },
-  { key: 'finance', ar: 'الإدارة المالية', en: 'Finance', decision: 'financeDecision' },
   { key: 'hr', ar: 'الموارد البشرية', en: 'HR', decision: 'hrDecision' },
+  { key: 'finance', ar: 'الإدارة المالية', en: 'Finance', decision: 'financeDecision' },
   { key: 'executive', ar: 'الإدارة العليا', en: 'Top Management', decision: 'executiveDecision' },
 ];
 

@@ -1,14 +1,14 @@
 /**
  * Leave approval chain: who decides at each stage.
- * Four stages, the owner's order: direct manager, finance, HR, top management (accounts flagged `isTopManagement`, the general manager). Top management's approval is final.
+ * Four stages, the owner's order: direct manager, HR, finance, top management (accounts flagged `isTopManagement`, the general manager). Top management's approval is final; the chairman's box is signed with it.
  * The chairman of the board (`isChairman`) left the chain on 2026-11-07: he follows every request for information only. The chairman fields stay for the old records he decided.
- * A request already past a stage that was added later (held at HR without a finance decision) carries on from where it is; NEXT_OF never sends it back.
+ * The next stage is the first later one not yet approved, so a request filed under the earlier order (finance before HR) still passes every stage once.
  * A clarification request is not a rejection: the request returns to the employee to reply, amend or attach a receipt. A plain reply goes back to the stage that asked, with the approvals before it kept; an amended request (dates or type changed) restarts from the beginning, because what was approved is no longer the same request.
  * The process itself (stages, who holds a request) is shown only to `seesProcess` accounts; the employee and other staff see a request as under review until it is decided or returned with a question.
  */
 const { rolesOfSection, isManager } = require('../config/roles');
 
-const STAGES = ['manager', 'finance', 'hr', 'executive'];
+const STAGES = ['manager', 'hr', 'finance', 'executive'];
 const PENDING_OF = {
   manager: 'pending_manager',
   finance: 'pending_finance',
@@ -19,7 +19,7 @@ const PENDING_OF = {
 const PENDING_STATUSES = Object.values(PENDING_OF);
 const OPEN_STATUSES = [...PENDING_STATUSES, 'info_requested'];
 
-const NEXT_OF = { manager: 'finance', finance: 'hr', hr: 'executive', executive: 'done' };
+const NEXT_OF = { manager: 'hr', hr: 'finance', finance: 'executive', executive: 'done' };
 // Where a request starts once the direct manager is satisfied (no manager, or he filed it himself).
 const AFTER_MANAGER = NEXT_OF.manager;
 const DECISION_FIELD = {
@@ -117,7 +117,10 @@ function startOf(hasManager) {
 
 /** Advances the request to the next stage after an approval at `stage`. */
 function advance(leave, stage) {
-  const next = NEXT_OF[stage];
+  const approved = (st) => leave[DECISION_FIELD[st]]?.decision === 'approved' && leave[DECISION_FIELD[st]]?.at;
+  // The executive's approval is final; before it, the first stage not yet approved (in order, never the manager) comes next.
+  const next = stage === 'executive' ? 'done'
+    : (STAGES.find((st) => st !== 'manager' && st !== stage && !approved(st)) || 'done');
   if (next === 'done') { leave.status = 'approved'; leave.currentStage = 'done'; return 'approved'; }
   leave.status = PENDING_OF[next];
   leave.currentStage = next;

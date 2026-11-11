@@ -4,6 +4,7 @@ import '../services/api.dart';
 import '../services/lang.dart';
 import '../services/live.dart';
 import '../ui/app_scaffold.dart';
+import '../ui/export_sheet.dart';
 import '../ui/lookup_field.dart';
 import '../ui/search_field.dart';
 import '../ui/theme.dart';
@@ -42,7 +43,7 @@ mixin _LiveLoad<W extends StatefulWidget> on State<W> {
   Timer? _liveT;
   void _onLiveEvt() { _liveT?.cancel(); _liveT = Timer(const Duration(milliseconds: 600), reload); }
   late final void Function() _liveCb = _onLiveEvt;
-  List<String> get liveEvents => const [vmEvent, 'shipmentOrders:updated', 'shipmentOrders:fleet', 'shipmentRequests:changed'];
+  List<String> get liveEvents => const [vmEvent, 'shipmentOrders:updated', 'shipmentOrders:fleet', 'shipmentRequests:changed', 'workflow:bulkImported'];
   Future<void> reload();
   void startLive() { for (final e in liveEvents) { Live.instance.on(e, _liveCb); } }
   void stopLive() { _liveT?.cancel(); for (final e in liveEvents) { Live.instance.off(e, _liveCb); } }
@@ -109,6 +110,7 @@ class _VmFilterBarState extends State<VmFilterBar> {
     if (v == '__blank__' || v == '__none') return tr('— غير محدّد —', '— not set —');
     if (k == 'payment') return soPaymentKindLabel(v);
     if (k == 'kind') { final x = vmKinds[v]; return x == null ? v : tr(x.$1, x.$2); }
+    if (k == 'contract') return vmContractLabel(v);
     return v;
   }
   List<Map<String, dynamic>> _optionsOf(String k) {
@@ -256,11 +258,21 @@ class _VendorsOverviewScreenState extends State<VendorsOverviewScreen> with _Liv
     final months = _list(d?['months']);
     final acts = _list(d?['activations']);
     final act = acts.firstWhere((a) => inum(a['month']) == _actMonth, orElse: () => const {});
-    // Every tile opens the carriers it counts.
+    // Every tile opens the list it counts; every list exports to Excel.
     final ml = _list(d?['masterList']);
     final xl = _list(d?['extActiveList']);
-    String sub(Map<String, dynamic> r) => [if ('${r['owner'] ?? ''}'.isNotEmpty) r['owner'], '${tr('رحلات العام', 'Year')} ${r['trips']}', '${tr('الشهر', 'Month')} ${r['month']}', '${tr('آخر رحلة', 'Last')} ${r['last'] ?? '—'}'].join(' · ');
-    Widget tap(Widget tile, String title, List<Map<String, dynamic>> rows) => vmTapTile(() => vmDrill(context, title, rows, sub), tile);
+    final yl = _list(d?['extYearList']);
+    final fum = _list(d?['followUps']);
+    final fud = _list(d?['followUpsDue']);
+    final n = d?['inactiveDays'] ?? 90;
+    final cmo = inum(d?['curMonth']).toInt();
+    String idle(Map<String, dynamic> r) => r['daysIdle'] == null ? tr('لم يعمل قطّ', 'never worked') : '${tr('بلا رحلة منذ', 'idle')} ${r['daysIdle']} ${tr('يومًا', 'days')}';
+    String sub(Map<String, dynamic> r) => [if ('${r['owner'] ?? ''}'.isNotEmpty) r['owner'], if (r['contractState'] != null) vmContractLabel(r['contractState']), '${tr('رحلات العام', 'Year')} ${r['trips'] ?? 0}', '${tr('الشهر', 'Month')} ${r['month'] ?? 0}', '${tr('آخر رحلة', 'Last')} ${r['last'] ?? '—'}', idle(r)].join(' · ');
+    String fuSub(Map<String, dynamic> r) => [r['at'] ?? r['lastAt'], if ('${r['byName'] ?? ''}'.isNotEmpty) r['byName'], if ('${r['outcome'] ?? ''}'.isNotEmpty) r['outcome'], if (r['nextAt'] != null) '${tr('التالية', 'next')} ${r['nextAt']}', if (r['daysLate'] != null) '${tr('متأخّرة', 'late')} ${r['daysLate']} ${tr('يومًا', 'days')}'].join(' · ');
+    Widget tap(Widget tile, String title, List<Map<String, dynamic>> rows, [String Function(Map<String, dynamic>)? s]) => vmTapTile(() => vmDrill(context, title, rows, s ?? sub), tile);
+    final inactiveT = tr('غير نشطين ($n يومًا بلا رحلة)', 'Inactive ($n days without a trip)');
+    String pendSub(Map<String, dynamic> r) => [r['approvalStatus'] == 'returned' ? tr('مُعاد للتعديل', 'Returned') : tr('بانتظار الاعتماد', 'Pending'), r['submittedByName'], r['submittedAt']].where((x) => '${x ?? ''}'.isNotEmpty).join(' · ');
+    String actSub(Map<String, dynamic> r) => '${tr('أوّل رحلة', 'First trip')} ${r['first']} · ${tr('رحلات الشهر', 'Month trips')} ${r['monthTrips']}';
     return AppScaffold(
       title: Text(tr('تحليل قسم الموردين', 'Vendors analysis')),
       actions: [
@@ -272,27 +284,30 @@ class _VendorsOverviewScreenState extends State<VendorsOverviewScreen> with _Liv
       body: d == null
           ? (_error != null ? ErrorRetry(message: _error!, onRetry: reload) : const Center(child: CircularProgressIndicator()))
           : RefreshIndicator(onRefresh: reload, child: ListView(padding: const EdgeInsets.all(14), children: [
-              Text('${tr('حتى نهاية', 'As of end of')} ${_mon(d['curMonth'])} ${d['year']}', style: const TextStyle(fontSize: 12, color: T.inkFaint)),
+              Text('${tr('حتى نهاية', 'As of end of')} ${_mon(d['curMonth'])} ${d['year']} · ${tr('النشط = رحلةٌ منفّذة خلال $n يومًا', 'active = an executed trip within $n days')}', style: const TextStyle(fontSize: 12, color: T.inkFaint)),
               const SizedBox(height: 6),
               VmFilterBar(value: _filters, from: '${_month.substring(0, 4)}-01-01', to: _monthEnd(_month), onChanged: (f) { setState(() => _filters = f); reload(); }),
               const SizedBox(height: 6),
               TileWrap([
-                tap(KpiTile(tr('الموردون المعتمدون', 'Master vendors'), fmtNum(k['masterVendors']), color: T.navy), tr('الموردون المعتمدون', 'Master vendors'), ml),
-                tap(KpiTile(tr('نشطون آخر 3 أشهر', 'Active last 3 months'), fmtNum(k['masterActive3']), color: T.success), tr('نشطون آخر 3 أشهر', 'Active last 3 months'), ml.where((m) => m['activeLast3'] == true).toList()),
+                tap(KpiTile(tr('الموردون المعتمدون', 'Approved carriers'), fmtNum(k['masterVendors']), color: T.navy), tr('الموردون المعتمدون', 'Approved carriers'), ml),
+                tap(KpiTile(tr('نشطون ($n يومًا)', 'Active ($n days)'), fmtNum(k['masterActive']), color: T.success), tr('نشطون ($n يومًا)', 'Active ($n days)'), ml.where((m) => m['active'] == true).toList()),
+                tap(KpiTile(inactiveT, fmtNum(k['masterInactive']), color: T.danger), inactiveT, ml.where((m) => m['active'] != true).toList()),
+                tap(KpiTile(tr('لم يعملوا قطّ', 'Never worked'), fmtNum(k['masterNeverWorked']), color: T.inkFaint), tr('لم يعملوا قطّ', 'Never worked'), ml.where((m) => m['everWorked'] != true).toList()),
                 tap(KpiTile(tr('نشطون هذا الشهر', 'Active this month'), fmtNum(k['masterActiveMonth']), color: T.success), tr('نشطون هذا الشهر', 'Active this month'), ml.where((m) => m['activeThisMonth'] == true).toList()),
-                tap(KpiTile(tr('عقودٌ موقّعة', 'Signed contracts'), fmtNum(k['masterSigned'])), tr('متعاقَدٌ معهم', 'Contracted'), ml.where((m) => m['signed'] == true).toList()),
-                tap(KpiTile(tr('موقّعون غير نشطين', 'Signed but inactive'), fmtNum(k['signedInactive']), color: T.warn), tr('موقّعون غير نشطين', 'Signed but inactive'), ml.where((m) => m['signed'] == true && m['activeLast3'] != true).toList()),
-                tap(KpiTile(tr('نشطون دون عقد', 'Active, unsigned'), fmtNum(k['activeUnsigned']), color: T.warn), tr('نشطون دون عقد', 'Active, unsigned'), ml.where((m) => m['signed'] != true && m['activeLast3'] == true).toList()),
-                tap(KpiTile(tr('متوقفون', 'Stopped'), fmtNum(k['masterStopped']), color: T.danger), tr('متوقفون', 'Stopped'), ml.where((m) => m['trend'] == 'stopped').toList()),
-                tap(KpiTile(tr('لم يعملوا هذا العام', 'Not worked this year'), fmtNum(k['masterNever']), color: T.inkFaint), tr('لم يعملوا هذا العام', 'Not worked this year'), ml.where((m) => inum(m['trips']) == 0).toList()),
-                tap(KpiTile(tr('شركاتٌ نشطة غير معتمد', 'Active outside master'), fmtNum(k['leadsActive3']), color: T.warn), tr('شركاتٌ نشطة غير معتمدة', 'Active outside master'), xl.where((m) => m['kind'] == 'outside').toList()),
-                tap(KpiTile(tr('سائقون أفراد نشطون', 'Active freelancers'), fmtNum(k['freelancersActive3']), color: T.violet), tr('سائقون أفراد نشطون', 'Active freelancers'), xl.where((m) => m['kind'] == 'freelancer').toList()),
-                KpiTile(tr('رحلات التشغيل الخارجي', 'External trips'), fmtNum(k['externalTrips'])),
-                KpiTile(tr('رحلات أسطول تنشيط', 'Our fleet trips'), fmtNum(k['fleetTrips']), color: T.navy),
-                KpiTile(tr('حصّة المعتمدين', 'Master share'), '${k['masterShare'] ?? 0}%', color: T.success),
-                if (has(k, 'purchase')) KpiTile(tr('إجمالي الشراء', 'Total purchase'), soMoney(k['purchase'])),
+                tap(KpiTile(tr('متعاقَدٌ معهم رسميًّا', 'Officially contracted'), fmtNum(k['masterSigned'])), tr('متعاقَدٌ معهم (عقدٌ مسجَّل)', 'Contracted (recorded)'), ml.where((m) => m['contracted'] == true).toList()),
+                tap(KpiTile(tr('متعاقَدون غير نشطين', 'Contracted, inactive'), fmtNum(k['signedInactive']), color: T.warn), tr('متعاقَدون غير نشطين', 'Contracted, inactive'), ml.where((m) => m['contracted'] == true && m['active'] != true).toList()),
+                tap(KpiTile(tr('نشطون دون عقد', 'Active, no contract'), fmtNum(k['activeUnsigned']), color: T.warn), tr('نشطون دون عقد', 'Active, no contract'), ml.where((m) => m['contracted'] != true && m['active'] == true).toList()),
+                tap(KpiTile(tr('شركاتٌ نشطة غير معتمدة', 'Active, not approved'), fmtNum(k['leadsActive']), color: T.warn), tr('شركاتٌ نشطة غير معتمدة', 'Active, not approved'), xl.where((m) => m['kind'] == 'outside').toList()),
+                tap(KpiTile(tr('سائقون أفراد نشطون', 'Active freelancers'), fmtNum(k['freelancersActive']), color: T.violet), tr('سائقون أفراد نشطون', 'Active freelancers'), xl.where((m) => m['kind'] == 'freelancer').toList()),
+                tap(KpiTile(tr('بانتظار الاعتماد', 'Awaiting approval'), fmtNum(k['pendingApproval']), color: T.violet), tr('بانتظار الاعتماد', 'Awaiting approval'), _list(d['pendingList']), pendSub),
+                tap(KpiTile(tr('رحلات التشغيل الخارجي', 'External trips'), fmtNum(k['externalTrips'])), tr('الموردون الذين عملوا هذا العام', 'Carriers that worked this year'), yl),
+                tap(KpiTile(tr('رحلات أسطول تنشيط', 'Our fleet trips'), fmtNum(k['fleetTrips']), color: T.navy), tr('الموردون الذين عملوا هذا العام', 'Carriers that worked this year'), yl),
+                tap(KpiTile(tr('حصّة المعتمدين', 'Approved share'), '${k['masterShare'] ?? 0}%', color: T.success), tr('المعتمدون الذين عملوا هذا العام', 'Approved carriers that worked this year'), ml.where((m) => inum(m['trips']) > 0).toList()),
+                if (has(k, 'purchase')) tap(KpiTile(tr('إجمالي الشراء', 'Total purchase'), soMoney(k['purchase'])), tr('المشتريات حسب المورّد', 'Purchase by carrier'), [...yl]..sort((a, b) => inum(b['buy']).compareTo(inum(a['buy']))), (r) => '${soMoney(r['buy'])} · ${tr('رحلات', 'Trips')} ${r['trips']}'),
                 if (has(k, 'avgTrip')) KpiTile(tr('متوسط الرحلة', 'Avg trip'), soMoney(k['avgTrip'])),
-                KpiTile(tr('جددٌ هذا الشهر', 'New this month'), fmtNum(k['newThisMonth']), color: T.violet),
+                tap(KpiTile(tr('جددٌ هذا الشهر', 'New this month'), fmtNum(k['newThisMonth']), color: T.violet), tr('أوّلُ رحلةٍ على الإطلاق هذا الشهر', 'First ever trip this month'), cmo > 0 ? _list(acts[cmo - 1]['list']) : const [], actSub),
+                tap(KpiTile(tr('متابعاتُ الشهر', 'Follow-ups this month'), fmtNum(k['followUpsMonth'])), tr('متابعاتٌ سجّلها الفريق هذا الشهر', 'Follow-ups logged this month'), fum, fuSub),
+                tap(KpiTile(tr('متابعاتٌ مستحقّة', 'Follow-ups due'), fmtNum(k['followUpsDue']), color: T.danger), tr('متابعاتٌ حلّ موعدها', 'Follow-ups due'), fud, fuSub),
               ]),
               VmRegisterStats(query: vmFilterQuery(_filters)),
               // Team performance cards (sourcing / collection / assist) mount here as their own widget.
@@ -335,31 +350,37 @@ class _VendorsOverviewScreenState extends State<VendorsOverviewScreen> with _Liv
                 ]),
               ),
               SectionCard(
-                title: tr('أداء الفريق على الموردين المعتمدين', 'Team performance on master vendors'),
+                title: tr('أداء الفريق على الموردين المعتمدين', 'Team results on approved carriers'),
+                note: tr('حسب مسؤول المتابعة المسنَد على النظام · اضغط اسمًا لعرض موردِيه', 'By the owner assigned on the system · tap for the carriers'),
                 child: Column(children: [
                   for (final t in _list(d['team']))
                     ListTile(
                       dense: true, contentPadding: EdgeInsets.zero,
                       title: Text('${t['owner']}', style: const TextStyle(fontWeight: FontWeight.w800)),
-                      subtitle: Text('${tr('موردون', 'Vendors')} ${t['vendors']} · ${tr('نشطون', 'Active')} ${t['active3']} (${t['activity']}%) · ${tr('هذا الشهر', 'This month')} ${t['activeMonth']} · ${tr('متوقفون', 'Stopped')} ${t['stopped']} · ${tr('لم يعملوا', 'Never')} ${t['never']} · ${tr('موقّعون غير نشطين', 'Signed inactive')} ${t['signedInactive']}'),
+                      subtitle: Text('${tr('معتمدون', 'Approved')} ${t['vendors']} · ${tr('نشطون', 'Active')} ${t['active']} (${t['activity']}%) · ${tr('غير نشطين', 'Inactive')} ${t['inactive']} · ${tr('هذا الشهر', 'This month')} ${t['activeMonth']} · ${tr('متعاقَدٌ معهم', 'Contracted')} ${t['signed']} · ${tr('متابعات', 'Follow-ups')} ${t['followUps']} · ${tr('مستحقّة', 'Due')} ${t['due']}'),
                       trailing: Text('${fmtNum(t['trips'])}\n${t['tripsShare']}%', textAlign: TextAlign.center, style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 12)),
+                      onTap: () => vmDrill(context, '${t['owner']}', ml.where((m) => ('${m['owner'] ?? ''}'.isEmpty ? 'غير موزَّع' : m['owner']) == t['owner']).toList(), sub),
                     ),
                 ]),
               ),
               SectionCard(
-                title: tr('حسب نوع المورّد', 'By vendor kind'),
-                child: BarList([for (final x in _list(d['kinds'])) (tr(vmKinds['${x['kind']}']!.$1, vmKinds['${x['kind']}']!.$2), inum(x['trips']), '${fmtNum(x['trips'])} · ${x['share']}% · ${tr('موردون', 'vendors')} ${x['vendors']}')], color: T.navy),
+                title: tr('متابعات الفريق هذا الشهر', 'Team follow-ups this month'),
+                note: tr('ما سجّله كلُّ عضوٍ على النظام (دون ملاحظات الاستيراد)', 'Logged on the system (imported notes excluded)'),
+                child: BarList([for (final x in _list(d['followUpsByMember'])) ('${x['name']}', inum(x['followUps']), '${x['followUps']} · ${tr('موردون', 'carriers')} ${x['carriers']}')], color: T.info,
+                  onTap: (i) { final x = _list(d['followUpsByMember'])[i]; vmDrill(context, '${x['name']}', fum.where((f) => '${f['byName'] ?? '—'}' == '${x['name']}').toList(), fuSub); }),
               ),
               SectionCard(
-                title: tr('اتجاه الموردين المعتمدين', 'Master vendors trend'),
+                title: tr('حسب نوع المورّد', 'By vendor kind'),
+                child: BarList([for (final x in _list(d['kinds'])) (tr(vmKinds['${x['kind']}']!.$1, vmKinds['${x['kind']}']!.$2), inum(x['trips']), '${fmtNum(x['trips'])} · ${x['share']}% · ${tr('موردون', 'vendors')} ${x['vendors']} · ${tr('نشطون', 'active')} ${x['active']}')], color: T.navy,
+                  onTap: (i) { final x = _list(d['kinds'])[i]; vmDrill(context, tr(vmKinds['${x['kind']}']!.$1, vmKinds['${x['kind']}']!.$2), yl.where((v) => v['kind'] == x['kind']).toList(), sub); }),
+              ),
+              SectionCard(
+                title: tr('اتجاه الموردين المعتمدين', 'Approved carriers trend'),
                 child: Wrap(spacing: 6, runSpacing: 6, children: [
                   for (final e in Map<String, dynamic>.from(d['trendMaster'] ?? {}).entries)
-                    Chip2('${tr((trendLabels[e.key] ?? (e.key, e.key, T.ink)).$1, (trendLabels[e.key] ?? (e.key, e.key, T.ink)).$2)} · ${e.value}', (trendLabels[e.key] ?? (e.key, e.key, T.ink)).$3),
+                    InkWell(onTap: () => vmDrill(context, tr((trendLabels[e.key] ?? (e.key, e.key, T.ink)).$1, (trendLabels[e.key] ?? (e.key, e.key, T.ink)).$2), ml.where((m) => m['trend'] == e.key).toList(), sub),
+                      child: Chip2('${tr((trendLabels[e.key] ?? (e.key, e.key, T.ink)).$1, (trendLabels[e.key] ?? (e.key, e.key, T.ink)).$2)} · ${e.value}', (trendLabels[e.key] ?? (e.key, e.key, T.ink)).$3)),
                 ]),
-              ),
-              SectionCard(
-                title: tr('حالة التعاقد', 'Contract status'),
-                child: BarList([for (final e in Map<String, dynamic>.from(d['contractStatus'] ?? {}).entries) (e.key, inum(e.value), fmtNum(e.value))], color: T.info),
               ),
               SectionCard(
                 title: tr('أعلى الموردين رحلاتٍ هذا العام', 'Top vendors this year'),
@@ -375,30 +396,12 @@ class _VendorsOverviewScreenState extends State<VendorsOverviewScreen> with _Liv
                 ]),
               ),
               SectionCard(
-                title: tr('موقّعون وغير نشطين', 'Signed and inactive'),
-                note: tr('لا رحلات في آخر 3 أشهر — أولويّةٌ لإعادة التنشيط', 'No trips in the last 3 months — reactivation priority'),
+                title: tr('متعاقَدٌ معهم وغير نشطين', 'Contracted but inactive'),
+                note: tr('عقدُهم مسجَّلٌ على النظام ولا رحلة خلال $n يومًا — أولويّةٌ للمتابعة', 'Contract recorded, no trip in $n days — follow up first'),
                 accent: T.warn,
                 child: Column(children: [
-                  for (final v in _list(d['signedInactiveList']))
-                    ListTile(
-                      dense: true, contentPadding: EdgeInsets.zero,
-                      title: Text('${v['name']}', style: const TextStyle(fontWeight: FontWeight.w700)),
-                      subtitle: Text('${v['owner'] ?? ''} · ${tr('رحلات العام', 'Year trips')} ${v['trips']} · ${tr('آخر رحلة', 'Last')} ${v['last'] ?? '—'} · ${v['headOffice'] ?? ''}'),
-                      onTap: () => openVendor(context, id: v['id']),
-                    ),
-                ]),
-              ),
-              SectionCard(
-                title: tr('الموردون المعتمدون النشطون (آخر 3 أشهر)', 'Active master vendors (last 3 months)'),
-                child: Column(children: [
-                  for (final v in _list(d['activeLast3List']))
-                    ListTile(
-                      dense: true, contentPadding: EdgeInsets.zero,
-                      title: Text('${v['name']}', style: const TextStyle(fontWeight: FontWeight.w700)),
-                      subtitle: Text('${v['owner'] ?? ''} · ${v['contractStatus'] ?? ''} · ${tr('رحلات', 'Trips')} ${v['trips']} · ${tr('الشهر', 'Month')} ${v['month']}'),
-                      trailing: trendChip(v['trend']),
-                      onTap: () => openVendor(context, id: v['id']),
-                    ),
+                  for (final v in ml.where((m) => m['contracted'] == true && m['active'] != true))
+                    ListTile(dense: true, contentPadding: EdgeInsets.zero, title: Text('${v['name']}', style: const TextStyle(fontWeight: FontWeight.w700)), subtitle: Text(sub(v)), onTap: () => openVendor(context, id: v['id'])),
                 ]),
               ),
               const SizedBox(height: 20),
@@ -455,6 +458,57 @@ class _VendorsDailyScreenState extends State<VendorsDailyScreen> with _LiveLoad 
 
   void _setRange(DateTime a, DateTime b) { setState(() { _from = ymd(a); _to = ymd(b); }); reload(); }
 
+  String _statusLabel(dynamic k) { for (final x in soBaseStatuses) { if (x.$1 == '$k') return tr(x.$2, x.$3); } return '${k ?? ''}'; }
+
+  /// The shipment orders behind a daily tile, read with the screen's span and filters.
+  Future<void> _rows(String title, String set) async {
+    try {
+      final fq = vmFilterQuery(_filters);
+      final r = await Api.instance.get('/api/vendors-mgmt/daily/rows?from=$_from&to=$_to&set=$set${_branch.isEmpty ? '' : '&branch=${Uri.encodeQueryComponent(_branch)}'}${fq.isEmpty ? '' : '&$fq'}');
+      if (!mounted) return;
+      vmDrill(context, title, _list(r['rows']),
+        (o) => [o['day'], o['branch'], o['customerName'], o['route'], _statusLabel(o['status']), if ('${o['cancelReason'] ?? ''}'.isNotEmpty) o['cancelReason'], if (has(o, 'buyPrice')) soMoney(o['buyPrice'])].where((x) => '${x ?? ''}'.isNotEmpty).join(' · '),
+        titleOf: (o) => '${o['waybillNumber'] ?? '—'} · ${o['name']}',
+        exportCols: [
+          ExportCol('أمر النقل', 'Order', (o) => o['waybillNumber']), ExportCol('اليوم', 'Day', (o) => o['day']), ExportCol('المورّد', 'Carrier', (o) => o['name']),
+          ExportCol('النوع', 'Kind', (o) { final x = vmKinds['${o['kind']}']; return x == null ? '' : tr(x.$1, x.$2); }),
+          ExportCol('الفرع', 'Branch', (o) => o['branch']), ExportCol('العميل', 'Customer', (o) => o['customerName']), ExportCol('المسار', 'Route', (o) => o['route']),
+          ExportCol('الحالة', 'Status', (o) => _statusLabel(o['status'])), ExportCol('سبب الإلغاء', 'Cancel reason', (o) => o['cancelReason']), ExportCol('مندوب التشغيل', 'Ops rep', (o) => o['agentName']),
+          if (_list(r['rows']).any((o) => has(o, 'buyPrice'))) ExportCol('الشراء', 'Purchase', (o) => o['buyPrice']),
+        ]);
+    } catch (e) {
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('$e')));
+    }
+  }
+
+  /// Sales requests of the span and how the team answered them; each number opens its requests.
+  Widget _salesRequests(Map<String, dynamic> sr) {
+    final list = _list(sr['list']);
+    const st = {'pending': ('جديد', 'New'), 'in_progress': ('قيد التنفيذ', 'In progress'), 'completed': ('مكتمل', 'Completed'), 'rejected': ('مرفوض', 'Refused'), 'cancelled': ('مسحوب', 'Withdrawn')};
+    String sub(Map<String, dynamic> r) => [r['day'], r['customerName'], r['route'], '${r['placed']}/${r['trucks']}', tr(st[r['status']]?.$1 ?? '${r['status']}', st[r['status']]?.$2 ?? '${r['status']}'), if ('${r['rejectReason'] ?? ''}'.isNotEmpty) r['rejectReason'], if (r['hoursToPlace'] != null) '${r['hoursToPlace']} ${tr('س', 'h')}'].where((x) => '${x ?? ''}'.isNotEmpty).join(' · ');
+    void open(String title, bool Function(Map<String, dynamic>) f) => vmDrill(context, title, list.where(f).toList(), sub, titleOf: (r) => '#${r['number']} · ${r['customerName'] ?? ''}',
+      exportCols: [ExportCol('الطلب', 'Request', (r) => r['number']), ExportCol('اليوم', 'Day', (r) => r['day']), ExportCol('العميل', 'Customer', (r) => r['customerName']), ExportCol('المسار', 'Route', (r) => r['route']),
+        ExportCol('الشاحنات', 'Trucks', (r) => r['trucks']), ExportCol('المنفَّذ', 'Placed', (r) => r['placed']), ExportCol('الحالة', 'Status', (r) => tr(st[r['status']]?.$1 ?? '', st[r['status']]?.$2 ?? '')),
+        ExportCol('سبب الرفض', 'Reason', (r) => r['rejectReason']), ExportCol('ساعات حتى أوّل شاحنة', 'Hours to first truck', (r) => r['hoursToPlace'])]);
+    return SectionCard(
+      title: tr('طلبات المبيعات في الفترة', 'Sales requests in the span'),
+      note: tr('الطلبات المعتمدة وكيف أجابها الفريق · اضغط رقمًا لعرض طلباته', 'Approved requests and how the team answered · tap a number'),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+        TileWrap([
+          vmTapTile(() => open(tr('طلبات المبيعات', 'Sales requests'), (_) => true), KpiTile(tr('الشاحنات المطلوبة', 'Trucks requested'), fmtNum(sr['trucks']))),
+          vmTapTile(() => open(tr('نُفّذت لها شاحنات', 'Placed'), (r) => inum(r['placed']) > 0), KpiTile(tr('المنفَّذ', 'Placed'), '${fmtNum(sr['placed'])} · ${sr['placeRate'] ?? 0}%', color: T.success)),
+          vmTapTile(() => open(tr('رفضها الفريق', 'Refused'), (r) => r['status'] == 'rejected'), KpiTile(tr('رفضها الفريق', 'Refused'), fmtNum(sr['rejected']), color: T.danger)),
+          vmTapTile(() => open(tr('سحبتها المبيعات', 'Withdrawn'), (r) => r['status'] == 'cancelled'), KpiTile(tr('سحبتها المبيعات', 'Withdrawn'), fmtNum(sr['withdrawn']), color: T.inkFaint)),
+          vmTapTile(() => open(tr('ما زالت مفتوحة', 'Still open'), (r) => r['status'] == 'pending' || r['status'] == 'in_progress'), KpiTile(tr('ما زالت مفتوحة', 'Still open'), fmtNum(sr['open']), color: T.warn)),
+          vmTapTile(() => open(tr('نُفّذت لها شاحنات', 'Placed'), (r) => r['hoursToPlace'] != null), KpiTile(tr('متوسط الوقت حتى أوّل شاحنة', 'Avg time to first truck'), sr['avgHoursToPlace'] == null ? '—' : '${sr['avgHoursToPlace']} ${tr('س', 'h')}')),
+        ]),
+        if (_list(sr['reasons']).isNotEmpty)
+          BarList([for (final x in _list(sr['reasons'])) ('${x['reason']}', inum(x['n']), '${x['n']}')], color: T.danger,
+            onTap: (i) { final k = '${_list(sr['reasons'])[i]['reason']}'; open(k, (r) => r['status'] == 'rejected' && ('${r['rejectReason'] ?? ''}'.isEmpty ? 'بلا سبب مسجّل' : r['rejectReason']) == k); }),
+      ]),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final d = _d;
@@ -486,17 +540,18 @@ class _VendorsDailyScreenState extends State<VendorsDailyScreen> with _LiveLoad 
               VmFilterBar(value: _filters, from: _from, to: _to, onChanged: (f) { setState(() => _filters = f); reload(); }),
               const SizedBox(height: 6),
               TileWrap([
-                KpiTile(tr('الطلبات', 'Requests'), fmtNum(t['requests'])),
-                KpiTile(tr('محقّق', 'Fulfilled'), fmtNum(t['done']), color: T.success),
-                KpiTile(tr('غير محقّق', 'Not fulfilled'), fmtNum(t['failed']), color: T.danger),
-                KpiTile(tr('نسبة التحقيق', 'Fulfilment'), '${t['rate'] ?? 0}%', color: T.navy),
-                KpiTile(tr('محقّق في اليوم', 'Fulfilled per day'), fmtNum(t['perDay'], digits: 1)),
-                if (t['vsTarget'] != null) KpiTile(tr('مقابل المستهدَف', 'Vs target'), '${t['vsTarget']}%', color: inum(t['vsTarget']) >= 100 ? T.success : T.warn),
-                if (has(t, 'buy')) KpiTile(tr('سعر الشراء', 'Purchase'), soMoney(t['buy'])),
-                if (has(t, 'buyExt')) KpiTile(tr('شراءٌ بدون تنشيط', 'Purchase excl. fleet'), soMoney(t['buyExt'])),
-                KpiTile(tr('حصّة أسطول تنشيط', 'Our fleet share'), '${t['fleetShare'] ?? 0}%', color: T.navy),
-                KpiTile(tr('الأفراد من التشغيل الخارجي', 'Freelancers of external'), '${t['freelancerShareExt'] ?? 0}%', color: T.violet),
+                vmTapTile(() => _rows(tr('أوامر النقل في الفترة', 'Orders in the span'), 'all'), KpiTile(tr('أوامر النقل', 'Transport orders'), fmtNum(t['requests']))),
+                vmTapTile(() => _rows(tr('أوامرُ محقّقة', 'Fulfilled orders'), 'done'), KpiTile(tr('محقّق', 'Fulfilled'), fmtNum(t['done']), color: T.success)),
+                vmTapTile(() => _rows(tr('أوامرُ ملغاة وأسبابها', 'Cancelled orders'), 'failed'), KpiTile(tr('غير محقّق (ملغاة)', 'Not fulfilled'), fmtNum(t['failed']), color: T.danger)),
+                vmTapTile(() => _rows(tr('أوامرُ ملغاة وأسبابها', 'Cancelled orders'), 'failed'), KpiTile(tr('نسبة التحقيق', 'Fulfilment'), '${t['rate'] ?? 0}%', color: T.navy)),
+                vmTapTile(() => _rows(tr('أوامرُ محقّقة', 'Fulfilled orders'), 'done'), KpiTile(tr('محقّق في اليوم', 'Fulfilled per day'), fmtNum(t['perDay'], digits: 1))),
+                if (t['vsTarget'] != null) vmTapTile(() => _rows(tr('أوامرُ محقّقة', 'Fulfilled orders'), 'done'), KpiTile(tr('مقابل المستهدَف', 'Vs target'), '${t['vsTarget']}%', color: inum(t['vsTarget']) >= 100 ? T.success : T.warn)),
+                if (has(t, 'buy')) vmTapTile(() => _rows(tr('أوامرُ محقّقة وأسعار شرائها', 'Fulfilled orders and purchase'), 'done'), KpiTile(tr('سعر الشراء', 'Purchase'), soMoney(t['buy']))),
+                if (has(t, 'buyExt')) vmTapTile(() => _rows(tr('رحلات التشغيل الخارجي', 'External trips'), 'external'), KpiTile(tr('شراءٌ بدون تنشيط', 'Purchase excl. fleet'), soMoney(t['buyExt']))),
+                vmTapTile(() => _rows(tr('رحلات أسطول تنشيط', 'Our fleet trips'), 'fleet'), KpiTile(tr('حصّة أسطول تنشيط', 'Our fleet share'), '${t['fleetShare'] ?? 0}%', color: T.navy)),
+                vmTapTile(() => _rows(tr('رحلات السائقين الأفراد', 'Freelancer trips'), 'freelancer'), KpiTile(tr('الأفراد من التشغيل الخارجي', 'Freelancers of external'), '${t['freelancerShareExt'] ?? 0}%', color: T.violet)),
               ]),
+              _salesRequests(Map<String, dynamic>.from(d['salesRequests'] ?? {})),
               VmRegisterStats(query: vmFilterQuery(_filters)),
               // Team performance cards (sourcing / collection / assist) mount here as their own widget.
               if (inum(d['target']?['daily']) > 0) Text('${tr('المستهدَف اليومي', 'Daily target')}: ${d['target']['daily']} · ${tr('مستهدَف الفترة', 'Period target')}: ${d['target']['period']}', style: const TextStyle(fontSize: 12, color: T.inkFaint)),
@@ -656,8 +711,8 @@ class _VendorsListScreenState extends State<VendorsListScreen> with _LiveLoad {
       if (_contract == 'unsigned' && v['signed'] == true) return false;
       if (_trend.isNotEmpty && v['trend'] != _trend) return false;
       if (_active == 'month' && v['activeThisMonth'] != true) return false;
-      if (_active == '3m' && v['activeLast3'] != true) return false;
-      if (_active == 'inactive' && v['activeLast3'] == true) return false;
+      if (_active == '3m' && v['active'] != true) return false;
+      if (_active == 'inactive' && v['active'] == true) return false;
       if (_papers == 'missingDocs' && !(v['id'] != null && v['kind'] != 'freelancer' && (v['docsMissing'] as List? ?? const []).isNotEmpty)) return false;
       if (_papers == 'contracted' && v['contracted'] != true) return false;
       if (_papers == 'notContracted' && !(v['id'] != null && v['kind'] != 'freelancer' && v['contracted'] != true)) return false;
@@ -704,7 +759,7 @@ class _VendorsListScreenState extends State<VendorsListScreen> with _LiveLoad {
           _dd(tr('كل العقود', 'All contracts'), _contract, [('signed', tr('موقّع', 'Signed')), ('unsigned', tr('غير موقّع', 'Unsigned'))], (v) => _contract = v),
           _dd(tr('كل الاتجاهات', 'All trends'), _trend, [for (final e in trendLabels.entries) (e.key, tr(e.value.$1, e.value.$2))], (v) => _trend = v),
           _dd(tr('المستندات والعقد', 'Papers & contract'), _papers, [('missingDocs', tr('مستنداتٌ ناقصة', 'Missing papers')), ('contracted', tr('متعاقَد رسميًّا', 'Contracted')), ('notContracted', tr('غير متعاقَد', 'Not contracted')), ('expiring', tr('عقودٌ تنتهي / انتهت', 'Contracts ending')), ('pending', tr('بانتظار الاعتماد', 'Pending approval'))], (v) => _papers = v),
-          _dd(tr('كل النشاط', 'Any activity'), _active, [('month', tr('نشط هذا الشهر', 'Active this month')), ('3m', tr('نشط آخر 3 أشهر', 'Active last 3 months')), ('inactive', tr('غير نشط', 'Inactive'))], (v) => _active = v),
+          _dd(tr('كل النشاط', 'Any activity'), _active, [('month', tr('نشط هذا الشهر', 'Active this month')), ('3m', tr('نشط (ضمن مدّة النشاط)', 'Active (within the activity window)')), ('inactive', tr('غير نشط', 'Inactive'))], (v) => _active = v),
         ])),
         Padding(padding: const EdgeInsets.symmetric(horizontal: 14), child: Align(alignment: AlignmentDirectional.centerStart, child: Text('${rows.length} ${tr('مورّد', 'vendors')}', style: const TextStyle(fontSize: 12, color: T.inkFaint)))),
         Expanded(child: _loading

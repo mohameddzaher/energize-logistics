@@ -26,6 +26,7 @@ export default function VendorsSettingsPage() {
   // The approvals page links straight to the approvers tab (?tab=approvals).
   useEffect(() => { const q = new URLSearchParams(window.location.search).get('tab'); if (q === 'approvals' || q === 'lists') setTab(q); }, []);
   const [contractDays, setContractDays] = useState(30);
+  const [inactiveDays, setInactiveDays] = useState(90);
   const [appr, setAppr] = useState<{ users: { id: string; name: string }[]; canManage: boolean; team: { id: string; name: string; role: string }[] } | null>(null);
   const [picked, setPicked] = useState<string[]>([]);
   const [targets, setTargets] = useState<{ daily: number; monthly: number; byBranch: Record<string, number> } | null>(null);
@@ -33,14 +34,14 @@ export default function VendorsSettingsPage() {
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
-    api.get<{ targets: any; alerts?: { contractDays: number } }>('/api/vendors-mgmt/settings').then((r) => { setTargets(r.targets); setContractDays(r.alerts?.contractDays || 30); }).catch(() => setTargets({ daily: 0, monthly: 0, byBranch: {} }));
+    api.get<{ targets: any; alerts?: { contractDays: number; inactiveDays: number } }>('/api/vendors-mgmt/settings').then((r) => { setTargets(r.targets); setContractDays(r.alerts?.contractDays || 30); setInactiveDays(r.alerts?.inactiveDays || 90); }).catch(() => setTargets({ daily: 0, monthly: 0, byBranch: {} }));
     api.get<any>('/api/vendors-mgmt/approvers').then((r) => { setAppr(r); setPicked(r.users.map((u: any) => u.id)); }).catch(() => {});
     api.get<{ items: { nameAr: string }[] }>('/api/lookups?type=so_branch&active=true').then((r) => setBranches((r.items || []).map((x) => x.nameAr))).catch(() => {});
   }, []);
 
   const save = async () => {
     setSaving(true);
-    try { const r = await api.put<{ targets: any; alerts: any }>('/api/vendors-mgmt/settings', { targets, alerts: { contractDays } }); setTargets(r.targets); setContractDays(r.alerts?.contractDays || contractDays); notify(t('حُفظت الإعدادات', 'Settings saved'), 'success'); }
+    try { const r = await api.put<{ targets: any; alerts: any }>('/api/vendors-mgmt/settings', { targets, alerts: { contractDays, inactiveDays } }); setTargets(r.targets); setContractDays(r.alerts?.contractDays || contractDays); setInactiveDays(r.alerts?.inactiveDays || inactiveDays); notify(t('حُفظت الإعدادات', 'Settings saved'), 'success'); }
     catch (e: any) { notify(e?.message || t('تعذّر الحفظ', 'Could not save'), 'error'); }
     setSaving(false);
   };
@@ -79,6 +80,9 @@ export default function VendorsSettingsPage() {
           </div>
           <Field label={t('التنبيه قبل نهاية عقد المورّد بـ (يوم)', 'Flag a carrier contract this many days before its end')}>
             <TextInput type="number" min={1} max={365} disabled={!lead} value={contractDays} onChange={(e) => setContractDays(Number(e.target.value) || 30)} />
+          </Field>
+          <Field label={t('يُعدّ المورّد غير نشط بعد (يومًا) بلا رحلةٍ منفّذة', 'A carrier is inactive after this many days without an executed trip')}>
+            <TextInput type="number" min={7} max={365} disabled={!lead} value={inactiveDays} onChange={(e) => setInactiveDays(Number(e.target.value) || 90)} />
           </Field>
           {lead
             ? <button type="button" onClick={save} disabled={saving} className="inline-flex items-center gap-1.5 px-5 py-2.5 rounded-xl bg-[#f37121] text-white text-sm font-bold disabled:opacity-50">{saving && <Loader2 className="w-4 h-4 animate-spin" />}{t('حفظ الأهداف', 'Save targets')}</button>

@@ -6,6 +6,7 @@ import '../services/api.dart';
 import '../services/lang.dart';
 import '../services/live.dart';
 import '../ui/app_scaffold.dart';
+import '../ui/export_sheet.dart';
 import '../ui/file_upload.dart';
 import '../ui/search_field.dart';
 import '../ui/theme.dart';
@@ -52,29 +53,39 @@ mixin _Live<W extends StatefulWidget> on State<W> {
   void _onEvt() { _t?.cancel(); _t = Timer(const Duration(milliseconds: 700), reload); }
   late final void Function() _cb = _onEvt;
   Future<void> reload();
-  void startLive() { for (final e in const [vmEvent, 'shipmentOrders:updated']) { Live.instance.on(e, _cb); } }
-  void stopLive() { _t?.cancel(); for (final e in const [vmEvent, 'shipmentOrders:updated']) { Live.instance.off(e, _cb); } }
+  void startLive() { for (final e in const [vmEvent, 'shipmentOrders:updated', 'shipmentRequests:changed']) { Live.instance.on(e, _cb); } }
+  void stopLive() { _t?.cancel(); for (final e in const [vmEvent, 'shipmentOrders:updated', 'shipmentRequests:changed']) { Live.instance.off(e, _cb); } }
 }
 
 // ── Drill-down list ─────────────────────────────────────────────────────────
 
-/// The carriers behind a number: searchable, each opens its card.
+/// The rows behind a number (carriers, orders, follow-ups or requests): searchable, exportable, each opens its carrier card.
 class VmDrillScreen extends StatefulWidget {
   final String title;
   final List<Map<String, dynamic>> rows;
   final String Function(Map<String, dynamic>) subtitle;
-  const VmDrillScreen({super.key, required this.title, required this.rows, required this.subtitle});
+  /// Row title; defaults to the carrier name.
+  final String Function(Map<String, dynamic>)? titleOf;
+  final List<ExportCol>? exportCols;
+  const VmDrillScreen({super.key, required this.title, required this.rows, required this.subtitle, this.titleOf, this.exportCols});
   @override
   State<VmDrillScreen> createState() => _VmDrillScreenState();
 }
 
 class _VmDrillScreenState extends State<VmDrillScreen> {
   String _q = '';
+  String _titleOf(Map<String, dynamic> r) => widget.titleOf?.call(r) ?? '${r['name'] ?? '—'}';
   @override
   Widget build(BuildContext context) {
-    final rows = widget.rows.where((r) => _q.isEmpty || '${r['name']} ${r['owner'] ?? ''}'.contains(_q)).toList();
+    final rows = widget.rows.where((r) => _q.isEmpty || '${_titleOf(r)} ${widget.subtitle(r)}'.contains(_q)).toList();
+    final cols = widget.exportCols ?? [
+      ExportCol('المورّد', 'Carrier', (r) => r['name']),
+      ExportCol('النوع', 'Kind', (r) { final x = vmKinds['${r['kind']}']; return x == null ? '' : tr(x.$1, x.$2); }),
+      ExportCol('التفاصيل', 'Details', (r) => widget.subtitle(r)),
+    ];
     return AppScaffold(
       title: Text('${widget.title} (${widget.rows.length})'),
+      actions: [ExportButton(fileName: 'vendors-list', sheetName: widget.title, columns: cols, rows: () => rows)],
       body: Column(children: [
         Padding(padding: const EdgeInsets.fromLTRB(12, 8, 12, 4), child: SearchField(hint: tr('بحث…', 'Search…'), onChanged: (v) => setState(() => _q = v.trim()))),
         Expanded(child: ListView.builder(
@@ -84,7 +95,7 @@ class _VmDrillScreenState extends State<VmDrillScreen> {
             final r = rows[i];
             return ListTile(
               dense: true, contentPadding: EdgeInsets.zero,
-              title: Text('${r['name']}', style: const TextStyle(fontWeight: FontWeight.w700)),
+              title: Text(_titleOf(r), style: const TextStyle(fontWeight: FontWeight.w700)),
               subtitle: Text(widget.subtitle(r), style: const TextStyle(fontSize: 11.5)),
               trailing: r['kind'] == null ? null : vmKindChip(r['kind']),
               onTap: () => openVendor(context, id: r['id'], name: r['name']),
@@ -96,8 +107,16 @@ class _VmDrillScreenState extends State<VmDrillScreen> {
   }
 }
 
-void vmDrill(BuildContext context, String title, List<Map<String, dynamic>> rows, String Function(Map<String, dynamic>) sub) =>
-    Navigator.push(context, MaterialPageRoute(builder: (_) => VmDrillScreen(title: title, rows: rows, subtitle: sub)));
+void vmDrill(BuildContext context, String title, List<Map<String, dynamic>> rows, String Function(Map<String, dynamic>) sub,
+        {String Function(Map<String, dynamic>)? titleOf, List<ExportCol>? exportCols}) =>
+    Navigator.push(context, MaterialPageRoute(builder: (_) => VmDrillScreen(title: title, rows: rows, subtitle: sub, titleOf: titleOf, exportCols: exportCols)));
+
+/// Contract state recorded on the system (saveContract); same keys as the server.
+const vmContractStates = <String, (String, String)>{
+  'active': ('ساري', 'Active'), 'expiring': ('ينتهي قريبًا', 'Ending soon'), 'expired': ('منتهٍ', 'Expired'),
+  'noEnd': ('متعاقَدٌ بلا تاريخ نهاية', 'Contracted, no end'), 'not': ('غير متعاقَد', 'Not contracted'),
+};
+String vmContractLabel(dynamic k) { final x = vmContractStates['$k']; return x == null ? '—' : tr(x.$1, x.$2); }
 
 Widget vmTapTile(VoidCallback onTap, Widget tile) => Pressable(onTap: onTap, child: tile);
 
@@ -132,7 +151,8 @@ class _VmRegisterStatsState extends State<VmRegisterStats> with _Live {
   String _sub(Map<String, dynamic> r) => [
     if ('${r['owner'] ?? ''}'.isNotEmpty) r['owner'],
     if ('${r['docsMissingLabels'] ?? ''}'.isNotEmpty) '${tr('ناقص', 'Missing')}: ${r['docsMissingLabels']}',
-    if (r['contracted'] == true) '${tr('متعاقَد', 'Contracted')}${r['contractEndDate'] != null ? ' ${tr('حتى', 'to')} ${r['contractEndDate']}' : ''}',
+    vmContractLabel(r['contractState']),
+    if (r['contractEndDate'] != null) '${tr('حتى', 'to')} ${r['contractEndDate']}',
     if (r['daysLeft'] != null) '${tr('متبقٍّ', 'left')} ${r['daysLeft']}',
     if (r['approvalStatus'] != null && r['approvalStatus'] != 'approved') tr(vmApproval[r['approvalStatus']]!.$1, vmApproval[r['approvalStatus']]!.$2),
     '${tr('رحلات', 'Trips')} ${r['trips'] ?? 0}',
@@ -159,6 +179,9 @@ class _VmRegisterStatsState extends State<VmRegisterStats> with _Live {
         ]),
         const SizedBox(height: 6),
         Text(tr('معتمَد ${t['approved'] ?? 0} · مرفوض ${t['rejected'] ?? 0} · مُعاد ${t['returned'] ?? 0}', 'Approved ${t['approved'] ?? 0} · rejected ${t['rejected'] ?? 0} · returned ${t['returned'] ?? 0}'), style: const TextStyle(fontSize: 11.5, color: T.inkSoft)),
+        const SizedBox(height: 6),
+        BarList([for (final k in const ['active', 'expiring', 'expired', 'noEnd', 'not']) (vmContractLabel(k), rows.where((r) => r['contractState'] == k).length, fmtNum(rows.where((r) => r['contractState'] == k).length))], color: T.info,
+          onTap: (i) { const ks = ['active', 'expiring', 'expired', 'noEnd', 'not']; open('${tr('العقود', 'Contracts')}: ${vmContractLabel(ks[i])}', (r) => r['contractState'] == ks[i]); }),
         const SizedBox(height: 6),
         BarList([for (final k in _rows(d['docsByKind'])) (tr('${k['label']}', '${k['labelEn']}'), inum(k['missing']), '${tr('ينقص', 'missing')} ${k['missing']}')], color: T.warn,
           onTap: (i) { final k = _rows(d['docsByKind'])[i]; open('${tr('ينقصهم', 'Missing')}: ${tr('${k['label']}', '${k['labelEn']}')}', (r) => (r['docsMissing'] as List? ?? const []).contains(k['key'])); }),

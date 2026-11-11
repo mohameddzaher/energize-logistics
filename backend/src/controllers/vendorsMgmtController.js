@@ -31,9 +31,13 @@ const announce = (payload = {}) => {
   try { emitToAll('shipmentOrders:fleet', {}); } catch (_) { /* */ }
 };
 const isoDay = (d) => (d ? new Date(d).toISOString().slice(0, 10) : null);
-/** Officially contracted: the team's explicit mark wins; rows never marked fall back to the imported contract status. */
-const signedOf = (v) => !!v && (v.contracted === true
-  || (v.contracted !== false && (/موقع/.test(v.contractStatus || '') || !!(v.vendorSigned && v.ourSigned))));
+// Calendar month and year of a timestamp in company time (the analyses group trips by Riyadh month).
+const riyadh = (d) => new Date(new Date(d).getTime() + 3 * 3600000);
+/**
+ * Officially contracted: only the team's mark on the system («تمّ التعاقد رسميًّا» with the signed file, saveContract).
+ * The imported contract status and signature flags are a sheet's word and never count.
+ */
+const signedOf = (v) => !!v && v.contracted === true;
 
 // Company papers a new carrier must bring; each kind may hold several files.
 const DOC_KINDS = { cr: 'السجل التجاري', nationalAddress: 'العنوان الوطني', iban: 'الآيبان', taxCard: 'البطاقة الضريبية' };
@@ -44,15 +48,27 @@ const isCompany = (v) => !!v && v.type !== 'freelancer' && !/تنشيط/.test(v.
 const missingDocsOf = (v) => (isCompany(v) ? REQUIRED_DOCS.filter((k) => !(v.documents || []).some((d) => d.kind === k)) : []);
 
 const DAY_MS = 86400000;
-async function alertDays() {
+const clampInt = (v, lo, hi, dflt) => Math.min(hi, Math.max(lo, Math.round(Number(v)) || dflt));
+/** Section settings: days before a contract end to flag it, and days without a trip after which a carrier is inactive. */
+async function sectionSettings() {
   const s = await VendorSetting.findById('alerts').lean();
-  return Math.min(365, Math.max(1, Number(s?.value?.contractDays) || 30));
+  const v = s?.value || {};
+  return { contractDays: clampInt(v.contractDays, 1, 365, 30), inactiveDays: clampInt(v.inactiveDays, 7, 365, 90) };
 }
+async function alertDays() { return (await sectionSettings()).contractDays; }
 /** Contract end state against today: none (no end date), active, expiring (within `days`), expired. */
 const contractStateOf = (v, days) => {
   if (!signedOf(v) || !v.contractEndDate) return { state: 'none', daysLeft: null };
   const left = Math.ceil((startOfDay(isoDay(v.contractEndDate)).getTime() - startOfDay(todayKey()).getTime()) / DAY_MS);
   return { state: left < 0 ? 'expired' : left <= days ? 'expiring' : 'active', daysLeft: left };
+};
+
+/** One contract state per carrier, for filters and lists: active, expiring, expired, noEnd (contracted, no end date), not. */
+const CONTRACT_STATE_AR = { active: 'ساري', expiring: 'ينتهي قريبًا', expired: 'منتهٍ', noEnd: 'متعاقَدٌ بلا تاريخ نهاية', not: 'غير متعاقَد' };
+const contractKeyOf = (v, days) => {
+  if (!signedOf(v)) return 'not';
+  const c = contractStateOf(v, days);
+  return c.state === 'none' ? 'noEnd' : c.state;
 };
 
 // ── Approval of new carriers ───────────────────────────────────────────────
@@ -100,116 +116,184 @@ async function shipmentFilter(q) {
   return and.length ? { $and: and } : null;
 }
 const listOf = (v) => (v == null || v === '' ? [] : (Array.isArray(v) ? v : [v]).map(String).filter(Boolean));
-/** Filters on the carrier itself: kind, follow-up owner, contract status. */
-const carrierFilter = (q) => {
+/** Filters on the carrier itself: kind, follow-up owner (assigned on the system), contract state (from the system contract). */
+const carrierFilter = (q, days = 30) => {
   const kinds = listOf(q.f_kind); const owners = listOf(q.f_owner); const contracts = listOf(q.f_contract);
   if (!kinds.length && !owners.length && !contracts.length) return null;
   return (kind, reg) => (!kinds.length || kinds.includes(kind))
     && (!owners.length || owners.includes(reg?.followOwner || '__none'))
-    && (!contracts.length || contracts.includes(reg?.contractStatus || '__none'));
+    && (!contracts.length || contracts.includes(contractKeyOf(reg, days)));
 };
 
 const KIND_AR = { fleet: 'أسطول تنشيط', master: 'معتمد', outside: 'غير معتمد (شركات)', freelancer: 'سائق فرد', none: 'غير محدّد' };
 
 // ── Section picture ─────────────────────────────────────────────────────────
 
-/** GET /overview?year= — the section as the vendors manager reads it. */
+/**
+ * Follow-ups the team logged on the system (imported sheet notes excluded): the month's entries, and each carrier's
+ * latest entry with its next date, so a promised call that passed shows as due.
+ */
+async function followUpPicture(asOf) {
+  const monthStart = startOfDay(`${asOf.slice(0, 7)}-01`);
+  const end = endOfDay(asOf);
+  const [month, latest] = await Promise.all([
+    VendorFollowUp.find({ source: { $ne: 'import' }, at: { $gte: monthStart, $lte: end } }).sort({ at: -1 })
+      .select('supplier at channel outcome nextAt byName by').lean(),
+    VendorFollowUp.aggregate([
+      { $match: { source: { $ne: 'import' }, at: { $lte: end } } },
+      { $sort: { at: -1 } },
+      { $group: { _id: '$supplier', at: { $first: '$at' }, nextAt: { $first: '$nextAt' }, byName: { $first: '$byName' }, outcome: { $first: '$outcome' } } },
+    ]),
+  ]);
+  const due = latest.filter((f) => f.nextAt && new Date(f.nextAt) <= end);
+  const ids = [...new Set([...month.map((f) => String(f.supplier)), ...due.map((f) => String(f._id))])];
+  const regs = ids.length ? await ShipmentOrderSupplier.find({ _id: { $in: ids } }).select('name followOwner inMaster type').lean() : [];
+  const reg = new Map(regs.map((r) => [String(r._id), r]));
+  const kindOf = (r) => (!r ? 'none' : kindOfReg(r));
+  return {
+    month: month.map((f) => {
+      const r = reg.get(String(f.supplier));
+      return { id: String(f.supplier), name: r?.name || '—', kind: kindOf(r), owner: r?.followOwner || '', at: isoDay(f.at), channel: f.channel, outcome: f.outcome, nextAt: isoDay(f.nextAt), byName: f.byName || '' };
+    }),
+    due: due.map((f) => {
+      const r = reg.get(String(f._id));
+      return { id: String(f._id), name: r?.name || '—', kind: kindOf(r), owner: r?.followOwner || '', lastAt: isoDay(f.at), nextAt: isoDay(f.nextAt), daysLate: Math.max(0, Math.floor((end.getTime() - new Date(f.nextAt).getTime()) / DAY_MS)), byName: f.byName || '', outcome: f.outcome || '' };
+    }).sort((a, b) => b.daysLate - a.daysLate),
+  };
+}
+
+/**
+ * GET /overview?month=YYYY-MM — the section as the manager reads it, every figure from what was done on the system:
+ * approved carriers (the approval action), contracts (saveContract), trips (shipment orders), follow-ups (the team's
+ * log). Active = an executed trip within the section's «inactive after N days» setting.
+ */
 exports.overview = async (req, res) => {
   try {
+    const S = await sectionSettings();
+    const N = S.inactiveDays;
     const extra = await shipmentFilter(req.query);
-    const keepC = carrierFilter(req.query);
-    const Y0 = await VA.yearly({ ...yearOf(req.query), extra });
-    const R0 = keepC ? await VA.resolver() : null;
-    const Y = keepC ? { ...Y0, vendors: Y0.vendors.filter((v) => keepC(v.kind, v.vendorId ? R0.byId.get(v.vendorId) : null)) } : Y0;
-    const out = await cache.wrapStale(`so:analytics:vm-overview:${Y.year}:${Y.curMonth}:${JSON.stringify(req.query || {})}`, 60 * 1000, 10 * 60 * 1000, async () => {
-      const master = (await ShipmentOrderSupplier.find({ inMaster: true, mergedInto: null })
-        .select('name followOwner contractStatus vendorSigned ourSigned contracted taxClass phone representative headOffice vehicleTypes fleetSize financeCode contractDate destinations masterNo').lean())
-        .filter((m) => !keepC || keepC('master', m));
-      const actById = new Map(Y.vendors.filter((v) => v.vendorId).map((v) => [v.vendorId, v]));
+    const keepC = carrierFilter(req.query, S.contractDays);
+    const Y = await VA.yearly({ ...yearOf(req.query), extra });
+    const out = await cache.wrapStale(`so:analytics:vm-overview:${Y.year}:${Y.asOf}:${N}:${S.contractDays}:${JSON.stringify(req.query || {})}`, 60 * 1000, 10 * 60 * 1000, async () => {
+      const R = await VA.resolver();
+      const asOf = Y.asOf;
       const cm = Y.curMonth;
+      const active = (last) => VA.activeWithin(last, asOf, N);
+      // Approved carriers: put on the approved list by the approval action (legacy rows without a decision count as approved).
+      const regs = await ShipmentOrderSupplier.find({ inMaster: true, mergedInto: null, isActive: { $ne: false } })
+        .select('name type followOwner contracted contractEndDate contractFiles approvalStatus phone headOffice').lean();
+      const master = regs.filter((m) => approvalOf(m) === 'approved' && kindOfReg(m) !== 'fleet' && (!keepC || keepC('master', m)));
+      const actById = new Map(Y.vendors.filter((v) => v.vendorId).map((v) => [v.vendorId, v]));
       const masterRows = master.map((m) => {
-        const a = actById.get(String(m._id));
-        return { ...m, trips: a?.trips || 0, mon: a?.mon || new Array(12).fill(0), trend: a?.trend || 'never', activeLast3: !!a?.activeLast3, activeThisMonth: !!a?.activeThisMonth, last: a?.last || null, signed: signedOf(m) };
+        const id = String(m._id);
+        const a = actById.get(id);
+        const e = Y.ever.get(id);
+        const cs = contractStateOf(m, S.contractDays);
+        return {
+          ...m, id, trips: a?.trips || 0, mon: a?.mon || new Array(12).fill(0), trend: a?.trend || (e?.last ? 'stopped' : 'never'),
+          last: e?.last || null, active: active(e?.last), activeThisMonth: !!a?.activeThisMonth, everWorked: !!e?.last,
+          signed: signedOf(m), contractKey: contractKeyOf(m, S.contractDays), contractEndDate: isoDay(m.contractEndDate), daysLeft: cs.daysLeft,
+        };
       });
-      const ext = Y.vendors.filter((v) => v.kind !== 'fleet');
-      // Trips per month by kind and the master share of external trips.
+      const ext = Y.vendors.filter((v) => v.kind !== 'fleet' && (!keepC || keepC(v.kind, v.vendorId ? R.byId.get(v.vendorId) : null)));
+      // Carriers outside the approved list that carried within N days, from every trip ever (the window may cross the year).
+      const extEver = [...Y.ever.values()].filter((e) => e.kind !== 'master' && active(e.last)
+        && (!keepC || keepC(e.kind, e.vendorId ? R.byId.get(e.vendorId) : null)));
+      const yearOfId = new Map(ext.map((v) => [v.id, v]));
+      // Trips per month by kind and the approved share of external trips.
       const months = Array.from({ length: 12 }, (_, i) => ({ month: i + 1, master: 0, outside: 0, freelancer: 0, fleet: Y.fleet.mon[i] || 0 }));
       for (const v of ext) for (let i = 0; i < 12; i += 1) months[i][v.kind] = (months[i][v.kind] || 0) + (v.mon[i] || 0);
       for (const m of months) { const e = m.master + m.outside + m.freelancer; m.external = e; m.masterShare = pct(m.master, e); }
       // Carriers whose first ever trip fell in each month: how many are activated monthly.
+      const ownerOf = (id) => (id ? R.byId.get(id)?.followOwner || '' : '');
       const activations = Array.from({ length: 12 }, (_, i) => ({ month: i + 1, total: 0, master: 0, outside: 0, freelancer: 0, list: [] }));
       for (const v of ext) {
         if (!v.firstEver) continue;
-        const d = new Date(v.firstEver);
+        const d = riyadh(v.firstEver);
         if (d.getUTCFullYear() !== Y.year) continue;
         const a = activations[d.getUTCMonth()];
         a.total += 1; a[v.kind] = (a[v.kind] || 0) + 1;
-        const reg = v.vendorId ? actById.get(v.vendorId) : null;
-        const owner = v.vendorId ? (master.find((m) => String(m._id) === v.vendorId)?.followOwner || '') : '';
-        a.list.push({ id: v.vendorId, name: v.name, kind: v.kind, owner, first: isoDay(v.firstEver), monthTrips: v.mon[d.getUTCMonth()] || 0, trips: v.trips, _r: !!reg });
+        a.list.push({ id: v.vendorId, name: v.name, kind: v.kind, owner: ownerOf(v.vendorId), first: isoDay(v.firstEver), monthTrips: v.mon[d.getUTCMonth()] || 0, trips: v.trips, last: isoDay(v.lastEver) });
       }
-      for (const a of activations) { a.list.sort((x, y) => (x.first < y.first ? -1 : 1)); a.list.forEach((x) => delete x._r); }
-      // The team: master carriers per follow-up owner, how many work, how much.
+      for (const a of activations) a.list.sort((x, y) => (x.first < y.first ? -1 : 1));
+      const fu = await followUpPicture(asOf);
+      // The team: approved carriers per follow-up owner (assigned on the system), how many work, and their follow-ups.
       const team = {};
       const masterTrips = masterRows.reduce((s, m) => s + m.trips, 0);
+      const teamOf = (k) => team[k] || (team[k] = { owner: k, vendors: 0, active: 0, activeMonth: 0, inactive: 0, never: 0, trips: 0, signed: 0, signedActive: 0, signedInactive: 0, followUps: 0, followed: new Set(), due: 0 });
+      const ownerKey = new Map();
       for (const m of masterRows) {
         const k = m.followOwner || 'غير موزَّع';
-        const t = team[k] || (team[k] = { owner: k, vendors: 0, active3: 0, activeMonth: 0, stopped: 0, never: 0, trips: 0, signed: 0, signedActive: 0, signedInactive: 0 });
+        ownerKey.set(m.id, k);
+        const t = teamOf(k);
         t.vendors += 1; t.trips += m.trips;
-        if (m.activeLast3) t.active3 += 1; else if (m.trips) t.stopped += 1; else t.never += 1;
+        if (m.active) t.active += 1; else { t.inactive += 1; if (!m.everWorked) t.never += 1; }
         if (m.activeThisMonth) t.activeMonth += 1;
-        if (m.signed) { t.signed += 1; if (m.activeLast3) t.signedActive += 1; else t.signedInactive += 1; }
+        if (m.signed) { t.signed += 1; if (m.active) t.signedActive += 1; else t.signedInactive += 1; }
       }
-      const teamRows = Object.values(team).map((t) => ({ ...t, activity: pct(t.active3, t.vendors), tripsShare: pct(t.trips, masterTrips) }))
+      for (const f of fu.month) { const k = ownerKey.get(f.id); if (k) { team[k].followUps += 1; team[k].followed.add(f.id); } }
+      for (const f of fu.due) { const k = ownerKey.get(f.id); if (k) team[k].due += 1; }
+      const teamRows = Object.values(team).map((t) => ({ ...t, followed: t.followed.size, activity: pct(t.active, t.vendors), tripsShare: pct(t.trips, masterTrips) }))
         .sort((a, b) => b.vendors - a.vendors);
       const count = (arr, f) => arr.reduce((acc, x) => { const k = f(x) || '—'; acc[k] = (acc[k] || 0) + 1; return acc; }, {});
-      const trendMaster = count(masterRows, (m) => m.trend);
-      const leads = ext.filter((v) => v.kind === 'outside');
       const extTrips = ext.reduce((s, v) => s + v.trips, 0);
-      const ym = Y.vendors.filter((v) => v.kind !== 'fleet' && v.activeThisMonth);
+      const extBuy = ext.reduce((s, v) => s + v.buy, 0);
+      // Follow-ups this month per team member who logged them.
+      const byMember = {};
+      for (const f of fu.month) {
+        const k = f.byName || '—';
+        const x = byMember[k] || (byMember[k] = { name: k, followUps: 0, carriers: new Set() });
+        x.followUps += 1; x.carriers.add(f.id);
+      }
+      const pending = await ShipmentOrderSupplier.find({ approvalStatus: { $in: ['pending', 'returned'] }, mergedInto: null })
+        .select('name type approvalStatus submittedByName submittedAt followOwner').sort({ submittedAt: -1 }).lean();
+      const drillRow = (m) => ({
+        id: m.id, name: m.name, kind: 'master', owner: m.followOwner || '', contracted: m.signed, contractState: m.contractKey, contractEndDate: m.contractEndDate, daysLeft: m.daysLeft,
+        trips: m.trips, month: m.mon[cm] || 0, trend: m.trend, last: isoDay(m.last), daysIdle: VA.daysSince(m.last, asOf), active: m.active, activeThisMonth: m.activeThisMonth,
+        everWorked: m.everWorked, phone: m.phone || '', headOffice: m.headOffice || '',
+      });
+      const extRow = (v) => ({ id: v.vendorId, name: v.name, kind: v.kind, owner: ownerOf(v.vendorId), trips: v.trips || 0, buy: r2(v.buy || 0), month: v.mon ? v.mon[cm] || 0 : 0, trend: v.trend || 'stopped', last: isoDay(v.lastEver || v.last), daysIdle: VA.daysSince(v.lastEver || v.last, asOf) });
       return {
-        year: Y.year, curMonth: cm + 1,
+        year: Y.year, curMonth: cm + 1, asOf, inactiveDays: N, contractDays: S.contractDays,
         kpis: {
-          masterVendors: master.length,
-          masterActive3: masterRows.filter((m) => m.activeLast3).length,
+          masterVendors: masterRows.length,
+          masterActive: masterRows.filter((m) => m.active).length,
+          masterInactive: masterRows.filter((m) => !m.active).length,
+          masterNeverWorked: masterRows.filter((m) => !m.everWorked).length,
           masterActiveMonth: masterRows.filter((m) => m.activeThisMonth).length,
           masterSigned: masterRows.filter((m) => m.signed).length,
-          signedInactive: masterRows.filter((m) => m.signed && !m.activeLast3).length,
-          activeUnsigned: masterRows.filter((m) => !m.signed && m.activeLast3).length,
+          signedInactive: masterRows.filter((m) => m.signed && !m.active).length,
+          activeUnsigned: masterRows.filter((m) => !m.signed && m.active).length,
           masterStopped: masterRows.filter((m) => m.trend === 'stopped').length,
-          masterNever: masterRows.filter((m) => !m.trips).length,
-          leadsActive3: leads.filter((v) => v.activeLast3).length,
-          freelancersActive3: ext.filter((v) => v.kind === 'freelancer' && v.activeLast3).length,
-          vendorsActiveMonth: ym.length,
+          leadsActive: extEver.filter((e) => e.kind === 'outside').length,
+          freelancersActive: extEver.filter((e) => e.kind === 'freelancer').length,
+          pendingApproval: pending.length,
           externalTrips: extTrips,
           fleetTrips: Y.fleet.trips,
           masterShare: pct(ext.filter((v) => v.kind === 'master').reduce((s, v) => s + v.trips, 0), extTrips),
-          purchase: r2(ext.reduce((s, v) => s + v.buy, 0)),
-          avgTrip: extTrips ? r2(ext.reduce((s, v) => s + v.buy, 0) / extTrips) : 0,
+          purchase: r2(extBuy),
+          avgTrip: extTrips ? r2(extBuy / extTrips) : 0,
           newThisMonth: activations[cm]?.total || 0,
+          followUpsMonth: fu.month.length,
+          followedMonth: new Set(fu.month.map((f) => f.id)).size,
+          followUpsDue: fu.due.length,
         },
         months, activations, team: teamRows,
-        trendMaster,
-        contractStatus: count(master, (m) => m.contractStatus),
-        taxClass: count(master, (m) => m.taxClass),
+        trendMaster: count(masterRows, (m) => m.trend),
         kinds: ['master', 'outside', 'freelancer'].map((k) => {
           const vs = ext.filter((v) => v.kind === k);
           const trips = vs.reduce((s, v) => s + v.trips, 0);
-          return { kind: k, label: KIND_AR[k], vendors: vs.length, active3: vs.filter((v) => v.activeLast3).length, trips, share: pct(trips, extTrips), buy: r2(vs.reduce((s, v) => s + v.buy, 0)) };
+          return { kind: k, label: KIND_AR[k], vendors: vs.length, active: k === 'master' ? masterRows.filter((m) => m.active).length : extEver.filter((e) => e.kind === k).length, trips, share: pct(trips, extTrips), buy: r2(vs.reduce((s, v) => s + v.buy, 0)) };
         }),
-        topVendors: ext.slice().sort((a, b) => b.trips - a.trips).slice(0, 15).map((v) => ({ id: v.vendorId, name: v.name, kind: v.kind, trips: v.trips, buy: r2(v.buy), month: v.mon[cm] || 0, trend: v.trend, last: isoDay(v.last) })),
-        signedInactiveList: masterRows.filter((m) => m.signed && !m.activeLast3).sort((a, b) => b.trips - a.trips)
-          .map((m) => ({ id: String(m._id), name: m.name, owner: m.followOwner, trips: m.trips, last: isoDay(m.last), phone: m.phone, headOffice: m.headOffice })),
-        activeLast3List: masterRows.filter((m) => m.activeLast3).sort((a, b) => b.trips - a.trips)
-          .map((m) => ({ id: String(m._id), name: m.name, owner: m.followOwner, contractStatus: m.contractStatus, trips: m.trips, month: m.mon[cm] || 0, trend: m.trend, last: isoDay(m.last) })),
-        // Drill-down behind each card: every master carrier, and every other carrier active in the last three months.
-        masterList: masterRows.slice().sort((a, b) => b.trips - a.trips).map((m) => ({
-          id: String(m._id), name: m.name, kind: 'master', owner: m.followOwner || '', contractStatus: m.contractStatus || '', signed: m.signed, trips: m.trips, month: m.mon[cm] || 0,
-          trend: m.trend, last: isoDay(m.last), activeLast3: m.activeLast3, activeThisMonth: m.activeThisMonth, phone: m.phone || '', headOffice: m.headOffice || '',
-        })),
-        extActiveList: ext.filter((v) => v.kind !== 'master' && v.activeLast3).sort((a, b) => b.trips - a.trips).map((v) => ({
-          id: v.vendorId, name: v.name, kind: v.kind, trips: v.trips, month: v.mon[cm] || 0, trend: v.trend, last: isoDay(v.last), activeThisMonth: v.activeThisMonth,
-        })),
+        followUpsByMember: Object.values(byMember).map((x) => ({ name: x.name, followUps: x.followUps, carriers: x.carriers.size })).sort((a, b) => b.followUps - a.followUps),
+        followUps: fu.month, followUpsDue: fu.due,
+        pendingList: pending.map((p) => ({ id: String(p._id), name: p.name, kind: kindOfReg(p), owner: p.followOwner || '', approvalStatus: p.approvalStatus, submittedByName: p.submittedByName || '', submittedAt: isoDay(p.submittedAt) })),
+        topVendors: ext.slice().sort((a, b) => b.trips - a.trips).slice(0, 15).map(extRow),
+        // Every external carrier that worked this year, for the trips and purchase cards.
+        extYearList: ext.slice().sort((a, b) => b.trips - a.trips).map(extRow),
+        masterList: masterRows.slice().sort((a, b) => b.trips - a.trips).map(drillRow),
+        extActiveList: extEver.map((e) => extRow({ ...(yearOfId.get(e.id) || {}), vendorId: e.vendorId, name: e.name, kind: e.kind, lastEver: e.last }))
+          .sort((a, b) => b.trips - a.trips),
       };
     });
     res.json(PV.maskMoney(req.user, out));
@@ -226,7 +310,7 @@ exports.overview = async (req, res) => {
 exports.ranking = async (req, res) => {
   try {
     const extra = await shipmentFilter(req.query);
-    const keepC = carrierFilter(req.query);
+    const keepC = carrierFilter(req.query, await alertDays());
     const [Y, R] = await Promise.all([VA.yearly({ ...yearOf(req.query), extra }), VA.resolver()]);
     const m = Y.curMonth;
     const ext = Y.vendors.filter((v) => v.kind !== 'fleet' && (!keepC || keepC(v.kind, v.vendorId ? R.byId.get(v.vendorId) : null)));
@@ -240,7 +324,7 @@ exports.ranking = async (req, res) => {
     const prev = m > 0 ? rankIn(m - 1).out : new Map();
     const monthTrips = cur.list.reduce((a, v) => a + v.mon[m], 0);
     const owners = new Map(ext.filter((v) => v.vendorId).map((v) => [v.vendorId, R.byId.get(v.vendorId)?.followOwner || '']));
-    const firstOf = (v) => v.firstEver && new Date(v.firstEver).getUTCFullYear() === Y.year && new Date(v.firstEver).getUTCMonth() === m;
+    const firstOf = (v) => v.firstEver && riyadh(v.firstEver).getUTCFullYear() === Y.year && riyadh(v.firstEver).getUTCMonth() === m;
     const rows = cur.list.map((v, n) => ({
       rank: n + 1, prevRank: prev.get(v.id) || null, id: v.vendorId, name: v.name, kind: v.kind, owner: owners.get(v.vendorId) || '',
       trips: v.mon[m], share: pct(v.mon[m], monthTrips), buy: r2(v.buyMon[m] || 0), avg: v.mon[m] ? r2((v.buyMon[m] || 0) / v.mon[m]) : 0,
@@ -254,7 +338,7 @@ exports.ranking = async (req, res) => {
       byKind: ['master', 'outside', 'freelancer'].map((k) => ({ kind: k, label: KIND_AR[k], vendors: rows.filter((x) => x.kind === k).length, trips: rows.filter((x) => x.kind === k).reduce((a, x) => a + x.trips, 0) })),
       rows, firstTime,
       // First-time carriers of every month of the year, for the month strip.
-      firstByMonth: Array.from({ length: m + 1 }, (_, i) => ({ month: i + 1, n: ext.filter((v) => v.firstEver && new Date(v.firstEver).getUTCFullYear() === Y.year && new Date(v.firstEver).getUTCMonth() === i).length })),
+      firstByMonth: Array.from({ length: m + 1 }, (_, i) => ({ month: i + 1, n: ext.filter((v) => v.firstEver && riyadh(v.firstEver).getUTCFullYear() === Y.year && riyadh(v.firstEver).getUTCMonth() === i).length })),
     }));
   } catch (e) {
     console.error('[vendors] ranking:', e);
@@ -268,35 +352,37 @@ exports.ranking = async (req, res) => {
  */
 exports.registerStats = async (req, res) => {
   try {
-    const keepC = carrierFilter(req.query);
-    const [regs, days, Y] = await Promise.all([registerRows(), alertDays(), VA.yearly(yearOf(req.query))]);
+    const [regs, S, Y] = await Promise.all([registerRows(), sectionSettings(), VA.yearly(yearOf(req.query))]);
+    const days = S.contractDays;
+    const keepC = carrierFilter(req.query, days);
     const act = new Map(Y.vendors.filter((v) => v.vendorId).map((v) => [v.vendorId, v]));
     const rows = [];
     for (const r of regs) {
       const a = act.get(String(r._id));
+      const e = Y.ever.get(String(r._id));
       const kind = kindOfReg(r);
-      if (!inRegister(r, !!a) || kind === 'fleet' || kind === 'freelancer') continue;
+      if (!inRegisterSys(r, !!a) || kind === 'fleet' || kind === 'freelancer') continue;
       if (keepC && !keepC(kind, r)) continue;
       const miss = missingDocsOf(r);
       const c = contractStateOf(r, days);
       rows.push({
-        id: String(r._id), name: r.name, kind, inMaster: !!r.inMaster, owner: r.followOwner || '', contractStatus: r.contractStatus || '',
-        contracted: signedOf(r), contractMarked: r.contracted != null, contractEndDate: isoDay(r.contractEndDate), contractState: c.state, daysLeft: c.daysLeft,
+        id: String(r._id), name: r.name, kind, inMaster: !!r.inMaster, owner: r.followOwner || '',
+        contracted: signedOf(r), contractMarked: r.contracted != null, contractEndDate: isoDay(r.contractEndDate), contractState: contractKeyOf(r, days), daysLeft: c.daysLeft,
         contractFiles: (r.contractFiles || []).length, docs: (r.documents || []).length, docsMissing: miss, docsMissingLabels: miss.map((k) => DOC_KINDS[k]).join('، '),
         phone: r.phone || '', operatorName: r.operatorName || '', operatorPhone: r.operatorPhone || '',
         approvalStatus: approvalOf(r), submittedByName: r.submittedByName || '',
-        trips: a?.trips || 0, last: isoDay(a?.last), activeLast3: !!a?.activeLast3, createdAt: isoDay(r.createdAt),
+        trips: a?.trips || 0, last: isoDay(e?.last), active: VA.activeWithin(e?.last, Y.asOf, S.inactiveDays), createdAt: isoDay(r.createdAt),
       });
     }
     rows.sort((a, b) => b.trips - a.trips || (a.name < b.name ? -1 : 1));
     const n = (f) => rows.filter(f).length;
     res.json({
-      contractDays: days, year: Y.year,
+      contractDays: days, inactiveDays: S.inactiveDays, year: Y.year,
       totals: {
         vendors: rows.length, master: n((r) => r.inMaster), outside: n((r) => !r.inMaster),
         missingDocs: n((r) => r.docsMissing.length), completeDocs: n((r) => !r.docsMissing.length),
-        contracted: n((r) => r.contracted), notContracted: n((r) => !r.contracted), activeNotContracted: n((r) => !r.contracted && r.activeLast3),
-        withEndDate: n((r) => r.contracted && r.contractEndDate), noEndDate: n((r) => r.contracted && !r.contractEndDate),
+        contracted: n((r) => r.contracted), notContracted: n((r) => !r.contracted), activeNotContracted: n((r) => !r.contracted && r.active),
+        withEndDate: n((r) => r.contracted && r.contractEndDate), noEndDate: n((r) => r.contractState === 'noEnd'), active: n((r) => r.contractState === 'active'),
         expiring: n((r) => r.contractState === 'expiring'), expired: n((r) => r.contractState === 'expired'),
         approved: n((r) => r.approvalStatus === 'approved'), pending: n((r) => r.approvalStatus === 'pending'),
         rejected: n((r) => r.approvalStatus === 'rejected'), returned: n((r) => r.approvalStatus === 'returned'),
@@ -443,6 +529,7 @@ exports.daily = async (req, res) => {
         dests[dest] = (dests[dest] || 0) + 1;
       }
 
+      const salesRequests = await requestFunnel({ from, to, branch, q: req.query });
       // Target: a daily figure for the company or the branch, from section settings.
       const dailyTarget = branch ? (Number(T.byBranch?.[branch]) || 0) : T.daily;
       const dayList = [...byDay.values()].sort((a, b) => (a.day < b.day ? -1 : 1)).map((d) => ({
@@ -476,7 +563,7 @@ exports.daily = async (req, res) => {
       })).sort((a, b) => b.requests - a.requests);
       const cat = (k) => { const l = custList.filter((c) => c.category === k); return { customers: l.length, requests: l.reduce((s, c) => s + c.requests, 0), done: l.reduce((s, c) => s + c.done, 0), failed: l.reduce((s, c) => s + c.failed, 0) }; };
       return {
-        from, to, branch, days,
+        from, to, branch, days, salesRequests,
         target: { daily: dailyTarget, monthly: T.monthly, period: dailyTarget * days },
         totals: {
           requests: total, done, failed: total - done, rate: pct(done, total), perDay: r2(done / days),
@@ -523,6 +610,78 @@ exports.daily = async (req, res) => {
   }
 };
 
+/**
+ * Sales requests of the span as the vendors team answered them: trucks asked (approved requests created in the span),
+ * placed, refused by the team, withdrawn by sales, still open, and the hours from the request to its first truck.
+ */
+async function requestFunnel({ from, to, branch, q }) {
+  const match = { createdAt: { $gte: startOfDay(from), $lte: endOfDay(to) }, approvalStatus: { $nin: ['pending', 'returned', 'rejected'] } };
+  const branches = listOf(q.f_branch);
+  if (branch) match.branch = branch; else if (branches.length) match.branch = { $in: branches };
+  const customers = listOf(q.f_customer);
+  if (customers.length) match.customerName = { $in: customers };
+  const rows = await ShipmentRequest.find(match)
+    .select('number status createdAt customerName fromCity toCity branch trucks placed rejectReason salesRepName handlerName').sort({ createdAt: -1 }).lean();
+  const t = { requests: rows.length, trucks: 0, placed: 0, rejected: 0, withdrawn: 0, open: 0, hoursSum: 0, hoursN: 0 };
+  const reasons = {};
+  const list = rows.map((r) => {
+    const trucks = r.trucks || 1;
+    const placed = (r.placed || []).length;
+    const rest = Math.max(0, trucks - placed);
+    t.trucks += trucks; t.placed += placed;
+    if (r.status === 'rejected') { t.rejected += rest; const k = r.rejectReason || 'بلا سبب مسجّل'; reasons[k] = (reasons[k] || 0) + rest; }
+    else if (r.status === 'cancelled') t.withdrawn += rest;
+    else if (r.status === 'pending' || r.status === 'in_progress') t.open += rest;
+    const first = (r.placed || []).map((p) => p.at).filter(Boolean).sort()[0];
+    const hours = first ? r2((new Date(first) - new Date(r.createdAt)) / 3600000) : null;
+    if (hours != null) { t.hoursSum += hours; t.hoursN += 1; }
+    return { id: String(r._id), number: r.number, day: isoDay(riyadh(r.createdAt)), customerName: r.customerName || '', route: `${r.fromCity || ''} → ${r.toCity || ''}`, branch: r.branch || '',
+      trucks, placed, rest, status: r.status, rejectReason: r.rejectReason || '', salesRepName: r.salesRepName || '', handlerName: r.handlerName || '', hoursToPlace: hours };
+  });
+  return {
+    requests: t.requests, trucks: t.trucks, placed: t.placed, rejected: t.rejected, withdrawn: t.withdrawn, open: t.open,
+    placeRate: pct(t.placed, t.trucks), avgHoursToPlace: t.hoursN ? r2(t.hoursSum / t.hoursN) : null,
+    reasons: Object.entries(reasons).sort((a, b) => b[1] - a[1]).map(([reason, n]) => ({ reason, n })),
+    list,
+  };
+}
+
+/**
+ * GET /daily/rows?from&to&branch&set=all|done|failed|fleet|external|freelancer — the shipment orders behind a daily
+ * card, with the same filters and the same carrier classification as /daily.
+ */
+exports.dailyRows = async (req, res) => {
+  try {
+    const today = todayKey();
+    const from = /^\d{4}-\d{2}-\d{2}$/.test(String(req.query.from || '')) ? req.query.from : `${today.slice(0, 7)}-01`;
+    const to = /^\d{4}-\d{2}-\d{2}$/.test(String(req.query.to || '')) ? req.query.to : today;
+    const set = String(req.query.set || 'all');
+    const R = await VA.resolver();
+    const extra = await shipmentFilter(req.query);
+    const keepC = carrierFilter(req.query, await alertDays());
+    const rows = await VA.spanRows({ from, to, branch: String(req.query.branch || ''), extra: extra || {} });
+    const out = [];
+    for (const o of rows) {
+      const c = VA.classify(R, o.supplier, o.supplierName, o.vehiclePlate);
+      if (keepC && !keepC(c.kind, c.vendor)) continue;
+      const live = o.status !== 'cancelled';
+      const keep = set === 'all' || (set === 'done' && live) || (set === 'failed' && !live) || (set === 'fleet' && live && c.kind === 'fleet')
+        || (set === 'external' && live && c.kind !== 'fleet') || (set === 'freelancer' && live && c.kind === 'freelancer');
+      if (!keep) continue;
+      out.push({
+        id: c.vendor ? String(c.vendor._id) : null, name: c.name || o.supplierName || '—', kind: c.kind, waybillNumber: o.waybillNumber, day: isoDay(riyadh(o.pickupTime)),
+        branch: o.branch || '', customerName: o.customerName || '', route: `${o.fromCity || ''} → ${o.toCity || ''}`, status: o.status, cancelReason: o.cancelReason || '',
+        buyPrice: o.buyPrice ?? null, agentName: o.agentName || '', paymentSubtype: o.paymentSubtype || '',
+      });
+    }
+    out.sort((a, b) => (a.day < b.day ? 1 : -1));
+    res.json(PV.maskMoney(req.user, { from, to, set, total: out.length, rows: out.slice(0, 5000) }));
+  } catch (e) {
+    console.error('[vendors] daily rows:', e);
+    res.status(500).json({ message: 'تعذّر تحميل القائمة' });
+  }
+};
+
 // ── The register ────────────────────────────────────────────────────────────
 
 /** A carrier's score (0–100) from how it works for us: volume, regular months, recency, a signed contract, a complete file. */
@@ -549,13 +708,22 @@ const registerRows = () => ShipmentOrderSupplier.find({ mergedInto: null, isActi
  */
 const inRegister = (r, workedThisYear) => !!(r.inMaster || workedThisYear || r.approvalStatus || r.followOwner || r.contractStatus
   || (r.documents || []).length || r.contracted != null || (r.contractFiles || []).length || r.operatorName);
+/**
+ * The register as the dashboards count it: carriers the system itself put there — approved (the approval action), worked
+ * this year (shipments), submitted for approval, or given papers, a contract or an operator on the system. Names and
+ * contract labels carried over from the team's sheet do not make a carrier part of it.
+ */
+const inRegisterSys = (r, workedThisYear) => !!(r.inMaster || workedThisYear || r.approvalStatus
+  || (r.documents || []).length || r.contracted != null || (r.contractFiles || []).length || r.operatorName);
 const kindOfReg = (r) => (/تنشيط/.test(r.name) ? 'fleet' : r.type === 'freelancer' ? 'freelancer' : r.inMaster ? 'master' : 'outside');
 
 /** GET /vendors — the register joined with this year's activity. Name-only carriers (seen in shipments, never registered) are listed too. */
 exports.listVendors = async (req, res) => {
   try {
     const Y = await VA.yearly(yearOf(req.query));
-    const [regs, days] = await Promise.all([registerRows(), alertDays()]);
+    const [regs, S] = await Promise.all([registerRows(), sectionSettings()]);
+    const days = S.contractDays;
+    const isActive = (id) => VA.activeWithin(Y.ever.get(id)?.last, Y.asOf, S.inactiveDays);
     const act = new Map(Y.vendors.filter((v) => v.vendorId).map((v) => [v.vendorId, v]));
     const maxTrips = Math.max(1, ...Y.vendors.map((v) => v.trips));
     const rows = [];
@@ -575,7 +743,7 @@ exports.listVendors = async (req, res) => {
         taxClass: r.taxClass, phone: r.phone, representative: r.representative, headOffice: r.headOffice, destinations: r.destinations,
         vehicleTypes: r.vehicleTypes, fleetSize: r.fleetSize, rating: r.rating, leadPriority: r.leadPriority, isNewVendor: r.isNewVendor, energizeRep: r.energizeRep,
         trips: a?.trips || 0, buy: r2(a?.buy || 0), mon: a?.mon || new Array(12).fill(0), month: a ? a.mon[Y.curMonth] || 0 : 0, trend: a?.trend || 'never',
-        activeLast3: !!a?.activeLast3, activeThisMonth: !!a?.activeThisMonth, activeMonths: a?.activeMonths || 0,
+        activeLast3: !!a?.activeLast3, active: isActive(String(r._id)), activeThisMonth: !!a?.activeThisMonth, activeMonths: a?.activeMonths || 0,
         first: isoDay(a?.first), last: isoDay(a?.last), names: a?.names?.length || 0, aliases: (r.aliases || []).length,
         avg: a?.trips ? r2(a.buy / a.trips) : 0, completeness: Math.round(((FILE_FIELDS.length - miss.length) / FILE_FIELDS.length) * 100), lastFollowUpAt: r.lastFollowUpAt,
       };
@@ -586,7 +754,7 @@ exports.listVendors = async (req, res) => {
       if (a.vendorId || a.kind === 'fleet') continue;
       const v = {
         id: null, nameKey: fold(a.name), name: a.name, kind: a.kind, inMaster: false, followOwner: '', contractStatus: '', signed: false,
-        trips: a.trips, buy: r2(a.buy), mon: a.mon, month: a.mon[Y.curMonth] || 0, trend: a.trend, activeLast3: a.activeLast3, activeThisMonth: a.activeThisMonth,
+        trips: a.trips, buy: r2(a.buy), mon: a.mon, month: a.mon[Y.curMonth] || 0, trend: a.trend, activeLast3: a.activeLast3, active: isActive(a.id), activeThisMonth: a.activeThisMonth,
         activeMonths: a.activeMonths, first: isoDay(a.first), last: isoDay(a.last), names: a.names.length, avg: a.trips ? r2(a.buy / a.trips) : 0, completeness: 0, unregistered: true,
       };
       Object.assign(v, scoreOf({ ...v, curMonth: Y.curMonth }, maxTrips));
@@ -594,7 +762,7 @@ exports.listVendors = async (req, res) => {
     }
     rows.sort((a, b) => b.trips - a.trips || (a.name < b.name ? -1 : 1));
     const owners = [...new Set(rows.map((r) => r.followOwner).filter(Boolean))].sort((a, b) => a.localeCompare(b, 'ar'));
-    res.json(PV.maskMoney(req.user, { year: Y.year, curMonth: Y.curMonth + 1, vendors: rows, owners }));
+    res.json(PV.maskMoney(req.user, { year: Y.year, curMonth: Y.curMonth + 1, inactiveDays: S.inactiveDays, vendors: rows, owners }));
   } catch (e) {
     console.error('[vendors] list:', e);
     res.status(500).json({ message: 'تعذّر تحميل الموردين' });
@@ -1257,7 +1425,7 @@ exports.setAlertState = async (req, res) => {
 // ── Settings ────────────────────────────────────────────────────────────────
 
 exports.getSettings = async (req, res) => {
-  try { res.json({ targets: await targets(), alerts: { contractDays: await alertDays() }, team: await teamOptions() }); }
+  try { res.json({ targets: await targets(), alerts: await sectionSettings(), team: await teamOptions() }); }
   catch (e) { res.status(500).json({ message: 'تعذّر تحميل الإعدادات' }); }
 };
 exports.saveSettings = async (req, res) => {
@@ -1267,12 +1435,14 @@ exports.saveSettings = async (req, res) => {
     for (const [k, v] of Object.entries(b.byBranch || {})) if (Number(v) > 0) byBranch[k] = Number(v);
     await VendorSetting.updateOne({ _id: 'targets' }, { $set: { value: { daily: Number(b.daily) || 0, monthly: Number(b.monthly) || 0, byBranch }, updatedByName: fullName(req.user) } }, { upsert: true });
     // How many days before a contract's end it is flagged (alerts, register, notifications).
-    if (req.body?.alerts?.contractDays !== undefined) {
-      const n = Math.min(365, Math.max(1, Number(req.body.alerts.contractDays) || 30));
-      await VendorSetting.updateOne({ _id: 'alerts' }, { $set: { value: { contractDays: n }, updatedByName: fullName(req.user) } }, { upsert: true });
-    }
+    // Days before a contract end to flag it, and days without a trip after which a carrier counts as inactive.
+    const a = req.body?.alerts || {};
+    const set = {};
+    if (a.contractDays !== undefined) set['value.contractDays'] = clampInt(a.contractDays, 1, 365, 30);
+    if (a.inactiveDays !== undefined) set['value.inactiveDays'] = clampInt(a.inactiveDays, 7, 365, 90);
+    if (Object.keys(set).length) await VendorSetting.updateOne({ _id: 'alerts' }, { $set: { ...set, updatedByName: fullName(req.user) } }, { upsert: true });
     announce({ settings: true });
-    res.json({ targets: await targets(), alerts: { contractDays: await alertDays() } });
+    res.json({ targets: await targets(), alerts: await sectionSettings() });
   } catch (e) { res.status(500).json({ message: 'تعذّر حفظ الإعدادات' }); }
 };
 
@@ -1308,12 +1478,17 @@ exports.compare = async (req, res) => {
 /** GET /filter-options — the carrier filters' values with counts: follow-up owner and contract status. */
 exports.filterOptions = async (req, res) => {
   try {
-    const [owners, contracts] = await Promise.all([
+    const [owners, regs, days] = await Promise.all([
       ShipmentOrderSupplier.aggregate([{ $match: { inMaster: true, mergedInto: null } }, { $group: { _id: { $ifNull: ['$followOwner', ''] }, n: { $sum: 1 } } }, { $sort: { n: -1 } }]),
-      ShipmentOrderSupplier.aggregate([{ $match: { inMaster: true, mergedInto: null } }, { $group: { _id: { $ifNull: ['$contractStatus', ''] }, n: { $sum: 1 } } }, { $sort: { n: -1 } }]),
+      ShipmentOrderSupplier.find({ inMaster: true, mergedInto: null }).select('contracted contractEndDate').lean(),
+      alertDays(),
     ]);
     const shape = (rows) => rows.map((x) => ({ value: String(x._id || '').trim() || '__none', count: x.n }));
-    res.json({ owners: shape(owners), contracts: shape(contracts) });
+    // Contract state as recorded on the system (saveContract), not the imported label.
+    const byState = {};
+    for (const r of regs) { const k = contractKeyOf(r, days); byState[k] = (byState[k] || 0) + 1; }
+    const contracts = Object.keys(CONTRACT_STATE_AR).map((k) => ({ value: k, label: CONTRACT_STATE_AR[k], count: byState[k] || 0 }));
+    res.json({ owners: shape(owners), contracts });
   } catch (e) { res.status(500).json({ message: 'تعذّر تحميل قيم الفلاتر' }); }
 };
 

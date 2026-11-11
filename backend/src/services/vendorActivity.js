@@ -18,7 +18,7 @@ const COMPANY_RX = /(شركة|شركه|مؤسسة|مؤسسه|مكتب|للنقل
 async function resolver() {
   return cache.wrap('so:registry:vendor-resolver', 60 * 1000, async () => {
     const rows = await ShipmentOrderSupplier.find({ mergedInto: null })
-      .select('name type inMaster masterNo followOwner contractStatus vendorSigned ourSigned contracted contractEndDate taxClass headOffice destinations vehicleTypes fleetSize phone representative energizeRep aliasKeys isActive leadPriority rating')
+      .select('name type inMaster masterNo followOwner contractStatus vendorSigned ourSigned contracted contractEndDate contractFiles approvalStatus taxClass headOffice destinations vehicleTypes fleetSize phone representative energizeRep aliasKeys isActive leadPriority rating')
       .lean();
     const byKey = new Map();
     const byId = new Map();
@@ -106,11 +106,15 @@ async function yearly({ year, asOf, extra = null } = {}) {
         first: { $min: '$pickupTime' }, last: { $max: '$pickupTime' },
       } },
     ]).allowDiskUse(true);
-    // Every-time first trip per name, to tell a newly activated carrier from an old one.
-    const firstEver = await ShipmentOrder.aggregate([
-      { $match: { status: { $ne: 'cancelled' }, pickupTime: { $ne: null } } },
-      { $group: { _id: { s: '$supplier', n: '$supplierName' }, first: { $min: '$pickupTime' } } },
+    // First and last trip ever (up to the as-of day): the first tells a newly activated carrier from an old one; the
+    // last measures inactivity across the year boundary. The first ignores the page filters (it is the carrier's
+    // first trip with us); the last honours them, like every other activity figure.
+    const upTo = { $ne: null, $lte: endOfDay(today) };
+    const everAgg = (match) => ShipmentOrder.aggregate([
+      { $match: { status: { $ne: 'cancelled' }, pickupTime: upTo, ...match } },
+      { $group: { _id: { s: '$supplier', n: '$supplierName', p: '$vehiclePlate' }, first: { $min: '$pickupTime' }, last: { $max: '$pickupTime' } } },
     ]).allowDiskUse(true);
+    const [firstEver, lastEver] = await Promise.all([everAgg({}), extra ? everAgg(extra) : null]);
     const vendors = new Map();
     const get = (c) => {
       const id = c.vendor ? String(c.vendor._id) : `name:${fold(c.name)}`;
@@ -133,12 +137,31 @@ async function yearly({ year, asOf, extra = null } = {}) {
       if (!v.last || r.last > v.last) v.last = r.last;
       if (r._id.n) v.names.add(String(r._id.n).trim());
     }
-    for (const r of firstEver) {
-      const c = classify(R, r._id.s, r._id.n, '');
-      if (c.kind === 'fleet' || c.kind === 'none') continue;
+    // Every carrier ever worked with (to the as-of day), with its first and last trip, whether or not it worked this year.
+    const ever = new Map();
+    const everOf = (c) => {
       const id = c.vendor ? String(c.vendor._id) : `name:${fold(c.name)}`;
-      const v = vendors.get(id);
-      if (v && (!v.firstEver || r.first < v.firstEver)) v.firstEver = r.first;
+      let e = ever.get(id);
+      if (!e) { e = { id, vendorId: c.vendor ? String(c.vendor._id) : null, name: c.name, kind: c.kind, first: null, last: null }; ever.set(id, e); }
+      return e;
+    };
+    for (const r of firstEver) {
+      const c = classify(R, r._id.s, r._id.n, r._id.p);
+      if (c.kind === 'fleet' || c.kind === 'none') continue;
+      const e = everOf(c);
+      if (!e.first || r.first < e.first) e.first = r.first;
+      if (!lastEver && (!e.last || r.last > e.last)) e.last = r.last;
+    }
+    for (const r of lastEver || []) {
+      const c = classify(R, r._id.s, r._id.n, r._id.p);
+      if (c.kind === 'fleet' || c.kind === 'none') continue;
+      const e = everOf(c);
+      if (!e.last || r.last > e.last) e.last = r.last;
+    }
+    for (const v of vendors.values()) {
+      const e = ever.get(v.id);
+      v.firstEver = e?.first || null;
+      v.lastEver = e?.last || null;
     }
     const curMonth = Number(today.slice(5, 7)) - 1;
     const sameYear = Number(today.slice(0, 4)) === y;
@@ -151,8 +174,22 @@ async function yearly({ year, asOf, extra = null } = {}) {
       out.activeMonths = v.mon.filter((x) => x > 0).length;
       return out;
     });
-    return { year: y, curMonth: cm, vendors: list, fleet };
+    return { year: y, curMonth: cm, asOf: today, vendors: list, fleet, ever };
   });
+}
+
+/**
+ * Active = an executed trip within `days` before the end of the as-of day. A carrier with no trip at all, or whose
+ * last trip is older, is inactive. `last` is a Date (or null).
+ */
+function activeWithin(last, asOf, days) {
+  if (!last) return false;
+  return new Date(last).getTime() >= endOfDay(asOf).getTime() - days * 86400000;
+}
+/** Whole days from the last trip to the as-of day (null when never). */
+function daysSince(last, asOf) {
+  if (!last) return null;
+  return Math.max(0, Math.floor((endOfDay(asOf).getTime() - new Date(last).getTime()) / 86400000));
 }
 
 /** Compact executed-and-cancelled rows of a span, for the daily page and the vendor card. */
@@ -164,4 +201,4 @@ async function spanRows({ from, to, branch, extra = {} }) {
     .lean();
 }
 
-module.exports = { resolver, classify, yearly, spanRows, fold, trendOf, FLEET_RX };
+module.exports = { resolver, classify, yearly, spanRows, fold, trendOf, activeWithin, daysSince, FLEET_RX };

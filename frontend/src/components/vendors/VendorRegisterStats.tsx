@@ -8,7 +8,7 @@ import { useSocket } from '@/hooks/useSocket';
 import { useLatestRequest } from '@/hooks/useLatestRequest';
 import api from '@/lib/api';
 import { Kpi, Panel, BarList, fmtInt, fmtPct } from '@/components/analytics/AnalyticsKit';
-import { DrillModal, drillCols, type Drill } from './VendorDrill';
+import { DrillModal, drillCols, contractStateLabel, type Drill } from './VendorDrill';
 import { FileWarning, FileCheck2, Handshake, CalendarX2 } from 'lucide-react';
 
 type Row = Record<string, any>;
@@ -28,6 +28,7 @@ export default function VendorRegisterStats({ ar, query = '' }: { ar: boolean; q
   const soon = useCallback(() => { clearTimeout(timer.current); timer.current = setTimeout(load, 900); }, [load]);
   useSocket('vendors:changed', soon);
   useSocket('shipmentOrders:updated', soon);
+  useSocket('shipmentRequests:changed', soon);
 
   if (!d) return null;
   const T = d.totals;
@@ -43,7 +44,7 @@ export default function VendorRegisterStats({ ar, query = '' }: { ar: boolean; q
 
   return (
     <Panel title={t('سجلّ الموردين: المستندات والعقود', 'Register: papers and contracts')}
-      subtitle={t(`شركاتُ السجلّ (معتمدون ومن يعمل معنا هذا العام) · التنبيه قبل نهاية العقد بـ${d.contractDays} يومًا · اضغط أيَّ رقمٍ لعرض قائمته`, `Register companies · contract alert ${d.contractDays} days ahead · press any number for its list`)}>
+      subtitle={t(`شركاتُ السجلّ كما سجّلها النظام (معتمدون، أو عملوا هذا العام، أو قُدِّموا للاعتماد، أو رُفعت لهم مستنداتٌ أو عقد) · التنبيه قبل نهاية العقد بـ${d.contractDays} يومًا · اضغط أيَّ رقمٍ لعرض قائمته`, `Register companies · contract alert ${d.contractDays} days ahead · press any number for its list`)}>
       <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
         <Kpi ar={ar} label={t('موردو السجلّ', 'Register carriers')} value={fmtInt(T.vendors)} sub={t(`معتمدون ${T.master} · غير معتمدين ${T.outside}`, `master ${T.master} · outside ${T.outside}`)} onClick={() => open(t('موردو السجلّ', 'Register carriers'), () => true)} />
         <Kpi ar={ar} icon={<FileWarning className="w-3.5 h-3.5 text-amber-600" />} label={t('مستنداتٌ مطلوبة ناقصة', 'Missing required papers')} value={fmtInt(T.missingDocs)} tone={T.missingDocs ? 'warn' : 'good'} sub={fmtPct((T.missingDocs / Math.max(1, T.vendors)) * 100)}
@@ -53,7 +54,7 @@ export default function VendorRegisterStats({ ar, query = '' }: { ar: boolean; q
         <Kpi ar={ar} icon={<Handshake className="w-3.5 h-3.5 text-emerald-600" />} label={t('متعاقَدٌ معهم رسميًّا', 'Officially contracted')} value={fmtInt(T.contracted)} tone="good" sub={t(`بلا تاريخ نهاية ${T.noEndDate}`, `${T.noEndDate} without end date`)}
           onClick={() => open(t('متعاقَدٌ معهم رسميًّا', 'Officially contracted'), (r) => r.contracted, contractCols, byDays)} />
         <Kpi ar={ar} label={t('غير متعاقَدٍ معهم', 'Not contracted')} value={fmtInt(T.notContracted)} tone={T.notContracted ? 'warn' : undefined} sub={t(`منهم نشطون ${T.activeNotContracted}`, `${T.activeNotContracted} active`)}
-          onClick={() => open(t('غير متعاقَدٍ معهم', 'Not contracted'), (r) => !r.contracted, [...base, C.contractStatus, C.docsMissing, C.trips, C.last])} />
+          onClick={() => open(t('غير متعاقَدٍ معهم (لا عقدَ مسجَّلًا على النظام)', 'Not contracted (no contract recorded)'), (r) => !r.contracted, [...base, C.contractState, C.docsMissing, C.trips, C.last])} />
         <Kpi ar={ar} icon={<CalendarX2 className="w-3.5 h-3.5 text-red-600" />} label={t('عقودٌ تنتهي قريبًا', 'Contracts ending soon')} value={fmtInt(T.expiring)} tone={T.expiring ? 'warn' : 'muted'} sub={t(`منتهية ${T.expired}`, `${T.expired} expired`)}
           onClick={() => open(t('عقودٌ تنتهي قريبًا أو انتهت', 'Contracts ending soon or ended'), (r) => r.contractState === 'expiring' || r.contractState === 'expired', contractCols, byDays)} />
       </div>
@@ -66,12 +67,12 @@ export default function VendorRegisterStats({ ar, query = '' }: { ar: boolean; q
         <div>
           <p className="text-[12px] font-semibold text-slate-600 mb-2">{t('حالة العقود', 'Contract states')}</p>
           <BarList ar={ar} color="#0ea5e9" limit={5} rows={[
-            { key: 'active', label: t('ساري', 'Active'), value: rows.filter((r) => r.contractState === 'active').length },
-            { key: 'expiring', label: t('ينتهي قريبًا', 'Ending soon'), value: T.expiring },
-            { key: 'expired', label: t('منتهٍ', 'Expired'), value: T.expired },
-            { key: 'none', label: t('متعاقَدٌ بلا تاريخ نهاية', 'Contracted, no end date'), value: T.noEndDate },
-            { key: 'not', label: t('غير متعاقَد', 'Not contracted'), value: T.notContracted },
-          ]} onPick={(k) => open(t('العقود', 'Contracts'), (r) => (k === 'not' ? !r.contracted : k === 'none' ? r.contracted && !r.contractEndDate : r.contractState === k), contractCols, byDays)} />
+            { key: 'active', label: contractStateLabel('active', ar), value: T.active },
+            { key: 'expiring', label: contractStateLabel('expiring', ar), value: T.expiring },
+            { key: 'expired', label: contractStateLabel('expired', ar), value: T.expired },
+            { key: 'noEnd', label: contractStateLabel('noEnd', ar), value: T.noEndDate },
+            { key: 'not', label: contractStateLabel('not', ar), value: T.notContracted },
+          ]} onPick={(k) => open(`${t('العقود', 'Contracts')}: ${contractStateLabel(k, ar)}`, (r) => r.contractState === k, contractCols, byDays)} />
         </div>
       </div>
       <DrillModal drill={drill} onClose={() => setDrill(null)} ar={ar} />

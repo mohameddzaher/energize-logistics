@@ -24,6 +24,7 @@ router.get('/ranking', c.ranking);
 router.get('/register-stats', c.registerStats);
 router.get('/filter-options', c.filterOptions);
 router.get('/daily', c.daily);
+router.get('/daily/rows', c.dailyRows);
 router.get('/alerts', c.alerts);
 router.post('/alerts/state', authorize(...TEAM), c.setAlertState);
 router.get('/route-search', c.routeSearch);

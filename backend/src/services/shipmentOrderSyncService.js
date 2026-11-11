@@ -135,6 +135,10 @@ async function upsertPlatformShipments(items) {
     } };
   });
   const r = await ShipmentOrder.bulkWrite(ops, { ordered: false });
+  // Every caller announces `shipmentOrders:updated` after this; the dashboards it wakes must not read a cache built before the write.
+  if (r.upsertedCount || r.modifiedCount) {
+    try { const cache = require('../utils/ttlCache'); cache.clear('so:analytics:'); cache.clear('so:dashboard:'); } catch (_) { /* */ }
+  }
   return {
     created: r.upsertedCount || 0,
     updated: (r.modifiedCount || 0),

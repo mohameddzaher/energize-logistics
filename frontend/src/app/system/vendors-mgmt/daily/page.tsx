@@ -3,7 +3,8 @@
  * The daily operation as the vendors team follows it: requests against fulfilled and why the rest failed, the
  * target, who carried the load (our fleet, master companies, outside companies, freelance drivers), branch reliance
  * on freelancers, customers fully or partly served, route purchase prices with the cheapest and best carrier, the
- * operations reps who appointed carriers, and who on the vendors team placed them. Live from the shipments.
+ * operations reps who appointed carriers, and who on the vendors team placed them; plus the sales requests the team
+ * answered. Live from the shipment orders and requests; every card opens the orders or requests it counts.
  */
 import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import Link from 'next/link';
@@ -21,8 +22,10 @@ import { PAYMENT_SUBTYPES } from '@/lib/paymentKind';
 import { ResponsiveContainer, ComposedChart, Bar, Line, XAxis, YAxis, Tooltip, CartesianGrid, Legend, ReferenceLine } from 'recharts';
 import { Activity, Printer } from 'lucide-react';
 import TeamPerformance from '@/components/vendors/TeamPerformance';
+import { DrillModal, orderCols, type Drill } from '@/components/vendors/VendorDrill';
 
 type Row = Record<string, any>;
+const REQ_STATUS: Record<string, [string, string]> = { pending: ['جديد', 'New'], in_progress: ['قيد التنفيذ', 'In progress'], completed: ['مكتمل', 'Completed'], rejected: ['مرفوض', 'Refused'], cancelled: ['مسحوب', 'Withdrawn'] };
 const BLAME: [string, string, string][] = [['rep', 'إلغاء من المندوب', 'By the rep'], ['noTruck', 'لا سيارة · علينا', 'No truck · on us'], ['driver', 'إلغاء من السائق', 'By the driver'], ['customer', 'إلغاء من العميل', 'By the customer'], ['none', 'بلا سبب', 'No reason'], ['other', 'أسبابٌ أخرى', 'Other']];
 
 export default function VendorsDailyPage() {
@@ -45,6 +48,7 @@ export default function VendorsDailyPage() {
   const [vendQ, setVendQ] = useState('');
   const [vendKind, setVendKind] = useState('');
   const guard = useLatestRequest();
+  const [drill, setDrill] = useState<Drill | null>(null);
 
   const load = useCallback(async () => {
     const my = guard.begin(); setBusy(true);
@@ -62,6 +66,7 @@ export default function VendorsDailyPage() {
   useSocket('vendors:changed', soon);
   useSocket('shipmentOrders:fleet', soon);
   useSocket('shipmentRequests:changed', soon);
+  useSocket('workflow:bulkImported', soon);
 
   const routes = useMemo(() => (d?.routes || []).filter((r: Row) => (!dest || r.to === dest) && (!routeQ || `${r.route}`.includes(routeQ))), [d, dest, routeQ]);
   const vendRows = useMemo(() => (d?.purchaseByVendor || []).filter((v: Row) => (!vendKind || v.kind === vendKind) && (!vendQ || v.name.includes(vendQ))), [d, vendKind, vendQ]);
@@ -72,6 +77,24 @@ export default function VendorsDailyPage() {
   const T = d.totals;
   const activePreset = PRESETS.find(([k]) => { const [a, b] = presetRange(k); return a === from && b === to; })?.[0] || '';
   const money = T.buy != null;
+  const SR = d.salesRequests || { list: [], reasons: [] };
+  // A daily card opens the shipment orders it counts, read with the page's span and filters.
+  const openRows = async (title: string, set: string) => {
+    try {
+      const r = await api.get<Row>(`/api/vendors-mgmt/daily/rows?from=${from}&to=${to}&set=${set}${branch ? `&branch=${encodeURIComponent(branch)}` : ''}${fq ? `&${fq}` : ''}`);
+      setDrill({ title: r.total > r.rows.length ? `${title} — ${t('أوّل', 'first')} ${r.rows.length}` : title, rows: r.rows, cols: orderCols(ar, money), fileName: `vendors-daily-${set}` });
+    } catch (e: any) { setError(e?.message || t('تعذّر التحميل', 'Could not load')); }
+  };
+  const reqCols = [
+    { key: 'number', label: t('الطلب', 'Request'), render: (r: Row) => <Link href={`/system/vendors-mgmt/requests?id=${r.id}`} className="font-mono text-[#f37121] hover:underline">{r.number}</Link> },
+    { key: 'day', label: t('اليوم', 'Day') }, { key: 'customerName', label: t('العميل', 'Customer') }, { key: 'route', label: t('المسار', 'Route') }, { key: 'branch', label: t('الفرع', 'Branch') },
+    { key: 'trucks', label: t('الشاحنات', 'Trucks'), num: true }, { key: 'placed', label: t('المنفَّذ', 'Placed'), num: true }, { key: 'rest', label: t('المتبقّي', 'Remaining'), num: true },
+    { key: 'status', label: t('الحالة', 'Status'), render: (r: Row) => REQ_STATUS[r.status]?.[ar ? 0 : 1] || r.status, exportAs: (r: Row) => REQ_STATUS[r.status]?.[ar ? 0 : 1] || r.status },
+    { key: 'rejectReason', label: t('سبب الرفض', 'Reject reason'), render: (r: Row) => r.rejectReason || '—' },
+    { key: 'hoursToPlace', label: t('ساعات حتى أوّل شاحنة', 'Hours to first truck'), num: true, render: (r: Row) => (r.hoursToPlace == null ? '—' : r.hoursToPlace) },
+    { key: 'salesRepName', label: t('المبيعات', 'Sales'), render: (r: Row) => r.salesRepName || '—' }, { key: 'handlerName', label: t('المتولّي', 'Handler'), render: (r: Row) => r.handlerName || '—' },
+  ];
+  const showReq = (title: string, f: (r: Row) => boolean) => setDrill({ title, rows: SR.list.filter(f), cols: reqCols, fileName: 'vendors-daily-requests' });
 
   return (
     <div className="space-y-4 pb-10 print:space-y-2" dir={isRTL ? 'rtl' : 'ltr'}>
@@ -104,16 +127,34 @@ export default function VendorsDailyPage() {
       <div className="print:hidden"><VendorFilters value={filters} onChange={setFilters} from={from} to={to} ar={ar} /></div>
 
       <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
-        <Kpi ar={ar} label={t('الطلبات', 'Requests')} value={fmtInt(T.requests)} />
-        <Kpi ar={ar} label={t('المحقّق', 'Fulfilled')} value={fmtInt(T.done)} tone="good" sub={t(`${fmtInt(T.perDay)} يوميًّا`, `${fmtInt(T.perDay)}/day`)} />
-        <Kpi ar={ar} label={t('غير المحقّق', 'Not fulfilled')} value={fmtInt(T.failed)} tone="bad" />
-        <Kpi ar={ar} label={t('نسبة التحقيق', 'Fulfilment rate')} value={fmtPct(T.rate)} tone={T.rate >= 80 ? 'good' : 'warn'} />
-        <Kpi ar={ar} label={t('مقابل المستهدَف', 'Against target')} value={T.vsTarget != null ? fmtPct(T.vsTarget) : '—'} tone={T.vsTarget >= 100 ? 'good' : T.vsTarget != null ? 'warn' : 'muted'} />
-        <Kpi ar={ar} label={t('حصّة أسطول تنشيط', 'Our fleet share')} value={fmtPct(T.fleetShare)} sub={t(`${fmtInt(T.fleet)} رحلة`, `${fmtInt(T.fleet)} trips`)} />
-        {money && <Kpi ar={ar} label={t('سعر الشراء', 'Purchase')} value={fmtMoney(T.buy)} sub={t(`متوسط ${fmtMoney(T.avgTrip)}`, `avg ${fmtMoney(T.avgTrip)}`)} />}
-        {money && <Kpi ar={ar} label={t('شراءٌ بدون تنشيط', 'Purchase excl. our fleet')} value={fmtMoney(T.buyExt)} />}
-        <Kpi ar={ar} label={t('اعتمادٌ على الأفراد', 'Reliance on freelancers')} value={fmtPct(T.freelancerShareExt)} tone={T.freelancerShareExt > 35 ? 'warn' : undefined} sub={t('من التشغيل الخارجي', 'of external work')} />
+        <Kpi ar={ar} label={t('أوامر النقل', 'Transport orders')} value={fmtInt(T.requests)} sub={t('بتاريخ التحميل في الفترة', 'pickup in the span')} onClick={() => openRows(t('أوامر النقل في الفترة', 'Orders in the span'), 'all')} />
+        <Kpi ar={ar} label={t('المحقّق', 'Fulfilled')} value={fmtInt(T.done)} tone="good" sub={t(`${fmtInt(T.perDay)} يوميًّا`, `${fmtInt(T.perDay)}/day`)} onClick={() => openRows(t('أوامرُ محقّقة', 'Fulfilled orders'), 'done')} />
+        <Kpi ar={ar} label={t('غير المحقّق (ملغاة)', 'Not fulfilled (cancelled)')} value={fmtInt(T.failed)} tone="bad" onClick={() => openRows(t('أوامرُ ملغاة وأسبابها', 'Cancelled orders and reasons'), 'failed')} />
+        <Kpi ar={ar} label={t('نسبة التحقيق', 'Fulfilment rate')} value={fmtPct(T.rate)} tone={T.rate >= 80 ? 'good' : 'warn'} onClick={() => openRows(t('أوامرُ ملغاة وأسبابها', 'Cancelled orders and reasons'), 'failed')} />
+        <Kpi ar={ar} label={t('مقابل المستهدَف', 'Against target')} value={T.vsTarget != null ? fmtPct(T.vsTarget) : '—'} tone={T.vsTarget >= 100 ? 'good' : T.vsTarget != null ? 'warn' : 'muted'} sub={d.target.daily ? t(`المستهدَف ${fmtInt(d.target.period)}`, `target ${fmtInt(d.target.period)}`) : t('غير محدّد', 'not set')} onClick={() => openRows(t('أوامرُ محقّقة', 'Fulfilled orders'), 'done')} />
+        <Kpi ar={ar} label={t('حصّة أسطول تنشيط', 'Our fleet share')} value={fmtPct(T.fleetShare)} sub={t(`${fmtInt(T.fleet)} رحلة`, `${fmtInt(T.fleet)} trips`)} onClick={() => openRows(t('رحلات أسطول تنشيط', 'Our fleet trips'), 'fleet')} />
+        {money && <Kpi ar={ar} label={t('سعر الشراء', 'Purchase')} value={fmtMoney(T.buy)} sub={t(`متوسط ${fmtMoney(T.avgTrip)}`, `avg ${fmtMoney(T.avgTrip)}`)} onClick={() => openRows(t('أوامرُ محقّقة وأسعار شرائها', 'Fulfilled orders and their purchase'), 'done')} />}
+        {money && <Kpi ar={ar} label={t('شراءٌ بدون تنشيط', 'Purchase excl. our fleet')} value={fmtMoney(T.buyExt)} onClick={() => openRows(t('رحلات التشغيل الخارجي', 'External trips'), 'external')} />}
+        <Kpi ar={ar} label={t('اعتمادٌ على الأفراد', 'Reliance on freelancers')} value={fmtPct(T.freelancerShareExt)} tone={T.freelancerShareExt > 35 ? 'warn' : undefined} sub={t('من التشغيل الخارجي', 'of external work')} onClick={() => openRows(t('رحلات السائقين الأفراد', 'Freelancer trips'), 'freelancer')} />
       </div>
+
+      <Panel title={t('طلبات المبيعات في الفترة', 'Sales requests in the span')} subtitle={t('الطلبات المعتمدة التي أنشأتها المبيعات وكيف أجابها الفريق: شاحناتٌ نُفّذت أو رُفضت أو سحبتها المبيعات أو ما زالت مفتوحة · اضغط رقمًا لعرض طلباته', 'Approved sales requests and how the team answered them · press a number for its requests')}>
+        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
+          <Kpi ar={ar} label={t('الشاحنات المطلوبة', 'Trucks requested')} value={fmtInt(SR.trucks || 0)} sub={t(`${fmtInt(SR.requests || 0)} طلب`, `${fmtInt(SR.requests || 0)} requests`)} onClick={() => showReq(t('طلبات المبيعات', 'Sales requests'), () => true)} />
+          <Kpi ar={ar} label={t('المنفَّذ', 'Placed')} value={fmtInt(SR.placed || 0)} tone="good" sub={fmtPct(SR.placeRate || 0)} onClick={() => showReq(t('طلباتٌ نُفّذت لها شاحنات', 'Requests with placed trucks'), (r) => r.placed > 0)} />
+          <Kpi ar={ar} label={t('رفضها الفريق', 'Refused by the team')} value={fmtInt(SR.rejected || 0)} tone={SR.rejected ? 'bad' : 'muted'} onClick={() => showReq(t('طلباتٌ رفضها الفريق', 'Refused requests'), (r) => r.status === 'rejected')} />
+          <Kpi ar={ar} label={t('سحبتها المبيعات', 'Withdrawn by sales')} value={fmtInt(SR.withdrawn || 0)} tone="muted" onClick={() => showReq(t('طلباتٌ سحبتها المبيعات', 'Withdrawn requests'), (r) => r.status === 'cancelled')} />
+          <Kpi ar={ar} label={t('ما زالت مفتوحة', 'Still open')} value={fmtInt(SR.open || 0)} tone={SR.open ? 'warn' : 'muted'} onClick={() => showReq(t('طلباتٌ مفتوحة', 'Open requests'), (r) => r.status === 'pending' || r.status === 'in_progress')} />
+          <Kpi ar={ar} label={t('متوسط الوقت حتى أوّل شاحنة', 'Avg time to first truck')} value={SR.avgHoursToPlace != null ? `${SR.avgHoursToPlace} ${t('س', 'h')}` : '—'} onClick={() => showReq(t('طلباتٌ نُفّذت لها شاحنات', 'Requests with placed trucks'), (r) => r.hoursToPlace != null)} />
+        </div>
+        {!!SR.reasons.length && (
+          <div className="mt-3">
+            <p className="text-[12px] font-semibold text-slate-600 mb-2">{t('أسباب الرفض (شاحنات)', 'Refusal reasons (trucks)')}</p>
+            <BarList ar={ar} rows={SR.reasons.map((x: Row) => ({ key: x.reason, label: x.reason, value: x.n }))} color="#ef4444" limit={6}
+              onPick={(k) => showReq(`${t('سبب الرفض', 'Reason')}: ${k}`, (r) => r.status === 'rejected' && (r.rejectReason || 'بلا سبب مسجّل') === k)} />
+          </div>
+        )}
+      </Panel>
 
       <div className="print:hidden"><VendorRegisterStats ar={ar} query={fq} /></div>
 
@@ -308,6 +349,7 @@ export default function VendorsDailyPage() {
           ]} />
         </Panel>
       </div>
+      <DrillModal drill={drill} onClose={() => setDrill(null)} ar={ar} />
     </div>
   );
 }

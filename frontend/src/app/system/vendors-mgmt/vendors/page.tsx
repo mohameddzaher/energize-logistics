@@ -31,9 +31,9 @@ const quickOf = (k: string, v: Row) => {
   switch (k) {
     case 'master': return v.inMaster;
     case 'stopped': return v.inMaster && v.trend === 'stopped';
-    case 'leads': return v.kind === 'outside' && v.activeLast3;
-    case 'signedIdle': return v.signed && !v.activeLast3;
-    case 'unsigned': return v.inMaster && !v.signed && v.activeLast3;
+    case 'leads': return v.kind === 'outside' && v.active;
+    case 'signedIdle': return v.signed && !v.active;
+    case 'unsigned': return v.inMaster && !v.signed && v.active;
     case 'freelancers': return v.kind === 'freelancer';
     case 'incomplete': return v.inMaster && v.completeness < 70;
     case 'missingDocs': return !!v.id && v.kind !== 'freelancer' && (v.docsMissing || []).length > 0;

@@ -1,14 +1,15 @@
 'use client';
 /**
  * Filters shared by the vendors section's two analyses. Shipment dimensions (branch, customer, cities, truck, operations
- * rep, payment) narrow the trips counted; carrier dimensions (kind, follow-up owner, contract status) narrow the
- * carriers. Values carry counts from the server; every pick re-queries live.
+ * rep, payment) narrow the trips counted; carrier dimensions (kind, follow-up owner, contract state recorded on the
+ * system) narrow the carriers. Values carry counts from the server; every pick re-queries live.
  */
 import { useEffect, useState } from 'react';
 import api from '@/lib/api';
 import MultiSearchSelect from '@/components/system/MultiSearchSelect';
 import { PAYMENT_SUBTYPES } from '@/lib/paymentKind';
 import { kindLabel } from '@/lib/vendors';
+import { contractStateLabel } from './VendorDrill';
 import { X, RotateCcw } from 'lucide-react';
 
 export type VendorFilterState = Record<string, string[]>;
@@ -30,7 +31,7 @@ export default function VendorFilters({ value, onChange, from, to, ar }: {
   value: VendorFilterState; onChange: (v: VendorFilterState) => void; from: string; to: string; ar: boolean;
 }) {
   const [opts, setOpts] = useState<Record<string, { value: string; count: number }[]>>({});
-  const [carrier, setCarrier] = useState<{ owners: { value: string; count: number }[]; contracts: { value: string; count: number }[] }>({ owners: [], contracts: [] });
+  const [carrier, setCarrier] = useState<{ owners: { value: string; count: number }[]; contracts: { value: string; label?: string; count: number }[] }>({ owners: [], contracts: [] });
   useEffect(() => {
     api.get<{ options: Record<string, { value: string; count: number }[]> }>(`/api/shipment-orders/insights/options?from=${from}&to=${to}`)
       .then((r) => setOpts(r.options || {})).catch(() => {});
@@ -42,12 +43,13 @@ export default function VendorFilters({ value, onChange, from, to, ar }: {
     if (v === '__blank__' || v === '__none') return none;
     if (k === 'payment') return (PAYMENT_SUBTYPES as any)[v]?.[ar ? 'ar' : 'en'] || v;
     if (k === 'kind') return kindLabel(v, ar);
+    if (k === 'contract') return contractStateLabel(v, ar);
     return v;
   };
   const optionsOf = (k: string) => {
     if (k === 'kind') return ['master', 'outside', 'freelancer', 'fleet'].map((v) => ({ value: v, label: label(k, v) }));
     if (k === 'owner') return carrier.owners.map((o) => ({ value: o.value, label: label(k, o.value), count: o.count }));
-    if (k === 'contract') return carrier.contracts.map((o) => ({ value: o.value, label: label(k, o.value), count: o.count }));
+    if (k === 'contract') return carrier.contracts.map((o) => ({ value: o.value, label: ar ? (o.label || o.value) : (contractStateLabel(o.value, false)), count: o.count }));
     return (opts[k] || []).map((o) => ({ value: String(o.value), label: label(k, String(o.value)), count: o.count }));
   };
   const set = (k: string, v: string[]) => { const n = { ...value }; if (v.length) n[k] = v; else delete n[k]; onChange(n); };

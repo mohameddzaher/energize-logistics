@@ -319,6 +319,31 @@ export const ALERT_TYPE_LABELS: Record<string, { en: string; ar: string }> = {
 };
 
 // Exceptional-repair vocabulary (ours — Wialon has no unscheduled work).
+// A checklist task may be deferred (مؤجّل) only for at least this many km; the server enforces the same (config/ls2Config MIN_DEFER_KM).
+export const MIN_DEFER_KM = 10000;
+
+// Maintenance record types; periodic records come from a registered service interval.
+export type MaintenanceType = 'periodic' | 'preventive' | 'roadside' | 'accident';
+export const MAINTENANCE_TYPES: { key: MaintenanceType; ar: string; en: string; cls: string; bar: string }[] = [
+  { key: 'periodic', ar: 'الصيانة الدورية', en: 'Periodic', cls: 'bg-emerald-50 text-emerald-700 border-emerald-200', bar: '#059669' },
+  { key: 'preventive', ar: 'الصيانة الوقائية', en: 'Preventive', cls: 'bg-sky-50 text-sky-700 border-sky-200', bar: '#2563eb' },
+  { key: 'roadside', ar: 'الصيانة على الطريق', en: 'Roadside', cls: 'bg-amber-50 text-amber-800 border-amber-200', bar: '#d97706' },
+  { key: 'accident', ar: 'الحوادث', en: 'Accidents', cls: 'bg-rose-50 text-rose-700 border-rose-200', bar: '#be123c' },
+];
+export const maintenanceTypeLabel = (t: string, lang: Lang) => {
+  const m = MAINTENANCE_TYPES.find((x) => x.key === t);
+  return m ? m[lang] : t;
+};
+export interface MaintenancePart { item: string; itemName: string; itemCode?: string; unit?: string; quantity: number; unitPrice: number; total: number; isTire?: boolean }
+export interface MaintenanceWork { label: string; cost: number | null; note?: string }
+export interface MaintenanceRecord {
+  _id: string; unitId: number; plate: string; driver?: string; type: MaintenanceType; date: string; odometerKm: number | null;
+  title?: string; location?: string; parts: MaintenancePart[]; work: MaintenanceWork[];
+  partsCost: number; labourCost: number; towingCost: number; totalCost: number; notes?: string;
+  intervalName?: string; issueRequestNo?: string; status: 'active' | 'cancelled'; cancelReason?: string; cancelledByName?: string;
+  createdByName?: string; createdAt?: string;
+}
+
 export const REPAIR_CATEGORIES: Record<string, { en: string; ar: string }> = {
   breakdown: { en: 'Breakdown', ar: 'عطل' },
   accident: { en: 'Accident', ar: 'حادث' },

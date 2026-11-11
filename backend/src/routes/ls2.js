@@ -141,6 +141,14 @@ router.post('/assets/trailers/:id/move', oid, ADMIN, assets.moveTrailer);
 router.post('/assets/flatbeds', ADMIN, assets.createFlatbed);
 router.patch('/assets/flatbeds/:id', oid, ADMIN, assets.updateFlatbed);
 
+// Maintenance records (preventive / roadside / accident; periodic ones come from register-service) and their analytics.
+// Parts on a record leave the store through an issue request, so the store rule above holds.
+const maint = require('../controllers/ls2MaintenanceController');
+router.get('/maintenance/records', maint.listRecords); // ?unitId&type&from&to&status
+router.post('/maintenance/records', ADMIN, maint.createRecord);
+router.post('/maintenance/records/:id/cancel', oid, ADMIN, maint.cancelRecord);
+router.get('/maintenance/analytics', maint.analytics); // ?unitId&from&to&type
+
 router.get('/deferrals', ls2.listDeferrals); // fleet-wide open deferred tasks (Maintenance page)
 router.get('/vehicles', ls2.listVehicles);
 router.get('/vehicles/:id', unit, ls2.getVehicle);

@@ -29,6 +29,8 @@ const issueRequestSchema = new mongoose.Schema({
   issueReason: { type: String, default: '' },
   note: { type: String, default: '' },
   lines: { type: [lineSchema], default: [] },
+  // Set when a heavy-transport maintenance record consumed these parts; such a request is cancelled from its record.
+  maintenanceRecord: { type: mongoose.Schema.Types.ObjectId, ref: 'Ls2MaintenanceRecord', default: null, index: true },
   status: { type: String, enum: ['posted', 'cancelled'], default: 'posted', index: true },
   createdBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
   createdByName: { type: String, default: '' },

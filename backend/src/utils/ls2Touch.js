@@ -5,7 +5,7 @@
  */
 const cache = require('./ttlCache');
 
-const DERIVED = ['ls2assets:', 'ls2store:', 'ls2:dash', 'ls2:vehicles', 'ls2:whereabouts', 'ls2:rep', 'ls2:drvperf'];
+const DERIVED = ['ls2assets:', 'ls2store:', 'ls2:dash', 'ls2:vehicles', 'ls2:whereabouts', 'ls2:rep', 'ls2:drvperf', 'ls2:maint'];
 
 /** Clears what is derived from section records, in this worker and the other (see ttlCache). */
 function clearLs2Derived() {

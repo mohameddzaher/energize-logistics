@@ -13,10 +13,11 @@ import { useAuth } from '@/context/AuthContext';
 import { useLanguage } from '@/context/LanguageContext';
 import { useSocket } from '@/hooks/useSocket';
 import api from '@/lib/api';
-import { Wrench, RefreshCw, ChevronDown, ChevronRight, CheckCircle2, AlertCircle, Clock, ExternalLink, FileSpreadsheet, X, Search } from 'lucide-react';
+import { Wrench, RefreshCw, ChevronDown, ChevronRight, CheckCircle2, AlertCircle, Clock, ExternalLink, FileSpreadsheet, X, Search, BarChart3 } from 'lucide-react';
 import { Spinner, PageHeader } from '@/components/hr/HRKit';
 import { ls2Text, isLs2Staff, isLs2Admin, maintStyle, wherePhaseStyle, fmtNum, fmtKm, fmtDate, checklistLabel, type Lang, type Vehicle, type ServiceInterval } from '@/lib/ls2';
 import RegisterServiceModal from '@/components/ls2/RegisterServiceModal';
+import MaintenanceRecords from '@/components/ls2/MaintenanceRecords';
 import DeferralActionModal, { type DeferralLike } from '@/components/ls2/DeferralActionModal';
 import DeferralCard from '@/components/ls2/DeferralCard';
 import ExportMenu, { type ExportColumn } from '@/components/ls2/ExportMenu';
@@ -338,6 +339,12 @@ export default function Ls2MaintenancePage() {
     <div className="space-y-5" dir={isRTL ? 'rtl' : 'ltr'}>
       <PageHeader icon={<Wrench className="w-5 h-5" />} title={t.maintenance} subtitle={`${counts.overdue} ${t.serviceOverdue} · ${counts.due} ${t.serviceDue}`}>
         <button
+          type="button" onClick={() => router.push('/system/ls2/maintenance-analytics')}
+          className="flex items-center gap-1.5 px-3 py-2 rounded-lg bg-white border border-slate-200 hover:border-[#f37121] text-slate-700 text-sm font-medium"
+        >
+          <BarChart3 className="w-4 h-4 text-[#f37121]" /> {lang === 'ar' ? 'تحليلات الصيانة' : 'Maintenance analytics'}
+        </button>
+        <button
           type="button" onClick={() => setDueSoonOpen(true)}
           className="flex items-center gap-1.5 px-3 py-2 rounded-lg bg-amber-500 hover:bg-amber-600 text-white text-sm font-medium"
         >
@@ -497,6 +504,10 @@ export default function Ls2MaintenancePage() {
                               <ExternalLink className="w-3.5 h-3.5 text-[#f37121]" /> {lang === 'ar' ? 'ملف المركبة الكامل' : 'Full vehicle profile'}
                             </button>
                           </div>
+                          <MaintenanceRecords
+                            unitId={v.unitId} plate={v.plate || v.name} currentOdo={v.odometerKm}
+                            lang={lang as Lang} isRTL={isRTL} admin={admin}
+                            periodic={(
                           <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
                             {[...(v.serviceIntervals || [])].sort((a, b) => a.intervalKm - b.intervalKm).map((iv) => {
                               const r = remainOf(iv);
@@ -529,6 +540,8 @@ export default function Ls2MaintenancePage() {
                               );
                             })}
                           </div>
+                            )}
+                          />
                         </td>
                       </tr>
                     )}

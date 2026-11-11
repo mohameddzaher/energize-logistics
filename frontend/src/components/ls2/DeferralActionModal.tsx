@@ -9,7 +9,7 @@ import { useState } from 'react';
 import { useDialog } from '@/components/system/DialogProvider';
 import { CheckCircle2, Clock, XCircle, Loader2, X } from 'lucide-react';
 import api from '@/lib/api';
-import { ls2Text, fmtKm, fmtNum, checklistLabel, dayEstimateText, type Lang, type Deferral } from '@/lib/ls2';
+import { ls2Text, fmtKm, fmtNum, checklistLabel, dayEstimateText, MIN_DEFER_KM, type Lang, type Deferral } from '@/lib/ls2';
 
 type Action = 'done' | 'defer' | 'skip';
 
@@ -39,7 +39,10 @@ export default function DeferralActionModal({
   const [busy, setBusy] = useState(false);
 
   const submit = async () => {
-    if (action === 'defer' && !(Number(addKm) > 0)) { notify(ar ? 'اكتب المسافة الإضافية' : 'Enter the extra km'); return; }
+    if (action === 'defer' && !(Number(addKm) >= MIN_DEFER_KM)) {
+      notify(ar ? `التأجيل مسموح فقط لمسافة ${MIN_DEFER_KM.toLocaleString('en-US')} كم أو أكثر` : `Deferral needs at least ${MIN_DEFER_KM.toLocaleString('en-US')} km`);
+      return;
+    }
     setBusy(true);
     try {
       await api.post(`/api/ls2/vehicles/${unitId}/resolve-deferral`, {
@@ -105,10 +108,10 @@ export default function DeferralActionModal({
         {action === 'defer' ? (
           <div className="mb-3">
             <label className="text-xs font-medium text-slate-600 mb-1 block">{t.deferralAddKm} *</label>
-            <input type="number" value={addKm} onChange={(e) => setAddKm(e.target.value)} placeholder="2000"
-              className="w-full px-3 py-2 rounded-lg border border-slate-200 text-sm tabular-nums" />
+            <input type="number" min={MIN_DEFER_KM} step={1000} value={addKm} onChange={(e) => setAddKm(e.target.value)} placeholder={String(MIN_DEFER_KM)}
+              className={`w-full px-3 py-2 rounded-lg border text-sm tabular-nums ${addKm && Number(addKm) < MIN_DEFER_KM ? 'border-red-400' : 'border-slate-200'}`} />
             <p className="text-[10px] text-slate-400 mt-1">
-              {ar ? 'يبدأ العدّ من العداد الحالي.' : 'Counted from the current odometer.'}
+              {ar ? `يبدأ العدّ من العداد الحالي. الحدّ الأدنى للتأجيل ${MIN_DEFER_KM.toLocaleString('en-US')} كم.` : `Counted from the current odometer. Minimum deferral ${MIN_DEFER_KM.toLocaleString('en-US')} km.`}
               {Number(addKm) > 0 && Number(odo) > 0 && (
                 <> {t.dueAt} <b>{(Number(odo) + Number(addKm)).toLocaleString()} {ar ? 'كم' : 'km'}</b></>
               )}

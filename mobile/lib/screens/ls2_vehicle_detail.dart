@@ -11,6 +11,7 @@ import 'reports.dart';
 import 'ls2_vehicle_assets.dart';
 import 'jp.dart' show JpTaskPanel;
 import '../ui/ht_custody_panel.dart';
+import 'ls2_maintenance.dart';
 
 /// Vehicle details (Location Solutions), five tabs as on the web: overview (live sensors + tires), maintenance (intervals + service log + deferred items), trips, distance and fuel, and alerts.
 class Ls2VehicleDetailScreen extends StatefulWidget {
@@ -497,9 +498,34 @@ class _MaintenanceTabState extends State<_MaintenanceTab> {
   Map<String, dynamic>? _d;
   bool _loading = true;
   String? _error;
+  // Maintenance type shown: periodic keeps the interval cards; the other three list their records.
+  String _type = 'periodic';
+  late final void Function(dynamic) _onLive;
 
   @override
-  void initState() { super.initState(); _load(); }
+  void initState() {
+    super.initState();
+    _load();
+    // The poller's pulse carries `vehicles`; only real writes reload.
+    _onLive = (d) { if (d is! Map || d['vehicles'] == null) _load(); };
+    Live.instance.onData('ls2:updated', _onLive);
+  }
+
+  @override
+  void dispose() {
+    Live.instance.offData('ls2:updated', _onLive);
+    super.dispose();
+  }
+
+  Future<void> _addRecord() async {
+    final vehicle = _m(_d?['vehicle']);
+    final saved = await showModalBottomSheet<bool>(
+      context: context,
+      isScrollControlled: true,
+      builder: (_) => MaintenanceRecordSheet(unitId: int.tryParse(widget.vehicleId) ?? 0, type: _type, odometer: _numOrNull(vehicle['odometerKm'])),
+    );
+    if (saved == true) _load();
+  }
 
   Future<void> _load() async {
     try {
@@ -521,11 +547,13 @@ class _MaintenanceTabState extends State<_MaintenanceTab> {
     final template = _l(checklists[key] ?? checklists[name]);
 
     final odometer = TextEditingController(text: _fmt(vehicle['odometerKm']));
-    final cost = TextEditingController();
     final notes = TextEditingController();
     // status per checklist row: done | deferred | na
     final rowStatus = <int, String>{for (var i = 0; i < template.length; i++) i: 'done'};
-    final rowDefer = <int, TextEditingController>{for (var i = 0; i < template.length; i++) i: TextEditingController(text: '1000')};
+    final rowDefer = <int, TextEditingController>{for (var i = 0; i < template.length; i++) i: TextEditingController(text: '$kMinDeferKm')};
+    // Part 1: spare parts from the heavy store; part 2: technician work lines.
+    final parts = <PartLine>[];
+    final work = <(TextEditingController, TextEditingController)>[];
 
     await showModalBottomSheet(
       context: context,
@@ -538,21 +566,40 @@ class _MaintenanceTabState extends State<_MaintenanceTab> {
             child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
               Text('${tr('تسجيل خدمة', 'Register service')} — $name', style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 15)),
               const SizedBox(height: 12),
-              Row(children: [
-                Expanded(child: TextField(controller: odometer, keyboardType: TextInputType.number, decoration: InputDecoration(labelText: tr('العداد (كم) *', 'Odometer (km) *')))),
-                const SizedBox(width: 10),
-                Expanded(child: TextField(controller: cost, keyboardType: TextInputType.number, decoration: InputDecoration(labelText: tr('التكلفة', 'Cost')))),
-              ]),
+              Expanded(
+                child: ListView(children: [
+              TextField(controller: odometer, keyboardType: TextInputType.number, decoration: InputDecoration(labelText: tr('العداد (كم) *', 'Odometer (km) *'))),
               const SizedBox(height: 10),
               TextField(controller: notes, decoration: InputDecoration(labelText: tr('ملاحظات', 'Notes'))),
+              const SizedBox(height: 12),
+              Text(tr('١. قطع الغيار (من مخزن النقل الثقيل)', '1. Spare parts (heavy store)'), style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 13.5)),
+              const SizedBox(height: 6),
+              StorePartsEditor(lines: parts, onChanged: () => setS(() {})),
+              const SizedBox(height: 12),
+              Row(children: [
+                Expanded(child: Text(tr('٢. أعمال الفني (تشحيم، ضبط…)', '2. Technician work (greasing…)'), style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 13.5))),
+                TextButton.icon(
+                  onPressed: () => setS(() => work.add((TextEditingController(), TextEditingController()))),
+                  icon: const Icon(Icons.add, size: 16),
+                  label: Text(tr('إضافة عمل', 'Add work')),
+                ),
+              ]),
+              for (var w = 0; w < work.length; w++)
+                Padding(
+                  padding: const EdgeInsets.only(bottom: 6),
+                  child: Row(children: [
+                    Expanded(child: TextField(controller: work[w].$1, decoration: InputDecoration(isDense: true, labelText: tr('العمل المنفّذ', 'Work done')))),
+                    const SizedBox(width: 8),
+                    SizedBox(width: 90, child: TextField(controller: work[w].$2, keyboardType: TextInputType.number, decoration: InputDecoration(isDense: true, labelText: tr('التكلفة', 'Cost')))),
+                    IconButton(icon: const Icon(Icons.delete_outline, size: 19, color: T.danger), onPressed: () => setS(() => work.removeAt(w))),
+                  ]),
+                ),
               if (template.isNotEmpty) ...[
                 const SizedBox(height: 12),
                 Text(tr('قائمة الفحص', 'Checklist'), style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 13.5)),
+                Text(tr('التأجيل مسموح فقط لمسافة ${_fmt(kMinDeferKm)} كم أو أكثر.', 'Deferral needs at least $kMinDeferKm km.'), style: const TextStyle(fontSize: 11, color: T.inkSoft)),
                 const SizedBox(height: 6),
-                Expanded(
-                  child: ListView.builder(
-                    itemCount: template.length,
-                    itemBuilder: (c, i) {
+                ...List.generate(template.length, (i) {
                       final row = template[i];
                       final label = (row['labelAr'] ?? row['label'] ?? '').toString();
                       return Padding(
@@ -579,28 +626,43 @@ class _MaintenanceTabState extends State<_MaintenanceTab> {
                                 child: TextField(
                                   controller: rowDefer[i],
                                   keyboardType: TextInputType.number,
-                                  decoration: InputDecoration(labelText: tr('+كم', '+km'), isDense: true),
+                                  onChanged: (_) => setS(() {}),
+                                  decoration: InputDecoration(
+                                    labelText: tr('+كم', '+km'), isDense: true,
+                                    errorText: (num.tryParse(rowDefer[i]!.text) ?? 0) < kMinDeferKm ? '≥$kMinDeferKm' : null,
+                                  ),
                                 ),
                               ),
                             ],
                           ]),
                         ]),
                       );
-                    },
-                  ),
-                ),
-              ] else
-                const Spacer(),
+                }),
+              ],
+                ]),
+              ),
               SizedBox(
                 width: double.infinity,
                 child: FilledButton(
                   onPressed: () async {
+                    final shortDefer = [for (var i = 0; i < template.length; i++) i]
+                        .any((i) => rowStatus[i] == 'deferred' && (num.tryParse(rowDefer[i]!.text) ?? 0) < kMinDeferKm);
+                    final problem = partsProblem(parts) ??
+                        (shortDefer ? tr('التأجيل مسموح فقط لمسافة $kMinDeferKm كم أو أكثر', 'Deferral needs at least $kMinDeferKm km') : null);
+                    if (problem != null) {
+                      ScaffoldMessenger.of(c).showSnackBar(SnackBar(content: Text(problem)));
+                      return;
+                    }
                     try {
                       await Api.instance.post('/api/ls2/vehicles/${widget.vehicleId}/register-service', {
                         'intervalId': interval['id'],
                         'odometerKm': num.tryParse(odometer.text),
-                        if (cost.text.trim().isNotEmpty) 'cost': num.tryParse(cost.text),
                         if (notes.text.trim().isNotEmpty) 'notes': notes.text.trim(),
+                        'parts': [for (final p in parts) {'item': p.item['_id'], 'quantity': p.quantity}],
+                        'work': [
+                          for (final w in work)
+                            if (w.$1.text.trim().isNotEmpty) {'label': w.$1.text.trim(), 'cost': num.tryParse(w.$2.text.trim())},
+                        ],
                         if (template.isNotEmpty)
                           'checklist': [
                             for (var i = 0; i < template.length; i++)
@@ -608,7 +670,7 @@ class _MaintenanceTabState extends State<_MaintenanceTab> {
                                 'label': (template[i]['label'] ?? template[i]['labelAr'] ?? '').toString(),
                                 'labelAr': (template[i]['labelAr'] ?? '').toString(),
                                 'status': rowStatus[i],
-                                if (rowStatus[i] == 'deferred') 'deferKm': num.tryParse(rowDefer[i]!.text) ?? 1000,
+                                if (rowStatus[i] == 'deferred') 'deferKm': num.tryParse(rowDefer[i]!.text) ?? kMinDeferKm,
                               }
                           ],
                       });
@@ -630,7 +692,7 @@ class _MaintenanceTabState extends State<_MaintenanceTab> {
 
   Future<void> _resolveDeferral(Map<String, dynamic> d) async {
     String action = 'done';
-    final addKm = TextEditingController(text: '1000');
+    final addKm = TextEditingController(text: '$kMinDeferKm');
     final note = TextEditingController();
     final ok = await showDialog<bool>(
       context: context,
@@ -648,7 +710,7 @@ class _MaintenanceTabState extends State<_MaintenanceTab> {
           ),
           if (action == 'defer') ...[
             const SizedBox(height: 10),
-            TextField(controller: addKm, keyboardType: TextInputType.number, decoration: InputDecoration(labelText: tr('تمديد (كم)', 'Extend (km)'))),
+            TextField(controller: addKm, keyboardType: TextInputType.number, decoration: InputDecoration(labelText: tr('تمديد (كم)', 'Extend (km)'), helperText: tr('الحدّ الأدنى $kMinDeferKm كم', 'Minimum $kMinDeferKm km'))),
           ],
           const SizedBox(height: 10),
           TextField(controller: note, decoration: InputDecoration(labelText: tr('ملاحظة', 'Note'))),
@@ -665,7 +727,7 @@ class _MaintenanceTabState extends State<_MaintenanceTab> {
         'logId': d['logId'],
         'label': d['label'],
         'action': action,
-        if (action == 'defer') 'addKm': num.tryParse(addKm.text) ?? 1000,
+        if (action == 'defer') 'addKm': num.tryParse(addKm.text) ?? kMinDeferKm,
         if (note.text.trim().isNotEmpty) 'note': note.text.trim(),
       });
       _load();
@@ -686,10 +748,51 @@ class _MaintenanceTabState extends State<_MaintenanceTab> {
     final intervals = _l(_m(vehicle['maintenance'])['intervals']);
     final deferrals = _l(_d?['deferrals']);
     final history = _l(_d?['history']);
+    final records = _l(_d?['records']);
+    final shown = records.where((r) => r['type'] == _type).toList();
+    final counts = <String, int>{};
+    for (final r in records) {
+      if (r['status'] == 'active') counts['${r['type']}'] = (counts['${r['type']}'] ?? 0) + 1;
+    }
+    final recordCards = shown.map((r) => Padding(
+          padding: const EdgeInsets.only(bottom: 8),
+          child: MaintenanceRecordCard(r: r, onCancel: () async { if (await cancelMaintenanceRecord(context, r)) _load(); }),
+        ));
 
     return RefreshIndicator(
       onRefresh: _load,
       child: ListView(padding: const EdgeInsets.all(14), children: [
+        // The four maintenance types.
+        SingleChildScrollView(
+          scrollDirection: Axis.horizontal,
+          child: Row(children: [
+            for (final t in kMaintTypes)
+              Padding(
+                padding: const EdgeInsetsDirectional.only(end: 6),
+                child: ChoiceChip(
+                  label: Text('${tr(t.$2, t.$3)}${(counts[t.$1] ?? 0) > 0 ? ' (${counts[t.$1]})' : ''}'),
+                  selected: _type == t.$1,
+                  selectedColor: t.$4.withValues(alpha: 0.18),
+                  onSelected: (_) => setState(() => _type = t.$1),
+                ),
+              ),
+          ]),
+        ),
+        const SizedBox(height: 10),
+        if (_type != 'periodic') ...[
+          Align(
+            alignment: AlignmentDirectional.centerStart,
+            child: FilledButton.icon(
+              onPressed: _addRecord,
+              icon: const Icon(Icons.add, size: 18),
+              label: Text('${tr('تسجيل', 'New')} ${maintTypeLabel(_type)}'),
+            ),
+          ),
+          const SizedBox(height: 10),
+          if (shown.isEmpty)
+            EmptyState(icon: Icons.build_outlined, title: tr('لا توجد سجلات من هذا النوع', 'No records of this type')),
+          ...recordCards,
+        ] else ...[
         Text(tr('فواصل الخدمة', 'Service intervals'), style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 15)),
         const SizedBox(height: 8),
         ...intervals.map((iv) {
@@ -774,6 +877,13 @@ class _MaintenanceTabState extends State<_MaintenanceTab> {
               ]),
             ),
           )),
+        ],
+        if (shown.isNotEmpty) ...[
+          const SizedBox(height: 10),
+          Text(tr('سجلات الصيانة الدورية (القطع وأعمال الفني)', 'Periodic records (parts and work)'), style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 15)),
+          const SizedBox(height: 8),
+          ...recordCards,
+        ],
         ],
         const SizedBox(height: 20),
       ]),

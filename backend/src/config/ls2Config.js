@@ -123,7 +123,11 @@ const ALERT_TYPES = {
 // one) — so checklists/alertBefore in Ls2Settings are keyed by THIS.
 const serviceTemplateKey = (name) => String(name || '').replace(/^\s*\d+\s*-\s*/, '').trim().toLowerCase();
 
+// A checklist task may be marked deferred (مؤجّل) only when it is judged good for at least this many more km; anything shorter is done now.
+const MIN_DEFER_KM = 10000;
+
 module.exports = {
+  MIN_DEFER_KM,
   BASE_URL,
   TOKEN,
   serviceTemplateKey,

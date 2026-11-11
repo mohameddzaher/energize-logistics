@@ -6,10 +6,11 @@
 // This is what any manager opening a vehicle profile needs to see, so it lives in
 // a component and is dropped into the vehicle page — there is only one profile.
 import { useState, useEffect, useCallback } from 'react';
-import { Clock, History, Hammer, Plus, CheckCircle2, MinusCircle } from 'lucide-react';
+import { Clock, History, Hammer, Plus, CheckCircle2, MinusCircle, Wrench } from 'lucide-react';
 import api from '@/lib/api';
 import { useSocket } from '@/hooks/useSocket';
 import RepairModal from '@/components/ls2/RepairModal';
+import MaintenanceRecords from '@/components/ls2/MaintenanceRecords';
 import DeferralActionModal from '@/components/ls2/DeferralActionModal';
 import DeferralCard from '@/components/ls2/DeferralCard';
 import {
@@ -66,6 +67,19 @@ export default function VehicleServiceRecord({
           </div>
         </div>
       )}
+
+      {/* Maintenance by type with parts, labour and towing; the interval cards above are the periodic plan. */}
+      <div className="bg-white border border-slate-200 rounded-xl shadow-sm overflow-hidden">
+        <h2 className="text-sm font-semibold text-slate-900 flex items-center gap-2 px-5 py-3 border-b border-slate-100">
+          <Wrench className="w-4 h-4 text-[#f37121]" /> {ar ? 'سجلات الصيانة حسب النوع' : 'Maintenance records by type'}
+        </h2>
+        <div className="p-4">
+          <MaintenanceRecords
+            unitId={unitId} plate={plate} currentOdo={currentOdo} lang={lang} isRTL={isRTL} admin={admin}
+            periodic={<p className="text-xs text-slate-500">{ar ? 'تُسجَّل الصيانة الدورية من بطاقات فواصل الخدمة أعلاه («تم عمل الصيانة»).' : 'Periodic services are registered from the service-interval cards above (“Mark serviced”).'}</p>}
+          />
+        </div>
+      </div>
 
       {/* Every periodic service we logged, with its checklist */}
       <div className="bg-white border border-slate-200 rounded-xl shadow-sm overflow-hidden">

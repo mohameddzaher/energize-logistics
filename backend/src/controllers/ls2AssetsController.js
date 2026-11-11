@@ -221,7 +221,8 @@ exports.getVehicleHistory = async (req, res) => {
     const platePattern = new RegExp(key.split('').map((c) => c.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('[^0-9A-Za-z\u0621-\u064A]*'), 'i');
     const unitIds = (await Ls2Vehicle.find({}).select('unitId plate name').lean())
       .filter((v) => plateKey(v.plate) === key || vehiclePlateKey(v.name) === key).map((v) => v.unitId);
-    const [tireEvents, storeOut, issues, repairs, services, rimMoves, custody] = await Promise.all([
+    const { Ls2MaintenanceRecord } = require('../models/Ls2MaintenanceRecord');
+    const [tireEvents, storeOut, issues, repairs, services, rimMoves, custody, maintRecords] = await Promise.all([
       // The busiest plate has more than 500 events, so the old cap made its tire history look complete while truncated.
       Ls2AssetEvent.find({ $or: [{ fromPlateKey: key }, { toPlateKey: key }] }).sort({ date: -1 }).limit(10000).lean(),
       Ls2StoreMovement.find({ warehouse: { $ne: 'light' }, vehiclePlate: platePattern }).sort({ createdAt: -1 }).limit(5000).lean(),
@@ -231,6 +232,7 @@ exports.getVehicleHistory = async (req, res) => {
       // Legacy copies are skipped: the store rows they copy are already read above.
       Ls2RimMovement.find({ plateKey: key, legacy: { $ne: true }, type: { $ne: 'edit' } }).sort({ at: -1 }).limit(1000).lean(),
       HtCustodyEntry.find({ $or: [...(unitIds.length ? [{ vehicleUnitId: { $in: unitIds } }] : []), { vehiclePlate: platePattern }] }).sort({ date: -1, createdAt: -1 }).limit(2000).lean(),
+      Ls2MaintenanceRecord.find({ $or: [...(unitIds.length ? [{ unitId: { $in: unitIds } }] : []), { plate: platePattern }] }).sort({ date: -1 }).limit(2000).lean(),
     ]);
 
     const mine = (v) => plateKey(v) === key;
@@ -284,7 +286,29 @@ exports.getVehicleHistory = async (req, res) => {
         source: 'repairs', refId: r._id,
       });
     }
-    for (const s of services.filter((x) => mine(x.plate))) {
+    // Maintenance records carry the parts, labour and towing of a visit; a periodic one stands in for its service log row.
+    const MAINT_AR = { periodic: 'صيانة دورية', preventive: 'صيانة وقائية', roadside: 'صيانة على الطريق', accident: 'حادث' };
+    const linkedLogs = new Set();
+    for (const r of maintRecords) {
+      if (!unitIds.includes(r.unitId) && !mine(r.plate)) continue;
+      if (r.serviceLog) linkedLogs.add(String(r.serviceLog));
+      const money = (n) => Number(n || 0).toLocaleString('en-US');
+      rows.push({
+        kind: 'maintenance', maintenanceType: r.type, date: dayOf(r.date, r.createdAt), recordedAt: r.createdAt,
+        action: r.status === 'cancelled' ? 'ملغى' : MAINT_AR[r.type],
+        title: [MAINT_AR[r.type], r.intervalName || r.title].filter(Boolean).join(' — '),
+        detail: [
+          (r.parts || []).map((p) => `${p.itemName} × ${p.quantity}`).join('، '),
+          (r.work || []).map((w) => w.label).join('، '),
+          r.totalCost ? `الإجمالي ${money(r.totalCost)} ر.س (قطع ${money(r.partsCost)} · عمالة ${money(r.labourCost)} · سحب ${money(r.towingCost)})` : '',
+          r.issueRequestNo ? `طلب صرف ${r.issueRequestNo}` : '',
+        ].filter(Boolean).join(' · '),
+        odometerKm: r.odometerKm ?? null, by: r.createdByName, notes: [r.notes, r.status === 'cancelled' ? `ملغى: ${r.cancelReason}` : ''].filter(Boolean).join(' · '),
+        totalCost: r.totalCost || 0, cancelled: r.status === 'cancelled',
+        source: 'maintenance-records', refId: r._id,
+      });
+    }
+    for (const s of services.filter((x) => mine(x.plate) && !linkedLogs.has(String(x._id)))) {
       rows.push({
         kind: 'service', date: s.serviceDate || s.date || s.createdAt, action: s.action,
         title: s.intervalName || s.serviceType || 'صيانة',

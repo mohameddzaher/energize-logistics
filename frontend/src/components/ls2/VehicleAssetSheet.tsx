@@ -15,7 +15,7 @@ type Tire = {
   positionNumber: number | null; positionLabel: string; section: string; isSpare: boolean; notes: string;
 };
 type Row = {
-  kind: 'tire' | 'part' | 'repair' | 'service' | 'asset' | 'custody';
+  kind: 'tire' | 'part' | 'repair' | 'service' | 'asset' | 'custody' | 'maintenance';
   date: string; action: string; title: string; detail: string;
   odometerKm?: number | null; by?: string; notes?: string; source: string; reversed?: boolean;
 };
@@ -28,6 +28,8 @@ const KIND: Record<string, { ar: string; en: string; cls: string; dot: string; i
   asset: { ar: 'أصول', en: 'Assets', cls: 'bg-slate-50 text-slate-700 border-slate-200', dot: 'bg-slate-400', icon: Boxes },
   // Heavy custody money spent on or received for this truck (server: getVehicleHistory).
   custody: { ar: 'عهدة', en: 'Custody', cls: 'bg-violet-50 text-violet-800 border-violet-200', dot: 'bg-violet-500', icon: Wallet },
+  // Maintenance records (periodic / preventive / roadside / accident) with their parts and costs.
+  maintenance: { ar: 'سجلات الصيانة', en: 'Maintenance', cls: 'bg-orange-50 text-orange-800 border-orange-200', dot: 'bg-orange-500', icon: Wrench },
 };
 const SENSOR: Record<string, { ar: string; en: string; cls: string }> = {
   yes: { ar: 'يوجد', en: 'yes', cls: 'bg-emerald-100 text-emerald-700' },

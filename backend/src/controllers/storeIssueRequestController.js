@@ -112,9 +112,19 @@ exports.get = async (req, res) => {
  * Several lines of one item are checked against the balance together.
  */
 exports.create = async (req, res) => {
-  const wh = whOf(req);
-  const who = actor(req);
-  const b = req.body || {};
+  try {
+    const out = await postIssue({ wh: whOf(req), who: actor(req), body: req.body || {}, user: req.user, ip: req.ip });
+    res.status(out.status).json(out.body);
+  } catch (e) { console.error('issue request create', e); res.status(500).json({ message: 'تعذّر حفظ طلب الصرف — لم يتغيّر أيّ رصيد' }); }
+};
+
+/**
+ * Posts one issue request and its movements; shared by the store screen and maintenance records.
+ * Returns `{ status, body }` with the HTTP status and payload; nothing is written unless status is 201.
+ * `maintenanceRecord` links the request to the maintenance record that consumed the parts.
+ */
+async function postIssue({ wh, who, body, user, ip, maintenanceRecord = null }) {
+  const b = body || {};
   const vehiclePlate = String(b.vehiclePlate || '').trim().slice(0, 40);
   const issueReason = String(b.issueReason || '').trim();
   const note = String(b.note || '').trim().slice(0, 500);
@@ -123,12 +133,12 @@ exports.create = async (req, res) => {
   const today = todayKey();
   const date = /^\d{4}-\d{2}-\d{2}$/.test(String(b.date || '')) ? String(b.date) : '';
 
-  if (!date) return res.status(400).json({ code: 'ISSUE_DATE_REQUIRED', message: 'اختر تاريخ الصرف' });
-  if (date > today) return res.status(400).json({ code: 'ISSUE_DATE_FUTURE', message: 'تاريخ الصرف لا يكون بعد اليوم' });
-  if (!vehiclePlate) return res.status(400).json({ message: 'اختر المركبة' });
-  if (!ISSUE_REASON_KEYS.includes(issueReason)) return res.status(400).json({ code: 'ISSUE_REASON_REQUIRED', message: 'اختر سبب الصرف' });
-  if (!raw.length) return res.status(400).json({ message: 'أضف صنفًا واحدًا على الأقل' });
-  if (raw.length > MAX_LINES) return res.status(400).json({ message: `الحدّ الأقصى ${MAX_LINES} سطر في الطلب الواحد` });
+  if (!date) return reply(400, { code: 'ISSUE_DATE_REQUIRED', message: 'اختر تاريخ الصرف' });
+  if (date > today) return reply(400, { code: 'ISSUE_DATE_FUTURE', message: 'تاريخ الصرف لا يكون بعد اليوم' });
+  if (!vehiclePlate) return reply(400, { message: 'اختر المركبة' });
+  if (!ISSUE_REASON_KEYS.includes(issueReason)) return reply(400, { code: 'ISSUE_REASON_REQUIRED', message: 'اختر سبب الصرف' });
+  if (!raw.length) return reply(400, { message: 'أضف صنفًا واحدًا على الأقل' });
+  if (raw.length > MAX_LINES) return reply(400, { message: `الحدّ الأقصى ${MAX_LINES} سطر في الطلب الواحد` });
 
   const errors = [];
   const lines = [];
@@ -159,7 +169,7 @@ exports.create = async (req, res) => {
   }
   if (errors.length) {
     errors.sort((a, b2) => a.line - b2.line);
-    return res.status(400).json({ message: 'رُفض الطلب — لم يُصرَف أيّ صنف', errors });
+    return reply(400, { message: 'رُفض الطلب — لم يُصرَف أيّ صنف', errors });
   }
 
   // Take the stock: each item once, for the total of its lines, only if the balance still covers it.
@@ -176,7 +186,7 @@ exports.create = async (req, res) => {
       await giveBack(taken);
       // eslint-disable-next-line no-await-in-loop
       const now = await Ls2StoreItem.findById(id).select('name quantity unit').lean();
-      return res.status(409).json({
+      return reply(409, {
         message: 'تغيّر الرصيد أثناء الحفظ — لم يُصرَف أيّ صنف',
         errors: lines.filter((l) => l.item === id).map((l) => ({ line: l.line, item: id, message: `${now?.name || ''}: الرصيد الآن ${r3(now?.quantity)} والمطلوب ${total}` })),
       });
@@ -198,7 +208,7 @@ exports.create = async (req, res) => {
       return { item: it._id, itemName: it.name, itemCode: it.code || '', unit: it.unit || '', quantity: l.quantity, balanceAfter: bal };
     });
     request = await StoreIssueRequest.create({
-      warehouse: wh, seq, number, date, vehiclePlate, ...ctx, issueReason, note,
+      warehouse: wh, seq, number, date, vehiclePlate, ...ctx, issueReason, note, maintenanceRecord,
       lines: docLines, createdBy: who.id, createdByName: who.name,
     });
     const reason = `طلب صرف ${number}${note ? ` — ${note}` : ''}`;
@@ -218,16 +228,18 @@ exports.create = async (req, res) => {
       await Ls2StoreMovement.deleteMany({ issueRequest: request._id }).catch(() => {});
       await StoreIssueRequest.deleteOne({ _id: request._id }).catch(() => {});
     }
-    return res.status(500).json({ message: 'تعذّر حفظ طلب الصرف — لم يتغيّر أيّ رصيد' });
+    return reply(500, { message: 'تعذّر حفظ طلب الصرف — لم يتغيّر أيّ رصيد' });
   }
 
   logAudit({
-    user: req.user, action: 'store_issue_request_create', entity: 'StoreIssueRequest', entityId: request._id,
-    changes: { after: { number: request.number, vehiclePlate, lines: request.lines.map((l) => `${l.itemName} × ${l.quantity}`) } }, ipAddress: req.ip,
+    user, action: 'store_issue_request_create', entity: 'StoreIssueRequest', entityId: request._id,
+    changes: { after: { number: request.number, vehiclePlate, lines: request.lines.map((l) => `${l.itemName} × ${l.quantity}`) } }, ipAddress: ip,
   }).catch(() => {});
   emit();
-  res.status(201).json({ request: { ...request.toObject(), issueReasonAr: issueReasonLabel(issueReason) } });
-};
+  return reply(201, { request: { ...request.toObject(), issueReasonAr: issueReasonLabel(issueReason) } });
+}
+const reply = (status, body) => ({ status, body });
+exports.postIssue = postIssue;
 
 /**
  * POST /store/issue-requests/:id/cancel { reason }
@@ -235,46 +247,56 @@ exports.create = async (req, res) => {
  */
 exports.cancel = async (req, res) => {
   try {
-    const wh = whOf(req);
-    const who = actor(req);
-    const reason = String(req.body?.reason || '').trim().slice(0, 300);
-    if (reason.length < 3) return res.status(400).json({ message: 'اكتب سبب الإلغاء — يُسجَّل في السجل باسمك' });
-    // The status flips first and atomically, so a double click cannot return the stock twice.
-    const request = await StoreIssueRequest.findOneAndUpdate(
-      { _id: req.params.id, ...whFilter(wh), status: 'posted' },
-      { $set: { status: 'cancelled', cancelledAt: new Date(), cancelledBy: who.id, cancelledByName: who.name, cancelReason: reason } },
-      { new: true },
-    );
-    if (!request) {
-      const exists = await StoreIssueRequest.exists({ _id: req.params.id, ...whFilter(wh) });
-      return res.status(exists ? 400 : 404).json({ message: exists ? 'الطلب ملغى من قبل' : 'طلب الصرف غير موجود' });
+    // A request written by a maintenance record is cancelled from that record, so the record and the store never disagree.
+    const linked = await StoreIssueRequest.findOne({ _id: req.params.id, maintenanceRecord: { $ne: null } }).select('number').lean();
+    if (linked) {
+      return res.status(400).json({ code: 'ISSUE_FROM_MAINTENANCE', message: `طلب الصرف ${linked.number} ناتج عن سجل صيانة — ألغِ سجل الصيانة من ملف المركبة` });
     }
-    const originals = await Ls2StoreMovement.find({ issueRequest: request._id, type: 'out', reversed: { $ne: true }, reversalOf: null });
-    const date = todayKey();
-    for (const mv of originals) {
-      // eslint-disable-next-line no-await-in-loop
-      const it = await Ls2StoreItem.findByIdAndUpdate(mv.item, { $inc: { quantity: mv.quantity } }, { new: true }).lean();
-      // eslint-disable-next-line no-await-in-loop
-      await Ls2StoreMovement.create({
-        item: mv.item, itemName: mv.itemName, warehouse: mv.warehouse, type: 'in', quantity: mv.quantity,
-        vehiclePlate: mv.vehiclePlate, vehicleMaster: mv.vehicleMaster || null,
-        reason: `إلغاء طلب الصرف ${request.number} — ${reason}`, date,
-        balanceAfter: it ? r3(it.quantity) : 0, reversalOf: mv._id,
-        issueRequest: request._id, issueRequestNo: request.number,
-        performedBy: who.id, performedByName: who.name,
-      });
-      mv.reversed = true; mv.reversedAt = new Date(); mv.reversedBy = who.id; mv.reversedByName = who.name; mv.reversalReason = reason;
-      // eslint-disable-next-line no-await-in-loop
-      await mv.save();
-    }
-    logAudit({
-      user: req.user, action: 'store_issue_request_cancel', entity: 'StoreIssueRequest', entityId: request._id,
-      changes: { before: { status: 'posted' }, after: { status: 'cancelled', number: request.number, reason, movements: originals.length } }, ipAddress: req.ip,
-    }).catch(() => {});
-    emit();
-    res.json({ request });
+    const out = await cancelIssue({ id: req.params.id, wh: whOf(req), who: actor(req), reason: req.body?.reason, user: req.user, ip: req.ip });
+    res.status(out.status).json(out.body);
   } catch (e) { console.error('issue request cancel', e); res.status(500).json({ message: 'تعذّر إلغاء طلب الصرف' }); }
 };
+
+/** Cancels one posted request and returns its stock; shared by the store screen and maintenance records. Returns `{ status, body }`. */
+async function cancelIssue({ id, wh, who, reason: rawReason, user, ip }) {
+  const reason = String(rawReason || '').trim().slice(0, 300);
+  if (reason.length < 3) return reply(400, { message: 'اكتب سبب الإلغاء — يُسجَّل في السجل باسمك' });
+  // The status flips first and atomically, so a double click cannot return the stock twice.
+  const request = await StoreIssueRequest.findOneAndUpdate(
+    { _id: id, ...whFilter(wh), status: 'posted' },
+    { $set: { status: 'cancelled', cancelledAt: new Date(), cancelledBy: who.id, cancelledByName: who.name, cancelReason: reason } },
+    { new: true },
+  );
+  if (!request) {
+    const exists = await StoreIssueRequest.exists({ _id: id, ...whFilter(wh) });
+    return reply(exists ? 400 : 404, { message: exists ? 'الطلب ملغى من قبل' : 'طلب الصرف غير موجود' });
+  }
+  const originals = await Ls2StoreMovement.find({ issueRequest: request._id, type: 'out', reversed: { $ne: true }, reversalOf: null });
+  const date = todayKey();
+  for (const mv of originals) {
+    // eslint-disable-next-line no-await-in-loop
+    const it = await Ls2StoreItem.findByIdAndUpdate(mv.item, { $inc: { quantity: mv.quantity } }, { new: true }).lean();
+    // eslint-disable-next-line no-await-in-loop
+    await Ls2StoreMovement.create({
+      item: mv.item, itemName: mv.itemName, warehouse: mv.warehouse, type: 'in', quantity: mv.quantity,
+      vehiclePlate: mv.vehiclePlate, vehicleMaster: mv.vehicleMaster || null,
+      reason: `إلغاء طلب الصرف ${request.number} — ${reason}`, date,
+      balanceAfter: it ? r3(it.quantity) : 0, reversalOf: mv._id,
+      issueRequest: request._id, issueRequestNo: request.number,
+      performedBy: who.id, performedByName: who.name,
+    });
+    mv.reversed = true; mv.reversedAt = new Date(); mv.reversedBy = who.id; mv.reversedByName = who.name; mv.reversalReason = reason;
+    // eslint-disable-next-line no-await-in-loop
+    await mv.save();
+  }
+  logAudit({
+    user, action: 'store_issue_request_cancel', entity: 'StoreIssueRequest', entityId: request._id,
+    changes: { before: { status: 'posted' }, after: { status: 'cancelled', number: request.number, reason, movements: originals.length } }, ipAddress: ip,
+  }).catch(() => {});
+  emit();
+  return reply(200, { request });
+}
+exports.cancelIssue = cancelIssue;
 
 // GET /store/issue-requests/:id/pdf
 exports.pdf = async (req, res) => {

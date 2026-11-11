@@ -4,6 +4,7 @@
  * computes the dashboard analytics + maintenance projections, and exposes the few
  * write actions (acknowledge an alert, mark a vehicle serviced, edit thresholds).
  */
+const mongoose = require('mongoose');
 const Ls2Vehicle = require('../models/Ls2Vehicle');
 const { startOfDay, endOfDay } = require('../utils/companyDay');
 const Ls2Alert = require('../models/Ls2Alert');
@@ -754,15 +755,19 @@ exports.getVehicleMaintenance = async (req, res) => {
     const unitId = Number(req.params.id);
     const v = await Ls2Vehicle.findOne({ unitId }).lean();
     if (!v) return res.status(404).json({ message: 'Vehicle not found' });
-    const [history, repairs, settings] = await Promise.all([
+    const { Ls2MaintenanceRecord } = require('../models/Ls2MaintenanceRecord');
+    const [history, repairs, settings, records] = await Promise.all([
       Ls2ServiceLog.find({ unitId }).sort({ serviceDate: -1, createdAt: -1 }).limit(200).lean(),
       Ls2Repair.find({ unitId }).sort({ repairDate: -1 }).limit(200).lean(),
       Ls2Settings.getOrCreate(),
+      Ls2MaintenanceRecord.find({ unitId }).sort({ date: -1, createdAt: -1 }).limit(500).lean(),
     ]);
     res.json({
       vehicle: withMaintenance(v),
       history,
       repairs,
+      records,
+      minDeferKm: cfg.MIN_DEFER_KM,
       deferrals: attachDayEstimates(openDeferrals(history, v.odometerKm), await avgKmPerDayByUnit([unitId])),
       checklists: settings.checklists || {},
     });
@@ -852,13 +857,23 @@ exports.registerServiceInterval = async (req, res) => {
     const v = await Ls2Vehicle.findOne({ unitId });
     if (!v) return res.status(404).json({ message: 'Vehicle not found' });
 
-    const { intervalId, odometerKm, serviceDate, engineHours, cost, notes = '', checklist } = req.body || {};
+    const { intervalId, odometerKm, serviceDate, engineHours, cost, notes = '', checklist, parts, work } = req.body || {};
     if (intervalId == null) return res.status(400).json({ message: 'intervalId is required' });
     const odo = odometerKm != null ? Number(odometerKm) : v.odometerKm;
     if (odo == null || Number.isNaN(odo)) return res.status(400).json({ message: 'A valid odometer is required' });
 
     const iv = (v.serviceIntervals || []).find((s) => Number(s.id) === Number(intervalId));
     const intervalName = iv ? iv.name : '';
+
+    // Deferred (مؤجّل) is allowed only for a task judged good for at least MIN_DEFER_KM more; shorter is done now.
+    const shortDefer = (Array.isArray(checklist) ? checklist : [])
+      .filter((c) => c && c.status === 'deferred' && !(Number(c.deferKm) >= cfg.MIN_DEFER_KM));
+    if (shortDefer.length) {
+      return res.status(400).json({
+        code: 'DEFER_MIN_KM', minKm: cfg.MIN_DEFER_KM,
+        message: `التأجيل مسموح فقط لمسافة ${cfg.MIN_DEFER_KM.toLocaleString('en-US')} كم أو أكثر: ${shortDefer.map((c) => c.labelAr || c.label).join('، ')}`,
+      });
+    }
 
     // Our checklist: a deferred task ("still good for another N km") gets a due
     // odometer so we can warn before those km are used up.
@@ -876,6 +891,22 @@ exports.registerServiceInterval = async (req, res) => {
       };
     }).filter((c) => c.label);
 
+    // The real service date, as entered — used both for our record and for the
+    // Wialon write, so "last service" reads back as the date the user picked.
+    const performedAt = serviceDate ? new Date(serviceDate) : new Date();
+
+    // Parts and technician work are taken first: a refused part (not in store, above the balance) stops the
+    // registration before anything is written to Location Solutions. The log id is reserved for the link.
+    const logId = new mongoose.Types.ObjectId();
+    const ymd = /^\d{4}-\d{2}-\d{2}/.test(String(serviceDate || '')) ? String(serviceDate).slice(0, 10) : require('../utils/companyDay').todayKey();
+    const recOut = await require('./ls2MaintenanceController').createRecordFor({
+      req, vehicle: v.toObject(), type: 'periodic', serviceLog: logId, intervalId: Number(intervalId), intervalName,
+      // An old client sends one cost and no work lines; it is the technician's charge.
+      body: { date: ymd, odometerKm: odo, parts, work, labourCost: (!Array.isArray(work) || !work.length) && cost != null && cost !== '' ? cost : 0, notes },
+    });
+    if (recOut.status !== 201) return res.status(recOut.status).json(recOut.body);
+    const record = recOut.body.record;
+
     // A task done now clears any earlier deferral of the same task on this truck.
     // Match on BOTH language variants: logs written before labels were canonical
     // carry whichever language the registrar's UI was in at the time.
@@ -891,10 +922,6 @@ exports.registerServiceInterval = async (req, res) => {
       );
     }
 
-    // The real service date, as entered — used both for our record and for the
-    // Wialon write, so "last service" reads back as the date the user picked.
-    const performedAt = serviceDate ? new Date(serviceDate) : new Date();
-
     // 1) Write it into Location Solutions (sets pm + bumps the executions count).
     let synced = false;
     try {
@@ -906,16 +933,27 @@ exports.registerServiceInterval = async (req, res) => {
     }
 
     // 2) Our own record — the REAL service date, exactly as entered.
-    const log = await Ls2ServiceLog.create({
-      unitId, plate: v.plate, action: 'serviced',
-      odometerKm: odo, intervalId: Number(intervalId), intervalName,
-      serviceDate: performedAt,
-      engineHours: engineHours != null ? Number(engineHours) : null,
-      cost: cost != null ? Number(cost) : null,
-      checklist: checklistRows,
-      notes, serviceType: 'periodic', syncedToWialon: synced,
-      performedBy: req.user._id, performedByName: `${req.user.firstName || ''} ${req.user.lastName || ''}`.trim(),
-    });
+    let log;
+    try {
+      log = await Ls2ServiceLog.create({
+        _id: logId,
+        unitId, plate: v.plate, action: 'serviced',
+        odometerKm: odo, intervalId: Number(intervalId), intervalName,
+        serviceDate: performedAt,
+        engineHours: engineHours != null ? Number(engineHours) : null,
+        cost: record.totalCost > 0 ? record.totalCost : (cost != null && cost !== '' ? Number(cost) : null),
+        checklist: checklistRows,
+        notes, serviceType: 'periodic', syncedToWialon: synced,
+        performedBy: req.user._id, performedByName: `${req.user.firstName || ''} ${req.user.lastName || ''}`.trim(),
+      });
+    } catch (e) {
+      // Without its log the record would point at nothing; it is cancelled and its parts return to the store.
+      await require('../models/Ls2MaintenanceRecord').Ls2MaintenanceRecord.updateOne({ _id: record._id }, { $set: { status: 'cancelled', cancelReason: 'تعذّر حفظ سجل الخدمة', cancelledAt: new Date() } }).catch(() => {});
+      if (record.issueRequest) {
+        await require('./storeIssueRequestController').cancelIssue({ id: record.issueRequest, wh: 'heavy', who: { id: req.user._id, name: '' }, reason: 'تعذّر حفظ سجل الخدمة', user: req.user, ip: req.ip }).catch(() => {});
+      }
+      throw e;
+    }
 
     // 3) Refresh our mirror from Wialon so the new "km left" shows soon — in the
     // BACKGROUND: a full 57-truck poll takes seconds, and the user was sitting
@@ -924,12 +962,13 @@ exports.registerServiceInterval = async (req, res) => {
     if (synced) { require('../jobs/ls2Poll').tick().catch(() => {}); }
     clearLs2All();
     emitToAll('ls2:updated', { at: Date.now(), serviced: unitId, intervalId });
+    if (record.issueRequest) emitToAll('ls2:store', {});
 
     const fresh = await Ls2Vehicle.findOne({ unitId }).lean();
     res.status(201).json({
       ok: true, syncedToWialon: synced,
       message: synced ? 'Service registered in Location Solutions' : 'Saved locally, but Location Solutions write failed',
-      vehicle: fresh ? withMaintenance(fresh) : null, log,
+      vehicle: fresh ? withMaintenance(fresh) : null, log, record,
     });
   } catch (error) {
     fail(res, error, 'Failed to register service');
@@ -967,6 +1006,9 @@ exports.resolveDeferral = async (req, res) => {
       // Re-grant more km from where the truck is NOW (fall back to its odometer).
       const extra = Number(addKm);
       if (!(extra > 0)) return res.status(400).json({ message: 'A positive addKm is required to defer again' });
+      if (extra < cfg.MIN_DEFER_KM) {
+        return res.status(400).json({ code: 'DEFER_MIN_KM', minKm: cfg.MIN_DEFER_KM, message: `التأجيل مسموح فقط لمسافة ${cfg.MIN_DEFER_KM.toLocaleString('en-US')} كم أو أكثر` });
+      }
       const v0 = await Ls2Vehicle.findOne({ unitId }).lean();
       const fromOdo = at != null ? at : (v0 ? v0.odometerKm : null);
       if (fromOdo == null) return res.status(400).json({ message: 'Current odometer unknown — enter it to defer' });
@@ -1356,7 +1398,7 @@ exports.updateVehicleMeta = async (req, res) => {
 exports.getSettings = async (req, res) => {
   try {
     const s = await Ls2Settings.getOrCreate();
-    res.json({ thresholds: s.thresholds, maintenance: s.maintenance, checklists: s.checklists || {}, alertBefore: s.alertBefore || {}, defaults: { thresholds: cfg.DEFAULT_THRESHOLDS, maintenance: cfg.DEFAULT_MAINTENANCE } });
+    res.json({ thresholds: s.thresholds, maintenance: s.maintenance, checklists: s.checklists || {}, alertBefore: s.alertBefore || {}, minDeferKm: cfg.MIN_DEFER_KM, defaults: { thresholds: cfg.DEFAULT_THRESHOLDS, maintenance: cfg.DEFAULT_MAINTENANCE } });
   } catch (error) {
     fail(res, error, 'Failed to load settings');
   }

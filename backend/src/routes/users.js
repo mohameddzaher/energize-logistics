@@ -28,7 +28,8 @@ router.get('/roles', async (req, res) => {
     key: d.key,
     ar: d.ar,
     en: d.en,
-    section: sectionOfRole(d.key) || '',
+    // Grouped by the company structure: vendors and follow-up appear under Operations (config/roles orgSectionOfRole).
+    section: require('../config/roles').orgSectionOfRole(d.key) || '',
     isManager: isManager(d.key),
     // What distinguishes the role is sent with it. `distinct` was written in `config/roles` but not returned, so the create-user screen could not read it. Someone wanting a duty-check supervisor searched for a role by that name and did not find it; duty check is an assignment, not a role, and this line says so.
     distinct: d.distinct || '',

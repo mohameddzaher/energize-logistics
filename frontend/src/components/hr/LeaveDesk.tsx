@@ -114,8 +114,12 @@ export function LeaveDetail({ l, ar, full }: { l: Leave; ar: boolean; full: bool
           <Info k={t('النوع', 'Type')} v={<TypeChip l={l} ar={ar} />} />
           <Info k={t('تاريخ الطلب', 'Requested on')} v={bothDates(l.createdAt, ar)} />
           {l.filedByManager && <Info wide k={t('مقدّم الطلب', 'Filed by')} v={`${nameOf(l.filedBy) || l.filedByName || nameOf(l.requester) || '—'} — ${t('قدّمها المدير نيابةً عن الموظف', 'filed by the manager for the employee')}`} />}
-          <Info k={t('من', 'From')} v={bothDates(l.startDate, ar)} />
-          <Info k={t('إلى', 'To')} v={bothDates(l.endDate, ar)} />
+          {l.startDate === l.endDate
+            ? <Info wide k={t('المدة', 'Duration')} v={<b className="text-[#f37121]">{t('يوم واحد فقط', 'One day only')} — {bothDates(l.startDate, ar)}</b>} />
+            : <>
+              <Info k={t('من', 'From')} v={bothDates(l.startDate, ar)} />
+              <Info k={t('إلى', 'To')} v={bothDates(l.endDate, ar)} />
+            </>}
           {excluded.length > 0 && <Info wide k={t('أيام جمعة لا تُحسب إجازة', 'Fridays not counted')} v={excluded.map((d) => d.split('-').reverse().join('/')).join('  ·  ')} />}
           {l.reason && <Info wide k={t('السبب', 'Reason')} v={l.reason} />}
           {typeof snap.available === 'number' && <Info k={t('الرصيد المتاح عند الطلب', 'Available at request')} v={`${snap.available} ${t('يوم', 'd')}`} />}
@@ -327,7 +331,8 @@ export default function LeaveDesk({ base, stage, canDecide, title, subtitle }: {
                       <td className="hidden 2xl:table-cell px-4 py-3 whitespace-nowrap text-slate-700">{l.employee?.department || '—'}</td>
                       <td className="px-4 py-3"><TypeChip l={l} ar={ar} /></td>
                       <td className="px-4 py-3 whitespace-nowrap tabular-nums text-slate-700">{dm(l.startDate)}</td>
-                      <td className="px-4 py-3 whitespace-nowrap tabular-nums text-slate-700">{dm(l.endDate)}</td>
+                      <td className="px-4 py-3 whitespace-nowrap tabular-nums text-slate-700">{l.startDate === l.endDate
+                        ? <span className="text-[12px] font-bold text-[#f37121]">{t('يوم واحد فقط', 'One day only')}</span> : dm(l.endDate)}</td>
                       <td className="px-4 py-3 text-center font-bold tabular-nums">{l.days}</td>
                       {full && <td className="px-4 py-3"><StageProgress l={l} ar={ar} /></td>}
                       <td className="px-4 py-3"><StatusChip l={l} canAct={canActOn(l)} full={full} ar={ar} /></td>
@@ -363,7 +368,7 @@ export default function LeaveDesk({ base, stage, canDecide, title, subtitle }: {
                 </div>
                 <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-1 text-sm">
                   <TypeChip l={l} ar={ar} />
-                  <span className="tabular-nums text-slate-700">{t('من', 'From')} {dm(l.startDate)} {t('إلى', 'to')} {dm(l.endDate)}</span>
+                  <span className="tabular-nums text-slate-700">{l.startDate === l.endDate ? `${t('يوم واحد فقط:', 'One day only:')} ${dm(l.startDate)}` : `${t('من', 'From')} ${dm(l.startDate)} ${t('إلى', 'to')} ${dm(l.endDate)}`}</span>
                   <span className="font-bold tabular-nums">{l.days} {t('يوم', 'd')}</span>
                 </div>
                 {full && <div className="mt-3"><StageProgress l={l} ar={ar} /></div>}

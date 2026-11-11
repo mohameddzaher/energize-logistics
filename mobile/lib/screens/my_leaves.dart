@@ -165,7 +165,7 @@ class _MyLeavesScreenState extends State<MyLeavesScreen> {
         content: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
           Text('${tr('الموظف', 'Employee')}: ${_empName(l['employee']).isNotEmpty ? _empName(l['employee']) : _userName(l['requester'])}'),
           Text('${tr('النوع', 'Type')}: ${_typeName(l['leaveType'])}'),
-          Text('${tr('من', 'From')} ${_d(l['startDate'])} ${tr('إلى', 'to')} ${_d(l['endDate'])} · ${l['days'] ?? '—'} ${tr('يوم', 'days')}'),
+          Text('${'${l['startDate']}' == '${l['endDate']}' ? '${tr('يوم واحد فقط:', 'One day only:')} ${_d(l['startDate'])}' : '${tr('من', 'From')} ${_d(l['startDate'])} ${tr('إلى', 'to')} ${_d(l['endDate'])}'} · ${l['days'] ?? '—'} ${tr('يوم', 'days')}'),
           if ('${l['reason'] ?? ''}'.isNotEmpty) Text('${l['reason']}', style: const TextStyle(color: T.inkSoft)),
           const SizedBox(height: 8),
           TextField(controller: note, decoration: InputDecoration(labelText: tr('ملاحظة', 'Note'))),
@@ -201,7 +201,7 @@ class _MyLeavesScreenState extends State<MyLeavesScreen> {
               Expanded(child: Text(_empName(l['employee']).isNotEmpty ? _empName(l['employee']) : _userName(l['requester']), style: const TextStyle(fontWeight: FontWeight.w800))),
               Chip2(_statusName(l['status'], own: _filedByMe(l)), leaveStatusFor(l['status'], own: _filedByMe(l), full: _full, canAct: l['status'] == 'pending_manager').$3),
             ]),
-            Text('${_typeName(l['leaveType'])} · ${tr('من', 'From')} ${_d(l['startDate'])} ${tr('إلى', 'to')} ${_d(l['endDate'])} · ${l['days'] ?? '—'} ${tr('يوم', 'days')}', style: const TextStyle(fontSize: 12.5, color: T.inkSoft)),
+            Text('${_typeName(l['leaveType'])} · ${'${l['startDate']}' == '${l['endDate']}' ? '${tr('يوم واحد فقط:', 'One day only:')} ${_d(l['startDate'])}' : '${tr('من', 'From')} ${_d(l['startDate'])} ${tr('إلى', 'to')} ${_d(l['endDate'])}'} · ${l['days'] ?? '—'} ${tr('يوم', 'days')}', style: const TextStyle(fontSize: 12.5, color: T.inkSoft)),
             const SizedBox(height: 4),
             LeaveDeductionBadge(leave: l, full: _full),
             Wrap(alignment: WrapAlignment.end, spacing: 4, children: [
@@ -335,7 +335,7 @@ class _MyLeavesScreenState extends State<MyLeavesScreen> {
                                     ],
                                   ),
                                   const SizedBox(height: 6),
-                                  Text('${tr('من', 'From')} ${_d(l['startDate'])} ${tr('إلى', 'to')} ${_d(l['endDate'])} · ${l['days'] ?? '—'} ${tr('يوم', 'days')}',
+                                  Text('${'${l['startDate']}' == '${l['endDate']}' ? '${tr('يوم واحد فقط:', 'One day only:')} ${_d(l['startDate'])}' : '${tr('من', 'From')} ${_d(l['startDate'])} ${tr('إلى', 'to')} ${_d(l['endDate'])}'} · ${l['days'] ?? '—'} ${tr('يوم', 'days')}',
                                       style: const TextStyle(fontSize: 13, color: T.inkSoft)),
                                   if ((l['reason'] ?? '').toString().isNotEmpty)
                                     Padding(
@@ -478,6 +478,8 @@ class _NewLeaveSheetState extends State<_NewLeaveSheet> {
   String? _employee;
   DateTime? _start;
   DateTime? _end;
+  // «يوم واحد»: one date sets both start and end.
+  bool _single = false;
   final _reason = TextEditingController();
   bool _busy = false;
   // Request proof. A sick leave needs a report; it used to be sent over WhatsApp and got lost, then asked for two months later. It now lives with the request and is read from the employee file afterwards.
@@ -493,6 +495,8 @@ class _NewLeaveSheetState extends State<_NewLeaveSheet> {
       _type = '${l['leaveType'] is Map ? l['leaveType']['_id'] : l['leaveType'] ?? ''}';
       _start = DateTime.tryParse('${l['startDate'] ?? ''}');
       _end = DateTime.tryParse('${l['endDate'] ?? ''}');
+    _single = _start != null && _start == _end;
+      _single = _start != null && _start == _end;
       _reason.text = '${l['reason'] ?? ''}';
       _kept = [for (final a in (l['attachments'] as List? ?? const [])) Map<String, dynamic>.from(a as Map)];
     }
@@ -655,7 +659,14 @@ class _NewLeaveSheetState extends State<_NewLeaveSheet> {
             ),
           ],
           const SizedBox(height: 10),
-          Row(children: [
+          _dayModeToggle(_single, (v) => setState(() { _single = v; if (v) _end = _start; })),
+          const SizedBox(height: 8),
+          if (_single)
+            SizedBox(width: double.infinity, child: OutlinedButton(
+              onPressed: _type.isEmpty ? null : () async { final d = await _pick(_start); if (d != null) setState(() { _start = d; _end = d; }); },
+              child: Text('${tr('يوم الإجازة', 'Leave day')}: ${fmt(_start)}${_start == null ? '' : '\n${hijriHint(_start, ar: Lang.instance.ar)}'}', textAlign: TextAlign.center),
+            ))
+          else Row(children: [
             Expanded(
               child: OutlinedButton(
                 onPressed: _type.isEmpty ? null : () async { final d = await _pick(_start); if (d != null) setState(() { _start = d; if (_end != null && _end!.isBefore(d)) _end = d; }); },
@@ -751,6 +762,7 @@ class _ReplyDialogState extends State<_ReplyDialog> {
   String _type = '';
   DateTime? _start;
   DateTime? _end;
+  bool _single = false;
   late final String _type0;
   late final String _start0;
   late final String _end0;
@@ -831,7 +843,14 @@ class _ReplyDialogState extends State<_ReplyDialog> {
             onChanged: (v) => setState(() => _type = v ?? _type),
           ),
           const SizedBox(height: 8),
-          Row(children: [
+          _dayModeToggle(_single, (v) => setState(() { _single = v; if (v) _end = _start; })),
+          const SizedBox(height: 8),
+          if (_single)
+            SizedBox(width: double.infinity, child: OutlinedButton(
+              onPressed: () async { final d = await _pick(_start); if (d != null) setState(() { _start = d; _end = d; }); },
+              child: Text('${tr('يوم الإجازة', 'Leave day')}: ${_fmt(_start)}', textAlign: TextAlign.center),
+            ))
+          else Row(children: [
             Expanded(
               child: OutlinedButton(
                 onPressed: () async { final d = await _pick(_start); if (d != null) setState(() { _start = d; if (_end != null && _end!.isBefore(d)) _end = d; }); },
@@ -940,3 +959,9 @@ class _MemberBalanceCard extends StatelessWidget {
     );
   }
 }
+
+/// «يوم واحد» / «عدة أيام» switch for the leave dates.
+Widget _dayModeToggle(bool single, ValueChanged<bool> onChanged) => Wrap(spacing: 8, children: [
+      ChoiceChip(label: Text(tr('يوم واحد', 'One day')), selected: single, onSelected: (_) => onChanged(true)),
+      ChoiceChip(label: Text(tr('عدة أيام', 'Several days')), selected: !single, onSelected: (_) => onChanged(false)),
+    ]);

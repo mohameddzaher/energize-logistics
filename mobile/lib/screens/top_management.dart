@@ -164,7 +164,7 @@ class _TopLeavesScreenState extends State<TopLeavesScreen> {
             const SizedBox(height: 8),
             Row(children: [
               Expanded(child: Text(tr('${(l['leaveType'] as Map?)?['nameAr'] ?? ''}', '${(l['leaveType'] as Map?)?['nameEn'] ?? ''}'), style: const TextStyle(fontSize: 12.5, fontWeight: FontWeight.w600))),
-              Text('${tr('من', 'From')} ${_dm(l['startDate'])} ${tr('إلى', 'to')} ${_dm(l['endDate'])}', style: const TextStyle(fontSize: 12.5, color: T.inkSoft)),
+              Text('${'${l['startDate']}' == '${l['endDate']}' ? '${tr('يوم واحد فقط:', 'One day only:')} ${_dm(l['startDate'])}' : '${tr('من', 'From')} ${_dm(l['startDate'])} ${tr('إلى', 'to')} ${_dm(l['endDate'])}'}', style: const TextStyle(fontSize: 12.5, color: T.inkSoft)),
               const SizedBox(width: 10),
               Text('${l['days'] ?? ''} ${tr('يوم', 'd')}', style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w800)),
             ]),
@@ -266,8 +266,12 @@ class LeaveDetailSheet extends StatelessWidget {
         ),
         _head(tr('بيانات الإجازة', 'Leave')),
         _info(tr('النوع', 'Type'), tr('${(l['leaveType'] as Map?)?['nameAr'] ?? ''}', '${(l['leaveType'] as Map?)?['nameEn'] ?? ''}')),
-        _info(tr('من', 'From'), bothDates(l['startDate'], ar: Lang.instance.ar)),
-        _info(tr('إلى', 'To'), bothDates(l['endDate'], ar: Lang.instance.ar)),
+        if ('${l['startDate']}' == '${l['endDate']}')
+          _info(tr('المدة', 'Duration'), '${tr('يوم واحد فقط', 'One day only')} — ${bothDates(l['startDate'], ar: Lang.instance.ar)}')
+        else ...[
+          _info(tr('من', 'From'), bothDates(l['startDate'], ar: Lang.instance.ar)),
+          _info(tr('إلى', 'To'), bothDates(l['endDate'], ar: Lang.instance.ar)),
+        ],
         _info(tr('تاريخ الطلب', 'Requested on'), bothDates(l['createdAt'], ar: Lang.instance.ar)),
         if (ex.isNotEmpty) _info(tr('أيام جمعة لا تُحسب إجازة', 'Fridays not counted'), ex.map((d) => d.split('-').reversed.join('/')).join('  ·  ')),
         if ('${l['reason'] ?? ''}'.isNotEmpty) _info(tr('السبب', 'Reason'), '${l['reason']}'),

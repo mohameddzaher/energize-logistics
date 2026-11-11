@@ -850,7 +850,7 @@ class _HrEmployeeProfileScreenState extends State<HrEmployeeProfileScreen> {
                             Builder(builder: (_) { final st = leaveStatusFor(l['status'], full: seesLeaveProcess(context.read<AuthProvider>().user)); return Chip2(tr(st.$1, st.$2), st.$3); }),
                           ]),
                           const SizedBox(height: 4),
-                          Text('${tr('من', 'From')} ${_date(l['startDate'])} ${tr('إلى', 'to')} ${_date(l['endDate'])} · ${l['days'] ?? '—'} ${tr('يوم', 'days')}',
+                          Text('${'${l['startDate']}' == '${l['endDate']}' ? '${tr('يوم واحد فقط:', 'One day only:')} ${_date(l['startDate'])}' : '${tr('من', 'From')} ${_date(l['startDate'])} ${tr('إلى', 'to')} ${_date(l['endDate'])}'} · ${l['days'] ?? '—'} ${tr('يوم', 'days')}',
                               style: const TextStyle(fontSize: 12.5, color: T.inkSoft)),
                           if (leaveExcludedFridays(l).isNotEmpty)
                             Text(tr('بدون ${leaveExcludedFridays(l).length} جمعة', '${leaveExcludedFridays(l).length} Fri not counted'),

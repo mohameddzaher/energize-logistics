@@ -210,7 +210,7 @@ export default function LeaveRegisterPage() {
             {open.source === 'request' && <LeaveChainBar leave={open} lang={ar ? 'ar' : 'en'} />}
             {[
               [ar ? 'النوع' : 'Type', leaveTypeLabel(open.leaveType, lang)],
-              [ar ? 'المدة' : 'Period', `${ar ? 'من' : 'From'} ${ymd(open.startDate)} ${ar ? 'إلى' : 'to'} ${ymd(open.endDate)} (${open.days} ${ar ? 'يوم' : 'days'})`],
+              [ar ? 'المدة' : 'Period', (ymd(open.startDate) === ymd(open.endDate) ? `${ar ? 'يوم واحد فقط:' : 'One day only:'} ${ymd(open.startDate)}` : `${ar ? 'من' : 'From'} ${ymd(open.startDate)} ${ar ? 'إلى' : 'to'} ${ymd(open.endDate)} (${open.days} ${ar ? 'يوم' : 'days'})`)],
               [ar ? 'المصدر' : 'Source', sourceLabel(open.source)],
               [ar ? 'اعتمدها / سجّلها' : 'Approved / recorded by', `${open.approvedByName || '—'}${open.approvedAt ? ` · ${dt(open.approvedAt)}` : ''}`],
               [ar ? 'الرصيد المتاح الآن' : 'Available balance now', `${bal(open)}`],

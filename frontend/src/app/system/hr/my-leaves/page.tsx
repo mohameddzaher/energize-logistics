@@ -8,7 +8,7 @@ import api from '@/lib/api';
 import { CalendarDays, Plus, Check, X, XCircle, AlertTriangle, ShieldCheck, Pencil, Trash2, HelpCircle, Eye, Send, FileDown } from 'lucide-react';
 import { downloadLeaveSheet, previewLeaveSheet } from '@/lib/leavePdf';
 import { LeaveRequest, LeaveType, LeaveBalance, LEAVE_STATUS, empName, userName, leaveTypeLabel, today, earliestStartDate, noticeBlocks, daysUntil, LEAVE_OPEN, leaveUntouched, leaveStatusStyle, leaveWaitNote, countLeaveDays, fridaysNote, seesLeaveProcess } from '@/lib/hr';
-import DatePair from '@/components/hr/DatePair';
+import LeaveDatesInput from '@/components/hr/LeaveDatesInput';
 import { bothPeriod, gregCell, hijriCell, pairLabels, exportDatePair } from '@/lib/hrDates';
 import { Spinner, PageHeader, PrimaryButton, Badge, Modal, Field, Select, TextArea, Tabs, StatCard, Pick, Loader2, SearchableSelect } from '@/components/hr/HRKit';
 import { getHrMyLeavesTranslations } from '@/lib/translations';
@@ -490,13 +490,8 @@ export default function MyLeavesPage() {
             )
           )}
 
-          <div className="grid grid-cols-2 gap-3">
-            {/* Two cells per date: Gregorian then Hijri. The minimum applies to both together, otherwise a date under the notice period could be entered in Hijri and pass. */}
-            <DatePair label={`${FROM_LABEL} *`} ar={ar} value={form.startDate} disabled={!form.leaveType}
-              onChange={(v) => setForm((f) => ({ ...f, startDate: v }))} />
-            <DatePair label={`${TO_LABEL} *`} ar={ar} value={form.endDate} min={form.startDate || undefined} disabled={!form.startDate}
-              onChange={(v) => setForm((f) => ({ ...f, endDate: v }))} />
-          </div>
+          <LeaveDatesInput startDate={form.startDate} endDate={form.endDate} ar={ar} disabled={!form.leaveType} fromLabel={FROM_LABEL} toLabel={TO_LABEL}
+            onChange={(v) => setForm((f) => ({ ...f, ...v }))} />
           <DaysPreview start={form.startDate} end={form.endDate} countFridays={chosenType?.countsFridays === true} ar={ar} />
           {noticeViolated && (
             <p className="text-xs text-red-600">
@@ -559,10 +554,8 @@ export default function MyLeavesPage() {
                   {types.map((t) => <option key={t._id} value={t._id}>{ar ? t.nameAr : t.nameEn}</option>)}
                 </Select>
               </Field>
-              <div className="grid grid-cols-2 gap-3">
-                <DatePair label={`${FROM_LABEL} *`} ar={ar} value={amend.startDate} onChange={(v) => setAmend((a) => ({ ...a, startDate: v }))} />
-                <DatePair label={`${TO_LABEL} *`} ar={ar} value={amend.endDate} min={amend.startDate} onChange={(v) => setAmend((a) => ({ ...a, endDate: v }))} />
-              </div>
+              <LeaveDatesInput startDate={amend.startDate} endDate={amend.endDate} ar={ar} fromLabel={FROM_LABEL} toLabel={TO_LABEL}
+                onChange={(v) => setAmend((a) => ({ ...a, ...v }))} />
               <DaysPreview start={amend.startDate} end={amend.endDate} countFridays={amendType?.countsFridays === true} ar={ar} />
               <Field label={tx.reasonNotes}><TextArea rows={2} value={amend.reason} onChange={(e) => setAmend((a) => ({ ...a, reason: e.target.value }))} /></Field>
             </div>
@@ -634,12 +627,8 @@ export default function MyLeavesPage() {
               ))}
             </Select>
           </Field>
-          <div className="grid grid-cols-2 gap-3">
-            <DatePair label={`${FROM_LABEL} *`} ar={ar} value={teamForm.startDate} disabled={!teamForm.leaveType}
-              onChange={(v) => setTeamForm((f) => ({ ...f, startDate: v }))} />
-            <DatePair label={`${TO_LABEL} *`} ar={ar} value={teamForm.endDate} min={teamForm.startDate || undefined} disabled={!teamForm.startDate}
-              onChange={(v) => setTeamForm((f) => ({ ...f, endDate: v }))} />
-          </div>
+          <LeaveDatesInput startDate={teamForm.startDate} endDate={teamForm.endDate} ar={ar} disabled={!teamForm.leaveType} fromLabel={FROM_LABEL} toLabel={TO_LABEL}
+            onChange={(v) => setTeamForm((f) => ({ ...f, ...v }))} />
           <DaysPreview start={teamForm.startDate} end={teamForm.endDate} countFridays={teamType?.countsFridays === true} ar={ar} />
           <Field label={tx.reasonNotes}><TextArea rows={2} value={teamForm.reason} onChange={(e) => setTeamForm((f) => ({ ...f, reason: e.target.value }))} /></Field>
           <Field label={ar ? 'المرفقات (اختياري)' : 'Attachments (optional)'}>

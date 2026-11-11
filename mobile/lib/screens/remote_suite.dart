@@ -254,7 +254,7 @@ class _RemoteLeavesScreenState extends State<RemoteLeavesScreen> {
                                   const SizedBox(height: 5),
                                   Wrap(spacing: 6, runSpacing: 6, children: [
                                     if (staff) Chip2(tr(ty.$1, ty.$2), T.navy),
-                                    Chip2('${tr('من', 'From')} ${_d(r['startDate'])} ${tr('إلى', 'to')} ${_d(r['endDate'])}', T.info, icon: Icons.event),
+                                    Chip2('${'${r['startDate']}' == '${r['endDate']}' ? '${tr('يوم واحد فقط:', 'One day only:')} ${_d(r['startDate'])}' : '${tr('من', 'From')} ${_d(r['startDate'])} ${tr('إلى', 'to')} ${_d(r['endDate'])}'}', T.info, icon: Icons.event),
                                     Chip2('${r['days'] ?? '—'} ${tr('يوم', 'days')}', T.violet),
                                   ]),
                                   if ((r['reason'] ?? '').toString().isNotEmpty) ...[

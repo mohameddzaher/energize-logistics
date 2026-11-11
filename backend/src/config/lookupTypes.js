@@ -640,6 +640,7 @@ const REGISTRY = [
       { key: 'consolidator', nameAr: 'الدامج', nameEn: 'Consolidator' },
       { key: 'commissions', nameAr: 'عمولات', nameEn: 'Commissions' },
       { key: 'labourExpenses', nameAr: 'مصاريف عمال', nameEn: 'Labour expenses' },
+      { key: 'examFees', nameAr: 'أجور الكشف', nameEn: 'Examination fees' },
     ]],
     /**
      * Customer invoice items.

@@ -1,7 +1,7 @@
 /**
  * Customer invoice for a clearance transaction: derived, not stored, so it cannot go stale after a line edit.
- * Total = the lines typed in the invoicing request (`saleItems`, the prices billed to the customer) x (1 + VAT).
- * Payment stages are what we pay out and are not part of the customer invoice (owner, 2026-11-10); they stay the transaction's cost in `moneyOf`.
+ * Two parts go to finance: the expenses paid through payment stages, passed on at cost and without VAT (one line per item, repeated payments of an item summed),
+ * and the lines typed in the invoicing request (`saleItems`), which carry VAT. Total = expenses + items x (1 + VAT).
  */
 
 const round2 = (n) => Math.round((Number(n) || 0) * 100) / 100;
@@ -14,6 +14,21 @@ const buildClearanceInvoice = (clearance) => {
   const vatRate = Number(clearance?.saleVatRate ?? 0.15) || 0;
   const sale = (clearance?.saleItems || []).filter((x) => x && (x.key || x.label));
   const lines = [];
+  // Expenses: money stages not rejected or sent back, grouped by item.
+  const { costFieldOf } = require('../models/CustomsClearance');
+  const byKey = new Map();
+  for (const p of clearance?.paymentStages || []) {
+    if (!p || !costFieldOf(p.key) || ['rejected', 'returned'].includes(p.payStatus)) continue;
+    const a = Number(p.amount);
+    if (!Number.isFinite(a) || a === 0) continue;
+    const k = String(p.key);
+    if (!byKey.has(k)) byKey.set(k, { from: 'stage', key: k, label: p.label || k, amount: 0, taxable: false, vat: 0, total: 0, count: 0, notes: [], pending: 0 });
+    const g = byKey.get(k);
+    g.amount = round2(g.amount + a); g.total = g.amount; g.count += 1;
+    if (p.note) g.notes.push(String(p.note));
+    if (p.payStatus !== 'paid') g.pending = round2(g.pending + a);
+  }
+  for (const g of byKey.values()) lines.push({ ...g, note: g.notes.join(' · '), fileUrl: '', fileName: '' });
   for (const s of sale) {
     const amount = Number(s.amount);
     if (!Number.isFinite(amount)) continue;
@@ -31,18 +46,23 @@ const buildClearanceInvoice = (clearance) => {
       note: s.note || '',
     });
   }
-  const net = round2(lines.reduce((a, l) => a + l.amount, 0));
-  const vat = round2(net * vatRate);
-  const billed = { count: lines.length, net, vat, total: round2(net + vat) };
+  const saleLines = lines.filter((l) => l.from === 'sale');
+  const stageLines = lines.filter((l) => l.from === 'stage');
+  const saleNet = round2(saleLines.reduce((a, l) => a + l.amount, 0));
+  const vat = round2(saleNet * vatRate);
+  const billed = { count: saleLines.length, net: saleNet, vat, total: round2(saleNet + vat) };
+  const expNet = round2(stageLines.reduce((a, l) => a + l.amount, 0));
+  const passThrough = { count: stageLines.length, net: expNet, vat: 0, total: expNet };
+  const net = round2(saleNet + expNet);
   return {
     invoiceNumber: clearance?.saleInvoiceNumber || '',
     invoiceAt: clearance?.saleInvoiceAt || null,
     vatRate,
     lines,
     billed,
-    // Kept for readers of the older two-sided shape; nothing passes through any more.
-    passThrough: { count: 0, net: 0, vat: 0, total: 0 },
-    totals: { net, vat, grand: billed.total },
+    // Expenses passed on at cost, no VAT.
+    passThrough,
+    totals: { net, vat, grand: round2(net + vat), expenses: expNet, items: saleNet },
     warnings: [],
   };
 };

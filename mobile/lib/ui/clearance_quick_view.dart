@@ -32,6 +32,7 @@ const _costs = [
   ('extension', 'تمديد', 'Extension'), ('consolidator', 'الدامج', 'Consolidator'),
   ('commissions', 'عمولات', 'Commissions'), ('extraFees', 'أجور إضافية', 'Extra fees'),
   ('returnInvoice', 'فاتورة الإرجاع', 'Return invoice'), ('labourExpenses', 'مصاريف عمال', 'Labour expenses'),
+  ('examFees', 'أجور الكشف', 'Examination fees'),
 ];
 const _margin = [
   ('clearanceFee', 'أجور التخليص', 'Clearance fee'),

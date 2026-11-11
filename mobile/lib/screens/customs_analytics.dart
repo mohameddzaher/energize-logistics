@@ -67,7 +67,7 @@ const _lines = {
   'inspection': ('أجور الكشف', 'Inspection'), 'transport': ('النقل من الميناء إلى العميل', 'Transport: port → customer'),
   'transportToYard': ('النقل من الميناء إلى الساحة', 'Transport: port → yard'),
   'transportYardToCustomer': ('النقل من الساحة إلى العميل', 'Transport: yard → customer'),
-  'labourExpenses': ('مصاريف عمال', 'Labour expenses'), 'appointmentBooking': ('حجز الموعد', 'Appointment booking'),
+  'labourExpenses': ('مصاريف عمال', 'Labour expenses'), 'examFees': ('أجور الكشف', 'Examination fees'), 'appointmentBooking': ('حجز الموعد', 'Appointment booking'),
   'storage': ('التخزين', 'Storage'), 'yardFees': ('أجور الساحة', 'Yard fees'),
   'exitPermit': ('تصريح الخروج (الأرضيّات)', 'Exit permit (demurrage)'), 'demurrage': ('أرضيّات', 'Demurrage'),
   'extension': ('تمديد', 'Extension'), 'consolidator': ('الدامج', 'Consolidator'), 'commissions': ('عمولات', 'Commissions'),

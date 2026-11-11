@@ -68,7 +68,7 @@ export function downloadName(ref: string | undefined, title: string | undefined,
 export const AMOUNT_REQUIRED_STAGE_KEYS: ReadonlySet<string> = new Set([
   'doInvoicePaid', 'dutyPaid', 'portFeesPaid', 'unloadingFeesPaid', 'extension',
   'transportPortToCustomer', 'transportPortToYard', 'transportYardToCustomer',
-  'appointmentBooking', 'inspection', 'exitPermit', 'consolidator', 'commissions', 'labourExpenses',
+  'appointmentBooking', 'inspection', 'exitPermit', 'consolidator', 'commissions', 'labourExpenses', 'examFees',
 ]);
 // The transport invoice that ends the transaction: any transport stage with an attachment. The old `transportInvoice` remains for records made before transport was split into three parts.
 export const TRANSPORT_STAGE_KEYS: ReadonlySet<string> = new Set([

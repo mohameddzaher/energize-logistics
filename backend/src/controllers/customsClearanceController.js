@@ -1941,7 +1941,8 @@ exports.listInvoiceRequests = async (req, res) => {
           clearanceId: String(c._id), refNumber: c.refNumber, blNumber: c.blNumber, customerName: c.customerName,
           branch: c.branch, port: c.port, isCompleted: !!c.isCompleted, containerCount: c.containerCount,
           ...c.invoiceRequest, invoiceNumber: c.saleInvoiceNumber || '',
-          total: inv.totals.grand, vat: inv.totals.vat, net: inv.totals.net, lines: inv.lines.map((l) => ({ key: l.key, label: l.label, amount: l.amount, vat: l.vat, total: l.total, from: l.from, note: l.note, fileUrl: l.fileUrl, fileName: l.fileName })),
+          total: inv.totals.grand, vat: inv.totals.vat, net: inv.totals.net, expenses: inv.totals.expenses, items: inv.totals.items, itemsTotal: inv.billed.total,
+          lines: inv.lines.map((l) => ({ key: l.key, label: l.label, amount: l.amount, vat: l.vat, total: l.total, from: l.from, note: l.note, fileUrl: l.fileUrl, fileName: l.fileName, count: l.count || 1, pending: l.pending || 0 })),
         };
       }),
     });

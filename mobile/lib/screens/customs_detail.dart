@@ -118,6 +118,7 @@ const _costItems = [
   ('extraFees', 'أجور إضافية', 'Extra fees'),
   ('returnInvoice', 'فاتورة الإرجاع', 'Return invoice'),
   ('labourExpenses', 'مصاريف عمال', 'Labour expenses'),
+  ('examFees', 'أجور الكشف', 'Examination fees'),
 ];
 
 /// Revenue items: what is added on top of expenses; invoice = expenses + nets + fees (MARGIN_KEYS on the server). Customer transport prices are shown beside their net and not summed alone: the net is what enters the invoice on top of the part cost.
@@ -143,7 +144,7 @@ const _marginItems = [
 const customsCostMappedStages = {
   'doInvoicePaid', 'dutyPaid', 'portFeesPaid', 'unloadingFeesPaid', 'extension',
   'transportPortToCustomer', 'transportPortToYard', 'transportYardToCustomer',
-  'appointmentBooking', 'inspection', 'exitPermit', 'consolidator', 'commissions', 'labourExpenses',
+  'appointmentBooking', 'inspection', 'exitPermit', 'consolidator', 'commissions', 'labourExpenses', 'examFees',
 };
 
 /// What counts as the transport invoice for finishing: the old item and the three transport parts with their file.

@@ -125,7 +125,7 @@ export default function CustomsAnalyticsPage() {
     deliveryOrder: ['قيمة إذن التسليم', 'Delivery order'], customsDuty: ['الرسوم الجمركية', 'Customs duty'], portFees: ['أجور الموانئ', 'Port fees'],
     unloadingFees: ['أجور التفريغ', 'Unloading fees'], inspection: ['أجور الكشف', 'Inspection'], transport: ['النقل من الميناء إلى العميل', 'Transport: port → customer'],
     transportToYard: ['النقل من الميناء إلى الساحة', 'Transport: port → yard'],
-    transportYardToCustomer: ['النقل من الساحة إلى العميل', 'Transport: yard → customer'], labourExpenses: ['مصاريف عمال', 'Labour expenses'], appointmentBooking: ['حجز الموعد', 'Appointment booking'], storage: ['التخزين', 'Storage'],
+    transportYardToCustomer: ['النقل من الساحة إلى العميل', 'Transport: yard → customer'], labourExpenses: ['مصاريف عمال', 'Labour expenses'], examFees: ['أجور الكشف', 'Examination fees'], appointmentBooking: ['حجز الموعد', 'Appointment booking'], storage: ['التخزين', 'Storage'],
     yardFees: ['أجور الساحة', 'Yard fees'], exitPermit: ['تصريح الخروج (الأرضيّات)', 'Exit permit (demurrage)'], demurrage: ['أرضيّات', 'Demurrage'],
     extension: ['تمديد', 'Extension'], consolidator: ['الدامج', 'Consolidator'], commissions: ['عمولات', 'Commissions'], extraFees: ['أجور إضافيّة', 'Extra fees'],
     returnInvoice: ['فاتورة الإرجاع', 'Return invoice'],

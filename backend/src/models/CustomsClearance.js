@@ -303,6 +303,7 @@ const customsClearanceSchema = new mongoose.Schema(
       transportToYard: { type: Number, default: 0 },         // Transport from port to yard
       transportYardToCustomer: { type: Number, default: 0 }, // Transport from yard to customer
       labourExpenses: { type: Number, default: 0 },          // Labor costs
+      examFees: { type: Number, default: 0 },                // Customs examination (كشف)
       appointmentBooking: { type: Number, default: 0 }, // Appointment booking
       yardFees: { type: Number, default: 0 },           // Yard fees
       demurrage: { type: Number, default: 0 },          // Demurrage
@@ -625,7 +626,7 @@ const COST_KEYS = [
   'returnInvoice', 'deliveryOrder', 'customsDuty', 'portFees', 'unloadingFees',
   'inspection', 'transport', 'transportToYard', 'appointmentBooking', 'storage',
   'yardFees', 'exitPermit', 'demurrage', 'extension', 'consolidator', 'commissions',
-  'extraFees', 'transportYardToCustomer', 'labourExpenses',
+  'extraFees', 'transportYardToCustomer', 'labourExpenses', 'examFees',
 ];
 
 // Margin items that make up revenue.profit. `transportSelling` is not one: it is the gross, and its net (transportNet) is what enters profit, so adding both counts transport twice. Likewise yardTransportNet is a helper column outside the profit formula.
@@ -656,6 +657,7 @@ const STAGE_COST = {
   consolidator: 'consolidator',
   commissions: 'commissions',
   labourExpenses: 'labourExpenses',
+  examFees: 'examFees',
 };
 
 // The three transport-invoice parts; any of them with an attachment stands in for the old "transport invoice" when finishing a transaction (see hasTransportInvoice).
@@ -699,6 +701,8 @@ function recomputeTotals(doc) {
   if (!doc) return doc;
   if (!doc.costs) doc.costs = {};
   if (!doc.revenue) doc.revenue = {};
+  // Every cost line with paid stage amounts is their sum on every save, so several payments of one item always add up and no other writer (import, edit) can leave it stale.
+  if (Array.isArray(doc.paymentStages) && doc.paymentStages.length) applyPaidCosts(doc);
   // Net transport is a difference, not a field to fill.
   // It used to be two hand-typed numbers (transport selling price and net transport), but the second is the first minus what we pay the carrier (`costs.transport`); writing both allows them to disagree, and profit built on a mistyped number. Rule: charging the customer 2000 and paying the carrier 1500 gives transport profit 500, computed where the other derived figures are.
   doc.revenue.transportNet = r2(n(doc.revenue.transportSelling) - n(doc.costs.transport));

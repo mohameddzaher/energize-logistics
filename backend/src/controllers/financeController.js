@@ -415,7 +415,7 @@ async function customs(p, user) {
   const COST_AR = {
     deliveryOrder: 'إذن التسليم', customsDuty: 'الرسوم الجمركية', portFees: 'رسوم الميناء', unloadingFees: 'التفريغ',
     transport: 'النقل من الميناء إلى العميل', transportToYard: 'النقل من الميناء إلى الساحة',
-    transportYardToCustomer: 'النقل من الساحة إلى العميل', labourExpenses: 'مصاريف عمال', appointmentBooking: 'حجز المواعيد', yardFees: 'رسوم الساحة',
+    transportYardToCustomer: 'النقل من الساحة إلى العميل', labourExpenses: 'مصاريف عمال', examFees: 'أجور الكشف', appointmentBooking: 'حجز المواعيد', yardFees: 'رسوم الساحة',
     demurrage: 'الأرضيات/التأخير', inspection: 'أمر النقل', extension: 'التمديد', consolidator: 'المجمِّع',
     commissions: 'العمولات', extraFees: 'أجور إضافية', storage: 'التخزين', exitPermit: 'إذن الخروج',
   };

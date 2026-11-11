@@ -189,6 +189,7 @@ export default function CustomsDetailPage() {
     ['consolidator', 'الدامج', 'Consolidator'],
     ['commissions', 'عمولات', 'Commissions'],
     ['labourExpenses', 'مصاريف عمال', 'Labour expenses'],
+    ['examFees', 'أجور الكشف', 'Examination fees'],
     ['extraFees', 'أجور إضافية', 'Extra fees'],
     ['returnInvoice', 'فاتورة الإرجاع', 'Return invoice'],
   ];

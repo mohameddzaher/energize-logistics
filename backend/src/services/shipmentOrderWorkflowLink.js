@@ -252,9 +252,10 @@ async function pullFleet(w) {
   const wanted = {
     fromCity: str(w.fromLocation), toCity: str(w.toLocation), customerName: str(w.username), vehiclePlate: str(w.plateNumber),
     driverName: str(w.driverName), driverPhone: str(w.driverPhone), trailerType: str(w.truckType), loadType: str(w.loadType),
-    // The row's purchase is the vehicle rent; its selling price returns into full rent only on a load that carries one.
-    price: num(w.purchaseValue), driverExpense: num(w.driverCost), status: str(w.applicationStatus) || load.status,
+    driverExpense: num(w.driverCost), status: str(w.applicationStatus) || load.status,
   };
+  // The row's purchase is the vehicle rent: written back only when the row carries one, so an empty purchase never zeroes the fleet's income.
+  if (num(w.purchaseValue) > 0) wanted.price = num(w.purchaseValue);
   if (num(load.fullRent) > 0 && num(w.sellingValue) > 0) wanted.fullRent = num(w.sellingValue);
   if (w.reportDate) wanted.loadDate = w.reportDate;
   if (isSubtype(w.paymentSubtype)) { wanted.paymentSubtype = w.paymentSubtype; wanted.paymentType = subtypeFamily(w.paymentSubtype); }

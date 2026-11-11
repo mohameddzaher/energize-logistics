@@ -55,13 +55,18 @@ router.get('/', async (req, res) => {
     // Sales requests waiting for the vendors team (open ones), and rejected requests back with the sales member who asked.
     const SR = require('../controllers/shipmentRequestsController');
     const ShipmentRequest = require('../models/ShipmentRequest');
-    if (SR.PLACERS.includes(role)) {
-      const n = await ShipmentRequest.countDocuments({ status: { $in: ['pending', 'in_progress'] } }).catch(() => 0);
-      if (n) { out['/system/vendors-mgmt/requests'] = n; out['/system/shipment-orders/requests'] = n; }
+    if (SR.WORKERS.includes(role) || SR.FLEET_PLACERS.includes(role)) {
+      const n = await ShipmentRequest.countDocuments({ status: { $in: ['pending', 'in_progress'] }, ...SR.APPROVED }).catch(() => 0);
+      if (n) { out['/system/vendors-mgmt/requests'] = n; out['/system/shipment-orders/requests'] = n; out['/system/fleet/requests'] = n; }
+    }
+    // Sales requests waiting for the sales manager (or a delegated member).
+    if (SR.ASKERS.includes(role) && await SR.canApprove(req.user).catch(() => false)) {
+      const n = await ShipmentRequest.countDocuments({ approvalStatus: 'pending' }).catch(() => 0);
+      if (n) { out['/system/sales/shipment-request'] = (out['/system/sales/shipment-request'] || 0) + n; }
     }
     // Anyone who asks (sales or the section team) sees their rejected requests waiting for an amendment.
     if (SR.ASKERS.includes(role)) {
-      const n = await ShipmentRequest.countDocuments({ status: 'rejected', $or: [{ createdBy: req.user._id }, { salesRep: req.user._id }] }).catch(() => 0);
+      const n = await ShipmentRequest.countDocuments({ $and: [{ $or: [{ status: 'rejected' }, { approvalStatus: 'returned' }] }, { $or: [{ createdBy: req.user._id }, { salesRep: req.user._id }] }] }).catch(() => 0);
       if (n) { out['/system/sales/shipment-request'] = n; out['/system/shipment-orders/request'] = n; }
     }
     res.json(out);

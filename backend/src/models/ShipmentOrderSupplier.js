@@ -7,6 +7,20 @@ const mongoose = require('mongoose');
 // Suppliers are usually born from the create-shipment form ("this truck is not
 // ours → whose is it?") rather than data entry, so most rows arrive with just a
 // name and get enriched later.
+
+/** A stored file (uploads/vendors) with its kind and the name the team gave it. */
+const fileSchema = (what) => new mongoose.Schema({
+  kind: { type: String, trim: true, default: what === 'contract' ? 'contract' : 'other' },
+  title: { type: String, trim: true, default: '' },
+  fileUrl: { type: String, required: true },
+  fileName: { type: String, trim: true, default: '' },
+  mimeType: { type: String, default: '' },
+  size: { type: Number, default: 0 },
+  uploadedAt: { type: Date, default: Date.now },
+  uploadedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User', default: null },
+  uploadedByName: { type: String, default: '' },
+});
+
 const shipmentOrderSupplierSchema = new mongoose.Schema(
   {
     name: { type: String, required: true, trim: true },
@@ -73,6 +87,30 @@ const shipmentOrderSupplierSchema = new mongoose.Schema(
     rating: { type: Number, default: null, min: 1, max: 5 },
     ratingNote: { type: String, trim: true, default: '' },
     lastFollowUpAt: { type: Date, default: null },
+    /** The person at the carrier the team deals with day to day (often not the owner). */
+    operatorName: { type: String, trim: true, default: '' },
+    operatorPhone: { type: String, trim: true, default: '' },
+    /** Company papers. cr, nationalAddress, iban and taxCard are required for a new company; `other` carries a typed title. */
+    documents: { type: [fileSchema('document')], default: [] },
+    /** Official contract: null = not stated yet (legacy rows fall back to contractStatus), true/false once the team marks it. */
+    contracted: { type: Boolean, default: null },
+    contractEndDate: { type: Date, default: null },
+    contractFiles: { type: [fileSchema('contract')], default: [] },
+    /** Last contract-expiry notification sent (`<end day>:<soon|expired>`), so each state is announced once. */
+    contractAlertKey: { type: String, default: '' },
+    /**
+     * Approval of a carrier added by the team. Missing on legacy rows, which read as approved; only approved carriers
+     * (missing or 'approved') are offered in pickers. 'returned' = sent back for edits, resubmitted to 'pending'.
+     */
+    approvalStatus: { type: String, enum: ['pending', 'approved', 'rejected', 'returned'], default: undefined, index: true },
+    submittedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User', default: null },
+    submittedByName: { type: String, default: '' },
+    submittedAt: { type: Date, default: null },
+    approvedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User', default: null },
+    approvedByName: { type: String, default: '' },
+    approvedAt: { type: Date, default: null },
+    rejectNote: { type: String, trim: true, default: '' },
+    approvalLog: { type: [{ action: String, note: String, by: { type: mongoose.Schema.Types.ObjectId, ref: 'User' }, byName: String, at: { type: Date, default: Date.now } }], default: [] },
     createdBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
   },
   { timestamps: true }

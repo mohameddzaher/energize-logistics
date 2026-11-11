@@ -341,6 +341,7 @@ export default function HRLeavesPage() {
             <th className="text-start font-semibold px-4 py-3 whitespace-nowrap">{tx.colEmployee}</th>
             <th className="text-start font-semibold px-4 py-3 whitespace-nowrap">{ar ? 'الهوية / الإقامة' : 'ID / Iqama'}</th>
             <th className="text-start font-semibold px-4 py-3 whitespace-nowrap min-w-[160px]">{tx.colType}</th>
+            <th className="text-start font-semibold px-4 py-3 whitespace-nowrap">{ar ? 'تاريخ تقديم الطلب' : 'Requested on'}</th>
             {/* From and To are two columns: a combined range in one cell cannot be sorted or compared, and the questions differ (when absence starts, when it ends). */}
             <th className="text-start font-semibold px-4 py-3 whitespace-nowrap">{fromLabels[0]}</th>
             <th className="text-start font-semibold px-4 py-3 whitespace-nowrap">{fromLabels[1]}</th>
@@ -353,7 +354,7 @@ export default function HRLeavesPage() {
           </tr></thead>
           <tbody>
             {filtered.length === 0 ? (
-              <tr><td colSpan={13} className="text-center text-slate-800 py-12">{tx.noRequests}</td></tr>
+              <tr><td colSpan={14} className="text-center text-slate-800 py-12">{tx.noRequests}</td></tr>
             ) : filtered.map((l) => {
               const over = l.balanceSnapshot && typeof l.balanceSnapshot.remainingAfter === 'number' && l.balanceSnapshot.remainingAfter < 0;
               return (
@@ -369,6 +370,7 @@ export default function HRLeavesPage() {
                   </td>
                   <td className="px-4 py-3 text-slate-700 whitespace-nowrap">{idOf(l.employee)}</td>
                   <td className="px-4 py-3 text-slate-700 whitespace-nowrap min-w-[160px]">{leaveTypeLabel(l.leaveType, lang)}</td>
+                  <td className="px-4 py-3 text-slate-700 whitespace-nowrap tabular-nums">{l.createdAt ? new Date(l.createdAt).toLocaleString('en-GB', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' }) : '—'}</td>
                   <td className="px-4 py-3 text-slate-700 whitespace-nowrap tabular-nums">{gregCell(l.startDate)}</td>
                   <td className="px-4 py-3 text-slate-700 whitespace-nowrap tabular-nums" dir="ltr">{hijriCell(l.startDate)}</td>
                   <td className="px-4 py-3 text-slate-700 whitespace-nowrap tabular-nums">{gregCell(l.endDate)}</td>

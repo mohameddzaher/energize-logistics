@@ -18,7 +18,7 @@ const COMPANY_RX = /(شركة|شركه|مؤسسة|مؤسسه|مكتب|للنقل
 async function resolver() {
   return cache.wrap('so:registry:vendor-resolver', 60 * 1000, async () => {
     const rows = await ShipmentOrderSupplier.find({ mergedInto: null })
-      .select('name type inMaster masterNo followOwner contractStatus vendorSigned ourSigned taxClass headOffice destinations vehicleTypes fleetSize phone representative energizeRep aliasKeys isActive leadPriority rating')
+      .select('name type inMaster masterNo followOwner contractStatus vendorSigned ourSigned contracted contractEndDate taxClass headOffice destinations vehicleTypes fleetSize phone representative energizeRep aliasKeys isActive leadPriority rating')
       .lean();
     const byKey = new Map();
     const byId = new Map();

@@ -347,6 +347,7 @@ function SystemLayoutInner({ children }: { children: React.ReactNode }) {
     { href: '/system/vendors-mgmt/daily', label: lang === 'ar' ? 'التحليل التشغيلي اليومي' : 'Daily Operations', icon: <Activity className="w-5 h-5" />, roles: VENDOR_NAV_ROLES, section: 'Vendors Management' },
     { href: '/system/vendors-mgmt/requests', label: lang === 'ar' ? 'الطلبات من المبيعات' : 'Requests from Sales', icon: <Inbox className="w-5 h-5" />, roles: VENDOR_NAV_ROLES, section: 'Vendors Management' },
     { href: '/system/vendors-mgmt/vendors', label: lang === 'ar' ? 'الموردون' : 'Carriers', icon: <Building2 className="w-5 h-5" />, roles: VENDOR_NAV_ROLES, section: 'Vendors Management' },
+    { href: '/system/vendors-mgmt/approvals', label: lang === 'ar' ? 'اعتماد الموردين' : 'Carrier Approvals', icon: <ClipboardCheck className="w-5 h-5" />, roles: VENDOR_NAV_ROLES, section: 'Vendors Management' },
     { href: '/system/vendors-mgmt/vehicles', label: lang === 'ar' ? 'السيارات' : 'Trucks', icon: <Truck className="w-5 h-5" />, roles: VENDOR_NAV_ROLES, section: 'Vendors Management' },
     { href: '/system/vendors-mgmt/drivers', label: lang === 'ar' ? 'السائقون الأفراد' : 'Freelance Drivers', icon: <UserRound className="w-5 h-5" />, roles: VENDOR_NAV_ROLES, section: 'Vendors Management' },
     { href: '/system/vendors-mgmt/alerts', label: lang === 'ar' ? 'التنبيهات' : 'Alerts', icon: <BellRing className="w-5 h-5" />, roles: VENDOR_NAV_ROLES, section: 'Vendors Management' },
@@ -361,6 +362,7 @@ function SystemLayoutInner({ children }: { children: React.ReactNode }) {
     // Fleet Management: our own trucks.
     { href: '/system/fleet/board', label: lang === 'ar' ? 'اللوحة الرئيسية' : 'Fleet Board', icon: <LayoutGrid className="w-5 h-5" />, roles: FLEET_ROLES, section: 'Fleet Management' },
     { href: '/system/fleet', label: lang === 'ar' ? 'الحمولات' : 'Shipments', icon: <Truck className="w-5 h-5" />, roles: FLEET_ROLES, section: 'Fleet Management' },
+    { href: '/system/fleet/requests', label: lang === 'ar' ? 'طلبات من المبيعات' : 'Requests from Sales', icon: <Inbox className="w-5 h-5" />, roles: FLEET_ROLES, section: 'Fleet Management' },
     { href: '/system/fleet/arrivals', label: lang === 'ar' ? 'المتوقع للوصول' : 'Expected Arrivals', icon: <CalendarClock className="w-5 h-5" />, roles: FLEET_ROLES, section: 'Fleet Management' },
     // One page with two tabs: overview, and loads plus driver expenses. They were two similarly named entries for the same thing.
     { href: '/system/fleet/dashboard', label: lang === 'ar' ? 'التحليلات' : 'Analytics', icon: <BarChart3 className="w-5 h-5" />, roles: FLEET_ROLES, section: 'Fleet Management' },

@@ -18,8 +18,8 @@ import { KIND, kindLabel, vendorHref } from '@/lib/vendors';
 import { BellRing, ChevronDown } from 'lucide-react';
 
 type Row = Record<string, any>;
-const TONE: Record<string, string> = { notInMaster: 'border-red-200', unsigned: 'border-orange-200', stopped: 'border-amber-200', missingData: 'border-amber-200', aboveApproved: 'border-sky-200', multiName: 'border-slate-200' };
-const DOT: Record<string, string> = { notInMaster: 'bg-red-500', unsigned: 'bg-orange-500', stopped: 'bg-amber-400', missingData: 'bg-amber-400', aboveApproved: 'bg-sky-500', multiName: 'bg-slate-400' };
+const TONE: Record<string, string> = { contractExpiry: 'border-red-200', missingDocs: 'border-amber-200', notInMaster: 'border-red-200', unsigned: 'border-orange-200', stopped: 'border-amber-200', missingData: 'border-amber-200', aboveApproved: 'border-sky-200', multiName: 'border-slate-200' };
+const DOT: Record<string, string> = { contractExpiry: 'bg-red-600', missingDocs: 'bg-amber-500', notInMaster: 'bg-red-500', unsigned: 'bg-orange-500', stopped: 'bg-amber-400', missingData: 'bg-amber-400', aboveApproved: 'bg-sky-500', multiName: 'bg-slate-400' };
 const STATES: [string, string, string, string][] = [['new', 'جديد', 'New', 'bg-slate-100 text-slate-700'], ['in_progress', 'قيد المتابعة', 'In progress', 'bg-amber-100 text-amber-800'], ['done', 'تمّ الإنجاز', 'Done', 'bg-emerald-100 text-emerald-800']];
 
 export default function VendorsAlertsPage() {

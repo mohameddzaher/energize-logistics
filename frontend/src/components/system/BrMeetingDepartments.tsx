@@ -228,15 +228,19 @@ function TaskRow({ task, meta, L, meetingId, canEdit, dept, open, onToggle, onCh
     setBusy(false);
   };
   const [ed, setEd] = useState({ title: task.title || '', description: task.description || '', dueDate: task.dueDate ? isoDay(new Date(task.dueDate)) : '', priority: task.priority || 'medium' });
-  const [shareTo, setShareTo] = useState('');
+  // Several people can be added in one go; each becomes an owner of the same task.
+  const [shareTo, setShareTo] = useState<string[]>([]);
   const people = [...meta.participants].sort((a, b) => String(a.section || '').localeCompare(String(b.section || '')));
   const share = async () => {
-    if (!shareTo) return;
+    if (!shareTo.length) return;
     setBusy(true);
-    try { await brShareAction(task._id, shareTo); notify(t('Shared', 'أُسند البند إليه أيضًا وظهر في قسمه'), 'success'); setMode(''); setShareTo(''); onChanged(); }
-    catch (e: any) { notify(e?.message || t('Failed', 'تعذّر'), 'error'); }
+    try {
+      for (const id of shareTo) await brShareAction(task._id, id);
+      notify(shareTo.length > 1 ? t(`Assigned to ${shareTo.length}`, `أُسند البند إلى ${shareTo.length} أشخاص أيضًا`) : t('Shared', 'أُسند البند إليه أيضًا وظهر في قسمه'), 'success');
+      setMode(''); setShareTo([]); onChanged();
+    } catch (e: any) { notify(e?.message || t('Failed', 'تعذّر'), 'error'); }
     setBusy(false);
-  };
+  };;
   const [busy, setBusy] = useState(false);
   const [newDue, setNewDue] = useState('');
   const [reason, setReason] = useState('');
@@ -436,12 +440,25 @@ function TaskRow({ task, meta, L, meetingId, canEdit, dept, open, onToggle, onCh
                   <div className="space-y-4">
                     <div><span className={lbl}>{t('Current owner', 'المسؤول الحالي')}</span>
                       <p className="px-3 py-2 rounded-lg bg-slate-50 border border-slate-200 text-sm font-semibold text-slate-800">{task.assigneeName}</p></div>
-                    <div><span className={lbl}>{t('Add owner', 'إضافة مسؤول')} *</span>
-                      <SearchSelect ar={L === 'ar'} value={shareTo} onChange={setShareTo} placeholder={t('Search by name…', 'ابحث بالاسم…')}
-                        options={personOpts([String(task.assignee?._id || task.assignee), ...(task.sharedWith || []).map((x: any) => String(x.assignee))])} /></div>
+                    <div><span className={lbl}>{t('Add owners (one or more)', 'إضافة مسؤولين (واحد أو أكثر)')} *</span>
+                      <SearchSelect ar={L === 'ar'} value="" onChange={(v) => v && setShareTo((a) => (a.includes(v) ? a : [...a, v]))} placeholder={t('Search by name…', 'ابحث بالاسم…')}
+                        options={personOpts([String(task.assignee?._id || task.assignee), ...(task.sharedWith || []).map((x: any) => String(x.assignee)), ...shareTo])} />
+                      {!!shareTo.length && (
+                        <div className="mt-2 flex flex-wrap gap-1.5">
+                          {shareTo.map((id) => {
+                            const p = people.find((x) => String(x._id) === id);
+                            return (
+                              <span key={id} className="inline-flex items-center gap-1 rounded-full border border-sky-200 bg-sky-50 px-2.5 py-1 text-[12.5px] font-semibold text-sky-800">
+                                {p?.name || id}
+                                <button type="button" onClick={() => setShareTo((a) => a.filter((x) => x !== id))} aria-label="remove"><X className="h-3.5 w-3.5" /></button>
+                              </span>
+                            );
+                          })}
+                        </div>
+                      )}</div>
                   </div>
                 ),
-                footer: primary(t('Assign', 'إسناد'), share, !shareTo, 'bg-sky-600 hover:bg-sky-700'),
+                footer: primary(shareTo.length > 1 ? t(`Assign (${shareTo.length})`, `إسناد (${shareTo.length})`) : t('Assign', 'إسناد'), share, !shareTo.length, 'bg-sky-600 hover:bg-sky-700'),
               },
               transfer: {
                 icon: ArrowLeftRight, title: t('Move to another owner', 'نقله لمسؤولٍ آخر'), tone: 'bg-indigo-600',

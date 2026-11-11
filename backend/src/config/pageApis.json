@@ -547,6 +547,8 @@
     "/system/shipment-orders/request": {
       "apis": [
         "/api/auth/me/prefs",
+        "/api/fleet/drivers",
+        "/api/fleet/vehicles",
         "/api/lookups/types",
         "/api/shipment-orders/customers",
         "/api/shipment-orders/drivers",
@@ -555,13 +557,17 @@
         "/api/shipment-orders/sourcing-reps",
         "/api/shipment-orders/suppliers",
         "/api/shipment-orders/vehicles",
-        "/api/shipment-requests"
+        "/api/shipment-requests",
+        "/api/shipment-requests/approvers",
+        "/api/shipment-requests/team-members"
       ],
       "wildcard": false
     },
     "/system/shipment-orders/requests": {
       "apis": [
         "/api/auth/me/prefs",
+        "/api/fleet/drivers",
+        "/api/fleet/vehicles",
         "/api/lookups/types",
         "/api/shipment-orders/customers",
         "/api/shipment-orders/drivers",
@@ -570,7 +576,8 @@
         "/api/shipment-orders/sourcing-reps",
         "/api/shipment-orders/suppliers",
         "/api/shipment-orders/vehicles",
-        "/api/shipment-requests"
+        "/api/shipment-requests",
+        "/api/shipment-requests/team-members"
       ],
       "wildcard": false
     },
@@ -666,9 +673,12 @@
       "apis": [
         "/api/lookups/types",
         "/api/shipment-orders/insights/options",
+        "/api/shipment-requests/team-performance",
         "/api/vendors-mgmt/filter-options",
         "/api/vendors-mgmt/follow-ups",
         "/api/vendors-mgmt/overview",
+        "/api/vendors-mgmt/ranking",
+        "/api/vendors-mgmt/register-stats",
         "/api/vendors-mgmt/settings",
         "/api/vendors-mgmt/vendors",
         "/api/vendors-mgmt/vendors/by-name"
@@ -678,14 +688,18 @@
     "/system/vendors-mgmt/daily": {
       "apis": [
         "/api/shipment-orders/insights/options",
+        "/api/shipment-requests/team-performance",
         "/api/vendors-mgmt/daily",
-        "/api/vendors-mgmt/filter-options"
+        "/api/vendors-mgmt/filter-options",
+        "/api/vendors-mgmt/register-stats"
       ],
       "wildcard": false
     },
     "/system/vendors-mgmt/requests": {
       "apis": [
         "/api/auth/me/prefs",
+        "/api/fleet/drivers",
+        "/api/fleet/vehicles",
         "/api/lookups/types",
         "/api/shipment-orders/customers",
         "/api/shipment-orders/drivers",
@@ -694,7 +708,8 @@
         "/api/shipment-orders/sourcing-reps",
         "/api/shipment-orders/suppliers",
         "/api/shipment-orders/vehicles",
-        "/api/shipment-requests"
+        "/api/shipment-requests",
+        "/api/shipment-requests/team-members"
       ],
       "wildcard": false
     },
@@ -706,6 +721,13 @@
         "/api/vendors-mgmt/settings",
         "/api/vendors-mgmt/vendors",
         "/api/vendors-mgmt/vendors/by-name"
+      ],
+      "wildcard": false
+    },
+    "/system/vendors-mgmt/approvals": {
+      "apis": [
+        "/api/vendors-mgmt/approvals",
+        "/api/vendors-mgmt/vendors"
       ],
       "wildcard": false
     },
@@ -746,6 +768,7 @@
     "/system/vendors-mgmt/settings": {
       "apis": [
         "/api/lookups/types",
+        "/api/vendors-mgmt/approvers",
         "/api/vendors-mgmt/settings"
       ],
       "wildcard": false
@@ -823,6 +846,24 @@
         "/api/lookups/types",
         "/api/ls2/custody",
         "/api/partners/account"
+      ],
+      "wildcard": false
+    },
+    "/system/fleet/requests": {
+      "apis": [
+        "/api/auth/me/prefs",
+        "/api/fleet/drivers",
+        "/api/fleet/vehicles",
+        "/api/lookups/types",
+        "/api/shipment-orders/customers",
+        "/api/shipment-orders/drivers",
+        "/api/shipment-orders/fields",
+        "/api/shipment-orders/sales-reps",
+        "/api/shipment-orders/sourcing-reps",
+        "/api/shipment-orders/suppliers",
+        "/api/shipment-orders/vehicles",
+        "/api/shipment-requests",
+        "/api/shipment-requests/team-members"
       ],
       "wildcard": false
     },
@@ -2745,6 +2786,8 @@
     "/system/sales/shipment-request": {
       "apis": [
         "/api/auth/me/prefs",
+        "/api/fleet/drivers",
+        "/api/fleet/vehicles",
         "/api/lookups/types",
         "/api/shipment-orders/customers",
         "/api/shipment-orders/drivers",
@@ -2753,7 +2796,9 @@
         "/api/shipment-orders/sourcing-reps",
         "/api/shipment-orders/suppliers",
         "/api/shipment-orders/vehicles",
-        "/api/shipment-requests"
+        "/api/shipment-requests",
+        "/api/shipment-requests/approvers",
+        "/api/shipment-requests/team-members"
       ],
       "wildcard": false
     },

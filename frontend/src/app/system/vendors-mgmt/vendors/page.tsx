@@ -12,17 +12,38 @@ import { useLanguage } from '@/context/LanguageContext';
 import { useDialog } from '@/components/system/DialogProvider';
 import { useSocket } from '@/hooks/useSocket';
 import api from '@/lib/api';
-import { Spinner, PageHeader, ErrorNotice, SearchInput, Modal, Field, TextInput } from '@/components/hr/HRKit';
+import { Spinner, PageHeader, ErrorNotice, SearchInput, Modal } from '@/components/hr/HRKit';
 import ExportMenu from '@/components/ls2/ExportMenu';
 import { DataGrid, Grade, TrendChip, LiveDot, fmtInt, fmtMoney, fmtDay, trendLabel } from '@/components/analytics/AnalyticsKit';
-import { KIND, kindLabel, contractTone, vendorHref, canEditVendors, monthName } from '@/lib/vendors';
+import { KIND, kindLabel, contractTone, vendorHref, canEditVendors, monthName, APPROVAL, approvalLabel, docKindLabel } from '@/lib/vendors';
+import NewVendorModal from '@/components/vendors/NewVendorModal';
 import { Users, Plus, GitCompare, X } from 'lucide-react';
 
 type Row = Record<string, any>;
 const QUICK: [string, string, string][] = [
   ['', 'الكلّ', 'All'], ['master', 'الموردون المعتمدون', 'Master'], ['stopped', 'معتمدون متوقّفون', 'Master stopped'], ['leads', 'نشطون غير معتمدين', 'Active outside master'],
   ['signedIdle', 'موقّعون غير نشطين', 'Signed, idle'], ['unsigned', 'نشطون دون عقد', 'Active unsigned'], ['freelancers', 'السائقون الأفراد', 'Freelancers'], ['incomplete', 'ملفٌّ ناقص', 'Incomplete file'],
+  ['missingDocs', 'مستنداتٌ مطلوبة ناقصة', 'Missing papers'], ['contracted', 'متعاقَدٌ رسميًّا', 'Contracted'], ['notContracted', 'غير متعاقَد', 'Not contracted'],
+  ['expiring', 'عقودٌ تنتهي أو انتهت', 'Contracts ending'], ['pending', 'بانتظار الاعتماد', 'Pending approval'],
 ];
+/** Quick lists as one predicate, shared by the filter and its count. */
+const quickOf = (k: string, v: Row) => {
+  switch (k) {
+    case 'master': return v.inMaster;
+    case 'stopped': return v.inMaster && v.trend === 'stopped';
+    case 'leads': return v.kind === 'outside' && v.activeLast3;
+    case 'signedIdle': return v.signed && !v.activeLast3;
+    case 'unsigned': return v.inMaster && !v.signed && v.activeLast3;
+    case 'freelancers': return v.kind === 'freelancer';
+    case 'incomplete': return v.inMaster && v.completeness < 70;
+    case 'missingDocs': return !!v.id && v.kind !== 'freelancer' && (v.docsMissing || []).length > 0;
+    case 'contracted': return !!v.contracted;
+    case 'notContracted': return !!v.id && v.kind !== 'freelancer' && !v.contracted;
+    case 'expiring': return v.contractState === 'expiring' || v.contractState === 'expired';
+    case 'pending': return ['pending', 'returned'].includes(v.approvalStatus);
+    default: return true;
+  }
+};
 
 export default function VendorsRegisterPage() {
   const { user } = useAuth();
@@ -42,7 +63,6 @@ export default function VendorsRegisterPage() {
   const [cmp, setCmp] = useState<Row[]>([]);
   const [cmpData, setCmpData] = useState<Row[] | null>(null);
   const [adding, setAdding] = useState(false);
-  const [newV, setNewV] = useState({ name: '', type: 'company', phone: '', followOwner: '', inMaster: true });
 
   const load = useCallback(async () => {
     setBusy(true);
@@ -62,13 +82,7 @@ export default function VendorsRegisterPage() {
     if (!d) return [];
     const fq = q.trim();
     return d.vendors.filter((v) => {
-      if (quick === 'master' && !v.inMaster) return false;
-      if (quick === 'stopped' && !(v.inMaster && v.trend === 'stopped')) return false;
-      if (quick === 'leads' && !(v.kind === 'outside' && v.activeLast3)) return false;
-      if (quick === 'signedIdle' && !(v.signed && !v.activeLast3)) return false;
-      if (quick === 'unsigned' && !(v.inMaster && !v.signed && v.activeLast3)) return false;
-      if (quick === 'freelancers' && v.kind !== 'freelancer') return false;
-      if (quick === 'incomplete' && !(v.inMaster && v.completeness < 70)) return false;
+      if (quick && !quickOf(quick, v)) return false;
       if (owner && v.followOwner !== owner) return false;
       if (contract && (v.contractStatus || '—') !== contract) return false;
       if (trend && v.trend !== trend) return false;
@@ -80,17 +94,7 @@ export default function VendorsRegisterPage() {
   const counts = useMemo(() => {
     const out: Record<string, number> = {};
     if (!d) return out;
-    for (const [k] of QUICK) out[k] = 0;
-    for (const v of d.vendors) {
-      out[''] += 1;
-      if (v.inMaster) out.master += 1;
-      if (v.inMaster && v.trend === 'stopped') out.stopped += 1;
-      if (v.kind === 'outside' && v.activeLast3) out.leads += 1;
-      if (v.signed && !v.activeLast3) out.signedIdle += 1;
-      if (v.inMaster && !v.signed && v.activeLast3) out.unsigned += 1;
-      if (v.kind === 'freelancer') out.freelancers += 1;
-      if (v.inMaster && v.completeness < 70) out.incomplete += 1;
-    }
+    for (const [k] of QUICK) out[k] = d.vendors.filter((v) => quickOf(k, v)).length;
     return out;
   }, [d]);
 
@@ -98,16 +102,6 @@ export default function VendorsRegisterPage() {
   const openCompare = async () => {
     try { const r = await api.get<{ vendors: Row[] }>(`/api/vendors-mgmt/compare?ids=${cmp.map((x) => x.id).join(',')}`); setCmpData(r.vendors); }
     catch (e: any) { notify(e?.message || t('تعذّرت المقارنة', 'Compare failed'), 'error'); }
-  };
-  const create = async () => {
-    try {
-      const r = await api.post<{ vendor: Row }>('/api/vendors-mgmt/vendors', newV);
-      notify(t('أُضيف المورّد', 'Carrier added'), 'success'); setAdding(false);
-      router.push(`/system/vendors-mgmt/vendors/${r.vendor._id}`);
-    } catch (e: any) {
-      if (e?.data?.id) { notify(e.message, 'error'); router.push(`/system/vendors-mgmt/vendors/${e.data.id}`); return; }
-      notify(e?.message || t('تعذّرت الإضافة', 'Could not add'), 'error');
-    }
   };
 
   if (!d && !error) return <Spinner />;
@@ -121,7 +115,7 @@ export default function VendorsRegisterPage() {
       <PageHeader icon={<Users className="w-6 h-6 text-[#f37121]" />} title={t('الموردون', 'Carriers')}
         subtitle={t('سجلّ الموردين ونشاطُهم هذا العام وتقييمُهم — اضغط مورّدًا لفتح بطاقته', 'The carrier register, its activity this year and score — press one to open its card')}>
         <LiveDot ar={ar} busy={busy} />
-        {canEditVendors(user) && <button type="button" onClick={() => setAdding(true)} className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg bg-[#f37121] text-white text-sm font-semibold"><Plus className="w-4 h-4" />{t('مورّدٌ جديد', 'New carrier')}</button>}
+        {canEditVendors(user) && <button type="button" onClick={() => setAdding(true)} className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg bg-[#f37121] text-white text-sm font-semibold"><Plus className="w-4 h-4" />{t('إضافة مورّد', 'Add carrier')}</button>}
         <ExportMenu fileName="carriers" lang={ar ? 'ar' : 'en'} options={[{
           key: 'shown', label: t('تصدير المعروض', 'Export shown'), sheets: [{ name: t('الموردون', 'Carriers'), rows, columns: [
             { header: t('المورّد', 'Carrier'), key: 'name', width: 34 }, { header: t('النوع', 'Kind'), key: 'kind', transform: (v: string) => kindLabel(v, ar) },
@@ -131,6 +125,10 @@ export default function VendorsRegisterPage() {
             ...(Array.from({ length: cm }, (_, i) => ({ header: monthName(i + 1, ar), key: `m${i}`, transform: (_v: any, r: Row) => r.mon?.[i] || 0 }))),
             { header: t('رحلات العام', 'Year trips'), key: 'trips' }, ...(money ? [{ header: t('المشتريات', 'Purchase'), key: 'buy' }, { header: t('متوسط الرحلة', 'Avg trip'), key: 'avg' }] : []),
             { header: t('أوّل رحلة', 'First'), key: 'first' }, { header: t('آخر رحلة', 'Last'), key: 'last' }, { header: t('الحالة', 'Trend'), key: 'trend', transform: (v: string) => trendLabel(v, ar) },
+            { header: t('الاعتماد', 'Approval'), key: 'approvalStatus', transform: (v: string) => approvalLabel(v, ar) },
+            { header: t('متعاقَدٌ رسميًّا', 'Contracted'), key: 'contracted', transform: (v: boolean) => (v ? t('نعم', 'Yes') : t('لا', 'No')) }, { header: t('نهاية العقد', 'Contract end'), key: 'contractEndDate' },
+            { header: t('المستندات الناقصة', 'Missing papers'), key: 'docsMissing', transform: (v: string[]) => (v || []).map((k) => docKindLabel(k, ar)).join('، ') },
+            { header: t('صاحب المنشأة', 'Owner'), key: 'ownerPhone' }, { header: t('المشغّل', 'Operator'), key: 'operatorName' }, { header: t('جوال المشغّل', 'Operator mobile'), key: 'operatorPhone' },
             { header: t('التقييم', 'Grade'), key: 'grade' }, { header: t('الدرجة', 'Score'), key: 'score' }, { header: t('اكتمال الملف %', 'File %'), key: 'completeness' },
           ] }],
         }]} />
@@ -169,6 +167,9 @@ export default function VendorsRegisterPage() {
               <div className="flex flex-wrap gap-1 mt-0.5"><span className={`px-1.5 py-0.5 rounded border text-[10.5px] font-semibold ${KIND[r.kind]?.cls}`}>{kindLabel(r.kind, ar)}</span>
                 {r.unregistered && <span className="px-1.5 py-0.5 rounded border border-red-200 bg-red-50 text-red-700 text-[10.5px]">{t('غير مسجّل', 'Unregistered')}</span>}
                 {r.leadPriority && <span className="px-1.5 py-0.5 rounded border border-amber-200 bg-amber-50 text-amber-800 text-[10.5px]">{r.leadPriority}</span>}
+                {r.approvalStatus && r.approvalStatus !== 'approved' && <span className={`px-1.5 py-0.5 rounded border text-[10.5px] font-semibold ${APPROVAL[r.approvalStatus]?.cls}`}>{approvalLabel(r.approvalStatus, ar)}</span>}
+                {(r.docsMissing || []).length > 0 && r.kind !== 'freelancer' && <span className="px-1.5 py-0.5 rounded border border-red-200 bg-red-50 text-red-700 text-[10.5px]" title={(r.docsMissing || []).map((k: string) => docKindLabel(k, ar)).join('، ')}>{t(`ينقصه ${r.docsMissing.length} مستند`, `${r.docsMissing.length} papers missing`)}</span>}
+                {r.contracted && <span className={`px-1.5 py-0.5 rounded border text-[10.5px] ${r.contractState === 'expired' ? 'border-red-200 bg-red-50 text-red-700' : r.contractState === 'expiring' ? 'border-amber-200 bg-amber-50 text-amber-800' : 'border-emerald-200 bg-emerald-50 text-emerald-700'}`}>{t('متعاقَد', 'Contracted')}{r.contractEndDate ? ` · ${r.contractEndDate}` : ''}</span>}
                 {r.names > 1 && <span className="px-1.5 py-0.5 rounded border border-slate-200 text-slate-500 text-[10.5px]">{t(`${r.names} أسماء`, `${r.names} names`)}</span>}</div></div>
           ) },
           { key: 'followOwner', label: t('المتابعة', 'Owner'), render: (r) => r.followOwner || '—' },
@@ -185,16 +186,8 @@ export default function VendorsRegisterPage() {
       </div>
 
       {adding && (
-        <Modal open onClose={() => setAdding(false)} title={t('مورّدٌ جديد', 'New carrier')}
-          footer={<button type="button" onClick={create} className="ms-auto px-5 py-2.5 rounded-xl bg-[#f37121] text-white text-sm font-bold">{t('إضافة', 'Add')}</button>}>
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-            <Field label={t('الاسم', 'Name')} span2><TextInput value={newV.name} onChange={(e) => setNewV({ ...newV, name: e.target.value })} /></Field>
-            <Field label={t('النوع', 'Type')}><select value={newV.type} onChange={(e) => setNewV({ ...newV, type: e.target.value })} className="w-full px-3 py-2 rounded-lg border border-slate-200 text-sm"><option value="company">{t('شركة / مؤسسة', 'Company')}</option><option value="freelancer">{t('سائق فرد', 'Freelance driver')}</option></select></Field>
-            <Field label={t('الجوال', 'Phone')}><TextInput value={newV.phone} onChange={(e) => setNewV({ ...newV, phone: e.target.value })} /></Field>
-            <Field label={t('مسؤول المتابعة', 'Owner')}><TextInput list="vm-owners" value={newV.followOwner} onChange={(e) => setNewV({ ...newV, followOwner: e.target.value })} /><datalist id="vm-owners">{d.owners.map((o) => <option key={o} value={o} />)}</datalist></Field>
-            <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={newV.inMaster} onChange={(e) => setNewV({ ...newV, inMaster: e.target.checked })} className="accent-[#f37121]" />{t('معتمد', 'On the master')}</label>
-          </div>
-        </Modal>
+        <NewVendorModal ar={ar} owners={d.owners} onClose={() => setAdding(false)}
+          onCreated={(nv) => { setAdding(false); if (nv?._id) router.push(`/system/vendors-mgmt/vendors/${nv._id}`); }} />
       )}
       {cmpData && (
         <Modal open wide onClose={() => setCmpData(null)} title={t('مقارنة الموردين', 'Compare carriers')}>

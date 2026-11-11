@@ -199,7 +199,9 @@ export default function StoreScreen({ scope }: { scope: StoreScope }) {
 
   const loadLog = useCallback(async () => {
     const token = logReq.begin();
-    const qs = new URLSearchParams({ limit: '1000' });
+    // With any filter the whole matching log comes back (a period of months exceeds 1,000 rows); unfiltered opens the latest 1,000.
+    const anyFilter = Object.values(logF).some(Boolean);
+    const qs = new URLSearchParams({ limit: anyFilter ? '100000' : '1000' });
     Object.entries(logF).forEach(([k, v]) => { if (v) qs.set(k, v); });
     try {
       const d = await api.get<{ movements: Movement[] }>(`${scope.base}/movements?${qs}`);

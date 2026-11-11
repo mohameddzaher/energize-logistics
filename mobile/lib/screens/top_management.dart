@@ -1,3 +1,4 @@
+import 'package:intl/intl.dart';
 // Leave desks, twin of the web's LeaveDesk: finance, top management and the chairman each see every leave and decide their own stage (backend routes/leaveDesk). Also the staff requests to HR and the company's live activity.
 import 'dart:async';
 import 'package:flutter/material.dart';
@@ -168,6 +169,9 @@ class _TopLeavesScreenState extends State<TopLeavesScreen> {
               const SizedBox(width: 10),
               Text('${l['days'] ?? ''} ${tr('يوم', 'd')}', style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w800)),
             ]),
+            // When the employee filed it.
+            if (DateTime.tryParse('${l['createdAt'] ?? ''}') != null)
+              Padding(padding: const EdgeInsets.only(top: 4), child: Text('${tr('قُدِّم في', 'Requested on')}: ${DateFormat('dd/MM/yyyy HH:mm', 'en').format(DateTime.parse('${l['createdAt']}').toLocal())}', style: const TextStyle(fontSize: 11.5, color: T.inkFaint))),
             if (_full) ...[const SizedBox(height: 10), _StageBar(leave: l)],
             if (!_canAct(l) && leaveIsOpen(l['status']))
               Padding(padding: const EdgeInsets.only(top: 6), child: Text(leaveWaitNote(l, full: _full), style: const TextStyle(fontSize: 11, color: T.inkSoft))),

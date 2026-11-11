@@ -35,3 +35,21 @@ export const CHANNELS: Record<string, { ar: string; en: string }> = {
   call: { ar: 'اتصال', en: 'Call' }, whatsapp: { ar: 'واتساب', en: 'WhatsApp' }, visit: { ar: 'زيارة', en: 'Visit' },
   email: { ar: 'بريد', en: 'Email' }, meeting: { ar: 'اجتماع', en: 'Meeting' }, other: { ar: 'أخرى', en: 'Other' },
 };
+
+/** Company papers a new carrier must bring (mirrors DOC_KINDS in the vendors controller); `other` carries a typed name. */
+export const DOC_KINDS: { key: string; ar: string; en: string }[] = [
+  { key: 'cr', ar: 'السجل التجاري', en: 'Commercial register' },
+  { key: 'nationalAddress', ar: 'العنوان الوطني', en: 'National address' },
+  { key: 'iban', ar: 'الآيبان', en: 'IBAN' },
+  { key: 'taxCard', ar: 'البطاقة الضريبية', en: 'Tax card' },
+];
+export const docKindLabel = (k: string, ar: boolean) => { const x = DOC_KINDS.find((d) => d.key === k); return x ? (ar ? x.ar : x.en) : (ar ? 'مستند إضافي' : 'Other document'); };
+
+/** Approval of a carrier added by the team; a missing status is a legacy row and reads as approved. */
+export const APPROVAL: Record<string, { ar: string; en: string; cls: string }> = {
+  pending: { ar: 'بانتظار الاعتماد', en: 'Pending approval', cls: 'bg-amber-50 text-amber-800 border-amber-200' },
+  approved: { ar: 'معتمَد', en: 'Approved', cls: 'bg-emerald-50 text-emerald-700 border-emerald-200' },
+  rejected: { ar: 'مرفوض', en: 'Rejected', cls: 'bg-red-50 text-red-700 border-red-200' },
+  returned: { ar: 'أُعيد للتعديل', en: 'Returned for edits', cls: 'bg-sky-50 text-sky-700 border-sky-200' },
+};
+export const approvalLabel = (s: string | undefined, ar: boolean) => { const x = APPROVAL[s || 'approved'] || APPROVAL.approved; return ar ? x.ar : x.en; };

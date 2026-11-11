@@ -15,7 +15,9 @@ import api from '@/lib/api';
 import { Spinner, ErrorNotice, Modal, Field, TextInput, TextArea } from '@/components/hr/HRKit';
 import SearchableManagedSelect from '@/components/system/SearchableManagedSelect';
 import { Kpi, Panel, BarList, DataGrid, Grade, TrendChip, fmtInt, fmtMoney, fmtDay, fmtPct, ORANGE } from '@/components/analytics/AnalyticsKit';
-import { KIND, kindLabel, contractTone, monthName, canEditVendors, CHANNELS, isVendorLead } from '@/lib/vendors';
+import { KIND, kindLabel, contractTone, monthName, canEditVendors, CHANNELS, isVendorLead, APPROVAL, approvalLabel } from '@/lib/vendors';
+import VendorFilesPanel, { ApprovalBlock } from './VendorFilesPanel';
+import NewVendorModal from './NewVendorModal';
 import { ResponsiveContainer, BarChart, Bar, XAxis, YAxis, Tooltip, CartesianGrid } from 'recharts';
 import { ArrowRight, Pencil, Phone, MessageCircle, Plus, Trash2, AlertTriangle, Truck, UserRound, Tags, CalendarClock, Building2 } from 'lucide-react';
 
@@ -24,6 +26,7 @@ const FILE: [string, string, string, ('text' | 'number' | 'bool' | 'textarea' | 
   ['name', 'الاسم', 'Name'], ['type', 'النوع', 'Type', 'type'], ['masterNo', 'الرقم في القائمة المعتمدة', 'Master no.', 'number'], ['followOwner', 'مسؤول المتابعة', 'Follow-up owner', 'owner'],
   ['contractStatus', 'حالة التعاقد', 'Contract status', 'contract'], ['contractDate', 'تاريخ التعاقد', 'Contract date'], ['vendorSigned', 'عقد طرف المورد', 'Signed by carrier', 'bool'], ['ourSigned', 'عقد طرفنا', 'Signed by us', 'bool'],
   ['hasPapers', 'الأوراق مكتملة', 'Papers complete', 'bool'], ['taxClass', 'التصنيف الضريبي', 'Tax classification', 'tax'], ['financeCode', 'كود المورد (المالية)', 'Finance code'], ['paymentTermDays', 'مدّة السداد (يوم)', 'Payment term (days)', 'number'],
+  ['ownerName', 'اسم صاحب المنشأة', 'Owner name'], ['ownerPhone', 'جوال صاحب المنشأة', 'Owner mobile'], ['operatorName', 'المشغّل (من نتعامل معه)', 'Operator'], ['operatorPhone', 'جوال المشغّل', 'Operator mobile'],
   ['representative', 'ممثّل المورد', 'Representative'], ['phone', 'الجوال', 'Phone'], ['email', 'البريد', 'Email'], ['energizeRep', 'مندوب تنشيط', 'Our rep'],
   ['headOffice', 'المقرّ الرئيسي', 'Head office'], ['destinations', 'الوجهات', 'Destinations'], ['vehicleTypes', 'نوع السيارات', 'Truck types'], ['fleetSize', 'عدد السيارات', 'Fleet size', 'number'],
   ['commercialRegister', 'السجلّ التجاري', 'Commercial register'], ['taxCard', 'الرقم الضريبي', 'Tax number'], ['iban', 'الآيبان', 'IBAN'], ['bankName', 'البنك', 'Bank'],
@@ -40,7 +43,8 @@ export default function VendorCard({ id, name }: { id?: string; name?: string })
   const { notify, confirm } = useDialog();
   const [d, setD] = useState<Row | null>(null);
   const [error, setError] = useState('');
-  const [tab, setTab] = useState<'activity' | 'file' | 'follow' | 'fleet' | 'names'>('activity');
+  const [tab, setTab] = useState<'activity' | 'file' | 'papers' | 'follow' | 'fleet' | 'names'>('activity');
+  const [registering, setRegistering] = useState(false);
   const [editing, setEditing] = useState<Row | null>(null);
   const [follow, setFollow] = useState<Row | null>(null);
   const [owners, setOwners] = useState<string[]>([]);
@@ -105,9 +109,13 @@ export default function VendorCard({ id, name }: { id?: string; name?: string })
               {v.inMaster && <span className="px-2 py-0.5 rounded-full border border-emerald-200 bg-emerald-50 text-emerald-700 text-[11.5px] font-semibold">{t(`معتمد${v.masterNo ? ` · رقم ${v.masterNo}` : ''}`, `On the master${v.masterNo ? ` · #${v.masterNo}` : ''}`)}</span>}
               {v.contractStatus && <span className={`px-2 py-0.5 rounded-full border text-[11.5px] ${contractTone(v.contractStatus)}`}>{t('العقد', 'Contract')}: {v.contractStatus}</span>}
               {d.trend && <TrendChip t={d.trend} ar={ar} />}
+              {d.approval?.status && d.approval.status !== 'approved' && <span className={`px-2 py-0.5 rounded-full border text-[11.5px] font-semibold ${APPROVAL[d.approval.status]?.cls}`}>{approvalLabel(d.approval.status, ar)}</span>}
+              {d.contract?.contracted && <span className="px-2 py-0.5 rounded-full border border-emerald-200 bg-emerald-50 text-emerald-700 text-[11.5px] font-semibold">{t('متعاقَدٌ رسميًّا', 'Contracted')}{d.contract.endDate ? ` · ${t('حتى', 'to')} ${d.contract.endDate}` : ''}</span>}
             </div>
             <p className="mt-1 text-[12.5px] text-slate-600 flex flex-wrap gap-x-4 gap-y-1">
               {v.followOwner && <span>{t('مسؤول المتابعة', 'Owner')}: <b>{v.followOwner}</b></span>}
+              {v.operatorName && <span>{t('المشغّل', 'Operator')}: <b>{v.operatorName}</b>{v.operatorPhone ? <a href={`tel:${v.operatorPhone}`} className="ms-1 tabular-nums text-sky-700">{v.operatorPhone}</a> : null}</span>}
+              {v.ownerPhone && <span>{t('صاحب المنشأة', 'Owner')}: {v.ownerName || ''} <a href={`tel:${v.ownerPhone}`} className="tabular-nums text-sky-700">{v.ownerPhone}</a></span>}
               {v.representative && <span>{t('الممثّل', 'Representative')}: {v.representative}</span>}
               {v.headOffice && <span className="inline-flex items-center gap-1"><Building2 className="w-3.5 h-3.5" />{v.headOffice}</span>}
               {v.vehicleTypes && <span className="inline-flex items-center gap-1"><Truck className="w-3.5 h-3.5" />{v.vehicleTypes}{v.fleetSize ? ` · ${v.fleetSize}` : ''}</span>}
@@ -119,7 +127,7 @@ export default function VendorCard({ id, name }: { id?: string; name?: string })
             {v.phone && <a href={`tel:${v.phone}`} className="p-2 rounded-lg border border-slate-200 text-slate-600 hover:text-[#f37121]"><Phone className="w-4 h-4" /></a>}
             {v.phone && <a href={`https://wa.me/${String(v.phone).replace(/\D/g, '').replace(/^0/, '966')}`} target="_blank" rel="noreferrer" className="p-2 rounded-lg border border-slate-200 text-emerald-600 hover:bg-emerald-50"><MessageCircle className="w-4 h-4" /></a>}
             {editor && !v.unregistered && <button type="button" onClick={() => setFollow({ channel: 'call', outcome: '', note: '', contractStatus: '', nextAt: '' })} className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg bg-slate-900 text-white text-sm font-semibold"><Plus className="w-4 h-4" />{t('متابعة', 'Follow-up')}</button>}
-            {editor && <button type="button" onClick={() => setEditing(Object.fromEntries(FILE.map(([k]) => [k, v[k] ?? (k === 'type' ? 'company' : '')])))} className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg bg-[#f37121] text-white text-sm font-semibold"><Pencil className="w-4 h-4" />{v.unregistered ? t('تسجيله في السجلّ', 'Register it') : t('تعديل الملف', 'Edit file')}</button>}
+            {editor && <button type="button" onClick={() => (v.unregistered ? setRegistering(true) : setEditing(Object.fromEntries(FILE.map(([k]) => [k, v[k] ?? (k === 'type' ? 'company' : '')]))))} className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg bg-[#f37121] text-white text-sm font-semibold"><Pencil className="w-4 h-4" />{v.unregistered ? t('تسجيله في السجلّ', 'Register it') : t('تعديل الملف', 'Edit file')}</button>}
           </div>
         </div>
         {d.missing?.length > 0 && (
@@ -128,6 +136,13 @@ export default function VendorCard({ id, name }: { id?: string; name?: string })
             <span>{t(`الملف مكتمل ${d.completeness}% — ينقصه: `, `File ${d.completeness}% complete — missing: `)}{d.missing.map((m: Row) => m.label).join('، ')}</span>
           </div>
         )}
+        {d.missingDocs?.length > 0 && (
+          <button type="button" onClick={() => setTab('papers')} className="mt-2 w-full text-start flex items-start gap-2 rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-[12.5px] text-red-800">
+            <AlertTriangle className="w-4 h-4 mt-0.5 shrink-0" />
+            <span>{t('مستنداتٌ مطلوبة ناقصة: ', 'Missing required papers: ')}{d.missingDocs.map((m: Row) => (ar ? m.label : m.labelEn)).join('، ')}</span>
+          </button>
+        )}
+        {!v.unregistered && <ApprovalBlock d={d} editor={editor} ar={ar} onChanged={load} />}
       </div>
 
       <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
@@ -137,11 +152,14 @@ export default function VendorCard({ id, name }: { id?: string; name?: string })
         {money && <Kpi ar={ar} label={t('متوسط سعر الرحلة', 'Avg trip price')} value={fmtMoney(A.avg)} />}
         <Kpi ar={ar} label={t('أوّل رحلة · آخر رحلة', 'First · last trip')} value={<span className="text-[15px]">{fmtDay(A.first)} · {fmtDay(A.last)}</span>} />
         <Kpi ar={ar} label={t('ملغاة', 'Cancelled')} value={fmtInt(A.cancelled)} tone={A.cancelled ? 'warn' : 'muted'} />
+        {!v.unregistered && <Kpi ar={ar} label={t('المستندات المطلوبة', 'Required papers')} value={`${4 - (d.missingDocs?.length || 0)}/4`} tone={d.missingDocs?.length ? 'warn' : 'good'} onClick={() => setTab('papers')} />}
+        {!v.unregistered && <Kpi ar={ar} label={t('التعاقد الرسميّ', 'Official contract')} value={d.contract?.contracted ? t('نعم', 'Yes') : t('لا', 'No')} tone={d.contract?.state === 'expired' ? 'bad' : d.contract?.state === 'expiring' ? 'warn' : d.contract?.contracted ? 'good' : 'muted'}
+          sub={d.contract?.endDate ? `${t('حتى', 'to')} ${d.contract.endDate}` : undefined} onClick={() => setTab('papers')} />}
       </div>
 
       <div className="flex flex-wrap gap-1 rounded-xl border border-slate-200 bg-white p-1 shadow-sm">
-        {([['activity', 'النشاط والأسعار', 'Activity & prices'], ['file', 'الملف', 'File'], ['follow', `المتابعات (${(d.followUps || []).length})`, `Follow-ups (${(d.followUps || []).length})`], ['fleet', `السيارات والسائقون (${(d.vehicles || []).length}/${(d.drivers || []).length})`, `Trucks & drivers`], ['names', `الأسماء على النظام (${(d.names || []).length})`, `Names (${(d.names || []).length})`]] as const).map(([k, a, e]) => (
-          <button key={k} type="button" onClick={() => setTab(k)} className={`px-3 py-1.5 rounded-lg text-[13px] font-semibold ${tab === k ? 'bg-slate-900 text-white' : 'text-slate-600 hover:bg-slate-100'}`}>{ar ? a : e}</button>
+        {([['activity', 'النشاط والأسعار', 'Activity & prices'], ['file', 'الملف', 'File'], ...(v.unregistered ? [] : [['papers', `المستندات والعقد (${(v.documents || []).length})`, `Papers & contract (${(v.documents || []).length})`]]), ['follow', `المتابعات (${(d.followUps || []).length})`, `Follow-ups (${(d.followUps || []).length})`], ['fleet', `السيارات والسائقون (${(d.vehicles || []).length}/${(d.drivers || []).length})`, `Trucks & drivers`], ['names', `الأسماء على النظام (${(d.names || []).length})`, `Names (${(d.names || []).length})`]] as const).map(([k, a, e]) => (
+          <button key={k} type="button" onClick={() => setTab(k as typeof tab)} className={`px-3 py-1.5 rounded-lg text-[13px] font-semibold ${tab === k ? 'bg-slate-900 text-white' : 'text-slate-600 hover:bg-slate-100'}`}>{ar ? a : e}</button>
         ))}
       </div>
 
@@ -201,6 +219,8 @@ export default function VendorCard({ id, name }: { id?: string; name?: string })
           </dl>
         </Panel>
       )}
+
+      {tab === 'papers' && !v.unregistered && <VendorFilesPanel d={d} editor={editor} ar={ar} onChanged={load} />}
 
       {tab === 'follow' && (
         <Panel title={t('سجلّ المتابعات', 'Follow-up log')} actions={editor && !v.unregistered ? <button type="button" onClick={() => setFollow({ channel: 'call', outcome: '', note: '', contractStatus: '', nextAt: '' })} className="inline-flex items-center gap-1 px-3 py-1.5 rounded-lg bg-slate-900 text-white text-[12.5px] font-semibold"><Plus className="w-3.5 h-3.5" />{t('متابعة جديدة', 'New')}</button> : null}>
@@ -279,6 +299,10 @@ export default function VendorCard({ id, name }: { id?: string; name?: string })
             )}
           </div>
         </Modal>
+      )}
+      {registering && (
+        <NewVendorModal ar={ar} owners={owners} initialName={v.name} aliases={d.names || []} onClose={() => setRegistering(false)}
+          onCreated={(nv) => { setRegistering(false); if (nv?._id) router.replace(`/system/vendors-mgmt/vendors/${nv._id}`); }} />
       )}
       {follow && (
         <Modal open onClose={() => setFollow(null)} title={t('متابعة جديدة', 'New follow-up')}

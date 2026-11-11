@@ -14,8 +14,12 @@ import ExportMenu from '@/components/ls2/ExportMenu';
 import { Kpi, Panel, BarList, DataGrid, TrendChip, LiveDot, fmtInt, fmtMoney, fmtPct, fmtDay, ORANGE, trendLabel } from '@/components/analytics/AnalyticsKit';
 import { KIND, kindLabel, monthName, contractTone, vendorHref } from '@/lib/vendors';
 import VendorFilters, { vendorFilterQuery, type VendorFilterState } from '@/components/vendors/VendorFilters';
+import { DrillModal, drillCols, type Drill } from '@/components/vendors/VendorDrill';
+import VendorRegisterStats from '@/components/vendors/VendorRegisterStats';
+import VendorRanking from '@/components/vendors/VendorRanking';
 import { ResponsiveContainer, ComposedChart, Bar, Line, XAxis, YAxis, Tooltip, CartesianGrid, Legend } from 'recharts';
 import { Building2 } from 'lucide-react';
+import TeamPerformance from '@/components/vendors/TeamPerformance';
 
 type Row = Record<string, any>;
 
@@ -30,6 +34,7 @@ export default function VendorsOverviewPage() {
   const [busy, setBusy] = useState(false);
   const [actMonth, setActMonth] = useState<number | null>(null);
   const [filters, setFilters] = useState<VendorFilterState>({});
+  const [drill, setDrill] = useState<Drill | null>(null);
   const fq = vendorFilterQuery(filters);
   const lastDay = (() => { const [y, m] = month.split('-').map(Number); return new Date(Date.UTC(y, m, 0)).toISOString().slice(0, 10); })();
 
@@ -54,6 +59,13 @@ export default function VendorsOverviewPage() {
   const cm = d.curMonth;
   const months = d.months.filter((m: Row) => m.month <= cm).map((m: Row) => ({ ...m, name: monthName(m.month, ar) }));
   const act = d.activations.find((a: Row) => a.month === (actMonth || cm)) || d.activations[cm - 1];
+  // Every card opens the carriers it counts.
+  const C = drillCols(ar);
+  const masterCols = [C.name, C.owner, C.contractStatus, C.month, C.trips, C.trend, C.last];
+  const extCols = [C.name, C.kind, C.month, C.trips, C.trend, C.last];
+  const M: Row[] = d.masterList || [];
+  const X: Row[] = d.extActiveList || [];
+  const show = (title: string, rows: Row[], cols = masterCols) => setDrill({ title, rows, cols, fileName: 'vendors-analysis-list' });
   const trendRows = ['up', 'steady', 'down', 'new', 'stopped', 'never'].map((k) => ({ key: k, label: trendLabel(k, ar), value: d.trendMaster[k] || 0 }));
 
   return (
@@ -76,19 +88,23 @@ export default function VendorsOverviewPage() {
       <VendorFilters value={filters} onChange={setFilters} from={`${month.slice(0, 4)}-01-01`} to={lastDay} ar={ar} />
 
       <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
-        <Kpi ar={ar} label={t('الموردون المعتمدون', 'Master carriers')} value={fmtInt(K.masterVendors)} />
-        <Kpi ar={ar} label={t('نشطون آخر 3 أشهر', 'Active last 3 months')} value={fmtInt(K.masterActive3)} tone="good" sub={fmtPct((K.masterActive3 / Math.max(1, K.masterVendors)) * 100)} />
-        <Kpi ar={ar} label={t(`نشطون في ${monthName(cm, true)}`, `Active in ${monthName(cm, false)}`)} value={fmtInt(K.masterActiveMonth)} tone="brand" />
-        <Kpi ar={ar} label={t('موقّعو العقد', 'Signed contracts')} value={fmtInt(K.masterSigned)} sub={t(`منهم غير نشطين ${K.signedInactive}`, `${K.signedInactive} inactive`)} />
-        <Kpi ar={ar} label={t('نشطون دون عقد', 'Active, unsigned')} value={fmtInt(K.activeUnsigned)} tone={K.activeUnsigned ? 'warn' : undefined} />
-        <Kpi ar={ar} label={t('متوقفون', 'Stopped')} value={fmtInt(K.masterStopped)} tone="bad" sub={t(`لم يعمل ${K.masterNever} هذا العام`, `${K.masterNever} never this year`)} />
-        <Kpi ar={ar} label={t('حصّة المعتمدين من التشغيل الخارجي', 'Master share of external trips')} value={fmtPct(K.masterShare)} tone="brand" />
-        <Kpi ar={ar} label={t('رحلاتُ التشغيل الخارجي', 'External trips')} value={fmtInt(K.externalTrips)} sub={t(`أسطول تنشيط ${fmtInt(K.fleetTrips)}`, `Our fleet ${fmtInt(K.fleetTrips)}`)} />
+        <Kpi ar={ar} label={t('الموردون المعتمدون', 'Master carriers')} value={fmtInt(K.masterVendors)} onClick={() => show(t('الموردون المعتمدون', 'Master carriers'), M)} />
+        <Kpi ar={ar} label={t('نشطون آخر 3 أشهر', 'Active last 3 months')} value={fmtInt(K.masterActive3)} onClick={() => show(t('معتمدون نشطون آخر 3 أشهر', 'Master active last 3 months'), M.filter((m) => m.activeLast3))} tone="good" sub={fmtPct((K.masterActive3 / Math.max(1, K.masterVendors)) * 100)} />
+        <Kpi ar={ar} label={t(`نشطون في ${monthName(cm, true)}`, `Active in ${monthName(cm, false)}`)} value={fmtInt(K.masterActiveMonth)} onClick={() => show(t(`معتمدون نشطون في ${monthName(cm, true)}`, `Master active in ${monthName(cm, false)}`), M.filter((m) => m.activeThisMonth))} tone="brand" />
+        <Kpi ar={ar} label={t('موقّعو العقد', 'Signed contracts')} value={fmtInt(K.masterSigned)} onClick={() => show(t('معتمدون متعاقَدٌ معهم', 'Master, contracted'), M.filter((m) => m.signed))} sub={t(`منهم غير نشطين ${K.signedInactive}`, `${K.signedInactive} inactive`)} />
+        <Kpi ar={ar} label={t('نشطون دون عقد', 'Active, unsigned')} value={fmtInt(K.activeUnsigned)} onClick={() => show(t('نشطون دون عقد', 'Active, unsigned'), M.filter((m) => !m.signed && m.activeLast3))} tone={K.activeUnsigned ? 'warn' : undefined} />
+        <Kpi ar={ar} label={t('متوقفون', 'Stopped')} value={fmtInt(K.masterStopped)} onClick={() => show(t('معتمدون متوقّفون', 'Master stopped'), M.filter((m) => m.trend === 'stopped'))} tone="bad" sub={t(`لم يعمل ${K.masterNever} هذا العام`, `${K.masterNever} never this year`)} />
+        <Kpi ar={ar} label={t('حصّة المعتمدين من التشغيل الخارجي', 'Master share of external trips')} value={fmtPct(K.masterShare)} onClick={() => show(t('الموردون المعتمدون النشطون', 'Active master carriers'), M.filter((m) => m.trips > 0))} tone="brand" />
+        <Kpi ar={ar} label={t('رحلاتُ التشغيل الخارجي', 'External trips')} value={fmtInt(K.externalTrips)} onClick={() => show(t('أعلى الموردين تشغيلًا', 'Top carriers'), d.topVendors, extCols)} sub={t(`أسطول تنشيط ${fmtInt(K.fleetTrips)}`, `Our fleet ${fmtInt(K.fleetTrips)}`)} />
         {K.purchase != null && <Kpi ar={ar} label={t('مشتريات الموردين', 'Purchase from carriers')} value={fmtMoney(K.purchase)} sub={t(`متوسط ${fmtMoney(K.avgTrip)} للرحلة`, `avg ${fmtMoney(K.avgTrip)}/trip`)} />}
-        <Kpi ar={ar} label={t('موردون نشطون غير معتمدين', 'Active outside the master')} value={fmtInt(K.leadsActive3)} tone="warn" sub={t('مرشَّحون للاعتماد', 'leads to register')} />
-        <Kpi ar={ar} label={t('سائقون أفراد نشطون', 'Active freelancers')} value={fmtInt(K.freelancersActive3)} />
+        <Kpi ar={ar} label={t('موردون نشطون غير معتمدين', 'Active outside the master')} value={fmtInt(K.leadsActive3)} onClick={() => show(t('موردون نشطون غير معتمدين', 'Active outside the master'), X.filter((v) => v.kind === 'outside'), extCols)} tone="warn" sub={t('مرشَّحون للاعتماد', 'leads to register')} />
+        <Kpi ar={ar} label={t('سائقون أفراد نشطون', 'Active freelancers')} value={fmtInt(K.freelancersActive3)} onClick={() => show(t('سائقون أفراد نشطون', 'Active freelancers'), X.filter((v) => v.kind === 'freelancer'), extCols)} />
         <Kpi ar={ar} label={t(`تنشيطٌ جديد في ${monthName(cm, true)}`, `New in ${monthName(cm, false)}`)} value={fmtInt(K.newThisMonth)} tone="good" onClick={() => setActMonth(cm)} />
       </div>
+
+      <VendorRegisterStats ar={ar} query={fq} />
+
+      {/* Team performance cards (sourcing / collection / assist) mount here as their own component. */}
 
       <Panel title={t('الرحلات شهرًا بشهر حسب نوع المورّد', 'Trips per month by carrier kind')} subtitle={t('الخطّ = حصّة المعتمدين من التشغيل الخارجي (بدون أسطول تنشيط)', 'Line = master share of external trips (excluding our fleet)')}>
         <div className="h-72">
@@ -106,6 +122,8 @@ export default function VendorsOverviewPage() {
           </ResponsiveContainer>
         </div>
       </Panel>
+
+      <VendorRanking ar={ar} query={fq} month={month} />
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
         <Panel title={t('التنشيط الشهريّ', 'Monthly activations')} subtitle={t('موردون أوّلُ رحلةٍ لهم على الإطلاق في الشهر — اضغط شهرًا لعرض أسمائهم', 'Carriers whose first ever trip fell in the month — press a month')}>
@@ -197,6 +215,8 @@ export default function VendorsOverviewPage() {
             { key: 'last', label: t('آخر رحلة', 'Last'), render: (r) => fmtDay(r.last) },
           ]} />
       </Panel>
+      <TeamPerformance />
+      <DrillModal drill={drill} onClose={() => setDrill(null)} ar={ar} />
     </div>
   );
 }

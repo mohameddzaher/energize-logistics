@@ -19,6 +19,8 @@ String brDept(BuildContext context, String? key) {
   _deptLabels ??= {
     for (final s in sectionsFor(Provider.of<AuthProvider>(context, listen: false))) s.key: (s.arTitle, s.enTitle),
   };
+  // Departments that are not a sidebar section (the data team) carry their name here.
+  if (key == 'Data & Decision Support') return tr('إدارة البيانات ودعم القرار', 'Data & Decision Support');
   final l = _deptLabels![key];
   return l == null ? key : tr(l.$1, l.$2);
 }

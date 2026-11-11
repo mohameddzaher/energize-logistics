@@ -2087,6 +2087,8 @@ exports.listSuppliers = async (req, res) => {
     // Companies or freelance drivers only (the vendors section lists the two apart).
     if (['company', 'freelancer'].includes(String(req.query.type || ''))) filter.type = req.query.type;
     if (req.query.inMaster === '1') filter.inMaster = true;
+    // Completion pickers offer approved carriers only (missing status = approved).
+    if (req.query.approved === '1') filter.approvalStatus = { $in: [null, 'approved'] };
     if (q && q.trim()) {
       Object.assign(filter, anyOf(q, ['name', 'phone', 'email', 'ownerName', 'ownerPhone',
         'managerName', 'managerPhone', 'accountantName', 'commercialRegister', 'iban', 'externalId']));
@@ -2123,7 +2125,7 @@ exports.listSuppliers = async (req, res) => {
         total,
       };
     };
-    const out = String(req.query.fresh || '') === '1' ? await build() : await cache.wrap(registryKey('suppliers', req, `${req.query.type || ''}:${req.query.inMaster || ''}`), REGISTRY_TTL, build);
+    const out = String(req.query.fresh || '') === '1' ? await build() : await cache.wrap(registryKey('suppliers', req, `${req.query.type || ''}:${req.query.inMaster || ''}:${req.query.approved || ''}`), REGISTRY_TTL, build);
     res.json(out);
   } catch (error) {
     res.status(500).json({ message: 'Failed to load suppliers' });
@@ -2556,6 +2558,8 @@ exports.setBranchAccess = async (req, res) => {
 };
 
 /** «From / To» cities: the owner's list plus what the section settings added, the same list the shipment form shows. */
+/** Links a carrier driver to his HR file by residence number; used when a request completion registers a new driver. */
+exports.syncDriverEmployee = (id) => syncDriverEmployee(id);
 exports.cityOptions = async () => {
   const base = require('../config/shipmentCities');
   const rows = await ShipmentOrderField.find({ key: { $in: ['fromCity', 'toCity'] }, deleted: { $ne: true } }).select('options').lean();

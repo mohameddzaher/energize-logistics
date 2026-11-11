@@ -434,6 +434,12 @@
       "en": "Carriers"
     },
     {
+      "key": "/system/vendors-mgmt/approvals",
+      "section": "Vendors Management",
+      "ar": "اعتماد الموردين",
+      "en": "Carrier Approvals"
+    },
+    {
       "key": "/system/vendors-mgmt/vehicles",
       "section": "Vendors Management",
       "ar": "السيارات",
@@ -504,6 +510,12 @@
       "section": "Fleet Management",
       "ar": "الحمولات",
       "en": "Shipments"
+    },
+    {
+      "key": "/system/fleet/requests",
+      "section": "Fleet Management",
+      "ar": "طلبات من المبيعات",
+      "en": "Requests from Sales"
     },
     {
       "key": "/system/fleet/arrivals",

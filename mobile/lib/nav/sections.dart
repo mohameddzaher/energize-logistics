@@ -102,6 +102,7 @@ import '../screens/admin_complaints.dart';
 import '../screens/so_insights.dart';
 import '../screens/shipment_requests.dart';
 import '../screens/vendors_mgmt.dart';
+import '../screens/vendors_mgmt_files.dart';
 import '../screens/shipment_orders_chat.dart';
 import '../screens/shipment_orders_fleet.dart';
 import '../screens/shipment_orders_settings.dart';
@@ -352,6 +353,7 @@ List<AppSection> sectionsFor(AuthProvider auth) {
         // Expected arrivals: tappable cards, as on the web.
         AppPage('المتوقع للوصول', 'Expected arrivals', Icons.schedule_outlined, (c) => const FleetArrivalsScreen(), path: '/system/fleet/arrivals'),
         AppPage('الشحنات والمتابعة', 'Shipments', Icons.inventory_2_outlined, (c) => const FleetShipmentsScreen(), path: '/system/fleet'),
+        AppPage('طلبات من المبيعات', 'Requests from sales', Icons.move_to_inbox_outlined, (c) => const ShipmentRequestsScreen(mode: 'fleet'), path: '/system/fleet/requests'),
         AppPage('السائقون', 'Drivers', Icons.badge_outlined, (c) => ResourceScreen(config: fleetDriversCfg), path: '/system/fleet/drivers'),
         AppPage('تقييم السائقين', 'Driver KPIs', Icons.speed_outlined, (c) => const FleetDriverKpisScreen(), path: '/system/fleet/driver-kpis'),
         AppPage('السيارات', 'Vehicles', Icons.local_shipping_outlined, (c) => ResourceScreen(config: fleetVehiclesCfg), path: '/system/fleet/vehicles'),
@@ -712,6 +714,7 @@ List<AppSection> sectionsFor(AuthProvider auth) {
         AppPage('التحليل التشغيلي اليومي', 'Daily operations', Icons.today_outlined, (c) => const VendorsDailyScreen(), path: '/system/vendors-mgmt/daily'),
         AppPage('الطلبات من المبيعات', 'Requests from sales', Icons.move_to_inbox_outlined, (c) => const ShipmentRequestsScreen(mode: 'place'), path: '/system/vendors-mgmt/requests'),
         AppPage('الموردون', 'Vendors', Icons.business_outlined, (c) => const VendorsListScreen(), path: '/system/vendors-mgmt/vendors'),
+        AppPage('اعتماد الموردين', 'Carrier approvals', Icons.fact_check_outlined, (c) => const VendorsApprovalsScreen(), path: '/system/vendors-mgmt/approvals'),
         AppPage('السيارات', 'Trucks', Icons.local_shipping_outlined, (c) => const VendorsVehiclesScreen(), path: '/system/vendors-mgmt/vehicles'),
         AppPage('السائقون الأفراد', 'Freelance drivers', Icons.badge_outlined, (c) => const VendorsListScreen(kind: 'freelancer'), path: '/system/vendors-mgmt/drivers'),
         AppPage('التنبيهات', 'Alerts', Icons.notifications_active_outlined, (c) => const VendorsAlertsScreen(), path: '/system/vendors-mgmt/alerts'),

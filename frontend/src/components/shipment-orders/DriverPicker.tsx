@@ -20,7 +20,7 @@ const realDate = (v: unknown) => {
 };
 
 export default function DriverPicker({
-  value, onPick, contextDrivers, supplierId, vehicleId, ar, compact, placeholder,
+  value, onPick, contextDrivers, supplierId, vehicleId, ar, compact, placeholder, requireIqama, registeredOnly,
 }: {
   value: string;
   /** Selected driver: registered (`_id` with mobile) or a name typed as is. */
@@ -31,6 +31,10 @@ export default function DriverPicker({
   ar: boolean;
   compact?: boolean;
   placeholder?: string;
+  /** A new driver must carry his iqama number (completing a sales request). */
+  requireIqama?: boolean;
+  /** Only registered drivers: no typed name used as is. */
+  registeredOnly?: boolean;
 }) {
   const { notify } = useDialog();
   const guard = useLatestRequest();
@@ -58,6 +62,8 @@ export default function DriverPicker({
   const save = async (force = false) => {
     const name = form.name.trim();
     if (!name) { notify(ar ? 'اكتب اسم السائق' : 'Enter the driver name', 'error'); return; }
+    const iq = form.residenceNumber.replace(/[٠-٩]/g, (d) => String('٠١٢٣٤٥٦٧٨٩'.indexOf(d))).replace(/\s+/g, '');
+    if (requireIqama && !/^[12]\d{9}$/.test(iq)) { notify(ar ? 'رقمُ الإقامة/الهوية مطلوب: عشرةُ أرقامٍ يبدأ بـ 1 أو 2' : 'Iqama/ID required: 10 digits starting with 1 or 2', 'error'); return; }
     setSaving(true);
     try {
       const r = await api.post<{ driver: OrderDriver; existed?: boolean; matchedBy?: string }>('/api/shipment-orders/drivers', {
@@ -103,7 +109,7 @@ export default function DriverPicker({
           placeholder={ar ? 'اسم السائق *' : 'Driver name *'} className={inp} />
         <PhoneSA compact={compact} value={form.phone} onChange={(v) => setForm((x) => ({ ...x, phone: v }))} />
         <input value={form.residenceNumber} onChange={(e) => setForm((v) => ({ ...v, residenceNumber: e.target.value }))}
-          placeholder={ar ? 'رقم الإقامة / الهوية (اختياري)' : 'Iqama / ID number (optional)'} dir="ltr" className={inp} />
+          placeholder={requireIqama ? (ar ? 'رقم الإقامة / الهوية *' : 'Iqama / ID number *') : (ar ? 'رقم الإقامة / الهوية (اختياري)' : 'Iqama / ID number (optional)')} dir="ltr" className={inp} />
         <p className="text-[11.5px] text-slate-500">
           {ar ? `يُسجَّل في صفحة السوّاق فورًا${supplierId ? ' على المورّد المختار' : ''} — ومن كان مسجَّلًا بنفس الجوال أو الإقامة يُختار بدل تكراره.`
             : `Registered on the drivers page at once${supplierId ? ' under the chosen supplier' : ''} — an existing driver with the same phone or iqama is picked instead.`}
@@ -125,11 +131,12 @@ export default function DriverPicker({
     <div className="flex gap-2">
       <div className="flex-1 min-w-0">
         <SearchableSelect
-          value={value} allowCustom searchAfter={0}
+          value={value} allowCustom={!registeredOnly} searchAfter={0}
           onSearch={search} loading={busy}
           customHint={(x) => (ar ? `استعمل «${x}» كما كُتب` : `Use “${x}” as typed`)}
           onChange={(x) => {
             const d = [...hits, ...contextDrivers].find((y) => y.name === x);
+            if (registeredOnly && !d) return;
             onPick({ name: x, phone: realVal(d?.phone) || undefined, driver: d });
           }}
           placeholder={placeholder || (ar ? 'يُملأ تلقائياً عند اختيار السيارة' : 'Autofills from the vehicle')}

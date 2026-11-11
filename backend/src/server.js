@@ -481,6 +481,8 @@ if (!DOCS_ONLY) connectDB().then(async () => {
     startBusinessReviewSweep();
     // Pending sponsorship transfer: alert HR twice a day until the employee leaves the system.
     startHrTransferAlerts();
+    // Carrier contracts ending soon or ended are announced to the vendors section once per state.
+    try { require('./jobs/vendorContractAlerts').startVendorContractAlerts(); } catch (e) { console.error('[vendor-contracts] start:', e.message); }
     // Leave start/return flips the employee's work status on the day.
     try { require('./utils/leaveReturn').startLeaveReturnSync(); } catch (e) { console.error('[leave-sync] start:', e.message); }
     // Customs nets are always derived now; legacy rows get a price that keeps their typed net.
@@ -494,6 +496,8 @@ if (!DOCS_ONLY) connectDB().then(async () => {
     // B2C duty-check records and their photos are purged after fourteen days. See jobs/b2cDutyPurge.
     try { require('./jobs/b2cDutyPurge').startB2cDutyPurge(); } catch (e) { console.error('[duty-purge] start:', e.message); }
     // A customer created by a direct write is linked to its parent customer hourly (services/customerHub).
+    // Shipment-request claims last one hour; the sweep releases those nobody reads.
+    try { require('./controllers/shipmentRequestsController').startClaimSweep(); } catch (e) { console.error('[sr-claims] start:', e.message); }
     try { require('./services/customerHub').startSweep(); } catch (e) { console.error('[customerHub] start:', e.message); }
     // Exports interrupted by a deploy are resumed, so no request stays in progress forever.
     try { require('./controllers/exportJobsController').resumeInterrupted(); } catch (e) { /* */ }

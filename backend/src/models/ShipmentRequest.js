@@ -10,9 +10,12 @@ const mongoose = require('mongoose');
 const logEntry = new mongoose.Schema({
   action: {
     type: String,
-    enum: ['created', 'edited', 'resubmitted', 'claimed', 'released', 'placed', 'completed', 'rejected', 'cancelled'],
+    enum: ['created', 'edited', 'resubmitted', 'claimed', 'released', 'expired', 'placed', 'completed', 'rejected', 'cancelled',
+      'sourced', 'sourcing_edited', 'sourcing_deleted', 'approval_requested', 'approved', 'returned', 'declined'],
     required: true,
   },
+  // Which team acted: a fleet member is shown as the team («النقل الثقيل»), while `by` keeps the real account for audit.
+  team: { type: String, enum: ['', 'vendors', 'fleet'], default: '' },
   note: { type: String, trim: true, default: '' },
   reason: { type: String, trim: true, default: '' },
   order: { type: mongoose.Schema.Types.ObjectId, ref: 'ShipmentOrder', default: null },
@@ -29,10 +32,34 @@ const placedTruck = new mongoose.Schema({
   vehiclePlate: { type: String, default: '' },
   driverName: { type: String, default: '' },
   truckType: { type: String, default: '' },   // the type the vendors team actually sent
+  team: { type: String, enum: ['', 'vendors', 'fleet'], default: '' },
+  /** Our own truck: the linked fleet load created with the order (services/fleetOrderLink). */
+  fleetShipment: { type: mongoose.Schema.Types.ObjectId, ref: 'FleetShipment', default: null },
+  sourcingRep: { type: mongoose.Schema.Types.ObjectId, ref: 'User', default: null },
+  sourcingRepName: { type: String, default: '' },
+  /** «بمساعدة»: a colleague who helped find this truck; credited in team performance, not as the sourcing person. */
+  helper: { type: mongoose.Schema.Types.ObjectId, ref: 'User', default: null },
+  helperName: { type: String, default: '' },
   at: { type: Date, default: Date.now },
   by: { type: mongoose.Schema.Types.ObjectId, ref: 'User', default: null },
   byName: { type: String, default: '' },
 }, { _id: false });
+
+/**
+ * «تحصيل السيارات»: a team member's note that he found N trucks for this request. A follow-up aid only: the placed
+ * counts (placed[]) stay the real completions into transport orders.
+ */
+const sourcingEntry = new mongoose.Schema({
+  count: { type: Number, required: true, min: 1, max: 25 },
+  team: { type: String, enum: ['vendors', 'fleet'], default: 'vendors' },
+  by: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
+  byName: { type: String, default: '' },
+  helper: { type: mongoose.Schema.Types.ObjectId, ref: 'User', default: null },
+  helperName: { type: String, default: '' },
+  note: { type: String, trim: true, default: '' },
+  at: { type: Date, default: Date.now },
+  editedAt: { type: Date, default: null },
+}, { _id: true });
 
 const shipmentRequestSchema = new mongoose.Schema({
   number: { type: Number, unique: true, index: true },
@@ -70,12 +97,24 @@ const shipmentRequestSchema = new mongoose.Schema({
   /** How many identical trucks the customer asked for; each placed truck becomes its own transport order. */
   trucks: { type: Number, default: 1, min: 1, max: 25 },
 
+  /**
+   * Sales-manager approval: a sales rep's request reaches the working board only once approved. Missing means approved
+   * (requests from before the rule, and those created by the manager, top roles or other sections).
+   */
+  approvalStatus: { type: String, enum: ['pending', 'approved', 'returned', 'rejected'], default: undefined, index: true },
+  approvalReason: { type: String, trim: true, default: '' },
+  approvalByName: { type: String, default: '' },
+  approvalAt: { type: Date, default: null },
+
   // Vendors half.
   placed: { type: [placedTruck], default: [] },
   /** The vendors team member working the request, so two people do not place the same load. */
   handler: { type: mongoose.Schema.Types.ObjectId, ref: 'User', default: null, index: true },
   handlerName: { type: String, default: '' },
   handledAt: { type: Date, default: null },
+  /** A claim lasts one hour; after it the request is released on the next read or by the sweep (controller expireClaims). */
+  claimedUntil: { type: Date, default: null },
+  handlerTeam: { type: String, enum: ['', 'vendors', 'fleet'], default: '' },
   rejectReason: { type: String, trim: true, default: '', index: true },
   rejectNote: { type: String, trim: true, default: '' },
   rejectedAt: { type: Date, default: null },
@@ -86,6 +125,8 @@ const shipmentRequestSchema = new mongoose.Schema({
   /** When the request first reached a final state, for the time-to-place measure. */
   closedAt: { type: Date, default: null },
 
+  sourcing: { type: [sourcingEntry], default: [] },
+
   log: { type: [logEntry], default: [] },
   createdBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User', default: null, index: true },
   createdByName: { type: String, default: '' },
@@ -94,6 +135,9 @@ const shipmentRequestSchema = new mongoose.Schema({
 
 shipmentRequestSchema.index({ status: 1, createdAt: -1 });
 shipmentRequestSchema.index({ createdAt: -1 });
+shipmentRequestSchema.index({ status: 1, handler: 1, claimedUntil: 1 });
+shipmentRequestSchema.index({ 'sourcing.at': -1 });
+shipmentRequestSchema.index({ 'log.at': -1, 'log.action': 1 });
 
 shipmentRequestSchema.virtual('open').get(function open() {
   return Math.max(0, (this.trucks || 0) - (this.placed || []).length);
@@ -110,5 +154,14 @@ shipmentRequestSchema.pre('save', async function number(next) {
     return next();
   } catch (e) { return next(e); }
 });
+
+/** One settings row: sales members the sales manager delegated to approve requests with him. */
+if (!mongoose.models.ShipmentRequestSettings) {
+  mongoose.model('ShipmentRequestSettings', new mongoose.Schema({
+    key: { type: String, unique: true, default: 'main' },
+    approvers: { type: [{ type: mongoose.Schema.Types.ObjectId, ref: 'User' }], default: [] },
+    updatedByName: { type: String, default: '' },
+  }, { timestamps: true }));
+}
 
 module.exports = mongoose.models.ShipmentRequest || mongoose.model('ShipmentRequest', shipmentRequestSchema);

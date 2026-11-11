@@ -17,6 +17,21 @@ const isVendorLead = (u) => VENDOR_LEADS.includes(roleOf(u));
 /** { sell, buy }: may this user see the selling price / the purchase side (buy, advance, driver fare). */
 const priceView = (u) => ({ sell: !isVendorRole(u), buy: !isSalesRole(u) });
 
+const FLEET_ROLES = ['fleet_manager', 'fleet_supervisor'];
+/**
+ * Selling price on a shipment request (owner, 2026-11-11): in Operations only the manager (and whoever holds his
+ * rights, the team leader) sees it; operations staff complete trucks on purchase alone. The fleet never sees the
+ * order's selling price. Every other role follows priceView.
+ */
+const requestSellVisible = (u) => {
+  if (!priceView(u).sell) return false;
+  const role = roleOf(u);
+  if (FLEET_ROLES.includes(role)) return false;
+  const { rolesOfSection, rightsRoleOf } = require('./roles');
+  if (rolesOfSection('Operations').includes(role)) return rightsRoleOf(role) === 'operations_manager';
+  return true;
+};
+
 // Purchase-side fields of a shipment order; hidden together because any one of them reveals the cost.
 const BUY_FIELDS = ['buyPrice', 'advanceAmount', 'driverRentPrice'];
 const SELL_FIELDS = ['sellPrice'];
@@ -60,5 +75,5 @@ const maskMoney = (u, obj) => {
 module.exports = {
   maskMoney,
   SALES_ROLES, VENDOR_ROLES, VENDOR_LEADS, BUY_FIELDS, SELL_FIELDS,
-  isSalesRole, isVendorRole, isVendorLead, priceView, stripOrderPrices,
+  isSalesRole, isVendorRole, isVendorLead, priceView, stripOrderPrices, requestSellVisible, FLEET_ROLES,
 };

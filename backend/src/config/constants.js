@@ -177,7 +177,8 @@ module.exports = {
     // The vehicles and authorizations manager works in the section.
     'vehicles_manager',
   ],
-  LS2_ADMIN_ROLES: ['super_admin', 'admin', 'it_manager', 'it_specialist', 'operations_manager', 'operations_team_leader', 'location_manager', 'vehicles_manager'],
+  // The data team edits LS2 records too, tire condition percentages above all (owner).
+  LS2_ADMIN_ROLES: ['super_admin', 'admin', 'it_manager', 'it_specialist', 'operations_manager', 'operations_team_leader', 'location_manager', 'vehicles_manager', 'data_manager', 'data_analyst', 'data_entry'],
   // Core roles that see the section in their sidebar (others can still reach the
   // data via direct link / embeds but it isn't pinned to their nav).
   LS2_SECTION_ROLES: ['super_admin', 'admin', 'it_manager', 'it_specialist', 'operations_manager', 'operations_team_leader', 'operations_staff', 'moderator', 'location_manager', 'location_staff'],

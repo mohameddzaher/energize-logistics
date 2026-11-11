@@ -422,7 +422,7 @@ class _Ls2StoreScreenState extends State<Ls2StoreScreen> {
     final name = tr(widget.titleAr, widget.titleEn);
     if (pick == 'movements') {
       try {
-        final d = await Api.instance.get('${widget.base}/movements?limit=1000');
+        final d = await Api.instance.get('${widget.base}/movements?limit=3000');
         if (!mounted) return;
         await exportExcel(context, fileName: 'store-movements', sheets: [(tr('الحركات', 'Movements'), _moveCols, List<Map<String, dynamic>>.from(d['movements'] ?? []))]);
       } catch (e) { _toast(e.toString()); }

@@ -562,6 +562,38 @@ exports.createShipment = async (req, res) => {
   }
 };
 
+/**
+ * The fleet half of a sales request completed on our own truck: the linked load already exists (fleetOrderLink made it
+ * from the transport order), and this writes what only the fleet answers — truck and drivers by id (seat rules apply),
+ * rent, driver expense, Friday bonus, rent/load type, expected arrival, note. Same steps as createShipment.
+ */
+const LINKED_LOAD_INPUTS = ['vehicle', 'driver', 'secondDriver', 'price', 'driverExpense', 'fridayBonus', 'rentType', 'loadType', 'expectedArrival', 'notes'];
+exports.applyLinkedLoadInputs = async (req, loadId, body) => {
+  const load = await FleetShipment.findById(loadId).lean();
+  if (!load) { const e = new Error('حمولةُ الأسطول المرتبطة غير موجودة'); e.status = 400; throw e; }
+  const data = pick(body, LINKED_LOAD_INPUTS);
+  for (const k of ['price', 'driverExpense']) if (data[k] !== undefined) data[k] = Number(data[k]) || 0;
+  if (data.expectedArrival !== undefined) data.expectedArrival = data.expectedArrival ? new Date(data.expectedArrival) : null;
+  if (!data.secondDriver) delete data.secondDriver;
+  data.fridayBonus = !!data.fridayBonus;
+  await applyFridayBonus(data);
+  const moveNotes = await resolveAssignments(req, data, load);
+  await FleetShipment.updateOne({ _id: load._id }, { $set: data });
+  await logEvent(req, load._id, 'updated', { from: 'shipment_request', fields: Object.keys(data) });
+  for (const line of moveNotes) await logEvent(req, load._id, 'driver_change', { text: line });
+  emit('fleet:updated', { id: String(load._id) });
+  if (data.supervisor && String(data.supervisor) !== String(req.user._id)) {
+    try {
+      await createNotification({
+        recipient: data.supervisor, type: 'shipment_update', title: 'شحنة جديدة',
+        message: `أمر نقل ${load.waybillNumber} — ${load.fromCity || ''} ← ${load.toCity || ''}`,
+        relatedEntity: 'FleetShipment', relatedEntityId: load._id,
+      });
+    } catch (_) { /* a notification never blocks the work */ }
+  }
+  return FleetShipment.findById(load._id).lean();
+};
+
 exports.updateShipment = async (req, res) => {
   try {
     const shipment = await FleetShipment.findById(req.params.id);

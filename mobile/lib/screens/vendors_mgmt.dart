@@ -10,8 +10,9 @@ import '../ui/theme.dart';
 import '../ui/widgets.dart';
 import 'insight_kit.dart';
 import 'shipment_orders_common.dart';
+import 'vendors_mgmt_files.dart';
 
-/// Vendors management («إدارة الموردين»), counterpart of /system/vendors on the web.
+/// Vendors management («إدارة الموردين»), counterpart of /system/vendors-mgmt on the web.
 /// Every activity figure comes from /api/vendors-mgmt, computed from the shipments; the register keeps what the team knows.
 
 const vmEvent = 'vendors:changed';
@@ -255,6 +256,11 @@ class _VendorsOverviewScreenState extends State<VendorsOverviewScreen> with _Liv
     final months = _list(d?['months']);
     final acts = _list(d?['activations']);
     final act = acts.firstWhere((a) => inum(a['month']) == _actMonth, orElse: () => const {});
+    // Every tile opens the carriers it counts.
+    final ml = _list(d?['masterList']);
+    final xl = _list(d?['extActiveList']);
+    String sub(Map<String, dynamic> r) => [if ('${r['owner'] ?? ''}'.isNotEmpty) r['owner'], '${tr('رحلات العام', 'Year')} ${r['trips']}', '${tr('الشهر', 'Month')} ${r['month']}', '${tr('آخر رحلة', 'Last')} ${r['last'] ?? '—'}'].join(' · ');
+    Widget tap(Widget tile, String title, List<Map<String, dynamic>> rows) => vmTapTile(() => vmDrill(context, title, rows, sub), tile);
     return AppScaffold(
       title: Text(tr('تحليل قسم الموردين', 'Vendors analysis')),
       actions: [
@@ -271,16 +277,16 @@ class _VendorsOverviewScreenState extends State<VendorsOverviewScreen> with _Liv
               VmFilterBar(value: _filters, from: '${_month.substring(0, 4)}-01-01', to: _monthEnd(_month), onChanged: (f) { setState(() => _filters = f); reload(); }),
               const SizedBox(height: 6),
               TileWrap([
-                KpiTile(tr('الموردون المعتمدون', 'Master vendors'), fmtNum(k['masterVendors']), color: T.navy),
-                KpiTile(tr('نشطون آخر 3 أشهر', 'Active last 3 months'), fmtNum(k['masterActive3']), color: T.success),
-                KpiTile(tr('نشطون هذا الشهر', 'Active this month'), fmtNum(k['masterActiveMonth']), color: T.success),
-                KpiTile(tr('عقودٌ موقّعة', 'Signed contracts'), fmtNum(k['masterSigned'])),
-                KpiTile(tr('موقّعون غير نشطين', 'Signed but inactive'), fmtNum(k['signedInactive']), color: T.warn),
-                KpiTile(tr('نشطون دون عقد', 'Active, unsigned'), fmtNum(k['activeUnsigned']), color: T.warn),
-                KpiTile(tr('متوقفون', 'Stopped'), fmtNum(k['masterStopped']), color: T.danger),
-                KpiTile(tr('لم يعملوا هذا العام', 'Not worked this year'), fmtNum(k['masterNever']), color: T.inkFaint),
-                KpiTile(tr('شركاتٌ نشطة غير معتمد', 'Active outside master'), fmtNum(k['leadsActive3']), color: T.warn),
-                KpiTile(tr('سائقون أفراد نشطون', 'Active freelancers'), fmtNum(k['freelancersActive3']), color: T.violet),
+                tap(KpiTile(tr('الموردون المعتمدون', 'Master vendors'), fmtNum(k['masterVendors']), color: T.navy), tr('الموردون المعتمدون', 'Master vendors'), ml),
+                tap(KpiTile(tr('نشطون آخر 3 أشهر', 'Active last 3 months'), fmtNum(k['masterActive3']), color: T.success), tr('نشطون آخر 3 أشهر', 'Active last 3 months'), ml.where((m) => m['activeLast3'] == true).toList()),
+                tap(KpiTile(tr('نشطون هذا الشهر', 'Active this month'), fmtNum(k['masterActiveMonth']), color: T.success), tr('نشطون هذا الشهر', 'Active this month'), ml.where((m) => m['activeThisMonth'] == true).toList()),
+                tap(KpiTile(tr('عقودٌ موقّعة', 'Signed contracts'), fmtNum(k['masterSigned'])), tr('متعاقَدٌ معهم', 'Contracted'), ml.where((m) => m['signed'] == true).toList()),
+                tap(KpiTile(tr('موقّعون غير نشطين', 'Signed but inactive'), fmtNum(k['signedInactive']), color: T.warn), tr('موقّعون غير نشطين', 'Signed but inactive'), ml.where((m) => m['signed'] == true && m['activeLast3'] != true).toList()),
+                tap(KpiTile(tr('نشطون دون عقد', 'Active, unsigned'), fmtNum(k['activeUnsigned']), color: T.warn), tr('نشطون دون عقد', 'Active, unsigned'), ml.where((m) => m['signed'] != true && m['activeLast3'] == true).toList()),
+                tap(KpiTile(tr('متوقفون', 'Stopped'), fmtNum(k['masterStopped']), color: T.danger), tr('متوقفون', 'Stopped'), ml.where((m) => m['trend'] == 'stopped').toList()),
+                tap(KpiTile(tr('لم يعملوا هذا العام', 'Not worked this year'), fmtNum(k['masterNever']), color: T.inkFaint), tr('لم يعملوا هذا العام', 'Not worked this year'), ml.where((m) => inum(m['trips']) == 0).toList()),
+                tap(KpiTile(tr('شركاتٌ نشطة غير معتمد', 'Active outside master'), fmtNum(k['leadsActive3']), color: T.warn), tr('شركاتٌ نشطة غير معتمدة', 'Active outside master'), xl.where((m) => m['kind'] == 'outside').toList()),
+                tap(KpiTile(tr('سائقون أفراد نشطون', 'Active freelancers'), fmtNum(k['freelancersActive3']), color: T.violet), tr('سائقون أفراد نشطون', 'Active freelancers'), xl.where((m) => m['kind'] == 'freelancer').toList()),
                 KpiTile(tr('رحلات التشغيل الخارجي', 'External trips'), fmtNum(k['externalTrips'])),
                 KpiTile(tr('رحلات أسطول تنشيط', 'Our fleet trips'), fmtNum(k['fleetTrips']), color: T.navy),
                 KpiTile(tr('حصّة المعتمدين', 'Master share'), '${k['masterShare'] ?? 0}%', color: T.success),
@@ -288,6 +294,9 @@ class _VendorsOverviewScreenState extends State<VendorsOverviewScreen> with _Liv
                 if (has(k, 'avgTrip')) KpiTile(tr('متوسط الرحلة', 'Avg trip'), soMoney(k['avgTrip'])),
                 KpiTile(tr('جددٌ هذا الشهر', 'New this month'), fmtNum(k['newThisMonth']), color: T.violet),
               ]),
+              VmRegisterStats(query: vmFilterQuery(_filters)),
+              // Team performance cards (sourcing / collection / assist) mount here as their own widget.
+              VmRanking(month: _month, query: vmFilterQuery(_filters)),
               SectionCard(
                 title: tr('الرحلات شهريًا ونسبة القائمة المعتمدة', 'Trips per month and master share'),
                 note: tr('الرقم فوق كلّ عمود = حصّة المعتمدين من التشغيل الخارجي (دون أسطول تنشيط)', 'Number above each column = approved share of external trips (excluding our fleet)'),
@@ -488,6 +497,8 @@ class _VendorsDailyScreenState extends State<VendorsDailyScreen> with _LiveLoad 
                 KpiTile(tr('حصّة أسطول تنشيط', 'Our fleet share'), '${t['fleetShare'] ?? 0}%', color: T.navy),
                 KpiTile(tr('الأفراد من التشغيل الخارجي', 'Freelancers of external'), '${t['freelancerShareExt'] ?? 0}%', color: T.violet),
               ]),
+              VmRegisterStats(query: vmFilterQuery(_filters)),
+              // Team performance cards (sourcing / collection / assist) mount here as their own widget.
               if (inum(d['target']?['daily']) > 0) Text('${tr('المستهدَف اليومي', 'Daily target')}: ${d['target']['daily']} · ${tr('مستهدَف الفترة', 'Period target')}: ${d['target']['period']}', style: const TextStyle(fontSize: 12, color: T.inkFaint)),
               if (days.length > 1)
                 SectionCard(
@@ -614,6 +625,7 @@ class _VendorsListScreenState extends State<VendorsListScreen> with _LiveLoad {
   String _contract = '';
   String _trend = '';
   String _active = '';
+  String _papers = '';
   int _seq = 0;
 
   @override
@@ -646,14 +658,25 @@ class _VendorsListScreenState extends State<VendorsListScreen> with _LiveLoad {
       if (_active == 'month' && v['activeThisMonth'] != true) return false;
       if (_active == '3m' && v['activeLast3'] != true) return false;
       if (_active == 'inactive' && v['activeLast3'] == true) return false;
+      if (_papers == 'missingDocs' && !(v['id'] != null && v['kind'] != 'freelancer' && (v['docsMissing'] as List? ?? const []).isNotEmpty)) return false;
+      if (_papers == 'contracted' && v['contracted'] != true) return false;
+      if (_papers == 'notContracted' && !(v['id'] != null && v['kind'] != 'freelancer' && v['contracted'] != true)) return false;
+      if (_papers == 'expiring' && !(v['contractState'] == 'expiring' || v['contractState'] == 'expired')) return false;
+      if (_papers == 'pending' && !(v['approvalStatus'] == 'pending' || v['approvalStatus'] == 'returned')) return false;
       if (q.isNotEmpty && !_fold('${v['name']} ${v['phone'] ?? ''} ${v['headOffice'] ?? ''} ${v['representative'] ?? ''}').contains(q)) return false;
       return true;
     }).toList();
   }
 
   Future<void> _create() async {
-    final ok = await Navigator.push<bool>(context, MaterialPageRoute(builder: (_) => VendorEditScreen(vendor: {if (widget.kind == 'freelancer') 'type': 'freelancer'})));
-    if (ok == true) reload();
+    // A freelance driver keeps the short form; a company joins with its required papers and goes to approval.
+    if (widget.kind == 'freelancer') {
+      final ok = await Navigator.push<bool>(context, MaterialPageRoute(builder: (_) => const VendorEditScreen(vendor: {'type': 'freelancer'})));
+      if (ok == true) reload();
+      return;
+    }
+    final id = await Navigator.push<String>(context, MaterialPageRoute(builder: (_) => const VendorNewScreen()));
+    if (id != null && id.isNotEmpty && mounted) { reload(); openVendor(context, id: id); }
   }
 
   Widget _dd(String label, String value, List<(String, String)> items, void Function(String) on) => Padding(
@@ -680,6 +703,7 @@ class _VendorsListScreenState extends State<VendorsListScreen> with _LiveLoad {
           _dd(tr('كل المسؤولين', 'All owners'), _owner, [for (final o in _owners) (o, o)], (v) => _owner = v),
           _dd(tr('كل العقود', 'All contracts'), _contract, [('signed', tr('موقّع', 'Signed')), ('unsigned', tr('غير موقّع', 'Unsigned'))], (v) => _contract = v),
           _dd(tr('كل الاتجاهات', 'All trends'), _trend, [for (final e in trendLabels.entries) (e.key, tr(e.value.$1, e.value.$2))], (v) => _trend = v),
+          _dd(tr('المستندات والعقد', 'Papers & contract'), _papers, [('missingDocs', tr('مستنداتٌ ناقصة', 'Missing papers')), ('contracted', tr('متعاقَد رسميًّا', 'Contracted')), ('notContracted', tr('غير متعاقَد', 'Not contracted')), ('expiring', tr('عقودٌ تنتهي / انتهت', 'Contracts ending')), ('pending', tr('بانتظار الاعتماد', 'Pending approval'))], (v) => _papers = v),
           _dd(tr('كل النشاط', 'Any activity'), _active, [('month', tr('نشط هذا الشهر', 'Active this month')), ('3m', tr('نشط آخر 3 أشهر', 'Active last 3 months')), ('inactive', tr('غير نشط', 'Inactive'))], (v) => _active = v),
         ])),
         Padding(padding: const EdgeInsets.symmetric(horizontal: 14), child: Align(alignment: AlignmentDirectional.centerStart, child: Text('${rows.length} ${tr('مورّد', 'vendors')}', style: const TextStyle(fontSize: 12, color: T.inkFaint)))),
@@ -707,6 +731,9 @@ class _VendorsListScreenState extends State<VendorsListScreen> with _LiveLoad {
                             if ('${v['contractStatus'] ?? ''}'.isNotEmpty) Chip2('${v['contractStatus']}', v['signed'] == true ? T.success : T.warn),
                             if ('${v['leadPriority'] ?? ''}'.isNotEmpty) Chip2('${v['leadPriority']}', T.danger),
                             if (v['unregistered'] == true) Chip2(tr('غير مسجّل', 'Unregistered'), T.inkFaint),
+                            if (v['approvalStatus'] != null && v['approvalStatus'] != 'approved') vmApprovalChip(v['approvalStatus']),
+                            if (v['id'] != null && v['kind'] != 'freelancer' && (v['docsMissing'] as List? ?? const []).isNotEmpty) Chip2('${tr('ينقصه', 'Missing')} ${(v['docsMissing'] as List).length} ${tr('مستند', 'papers')}', T.danger),
+                            if (v['contracted'] == true) Chip2('${tr('متعاقَد', 'Contracted')}${v['contractEndDate'] != null ? ' · ${v['contractEndDate']}' : ''}', v['contractState'] == 'expired' ? T.danger : v['contractState'] == 'expiring' ? T.warn : T.success),
                           ]),
                           const SizedBox(height: 4),
                           Text('${tr('رحلات العام', 'Year trips')} ${fmtNum(v['trips'])} · ${tr('هذا الشهر', 'This month')} ${v['month'] ?? 0} · ${tr('آخر رحلة', 'Last')} ${v['last'] ?? '—'}${has(v, 'avg') && inum(v['avg']) > 0 ? ' · ${tr('متوسط', 'avg')} ${soMoney(v['avg'])}' : ''}${v['completeness'] != null && v['id'] != null ? ' · ${tr('اكتمال الملف', 'File')} ${v['completeness']}%' : ''}',
@@ -769,8 +796,8 @@ class _VendorCardScreenState extends State<VendorCardScreen> with _LiveLoad {
 
   Future<void> _register() async {
     final v = Map<String, dynamic>.from(_d?['vendor'] ?? {});
-    final ok = await Navigator.push<bool>(context, MaterialPageRoute(builder: (_) => VendorEditScreen(vendor: {'name': v['name'], 'type': 'company'})));
-    if (ok == true) reload();
+    final id = await Navigator.push<String>(context, MaterialPageRoute(builder: (_) => VendorNewScreen(name: '${v['name'] ?? ''}', aliases: [for (final n in (_d?['names'] as List? ?? const [])) '$n'])));
+    if (id != null && id.isNotEmpty) { _id = id; reload(); }
   }
 
   Widget _kv(String k, dynamic v) => '${v ?? ''}'.trim().isEmpty ? const SizedBox.shrink() : Padding(
@@ -815,6 +842,8 @@ class _VendorCardScreenState extends State<VendorCardScreen> with _LiveLoad {
                   if (!registered) Chip2(tr('غير مسجّل في السجلّ', 'Not in the register'), T.danger),
                 ]),
                 const SizedBox(height: 8),
+                _kv(tr('صاحب المنشأة', 'Owner'), [v['ownerName'], v['ownerPhone']].where((e) => '${e ?? ''}'.isNotEmpty).join(' · ')),
+                _kv(tr('المشغّل', 'Operator'), [v['operatorName'], v['operatorPhone']].where((e) => '${e ?? ''}'.isNotEmpty).join(' · ')),
                 _kv(tr('الجوال', 'Phone'), v['phone']),
                 _kv(tr('ممثل المورّد', 'Representative'), v['representative']),
                 _kv(tr('المقر', 'Head office'), v['headOffice']),
@@ -838,6 +867,9 @@ class _VendorCardScreenState extends State<VendorCardScreen> with _LiveLoad {
                 ],
                 if (!registered) Padding(padding: const EdgeInsets.only(top: 8), child: FilledButton.icon(onPressed: _register, icon: const Icon(Icons.app_registration), label: Text(tr('تسجيله في سجلّ الموردين', 'Register this vendor')))),
               ])),
+              if (registered) VmApprovalCard(vendorId: _id!, approval: Map<String, dynamic>.from(d['approval'] ?? {}), onChanged: reload),
+              if (registered) VmPapersCard(card: d, onChanged: reload),
+              if (registered) VmContractCard(card: d, onChanged: reload),
               const SizedBox(height: 10),
               TileWrap([
                 KpiTile(tr('رحلات محقّقة', 'Trips'), fmtNum(a['trips']), color: T.navy),
@@ -967,7 +999,8 @@ class VendorEditScreen extends StatefulWidget {
 }
 
 const _textFields = [
-  ('name', 'الاسم *', 'Name *'), ('phone', 'الجوال', 'Phone'), ('representative', 'ممثل المورّد', 'Representative'), ('headOffice', 'المقر الرئيسي', 'Head office'),
+  ('name', 'الاسم *', 'Name *'), ('ownerName', 'اسم صاحب المنشأة', 'Owner name'), ('ownerPhone', 'جوال صاحب المنشأة', 'Owner mobile'),
+  ('operatorName', 'المشغّل (من نتعامل معه)', 'Operator'), ('operatorPhone', 'جوال المشغّل', 'Operator mobile'), ('phone', 'الجوال', 'Phone'), ('representative', 'ممثل المورّد', 'Representative'), ('headOffice', 'المقر الرئيسي', 'Head office'),
   ('destinations', 'الوجهات', 'Destinations'), ('vehicleTypes', 'نوع السيارات', 'Vehicle types'), ('fleetSize', 'عدد السيارات', 'Fleet size'),
   ('energizeRep', 'مندوب تنشيط', 'Our rep'), ('followOwner', 'مسؤول المتابعة', 'Follow-up owner'), ('contractDate', 'تاريخ التعاقد', 'Contract date'),
   ('paymentTermDays', 'مدّة السداد (أيام)', 'Payment term (days)'), ('financeCode', 'كود المورّد (المالية)', 'Finance code'), ('commercialRegister', 'السجلّ التجاري', 'CR'),

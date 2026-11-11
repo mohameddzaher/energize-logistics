@@ -17,6 +17,10 @@ const BY_ID: Record<string, (id: string) => string> = {
   // A sales request reaches the vendors team's inbox; the answer (placed or rejected) reaches the sales member's requests.
   ShipmentRequest: (id) => `/system/vendors-mgmt/requests?id=${id}`,
   ShipmentRequestReply: (id) => `/system/shipment-orders/request?id=${id}`,
+  // A sales rep's request waiting for the sales manager (or a delegate) opens the approvals.
+  ShipmentRequestApproval: (id) => `/system/sales/shipment-request?id=${id}`,
+  // A carrier contract ending or ended opens the carrier's card.
+  ShipmentOrderSupplier: (id) => `/system/vendors-mgmt/vendors/${id}`,
 };
 
 /** Entities that open on their section's screen. */

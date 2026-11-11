@@ -9,9 +9,14 @@ const DATA = ['data_manager', 'data_analyst', 'data_entry'];
 const SO_TEAM = ['shipment_orders_manager', 'shipment_orders_staff', 'operations_manager', 'operations_team_leader', 'operations_staff'];
 export const ASK_ROLES = [...TOP, ...DATA, ...SALES_ROLES, ...SO_TEAM];
 export const PLACE_ROLES = [...TOP, ...DATA, ...VENDOR_ROLES, ...SO_TEAM];
-export const READ_ROLES = [...new Set([...ASK_ROLES, ...PLACE_ROLES, 'shipment_orders_followup'])];
+export const FLEET_TEAM_ROLES = ['fleet_manager', 'fleet_supervisor'];
+export const FLEET_PLACE_ROLES = [...TOP, ...DATA, 'operations_manager', 'operations_team_leader', 'operations_staff', ...FLEET_TEAM_ROLES];
+export const READ_ROLES = [...new Set([...ASK_ROLES, ...PLACE_ROLES, ...FLEET_TEAM_ROLES, 'shipment_orders_followup'])];
 export const canAsk = (u: RoleOrUser) => ASK_ROLES.includes(roleOf(u));
 export const canPlace = (u: RoleOrUser) => PLACE_ROLES.includes(roleOf(u));
+export const canFleetPlace = (u: RoleOrUser) => FLEET_PLACE_ROLES.includes(roleOf(u));
+/** The fleet is credited as one team on requests. */
+export const FLEET_NAME = 'النقل الثقيل';
 export const isSalesUser = (u: RoleOrUser) => SALES_ROLES.includes(roleOf(u));
 export const isVendorUser = (u: RoleOrUser) => VENDOR_ROLES.includes(roleOf(u));
 
@@ -30,6 +35,14 @@ export const LOG_LABEL: Record<string, { ar: string; en: string }> = {
   resubmitted: { ar: 'أُعيد إرساله', en: 'Resent' },
   claimed: { ar: 'تولّاه', en: 'Taken by' },
   released: { ar: 'تخلّى عنه', en: 'Released' },
+  expired: { ar: 'انتهت ساعةُ التولّي', en: 'Claim expired' },
+  sourced: { ar: 'سجّل تحصيلَ سيارات', en: 'Trucks sourced' },
+  sourcing_edited: { ar: 'عدّل تحصيلَ السيارات', en: 'Sourcing edited' },
+  sourcing_deleted: { ar: 'حذف تحصيلَ سيارات', en: 'Sourcing deleted' },
+  approval_requested: { ar: 'أُرسل لاعتماد مدير المبيعات', en: 'Sent for approval' },
+  approved: { ar: 'اعتمده', en: 'Approved by' },
+  returned: { ar: 'أعاده للتعديل', en: 'Returned for edits by' },
+  declined: { ar: 'رفضه مدير المبيعات', en: 'Declined by' },
   placed: { ar: 'أُنشئ أمر نقل', en: 'Transport order created' },
   completed: { ar: 'اكتمل', en: 'Completed' },
   rejected: { ar: 'رُفض', en: 'Rejected' },
@@ -44,12 +57,32 @@ export interface ShipmentRequest {
   pickupTime?: string | null; startTime?: string | null; arrivalTime?: string | null;
   sellPrice?: number | null; paymentSubtype?: string; customFields?: Record<string, any>;
   trucks: number; open: number;
-  placed: { order: string; waybillNumber: number; supplierName: string; vehiclePlate: string; driverName: string; at: string; byName: string }[];
-  handler?: string | null; handlerName?: string; handledAt?: string | null;
+  placed: { order: string; waybillNumber: number; supplierName: string; vehiclePlate: string; driverName: string; at: string; byName: string; truckType?: string; team?: string; helperName?: string; sourcingRepName?: string }[];
+  handler?: string | null; handlerName?: string; handledAt?: string | null; claimedUntil?: string | null; handlerTeam?: string;
+  sourcing?: SourcingEntry[]; sourced?: number;
+  approvalStatus?: ApprovalStatus | null; approvalReason?: string; approvalByName?: string; approvalAt?: string | null;
+  truckTypes?: string[]; createdBy?: string;
   rejectReason?: string; rejectNote?: string; rejectedAt?: string | null; rejectedByName?: string; resubmits?: number;
   log: { _id: string; action: string; note?: string; reason?: string; waybillNumber?: number | null; at: string; byName?: string }[];
   createdByName?: string; createdAt: string; updatedAt: string;
 }
+
+export type ApprovalStatus = 'pending' | 'approved' | 'returned' | 'rejected';
+export interface SourcingEntry { _id: string; count: number; team: 'vendors' | 'fleet'; by: string; byName: string; helper?: string | null; helperName?: string; note?: string; at: string; editedAt?: string | null }
+export const APPROVAL_LABEL: Record<ApprovalStatus, { ar: string; en: string; tone: string }> = {
+  pending: { ar: 'بانتظار اعتماد مدير المبيعات', en: 'Waiting for sales manager', tone: 'text-amber-700' },
+  approved: { ar: 'معتمد', en: 'Approved', tone: 'text-emerald-700' },
+  returned: { ar: 'أُعيد للتعديل', en: 'Returned for edits', tone: 'text-orange-700' },
+  rejected: { ar: 'رفضه مدير المبيعات', en: 'Declined', tone: 'text-red-700' },
+};
+/** Missing approval means approved (requests from before the rule). */
+export const approvalOf = (r: Pick<ShipmentRequest, 'approvalStatus'>): ApprovalStatus => (r.approvalStatus || 'approved');
+/** «تحصيل السيارات» in one line: sourced of asked, and how many are still to find. */
+export const sourcingLine = (r: Pick<ShipmentRequest, 'sourced' | 'trucks'>, ar: boolean) => {
+  const n = r.sourced || 0;
+  const left = Math.max(0, (r.trucks || 0) - n);
+  return ar ? `${n}/${r.trucks}${left ? ` · بقي ${left}` : ''}` : `${n}/${r.trucks}${left ? ` · ${left} left` : ''}`;
+};
 
 /** Folded city key: two spellings of one city are one city. */
 export const cityFold = (s: string) => String(s || '')
@@ -65,7 +98,9 @@ export const findRoute = (c: any, from: string, to: string) => {
 };
 
 /** Keys of the shipment form that the vendors team answers when placing; the request form never shows them. */
-export const VENDOR_FORM_KEYS = new Set(['buyPrice', 'advanceAmount', 'driverRentPrice', 'driverName', 'driverPhone', 'vehicleName', 'driverRentType', 'status', 'customer', 'waybillNumber', 'agentName']);
+// The pickup/start/arrival times are written by whoever completes the truck, so the request form leaves them out too.
+export const VENDOR_FORM_KEYS = new Set(['buyPrice', 'advanceAmount', 'driverRentPrice', 'driverName', 'driverPhone', 'vehicleName', 'driverRentType', 'status', 'customer', 'waybillNumber', 'agentName',
+  'pickupTime', 'startTime', 'arrivalTime']);
 
 /**
  * Where the vendors team stands on a request, in one line for sales: not started, partly placed (x of y), done,

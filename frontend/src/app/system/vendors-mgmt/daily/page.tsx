@@ -16,9 +16,11 @@ import ExportMenu from '@/components/ls2/ExportMenu';
 import { Kpi, Panel, BarList, DataGrid, LiveDot, PRESETS, presetRange, fmtInt, fmtMoney, fmtPct, ORANGE } from '@/components/analytics/AnalyticsKit';
 import { KIND, kindLabel, vendorHref } from '@/lib/vendors';
 import VendorFilters, { vendorFilterQuery, type VendorFilterState } from '@/components/vendors/VendorFilters';
+import VendorRegisterStats from '@/components/vendors/VendorRegisterStats';
 import { PAYMENT_SUBTYPES } from '@/lib/paymentKind';
 import { ResponsiveContainer, ComposedChart, Bar, Line, XAxis, YAxis, Tooltip, CartesianGrid, Legend, ReferenceLine } from 'recharts';
 import { Activity, Printer } from 'lucide-react';
+import TeamPerformance from '@/components/vendors/TeamPerformance';
 
 type Row = Record<string, any>;
 const BLAME: [string, string, string][] = [['rep', 'إلغاء من المندوب', 'By the rep'], ['noTruck', 'لا سيارة · علينا', 'No truck · on us'], ['driver', 'إلغاء من السائق', 'By the driver'], ['customer', 'إلغاء من العميل', 'By the customer'], ['none', 'بلا سبب', 'No reason'], ['other', 'أسبابٌ أخرى', 'Other']];
@@ -112,6 +114,10 @@ export default function VendorsDailyPage() {
         {money && <Kpi ar={ar} label={t('شراءٌ بدون تنشيط', 'Purchase excl. our fleet')} value={fmtMoney(T.buyExt)} />}
         <Kpi ar={ar} label={t('اعتمادٌ على الأفراد', 'Reliance on freelancers')} value={fmtPct(T.freelancerShareExt)} tone={T.freelancerShareExt > 35 ? 'warn' : undefined} sub={t('من التشغيل الخارجي', 'of external work')} />
       </div>
+
+      <div className="print:hidden"><VendorRegisterStats ar={ar} query={fq} /></div>
+
+      {/* Team performance cards (sourcing / collection / assist) mount here as their own component. */}
 
       <Panel title={t('حسب اليوم', 'By day')} subtitle={t('المحقّق وغير المحقّق يوميًّا، والخطّ المتقطّع = المستهدَف', 'Fulfilled and not, daily; dashed line = target')}>
         <div className="h-72">
@@ -213,7 +219,7 @@ export default function VendorsDailyPage() {
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-        <Panel title={t('مَن ساعد في الرحلات المحقّقة؟ (فريق الموردين)', 'Who placed the fulfilled trips? (vendors team)')} subtitle={t('من أنشأ أمر النقل من طلبات المبيعات أو سجّله من الفريق', 'From requests placed, or created by the team')} pad={false}>
+        <Panel title={t('مَن ساعد في الرحلات المحقّقة؟ (فريق الموردين)', 'Who placed the fulfilled trips? (vendors team)')} subtitle={<>{t('من أنشأ أمر النقل من طلبات المبيعات أو سجّله من الفريق', 'From requests placed, or created by the team')} · <a href="#team-performance" className="font-semibold text-[#f37121] hover:underline">{t('التفاصيل: أداء الفريق', 'Details: team performance')}</a></>} pad={false}>
           <DataGrid ar={ar} rows={d.helpers} rowKey={(r) => r.name} empty={t('لا رحلات أسندها الفريق في الفترة', 'None in the period')} cols={[
             { key: 'name', label: t('المساعد', 'Team member'), render: (r) => <span className="font-semibold">{r.name}</span> },
             { key: 'trips', label: t('رحلات محقّقة', 'Trips'), num: true }, { key: 'share', label: t('% من المحقّق', '% of done'), num: true, render: (r) => fmtPct(r.share) },
@@ -228,6 +234,8 @@ export default function VendorsDailyPage() {
           ]} />
         </Panel>
       </div>
+
+      <TeamPerformance />
 
       <Panel title={t('المسارات التشغيلية وأسعارها', 'Operating routes and their prices')} subtitle={t('السعر (عدد الرحلات التي نُفّذت به) · البرتقالي = السعر الأكثر تكرارًا · أرخص مورّد = أقلّ سعر · أفضل مورّد = الأكثر رحلاتٍ بسعرٍ يساوي الأكثر تكرارًا أو أقل', 'Price (trips at it) · orange = most frequent · cheapest = lowest · best = most trips at or below the mode')}>
         <div className="flex flex-wrap gap-2 mb-3">

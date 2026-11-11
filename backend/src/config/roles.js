@@ -190,7 +190,9 @@ const rightsRoleOf = (role) => RIGHTS_OF[role] || role;
  * vendors and shipment follow-up are teams inside Operations, under the operations manager.
  */
 const ORG_PARENT = { 'Vendors Management': 'Operations' };
-const ORG_ROLE = { shipment_orders_followup: 'Operations' };
+// The data team is its own department (إدارة البيانات ودعم القرار) under its manager, though its roles are global in permissions.
+const DATA_DEPT = 'Data & Decision Support';
+const ORG_ROLE = { shipment_orders_followup: 'Operations', data_manager: DATA_DEPT, data_analyst: DATA_DEPT, data_entry: DATA_DEPT };
 const orgSectionOfRole = (role) => {
   if (ORG_ROLE[role]) return ORG_ROLE[role];
   const s = sectionOfRole(role);

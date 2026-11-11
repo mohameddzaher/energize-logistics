@@ -99,6 +99,7 @@ const departments = () => [
   ...SECTION_KEYS,
   'Executive',
   'Administration',
+  'Data & Decision Support',
 // A team inside another department (vendors inside Operations, config/roles ORG_PARENT) is not a department of its own here.
 ].filter((v, i, a) => a.indexOf(v) === i && !require('./roles').ORG_PARENT[v]);
 

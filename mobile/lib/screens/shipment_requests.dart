@@ -77,7 +77,53 @@ const _logLabels = <String, (String, String)>{
   'completed': ('اكتمل', 'Completed'),
   'rejected': ('رُفض', 'Rejected'),
   'cancelled': ('سُحب', 'Withdrawn'),
+  'expired': ('انتهت ساعة التولّي', 'Claim expired'),
+  'sourced': ('سجّل تحصيل سيارات', 'Trucks sourced'),
+  'sourcing_edited': ('عُدّل تحصيل السيارات', 'Sourcing edited'),
+  'sourcing_deleted': ('حُذف تحصيل سيارات', 'Sourcing deleted'),
+  'approval_requested': ('أُرسل للاعتماد', 'Sent for approval'),
+  'approved': ('اعتمده مدير المبيعات', 'Approved'),
+  'returned': ('أُعيد للتعديل', 'Returned for edits'),
+  'declined': ('رفضه مدير المبيعات', 'Declined by the sales manager'),
 };
+
+/// Sales-manager approval of a sales rep's request; a missing status means approved.
+const srApproval = <String, (String, String, Color)>{
+  'pending': ('بانتظار اعتماد المدير', 'Awaiting manager approval', T.warn),
+  'approved': ('معتمَد', 'Approved', T.success),
+  'returned': ('أُعيد للتعديل', 'Returned for edits', T.violet),
+  'rejected': ('رفضه مدير المبيعات', 'Declined by the manager', T.danger),
+};
+String srApprovalOf(Map r) => '${r['approvalStatus'] ?? ''}'.isEmpty ? 'approved' : '${r['approvalStatus']}';
+
+/// «تحصيل السيارات»: trucks the team reported finding (a follow-up aid, not completions).
+(int, int, int) srSourced(Map r) {
+  final trucks = inum(r['trucks']).toInt();
+  final sourced = inum(r['sourced'] ?? ((r['sourcing'] as List?) ?? const []).fold<num>(0, (n, e) => n + inum((e as Map)['count']))).toInt();
+  return (sourced, trucks, (trucks - sourced) < 0 ? 0 : trucks - sourced);
+}
+
+/// "HH:MM" of a date, local time.
+String srHm(dynamic v) {
+  final d = DateTime.tryParse('${v ?? ''}')?.toLocal();
+  return d == null ? '' : '${d.hour.toString().padLeft(2, '0')}:${d.minute.toString().padLeft(2, '0')}';
+}
+
+/// Team members for a «بمساعدة» picker: team = vendors | fleet | helpers.
+Future<List<Map<String, dynamic>>> srTeamMembers(String team) async {
+  final d = await Api.instance.get('/api/shipment-requests/team-members?team=$team');
+  return List<Map<String, dynamic>>.from(((d['options'] as List?) ?? const []).map((e) => Map<String, dynamic>.from(e)));
+}
+
+/// Searchable person picker over a loaded list; returns the option or null.
+Future<Map<String, dynamic>?> srPickPerson(BuildContext context, String title, List<Map<String, dynamic>> options) => pickRemote(context,
+    title: title,
+    fetch: (q) async {
+      final f = q.trim().toLowerCase();
+      return options.where((x) => f.isEmpty || '${x['label']}'.toLowerCase().contains(f)).toList();
+    },
+    label: (x) => '${x['label'] ?? ''}',
+    sub: (x) => '${x['roleAr'] ?? ''}');
 
 /// Keys of the shipment form that belong to the vendors half or are derived; the request form leaves them out.
 /// Truck types sales accepts on a request (any of them); old rows carry only the joined `truckType`.
@@ -93,6 +139,7 @@ String srTypesSent(Map r) => {for (final p in (r['placed'] as List?) ?? const []
 const _vendorKeys = {'buyPrice', 'advanceAmount', 'driverRentPrice', 'driverName', 'driverPhone', 'vehicleName', 'driverRentType', 'status', 'paymentMethod'};
 /// Keys written on the request itself; any other configured field goes in customFields.
 const _salesKeys = {'fromCity', 'toCity', 'branch', 'notes', 'blNumber', 'containerNumber', 'truckType', 'cargoType', 'truckLength', 'quantity', 'pickupTime', 'startTime', 'arrivalTime', 'sellPrice', 'paymentSubtype'};
+const _timeKeys = {'pickupTime', 'startTime', 'arrivalTime'};
 const _groups = [('pickup_delivery', 'الاستلام والتسليم', 'Pickup & delivery'), ('shipment', 'تفاصيل الشحنة', 'Shipment details'), ('pricing_time', 'الأسعار والتوقيت', 'Prices & timing'), ('payment', 'المدفوعات', 'Payments')];
 
 String _dateOnly(dynamic v) {
@@ -198,7 +245,8 @@ class _ShipmentRequestFormScreenState extends State<ShipmentRequestFormScreen> {
   String? _error;
 
   bool get _editing => widget.request != null;
-  bool get _rejected => widget.request?['status'] == 'rejected';
+  bool get _rejected => widget.request?['status'] == 'rejected' || widget.request?['approvalStatus'] == 'returned';
+  bool get _returned => widget.request?['approvalStatus'] == 'returned';
 
   @override
   void initState() {
@@ -215,10 +263,6 @@ class _ShipmentRequestFormScreenState extends State<ShipmentRequestFormScreen> {
       _trucks = inum(r['trucks']).toInt().clamp(1, 25);
       if (r['customer'] != null) _customer = {'_id': r['customer'] is Map ? r['customer']['_id'] : r['customer'], 'name': r['customerName']};
       _salesRep = r['salesRep'] == null ? null : '${r['salesRep'] is Map ? r['salesRep']['_id'] : r['salesRep']}';
-    } else {
-      final t = ymd(DateTime.now());
-      _form['pickupTime'] = t;
-      _form['startTime'] = t;
     }
     _load();
     Live.instance.on('shipmentOrders:fields', _reloadFields);
@@ -239,7 +283,8 @@ class _ShipmentRequestFormScreenState extends State<ShipmentRequestFormScreen> {
     final f = await Api.instance.get('/api/shipment-orders/fields');
     final all = List<Map<String, dynamic>>.from(((f['fields'] as List?) ?? const []).map((e) => Map<String, dynamic>.from(e)));
     if (!mounted) return;
-    setState(() => _fields = all.where((x) => x['active'] != false && x['deleted'] != true && !_vendorKeys.contains(x['key'])).toList()
+    // Pickup, start and arrival times are written by whoever completes the truck, not by sales.
+    setState(() => _fields = all.where((x) => x['active'] != false && x['deleted'] != true && !_vendorKeys.contains(x['key']) && !_timeKeys.contains(x['key'])).toList()
       ..sort((a, b) => inum(a['order']).compareTo(inum(b['order']))));
   }
 
@@ -431,9 +476,6 @@ class _ShipmentRequestFormScreenState extends State<ShipmentRequestFormScreen> {
     for (final k in ['notes', 'blNumber', 'containerNumber']) {
       if (_form.containsKey(k)) body[k] = '${_form[k] ?? ''}'.trim();
     }
-    for (final k in ['pickupTime', 'startTime', 'arrivalTime']) {
-      if ('${body[k] ?? ''}'.isNotEmpty) body[k] = '${body[k]}T12:00:00';
-    }
     if (body['sellPrice'] != null) body['sellPrice'] = num.tryParse('${body['sellPrice']}');
     if (_customer != null) body['customer'] = _customer!['_id'];
     if (_newCustomer && _ncName.text.trim().isNotEmpty) body['newCustomer'] = {'name': _ncName.text.trim(), 'phone': _ncPhone.text.trim()};
@@ -444,7 +486,12 @@ class _ShipmentRequestFormScreenState extends State<ShipmentRequestFormScreen> {
         await Api.instance.put('/api/shipment-requests/${widget.request!['_id']}', body);
       } else {
         final d = await Api.instance.post('/api/shipment-requests', body);
-        if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(tr('أُرسل طلب الشحنة رقم ${d['request']?['number']} إلى فريق الموردين', 'Request ${d['request']?['number']} sent to the vendors team'))));
+        final wait = d['request']?['approvalStatus'] == 'pending';
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(wait
+              ? tr('أُرسل طلب الشحنة رقم ${d['request']?['number']} إلى مدير المبيعات للاعتماد', 'Request ${d['request']?['number']} sent to the sales manager for approval')
+              : tr('أُرسل طلب الشحنة رقم ${d['request']?['number']} إلى فريق الموردين', 'Request ${d['request']?['number']} sent to the vendors team'))));
+        }
       }
       if (mounted) Navigator.pop(context, true);
     } catch (e) {
@@ -467,7 +514,13 @@ class _ShipmentRequestFormScreenState extends State<ShipmentRequestFormScreen> {
           : _error != null
               ? ErrorRetry(message: _error!, onRetry: _load)
               : ListView(padding: const EdgeInsets.fromLTRB(14, 14, 14, 100), children: [
-                  if (_rejected)
+                  if (_returned)
+                    Padding(padding: const EdgeInsets.only(bottom: 10), child: AppCard(topAccent: T.violet, child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+                      Text(tr('أعاده مدير المبيعات للتعديل', 'Returned by the sales manager for edits'), style: const TextStyle(fontWeight: FontWeight.w800, color: T.violet)),
+                      Text('${widget.request!['approvalReason'] ?? ''}'),
+                      Text(tr('عدّل ما يلزم ثم اضغط «حفظ وإعادة الإرسال» ليعود إلى الاعتماد.', 'Amend it, then press “Save and resend” to send it back for approval.'), style: const TextStyle(fontSize: 11.5, color: T.inkFaint)),
+                    ])))
+                  else if (_rejected)
                     Padding(padding: const EdgeInsets.only(bottom: 10), child: AppCard(topAccent: T.danger, child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
                       Text(tr('رفضه فريق الموردين', 'Rejected by the vendors team'), style: const TextStyle(fontWeight: FontWeight.w800, color: T.danger)),
                       Text('${widget.request!['rejectReason'] ?? ''}${'${widget.request!['rejectNote'] ?? ''}'.isEmpty ? '' : ' — ${widget.request!['rejectNote']}'}'),
@@ -524,7 +577,7 @@ class _ShipmentRequestFormScreenState extends State<ShipmentRequestFormScreen> {
                         ],
                       ]))),
                   const SizedBox(height: 12),
-                  Text(tr('سعرُ الشراء والمورّدُ والسيارةُ والسائق يكملها فريقُ الموردين.', 'The vendors team adds the buying price, supplier, truck and driver.'), style: const TextStyle(fontSize: 11.5, color: T.inkFaint)),
+                  Text(tr('سعرُ الشراء والمورّدُ والسيارةُ والسائقُ وأوقاتُ الاستلام والبداية والوصول يكملها فريقُ الموردين.', 'The vendors team adds the buying price, supplier, truck, driver and the pickup/start/arrival times.'), style: const TextStyle(fontSize: 11.5, color: T.inkFaint)),
                 ]),
       floatingActionButton: _loading ? null : Row(mainAxisSize: MainAxisSize.min, children: [
         if (_rejected) ...[
@@ -551,7 +604,7 @@ class _ShipmentRequestFormScreenState extends State<ShipmentRequestFormScreen> {
 // ── Lists: sales («طلباتي») and vendors («الطلبات من المبيعات») ─────────────
 
 class ShipmentRequestsScreen extends StatefulWidget {
-  /// 'ask' = sales view (own requests, create), 'place' = vendors inbox.
+  /// 'ask' = sales view (own requests, create, approvals), 'place' = vendors inbox, 'fleet' = the fleet's inbox (our trucks).
   final String mode;
   const ShipmentRequestsScreen({super.key, required this.mode});
   @override
@@ -565,7 +618,16 @@ class _ShipmentRequestsScreenState extends State<ShipmentRequestsScreen> {
   bool _loading = true;
   String? _error;
   int _seq = 0;
-  late String _status = widget.mode == 'place' ? 'pending,in_progress' : '';
+  bool get _work => widget.mode != 'ask';
+  late String _status = _work ? 'pending,in_progress' : '';
+  // Standalone branch filter (server side), saved on the account per board.
+  late final String _branchKey = 'shipmentRequests.branch.${widget.mode}';
+  String _branch = '';
+  List<String> _branches = const [];
+  // Approvals view on the sales page (sales manager and his delegates).
+  bool _approvals = false;
+  String _approval = 'pending';
+  Map<String, dynamic> _ac = {};
   String _q = '';
   Timer? _t;
   late final void Function() _onLive = _load;
@@ -581,6 +643,7 @@ class _ShipmentRequestsScreenState extends State<ShipmentRequestsScreen> {
     super.initState();
     // The list is the default view; cards only when the user chose them (web saves 'table', mobile 'list').
     _view = context.read<AuthProvider>().pref(_viewKey) == 'cards' ? 'cards' : 'list';
+    _branch = context.read<AuthProvider>().pref(_branchKey);
     _load();
     Live.instance.on(srEvent, _onLive);
   }
@@ -601,7 +664,7 @@ class _ShipmentRequestsScreenState extends State<ShipmentRequestsScreen> {
         ('customer', 'العميل', 'Customer', (r) => '${r['customerName'] ?? ''}'),
         ('salesRep', 'السيلز', 'Sales rep', (r) => '${r['salesRepName'] ?? r['createdByName'] ?? ''}'),
         ('handler', 'مسؤول الموردين', 'Vendors handler', (r) => '${r['handlerName'] ?? ''}'),
-        ('progress', widget.mode == 'place' ? 'الإنجاز' : 'إنجاز الموردين', 'Progress', (r) => srVendorProgress(r, vendors: widget.mode == 'place').$1),
+        ('progress', _work ? 'الإنجاز' : 'إنجاز الموردين', 'Progress', (r) => srVendorProgress(r, vendors: _work).$1),
         ('fromCity', 'من', 'From', (r) => '${r['fromCity'] ?? ''}'),
         ('toCity', 'إلى', 'To', (r) => '${r['toCity'] ?? ''}'),
         ('truckType', 'نوع الشاحنة', 'Truck type', (r) => '${r['truckType'] ?? ''}'),
@@ -614,14 +677,41 @@ class _ShipmentRequestsScreenState extends State<ShipmentRequestsScreen> {
   static List<String> _placedField(Map<String, dynamic> r, String k) =>
       [for (final p in (r['placed'] as List?) ?? const []) if ('${(p as Map)[k] ?? ''}'.isNotEmpty) '${p[k]}'];
 
-  List<Map<String, dynamic>> get _shown => _rows.where((r) {
-        for (final f in _filters) {
-          final want = _flt[f.$1];
-          if (want == null || want.isEmpty) continue;
-          if (f.$1 == 'supplier' ? !_suppliers(r).contains(want) : f.$4(r) != want) return false;
+  Future<void> _setBranch(String b) async {
+    setState(() => _branch = b);
+    _load();
+    final auth = context.read<AuthProvider>();
+    try {
+      await Api.instance.patch('/api/auth/me/prefs', {'key': _branchKey, 'value': b});
+      auth.setPref(_branchKey, b);
+    } catch (_) {}
+  }
+
+  static bool _isOpen(Map r) => const ['pending', 'in_progress'].contains('${r['status']}');
+
+  List<Map<String, dynamic>> get _shown {
+    final out = _rows.where((r) {
+      for (final f in _filters) {
+        final want = _flt[f.$1];
+        if (want == null || want.isEmpty) continue;
+        if (f.$1 == 'supplier' ? !_suppliers(r).contains(want) : f.$4(r) != want) return false;
+      }
+      return true;
+    }).toList();
+    // Working board: open requests first, grouped by branch then newest; finished ones after, newest first.
+    if (_work) {
+      out.sort((a, b) {
+        final oa = _isOpen(a), ob = _isOpen(b);
+        if (oa != ob) return oa ? -1 : 1;
+        if (oa) {
+          final c = '${a['branch'] ?? ''}'.compareTo('${b['branch'] ?? ''}');
+          if (c != 0) return c;
         }
-        return true;
-      }).toList();
+        return '${b['createdAt'] ?? ''}'.compareTo('${a['createdAt'] ?? ''}');
+      });
+    }
+    return out;
+  }
 
   int get _filterCount => _flt.values.where((v) => v.isNotEmpty).length + (_from.isNotEmpty ? 1 : 0) + (_to.isNotEmpty ? 1 : 0);
 
@@ -632,9 +722,10 @@ class _ShipmentRequestsScreenState extends State<ShipmentRequestsScreen> {
     return [
       ExportCol('رقم الطلب', 'Request', (r) => r['number']),
       ExportCol('الحالة', 'Status', (r) { final x = srStatuses['${r['status']}']; return x == null ? '${r['status']}' : tr(x.$1, x.$2); }),
-      ExportCol(widget.mode == 'place' ? 'الإنجاز' : 'إنجاز الموردين', 'Progress', (r) => srVendorProgress(r, vendors: widget.mode == 'place').$1),
+      ExportCol(_work ? 'الإنجاز' : 'إنجاز الموردين', 'Progress', (r) => srVendorProgress(r, vendors: _work).$1),
       ExportCol('الشاحنات المطلوبة', 'Trucks asked', (r) => inum(r['trucks'])),
       ExportCol('أُسندت', 'Placed', (r) => (r['placed'] as List?)?.length ?? 0),
+      ExportCol('تحصيل السيارات', 'Trucks sourced', (r) => srSourced(r).$1),
       ExportCol('متبقّية', 'Remaining', (r) => ['pending', 'in_progress'].contains('${r['status']}') ? _openCount(r) : 0),
       ExportCol('مرفوضة/مسحوبة', 'Rejected/withdrawn', (r) => ['rejected', 'cancelled'].contains('${r['status']}') ? _openCount(r) : 0),
       ExportCol('العميل', 'Customer', (r) => r['customerName']),
@@ -734,14 +825,19 @@ class _ShipmentRequestsScreenState extends State<ShipmentRequestsScreen> {
   Future<void> _load() async {
     final mine = ++_seq;
     try {
-      final p = ['limit=1000', if (_status.isNotEmpty) 'status=$_status', if (_q.trim().isNotEmpty) 'q=${Uri.encodeQueryComponent(_q.trim())}',
-        if (_from.isNotEmpty) 'from=$_from', if (_to.isNotEmpty) 'to=$_to'];
+      final p = ['limit=1000', if (_status.isNotEmpty && !_approvals) 'status=$_status', if (_q.trim().isNotEmpty) 'q=${Uri.encodeQueryComponent(_q.trim())}',
+        if (_from.isNotEmpty) 'from=$_from', if (_to.isNotEmpty) 'to=$_to',
+        if (_work) 'view=work', if (_branch.isNotEmpty) 'branch=${Uri.encodeQueryComponent(_branch)}',
+        if (_approvals) 'approval=$_approval', if (!_work) 'approvalCounts=1'];
       final d = await Api.instance.get('/api/shipment-requests?${p.join('&')}');
       if (!mounted || mine != _seq) return;
       setState(() {
         _rows = List<Map<String, dynamic>>.from(((d['requests'] as List?) ?? const []).map((e) => Map<String, dynamic>.from(e)));
         _by = Map<String, dynamic>.from(d['byStatus'] ?? {});
         _can = Map<String, dynamic>.from(d['can'] ?? {});
+        _branches = [for (final b in (d['branches'] as List?) ?? const []) if ('$b'.isNotEmpty) '$b'];
+        _ac = Map<String, dynamic>.from(d['approvalCounts'] ?? {});
+        if (_approvals && _can['approve'] != true) _approvals = false;
         _loading = false;
         _error = null;
       });
@@ -757,12 +853,14 @@ class _ShipmentRequestsScreenState extends State<ShipmentRequestsScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final tabs = widget.mode == 'place'
+    final tabs = _work
         ? [('pending,in_progress', 'المفتوحة', 'Open', inum(_by['pending']) + inum(_by['in_progress'])), ('completed', 'مكتملة', 'Completed', inum(_by['completed'])), ('rejected', 'مرفوضة', 'Rejected', inum(_by['rejected'])), ('cancelled', 'مسحوبة', 'Withdrawn', inum(_by['cancelled'])), ('', 'الكل', 'All', -1)]
         : [('', 'الكل', 'All', -1), ('pending,in_progress', 'المفتوحة', 'Open', inum(_by['pending']) + inum(_by['in_progress'])), ('rejected', 'مرفوضة', 'Rejected', inum(_by['rejected'])), ('completed', 'مكتملة', 'Completed', inum(_by['completed'])), ('cancelled', 'مسحوبة', 'Withdrawn', inum(_by['cancelled']))];
     return AppScaffold(
-      title: Text(widget.mode == 'place' ? tr('الطلبات من المبيعات', 'Requests from sales') : tr('طلبات الشحن', 'Shipment requests')),
+      title: Text(widget.mode == 'fleet' ? tr('طلبات من المبيعات', 'Requests from sales') : _work ? tr('الطلبات من المبيعات', 'Requests from sales') : tr('طلبات الشحن', 'Shipment requests')),
       actions: [
+        if (!_work && _can['manageApprovers'] == true)
+          IconButton(tooltip: tr('المفوَّضون بالاعتماد', 'Approval delegates'), icon: const Icon(Icons.how_to_reg_outlined), onPressed: () => showApproversSheet(context)),
         IconButton(
           tooltip: _view == 'cards' ? tr('عرض القائمة', 'List view') : tr('عرض البطاقات', 'Cards view'),
           icon: Icon(_view == 'cards' ? Icons.view_list_rounded : Icons.view_agenda_outlined),
@@ -773,7 +871,7 @@ class _ShipmentRequestsScreenState extends State<ShipmentRequestsScreen> {
           icon: Badge(isLabelVisible: _filterCount > 0, label: Text('$_filterCount'), child: const Icon(Icons.filter_alt_outlined)),
           onPressed: _openFilters,
         ),
-        ExportButton(fileName: widget.mode == 'place' ? 'shipment-requests-vendors' : 'shipment-requests', sheetName: tr('طلبات الشحن', 'Requests'), columns: _exportCols, rows: () => _shown),
+        ExportButton(fileName: _work ? 'shipment-requests-vendors' : 'shipment-requests', sheetName: tr('طلبات الشحن', 'Requests'), columns: _exportCols, rows: () => _shown),
       ],
       floatingActionButton: widget.mode == 'ask' && _can['ask'] == true
           ? FloatingActionButton.extended(
@@ -790,6 +888,25 @@ class _ShipmentRequestsScreenState extends State<ShipmentRequestsScreen> {
           hint: tr('رقم الطلب، العميل، المدينة، المورّد…', 'Request no., customer, city, supplier…'),
           onChanged: (v) { _t?.cancel(); _t = Timer(const Duration(milliseconds: 350), () { _q = v; _load(); }); },
         )),
+        if (!_work && _can['approve'] == true)
+          Padding(padding: const EdgeInsets.fromLTRB(12, 6, 12, 0), child: SegmentedButton<bool>(
+            segments: [
+              ButtonSegment(value: false, label: Text(tr('الطلبات', 'Requests'))),
+              ButtonSegment(value: true, label: Text('${tr('الاعتمادات', 'Approvals')}${inum(_ac['pending']) > 0 ? ' (${inum(_ac['pending'])})' : ''}')),
+            ],
+            selected: {_approvals},
+            onSelectionChanged: (v) { setState(() => _approvals = v.first); _load(); },
+          )),
+        if (_approvals)
+          SingleChildScrollView(scrollDirection: Axis.horizontal, padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6), child: Row(children: [
+            for (final k in const ['pending', 'approved', 'returned', 'rejected'])
+              Padding(padding: const EdgeInsetsDirectional.only(end: 5), child: ChoiceChip(
+                label: Text('${tr(srApproval[k]!.$1, srApproval[k]!.$2)} (${inum(_ac[k])})'),
+                selected: _approval == k,
+                onSelected: (_) { setState(() => _approval = k); _load(); },
+              )),
+          ]))
+        else
         SingleChildScrollView(scrollDirection: Axis.horizontal, padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6), child: Row(children: [
           for (final t in tabs)
             Padding(padding: const EdgeInsetsDirectional.only(end: 5), child: ChoiceChip(
@@ -798,6 +915,18 @@ class _ShipmentRequestsScreenState extends State<ShipmentRequestsScreen> {
               onSelected: (_) { setState(() => _status = t.$1); _load(); },
             )),
         ])),
+        // Branch: used constantly, so it stands outside the filter sheet.
+        if (_branches.isNotEmpty || _branch.isNotEmpty)
+          SingleChildScrollView(scrollDirection: Axis.horizontal, padding: const EdgeInsets.fromLTRB(12, 0, 12, 6), child: Row(children: [
+            Padding(padding: const EdgeInsetsDirectional.only(end: 6), child: Icon(Icons.store_mall_directory_outlined, size: 18, color: _branch.isEmpty ? T.inkFaint : T.orange)),
+            Padding(padding: const EdgeInsetsDirectional.only(end: 5), child: ChoiceChip(label: Text(tr('كلّ الفروع', 'All branches')), selected: _branch.isEmpty, onSelected: (_) => _setBranch(''))),
+            for (final b in {..._branches, if (_branch.isNotEmpty) _branch})
+              Padding(padding: const EdgeInsetsDirectional.only(end: 5), child: ChoiceChip(
+                label: Text(b), selected: _branch == b,
+                selectedColor: T.orange.withValues(alpha: 0.18),
+                onSelected: (_) => _setBranch(_branch == b ? '' : b),
+              )),
+          ])),
         // Quick days on the request date (Riyadh); tapping the active one clears it.
         SingleChildScrollView(scrollDirection: Axis.horizontal, padding: const EdgeInsets.fromLTRB(12, 0, 12, 6), child: Row(children: [
           for (final q in _quickDays())
@@ -891,7 +1020,7 @@ class _ShipmentRequestsScreenState extends State<ShipmentRequestsScreen> {
             Text('${r['number']}', style: const TextStyle(fontWeight: FontWeight.w900, color: T.ink)),
             const SizedBox(width: 8),
             Expanded(child: Text('${r['customerName'] ?? '—'}', style: const TextStyle(fontWeight: FontWeight.w800), overflow: TextOverflow.ellipsis)),
-            srStatusChip(r['status'], vendors: widget.mode == 'place'),
+            srStatusChip(r['status'], vendors: _work),
           ]),
           const SizedBox(height: 4),
           Text('${r['fromCity'] ?? '—'} ← ${r['toCity'] ?? '—'} · ${r['truckType'] ?? ''}${'${r['branch'] ?? ''}'.isEmpty ? '' : ' · ${r['branch']}'}', style: const TextStyle(fontSize: 12.5, color: T.inkSoft)),
@@ -900,11 +1029,15 @@ class _ShipmentRequestsScreenState extends State<ShipmentRequestsScreen> {
             Chip2('${tr('الشاحنات', 'Trucks')} $placed/${fmtNum(trucks)}', placed >= trucks ? T.success : T.navy, icon: Icons.local_shipping_outlined),
             if (r['pickupTime'] != null) Chip2(soFmtDate(r['pickupTime']), T.inkFaint, icon: Icons.event),
             if (r.containsKey('sellPrice') && r['sellPrice'] != null) Chip2('${tr('بيع', 'Sell')} ${soMoney(r['sellPrice'])}', T.success),
-            if ('${r['handlerName'] ?? ''}'.isNotEmpty) Chip2('${tr('يعمل عليه', 'Handled by')} ${r['handlerName']}', T.violet),
-            if ('${r['createdByName'] ?? ''}'.isNotEmpty && widget.mode == 'place') Chip2('${tr('من', 'By')} ${r['createdByName']}', T.inkSoft),
+            if ('${r['handlerName'] ?? ''}'.isNotEmpty) Chip2('${tr('يعمل عليه', 'Handled by')} ${r['handlerName']}${srHm(r['claimedUntil']).isEmpty ? '' : ' ${tr('حتى', 'until')} ${srHm(r['claimedUntil'])}'}', T.violet),
+            if (!_work && srApprovalOf(r) != 'approved') Chip2(tr(srApproval[srApprovalOf(r)]!.$1, srApproval[srApprovalOf(r)]!.$2), srApproval[srApprovalOf(r)]!.$3, icon: Icons.verified_outlined),
+            if ('${r['createdByName'] ?? ''}'.isNotEmpty && _work) Chip2('${tr('من', 'By')} ${r['createdByName']}', T.inkSoft),
           ]),
           const SizedBox(height: 6),
-          srProgressLine(r, vendors: widget.mode == 'place'),
+          srProgressLine(r, vendors: _work),
+          _sourcedLine(r),
+          if (!_work && srApprovalOf(r) == 'returned' && '${r['approvalReason'] ?? ''}'.isNotEmpty)
+            Padding(padding: const EdgeInsets.only(top: 6), child: Text('${tr('ملاحظة المدير', 'Manager note')}: ${r['approvalReason']}', style: const TextStyle(fontSize: 12, color: T.violet, fontWeight: FontWeight.w700))),
           if (r['status'] == 'rejected')
             Padding(padding: const EdgeInsets.only(top: 6), child: Text('${tr('سبب الرفض', 'Reason')}: ${r['rejectReason'] ?? ''}${'${r['rejectNote'] ?? ''}'.isEmpty ? '' : ' — ${r['rejectNote']}'}',
                 style: const TextStyle(fontSize: 12, color: T.danger, fontWeight: FontWeight.w700))),
@@ -930,7 +1063,7 @@ extension on _ShipmentRequestsScreenState {
             Text('${r['number']}', style: const TextStyle(fontWeight: FontWeight.w900, color: T.ink, fontSize: 13)),
             const SizedBox(width: 6),
             Expanded(child: Text('${r['customerName'] ?? '—'}', style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 13), overflow: TextOverflow.ellipsis)),
-            srStatusChip(r['status'], vendors: widget.mode == 'place'),
+            srStatusChip(r['status'], vendors: _work),
           ]),
           const SizedBox(height: 3),
           Row(children: [
@@ -940,9 +1073,31 @@ extension on _ShipmentRequestsScreenState {
                 style: const TextStyle(fontSize: 11.5, fontWeight: FontWeight.w700, color: T.navy)),
           ]),
           const SizedBox(height: 4),
-          srProgressLine(r, vendors: widget.mode == 'place'),
+          srProgressLine(r, vendors: _work),
+          _sourcedLine(r),
+          if (!_work && srApprovalOf(r) != 'approved')
+            Padding(padding: const EdgeInsets.only(top: 3), child: Text(tr(srApproval[srApprovalOf(r)]!.$1, srApproval[srApprovalOf(r)]!.$2), style: TextStyle(fontSize: 11.5, fontWeight: FontWeight.w700, color: srApproval[srApprovalOf(r)]!.$3))),
         ]),
       ),
+    );
+  }
+
+  /// «تحصيل السيارات» line: sourced/asked and what is left to find; tapping opens who reported what.
+  Widget _sourcedLine(Map<String, dynamic> r) {
+    final x = srSourced(r);
+    if (!_work && x.$1 == 0) return const SizedBox.shrink();
+    return InkWell(
+      onTap: () async {
+        await showSourcingSheet(context, r, team: widget.mode == 'fleet' ? 'fleet' : 'vendors', canAdd: _work && _can['work'] == true, canLead: _can['lead'] == true);
+        _load();
+      },
+      child: Padding(padding: const EdgeInsets.only(top: 4), child: Row(children: [
+        const Icon(Icons.travel_explore, size: 15, color: T.navy),
+        const SizedBox(width: 4),
+        Expanded(child: Text(tr('تحصيل السيارات: ${x.$1}/${x.$2} · بقي ${x.$3}', 'Sourced: ${x.$1}/${x.$2} · ${x.$3} left'),
+            style: const TextStyle(fontSize: 11.5, fontWeight: FontWeight.w700, color: T.navy))),
+        const Icon(Icons.chevron_left, size: 16, color: T.inkFaint),
+      ])),
     );
   }
 }
@@ -1037,12 +1192,21 @@ class _ShipmentRequestDetailScreenState extends State<ShipmentRequestDetailScree
     await _act('reject', {'reason': res.$1, 'note': res.$2}, tr('رُفض الطلب وأُبلغ فريق المبيعات', 'Rejected; sales was notified'));
   }
 
+  Map<String, dynamic> get _team => widget.mode == 'fleet' ? {'team': 'fleet'} : {};
+
   Future<void> _claim() async {
     setState(() => _busy = true);
     try {
-      await Api.instance.post('/api/shipment-requests/${widget.id}/claim', {});
+      await Api.instance.post('/api/shipment-requests/${widget.id}/claim', _team);
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(tr('تولّيتَ الطلب لمدّة ساعة', 'Taken for one hour'))));
     } on ApiException catch (e) {
       if (!mounted) return;
+      if (e.status != 409) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.message)));
+        await _load();
+        if (mounted) setState(() => _busy = false);
+        return;
+      }
       final take = await showDialog<bool>(context: context, builder: (d) => AlertDialog(
         content: Text(e.message),
         actions: [
@@ -1050,12 +1214,36 @@ class _ShipmentRequestDetailScreenState extends State<ShipmentRequestDetailScree
           FilledButton(onPressed: () => Navigator.pop(d, true), child: Text(tr('تولِّيه بدلًا منه', 'Take it over'))),
         ],
       ));
-      if (take == true) await Api.instance.post('/api/shipment-requests/${widget.id}/claim', {'takeOver': true}).catchError((_) => null);
+      if (take == true) await Api.instance.post('/api/shipment-requests/${widget.id}/claim', {'takeOver': true, ..._team}).catchError((_) => null);
     } catch (e) {
       if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.toString())));
     }
     await _load();
     if (mounted) setState(() => _busy = false);
+  }
+
+  /// Sales manager (or delegate): approve, return for edits, or decline with a reason.
+  Future<void> _decide(String kind) async {
+    String reason = '';
+    if (kind != 'approve') {
+      final c = TextEditingController();
+      final ok = await showDialog<bool>(context: context, builder: (d) => AlertDialog(
+        title: Text(kind == 'return' ? tr('إعادة الطلب للتعديل', 'Return for edits') : tr('رفض الطلب', 'Decline the request')),
+        content: TextField(controller: c, autofocus: true, maxLines: 3, decoration: InputDecoration(labelText: kind == 'return' ? tr('ما الذي يجب تعديله؟ *', 'What must change? *') : tr('سبب الرفض *', 'Reason *'))),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(d, false), child: Text(tr('رجوع', 'Back'))),
+          FilledButton(onPressed: () => Navigator.pop(d, true), child: Text(tr('تأكيد', 'Confirm'))),
+        ],
+      ));
+      reason = c.text.trim();
+      c.dispose();
+      if (ok != true) return;
+      if (reason.isEmpty) {
+        if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(tr('اكتب السبب', 'Write the reason'))));
+        return;
+      }
+    }
+    await _act(kind, {'reason': reason}, kind == 'approve' ? tr('اعتُمد الطلب وأُرسل إلى فريق الموردين', 'Approved and sent to vendors') : kind == 'return' ? tr('أُعيد الطلب إلى المندوب', 'Returned to the rep') : tr('رُفض الطلب', 'Declined'));
   }
 
   Widget _kv(String k, dynamic v) => '${v ?? ''}'.trim().isEmpty ? const SizedBox.shrink() : Padding(
@@ -1074,6 +1262,11 @@ class _ShipmentRequestDetailScreenState extends State<ShipmentRequestDetailScree
     final left = r == null ? 0 : inum(r['open'] ?? (inum(r['trucks']) - ((r['placed'] as List?)?.length ?? 0))).toInt();
     final ask = widget.mode == 'ask' && _can['ask'] == true;
     final place = widget.mode == 'place' && _can['place'] == true;
+    final fleet = widget.mode == 'fleet' && _can['fleet'] == true;
+    final work = widget.mode != 'ask' && _can['work'] == true;
+    final appr = r == null ? 'approved' : srApprovalOf(r);
+    final me = '${context.read<AuthProvider>().user?['_id'] ?? ''}';
+    final heldByMe = r != null && '${r['handler'] ?? ''}'.isNotEmpty && ('${r['handler']}' == me || (widget.mode == 'fleet' && r['handlerTeam'] == 'fleet'));
     return AppScaffold(
       title: Text(r == null ? tr('طلب شحنة', 'Shipment request') : '${tr('طلب شحنة رقم', 'Request')} ${r['number']}'),
       body: _loading
@@ -1106,7 +1299,9 @@ class _ShipmentRequestDetailScreenState extends State<ShipmentRequestDetailScree
                       _kv(tr('ملاحظة الرحلة', 'Trip note'), r['notes']),
                       _kv(tr('رقم البوليصة', 'B/L'), r['blNumber']),
                       _kv(tr('رقم الحاوية', 'Container'), r['containerNumber']),
-                      _kv(tr('يعمل عليه', 'Handled by'), r['handlerName']),
+                      _kv(tr('يعمل عليه', 'Handled by'), '${r['handlerName'] ?? ''}'.isEmpty ? '' : '${r['handlerName']}${srHm(r['claimedUntil']).isEmpty ? '' : ' · ${tr('حتى', 'until')} ${srHm(r['claimedUntil'])}'}'),
+                      if (appr != 'approved' || '${r['approvalByName'] ?? ''}'.isNotEmpty)
+                        _kv(tr('اعتماد المدير', 'Manager approval'), [tr(srApproval[appr]!.$1, srApproval[appr]!.$2), r['approvalByName'], r['approvalReason']].where((x) => '${x ?? ''}'.isNotEmpty).join(' · ')),
                       if (st == 'rejected') ...[
                         const Divider(),
                         Text('${tr('سبب الرفض', 'Rejection reason')}: ${r['rejectReason'] ?? ''}', style: const TextStyle(color: T.danger, fontWeight: FontWeight.w800)),
@@ -1128,6 +1323,19 @@ class _ShipmentRequestDetailScreenState extends State<ShipmentRequestDetailScree
                             ),
                         ]),
                       ),
+                    if (appr == 'approved')
+                      SectionCard(
+                        title: '${tr('تحصيل السيارات', 'Trucks sourced')} · ${srSourced(r).$1}/${srSourced(r).$2}',
+                        child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+                          for (final e in List<Map>.from(r['sourcing'] ?? const []))
+                            Text('${e['byName']}: ${e['count']} · ${soFmtDT(e['at'])}${'${e['helperName'] ?? ''}'.isEmpty ? '' : ' · ${tr('بمساعدة', 'helped by')} ${e['helperName']}'}', style: const TextStyle(fontSize: 12.5)),
+                          Align(alignment: AlignmentDirectional.centerStart, child: TextButton.icon(
+                            onPressed: () async { await showSourcingSheet(context, r, team: widget.mode == 'fleet' ? 'fleet' : 'vendors', canAdd: work && open, canLead: _can['lead'] == true); _load(); },
+                            icon: const Icon(Icons.travel_explore, size: 18),
+                            label: Text(work && open ? tr('تسجيل / تعديل التحصيل', 'Record / edit') : tr('التفاصيل', 'Details')),
+                          )),
+                        ]),
+                      ),
                     SectionCard(
                       title: tr('السجل', 'History'),
                       child: Column(children: [
@@ -1142,7 +1350,13 @@ class _ShipmentRequestDetailScreenState extends State<ShipmentRequestDetailScree
                       ]),
                     ),
                     const SizedBox(height: 12),
-                    if (ask && const ['pending', 'in_progress', 'rejected'].contains(st))
+                    if (widget.mode == 'ask' && _can['approve'] == true && appr == 'pending')
+                      Padding(padding: const EdgeInsets.only(bottom: 8), child: Wrap(spacing: 8, runSpacing: 8, children: [
+                        FilledButton.icon(onPressed: _busy ? null : () => _decide('approve'), style: FilledButton.styleFrom(backgroundColor: T.success), icon: const Icon(Icons.verified_outlined), label: Text(tr('اعتماد', 'Approve'))),
+                        OutlinedButton.icon(onPressed: _busy ? null : () => _decide('return'), icon: const Icon(Icons.undo), label: Text(tr('إعادة للتعديل', 'Return for edits'))),
+                        OutlinedButton.icon(onPressed: _busy ? null : () => _decide('decline'), style: OutlinedButton.styleFrom(foregroundColor: T.danger), icon: const Icon(Icons.block), label: Text(tr('رفض', 'Decline'))),
+                      ])),
+                    if (ask && appr != 'rejected' && const ['pending', 'in_progress', 'rejected'].contains(st))
                       Wrap(spacing: 8, runSpacing: 8, children: [
                         FilledButton.icon(
                           onPressed: _busy ? null : () async {
@@ -1150,27 +1364,30 @@ class _ShipmentRequestDetailScreenState extends State<ShipmentRequestDetailScree
                             if (ok == true) _load();
                           },
                           icon: const Icon(Icons.edit_outlined),
-                          label: Text(st == 'rejected' ? tr('تعديل وإعادة الإرسال', 'Amend and resend') : tr('تعديل', 'Edit')),
+                          label: Text(st == 'rejected' || appr == 'returned' ? tr('تعديل وإعادة الإرسال', 'Amend and resend') : tr('تعديل', 'Edit')),
                         ),
                         if (st == 'rejected')
                           OutlinedButton.icon(onPressed: _busy ? null : () => _act('resubmit', {}, tr('أُعيد إرسال الطلب', 'Resent')), icon: const Icon(Icons.send), label: Text(tr('إعادة الإرسال كما هو', 'Resend as is'))),
                         OutlinedButton.icon(onPressed: _busy ? null : _withdraw, style: OutlinedButton.styleFrom(foregroundColor: T.danger), icon: const Icon(Icons.undo), label: Text(tr('سحب الطلب', 'Withdraw'))),
                       ]),
-                    if (place && open)
+                    if ((place || fleet || work) && open)
                       Wrap(spacing: 8, runSpacing: 8, children: [
-                        FilledButton.icon(
-                          onPressed: _busy ? null : () async {
-                            final ok = await Navigator.push<bool>(context, MaterialPageRoute(builder: (_) => PlaceTrucksScreen(request: r)));
-                            if (ok == true) _load();
-                          },
-                          icon: const Icon(Icons.local_shipping_outlined),
-                          label: Text(tr('إكمال الشحنة', 'Complete the shipment')),
-                        ),
-                        if ('${r['handlerName'] ?? ''}'.isEmpty)
-                          OutlinedButton.icon(onPressed: _busy ? null : _claim, icon: const Icon(Icons.pan_tool_outlined), label: Text(tr('تولِّي الطلب', 'Take it')))
-                        else
-                          OutlinedButton.icon(onPressed: _busy ? null : () => _act('release'), icon: const Icon(Icons.logout), label: Text(tr('ترك الطلب', 'Release'))),
-                        OutlinedButton.icon(onPressed: _busy ? null : _reject, style: OutlinedButton.styleFrom(foregroundColor: T.danger), icon: const Icon(Icons.block), label: Text(tr('رفض', 'Reject'))),
+                        if (place || fleet)
+                          FilledButton.icon(
+                            onPressed: _busy ? null : () async {
+                              final ok = await Navigator.push<bool>(context, MaterialPageRoute(builder: (_) => fleet ? FleetPlaceScreen(request: r) : PlaceTrucksScreen(request: r)));
+                              if (ok == true) _load();
+                            },
+                            icon: const Icon(Icons.local_shipping_outlined),
+                            label: Text(tr('إكمال الشحنة', 'Complete the shipment')),
+                          ),
+                        // A claim holds the request for one hour; then it is released and must be taken again.
+                        if (work) OutlinedButton.icon(onPressed: _busy ? null : _claim, icon: const Icon(Icons.pan_tool_outlined),
+                            label: Text('${r['handlerName'] ?? ''}'.isEmpty ? tr('أتولّاه (ساعة)', 'Take it (1 hour)') : heldByMe ? tr('تجديد التولّي', 'Renew') : tr('تولِّيه بدلًا من زميل', 'Take over'))),
+                        if (work && '${r['handlerName'] ?? ''}'.isNotEmpty)
+                          OutlinedButton.icon(onPressed: _busy ? null : () => _act('release', _team), icon: const Icon(Icons.logout), label: Text(tr('تخلٍّ', 'Release'))),
+                        if (place)
+                          OutlinedButton.icon(onPressed: _busy ? null : _reject, style: OutlinedButton.styleFrom(foregroundColor: T.danger), icon: const Icon(Icons.block), label: Text(tr('رفض', 'Reject'))),
                       ]),
                   ]),
                 ),
@@ -1224,7 +1441,61 @@ class _RejectSheetState extends State<_RejectSheet> {
       );
 }
 
-// ── Vendors: placing the trucks ─────────────────────────────────────────────
+// ── Completion: times shared by the vendors and the fleet forms ─────────────
+
+/// Pickup (required), start and arrival: written by whoever completes the trucks, applied to each truck sent.
+class _Times {
+  String pickup = '';
+  String start = '';
+  String arrival = '';
+  _Times(Map r) {
+    pickup = _dateOnly(r['pickupTime']);
+    if (pickup.isEmpty) pickup = ymd(DateTime.now());
+    start = _dateOnly(r['startTime']);
+    arrival = _dateOnly(r['arrivalTime']);
+  }
+  Map<String, dynamic> body() => {
+        if (pickup.isNotEmpty) 'pickupTime': '${pickup}T12:00:00',
+        if (start.isNotEmpty) 'startTime': '${start}T12:00:00',
+        if (arrival.isNotEmpty) 'arrivalTime': '${arrival}T12:00:00',
+      };
+}
+
+Widget _timesCard(BuildContext context, _Times t, void Function(void Function()) set) {
+  Widget one(String label, String value, void Function(String) write, {bool req = false}) => Padding(
+        padding: const EdgeInsets.only(top: 6),
+        child: OutlinedButton.icon(
+          style: OutlinedButton.styleFrom(alignment: AlignmentDirectional.centerStart, minimumSize: const Size(double.infinity, 44),
+              side: BorderSide(color: req && value.isEmpty ? T.danger : Colors.black12)),
+          onPressed: () async {
+            final d = await showDatePicker(context: context, initialDate: DateTime.tryParse(value) ?? DateTime.now(),
+                firstDate: DateTime.now().subtract(const Duration(days: 365)), lastDate: DateTime.now().add(const Duration(days: 365)));
+            if (d != null) set(() => write(ymd(d)));
+          },
+          icon: const Icon(Icons.event, size: 17),
+          label: Text(value.isEmpty ? (req ? '$label *' : label) : '$label: $value', style: const TextStyle(fontSize: 13, color: T.ink)),
+        ),
+      );
+  return AppCard(child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+    Text(tr('التوقيت', 'Timing'), style: const TextStyle(fontWeight: FontWeight.w800)),
+    one(tr('وقت الاستلام', 'Pickup time'), t.pickup, (v) => t.pickup = v, req: true),
+    one(tr('وقت البداية', 'Start time'), t.start, (v) => t.start = v),
+    one(tr('وقت الوصول', 'Arrival time'), t.arrival, (v) => t.arrival = v),
+  ]));
+}
+
+Widget _pickBtn(String text, IconData icon, VoidCallback? onTap, {bool miss = false}) => OutlinedButton.icon(
+      style: OutlinedButton.styleFrom(alignment: AlignmentDirectional.centerStart, minimumSize: const Size(double.infinity, 46),
+          side: BorderSide(color: miss ? T.danger : Colors.black12)),
+      onPressed: onTap,
+      icon: Icon(icon, size: 17),
+      label: Text(text, style: const TextStyle(fontWeight: FontWeight.w700), overflow: TextOverflow.ellipsis),
+    );
+
+final _iqamaRe = RegExp(r'^[12]\d{9}$');
+String _digits(String v) => v.replaceAllMapped(RegExp('[٠-٩]'), (m) => '${'٠١٢٣٤٥٦٧٨٩'.indexOf(m[0]!)}').replaceAll(RegExp(r'\s'), '');
+
+// ── Vendors: completing the trucks ──────────────────────────────────────────
 
 class PlaceTrucksScreen extends StatefulWidget {
   final Map<String, dynamic> request;
@@ -1234,28 +1505,37 @@ class PlaceTrucksScreen extends StatefulWidget {
 }
 
 class _Truck {
-  // The type actually sent, one of the types sales accepted.
+  // 'vendor' = a registered carrier company, 'freelancer' = an individual driver-owner.
+  String kind = 'vendor';
   String truckType = '';
-  // Who found the carrier and the truck owner; defaults to the placer.
   String? sourcingRep;
+  String? helper;
   Map<String, dynamic>? supplier;
+  // A freelancer typed in place (not yet in the register).
+  bool newFreelancer = false;
+  final flName = TextEditingController();
+  final flPhone = TextEditingController();
   Map<String, dynamic>? vehicle;
   final plate = TextEditingController();
-  final driver = TextEditingController();
-  final phone = TextEditingController();
+  Map<String, dynamic>? driver;
+  bool newDriver = false;
+  final drName = TextEditingController();
+  final drPhone = TextEditingController();
+  final drIqama = TextEditingController();
   final buy = TextEditingController();
   final advance = TextEditingController();
-  final bl = TextEditingController();
-  final container = TextEditingController();
+  List<Map<String, dynamic>> vehicles = [];
   List<Map<String, dynamic>> drivers = [];
-  void dispose() { for (final c in [plate, driver, phone, buy, advance, bl, container]) { c.dispose(); } }
+  void dispose() { for (final c in [flName, flPhone, plate, drName, drPhone, drIqama, buy, advance]) { c.dispose(); } }
 }
 
 class _PlaceTrucksScreenState extends State<PlaceTrucksScreen> {
   final List<_Truck> _trucks = [];
   bool _saving = false;
   List<Map<String, dynamic>> _reps = const [];
+  List<Map<String, dynamic>> _helpers = const [];
   String _me = '';
+  late final _Times _times = _Times(widget.request);
 
   List<String> get _reqTypes => srTruckTypes(widget.request);
 
@@ -1276,32 +1556,21 @@ class _PlaceTrucksScreenState extends State<PlaceTrucksScreen> {
     try {
       final d = await Api.instance.get('/api/shipment-orders/sourcing-reps');
       final rows = List<Map<String, dynamic>>.from(((d['options'] as List?) ?? const []).map((e) => Map<String, dynamic>.from(e)));
+      final helpers = await srTeamMembers('helpers').catchError((_) => <Map<String, dynamic>>[]);
       if (!mounted) return;
       setState(() {
         _reps = rows;
+        _helpers = helpers;
         if (rows.any((o) => '${o['value']}' == _me)) {
           for (final t in _trucks) { t.sourcingRep ??= _me; }
         }
       });
-    } catch (_) {/* optional field */}
+    } catch (_) {/* optional fields */}
   }
 
-  String _repLabel(String? id) {
-    final o = _reps.where((x) => '${x['value']}' == id);
+  String _labelOf(List<Map<String, dynamic>> list, String? id) {
+    final o = list.where((x) => '${x['value']}' == id);
     return o.isEmpty ? '' : '${o.first['label'] ?? ''}';
-  }
-
-  Future<void> _pickRep(_Truck t) async {
-    final v = await pickRemote(context,
-      title: tr('مسؤول التوريد', 'Sourcing'),
-      fetch: (q) async {
-        final f = q.trim().toLowerCase();
-        return _reps.where((x) => f.isEmpty || '${x['label']}'.toLowerCase().contains(f)).toList();
-      },
-      label: (x) => '${x['label'] ?? ''}',
-      sub: (x) => '${x['roleAr'] ?? ''}',
-    );
-    if (v != null) setState(() => t.sourcingRep = '${v['value']}');
   }
 
   @override
@@ -1311,78 +1580,109 @@ class _PlaceTrucksScreenState extends State<PlaceTrucksScreen> {
     if (_trucks.length >= _open) return;
     final t = _Truck();
     if (_reqTypes.length == 1) t.truckType = _reqTypes.first;
-    t.bl.text = '${widget.request['blNumber'] ?? ''}';
-    t.container.text = '${widget.request['containerNumber'] ?? ''}';
     // A second truck usually goes to the same supplier at the same price.
-    if (_trucks.isNotEmpty) { t.supplier = _trucks.last.supplier; t.buy.text = _trucks.last.buy.text; t.sourcingRep = _trucks.first.sourcingRep; }
-    else if (_reps.any((o) => '${o['value']}' == _me)) { t.sourcingRep = _me; }
+    if (_trucks.isNotEmpty) {
+      final last = _trucks.last;
+      t.kind = last.kind; t.supplier = last.supplier; t.buy.text = last.buy.text; t.sourcingRep = _trucks.first.sourcingRep;
+      t.vehicles = last.vehicles; t.drivers = last.drivers;
+    } else if (_reps.any((o) => '${o['value']}' == _me)) { t.sourcingRep = _me; }
     setState(() => _trucks.add(t));
   }
 
-  Future<void> _loadDrivers(_Truck t) async {
-    final q = t.vehicle != null ? 'vehicle=${t.vehicle!['_id']}' : t.supplier != null ? 'supplier=${t.supplier!['_id']}' : '';
-    if (q.isEmpty) return;
+  Future<void> _loadLists(_Truck t) async {
+    final sid = t.supplier?['_id'];
+    if (sid == null) { setState(() { t.vehicles = []; t.drivers = []; }); return; }
     try {
-      var d = await Api.instance.get('/api/shipment-orders/drivers?$q&limit=200');
-      var rows = List<Map<String, dynamic>>.from(((d['drivers'] as List?) ?? const []).map((e) => Map<String, dynamic>.from(e)));
-      if (rows.isEmpty && t.supplier != null && t.vehicle != null) {
-        d = await Api.instance.get('/api/shipment-orders/drivers?supplier=${t.supplier!['_id']}&limit=200');
-        rows = List<Map<String, dynamic>>.from(((d['drivers'] as List?) ?? const []).map((e) => Map<String, dynamic>.from(e)));
-      }
-      if (mounted) setState(() => t.drivers = rows);
-    } catch (_) {/* typed driver still works */}
+      final res = await Future.wait([
+        Api.instance.get('/api/shipment-orders/vehicles?supplier=$sid&limit=200'),
+        Api.instance.get('/api/shipment-orders/drivers?supplier=$sid&limit=200'),
+      ]);
+      if (!mounted) return;
+      setState(() {
+        t.vehicles = List<Map<String, dynamic>>.from(((res[0]['vehicles'] as List?) ?? const []).map((e) => Map<String, dynamic>.from(e)));
+        t.drivers = List<Map<String, dynamic>>.from(((res[1]['drivers'] as List?) ?? const []).map((e) => Map<String, dynamic>.from(e)));
+        // A freelancer usually has one truck and drives it himself: both are prefilled.
+        if (t.kind == 'freelancer') {
+          if (t.vehicle == null && t.vehicles.length == 1) t.vehicle = t.vehicles.first;
+          if (t.driver == null && t.drivers.length == 1) t.driver = t.drivers.first;
+        }
+      });
+    } catch (_) {/* the inline add still works */}
   }
 
   Future<void> _pickSupplier(_Truck t) async {
+    final type = t.kind == 'freelancer' ? 'freelancer' : 'company';
     final s = await pickRemote(context,
-      title: tr('المورّد', 'Supplier'),
+      title: t.kind == 'freelancer' ? tr('الفريلانسر', 'Freelancer') : tr('المورّد', 'Vendor'),
+      // Only approved carriers are offered (missing status = approved).
       fetch: (q) async {
-        final d = await Api.instance.get('/api/shipment-orders/suppliers?limit=60&fresh=1${q.isEmpty ? '' : '&q=${Uri.encodeQueryComponent(q)}'}');
+        final d = await Api.instance.get('/api/shipment-orders/suppliers?approved=1&type=$type&limit=60&fresh=1${q.isEmpty ? '' : '&q=${Uri.encodeQueryComponent(q)}'}');
         return List<Map<String, dynamic>>.from(((d['suppliers'] as List?) ?? const []).map((e) => Map<String, dynamic>.from(e)));
       },
       label: (x) => '${x['name'] ?? ''}',
-      sub: (x) => [x['phone'], x['type'] == 'freelancer' ? tr('سائق فرد', 'Freelancer') : tr('شركة', 'Company')].where((e) => '${e ?? ''}'.isNotEmpty).join(' · '),
+      sub: (x) => [x['phone'], '${tr('سيارات', 'trucks')} ${x['vehicleCount'] ?? 0}', '${tr('سائقون', 'drivers')} ${x['driverCount'] ?? 0}'].where((e) => '${e ?? ''}'.isNotEmpty).join(' · '),
     );
     if (s == null) return;
-    setState(() { t.supplier = s; t.vehicle = null; });
-    _loadDrivers(t);
+    setState(() { t.supplier = s; t.newFreelancer = false; t.vehicle = null; t.driver = null; });
+    _loadLists(t);
   }
 
   Future<void> _pickVehicle(_Truck t) async {
     final v = await pickRemote(context,
-      title: tr('السيارة', 'Truck'),
-      fetch: (q) async {
-        final qs = StringBuffer('limit=80');
-        if (t.supplier != null && q.isEmpty) qs.write('&supplier=${t.supplier!['_id']}');
-        if (q.isNotEmpty) qs.write('&q=${Uri.encodeQueryComponent(q)}');
-        final d = await Api.instance.get('/api/shipment-orders/vehicles?$qs');
-        return List<Map<String, dynamic>>.from(((d['vehicles'] as List?) ?? const []).map((e) => Map<String, dynamic>.from(e)));
-      },
+      title: tr('سيارات المورّد', "Vendor's trucks"),
+      fetch: (q) async => t.vehicles.where((x) => q.isEmpty || '${x['plate']} ${x['defaultDriverName'] ?? ''}'.contains(q)).toList(),
       label: (x) => '${x['plate'] ?? ''}',
-      sub: (x) => [x['truckType'], x['supplier'] is Map ? x['supplier']['name'] : '', x['defaultDriverName']].where((e) => '${e ?? ''}'.isNotEmpty).join(' · '),
+      sub: (x) => [x['truckType'], x['defaultDriverName']].where((e) => '${e ?? ''}'.isNotEmpty).join(' · '),
     );
     if (v == null) return;
     setState(() {
       t.vehicle = v;
       t.plate.clear();
-      if (t.driver.text.isEmpty) t.driver.text = '${v['defaultDriverName'] ?? ''}';
-      if (t.phone.text.isEmpty) t.phone.text = '${v['defaultDriverPhone'] ?? ''}';
-      if (t.supplier == null && v['supplier'] is Map) t.supplier = Map<String, dynamic>.from(v['supplier']);
+      // The truck's usual driver is suggested when he is in the register.
+      final dn = '${v['defaultDriverName'] ?? ''}';
+      if (t.driver == null && dn.isNotEmpty) {
+        final hit = t.drivers.where((d) => '${d['name']}' == dn);
+        if (hit.isNotEmpty) t.driver = hit.first;
+      }
     });
-    _loadDrivers(t);
   }
 
-  Future<void> _save() async {
-    final problems = <String>[];
+  Future<void> _pickDriver(_Truck t) async {
+    final v = await pickRemote(context,
+      title: tr('السائق', 'Driver'),
+      fetch: (q) async {
+        if (q.isEmpty) return t.drivers;
+        final d = await Api.instance.get('/api/shipment-orders/drivers?limit=40&q=${Uri.encodeQueryComponent(q)}');
+        return List<Map<String, dynamic>>.from(((d['drivers'] as List?) ?? const []).map((e) => Map<String, dynamic>.from(e)));
+      },
+      label: (x) => '${x['name'] ?? ''}',
+      sub: (x) => [x['phone'], x['residenceNumber']].where((e) => '${e ?? ''}'.isNotEmpty && '$e' != '0').join(' · '),
+    );
+    if (v != null) setState(() { t.driver = v; t.newDriver = false; });
+  }
+
+  List<String> _problems() {
+    final out = <String>[];
+    if (_times.pickup.isEmpty) out.add(tr('وقت الاستلام مطلوب', 'Pickup time is required'));
     for (var i = 0; i < _trucks.length; i++) {
       final t = _trucks[i];
       final n = i + 1;
-      if (_reqTypes.length > 1 && t.truckType.isEmpty) problems.add(tr('الشاحنة $n: حدّد نوعَ الشاحنة المنفَّذ', 'Truck $n: truck type sent'));
-      if (t.supplier == null) problems.add(tr('الشاحنة $n: اختر المورّد', 'Truck $n: supplier'));
-      if (t.vehicle == null && t.plate.text.trim().isEmpty) problems.add(tr('الشاحنة $n: اختر السيارة أو اكتب لوحتها', 'Truck $n: truck or plate'));
-      if (t.driver.text.trim().isEmpty) problems.add(tr('الشاحنة $n: اسم السائق', 'Truck $n: driver'));
-      if (!((num.tryParse(t.buy.text.trim()) ?? 0) > 0)) problems.add(tr('الشاحنة $n: سعر الشراء مطلوب', 'Truck $n: buying price required'));
+      if (_reqTypes.length > 1 && t.truckType.isEmpty) out.add(tr('الشاحنة $n: حدّد نوعَ الشاحنة المنفَّذ', 'Truck $n: truck type sent'));
+      if (t.newFreelancer ? t.flName.text.trim().isEmpty : t.supplier == null) out.add(tr('الشاحنة $n: ${t.kind == 'freelancer' ? 'اختر الفريلانسر' : 'اختر المورّد'}', 'Truck $n: carrier'));
+      if (t.vehicle == null && t.plate.text.trim().isEmpty) out.add(tr('الشاحنة $n: اختر السيارة أو أضِف لوحتها', 'Truck $n: truck or plate'));
+      if (t.newDriver) {
+        if (t.drName.text.trim().isEmpty) out.add(tr('الشاحنة $n: اسم السائق الجديد', 'Truck $n: new driver name'));
+        if (!_iqamaRe.hasMatch(_digits(t.drIqama.text))) out.add(tr('الشاحنة $n: رقم الإقامة/الهوية عشرة أرقام يبدأ بـ 1 أو 2', 'Truck $n: iqama is 10 digits starting with 1 or 2'));
+      } else if (t.driver == null) {
+        out.add(tr('الشاحنة $n: اختر السائق أو سجّل سائقًا جديدًا', 'Truck $n: driver'));
+      }
+      if (!((num.tryParse(t.buy.text.trim()) ?? 0) > 0)) out.add(tr('الشاحنة $n: سعر الشراء مطلوب', 'Truck $n: buying price required'));
     }
+    return out;
+  }
+
+  Future<void> _save() async {
+    final problems = _problems();
     if (problems.isNotEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(problems.join('\n'))));
       return;
@@ -1393,25 +1693,25 @@ class _PlaceTrucksScreenState extends State<PlaceTrucksScreen> {
         'trucks': [
           for (final t in _trucks)
             {
+              'kind': t.kind,
               if (t.truckType.isNotEmpty) 'truckType': t.truckType,
-              'supplierChoice': t.supplier!['_id'],
+              if (t.newFreelancer) 'newFreelancer': {'name': t.flName.text.trim(), 'phone': t.flPhone.text.trim()} else 'supplierChoice': t.supplier!['_id'],
               if (t.vehicle != null) 'vehicle': t.vehicle!['_id'] else 'newVehicle': {'plate': t.plate.text.trim()},
-              'driverName': t.driver.text.trim(),
-              'driverPhone': t.phone.text.trim(),
+              if (t.newDriver) 'newDriver': {'name': t.drName.text.trim(), 'phone': t.drPhone.text.trim(), 'residenceNumber': _digits(t.drIqama.text)} else 'driverId': t.driver!['_id'],
               'sourcingRep': (t.sourcingRep ?? '').isEmpty ? null : t.sourcingRep,
+              if ((t.helper ?? '').isNotEmpty) 'helper': t.helper,
               'buyPrice': num.tryParse(t.buy.text.trim()),
               if (t.advance.text.trim().isNotEmpty) 'advanceAmount': num.tryParse(t.advance.text.trim()),
-              'blNumber': t.bl.text.trim(),
-              'containerNumber': t.container.text.trim(),
+              ..._times.body(),
             },
         ],
       });
-      final failed = (d['failed'] as List?)?.length ?? 0;
+      final failed = (d['failed'] as List?) ?? const [];
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(tr(
-          'أُنشئت أوامر النقل: ${(d['waybills'] as List? ?? const []).join('، ')}${failed > 0 ? ' · تعذّرت $failed' : ''}',
-          'Transport orders: ${(d['waybills'] as List? ?? const []).join(', ')}${failed > 0 ? ' · $failed failed' : ''}'))));
-        if (failed == 0) { Navigator.pop(context, true); } else { setState(() => _saving = false); }
+          'أُنشئت أوامر النقل: ${(d['waybills'] as List? ?? const []).join('، ')}${failed.isNotEmpty ? ' · تعذّرت ${failed.length}: ${(failed.first as Map)['message']}' : ''}',
+          'Transport orders: ${(d['waybills'] as List? ?? const []).join(', ')}${failed.isNotEmpty ? ' · ${failed.length} failed' : ''}'))));
+        if (failed.isEmpty) { Navigator.pop(context, true); } else { setState(() => _saving = false); }
       }
     } catch (e) {
       if (mounted) {
@@ -1423,6 +1723,7 @@ class _PlaceTrucksScreenState extends State<PlaceTrucksScreen> {
 
   Widget _truckCard(int i) {
     final t = _trucks[i];
+    final fl = t.kind == 'freelancer';
     return Padding(
       padding: const EdgeInsets.only(top: 10),
       child: AppCard(topAccent: T.orange, child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
@@ -1431,54 +1732,79 @@ class _PlaceTrucksScreenState extends State<PlaceTrucksScreen> {
           const Spacer(),
           if (_trucks.length > 1) IconButton(onPressed: () => setState(() { _trucks.removeAt(i).dispose(); }), icon: const Icon(Icons.delete_outline, color: T.danger)),
         ]),
+        // First: a registered company or a freelancer.
+        SegmentedButton<String>(
+          segments: [
+            ButtonSegment(value: 'vendor', label: Text(tr('مورد', 'Vendor')), icon: const Icon(Icons.business_outlined)),
+            ButtonSegment(value: 'freelancer', label: Text(tr('فريلانسر', 'Freelancer')), icon: const Icon(Icons.person_outline)),
+          ],
+          selected: {t.kind},
+          onSelectionChanged: (v) => setState(() { t.kind = v.first; t.supplier = null; t.newFreelancer = false; t.vehicle = null; t.driver = null; t.vehicles = []; t.drivers = []; }),
+        ),
+        const SizedBox(height: 8),
         if (_reqTypes.isNotEmpty) ...[
           Text('${tr('نوع الشاحنة المنفَّذ', 'Truck type sent')}${_reqTypes.length > 1 ? ' *' : ''}',
               style: TextStyle(fontWeight: FontWeight.w700, fontSize: 12.5, color: _reqTypes.length > 1 && t.truckType.isEmpty ? T.danger : T.ink)),
           const SizedBox(height: 4),
           Wrap(spacing: 6, runSpacing: 6, children: [
             for (final ty in _reqTypes)
-              ChoiceChip(
-                label: Text(ty),
-                selected: t.truckType == ty,
-                selectedColor: T.orange.withValues(alpha: 0.18),
-                onSelected: (_) => setState(() => t.truckType = ty),
-              ),
+              ChoiceChip(label: Text(ty), selected: t.truckType == ty, selectedColor: T.orange.withValues(alpha: 0.18), onSelected: (_) => setState(() => t.truckType = ty)),
           ]),
           const SizedBox(height: 8),
         ],
-        OutlinedButton.icon(
-          style: OutlinedButton.styleFrom(alignment: AlignmentDirectional.centerStart, minimumSize: const Size(double.infinity, 46)),
-          onPressed: _reps.isEmpty ? null : () => _pickRep(t),
-          icon: const Icon(Icons.person_search_outlined, size: 17),
-          label: Text(_repLabel(t.sourcingRep).isEmpty ? tr('مسؤول التوريد — مَن جاء بالمورّد ومالك السيارة…', 'Sourcing — who found the carrier…') : '${tr('مسؤول التوريد', 'Sourcing')}: ${_repLabel(t.sourcingRep)}', style: const TextStyle(fontWeight: FontWeight.w700), overflow: TextOverflow.ellipsis),
-        ),
+        _pickBtn(_labelOf(_reps, t.sourcingRep).isEmpty ? tr('مسؤول التوريد — مَن جاء بالمورّد ومالك السيارة…', 'Sourcing — who found the carrier…') : '${tr('مسؤول التوريد', 'Sourcing')}: ${_labelOf(_reps, t.sourcingRep)}',
+            Icons.person_search_outlined, _reps.isEmpty ? null : () async {
+          final v = await srPickPerson(context, tr('مسؤول التوريد', 'Sourcing'), _reps);
+          if (v != null) setState(() => t.sourcingRep = '${v['value']}');
+        }),
+        const SizedBox(height: 6),
+        Row(children: [
+          Expanded(child: _pickBtn(_labelOf(_helpers, t.helper).isEmpty ? tr('بمساعدة أحد (اختياري)…', 'Helped by (optional)…') : '${tr('بمساعدة', 'Helped by')}: ${_labelOf(_helpers, t.helper)}',
+              Icons.group_add_outlined, _helpers.isEmpty ? null : () async {
+            final v = await srPickPerson(context, tr('بمساعدة', 'Helped by'), _helpers);
+            if (v != null) setState(() => t.helper = '${v['value']}');
+          })),
+          if ((t.helper ?? '').isNotEmpty) IconButton(onPressed: () => setState(() => t.helper = null), icon: const Icon(Icons.close, size: 18)),
+        ]),
         const SizedBox(height: 8),
-        OutlinedButton.icon(
-          style: OutlinedButton.styleFrom(alignment: AlignmentDirectional.centerStart, minimumSize: const Size(double.infinity, 46)),
-          onPressed: () => _pickSupplier(t),
-          icon: const Icon(Icons.storefront_outlined, size: 17),
-          label: Text(t.supplier == null ? tr('اختر المورّد… *', 'Choose supplier… *') : '${t.supplier!['name']}', style: const TextStyle(fontWeight: FontWeight.w700), overflow: TextOverflow.ellipsis),
-        ),
-        const SizedBox(height: 8),
-        OutlinedButton.icon(
-          style: OutlinedButton.styleFrom(alignment: AlignmentDirectional.centerStart, minimumSize: const Size(double.infinity, 46)),
-          onPressed: () => _pickVehicle(t),
-          icon: const Icon(Icons.local_shipping_outlined, size: 17),
-          label: Text(t.vehicle == null ? tr('اختر السيارة من السجلّ…', 'Pick truck from the register…') : '${t.vehicle!['plate']}', style: const TextStyle(fontWeight: FontWeight.w700)),
-        ),
-        if (t.vehicle == null)
-          Padding(padding: const EdgeInsets.only(top: 6), child: TextField(controller: t.plate, decoration: InputDecoration(labelText: tr('أو اكتب لوحة جديدة', 'Or type a new plate')))),
+        if (!t.newFreelancer)
+          _pickBtn(t.supplier == null ? (fl ? tr('اختر الفريلانسر… *', 'Choose freelancer… *') : tr('اختر المورّد… *', 'Choose vendor… *')) : '${t.supplier!['name']}',
+              fl ? Icons.person_search_outlined : Icons.storefront_outlined, () => _pickSupplier(t))
+        else ...[
+          TextField(controller: t.flName, decoration: InputDecoration(labelText: tr('اسم الفريلانسر *', 'Freelancer name *'))),
+          const SizedBox(height: 6),
+          TextField(controller: t.flPhone, keyboardType: TextInputType.phone, decoration: InputDecoration(labelText: tr('جواله', 'Phone'))),
+        ],
+        if (fl)
+          Align(alignment: AlignmentDirectional.centerStart, child: TextButton(
+            onPressed: () => setState(() { t.newFreelancer = !t.newFreelancer; t.supplier = null; t.vehicle = null; t.driver = null; t.vehicles = []; t.drivers = []; t.newDriver = t.newFreelancer; }),
+            child: Text(t.newFreelancer ? tr('الاختيار من المسجَّلين', 'Pick a registered one') : tr('+ فريلانسر جديد', '+ New freelancer')),
+          )),
+        const SizedBox(height: 6),
+        // Truck: one registered on this carrier, or a new plate added in place.
+        if (t.vehicle != null)
+          _pickBtn('${t.vehicle!['plate']}', Icons.local_shipping_outlined, () => _pickVehicle(t))
+        else ...[
+          if (t.vehicles.isNotEmpty) _pickBtn(tr('اختر من سيارات المورّد…', "Pick from the carrier's trucks…"), Icons.local_shipping_outlined, () => _pickVehicle(t)),
+          Padding(padding: const EdgeInsets.only(top: 6), child: TextField(controller: t.plate, decoration: InputDecoration(labelText: t.vehicles.isEmpty ? tr('لوحة السيارة *', 'Plate *') : tr('أو أضِف لوحة جديدة', 'Or add a new plate')))),
+        ],
         if (t.vehicle != null) Align(alignment: AlignmentDirectional.centerStart, child: TextButton(onPressed: () => setState(() => t.vehicle = null), child: Text(tr('لوحة جديدة بدلًا منها', 'Use a new plate instead')))),
         const SizedBox(height: 6),
-        if (t.drivers.isNotEmpty)
-          Wrap(spacing: 5, runSpacing: 5, children: [
-            for (final dr in t.drivers.take(12))
-              ActionChip(label: Text('${dr['name']}', style: const TextStyle(fontSize: 11.5)), onPressed: () => setState(() { t.driver.text = '${dr['name'] ?? ''}'; t.phone.text = '${dr['phone'] ?? ''}'; })),
-          ]),
-        TextField(controller: t.driver, decoration: InputDecoration(labelText: tr('اسم السائق *', 'Driver name *'))),
-        const SizedBox(height: 6),
-        TextField(controller: t.phone, keyboardType: TextInputType.phone, decoration: InputDecoration(labelText: tr('جوال السائق', 'Driver phone'))),
-        const SizedBox(height: 6),
+        // Driver: registered, or new with his iqama (required).
+        if (!t.newDriver)
+          _pickBtn(t.driver == null ? tr('اختر السائق… *', 'Choose driver… *') : '${t.driver!['name']}${'${t.driver!['phone'] ?? ''}'.isEmpty ? '' : ' · ${t.driver!['phone']}'}',
+              Icons.badge_outlined, () => _pickDriver(t))
+        else ...[
+          TextField(controller: t.drName, decoration: InputDecoration(labelText: tr('اسم السائق الجديد *', 'New driver name *'))),
+          const SizedBox(height: 6),
+          TextField(controller: t.drPhone, keyboardType: TextInputType.phone, decoration: InputDecoration(labelText: tr('جوال السائق', 'Driver phone'))),
+          const SizedBox(height: 6),
+          TextField(controller: t.drIqama, keyboardType: TextInputType.number, decoration: InputDecoration(labelText: tr('رقم الإقامة / الهوية *', 'Iqama / ID number *'), helperText: tr('عشرة أرقام يبدأ بـ 1 أو 2', '10 digits starting with 1 or 2'))),
+        ],
+        Align(alignment: AlignmentDirectional.centerStart, child: TextButton(
+          onPressed: () => setState(() { t.newDriver = !t.newDriver; t.driver = null; }),
+          child: Text(t.newDriver ? tr('اختيار سائق مسجَّل', 'Pick a registered driver') : tr('+ سائق جديد', '+ New driver')),
+        )),
         Row(children: [
           Expanded(child: TextField(controller: t.buy, keyboardType: TextInputType.number, decoration: InputDecoration(labelText: tr('سعر الشراء *', 'Buying price *')))),
           const SizedBox(width: 8),
@@ -1496,9 +1822,11 @@ class _PlaceTrucksScreenState extends State<PlaceTrucksScreen> {
       body: ListView(padding: const EdgeInsets.fromLTRB(14, 14, 14, 100), children: [
         AppCard(child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
           Text('${r['customerName'] ?? ''}', style: const TextStyle(fontWeight: FontWeight.w900)),
-          Text('${r['fromCity'] ?? ''} ← ${r['toCity'] ?? ''} · ${r['truckType'] ?? ''} · ${soFmtDate(r['pickupTime'])}', style: const TextStyle(color: T.inkSoft)),
+          Text('${r['fromCity'] ?? ''} ← ${r['toCity'] ?? ''} · ${r['truckType'] ?? ''}${'${r['branch'] ?? ''}'.isEmpty ? '' : ' · ${r['branch']}'}', style: const TextStyle(color: T.inkSoft)),
           Text(tr('بقي $_open ${_open == 1 ? 'شاحنة' : 'شاحنات'} — كلّ شاحنة تصير أمرَ نقلٍ بالرقم التسلسلي.', '$_open truck(s) left — each becomes a transport order.'), style: const TextStyle(fontSize: 12, color: T.inkFaint)),
         ])),
+        const SizedBox(height: 10),
+        _timesCard(context, _times, setState),
         for (var i = 0; i < _trucks.length; i++) _truckCard(i),
         if (_trucks.length < _open)
           Padding(padding: const EdgeInsets.only(top: 8), child: OutlinedButton.icon(onPressed: _add, icon: const Icon(Icons.add), label: Text(tr('شاحنة أخرى', 'Another truck')))),
@@ -1510,4 +1838,484 @@ class _PlaceTrucksScreenState extends State<PlaceTrucksScreen> {
       ),
     );
   }
+}
+
+// ── Fleet: completing on our own trucks ─────────────────────────────────────
+
+/// Each truck becomes a transport order with supplier «تنشيط» and its linked fleet load; the request already holds
+/// customer, route and selling price, so only what a fleet load needs is asked.
+class FleetPlaceScreen extends StatefulWidget {
+  final Map<String, dynamic> request;
+  const FleetPlaceScreen({super.key, required this.request});
+  @override
+  State<FleetPlaceScreen> createState() => _FleetPlaceScreenState();
+}
+
+class _FleetTruck {
+  String truckType = '';
+  Map<String, dynamic>? vehicle;
+  Map<String, dynamic>? driver;
+  Map<String, dynamic>? second;
+  String rentType = '';
+  String loadType = '';
+  String expected = '';
+  bool friday = false;
+  String? helper;
+  final price = TextEditingController();
+  final expense = TextEditingController();
+  final notes = TextEditingController();
+  void dispose() { for (final c in [price, expense, notes]) { c.dispose(); } }
+}
+
+class _FleetPlaceScreenState extends State<FleetPlaceScreen> {
+  final List<_FleetTruck> _trucks = [];
+  List<Map<String, dynamic>> _vehicles = [];
+  List<Map<String, dynamic>> _drivers = [];
+  List<Map<String, dynamic>> _rentTypes = [];
+  List<Map<String, dynamic>> _loadTypes = [];
+  List<Map<String, dynamic>> _helpers = [];
+  bool _loading = true;
+  bool _saving = false;
+  String? _error;
+  late final _Times _times = _Times(widget.request);
+
+  List<String> get _reqTypes => srTruckTypes(widget.request);
+  int get _open {
+    final r = widget.request;
+    return inum(r['open'] ?? (inum(r['trucks']) - ((r['placed'] as List?)?.length ?? 0))).toInt().clamp(1, 25);
+  }
+
+  @override
+  void initState() { super.initState(); _add(); _load(); }
+  @override
+  void dispose() { for (final t in _trucks) { t.dispose(); } super.dispose(); }
+
+  Future<void> _load() async {
+    try {
+      final res = await Future.wait([
+        Api.instance.get('/api/fleet/vehicles'),
+        Api.instance.get('/api/fleet/drivers'),
+        Api.instance.get('/api/lookups?type=fleet_rent_type&active=true').catchError((_) => <String, dynamic>{'items': []}),
+        Api.instance.get('/api/lookups?type=fleet_load_type&active=true').catchError((_) => <String, dynamic>{'items': []}),
+      ]);
+      final helpers = await srTeamMembers('helpers').catchError((_) => <Map<String, dynamic>>[]);
+      if (!mounted) return;
+      setState(() {
+        _vehicles = List<Map<String, dynamic>>.from(res[0]['vehicles'] ?? []);
+        _drivers = List<Map<String, dynamic>>.from(res[1]['drivers'] ?? []);
+        _rentTypes = List<Map<String, dynamic>>.from(res[2]['items'] ?? []);
+        _loadTypes = List<Map<String, dynamic>>.from(res[3]['items'] ?? []);
+        _helpers = helpers;
+        _loading = false;
+      });
+    } catch (e) {
+      if (mounted) setState(() { _loading = false; _error = e.toString(); });
+    }
+  }
+
+  void _add() {
+    if (_trucks.length >= _open) return;
+    final t = _FleetTruck();
+    if (_reqTypes.length == 1) t.truckType = _reqTypes.first;
+    if (_trucks.isNotEmpty) { t.price.text = _trucks.last.price.text; t.rentType = _trucks.last.rentType; t.loadType = _trucks.last.loadType; }
+    setState(() => _trucks.add(t));
+  }
+
+  /// What the truck is doing now, as on the fleet's new-load form.
+  (String, Color) _availability(Map<String, dynamic> v) {
+    final trip = v['trip'] as Map<String, dynamic>?;
+    if (trip != null) {
+      if (v['atDestination'] == true) return (tr('وصلت نطاق ${trip['toCity']} — تفريغ', 'Reached ${trip['toCity']} — unloading'), T.success);
+      return (tr('عليها حمولة إلى ${trip['toCity'] ?? '—'} (${trip['waybillNumber'] ?? ''})', 'Carrying to ${trip['toCity'] ?? '—'}'), T.warn);
+    }
+    final city = (v['live'] as Map<String, dynamic>?)?['city'];
+    if (city != null && '$city'.isNotEmpty) return (tr('متاحة — في $city', 'Available — in $city'), T.success);
+    return (tr('متاحة', 'Available'), T.success);
+  }
+
+  String _seated(Map<String, dynamic> v) => [for (final d in (v['drivers'] as List?) ?? const []) '${(d as Map)['name'] ?? ''}'].where((x) => x.isNotEmpty).join(' + ');
+
+  Future<void> _pickVehicle(_FleetTruck t) async {
+    final v = await pickRemote(context,
+      title: tr('سياراتنا', 'Our trucks'),
+      fetch: (q) async => _vehicles.where((x) => q.isEmpty || '${x['plate']} ${_seated(x)} ${_availability(x).$1}'.contains(q)).toList(),
+      label: (x) => '${x['plate'] ?? ''}',
+      sub: (x) => [_availability(x).$1, _seated(x), x['trailerType'], x['status']].where((e) => '${e ?? ''}'.isNotEmpty).join(' · '),
+    );
+    if (v == null) return;
+    setState(() {
+      t.vehicle = v;
+      // The truck's seated drivers fill the two driver slots.
+      final seated = [for (final d in (v['drivers'] as List?) ?? const []) Map<String, dynamic>.from(d as Map)];
+      Map<String, dynamic>? find(Map d) => _drivers.where((x) => '${x['_id']}' == '${d['_id']}').firstOrNull;
+      if (seated.isNotEmpty) t.driver = find(seated.first) ?? seated.first;
+      t.second = seated.length > 1 ? (find(seated[1]) ?? seated[1]) : null;
+    });
+  }
+
+  Future<Map<String, dynamic>?> _pickDriver(String title) => pickRemote(context,
+        title: title,
+        fetch: (q) async => _drivers.where((x) => q.isEmpty || '${x['name']} ${x['phone'] ?? ''}'.contains(q)).toList(),
+        label: (x) => '${x['name'] ?? ''}',
+        sub: (x) => [x['working'] == false ? tr('لا يعمل', 'Off duty') : '', x['vehicle'] is Map ? '${tr('على', 'on')} ${x['vehicle']['plate']}' : '', x['phone']].where((e) => '${e ?? ''}'.isNotEmpty).join(' · '),
+      );
+
+  Future<String?> _pickLookup(String title, List<Map<String, dynamic>> items) async {
+    final v = await pickRemote(context, title: title,
+        fetch: (q) async => items.where((x) => q.isEmpty || '${x['nameAr']} ${x['nameEn']}'.contains(q)).toList(),
+        label: (x) => tr('${x['nameAr'] ?? x['key']}', '${x['nameEn'] ?? x['nameAr'] ?? x['key']}'));
+    return v == null ? null : '${v['key']}';
+  }
+  String _lookupLabel(List<Map<String, dynamic>> items, String key) {
+    final hit = items.where((x) => '${x['key']}' == key);
+    return hit.isEmpty ? key : tr('${hit.first['nameAr'] ?? key}', '${hit.first['nameEn'] ?? hit.first['nameAr'] ?? key}');
+  }
+
+  Future<void> _save() async {
+    final problems = <String>[];
+    if (_times.pickup.isEmpty) problems.add(tr('وقت الاستلام مطلوب', 'Pickup time is required'));
+    for (var i = 0; i < _trucks.length; i++) {
+      final t = _trucks[i];
+      final n = i + 1;
+      if (_reqTypes.length > 1 && t.truckType.isEmpty) problems.add(tr('الشاحنة $n: حدّد نوعَ الشاحنة المنفَّذ', 'Truck $n: truck type'));
+      if (t.vehicle == null) problems.add(tr('الشاحنة $n: اختر السيارة', 'Truck $n: truck'));
+      if (t.driver == null) problems.add(tr('الشاحنة $n: اختر السائق', 'Truck $n: driver'));
+      if (!((num.tryParse(t.price.text.trim()) ?? 0) > 0)) problems.add(tr('الشاحنة $n: إيجار السيارة مطلوب', 'Truck $n: vehicle rent required'));
+    }
+    if (problems.isNotEmpty) { ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(problems.join('\n')))); return; }
+    setState(() => _saving = true);
+    try {
+      final d = await Api.instance.post('/api/shipment-requests/${widget.request['_id']}/fleet-place', {
+        'trucks': [
+          for (final t in _trucks)
+            {
+              if (t.truckType.isNotEmpty) 'truckType': t.truckType,
+              'vehicle': t.vehicle!['_id'],
+              'driver': t.driver!['_id'],
+              if (t.second != null) 'secondDriver': t.second!['_id'],
+              'price': num.tryParse(t.price.text.trim()),
+              if (t.expense.text.trim().isNotEmpty) 'driverExpense': num.tryParse(t.expense.text.trim()),
+              'fridayBonus': t.friday,
+              if (t.rentType.isNotEmpty) 'rentType': t.rentType,
+              if (t.loadType.isNotEmpty) 'loadType': t.loadType,
+              if (t.expected.isNotEmpty) 'expectedArrival': '${t.expected}T12:00:00',
+              if (t.notes.text.trim().isNotEmpty) 'notes': t.notes.text.trim(),
+              if ((t.helper ?? '').isNotEmpty) 'helper': t.helper,
+              ..._times.body(),
+            },
+        ],
+      });
+      final failed = (d['failed'] as List?) ?? const [];
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(tr(
+          'أُنشئت أوامر النقل وحمولات الأسطول: ${(d['waybills'] as List? ?? const []).join('، ')}${failed.isNotEmpty ? ' · تعذّرت ${failed.length}: ${(failed.first as Map)['message']}' : ''}',
+          'Orders and fleet loads: ${(d['waybills'] as List? ?? const []).join(', ')}${failed.isNotEmpty ? ' · ${failed.length} failed' : ''}'))));
+        if (failed.isEmpty) { Navigator.pop(context, true); } else { setState(() => _saving = false); }
+      }
+    } catch (e) {
+      if (mounted) { setState(() => _saving = false); ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.toString()))); }
+    }
+  }
+
+  String _labelOf(List<Map<String, dynamic>> list, String? id) {
+    final o = list.where((x) => '${x['value']}' == id);
+    return o.isEmpty ? '' : '${o.first['label'] ?? ''}';
+  }
+
+  Widget _card(int i) {
+    final t = _trucks[i];
+    final av = t.vehicle == null ? null : _availability(t.vehicle!);
+    final isFriday = DateTime.now().weekday == DateTime.friday;
+    return Padding(
+      padding: const EdgeInsets.only(top: 10),
+      child: AppCard(topAccent: T.navy, child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+        Row(children: [
+          Text('${tr('الشاحنة', 'Truck')} ${i + 1}', style: const TextStyle(fontWeight: FontWeight.w900)),
+          const Spacer(),
+          if (_trucks.length > 1) IconButton(onPressed: () => setState(() { _trucks.removeAt(i).dispose(); }), icon: const Icon(Icons.delete_outline, color: T.danger)),
+        ]),
+        if (_reqTypes.isNotEmpty) ...[
+          Wrap(spacing: 6, runSpacing: 6, children: [
+            for (final ty in _reqTypes)
+              ChoiceChip(label: Text(ty), selected: t.truckType == ty, selectedColor: T.orange.withValues(alpha: 0.18), onSelected: (_) => setState(() => t.truckType = ty)),
+          ]),
+          const SizedBox(height: 8),
+        ],
+        _pickBtn(t.vehicle == null ? tr('اختر من سياراتنا… *', 'Pick one of our trucks… *') : '${t.vehicle!['plate']}', Icons.local_shipping_outlined, () => _pickVehicle(t)),
+        if (av != null) Padding(padding: const EdgeInsets.only(top: 4), child: Text('${av.$1}${_seated(t.vehicle!).isEmpty ? '' : ' · ${_seated(t.vehicle!)}'}', style: TextStyle(fontSize: 12, color: av.$2, fontWeight: FontWeight.w700))),
+        const SizedBox(height: 6),
+        _pickBtn(t.driver == null ? tr('السائق الأول… *', 'First driver… *') : '${tr('السائق الأول', 'First driver')}: ${t.driver!['name']}', Icons.badge_outlined, () async {
+          final v = await _pickDriver(tr('السائق الأول', 'First driver'));
+          if (v != null) setState(() => t.driver = v);
+        }),
+        const SizedBox(height: 6),
+        Row(children: [
+          Expanded(child: _pickBtn(t.second == null ? tr('السائق الثاني (اختياري)…', 'Second driver (optional)…') : '${tr('السائق الثاني', 'Second driver')}: ${t.second!['name']}', Icons.badge_outlined, () async {
+            final v = await _pickDriver(tr('السائق الثاني', 'Second driver'));
+            if (v != null) setState(() => t.second = v);
+          })),
+          if (t.second != null) IconButton(onPressed: () => setState(() => t.second = null), icon: const Icon(Icons.close, size: 18)),
+        ]),
+        const SizedBox(height: 6),
+        Row(children: [
+          Expanded(child: TextField(controller: t.price, keyboardType: TextInputType.number, decoration: InputDecoration(labelText: tr('إيجار السيارة *', 'Vehicle rent *')))),
+          const SizedBox(width: 8),
+          Expanded(child: TextField(controller: t.expense, keyboardType: TextInputType.number, decoration: InputDecoration(labelText: tr('مصروف السائق (السلفة)', 'Driver expense (advance)')))),
+        ]),
+        SwitchListTile(
+          contentPadding: EdgeInsets.zero, value: t.friday, onChanged: (v) => setState(() => t.friday = v),
+          title: Text(tr('بونص الجمعة للسائق${isFriday ? ' (اليوم جمعة)' : ''}', 'Friday driver bonus${isFriday ? ' (today is Friday)' : ''}'), style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w700)),
+        ),
+        Row(children: [
+          Expanded(child: _pickBtn(t.rentType.isEmpty ? tr('نوع الإيجار', 'Rent type') : _lookupLabel(_rentTypes, t.rentType), Icons.swap_horiz, () async {
+            final v = await _pickLookup(tr('نوع الإيجار', 'Rent type'), _rentTypes);
+            if (v != null) setState(() => t.rentType = v);
+          })),
+          const SizedBox(width: 8),
+          Expanded(child: _pickBtn(t.loadType.isEmpty ? tr('نوع الحمولة', 'Load type') : _lookupLabel(_loadTypes, t.loadType), Icons.inventory_2_outlined, () async {
+            final v = await _pickLookup(tr('نوع الحمولة', 'Load type'), _loadTypes);
+            if (v != null) setState(() => t.loadType = v);
+          })),
+        ]),
+        const SizedBox(height: 6),
+        _pickBtn(t.expected.isEmpty ? tr('متوقع الوصول (اختياري)', 'Expected arrival (optional)') : '${tr('متوقع الوصول', 'Expected arrival')}: ${t.expected}', Icons.schedule, () async {
+          final d = await showDatePicker(context: context, initialDate: DateTime.tryParse(t.expected) ?? DateTime.now(), firstDate: DateTime.now().subtract(const Duration(days: 30)), lastDate: DateTime.now().add(const Duration(days: 60)));
+          if (d != null) setState(() => t.expected = ymd(d));
+        }),
+        const SizedBox(height: 6),
+        Row(children: [
+          Expanded(child: _pickBtn(_labelOf(_helpers, t.helper).isEmpty ? tr('بمساعدة أحد (اختياري)…', 'Helped by (optional)…') : '${tr('بمساعدة', 'Helped by')}: ${_labelOf(_helpers, t.helper)}',
+              Icons.group_add_outlined, _helpers.isEmpty ? null : () async {
+            final v = await srPickPerson(context, tr('بمساعدة', 'Helped by'), _helpers);
+            if (v != null) setState(() => t.helper = '${v['value']}');
+          })),
+          if ((t.helper ?? '').isNotEmpty) IconButton(onPressed: () => setState(() => t.helper = null), icon: const Icon(Icons.close, size: 18)),
+        ]),
+        const SizedBox(height: 6),
+        TextField(controller: t.notes, decoration: InputDecoration(labelText: tr('ملاحظة الحمولة', 'Load note'))),
+      ])),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final r = widget.request;
+    return AppScaffold(
+      title: Text('${tr('إكمال الطلب على سياراتنا', 'Complete on our trucks')} ${r['number']}'),
+      body: _loading
+          ? const Center(child: CircularProgressIndicator())
+          : _error != null
+              ? ErrorRetry(message: _error!, onRetry: _load)
+              : ListView(padding: const EdgeInsets.fromLTRB(14, 14, 14, 100), children: [
+                  AppCard(child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+                    Text('${r['customerName'] ?? ''}', style: const TextStyle(fontWeight: FontWeight.w900)),
+                    Text('${r['fromCity'] ?? ''} ← ${r['toCity'] ?? ''} · ${r['truckType'] ?? ''}${'${r['branch'] ?? ''}'.isEmpty ? '' : ' · ${r['branch']}'}', style: const TextStyle(color: T.inkSoft)),
+                    Text(tr('كلّ شاحنة تصير أمرَ نقلٍ بمورّد «تنشيط» وحمولةً في إدارة الأسطول مرتبطتين.', 'Each truck becomes a transport order with supplier «تنشيط» and a linked fleet load.'), style: const TextStyle(fontSize: 12, color: T.inkFaint)),
+                  ])),
+                  const SizedBox(height: 10),
+                  _timesCard(context, _times, setState),
+                  for (var i = 0; i < _trucks.length; i++) _card(i),
+                  if (_trucks.length < _open)
+                    Padding(padding: const EdgeInsets.only(top: 8), child: OutlinedButton.icon(onPressed: _add, icon: const Icon(Icons.add), label: Text(tr('شاحنة أخرى', 'Another truck')))),
+                ]),
+      floatingActionButton: _loading ? null : FloatingActionButton.extended(
+        onPressed: _saving ? null : _save,
+        icon: _saving ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white)) : const Icon(Icons.check),
+        label: Text(tr('إتمام إنشاء الشحنة', 'Create transport orders')),
+      ),
+    );
+  }
+}
+
+// ── «تحصيل السيارات» sheet ──────────────────────────────────────────────────
+
+/// Who reported finding how many trucks, when and with whose help; members add theirs, authors (and leads) edit or delete.
+Future<void> showSourcingSheet(BuildContext context, Map<String, dynamic> request, {required String team, required bool canAdd, required bool canLead}) =>
+    showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.white,
+      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
+      builder: (_) => _SourcingSheet(request: request, team: team, canAdd: canAdd, canLead: canLead),
+    );
+
+class _SourcingSheet extends StatefulWidget {
+  final Map<String, dynamic> request;
+  final String team;
+  final bool canAdd;
+  final bool canLead;
+  const _SourcingSheet({required this.request, required this.team, required this.canAdd, required this.canLead});
+  @override
+  State<_SourcingSheet> createState() => _SourcingSheetState();
+}
+
+class _SourcingSheetState extends State<_SourcingSheet> {
+  late Map<String, dynamic> _r = widget.request;
+  List<Map<String, dynamic>> _members = [];
+  bool _busy = false;
+
+  @override
+  void initState() {
+    super.initState();
+    if (widget.canAdd) srTeamMembers(widget.team).then((v) { if (mounted) setState(() => _members = v); }).catchError((_) {});
+  }
+
+  String get _me => '${context.read<AuthProvider>().user?['_id'] ?? ''}';
+
+  Future<void> _edit([Map? e]) async {
+    final count = TextEditingController(text: e == null ? '' : '${e['count']}');
+    final note = TextEditingController(text: '${e?['note'] ?? ''}');
+    String? helper = e?['helper'] == null ? null : '${e!['helper']}';
+    String helperName = '${e?['helperName'] ?? ''}';
+    final ok = await showDialog<bool>(context: context, builder: (d) => StatefulBuilder(builder: (d, setD) => AlertDialog(
+      title: Text(e == null ? tr('تسجيل سيارات حصّلتها', 'Record trucks you found') : tr('تعديل التحصيل', 'Edit')),
+      content: Column(mainAxisSize: MainAxisSize.min, children: [
+        TextField(controller: count, autofocus: true, keyboardType: TextInputType.number, decoration: InputDecoration(labelText: tr('عدد السيارات *', 'Number of trucks *'))),
+        const SizedBox(height: 8),
+        Row(children: [
+          Expanded(child: _pickBtn(helperName.isEmpty ? tr('بمساعدة شخص آخر (اختياري)', 'Helped by (optional)') : '${tr('بمساعدة', 'Helped by')}: $helperName', Icons.group_add_outlined,
+              _members.isEmpty ? null : () async {
+            final v = await srPickPerson(context, tr('بمساعدة', 'Helped by'), _members.where((m) => '${m['value']}' != _me).toList());
+            if (v != null) setD(() { helper = '${v['value']}'; helperName = '${v['label']}'; });
+          })),
+          if (helperName.isNotEmpty) IconButton(onPressed: () => setD(() { helper = null; helperName = ''; }), icon: const Icon(Icons.close, size: 18)),
+        ]),
+        const SizedBox(height: 8),
+        TextField(controller: note, decoration: InputDecoration(labelText: tr('ملاحظة', 'Note'))),
+      ]),
+      actions: [
+        TextButton(onPressed: () => Navigator.pop(d, false), child: Text(tr('رجوع', 'Back'))),
+        FilledButton(onPressed: () => Navigator.pop(d, true), child: Text(tr('حفظ', 'Save'))),
+      ],
+    )));
+    final n = int.tryParse(_digits(count.text));
+    final body = {'count': n, 'helper': helper ?? '', 'note': note.text.trim(), if (widget.team == 'fleet') 'team': 'fleet'};
+    count.dispose();
+    note.dispose();
+    if (ok != true) return;
+    if (n == null || n < 1 || n > 25) {
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(tr('عدد السيارات بين 1 و25', 'Between 1 and 25'))));
+      return;
+    }
+    await _call(() => e == null
+        ? Api.instance.post('/api/shipment-requests/${_r['_id']}/sourcing', body)
+        : Api.instance.put('/api/shipment-requests/${_r['_id']}/sourcing/${e['_id']}', body));
+  }
+
+  Future<void> _call(Future<dynamic> Function() fn) async {
+    setState(() => _busy = true);
+    try {
+      final d = await fn();
+      if (mounted && d is Map && d['request'] is Map) setState(() => _r = Map<String, dynamic>.from(d['request']));
+    } catch (e) {
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.toString())));
+    }
+    if (mounted) setState(() => _busy = false);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final x = srSourced(_r);
+    final entries = List<Map>.from(_r['sourcing'] ?? const []).reversed.toList();
+    return SafeArea(child: Padding(
+      padding: EdgeInsets.fromLTRB(16, 14, 16, 14 + MediaQuery.of(context).viewInsets.bottom),
+      child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+        Text('${tr('تحصيل السيارات', 'Trucks sourced')} — ${tr('طلب', 'Request')} ${_r['number']}', style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 16)),
+        const SizedBox(height: 4),
+        Text(tr('حُصّلت ${x.$1} من ${x.$2} · بقي ${x.$3}', '${x.$1} of ${x.$2} found · ${x.$3} left'), style: const TextStyle(fontWeight: FontWeight.w700, color: T.navy)),
+        Text(tr('للمتابعة فقط؛ لا يغيّر عدد أوامر النقل المنجزة.', 'Follow-up only; it does not change completed orders.'), style: const TextStyle(fontSize: 11.5, color: T.inkFaint)),
+        if (_busy) const LinearProgressIndicator(minHeight: 2),
+        const SizedBox(height: 6),
+        if (entries.isEmpty) Padding(padding: const EdgeInsets.all(16), child: Text(tr('لا تسجيلات بعد', 'Nothing recorded yet'), textAlign: TextAlign.center, style: const TextStyle(color: T.inkFaint))),
+        ConstrainedBox(constraints: BoxConstraints(maxHeight: MediaQuery.of(context).size.height * 0.45), child: ListView(shrinkWrap: true, children: [
+          for (final e in entries)
+            ListTile(
+              dense: true, contentPadding: EdgeInsets.zero,
+              leading: CircleAvatar(radius: 15, backgroundColor: T.navy.withValues(alpha: 0.1), child: Text('${e['count']}', style: const TextStyle(fontWeight: FontWeight.w900, color: T.navy))),
+              title: Text('${e['byName'] ?? ''}', style: const TextStyle(fontWeight: FontWeight.w700)),
+              subtitle: Text([soFmtDT(e['at']), if ('${e['helperName'] ?? ''}'.isNotEmpty) '${tr('بمساعدة', 'helped by')} ${e['helperName']}', e['note']].where((v) => '${v ?? ''}'.isNotEmpty).join(' · ')),
+              trailing: ('${e['by']}' == _me || widget.canLead) && widget.canAdd
+                  ? Row(mainAxisSize: MainAxisSize.min, children: [
+                      IconButton(icon: const Icon(Icons.edit_outlined, size: 18), onPressed: _busy ? null : () => _edit(e)),
+                      IconButton(icon: const Icon(Icons.delete_outline, size: 18, color: T.danger), onPressed: _busy ? null : () => _call(() => Api.instance.delete('/api/shipment-requests/${_r['_id']}/sourcing/${e['_id']}${widget.team == 'fleet' ? '?team=fleet' : ''}'))),
+                    ])
+                  : null,
+            ),
+        ])),
+        if (widget.canAdd) ...[
+          const SizedBox(height: 8),
+          FilledButton.icon(onPressed: _busy ? null : () => _edit(), icon: const Icon(Icons.add), label: Text(tr('حصّلتُ سيارات لهذا الطلب', 'I found trucks for this request'))),
+        ],
+      ]),
+    ));
+  }
+}
+
+// ── Approval delegates (sales manager only) ─────────────────────────────────
+
+Future<void> showApproversSheet(BuildContext context) => showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.white,
+      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
+      builder: (_) => const _ApproversSheet(),
+    );
+
+class _ApproversSheet extends StatefulWidget {
+  const _ApproversSheet();
+  @override
+  State<_ApproversSheet> createState() => _ApproversSheetState();
+}
+
+class _ApproversSheetState extends State<_ApproversSheet> {
+  List<Map<String, dynamic>> _options = [];
+  final Set<String> _picked = {};
+  bool _canEdit = false;
+  bool _loading = true;
+  bool _saving = false;
+
+  @override
+  void initState() {
+    super.initState();
+    Api.instance.get('/api/shipment-requests/approvers').then((d) {
+      if (!mounted) return;
+      setState(() {
+        _options = List<Map<String, dynamic>>.from(((d['options'] as List?) ?? const []).map((e) => Map<String, dynamic>.from(e)));
+        _picked.addAll([for (final x in (d['approvers'] as List?) ?? const []) '$x']);
+        _canEdit = d['canEdit'] == true;
+        _loading = false;
+      });
+    }).catchError((_) { if (mounted) setState(() => _loading = false); });
+  }
+
+  Future<void> _save() async {
+    setState(() => _saving = true);
+    try {
+      await Api.instance.put('/api/shipment-requests/approvers', {'approvers': _picked.toList()});
+      if (mounted) { ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(tr('حُفظ المفوَّضون', 'Delegates saved')))); Navigator.pop(context); }
+    } catch (e) {
+      if (mounted) { setState(() => _saving = false); ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.toString()))); }
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) => SafeArea(child: Padding(
+        padding: const EdgeInsets.fromLTRB(16, 14, 16, 14),
+        child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+          Text(tr('المفوَّضون بالاعتماد', 'Approval delegates'), style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 16)),
+          Text(tr('أعضاء فريق المبيعات الذين يعتمدون طلبات الشحن مع مدير المبيعات.', 'Sales members who approve shipment requests with the sales manager.'), style: const TextStyle(fontSize: 12, color: T.inkFaint)),
+          if (_loading) const Padding(padding: EdgeInsets.all(20), child: Center(child: CircularProgressIndicator())),
+          ConstrainedBox(constraints: BoxConstraints(maxHeight: MediaQuery.of(context).size.height * 0.5), child: ListView(shrinkWrap: true, children: [
+            for (final o in _options)
+              CheckboxListTile(
+                dense: true, contentPadding: EdgeInsets.zero,
+                value: _picked.contains('${o['value']}'),
+                onChanged: _canEdit ? (v) => setState(() => v == true ? _picked.add('${o['value']}') : _picked.remove('${o['value']}')) : null,
+                title: Text('${o['label']}', style: const TextStyle(fontWeight: FontWeight.w700)),
+                subtitle: Text('${o['roleAr'] ?? ''}'),
+              ),
+          ])),
+          if (_canEdit) FilledButton(onPressed: _saving ? null : _save, child: Text(tr('حفظ', 'Save'))),
+        ]),
+      ));
 }

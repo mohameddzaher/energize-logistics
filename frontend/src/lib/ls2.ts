@@ -13,7 +13,7 @@ export const LS2_STAFF_ROLES = [
   // The vehicles and authorizations manager works in this section; matches constants.js on the server.
   'vehicles_manager',
 ];
-export const LS2_ADMIN_ROLES = ['super_admin', 'admin', 'it_manager', 'it_specialist', 'operations_manager', 'operations_team_leader', 'workshop_manager', 'location_manager', 'vehicles_manager'];
+export const LS2_ADMIN_ROLES = ['super_admin', 'admin', 'it_manager', 'it_specialist', 'operations_manager', 'operations_team_leader', 'workshop_manager', 'location_manager', 'vehicles_manager', 'data_manager', 'data_analyst', 'data_entry'];
 // Roles that see the section pinned in their sidebar.
 export const LS2_SECTION_ROLES = ['super_admin', 'admin', 'it_manager', 'it_specialist', 'operations_manager', 'operations_team_leader', 'operations_staff', 'workshop_manager', 'moderator', 'location_manager', 'location_staff'];
 export const isLs2Staff = (u: RoleOrUser) => LS2_STAFF_ROLES.includes(roleOf(u)) || canAccessSection(permsOf(u), 'Location Solutions');

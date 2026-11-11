@@ -313,6 +313,7 @@ export default function LeaveDesk({ base, stage, canDecide, title, subtitle }: {
                     <th className="px-4 py-3 text-start font-semibold">{t('الموظف', 'Employee')}</th>
                     <th className="hidden 2xl:table-cell px-4 py-3 text-start font-semibold">{t('القسم', 'Department')}</th>
                     <th className="px-4 py-3 text-start font-semibold">{t('النوع', 'Type')}</th>
+                    <th className="px-4 py-3 text-start font-semibold whitespace-nowrap">{t('تاريخ تقديم الطلب', 'Requested on')}</th>
                     <th className="px-4 py-3 text-start font-semibold">{t('من', 'From')}</th>
                     <th className="px-4 py-3 text-start font-semibold">{t('إلى', 'To')}</th>
                     <th className="px-4 py-3 text-center font-semibold">{t('الأيام', 'Days')}</th>
@@ -330,6 +331,7 @@ export default function LeaveDesk({ base, stage, canDecide, title, subtitle }: {
                       </td>
                       <td className="hidden 2xl:table-cell px-4 py-3 whitespace-nowrap text-slate-700">{l.employee?.department || '—'}</td>
                       <td className="px-4 py-3"><TypeChip l={l} ar={ar} /></td>
+                      <td className="px-4 py-3 whitespace-nowrap tabular-nums text-slate-600">{l.createdAt ? new Date(l.createdAt).toLocaleString('en-GB', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' }) : '—'}</td>
                       <td className="px-4 py-3 whitespace-nowrap tabular-nums text-slate-700">{dm(l.startDate)}</td>
                       <td className="px-4 py-3 whitespace-nowrap tabular-nums text-slate-700">{l.startDate === l.endDate
                         ? <span className="text-[12px] font-bold text-[#f37121]">{t('يوم واحد فقط', 'One day only')}</span> : dm(l.endDate)}</td>

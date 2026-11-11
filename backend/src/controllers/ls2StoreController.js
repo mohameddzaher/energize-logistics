@@ -467,7 +467,9 @@ exports.listMovements = async (req, res) => {
       const rx = new RegExp(String(req.query.q).trim().slice(0, 60).replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i');
       (filter.$and = filter.$and || []).push({ $or: [{ itemName: rx }, { vehiclePlate: rx }, { reason: rx }, { supplierName: rx }, { performedByName: rx }, { issueRequestNo: rx }] });
     }
-    const limit = Math.min(Number(req.query.limit) || 200, 3000);
+    // A filtered request (a period, an item, a plate…) gets every matching row; the cap only bounds an unfiltered open of the log.
+    const filtered = Object.keys(filter).some((k) => k !== 'warehouse' && k !== '$or') || !!filter.$and;
+    const limit = Math.min(Number(req.query.limit) || 200, filtered ? 100000 : 3000);
     const rows = await Ls2StoreMovement.find(filter).sort({ createdAt: -1 }).limit(limit).lean();
     // Unit comes from the item; value is quantity times price, for receipts that have a price.
     const units = new Map((await Ls2StoreItem.find({ _id: { $in: [...new Set(rows.map((m) => String(m.item)))] } }).select('unit code').lean()).map((i) => [String(i._id), i]));

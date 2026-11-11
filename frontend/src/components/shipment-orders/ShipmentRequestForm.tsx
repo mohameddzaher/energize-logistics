@@ -31,7 +31,6 @@ const toDateInput = (v?: string | null) => {
   const p = (n: number) => String(n).padStart(2, '0');
   return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`;
 };
-const today = () => toDateInput(new Date().toISOString());
 
 export default function ShipmentRequestForm({ editId, onDone }: { editId?: string | null; onDone?: (r: ShipmentRequest) => void }) {
   const { user } = useAuth();
@@ -43,7 +42,7 @@ export default function ShipmentRequestForm({ editId, onDone }: { editId?: strin
   const [fields, setFields] = useState<FormField[]>([]);
   const [customers, setCustomers] = useState<OrderCustomer[]>([]);
   const [reps, setReps] = useState<{ value: string; label: string; roleAr?: string }[]>([]);
-  const [form, setForm] = useState<Record<string, any>>({ pickupTime: today(), startTime: today() });
+  const [form, setForm] = useState<Record<string, any>>({});
   const [customerId, setCustomerId] = useState('');
   const [salesRep, setSalesRep] = useState('');
   const [trucks, setTrucks] = useState(1);
@@ -159,7 +158,6 @@ export default function ShipmentRequestForm({ editId, onDone }: { editId?: strin
         if (SYSTEM_KEYS.has(f.key)) body[f.key] = v; else body.customFields[f.key] = v;
       });
       ['notes', 'blNumber', 'containerNumber'].forEach((k) => { body[k] = String(form[k] || '').trim(); });
-      ['pickupTime', 'startTime', 'arrivalTime'].forEach((k) => { if (k in body || form[k]) body[k] = form[k] ? new Date(`${form[k]}T12:00:00`).toISOString() : null; });
       ['quantity', 'sellPrice'].forEach((k) => { if (body[k] === '' || body[k] == null) body[k] = null; else body[k] = Number(body[k]); });
       body.sellPrice = Number(form.sellPrice);
       body.customer = customerId;
@@ -170,10 +168,11 @@ export default function ShipmentRequestForm({ editId, onDone }: { editId?: strin
       let d: { request: ShipmentRequest };
       if (editId) d = await api.put(`/api/shipment-requests/${editId}`, { ...body, resubmit });
       else d = await api.post('/api/shipment-requests', body);
+      const waiting = d.request.approvalStatus === 'pending';
       notify(editId
-        ? (resubmit ? t(`أُعيد إرسال الطلب رقم ${d.request.number} إلى فريق الموردين`, `Request ${d.request.number} resent`) : t('حُفظ الطلب', 'Saved'))
-        : t(`أُرسل طلب الشحنة رقم ${d.request.number} إلى فريق الموردين`, `Request ${d.request.number} sent to the vendors team`), 'success');
-      if (!editId) { setForm({ pickupTime: today(), startTime: today(), truckTypes: [] }); setCustomerId(''); setTrucks(1); setShowErrors(false); }
+        ? (resubmit ? (waiting ? t(`أُعيد الطلب رقم ${d.request.number} إلى مدير المبيعات للاعتماد`, `Request ${d.request.number} back for approval`) : t(`أُعيد إرسال الطلب رقم ${d.request.number} إلى فريق الموردين`, `Request ${d.request.number} resent`)) : t('حُفظ الطلب', 'Saved'))
+        : (waiting ? t(`أُرسل طلب الشحنة رقم ${d.request.number} إلى مدير المبيعات للاعتماد`, `Request ${d.request.number} sent for sales-manager approval`) : t(`أُرسل طلب الشحنة رقم ${d.request.number} إلى فريق الموردين`, `Request ${d.request.number} sent to the vendors team`)), 'success');
+      if (!editId) { setForm({ truckTypes: [] }); setCustomerId(''); setTrucks(1); setShowErrors(false); }
       onDone?.(d.request);
     } catch (e: any) { notify(e?.message || t('تعذّر الحفظ', 'Could not save'), 'error'); }
     setSaving(false);
@@ -295,12 +294,22 @@ export default function ShipmentRequestForm({ editId, onDone }: { editId?: strin
     </div>
   );
 
-  const rejected = loaded?.status === 'rejected';
+  const returned = loaded?.approvalStatus === 'returned';
+  const rejected = loaded?.status === 'rejected' || returned;
   const locked = !!loaded && !['pending', 'in_progress', 'rejected'].includes(loaded.status);
 
   return (
     <div className="space-y-4 pb-24" dir={isRTL ? 'rtl' : 'ltr'}>
-      {rejected && (
+      {returned && (
+        <div className="rounded-2xl border border-orange-200 bg-orange-50 px-4 py-3 flex items-start gap-2">
+          <AlertCircle className="w-5 h-5 text-orange-600 mt-0.5 shrink-0" />
+          <div className="text-sm">
+            <p className="font-bold text-orange-800">{t(`أعاده ${loaded?.approvalByName || 'مدير المبيعات'} للتعديل: ${loaded?.approvalReason || ''}`, `Returned for edits: ${loaded?.approvalReason || ''}`)}</p>
+            <p className="text-orange-700/80 mt-1 text-[12.5px]">{t('عدّل ما يلزم ثمّ اضغط «حفظ وإعادة الإرسال» ليعود إلى الاعتماد.', 'Amend it, then press “Save and resend” to send it back for approval.')}</p>
+          </div>
+        </div>
+      )}
+      {loaded?.status === 'rejected' && (
         <div className="rounded-2xl border border-red-200 bg-red-50 px-4 py-3 flex items-start gap-2">
           <AlertCircle className="w-5 h-5 text-red-600 mt-0.5 shrink-0" />
           <div className="text-sm">
@@ -393,7 +402,7 @@ export default function ShipmentRequestForm({ editId, onDone }: { editId?: strin
               <button type="button" onClick={() => submit(false)} disabled={saving}
                 className={`inline-flex items-center gap-1.5 px-5 py-2.5 rounded-xl text-sm font-bold shadow-md disabled:opacity-50 ${rejected ? 'bg-white border border-slate-200 text-slate-700' : 'bg-[#f37121] text-white'}`}>
                 {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : editId ? <Check className="w-4 h-4" /> : <Send className="w-4 h-4" />}
-                {editId ? t('حفظ التعديل', 'Save') : t('إرسال الطلب إلى فريق الموردين', 'Send to the vendors team')}
+                {editId ? t('حفظ التعديل', 'Save') : t('إرسال الطلب', 'Send the request')}
               </button>
             </div>
           </div>

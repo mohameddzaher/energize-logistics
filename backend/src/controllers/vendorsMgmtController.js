@@ -31,7 +31,59 @@ const announce = (payload = {}) => {
   try { emitToAll('shipmentOrders:fleet', {}); } catch (_) { /* */ }
 };
 const isoDay = (d) => (d ? new Date(d).toISOString().slice(0, 10) : null);
-const signedOf = (v) => !!v && (/موقع/.test(v.contractStatus || '') || (v.vendorSigned && v.ourSigned));
+/** Officially contracted: the team's explicit mark wins; rows never marked fall back to the imported contract status. */
+const signedOf = (v) => !!v && (v.contracted === true
+  || (v.contracted !== false && (/موقع/.test(v.contractStatus || '') || !!(v.vendorSigned && v.ourSigned))));
+
+// Company papers a new carrier must bring; each kind may hold several files.
+const DOC_KINDS = { cr: 'السجل التجاري', nationalAddress: 'العنوان الوطني', iban: 'الآيبان', taxCard: 'البطاقة الضريبية' };
+const DOC_KINDS_EN = { cr: 'Commercial register', nationalAddress: 'National address', iban: 'IBAN', taxCard: 'Tax card' };
+const REQUIRED_DOCS = Object.keys(DOC_KINDS);
+const isCompany = (v) => !!v && v.type !== 'freelancer' && !/تنشيط/.test(v.name || '');
+/** Required document kinds with no file; freelancers carry none. */
+const missingDocsOf = (v) => (isCompany(v) ? REQUIRED_DOCS.filter((k) => !(v.documents || []).some((d) => d.kind === k)) : []);
+
+const DAY_MS = 86400000;
+async function alertDays() {
+  const s = await VendorSetting.findById('alerts').lean();
+  return Math.min(365, Math.max(1, Number(s?.value?.contractDays) || 30));
+}
+/** Contract end state against today: none (no end date), active, expiring (within `days`), expired. */
+const contractStateOf = (v, days) => {
+  if (!signedOf(v) || !v.contractEndDate) return { state: 'none', daysLeft: null };
+  const left = Math.ceil((startOfDay(isoDay(v.contractEndDate)).getTime() - startOfDay(todayKey()).getTime()) / DAY_MS);
+  return { state: left < 0 ? 'expired' : left <= days ? 'expiring' : 'active', daysLeft: left };
+};
+
+// ── Approval of new carriers ───────────────────────────────────────────────
+/** Missing on legacy rows = approved. */
+const approvalOf = (v) => (v && v.approvalStatus) || 'approved';
+const ROLES = require('../config/roles');
+const { isTopRole } = require('../config/constants');
+/** Who may set the delegated approvers: the operations manager (and who holds its rights) or a top role. */
+const isApprovalManager = (u) => !!u && (isTopRole(u.role) || ROLES.rightsRoleOf(u.role) === 'operations_manager');
+async function delegatedApprovers() {
+  const s = await VendorSetting.findById('vendorApprovers').lean();
+  return (s?.value?.users || []).map(String);
+}
+async function canApprove(u) {
+  if (isApprovalManager(u)) return true;
+  return !!u && (await delegatedApprovers()).includes(String(u._id));
+}
+/** Everyone who approves: operations managers (and leads with their rights) plus the delegated members. */
+async function approverIds() {
+  const User = require('../models/User');
+  const roles = ['operations_manager', ...Object.entries(ROLES.RIGHTS_OF).filter(([, r]) => r === 'operations_manager').map(([k]) => k)];
+  const [mgrs, dels] = await Promise.all([User.find({ role: { $in: roles }, isActive: { $ne: false } }).select('_id').lean(), delegatedApprovers()]);
+  return [...new Set([...mgrs.map((u) => String(u._id)), ...dels])];
+}
+async function notifyUsers(ids, n) {
+  const { createNotification } = require('../services/notificationService');
+  for (const id of new Set(ids.filter(Boolean).map(String))) {
+    // eslint-disable-next-line no-await-in-loop
+    try { await createNotification({ recipient: id, type: 'system_alert', relatedEntity: 'ShipmentOrderSupplier', ...n }); } catch (_) { /* one failed recipient must not stop the rest */ }
+  }
+}
 /** The day the picture is read as of: the end of the asked month (YYYY-MM), never after today. */
 const asOfOf = (q) => {
   const today = todayKey();
@@ -71,7 +123,7 @@ exports.overview = async (req, res) => {
     const Y = keepC ? { ...Y0, vendors: Y0.vendors.filter((v) => keepC(v.kind, v.vendorId ? R0.byId.get(v.vendorId) : null)) } : Y0;
     const out = await cache.wrapStale(`so:analytics:vm-overview:${Y.year}:${Y.curMonth}:${JSON.stringify(req.query || {})}`, 60 * 1000, 10 * 60 * 1000, async () => {
       const master = (await ShipmentOrderSupplier.find({ inMaster: true, mergedInto: null })
-        .select('name followOwner contractStatus vendorSigned ourSigned taxClass phone representative headOffice vehicleTypes fleetSize financeCode contractDate destinations masterNo').lean())
+        .select('name followOwner contractStatus vendorSigned ourSigned contracted taxClass phone representative headOffice vehicleTypes fleetSize financeCode contractDate destinations masterNo').lean())
         .filter((m) => !keepC || keepC('master', m));
       const actById = new Map(Y.vendors.filter((v) => v.vendorId).map((v) => [v.vendorId, v]));
       const cm = Y.curMonth;
@@ -150,12 +202,111 @@ exports.overview = async (req, res) => {
           .map((m) => ({ id: String(m._id), name: m.name, owner: m.followOwner, trips: m.trips, last: isoDay(m.last), phone: m.phone, headOffice: m.headOffice })),
         activeLast3List: masterRows.filter((m) => m.activeLast3).sort((a, b) => b.trips - a.trips)
           .map((m) => ({ id: String(m._id), name: m.name, owner: m.followOwner, contractStatus: m.contractStatus, trips: m.trips, month: m.mon[cm] || 0, trend: m.trend, last: isoDay(m.last) })),
+        // Drill-down behind each card: every master carrier, and every other carrier active in the last three months.
+        masterList: masterRows.slice().sort((a, b) => b.trips - a.trips).map((m) => ({
+          id: String(m._id), name: m.name, kind: 'master', owner: m.followOwner || '', contractStatus: m.contractStatus || '', signed: m.signed, trips: m.trips, month: m.mon[cm] || 0,
+          trend: m.trend, last: isoDay(m.last), activeLast3: m.activeLast3, activeThisMonth: m.activeThisMonth, phone: m.phone || '', headOffice: m.headOffice || '',
+        })),
+        extActiveList: ext.filter((v) => v.kind !== 'master' && v.activeLast3).sort((a, b) => b.trips - a.trips).map((v) => ({
+          id: v.vendorId, name: v.name, kind: v.kind, trips: v.trips, month: v.mon[cm] || 0, trend: v.trend, last: isoDay(v.last), activeThisMonth: v.activeThisMonth,
+        })),
       };
     });
     res.json(PV.maskMoney(req.user, out));
   } catch (e) {
     console.error('[vendors] overview:', e);
     res.status(500).json({ message: 'تعذّر حساب تحليل القسم' });
+  }
+};
+
+/**
+ * GET /ranking?month=YYYY-MM — carriers ranked by executed trips in one month (fleet excluded), with last month's
+ * rank beside it, and the carriers whose first ever trip fell in that month. Page filters apply.
+ */
+exports.ranking = async (req, res) => {
+  try {
+    const extra = await shipmentFilter(req.query);
+    const keepC = carrierFilter(req.query);
+    const [Y, R] = await Promise.all([VA.yearly({ ...yearOf(req.query), extra }), VA.resolver()]);
+    const m = Y.curMonth;
+    const ext = Y.vendors.filter((v) => v.kind !== 'fleet' && (!keepC || keepC(v.kind, v.vendorId ? R.byId.get(v.vendorId) : null)));
+    const rankIn = (i) => {
+      const list = ext.filter((v) => (v.mon[i] || 0) > 0).sort((a, b) => b.mon[i] - a.mon[i] || (a.name < b.name ? -1 : 1));
+      const out = new Map();
+      list.forEach((v, n) => out.set(v.id, n + 1));
+      return { list, out };
+    };
+    const cur = rankIn(m);
+    const prev = m > 0 ? rankIn(m - 1).out : new Map();
+    const monthTrips = cur.list.reduce((a, v) => a + v.mon[m], 0);
+    const owners = new Map(ext.filter((v) => v.vendorId).map((v) => [v.vendorId, R.byId.get(v.vendorId)?.followOwner || '']));
+    const firstOf = (v) => v.firstEver && new Date(v.firstEver).getUTCFullYear() === Y.year && new Date(v.firstEver).getUTCMonth() === m;
+    const rows = cur.list.map((v, n) => ({
+      rank: n + 1, prevRank: prev.get(v.id) || null, id: v.vendorId, name: v.name, kind: v.kind, owner: owners.get(v.vendorId) || '',
+      trips: v.mon[m], share: pct(v.mon[m], monthTrips), buy: r2(v.buyMon[m] || 0), avg: v.mon[m] ? r2((v.buyMon[m] || 0) / v.mon[m]) : 0,
+      yearTrips: v.trips, firstTime: !!firstOf(v), last: isoDay(v.last),
+    }));
+    const firstTime = ext.filter(firstOf).sort((a, b) => (a.firstEver < b.firstEver ? -1 : 1)).map((v) => ({
+      id: v.vendorId, name: v.name, kind: v.kind, owner: owners.get(v.vendorId) || '', first: isoDay(v.firstEver), monthTrips: v.mon[m] || 0, yearTrips: v.trips,
+    }));
+    res.json(PV.maskMoney(req.user, {
+      year: Y.year, month: m + 1, trips: monthTrips, vendors: rows.length,
+      byKind: ['master', 'outside', 'freelancer'].map((k) => ({ kind: k, label: KIND_AR[k], vendors: rows.filter((x) => x.kind === k).length, trips: rows.filter((x) => x.kind === k).reduce((a, x) => a + x.trips, 0) })),
+      rows, firstTime,
+      // First-time carriers of every month of the year, for the month strip.
+      firstByMonth: Array.from({ length: m + 1 }, (_, i) => ({ month: i + 1, n: ext.filter((v) => v.firstEver && new Date(v.firstEver).getUTCFullYear() === Y.year && new Date(v.firstEver).getUTCMonth() === i).length })),
+    }));
+  } catch (e) {
+    console.error('[vendors] ranking:', e);
+    res.status(500).json({ message: 'تعذّر حساب ترتيب الموردين' });
+  }
+};
+
+/**
+ * GET /register-stats — the company register's papers and contracts: how many, who misses which required paper,
+ * who is officially contracted, and whose contract ends soon or ended. Carrier filters (owner, contract) apply.
+ */
+exports.registerStats = async (req, res) => {
+  try {
+    const keepC = carrierFilter(req.query);
+    const [regs, days, Y] = await Promise.all([registerRows(), alertDays(), VA.yearly(yearOf(req.query))]);
+    const act = new Map(Y.vendors.filter((v) => v.vendorId).map((v) => [v.vendorId, v]));
+    const rows = [];
+    for (const r of regs) {
+      const a = act.get(String(r._id));
+      const kind = kindOfReg(r);
+      if (!inRegister(r, !!a) || kind === 'fleet' || kind === 'freelancer') continue;
+      if (keepC && !keepC(kind, r)) continue;
+      const miss = missingDocsOf(r);
+      const c = contractStateOf(r, days);
+      rows.push({
+        id: String(r._id), name: r.name, kind, inMaster: !!r.inMaster, owner: r.followOwner || '', contractStatus: r.contractStatus || '',
+        contracted: signedOf(r), contractMarked: r.contracted != null, contractEndDate: isoDay(r.contractEndDate), contractState: c.state, daysLeft: c.daysLeft,
+        contractFiles: (r.contractFiles || []).length, docs: (r.documents || []).length, docsMissing: miss, docsMissingLabels: miss.map((k) => DOC_KINDS[k]).join('، '),
+        phone: r.phone || '', operatorName: r.operatorName || '', operatorPhone: r.operatorPhone || '',
+        approvalStatus: approvalOf(r), submittedByName: r.submittedByName || '',
+        trips: a?.trips || 0, last: isoDay(a?.last), activeLast3: !!a?.activeLast3, createdAt: isoDay(r.createdAt),
+      });
+    }
+    rows.sort((a, b) => b.trips - a.trips || (a.name < b.name ? -1 : 1));
+    const n = (f) => rows.filter(f).length;
+    res.json({
+      contractDays: days, year: Y.year,
+      totals: {
+        vendors: rows.length, master: n((r) => r.inMaster), outside: n((r) => !r.inMaster),
+        missingDocs: n((r) => r.docsMissing.length), completeDocs: n((r) => !r.docsMissing.length),
+        contracted: n((r) => r.contracted), notContracted: n((r) => !r.contracted), activeNotContracted: n((r) => !r.contracted && r.activeLast3),
+        withEndDate: n((r) => r.contracted && r.contractEndDate), noEndDate: n((r) => r.contracted && !r.contractEndDate),
+        expiring: n((r) => r.contractState === 'expiring'), expired: n((r) => r.contractState === 'expired'),
+        approved: n((r) => r.approvalStatus === 'approved'), pending: n((r) => r.approvalStatus === 'pending'),
+        rejected: n((r) => r.approvalStatus === 'rejected'), returned: n((r) => r.approvalStatus === 'returned'),
+      },
+      docsByKind: REQUIRED_DOCS.map((k) => ({ key: k, label: DOC_KINDS[k], labelEn: DOC_KINDS_EN[k], missing: n((r) => r.docsMissing.includes(k)) })),
+      rows,
+    });
+  } catch (e) {
+    console.error('[vendors] register stats:', e);
+    res.status(500).json({ message: 'تعذّر حساب إحصاءات السجلّ' });
   }
 };
 
@@ -390,26 +541,38 @@ const FILE_FIELDS = ['phone', 'representative', 'headOffice', 'destinations', 'v
 const FILE_LABELS = { phone: 'الجوال', representative: 'ممثل المورد', headOffice: 'المقر', destinations: 'الوجهات', vehicleTypes: 'نوع السيارات', fleetSize: 'عدد السيارات', contractDate: 'تاريخ التعاقد', taxClass: 'التصنيف الضريبي', financeCode: 'كود المالية', commercialRegister: 'السجل التجاري' };
 const missingFile = (v) => FILE_FIELDS.filter((f) => v[f] == null || String(v[f]).trim() === '' || v[f] === 0);
 
+const REGISTER_FIELDS = 'approvalStatus submittedByName submittedAt name type inMaster masterNo followOwner contractStatus vendorSigned ourSigned contracted contractEndDate contractFiles documents taxClass phone representative headOffice destinations vehicleTypes fleetSize contractDate financeCode commercialRegister rating leadPriority isNewVendor energizeRep paymentTermDays lastFollowUpAt aliases ownerName ownerPhone operatorName operatorPhone createdAt';
+const registerRows = () => ShipmentOrderSupplier.find({ mergedInto: null, isActive: { $ne: false } }).select(REGISTER_FIELDS).lean();
+/**
+ * Thousands of register rows are one-off platform carriers. A row belongs to the team's register when it is on the
+ * master, worked this year, or was touched by the team (owner, contract, papers).
+ */
+const inRegister = (r, workedThisYear) => !!(r.inMaster || workedThisYear || r.approvalStatus || r.followOwner || r.contractStatus
+  || (r.documents || []).length || r.contracted != null || (r.contractFiles || []).length || r.operatorName);
+const kindOfReg = (r) => (/تنشيط/.test(r.name) ? 'fleet' : r.type === 'freelancer' ? 'freelancer' : r.inMaster ? 'master' : 'outside');
+
 /** GET /vendors — the register joined with this year's activity. Name-only carriers (seen in shipments, never registered) are listed too. */
 exports.listVendors = async (req, res) => {
   try {
     const Y = await VA.yearly(yearOf(req.query));
-    const regs = await ShipmentOrderSupplier.find({ mergedInto: null, isActive: { $ne: false } })
-      .select('name type inMaster masterNo followOwner contractStatus vendorSigned ourSigned taxClass phone representative headOffice destinations vehicleTypes fleetSize contractDate financeCode commercialRegister rating leadPriority isNewVendor energizeRep paymentTermDays lastFollowUpAt aliases')
-      .lean();
+    const [regs, days] = await Promise.all([registerRows(), alertDays()]);
     const act = new Map(Y.vendors.filter((v) => v.vendorId).map((v) => [v.vendorId, v]));
     const maxTrips = Math.max(1, ...Y.vendors.map((v) => v.trips));
     const rows = [];
     for (const r of regs) {
       const a = act.get(String(r._id));
-      // Thousands of register rows are one-off platform carriers; list a register row when it is on the master, worked this year, or was edited by the team.
-      if (!r.inMaster && !a && !r.followOwner && !r.contractStatus) continue;
-      const kind = /تنشيط/.test(r.name) ? 'fleet' : r.type === 'freelancer' ? 'freelancer' : r.inMaster ? 'master' : 'outside';
+      if (!inRegister(r, !!a)) continue;
+      const kind = kindOfReg(r);
       if (kind === 'fleet') continue;
       const miss = missingFile(r);
+      const docsMissing = missingDocsOf(r);
+      const cs = contractStateOf(r, days);
       const v = {
         id: String(r._id), name: r.name, kind, type: r.type, inMaster: !!r.inMaster, masterNo: r.masterNo, followOwner: r.followOwner, contractStatus: r.contractStatus,
-        signed: signedOf(r), taxClass: r.taxClass, phone: r.phone, representative: r.representative, headOffice: r.headOffice, destinations: r.destinations,
+        signed: signedOf(r), contracted: signedOf(r), contractMarked: r.contracted != null, contractEndDate: isoDay(r.contractEndDate), contractState: cs.state, contractDaysLeft: cs.daysLeft,
+        contractFiles: (r.contractFiles || []).length, docsMissing, docs: (r.documents || []).length, ownerPhone: r.ownerPhone, operatorName: r.operatorName, operatorPhone: r.operatorPhone,
+        approvalStatus: approvalOf(r),
+        taxClass: r.taxClass, phone: r.phone, representative: r.representative, headOffice: r.headOffice, destinations: r.destinations,
         vehicleTypes: r.vehicleTypes, fleetSize: r.fleetSize, rating: r.rating, leadPriority: r.leadPriority, isNewVendor: r.isNewVendor, energizeRep: r.energizeRep,
         trips: a?.trips || 0, buy: r2(a?.buy || 0), mon: a?.mon || new Array(12).fill(0), month: a ? a.mon[Y.curMonth] || 0 : 0, trend: a?.trend || 'never',
         activeLast3: !!a?.activeLast3, activeThisMonth: !!a?.activeThisMonth, activeMonths: a?.activeMonths || 0,
@@ -443,18 +606,26 @@ async function activityOf({ id, name, year }) {
   const y = Number(year) || Number(todayKey().slice(0, 4));
   const R = await VA.resolver();
   const v = id ? R.byId.get(String(id)) : null;
-  const keys = new Set(v ? [fold(v.name), ...(v.aliasKeys || [])] : [fold(name)]);
-  // Candidate names: every distinct supplier name of the year whose fold is one of the carrier's keys.
-  const names = (await ShipmentOrder.distinct('supplierName', { pickupTime: { $gte: startOfDay(`${y}-01-01`), $lte: endOfDay(`${y}-12-31`) } }))
-    .filter((n) => keys.has(fold(n)));
+  const target = v ? String(v._id) : null;
+  // Every name that resolves to this carrier: its own, its aliases, and those of older rows the resolver folds into it.
+  const keys = new Set(v ? [...R.byKey.entries()].filter(([, r]) => String(r._id) === target).map(([k]) => k) : [fold(name)]);
+  const refIds = v ? [...R.byId.entries()].filter(([, r]) => String(r._id) === target).map(([k]) => new mongoose.Types.ObjectId(k)) : [];
+  const span = { $gte: startOfDay(`${y}-01-01`), $lte: endOfDay(`${y}-12-31`) };
+  const names = (await ShipmentOrder.distinct('supplierName', { pickupTime: span })).filter((n) => keys.has(fold(n)));
   const or = [];
-  if (id) or.push({ supplier: new mongoose.Types.ObjectId(String(id)) });
+  if (refIds.length) or.push({ supplier: { $in: refIds } });
   if (names.length) or.push({ supplierName: { $in: names } });
   if (!or.length) return { names: [], rows: [] };
-  const rows = await ShipmentOrder.find({ $or: or, pickupTime: { $gte: startOfDay(`${y}-01-01`), $lte: endOfDay(`${y}-12-31`) } })
-    .select('pickupTime branch customerName fromCity toCity status cancelReason buyPrice supplierName vehiclePlate driverName agentName waybillNumber paymentSubtype truckType')
+  const all = await ShipmentOrder.find({ $or: or, pickupTime: span })
+    .select('pickupTime branch customerName fromCity toCity status cancelReason buyPrice supplier supplierName vehiclePlate driverName agentName waybillNumber paymentSubtype truckType')
     .sort({ pickupTime: -1 }).lean();
-  return { names, rows };
+  // Keep exactly the rows the register analyses count for this carrier (same classifier), so card and list agree.
+  const rows = all.filter((o) => {
+    const c = VA.classify(R, o.supplier, o.supplierName, o.vehiclePlate);
+    if (c.kind === 'fleet' || c.kind === 'none') return false;
+    return target ? (c.vendor && String(c.vendor._id) === target) : (!c.vendor && fold(c.name) === fold(name));
+  });
+  return { names: [...new Set(rows.map((o) => String(o.supplierName || '').trim()).filter(Boolean))], rows };
 }
 
 function cardFrom(rows, approved) {
@@ -496,13 +667,14 @@ exports.getVendor = async (req, res) => {
   try {
     const v = await ShipmentOrderSupplier.findById(req.params.id).lean();
     if (!v) return res.status(404).json({ message: 'المورد غير موجود' });
-    const [act, follow, vehicles, drivers, approved, Y] = await Promise.all([
+    const [act, follow, vehicles, drivers, approved, Y, days] = await Promise.all([
       activityOf({ id: v._id, year: req.query.year }),
       VendorFollowUp.find({ supplier: v._id }).sort({ at: -1 }).limit(200).lean(),
       ShipmentOrderVehicle.find({ supplier: v._id, isActive: { $ne: false } }).select('plate name truckType brand color modelYear operationCardExpiry defaultDriverName defaultDriverPhone').lean(),
       ShipmentOrderDriver.find({ supplier: v._id, isActive: { $ne: false } }).select('name phone nationality residenceNumber driverCardExpiry vehicle').lean(),
       VendorApprovedPrice.find({ isActive: { $ne: false } }).lean(),
       VA.yearly(yearOf(req.query)),
+      alertDays(),
     ]);
     const card = cardFrom(act.rows, approved);
     const a = Y.vendors.find((x) => x.vendorId === String(v._id));
@@ -511,8 +683,12 @@ exports.getVendor = async (req, res) => {
     const completeness = Math.round(((FILE_FIELDS.length - miss.length) / FILE_FIELDS.length) * 100);
     const score = scoreOf({ trips: card.trips, activeMonths: card.mon.filter((x) => x > 0).length, curMonth: Y.curMonth, last: card.last, signed: signedOf(v), contractStatus: v.contractStatus, completeness }, maxTrips);
     res.json(PV.maskMoney(req.user, {
-      vendor: { ...v, signed: signedOf(v), kind: /تنشيط/.test(v.name) ? 'fleet' : v.type === 'freelancer' ? 'freelancer' : v.inMaster ? 'master' : 'outside' },
+      vendor: { ...v, signed: signedOf(v), kind: kindOfReg(v) },
       names: act.names, missing: miss.map((f) => ({ key: f, label: FILE_LABELS[f] })), completeness,
+      docKinds: REQUIRED_DOCS.map((k) => ({ key: k, label: DOC_KINDS[k], labelEn: DOC_KINDS_EN[k] })),
+      missingDocs: missingDocsOf(v).map((k) => ({ key: k, label: DOC_KINDS[k], labelEn: DOC_KINDS_EN[k] })),
+      contract: { contracted: signedOf(v), marked: v.contracted != null, endDate: isoDay(v.contractEndDate), files: v.contractFiles || [], ...contractStateOf(v, days), alertDays: days },
+      approval: { status: approvalOf(v), note: v.rejectNote || '', submittedByName: v.submittedByName || '', submittedAt: v.submittedAt, approvedByName: v.approvedByName || '', approvedAt: v.approvedAt, log: v.approvalLog || [], canApprove: await canApprove(req.user) },
       trend: a?.trend || (card.trips ? 'steady' : 'never'), ...score,
       activity: card, followUps: follow, vehicles, drivers, year: Y.year, curMonth: Y.curMonth + 1,
     }));
@@ -539,7 +715,7 @@ const VENDOR_EDITABLE = ['name', 'type', 'phone', 'email', 'notes', 'commercialR
   'ownerName', 'ownerPhone', 'managerName', 'managerPhone', 'accountantName', 'accountantPhone', 'paymentTerms',
   'inMaster', 'masterNo', 'isNewVendor', 'followOwner', 'followUser', 'energizeRep', 'taxClass', 'representative', 'destinations', 'headOffice',
   'vehicleTypes', 'fleetSize', 'hasPapers', 'vendorSigned', 'ourSigned', 'contractDate', 'contractStatus', 'paymentTermDays',
-  'financeCode', 'financeClass', 'previousName', 'leadPriority', 'aliases', 'rating', 'ratingNote', 'isActive'];
+  'financeCode', 'financeClass', 'previousName', 'leadPriority', 'aliases', 'rating', 'ratingNote', 'isActive', 'operatorName', 'operatorPhone'];
 
 const cleanVendor = (body) => {
   const out = {};
@@ -551,19 +727,86 @@ const cleanVendor = (body) => {
   return out;
 };
 
+// ── Files ───────────────────────────────────────────────────────────────────
+
+const { saveUploadFile, deleteStoredFile } = require('../utils/fileStore');
+
+/**
+ * Writes the posted files ({ dataUrl, fileName, title }) under uploads/vendors. All or nothing: a bad file removes
+ * the ones already written and throws a message naming it, so no record points at half an upload.
+ */
+function storeFiles(list, { kind, title, user }) {
+  const out = [];
+  try {
+    for (const f of list || []) {
+      if (!f || !f.dataUrl) continue;
+      let saved;
+      try { saved = saveUploadFile(f.dataUrl, 'vendors', f.fileName || ''); }
+      catch (e) { throw Object.assign(new Error(`الملف «${f.fileName || ''}» مرفوض: ${e.message}`), { status: 400 }); }
+      out.push({ kind, title: String(f.title || title || '').trim().slice(0, 200), ...saved, uploadedAt: new Date(), uploadedBy: user?._id || null, uploadedByName: fullName(user) });
+    }
+  } catch (e) {
+    out.forEach((x) => deleteStoredFile(x.fileUrl));
+    throw e;
+  }
+  return out;
+}
+
+/** The posted documents as [{ kind, title, files: [...] }], kept to known kinds; `other` needs a typed title. */
+function docsFromBody(body, user) {
+  const groups = Array.isArray(body?.documents) ? body.documents : [];
+  const stored = [];
+  try {
+    for (const g of groups) {
+      const kind = REQUIRED_DOCS.includes(g?.kind) ? g.kind : 'other';
+      const title = kind === 'other' ? String(g?.title || '').trim() : DOC_KINDS[kind];
+      if (!(g?.files || []).length) continue;
+      if (kind === 'other' && !title) throw Object.assign(new Error('اكتب اسم المستند الإضافي'), { status: 400, fields: ['documents'] });
+      stored.push(...storeFiles(g.files, { kind, title, user }));
+    }
+  } catch (e) {
+    stored.forEach((x) => deleteStoredFile(x.fileUrl));
+    throw e;
+  }
+  return stored;
+}
+
 exports.createVendor = async (req, res) => {
+  let stored = [];
   try {
     const data = cleanVendor(req.body || {});
     if (!String(data.name || '').trim()) return res.status(400).json({ message: 'اسمُ المورد مطلوب', fields: ['name'] });
     const R = await VA.resolver();
     const dup = R.byKey.get(fold(data.name));
     if (dup) return res.status(409).json({ code: 'EXISTS', message: `المورّد مسجَّلٌ باسم «${dup.name}»`, id: String(dup._id) });
-    const doc = new ShipmentOrderSupplier({ ...data, createdBy: req.user._id });
+    // A company joins with its four papers; a freelance driver is registered from the freelancers page without them.
+    if (data.type !== 'freelancer') {
+      const groups = Array.isArray(req.body?.documents) ? req.body.documents : [];
+      const missing = REQUIRED_DOCS.filter((k) => !groups.some((g) => g?.kind === k && (g.files || []).some((f) => f?.dataUrl)));
+      if (missing.length) {
+        return res.status(400).json({ code: 'DOCS_REQUIRED', message: `أرفِق المستندات المطلوبة: ${missing.map((k) => DOC_KINDS[k]).join('، ')}`, fields: missing.map((k) => `doc_${k}`), missing });
+      }
+    }
+    stored = docsFromBody(req.body, req.user);
+    // A new carrier waits for approval; one added by an approver is approved on the spot.
+    const approver = await canApprove(req.user);
+    const now = new Date();
+    const approval = approver
+      ? { approvalStatus: 'approved', approvedBy: req.user._id, approvedByName: fullName(req.user), approvedAt: now, approvalLog: [{ action: 'approve', note: 'أُضيف واعتُمد من المعتمِد', by: req.user._id, byName: fullName(req.user), at: now }] }
+      : { approvalStatus: 'pending', approvalLog: [{ action: 'submit', note: '', by: req.user._id, byName: fullName(req.user), at: now }] };
+    const doc = new ShipmentOrderSupplier({ ...data, documents: stored, createdBy: req.user._id, submittedBy: req.user._id, submittedByName: fullName(req.user), submittedAt: now, ...approval });
     await doc.save();
-    await logAudit({ user: req.user, action: 'create', entity: 'ShipmentOrderSupplier', entityId: doc._id, changes: { name: doc.name, inMaster: doc.inMaster }, ipAddress: req.ip });
+    if (!approver) {
+      await notifyUsers(await approverIds(), { title: `مورّدٌ جديد بانتظار الاعتماد: «${doc.name}»`, message: `أضافه ${fullName(req.user)} — راجِع ملفّه ومستنداته من «بانتظار الاعتماد».`, relatedEntityId: doc._id });
+    }
+    await logAudit({ user: req.user, action: 'create', entity: 'ShipmentOrderSupplier', entityId: doc._id, changes: { name: doc.name, inMaster: doc.inMaster, documents: stored.length }, ipAddress: req.ip });
     announce({ id: String(doc._id) });
     res.status(201).json({ vendor: doc });
-  } catch (e) { return sendMongooseError(res, e, 'تعذّر إضافة المورد'); }
+  } catch (e) {
+    stored.forEach((x) => deleteStoredFile(x.fileUrl));
+    if (e.status) return res.status(e.status).json({ message: e.message, fields: e.fields });
+    return sendMongooseError(res, e, 'تعذّر إضافة المورد');
+  }
 };
 
 exports.updateVendor = async (req, res) => {
@@ -588,6 +831,184 @@ exports.updateVendor = async (req, res) => {
     announce({ id: String(doc._id) });
     res.json({ vendor: doc });
   } catch (e) { return sendMongooseError(res, e, 'تعذّر حفظ المورد'); }
+};
+
+/** POST /vendors/:id/documents { documents: [{ kind, title, files }] } — adds files to the carrier's papers. */
+exports.addDocuments = async (req, res) => {
+  let stored = [];
+  try {
+    const doc = await ShipmentOrderSupplier.findById(req.params.id);
+    if (!doc) return res.status(404).json({ message: 'المورد غير موجود' });
+    stored = docsFromBody(req.body, req.user);
+    if (!stored.length) return res.status(400).json({ message: 'اختر ملفًّا واحدًا على الأقل', fields: ['documents'] });
+    doc.documents.push(...stored);
+    await doc.save();
+    await logAudit({ user: req.user, action: 'update', entity: 'ShipmentOrderSupplier', entityId: doc._id, changes: { documentsAdded: stored.map((x) => `${x.kind}: ${x.fileName}`) }, ipAddress: req.ip });
+    announce({ id: String(doc._id) });
+    res.status(201).json({ documents: doc.documents, missingDocs: missingDocsOf(doc) });
+  } catch (e) {
+    stored.forEach((x) => deleteStoredFile(x.fileUrl));
+    if (e.status) return res.status(e.status).json({ message: e.message, fields: e.fields });
+    return sendMongooseError(res, e, 'تعذّر حفظ المستندات');
+  }
+};
+
+/** DELETE /vendors/:id/documents/:did — a required paper keeps at least one file: replace it by adding first. */
+exports.removeDocument = async (req, res) => {
+  try {
+    const doc = await ShipmentOrderSupplier.findById(req.params.id);
+    if (!doc) return res.status(404).json({ message: 'المورد غير موجود' });
+    const f = doc.documents.id(req.params.did);
+    if (!f) return res.status(404).json({ message: 'المستند غير موجود' });
+    if (isCompany(doc) && REQUIRED_DOCS.includes(f.kind) && doc.documents.filter((x) => x.kind === f.kind).length <= 1) {
+      return res.status(409).json({ code: 'LAST_REQUIRED', message: `«${DOC_KINDS[f.kind]}» مستندٌ مطلوب: أضِف الملفّ البديل أوّلًا ثمّ احذف هذا` });
+    }
+    const url = f.fileUrl;
+    f.deleteOne();
+    await doc.save();
+    deleteStoredFile(url);
+    await logAudit({ user: req.user, action: 'update', entity: 'ShipmentOrderSupplier', entityId: doc._id, changes: { documentRemoved: `${f.kind}: ${f.fileName}` }, ipAddress: req.ip });
+    announce({ id: String(doc._id) });
+    res.json({ documents: doc.documents, missingDocs: missingDocsOf(doc) });
+  } catch (e) { return sendMongooseError(res, e, 'تعذّر حذف المستند'); }
+};
+
+/**
+ * PUT /vendors/:id/contract { contracted, contractEndDate, files: [{ dataUrl, fileName, title }] } — the official
+ * contract mark, its optional end date (feeds the alerts and notifications) and its named files.
+ */
+exports.saveContract = async (req, res) => {
+  let stored = [];
+  try {
+    const doc = await ShipmentOrderSupplier.findById(req.params.id);
+    if (!doc) return res.status(404).json({ message: 'المورد غير موجود' });
+    const b = req.body || {};
+    const before = { contracted: doc.contracted, contractEndDate: isoDay(doc.contractEndDate) };
+    if (b.contracted !== undefined) {
+      if (typeof b.contracted !== 'boolean') return res.status(400).json({ message: 'حدِّد: تمّ التعاقد رسميًّا أم لا', fields: ['contracted'] });
+      doc.contracted = b.contracted;
+    }
+    if (b.contractEndDate !== undefined) {
+      const day = String(b.contractEndDate || '').slice(0, 10);
+      if (day && !/^\d{4}-\d{2}-\d{2}$/.test(day)) return res.status(400).json({ message: 'تاريخ نهاية العقد غير صالح', fields: ['contractEndDate'] });
+      // Stored at noon UTC so the calendar day reads the same in every time zone.
+      doc.contractEndDate = day ? new Date(`${day}T12:00:00Z`) : null;
+    }
+    for (const f of b.files || []) {
+      if (f?.dataUrl && !String(f.title || '').trim()) return res.status(400).json({ message: `اكتب اسمًا لملفّ العقد «${f.fileName || ''}»`, fields: ['contractFiles'] });
+    }
+    stored = storeFiles(b.files, { kind: 'contract', user: req.user });
+    doc.contractFiles.push(...stored);
+    if (doc.contracted && !doc.contractFiles.length) {
+      stored.forEach((x) => deleteStoredFile(x.fileUrl));
+      return res.status(400).json({ message: 'أرفِق ملفّ العقد الموقَّع', fields: ['contractFiles'] });
+    }
+    // A new end date re-arms the expiry notification.
+    if (isoDay(doc.contractEndDate) !== before.contractEndDate) doc.contractAlertKey = '';
+    await doc.save();
+    await logAudit({ user: req.user, action: 'update', entity: 'ShipmentOrderSupplier', entityId: doc._id, changes: { before, after: { contracted: doc.contracted, contractEndDate: isoDay(doc.contractEndDate) }, contractFilesAdded: stored.map((x) => x.title || x.fileName) }, ipAddress: req.ip });
+    announce({ id: String(doc._id) });
+    const days = await alertDays();
+    res.json({ contract: { contracted: signedOf(doc), marked: doc.contracted != null, endDate: isoDay(doc.contractEndDate), files: doc.contractFiles, ...contractStateOf(doc, days), alertDays: days } });
+  } catch (e) {
+    stored.forEach((x) => deleteStoredFile(x.fileUrl));
+    if (e.status) return res.status(e.status).json({ message: e.message, fields: e.fields });
+    return sendMongooseError(res, e, 'تعذّر حفظ العقد');
+  }
+};
+
+/** DELETE /vendors/:id/contract-files/:did — a contracted carrier keeps at least one contract file. */
+exports.removeContractFile = async (req, res) => {
+  try {
+    const doc = await ShipmentOrderSupplier.findById(req.params.id);
+    if (!doc) return res.status(404).json({ message: 'المورد غير موجود' });
+    const f = doc.contractFiles.id(req.params.did);
+    if (!f) return res.status(404).json({ message: 'الملف غير موجود' });
+    if (doc.contracted && doc.contractFiles.length <= 1) return res.status(409).json({ code: 'LAST_CONTRACT', message: 'المورّد متعاقَدٌ معه: أضِف ملفّ العقد البديل أوّلًا ثمّ احذف هذا' });
+    const url = f.fileUrl;
+    f.deleteOne();
+    await doc.save();
+    deleteStoredFile(url);
+    await logAudit({ user: req.user, action: 'update', entity: 'ShipmentOrderSupplier', entityId: doc._id, changes: { contractFileRemoved: f.title || f.fileName }, ipAddress: req.ip });
+    announce({ id: String(doc._id) });
+    res.json({ files: doc.contractFiles });
+  } catch (e) { return sendMongooseError(res, e, 'تعذّر حذف الملف'); }
+};
+
+/** GET /approvals?status=pending|returned|rejected|approved — carriers by approval state, with their file and papers. */
+exports.listApprovals = async (req, res) => {
+  try {
+    const status = ['pending', 'returned', 'rejected', 'approved'].includes(req.query.status) ? req.query.status : 'pending';
+    const q = status === 'approved' ? { approvalStatus: 'approved', approvedAt: { $ne: null } } : { approvalStatus: status };
+    const rows = await ShipmentOrderSupplier.find({ ...q, mergedInto: null }).sort({ submittedAt: -1 }).limit(500).lean();
+    const counts = Object.fromEntries(await Promise.all(['pending', 'returned', 'rejected'].map(async (k) => [k, await ShipmentOrderSupplier.countDocuments({ approvalStatus: k, mergedInto: null })])));
+    res.json({
+      status, counts, canApprove: await canApprove(req.user),
+      vendors: rows.map((v) => ({ ...v, kind: kindOfReg(v), missingDocs: missingDocsOf(v).map((k) => ({ key: k, label: DOC_KINDS[k], labelEn: DOC_KINDS_EN[k] })) })),
+    });
+  } catch (e) { res.status(500).json({ message: 'تعذّر تحميل قائمة الاعتماد' }); }
+};
+
+/** POST /vendors/:id/approval { action: approve|reject|return, note } — the approver's decision. */
+exports.decideApproval = async (req, res) => {
+  try {
+    if (!(await canApprove(req.user))) return res.status(403).json({ message: 'اعتماد الموردين لمدير العمليات ومن يفوّضهم' });
+    const action = String(req.body?.action || '');
+    const note = String(req.body?.note || '').trim();
+    if (!['approve', 'reject', 'return'].includes(action)) return res.status(400).json({ message: 'إجراءٌ غير صالح' });
+    if (action !== 'approve' && !note) return res.status(400).json({ message: action === 'reject' ? 'اكتب سبب الرفض' : 'اكتب المطلوب تعديله', fields: ['note'] });
+    const doc = await ShipmentOrderSupplier.findById(req.params.id);
+    if (!doc) return res.status(404).json({ message: 'المورد غير موجود' });
+    if (approvalOf(doc) !== 'pending') return res.status(409).json({ code: 'NOT_PENDING', message: 'المورّد ليس بانتظار الاعتماد' });
+    const now = new Date();
+    doc.approvalStatus = action === 'approve' ? 'approved' : action === 'reject' ? 'rejected' : 'returned';
+    doc.rejectNote = action === 'approve' ? '' : note;
+    if (action === 'approve') { doc.approvedBy = req.user._id; doc.approvedByName = fullName(req.user); doc.approvedAt = now; }
+    doc.approvalLog.push({ action, note, by: req.user._id, byName: fullName(req.user), at: now });
+    await doc.save();
+    await logAudit({ user: req.user, action: 'update', entity: 'ShipmentOrderSupplier', entityId: doc._id, changes: { approval: doc.approvalStatus, note }, ipAddress: req.ip });
+    const title = action === 'approve' ? `اعتُمد المورّد «${doc.name}»` : action === 'reject' ? `رُفض المورّد «${doc.name}»` : `أُعيد المورّد «${doc.name}» للتعديل`;
+    await notifyUsers([doc.submittedBy || doc.createdBy], { title, message: `${fullName(req.user)}${note ? ` — ${note}` : ''}`, relatedEntityId: doc._id });
+    announce({ id: String(doc._id), approval: doc.approvalStatus });
+    res.json({ vendor: doc });
+  } catch (e) { return sendMongooseError(res, e, 'تعذّر حفظ القرار'); }
+};
+
+/** POST /vendors/:id/resubmit — a returned (or rejected) carrier goes back to pending after the edits. */
+exports.resubmitApproval = async (req, res) => {
+  try {
+    const doc = await ShipmentOrderSupplier.findById(req.params.id);
+    if (!doc) return res.status(404).json({ message: 'المورد غير موجود' });
+    if (!['returned', 'rejected'].includes(approvalOf(doc))) return res.status(409).json({ message: 'المورّد ليس مُعادًا للتعديل' });
+    const note = String(req.body?.note || '').trim();
+    doc.approvalStatus = 'pending';
+    doc.submittedAt = new Date();
+    doc.approvalLog.push({ action: 'resubmit', note, by: req.user._id, byName: fullName(req.user), at: new Date() });
+    await doc.save();
+    await notifyUsers(await approverIds(), { title: `أُعيد تقديم المورّد «${doc.name}» للاعتماد`, message: `${fullName(req.user)}${note ? ` — ${note}` : ''}`, relatedEntityId: doc._id });
+    announce({ id: String(doc._id), approval: 'pending' });
+    res.json({ vendor: doc });
+  } catch (e) { return sendMongooseError(res, e, 'تعذّر إعادة التقديم'); }
+};
+
+/** GET/PUT /approvers { users: [ids] } — members the operations manager delegates to approve carriers. */
+exports.getApprovers = async (req, res) => {
+  try {
+    const User = require('../models/User');
+    const ids = await delegatedApprovers();
+    const users = ids.length ? await User.find({ _id: { $in: ids } }).select('firstName lastName role').lean() : [];
+    res.json({ users: users.map((u) => ({ id: String(u._id), name: fullName(u), role: u.role })), canManage: isApprovalManager(req.user), canApprove: await canApprove(req.user), team: (await teamOptions()).users });
+  } catch (e) { res.status(500).json({ message: 'تعذّر تحميل المعتمِدين' }); }
+};
+exports.saveApprovers = async (req, res) => {
+  try {
+    if (!isApprovalManager(req.user)) return res.status(403).json({ message: 'يختار المعتمِدين مديرُ العمليات' });
+    const users = [...new Set((req.body?.users || []).map(String).filter((x) => mongoose.isValidObjectId(x)))];
+    await VendorSetting.updateOne({ _id: 'vendorApprovers' }, { $set: { value: { users }, updatedByName: fullName(req.user) } }, { upsert: true });
+    await logAudit({ user: req.user, action: 'update', entity: 'VendorSetting', entityId: null, changes: { vendorApprovers: users }, ipAddress: req.ip });
+    announce({ approvers: true });
+    return exports.getApprovers(req, res);
+  } catch (e) { res.status(500).json({ message: 'تعذّر حفظ المعتمِدين' }); }
 };
 
 // ── Follow-ups ──────────────────────────────────────────────────────────────
@@ -694,7 +1115,7 @@ exports.routeSearch = async (req, res) => {
         ...(from ? [{ headOffice: arabicSearchRegex(from) }, { destinations: arabicSearchRegex(from) }] : []),
         ...(to ? [{ headOffice: arabicSearchRegex(to) }, { destinations: arabicSearchRegex(to) }] : []),
         { destinations: /جميع/ },
-      ] }).select('name followOwner contractStatus vendorSigned ourSigned headOffice vehicleTypes fleetSize phone destinations').lean(),
+      ] }).select('name followOwner contractStatus vendorSigned ourSigned contracted headOffice vehicleTypes fleetSize phone destinations').lean(),
     ]);
     const vendors = {};
     const routes = {};
@@ -749,11 +1170,14 @@ exports.alerts = async (req, res) => {
     const days = Math.min(365, Math.max(7, Number(req.query.days) || 30));
     const withInd = req.query.individuals === '1';
     const since = new Date(Date.now() - days * 86400000);
-    const [Y, R, states, approved, masters] = await Promise.all([
+    const [Y, R, states, approved, masters, regs, cDays] = await Promise.all([
       VA.yearly(yearOf(req.query)), VA.resolver(), VendorSetting.findById('alertStates').lean(),
       VendorApprovedPrice.find({ isActive: { $ne: false } }).lean(),
       ShipmentOrderSupplier.find({ inMaster: true, mergedInto: null }).lean(),
+      registerRows(), alertDays(),
     ]);
+    const worked = new Set(Y.vendors.filter((v) => v.vendorId).map((v) => v.vendorId));
+    const register = regs.filter((r) => inRegister(r, worked.has(String(r._id))) && kindOfReg(r) !== 'fleet');
     const st = states?.value || {};
     const state = (k) => st[k.replace(/\./g, '_')]?.state || 'new';
     const recent = await ShipmentOrder.find({ pickupTime: { $gte: since }, status: { $ne: 'cancelled' } })
@@ -775,6 +1199,17 @@ exports.alerts = async (req, res) => {
     const topRep = (v) => Object.entries(v.reps).sort((a, b) => b[1] - a[1])[0]?.[0] || '';
     const mk = (type, key, extra) => ({ type, key: `${type}:${key}`, state: state(`${type}:${key}`), ...extra });
     const groups = [
+      { type: 'contractExpiry', ar: 'عقودٌ تنتهي قريبًا أو انتهت', action: 'تجديد العقد أو تحديث تاريخ نهايته',
+        items: register.map((r) => ({ r, c: contractStateOf(r, cDays) })).filter((x) => x.c.state === 'expiring' || x.c.state === 'expired')
+          .sort((a, b) => a.c.daysLeft - b.c.daysLeft)
+          .map(({ r, c }) => mk('contractExpiry', `${r._id}:${isoDay(r.contractEndDate)}`, { id: String(r._id), name: r.name, kind: kindOfReg(r), trips: null, last: null, owner: r.followOwner || '',
+            end: isoDay(r.contractEndDate), daysLeft: c.daysLeft, contractState: c.state,
+            detail: c.state === 'expired' ? `انتهى في ${isoDay(r.contractEndDate)} (منذ ${-c.daysLeft} يوم)` : `ينتهي في ${isoDay(r.contractEndDate)} (باقي ${c.daysLeft} يوم)` })) },
+      { type: 'missingDocs', ar: 'مستنداتٌ مطلوبة ناقصة', action: 'رفع السجل التجاري والعنوان الوطني والآيبان والبطاقة الضريبية',
+        items: register.map((r) => ({ r, miss: missingDocsOf(r) })).filter((x) => x.miss.length)
+          .sort((a, b) => b.miss.length - a.miss.length || (a.r.inMaster === b.r.inMaster ? 0 : a.r.inMaster ? -1 : 1))
+          .map(({ r, miss }) => mk('missingDocs', String(r._id), { id: String(r._id), name: r.name, kind: kindOfReg(r), trips: null, last: null, owner: r.followOwner || '',
+            detail: miss.map((k) => DOC_KINDS[k]).join('، '), count: miss.length, missing: miss })) },
       { type: 'notInMaster', ar: 'موردون نشطون غير مسجّلين بالقائمة المعتمدة', action: 'الإضافة للماستر والإسناد لأحد أعضاء الفريق',
         items: vs.filter((v) => v.kind === 'outside' || (withInd && v.kind === 'freelancer')).sort((a, b) => b.trips - a.trips)
           .map((v) => mk('notInMaster', v.key, { id: v.id, name: v.name, kind: v.kind, trips: v.trips, last: isoDay(v.last), detail: topRep(v) })) },
@@ -800,7 +1235,7 @@ exports.alerts = async (req, res) => {
       g.open = g.items.filter((i) => i.state !== 'done').length;
       if (hideDone) g.items = g.items.filter((i) => i.state !== 'done');
     }
-    res.json(PV.maskMoney(req.user, { days, groups }));
+    res.json(PV.maskMoney(req.user, { days, contractDays: cDays, groups }));
   } catch (e) {
     console.error('[vendors] alerts:', e);
     res.status(500).json({ message: 'تعذّر حساب التنبيهات' });
@@ -821,7 +1256,7 @@ exports.setAlertState = async (req, res) => {
 // ── Settings ────────────────────────────────────────────────────────────────
 
 exports.getSettings = async (req, res) => {
-  try { res.json({ targets: await targets(), team: await teamOptions() }); }
+  try { res.json({ targets: await targets(), alerts: { contractDays: await alertDays() }, team: await teamOptions() }); }
   catch (e) { res.status(500).json({ message: 'تعذّر تحميل الإعدادات' }); }
 };
 exports.saveSettings = async (req, res) => {
@@ -830,8 +1265,13 @@ exports.saveSettings = async (req, res) => {
     const byBranch = {};
     for (const [k, v] of Object.entries(b.byBranch || {})) if (Number(v) > 0) byBranch[k] = Number(v);
     await VendorSetting.updateOne({ _id: 'targets' }, { $set: { value: { daily: Number(b.daily) || 0, monthly: Number(b.monthly) || 0, byBranch }, updatedByName: fullName(req.user) } }, { upsert: true });
+    // How many days before a contract's end it is flagged (alerts, register, notifications).
+    if (req.body?.alerts?.contractDays !== undefined) {
+      const n = Math.min(365, Math.max(1, Number(req.body.alerts.contractDays) || 30));
+      await VendorSetting.updateOne({ _id: 'alerts' }, { $set: { value: { contractDays: n }, updatedByName: fullName(req.user) } }, { upsert: true });
+    }
     announce({ settings: true });
-    res.json({ targets: await targets() });
+    res.json({ targets: await targets(), alerts: { contractDays: await alertDays() } });
   } catch (e) { res.status(500).json({ message: 'تعذّر حفظ الإعدادات' }); }
 };
 
@@ -852,7 +1292,7 @@ exports.compare = async (req, res) => {
     const out = [];
     for (const id of ids) {
       // eslint-disable-next-line no-await-in-loop
-      const v = await ShipmentOrderSupplier.findById(id).select('name followOwner contractStatus vendorSigned ourSigned inMaster type').lean();
+      const v = await ShipmentOrderSupplier.findById(id).select('name followOwner contractStatus vendorSigned ourSigned contracted inMaster type').lean();
       if (!v) continue;
       // eslint-disable-next-line no-await-in-loop
       const act = await activityOf({ id, year: req.query.year });

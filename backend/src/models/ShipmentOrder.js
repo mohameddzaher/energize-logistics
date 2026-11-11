@@ -62,6 +62,9 @@ const shipmentOrderSchema = new mongoose.Schema(
     // Sourcing: who on the vendors (or operations) team found the carrier and the truck owner for this load; the counterpart of salesRep. Name kept as a snapshot.
     sourcingRep: { type: mongoose.Schema.Types.ObjectId, ref: 'User', default: null, index: true },
     sourcingRepName: { type: String, trim: true, default: '', index: true },
+    // «بمساعدة»: a colleague who helped the sourcing person find this truck (set when completing a sales request).
+    sourcingHelper: { type: mongoose.Schema.Types.ObjectId, ref: 'User', default: null, index: true },
+    sourcingHelperName: { type: String, trim: true, default: '' },
 
     // Cancellation reason: a shipment is never cancelled without one. Taken from the cancellation reasons list in section settings (so_cancel_reason), stored as text.
     cancelReason: { type: String, trim: true, default: '', index: true },

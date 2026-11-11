@@ -40,9 +40,9 @@ export default function FinanceTable({ table, ar, fileName, onOpenRow }: { table
     });
   }, [filtered, sort, table.columns]);
 
-  const totals = useMemo(() => Object.fromEntries(table.columns
+  const totals = useMemo(() => Object.fromEntries(table.noTotals ? [] : table.columns
     .filter((c) => c.format === 'money' || c.format === 'number')
-    .map((c) => [c.key, shown.reduce((a, r) => a + (Number(r[c.key]) || 0), 0)])), [shown, table.columns]);
+    .map((c) => [c.key, shown.reduce((a, r) => a + (Number(r[c.key]) || 0), 0)])), [shown, table.columns, table.noTotals]);
 
   const exportCols: ExportColumn[] = table.columns.map((c) => ({
     header: ar ? c.ar : c.en, key: c.key,

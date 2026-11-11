@@ -9,6 +9,8 @@ export interface FinColumn { key: string; ar: string; en: string; format: FinFor
 export interface FinTable {
   key: string; ar: string; en: string; noteAr?: string;
   columns: FinColumn[]; rows: Record<string, any>[]; capped?: boolean;
+  /** No footer totals: the numeric column mixes units (money beside headcounts). */
+  noTotals?: boolean;
 }
 export interface FinDept {
   dept: string; ar: string; en: string; period: { from: string; to: string }; generatedAt: string;

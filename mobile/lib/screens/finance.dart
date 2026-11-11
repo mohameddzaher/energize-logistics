@@ -443,7 +443,8 @@ class _FinTableCardState extends State<_FinTableCard> {
           return '${x ?? ''}'.compareTo('${y ?? ''}') * _dir;
         });
     }
-    final totalCols = cols.where((c) => c['format'] == 'money' || c['format'] == 'number').toList();
+    // No totals when the table says its numeric column mixes units (noTotals, as on the web).
+    final totalCols = widget.table['noTotals'] == true ? <Map<String, dynamic>>[] : cols.where((c) => c['format'] == 'money' || c['format'] == 'number').toList();
     num sumOf(String k) => shown.fold<num>(0, (a, r) => a + (num.tryParse('${r[k] ?? ''}') ?? 0));
     final tableName = tr('${t['ar']}', '${t['en']}');
     final fname = '${widget.fileName}-${t['key']}';
@@ -1393,3 +1394,8 @@ class _CustomsCustomerInvoicesState extends State<_CustomsCustomerInvoices> {
     );
   }
 }
+
+/// Public entry points for other analysis screens that draw the same table payload (data_support.dart).
+Widget finTableCard({Key? key, required Map<String, dynamic> table, required String fileName}) =>
+    _FinTableCard(key: key, table: table, fileName: fileName);
+(String, List<ExportCol>, List<Map<String, dynamic>>) finSheet(Map<String, dynamic> t) => _finSheet(t);

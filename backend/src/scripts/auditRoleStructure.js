@@ -18,7 +18,8 @@ const ok = (l, c, x = '') => { console.log(`  ${c ? G + '✓' + O : R + '✗ FAI
   const br = require('../config/businessReview');
   const User = require('../models/User');
 
-  const EXEMPT = ['Business Review'];
+  // Business review is a shared forum; Data & Decision Support has global roles (config/roles DATA_ROLES), not section roles.
+  const EXEMPT = ['Business Review', 'Data & Decision Support'];
 
   console.log('\n── كل قسم له مدير وموظف ──');
   const covered = new Set(Roles.SECTION_ROLES.map((s) => s.section));

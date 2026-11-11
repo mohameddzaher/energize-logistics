@@ -13,6 +13,93 @@ const { canSeeSelling } = require('./workflowController');
 
 const TTL = 60 * 1000;
 const r2 = (n) => Math.round((Number(n) || 0) * 100) / 100;
+const { dayRange, todayKey } = require('../utils/companyDay');
+const { textIn, mergeOptions } = require('../utils/colFilter');
+
+const YMD = /^\d{4}-\d{2}-\d{2}$/;
+const YM = /^\d{4}-\d{2}$/;
+const escRx = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+
+/** Trip columns with an Excel-style filter in the customer file (text columns of the trips table). */
+const TRIP_FILTER_COLS = [
+  'reportNumber', 'fromLocation', 'toLocation', 'branch', 'carOwner', 'carNumber', 'driverName',
+  'applicationStatus', 'executionStatus', 'paymentMethod',
+];
+const TRIP_SEARCH_FIELDS = ['reportNumber', 'fromLocation', 'toLocation', 'branch', 'carOwner', 'carNumber', 'driverName'];
+const MAX_TRIP_OPTIONS = 300;
+
+const monthBounds = (ym) => {
+  const [y, m] = ym.split('-').map(Number);
+  const last = new Date(Date.UTC(y, m, 0)).getUTCDate();
+  return [`${ym}-01`, `${ym}-${String(last).padStart(2, '0')}`];
+};
+const shiftMonth = (ym, n) => {
+  const [y, m] = ym.split('-').map(Number);
+  return new Date(Date.UTC(y, m - 1 + n, 1)).toISOString().slice(0, 7);
+};
+
+/**
+ * Period of the customer file from `preset` (this_month | last_month), `month=YYYY-MM` or `from`/`to` (YYYY-MM-DD).
+ * Whole Riyadh days, inclusive on both ends; "this month" is resolved here from the company calendar so web and phone cannot disagree.
+ */
+function tripPeriod(q = {}) {
+  let from = '';
+  let to = '';
+  const tm = todayKey().slice(0, 7);
+  if (q.preset === 'this_month') [from, to] = monthBounds(tm);
+  else if (q.preset === 'last_month') [from, to] = monthBounds(shiftMonth(tm, -1));
+  else if (YM.test(String(q.month || ''))) [from, to] = monthBounds(String(q.month));
+  else {
+    from = YMD.test(String(q.from || '')) ? String(q.from) : '';
+    to = YMD.test(String(q.to || '')) ? String(q.to) : '';
+  }
+  if (!from && !to) return null;
+  return { from, to, range: dayRange(from, to) };
+}
+
+/** Search and column-filter conditions on the trips; `skipField` leaves out a column's own filter when listing its values. */
+function tripConditions(q = {}, skipField = '') {
+  const conds = [];
+  const s = String(q.q || '').trim();
+  if (s) {
+    const rx = { $regex: escRx(s), $options: 'i' };
+    conds.push({ $or: TRIP_SEARCH_FIELDS.map((f) => ({ [f]: rx })) });
+  }
+  for (const f of TRIP_FILTER_COLS) {
+    if (f === skipField) continue;
+    const raw = q[`cf_${f}`];
+    if (raw === undefined) continue;
+    const c = textIn(f, (Array.isArray(raw) ? raw : [raw]).map((v) => String(v ?? '')));
+    if (c) conds.push(c);
+  }
+  return conds;
+}
+
+/** One match for every figure derived from the sheets, so cards, chart, routes and the trips list agree. */
+function tripMatch(base, period, conds) {
+  const all = [base];
+  if (period?.range) all.push({ reportDate: period.range });
+  all.push(...conds);
+  return all.length === 1 ? base : { $and: all };
+}
+
+/** Every spelling of the customer's name in the sheets (folded join). */
+async function sheetNamesOf(c) {
+  const key = fold(c.name);
+  return (await OperationsWorkflow.distinct('username', { username: { $nin: [null, ''] } }))
+    .filter((n) => fold(n) === key);
+}
+
+/** Stable cache-key part built from the filter params only. */
+function filterKey(q = {}) {
+  const out = {};
+  for (const k of ['preset', 'month', 'from', 'to', 'q']) if (q[k]) out[k] = String(q[k]);
+  for (const f of TRIP_FILTER_COLS) {
+    const raw = q[`cf_${f}`];
+    if (raw !== undefined) out[f] = (Array.isArray(raw) ? raw : [raw]).map(String).sort();
+  }
+  return JSON.stringify(out);
+}
 
 /** Operations sheet totals per folded customer name, in one read for all. */
 async function sheetTotals() {
@@ -176,19 +263,23 @@ exports.profile = async (req, res) => {
   try {
     const c = await ShipmentOrderCustomer.findById(req.params.id).lean();
     if (!c) return res.status(404).json({ message: 'العميل غير موجود' });
-    const key = fold(c.name);
     // Purchase figures on the customer file: the selling-price list, never sales (who see no cost).
     const money = canSeeSelling(req.user.role) && !require('../config/priceView').isSalesRole(req.user);
     const page = Math.max(1, Number(req.query.page) || 1);
     const limit = Math.min(200, Math.max(1, Number(req.query.limit) || 50));
+    // Period, search and column filters drive every sheet-derived figure (cards, chart, routes run, trips); agreed prices are not dated and stay whole.
+    const period = tripPeriod(req.query);
+    const conds = tripConditions(req.query);
 
     const body = await cache.wrapStale(
-      `so:registry:profile:${c._id}:${money ? 'm' : 'n'}:${page}:${limit}`, TTL, 10 * 60 * 1000,
+      `so:registry:profile:${c._id}:${money ? 'm' : 'n'}:${page}:${limit}:${filterKey(req.query)}`, TTL, 10 * 60 * 1000,
       async () => {
         // Every name in the sheets folds to this customer's key; there may be more than one spelling.
-        const names = (await OperationsWorkflow.distinct('username', { username: { $nin: [null, ''] } }))
-          .filter((n) => fold(n) === key);
-        const match = names.length ? { username: { $in: names } } : { _id: null };
+        const names = await sheetNamesOf(c);
+        const base = names.length ? { username: { $in: names } } : { _id: null };
+        const match = tripMatch(base, period, conds);
+        const orderMatch = { source: { $ne: 'platform' }, customerName: { $in: names.length ? names : [c.name] } };
+        if (period?.range) orderMatch.createdAt = period.range;
 
         const [agg, monthly, byRoute, sheetsPage, total, orders] = await Promise.all([
           OperationsWorkflow.aggregate([
@@ -205,7 +296,7 @@ exports.profile = async (req, res) => {
             },
           ]),
           OperationsWorkflow.aggregate([
-            { $match: { ...match, reportDate: { $ne: null } } },
+            { $match: { $and: [match, { reportDate: { $ne: null } }] } },
             {
               $group: {
                 _id: { $dateToString: { date: '$reportDate', format: '%Y-%m', timezone: 'Asia/Riyadh' } },
@@ -235,7 +326,7 @@ exports.profile = async (req, res) => {
             .limit(limit)
             .lean(),
           OperationsWorkflow.countDocuments(match),
-          ShipmentOrder.find({ source: { $ne: 'platform' }, customerName: { $in: names.length ? names : [c.name] } })
+          ShipmentOrder.find(orderMatch)
             .select('orderNumber createdAt fromCity toCity status supplierName vehiclePlate price')
             .sort({ createdAt: -1 }).limit(50).lean(),
         ]);
@@ -293,6 +384,8 @@ exports.profile = async (req, res) => {
           // A reader without the purchase side gets the sheets without it too, not only the totals.
           sheets: { rows: money ? sheetsPage : sheetsPage.map(({ purchaseValue, ...r }) => r), total, page, pages: Math.max(1, Math.ceil(total / limit)) },
           orders,
+          period: period ? { from: period.from, to: period.to } : null,
+          filtered: !!(period || conds.length),
         };
       },
     );
@@ -304,6 +397,41 @@ exports.profile = async (req, res) => {
   }
 };
 
+/**
+ * GET /api/customer-registry/:id/trip-filters?field=<column>: one trips column's values with row counts, for its Excel-style filter.
+ * Counted on the server under the period, search and every other column filter (not its own): the trips table is paginated, so the loaded page holds only a slice of the values.
+ */
+exports.tripFilterOptions = async (req, res) => {
+  try {
+    const field = String(req.query.field || '');
+    if (!TRIP_FILTER_COLS.includes(field)) return res.status(400).json({ message: 'Unknown filter column' });
+    const c = await ShipmentOrderCustomer.findById(req.params.id).select('name').lean();
+    if (!c) return res.status(404).json({ message: 'العميل غير موجود' });
+    const body = await cache.wrapStale(
+      `so:registry:tripopts:${c._id}:${field}:${String(req.query.q2 || '')}:${filterKey(req.query)}`, TTL, 10 * 60 * 1000,
+      async () => {
+        const names = await sheetNamesOf(c);
+        const base = names.length ? { username: { $in: names } } : { _id: null };
+        const match = tripMatch(base, tripPeriod(req.query), tripConditions(req.query, field));
+        const rows = await OperationsWorkflow.aggregate([
+          { $match: match },
+          { $group: { _id: `$${field}`, count: { $sum: 1 } } },
+        ]).allowDiskUse(true);
+        const s = String(req.query.q2 || '').trim().toLowerCase();
+        let values = mergeOptions(rows.map((r) => ({ value: r._id, count: r.count })))
+          .filter((o) => !s || o.value.toLowerCase().includes(s))
+          .sort((a, b) => b.count - a.count || a.value.localeCompare(b.value, 'ar'));
+        const truncated = values.length > MAX_TRIP_OPTIONS;
+        if (truncated) values = values.slice(0, MAX_TRIP_OPTIONS);
+        return { filters: [{ key: field, values, truncated }] };
+      },
+    );
+    res.json(body);
+  } catch (e) {
+    console.error('customer registry trip filters:', e);
+    res.status(500).json({ message: 'تعذّر تحميل قيم الفلتر' });
+  }
+};
 
 /**
  * PUT /api/customer-registry/:id/route-tiers  { fromCity, toCity, tiers }

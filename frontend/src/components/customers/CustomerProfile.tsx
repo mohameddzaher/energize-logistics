@@ -18,6 +18,9 @@ import ScrollX from '@/components/system/ScrollX';
 import CustomerPresence from '@/components/system/CustomerPresence';
 import ExportMenu, { exportScopeLabels, type ExportColumn } from '@/components/ls2/ExportMenu';
 import { useColumnFilters, ClearColumnFilters } from '@/components/useColumnFilters';
+import { ColumnFilter, type ColumnFilterOption } from '@/components/ColumnFilter';
+import MonthPicker from '@/components/system/MonthPicker';
+import DateRangeFilter from '@/components/system/DateRangeFilter';
 import PortalAccountCard from '@/components/system/PortalAccountCard';
 import CustomerEditDialog from '@/components/customers/CustomerEditDialog';
 import { Lang } from '@/lib/shipmentOrders';
@@ -54,20 +57,73 @@ const runCell = (r: RunRoute, key: string, ar: boolean): string => {
   return v == null || v === '' ? '' : String(v);
 };
 
-const SHEET_COLS: { key: string; ar: string; en: string; date?: boolean; num?: boolean; money?: boolean }[] = [
-  { key: 'reportNumber', ar: 'رقم أمر النقل', en: 'Report #' },
+// `filter`: the column has a server-side Excel-style filter (GET /api/customer-registry/:id/trip-filters).
+const SHEET_COLS: { key: string; ar: string; en: string; date?: boolean; num?: boolean; money?: boolean; filter?: boolean }[] = [
+  { key: 'reportNumber', ar: 'رقم أمر النقل', en: 'Report #', filter: true },
   { key: 'reportDate', ar: 'التاريخ', en: 'Date', date: true },
-  { key: 'fromLocation', ar: 'من', en: 'From' },
-  { key: 'toLocation', ar: 'إلى', en: 'To' },
-  { key: 'branch', ar: 'الفرع', en: 'Branch' },
-  { key: 'carOwner', ar: 'المالك', en: 'Owner' },
-  { key: 'carNumber', ar: 'المركبة', en: 'Vehicle' },
-  { key: 'driverName', ar: 'السائق', en: 'Driver' },
-  { key: 'applicationStatus', ar: 'حالة الشحنة', en: 'Application' },
-  { key: 'executionStatus', ar: 'حالة التنفيذ', en: 'Execution' },
-  { key: 'paymentMethod', ar: 'طريقة الدفع', en: 'Payment' },
+  { key: 'fromLocation', ar: 'من', en: 'From', filter: true },
+  { key: 'toLocation', ar: 'إلى', en: 'To', filter: true },
+  { key: 'branch', ar: 'الفرع', en: 'Branch', filter: true },
+  { key: 'carOwner', ar: 'المالك', en: 'Owner', filter: true },
+  { key: 'carNumber', ar: 'المركبة', en: 'Vehicle', filter: true },
+  { key: 'driverName', ar: 'السائق', en: 'Driver', filter: true },
+  { key: 'applicationStatus', ar: 'حالة الشحنة', en: 'Application', filter: true },
+  { key: 'executionStatus', ar: 'حالة التنفيذ', en: 'Execution', filter: true },
+  { key: 'paymentMethod', ar: 'طريقة الدفع', en: 'Payment', filter: true },
   { key: 'purchaseValue', ar: 'قيمة الشراء', en: 'Purchase', num: true, money: true },
 ];
+
+type TripPeriodMode = '' | 'this_month' | 'last_month' | 'month' | 'range';
+type TripPeriod = { mode: TripPeriodMode; month: string; from: string; to: string };
+const NO_PERIOD: TripPeriod = { mode: '', month: '', from: '', to: '' };
+
+/** Query params for the period; the server resolves this/last month on the Riyadh calendar. */
+const periodParams = (p: TripPeriod): Record<string, string> => {
+  if (p.mode === 'this_month' || p.mode === 'last_month') return { preset: p.mode };
+  if (p.mode === 'month' && p.month) return { month: p.month };
+  if (p.mode === 'range' && (p.from || p.to)) return { ...(p.from ? { from: p.from } : {}), ...(p.to ? { to: p.to } : {}) };
+  return {};
+};
+
+/**
+ * Period bar of the customer file: all time, this month, last month, a chosen month, or a from/to range. Module-level so its inputs keep focus.
+ * Takes the state setter, not a value callback: the range clear button sets from and to back to back, and a callback over a stale value would restore the first.
+ */
+function TripPeriodBar({ value, setValue, ar }: {
+  value: TripPeriod; setValue: (fn: (p: TripPeriod) => TripPeriod) => void; ar: boolean;
+}) {
+  const now = new Date();
+  const thisMonth = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+  const opts: [TripPeriodMode, string, string][] = [
+    ['', 'كلّ المدّة', 'All time'], ['this_month', 'هذا الشهر', 'This month'], ['last_month', 'الشهر الماضي', 'Last month'],
+    ['month', 'شهر محدّد', 'A month'], ['range', 'من — إلى', 'Custom range'],
+  ];
+  const pick = (m: TripPeriodMode) => setValue((p) => {
+    if (m === 'month') return { ...NO_PERIOD, mode: 'month', month: p.month || thisMonth };
+    if (m === 'range') return { ...NO_PERIOD, mode: 'range', from: p.from, to: p.to };
+    return { ...NO_PERIOD, mode: m };
+  });
+  return (
+    <div className="flex flex-wrap items-center gap-2">
+      <div className="flex overflow-hidden rounded-lg border border-slate-200 bg-white text-[12.5px] font-semibold">
+        {opts.map(([m, a, e]) => (
+          <button key={m || 'all'} type="button" onClick={() => pick(m)}
+            className={`px-2.5 py-2 transition-colors ${value.mode === m ? 'bg-slate-900 text-white' : 'text-slate-600 hover:bg-slate-50'}`}>
+            {ar ? a : e}
+          </button>
+        ))}
+      </div>
+      {value.mode === 'month' && (
+        <MonthPicker ar={ar} allowEmpty={false} value={value.month}
+          onChange={(v) => setValue(() => ({ ...NO_PERIOD, mode: 'month', month: v }))} />
+      )}
+      {value.mode === 'range' && (
+        <DateRangeFilter ar={ar} from={value.from} to={value.to}
+          onFrom={(v) => setValue((p) => ({ ...p, from: v }))} onTo={(v) => setValue((p) => ({ ...p, to: v }))} />
+      )}
+    </div>
+  );
+}
 
 /** Route price tiers by vehicle count, e.g. 1-5 vehicles at one price, 6-10 at another; the count is what the customer requests on the route. The private operations price writes the top tier to the manifest, since a manifest is a single vehicle. Defined outside the page body because a component defined inside a render remounts and loses typed input. */
 function TierEditor({ customerId, route, ar, onClose, onSaved }: {
@@ -152,11 +208,32 @@ export default function CustomerProfile({ id, basePath }: { id: string; basePath
   const [agreedQ, setAgreedQ] = useState('');
   const [editOpen, setEditOpen] = useState(false);
   const [portalOpen, setPortalOpen] = useState(false);
+  const acf = useColumnFilters<AgreedRoute>();
+  const ocf = useColumnFilters<any>();
+
+  // Trip filters, applied on the server: period, search and per-column values. They drive the cards, chart, routes run and trips together.
+  const [period, setPeriod] = useState<TripPeriod>(NO_PERIOD);
+  const [tripQ, setTripQ] = useState('');
+  const [tripQd, setTripQd] = useState('');
+  const [tripCf, setTripCf] = useState<Record<string, Set<string>>>({});
+  const [cfOpts, setCfOpts] = useState<Record<string, { values: ColumnFilterOption[]; truncated: boolean }>>({});
+  const [cfBusy, setCfBusy] = useState<Record<string, boolean>>({});
+  useEffect(() => { const t = setTimeout(() => setTripQd(tripQ.trim()), 300); return () => clearTimeout(t); }, [tripQ]);
+
+  const filterQs = useCallback((extra: Record<string, string> = {}) => {
+    const qs = new URLSearchParams({ ...periodParams(period), ...(tripQd ? { q: tripQd } : {}), ...extra });
+    for (const [f, set] of Object.entries(tripCf)) set.forEach((v) => qs.append(`cf_${f}`, v));
+    return qs;
+  }, [period, tripQd, tripCf]);
+  const filterSig = filterQs().toString();
+  // A new filter starts from the first page; staying on page 7 of a narrower result shows an empty table.
+  useEffect(() => { setPage(1); }, [filterSig]);
 
   const load = useCallback(async () => {
     const mine = guard.begin();
     try {
-      const d = await api.get<ProfilePayload>(`/api/customer-registry/${id}?page=${page}&limit=${SHEET_LIMIT}`);
+      const qs = filterQs({ page: String(page), limit: String(SHEET_LIMIT) });
+      const d = await api.get<ProfilePayload>(`/api/customer-registry/${id}?${qs}`);
       if (!guard.isCurrent(mine)) return;
       setData(d);
       setError('');
@@ -165,9 +242,30 @@ export default function CustomerProfile({ id, basePath }: { id: string; basePath
       setError(e?.message || 'Request failed');
     }
     setLoading(false);
-  }, [id, page, guard]);
+  }, [id, page, guard, filterQs]);
 
   useEffect(() => { load(); }, [load]);
+
+  const optsGuard = useLatestRequest();
+  const fetchCfOpts = useCallback(async (field: string, q2 = '') => {
+    const mine = optsGuard.begin();
+    setCfBusy((p) => ({ ...p, [field]: true }));
+    try {
+      const d = await api.get<any>(`/api/customer-registry/${id}/trip-filters?${filterQs({ field, ...(q2 ? { q2 } : {}) })}`);
+      if (optsGuard.isCurrent(mine)) {
+        const f = d?.filters?.[0];
+        setCfOpts((p) => ({ ...p, [field]: { values: f?.values || [], truncated: !!f?.truncated } }));
+      }
+    } catch { /* keep the previous list */ }
+    setCfBusy((p) => ({ ...p, [field]: false }));
+  }, [id, filterQs, optsGuard]);
+  const setTripFilter = (field: string, set: Set<string>) => setTripCf((prev) => {
+    const next = { ...prev };
+    if (set.size) next[field] = set; else delete next[field];
+    return next;
+  });
+  const tripFiltersOn = !!(period.mode || tripQd || Object.keys(tripCf).length);
+  const clearTripFilters = () => { setPeriod(NO_PERIOD); setTripQ(''); setTripQd(''); setTripCf({}); };
   useSocket('shipmentOrders:customers', useCallback(() => load(), [load]));
 
   const money = !!data && data.analysis.purchaseTotal !== undefined;
@@ -186,13 +284,26 @@ export default function CustomerProfile({ id, basePath }: { id: string; basePath
   }, [data, routeQ]);
   const runShown = useMemo(() => cf.apply(runSearched, rgetters), [cf, runSearched, rgetters]);
 
-  const agreedShown = useMemo(() => {
+  const agreedSearched = useMemo(() => {
     const rows = [...(data?.customer.routes || [])]
       .sort((a, b) => new Date(b.at || 0).getTime() - new Date(a.at || 0).getTime());
     const s = foldAr(agreedQ);
     if (!s) return rows;
     return rows.filter((r) => foldAr(`${r.fromCity} ${r.toCity}`).includes(s));
   }, [data, agreedQ]);
+  // Agreed prices and our orders are loaded whole, so their column filters run in the browser.
+  const agetters = useMemo((): Record<string, (r: AgreedRoute) => any> => ({
+    fromCity: (r) => r.fromCity, toCity: (r) => r.toCity,
+    price: (r) => (r.price == null ? '' : fmtNum(r.price)), at: (r) => fmtDay(r.at),
+    source: (r) => priceSourceLabel(r.source, ar), hits: (r) => r.hits || 1,
+  }), [ar]);
+  const agreedShown = useMemo(() => acf.apply(agreedSearched, agetters), [acf, agreedSearched, agetters]);
+  const ogetters = useMemo((): Record<string, (o: any) => any> => ({
+    number: (o) => o.orderNumber || o.waybillNumber || '', createdAt: (o) => fmtDay(o.createdAt),
+    fromCity: (o) => o.fromCity, toCity: (o) => o.toCity, supplierName: (o) => o.supplierName,
+    vehiclePlate: (o) => o.vehiclePlate, status: (o) => o.status,
+  }), []);
+  const ordersShown = useMemo(() => ocf.apply(data?.orders || [], ogetters), [ocf, data, ogetters]);
 
   const monthly = useMemo(() => (data?.analysis.monthly || []).map((m) => ({
     month: m.month, sheets: m.sheets, purchase: m.purchase ?? 0,
@@ -254,6 +365,41 @@ export default function CustomerProfile({ id, basePath }: { id: string; basePath
       {/* The same customer in the other sections. */}
       <CustomerPresence reg="shipment" id={String(c._id)} ar={ar} onChanged={load} />
 
+      <div className="bg-white border border-slate-200 rounded-2xl shadow-sm p-3 space-y-2">
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <TripPeriodBar value={period} setValue={setPeriod} ar={ar} />
+          <div className="flex items-center gap-2">
+            <div className="relative">
+              <Search className="w-3.5 h-3.5 text-slate-400 absolute top-1/2 -translate-y-1/2 start-2.5" />
+              <input value={tripQ} onChange={(e) => setTripQ(e.target.value)}
+                placeholder={ar ? 'بحث: رقم، سائق، مركبة، مدينة…' : 'Search: number, driver, vehicle, city…'}
+                className="w-64 ps-8 pe-2 py-2 rounded-lg border border-slate-200 bg-white text-[12.5px] focus:outline-none focus:border-[#f37121]" />
+            </div>
+            {tripFiltersOn && (
+              <button type="button" onClick={clearTripFilters}
+                className="px-3 py-2 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-600 text-[12.5px] font-semibold">
+                {ar ? 'مسح الفلاتر' : 'Clear filters'}
+              </button>
+            )}
+          </div>
+        </div>
+        {/* States what the figures below cover, so a filtered total is not read as the customer's whole history. */}
+        {data.filtered && (
+          <p className="text-[12px] text-slate-500">
+            {ar ? 'الأرقام والرسم والمسارات والرحلات أدناه بحسب الفلاتر المختارة' : 'Figures, chart, routes and trips below follow the chosen filters'}
+            {data.period && (
+              <span className="font-semibold text-slate-700 tabular-nums">
+                {' — '}{data.period.from ? fmtDay(`${data.period.from}T12:00:00`) : (ar ? 'البداية' : 'start')}
+                {ar ? ' إلى ' : ' to '}{data.period.to ? fmtDay(`${data.period.to}T12:00:00`) : (ar ? 'اليوم' : 'today')}
+              </span>
+            )}
+            {Object.keys(tripCf).length > 0 && (
+              <span>{ar ? ` · فلاتر أعمدة الرحلات: ${Object.keys(tripCf).length}` : ` · trip column filters: ${Object.keys(tripCf).length}`}</span>
+            )}
+          </p>
+        )}
+      </div>
+
       <div className="grid grid-cols-2 md:grid-cols-4 xl:grid-cols-7 gap-3">
         <StatCard label={ar ? 'الرحلات (أوامر نقل)' : 'Trips (sheets)'} value={a.sheets.toLocaleString('en-US')} accent="text-[#f37121]" />
         {money && <StatCard label={ar ? 'قيمة الشراء' : 'Purchase total'} value={fmtNum(a.purchaseTotal)} accent="text-violet-600" />}
@@ -290,7 +436,8 @@ export default function CustomerProfile({ id, basePath }: { id: string; basePath
         { key: 'routes', label: ar ? 'المسارات التي يعمل عليها' : 'Routes they run', badge: data.routes.length },
         { key: 'agreed', label: ar ? 'أسعار المسارات المتّفق عليها' : 'Agreed prices', badge: c.routes.length },
         { key: 'sheets', label: ar ? 'الرحلات' : 'Trips', badge: data.sheets.total },
-        ...(data.orders.length ? [{ key: 'orders', label: ar ? 'طلباتنا' : 'Our orders', badge: data.orders.length }] : []),
+        // Stays while open: a period with no orders must not drop the tab the user is on.
+        ...(data.orders.length || tab === 'orders' ? [{ key: 'orders', label: ar ? 'طلباتنا' : 'Our orders', badge: data.orders.length }] : []),
       ]} />
 
       {tab === 'routes' && (
@@ -378,6 +525,7 @@ export default function CustomerProfile({ id, basePath }: { id: string; basePath
               <span className="text-[11.5px] font-semibold text-slate-400 tabular-nums">({agreedShown.length})</span>
             </p>
             <div className="flex items-center gap-2">
+              <ClearColumnFilters count={acf.count} onClear={acf.clear} ar={ar} />
               <div className="relative">
                 <Search className="w-3.5 h-3.5 text-slate-400 absolute top-1/2 -translate-y-1/2 start-2.5" />
                 <input value={agreedQ} onChange={(e) => setAgreedQ(e.target.value)} placeholder={ar ? 'بحث…' : 'Search…'}
@@ -392,12 +540,14 @@ export default function CustomerProfile({ id, basePath }: { id: string; basePath
             <table className="w-full text-[13px]">
               <thead className="sticky top-0 z-10">
                 <tr className="bg-slate-900 text-slate-300 text-[11.5px]">
-                  <th className={`${th} text-start`}>{ar ? 'من' : 'From'}</th>
-                  <th className={`${th} text-start`}>{ar ? 'إلى' : 'To'}</th>
-                  <th className={`${th} text-end`}>{ar ? 'السعر' : 'Price'}</th>
-                  <th className={`${th} text-start`}>{ar ? 'تاريخ السعر' : 'Price date'}</th>
-                  <th className={`${th} text-start`}>{ar ? 'المصدر' : 'Source'}</th>
-                  <th className={`${th} text-end`}>{ar ? 'تكرار' : 'Seen'}</th>
+                  {([
+                    ['fromCity', 'من', 'From'], ['toCity', 'إلى', 'To'], ['price', 'السعر', 'Price', true],
+                    ['at', 'تاريخ السعر', 'Price date'], ['source', 'المصدر', 'Source'], ['hits', 'تكرار', 'Seen', true],
+                  ] as [string, string, string, boolean?][]).map(([k, a, e, num]) => (
+                    <th key={k} className={`${th} ${num ? 'text-end' : 'text-start'}`}>
+                      <span className="inline-flex items-center gap-1">{ar ? a : e}{acf.header(k, agreedSearched, agetters[k], ar)}</span>
+                    </th>
+                  ))}
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
@@ -427,15 +577,31 @@ export default function CustomerProfile({ id, basePath }: { id: string; basePath
               {ar ? 'الرحلات' : 'Trips'}
               <span className="ms-2 text-[11.5px] font-semibold text-slate-400 tabular-nums">({data.sheets.total.toLocaleString('en-US')})</span>
             </p>
-            <ExportMenu fileName={`customer-trips-${c.name}`} lang={ar ? 'ar' : 'en'}
-              options={[{ key: 'page', label: scope.page, sheets: [{ name: ar ? 'الرحلات' : 'Trips', rows: data.sheets.rows, columns: sheetExportCols }] }]} />
+            <div className="flex items-center gap-2">
+              <ClearColumnFilters count={Object.keys(tripCf).length} onClear={() => setTripCf({})} ar={ar} />
+              <ExportMenu fileName={`customer-trips-${c.name}`} lang={ar ? 'ar' : 'en'}
+                options={[{ key: 'page', label: scope.page, sheets: [{ name: ar ? 'الرحلات' : 'Trips', rows: data.sheets.rows, columns: sheetExportCols }] }]} />
+            </div>
           </div>
           <ScrollX>
             <table className="w-full text-[13px]">
               <thead className="sticky top-0 z-10">
                 <tr className="bg-slate-900 text-slate-300 text-[11.5px]">
                   {sheetCols.map((col) => (
-                    <th key={col.key} className={`${th} ${col.num ? 'text-end' : 'text-start'}`}>{ar ? col.ar : col.en}</th>
+                    <th key={col.key} className={`${th} ${col.num ? 'text-end' : 'text-start'}`}>
+                      <span className="inline-flex items-center gap-1">
+                        {ar ? col.ar : col.en}
+                        {/* Server-side values: the table is paginated, so the loaded page holds only some of them. */}
+                        {col.filter && (
+                          <ColumnFilter field={col.key} selected={tripCf[col.key] || new Set()}
+                            onChange={(set) => setTripFilter(col.key, set)}
+                            onOpen={() => fetchCfOpts(col.key)}
+                            options={cfOpts[col.key]?.values || []} truncated={!!cfOpts[col.key]?.truncated}
+                            loading={!!cfBusy[col.key]} onQuery={(q) => fetchCfOpts(col.key, q)}
+                            lang={ar ? 'ar' : 'en'} />
+                        )}
+                      </span>
+                    </th>
                   ))}
                 </tr>
               </thead>
@@ -469,21 +635,28 @@ export default function CustomerProfile({ id, basePath }: { id: string; basePath
 
       {tab === 'orders' && (
         <div className="bg-white border border-slate-200 rounded-2xl shadow-sm overflow-hidden">
+          {ocf.count > 0 && (
+            <div className="flex justify-end px-4 py-2 border-b border-slate-100 bg-slate-50/60">
+              <ClearColumnFilters count={ocf.count} onClear={ocf.clear} ar={ar} />
+            </div>
+          )}
           <ScrollX>
             <table className="w-full text-[13px]">
               <thead>
                 <tr className="bg-slate-900 text-slate-300 text-[11.5px]">
-                  <th className={`${th} text-start`}>{ar ? 'الرقم' : 'Number'}</th>
-                  <th className={`${th} text-start`}>{ar ? 'التاريخ' : 'Date'}</th>
-                  <th className={`${th} text-start`}>{ar ? 'من' : 'From'}</th>
-                  <th className={`${th} text-start`}>{ar ? 'إلى' : 'To'}</th>
-                  <th className={`${th} text-start`}>{ar ? 'المورد' : 'Supplier'}</th>
-                  <th className={`${th} text-start`}>{ar ? 'المركبة' : 'Vehicle'}</th>
-                  <th className={`${th} text-start`}>{ar ? 'الحالة' : 'Status'}</th>
+                  {([
+                    ['number', 'الرقم', 'Number'], ['createdAt', 'التاريخ', 'Date'], ['fromCity', 'من', 'From'], ['toCity', 'إلى', 'To'],
+                    ['supplierName', 'المورد', 'Supplier'], ['vehiclePlate', 'المركبة', 'Vehicle'], ['status', 'الحالة', 'Status'],
+                  ] as [string, string, string][]).map(([k, a, e]) => (
+                    <th key={k} className={`${th} text-start`}>
+                      <span className="inline-flex items-center gap-1">{ar ? a : e}{ocf.header(k, data.orders, ogetters[k], ar)}</span>
+                    </th>
+                  ))}
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
-                {data.orders.map((o: any) => (
+                {!ordersShown.length && <tr><td colSpan={7} className="px-3 py-10 text-center text-slate-400">{ar ? 'لا طلبات.' : 'No orders.'}</td></tr>}
+                {ordersShown.map((o: any) => (
                   <tr key={o._id} className="hover:bg-slate-50">
                     <td className="px-3 py-2 whitespace-nowrap font-semibold text-slate-900">{o.orderNumber || o.waybillNumber || '—'}</td>
                     <td className="px-3 py-2 whitespace-nowrap text-slate-600">{fmtDay(o.createdAt)}</td>

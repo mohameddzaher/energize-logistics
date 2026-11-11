@@ -28,6 +28,8 @@ router.get('/options', so.listFields);
 router.get('/full', so.listCustomers);
 router.post('/', authorize(...EDIT_ROLES), so.createCustomer);
 router.get('/:id', ctrl.profile);
+// Value lists for the Excel-style filters on the customer file's trips table.
+router.get('/:id/trip-filters', ctrl.tripFilterOptions);
 router.put('/:id', authorize(...EDIT_ROLES), so.updateCustomer);
 // Price tiers by vehicle count. Guarded in the controller: operations manager and system admin only.
 router.put('/:id/route-tiers', ctrl.setRouteTiers);

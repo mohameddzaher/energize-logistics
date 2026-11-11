@@ -108,6 +108,10 @@ export interface ProfilePayload {
   canEditTiers?: boolean;
   sheets: { rows: any[]; total: number; page: number; pages: number };
   orders: any[];
+  /** Resolved period (YYYY-MM-DD, Riyadh days, inclusive) when one was asked for. */
+  period?: { from: string; to: string } | null;
+  /** True when period, search or trip column filters narrowed the sheet-derived figures. */
+  filtered?: boolean;
 }
 
 /** Arabic folding: searching one spelling finds the other, and hamza variants are not matched letter by letter. */

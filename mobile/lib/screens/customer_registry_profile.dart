@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import '../services/api.dart';
 import '../services/lang.dart';
@@ -7,7 +8,9 @@ import '../ui/contact.dart';
 import '../ui/theme.dart';
 import '../ui/widgets.dart';
 import 'fleet_customer_presence.dart';
+import 'ops_common.dart' show opsPickMonth, opsYmd, opsQs;
 import '../ui/portal_account_card.dart';
+import '../ui/search_field.dart';
 
 /// Customer profile, matching web /system/shipment-orders/customers/[id] and /system/operations/customers/[id] (one screen).
 /// Numbers first: trips and amounts, then the routes the customer actually works linked to the agreed price, then the price list, then the latest trips. The gap between the two tables is the value: a route worked without an agreed price is visible at a glance.
@@ -60,6 +63,16 @@ class _CustomerRegistryProfileScreenState extends State<CustomerRegistryProfileS
   String? _error;
   int _page = 1;
   late final void Function() _onLive;
+  // Trip filters, same params as the web: '' | this_month | last_month | month | range, plus search. The server resolves the months on the Riyadh calendar.
+  String _mode = '';
+  DateTime? _month;
+  DateTimeRange? _range;
+  String _q = '';
+  Timer? _qDebounce;
+  // Held here so the typed text survives the list being rebuilt while a page loads.
+  final _searchCtl = TextEditingController();
+  int _seq = 0;
+  bool _busy = false;
 
   @override
   void initState() {
@@ -72,6 +85,8 @@ class _CustomerRegistryProfileScreenState extends State<CustomerRegistryProfileS
   @override
   void dispose() {
     Live.instance.off('shipmentOrders:customers', _onLive);
+    _qDebounce?.cancel();
+    _searchCtl.dispose();
     super.dispose();
   }
 
@@ -140,14 +155,118 @@ class _CustomerRegistryProfileScreenState extends State<CustomerRegistryProfileS
     }
   }
 
+  List<(String, String)> get _filterParams => [
+        if (_mode == 'this_month' || _mode == 'last_month') ('preset', _mode),
+        if (_mode == 'month' && _month != null) ('month', opsYmd(_month!).substring(0, 7)),
+        if (_mode == 'range' && _range != null) ...[('from', opsYmd(_range!.start)), ('to', opsYmd(_range!.end))],
+        if (_q.isNotEmpty) ('q', _q),
+      ];
+
   Future<void> _load() async {
+    final mine = ++_seq;
     try {
-      final d = await Api.instance.get('/api/customer-registry/${widget.customerId}?page=$_page&limit=25');
-      if (!mounted) return;
-      setState(() { _data = Map<String, dynamic>.from(d); _loading = false; _error = null; });
+      final qs = opsQs([..._filterParams, ('page', '$_page'), ('limit', '25')]);
+      final d = await Api.instance.get('/api/customer-registry/${widget.customerId}?$qs');
+      // A slower reply to an older filter must not overwrite the newer one.
+      if (!mounted || mine != _seq) return;
+      setState(() { _data = Map<String, dynamic>.from(d); _loading = false; _busy = false; _error = null; });
     } catch (e) {
-      if (mounted) setState(() { _loading = false; _error = e.toString(); });
+      if (mounted && mine == _seq) setState(() { _loading = false; _busy = false; _error = e.toString(); });
     }
+  }
+
+  /// A filter change reloads in place from page 1, without the skeleton, so the filter bar is not rebuilt under the user's finger.
+  void _refilter() {
+    setState(() { _page = 1; _busy = true; });
+    _load();
+  }
+
+  Future<void> _pickMode(String m) async {
+    if (m == 'month') {
+      final now = DateTime.now();
+      final picked = await opsPickMonth(context, _month ?? DateTime(now.year, now.month));
+      if (picked == null) return;
+      _month = picked;
+    } else if (m == 'range') {
+      final now = DateTime.now();
+      final picked = await showDateRangePicker(
+          context: context, initialDateRange: _range, firstDate: DateTime(2018), lastDate: DateTime(now.year + 1, 12, 31));
+      if (picked == null) return;
+      _range = picked;
+    }
+    _mode = m;
+    _refilter();
+  }
+
+  String _modeLabel(String m) {
+    switch (m) {
+      case 'this_month': return tr('هذا الشهر', 'This month');
+      case 'last_month': return tr('الشهر الماضي', 'Last month');
+      case 'month':
+        return _mode == 'month' && _month != null
+            ? '${_month!.month.toString().padLeft(2, '0')}/${_month!.year}'
+            : tr('شهر محدّد', 'A month');
+      case 'range':
+        return _mode == 'range' && _range != null
+            ? '${_day(_range!.start.toIso8601String())} – ${_day(_range!.end.toIso8601String())}'
+            : tr('من — إلى', 'Custom range');
+      default: return tr('كلّ المدّة', 'All time');
+    }
+  }
+
+  Widget _filterBar(Map<String, dynamic>? d) {
+    final period = d?['period'] is Map ? Map<String, dynamic>.from(d!['period']) : null;
+    return AppCard(
+      padding: const EdgeInsets.all(10),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+        Wrap(spacing: 6, runSpacing: 6, children: [
+          for (final m in const ['', 'this_month', 'last_month', 'month', 'range'])
+            ChoiceChip(
+              visualDensity: VisualDensity.compact,
+              label: Text(_modeLabel(m), style: const TextStyle(fontSize: 12)),
+              selected: _mode == m,
+              // Month and range reopen their picker even when already selected, to change the choice.
+              onSelected: (_) {
+                if (m == 'month' || m == 'range') { _pickMode(m); return; }
+                if (_mode == m) return;
+                _mode = m;
+                _refilter();
+              },
+            ),
+        ]),
+        const SizedBox(height: 8),
+        SearchField(
+          controller: _searchCtl,
+          dense: true,
+          hint: tr('بحث: رقم، سائق، مركبة، مدينة…', 'Search: number, driver, vehicle, city…'),
+          onChanged: (v) {
+            _qDebounce?.cancel();
+            _qDebounce = Timer(const Duration(milliseconds: 350), () {
+              if (!mounted || v.trim() == _q) return;
+              _q = v.trim();
+              _refilter();
+            });
+          },
+        ),
+        if (_busy) const Padding(padding: EdgeInsets.only(top: 6), child: LinearProgressIndicator(minHeight: 2)),
+        if (d?['filtered'] == true) ...[
+          const SizedBox(height: 6),
+          Text(
+            '${tr('الأرقام والمسارات والرحلات أدناه بحسب الفلاتر المختارة', 'Figures, routes and trips below follow the chosen filters')}'
+            '${period != null ? ' — ${_ymdLabel(period['from'], tr('البداية', 'start'))} ${tr('إلى', 'to')} ${_ymdLabel(period['to'], tr('اليوم', 'today'))}' : ''}',
+            style: const TextStyle(fontSize: 11.5, color: T.inkSoft),
+          ),
+        ],
+      ]),
+    );
+  }
+
+  /// "2026-10-01" as 1/10/2026, read as a calendar day (no zone shift).
+  String _ymdLabel(dynamic ymd, String empty) {
+    final s = (ymd ?? '').toString();
+    final p = s.split('-');
+    if (p.length != 3) return empty;
+    return '${int.tryParse(p[2]) ?? p[2]}/${int.tryParse(p[1]) ?? p[1]}/${p[0]}';
   }
 
   @override
@@ -175,6 +294,9 @@ class _CustomerRegistryProfileScreenState extends State<CustomerRegistryProfileS
                   child: ListView(
                     padding: const EdgeInsets.all(14),
                     children: [
+                      // Period and search drive the tiles, routes run and trips below (server-side, like the web).
+                      _filterBar(d),
+                      const SizedBox(height: 10),
                       GridView.count(
                         crossAxisCount: 2,
                         shrinkWrap: true,
@@ -341,14 +463,14 @@ class _CustomerRegistryProfileScreenState extends State<CustomerRegistryProfileS
                             const Divider(height: 20),
                             Row(mainAxisAlignment: MainAxisAlignment.center, children: [
                               IconButton(
-                                onPressed: _page <= 1 ? null : () { setState(() { _page--; _loading = true; }); _load(); },
+                                onPressed: _page <= 1 ? null : () { setState(() { _page--; _busy = true; }); _load(); },
                                 icon: const Icon(Icons.chevron_right_rounded)),
                               Text('${tr('صفحة', 'Page')} ${sheets['page'] ?? 1} / ${sheets['pages'] ?? 1}',
                                   style: const TextStyle(fontSize: 12.5, color: T.inkSoft)),
                               IconButton(
                                 onPressed: (sheets['page'] ?? 1) >= (sheets['pages'] ?? 1)
                                     ? null
-                                    : () { setState(() { _page++; _loading = true; }); _load(); },
+                                    : () { setState(() { _page++; _busy = true; }); _load(); },
                                 icon: const Icon(Icons.chevron_left_rounded)),
                             ]),
                           ],

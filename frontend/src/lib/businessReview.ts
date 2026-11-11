@@ -191,7 +191,11 @@ export const brUpdateAction = (actionId: string, body: any) =>
   api.patch<{ action: BrAction }>(`/api/business-review/actions/${actionId}`, body);
 export const brShareAction = (actionId: string, assignee: string) =>
   api.post<{ action: BrAction }>(`/api/business-review/actions/${actionId}/share`, { assignee });
-export const brDeleteAction = (actionId: string) => api.delete(`/api/business-review/actions/${actionId}`);
+// Deletes the task for every owner sharing it; `onlyThisOwner` removes just this owner's part.
+export const brDeleteAction = (actionId: string, onlyThisOwner = false) => api.delete(`/api/business-review/actions/${actionId}${onlyThisOwner ? '?only=1' : ''}`);
+// Moves the task to another owner entirely (unlike share, which adds an owner).
+export const brTransferAction = (actionId: string, assignee: string) =>
+  api.post<{ action: BrAction; merged?: boolean }>(`/api/business-review/actions/${actionId}/transfer`, { assignee });
 export const brDelegate = (actionId: string, assignments: any[]) =>
   api.post<{ assignments: BrDelegation[] }>(`/api/business-review/actions/${actionId}/delegate`, { assignments });
 

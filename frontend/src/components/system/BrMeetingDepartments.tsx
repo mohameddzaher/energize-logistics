@@ -4,13 +4,14 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import {
   CheckCircle2, PlayCircle, CircleDashed, PauseCircle, AlertTriangle, Ban, ChevronDown, Plus, CornerDownLeft,
-  Loader2, Link2, CalendarDays, User, Layers, Pencil, Users, X,
+  Loader2, Link2, CalendarDays, User, Layers, Pencil, Users, X, ArrowLeftRight, Trash2,
 } from 'lucide-react';
+import { useDialog } from '@/components/system/DialogProvider';
 import api from '@/lib/api';
 import { useSocket } from '@/hooks/useSocket';
 import { StatusPill, ProgressForm, Progress, DatesLine, UpdateLog } from '@/components/system/BusinessReviewKit';
 import {
-  brCreateAction, brUpdateAction, brShareAction, type BrMeta, type Lang, type ProgressReport, tx, deptLabel, fmtDate, isoDay,
+  brCreateAction, brUpdateAction, brShareAction, brTransferAction, brDeleteAction, type BrMeta, type Lang, type ProgressReport, tx, deptLabel, fmtDate, isoDay,
 } from '@/lib/businessReview';
 
 type Counts = { total: number; done: number; in_progress: number; open: number; postponed: number; blocked: number; overdue: number; today: number; agenda: number; h48: number; week: number; later: number; nodate: number; onTime: number };
@@ -196,8 +197,34 @@ function TaskRow({ task, meta, L, meetingId, canEdit, dept, open, onToggle, onCh
   onToggle: () => void; onChanged: () => void; notify: (m: string, k?: any) => void;
 }) {
   const t = (en: string, ar: string) => tx(L, en, ar);
-  const [mode, setMode] = useState<'' | 'update' | 'postpone' | 'followup' | 'edit' | 'share'>('');
-  const [ed, setEd] = useState({ title: task.title || '', description: task.description || '', assignee: String(task.assignee?._id || task.assignee || ''), dueDate: task.dueDate ? isoDay(new Date(task.dueDate)) : '', priority: task.priority || 'medium' });
+  const [mode, setMode] = useState<'' | 'update' | 'postpone' | 'followup' | 'edit' | 'share' | 'transfer'>('');
+  const { confirm } = useDialog();
+  const [moveTo, setMoveTo] = useState('');
+  const transfer = async () => {
+    if (!moveTo) return;
+    setBusy(true);
+    try {
+      const r = await brTransferAction(task._id, moveTo);
+      notify(r.merged ? t('Moved; they already shared it, so it is one task now', 'نُقل البند؛ وكان مشتركًا معه فأصبح بندًا واحدًا عنده') : t('Moved', 'نُقل البند إلى المسؤول الجديد'), 'success');
+      setMode(''); setMoveTo(''); onChanged();
+    } catch (e: any) { notify(e?.message || t('Failed', 'تعذّر'), 'error'); }
+    setBusy(false);
+  };
+  const remove = async (onlyThisOwner: boolean) => {
+    const ok = await confirm({
+      tone: 'danger', confirmLabel: t('Delete', 'حذف'),
+      title: onlyThisOwner ? t('Remove this owner', 'إزالة هذا المسؤول من البند') : t('Delete task', 'حذف البند'),
+      message: onlyThisOwner
+        ? t(`${task.assigneeName} is removed from this task; the other owners keep it.`, `يُزال ${task.assigneeName} من البند، ويبقى عند باقي المشتركين.`)
+        : t('The task is deleted for everyone sharing it, with its team parts.', `يُحذف البند «${task.title}» عند كلّ المشتركين فيه مع ما وُزّع منه على الفريق.`),
+    });
+    if (!ok) return;
+    setBusy(true);
+    try { await brDeleteAction(task._id, onlyThisOwner); notify(onlyThisOwner ? t('Removed', 'أُزيل المسؤول من البند') : t('Deleted', 'حُذف البند'), 'success'); onChanged(); }
+    catch (e: any) { notify(e?.message || t('Failed', 'تعذّر'), 'error'); }
+    setBusy(false);
+  };
+  const [ed, setEd] = useState({ title: task.title || '', description: task.description || '', dueDate: task.dueDate ? isoDay(new Date(task.dueDate)) : '', priority: task.priority || 'medium' });
   const [shareTo, setShareTo] = useState('');
   const people = [...meta.participants].sort((a, b) => String(a.section || '').localeCompare(String(b.section || '')));
   const share = async () => {
@@ -244,6 +271,8 @@ function TaskRow({ task, meta, L, meetingId, canEdit, dept, open, onToggle, onCh
                 {task.sharedWith.map((x: any) => (
                   <span key={x._id} className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-sky-50 border border-sky-200 text-sky-800">
                     <b>{x.assigneeName}</b> · {deptLabel(x.department, L)} · <StatusPill statuses={meta.actionStatuses} value={x.status} lang={L} /> {x.progress || 0}%
+                    {x.expectedDate && <span className="text-sky-700"> · {t('ETA', 'متوقَّع')} {fmtDate(x.expectedDate)}</span>}
+                    {x.lastUpdate?.text && <span className="text-slate-600 max-w-[22rem] truncate" title={x.lastUpdate.text}> · {x.lastUpdate.text}</span>}
                   </span>
                 ))}
               </p>
@@ -312,6 +341,20 @@ function TaskRow({ task, meta, L, meetingId, canEdit, dept, open, onToggle, onCh
                 className="inline-flex items-center gap-1.5 border border-sky-300 bg-white text-sky-700 text-xs font-bold rounded-lg px-3 py-1.5">
                 <Users className="w-3.5 h-3.5" />{t('Also assign to…', 'إسناده لمسؤولٍ آخر أيضًا')}
               </button>
+              <button type="button" onClick={() => setMode(mode === 'transfer' ? '' : 'transfer')}
+                className="inline-flex items-center gap-1.5 border border-indigo-300 bg-white text-indigo-700 text-xs font-bold rounded-lg px-3 py-1.5">
+                <ArrowLeftRight className="w-3.5 h-3.5" />{t('Move to…', 'نقله لمسؤولٍ آخر')}
+              </button>
+              {!!task.sharedWith?.length && (
+                <button type="button" disabled={busy} onClick={() => remove(true)}
+                  className="inline-flex items-center gap-1.5 border border-red-200 bg-white text-red-600 text-xs font-bold rounded-lg px-3 py-1.5 disabled:opacity-50">
+                  <X className="w-3.5 h-3.5" />{t('Remove this owner', 'إزالة هذا المسؤول')}
+                </button>
+              )}
+              <button type="button" disabled={busy} onClick={() => remove(false)}
+                className="inline-flex items-center gap-1.5 border border-red-300 bg-white text-red-700 text-xs font-bold rounded-lg px-3 py-1.5 disabled:opacity-50">
+                <Trash2 className="w-3.5 h-3.5" />{t('Delete task', 'حذف البند')}
+              </button>
             </div>
           )}
 
@@ -349,10 +392,7 @@ function TaskRow({ task, meta, L, meetingId, canEdit, dept, open, onToggle, onCh
                 className="w-full px-2.5 py-1.5 rounded-lg border border-slate-200 text-sm" />
               <textarea value={ed.description} onChange={(e) => setEd({ ...ed, description: e.target.value })} rows={2} placeholder={t('Details', 'التفاصيل')}
                 className="w-full px-2.5 py-1.5 rounded-lg border border-slate-200 text-sm" />
-              <div className="grid gap-2 sm:grid-cols-3">
-                <select value={ed.assignee} onChange={(e) => setEd({ ...ed, assignee: e.target.value })} className="px-2.5 py-1.5 rounded-lg border border-slate-200 bg-white text-sm">
-                  {people.map((p) => <option key={p._id} value={p._id}>{p.name}{p.section ? ` — ${deptLabel(p.section, L)}` : ''}</option>)}
-                </select>
+              <div className="grid gap-2 sm:grid-cols-2">
                 <input type="date" value={ed.dueDate} onChange={(e) => setEd({ ...ed, dueDate: e.target.value })} className="px-2.5 py-1.5 rounded-lg border border-slate-200 text-sm" title={t('Due', 'التسليم')} />
                 <select value={ed.priority} onChange={(e) => setEd({ ...ed, priority: e.target.value })} className="px-2.5 py-1.5 rounded-lg border border-slate-200 bg-white text-sm">
                   {(meta.priorities || []).map((p: any) => <option key={p.key} value={p.key}>{L === 'ar' ? p.ar : p.en}</option>)}
@@ -360,7 +400,7 @@ function TaskRow({ task, meta, L, meetingId, canEdit, dept, open, onToggle, onCh
               </div>
               {!!task.sharedWith?.length && <p className="text-[11.5px] text-sky-700">{t('Title, details, priority and due date change for every owner sharing it.', 'نصُّ البند وتفاصيلُه وأولويّتُه وموعدُه تتغيّر عند كلّ المشتركين فيه.')}</p>}
               <div className="flex gap-2">
-                <button type="button" disabled={busy || !ed.title.trim()} onClick={() => send({ title: ed.title.trim(), description: ed.description.trim(), assignee: ed.assignee, dueDate: ed.dueDate || null, priority: ed.priority }, t('Saved', 'حُفظ تعديل البند'))}
+                <button type="button" disabled={busy || !ed.title.trim()} onClick={() => send({ title: ed.title.trim(), description: ed.description.trim(), dueDate: ed.dueDate || null, priority: ed.priority }, t('Saved', 'حُفظ تعديل البند'))}
                   className="bg-[#f37121] text-white text-xs font-bold rounded-lg px-3 py-1.5 disabled:opacity-50">{t('Save', 'حفظ التعديل')}</button>
                 <button type="button" onClick={() => setMode('')} className="text-xs text-slate-500 px-2">{t('Cancel', 'إلغاء')}</button>
               </div>
@@ -368,7 +408,7 @@ function TaskRow({ task, meta, L, meetingId, canEdit, dept, open, onToggle, onCh
           )}
           {mode === 'share' && (
             <div className="bg-sky-50 border border-sky-200 rounded-lg p-3 flex flex-wrap items-center gap-2">
-              <span className="text-xs font-bold text-sky-900">{t('Also assign this task to', 'أسنِد البندَ نفسَه أيضًا إلى')}</span>
+              <span className="text-xs font-bold text-sky-900">{t('Also assign this task to (both own it)', 'أسنِد البندَ نفسَه أيضًا إلى (يصبحان مسؤولَين عنه معًا)')}</span>
               <select value={shareTo} onChange={(e) => setShareTo(e.target.value)} className="flex-1 min-w-[14rem] px-2.5 py-1.5 rounded-lg border border-sky-300 bg-white text-sm">
                 <option value="">{t('Choose…', 'اختر…')}</option>
                 {people.filter((p) => String(p._id) !== String(task.assignee?._id || task.assignee) && !(task.sharedWith || []).some((x: any) => String(x.assignee) === String(p._id)))
@@ -376,6 +416,18 @@ function TaskRow({ task, meta, L, meetingId, canEdit, dept, open, onToggle, onCh
               </select>
               <button type="button" disabled={busy || !shareTo} onClick={share} className="bg-sky-600 text-white text-xs font-bold rounded-lg px-3 py-1.5 disabled:opacity-50">{t('Assign', 'إسناد')}</button>
               <p className="w-full text-[11.5px] text-sky-800">{t('It appears in their department card and their own list; each reports progress on their part.', 'يظهر في بطاقة قسمه وفي «بنودي» عنده، ويُحدِّث كلٌّ منهما حالةَ جزئه، ويرى كلٌّ منهما حالةَ الآخر.')}</p>
+            </div>
+          )}
+          {mode === 'transfer' && (
+            <div className="bg-indigo-50 border border-indigo-200 rounded-lg p-3 flex flex-wrap items-center gap-2">
+              <span className="text-xs font-bold text-indigo-900">{t(`Move from ${task.assigneeName} to`, `نقل البند من ${task.assigneeName} إلى`)}</span>
+              <select value={moveTo} onChange={(e) => setMoveTo(e.target.value)} className="flex-1 min-w-[14rem] px-2.5 py-1.5 rounded-lg border border-indigo-300 bg-white text-sm">
+                <option value="">{t('Choose…', 'اختر…')}</option>
+                {people.filter((p) => String(p._id) !== String(task.assignee?._id || task.assignee))
+                  .map((p) => <option key={p._id} value={p._id}>{p.name}{p.section ? ` — ${deptLabel(p.section, L)}` : ''}</option>)}
+              </select>
+              <button type="button" disabled={busy || !moveTo} onClick={transfer} className="bg-indigo-600 text-white text-xs font-bold rounded-lg px-3 py-1.5 disabled:opacity-50">{t('Move', 'نقل')}</button>
+              <p className="w-full text-[11.5px] text-indigo-800">{t('It leaves the current owner and goes to the new one, who is notified at once.', 'يخرج البند من المسؤول الحالي ويصبح عند المسؤول الجديد وحده، ويصله إشعارٌ فورًا، ويُبلَّغ المسؤول السابق.')}</p>
             </div>
           )}
           {mode === 'update' && (

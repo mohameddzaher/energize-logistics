@@ -140,18 +140,15 @@ class _BrMeetingDepartmentsTabState extends State<BrMeetingDepartmentsTab> {
 
   /// Edit what the task is: title, details, owner, due date and priority. Shared owners get the same text, priority and date.
   Future<void> _edit(Map t) async {
-    final people = List<Map<String, dynamic>>.from(widget.meta['participants'] ?? []);
     final prios = List<Map<String, dynamic>>.from(widget.meta['priorities'] ?? []);
     final title = TextEditingController(text: '${t['title'] ?? ''}');
     final desc = TextEditingController(text: '${t['description'] ?? ''}');
-    String who = '${t['assignee'] is Map ? t['assignee']['_id'] : t['assignee'] ?? ''}';
     String due = t['dueDate'] == null ? '' : brIsoDay(DateTime.parse('${t['dueDate']}').toLocal());
     String prio = '${t['priority'] ?? 'medium'}';
     final ok = await showModalBottomSheet<bool>(
       context: context,
       isScrollControlled: true,
       builder: (c) => StatefulBuilder(builder: (c, setS) {
-        final whoName = people.where((p) => '${p['_id']}' == who).map((p) => '${p['name']}').firstOrNull ?? '${t['assigneeName'] ?? ''}';
         return Padding(
           padding: EdgeInsets.fromLTRB(16, 16, 16, MediaQuery.of(c).viewInsets.bottom + 16),
           child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
@@ -160,14 +157,6 @@ class _BrMeetingDepartmentsTabState extends State<BrMeetingDepartmentsTab> {
             TextField(controller: title, decoration: InputDecoration(labelText: tr('نص البند *', 'Task *'))),
             const SizedBox(height: 8),
             TextField(controller: desc, maxLines: 3, decoration: InputDecoration(labelText: tr('التفاصيل', 'Details'))),
-            const SizedBox(height: 8),
-            OutlinedButton.icon(
-              onPressed: () async {
-                final p = await brPickPerson(c, people, title: tr('المسؤول', 'Owner'));
-                if (p != null) setS(() => who = '${p['_id']}');
-              },
-              icon: const Icon(Icons.person_outline), label: Text(whoName),
-            ),
             const SizedBox(height: 8),
             OutlinedButton.icon(
               onPressed: () async {
@@ -195,7 +184,7 @@ class _BrMeetingDepartmentsTabState extends State<BrMeetingDepartmentsTab> {
       }),
     );
     if (ok == true) {
-      _patch('${t['_id']}', {'title': title.text.trim(), 'description': desc.text.trim(), 'assignee': who, 'dueDate': due.isEmpty ? null : due, 'priority': prio}, tr('حُفظ تعديل البند', 'Saved'));
+      _patch('${t['_id']}', {'title': title.text.trim(), 'description': desc.text.trim(), 'dueDate': due.isEmpty ? null : due, 'priority': prio}, tr('حُفظ تعديل البند', 'Saved'));
     }
   }
 
@@ -209,6 +198,43 @@ class _BrMeetingDepartmentsTabState extends State<BrMeetingDepartmentsTab> {
     try {
       await Api.instance.post('/api/business-review/actions/${t['_id']}/share', {'assignee': '${p['_id']}'});
       if (mounted) brSnack(context, tr('أُسند البند إليه أيضًا وظهر في قسمه', 'Shared'));
+      _load();
+    } catch (e) {
+      if (mounted) brSnack(context, brErr(e));
+    }
+  }
+
+  /// Move the task to another owner entirely; the new owner is notified at once.
+  Future<void> _transfer(Map t) async {
+    final people = List<Map<String, dynamic>>.from(widget.meta['participants'] ?? []);
+    final owner = '${t['assignee'] is Map ? t['assignee']['_id'] : t['assignee'] ?? ''}';
+    final p = await brPickPerson(context, people, exclude: [owner], title: tr('نقله لمسؤولٍ آخر', 'Move to'));
+    if (p == null) return;
+    try {
+      final r = await Api.instance.post('/api/business-review/actions/${t['_id']}/transfer', {'assignee': '${p['_id']}'});
+      if (mounted) brSnack(context, (r is Map && r['merged'] == true) ? tr('نُقل البند؛ وكان مشتركًا معه فأصبح بندًا واحدًا عنده', 'Moved and merged') : tr('نُقل البند إلى المسؤول الجديد', 'Moved'));
+      _load();
+    } catch (e) {
+      if (mounted) brSnack(context, brErr(e));
+    }
+  }
+
+  /// Delete the task for everyone sharing it, or remove just this owner's part.
+  Future<void> _remove(Map t, {bool onlyThisOwner = false}) async {
+    final ok = await showDialog<bool>(context: context, builder: (c) => AlertDialog(
+      title: Text(onlyThisOwner ? tr('إزالة هذا المسؤول من البند', 'Remove this owner') : tr('حذف البند', 'Delete task')),
+      content: Text(onlyThisOwner
+          ? tr('يُزال ${t['assigneeName']} من البند، ويبقى عند باقي المشتركين.', '${t['assigneeName']} is removed; the others keep it.')
+          : tr('يُحذف البند عند كلّ المشتركين فيه مع ما وُزّع منه على الفريق.', 'Deleted for everyone sharing it, with its team parts.')),
+      actions: [
+        TextButton(onPressed: () => Navigator.pop(c, false), child: Text(tr('إلغاء', 'Cancel'))),
+        FilledButton(style: FilledButton.styleFrom(backgroundColor: T.danger), onPressed: () => Navigator.pop(c, true), child: Text(tr('حذف', 'Delete'))),
+      ],
+    ));
+    if (ok != true) return;
+    try {
+      await Api.instance.delete('/api/business-review/actions/${t['_id']}${onlyThisOwner ? '?only=1' : ''}');
+      if (mounted) brSnack(context, onlyThisOwner ? tr('أُزيل المسؤول من البند', 'Removed') : tr('حُذف البند', 'Deleted'));
       _load();
     } catch (e) {
       if (mounted) brSnack(context, brErr(e));
@@ -471,7 +497,7 @@ class _BrMeetingDepartmentsTabState extends State<BrMeetingDepartmentsTab> {
               _line(tr('المسؤول', 'Owner'), '${t['assigneeName']}'),
               if (List.from(t['sharedWith'] ?? []).isNotEmpty)
                 _line(tr('مشترك مع', 'Shared with'), List<Map>.from(t['sharedWith']).map((x) =>
-                    '${x['assigneeName']} (${brDept(context, '${x['department'] ?? ''}')} · ${brVocab(widget.meta['actionStatuses'] as List?, '${x['status']}').label} ${x['progress'] ?? 0}%)').join('، '), color: T.info),
+                    '${x['assigneeName']} (${brDept(context, '${x['department'] ?? ''}')} · ${brVocab(widget.meta['actionStatuses'] as List?, '${x['status']}').label} ${x['progress'] ?? 0}%${(x['lastUpdate'] is Map && '${x['lastUpdate']['text'] ?? ''}'.isNotEmpty) ? ' — ${x['lastUpdate']['text']}' : ''})').join('، '), color: T.info),
               if ('${t['raisedByName'] ?? ''}'.isNotEmpty) _line(tr('بطلب من', 'Requested by'), '${t['raisedByName']}'),
               _line(tr('أُسند في', 'Raised in'), '${t['meetingRef']} · ${brDate(t['meetingDate'] ?? t['createdAt'])}${t['fromThisMeeting'] == true ? ' (${tr('هذا الاجتماع', 'this meeting')})' : ''}'),
               _line(tr('التسليم', 'Due'), brDate(t['dueDate']), color: overdue ? T.danger : null),
@@ -500,6 +526,10 @@ class _BrMeetingDepartmentsTabState extends State<BrMeetingDepartmentsTab> {
                   OutlinedButton.icon(onPressed: () => _newTask(dept, followUpOf: t), icon: const Icon(Icons.add, size: 16), label: Text(tr('إضافة بند متابعة', 'Follow-up task'))),
                   OutlinedButton.icon(onPressed: () => _edit(t), icon: const Icon(Icons.edit_outlined, size: 16), label: Text(tr('تعديل البند', 'Edit task'))),
                   OutlinedButton.icon(onPressed: () => _share(t), icon: const Icon(Icons.group_add_outlined, size: 16), label: Text(tr('إسناده لمسؤولٍ آخر أيضًا', 'Also assign to…'))),
+                  OutlinedButton.icon(onPressed: () => _transfer(t), icon: const Icon(Icons.swap_horiz, size: 16), label: Text(tr('نقله لمسؤولٍ آخر', 'Move to…'))),
+                  if (List.from(t['sharedWith'] ?? []).isNotEmpty)
+                    OutlinedButton.icon(onPressed: () => _remove(t, onlyThisOwner: true), icon: const Icon(Icons.person_remove_outlined, size: 16, color: T.danger), label: Text(tr('إزالة هذا المسؤول', 'Remove this owner'), style: const TextStyle(color: T.danger))),
+                  OutlinedButton.icon(onPressed: () => _remove(t), icon: const Icon(Icons.delete_outline, size: 16, color: T.danger), label: Text(tr('حذف البند', 'Delete task'), style: const TextStyle(color: T.danger))),
                 ]),
               ],
               BrUpdateLog(updates: List.from(t['updates'] ?? []).reversed.toList(), meta: widget.meta),

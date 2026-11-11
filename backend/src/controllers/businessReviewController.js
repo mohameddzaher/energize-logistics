@@ -554,6 +554,60 @@ exports.createAction = async (req, res) => {
   }
 };
 
+/**
+ * Transfer: the task leaves its owner for another one entirely.
+ * If the new owner already shares it, this copy is folded into his (its team delegations move with it), so one person never holds the same task twice.
+ */
+async function transferTo(action, targetId, actor) {
+  const target = await User.findById(targetId).select('firstName lastName role').lean();
+  if (!target) return { status: 400, error: 'المسؤول غير موجود' };
+  const from = { id: action.assignee, name: action.assigneeName };
+  const twin = action.shareGroup
+    ? await BrAction.findOne({ shareGroup: action.shareGroup, assignee: target._id, _id: { $ne: action._id } })
+    : null;
+  if (twin) {
+    await BrAssignment.updateMany({ action: action._id }, { $set: { action: twin._id } });
+    await BrAction.updateMany({ followUpOf: action._id }, { $set: { followUpOf: twin._id } });
+    // What the task is stays one thing across the group, including an edit made in the same save.
+    ['title', 'description', 'priority'].forEach((f) => { twin[f] = action[f]; });
+    twin.updates.push({ by: actor._id, byName: fullName(actor), text: `نُقل إليه من ${from.name}، وكان مشتركًا معه فيه`, statusFrom: '', statusTo: '', progress: null, at: new Date() });
+    await twin.save();
+    await BrAction.deleteOne({ _id: action._id });
+    emit('br:action', { id: String(action._id), deleted: true });
+    emit('br:action', { id: String(twin._id) });
+    await notify(from.id, { title: 'نُقل بند تنفيذي منك', message: `${action.title} — أصبح لدى ${fullName(target)}`, entity: 'BrAction', entityId: twin._id });
+    return { merged: twin };
+  }
+  action.assignee = target._id;
+  action.assigneeName = fullName(target);
+  action.assigneeRole = target.role;
+  action.department = (await require('../utils/userSection').sectionsOfUserIds([target._id])).get(String(target._id)) || action.department;
+  action.updates.push({ by: actor._id, byName: fullName(actor), text: `نُقل من ${from.name} إلى ${fullName(target)}`, statusFrom: '', statusTo: '', progress: null, at: new Date() });
+  await notify(target._id, { title: 'نُقل إليك بند تنفيذي', message: `${action.title} (${action.meetingRef})`, entity: 'BrAction', entityId: action._id });
+  await notify(from.id, { title: 'نُقل بند تنفيذي منك', message: `${action.title} — أصبح لدى ${fullName(target)}`, entity: 'BrAction', entityId: action._id });
+  return { moved: true };
+}
+
+/** POST /actions/:id/transfer — the task goes to another owner entirely (runner only). */
+exports.transferAction = async (req, res) => {
+  try {
+    if (!canRunMeetings(req.user)) return deny(res, 'Only the administration can transfer an action');
+    const action = await BrAction.findById(req.params.actionId);
+    if (!action) return res.status(404).json({ message: 'Action not found' });
+    if (!req.body.assignee) return res.status(400).json({ message: 'اختر المسؤول الجديد' });
+    if (sameId(action.assignee, req.body.assignee)) return res.status(400).json({ message: 'البند لدى هذا المسؤول بالفعل' });
+    const r = await transferTo(action, req.body.assignee, req.user);
+    if (r.error) return res.status(r.status).json({ message: r.error });
+    if (r.merged) return res.json({ action: r.merged, merged: true });
+    await action.save();
+    emit('br:action', { id: String(action._id) });
+    res.json({ action });
+  } catch (error) {
+    console.error('br transfer action error:', error);
+    return sendMongooseError(res, error, 'تعذّر نقل البند');
+  }
+};
+
 /** Give an existing task to another department head as well; both share one group from now on. */
 exports.shareAction = async (req, res) => {
   try {
@@ -582,12 +636,19 @@ exports.shareAction = async (req, res) => {
 async function siblingsOf(actions) {
   const groups = [...new Set(actions.map((a) => a.shareGroup && String(a.shareGroup)).filter(Boolean))];
   if (!groups.length) return new Map();
-  const rows = await BrAction.find({ shareGroup: { $in: groups } }).select('shareGroup assignee assigneeName department status progress').lean();
+  const rows = await BrAction.find({ shareGroup: { $in: groups } }).select('shareGroup assignee assigneeName department status progress expectedDate dueDate updates').lean();
   const by = new Map();
   for (const a of actions) {
     if (!a.shareGroup) continue;
     by.set(String(a._id), rows.filter((r) => String(r.shareGroup) === String(a.shareGroup) && String(r._id) !== String(a._id))
-      .map((r) => ({ _id: r._id, assignee: r.assignee, assigneeName: r.assigneeName, department: r.department, status: r.status, progress: r.progress })));
+      .map((r) => {
+        const last = (r.updates || [])[r.updates.length - 1] || null;
+        return {
+          _id: r._id, assignee: r.assignee, assigneeName: r.assigneeName, department: r.department, status: r.status, progress: r.progress,
+          expectedDate: r.expectedDate, dueDate: r.dueDate,
+          lastUpdate: last ? { text: last.text, statusTo: last.statusTo, byName: last.byName, at: last.at } : null,
+        };
+      }));
   }
   return by;
 }
@@ -615,18 +676,10 @@ exports.updateAction = async (req, res) => {
       if (req.body.dueDate !== undefined && req.body.status !== 'postponed') action.dueDate = dueOf(req.body.dueDate);
       if (req.body.startDate !== undefined) action.startDate = dayOf(req.body.startDate);
       if (req.body.assignee && !sameId(action.assignee, req.body.assignee)) {
-        const target = await User.findById(req.body.assignee).select('firstName lastName role').lean();
-        if (target) {
-          action.assignee = target._id;
-          action.assigneeName = fullName(target);
-          action.assigneeRole = target.role;
-          action.department = (await require('../utils/userSection').sectionsOfUserIds([target._id])).get(String(target._id)) || action.department;
-          await notify(target._id, {
-            title: 'أُعيد إسناد بند تنفيذي إليك',
-            message: `${action.title} (${action.meetingRef})`,
-            entity: 'BrAction', entityId: action._id,
-          });
-        }
+        const moved = await transferTo(action, req.body.assignee, req.user);
+        if (moved && moved.error) return res.status(moved.status).json({ message: moved.error });
+        // The new owner already shared this task: the two copies became one (his), nothing more to save here.
+        if (moved && moved.merged) return res.json({ action: moved.merged, merged: true });
       }
     }
 
@@ -644,6 +697,16 @@ exports.updateAction = async (req, res) => {
       if (Object.keys(same).length) await BrAction.updateMany({ shareGroup: action.shareGroup, _id: { $ne: action._id } }, { $set: same });
     }
     emit('br:action', { id: String(action._id) });
+
+    // Co-owners of a shared task hear when one owner's part changes state.
+    if (action.shareGroup && before !== action.status) {
+      const others = await BrAction.find({ shareGroup: action.shareGroup, _id: { $ne: action._id } }).select('assignee').lean();
+      const label = { done: 'أنجز', in_progress: 'بدأ العمل على', blocked: 'تعثّر في', postponed: 'أجّل', open: 'أعاد فتح', cancelled: 'ألغى' }[action.status] || 'حدّث';
+      for (const o of others) {
+        if (sameId(o.assignee, req.user._id)) continue;
+        await notify(o.assignee, { title: 'تحديث على بند مشترك', message: `${action.assigneeName} ${label} جزءه من: ${action.title}`, entity: 'BrAction', entityId: o._id });
+      }
+    }
 
     // Closing the loop: whoever asked for it hears that it landed.
     if (before !== 'done' && action.status === 'done') {
@@ -665,10 +728,18 @@ exports.deleteAction = async (req, res) => {
     if (!canRunMeetings(req.user)) return deny(res);
     const action = await BrAction.findById(req.params.actionId);
     if (!action) return res.status(404).json({ message: 'Action not found' });
-    await BrAssignment.deleteMany({ action: action._id });
-    await BrAction.findByIdAndDelete(action._id);
-    emit('br:action', { id: String(action._id), deleted: true });
-    res.json({ message: 'تم حذف البند' });
+    // The task is deleted for every owner sharing it; `only=1` removes just this owner's part.
+    const only = String(req.query.only || '') === '1';
+    const rows = action.shareGroup && !only ? await BrAction.find({ shareGroup: action.shareGroup }).select('_id assignee title').lean() : [{ _id: action._id, assignee: action.assignee, title: action.title }];
+    const ids = rows.map((r) => r._id);
+    await BrAssignment.deleteMany({ action: { $in: ids } });
+    await BrAction.updateMany({ followUpOf: { $in: ids } }, { $set: { followUpOf: null } });
+    await BrAction.deleteMany({ _id: { $in: ids } });
+    for (const r of rows) {
+      emit('br:action', { id: String(r._id), deleted: true });
+      if (!sameId(r.assignee, req.user._id)) await notify(r.assignee, { title: 'حُذف بند تنفيذي', message: r.title, entity: 'BrAction', entityId: r._id });
+    }
+    res.json({ message: only ? 'أُزيل المسؤول من البند' : 'تم حذف البند', deleted: ids.length });
   } catch (error) {
     res.status(500).json({ message: 'تعذّر حذف البند' });
   }

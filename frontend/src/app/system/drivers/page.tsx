@@ -38,7 +38,7 @@ export default function DriversPage() {
   // role-only: super admin and admin permission (config/constants TOP_ROLES), not a department grant.
   const isSuperAdmin = ['super_admin', 'admin', 'it_manager', 'it_specialist'].includes(user?.role || '');
   // The matrix is computed like the list: a role granted edit in this section can edit, otherwise the screen would open for a custom role and refuse its buttons (see the operations team).
-  const canEdit = ['super_admin', 'admin', 'it_manager', 'it_specialist', 'operations_manager', 'operations_staff'].includes(user?.role || '')
+  const canEdit = ['super_admin', 'admin', 'it_manager', 'it_specialist', 'operations_manager', 'operations_team_leader', 'operations_staff'].includes(user?.role || '')
     || canEditSection((user as any)?.permissions, 'Operations');
   const { lang } = useLanguage();
   const T = getDriversTranslations(lang);

@@ -29,7 +29,7 @@ const canConfigure = (role) => CONFIG_ROLES.includes(role);
 const canOverride = (role) => CONFIG_ROLES.includes(role);
 // Anyone whose role names them a manager/head/lead can grade their department.
 const isManagerRole = (role = '') =>
-  isFull(role) || /(_manager|_head|_lead|^moderator$|^operations_manager$|^cfo$)/.test(role);
+  isFull(role) || /(_manager|_head|_lead|^moderator$|^operations_manager$|^operations_team_leader$|^cfo$)/.test(role);
 
 // A rejected value or a duplicate is the client's input: 400 / 409 with the field, not 500 (QA write sweep).
 const fail = (res, e, msg) => {

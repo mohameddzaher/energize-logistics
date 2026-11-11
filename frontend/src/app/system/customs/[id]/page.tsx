@@ -29,7 +29,7 @@ export default function CustomsDetailPage() {
   const router = useRouter();
   const { notify, confirm } = useDialog();
   const { user } = useAuth();
-  const canEdit = ['super_admin', 'admin', 'it_manager', 'it_specialist', 'operations_manager', 'customs_manager', 'customs_officer'].includes(user?.role || '') || canEditSection((user as any)?.permissions, 'Customs'); // matrix edit grants count too
+  const canEdit = ['super_admin', 'admin', 'it_manager', 'it_specialist', 'operations_manager', 'operations_team_leader', 'customs_manager', 'customs_officer'].includes(user?.role || '') || canEditSection((user as any)?.permissions, 'Customs'); // matrix edit grants count too
   const { lang, isRTL } = useLanguage();
   const T = getCustomsTranslations(lang);
   const txx = getCustomsIdExtraTranslations(lang);

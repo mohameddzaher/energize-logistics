@@ -15,7 +15,7 @@ import 'ops_common.dart';
 
 /// Operations platform, what the generic table does not cover: the shipments page with its filters and counts, shipment details with status update and history, and customer and driver profiles with their shipment history. Counterpart of /system/ops/shipments, /ops/users/[id] and /ops/drivers/[id].
 
-const _opsAdminRoles = ['super_admin', 'admin', 'it_manager', 'it_specialist', 'operations_manager'];
+const _opsAdminRoles = ['super_admin', 'admin', 'it_manager', 'it_specialist', 'operations_manager', 'operations_team_leader'];
 
 /// Who may write to the platform, same as isOpsAdmin in lib/ops.ts.
 bool isOpsAdmin(AuthProvider a) => _opsAdminRoles.contains(a.role) || a.canEditSection('Operations Platform');

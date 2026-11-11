@@ -92,6 +92,9 @@ const userSchema = new mongoose.Schema(
     assignedBranches: [
       { type: mongoose.Schema.Types.ObjectId, ref: 'Branch' },
     ],
+    // Per-user exceptions on top of the role's permissions (utils/permissions *ForUser): section key → none|view|edit, page path → open/closed. Empty follows the role.
+    accessSections: { type: Map, of: String, default: undefined },
+    accessPages: { type: Map, of: Boolean, default: undefined },
     manager: {
       type: mongoose.Schema.Types.ObjectId,
       ref: 'User',

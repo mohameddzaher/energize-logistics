@@ -34,7 +34,7 @@ interface FleetRequest {
   usedAt?: string | null;
 }
 
-const DECIDE_ROLES = ['super_admin', 'admin', 'it_manager', 'it_specialist', 'operations_manager', 'location_manager'];
+const DECIDE_ROLES = ['super_admin', 'admin', 'it_manager', 'it_specialist', 'operations_manager', 'operations_team_leader', 'location_manager'];
 
 export default function Ls2FleetRequestsPage() {
   const { user } = useAuth();

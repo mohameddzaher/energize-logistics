@@ -70,6 +70,12 @@ export const SECTION_ROLES: SectionRoles[] = [
     },
     "staff": [
       {
+        "key": "operations_team_leader",
+        "ar": "قائد فريق العمليات",
+        "en": "Operations Team Leader",
+        "distinct": "له صلاحيّاتُ مدير العمليات كاملةً (التشغيل والموردون والمتابعة)، ولا يجلس في اجتماعات الإدارة."
+      },
+      {
         "key": "operations_staff",
         "ar": "موظف العمليات",
         "en": "Operations Team"

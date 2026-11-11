@@ -7,15 +7,15 @@ export type Lang = 'en' | 'ar';
 // Mirror of backend LS2_*_ROLES (config/constants.js).
 // These lists predate the section manager role (config/roles.js), so the section owner was left out: he opened pages by a permission grant but stopped at Settings, which is restricted by name (`restrict` in the sidebar). Section people must be included first.
 export const LS2_STAFF_ROLES = [
-  'super_admin', 'admin', 'it_manager', 'it_specialist', 'moderator', 'employee', 'operations_manager', 'operations_staff',
+  'super_admin', 'admin', 'it_manager', 'it_specialist', 'moderator', 'employee', 'operations_manager', 'operations_team_leader', 'operations_staff',
   'workshop_manager', 'workshop_employee', 'procurement_staff',
   'location_manager', 'location_staff',
   // The vehicles and authorizations manager works in this section; matches constants.js on the server.
   'vehicles_manager',
 ];
-export const LS2_ADMIN_ROLES = ['super_admin', 'admin', 'it_manager', 'it_specialist', 'operations_manager', 'workshop_manager', 'location_manager', 'vehicles_manager'];
+export const LS2_ADMIN_ROLES = ['super_admin', 'admin', 'it_manager', 'it_specialist', 'operations_manager', 'operations_team_leader', 'workshop_manager', 'location_manager', 'vehicles_manager'];
 // Roles that see the section pinned in their sidebar.
-export const LS2_SECTION_ROLES = ['super_admin', 'admin', 'it_manager', 'it_specialist', 'operations_manager', 'operations_staff', 'workshop_manager', 'moderator', 'location_manager', 'location_staff'];
+export const LS2_SECTION_ROLES = ['super_admin', 'admin', 'it_manager', 'it_specialist', 'operations_manager', 'operations_team_leader', 'operations_staff', 'workshop_manager', 'moderator', 'location_manager', 'location_staff'];
 export const isLs2Staff = (u: RoleOrUser) => LS2_STAFF_ROLES.includes(roleOf(u)) || canAccessSection(permsOf(u), 'Location Solutions');
 export const isLs2Admin = (u: RoleOrUser) => LS2_ADMIN_ROLES.includes(roleOf(u)) || canEditSection(permsOf(u), 'Location Solutions');
 

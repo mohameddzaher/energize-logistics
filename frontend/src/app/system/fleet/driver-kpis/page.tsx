@@ -63,7 +63,7 @@ interface Payload {
   items: DriverKpi[];
 }
 
-const FLEET_ROLES = ['super_admin', 'admin', 'it_manager', 'it_specialist', 'operations_manager', 'operations_staff', 'moderator', 'fleet_manager', 'fleet_supervisor'];
+const FLEET_ROLES = ['super_admin', 'admin', 'it_manager', 'it_specialist', 'operations_manager', 'operations_team_leader', 'operations_staff', 'moderator', 'fleet_manager', 'fleet_supervisor'];
 export default function FleetDriverKpisPage() {
   const { user } = useAuth();
   const { lang } = useLanguage();

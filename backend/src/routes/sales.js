@@ -4,7 +4,7 @@ const sales = require('../controllers/salesController');
 const authenticate = require('../middleware/auth');
 const authorize = require('../middleware/rbac');
 
-const STAFF = ['super_admin', 'admin', 'it_manager', 'it_specialist', 'sales_manager', 'sales_rep', 'operations_manager', 'operations_staff'];
+const STAFF = ['super_admin', 'admin', 'it_manager', 'it_specialist', 'sales_manager', 'sales_rep', 'operations_manager', 'operations_team_leader', 'operations_staff'];
 
 router.use(authenticate);
 router.use(authorize(...STAFF));

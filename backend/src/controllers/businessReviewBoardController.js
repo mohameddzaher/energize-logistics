@@ -3,6 +3,7 @@
  * The board groups every action by department: what is open, in progress, postponed, overdue and done, with start, due and expected dates.
  * Scope follows the meeting rule: the board and secretariat see everything; a manager sees actions from meetings they attended plus their own.
  */
+const { orgSectionOfRole } = require('../config/roles');
 const mongoose = require('mongoose');
 const { BrSeries, BrMeeting, BrAction, BrAssignment } = require('../models/BusinessReview');
 const User = require('../models/User');
@@ -59,7 +60,7 @@ exports.getBoard = async (req, res) => {
 
     // A task belongs to its owner's department: the manager speaks for it. The stored department was the meeting's first department on older tasks, so it is only the fallback for owners without a section (board, secretariat).
     const ownerSection = await sectionsOfUserIds(shown.map((a) => a.assignee));
-    const deptOf = (a) => ownerSection.get(String(a.assignee)) || sectionOfRole(a.assigneeRole) || a.department || NO_DEPT;
+    const deptOf = (a) => ownerSection.get(String(a.assignee)) || orgSectionOfRole(a.assigneeRole) || a.department || NO_DEPT;
     if (req.query.department) {
       for (let i = shown.length - 1; i >= 0; i -= 1) if (deptOf(shown[i]) !== req.query.department) shown.splice(i, 1);
     }
@@ -76,7 +77,7 @@ exports.getBoard = async (req, res) => {
     const headsOf = new Map();
     for (const u of heads) {
       if (!isManagerRole(u.role) || !/_manager$/.test(u.role)) continue;
-      const sec = sectionOfRole(u.role);
+      const sec = orgSectionOfRole(u.role);
       if (!sec) continue;
       if (!headsOf.has(sec)) headsOf.set(sec, []);
       headsOf.get(sec).push(fullName(u));
@@ -174,7 +175,7 @@ exports.getMeetingDepartments = async (req, res) => {
     const actions = await BrAction.find({ meeting: { $in: meetingIds } })
       .select('-__v').sort({ createdAt: -1 }).limit(3000).lean();
     const ownerSection = await sectionsOfUserIds(actions.map((a) => a.assignee));
-    const deptOf = (a) => ownerSection.get(String(a.assignee)) || sectionOfRole(a.assigneeRole) || a.department || NO_DEPT;
+    const deptOf = (a) => ownerSection.get(String(a.assignee)) || orgSectionOfRole(a.assigneeRole) || a.department || NO_DEPT;
     const titleOf = new Map(actions.map((a) => [String(a._id), a.title]));
     // Parts handed to the owner's team ("توزيع على الفريق"): shown on the task with each person's own state.
     const dels = actions.length ? await BrAssignment.find({ action: { $in: actions.map((a) => a._id) } })
@@ -184,7 +185,7 @@ exports.getMeetingDepartments = async (req, res) => {
     // The department's head(s), named on its card.
     const managers = await User.find({ isActive: { $ne: false }, role: { $in: [/_manager$/, 'cfo'] } }).select('firstName lastName role').lean();
     const headOf = new Map();
-    for (const u of managers) { const sec = sectionOfRole(u.role); if (sec && !headOf.has(sec)) headOf.set(sec, []); if (sec) headOf.get(sec).push(fullName(u)); }
+    for (const u of managers) { const sec = orgSectionOfRole(u.role); if (sec && !headOf.has(sec)) headOf.set(sec, []); if (sec) headOf.get(sec).push(fullName(u)); }
     // The CFO heads the finance department, above the accounting manager.
     const cfos = managers.filter((u) => u.role === 'cfo').map(fullName);
     if (cfos.length) headOf.set('Accounting', cfos);
@@ -373,7 +374,7 @@ exports.getDaily = async (req, res) => {
     const byMeeting = new Map();
     for (const a of acts) { const k = String(a.meeting); if (!byMeeting.has(k)) byMeeting.set(k, []); byMeeting.get(k).push(a); }
     const actOwner = await sectionsOfUserIds(acts.map((a) => a.assignee));
-    const deptOfAction = (a) => actOwner.get(String(a.assignee)) || sectionOfRole(a.assigneeRole) || a.department || NO_DEPT;
+    const deptOfAction = (a) => actOwner.get(String(a.assignee)) || orgSectionOfRole(a.assigneeRole) || a.department || NO_DEPT;
 
     const summary = (m) => {
       const list = byMeeting.get(String(m._id)) || [];

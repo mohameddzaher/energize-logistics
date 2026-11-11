@@ -223,7 +223,7 @@ List<AppSection> sectionsFor(AuthProvider auth) {
     canDelete: customerRemoveRoles.contains(role) || auth.canEditSection('Shipment Orders'),
   );
   // The target is set by the manager, or a role outside the section team granted edit (canSetTargets on the server).
-  const salesTeam = ['super_admin', 'admin', 'it_manager', 'it_specialist', 'sales_manager', 'sales_rep', 'operations_manager', 'operations_staff'];
+  const salesTeam = ['super_admin', 'admin', 'it_manager', 'it_specialist', 'sales_manager', 'sales_rep', 'operations_manager', 'operations_team_leader', 'operations_staff'];
   final canSetTargets = const ['super_admin', 'admin', 'it_manager', 'it_specialist', 'sales_manager'].contains(role)
       || (auth.canEditSection('Sales') && !salesTeam.contains(role));
   bool allowed(AppSection s) {
@@ -258,7 +258,7 @@ List<AppSection> sectionsFor(AuthProvider auth) {
     ),
     AppSection(
       key: 'Operations', arTitle: 'العمليات', enTitle: 'Operations', icon: Icons.workspaces_outline,
-      roles: const [..._admins, 'employee', 'operations_manager', 'operations_staff', 'moderator'],
+      roles: const [..._admins, 'employee', 'operations_manager', 'operations_team_leader', 'operations_staff', 'moderator'],
       pages: [
         AppPage('التشغيل', 'Operations', Icons.workspaces_outline, (c) => const OpsWorkflowsScreen(), path: '/system/operations'),
         // Operations sheets at our selling price: a management page, with permission from the web (path is its key in the matrix, and the server guards it on top).
@@ -271,10 +271,10 @@ List<AppSection> sectionsFor(AuthProvider auth) {
         // General complaints: on the web also for the operations manager, who does not see the administration section.
         if (role == 'operations_manager') AppPage('الشكاوى العامة', 'All Complaints', Icons.forum_outlined, (c) => const AdminComplaintsScreen(), path: '/system/complaints'),
         // Credit alerts: on the web under Home with the same operations roles.
-        if (const ['super_admin', 'it_manager', 'it_specialist', 'admin', 'operations_manager', 'employee', 'moderator'].contains(role))
+        if (const ['super_admin', 'it_manager', 'it_specialist', 'admin', 'operations_manager', 'operations_team_leader', 'employee', 'moderator'].contains(role))
           AppPage('تنبيهات الائتمان', 'Credit Alerts', Icons.shield_outlined, (c) => const CreditAlertsScreen(), path: '/system/credit-alerts'),
         // Unifying payment type per customer: with the web roles (layout.tsx); the write is checked in the screen.
-        if (const ['super_admin', 'it_manager', 'it_specialist', 'admin', 'employee', 'operations_manager', 'operations_staff', 'moderator', 'cfo', 'accounting_manager', 'accountant', 'collections_manager', 'collections_staff'].contains(role))
+        if (const ['super_admin', 'it_manager', 'it_specialist', 'admin', 'employee', 'operations_manager', 'operations_team_leader', 'operations_staff', 'moderator', 'cfo', 'accounting_manager', 'accountant', 'collections_manager', 'collections_staff'].contains(role))
           AppPage('أنواع الدفع', 'Payment Types', Icons.payments_outlined, (c) => const OpsPaymentTypesScreen(), path: '/system/operations/payment-types'),
         AppPage('التواصل مع العملاء', 'Customer Communication', Icons.forum_outlined, (c) => const CustomerRequestsScreen(), path: '/system/operations/customer-requests'),
         AppPage('الشكاوى', 'Complaints', Icons.report_outlined, (c) => const SectionWorkScreen(section: 'operations', complaints: true), path: '/system/operations/complaints'),
@@ -288,7 +288,7 @@ List<AppSection> sectionsFor(AuthProvider auth) {
     // Four pages only, plus the two fixed in every section. The operations page sits inside their section: the sheet is their daily working paper, and searching it from a section they do not own is extra daily work.
     AppSection(
       key: 'Collections', arTitle: 'التحصيل', enTitle: 'Collections', icon: Icons.request_quote_outlined,
-      roles: const [..._admins, 'collections_manager', 'collections_staff', 'operations_manager', 'cfo', 'accounting_manager', 'accountant'],
+      roles: const [..._admins, 'collections_manager', 'collections_staff', 'operations_manager', 'operations_team_leader', 'cfo', 'accounting_manager', 'accountant'],
       pages: [
         AppPage('لوحة التحصيل', 'Dashboard', Icons.dashboard_outlined, (c) => const CollectionsDashboardScreen(), path: '/system/collections-dept/dashboard'),
         // Invoices before registers: the section works from them.
@@ -344,7 +344,7 @@ List<AppSection> sectionsFor(AuthProvider auth) {
     ),
     AppSection(
       key: 'Fleet Management', arTitle: 'إدارة الأسطول', enTitle: 'Fleet Management', icon: Icons.local_shipping_outlined,
-      roles: const [..._admins, 'operations_manager', 'operations_staff', 'moderator', 'fleet_manager', 'fleet_supervisor', 'data_manager', 'data_analyst', 'data_entry'],
+      roles: const [..._admins, 'operations_manager', 'operations_team_leader', 'operations_staff', 'moderator', 'fleet_manager', 'fleet_supervisor', 'data_manager', 'data_analyst', 'data_entry'],
       pages: [
         AppPage('اللوحة', 'Dashboard', Icons.dashboard_outlined, (c) => SectionDashScreen(spec: fleetDashSpec), path: '/system/fleet/dashboard'),
         AppPage('التحليلات', 'Analytics', Icons.insights_outlined, (c) => const FleetAnalyticsScreen(), path: '/system/fleet/dashboard'),
@@ -360,10 +360,10 @@ List<AppSection> sectionsFor(AuthProvider auth) {
         AppPage('سجلّات السيارات', 'Vehicle Logs', Icons.assignment_outlined, (c) => const FleetVehicleLogsScreen(), path: '/system/fleet/vehicle-logs'),
         AppPage('مصاريف السوّاق', 'Driver Expenses', Icons.account_balance_wallet_outlined, (c) => const FleetDriverExpensesScreen(), path: '/system/fleet/driver-expenses'),
         // Supervisor distribution: for the section manager and anyone granted edit (canAdminFleet on the web).
-        if (const ['super_admin', 'admin', 'it_manager', 'it_specialist', 'operations_manager', 'fleet_manager'].contains(role) || auth.canEditSection('Fleet Management'))
+        if (const ['super_admin', 'admin', 'it_manager', 'it_specialist', 'operations_manager', 'operations_team_leader', 'fleet_manager'].contains(role) || auth.canEditSection('Fleet Management'))
           AppPage('توزيع المشرفين', 'Assign Supervisors', Icons.manage_accounts_outlined, (c) => const FleetAssignScreen(), path: '/system/fleet/assign'),
         AppPage('العملاء', 'Customers', Icons.people_outline, (c) => ResourceScreen(config: fleetCustomersCfg), path: '/system/fleet/customers'),
-        if (const ['super_admin', 'admin', 'it_manager', 'it_specialist', 'operations_manager', 'fleet_manager'].contains(role) || auth.canEditSection('Fleet Management'))
+        if (const ['super_admin', 'admin', 'it_manager', 'it_specialist', 'operations_manager', 'operations_team_leader', 'fleet_manager'].contains(role) || auth.canEditSection('Fleet Management'))
           AppPage('العملاء المؤرشفون', 'Archived Customers', Icons.archive_outlined, (c) => ResourceScreen(config: fleetCustomersArchivedCfg), path: '/system/fleet/customers'),
         if (jpMember(role, 'fleet')) AppPage('خطّة العمل (JP)', 'JP', Icons.event_available_outlined, (c) => const JpScreen(section: 'fleet'), path: '/system/fleet/jp'),
         if (jpManager(role, 'fleet')) AppPage('لوحة JP', 'JP Dashboard', Icons.insights_outlined, (c) => const JpDashScreen(section: 'fleet'), path: '/system/fleet/jp-dashboard'),
@@ -375,7 +375,7 @@ List<AppSection> sectionsFor(AuthProvider auth) {
     ),
     AppSection(
       key: 'Contracts', arTitle: 'إدارة العقود', enTitle: 'Contracts', icon: Icons.history_edu_outlined,
-      roles: const [..._admins, 'contracts_manager', 'operations_manager', 'contracts_staff', 'sales_manager', 'sales_rep', 'vendors_manager', 'vendors_team_leader', 'vendors_staff'],
+      roles: const [..._admins, 'contracts_manager', 'operations_manager', 'operations_team_leader', 'contracts_staff', 'sales_manager', 'sales_rep', 'vendors_manager', 'vendors_team_leader', 'vendors_staff'],
       pages: [
         AppPage('لوحة القسم', 'Dashboard', Icons.space_dashboard_outlined, (c) => const ContractsDashboardScreen(), path: '/system/contracts'),
         AppPage('سجل موردي 3PL', '3PL Vendors', Icons.business_outlined, (c) => ResourceScreen(config: contractsVendorsCfg), path: '/system/contracts/vendors'),
@@ -392,7 +392,7 @@ List<AppSection> sectionsFor(AuthProvider auth) {
     ),
     AppSection(
       key: 'CRM', arTitle: 'إدارة العلاقات', enTitle: 'CRM', icon: Icons.handshake_outlined,
-      roles: const [..._admins, 'crm_manager', 'crm_team_lead', 'crm_specialist', 'crm_agent', 'operations_manager', 'operations_staff'],
+      roles: const [..._admins, 'crm_manager', 'crm_team_lead', 'crm_specialist', 'crm_agent', 'operations_manager', 'operations_team_leader', 'operations_staff'],
       pages: [
         AppPage('اللوحة', 'Dashboard', Icons.dashboard_outlined, (c) => SectionDashScreen(spec: crmDashSpec), path: '/system/crm/dashboard'),
         AppPage('الشركات', 'Companies', Icons.apartment_outlined, (c) => ResourceScreen(config: crmCompaniesCfg), path: '/system/crm/companies'),
@@ -413,7 +413,7 @@ List<AppSection> sectionsFor(AuthProvider auth) {
     ),
     AppSection(
       key: 'Business Development', arTitle: 'تطوير الأعمال', enTitle: 'Business Development', icon: Icons.rocket_launch_outlined,
-      roles: const [..._admins, 'bd_manager', 'bd_specialist', 'sales_manager', 'crm_manager', 'operations_manager'],
+      roles: const [..._admins, 'bd_manager', 'bd_specialist', 'sales_manager', 'crm_manager', 'operations_manager', 'operations_team_leader'],
       pages: [
         AppPage('اللوحة', 'Dashboard', Icons.dashboard_outlined, (c) => SectionDashScreen(spec: bdDashSpec)),
         AppPage('الفرص الاستراتيجية', 'Opportunities', Icons.explore_outlined, (c) => ResourceScreen(config: bdOpportunitiesCfg), path: '/system/bd/opportunities'),
@@ -485,7 +485,7 @@ List<AppSection> sectionsFor(AuthProvider auth) {
     ),
     AppSection(
       key: 'Location Solutions', arTitle: 'لوكيشن سوليوشن', enTitle: 'Location Solutions', icon: Icons.gps_fixed_outlined,
-      roles: const [..._admins, 'operations_manager', 'operations_staff', 'moderator', 'location_manager', 'location_staff'],
+      roles: const [..._admins, 'operations_manager', 'operations_team_leader', 'operations_staff', 'moderator', 'location_manager', 'location_staff'],
       pages: [
         AppPage('اللوحة', 'Dashboard', Icons.dashboard_outlined, (c) => const Ls2DashboardScreen()),
         AppPage('المركبات والصيانة', 'Fleet & Maintenance', Icons.local_shipping_outlined, (c) => const Ls2VehiclesScreen(), path: '/system/ls2/maintenance'),
@@ -515,7 +515,7 @@ List<AppSection> sectionsFor(AuthProvider auth) {
     ),
     AppSection(
       key: 'Sales', arTitle: 'المبيعات', enTitle: 'Sales', icon: Icons.trending_up_outlined,
-      roles: const [..._admins, 'sales_manager', 'sales_rep', 'operations_manager', 'operations_staff'],
+      roles: const [..._admins, 'sales_manager', 'sales_rep', 'operations_manager', 'operations_team_leader', 'operations_staff'],
       pages: [
         AppPage('اللوحة', 'Dashboard', Icons.dashboard_outlined, (c) => const SalesDashboardScreen(), path: '/system/sales/dashboard'),
         // Customers: the same register as operations and shipment orders, a third entry point and not a third copy.
@@ -618,7 +618,7 @@ List<AppSection> sectionsFor(AuthProvider auth) {
     ),
     AppSection(
       key: 'Customs', arTitle: 'التخليص الجمركي', enTitle: 'Customs', icon: Icons.directions_boat_outlined,
-      roles: const [..._admins, 'operations_manager', 'customs_manager', 'customs_officer'],
+      roles: const [..._admins, 'operations_manager', 'operations_team_leader', 'customs_manager', 'customs_officer'],
       pages: [
         // Section dashboard for the whole team with no financial figures; analytics (profit) is for management only, and the server returns 403 to anyone except the system admin and section manager.
         AppPage('لوحة القسم', 'Section Dashboard', Icons.space_dashboard_outlined, (c) => const CustomsDashboardScreen(), path: '/system/customs/dashboard'),
@@ -659,7 +659,7 @@ List<AppSection> sectionsFor(AuthProvider auth) {
     ),
     AppSection(
       key: 'Operations Platform', arTitle: 'منصة العمليات', enTitle: 'Operations Platform', icon: Icons.hub_outlined,
-      roles: const [..._admins, 'moderator', 'employee', 'operations_manager', 'operations_staff', 'procurement_staff', 'hr_manager', 'hr_specialist', 'ops_platform_manager', 'ops_platform_staff'],
+      roles: const [..._admins, 'moderator', 'employee', 'operations_manager', 'operations_team_leader', 'operations_staff', 'procurement_staff', 'hr_manager', 'hr_specialist', 'ops_platform_manager', 'ops_platform_staff'],
       pages: [
         AppPage('اللوحة', 'Dashboard', Icons.dashboard_outlined, (c) => const OpsDashboardScreen()),
         for (final cfg in opsResources)
@@ -673,7 +673,7 @@ List<AppSection> sectionsFor(AuthProvider auth) {
     ),
     AppSection(
       key: 'Shipment Orders', arTitle: 'طلبات الشحنات', enTitle: 'Shipment Orders', icon: Icons.assignment_outlined,
-      roles: const [..._admins, 'operations_manager', 'operations_staff', 'moderator', 'shipment_orders_manager', 'shipment_orders_staff', 'shipment_orders_followup',
+      roles: const [..._admins, 'operations_manager', 'operations_team_leader', 'operations_staff', 'moderator', 'shipment_orders_manager', 'shipment_orders_staff', 'shipment_orders_followup',
         'sales_manager', 'sales_rep', 'vendors_manager', 'vendors_team_leader', 'vendors_staff'],
       pages: [
         // One analytics page: it replaced the dashboard and the old analytics, as on the web.
@@ -693,9 +693,9 @@ List<AppSection> sectionsFor(AuthProvider auth) {
         AppPage('الشاحنات', 'Vehicles', Icons.local_shipping_outlined, (c) => ResourceScreen(config: shipmentOrdersVehiclesCfg), path: '/system/shipment-orders/fleet'),
         // Driver: a third register in the same page on the web (a tab), a screen here.
         AppPage('السوّاق', 'Drivers', Icons.badge_outlined, (c) => ResourceScreen(config: shipmentOrdersDriversCfg), path: '/system/shipment-orders/fleet'),
-        if (const ['super_admin', 'admin', 'it_manager', 'it_specialist', 'operations_manager', 'data_manager', 'data_analyst'].contains(role))
+        if (const ['super_admin', 'admin', 'it_manager', 'it_specialist', 'operations_manager', 'operations_team_leader', 'data_manager', 'data_analyst'].contains(role))
           AppPage('الصلاحيات', 'Permissions', Icons.verified_user_outlined, (c) => const ShipmentBranchAccessScreen(), path: '/system/shipment-orders/permissions'),
-        if (const ['super_admin', 'admin', 'it_manager', 'it_specialist', 'operations_manager', 'shipment_orders_manager'].contains(role) || auth.canEditSection('Shipment Orders'))
+        if (const ['super_admin', 'admin', 'it_manager', 'it_specialist', 'operations_manager', 'operations_team_leader', 'shipment_orders_manager'].contains(role) || auth.canEditSection('Shipment Orders'))
           AppPage('إعدادات القسم', 'Section Settings', Icons.tune_outlined, (c) => const ShipmentOrdersSettingsScreen(), path: '/system/shipment-orders/settings'),
         AppPage('الشكاوى', 'Complaints', Icons.report_outlined, (c) => const SectionWorkScreen(section: 'shipment-orders', complaints: true), path: '/system/shipment-orders/complaints'),
         AppPage('تقييم الأداء', 'KPIs', Icons.leaderboard_outlined, (c) => const TeamBoardScreen(section: 'Shipment Orders'), path: '/system/shipment-orders/kpis'),
@@ -706,7 +706,7 @@ List<AppSection> sectionsFor(AuthProvider auth) {
     ),
     AppSection(
       key: 'Vendors Management', arTitle: 'إدارة الموردين', enTitle: 'Vendors Management', icon: Icons.handshake_outlined,
-      roles: const [..._admins, 'operations_manager', 'vendors_manager', 'vendors_team_leader', 'vendors_staff'],
+      roles: const [..._admins, 'operations_manager', 'operations_team_leader', 'vendors_manager', 'vendors_team_leader', 'vendors_staff'],
       pages: [
         AppPage('تحليل القسم', 'Section analysis', Icons.insights_outlined, (c) => const VendorsOverviewScreen(), path: '/system/vendors-mgmt'),
         AppPage('التحليل التشغيلي اليومي', 'Daily operations', Icons.today_outlined, (c) => const VendorsDailyScreen(), path: '/system/vendors-mgmt/daily'),

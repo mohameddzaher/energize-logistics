@@ -16,12 +16,12 @@ const validate = require('../middleware/validate');
 // Accounting reads branch custody and writes into it: collections, expenses and purchases are financial entries that get reviewed and closed. It was outside the list, so an accountant opened the page and got 403 with no explanation.
 const walletRoles = [
   'super_admin', 'admin', 'it_manager', 'it_specialist',
-  'operations_manager', 'operations_staff',
+  'operations_manager', 'operations_team_leader', 'operations_staff',
   'cfo', 'accounting_manager', 'accountant',
 ];
 const walletReadRoles = [...walletRoles, 'moderator', 'collections_manager', 'collections_staff'];
 const { FINANCE_FULL_ROLES } = require('../config/financeAuthority');
-const managerRoles = ['super_admin', 'admin', 'it_manager', 'it_specialist', 'operations_manager', ...FINANCE_FULL_ROLES];
+const managerRoles = ['super_admin', 'admin', 'it_manager', 'it_specialist', 'operations_manager', 'operations_team_leader', ...FINANCE_FULL_ROLES];
 
 // The custody dashboard is read by those who review it, not those who run it. It was limited to operations managers, leaving out the accountant, who is the one reading it: his job is to see what all branches did, not one branch. He opened the daily custody page and got 'no branch for your account', and opened the dashboard and did not find it in the list.
 // Accounting is not tied to a branch: its accounts have no branch (all five), which is correct, not a gap.

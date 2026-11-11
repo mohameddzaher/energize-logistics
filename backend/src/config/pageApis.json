@@ -3050,6 +3050,7 @@
     },
     "/system/users": {
       "apis": [
+        "/api/admin/permissions",
         "/api/b2c/projects",
         "/api/branches",
         "/api/customers",

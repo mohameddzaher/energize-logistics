@@ -252,7 +252,7 @@ exports.getDailyWallet = async (req, res) => {
     if (!branchId) branchId = req.user.branch;
 
     // An operations employee sees only their own branch.
-    if (req.user.role === 'operations_staff' && String(branchId) !== String(req.user.branch)) {
+    if (req.user.role === 'operations_staff' && !userBranchIds(req.user).includes(String(branchId))) {
       return res.status(403).json({ message: 'لا تملك صلاحية عرض محفظة فرعٍ آخر.' });
     }
 
@@ -290,7 +290,9 @@ exports.getDailyWallet = async (req, res) => {
  * Operations staff were in the allowed list although the comment said managers only, so closed days changed silently. Writing into a closed day requires reopening, which is super admin only (see maySettle), then closing again with a new count.
  */
 // Finance roles are included (see config/financeAuthority).
-const mayWriteIntoClosedDay = (role) => ['super_admin', 'admin', 'it_manager', 'it_specialist', 'operations_manager', ...require('../config/financeAuthority').FINANCE_FULL_ROLES].includes(role);
+/** Branches an operations officer works on: the assigned one plus any extra branches opened on the account. */
+const userBranchIds = (u) => [u.branch, ...(u.assignedBranches || [])].filter(Boolean).map(String);
+const mayWriteIntoClosedDay = (role) => ['super_admin', 'admin', 'it_manager', 'it_specialist', 'operations_manager', 'operations_team_leader', ...require('../config/financeAuthority').FINANCE_FULL_ROLES].includes(role);
 const denyClosedDay = (res) => res.status(400).json({
   code: 'DAY_CLOSED',
   message: 'اليومُ مُقفل — لا يُكتب فيه إلّا بعد إعادة فتحه، وإعادةُ الفتح لمدير النظام.',
@@ -344,7 +346,7 @@ exports.addTransaction = async (req, res) => {
     if (!txBranch) {
       return res.status(400).json({ message: 'لا يوجد فرع محدَّد لهذه الحركة.' });
     }
-    if (req.user.role === 'operations_staff' && String(txBranch) !== String(req.user.branch)) {
+    if (req.user.role === 'operations_staff' && !userBranchIds(req.user).includes(String(txBranch))) {
       return res.status(403).json({ message: 'لا تملك صلاحية التسجيل على فرعٍ آخر.' });
     }
 
@@ -616,7 +618,7 @@ const denySettle = (res, what) => res.status(403).json({
     : 'تعديلُ حركةٍ مسجَّلةٍ أو حذفُها لمدير النظام والإدارة الماليّة — والتسجيلُ الجديد متاحٌ كما هو.',
 });
 
-const MANAGER_ROLES = ['super_admin', 'admin', 'it_manager', 'it_specialist', 'operations_manager', ...require('../config/financeAuthority').FINANCE_FULL_ROLES];
+const MANAGER_ROLES = ['super_admin', 'admin', 'it_manager', 'it_specialist', 'operations_manager', 'operations_team_leader', ...require('../config/financeAuthority').FINANCE_FULL_ROLES];
 const mayTouchWallet = (req, wallet) => {
   if (MANAGER_ROLES.includes(req.user.role)) return true;
   if (!wallet) return false;
@@ -1021,7 +1023,7 @@ exports.closeDay = async (req, res) => {
     // The branch's day is closed, not the person's: the cash is the branch's and closing is a declaration about it.
     const closeBranch = req.body.branchId || req.body.branch || req.user.branch;
     if (!closeBranch) return res.status(400).json({ message: 'لا يوجد فرع محدَّد.' });
-    if (req.user.role === 'operations_staff' && String(closeBranch) !== String(req.user.branch)) {
+    if (req.user.role === 'operations_staff' && !userBranchIds(req.user).includes(String(closeBranch))) {
       return res.status(403).json({ message: 'لا تملك صلاحية إقفال يوم فرعٍ آخر.' });
     }
     const wallet = await DailyWallet.findOne({ branch: closeBranch, date: txDate });
@@ -1440,7 +1442,7 @@ exports.getWalletHistory = async (req, res) => {
     const histBranch = req.query.branchId || req.query.branch
       || (userId ? (await require('../models/User').findById(userId).select('branch').lean() || {}).branch : null)
       || req.user.branch;
-    if (req.user.role === 'operations_staff' && String(histBranch) !== String(req.user.branch)) {
+    if (req.user.role === 'operations_staff' && !userBranchIds(req.user).includes(String(histBranch))) {
       return res.status(403).json({ message: 'لا تملك صلاحية عرض محفظة فرعٍ آخر.' });
     }
 
@@ -1483,7 +1485,7 @@ exports.getUserWalletRange = async (req, res) => {
     const repBranch = req.query.branchId || req.query.branch
       || (userId ? (await require('../models/User').findById(userId).select('branch').lean() || {}).branch : null)
       || req.user.branch;
-    if (req.user.role === 'operations_staff' && String(repBranch) !== String(req.user.branch)) {
+    if (req.user.role === 'operations_staff' && !userBranchIds(req.user).includes(String(repBranch))) {
       return res.status(403).json({ message: 'لا تملك صلاحية عرض محفظة فرعٍ آخر.' });
     }
 

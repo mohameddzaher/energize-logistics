@@ -931,6 +931,11 @@ class _UserFormScreenState extends State<_UserFormScreen> {
   String _linkedEmployee = '', _linkedEmployeeLabel = '', _partnerSource = '', _partnerRefId = '', _partnerLabel = '';
   bool _active = true, _saving = false, _showPw = false;
   List<String> _projects = [], _branches = [], _customers = [], _remote = _remotePages.map((p) => p.$1).toList();
+  // Per-user exception: an operations officer who does not work on vendors (User.accessSections); sent only when changed.
+  Map<String, dynamic> _accessSections = {};
+  bool? _vendorsOn0;
+  bool _vendorsOn = true;
+  static const _opsTeam = ['operations_manager', 'operations_team_leader', 'operations_staff'];
   List<Map<String, dynamic>> _branchOpts = [], _projectOpts = [], _customerOpts = [], _b2cHeads = [], _remoteManagers = [];
   String? _err;
 
@@ -953,6 +958,9 @@ class _UserFormScreenState extends State<_UserFormScreen> {
       _customers = List.from(u['assignedCustomers'] ?? const []).map(_idOf).toList();
       _projects = List.from(u['assignedProjects'] ?? const []).map(_idOf).toList();
       _branches = List.from(u['assignedBranches'] ?? const []).map(_idOf).toList();
+      _accessSections = Map<String, dynamic>.from(u['accessSections'] is Map ? u['accessSections'] as Map : const {});
+      _vendorsOn = _accessSections['Vendors Management'] != 'none';
+      _vendorsOn0 = _vendorsOn;
       final ra = List.from(u['remoteAccess'] ?? const []).map((e) => e.toString()).toList();
       if (ra.isNotEmpty) _remote = ra;
       final le = u['linkedEmployee'];
@@ -1097,6 +1105,15 @@ class _UserFormScreenState extends State<_UserFormScreen> {
         } else if (_role == 'remote_employee') {
           body['remoteAccess'] = _remote;
           if (!isNew) { body['assignedProjects'] = <String>[]; body['assignedBranches'] = <String>[]; }
+        } else if (_opsTeam.contains(_role)) {
+          // Operations staff may work on several branches: the assigned one plus extra ones.
+          body['assignedBranches'] = _branches.where((b) => b != _branch).toList();
+          if (!isNew) { body['assignedProjects'] = <String>[]; body['remoteAccess'] = <String>[]; }
+          if (!isNew && _vendorsOn0 != null && _vendorsOn != _vendorsOn0) {
+            final s = Map<String, dynamic>.from(_accessSections);
+            if (_vendorsOn) { s.remove('Vendors Management'); } else { s['Vendors Management'] = 'none'; }
+            body['accessSections'] = s;
+          }
         } else if (!isNew) {
           body['assignedProjects'] = <String>[]; body['assignedBranches'] = <String>[]; body['remoteAccess'] = <String>[];
         }
@@ -1201,13 +1218,25 @@ class _UserFormScreenState extends State<_UserFormScreen> {
             _pickerTile(_linkedEmployee.isEmpty ? tr('ابحث بالاسم أو رقم الإقامة أو رقم الموظف...', 'Search by name, iqama, or employee #...') : _linkedEmployeeLabel,
                 _pickEmployee, icon: Icons.badge_outlined, onClear: _linkedEmployee.isEmpty ? null : () => setState(() { _linkedEmployee = ''; _linkedEmployeeLabel = ''; })),
           ],
-          if (const ['operations_staff', 'operations_manager', 'procurement_staff'].contains(_role)) ...[
+          if (const ['operations_staff', 'operations_manager', 'operations_team_leader', 'procurement_staff'].contains(_role)) ...[
             _label(tr('الفرع *', 'Branch *')),
             DropdownButtonFormField<String>(
               initialValue: _branchOpts.any((b) => _idOf(b) == _branch) ? _branch : '', isExpanded: true,
               items: [DropdownMenuItem(value: '', child: Text(tr('اختر الفرع...', 'Select branch...'))), for (final b in _branchOpts) DropdownMenuItem(value: _idOf(b), child: Text('${b['name'] ?? ''}'))],
               onChanged: (v) => setState(() => _branch = v ?? ''),
             ),
+            if (_opsTeam.contains(_role)) ...[
+              _label('${tr('فروع إضافية يعمل عليها', 'Extra branches')} (${_branches.where((b) => b != _branch).length})'),
+              _checks(_branchOpts.where((b) => _idOf(b) != _branch).toList(), _branches, (b) => '${b['name'] ?? ''}'),
+            ],
+            if (_vendorsOn0 != null && const ['operations_staff', 'operations_team_leader'].contains(_role))
+              SwitchListTile(
+                contentPadding: EdgeInsets.zero,
+                value: _vendorsOn, activeThumbColor: T.orange,
+                onChanged: (v) => setState(() => _vendorsOn = v),
+                title: Text(tr('يعمل على الموردين', 'Works on vendors'), style: const TextStyle(fontWeight: FontWeight.w700)),
+                subtitle: Text(tr('إن أُغلق لا يظهر له قسم الموردين. اختيار الصفحات من نسخة الويب.', 'Off hides the vendors section. Pick pages on the web.'), style: const TextStyle(fontSize: 11.5)),
+              ),
           ],
           if (_role == 'client') ...[
             _label(tr('العميل المرتبط', 'Linked customer')),

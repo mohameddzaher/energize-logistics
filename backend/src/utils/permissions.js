@@ -204,7 +204,53 @@ const hasSuperAdminPowers = async (role) => {
     && SECTION_KEYS.every((k) => overrides[k] === 'edit');
 };
 
+/**
+ * Per-user exceptions on top of the role (User.accessSections / accessPages), set from the users page by a super admin:
+ * e.g. one operations officer works on vendors and another does not, or opens some vendor pages only. Silence follows the role.
+ */
+const mapGet = (m, k) => (m == null ? undefined : (m instanceof Map ? m.get(k) : m[k]));
+const userSectionOf = (user, key) => {
+  const v = mapGet(user && user.accessSections, key);
+  return ['none', 'view', 'edit'].includes(v) ? v : null;
+};
+const hasUserExceptions = (user) => !!user && ['accessSections', 'accessPages'].some((f) => {
+  const m = user[f]; return m && (m instanceof Map ? m.size : Object.keys(m).length);
+});
+const getOverrideForUser = async (user, sectionKey) => {
+  if (!user) return null;
+  if (FULL_ACCESS_ROLES.includes(user.role)) return 'edit';
+  return userSectionOf(user, sectionKey) || getOverride(user.role, sectionKey);
+};
+const effectivePermissionsForUser = async (user) => {
+  const out = await effectivePermissions(user.role);
+  if (!hasUserExceptions(user) || FULL_ACCESS_ROLES.includes(user.role) || isScopedRole(user.role)) return out;
+  for (const k of SECTION_KEYS) { const u = userSectionOf(user, k); if (u) out[k] = u; }
+  return out;
+};
+const effectivePagesForUser = async (user) => {
+  const base = await effectivePages(user.role);
+  if (!hasUserExceptions(user) || FULL_ACCESS_ROLES.includes(user.role) || isScopedRole(user.role)) return base;
+  const out = { ...base };
+  const sections = await effectivePermissionsForUser(user);
+  const { pages: rolePages } = await getSaved(user.role);
+  const custom = await inheritsNothing(user.role);
+  for (const p of PAGES) {
+    const own = mapGet(user.accessPages, p.key);
+    if (typeof own === 'boolean') { out[p.key] = own; continue; }
+    // A section opened or closed for this user moves its pages, unless the role ticked the page itself.
+    if (userSectionOf(user, p.section) && !Object.prototype.hasOwnProperty.call(rolePages, p.key)) out[p.key] = pageFollowsSection(p, sections, custom);
+  }
+  return out;
+};
+const explicitlyGrantedPagesForUser = async (user) => {
+  const role = await explicitlyGrantedPages(user.role);
+  const m = user && user.accessPages;
+  const own = m ? Object.entries(m instanceof Map ? Object.fromEntries(m) : m).filter(([, v]) => v === true).map(([k]) => k) : [];
+  return [...new Set([...role, ...own])];
+};
+
 module.exports = {
+  getOverrideForUser, effectivePermissionsForUser, effectivePagesForUser, explicitlyGrantedPagesForUser, userSectionOf,
   liftFinance,
   invalidate, getOverride, effectivePermissions, effectivePages, homePageFor,
   sectionForPath, getOverrides, isCustomRole, inheritsNothing, customRoleKeys, hasSuperAdminPowers,

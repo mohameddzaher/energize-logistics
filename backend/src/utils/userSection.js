@@ -4,7 +4,7 @@
  * section in their role, so without the HR file their tasks fell under whatever department a form defaulted to.
  * HR departments are matched by their list key, not their Arabic name, so renaming a department does not break it.
  */
-const { sectionOfRole } = require('../config/roles');
+const { orgSectionOfRole } = require('../config/roles');
 
 const KEY_SECTION = {
   operations: 'Operations', collections: 'Collections', heavy_transport: 'Fleet Management', light_transport: 'B2C',
@@ -34,7 +34,7 @@ async function departmentSections() {
 /** Section of one user; `user.linkedEmployee.department` must be populated for the HR fallback. */
 async function sectionOfUser(user) {
   if (!user) return null;
-  const byRole = sectionOfRole(user.role) || ROLE_FALLBACK[user.role];
+  const byRole = orgSectionOfRole(user.role) || ROLE_FALLBACK[user.role];
   if (byRole) return byRole;
   const dept = user.linkedEmployee && user.linkedEmployee.department;
   return dept ? (await departmentSections()).get(fold(dept)) || null : null;
@@ -50,7 +50,7 @@ async function sectionsOfUserIds(ids) {
   const map = await departmentSections();
   const out = new Map();
   for (const u of users) {
-    const byRole = sectionOfRole(u.role) || ROLE_FALLBACK[u.role];
+    const byRole = orgSectionOfRole(u.role) || ROLE_FALLBACK[u.role];
     const dept = u.linkedEmployee && u.linkedEmployee.department;
     out.set(String(u._id), byRole || (dept ? map.get(fold(dept)) || null : null));
   }

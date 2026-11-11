@@ -20,7 +20,7 @@ const pageGate = async (req, res, next) => {
     const path = (req.originalUrl || req.url || '').split('?')[0];
     if (!path.startsWith('/api/')) return next();
 
-    const pages = await effectivePages(user.role);
+    const pages = await require('../utils/permissions').effectivePagesForUser(user);
     const verdict = decide(path, (key) => pages[key] !== false);
     if (!verdict || verdict.ok) {
       // Whoever is granted the screen is granted what it does. Three layers stand in front of a call: the section guard, this guard, then the role list written in the route (`authorize`). The third does not know custom roles and reads the section stamp only if the route has a matrix-managed section. Screens with no section (users, audit log, branches, reference lists, reports center, executive overview, ...) can only be granted by ticking their page; the screen opened but its endpoints answered "Insufficient permissions" with nothing saying why.
@@ -28,7 +28,7 @@ const pageGate = async (req, res, next) => {
       // The stamp is not placed on an endpoint with a matrix-managed section: there the section is the top guard, and "a page does not exceed its section" has no exception.
       try {
         if (!sectionForPath(path)) {
-          const granted = await explicitlyGrantedSet(user.role);
+          const granted = new Set(await require('../utils/permissions').explicitlyGrantedPagesForUser(user));
           if (granted.size) {
             const owned = decide(path, (key) => granted.has(key));
             if (owned && owned.ok && !owned.widened) req.pageGranted = true;

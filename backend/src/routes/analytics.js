@@ -14,7 +14,7 @@ const receivables = require('../services/receivablesService');
 router.use(authenticate);
 
 // Executive Dashboard Summary
-router.get('/dashboard', authorize('super_admin', 'admin', 'it_manager', 'it_specialist', 'operations_manager', 'operations_staff', 'employee', 'moderator', 'procurement_staff', 'collections_manager', 'collections_staff', 'cfo', 'accounting_manager', 'accountant'), async (req, res) => {
+router.get('/dashboard', authorize('super_admin', 'admin', 'it_manager', 'it_specialist', 'operations_manager', 'operations_team_leader', 'operations_staff', 'employee', 'moderator', 'procurement_staff', 'collections_manager', 'collections_staff', 'cfo', 'accounting_manager', 'accountant'), async (req, res) => {
   try {
     // authorize() ran at the route, so the data is the same for every permitted
     // viewer (per filter set) — cache briefly to absorb concurrent loads.
@@ -33,7 +33,7 @@ router.get('/dashboard', authorize('super_admin', 'admin', 'it_manager', 'it_spe
 });
 
 // Aging
-router.get('/aging', authorize('super_admin', 'admin', 'it_manager', 'it_specialist', 'employee', 'operations_manager', 'operations_staff', 'moderator', 'collections_manager', 'collections_staff', 'cfo', 'accounting_manager', 'accountant'), async (req, res) => {
+router.get('/aging', authorize('super_admin', 'admin', 'it_manager', 'it_specialist', 'employee', 'operations_manager', 'operations_team_leader', 'operations_staff', 'moderator', 'collections_manager', 'collections_staff', 'cfo', 'accounting_manager', 'accountant'), async (req, res) => {
   try {
     res.json(await receivables.aging(req.query));
   } catch (error) {
@@ -43,7 +43,7 @@ router.get('/aging', authorize('super_admin', 'admin', 'it_manager', 'it_special
 });
 
 // Collection days: mean time between statement and collection, computed from actual data.
-router.get('/dso', authorize('super_admin', 'admin', 'it_manager', 'it_specialist', 'employee', 'operations_manager', 'operations_staff', 'moderator', 'collections_manager', 'collections_staff', 'cfo', 'accounting_manager', 'accountant'), async (req, res) => {
+router.get('/dso', authorize('super_admin', 'admin', 'it_manager', 'it_specialist', 'employee', 'operations_manager', 'operations_team_leader', 'operations_staff', 'moderator', 'collections_manager', 'collections_staff', 'cfo', 'accounting_manager', 'accountant'), async (req, res) => {
   try {
     const t = await receivables.dsoTrend({ months: 12 });
     res.json({ overall: { dso: t.dso }, trend: t.trend, byBranch: [], byCreditTerm: [], byCollector: [], alerts: [] });
@@ -53,7 +53,7 @@ router.get('/dso', authorize('super_admin', 'admin', 'it_manager', 'it_specialis
   }
 });
 
-router.get('/credit-alerts', authorize('super_admin', 'admin', 'it_manager', 'it_specialist', 'operations_manager', 'employee', 'moderator', 'collections_manager', 'collections_staff', 'cfo', 'accounting_manager', 'accountant'), async (req, res) => {
+router.get('/credit-alerts', authorize('super_admin', 'admin', 'it_manager', 'it_specialist', 'operations_manager', 'operations_team_leader', 'employee', 'moderator', 'collections_manager', 'collections_staff', 'cfo', 'accounting_manager', 'accountant'), async (req, res) => {
   try {
     res.json(await receivables.creditAlerts());
   } catch (error) {
@@ -62,7 +62,7 @@ router.get('/credit-alerts', authorize('super_admin', 'admin', 'it_manager', 'it
   }
 });
 
-router.get('/overdue', authorize('super_admin', 'admin', 'it_manager', 'it_specialist', 'employee', 'operations_manager', 'moderator', 'collections_manager', 'collections_staff', 'cfo', 'accounting_manager', 'accountant'), async (req, res) => {
+router.get('/overdue', authorize('super_admin', 'admin', 'it_manager', 'it_specialist', 'employee', 'operations_manager', 'operations_team_leader', 'moderator', 'collections_manager', 'collections_staff', 'cfo', 'accounting_manager', 'accountant'), async (req, res) => {
   try {
     res.json(await receivables.overdueList(req.query));
   } catch (error) {

@@ -26,7 +26,7 @@ router.use((req, res, next) => (req.method === 'GET' ? workflowController.primeR
 // Sales writes the selling value only (SELLING_ROLES; a rep through approval): it reaches the update and lock endpoints, and the controller refuses every other field.
 const allWorkflowRoles = [
   'super_admin', 'admin', 'it_manager', 'it_specialist',
-  'employee', 'operations_manager', 'operations_staff',
+  'employee', 'operations_manager', 'operations_team_leader', 'operations_staff',
   'moderator', 'cfo', 'accounting_manager', 'accountant',
   'collections_manager', 'collections_staff',
   // Vendors manager and team leader work the sheet like operations (purchase side only).
@@ -56,7 +56,7 @@ router.delete('/:id/customs-link', authorize(...allWorkflowRoles), workflowContr
 
 // Payment types. A customer's type is readable by whoever opens the operations page but writable only by whoever manages it: flipping a customer's type changes where all his manifests are invoiced. Must come before `/:id`.
 const paymentTypes = require('../controllers/paymentTypesController');
-const PT_WRITE = ['super_admin', 'admin', 'it_manager', 'it_specialist', 'operations_manager', 'moderator', 'cfo', 'accounting_manager', 'collections_manager'];
+const PT_WRITE = ['super_admin', 'admin', 'it_manager', 'it_specialist', 'operations_manager', 'operations_team_leader', 'moderator', 'cfo', 'accounting_manager', 'collections_manager'];
 router.get('/payment-types', authorize(...readWorkflowRoles), paymentTypes.list);
 router.put('/payment-types/:id', authorize(...PT_WRITE), paymentTypes.update);
 router.post('/payment-types/apply', authorize(...PT_WRITE), paymentTypes.applyAll);

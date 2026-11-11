@@ -14,7 +14,7 @@ router.use(authenticate);
 const READ_ROLES = [
   'super_admin', 'admin', 'it_manager', 'it_specialist',
   'collections_manager', 'collections_staff',
-  'operations_manager', 'cfo', 'accounting_manager', 'accountant',
+  'operations_manager', 'operations_team_leader', 'cfo', 'accounting_manager', 'accountant',
 ];
 // Who writes: the section owns its work and finance shares it.
 // No narrower delete list: `authorize` also passes when `sectionGate` grants the section edit, and an edit grant passes every endpoint in it by design, so a narrower list prevents nothing and misleads readers into thinking delete is guarded. Deleting is low-risk anyway: a party with statements is deactivated, not deleted (see `deleteParty`), so what is erased is a row with no history. One list.

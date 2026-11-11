@@ -3381,7 +3381,7 @@ exports.getVehicleLogsSummary = async (req, res) => {
   }
 };
 
-const CLOSED_OVERRIDE = ['super_admin', 'admin', 'it_manager', 'it_specialist', 'operations_manager', 'fleet_manager'];
+const CLOSED_OVERRIDE = ['super_admin', 'admin', 'it_manager', 'it_specialist', 'operations_manager', 'operations_team_leader', 'fleet_manager'];
 
 /** POST /api/fleet/vehicle-logs - a new entry on a vehicle. */
 exports.createVehicleLog = async (req, res) => {

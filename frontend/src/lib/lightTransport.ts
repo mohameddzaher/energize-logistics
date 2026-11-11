@@ -461,4 +461,4 @@ export const setB2CManagerProjects = (userId: string, projects: string[]) =>
 /** Who sees the department screens. The guard is on the section, not a hand-written role list: whoever is granted B2C from the permissions page gets in without a code change, as the server promises (`sectionGate`). A role list silently broke that promise. */
 export const canSeeLT = (u?: { role?: string | null; permissions?: Record<string, string> | null } | null) =>
   canEditLT(u) || !!u?.permissions?.B2C
-  || ['b2c_rep_supervisor', 'operations_manager', 'moderator'].includes(String(u?.role || ''));
+  || ['b2c_rep_supervisor', 'operations_manager', 'operations_team_leader', 'moderator'].includes(String(u?.role || ''));

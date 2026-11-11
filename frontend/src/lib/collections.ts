@@ -7,7 +7,7 @@ export const SECTION = 'Collections';
 export const COLLECTIONS_ROLES = [
   'super_admin', 'admin', 'it_manager', 'it_specialist',
   'collections_manager', 'collections_staff',
-  'operations_manager', 'cfo', 'accounting_manager', 'accountant',
+  'operations_manager', 'operations_team_leader', 'cfo', 'accounting_manager', 'accountant',
 ];
 
 export const COLLECTIONS_EDIT_ROLES = [

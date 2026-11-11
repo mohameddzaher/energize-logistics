@@ -99,7 +99,8 @@ const departments = () => [
   ...SECTION_KEYS,
   'Executive',
   'Administration',
-].filter((v, i, a) => a.indexOf(v) === i);
+// A team inside another department (vendors inside Operations, config/roles ORG_PARENT) is not a department of its own here.
+].filter((v, i, a) => a.indexOf(v) === i && !require('./roles').ORG_PARENT[v]);
 
 const meta = () => ({
   cadences: CADENCES,

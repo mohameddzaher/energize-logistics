@@ -1,4 +1,5 @@
 'use client';
+import UserSectionAccess from '@/components/system/UserSectionAccess';
 import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { useAuth } from '@/context/AuthContext';
 import { useLanguage } from '@/context/LanguageContext';
@@ -37,6 +38,8 @@ interface UserRecord {
   assignedProjects?: { _id: string; name: string; code?: string }[];
   assignedBranches?: { _id: string; name: string; code?: string; city?: string }[];
   shipmentBranches?: string[];
+  accessSections?: Record<string, string>;
+  accessPages?: Record<string, boolean>;
   manager?: { _id: string; firstName: string; lastName: string; email: string; role: string };
   linkedEmployee?: { _id: string; firstName: string; lastName: string; employeeNumber?: string; iqamaNumber?: string; jobTitle?: string };
   // Staff vs outside partner. Accounts created before this field existed have
@@ -135,6 +138,9 @@ const loginFormatter = (ar: boolean) => (loginFormatters[ar ? 'ar' : 'en'] ||= n
 
 const SHIPMENT_BRANCH_ROLES = ['data_entry', 'data_analyst', 'shipment_orders_followup'];
 
+/** The operations team (workflow, vendors, follow-up) under the operations manager. */
+const OPS_TEAM_ROLES = ['operations_manager', 'operations_team_leader', 'operations_staff'];
+
 export default function UsersPage() {
   const { user: currentUser } = useAuth();
   const { lang } = useLanguage();
@@ -174,6 +180,9 @@ export default function UsersPage() {
     branch: '',
     assignedProjects: [] as string[],
     assignedBranches: [] as string[],
+    // Per-user permission exceptions (works on vendors or not, which pages).
+    accessSections: {} as Record<string, string>,
+    accessPages: {} as Record<string, boolean>,
     shipmentBranches: [] as string[],
     manager: '',
     remoteAccess: [] as string[],
@@ -279,7 +288,7 @@ export default function UsersPage() {
   const fetchBranches = async () => {
     try {
       // role-only: same editors as the permissions page.
-      if (['super_admin', 'admin', 'it_manager', 'it_specialist', 'operations_manager'].includes(currentUser?.role || '')) {
+      if (['super_admin', 'admin', 'it_manager', 'it_specialist', 'operations_manager', 'operations_team_leader'].includes(currentUser?.role || '')) {
         api.get<any>('/api/shipment-orders/branch-access').then((d) => setShipBranches(d.branches || [])).catch(() => {});
       }
       const data = await api.get<any>('/api/branches?active=true');
@@ -326,7 +335,7 @@ export default function UsersPage() {
 
   // CREATE
   const openCreateModal = async () => {
-    setFormData({ email: '', password: '', firstName: '', lastName: '', role: 'employee', linkedCustomer: '', assignedCustomers: [], branch: '', assignedProjects: [], assignedBranches: [], shipmentBranches: [], manager: '', remoteAccess: REMOTE_PAGE_OPTIONS.map((p) => p.key), linkedEmployee: '', isTopManagement: false, isChairman: false, leaveSheetSigner: '', accountType: 'employee', partnerSource: '', partnerRefId: '' });
+    setFormData({ email: '', password: '', firstName: '', lastName: '', role: 'employee', linkedCustomer: '', assignedCustomers: [], branch: '', assignedProjects: [], assignedBranches: [], accessSections: {}, accessPages: {}, shipmentBranches: [], manager: '', remoteAccess: REMOTE_PAGE_OPTIONS.map((p) => p.key), linkedEmployee: '', isTopManagement: false, isChairman: false, leaveSheetSigner: '', accountType: 'employee', partnerSource: '', partnerRefId: '' });
     setPartnerLabel(''); setPartnerQuery(''); setPartners([]);
     setEmpSearch(''); setEmpResults([]); setLinkedEmployeeLabel('');
     setFormError('');
@@ -407,6 +416,8 @@ export default function UsersPage() {
       branch: u.branch?._id || '',
       assignedProjects: u.assignedProjects?.map((p: any) => typeof p === 'string' ? p : p._id) || [],
       assignedBranches: u.assignedBranches?.map((b: any) => typeof b === 'string' ? b : b._id) || [],
+      accessSections: { ...(u.accessSections || {}) },
+      accessPages: { ...(u.accessPages || {}) },
       shipmentBranches: u.shipmentBranches || [],
       manager: u.manager?._id || '',
       remoteAccess: u.remoteAccess && u.remoteAccess.length ? u.remoteAccess : REMOTE_PAGE_OPTIONS.map((p) => p.key),
@@ -472,7 +483,8 @@ export default function UsersPage() {
         payload.remoteAccess = formData.remoteAccess;
       } else {
         payload.assignedProjects = [];
-        payload.assignedBranches = [];
+        // Operations staff may work on several branches: the assigned one plus extra ones.
+        payload.assignedBranches = OPS_TEAM_ROLES.includes(formData.role) ? formData.assignedBranches.filter((b) => b !== formData.branch) : [];
         // Direct manager applies to every role (drives the HR leave-approval chain).
         payload.manager = formData.manager || null;
         payload.remoteAccess = [];
@@ -480,6 +492,7 @@ export default function UsersPage() {
       // HR: link/unlink this login to an employee profile.
       payload.linkedEmployee = formData.linkedEmployee || null;
       payload.isTopManagement = !!formData.isTopManagement;
+      if (['super_admin', 'admin', 'it_manager', 'it_specialist'].includes(currentUser?.role || '')) { payload.accessSections = formData.accessSections; payload.accessPages = formData.accessPages; }
       if (['super_admin', 'admin', 'it_manager', 'it_specialist'].includes(currentUser?.role || '')) payload.isChairman = !!formData.isChairman;
       // Sent only for the eligible roles, so editing anyone else never clears or moves a box.
       if (['hr_manager', 'cfo', 'accounting_manager'].includes(formData.role)) payload.leaveSheetSigner = formData.leaveSheetSigner || '';
@@ -1084,7 +1097,8 @@ export default function UsersPage() {
       )}
 
       {/* Branch assignment for operations roles */}
-      {['operations_staff', 'operations_manager', 'procurement_staff'].includes(formData.role) && (
+      {['operations_staff', 'operations_manager', 'operations_team_leader', 'procurement_staff'].includes(formData.role) && (
+        <div className="space-y-3">
         <div>
           <label className="block text-slate-700 text-sm font-medium mb-1.5">{T.branch} *</label>
           <select
@@ -1098,6 +1112,28 @@ export default function UsersPage() {
               <option key={b._id} value={b._id}>{b.name}</option>
             ))}
           </select>
+        </div>
+        {OPS_TEAM_ROLES.includes(formData.role) && (
+          <div>
+            <label className="block text-slate-700 text-sm font-medium mb-1.5">{lang === 'ar' ? 'فروع إضافية يعمل عليها' : 'Extra branches'} ({formData.assignedBranches.filter((x) => x !== formData.branch).length})</label>
+            <div className="max-h-40 overflow-y-auto bg-slate-50 border border-slate-200 rounded-lg p-2 grid sm:grid-cols-2 gap-1">
+              {branches.filter((b) => b._id !== formData.branch).map((b) => (
+                <label key={b._id} className="flex items-center gap-2 px-2 py-1.5 rounded hover:bg-white cursor-pointer">
+                  <input type="checkbox" checked={formData.assignedBranches.includes(b._id)} onChange={() => handleBranchAssignToggle(b._id)}
+                    className="rounded border-slate-300 bg-white text-[#f37121] focus:ring-[#f37121]/50" />
+                  <span className="text-slate-700 text-sm">{b.name}</span>
+                </label>
+              ))}
+            </div>
+          </div>
+        )}
+        {isEdit && ['operations_staff', 'operations_team_leader'].includes(formData.role) && ['super_admin', 'admin', 'it_manager', 'it_specialist'].includes(currentUser?.role || '') && (
+          <UserSectionAccess ar={lang === 'ar'} section="Vendors Management"
+            title={lang === 'ar' ? 'يعمل على الموردين' : 'Works on vendors'}
+            hint={lang === 'ar' ? 'إن أُغلق لا يظهر له قسم الموردين. وإن فُتح تختار الصفحات التي تظهر له.' : 'Off hides the vendors section; on lets you pick its pages.'}
+            sections={formData.accessSections} pages={formData.accessPages}
+            onChange={(v) => setFormData({ ...formData, accessSections: v.sections, accessPages: v.pages })} />
+        )}
         </div>
       )}
 

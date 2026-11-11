@@ -36,8 +36,8 @@ const _statuses = {
 };
 
 // Section roles, same as FLEET_EDIT_ROLES / FLEET_ADMIN_ROLES on the web (lib/fleet.ts) and in routes/fleet.js: edit is for EDIT, delete for ADMIN.
-const _fleetEditRoles = ['super_admin', 'admin', 'it_manager', 'it_specialist', 'operations_manager', 'operations_staff', 'moderator', 'fleet_manager', 'fleet_supervisor', 'data_manager', 'data_analyst', 'data_entry'];
-const _fleetAdminRoles = ['super_admin', 'admin', 'it_manager', 'it_specialist', 'operations_manager', 'fleet_manager'];
+const _fleetEditRoles = ['super_admin', 'admin', 'it_manager', 'it_specialist', 'operations_manager', 'operations_team_leader', 'operations_staff', 'moderator', 'fleet_manager', 'fleet_supervisor', 'data_manager', 'data_analyst', 'data_entry'];
+const _fleetAdminRoles = ['super_admin', 'admin', 'it_manager', 'it_specialist', 'operations_manager', 'operations_team_leader', 'fleet_manager'];
 
 const _eventMeta = {
   'created': ('أُنشئت الحمولة', 'Created', Icons.add_circle_outline, T.success),

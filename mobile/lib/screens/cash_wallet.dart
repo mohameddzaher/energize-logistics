@@ -89,12 +89,12 @@ class _CashWalletScreenState extends State<CashWalletScreen> {
   bool get _superPowers => _auth.user?['superAdminPowers'] == true;
   /// System admin and finance staff: edit, delete, move and reopen (hasFinancePowers).
   bool get _finance => _financePowers(_role) || _superPowers;
-  bool get _isManager => const ['super_admin', 'admin', 'it_manager', 'it_specialist', 'operations_manager', 'operations_staff', ..._financeFullRoles].contains(_role)
+  bool get _isManager => const ['super_admin', 'admin', 'it_manager', 'it_specialist', 'operations_manager', 'operations_team_leader', 'operations_staff', ..._financeFullRoles].contains(_role)
       || _auth.canEditSection('Operations');
   // View only: the supervisor and the collections section; the server rejects their writes by role.
   bool get _readOnly => const ['moderator', 'collections_manager', 'collections_staff', 'collections_trainee'].contains(_role);
   /// Writing into a closed day is a financial authority; role-only as on the server (`mayWriteIntoClosedDay`).
-  bool get _canWriteClosedDay => const ['super_admin', 'admin', 'it_manager', 'it_specialist', 'operations_manager', ..._financeFullRoles].contains(_role) || _superPowers;
+  bool get _canWriteClosedDay => const ['super_admin', 'admin', 'it_manager', 'it_specialist', 'operations_manager', 'operations_team_leader', ..._financeFullRoles].contains(_role) || _superPowers;
   bool get _canSelectBranch => _role.isNotEmpty && _role != 'operations_staff';
 
   @override
@@ -136,7 +136,7 @@ class _CashWalletScreenState extends State<CashWalletScreen> {
     try {
       final d = await Api.instance.get('/api/users?branch=$id');
       final list = (d is Map ? d['users'] : d) as List? ?? const [];
-      final n = list.whereType<Map>().where((u) => const ['operations_staff', 'operations_manager'].contains(u['role'])).length;
+      final n = list.whereType<Map>().where((u) => const ['operations_staff', 'operations_manager', 'operations_team_leader'].contains(u['role'])).length;
       if (mounted && id == _branchId) setState(() => _branchUsers = n);
     } catch (_) {
       if (mounted) setState(() => _branchUsers = 0);

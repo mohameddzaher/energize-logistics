@@ -10,14 +10,14 @@ const authorize = require('../middleware/rbac');
 
 // The shipment-orders trial section. Independent of /api/ops by design — see
 // the ShipmentOrder model header.
-const EDIT_ROLES = ['super_admin', 'admin', 'it_manager', 'it_specialist', 'operations_manager', 'operations_staff', 'moderator',
+const EDIT_ROLES = ['super_admin', 'admin', 'it_manager', 'it_specialist', 'operations_manager', 'operations_team_leader', 'operations_staff', 'moderator',
   // The section's own team; it used to edit through the section grant alone, now explicit and includes the follow-up role.
   'shipment_orders_manager', 'shipment_orders_staff', 'shipment_orders_followup',
   // The data team creates and corrects shipments too.
   ...require('../config/roles').DATA_ROLES,
   // Sales and the vendors team work the section too, each on its own half (controller: ownedFields).
   ...require('../config/priceView').SALES_ROLES, ...require('../config/priceView').VENDOR_ROLES];
-const ADMIN_ROLES = ['super_admin', 'admin', 'it_manager', 'it_specialist', 'operations_manager'];
+const ADMIN_ROLES = ['super_admin', 'admin', 'it_manager', 'it_specialist', 'operations_manager', 'operations_team_leader'];
 
 router.use(authenticate);
 

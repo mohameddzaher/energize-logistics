@@ -17,6 +17,8 @@ const build = (roles, { strict = false } = {}) => {
     if (allowed.has(canonicalRole(req.user.role))) {
       return next();
     }
+    // A role holding another's rights passes wherever that role is listed (config/roles RIGHTS_OF).
+    if (allowed.has(require('../config/roles').rightsRoleOf(canonicalRole(req.user.role)))) return next();
 
     // Admin and IT pass wherever super admin passes, even in strict guards (config/constants: TOP_ROLES).
     if (require('../config/constants').isTopRole(req.user.role) && allowed.has('super_admin')) return next();

@@ -7,7 +7,7 @@ const PAGE = '/system/operations/loads';
 
 const DEFAULT_ROLES = [
   'super_admin', 'admin', 'it_manager', 'it_specialist',
-  'operations_manager', 'operations_staff',
+  'operations_manager', 'operations_team_leader', 'operations_staff',
   'sales_manager', 'sales_rep',
   'data_manager', 'data_analyst',
 ];

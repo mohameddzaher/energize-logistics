@@ -17,7 +17,7 @@ import 'customs_detail.dart';
 /// Work plan (JP), counterpart of `JpBoard` and `JpDashboard` on the web.
 /// One screen for the section and for the management plan. Permission comes from the server: each task carries `can` and `/me` says manager or member, so no role list is repeated here except what the drawer uses to hide a page the server would refuse (the two maps below, generated from backend/src/config/jpSections.js).
 const jpManagerRoles = <String, List<String>>{
-  'operations': ['operations_manager'],
+  'operations': ['operations_manager', 'operations_team_leader'],
   'collections': ['collections_manager'],
   'ops': ['ops_platform_manager'],
   'shipment-orders': ['shipment_orders_manager'],

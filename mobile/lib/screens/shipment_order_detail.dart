@@ -105,7 +105,7 @@ class _ShipmentOrderDetailScreenState extends State<ShipmentOrderDetailScreen> {
             if (mounted) setState(() => _printing = false);
           },
         ),
-        if (const ['super_admin', 'admin', 'it_manager', 'it_specialist', 'operations_manager'].contains(context.read<AuthProvider>().role))
+        if (const ['super_admin', 'admin', 'it_manager', 'it_specialist', 'operations_manager', 'operations_team_leader'].contains(context.read<AuthProvider>().role))
           IconButton(
             tooltip: tr('حذف الشحنة', 'Delete shipment'),
             icon: const Icon(Icons.delete_outline),

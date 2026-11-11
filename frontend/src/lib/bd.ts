@@ -15,7 +15,7 @@ const pick = (lang: Lang, en: string, ar: string) => (lang === 'ar' ? ar : en);
 export const BD_STAFF_ROLES = [
   'super_admin', 'admin', 'it_manager', 'it_specialist',
   'bd_manager', 'bd_specialist',
-  'sales_manager', 'crm_manager', 'operations_manager',
+  'sales_manager', 'crm_manager', 'operations_manager', 'operations_team_leader',
 ];
 export const BD_ADMIN_ROLES = [
   'super_admin', 'admin', 'it_manager', 'it_specialist', 'bd_manager', 'bd_specialist',

@@ -278,7 +278,7 @@ class _OpsWorkflowDetailScreenState extends State<OpsWorkflowDetailScreen> {
   /// Stage transitions as on the web statement page ("send to operations" was removed).
   List<(String, String, String)> get _transitions {
     final stage = (_w?['stage'] ?? 'draft').toString();
-    const opsRoles = ['operations_manager', 'super_admin', 'admin', 'it_manager', 'it_specialist'];
+    const opsRoles = ['operations_manager', 'operations_team_leader', 'super_admin', 'admin', 'it_manager', 'it_specialist'];
     const colRoles = ['admin', 'employee', 'super_admin'];
     final map = <String, List<(String, String, String, List<String>)>>{
       'submitted_to_ops': [
@@ -415,7 +415,7 @@ class _OpsWorkflowDetailScreenState extends State<OpsWorkflowDetailScreen> {
           if (w != null && !_editing) IconButton(tooltip: tr('تصدير Excel', 'Export'), icon: const Icon(Icons.file_download_outlined), onPressed: _export),
           if (w != null && !_editing && !_lockedByOther)
             IconButton(tooltip: tr('تعديل', 'Edit'), icon: const Icon(Icons.edit_outlined), onPressed: _startEdit),
-          if (w != null && !_editing && !_lockedByOther && const ['super_admin', 'admin', 'it_manager', 'it_specialist', 'operations_manager'].contains(role))
+          if (w != null && !_editing && !_lockedByOther && const ['super_admin', 'admin', 'it_manager', 'it_specialist', 'operations_manager', 'operations_team_leader'].contains(role))
             IconButton(tooltip: tr('حذف أمر النقل', 'Delete report'), icon: const Icon(Icons.delete_outline), onPressed: _delete),
         ],
         body: w == null

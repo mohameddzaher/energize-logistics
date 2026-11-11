@@ -14,8 +14,8 @@ const vehicleDefaults = require('./vehicleDefaults');
 // Roles that can manage every lookup regardless of module.
 const BASE_WRITE_ROLES = ['super_admin', 'admin', 'it_manager', 'it_specialist'];
 
-const FLEET_ROLES = ['fleet_manager', 'operations_manager', 'operations_staff'];
-const SO_ROLES = ['shipment_orders_manager', 'shipment_orders_staff', 'shipment_orders_followup', 'operations_manager', 'operations_staff'];
+const FLEET_ROLES = ['fleet_manager', 'operations_manager', 'operations_team_leader', 'operations_staff'];
+const SO_ROLES = ['shipment_orders_manager', 'shipment_orders_staff', 'shipment_orders_followup', 'operations_manager', 'operations_team_leader', 'operations_staff'];
 const VEHICLE_ROLES = ['vehicles_manager', 'vehicles_staff', 'hr_manager', 'cfo', 'accounting_manager'];
 
 /**
@@ -380,7 +380,7 @@ const REGISTRY = [
     module: 'vendors',
     nameEn: 'Vendor contract status',
     nameAr: 'حالة التعاقد مع المورد',
-    roles: ['vendors_manager', 'vendors_team_leader', 'vendors_staff', 'operations_manager'],
+    roles: ['vendors_manager', 'vendors_team_leader', 'vendors_staff', 'operations_manager', 'operations_team_leader'],
     storeLabel: true,
     seed: [
       { key: 'signed', nameEn: 'Signed', nameAr: 'موقع', color: '#059669', order: 1 },
@@ -463,7 +463,7 @@ const REGISTRY = [
     module: 'procurement',
     nameEn: 'Vendor Categories',
     nameAr: 'فئات الموردين',
-    roles: ['procurement_manager', 'procurement_staff', 'operations_manager', 'operations_staff'],
+    roles: ['procurement_manager', 'procurement_staff', 'operations_manager', 'operations_team_leader', 'operations_staff'],
     seed: [
       { key: 'spare_parts', nameEn: 'Spare Parts', nameAr: 'قطع غيار' },
       { key: 'fuel', nameEn: 'Fuel', nameAr: 'وقود' },
@@ -553,7 +553,7 @@ const REGISTRY = [
     module: 'operations',
     nameEn: 'Paying Branches',
     nameAr: 'الفروع المسدِّدة',
-    roles: ['operations_manager', 'operations_staff', 'moderator', 'cfo', 'accounting_manager', 'accountant'],
+    roles: ['operations_manager', 'operations_team_leader', 'operations_staff', 'moderator', 'cfo', 'accounting_manager', 'accountant'],
     storeLabel: true,
     seed: [
       { key: 'jeddah', nameEn: 'Jeddah', nameAr: 'جدة' },
@@ -574,7 +574,7 @@ const REGISTRY = [
     module: 'operations',
     nameEn: 'Final Report Destinations',
     nameAr: 'وجهات أمر النقل النهائية',
-    roles: ['operations_manager', 'operations_staff', 'moderator', 'cfo', 'accounting_manager', 'accountant'],
+    roles: ['operations_manager', 'operations_team_leader', 'operations_staff', 'moderator', 'cfo', 'accounting_manager', 'accountant'],
     storeLabel: true,
     seed: [
       { key: 'jeddah', nameEn: 'Jeddah', nameAr: 'جدة' },
@@ -664,7 +664,7 @@ const REGISTRY = [
     ]],
   ].map(([type, nameAr, nameEn, seed]) => ({
     type, module: 'customs', nameAr, nameEn,
-    roles: ['customs_manager', 'customs_officer', 'operations_manager'],
+    roles: ['customs_manager', 'customs_officer', 'operations_manager', 'operations_team_leader'],
     storeLabel: true, seed,
   })),
   // Collections section lists.
@@ -772,7 +772,7 @@ const REGISTRY = [
     ]],
   ].map(([type, nameAr, nameEn, seed]) => ({
     type, module: 'ls2', nameAr, nameEn,
-    roles: ['location_manager', 'location_staff', 'operations_manager', 'it_manager', 'it_specialist', 'vehicles_manager', 'procurement_staff', 'b2c_manager', 'b2c_deputy', 'b2c_project_lead'],
+    roles: ['location_manager', 'location_staff', 'operations_manager', 'operations_team_leader', 'it_manager', 'it_specialist', 'vehicles_manager', 'procurement_staff', 'b2c_manager', 'b2c_deputy', 'b2c_project_lead'],
     storeLabel: true, seed,
   })),
 ];

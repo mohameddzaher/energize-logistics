@@ -16,7 +16,7 @@ router.get('/', driverController.getDrivers);
 
 router.post(
   '/',
-  authorize('super_admin', 'admin', 'it_manager', 'it_specialist', 'operations_manager', 'operations_staff'),
+  authorize('super_admin', 'admin', 'it_manager', 'it_specialist', 'operations_manager', 'operations_team_leader', 'operations_staff'),
   [body('name').notEmpty().withMessage('Driver name is required')],
   validate,
   driverController.createDriver
@@ -24,7 +24,7 @@ router.post(
 
 router.put(
   '/:id',
-  authorize('super_admin', 'admin', 'it_manager', 'it_specialist', 'operations_manager', 'operations_staff'),
+  authorize('super_admin', 'admin', 'it_manager', 'it_specialist', 'operations_manager', 'operations_team_leader', 'operations_staff'),
   [body('name').notEmpty().withMessage('Driver name is required')],
   validate,
   driverController.updateDriver

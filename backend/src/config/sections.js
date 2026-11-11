@@ -53,7 +53,8 @@ const SECTIONS = [
     // Vendors management: carrier register, their trucks and freelance drivers, sales requests to place, and the section's analysis.
     key: 'Vendors Management',
     apiPrefixes: ['/api/vendors-mgmt'],
-    defaultRoles: ['admin', 'it_manager', 'it_specialist', 'operations_manager'],
+    // Vendors is a team inside Operations: the operations team works it by default; a super admin closes it per user (User.accessSections).
+    defaultRoles: ['admin', 'it_manager', 'it_specialist', 'operations_manager', 'operations_staff'],
   },
   {
     // Our own trucks — booking, drivers, follow-up calls. Sibling of the
@@ -219,6 +220,9 @@ const defaultAccess = (role, sectionKey) => {
   if (!s) return 'none';
   // A section's manager and staff always get their whole section. This rule overrides the hand-written defaultRoles lists, which kept forgetting people and left sections open with their buttons hidden.
   if (require('./roles').rolesOfSection(sectionKey).includes(role)) return 'edit';
+  // A role holding another's rights (operations team leader → operations manager) gets that role's sections too.
+  const heir = require('./roles').rightsRoleOf(role);
+  if (heir !== role) return defaultAccess(heir, sectionKey);
   // A section marked `defaultAllRoles` is open to all STAFF by default — only
   // `client` (an outside partner, who has the portal instead) is excluded. This
   // is how a section stays reachable by roles that don't exist yet.

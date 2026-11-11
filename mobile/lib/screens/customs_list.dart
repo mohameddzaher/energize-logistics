@@ -72,7 +72,7 @@ const customsDocKeys = [
   ('saber', 'سابر', 'SABER'),
 ];
 
-const _editRoles = ['super_admin', 'admin', 'it_manager', 'it_specialist', 'operations_manager', 'customs_manager', 'customs_officer'];
+const _editRoles = ['super_admin', 'admin', 'it_manager', 'it_specialist', 'operations_manager', 'operations_team_leader', 'customs_manager', 'customs_officer'];
 const _deleteRoles = ['super_admin', 'admin', 'it_manager', 'it_specialist', 'customs_manager', 'customs_officer'];
 
 class _CustomsListScreenState extends State<CustomsListScreen> {

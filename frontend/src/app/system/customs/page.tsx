@@ -96,7 +96,7 @@ export default function CustomsPage() {
   const router = useRouter();
   // Profits are for the system manager and department manager only; the server does not send them to anyone else.
   const seesMoney = ['super_admin', 'admin', 'it_manager', 'it_specialist', 'customs_manager'].includes(user?.role || '');
-  const canEdit = ['super_admin', 'admin', 'it_manager', 'it_specialist', 'operations_manager', 'customs_manager', 'customs_officer'].includes(user?.role || '') || canEditSection((user as any)?.permissions, 'Customs'); // matrix edit grants count too
+  const canEdit = ['super_admin', 'admin', 'it_manager', 'it_specialist', 'operations_manager', 'operations_team_leader', 'customs_manager', 'customs_officer'].includes(user?.role || '') || canEditSection((user as any)?.permissions, 'Customs'); // matrix edit grants count too
   // Deletion is for the department manager and staff, matching the route guard on the server.
   const canDelete = ['super_admin', 'admin', 'it_manager', 'it_specialist', 'customs_manager', 'customs_officer'].includes(user?.role || '') || canEditSection((user as any)?.permissions, 'Customs');
   const { lang } = useLanguage();

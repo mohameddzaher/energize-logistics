@@ -12,7 +12,7 @@ const authorize = require('../middleware/rbac');
 // section (QA sweep 2026-10-27) — see middleware/sectionGate requireSectionAccess.
 const customsOnly = require('../middleware/sectionGate').requireSectionAccess('Customs');
 
-const EDIT_ROLES = ['super_admin', 'admin', 'it_manager', 'it_specialist', 'operations_manager', 'customs_manager', 'customs_officer'];
+const EDIT_ROLES = ['super_admin', 'admin', 'it_manager', 'it_specialist', 'operations_manager', 'operations_team_leader', 'customs_manager', 'customs_officer'];
 
 router.use(authenticate);
 

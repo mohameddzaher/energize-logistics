@@ -33,7 +33,7 @@ const ltIssueCfg = IssueCfg(
 const htIssueCfg = IssueCfg(
   base: '/api/ls2/store/issue-requests', itemsBase: '/api/ls2/store',
   titleAr: 'مخزن النقل الثقيل — طلبات الصرف', titleEn: 'Heavy Transport Store — Issue Requests', vehiclesKind: 'heavy', section: 'Location Solutions',
-  editRoles: ['super_admin', 'admin', 'it_manager', 'it_specialist', 'operations_manager', 'workshop_manager', 'location_manager', 'vehicles_manager'],
+  editRoles: ['super_admin', 'admin', 'it_manager', 'it_specialist', 'operations_manager', 'operations_team_leader', 'workshop_manager', 'location_manager', 'vehicles_manager'],
 );
 
 num _num(dynamic v) => v is num ? v : num.tryParse(v?.toString() ?? '') ?? 0;

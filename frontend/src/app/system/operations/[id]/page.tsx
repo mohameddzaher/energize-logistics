@@ -277,12 +277,12 @@ export default function WorkflowDetailPage() {
       // 'Send to operations' removed: manifests arrive from the operations platform already running there, so sending them back is meaningless. The button remained from when manifests were created here by hand.
       draft: [],
       submitted_to_ops: [
-        { stage: 'ops_completed', label: T.markOpsComplete, roles: ['operations_manager', 'super_admin', 'admin', 'it_manager', 'it_specialist'] },
-        { stage: 'draft', label: T.returnToDraft, roles: ['operations_manager', 'super_admin', 'admin', 'it_manager', 'it_specialist'] },
+        { stage: 'ops_completed', label: T.markOpsComplete, roles: ['operations_manager', 'operations_team_leader', 'super_admin', 'admin', 'it_manager', 'it_specialist'] },
+        { stage: 'draft', label: T.returnToDraft, roles: ['operations_manager', 'operations_team_leader', 'super_admin', 'admin', 'it_manager', 'it_specialist'] },
       ],
       ops_completed: [
-        { stage: 'submitted_to_collections', label: T.submitToCollections, roles: ['operations_manager', 'super_admin', 'admin', 'it_manager', 'it_specialist'] },
-        { stage: 'submitted_to_ops', label: T.returnToOps, roles: ['operations_manager', 'super_admin', 'admin', 'it_manager', 'it_specialist'] },
+        { stage: 'submitted_to_collections', label: T.submitToCollections, roles: ['operations_manager', 'operations_team_leader', 'super_admin', 'admin', 'it_manager', 'it_specialist'] },
+        { stage: 'submitted_to_ops', label: T.returnToOps, roles: ['operations_manager', 'operations_team_leader', 'super_admin', 'admin', 'it_manager', 'it_specialist'] },
       ],
       submitted_to_collections: [
         { stage: 'completed', label: T.markComplete, roles: ['admin', 'employee', 'super_admin'] },
@@ -392,7 +392,7 @@ export default function WorkflowDetailPage() {
                 <button type="button" onClick={handleStartEdit} className="px-4 py-2 rounded-lg bg-slate-100 text-slate-700 text-sm hover:bg-slate-200 transition-colors flex items-center gap-2">
                   <Edit className="w-4 h-4" /> {T.edit}
                 </button>
-                {['super_admin', 'admin', 'it_manager', 'it_specialist', 'operations_manager'].includes(role || '') && (
+                {['super_admin', 'admin', 'it_manager', 'it_specialist', 'operations_manager', 'operations_team_leader'].includes(role || '') && (
                   <button type="button" onClick={handleDeleteWorkflow}
                     title={lang === 'ar' ? 'حذف أمر النقل' : 'Delete report'}
                     className="p-2 rounded-lg text-slate-400 hover:text-red-600 hover:bg-red-50 transition-colors">

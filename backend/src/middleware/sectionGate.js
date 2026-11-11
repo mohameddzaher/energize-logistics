@@ -11,7 +11,7 @@
 //                              a role that isn't in a route's legacy list.
 // Resolver errors fail OPEN (fall through to legacy authorize) to avoid locking
 // users out on a transient DB issue.
-const { getOverride, liftFinance } = require('../utils/permissions');
+const { getOverrideForUser, getOverride, liftFinance } = require('../utils/permissions');
 const { getSection, defaultAccess } = require('../config/sections');
 const { FULL_ACCESS_ROLES } = require('../config/constants');
 
@@ -46,14 +46,14 @@ const sectionGate = (sectionKey) => {
       // So a grant is stamped if present, and denial never applies on these paths.
       if (exempt && exempt(req)) {
         try {
-          const g = await getOverride(req.user.role, sectionKey);
+          const g = await getOverrideForUser(req.user, sectionKey);
           const a = g == null ? liftFinance(req.user.role, defaultAccess(req.user.role, sectionKey)) : g;
           if (a === 'view' || a === 'edit') req.sectionAccess = a;
         } catch (e) { /* The exemption passes without a stamp. */ }
         return next();
       }
 
-      let access = await getOverride(req.user.role, sectionKey); // 'none'|'view'|'edit'|null
+      let access = await getOverrideForUser(req.user, sectionKey); // 'none'|'view'|'edit'|null
       if (access == null) {
         // No saved override, so use the section's default access. This is what makes "section manager and staff have their section" (config/roles.js) work on the API and not only decorate the sidebar; without it a new role would open the section in the menu and get 403 from every endpoint inside.
         const fallback = liftFinance(req.user.role, defaultAccess(req.user.role, sectionKey));
@@ -90,7 +90,7 @@ const stampSection = (...sectionKeys) => async (req, res, next) => {
     if (FULL_ACCESS_ROLES.includes(req.user.role)) { req.sectionAccess = 'edit'; return next(); }
     let best = null;
     for (const key of sectionKeys) {
-      const saved = await getOverride(req.user.role, getSection(key)?.key || key);
+      const saved = await getOverrideForUser(req.user, getSection(key)?.key || key);
       if (saved === 'edit') { best = 'edit'; break; }
       if (saved === 'view' && best !== 'edit') best = 'view';
     }
@@ -98,7 +98,7 @@ const stampSection = (...sectionKeys) => async (req, res, next) => {
     if (!best) {
       for (const key of sectionKeys) {
         const k = getSection(key)?.key || key;
-        if ((await getOverride(req.user.role, k)) != null) continue;
+        if ((await getOverrideForUser(req.user, k)) != null) continue;
         const d = liftFinance(req.user.role, defaultAccess(req.user.role, k));
         if (d === 'edit') { best = 'edit'; break; }
         if (d === 'view') best = 'view';

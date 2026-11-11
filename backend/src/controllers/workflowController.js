@@ -77,7 +77,7 @@ const FULL_FIELDS = [...ALL_FIELDS, ...SELLING_FIELDS];
 // A role outside the list never receives the value from the server (stripRowFor), cannot filter by it, does not get it in its export, and cannot write it.
 const SELLING_ROLES = [
   'super_admin', 'admin', 'it_manager', 'it_specialist', 'cfo', 'accounting_manager', 'accountant',
-  'collections_manager', 'collections_staff', 'operations_manager', 'general_manager',
+  'collections_manager', 'collections_staff', 'operations_manager', 'operations_team_leader', 'general_manager',
   // Data team; super admin narrows the operations section from the matrix.
   ...require('../config/roles').DATA_ROLES,
   // Sales writes the selling price: the manager directly, a rep through approval (config/sellingPriceRequests).
@@ -157,7 +157,9 @@ const fieldsCache = require('../utils/ttlCache');
 // Every data and follow-up user moves a shipment's status here, whatever their branch.
 // The fleet team moves the status of the loads they run.
 const STATUS_ROLES = [...require('../config/roles').DATA_ROLES, 'shipment_orders_followup', 'fleet_manager', 'fleet_supervisor'];
-const fieldsForRole = async (role) => {
+const fieldsForRole = async (roleIn) => {
+  // A role holding another's rights writes that role's fields (operations team leader → operations manager).
+  const role = require('../config/roles').rightsRoleOf(roleIn);
   const fields = await baseFieldsForRole(role);
   return STATUS_ROLES.includes(role) && !fields.includes('applicationStatus') ? [...fields, 'applicationStatus'] : fields;
 };
@@ -1721,10 +1723,10 @@ exports.updateStage = async (req, res) => {
     // Role-based stage transition authorization
     const stageRoleMap = {
       submitted_to_ops: ['moderator', 'super_admin', 'admin', 'it_manager', 'it_specialist', ...FINANCE_FULL_ROLES],
-      ops_completed: ['operations_manager', 'super_admin', 'admin', 'it_manager', 'it_specialist', ...FINANCE_FULL_ROLES],
-      submitted_to_collections: ['operations_manager', 'super_admin', 'admin', 'it_manager', 'it_specialist', ...FINANCE_FULL_ROLES],
+      ops_completed: ['operations_manager', 'operations_team_leader', 'super_admin', 'admin', 'it_manager', 'it_specialist', ...FINANCE_FULL_ROLES],
+      submitted_to_collections: ['operations_manager', 'operations_team_leader', 'super_admin', 'admin', 'it_manager', 'it_specialist', ...FINANCE_FULL_ROLES],
       completed: ['admin', 'employee', 'super_admin', 'it_manager', 'it_specialist', ...FINANCE_FULL_ROLES],
-      draft: ['moderator', 'operations_manager', 'super_admin', 'admin', 'it_manager', 'it_specialist', ...FINANCE_FULL_ROLES], // rollback
+      draft: ['moderator', 'operations_manager', 'operations_team_leader', 'super_admin', 'admin', 'it_manager', 'it_specialist', ...FINANCE_FULL_ROLES], // rollback
     };
 
     const allowedRoles = stageRoleMap[stage] || [];
@@ -2942,7 +2944,7 @@ exports.importInvoices = async (req, res) => {
 
 /** Who links and unlinks: whoever writes the receipt number or operations review in this table. */
 async function canLinkCustoms(role) {
-  if (['super_admin', 'admin', 'it_manager', 'it_specialist', 'operations_manager'].includes(role) || isFinanceFull(role)) return true;
+  if (['super_admin', 'admin', 'it_manager', 'it_specialist', 'operations_manager', 'operations_team_leader'].includes(role) || isFinanceFull(role)) return true;
   const f = await fieldsForRole(role);
   return f.includes('documentNumber') || f.includes('operationsReview');
 }

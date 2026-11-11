@@ -12,8 +12,8 @@ const { TOP_ROLES } = require('../config/constants');
 
 // Vendors management (mounted behind sectionGate('Vendors Management')). The team writes the register and its
 // follow-ups; manager and team leader also own the approved price list and the targets.
-const TEAM = [...TOP_ROLES, ...VENDOR_ROLES, 'operations_manager', ...require('../config/roles').DATA_ROLES];
-const LEADS = [...TOP_ROLES, ...VENDOR_LEADS, 'operations_manager', 'data_manager'];
+const TEAM = [...TOP_ROLES, ...VENDOR_ROLES, 'operations_manager', 'operations_team_leader', 'operations_staff', ...require('../config/roles').DATA_ROLES];
+const LEADS = [...TOP_ROLES, ...VENDOR_LEADS, 'operations_manager', 'operations_team_leader', 'data_manager'];
 
 router.use(authenticate);
 // Every endpoint is the team's; a role granted the section from the permissions matrix passes through the section stamp.

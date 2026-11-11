@@ -1090,7 +1090,7 @@ ResourceConfig b2cRepsCfg({required bool canEdit}) => ResourceConfig(
 // Shipment orders (standalone trial) and customers register.
 // Read from the computed customers register (how many sheets, for how much, how many routes), not the raw customers table, so the row carries its numbers as on the web. Tapping opens the full file, the same as the web page.
 // One register with three entry points: opened from shipment orders, operations and sales, with all reads and writes on /api/customer-registry. Writes used to go to the shipment-orders endpoint guarded by its section, so opening the register from another section gave 403 on first save. Who edits and who removes is decided by role as on the web (canEditCustomers) and passed from the list.
-const customerEditRoles = ['super_admin', 'admin', 'it_manager', 'it_specialist', 'operations_manager', 'operations_staff', 'moderator', 'sales_manager', 'sales_rep',
+const customerEditRoles = ['super_admin', 'admin', 'it_manager', 'it_specialist', 'operations_manager', 'operations_team_leader', 'operations_staff', 'moderator', 'sales_manager', 'sales_rep',
   'shipment_orders_manager', 'shipment_orders_staff', 'shipment_orders_followup', 'data_manager', 'data_analyst', 'data_entry'];
 final customerRemoveRoles = customerEditRoles.where((r) => r != 'sales_rep').toList();
 

@@ -18,7 +18,7 @@ const { startOfDay, endOfDay } = require('../utils/companyDay');
 const { sendMongooseError } = require('../utils/mongooseError');
 
 const EVENT = 'shipmentRequests:changed';
-const SO_TEAM = ['shipment_orders_manager', 'shipment_orders_staff', 'operations_manager', 'operations_staff'];
+const SO_TEAM = ['shipment_orders_manager', 'shipment_orders_staff', 'operations_manager', 'operations_team_leader', 'operations_staff'];
 /** Who writes the sales half (create, amend, resend, withdraw). */
 const ASKERS = [...TOP_ROLES, ...DATA_ROLES, ...PV.SALES_ROLES, ...SO_TEAM];
 /** Who places or rejects (the vendors half). */

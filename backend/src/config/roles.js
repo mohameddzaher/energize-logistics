@@ -27,7 +27,12 @@ const GLOBAL_ROLES = [
 const SECTION_ROLES = [
   { section: 'Operations',
     manager: { key: 'operations_manager', ar: 'مدير العمليات', en: 'Operations Manager' },
-    staff: [{ key: 'operations_staff', ar: 'موظف العمليات', en: 'Operations Team' }] },
+    staff: [
+      // Leads the operations team (workflow, vendors, follow-up) with the manager's rights, without the manager's meeting seat; see RIGHTS_OF.
+      { key: 'operations_team_leader', ar: 'قائد فريق العمليات', en: 'Operations Team Leader',
+        distinct: 'له صلاحيّاتُ مدير العمليات كاملةً (التشغيل والموردون والمتابعة)، ولا يجلس في اجتماعات الإدارة.' },
+      { key: 'operations_staff', ar: 'موظف العمليات', en: 'Operations Team' },
+    ] },
 
   // Collections section: collections used to be spread across a follow-up page and workflow columns with no owner; it now has its own section and roles, covering customers we collect from and vendors we pay.
   { section: 'Collections',
@@ -176,6 +181,22 @@ const rolesOfSection = (section) => {
   return s ? [s.manager.key, ...s.staff.map((y) => y.key)] : [];
 };
 
+/** A role that holds another role's rights wherever that role is named in a guard or a rule (rbac, workflow fields). */
+const RIGHTS_OF = { operations_team_leader: 'operations_manager' };
+const rightsRoleOf = (role) => RIGHTS_OF[role] || role;
+
+/**
+ * The department a role belongs to in the company's structure (business review, team lists), which can be wider than its permission section:
+ * vendors and shipment follow-up are teams inside Operations, under the operations manager.
+ */
+const ORG_PARENT = { 'Vendors Management': 'Operations' };
+const ORG_ROLE = { shipment_orders_followup: 'Operations' };
+const orgSectionOfRole = (role) => {
+  if (ORG_ROLE[role]) return ORG_ROLE[role];
+  const s = sectionOfRole(role);
+  return (s && ORG_PARENT[s]) || s;
+};
+
 const isManager = (role) => MANAGER_ROLES.includes(role);
 const isStaff = (role) => STAFF_ROLES.includes(role);
 const isTrainee = (role) => TRAINEE_ROLES.includes(role);
@@ -242,6 +263,6 @@ module.exports = {
   GLOBAL_ROLES, SECTION_ROLES, assertRolesCoverSections,
   ALL_ROLES, ALL_ROLE_DEFS, MANAGER_ROLES, STAFF_ROLES, TRAINEE_ROLES, isTrainee,
   LABELS_AR, LABELS_EN,
-  sectionOfRole, rolesOfSection, isManager, isStaff,
+  sectionOfRole, rolesOfSection, isManager, isStaff, RIGHTS_OF, rightsRoleOf, ORG_PARENT, orgSectionOfRole,
   RENAMED, canonicalRole,
 };

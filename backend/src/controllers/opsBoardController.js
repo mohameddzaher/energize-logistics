@@ -16,7 +16,7 @@ const DROP_QUERY = new Set(['invoiceGap', 'pendingKind', 'pendingOnly', 'pending
 async function gate(req, res, next) {
   try {
     if (FULL_ACCESS_ROLES.includes(req.user.role)) return next();
-    const pages = await require('../utils/permissions').effectivePages(req.user.role);
+    const pages = await require('../utils/permissions').effectivePagesForUser(req.user);
     if (pages[BOARD.PAGE] === true) return next();
   } catch (e) { /* fall through to the refusal */ }
   return res.status(403).json({ code: 'PAGE_FORBIDDEN', message: 'صفحة متابعة الحمولات والشحنات خارج صلاحيّاتك' });

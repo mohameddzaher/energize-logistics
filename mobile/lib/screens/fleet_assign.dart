@@ -17,7 +17,7 @@ class FleetAssignScreen extends StatefulWidget {
 }
 
 // Same list as canAdminFleet on the web (lib/fleet.ts) and ADMIN_ROLES in routes/fleet.js.
-const _adminRoles = ['super_admin', 'admin', 'it_manager', 'it_specialist', 'operations_manager', 'fleet_manager'];
+const _adminRoles = ['super_admin', 'admin', 'it_manager', 'it_specialist', 'operations_manager', 'operations_team_leader', 'fleet_manager'];
 
 String _supName(Map<String, dynamic> u) {
   final n = '${u['firstName'] ?? ''} ${u['lastName'] ?? ''}'.trim();

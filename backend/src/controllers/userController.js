@@ -351,6 +351,22 @@ exports.updateUser = async (req, res) => {
     if (branch !== undefined) user.branch = branch || null;
     if (assignedProjects !== undefined) user.assignedProjects = Array.isArray(assignedProjects) ? assignedProjects : [];
     if (assignedBranches !== undefined) user.assignedBranches = Array.isArray(assignedBranches) ? assignedBranches : [];
+    // Per-user permission exceptions (works on vendors or not, which of its pages): the system owner's call only.
+    if (req.body.accessSections !== undefined || req.body.accessPages !== undefined) {
+      if (!require('../config/constants').isTopRole(req.user.role)) return res.status(403).json({ message: 'صلاحيّات المستخدم يحدّدها مدير النظام فقط' });
+      const { SECTION_KEYS } = require('../config/sections');
+      const pageKeys = new Set(require('../config/pages').PAGES.map((p) => p.key));
+      if (req.body.accessSections !== undefined) {
+        const out = {};
+        for (const [k, v] of Object.entries(req.body.accessSections || {})) if (SECTION_KEYS.includes(k) && ['none', 'view', 'edit'].includes(v)) out[k] = v;
+        user.accessSections = Object.keys(out).length ? out : undefined;
+      }
+      if (req.body.accessPages !== undefined) {
+        const out = {};
+        for (const [k, v] of Object.entries(req.body.accessPages || {})) if (pageKeys.has(k) && typeof v === 'boolean') out[k] = v;
+        user.accessPages = Object.keys(out).length ? out : undefined;
+      }
+    }
     const nextBranches = branchesFrom(req, user.role);
     if (nextBranches) { user.shipmentBranches = nextBranches; announceBranchAccess(); }
     if (manager !== undefined) user.manager = manager || null;

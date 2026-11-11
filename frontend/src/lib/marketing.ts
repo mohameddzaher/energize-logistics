@@ -10,7 +10,7 @@ export type Lang = 'en' | 'ar';
 export const MARKETING_STAFF_ROLES = [
   'super_admin', 'admin', 'it_manager', 'it_specialist', 'moderator', 'employee',
   'marketing_manager', 'marketing_specialist', 'bd_manager',
-  'crm_manager', 'crm_team_lead', 'sales_manager', 'operations_manager',
+  'crm_manager', 'crm_team_lead', 'sales_manager', 'operations_manager', 'operations_team_leader',
 ];
 export const MARKETING_ADMIN_ROLES = [
   'super_admin', 'admin', 'it_manager', 'it_specialist', 'marketing_manager', 'marketing_specialist', 'bd_manager',

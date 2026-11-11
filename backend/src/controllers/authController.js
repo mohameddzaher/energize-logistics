@@ -112,9 +112,10 @@ exports.login = async (req, res) => {
     // the first paint after login (without them, managed sections stay hidden
     // until a refresh re-fetches /api/auth/me).
     const { effectivePermissions, effectivePages, homePageFor, explicitlyGrantedPages } = require('../utils/permissions');
-    const permissions = await effectivePermissions(user.role);
-    const pageAccess = await effectivePages(user.role);
-    const pagesGranted = await explicitlyGrantedPages(user.role);
+    const P = require('../utils/permissions');
+    const permissions = await P.effectivePermissionsForUser(user);
+    const pageAccess = await P.effectivePagesForUser(user);
+    const pagesGranted = await P.explicitlyGrantedPagesForUser(user);
     const homePage = await homePageFor(user.role);
     const { hasSuperAdminPowers } = require('../utils/permissions');
     const superAdminPowers = await hasSuperAdminPowers(user.role);
@@ -358,9 +359,10 @@ exports.getMe = async (req, res) => {
 
     // Effective per-section access (drives the sidebar and client-side edit gating), and per-page access beneath it: section says what can be done, page says where. See config/pages.js.
     const { effectivePermissions, effectivePages, homePageFor, explicitlyGrantedPages } = require('../utils/permissions');
-    const permissions = user ? await effectivePermissions(user.role) : {};
-    const pageAccess = user ? await effectivePages(user.role) : {};
-    const pagesGranted = user ? await explicitlyGrantedPages(user.role) : [];
+    const P = require('../utils/permissions');
+    const permissions = user ? await P.effectivePermissionsForUser(user) : {};
+    const pageAccess = user ? await P.effectivePagesForUser(user) : {};
+    const pagesGranted = user ? await P.explicitlyGrantedPagesForUser(user) : [];
     const homePage = user ? await homePageFor(user.role) : '';
     // Custom role name included. Screens translate roles from a front-end table that does not know roles created after the build, so a financial reviewer showed as the raw English key under the user's name on every screen.
     const roleLabel = user ? await customRoleLabel(user.role) : null;

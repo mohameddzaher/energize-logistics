@@ -12,7 +12,7 @@ const ctrl = require('../controllers/operationsPrivateController');
 
 const ROLES = [
   'super_admin', 'admin', 'it_manager', 'it_specialist',
-  'operations_manager', 'cfo', 'accounting_manager', 'accountant',
+  'operations_manager', 'operations_team_leader', 'cfo', 'accounting_manager', 'accountant',
 ];
 
 router.use(authenticate);

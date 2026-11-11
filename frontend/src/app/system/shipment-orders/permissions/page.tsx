@@ -23,7 +23,7 @@ export default function ShipmentBranchPermissionsPage() {
   const [selfLocked, setSelfLocked] = useState(false);
   const [q, setQ] = useState('');
   // role-only: management, the operations manager, and the data team for its own people.
-  const allowed = ['super_admin', 'admin', 'it_manager', 'it_specialist', 'operations_manager', 'data_manager', 'data_analyst'].includes(user?.role || '');
+  const allowed = ['super_admin', 'admin', 'it_manager', 'it_specialist', 'operations_manager', 'operations_team_leader', 'data_manager', 'data_analyst'].includes(user?.role || '');
 
   const load = useCallback(async () => {
     const d = await api.get<{ branches: Branch[]; users: Row[]; selfLocked?: boolean }>('/api/shipment-orders/branch-access');

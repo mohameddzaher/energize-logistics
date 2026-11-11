@@ -197,7 +197,7 @@ exports.daily = async (req, res) => {
       const placer = new Map();
       for (const r of reqs) for (const p of r.placed || []) placer.set(String(p.order), p.byName || '');
       const creators = [...new Set(rows.map((o) => o.createdBy && String(o.createdBy)).filter(Boolean))];
-      const users = creators.length ? await require('../models/User').find({ _id: { $in: creators }, role: { $in: PV.VENDOR_ROLES } }).select('firstName lastName').lean() : [];
+      const users = creators.length ? await require('../models/User').find({ _id: { $in: creators }, role: { $in: [...PV.VENDOR_ROLES, 'operations_manager', 'operations_team_leader', 'operations_staff'] } }).select('firstName lastName').lean() : [];
       const vendorUser = new Map(users.map((u) => [String(u._id), fullName(u)]));
 
       const days = Math.max(1, Math.round((new Date(`${to}T12:00:00Z`) - new Date(`${from}T12:00:00Z`)) / 86400000) + 1);
@@ -837,7 +837,9 @@ exports.saveSettings = async (req, res) => {
 
 /** The vendors team, for the follow-up owner pickers: accounts in the section and the names already used on the register. */
 async function teamOptions() {
-  const users = await require('../models/User').find({ role: { $in: PV.VENDOR_ROLES }, isActive: { $ne: false } }).select('firstName lastName role').lean();
+  // The vendors team: vendor roles, and operations people whose account is not closed to vendors work (User.accessSections).
+  const users = (await require('../models/User').find({ role: { $in: [...PV.VENDOR_ROLES, 'operations_manager', 'operations_team_leader', 'operations_staff'] }, isActive: { $ne: false } }).select('firstName lastName role accessSections').lean())
+    .filter((u) => (u.accessSections || {})['Vendors Management'] !== 'none');
   const names = await ShipmentOrderSupplier.distinct('followOwner', { followOwner: { $nin: ['', null] } });
   return { users: users.map((u) => ({ id: String(u._id), name: fullName(u), role: u.role })), owners: names.sort((a, b) => a.localeCompare(b, 'ar')) };
 }

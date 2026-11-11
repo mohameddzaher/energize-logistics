@@ -12,7 +12,7 @@ const constants = require('../config/constants');
 const STAFF_ROLES = constants.BD_STAFF_ROLES || [
   'super_admin', 'admin', 'it_manager', 'it_specialist',
   'bd_manager', 'bd_specialist',
-  'sales_manager', 'crm_manager', 'operations_manager',
+  'sales_manager', 'crm_manager', 'operations_manager', 'operations_team_leader',
 ];
 const EDIT_ROLES = constants.BD_ADMIN_ROLES || [
   'super_admin', 'admin', 'it_manager', 'it_specialist', 'bd_manager', 'bd_specialist',

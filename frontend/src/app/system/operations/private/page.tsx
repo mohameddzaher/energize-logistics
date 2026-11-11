@@ -28,7 +28,7 @@ import ScrollX from '@/components/system/ScrollX';
 import { SHIPMENT_STATUSES, PAYMENT_METHODS } from '@/lib/ops';
 
 const LIMIT = 50;
-const ROLES = ['super_admin', 'admin', 'it_manager', 'it_specialist', 'operations_manager', 'cfo', 'accounting_manager', 'accountant'];
+const ROLES = ['super_admin', 'admin', 'it_manager', 'it_specialist', 'operations_manager', 'operations_team_leader', 'cfo', 'accounting_manager', 'accountant'];
 
 // Two stable references, as on the workflow page: an unfiltered column does not create a new reference each render.
 const EMPTY_SET = new Set<string>();

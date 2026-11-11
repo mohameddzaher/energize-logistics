@@ -14,7 +14,7 @@ export type Lang = 'en' | 'ar';
 // broad (all internal staff except B2C + client) so ops data can be embedded
 // across every section dashboard; writes stay limited to the admin tier.
 export const OPS_STAFF_ROLES = [
-  'super_admin', 'admin', 'it_manager', 'it_specialist', 'moderator', 'employee', 'operations_manager', 'operations_staff',
+  'super_admin', 'admin', 'it_manager', 'it_specialist', 'moderator', 'employee', 'operations_manager', 'operations_team_leader', 'operations_staff',
   'workshop_manager', 'workshop_employee', 'procurement_staff',
   'hr_manager', 'hr_specialist',
   'crm_manager', 'crm_team_lead', 'crm_specialist', 'crm_agent',
@@ -24,10 +24,10 @@ export const OPS_STAFF_ROLES = [
   'customs_manager', 'customs_officer',
   'remote_manager',
 ];
-export const OPS_ADMIN_ROLES = ['super_admin', 'admin', 'it_manager', 'it_specialist', 'operations_manager'];
+export const OPS_ADMIN_ROLES = ['super_admin', 'admin', 'it_manager', 'it_specialist', 'operations_manager', 'operations_team_leader'];
 // Core operations roles — used for the dedicated sidebar section so it isn't
 // shown in every staff member's nav even though they CAN read the data.
-export const OPS_SECTION_ROLES = ['super_admin', 'admin', 'it_manager', 'it_specialist', 'operations_manager', 'operations_staff', 'moderator', 'employee'];
+export const OPS_SECTION_ROLES = ['super_admin', 'admin', 'it_manager', 'it_specialist', 'operations_manager', 'operations_team_leader', 'operations_staff', 'moderator', 'employee'];
 export const isOpsStaff = (u: RoleOrUser) => OPS_STAFF_ROLES.includes(roleOf(u)) || canAccessSection(permsOf(u), 'Operations Platform');
 export const isOpsAdmin = (u: RoleOrUser) => OPS_ADMIN_ROLES.includes(roleOf(u)) || canEditSection(permsOf(u), 'Operations Platform');
 

@@ -46,6 +46,8 @@ router.post('/email-signature-preview', mail.signaturePreview);
 router.put('/email-template', authorize('super_admin', 'admin', 'it_manager', 'it_specialist', 'customs_manager'), mail.saveTemplate);
 router.put('/settings', authorize('super_admin', 'admin', 'it_manager', 'it_specialist', 'customs_manager'), ctrl.updateSettings);
 router.get('/upcoming-alerts', ctrl.upcomingAlerts);
+// Demurrage and container-return deadlines still open, nearest first.
+router.get('/deadline-alerts', ctrl.deadlineAlerts);
 // Disbursement requests: clearance reads them to follow its request; only finance decides.
 router.get('/payment-requests', ctrl.listPaymentRequests);
 // Invoicing requests: sent by clearance, answered by finance.

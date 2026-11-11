@@ -935,8 +935,8 @@ final customsCfg = ResourceConfig(
       ('jeddah', 'جدة', 'Jeddah'), ('dammam', 'الدمام', 'Dammam'),
     ]),
     FieldSpec('declarationDate', 'تاريخ البيان', 'Declaration date', type: FieldType.date),
-    // Demurrage on the transaction is counted from this day; on the website it is written next to the last return date.
-    FieldSpec('demurrageStartDate', 'تاريخ تحمّل الأرضيات', 'Demurrage start date', type: FieldType.date),
+    // Containers: derived by the server as unloading + 3 days (a typed value is ignored). Vehicles: default unloading + 15 days, editable.
+    FieldSpec('demurrageStartDate', 'موعد الأرضيات', 'Demurrage date', type: FieldType.date),
     FieldSpec('notes', 'ملاحظات', 'Notes', type: FieldType.textarea),
   ],
 );

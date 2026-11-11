@@ -7,6 +7,7 @@ import { useRouter } from 'next/navigation';
 import { useLanguage } from '@/context/LanguageContext';
 import { useDialog } from '@/components/system/DialogProvider';
 import { useSocket } from '@/hooks/useSocket';
+import { DeadlineAlertsButton } from '@/components/customs/DeadlineAlerts';
 import { useLatestRequest } from '@/hooks/useLatestRequest';
 import { useCustomsSearch, matchesSearch } from '@/components/customs/useCustomsSearch';
 import api from '@/lib/api';
@@ -225,6 +226,7 @@ export default function CustomsDashboardPage() {
       <PageHeader icon={<LayoutDashboard className="w-6 h-6 text-[#f37121]" />}
         title={t('لوحة القسم', 'Section dashboard')}
         subtitle={t('متابعةٌ تشغيليّة: المعاملاتُ ومراحلُها والحاوياتُ والفريق — اضغط أيَّ رقمٍ فيظهر ما وراءه في الجدول تحته', 'Operational follow-up — click any figure and what is behind it shows in the table below')}>
+        <DeadlineAlertsButton ar={ar} />
         {d.canSeeAnalytics && (
           <Link href="/system/customs/analytics" className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm font-semibold text-slate-700 hover:border-[#f37121]/50">
             <BarChart3 className="h-4 w-4" />{t('تحليلات قسم التخليص', 'Customs analytics')}

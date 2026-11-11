@@ -1,5 +1,6 @@
 import '../ui/hr_quick.dart';
 import 'package:flutter/material.dart';
+import '../ui/customs_deadline_alerts.dart';
 import '../services/api.dart';
 import '../services/lang.dart';
 import '../services/live.dart';
@@ -402,6 +403,7 @@ class _CustomsDashboardScreenState extends State<CustomsDashboardScreen> {
     return AppScaffold(
       title: Text(tr('لوحة القسم', 'Section Dashboard')),
       actions: [
+        const CustomsAlertsButton(),
         // All dashboard transactions with their filters (except cancelled): the "all" of the web.
         ExportButton(fileName: 'customs-dashboard-all', sheetName: tr('كلّ المعاملات', 'All transactions'), columns: _exportCols,
             rows: () => _maps(_d?['rows']).where((r) => r['bucket'] != 'cancelled').toList()),

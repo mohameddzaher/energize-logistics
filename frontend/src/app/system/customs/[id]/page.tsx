@@ -5,6 +5,7 @@ import { useParams, useRouter } from 'next/navigation';
 import { useAuth } from '@/context/AuthContext';
 import { useDialog } from '@/components/system/DialogProvider';
 import { useSocket } from '@/hooks/useSocket';
+import { DeadlineAlertsButton, DeadlineBanner } from '@/components/customs/DeadlineAlerts';
 import api from '@/lib/api';
 import { canEditSection } from '@/lib/sections';
 import { ArrowLeft, ArrowRight, Check, Loader2, Ship, FileText, Ban, RotateCcw, Trash2, Lock, Unlock, Receipt, Container, Mail } from 'lucide-react';
@@ -314,7 +315,7 @@ export default function CustomsDetailPage() {
       kv(ar ? 'مكان التفريغ' : 'Unloading location', c.unloadingLocation),
       kv(ar ? 'رقم إذن التسليم' : 'DO number', c.doNumber),
       kv(ar ? 'آخر موعد إرجاع' : 'Return deadline', c.returnDeadline),
-      kv(ar ? 'تاريخ تحمّل الأرضيات' : 'Demurrage start date', c.demurrageStartDate),
+      kv(ar ? 'موعد الأرضيات' : 'Demurrage date', c.demurrageStartDate),
       kv(ar ? 'رقم تصريح الخروج' : 'Exit permit no.', c.exitPermitNumber),
       kv(ar ? 'المدينة' : 'City', c.city),
       kv(ar ? 'الشهر' : 'Month', c.periodMonth ? MONTH_LABELS[Number(c.periodMonth) - 1][ar ? 0 : 1] : ''),
@@ -550,6 +551,7 @@ export default function CustomsDetailPage() {
         </div>
         <div className="flex items-center gap-2">
           {saving && <span className="text-slate-400 text-xs flex items-center gap-1"><Loader2 className="w-3 h-3 animate-spin" /></span>}
+          <DeadlineAlertsButton ar={ar} />
           {/* Converted, not recreated: everything written in it stays (customer, agent, port, containers). */}
           {canEdit && (c as any).upcoming && (
             <button type="button" onClick={activate} disabled={activating}
@@ -624,6 +626,8 @@ export default function CustomsDetailPage() {
           )}
         </div>
       </div>
+
+      <DeadlineBanner clearanceId={String(c._id)} ar={ar} />
 
       {/* Invoiced but its transport invoice has not arrived: red at the top of the page until attached. */}
       {/* Invoicing request status. */}
@@ -801,8 +805,14 @@ export default function CustomsDetailPage() {
           <FieldInput label={ar ? 'رقم إذن التسليم' : 'DO number'} value={c.doNumber} onSave={(v) => patch({ doNumber: v })} disabled={!canEdit} />
           <FieldInput label={ar ? 'أيّام السماح للإرجاع' : 'Return free days'} type="number" value={c.returnFreeDays ?? 0} onSave={(v) => patch({ returnFreeDays: Number(v) || 0 })} disabled={!canEdit} />
           <FieldInput label={ar ? 'آخر موعد إرجاع' : 'Return deadline'} type="date" value={c.returnDeadline} onSave={(v) => patch({ returnDeadline: v })} disabled={!canEdit} />
-          {/* The day floor charges start on the containers, beside the return date. */}
-          <FieldInput label={ar ? 'تاريخ تحمّل الأرضيات' : 'Demurrage start date'} type="date" value={c.demurrageStartDate ? String(c.demurrageStartDate).slice(0, 10) : ''} onSave={(v) => patch({ demurrageStartDate: v })} disabled={!canEdit} />
+          {/* Containers: unloading + 3 days, derived by the server. Vehicles: defaults to unloading + 15 days and stays editable. */}
+          <div>
+            <FieldInput label={ar ? 'موعد الأرضيات' : 'Demurrage date'} type="date" value={c.demurrageStartDate ? String(c.demurrageStartDate).slice(0, 10) : ''} onSave={(v) => patch({ demurrageStartDate: v })}
+              disabled={!canEdit || (cargo !== 'vehicles' && !!c.unloadingAppointment)} />
+            <p className="mt-1 text-[11.5px] text-slate-500">{cargo === 'vehicles'
+              ? (ar ? 'افتراضيًّا موعد التفريغ + 15 يومًا، ويمكن تعديله.' : 'Defaults to unloading + 15 days; editable.')
+              : (ar ? 'يُحسب تلقائيًّا: موعد التفريغ + 3 أيام.' : 'Automatic: unloading + 3 days.')}</p>
+          </div>
           <FieldInput label={ar ? 'المدينة' : 'City'} value={c.city} onSave={(v) => patch({ city: v })} disabled={!canEdit} />
           <FieldSelect label={ar ? 'الشهر' : 'Month'} value={String(c.periodMonth || '')} disabled={!canEdit}
             options={[['', '—'], ...Array.from({ length: 12 }, (_, i) => [String(i + 1), MONTH_LABELS[i][ar ? 0 : 1]] as [string, string])]}

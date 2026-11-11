@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:url_launcher/url_launcher.dart';
 import '../config.dart';
+import '../ui/customs_deadline_alerts.dart';
 import '../services/api.dart';
 import '../services/lang.dart';
 import '../services/live.dart';
@@ -573,6 +574,7 @@ class _CustomsDetailScreenState extends State<CustomsDetailScreen> {
 
     return AppScaffold(
       title: Text('${tr('تخليص', 'Clearance')} ${widget.ref}'),
+      actions: const [CustomsAlertsButton()],
       body: _loading
           ? ListView(padding: const EdgeInsets.all(14), children: const [Shimmer(height: 120), SizedBox(height: 10), Shimmer(height: 220)])
           : _error != null
@@ -580,6 +582,7 @@ class _CustomsDetailScreenState extends State<CustomsDetailScreen> {
               : RefreshIndicator(
                   onRefresh: () { _sheetsKey = ''; return _load(); },
                   child: ListView(padding: const EdgeInsets.all(14), children: [
+                    CustomsDeadlineBanner(clearanceId: widget.clearanceId),
                     // Basic information.
                     FadeSlideIn(
                       child: AppCard(

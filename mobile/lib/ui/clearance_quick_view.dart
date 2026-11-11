@@ -242,7 +242,7 @@ class _QuickViewState extends State<_QuickView> {
         _kv(tr('إذن التسليم', 'DO number'), '${c['doNumber'] ?? ''}'),
         _kv(tr('موعد التفريغ', 'Unloading'), [_date(c['unloadingAppointment']), '${c['unloadingLocation'] ?? ''}'].where((e) => e.isNotEmpty).join(' · ')),
         _kv(tr('آخر موعد للإرجاع', 'Return deadline'), _date(c['returnDeadline'])),
-        _kv(tr('تاريخ تحمّل الأرضيات', 'Demurrage start date'), _date(c['demurrageStartDate'])),
+        _kv(tr('موعد الأرضيات', 'Demurrage date'), _date(c['demurrageStartDate'])),
         _kv(tr('الفوترة', 'Invoicing'), invoiceNo.isNotEmpty
             ? [tr('مفوترة', 'Invoiced'), invoiceNo, if (awaiting) tr('بانتظار فاتورة النقل', 'awaiting transport invoice')].join(' · ')
             : [

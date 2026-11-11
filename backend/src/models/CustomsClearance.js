@@ -725,6 +725,7 @@ function recomputeTotals(doc) {
 
 customsClearanceSchema.pre('save', function (next) {
   recomputeTotals(this);
+  require('../services/customsDeadlines').applyDerivedDates(this);
   this.transportInvoiceReceived = hasTransportInvoice(this);
   if (this.isNew) {
     this.pipelineVersion = 2;

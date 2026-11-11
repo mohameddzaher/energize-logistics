@@ -212,7 +212,7 @@ export default function ClearanceQuickView({ id, ar, onClose }: { id: string; ar
                 <Fact icon={Calendar} label={ar ? 'موعد التفريغ' : 'Unloading'} value={[fmtDate(c.unloadingAppointment), c.unloadingLocation].filter(Boolean).join(' · ')} />
                 <Fact icon={Hash} label={ar ? 'تصريح الخروج' : 'Exit permit'} value={c.exitPermitNumber} />
                 <Fact icon={Calendar} label={ar ? 'آخر موعد للإرجاع' : 'Return deadline'} value={fmtDate(c.returnDeadline)} />
-                <Fact icon={Calendar} label={ar ? 'تاريخ تحمّل الأرضيات' : 'Demurrage start date'} value={fmtDate(c.demurrageStartDate)} />
+                <Fact icon={Calendar} label={ar ? 'موعد الأرضيات' : 'Demurrage date'} value={fmtDate(c.demurrageStartDate)} />
                 <Fact icon={Receipt} label={ar ? 'الفوترة' : 'Invoicing'} value={[c.billing?.invoiceStatus, c.billing?.ourInvoiceNumber].filter(Boolean).join(' · ')} />
                 <Fact icon={Building2} label={ar ? 'المخلّص' : 'Assigned to'} value={c.assignedTo} />
               </div>

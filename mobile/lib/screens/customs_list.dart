@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import '../ui/customs_deadline_alerts.dart';
 import '../services/api.dart';
 import '../services/auth.dart';
 import '../services/lang.dart';
@@ -541,6 +542,7 @@ class _CustomsListScreenState extends State<CustomsListScreen> {
     return AppScaffold(
       title: Text(tr('التخليص الجمركي', 'Customs Clearance')),
       actions: [
+        const CustomsAlertsButton(),
         // Badge of those nearing their date: a number that stays in view while work remains.
         IconButton(
           tooltip: tr('المعاملات القادمة (${_alerts['total'] ?? 0})', 'Upcoming (${_alerts['total'] ?? 0})'),

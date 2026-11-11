@@ -6,6 +6,7 @@ const {
   syncUnits, TRANSPORT_LEGS, CARGO_TYPES, VEHICLE_KINDS,
   STAGE_COST, TRANSPORT_STAGE_KEYS, DERIVED_REVENUE, applyPaidCosts, costFieldOf,
 } = require('../models/CustomsClearance');
+const customsDeadlines = require('../services/customsDeadlines');
 const contractPricing = require('../utils/customsContractPricing');
 const cache = require('../utils/ttlCache');
 const { searchKey } = require('../utils/arabicSearch');
@@ -140,7 +141,7 @@ const DISPLAY_FIELDS = [
   'containerCount', 'declarationNumber', 'periodYear', 'periodMonth', 'createdAt',
   // Table columns: declaration number and unloading date (the transaction's unloading appointment).
   'unloadingAppointment',
-  'cancelled', 'isCompleted', 'returnDeadline', 'returnFreeDays',
+  'cancelled', 'isCompleted', 'returnDeadline', 'returnFreeDays', 'demurrageStartDate',
   'customerParty', 'agentParty',
   // Transaction type and customer invoice number; the table's invoice status is read from it.
   'cargoType', 'saleInvoiceNumber',
@@ -155,7 +156,7 @@ const DISPLAY_NESTED = ['invoiceRequest.status', 'billing.invoiceStatus', 'billi
   'costs.total', 'revenue.clearanceFee', 'revenue.totalInvoiced', 'revenue.profit'];
 // Search has its own index (see SEARCH_INDEX_FIELDS below), so the list reads only what is displayed or computed from.
 // Read for computation but not sent: stage percentage and whether it awaits the transport invoice.
-const DERIVE_ONLY = ['papersReceivedDate', 'declarationDate', 'stagesDone', 'transportRoute', 'pipelineVersion', 'stageDone.doInvoicePaid', 'transportInvoiceReceived',
+const DERIVE_ONLY = ['upcoming', 'papersReceivedDate', 'declarationDate', 'stagesDone', 'transportRoute', 'pipelineVersion', 'stageDone.doInvoicePaid', 'transportInvoiceReceived',
   'containers.route', 'containers.stagesDone',
   // Container (or vehicle) numbers: searched, and only one line is sent (see toWire).
   'containers.containerNumber'];
@@ -287,6 +288,8 @@ function toWire(r, money = true) {
   // Percentage and next stage are computed by the transaction's own rule (pipelineOf).
   const p = pipelineOf(r);
   out.pipeline = { percent: p.percent, done: p.done, total: p.total, next: p.next };
+  const alerts = customsDeadlines.alertsOf(r, p);
+  if (alerts.length) out.alerts = alerts.map(({ type, date, deadlineAt }) => ({ type, date, deadlineAt }));
   // The transaction date used for filtering (see txDateOf), and whether it was invoiced, even before the system.
   out.date = txDateOf(r);
   if (r.saleInvoiceNumber || p.steps.some((x) => x.key === 'invoiced' && x.done)) out.invoiced = true;
@@ -425,7 +428,8 @@ exports.getClearance = async (req, res) => {
     if (!clearance) return res.status(404).json({ message: 'Clearance not found' });
     // The document leaves without its profit (see toJSON in the model); whoever is entitled gets it here.
     const profit = PROFIT_ROLES.includes(req.user.role) ? Number(clearance.revenue && clearance.revenue.profit) || 0 : undefined;
-    res.json({ clearance, ...(profit !== undefined ? { profit } : {}) });
+    const alerts = customsDeadlines.alertsOf(clearance.toObject(), pipelineOf(clearance.toObject()));
+    res.json({ clearance, alerts, ...(profit !== undefined ? { profit } : {}) });
   } catch (error) {
     // An invalid id means not found, not a server fault; a stale or truncated link used to return 500 as if the system were down.
     if (error.name === 'CastError') return res.status(404).json({ message: 'Clearance not found' });
@@ -486,6 +490,9 @@ exports.updateClearance = async (req, res) => {
     }
     const data = pick(req.body, existing);
     data.lastModifiedBy = req.user._id;
+    // Containers' floor date is derived from unloading and cannot be typed.
+    if (existing.cargoType !== 'vehicles' && data.cargoType !== 'vehicles' && (data.unloadingAppointment || existing.unloadingAppointment)) delete data.demurrageStartDate;
+    customsDeadlines.applyDerivedDates(data, existing);
     await attachPartyFields(data);
     // Customer or container count changed: contract prices follow
     // Clearance fees are per container, so an extra container is an extra fee. Only values still equal to the contract are overwritten; manual edits stay (see fillRevenue).
@@ -1141,6 +1148,40 @@ exports.updateSettings = async (req, res) => {
  * Count of those whose date is near. The window comes from section settings, not a number in code, so changing it to three days takes effect on the next call without a deploy.
  * Overdue ones stay in the count: a transaction whose time came and was not converted deserves the alert more than one two days away.
  */
+/**
+ * Open demurrage and container-return deadlines across the section, nearest first.
+ * Countdown is computed by the reader from `deadlineAt`; the list is cached for a short time only.
+ */
+exports.deadlineAlerts = async (req, res) => {
+  try {
+    const body = await cache.wrap('customs:deadlines', 20000, async () => {
+      const rows = await CustomsClearance.find({
+        cancelled: { $ne: true }, upcoming: { $ne: true }, isCompleted: { $ne: true },
+        $or: [{ demurrageStartDate: { $gt: '' } }, { returnDeadline: { $gt: '' } }],
+      }).select('refNumber blNumber customerName shippingAgent port branch cargoType containerCount unloadingAppointment demurrageStartDate returnDeadline '
+        + 'cancelled upcoming isCompleted stagesDone transportRoute pipelineVersion stageDone containers.route containers.stagesDone').lean();
+      const items = [];
+      for (const c of rows) {
+        for (const a of customsDeadlines.alertsOf(c, pipelineOf(c))) {
+          items.push({ ...a, clearanceId: c._id, refNumber: c.refNumber, blNumber: c.blNumber || '', customerName: c.customerName || '',
+            cargoType: c.cargoType === 'vehicles' ? 'vehicles' : 'containers', units: Number(c.containerCount) || 0, unloadingAppointment: String(c.unloadingAppointment || '').slice(0, 10) });
+        }
+      }
+      items.sort((a, b) => String(a.deadlineAt).localeCompare(String(b.deadlineAt)));
+      return { items };
+    });
+    const now = Date.now();
+    const items = body.items.map((a) => {
+      const msLeft = new Date(a.deadlineAt).getTime() - now;
+      return { ...a, msLeft, state: msLeft < 0 ? 'overdue' : msLeft <= 86400000 ? 'today' : msLeft <= 3 * 86400000 ? 'soon' : 'ok' };
+    });
+    res.json({ items, count: items.length, urgent: items.filter((x) => x.state !== 'ok').length, now: new Date(now).toISOString() });
+  } catch (e) {
+    console.error('customs deadlineAlerts:', e);
+    res.status(500).json({ message: 'تعذّر قراءة التنبيهات' });
+  }
+};
+
 exports.upcomingAlerts = async (req, res) => {
   try {
     const { upcomingAlertDays } = await CustomsSettings.get();

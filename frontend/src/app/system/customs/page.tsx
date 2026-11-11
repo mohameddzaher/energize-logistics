@@ -6,6 +6,7 @@ import { useDialog } from '@/components/system/DialogProvider';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/context/AuthContext';
 import { useSocket } from '@/hooks/useSocket';
+import { DeadlineAlertsButton } from '@/components/customs/DeadlineAlerts';
 import api from '@/lib/api';
 import { useCustomsSearch, matchesSearch } from '@/components/customs/useCustomsSearch';
 import { canEditSection } from '@/lib/sections';
@@ -365,6 +366,7 @@ export default function CustomsPage() {
         </div>
         <div className="flex items-center gap-2">
           {/* The dashboard and guide buttons were removed: analytics became a navigation page and the guide was hidden from the department. A header button to a page already in the sidebar is duplication competing with what belongs to this screen. */}
+          <DeadlineAlertsButton ar={ar} />
           <ExportMenu fileName="customs-clearances" lang={ar ? 'ar' : 'en'} variant="subtle" label={ar ? 'تصدير Excel' : 'Export Excel'} options={exportOptions} />
 
           {/* Due-soon badge: a number on a button, not a closable message; it stays in view as long as there is work, and opening it shows the list. The period comes from the department settings. */}
@@ -530,6 +532,12 @@ export default function CustomsPage() {
                     <span className={`px-2 py-1 rounded-full text-xs font-medium ${RETURN_BADGE[returnState(c)]}`} title={c.returnDeadline || ''}>
                       {RETURN_LABEL[returnState(c)][ar ? 0 : 1]}
                     </span>
+                    {/* Open demurrage date: units still at the port. */}
+                    {(c as any).alerts?.some((a: any) => a.type === 'demurrage') && (() => {
+                      const a = (c as any).alerts.find((x: any) => x.type === 'demurrage');
+                      const late = new Date(a.deadlineAt).getTime() < Date.now();
+                      return <span className={`ms-1 px-2 py-1 rounded-full text-xs font-medium ${late ? 'bg-red-500/20 text-red-700' : 'bg-amber-500/20 text-amber-800'}`} title={a.date}>{ar ? `أرضيات ${a.date.slice(5)}` : `Floor ${a.date.slice(5)}`}</span>;
+                    })()}
                   </td>
                   <td className="px-4 py-3">
                     {/* Invoiced but its transport invoice has not arrived: red until attached. */}

@@ -845,9 +845,15 @@ exports.place = async (req, res) => {
 };
 
 /** Our own company as a supplier in the carriers register: an order with it becomes a linked fleet load. */
+// The fleet is itself the supplier when it completes a request: this exact register row, created if it is ever missing.
+const OUR_SUPPLIER_NAME = 'شركة تنشيط للخدمات اللوجستية';
 async function ourSupplier() {
   const Supplier = require('../models/ShipmentOrderSupplier');
-  return Supplier.findOne({ name: /تنشيط/, mergedInto: null, isActive: { $ne: false } }).sort({ inMaster: -1, createdAt: 1 }).select('_id name').lean();
+  const live = { mergedInto: null, isActive: { $ne: false } };
+  const exact = await Supplier.findOne({ ...live, name: OUR_SUPPLIER_NAME }).select('_id name').lean();
+  if (exact) return exact;
+  const created = await Supplier.create({ name: OUR_SUPPLIER_NAME, isActive: true, approvalStatus: 'approved' }).catch(() => null);
+  return created ? { _id: created._id, name: created.name } : Supplier.findOne({ ...live, name: /تنشيط/ }).sort({ inMaster: -1, createdAt: 1 }).select('_id name').lean();
 }
 /** The fleet load the order became (services/fleetOrderLink); the link's own deferred call may be creating it in parallel. */
 async function linkedLoad(orderId) {

@@ -124,9 +124,17 @@ async function fleetToOrder(loadId, actor) {
   const wanted = {
     driverName: str(load.driverName), driverPhone: str(load.driverPhone), vehiclePlate: str(load.vehiclePlate),
   };
+  // The load's identity is the order's too: an edit of branch, route, customer or papers on the fleet side reaches the order (and from it the workflow row and the request), as the order's edits already reach the load.
+  for (const [k, ok] of [['fromCity', 'fromCity'], ['toCity', 'toCity'], ['branch', 'branch'], ['customerName', 'customerName'], ['blNumber', 'blNumber'], ['containerNumber', 'containerNumber'], ['loadType', 'cargoType']]) {
+    if (str(load[k])) wanted[ok] = str(load[k]);
+  }
+  if (load.customer) {
+    const fc = await Fleet().FleetCustomer.findById(load.customer).select('shipmentCustomer').lean();
+    if (fc && fc.shipmentCustomer && String(fc.shipmentCustomer) !== String(o.customer || '')) wanted.customer = fc.shipmentCustomer;
+  }
   if (num(load.price) > 0) wanted.buyPrice = num(load.price);
   if (num(load.fullRent) > 0) wanted.sellPrice = num(load.fullRent);
-  const set = Object.fromEntries(Object.entries(wanted).filter(([k, v]) => !same(o[k], v)));
+  const set = Object.fromEntries(Object.entries(wanted).filter(([k, v]) => (k === 'customer' ? true : !same(o[k], v))));
   const push = {};
   if (str(load.status) && str(load.status) !== str(o.status)) {
     set.status = str(load.status);
@@ -139,6 +147,12 @@ async function fleetToOrder(loadId, actor) {
   if (o.shipmentRequest) {
     const placed = { 'placed.$.driverName': str(load.driverName), 'placed.$.vehiclePlate': str(load.vehiclePlate) };
     await require('../models/ShipmentRequest').updateOne({ _id: o.shipmentRequest, 'placed.order': o._id }, { $set: placed }).catch(() => {});
+    // The request's own route/branch/customer follow too when the order carries the whole request (one truck).
+    const req = await require('../models/ShipmentRequest').findById(o.shipmentRequest).select('placed quantity').lean();
+    if (req && (req.placed || []).length <= 1 && Number(req.quantity || 1) <= 1) {
+      const head = Object.fromEntries(['fromCity', 'toCity', 'branch', 'customerName'].filter((k) => set[k]).map((k) => [k, set[k]]));
+      if (Object.keys(head).length) await require('../models/ShipmentRequest').updateOne({ _id: o.shipmentRequest }, { $set: head }).catch(() => {});
+    }
     try { require('../websocket/socketManager').emitToAll('shipmentRequests:changed', { id: String(o.shipmentRequest) }); } catch (_) { /* */ }
   }
   announceOrders(o._id);

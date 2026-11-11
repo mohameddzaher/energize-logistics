@@ -77,7 +77,7 @@ const FULL_FIELDS = [...ALL_FIELDS, ...SELLING_FIELDS];
 // A role outside the list never receives the value from the server (stripRowFor), cannot filter by it, does not get it in its export, and cannot write it.
 const SELLING_ROLES = [
   'super_admin', 'admin', 'it_manager', 'it_specialist', 'cfo', 'accounting_manager', 'accountant',
-  'collections_manager', 'collections_staff', 'operations_manager', 'operations_team_leader', 'general_manager',
+  'collections_manager', 'collections_staff', 'operations_manager', 'general_manager',
   // Data team; super admin narrows the operations section from the matrix.
   ...require('../config/roles').DATA_ROLES,
   // Sales writes the selling price: the manager directly, a rep through approval (config/sellingPriceRequests).
@@ -160,7 +160,9 @@ const STATUS_ROLES = [...require('../config/roles').DATA_ROLES, 'shipment_orders
 const fieldsForRole = async (roleIn) => {
   // A role holding another's rights writes that role's fields (operations team leader → operations manager).
   const role = require('../config/roles').rightsRoleOf(roleIn);
-  const fields = await baseFieldsForRole(role);
+  let fields = await baseFieldsForRole(role);
+  // The team leader holds the manager's rights except the selling price, which stays with the operations manager (owner).
+  if (role !== roleIn && !SELLING_ROLES.includes(roleIn)) fields = fields.filter((f) => !SELLING_FIELDS.includes(f));
   return STATUS_ROLES.includes(role) && !fields.includes('applicationStatus') ? [...fields, 'applicationStatus'] : fields;
 };
 const baseFieldsForRole = async (role) => {

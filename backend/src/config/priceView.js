@@ -23,14 +23,13 @@ const FLEET_ROLES = ['fleet_manager', 'fleet_supervisor'];
  * rights, the team leader) sees it; operations staff complete trucks on purchase alone. The fleet never sees the
  * order's selling price. Every other role follows priceView.
  */
-const requestSellVisible = (u) => {
-  if (!priceView(u).sell) return false;
-  const role = roleOf(u);
-  if (FLEET_ROLES.includes(role)) return false;
-  const { rolesOfSection, rightsRoleOf } = require('./roles');
-  if (rolesOfSection('Operations').includes(role)) return rightsRoleOf(role) === 'operations_manager';
-  return true;
-};
+// Who sees the selling price on sales requests (owner's list): top management and IT, finance (CFO, accounts manager, accountant), the general manager, the sales team, the data team, and from operations the operations manager alone (not the team leader).
+const REQUEST_SELL_ROLES = new Set([
+  'super_admin', 'admin', 'it_manager', 'it_specialist', 'it_trainee',
+  'cfo', 'accounting_manager', 'accountant', 'general_manager',
+  'operations_manager', ...SALES_ROLES, 'data_manager', 'data_analyst', 'data_entry',
+]);
+const requestSellVisible = (u) => REQUEST_SELL_ROLES.has(roleOf(u));
 
 // Purchase-side fields of a shipment order; hidden together because any one of them reveals the cost.
 const BUY_FIELDS = ['buyPrice', 'advanceAmount', 'driverRentPrice'];

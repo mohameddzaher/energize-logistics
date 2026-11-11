@@ -58,8 +58,9 @@ function rowOfFleet(f) {
       : str(f.paymentType) === 'cash' ? 'cash' : 'late',
     driverRentalType: str(f.rentType),
     driverCost: num(f.driverExpense),
-    // A branch customer is a 3PL customer carried by our truck: the fleet's price is what the company pays its fleet (purchase), and the real selling price is written in the workflow by sales, operations or the data team, so it is never written from here.
-    ...(f.customerType === 'branch' ? { purchaseValue: fleetPrice(f) } : { sellingValue: fleetPrice(f) }),
+    // «إيجار السيارة» is the fleet's own income and the row's purchase price, for every customer; «الإيجار كامل», when written, is the row's selling price. Without it the selling price is left to sales.
+    purchaseValue: num(f.price),
+    ...(num(f.fullRent) > 0 ? { sellingValue: num(f.fullRent) } : {}),
   };
 }
 
@@ -243,12 +244,6 @@ async function mirrorFleet(loadOrId) {
   return { changed: true, created: true };
 }
 
-/**
- * The load's selling figure: «الإيجار كامل» when written (the vehicle rent plus extras we paid, all-inclusive), else «إيجار السيارة».
- * A value coming back from the workflow goes into whichever of the two is in effect.
- */
-function fleetPrice(f) { return num(f.fullRent) > 0 ? num(f.fullRent) : num(f.price); }
-const fleetPriceField = (f) => (num(f.fullRent) > 0 ? 'fullRent' : 'price');
 
 /** Workflow row → fleet load. */
 async function pullFleet(w) {
@@ -257,11 +252,10 @@ async function pullFleet(w) {
   const wanted = {
     fromCity: str(w.fromLocation), toCity: str(w.toLocation), customerName: str(w.username), vehiclePlate: str(w.plateNumber),
     driverName: str(w.driverName), driverPhone: str(w.driverPhone), trailerType: str(w.truckType), loadType: str(w.loadType),
-    // Branch customer: the fleet's price is the row's purchase; the row's selling price is the company's and stays there.
-    [fleetPriceField(load)]: num(load.customerType === 'branch' ? w.purchaseValue : w.sellingValue), driverExpense: num(w.driverCost), status: str(w.applicationStatus) || load.status,
+    // The row's purchase is the vehicle rent; its selling price returns into full rent only on a load that carries one.
+    price: num(w.purchaseValue), driverExpense: num(w.driverCost), status: str(w.applicationStatus) || load.status,
   };
-  // A load priced before full rent counted as the selling figure has the vehicle rent in its row: that is not an edit, so full rent stays.
-  if (wanted.fullRent !== undefined && wanted.fullRent === num(load.price)) delete wanted.fullRent;
+  if (num(load.fullRent) > 0 && num(w.sellingValue) > 0) wanted.fullRent = num(w.sellingValue);
   if (w.reportDate) wanted.loadDate = w.reportDate;
   if (isSubtype(w.paymentSubtype)) { wanted.paymentSubtype = w.paymentSubtype; wanted.paymentType = subtypeFamily(w.paymentSubtype); }
   const diff = changes(load, wanted);
@@ -516,5 +510,5 @@ function startShipmentOrderLink() {
 }
 
 module.exports = {
-  SHIPMENT_DELETE_ROLES, fleetPrice, fleetPriceField, syncPlatformPayment, deleteShipments, announceRename, markLateArrivals, mirrorFleet, mirrorFleetSoon, mirrorOrder, pullWorkflow, mirrorPlatformOrder, pullPlatformRow, mirrorSoon, mirrorPlatformSoon, pullSoon, reconcile, startShipmentOrderLink,
+  SHIPMENT_DELETE_ROLES, syncPlatformPayment, deleteShipments, announceRename, markLateArrivals, mirrorFleet, mirrorFleetSoon, mirrorOrder, pullWorkflow, mirrorPlatformOrder, pullPlatformRow, mirrorSoon, mirrorPlatformSoon, pullSoon, reconcile, startShipmentOrderLink,
 };

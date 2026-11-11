@@ -570,17 +570,11 @@ exports.updateShipment = async (req, res) => {
     const data = pick(req.body, SHIPMENT_EDITABLE);
     applyPaymentSubtype(data);
 
-    // The load price is the selling price of its workflow row; from these roles it goes to approval (config/sellingPriceRequests).
+    // «الإيجار كامل» is the workflow's selling price: from these roles a change goes to approval (config/sellingPriceRequests). «إيجار السيارة» is the purchase price and needs none.
     let sellingRequest = null;
-    // A branch customer's load, or one carrying a shipment order, prices what the company pays its fleet (a purchase), not a sale: no selling-price approval.
-    const purchaseSide = shipment.shipmentOrder || (data.customerType || shipment.customerType) === 'branch';
-    // The selling figure is «الإيجار كامل» when written, else «إيجار السيارة»; a change to either that moves it goes to approval.
-    if (!purchaseSide && (data.price !== undefined || data.fullRent !== undefined) && require('../config/sellingPriceRequests').sellingByRequest(req.user)) {
-      const { fleetPrice } = require('../services/shipmentOrderWorkflowLink');
-      const n = (x) => (x === '' || x == null ? 0 : Number(x) || 0);
-      const before = fleetPrice(shipment);
-      const v = fleetPrice({ price: data.price !== undefined ? n(data.price) : shipment.price, fullRent: data.fullRent !== undefined ? n(data.fullRent) : shipment.fullRent });
-      if (Math.round(v * 100) !== Math.round(before * 100)) {
+    if (data.fullRent !== undefined && require('../config/sellingPriceRequests').sellingByRequest(req.user)) {
+      const v = data.fullRent === '' || data.fullRent == null ? 0 : Number(data.fullRent) || 0;
+      if (v > 0 && Math.round(v * 100) !== Math.round((Number(shipment.fullRent) || 0) * 100)) {
         const link = require('../services/shipmentOrderWorkflowLink');
         await link.mirrorFleet(shipment._id);
         const row = await require('../models/OperationsWorkflow').findOne({ fleetShipment: shipment._id }).lean();
@@ -588,7 +582,7 @@ exports.updateShipment = async (req, res) => {
         const r = await require('../services/sellingPriceRequests').createRequest({ workflow: row, origin: 'workflow', raw: v, user: req.user });
         if (r.error) return res.status(r.error.status).json(r.error.body);
         sellingRequest = r.request || null;
-        delete data.price; delete data.fullRent;
+        delete data.fullRent;
       }
     }
 

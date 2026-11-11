@@ -4,9 +4,11 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import {
   CheckCircle2, PlayCircle, CircleDashed, PauseCircle, AlertTriangle, Ban, ChevronDown, Plus, CornerDownLeft,
-  Loader2, Link2, CalendarDays, User, Layers, Pencil, Users, X, ArrowLeftRight, Trash2,
+  Loader2, Link2, CalendarDays, User, Layers, Pencil, Users, X, ArrowLeftRight, Trash2, MoreHorizontal, History,
 } from 'lucide-react';
 import { useDialog } from '@/components/system/DialogProvider';
+import SearchSelect from '@/components/system/SearchSelect';
+import { Modal } from '@/components/hr/HRKit';
 import api from '@/lib/api';
 import { useSocket } from '@/hooks/useSocket';
 import { StatusPill, ProgressForm, Progress, DatesLine, UpdateLog } from '@/components/system/BusinessReviewKit';
@@ -200,6 +202,9 @@ function TaskRow({ task, meta, L, meetingId, canEdit, dept, open, onToggle, onCh
   const [mode, setMode] = useState<'' | 'update' | 'postpone' | 'followup' | 'edit' | 'share' | 'transfer'>('');
   const { confirm } = useDialog();
   const [moveTo, setMoveTo] = useState('');
+  const [menu, setMenu] = useState(false);
+  const personOpts = (exclude: string[]) => people.filter((p) => !exclude.includes(String(p._id)))
+    .map((p) => ({ value: String(p._id), label: p.name, hint: p.section ? deptLabel(p.section, L) : '' }));
   const transfer = async () => {
     if (!moveTo) return;
     setBusy(true);
@@ -329,35 +334,38 @@ function TaskRow({ task, meta, L, meetingId, canEdit, dept, open, onToggle, onCh
                 className="inline-flex items-center gap-1.5 border border-slate-300 bg-white text-slate-700 text-xs font-bold rounded-lg px-3 py-1.5">
                 <PlayCircle className="w-3.5 h-3.5" />{t('Update status', 'تحديث الحالة')}
               </button>
-              <button type="button" onClick={() => setMode(mode === 'followup' ? '' : 'followup')}
-                className="inline-flex items-center gap-1.5 border border-violet-300 bg-white text-violet-700 text-xs font-bold rounded-lg px-3 py-1.5">
-                <Plus className="w-3.5 h-3.5" />{t('Follow-up task', 'إضافة بند متابعة')}
-              </button>
-              <button type="button" onClick={() => setMode(mode === 'edit' ? '' : 'edit')}
-                className="inline-flex items-center gap-1.5 border border-slate-300 bg-white text-slate-700 text-xs font-bold rounded-lg px-3 py-1.5">
-                <Pencil className="w-3.5 h-3.5" />{t('Edit task', 'تعديل البند')}
-              </button>
-              <button type="button" onClick={() => setMode(mode === 'share' ? '' : 'share')}
-                className="inline-flex items-center gap-1.5 border border-sky-300 bg-white text-sky-700 text-xs font-bold rounded-lg px-3 py-1.5">
-                <Users className="w-3.5 h-3.5" />{t('Also assign to…', 'إسناده لمسؤولٍ آخر أيضًا')}
-              </button>
-              <button type="button" onClick={() => setMode(mode === 'transfer' ? '' : 'transfer')}
-                className="inline-flex items-center gap-1.5 border border-indigo-300 bg-white text-indigo-700 text-xs font-bold rounded-lg px-3 py-1.5">
-                <ArrowLeftRight className="w-3.5 h-3.5" />{t('Move to…', 'نقله لمسؤولٍ آخر')}
-              </button>
-              {!!task.sharedWith?.length && (
-                <button type="button" disabled={busy} onClick={() => remove(true)}
-                  className="inline-flex items-center gap-1.5 border border-red-200 bg-white text-red-600 text-xs font-bold rounded-lg px-3 py-1.5 disabled:opacity-50">
-                  <X className="w-3.5 h-3.5" />{t('Remove this owner', 'إزالة هذا المسؤول')}
+              <div className="relative">
+                <button type="button" onClick={() => setMenu((v) => !v)}
+                  className="inline-flex items-center gap-1.5 border border-slate-300 bg-white text-slate-700 text-xs font-bold rounded-lg px-3 py-1.5 hover:bg-slate-50">
+                  <MoreHorizontal className="w-3.5 h-3.5" />{t('More', 'إجراءات أخرى')}<ChevronDown className="w-3 h-3" />
                 </button>
-              )}
-              <button type="button" disabled={busy} onClick={() => remove(false)}
-                className="inline-flex items-center gap-1.5 border border-red-300 bg-white text-red-700 text-xs font-bold rounded-lg px-3 py-1.5 disabled:opacity-50">
-                <Trash2 className="w-3.5 h-3.5" />{t('Delete task', 'حذف البند')}
-              </button>
+                {menu && (
+                  <div className="absolute z-30 mt-1 w-60 rounded-xl border border-slate-200 bg-white shadow-xl py-1 text-[13px]" onMouseLeave={() => setMenu(false)}>
+                    {[
+                      ['edit', Pencil, t('Edit task', 'تعديل البند'), 'text-slate-700'],
+                      ['followup', Plus, t('Follow-up task', 'إضافة بند متابعة'), 'text-violet-700'],
+                      ['share', Users, t('Also assign to…', 'إسناده لمسؤولٍ آخر أيضًا'), 'text-sky-700'],
+                      ['transfer', ArrowLeftRight, t('Move to…', 'نقله لمسؤولٍ آخر'), 'text-indigo-700'],
+                    ].map(([k, Icon, label, cls]: any) => (
+                      <button key={k} type="button" onClick={() => { setMenu(false); setMode(k); }}
+                        className={`w-full flex items-center gap-2 px-3 py-2 text-start hover:bg-slate-50 font-semibold ${cls}`}><Icon className="w-4 h-4" />{label}</button>
+                    ))}
+                    <div className="my-1 border-t border-slate-100" />
+                    {!!task.sharedWith?.length && (
+                      <button type="button" disabled={busy} onClick={() => { setMenu(false); remove(true); }}
+                        className="w-full flex items-center gap-2 px-3 py-2 text-start hover:bg-red-50 font-semibold text-red-600"><X className="w-4 h-4" />{t('Remove this owner', 'إزالة هذا المسؤول')}</button>
+                    )}
+                    <button type="button" disabled={busy} onClick={() => { setMenu(false); remove(false); }}
+                      className="w-full flex items-center gap-2 px-3 py-2 text-start hover:bg-red-50 font-semibold text-red-700"><Trash2 className="w-4 h-4" />{t('Delete task', 'حذف البند')}</button>
+                  </div>
+                )}
+              </div>
             </div>
           )}
 
+          {/* Every action opens on its own above the page, so the task's details stay as they are and nothing stacks under them. */}
+          <Modal open={!!mode} onClose={() => setMode('')} title={`${({ postpone: t('Postpone', 'تأجيل البند'), edit: t('Edit task', 'تعديل البند'), share: t('Also assign to', 'إسناده لمسؤولٍ آخر أيضًا'), transfer: t('Move to', 'نقله لمسؤولٍ آخر'), update: t('Update status', 'تحديث الحالة'), followup: t('Follow-up task', 'بند متابعة') } as any)[mode] || ''} — ${task.title}`}>
+          <div className="space-y-2">
           {mode === 'postpone' && (
             <div className="bg-amber-50 border border-amber-200 rounded-lg p-3 space-y-2">
             <div className="flex flex-wrap gap-1.5">
@@ -409,11 +417,8 @@ function TaskRow({ task, meta, L, meetingId, canEdit, dept, open, onToggle, onCh
           {mode === 'share' && (
             <div className="bg-sky-50 border border-sky-200 rounded-lg p-3 flex flex-wrap items-center gap-2">
               <span className="text-xs font-bold text-sky-900">{t('Also assign this task to (both own it)', 'أسنِد البندَ نفسَه أيضًا إلى (يصبحان مسؤولَين عنه معًا)')}</span>
-              <select value={shareTo} onChange={(e) => setShareTo(e.target.value)} className="flex-1 min-w-[14rem] px-2.5 py-1.5 rounded-lg border border-sky-300 bg-white text-sm">
-                <option value="">{t('Choose…', 'اختر…')}</option>
-                {people.filter((p) => String(p._id) !== String(task.assignee?._id || task.assignee) && !(task.sharedWith || []).some((x: any) => String(x.assignee) === String(p._id)))
-                  .map((p) => <option key={p._id} value={p._id}>{p.name}{p.section ? ` — ${deptLabel(p.section, L)}` : ''}</option>)}
-              </select>
+              <SearchSelect className="flex-1 min-w-[14rem]" ar={L === 'ar'} value={shareTo} onChange={setShareTo} placeholder={t('Choose a person…', 'اختر الشخص…')}
+                options={personOpts([String(task.assignee?._id || task.assignee), ...(task.sharedWith || []).map((x: any) => String(x.assignee))])} />
               <button type="button" disabled={busy || !shareTo} onClick={share} className="bg-sky-600 text-white text-xs font-bold rounded-lg px-3 py-1.5 disabled:opacity-50">{t('Assign', 'إسناد')}</button>
               <p className="w-full text-[11.5px] text-sky-800">{t('It appears in their department card and their own list; each reports progress on their part.', 'يظهر في بطاقة قسمه وفي «بنودي» عنده، ويُحدِّث كلٌّ منهما حالةَ جزئه، ويرى كلٌّ منهما حالةَ الآخر.')}</p>
             </div>
@@ -421,11 +426,8 @@ function TaskRow({ task, meta, L, meetingId, canEdit, dept, open, onToggle, onCh
           {mode === 'transfer' && (
             <div className="bg-indigo-50 border border-indigo-200 rounded-lg p-3 flex flex-wrap items-center gap-2">
               <span className="text-xs font-bold text-indigo-900">{t(`Move from ${task.assigneeName} to`, `نقل البند من ${task.assigneeName} إلى`)}</span>
-              <select value={moveTo} onChange={(e) => setMoveTo(e.target.value)} className="flex-1 min-w-[14rem] px-2.5 py-1.5 rounded-lg border border-indigo-300 bg-white text-sm">
-                <option value="">{t('Choose…', 'اختر…')}</option>
-                {people.filter((p) => String(p._id) !== String(task.assignee?._id || task.assignee))
-                  .map((p) => <option key={p._id} value={p._id}>{p.name}{p.section ? ` — ${deptLabel(p.section, L)}` : ''}</option>)}
-              </select>
+              <SearchSelect className="flex-1 min-w-[14rem]" ar={L === 'ar'} value={moveTo} onChange={setMoveTo} placeholder={t('Choose a person…', 'اختر الشخص…')}
+                options={personOpts([String(task.assignee?._id || task.assignee)])} />
               <button type="button" disabled={busy || !moveTo} onClick={transfer} className="bg-indigo-600 text-white text-xs font-bold rounded-lg px-3 py-1.5 disabled:opacity-50">{t('Move', 'نقل')}</button>
               <p className="w-full text-[11.5px] text-indigo-800">{t('It leaves the current owner and goes to the new one, who is notified at once.', 'يخرج البند من المسؤول الحالي ويصبح عند المسؤول الجديد وحده، ويصله إشعارٌ فورًا، ويُبلَّغ المسؤول السابق.')}</p>
             </div>
@@ -439,8 +441,18 @@ function TaskRow({ task, meta, L, meetingId, canEdit, dept, open, onToggle, onCh
             <NewTask meta={meta} L={L} meetingId={meetingId} dept={dept} followUpOf={task} inline
               onDone={() => { setMode(''); onChanged(); }} notify={notify} />
           )}
+          </div>
+          </Modal>
 
-          <UpdateLog updates={(task.updates || []).slice().reverse()} statuses={meta.actionStatuses} lang={L} />
+          {!!task.updates?.length && (
+            <details className="group rounded-lg border border-slate-200 bg-white">
+              <summary className="cursor-pointer select-none list-none px-3 py-2 text-[12.5px] font-bold text-slate-700 inline-flex items-center gap-1.5 w-full">
+                <History className="w-3.5 h-3.5 text-slate-400" />{t('History', 'سجلّ التحديثات')} ({task.updates.length})
+                <ChevronDown className="w-3.5 h-3.5 text-slate-400 ms-auto transition-transform group-open:rotate-180" />
+              </summary>
+              <div className="px-3 pb-2"><UpdateLog updates={(task.updates || []).slice().reverse()} statuses={meta.actionStatuses} lang={L} /></div>
+            </details>
+          )}
         </div>
       )}
     </div>
@@ -493,7 +505,7 @@ function NewTask({ meta, L, meetingId, dept, followUpOf, inline, onDone, notify 
     );
   }
   return (
-    <div className={`${inline ? 'bg-violet-50 border border-violet-200 rounded-lg' : 'border-t border-slate-100 bg-slate-50'} p-3 space-y-2`}>
+    <div className={`${inline ? '' : 'border-t border-slate-100 bg-slate-50 p-3'} space-y-2`}>
       <p className="text-xs font-bold text-slate-700">
         {followUpOf ? `${t('Follow-up on', 'بند متابعة على')}: ${followUpOf.title}` : t('New task for this department', 'إضافة بند لهذا القسم')}
       </p>
@@ -502,10 +514,8 @@ function NewTask({ meta, L, meetingId, dept, followUpOf, inline, onDone, notify 
       <textarea value={desc} onChange={(e) => setDesc(e.target.value)} rows={2} placeholder={t('Details (optional)', 'تفاصيل (اختياري)')}
         className="w-full px-2.5 py-1.5 rounded-lg border border-slate-200 bg-white text-sm" />
       <div className="grid gap-2 sm:grid-cols-[minmax(0,1fr)_10rem]">
-        <select value={who} onChange={(e) => setWho(e.target.value)} className="px-2.5 py-1.5 rounded-lg border border-slate-200 bg-white text-sm">
-          <option value="">{t('Owner…', 'المسؤول…')}</option>
-          {people.map((p) => <option key={p._id} value={p._id}>{p.name}{p.section ? ` — ${deptLabel(p.section, L)}` : ''}</option>)}
-        </select>
+        <SearchSelect ar={L === 'ar'} value={who} onChange={setWho} placeholder={t('Owner…', 'المسؤول…')}
+          options={people.map((p) => ({ value: String(p._id), label: p.name, hint: p.section ? deptLabel(p.section, L) : '' }))} />
         <input type="date" value={due} onChange={(e) => setDue(e.target.value)} title={t('Due', 'التسليم')}
           className="px-2.5 py-1.5 rounded-lg border border-slate-200 bg-white text-sm" />
       </div>
@@ -520,11 +530,9 @@ function NewTask({ meta, L, meetingId, dept, followUpOf, inline, onDone, notify 
             </span>
           );
         })}
-        <select value="" onChange={(e) => { const v = e.target.value; if (v) setAlso((a) => (a.includes(v) ? a : [...a, v])); }}
-          className="px-2 py-1 rounded-lg border border-slate-200 bg-white text-[12px]">
-          <option value="">{t('+ another owner (any department)', '+ مسؤولٌ آخر (أيّ قسم)')}</option>
-          {people.filter((p) => String(p._id) !== who && !also.includes(String(p._id))).map((p) => <option key={p._id} value={p._id}>{p.name}{p.section ? ` — ${deptLabel(p.section, L)}` : ''}</option>)}
-        </select>
+        <SearchSelect className="w-60" ar={L === 'ar'} value="" placeholder={t('+ another owner (any department)', '+ مسؤولٌ آخر (أيّ قسم)')}
+          onChange={(v) => { if (v) setAlso((a) => (a.includes(v) ? a : [...a, v])); }}
+          options={people.filter((p) => String(p._id) !== who && !also.includes(String(p._id))).map((p) => ({ value: String(p._id), label: p.name, hint: p.section ? deptLabel(p.section, L) : '' }))} />
       </div>
       <div className="flex gap-2">
         <button type="button" disabled={busy} onClick={save}

@@ -523,13 +523,34 @@ class _BrMeetingDepartmentsTabState extends State<BrMeetingDepartmentsTab> {
                   if (!done) FilledButton.icon(style: FilledButton.styleFrom(backgroundColor: T.warn),
                       onPressed: () => _postpone(t), icon: const Icon(Icons.pause, size: 16), label: Text(tr('تأجيل', 'Postpone'))),
                   OutlinedButton.icon(onPressed: () => _update(t), icon: const Icon(Icons.trending_up, size: 16), label: Text(tr('تحديث الحالة', 'Update status'))),
-                  OutlinedButton.icon(onPressed: () => _newTask(dept, followUpOf: t), icon: const Icon(Icons.add, size: 16), label: Text(tr('إضافة بند متابعة', 'Follow-up task'))),
-                  OutlinedButton.icon(onPressed: () => _edit(t), icon: const Icon(Icons.edit_outlined, size: 16), label: Text(tr('تعديل البند', 'Edit task'))),
-                  OutlinedButton.icon(onPressed: () => _share(t), icon: const Icon(Icons.group_add_outlined, size: 16), label: Text(tr('إسناده لمسؤولٍ آخر أيضًا', 'Also assign to…'))),
-                  OutlinedButton.icon(onPressed: () => _transfer(t), icon: const Icon(Icons.swap_horiz, size: 16), label: Text(tr('نقله لمسؤولٍ آخر', 'Move to…'))),
-                  if (List.from(t['sharedWith'] ?? []).isNotEmpty)
-                    OutlinedButton.icon(onPressed: () => _remove(t, onlyThisOwner: true), icon: const Icon(Icons.person_remove_outlined, size: 16, color: T.danger), label: Text(tr('إزالة هذا المسؤول', 'Remove this owner'), style: const TextStyle(color: T.danger))),
-                  OutlinedButton.icon(onPressed: () => _remove(t), icon: const Icon(Icons.delete_outline, size: 16, color: T.danger), label: Text(tr('حذف البند', 'Delete task'), style: const TextStyle(color: T.danger))),
+                  // Less frequent actions sit in one menu so the task stays readable.
+                  PopupMenuButton<String>(
+                    onSelected: (k) {
+                      switch (k) {
+                        case 'edit': _edit(t); break;
+                        case 'followup': _newTask(dept, followUpOf: t); break;
+                        case 'share': _share(t); break;
+                        case 'transfer': _transfer(t); break;
+                        case 'removeOwner': _remove(t, onlyThisOwner: true); break;
+                        case 'delete': _remove(t); break;
+                      }
+                    },
+                    itemBuilder: (_) => [
+                      PopupMenuItem(value: 'edit', child: ListTile(dense: true, leading: const Icon(Icons.edit_outlined), title: Text(tr('تعديل البند', 'Edit task')))),
+                      PopupMenuItem(value: 'followup', child: ListTile(dense: true, leading: const Icon(Icons.add), title: Text(tr('إضافة بند متابعة', 'Follow-up task')))),
+                      PopupMenuItem(value: 'share', child: ListTile(dense: true, leading: const Icon(Icons.group_add_outlined), title: Text(tr('إسناده لمسؤولٍ آخر أيضًا', 'Also assign to…')))),
+                      PopupMenuItem(value: 'transfer', child: ListTile(dense: true, leading: const Icon(Icons.swap_horiz), title: Text(tr('نقله لمسؤولٍ آخر', 'Move to…')))),
+                      const PopupMenuDivider(),
+                      if (List.from(t['sharedWith'] ?? []).isNotEmpty)
+                        PopupMenuItem(value: 'removeOwner', child: ListTile(dense: true, leading: const Icon(Icons.person_remove_outlined, color: T.danger), title: Text(tr('إزالة هذا المسؤول', 'Remove this owner'), style: const TextStyle(color: T.danger)))),
+                      PopupMenuItem(value: 'delete', child: ListTile(dense: true, leading: const Icon(Icons.delete_outline, color: T.danger), title: Text(tr('حذف البند', 'Delete task'), style: const TextStyle(color: T.danger)))),
+                    ],
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                      decoration: BoxDecoration(border: Border.all(color: T.line), borderRadius: BorderRadius.circular(20)),
+                      child: Row(mainAxisSize: MainAxisSize.min, children: [const Icon(Icons.more_horiz, size: 16), const SizedBox(width: 4), Text(tr('إجراءات أخرى', 'More'), style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600))]),
+                    ),
+                  ),
                 ]),
               ],
               BrUpdateLog(updates: List.from(t['updates'] ?? []).reversed.toList(), meta: widget.meta),

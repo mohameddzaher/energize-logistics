@@ -510,7 +510,8 @@ export function SourcingModal({ req, team, canLead, onClose, onChanged }: { req:
   const { notify, confirm } = useDialog();
   const { user } = useAuth();
   const me = String(user?._id || '');
-  const members = useOptions(`/api/shipment-requests/team-members?team=${team}`);
+  // «بمساعدة» may be anyone in sales, operations (vendors and follow-up included), the data team or the fleet.
+  const members = useOptions('/api/shipment-requests/team-members?team=helpers');
   const [count, setCount] = useState('1');
   const [helper, setHelper] = useState('');
   const [note, setNote] = useState('');
@@ -540,8 +541,10 @@ export function SourcingModal({ req, team, canLead, onClose, onChanged }: { req:
           <div className="rounded-xl border border-slate-200 p-3 space-y-2">
             <p className="text-sm font-bold text-slate-900">{t('حصّلتُ سيارات لهذا الطلب', 'I sourced trucks for this request')}</p>
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
-              <input type="number" min={1} max={25} value={count} onChange={(e) => setCount(e.target.value)} className={inputCls} placeholder={t('العدد', 'Count')} />
+              <label className="block"><span className="mb-1 block text-[12px] font-bold text-slate-600">{t('عدد السيارات', 'Cars')} *</span>
+              <input type="number" min={1} max={25} value={count} onChange={(e) => setCount(e.target.value)} className={inputCls} placeholder={t('العدد', 'Count')} /></label>
               <div className="sm:col-span-2">
+                <span className="mb-1 block text-[12px] font-bold text-slate-600">{t('بمساعدة مَن؟ (اختياري)', 'Helped by whom? (optional)')}</span>
                 <SearchableSelect value={helper} searchAfter={0} onChange={setHelper} placeholder={t('بمساعدة شخصٍ آخر (اختياري)', 'Helped by someone (optional)')}
                   options={[{ value: '', label: t('— بدون —', '— none —') }, ...members.filter((o) => o.value !== me).map((o) => ({ value: o.value, label: o.label, hint: o.roleAr || '' }))]} />
               </div>

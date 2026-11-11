@@ -256,7 +256,8 @@ exports.list = async (req, res) => {
       if (to) r.$lte = endOfDay(to);
       and.push({ createdAt: r });
     }
-    if (branch) and.push({ branch });
+    const branchClause = branch ? { branch } : null;
+    if (branchClause) and.push(branchClause);
     if (customer && mongoose.isValidObjectId(String(customer))) and.push({ customer });
     // «Mine» on the working side: what I hold now, completed trucks on, or recorded sourcing for.
     if (handler === 'me') and.push({ $or: [{ handler: req.user._id }, { 'placed.by': req.user._id }, { 'sourcing.by': req.user._id }] });
@@ -278,9 +279,15 @@ exports.list = async (req, res) => {
       ShipmentRequest.find(listFilter).sort({ createdAt: -1 }).skip((page - 1) * limit).limit(limit).lean(),
       ShipmentRequest.countDocuments(listFilter),
       ShipmentRequest.aggregate([{ $match: filter }, { $group: { _id: '$status', n: { $sum: 1 }, trucks: { $sum: '$trucks' }, placed: { $sum: { $size: '$placed' } } } }]),
-      // The standalone branch filter lists every branch with requests, not only those in the loaded page.
-      ShipmentRequest.distinct('branch', scopeFor(req.user)),
+      // Open requests per branch for the branch filter (every company branch is listed, with its count).
+      // Counted without the branch filter itself, so picking one branch keeps the others' numbers.
+      ShipmentRequest.aggregate([{ $match: { ...(() => { const rest = and.filter((x) => x !== branchClause); return rest.length ? { ...base, $and: rest } : base; })(), status: { $in: OPEN } } }, { $group: { _id: '$branch', n: { $sum: 1 } } }]),
     ]);
+    // Every company branch (reference data «الفروع»), in its own order, plus any branch written on a request outside that list.
+    const company = await require('./shipmentOrdersController').companyBranchOptions().catch(() => []);
+    const openBy = new Map(branches.map((b) => [String(b._id || ''), b.n]));
+    const branchList = [...company.map((b) => b.key), ...[...openBy.keys()].filter((k) => k && !company.some((c) => c.key === k))]
+      .map((name) => ({ name, open: openBy.get(name) || 0 }));
     const approvalCounts = { pending: 0, approved: 0, returned: 0, rejected: 0 };
     if (req.query.approvalCounts === '1') {
       const andNoApproval = and.filter((x) => x !== APPROVED && !('approvalStatus' in x));
@@ -296,7 +303,7 @@ exports.list = async (req, res) => {
     }
     res.json({
       requests: rows.map((r) => shape(req.user, r)), total, byStatus, openTrucks,
-      branches: branches.filter(Boolean).sort((a, b) => a.localeCompare(b, 'ar')),
+      branches: branchList.map((b) => b.name), branchList,
       approvalCounts,
       can: { ...canOf(req.user), approve: await canApprove(req.user), manageApprovers: isSalesManager(req.user) }, priceView: { ...PV.priceView(req.user), sell: PV.requestSellVisible(req.user) },
     });

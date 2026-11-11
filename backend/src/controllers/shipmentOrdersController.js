@@ -2910,3 +2910,5 @@ exports.addFieldOption = async (req, res) => {
     res.status(500).json({ message: 'تعذّرت الإضافة' });
   }
 };
+
+module.exports.companyBranchOptions = companyBranchOptions;

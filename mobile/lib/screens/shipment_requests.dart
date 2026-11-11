@@ -624,6 +624,8 @@ class _ShipmentRequestsScreenState extends State<ShipmentRequestsScreen> {
   late final String _branchKey = 'shipmentRequests.branch.${widget.mode}';
   String _branch = '';
   List<String> _branches = const [];
+  // Open requests per branch (server branchList), shown on each chip.
+  Map<String, int> _branchOpen = const {};
   // Approvals view on the sales page (sales manager and his delegates).
   bool _approvals = false;
   String _approval = 'pending';
@@ -836,6 +838,7 @@ class _ShipmentRequestsScreenState extends State<ShipmentRequestsScreen> {
         _by = Map<String, dynamic>.from(d['byStatus'] ?? {});
         _can = Map<String, dynamic>.from(d['can'] ?? {});
         _branches = [for (final b in (d['branches'] as List?) ?? const []) if ('$b'.isNotEmpty) '$b'];
+        _branchOpen = {for (final b in (d['branchList'] as List?) ?? const []) if (b is Map) '${b['name']}': (b['open'] as num?)?.toInt() ?? 0};
         _ac = Map<String, dynamic>.from(d['approvalCounts'] ?? {});
         if (_approvals && _can['approve'] != true) _approvals = false;
         _loading = false;
@@ -919,10 +922,10 @@ class _ShipmentRequestsScreenState extends State<ShipmentRequestsScreen> {
         if (_branches.isNotEmpty || _branch.isNotEmpty)
           SingleChildScrollView(scrollDirection: Axis.horizontal, padding: const EdgeInsets.fromLTRB(12, 0, 12, 6), child: Row(children: [
             Padding(padding: const EdgeInsetsDirectional.only(end: 6), child: Icon(Icons.store_mall_directory_outlined, size: 18, color: _branch.isEmpty ? T.inkFaint : T.orange)),
-            Padding(padding: const EdgeInsetsDirectional.only(end: 5), child: ChoiceChip(label: Text(tr('كلّ الفروع', 'All branches')), selected: _branch.isEmpty, onSelected: (_) => _setBranch(''))),
+            Padding(padding: const EdgeInsetsDirectional.only(end: 5), child: ChoiceChip(label: Text('${tr('كلّ الفروع', 'All branches')} (${_branchOpen.values.fold<int>(0, (a, b) => a + b)})'), selected: _branch.isEmpty, onSelected: (_) => _setBranch(''))),
             for (final b in {..._branches, if (_branch.isNotEmpty) _branch})
               Padding(padding: const EdgeInsetsDirectional.only(end: 5), child: ChoiceChip(
-                label: Text(b), selected: _branch == b,
+                label: Text('$b (${_branchOpen[b] ?? 0})'), selected: _branch == b,
                 selectedColor: T.orange.withValues(alpha: 0.18),
                 onSelected: (_) => _setBranch(_branch == b ? '' : b),
               )),
@@ -2157,7 +2160,8 @@ class _SourcingSheetState extends State<_SourcingSheet> {
   @override
   void initState() {
     super.initState();
-    if (widget.canAdd) srTeamMembers(widget.team).then((v) { if (mounted) setState(() => _members = v); }).catchError((_) {});
+    // «بمساعدة» lists sales, operations (vendors and follow-up), the data team and the fleet.
+    if (widget.canAdd) srTeamMembers('helpers').then((v) { if (mounted) setState(() => _members = v); }).catchError((_) {});
   }
 
   String get _me => '${context.read<AuthProvider>().user?['_id'] ?? ''}';
@@ -2171,9 +2175,11 @@ class _SourcingSheetState extends State<_SourcingSheet> {
       title: Text(e == null ? tr('تسجيل سيارات حصّلتها', 'Record trucks you found') : tr('تعديل التحصيل', 'Edit')),
       content: Column(mainAxisSize: MainAxisSize.min, children: [
         TextField(controller: count, autofocus: true, keyboardType: TextInputType.number, decoration: InputDecoration(labelText: tr('عدد السيارات *', 'Number of trucks *'))),
-        const SizedBox(height: 8),
+        const SizedBox(height: 10),
+        Align(alignment: AlignmentDirectional.centerStart, child: Text(tr('بمساعدة مَن؟ (اختياري)', 'Helped by whom? (optional)'), style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: T.inkSoft))),
+        const SizedBox(height: 4),
         Row(children: [
-          Expanded(child: _pickBtn(helperName.isEmpty ? tr('بمساعدة شخص آخر (اختياري)', 'Helped by (optional)') : '${tr('بمساعدة', 'Helped by')}: $helperName', Icons.group_add_outlined,
+          Expanded(child: _pickBtn(helperName.isEmpty ? tr('اختر الشخص الذي ساعد…', 'Pick who helped…') : '${tr('بمساعدة', 'Helped by')}: $helperName', Icons.group_add_outlined,
               _members.isEmpty ? null : () async {
             final v = await srPickPerson(context, tr('بمساعدة', 'Helped by'), _members.where((m) => '${m['value']}' != _me).toList());
             if (v != null) setD(() { helper = '${v['value']}'; helperName = '${v['label']}'; });

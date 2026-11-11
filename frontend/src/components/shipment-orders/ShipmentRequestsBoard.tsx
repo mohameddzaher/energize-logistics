@@ -67,6 +67,8 @@ export default function ShipmentRequestsBoard({ mode }: { mode: BoardMode }) {
   useEffect(() => { try { setBranchState(localStorage.getItem(branchKey) || ''); } catch { /* */ } }, [branchKey]);
   const setBranch = (b: string) => { setBranchState(b); try { localStorage.setItem(branchKey, b); } catch { /* */ } };
   const [branches, setBranches] = useState<string[]>([]);
+  // Every company branch with its open requests (server: branchList).
+  const [branchList, setBranchList] = useState<{ name: string; open: number }[]>([]);
   const [canLead, setCanLead] = useState(false);
   const [sourcingOf, setSourcingOf] = useState<ShipmentRequest | null>(null);
   const [fleetPlacing, setFleetPlacing] = useState<ShipmentRequest | null>(null);
@@ -143,10 +145,10 @@ export default function ShipmentRequestsBoard({ mode }: { mode: BoardMode }) {
     if (to) p.set('to', to);
     p.set('limit', '1000');
     try {
-      const d = await api.get<{ requests: ShipmentRequest[]; byStatus: Record<string, number>; openTrucks: number; branches?: string[]; can?: { lead?: boolean } }>(`/api/shipment-requests?${p}`);
+      const d = await api.get<{ requests: ShipmentRequest[]; byStatus: Record<string, number>; openTrucks: number; branches?: string[]; branchList?: { name: string; open: number }[]; can?: { lead?: boolean } }>(`/api/shipment-requests?${p}`);
       if (!guard.isCurrent(my)) return;
       setRows(d.requests || []); setByStatus(d.byStatus || {}); setOpenTrucks(d.openTrucks || 0); setError('');
-      setBranches(d.branches || []); setCanLead(!!d.can?.lead);
+      setBranches(d.branches || []); setBranchList(d.branchList || (d.branches || []).map((name) => ({ name, open: 0 }))); setCanLead(!!d.can?.lead);
     } catch (e: any) { if (guard.isCurrent(my)) setError(e?.message || t('تعذّر التحميل', 'Could not load')); }
     if (guard.isCurrent(my)) setLoading(false);
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -352,18 +354,28 @@ export default function ShipmentRequestsBoard({ mode }: { mode: BoardMode }) {
               </button>
             ))}
           </div>
-          <label className={`inline-flex h-9 items-center gap-1.5 rounded-lg border px-2.5 text-[12.5px] font-semibold ${branch ? 'border-[#f37121] bg-orange-50 text-[#c2410c]' : 'border-slate-200 text-slate-700'}`}>
-            <Building2 className="h-4 w-4" />{t('الفرع', 'Branch')}
-            <select value={branch} onChange={(e) => setBranch(e.target.value)} className="bg-transparent font-bold focus:outline-none">
-              <option value="">{t('كلّ الفروع', 'All branches')}</option>
-              {[...new Set([...branches, ...(branch ? [branch] : [])])].map((b) => <option key={b} value={b}>{b}</option>)}
-            </select>
-          </label>
           <label className="inline-flex items-center gap-1.5 text-[12.5px] text-slate-600 ms-1">
             <input type="checkbox" checked={mine} onChange={(e) => setMine(e.target.checked)} className="accent-[#f37121]" />
             {work ? t('التي أعمل عليها', 'Mine') : t('طلباتي أنا فقط', 'Only mine')}
           </label>
           <div className="flex-1 min-w-[220px]"><SearchInput value={q} onChange={setQ} placeholder={t('رقم الطلب، العميل، المدينة، رقم أمر النقل…', 'Request no., customer, city, order no.…')} /></div>
+        </div>
+
+        {/* Branches on their own row: every company branch with its open requests, one click to filter. */}
+        <div className="flex items-center gap-2 border-t border-slate-100 bg-slate-50/60 px-3 py-2.5">
+          <span className="inline-flex shrink-0 items-center gap-1.5 text-[12.5px] font-bold text-slate-700"><Building2 className="h-4 w-4 text-[#f37121]" />{t('الفرع', 'Branch')}</span>
+          <div className="flex flex-1 gap-1.5 overflow-x-auto pb-0.5">
+            {[{ name: '', open: branchList.reduce((a, b) => a + b.open, 0) }, ...branchList].map((b) => {
+              const on = branch === b.name;
+              return (
+                <button key={b.name || '__all'} type="button" onClick={() => setBranch(b.name)}
+                  className={`inline-flex shrink-0 items-center gap-1.5 rounded-full border px-3 py-1.5 text-[12.5px] font-bold transition ${on ? 'border-[#f37121] bg-[#f37121] text-white shadow-sm' : 'border-slate-200 bg-white text-slate-700 hover:border-[#f37121]/60'}`}>
+                  {b.name || t('كلّ الفروع', 'All branches')}
+                  <span className={`rounded-full px-1.5 text-[11px] tabular-nums ${on ? 'bg-white/25 text-white' : b.open ? 'bg-orange-100 text-[#c2410c]' : 'bg-slate-100 text-slate-400'}`}>{b.open}</span>
+                </button>
+              );
+            })}
+          </div>
         </div>
 
         <div className="flex flex-wrap items-center gap-2 border-t border-slate-100 px-3 py-2.5">

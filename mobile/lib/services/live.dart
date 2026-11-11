@@ -50,6 +50,12 @@ class Live {
     _socket!.io.on('reconnect_attempt', (_) {
       _socket!.auth = {'token': Api.instance.accessToken};
     });
+    // Changes made while the connection was down were never pushed: after a reconnect every open screen re-reads once.
+    _socket!.io.on('reconnect', (_) {
+      for (final list in _handlers.values.toList()) {
+        for (final h in List.of(list)) { h(); }
+      }
+    });
     _socket!.onConnectError((_) => _refreshAndRetry());
     _socket!.on('connect_error', (_) => _refreshAndRetry());
   }

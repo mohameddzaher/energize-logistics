@@ -80,8 +80,11 @@ export default function BrMeetingDepartments({ meetingId, meta, L, notify, initi
   const tick = useRef<ReturnType<typeof setTimeout> | null>(null);
   const soon = useCallback(() => { if (tick.current) clearTimeout(tick.current); tick.current = setTimeout(() => load(), 400); }, [load]);
   useEffect(() => () => { if (tick.current) clearTimeout(tick.current); }, []);
+  // Every change another user makes reaches this view: tasks, the meeting (minutes, departments), team delegations, the series.
   useSocket('br:action', soon);
   useSocket('br:meeting', soon);
+  useSocket('br:assignment', soon);
+  useSocket('br:series', soon);
 
   if (!d) return <div className="py-10 flex justify-center"><Loader2 className="w-6 h-6 animate-spin text-slate-400" /></div>;
   const all = d.departments.reduce((a, c) => ({

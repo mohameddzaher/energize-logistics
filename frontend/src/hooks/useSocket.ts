@@ -7,7 +7,7 @@ import { useAuth } from '@/context/AuthContext';
  * Refresh notices are not handled while the screen is off.
  * Notices to re-read arrive every few seconds (operations platform sync). A background tab or a phone in a pocket used to fetch the payload for each, wasting data and battery. They are deferred: a flag marks that a change happened and it runs once when the screen returns. Non-refresh events such as notifications and chat messages pass through unchanged.
  */
-const DEFERRABLE = /(:changed|:updated|:created|:deleted|:bulkImported|^workflow:|^ops:|^vreg:|^ls2:|^fleet:|^customs:|^collections:|^b2c:|^hr:|^finance:|^executive:)/;
+const DEFERRABLE = /(:changed|:updated|:created|:deleted|:bulkImported|^workflow:|^ops:|^vreg:|^ls2:|^fleet:|^customs:|^collections:|^b2c:|^hr:|^finance:|^executive:|^br:|^vendors:|^shipmentRequests:)/;
 
 export function useSocket(event: string, callback: (data: any) => void) {
   const { isAuthenticated } = useAuth();
@@ -33,9 +33,13 @@ export function useSocket(event: string, callback: (data: any) => void) {
 
     socket.on(event, handler);
     if (deferrable && typeof document !== 'undefined') document.addEventListener('visibilitychange', onVisible);
+    // Changes made while the connection was down were never pushed: after a reconnect, a refresh-type listener re-reads once.
+    const onReconnect = () => { if (deferrable) handler({ reconnected: true }); };
+    socket.io.on('reconnect', onReconnect);
 
     return () => {
       socket.off(event, handler);
+      socket.io.off('reconnect', onReconnect);
       if (deferrable && typeof document !== 'undefined') document.removeEventListener('visibilitychange', onVisible);
     };
   }, [event, callback, isAuthenticated]);

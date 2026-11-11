@@ -70,6 +70,8 @@ class _BrMeetingDepartmentsTabState extends State<BrMeetingDepartmentsTab> {
     super.initState();
     Live.instance.on('br:action', _soon);
     Live.instance.on('br:meeting', _soon);
+    Live.instance.on('br:assignment', _soon);
+    Live.instance.on('br:series', _soon);
     _load();
   }
 
@@ -77,6 +79,8 @@ class _BrMeetingDepartmentsTabState extends State<BrMeetingDepartmentsTab> {
   void dispose() {
     Live.instance.off('br:action', _soon);
     Live.instance.off('br:meeting', _soon);
+    Live.instance.off('br:assignment', _soon);
+    Live.instance.off('br:series', _soon);
     _tick?.cancel();
     super.dispose();
   }

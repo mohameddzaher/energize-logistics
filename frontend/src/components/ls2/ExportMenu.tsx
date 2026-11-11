@@ -67,10 +67,11 @@ export default function ExportMenu({ fileName, options, lang = 'en', className =
       setBusyKey(null); setOpenMenu(false);
       return;
     }
-    let sheets = opt.sheets;
+    // A sheet the caller could not build (e.g. a tab with nothing to export) is skipped instead of crashing the menu.
+    let sheets = (opt.sheets || []).filter(Boolean);
     if (opt.resolve) {
       setBusyKey(opt.key);
-      try { sheets = await opt.resolve(); }
+      try { sheets = ((await opt.resolve()) || []).filter(Boolean); }
       catch (e: any) { notify(e?.message || (ar ? 'تعذّر تجهيز الملف' : 'Could not prepare the file'), 'error'); setBusyKey(null); return; }
       setBusyKey(null);
     }
@@ -103,7 +104,7 @@ export default function ExportMenu({ fileName, options, lang = 'en', className =
       {openMenu && (
         <div className={`absolute z-30 mt-1 min-w-[230px] bg-white border border-slate-200 rounded-lg shadow-lg py-1 ${ar ? 'left-0' : 'right-0'}`}>
           {options.map((opt) => {
-            const count = (opt.sheets || []).reduce((n, s) => n + (s.rows?.length || 0), 0);
+            const count = (opt.sheets || []).filter(Boolean).reduce((n, s) => n + (s.rows?.length || 0), 0);
             const busy = busyKey === opt.key;
             return (
               <button

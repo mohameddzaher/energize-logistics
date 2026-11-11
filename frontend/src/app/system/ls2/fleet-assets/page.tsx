@@ -487,7 +487,7 @@ export default function Ls2FleetAssetsPage() {
         <ExportMenu
           fileName={`ls2-assets-${tab}`} lang={lang as Lang}
           options={[
-            { key: 'tab', label: ar ? 'التبويب الحالي (بعد الفلتر)' : 'Current tab (filtered)', sheets: [currentTabExport()!] },
+            { key: 'tab', label: ar ? 'التبويب الحالي (بعد الفلتر)' : 'Current tab (filtered)', sheets: [currentTabExport()].filter((x): x is NonNullable<typeof x> => !!x), disabled: !currentTabExport() },
             {
               key: 'all', label: ar ? 'كل الأصول مع سجل الحركات (5 شيتات)' : 'All assets with the movement log (5 sheets)',
               sheets: [

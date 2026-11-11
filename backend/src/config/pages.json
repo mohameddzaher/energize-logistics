@@ -448,8 +448,8 @@
     {
       "key": "/system/vendors-mgmt/drivers",
       "section": "Vendors Management",
-      "ar": "السائقون الأفراد",
-      "en": "Freelance Drivers"
+      "ar": "الفريلانسرز (نقل ثقيل)",
+      "en": "Freelancers (heavy)"
     },
     {
       "key": "/system/vendors-mgmt/alerts",

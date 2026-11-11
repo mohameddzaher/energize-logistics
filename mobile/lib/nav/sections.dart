@@ -1,3 +1,4 @@
+import '../screens/heavy_freelancers.dart';
 import '../screens/mediago_ads.dart';
 import '../screens/jp.dart';
 import 'package:flutter/material.dart';
@@ -716,7 +717,7 @@ List<AppSection> sectionsFor(AuthProvider auth) {
         AppPage('الموردون', 'Vendors', Icons.business_outlined, (c) => const VendorsListScreen(), path: '/system/vendors-mgmt/vendors'),
         AppPage('اعتماد الموردين', 'Carrier approvals', Icons.fact_check_outlined, (c) => const VendorsApprovalsScreen(), path: '/system/vendors-mgmt/approvals'),
         AppPage('السيارات', 'Trucks', Icons.local_shipping_outlined, (c) => const VendorsVehiclesScreen(), path: '/system/vendors-mgmt/vehicles'),
-        AppPage('السائقون الأفراد', 'Freelance drivers', Icons.badge_outlined, (c) => const VendorsListScreen(kind: 'freelancer'), path: '/system/vendors-mgmt/drivers'),
+        AppPage('الفريلانسرز (نقل ثقيل)', 'Freelancers (heavy)', Icons.badge_outlined, (c) => const HeavyFreelancersScreen(), path: '/system/vendors-mgmt/drivers'),
         AppPage('التنبيهات', 'Alerts', Icons.notifications_active_outlined, (c) => const VendorsAlertsScreen(), path: '/system/vendors-mgmt/alerts'),
         AppPage('بحث بالمسار', 'Route search', Icons.alt_route_outlined, (c) => const VendorsRouteSearchScreen(), path: '/system/vendors-mgmt/routes'),
         if (jpMember(role, 'vendors')) AppPage('خطّة العمل (JP)', 'JP', Icons.event_available_outlined, (c) => const JpScreen(section: 'vendors'), path: '/system/vendors-mgmt/jp'),

@@ -673,6 +673,7 @@
       "apis": [
         "/api/lookups/types",
         "/api/shipment-orders/insights/options",
+        "/api/shipment-requests/team-members",
         "/api/shipment-requests/team-performance",
         "/api/vendors-mgmt/filter-options",
         "/api/vendors-mgmt/follow-ups",
@@ -716,6 +717,7 @@
     "/system/vendors-mgmt/vendors": {
       "apis": [
         "/api/lookups/types",
+        "/api/shipment-requests/team-members",
         "/api/vendors-mgmt/compare",
         "/api/vendors-mgmt/follow-ups",
         "/api/vendors-mgmt/settings",
@@ -743,11 +745,8 @@
     },
     "/system/vendors-mgmt/drivers": {
       "apis": [
-        "/api/shipment-orders/drivers",
-        "/api/shipment-orders/fields",
-        "/api/shipment-orders/fleet-summary",
-        "/api/shipment-orders/suppliers",
-        "/api/shipment-orders/vehicles"
+        "/api/shipment-requests/team-members",
+        "/api/vendors-mgmt/freelancers"
       ],
       "wildcard": false
     },

@@ -16,7 +16,7 @@ import { LiveDot, fmtDay } from '@/components/analytics/AnalyticsKit';
 import { ApprovalBlock } from '@/components/vendors/VendorFilesPanel';
 import { APPROVAL, approvalLabel, docKindLabel, canEditVendors } from '@/lib/vendors';
 import { useAuth } from '@/context/AuthContext';
-import { ClipboardCheck, FileText, AlertTriangle } from 'lucide-react';
+import { Users, ClipboardCheck, FileText, AlertTriangle } from 'lucide-react';
 
 type Row = Record<string, any>;
 const TABS = ['pending', 'returned', 'rejected', 'approved'] as const;
@@ -53,6 +53,11 @@ export default function VendorApprovalsPage() {
         subtitle={d.canApprove ? t('راجِع ملفَّ المورّد ومستنداتِه ثمّ اعتمِده أو أعِده للتعديل أو ارفضه', 'Review the file and papers, then approve, return or reject')
           : t('الموردون الذين أضفتموهم ينتظرون اعتماد مدير العمليات أو من يفوّضه', 'Carriers you added wait for the operations manager or his delegates')}>
         <LiveDot ar={ar} busy={busy} />
+        {/* Who else may approve: chosen by the operations manager in the section settings. */}
+        <Link href="/system/vendors-mgmt/settings?tab=approvals"
+          className="inline-flex items-center gap-1.5 rounded-lg border border-[#f37121] bg-orange-50 px-3 py-2 text-[13px] font-bold text-[#b4471a] hover:bg-orange-100">
+          <Users className="h-4 w-4" />{t('المفوَّضون بالاعتماد', 'Approval delegates')}
+        </Link>
         <ExportMenu fileName="vendor-approvals" lang={ar ? 'ar' : 'en'} options={[{ key: 'shown', label: t('تصدير المعروض', 'Export shown'), sheets: [{ name: approvalLabel(status, ar), rows: d.vendors, columns: [
           { header: t('المورّد', 'Carrier'), key: 'name', width: 34 }, { header: t('الحالة', 'Status'), key: 'approvalStatus', transform: (v: string) => approvalLabel(v, ar) },
           { header: t('أضافه', 'Added by'), key: 'submittedByName' }, { header: t('تاريخ التقديم', 'Submitted'), key: 'submittedAt', transform: (v: string) => fmtDay(v) },

@@ -34,6 +34,8 @@ router.put('/approvers', authorize(...TEAM), c.saveApprovers);
 router.get('/vendors', c.listVendors);
 router.get('/vendors/by-name', c.getByName);
 router.post('/vendors', authorize(...TEAM), c.createVendor);
+router.get('/freelancers', c.listFreelancers);
+router.post('/freelancers', authorize(...TEAM), c.createFreelancer);
 router.get('/vendors/:id', c.getVendor);
 router.put('/vendors/:id', authorize(...TEAM), c.updateVendor);
 router.post('/vendors/:id/documents', authorize(...TEAM), c.addDocuments);

@@ -6,11 +6,15 @@
 const { SECTION_ROLES } = require('./roles');
 
 const JP_SECTIONS = {
-  operations: { roleSection: 'Operations', path: '/system/operations', ar: 'التشغيل', en: 'Operations' },
+  // Operations is the umbrella of workflow, vendors and follow-up (config/roles ORG_PARENT/ORG_ROLE): its plan counts them all.
+  operations: { roleSection: 'Operations', path: '/system/operations', ar: 'التشغيل', en: 'Operations',
+    extraStaff: ['vendors_manager', 'vendors_team_leader', 'vendors_staff', 'shipment_orders_followup'] },
   collections: { roleSection: 'Collections', path: '/system/collections-dept', ar: 'التحصيل', en: 'Collections' },
   ops: { roleSection: 'Operations Platform', path: '/system/ops', ar: 'منصّة التشغيل', en: 'Operations Platform' },
   'shipment-orders': { roleSection: 'Shipment Orders', path: '/system/shipment-orders', ar: 'طلبات الشحنات', en: 'Shipment Orders' },
-  vendors: { roleSection: 'Vendors Management', path: '/system/vendors-mgmt', ar: 'إدارة الموردين', en: 'Vendors Management' },
+  // Vendors is a team inside Operations: the operations manager and team leader run its plan, and the operations team works in it.
+  vendors: { roleSection: 'Vendors Management', path: '/system/vendors-mgmt', ar: 'إدارة الموردين', en: 'Vendors Management',
+    extraManagers: ['operations_manager', 'operations_team_leader'], extraStaff: ['operations_staff'] },
   fleet: { roleSection: 'Fleet Management', path: '/system/fleet', ar: 'إدارة الأسطول', en: 'Fleet Management' },
   customs: { roleSection: 'Customs', path: '/system/customs', ar: 'التخليص الجمركي', en: 'Customs' },
   vehicles: { roleSection: 'Vehicles', path: '/system/vehicles', ar: 'المركبات والتفاويض', en: 'Vehicles' },
@@ -34,9 +38,12 @@ for (const [slug, s] of Object.entries(JP_SECTIONS)) {
   // A section with no roles has no manager or team: its plan opens but nobody can enter.
   if (!def) throw new Error(`jpSections: «${slug}» يشير إلى قسمٍ غير معرَّف في roles.js (${s.roleSection})`);
   s.slug = slug;
-  s.managerRoles = [def.manager.key, ...(s.extraManagers || [])];
+  // A staff role holding the manager's rights (config/roles RIGHTS_OF, e.g. the operations team leader) manages the plan too.
+  const { rightsRoleOf } = require('./roles');
+  const heirs = def.staff.map((x) => x.key).filter((k) => rightsRoleOf(k) === def.manager.key);
+  s.managerRoles = [...new Set([def.manager.key, ...heirs, ...(s.extraManagers || [])])];
   // A trainee counts as team once the plan page is opened to them: tasks can be assigned to them and they can write a request.
-  s.staffRoles = [...def.staff.map((x) => x.key), def.trainee.key];
+  s.staffRoles = [...new Set([...def.staff.map((x) => x.key), def.trainee.key, ...(s.extraStaff || [])])].filter((k) => !s.managerRoles.includes(k));
   s.memberRoles = [...s.managerRoles, ...s.staffRoles];
 }
 

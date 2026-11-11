@@ -792,8 +792,9 @@ exports.createVendor = async (req, res) => {
     const approver = await canApprove(req.user);
     const now = new Date();
     const approval = approver
-      ? { approvalStatus: 'approved', approvedBy: req.user._id, approvedByName: fullName(req.user), approvedAt: now, approvalLog: [{ action: 'approve', note: 'أُضيف واعتُمد من المعتمِد', by: req.user._id, byName: fullName(req.user), at: now }] }
-      : { approvalStatus: 'pending', approvalLog: [{ action: 'submit', note: '', by: req.user._id, byName: fullName(req.user), at: now }] };
+      // Approval is what puts a carrier on the approved («master») list; the form no longer asks.
+      ? { approvalStatus: 'approved', inMaster: true, approvedBy: req.user._id, approvedByName: fullName(req.user), approvedAt: now, approvalLog: [{ action: 'approve', note: 'أُضيف واعتُمد من المعتمِد', by: req.user._id, byName: fullName(req.user), at: now }] }
+      : { approvalStatus: 'pending', inMaster: false, approvalLog: [{ action: 'submit', note: '', by: req.user._id, byName: fullName(req.user), at: now }] };
     const doc = new ShipmentOrderSupplier({ ...data, documents: stored, createdBy: req.user._id, submittedBy: req.user._id, submittedByName: fullName(req.user), submittedAt: now, ...approval });
     await doc.save();
     if (!approver) {
@@ -963,7 +964,7 @@ exports.decideApproval = async (req, res) => {
     const now = new Date();
     doc.approvalStatus = action === 'approve' ? 'approved' : action === 'reject' ? 'rejected' : 'returned';
     doc.rejectNote = action === 'approve' ? '' : note;
-    if (action === 'approve') { doc.approvedBy = req.user._id; doc.approvedByName = fullName(req.user); doc.approvedAt = now; }
+    if (action === 'approve') { doc.inMaster = true; doc.approvedBy = req.user._id; doc.approvedByName = fullName(req.user); doc.approvedAt = now; }
     doc.approvalLog.push({ action, note, by: req.user._id, byName: fullName(req.user), at: now });
     await doc.save();
     await logAudit({ user: req.user, action: 'update', entity: 'ShipmentOrderSupplier', entityId: doc._id, changes: { approval: doc.approvalStatus, note }, ipAddress: req.ip });
@@ -1318,3 +1319,62 @@ exports.filterOptions = async (req, res) => {
 
 module.exports.EVENT = EVENT;
 module.exports.blameOf = blameOf;
+
+/**
+ * Heavy-transport freelancers: one person with his own truck. The page lists them with their truck and driver, and
+ * «إضافة فريلانسر نقل ثقيل» registers the person, his truck and the driver in one step (no papers, no approval; papers are for companies).
+ */
+exports.listFreelancers = async (req, res) => {
+  try {
+    const V = require('../models/ShipmentOrderVehicle');
+    const D = require('../models/ShipmentOrderDriver');
+    const rows = await ShipmentOrderSupplier.find({ type: 'freelancer', mergedInto: null, isActive: { $ne: false } })
+      .select('name phone followOwner notes createdAt').sort({ createdAt: -1 }).lean();
+    const ids = rows.map((r) => r._id);
+    const [vehicles, drivers] = await Promise.all([
+      V.find({ supplier: { $in: ids }, isActive: { $ne: false } }).select('supplier plate truckType').lean(),
+      D.find({ supplier: { $in: ids }, isActive: { $ne: false } }).select('supplier name phone residenceNumber').lean(),
+    ]);
+    const by = (list) => { const m = new Map(); for (const x of list) { const k = String(x.supplier); if (!m.has(k)) m.set(k, []); m.get(k).push(x); } return m; };
+    const vs = by(vehicles); const ds = by(drivers);
+    res.json({ freelancers: rows.map((r) => ({ ...r, vehicles: vs.get(String(r._id)) || [], drivers: ds.get(String(r._id)) || [] })) });
+  } catch (e) {
+    console.error('vendors listFreelancers:', e);
+    res.status(500).json({ message: 'تعذّر تحميل الفريلانسرز' });
+  }
+};
+
+exports.createFreelancer = async (req, res) => {
+  try {
+    const V = require('../models/ShipmentOrderVehicle');
+    const D = require('../models/ShipmentOrderDriver');
+    const s = (v) => String(v == null ? '' : v).trim();
+    const name = s(req.body.name); const phone = s(req.body.phone); const plate = s(req.body.plate);
+    const iqama = s(req.body.residenceNumber).replace(/[٠-٩]/g, (d) => String('٠١٢٣٤٥٦٧٨٩'.indexOf(d)));
+    const bad = [];
+    if (!name) bad.push('name');
+    if (!phone) bad.push('phone');
+    if (!plate) bad.push('plate');
+    if (!/^[12]\d{9}$/.test(iqama)) bad.push('residenceNumber');
+    if (bad.length) return res.status(400).json({ message: 'الاسم والجوال ورقم اللوحة ورقم الإقامة (10 أرقام تبدأ بـ1 أو 2) مطلوبة', fields: bad });
+    const taken = await ShipmentOrderSupplier.findOne({ type: 'freelancer', mergedInto: null, name }).select('_id').lean();
+    if (taken) return res.status(409).json({ message: `«${name}» مسجَّلٌ فريلانسرًا بالفعل` });
+    const now = new Date();
+    const sup = await ShipmentOrderSupplier.create({
+      name, type: 'freelancer', phone, followOwner: s(req.body.followOwner), notes: s(req.body.notes), isActive: true,
+      approvalStatus: 'approved', approvedBy: req.user._id, approvedByName: fullName(req.user), approvedAt: now,
+      createdBy: req.user._id, submittedBy: req.user._id, submittedByName: fullName(req.user), submittedAt: now,
+    });
+    const veh = await V.create({ plate, supplier: sup._id, ownership: 'supplier', truckType: s(req.body.truckType), defaultDriverName: name, defaultDriverPhone: phone, createdBy: req.user._id });
+    // One record per person: a driver already known by his iqama is linked rather than duplicated.
+    let drv = await D.findOne({ residenceNumber: iqama });
+    if (drv) { drv.supplier = sup._id; drv.vehicle = veh._id; if (!drv.phone) drv.phone = phone; await drv.save(); }
+    else drv = await D.create({ name, phone, residenceNumber: iqama, supplier: sup._id, vehicle: veh._id, createdBy: req.user._id });
+    await logAudit({ user: req.user, action: 'create', entity: 'ShipmentOrderSupplier', entityId: sup._id, changes: { name, type: 'freelancer', plate }, ipAddress: req.ip }).catch(() => {});
+    announce({ id: String(sup._id) });
+    res.status(201).json({ freelancer: { ...sup.toObject(), vehicles: [veh.toObject()], drivers: [drv.toObject ? drv.toObject() : drv] } });
+  } catch (e) {
+    console.error('vendors createFreelancer:', e);
+    res.status(500).json({ message: 'تعذّرت إضافة الفريلانسر' });
+  }
+};

@@ -23,6 +23,8 @@ export default function VendorsSettingsPage() {
   const { notify } = useDialog();
   const lead = isVendorLead(user);
   const [tab, setTab] = useState<'targets' | 'approvals' | 'lists'>('targets');
+  // The approvals page links straight to the approvers tab (?tab=approvals).
+  useEffect(() => { const q = new URLSearchParams(window.location.search).get('tab'); if (q === 'approvals' || q === 'lists') setTab(q); }, []);
   const [contractDays, setContractDays] = useState(30);
   const [appr, setAppr] = useState<{ users: { id: string; name: string }[]; canManage: boolean; team: { id: string; name: string; role: string }[] } | null>(null);
   const [picked, setPicked] = useState<string[]>([]);

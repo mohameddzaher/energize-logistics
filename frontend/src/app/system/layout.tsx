@@ -349,7 +349,7 @@ function SystemLayoutInner({ children }: { children: React.ReactNode }) {
     { href: '/system/vendors-mgmt/vendors', label: lang === 'ar' ? 'الموردون' : 'Carriers', icon: <Building2 className="w-5 h-5" />, roles: VENDOR_NAV_ROLES, section: 'Vendors Management' },
     { href: '/system/vendors-mgmt/approvals', label: lang === 'ar' ? 'اعتماد الموردين' : 'Carrier Approvals', icon: <ClipboardCheck className="w-5 h-5" />, roles: VENDOR_NAV_ROLES, section: 'Vendors Management' },
     { href: '/system/vendors-mgmt/vehicles', label: lang === 'ar' ? 'السيارات' : 'Trucks', icon: <Truck className="w-5 h-5" />, roles: VENDOR_NAV_ROLES, section: 'Vendors Management' },
-    { href: '/system/vendors-mgmt/drivers', label: lang === 'ar' ? 'السائقون الأفراد' : 'Freelance Drivers', icon: <UserRound className="w-5 h-5" />, roles: VENDOR_NAV_ROLES, section: 'Vendors Management' },
+    { href: '/system/vendors-mgmt/drivers', label: lang === 'ar' ? 'الفريلانسرز (نقل ثقيل)' : 'Freelancers (heavy)', icon: <UserRound className="w-5 h-5" />, roles: VENDOR_NAV_ROLES, section: 'Vendors Management' },
     { href: '/system/vendors-mgmt/alerts', label: lang === 'ar' ? 'التنبيهات' : 'Alerts', icon: <BellRing className="w-5 h-5" />, roles: VENDOR_NAV_ROLES, section: 'Vendors Management' },
     { href: '/system/vendors-mgmt/routes', label: lang === 'ar' ? 'المسارات والأسعار المعتمدة' : 'Routes & Approved Prices', icon: <RouteIcon className="w-5 h-5" />, roles: VENDOR_NAV_ROLES, section: 'Vendors Management' },
     { href: '/system/vendors-mgmt/settings', label: lang === 'ar' ? 'إعدادات القسم' : 'Section Settings', icon: <SlidersHorizontal className="w-5 h-5" />, roles: VENDOR_NAV_ROLES, section: 'Vendors Management' },

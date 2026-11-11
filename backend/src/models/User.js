@@ -95,6 +95,8 @@ const userSchema = new mongoose.Schema(
     // Per-user exceptions on top of the role's permissions (utils/permissions *ForUser): section key → none|view|edit, page path → open/closed. Empty follows the role.
     accessSections: { type: Map, of: String, default: undefined },
     accessPages: { type: Map, of: Boolean, default: undefined },
+    // Branches whose wallet this account works on; empty means its assigned branch plus its extra branches.
+    walletBranches: [{ type: mongoose.Schema.Types.ObjectId, ref: 'Branch' }],
     manager: {
       type: mongoose.Schema.Types.ObjectId,
       ref: 'User',

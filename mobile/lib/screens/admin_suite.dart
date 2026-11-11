@@ -935,6 +935,9 @@ class _UserFormScreenState extends State<_UserFormScreen> {
   Map<String, dynamic> _accessSections = {};
   bool? _vendorsOn0;
   bool _vendorsOn = true;
+  Map<String, dynamic> _accessPages = {};
+  bool? _walletOn0;
+  bool _walletOn = true;
   static const _opsTeam = ['operations_manager', 'operations_team_leader', 'operations_staff'];
   List<Map<String, dynamic>> _branchOpts = [], _projectOpts = [], _customerOpts = [], _b2cHeads = [], _remoteManagers = [];
   String? _err;
@@ -961,6 +964,9 @@ class _UserFormScreenState extends State<_UserFormScreen> {
       _accessSections = Map<String, dynamic>.from(u['accessSections'] is Map ? u['accessSections'] as Map : const {});
       _vendorsOn = _accessSections['Vendors Management'] != 'none';
       _vendorsOn0 = _vendorsOn;
+      _accessPages = Map<String, dynamic>.from(u['accessPages'] is Map ? u['accessPages'] as Map : const {});
+      _walletOn = _accessPages['/system/wallet'] != false;
+      _walletOn0 = _walletOn;
       final ra = List.from(u['remoteAccess'] ?? const []).map((e) => e.toString()).toList();
       if (ra.isNotEmpty) _remote = ra;
       final le = u['linkedEmployee'];
@@ -1114,6 +1120,12 @@ class _UserFormScreenState extends State<_UserFormScreen> {
             if (_vendorsOn) { s.remove('Vendors Management'); } else { s['Vendors Management'] = 'none'; }
             body['accessSections'] = s;
           }
+          if (!isNew && _walletOn0 != null && _walletOn != _walletOn0) {
+            final p = Map<String, dynamic>.from(_accessPages);
+            for (final k in const ['/system/wallet', '/system/wallet-dashboard']) { if (_walletOn) { p.remove(k); } else { p[k] = false; } }
+            body['accessPages'] = p;
+            if (!_walletOn) body['walletBranches'] = <String>[];
+          }
         } else if (!isNew) {
           body['assignedProjects'] = <String>[]; body['assignedBranches'] = <String>[]; body['remoteAccess'] = <String>[];
         }
@@ -1236,6 +1248,14 @@ class _UserFormScreenState extends State<_UserFormScreen> {
                 onChanged: (v) => setState(() => _vendorsOn = v),
                 title: Text(tr('يعمل على الموردين', 'Works on vendors'), style: const TextStyle(fontWeight: FontWeight.w700)),
                 subtitle: Text(tr('إن أُغلق لا يظهر له قسم الموردين. اختيار الصفحات من نسخة الويب.', 'Off hides the vendors section. Pick pages on the web.'), style: const TextStyle(fontSize: 11.5)),
+              ),
+            if (_walletOn0 != null && const ['operations_staff', 'operations_team_leader'].contains(_role))
+              SwitchListTile(
+                contentPadding: EdgeInsets.zero,
+                value: _walletOn, activeThumbColor: T.orange,
+                onChanged: (v) => setState(() => _walletOn = v),
+                title: Text(tr('محفظة الفرع', 'Branch wallet'), style: const TextStyle(fontWeight: FontWeight.w700)),
+                subtitle: Text(tr('إن أُغلقت لا تظهر له المحفظة. اختيار فروعها من نسخة الويب.', 'Off hides the wallet. Pick its branches on the web.'), style: const TextStyle(fontSize: 11.5)),
               ),
           ],
           if (_role == 'client') ...[

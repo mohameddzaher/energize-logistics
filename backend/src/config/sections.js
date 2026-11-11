@@ -115,8 +115,8 @@ const SECTIONS = [
     // Contracts: 3PL vendor contracts and analysis, other departments' contracts.
     key: 'Contracts',
     apiPrefixes: ['/api/contracts'],
-    // Sales sign customer contracts and the vendors team signs carrier contracts here (owner, 2026-11-09).
-    defaultRoles: ['admin', 'contracts_manager', 'it_manager', 'it_specialist', 'operations_manager',
+    // Sales sign customer contracts and the vendors team signs carrier contracts here; vendors is a team inside Operations, so the operations team has it too. Narrowed per role from the permissions page.
+    defaultRoles: ['admin', 'contracts_manager', 'it_manager', 'it_specialist', 'operations_manager', 'operations_staff',
       'sales_manager', 'sales_rep', 'vendors_manager', 'vendors_team_leader', 'vendors_staff'],
   },
   {

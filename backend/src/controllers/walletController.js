@@ -290,8 +290,8 @@ exports.getDailyWallet = async (req, res) => {
  * Operations staff were in the allowed list although the comment said managers only, so closed days changed silently. Writing into a closed day requires reopening, which is super admin only (see maySettle), then closing again with a new count.
  */
 // Finance roles are included (see config/financeAuthority).
-/** Branches an operations officer works on: the assigned one plus any extra branches opened on the account. */
-const userBranchIds = (u) => [u.branch, ...(u.assignedBranches || [])].filter(Boolean).map(String);
+/** Branches whose wallet an operations officer works on: the ones chosen for the wallet on the account, else the assigned branch plus its extra branches. */
+const userBranchIds = (u) => ((u.walletBranches || []).length ? u.walletBranches : [u.branch, ...(u.assignedBranches || [])]).filter(Boolean).map(String);
 const mayWriteIntoClosedDay = (role) => ['super_admin', 'admin', 'it_manager', 'it_specialist', 'operations_manager', 'operations_team_leader', ...require('../config/financeAuthority').FINANCE_FULL_ROLES].includes(role);
 const denyClosedDay = (res) => res.status(400).json({
   code: 'DAY_CLOSED',

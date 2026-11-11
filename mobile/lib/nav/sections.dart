@@ -375,7 +375,7 @@ List<AppSection> sectionsFor(AuthProvider auth) {
     ),
     AppSection(
       key: 'Contracts', arTitle: 'إدارة العقود', enTitle: 'Contracts', icon: Icons.history_edu_outlined,
-      roles: const [..._admins, 'contracts_manager', 'operations_manager', 'operations_team_leader', 'contracts_staff', 'sales_manager', 'sales_rep', 'vendors_manager', 'vendors_team_leader', 'vendors_staff'],
+      roles: const [..._admins, 'contracts_manager', 'operations_manager', 'operations_team_leader', 'contracts_staff', 'sales_manager', 'sales_rep', 'vendors_manager', 'vendors_team_leader', 'vendors_staff', 'operations_staff'],
       pages: [
         AppPage('لوحة القسم', 'Dashboard', Icons.space_dashboard_outlined, (c) => const ContractsDashboardScreen(), path: '/system/contracts'),
         AppPage('سجل موردي 3PL', '3PL Vendors', Icons.business_outlined, (c) => ResourceScreen(config: contractsVendorsCfg), path: '/system/contracts/vendors'),
@@ -674,7 +674,7 @@ List<AppSection> sectionsFor(AuthProvider auth) {
     AppSection(
       key: 'Shipment Orders', arTitle: 'طلبات الشحنات', enTitle: 'Shipment Orders', icon: Icons.assignment_outlined,
       roles: const [..._admins, 'operations_manager', 'operations_team_leader', 'operations_staff', 'moderator', 'shipment_orders_manager', 'shipment_orders_staff', 'shipment_orders_followup',
-        'sales_manager', 'sales_rep', 'vendors_manager', 'vendors_team_leader', 'vendors_staff'],
+        'sales_manager', 'sales_rep', 'vendors_manager', 'vendors_team_leader', 'vendors_staff', 'operations_staff'],
       pages: [
         // One analytics page: it replaced the dashboard and the old analytics, as on the web.
         AppPage('التحليلات', 'Analytics', Icons.bar_chart, (c) => const SoInsightsScreen(), path: '/system/shipment-orders/analytics'),
@@ -706,7 +706,7 @@ List<AppSection> sectionsFor(AuthProvider auth) {
     ),
     AppSection(
       key: 'Vendors Management', arTitle: 'إدارة الموردين', enTitle: 'Vendors Management', icon: Icons.handshake_outlined,
-      roles: const [..._admins, 'operations_manager', 'operations_team_leader', 'vendors_manager', 'vendors_team_leader', 'vendors_staff'],
+      roles: const [..._admins, 'operations_manager', 'operations_team_leader', 'vendors_manager', 'vendors_team_leader', 'vendors_staff', 'operations_staff'],
       pages: [
         AppPage('تحليل القسم', 'Section analysis', Icons.insights_outlined, (c) => const VendorsOverviewScreen(), path: '/system/vendors-mgmt'),
         AppPage('التحليل التشغيلي اليومي', 'Daily operations', Icons.today_outlined, (c) => const VendorsDailyScreen(), path: '/system/vendors-mgmt/daily'),

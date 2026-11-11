@@ -347,6 +347,8 @@ async function pullPlatformRow(id, keys = []) {
   if (!o) return null;
   const all = { ...orderOf(w), status: str(w.applicationStatus) };
   const wanted = Object.fromEntries(keys.map((c) => ROW_TO_ORDER[c]).filter((k) => k && k in all).map((k) => [k, all[k]]));
+  // The driver is one person on both screens: any edit of the row carries its driver name and phone when the row has them, so a wrong value on the shipment never outlives the next edit.
+  for (const k of ['driverName', 'driverPhone']) if (all[k]) wanted[k] = all[k];
   if (keys.some((k) => PAYMENT_KEYS.includes(k)) && 'paymentSubtype' in all) {
     wanted.paymentSubtype = all.paymentSubtype;
   }

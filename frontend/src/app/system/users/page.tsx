@@ -40,6 +40,7 @@ interface UserRecord {
   shipmentBranches?: string[];
   accessSections?: Record<string, string>;
   accessPages?: Record<string, boolean>;
+  walletBranches?: string[];
   manager?: { _id: string; firstName: string; lastName: string; email: string; role: string };
   linkedEmployee?: { _id: string; firstName: string; lastName: string; employeeNumber?: string; iqamaNumber?: string; jobTitle?: string };
   // Staff vs outside partner. Accounts created before this field existed have
@@ -183,6 +184,7 @@ export default function UsersPage() {
     // Per-user permission exceptions (works on vendors or not, which pages).
     accessSections: {} as Record<string, string>,
     accessPages: {} as Record<string, boolean>,
+    walletBranches: [] as string[],
     shipmentBranches: [] as string[],
     manager: '',
     remoteAccess: [] as string[],
@@ -335,7 +337,7 @@ export default function UsersPage() {
 
   // CREATE
   const openCreateModal = async () => {
-    setFormData({ email: '', password: '', firstName: '', lastName: '', role: 'employee', linkedCustomer: '', assignedCustomers: [], branch: '', assignedProjects: [], assignedBranches: [], accessSections: {}, accessPages: {}, shipmentBranches: [], manager: '', remoteAccess: REMOTE_PAGE_OPTIONS.map((p) => p.key), linkedEmployee: '', isTopManagement: false, isChairman: false, leaveSheetSigner: '', accountType: 'employee', partnerSource: '', partnerRefId: '' });
+    setFormData({ email: '', password: '', firstName: '', lastName: '', role: 'employee', linkedCustomer: '', assignedCustomers: [], branch: '', assignedProjects: [], assignedBranches: [], accessSections: {}, accessPages: {}, walletBranches: [], shipmentBranches: [], manager: '', remoteAccess: REMOTE_PAGE_OPTIONS.map((p) => p.key), linkedEmployee: '', isTopManagement: false, isChairman: false, leaveSheetSigner: '', accountType: 'employee', partnerSource: '', partnerRefId: '' });
     setPartnerLabel(''); setPartnerQuery(''); setPartners([]);
     setEmpSearch(''); setEmpResults([]); setLinkedEmployeeLabel('');
     setFormError('');
@@ -418,6 +420,7 @@ export default function UsersPage() {
       assignedBranches: u.assignedBranches?.map((b: any) => typeof b === 'string' ? b : b._id) || [],
       accessSections: { ...(u.accessSections || {}) },
       accessPages: { ...(u.accessPages || {}) },
+      walletBranches: (u.walletBranches || []).map((b: any) => (typeof b === 'string' ? b : b._id)),
       shipmentBranches: u.shipmentBranches || [],
       manager: u.manager?._id || '',
       remoteAccess: u.remoteAccess && u.remoteAccess.length ? u.remoteAccess : REMOTE_PAGE_OPTIONS.map((p) => p.key),
@@ -492,7 +495,7 @@ export default function UsersPage() {
       // HR: link/unlink this login to an employee profile.
       payload.linkedEmployee = formData.linkedEmployee || null;
       payload.isTopManagement = !!formData.isTopManagement;
-      if (['super_admin', 'admin', 'it_manager', 'it_specialist'].includes(currentUser?.role || '')) { payload.accessSections = formData.accessSections; payload.accessPages = formData.accessPages; }
+      if (['super_admin', 'admin', 'it_manager', 'it_specialist'].includes(currentUser?.role || '')) { payload.accessSections = formData.accessSections; payload.accessPages = formData.accessPages; if (OPS_TEAM_ROLES.includes(formData.role)) payload.walletBranches = formData.walletBranches; }
       if (['super_admin', 'admin', 'it_manager', 'it_specialist'].includes(currentUser?.role || '')) payload.isChairman = !!formData.isChairman;
       // Sent only for the eligible roles, so editing anyone else never clears or moves a box.
       if (['hr_manager', 'cfo', 'accounting_manager'].includes(formData.role)) payload.leaveSheetSigner = formData.leaveSheetSigner || '';
@@ -1134,6 +1137,44 @@ export default function UsersPage() {
             sections={formData.accessSections} pages={formData.accessPages}
             onChange={(v) => setFormData({ ...formData, accessSections: v.sections, accessPages: v.pages })} />
         )}
+        {isEdit && ['operations_staff', 'operations_team_leader'].includes(formData.role) && ['super_admin', 'admin', 'it_manager', 'it_specialist'].includes(currentUser?.role || '') && (() => {
+          // The branch wallet is opened per person: closing it closes both wallet pages; open, it works on the branches ticked here (none ticked = his own branches).
+          const on = formData.accessPages['/system/wallet'] !== false;
+          const setOn = (v: boolean) => {
+            const p = { ...formData.accessPages };
+            for (const k of ['/system/wallet', '/system/wallet-dashboard']) { if (v) delete p[k]; else p[k] = false; }
+            setFormData({ ...formData, accessPages: p, walletBranches: v ? formData.walletBranches : [] });
+          };
+          const toggle = (id: string) => setFormData({ ...formData, walletBranches: formData.walletBranches.includes(id) ? formData.walletBranches.filter((x) => x !== id) : [...formData.walletBranches, id] });
+          return (
+            <div className="rounded-xl border border-slate-200 bg-white">
+              <div className="flex items-center justify-between gap-3 px-3 py-2.5">
+                <div>
+                  <p className="text-sm font-bold text-slate-800">{lang === 'ar' ? 'محفظة الفرع' : 'Branch wallet'}</p>
+                  <p className="text-[12px] text-slate-500">{lang === 'ar' ? 'إن أُغلقت لا تظهر له المحفظة. وإن فُتحت تختار فروعها.' : 'Off hides the wallet; on lets you pick its branches.'}</p>
+                </div>
+                <button type="button" role="switch" aria-checked={on} onClick={() => setOn(!on)}
+                  className={`relative h-6 w-11 shrink-0 rounded-full transition ${on ? 'bg-[#f37121]' : 'bg-slate-300'}`}>
+                  <span className={`absolute top-0.5 h-5 w-5 rounded-full bg-white shadow transition-all ${on ? 'start-[1.375rem]' : 'start-0.5'}`} />
+                </button>
+              </div>
+              {on && (
+                <div className="border-t border-slate-100 px-3 py-2">
+                  <p className="mb-1.5 text-[12px] font-semibold text-slate-600">{lang === 'ar' ? 'فروع المحفظة (بلا اختيار = فرعه وفروعه الإضافية)' : 'Wallet branches (none = his own branches)'}</p>
+                  <div className="grid gap-1 sm:grid-cols-2">
+                    {branches.map((b) => (
+                      <label key={b._id} className="flex cursor-pointer items-center gap-2 rounded px-2 py-1 hover:bg-slate-50">
+                        <input type="checkbox" checked={formData.walletBranches.includes(b._id)} onChange={() => toggle(b._id)}
+                          className="rounded border-slate-300 text-[#f37121] focus:ring-[#f37121]/50" />
+                        <span className="text-[13px] text-slate-700">{b.name}</span>
+                      </label>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+          );
+        })()}
         </div>
       )}
 

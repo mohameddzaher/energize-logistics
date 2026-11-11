@@ -1,3 +1,4 @@
+const mongoose = require('mongoose');
 const User = require('../models/User');
 const { canonicalRole } = require('../config/roles');
 const logAudit = require('../utils/auditLogger');
@@ -366,6 +367,10 @@ exports.updateUser = async (req, res) => {
         for (const [k, v] of Object.entries(req.body.accessPages || {})) if (pageKeys.has(k) && typeof v === 'boolean') out[k] = v;
         user.accessPages = Object.keys(out).length ? out : undefined;
       }
+    }
+    if (req.body.walletBranches !== undefined) {
+      if (!require('../config/constants').isTopRole(req.user.role)) return res.status(403).json({ message: 'فروع المحفظة يحدّدها مدير النظام فقط' });
+      user.walletBranches = Array.isArray(req.body.walletBranches) ? req.body.walletBranches.filter((x) => mongoose.isValidObjectId(x)) : [];
     }
     const nextBranches = branchesFrom(req, user.role);
     if (nextBranches) { user.shipmentBranches = nextBranches; announceBranchAccess(); }

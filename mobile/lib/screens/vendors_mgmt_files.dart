@@ -154,6 +154,7 @@ class _VmRegisterStatsState extends State<VmRegisterStats> with _Live {
     vmContractLabel(r['contractState']),
     if (r['contractEndDate'] != null) '${tr('حتى', 'to')} ${r['contractEndDate']}',
     if (r['daysLeft'] != null) '${tr('متبقٍّ', 'left')} ${r['daysLeft']}',
+    if (r['awaitingFile'] == true) tr('بانتظار ملف العقد', 'awaiting contract file'),
     if (r['approvalStatus'] != null && r['approvalStatus'] != 'approved') tr(vmApproval[r['approvalStatus']]!.$1, vmApproval[r['approvalStatus']]!.$2),
     '${tr('رحلات', 'Trips')} ${r['trips'] ?? 0}',
   ].join(' · ');
@@ -173,6 +174,7 @@ class _VmRegisterStatsState extends State<VmRegisterStats> with _Live {
           vmTapTile(() => open(tr('موردو السجلّ', 'Register carriers'), (_) => true), KpiTile(tr('موردو السجلّ', 'Register carriers'), fmtNum(t['vendors']), color: T.navy)),
           vmTapTile(() => open(tr('تنقصهم مستنداتٌ مطلوبة', 'Missing papers'), (r) => (r['docsMissing'] as List? ?? const []).isNotEmpty), KpiTile(tr('مستنداتٌ ناقصة', 'Missing papers'), fmtNum(t['missingDocs']), color: T.warn)),
           vmTapTile(() => open(tr('متعاقَدٌ معهم رسميًّا', 'Contracted'), (r) => r['contracted'] == true), KpiTile(tr('متعاقَدٌ معهم', 'Contracted'), fmtNum(t['contracted']), color: T.success)),
+          vmTapTile(() => open(tr('بانتظار رفع ملف العقد', 'Awaiting contract file'), (r) => r['awaitingFile'] == true), KpiTile(tr('بانتظار ملف العقد', 'Awaiting contract file'), fmtNum(t['awaitingFile'] ?? 0), color: T.warn)),
           vmTapTile(() => open(tr('غير متعاقَدٍ معهم', 'Not contracted'), (r) => r['contracted'] != true), KpiTile(tr('غير متعاقَد', 'Not contracted'), fmtNum(t['notContracted']), color: T.warn)),
           vmTapTile(() => open(tr('عقودٌ تنتهي أو انتهت', 'Contracts ending'), (r) => r['contractState'] == 'expiring' || r['contractState'] == 'expired'), KpiTile(tr('تنتهي قريبًا / منتهية', 'Ending / ended'), '${t['expiring'] ?? 0} / ${t['expired'] ?? 0}', color: T.danger)),
           vmTapTile(() => open(tr('بانتظار الاعتماد', 'Pending approval'), (r) => r['approvalStatus'] == 'pending' || r['approvalStatus'] == 'returned'), KpiTile(tr('بانتظار الاعتماد', 'Pending'), '${t['pending'] ?? 0}', color: T.violet)),
@@ -497,7 +499,9 @@ class VmContractCard extends StatelessWidget {
         if (ok == true) onChanged();
       }),
       child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-        Text('${tr('تمّ التعاقد معه رسميًّا', 'Officially contracted')}: ${c['contracted'] == true ? tr('نعم', 'Yes') : tr('لا', 'No')}', style: TextStyle(fontWeight: FontWeight.w800, color: c['contracted'] == true ? T.success : T.inkSoft)),
+        Text('${tr('تمّ التعاقد معه رسميًّا', 'Officially contracted')}: ${c['contracted'] == true ? tr('نعم', 'Yes') : tr('لا', 'No')}${'${c['recordedByName'] ?? ''}'.isEmpty ? '' : ' (${c['recordedByName']}${c['recordedAt'] != null ? ' · ${c['recordedAt']}' : ''})'}', style: TextStyle(fontWeight: FontWeight.w800, color: c['contracted'] == true ? T.success : T.inkSoft)),
+        if (c['awaitingFile'] == true)
+          Padding(padding: const EdgeInsets.only(top: 4), child: Text(tr('بانتظار رفع ملف العقد — التعاقد محسوب، ارفع الملفّ من «تحديث العقد»', 'Awaiting the contract file — counted as contracted; upload it from «Update contract»'), style: const TextStyle(color: T.warn, fontWeight: FontWeight.w700, fontSize: 12))),
         Text('${tr('نهاية العقد', 'Contract end')}: ${c['endDate'] ?? '—'}${left == null ? '' : inum(left) < 0 ? ' (${tr('انتهى منذ', 'ended')} ${-inum(left)} ${tr('يوم', 'd')})' : ' (${tr('باقي', 'left')} $left ${tr('يوم', 'd')})'}',
           style: TextStyle(color: state == 'expired' ? T.danger : state == 'expiring' ? T.warn : T.ink, fontWeight: FontWeight.w700)),
         for (final f in files)
@@ -644,6 +648,90 @@ class _VendorsApprovalsScreenState extends State<VendorsApprovalsScreen> with _L
                 const SizedBox(height: 8),
               ],
             ])),
+    );
+  }
+}
+
+// ── Realisation of sales requests ───────────────────────────────────────────
+
+/// Sales requests against what the vendors team realised, in trucks: rate, why the rest was not realised (ranked),
+/// the daily trend, and the split by branch, customer, route and team member. Every number opens its requests.
+class VmSalesRealisation extends StatefulWidget {
+  final Map<String, dynamic> data;
+  final String title;
+  const VmSalesRealisation({super.key, required this.data, required this.title});
+  @override
+  State<VmSalesRealisation> createState() => _VmSalesRealisationState();
+}
+
+class _VmSalesRealisationState extends State<VmSalesRealisation> {
+  String _dim = 'byBranch';
+  static const _st = {'pending': ('جديد', 'New'), 'in_progress': ('قيد التنفيذ', 'In progress'), 'completed': ('مكتمل', 'Completed'), 'rejected': ('مرفوض', 'Refused'), 'cancelled': ('مسحوب', 'Withdrawn')};
+  static const _dims = [('byBranch', 'branch', 'الفرع', 'Branch'), ('byCustomer', 'customerName', 'العميل', 'Customer'), ('byRoute', 'route', 'المسار', 'Route'), ('byMember', 'member', 'عضو الفريق', 'Team member')];
+
+  String _status(dynamic k) => tr(_st['$k']?.$1 ?? '$k', _st['$k']?.$2 ?? '$k');
+  String _sub(Map<String, dynamic> r) => [r['day'], r['customerName'], r['route'], r['branch'], '${r['placed']}/${r['trucks']}', _status(r['status']),
+    if ('${r['reason'] ?? ''}'.isNotEmpty) r['reason'], if ('${r['member'] ?? ''}'.isNotEmpty) r['member'], if (r['hoursToPlace'] != null) '${r['hoursToPlace']} ${tr('س', 'h')}'].where((x) => '${x ?? ''}'.isNotEmpty).join(' · ');
+
+  void _open(String title, bool Function(Map<String, dynamic>) f) {
+    final list = _rows(widget.data['list']);
+    vmDrill(context, title, list.where(f).toList(), _sub, titleOf: (r) => '#${r['number']} · ${r['customerName'] ?? ''}', exportCols: [
+      ExportCol('الطلب', 'Request', (r) => r['number']), ExportCol('اليوم', 'Day', (r) => r['day']), ExportCol('العميل', 'Customer', (r) => r['customerName']),
+      ExportCol('المسار', 'Route', (r) => r['route']), ExportCol('الفرع', 'Branch', (r) => r['branch']), ExportCol('الشاحنات', 'Trucks', (r) => r['trucks']),
+      ExportCol('المنفَّذ', 'Placed', (r) => r['placed']), ExportCol('غير المحقَّق', 'Not realised', (r) => r['rest']), ExportCol('الحالة', 'Status', (r) => _status(r['status'])),
+      ExportCol('السبب', 'Reason', (r) => r['reason']), ExportCol('عضو الفريق', 'Team member', (r) => '${r['member'] ?? ''}'.isEmpty ? r['placedBy'] : r['member']),
+      ExportCol('ساعات حتى أوّل شاحنة', 'Hours to first truck', (r) => r['hoursToPlace']),
+    ]);
+  }
+
+  bool _ofDim(Map<String, dynamic> r, String field, String k) => field == 'member'
+      ? (r['member'] == k || '${r['placedBy'] ?? ''}'.split('، ').contains(k))
+      : ('${r[field] ?? ''}'.isEmpty ? '—' : '${r[field]}') == k;
+
+  @override
+  Widget build(BuildContext context) {
+    final d = widget.data;
+    if (d.isEmpty) return const SizedBox.shrink();
+    final reasons = _rows(d['reasons']);
+    final days = _rows(d['byDay']);
+    final dim = _dims.firstWhere((x) => x.$1 == _dim);
+    final split = _rows(d[_dim]);
+    return SectionCard(
+      title: widget.title,
+      note: tr('بالشاحنات: كلُّ شاحنةٍ تُنفَّذ أمرُ نقل · الطلبات المعتمدة فقط · اضغط رقمًا لعرض طلباته', 'In trucks · approved requests only · tap a number for its requests'),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+        TileWrap([
+          vmTapTile(() => _open(tr('طلبات المبيعات', 'Sales requests'), (_) => true), KpiTile(tr('الشاحنات المطلوبة', 'Trucks requested'), fmtNum(d['trucks']))),
+          vmTapTile(() => _open(tr('نُفّذت لها شاحنات', 'Placed'), (r) => inum(r['placed']) > 0), KpiTile(tr('نسبة التحقيق', 'Realised'), '${d['placeRate'] ?? 0}% · ${fmtNum(d['placed'])}', color: T.success)),
+          vmTapTile(() => _open(tr('لم تتحقّق كلُّ شاحناتها', 'Not fully realised'), (r) => inum(r['rest']) > 0), KpiTile(tr('غير المحقَّق', 'Not realised'), '${d['unrealisedRate'] ?? 0}% · ${fmtNum(d['unrealised'])}', color: T.danger)),
+          vmTapTile(() => _open(tr('رفضها الفريق', 'Refused'), (r) => r['status'] == 'rejected' && inum(r['rest']) > 0), KpiTile(tr('رفضها الفريق', 'Refused'), fmtNum(d['rejected']), color: T.danger)),
+          vmTapTile(() => _open(tr('سحبتها المبيعات', 'Withdrawn'), (r) => r['status'] == 'cancelled' && inum(r['rest']) > 0), KpiTile(tr('سحبتها المبيعات', 'Withdrawn'), fmtNum(d['withdrawn']), color: T.inkFaint)),
+          vmTapTile(() => _open(tr('ما زالت مفتوحة', 'Still open'), (r) => (r['status'] == 'pending' || r['status'] == 'in_progress') && inum(r['rest']) > 0), KpiTile(tr('ما زالت مفتوحة', 'Still open'), fmtNum(d['open']), color: T.warn)),
+          vmTapTile(() => _open(tr('نُفّذت لها شاحنات', 'Placed'), (r) => r['hoursToPlace'] != null), KpiTile(tr('متوسط الوقت حتى أوّل شاحنة', 'Avg time to first truck'), d['avgHoursToPlace'] == null ? '—' : '${d['avgHoursToPlace']} ${tr('س', 'h')}')),
+        ]),
+        const SizedBox(height: 8),
+        Text(tr('لماذا لم تتحقّق؟', 'Why not realised?'), style: const TextStyle(fontWeight: FontWeight.w800)),
+        for (final x in reasons)
+          ListTile(dense: true, contentPadding: EdgeInsets.zero,
+            title: Text('${x['reason']}', style: const TextStyle(fontWeight: FontWeight.w700)),
+            subtitle: Text('${tr('شاحنات', 'Trucks')} ${x['n']} · ${tr('طلبات', 'Requests')} ${x['requests']} · ${x['shareOfUnrealised']}% ${tr('من غير المحقَّق', 'of not realised')} · ${x['shareOfAll']}% ${tr('من الكلّ', 'of all')}'),
+            onTap: () => _open('${x['reason']}', (r) => r['reason'] == x['reason'])),
+        if (reasons.isEmpty) Text(tr('تحقّقت كلُّ الشاحنات', 'Every truck realised'), style: const TextStyle(color: T.inkFaint, fontSize: 12)),
+        if (days.length > 1) ...[
+          const SizedBox(height: 8),
+          Text(tr('الاتجاه يومًا بيوم', 'Day by day'), style: const TextStyle(fontWeight: FontWeight.w800)),
+          ColumnChart(labels: [for (final x in days) '${x['day']}'.substring(8)], a: [for (final x in days) inum(x['placed'])], b: [for (final x in days) inum(x['unrealised'])]),
+        ],
+        const SizedBox(height: 8),
+        Wrap(spacing: 5, runSpacing: 5, children: [
+          for (final x in _dims) ChoiceChip(label: Text(tr(x.$3, x.$4)), selected: _dim == x.$1, onSelected: (_) => setState(() => _dim = x.$1)),
+        ]),
+        for (final x in split.take(30))
+          ListTile(dense: true, contentPadding: EdgeInsets.zero,
+            title: Text('${x['key']}', style: const TextStyle(fontWeight: FontWeight.w700)),
+            subtitle: Text('${tr('شاحنات', 'Trucks')} ${x['trucks']} · ${tr('محقَّق', 'Realised')} ${x['placed']} (${x['rate']}%) · ${tr('غير محقَّق', 'Not realised')} ${x['unrealised']}${'${x['topReason'] ?? ''}'.isEmpty ? '' : ' · ${x['topReason']}'}'),
+            onTap: () => _open('${tr(dim.$3, dim.$4)}: ${x['key']}', (r) => _ofDim(r, dim.$2, '${x['key']}'))),
+      ]),
     );
   }
 }

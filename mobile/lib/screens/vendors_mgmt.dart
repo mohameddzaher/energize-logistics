@@ -295,6 +295,7 @@ class _VendorsOverviewScreenState extends State<VendorsOverviewScreen> with _Liv
                 tap(KpiTile(tr('لم يعملوا قطّ', 'Never worked'), fmtNum(k['masterNeverWorked']), color: T.inkFaint), tr('لم يعملوا قطّ', 'Never worked'), ml.where((m) => m['everWorked'] != true).toList()),
                 tap(KpiTile(tr('نشطون هذا الشهر', 'Active this month'), fmtNum(k['masterActiveMonth']), color: T.success), tr('نشطون هذا الشهر', 'Active this month'), ml.where((m) => m['activeThisMonth'] == true).toList()),
                 tap(KpiTile(tr('متعاقَدٌ معهم رسميًّا', 'Officially contracted'), fmtNum(k['masterSigned'])), tr('متعاقَدٌ معهم (عقدٌ مسجَّل)', 'Contracted (recorded)'), ml.where((m) => m['contracted'] == true).toList()),
+                tap(KpiTile(tr('متعاقَدون بانتظار ملف العقد', 'Contracted, awaiting file'), fmtNum(k['signedAwaitingFile']), color: T.warn), tr('متعاقَدون بانتظار رفع ملف العقد', 'Contracted, awaiting the file'), ml.where((m) => m['awaitingFile'] == true).toList()),
                 tap(KpiTile(tr('متعاقَدون غير نشطين', 'Contracted, inactive'), fmtNum(k['signedInactive']), color: T.warn), tr('متعاقَدون غير نشطين', 'Contracted, inactive'), ml.where((m) => m['contracted'] == true && m['active'] != true).toList()),
                 tap(KpiTile(tr('نشطون دون عقد', 'Active, no contract'), fmtNum(k['activeUnsigned']), color: T.warn), tr('نشطون دون عقد', 'Active, no contract'), ml.where((m) => m['contracted'] != true && m['active'] == true).toList()),
                 tap(KpiTile(tr('شركاتٌ نشطة غير معتمدة', 'Active, not approved'), fmtNum(k['leadsActive']), color: T.warn), tr('شركاتٌ نشطة غير معتمدة', 'Active, not approved'), xl.where((m) => m['kind'] == 'outside').toList()),
@@ -310,6 +311,7 @@ class _VendorsOverviewScreenState extends State<VendorsOverviewScreen> with _Liv
                 tap(KpiTile(tr('متابعاتٌ مستحقّة', 'Follow-ups due'), fmtNum(k['followUpsDue']), color: T.danger), tr('متابعاتٌ حلّ موعدها', 'Follow-ups due'), fud, fuSub),
               ]),
               VmRegisterStats(query: vmFilterQuery(_filters)),
+              VmSalesRealisation(data: Map<String, dynamic>.from(d['salesRealisation'] ?? {}), title: tr('تحقيق طلبات المبيعات في ${_mon(d['curMonth'])}', 'Sales requests realised in ${_mon(d['curMonth'])}')),
               // Team performance cards (sourcing / collection / assist) mount here as their own widget.
               VmRanking(month: _month, query: vmFilterQuery(_filters)),
               SectionCard(
@@ -481,34 +483,6 @@ class _VendorsDailyScreenState extends State<VendorsDailyScreen> with _LiveLoad 
     }
   }
 
-  /// Sales requests of the span and how the team answered them; each number opens its requests.
-  Widget _salesRequests(Map<String, dynamic> sr) {
-    final list = _list(sr['list']);
-    const st = {'pending': ('جديد', 'New'), 'in_progress': ('قيد التنفيذ', 'In progress'), 'completed': ('مكتمل', 'Completed'), 'rejected': ('مرفوض', 'Refused'), 'cancelled': ('مسحوب', 'Withdrawn')};
-    String sub(Map<String, dynamic> r) => [r['day'], r['customerName'], r['route'], '${r['placed']}/${r['trucks']}', tr(st[r['status']]?.$1 ?? '${r['status']}', st[r['status']]?.$2 ?? '${r['status']}'), if ('${r['rejectReason'] ?? ''}'.isNotEmpty) r['rejectReason'], if (r['hoursToPlace'] != null) '${r['hoursToPlace']} ${tr('س', 'h')}'].where((x) => '${x ?? ''}'.isNotEmpty).join(' · ');
-    void open(String title, bool Function(Map<String, dynamic>) f) => vmDrill(context, title, list.where(f).toList(), sub, titleOf: (r) => '#${r['number']} · ${r['customerName'] ?? ''}',
-      exportCols: [ExportCol('الطلب', 'Request', (r) => r['number']), ExportCol('اليوم', 'Day', (r) => r['day']), ExportCol('العميل', 'Customer', (r) => r['customerName']), ExportCol('المسار', 'Route', (r) => r['route']),
-        ExportCol('الشاحنات', 'Trucks', (r) => r['trucks']), ExportCol('المنفَّذ', 'Placed', (r) => r['placed']), ExportCol('الحالة', 'Status', (r) => tr(st[r['status']]?.$1 ?? '', st[r['status']]?.$2 ?? '')),
-        ExportCol('سبب الرفض', 'Reason', (r) => r['rejectReason']), ExportCol('ساعات حتى أوّل شاحنة', 'Hours to first truck', (r) => r['hoursToPlace'])]);
-    return SectionCard(
-      title: tr('طلبات المبيعات في الفترة', 'Sales requests in the span'),
-      note: tr('الطلبات المعتمدة وكيف أجابها الفريق · اضغط رقمًا لعرض طلباته', 'Approved requests and how the team answered · tap a number'),
-      child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-        TileWrap([
-          vmTapTile(() => open(tr('طلبات المبيعات', 'Sales requests'), (_) => true), KpiTile(tr('الشاحنات المطلوبة', 'Trucks requested'), fmtNum(sr['trucks']))),
-          vmTapTile(() => open(tr('نُفّذت لها شاحنات', 'Placed'), (r) => inum(r['placed']) > 0), KpiTile(tr('المنفَّذ', 'Placed'), '${fmtNum(sr['placed'])} · ${sr['placeRate'] ?? 0}%', color: T.success)),
-          vmTapTile(() => open(tr('رفضها الفريق', 'Refused'), (r) => r['status'] == 'rejected'), KpiTile(tr('رفضها الفريق', 'Refused'), fmtNum(sr['rejected']), color: T.danger)),
-          vmTapTile(() => open(tr('سحبتها المبيعات', 'Withdrawn'), (r) => r['status'] == 'cancelled'), KpiTile(tr('سحبتها المبيعات', 'Withdrawn'), fmtNum(sr['withdrawn']), color: T.inkFaint)),
-          vmTapTile(() => open(tr('ما زالت مفتوحة', 'Still open'), (r) => r['status'] == 'pending' || r['status'] == 'in_progress'), KpiTile(tr('ما زالت مفتوحة', 'Still open'), fmtNum(sr['open']), color: T.warn)),
-          vmTapTile(() => open(tr('نُفّذت لها شاحنات', 'Placed'), (r) => r['hoursToPlace'] != null), KpiTile(tr('متوسط الوقت حتى أوّل شاحنة', 'Avg time to first truck'), sr['avgHoursToPlace'] == null ? '—' : '${sr['avgHoursToPlace']} ${tr('س', 'h')}')),
-        ]),
-        if (_list(sr['reasons']).isNotEmpty)
-          BarList([for (final x in _list(sr['reasons'])) ('${x['reason']}', inum(x['n']), '${x['n']}')], color: T.danger,
-            onTap: (i) { final k = '${_list(sr['reasons'])[i]['reason']}'; open(k, (r) => r['status'] == 'rejected' && ('${r['rejectReason'] ?? ''}'.isEmpty ? 'بلا سبب مسجّل' : r['rejectReason']) == k); }),
-      ]),
-    );
-  }
-
   @override
   Widget build(BuildContext context) {
     final d = _d;
@@ -551,7 +525,7 @@ class _VendorsDailyScreenState extends State<VendorsDailyScreen> with _LiveLoad 
                 vmTapTile(() => _rows(tr('رحلات أسطول تنشيط', 'Our fleet trips'), 'fleet'), KpiTile(tr('حصّة أسطول تنشيط', 'Our fleet share'), '${t['fleetShare'] ?? 0}%', color: T.navy)),
                 vmTapTile(() => _rows(tr('رحلات السائقين الأفراد', 'Freelancer trips'), 'freelancer'), KpiTile(tr('الأفراد من التشغيل الخارجي', 'Freelancers of external'), '${t['freelancerShareExt'] ?? 0}%', color: T.violet)),
               ]),
-              _salesRequests(Map<String, dynamic>.from(d['salesRequests'] ?? {})),
+              VmSalesRealisation(data: Map<String, dynamic>.from(d['salesRequests'] ?? {}), title: tr('تحقيق طلبات المبيعات في الفترة', 'Realisation of sales requests in the span')),
               VmRegisterStats(query: vmFilterQuery(_filters)),
               // Team performance cards (sourcing / collection / assist) mount here as their own widget.
               if (inum(d['target']?['daily']) > 0) Text('${tr('المستهدَف اليومي', 'Daily target')}: ${d['target']['daily']} · ${tr('مستهدَف الفترة', 'Period target')}: ${d['target']['period']}', style: const TextStyle(fontSize: 12, color: T.inkFaint)),

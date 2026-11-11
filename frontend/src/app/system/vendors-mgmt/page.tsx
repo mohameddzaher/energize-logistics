@@ -20,6 +20,7 @@ import VendorRanking from '@/components/vendors/VendorRanking';
 import { ResponsiveContainer, ComposedChart, Bar, Line, XAxis, YAxis, Tooltip, CartesianGrid, Legend } from 'recharts';
 import { Building2 } from 'lucide-react';
 import TeamPerformance from '@/components/vendors/TeamPerformance';
+import SalesRealisation from '@/components/vendors/SalesRealisation';
 
 type Row = Record<string, any>;
 
@@ -98,7 +99,7 @@ export default function VendorsOverviewPage() {
         <Kpi ar={ar} label={t(`نشطون (${N} يومًا)`, `Active (${N} days)`)} value={fmtInt(K.masterActive)} tone="good" sub={fmtPct((K.masterActive / Math.max(1, K.masterVendors)) * 100)} onClick={() => show(t(`معتمدون لهم رحلةٌ خلال ${N} يومًا`, `Approved with a trip within ${N} days`), M.filter((m) => m.active))} />
         <Kpi ar={ar} label={inactiveLabel} value={fmtInt(K.masterInactive)} tone={K.masterInactive ? 'bad' : undefined} sub={t(`منهم لم يعملوا قطّ ${K.masterNeverWorked}`, `${K.masterNeverWorked} never worked`)} onClick={() => show(inactiveLabel, M.filter((m) => !m.active).sort((a, b) => (b.daysIdle ?? 99999) - (a.daysIdle ?? 99999)))} />
         <Kpi ar={ar} label={t(`نشطون في ${monthName(cm, true)}`, `Active in ${monthName(cm, false)}`)} value={fmtInt(K.masterActiveMonth)} tone="brand" onClick={() => show(t(`معتمدون عملوا في ${monthName(cm, true)}`, `Approved active in ${monthName(cm, false)}`), M.filter((m) => m.activeThisMonth))} />
-        <Kpi ar={ar} label={t('متعاقَدٌ معهم رسميًّا', 'Officially contracted')} value={fmtInt(K.masterSigned)} sub={t(`منهم غير نشطين ${K.signedInactive}`, `${K.signedInactive} inactive`)} onClick={() => show(t('معتمدون متعاقَدٌ معهم (عقدٌ مسجَّلٌ على النظام)', 'Approved, contract recorded on the system'), M.filter((m) => m.contracted))} />
+        <Kpi ar={ar} label={t('متعاقَدٌ معهم رسميًّا', 'Officially contracted')} value={fmtInt(K.masterSigned)} sub={t(`غير نشطين ${K.signedInactive} · بانتظار الملفّ ${K.signedAwaitingFile}`, `${K.signedInactive} inactive · ${K.signedAwaitingFile} awaiting file`)} onClick={() => show(t('معتمدون متعاقَدٌ معهم (عقدٌ مسجَّلٌ على النظام)', 'Approved, contract recorded on the system'), M.filter((m) => m.contracted), [...masterCols, C.awaitingFile])} />
         <Kpi ar={ar} label={t('نشطون دون عقد', 'Active, no contract')} value={fmtInt(K.activeUnsigned)} tone={K.activeUnsigned ? 'warn' : undefined} onClick={() => show(t('نشطون دون عقدٍ مسجَّل', 'Active, no contract recorded'), M.filter((m) => !m.contracted && m.active))} />
         <Kpi ar={ar} label={t('حصّة المعتمدين من التشغيل الخارجي', 'Approved share of external trips')} value={fmtPct(K.masterShare)} tone="brand" onClick={() => show(t('المعتمدون الذين عملوا هذا العام', 'Approved carriers that worked this year'), M.filter((m) => m.trips > 0))} />
         <Kpi ar={ar} label={t('رحلاتُ التشغيل الخارجي', 'External trips')} value={fmtInt(K.externalTrips)} sub={t(`أسطول تنشيط ${fmtInt(K.fleetTrips)}`, `Our fleet ${fmtInt(K.fleetTrips)}`)} onClick={() => show(t('الموردون الذين عملوا هذا العام', 'Carriers that worked this year'), d.extYearList, extCols)} />
@@ -112,6 +113,8 @@ export default function VendorsOverviewPage() {
       </div>
 
       <VendorRegisterStats ar={ar} query={fq} />
+
+      <SalesRealisation data={d.salesRealisation} ar={ar} title={t(`تحقيق طلبات المبيعات في ${monthName(cm, true)}`, `Sales requests realised in ${monthName(cm, false)}`)} />
 
       {/* Team performance cards (sourcing / collection / assist) mount here as their own component. */}
 

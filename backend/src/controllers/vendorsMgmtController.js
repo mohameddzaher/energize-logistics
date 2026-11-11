@@ -63,6 +63,9 @@ const contractStateOf = (v, days) => {
   return { state: left < 0 ? 'expired' : left <= days ? 'expiring' : 'active', daysLeft: left };
 };
 
+/** A contract recorded on the system whose signed file is not uploaded yet. */
+const awaitingFileOf = (v) => signedOf(v) && !(v.contractFiles || []).length;
+
 /** One contract state per carrier, for filters and lists: active, expiring, expired, noEnd (contracted, no end date), not. */
 const CONTRACT_STATE_AR = { active: 'ساري', expiring: 'ينتهي قريبًا', expired: 'منتهٍ', noEnd: 'متعاقَدٌ بلا تاريخ نهاية', not: 'غير متعاقَد' };
 const contractKeyOf = (v, days) => {
@@ -181,7 +184,7 @@ exports.overview = async (req, res) => {
       const active = (last) => VA.activeWithin(last, asOf, N);
       // Approved carriers: put on the approved list by the approval action (legacy rows without a decision count as approved).
       const regs = await ShipmentOrderSupplier.find({ inMaster: true, mergedInto: null, isActive: { $ne: false } })
-        .select('name type followOwner contracted contractEndDate contractFiles approvalStatus phone headOffice').lean();
+        .select('name type followOwner contracted contractEndDate contractFiles contractSource approvalStatus phone headOffice').lean();
       const master = regs.filter((m) => approvalOf(m) === 'approved' && kindOfReg(m) !== 'fleet' && (!keepC || keepC('master', m)));
       const actById = new Map(Y.vendors.filter((v) => v.vendorId).map((v) => [v.vendorId, v]));
       const masterRows = master.map((m) => {
@@ -192,7 +195,7 @@ exports.overview = async (req, res) => {
         return {
           ...m, id, trips: a?.trips || 0, mon: a?.mon || new Array(12).fill(0), trend: a?.trend || (e?.last ? 'stopped' : 'never'),
           last: e?.last || null, active: active(e?.last), activeThisMonth: !!a?.activeThisMonth, everWorked: !!e?.last,
-          signed: signedOf(m), contractKey: contractKeyOf(m, S.contractDays), contractEndDate: isoDay(m.contractEndDate), daysLeft: cs.daysLeft,
+          signed: signedOf(m), awaitingFile: awaitingFileOf(m), contractKey: contractKeyOf(m, S.contractDays), contractEndDate: isoDay(m.contractEndDate), daysLeft: cs.daysLeft,
         };
       });
       const ext = Y.vendors.filter((v) => v.kind !== 'fleet' && (!keepC || keepC(v.kind, v.vendorId ? R.byId.get(v.vendorId) : null)));
@@ -216,7 +219,7 @@ exports.overview = async (req, res) => {
         a.list.push({ id: v.vendorId, name: v.name, kind: v.kind, owner: ownerOf(v.vendorId), first: isoDay(v.firstEver), monthTrips: v.mon[d.getUTCMonth()] || 0, trips: v.trips, last: isoDay(v.lastEver) });
       }
       for (const a of activations) a.list.sort((x, y) => (x.first < y.first ? -1 : 1));
-      const fu = await followUpPicture(asOf);
+      const [fu, salesRealisation] = await Promise.all([followUpPicture(asOf), requestFunnel({ from: `${asOf.slice(0, 7)}-01`, to: asOf, branch: '', q: req.query })]);
       // The team: approved carriers per follow-up owner (assigned on the system), how many work, and their follow-ups.
       const team = {};
       const masterTrips = masterRows.reduce((s, m) => s + m.trips, 0);
@@ -248,7 +251,7 @@ exports.overview = async (req, res) => {
       const pending = await ShipmentOrderSupplier.find({ approvalStatus: { $in: ['pending', 'returned'] }, mergedInto: null })
         .select('name type approvalStatus submittedByName submittedAt followOwner').sort({ submittedAt: -1 }).lean();
       const drillRow = (m) => ({
-        id: m.id, name: m.name, kind: 'master', owner: m.followOwner || '', contracted: m.signed, contractState: m.contractKey, contractEndDate: m.contractEndDate, daysLeft: m.daysLeft,
+        id: m.id, name: m.name, kind: 'master', owner: m.followOwner || '', contracted: m.signed, awaitingFile: m.awaitingFile, contractState: m.contractKey, contractEndDate: m.contractEndDate, daysLeft: m.daysLeft,
         trips: m.trips, month: m.mon[cm] || 0, trend: m.trend, last: isoDay(m.last), daysIdle: VA.daysSince(m.last, asOf), active: m.active, activeThisMonth: m.activeThisMonth,
         everWorked: m.everWorked, phone: m.phone || '', headOffice: m.headOffice || '',
       });
@@ -263,6 +266,7 @@ exports.overview = async (req, res) => {
           masterActiveMonth: masterRows.filter((m) => m.activeThisMonth).length,
           masterSigned: masterRows.filter((m) => m.signed).length,
           signedInactive: masterRows.filter((m) => m.signed && !m.active).length,
+          signedAwaitingFile: masterRows.filter((m) => m.awaitingFile).length,
           activeUnsigned: masterRows.filter((m) => !m.signed && m.active).length,
           masterStopped: masterRows.filter((m) => m.trend === 'stopped').length,
           leadsActive: extEver.filter((e) => e.kind === 'outside').length,
@@ -278,7 +282,7 @@ exports.overview = async (req, res) => {
           followedMonth: new Set(fu.month.map((f) => f.id)).size,
           followUpsDue: fu.due.length,
         },
-        months, activations, team: teamRows,
+        months, activations, team: teamRows, salesRealisation,
         trendMaster: count(masterRows, (m) => m.trend),
         kinds: ['master', 'outside', 'freelancer'].map((k) => {
           const vs = ext.filter((v) => v.kind === k);
@@ -368,6 +372,7 @@ exports.registerStats = async (req, res) => {
       rows.push({
         id: String(r._id), name: r.name, kind, inMaster: !!r.inMaster, owner: r.followOwner || '',
         contracted: signedOf(r), contractMarked: r.contracted != null, contractEndDate: isoDay(r.contractEndDate), contractState: contractKeyOf(r, days), daysLeft: c.daysLeft,
+        awaitingFile: awaitingFileOf(r), contractSource: r.contractSource || '',
         contractFiles: (r.contractFiles || []).length, docs: (r.documents || []).length, docsMissing: miss, docsMissingLabels: miss.map((k) => DOC_KINDS[k]).join('، '),
         phone: r.phone || '', operatorName: r.operatorName || '', operatorPhone: r.operatorPhone || '',
         approvalStatus: approvalOf(r), submittedByName: r.submittedByName || '',
@@ -381,7 +386,7 @@ exports.registerStats = async (req, res) => {
       totals: {
         vendors: rows.length, master: n((r) => r.inMaster), outside: n((r) => !r.inMaster),
         missingDocs: n((r) => r.docsMissing.length), completeDocs: n((r) => !r.docsMissing.length),
-        contracted: n((r) => r.contracted), notContracted: n((r) => !r.contracted), activeNotContracted: n((r) => !r.contracted && r.active),
+        contracted: n((r) => r.contracted), awaitingFile: n((r) => r.awaitingFile), notContracted: n((r) => !r.contracted), activeNotContracted: n((r) => !r.contracted && r.active),
         withEndDate: n((r) => r.contracted && r.contractEndDate), noEndDate: n((r) => r.contractState === 'noEnd'), active: n((r) => r.contractState === 'active'),
         expiring: n((r) => r.contractState === 'expiring'), expired: n((r) => r.contractState === 'expired'),
         approved: n((r) => r.approvalStatus === 'approved'), pending: n((r) => r.approvalStatus === 'pending'),
@@ -610,9 +615,32 @@ exports.daily = async (req, res) => {
   }
 };
 
+/** Why a request's remaining trucks were not realised, as one ranked reason per request. */
+const UNREALISED = {
+  withdrawn: 'سحبتها المبيعات',
+  unclaimed: 'مفتوحة: لم يتولَّها أحد',
+  expired: 'مفتوحة: انتهى التولّي دون تنفيذ',
+  inProgress: 'مفتوحة: قيد التنفيذ',
+  closedShort: 'أُغلقت دون اكتمال الشاحنات',
+  noReason: 'رُفضت بلا سبب مسجّل',
+};
+function unrealisedReason(r) {
+  if (r.status === 'rejected') return { key: `reject:${r.rejectReason || ''}`, reason: r.rejectReason || UNREALISED.noReason, group: 'rejected' };
+  if (r.status === 'cancelled') return { key: 'withdrawn', reason: UNREALISED.withdrawn, group: 'withdrawn' };
+  if (r.status === 'completed') return { key: 'closedShort', reason: UNREALISED.closedShort, group: 'closed' };
+  const acts = new Set((r.log || []).map((l) => l.action));
+  if (r.handler && r.claimedUntil && new Date(r.claimedUntil) > new Date()) return { key: 'inProgress', reason: UNREALISED.inProgress, group: 'open' };
+  if (acts.has('expired')) return { key: 'expired', reason: UNREALISED.expired, group: 'open' };
+  if (!acts.has('claimed') && !(r.placed || []).length) return { key: 'unclaimed', reason: UNREALISED.unclaimed, group: 'open' };
+  return { key: 'inProgress', reason: UNREALISED.inProgress, group: 'open' };
+}
+
 /**
- * Sales requests of the span as the vendors team answered them: trucks asked (approved requests created in the span),
- * placed, refused by the team, withdrawn by sales, still open, and the hours from the request to its first truck.
+ * Sales requests of the span against what the vendors team realised. The unit is the truck: a request asks for 1-25,
+ * each placed truck is a transport order. Realised = placed; the rest carries one reason (the team's reject reason,
+ * withdrawn by sales, open and unclaimed, claim expired, in progress, closed short), ranked with its share of the
+ * unrealised and of all trucks, by day, branch, customer, route and team member. Only approved requests count: one
+ * still with the sales manager has not reached the team.
  */
 async function requestFunnel({ from, to, branch, q }) {
   const match = { createdAt: { $gte: startOfDay(from), $lte: endOfDay(to) }, approvalStatus: { $nin: ['pending', 'returned', 'rejected'] } };
@@ -621,27 +649,63 @@ async function requestFunnel({ from, to, branch, q }) {
   const customers = listOf(q.f_customer);
   if (customers.length) match.customerName = { $in: customers };
   const rows = await ShipmentRequest.find(match)
-    .select('number status createdAt customerName fromCity toCity branch trucks placed rejectReason salesRepName handlerName').sort({ createdAt: -1 }).lean();
-  const t = { requests: rows.length, trucks: 0, placed: 0, rejected: 0, withdrawn: 0, open: 0, hoursSum: 0, hoursN: 0 };
+    .select('number status createdAt customerName fromCity toCity branch trucks placed.at placed.byName placed.team rejectReason rejectedByName salesRepName handler handlerName claimedUntil log.action log.byName')
+    .sort({ createdAt: -1 }).lean();
+  const t = { requests: rows.length, trucks: 0, placed: 0, unrealised: 0, rejected: 0, withdrawn: 0, open: 0, hoursSum: 0, hoursN: 0 };
   const reasons = {};
+  const dims = { branch: {}, customer: {}, route: {}, member: {} };
+  const byDay = {};
+  const bump = (obj, k, trucks, placed, reason, n) => {
+    const x = obj[k] || (obj[k] = { key: k, trucks: 0, placed: 0, unrealised: 0, reasons: {} });
+    x.trucks += trucks; x.placed += placed; x.unrealised += n;
+    if (n) x.reasons[reason] = (x.reasons[reason] || 0) + n;
+  };
   const list = rows.map((r) => {
     const trucks = r.trucks || 1;
-    const placed = (r.placed || []).length;
+    const placed = Math.min(trucks, (r.placed || []).length);
     const rest = Math.max(0, trucks - placed);
-    t.trucks += trucks; t.placed += placed;
-    if (r.status === 'rejected') { t.rejected += rest; const k = r.rejectReason || 'بلا سبب مسجّل'; reasons[k] = (reasons[k] || 0) + rest; }
-    else if (r.status === 'cancelled') t.withdrawn += rest;
-    else if (r.status === 'pending' || r.status === 'in_progress') t.open += rest;
+    const why = rest ? unrealisedReason(r) : null;
+    t.trucks += trucks; t.placed += placed; t.unrealised += rest;
+    if (why) {
+      if (why.group === 'rejected') t.rejected += rest; else if (why.group === 'withdrawn') t.withdrawn += rest; else if (why.group === 'open') t.open += rest;
+      const x = reasons[why.reason] || (reasons[why.reason] = { reason: why.reason, group: why.group, trucks: 0, requests: 0 });
+      x.trucks += rest; x.requests += 1;
+    }
     const first = (r.placed || []).map((p) => p.at).filter(Boolean).sort()[0];
     const hours = first ? r2((new Date(first) - new Date(r.createdAt)) / 3600000) : null;
     if (hours != null) { t.hoursSum += hours; t.hoursN += 1; }
-    return { id: String(r._id), number: r.number, day: isoDay(riyadh(r.createdAt)), customerName: r.customerName || '', route: `${r.fromCity || ''} → ${r.toCity || ''}`, branch: r.branch || '',
-      trucks, placed, rest, status: r.status, rejectReason: r.rejectReason || '', salesRepName: r.salesRepName || '', handlerName: r.handlerName || '', hoursToPlace: hours };
+    const day = isoDay(riyadh(r.createdAt));
+    const reason = why?.reason || '';
+    const route = `${r.fromCity || ''} → ${r.toCity || ''}`;
+    bump(byDay, day, trucks, placed, reason, rest);
+    bump(dims.branch, r.branch || '—', trucks, placed, reason, rest);
+    bump(dims.customer, r.customerName || '—', trucks, placed, reason, rest);
+    bump(dims.route, route, trucks, placed, reason, rest);
+    // Team member: who placed each truck; the rest is on who refused it, or who held the claim.
+    const placers = {};
+    for (const p of r.placed || []) { const k = p.byName || '—'; placers[k] = (placers[k] || 0) + 1; }
+    const restOwner = rest ? (why.group === 'rejected' ? r.rejectedByName : r.handlerName) || '' : '';
+    for (const [k, n] of Object.entries(placers)) bump(dims.member, k, n + (k === restOwner ? rest : 0), n, reason, k === restOwner ? rest : 0);
+    if (restOwner && !placers[restOwner]) bump(dims.member, restOwner, rest, 0, reason, rest);
+    return { id: String(r._id), number: r.number, day, customerName: r.customerName || '', route, branch: r.branch || '',
+      trucks, placed, rest, status: r.status, reason, rejectReason: r.rejectReason || '', salesRepName: r.salesRepName || '',
+      handlerName: r.handlerName || '', member: restOwner, placedBy: Object.keys(placers).join('، '), hoursToPlace: hours };
   });
+  const shape = (obj) => Object.values(obj).map((x) => ({
+    key: x.key, trucks: x.trucks, placed: x.placed, unrealised: x.unrealised, rate: pct(x.placed, x.trucks),
+    topReason: Object.entries(x.reasons).sort((a, b) => b[1] - a[1])[0]?.[0] || '',
+    reasons: Object.entries(x.reasons).sort((a, b) => b[1] - a[1]).map(([reason, n]) => ({ reason, n })),
+  }));
   return {
-    requests: t.requests, trucks: t.trucks, placed: t.placed, rejected: t.rejected, withdrawn: t.withdrawn, open: t.open,
-    placeRate: pct(t.placed, t.trucks), avgHoursToPlace: t.hoursN ? r2(t.hoursSum / t.hoursN) : null,
-    reasons: Object.entries(reasons).sort((a, b) => b[1] - a[1]).map(([reason, n]) => ({ reason, n })),
+    requests: t.requests, trucks: t.trucks, placed: t.placed, unrealised: t.unrealised, rejected: t.rejected, withdrawn: t.withdrawn, open: t.open,
+    placeRate: pct(t.placed, t.trucks), unrealisedRate: pct(t.unrealised, t.trucks), avgHoursToPlace: t.hoursN ? r2(t.hoursSum / t.hoursN) : null,
+    reasons: Object.values(reasons).sort((a, b) => b.trucks - a.trucks)
+      .map((x) => ({ reason: x.reason, group: x.group, n: x.trucks, requests: x.requests, shareOfUnrealised: pct(x.trucks, t.unrealised), shareOfAll: pct(x.trucks, t.trucks) })),
+    byDay: shape(byDay).sort((a, b) => (a.key < b.key ? -1 : 1)).map((x) => ({ ...x, day: x.key })),
+    byBranch: shape(dims.branch).sort((a, b) => b.trucks - a.trucks),
+    byCustomer: shape(dims.customer).sort((a, b) => b.unrealised - a.unrealised || b.trucks - a.trucks).slice(0, 100),
+    byRoute: shape(dims.route).sort((a, b) => b.unrealised - a.unrealised || b.trucks - a.trucks).slice(0, 100),
+    byMember: shape(dims.member).filter((x) => x.key !== '—').sort((a, b) => b.trucks - a.trucks),
     list,
   };
 }
@@ -700,7 +764,7 @@ const FILE_FIELDS = ['phone', 'representative', 'headOffice', 'destinations', 'v
 const FILE_LABELS = { phone: 'الجوال', representative: 'ممثل المورد', headOffice: 'المقر', destinations: 'الوجهات', vehicleTypes: 'نوع السيارات', fleetSize: 'عدد السيارات', contractDate: 'تاريخ التعاقد', taxClass: 'التصنيف الضريبي', financeCode: 'كود المالية', commercialRegister: 'السجل التجاري' };
 const missingFile = (v) => FILE_FIELDS.filter((f) => v[f] == null || String(v[f]).trim() === '' || v[f] === 0);
 
-const REGISTER_FIELDS = 'approvalStatus submittedByName submittedAt name type inMaster masterNo followOwner contractStatus vendorSigned ourSigned contracted contractEndDate contractFiles documents taxClass phone representative headOffice destinations vehicleTypes fleetSize contractDate financeCode commercialRegister rating leadPriority isNewVendor energizeRep paymentTermDays lastFollowUpAt aliases ownerName ownerPhone operatorName operatorPhone createdAt';
+const REGISTER_FIELDS = 'contractSource approvalStatus submittedByName submittedAt name type inMaster masterNo followOwner contractStatus vendorSigned ourSigned contracted contractEndDate contractFiles documents taxClass phone representative headOffice destinations vehicleTypes fleetSize contractDate financeCode commercialRegister rating leadPriority isNewVendor energizeRep paymentTermDays lastFollowUpAt aliases ownerName ownerPhone operatorName operatorPhone createdAt';
 const registerRows = () => ShipmentOrderSupplier.find({ mergedInto: null, isActive: { $ne: false } }).select(REGISTER_FIELDS).lean();
 /**
  * Thousands of register rows are one-off platform carriers. A row belongs to the team's register when it is on the
@@ -855,7 +919,7 @@ exports.getVendor = async (req, res) => {
       names: act.names, missing: miss.map((f) => ({ key: f, label: FILE_LABELS[f] })), completeness,
       docKinds: REQUIRED_DOCS.map((k) => ({ key: k, label: DOC_KINDS[k], labelEn: DOC_KINDS_EN[k] })),
       missingDocs: missingDocsOf(v).map((k) => ({ key: k, label: DOC_KINDS[k], labelEn: DOC_KINDS_EN[k] })),
-      contract: { contracted: signedOf(v), marked: v.contracted != null, endDate: isoDay(v.contractEndDate), files: v.contractFiles || [], ...contractStateOf(v, days), alertDays: days },
+      contract: { contracted: signedOf(v), marked: v.contracted != null, awaitingFile: awaitingFileOf(v), source: v.contractSource || '', recordedByName: v.contractRecordedByName || '', recordedAt: isoDay(v.contractRecordedAt), endDate: isoDay(v.contractEndDate), files: v.contractFiles || [], ...contractStateOf(v, days), alertDays: days },
       approval: { status: approvalOf(v), note: v.rejectNote || '', submittedByName: v.submittedByName || '', submittedAt: v.submittedAt, approvedByName: v.approvedByName || '', approvedAt: v.approvedAt, log: v.approvalLog || [], canApprove: await canApprove(req.user) },
       trend: a?.trend || (card.trips ? 'steady' : 'never'), ...score,
       activity: card, followUps: follow, vehicles, drivers, year: Y.year, curMonth: Y.curMonth + 1,
@@ -1055,6 +1119,9 @@ exports.saveContract = async (req, res) => {
     const before = { contracted: doc.contracted, contractEndDate: isoDay(doc.contractEndDate) };
     if (b.contracted !== undefined) {
       if (typeof b.contracted !== 'boolean') return res.status(400).json({ message: 'حدِّد: تمّ التعاقد رسميًّا أم لا', fields: ['contracted'] });
+      if (doc.contracted !== b.contracted) {
+        doc.contractSource = 'system'; doc.contractRecordedAt = new Date(); doc.contractRecordedBy = req.user._id; doc.contractRecordedByName = fullName(req.user);
+      }
       doc.contracted = b.contracted;
     }
     if (b.contractEndDate !== undefined) {
@@ -1067,18 +1134,15 @@ exports.saveContract = async (req, res) => {
       if (f?.dataUrl && !String(f.title || '').trim()) return res.status(400).json({ message: `اكتب اسمًا لملفّ العقد «${f.fileName || ''}»`, fields: ['contractFiles'] });
     }
     stored = storeFiles(b.files, { kind: 'contract', user: req.user });
+    // A contract recorded without its file still counts; it shows as «بانتظار رفع ملف العقد» until the file is added.
     doc.contractFiles.push(...stored);
-    if (doc.contracted && !doc.contractFiles.length) {
-      stored.forEach((x) => deleteStoredFile(x.fileUrl));
-      return res.status(400).json({ message: 'أرفِق ملفّ العقد الموقَّع', fields: ['contractFiles'] });
-    }
     // A new end date re-arms the expiry notification.
     if (isoDay(doc.contractEndDate) !== before.contractEndDate) doc.contractAlertKey = '';
     await doc.save();
     await logAudit({ user: req.user, action: 'update', entity: 'ShipmentOrderSupplier', entityId: doc._id, changes: { before, after: { contracted: doc.contracted, contractEndDate: isoDay(doc.contractEndDate) }, contractFilesAdded: stored.map((x) => x.title || x.fileName) }, ipAddress: req.ip });
     announce({ id: String(doc._id) });
     const days = await alertDays();
-    res.json({ contract: { contracted: signedOf(doc), marked: doc.contracted != null, endDate: isoDay(doc.contractEndDate), files: doc.contractFiles, ...contractStateOf(doc, days), alertDays: days } });
+    res.json({ contract: { contracted: signedOf(doc), marked: doc.contracted != null, awaitingFile: awaitingFileOf(doc), source: doc.contractSource || '', recordedByName: doc.contractRecordedByName || '', recordedAt: isoDay(doc.contractRecordedAt), endDate: isoDay(doc.contractEndDate), files: doc.contractFiles, ...contractStateOf(doc, days), alertDays: days } });
   } catch (e) {
     stored.forEach((x) => deleteStoredFile(x.fileUrl));
     if (e.status) return res.status(e.status).json({ message: e.message, fields: e.fields });
@@ -1086,14 +1150,13 @@ exports.saveContract = async (req, res) => {
   }
 };
 
-/** DELETE /vendors/:id/contract-files/:did — a contracted carrier keeps at least one contract file. */
+/** DELETE /vendors/:id/contract-files/:did — removing the last file leaves the contract recorded, awaiting its file. */
 exports.removeContractFile = async (req, res) => {
   try {
     const doc = await ShipmentOrderSupplier.findById(req.params.id);
     if (!doc) return res.status(404).json({ message: 'المورد غير موجود' });
     const f = doc.contractFiles.id(req.params.did);
     if (!f) return res.status(404).json({ message: 'الملف غير موجود' });
-    if (doc.contracted && doc.contractFiles.length <= 1) return res.status(409).json({ code: 'LAST_CONTRACT', message: 'المورّد متعاقَدٌ معه: أضِف ملفّ العقد البديل أوّلًا ثمّ احذف هذا' });
     const url = f.fileUrl;
     f.deleteOne();
     await doc.save();

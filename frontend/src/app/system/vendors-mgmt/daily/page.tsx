@@ -23,9 +23,9 @@ import { ResponsiveContainer, ComposedChart, Bar, Line, XAxis, YAxis, Tooltip, C
 import { Activity, Printer } from 'lucide-react';
 import TeamPerformance from '@/components/vendors/TeamPerformance';
 import { DrillModal, orderCols, type Drill } from '@/components/vendors/VendorDrill';
+import SalesRealisation from '@/components/vendors/SalesRealisation';
 
 type Row = Record<string, any>;
-const REQ_STATUS: Record<string, [string, string]> = { pending: ['جديد', 'New'], in_progress: ['قيد التنفيذ', 'In progress'], completed: ['مكتمل', 'Completed'], rejected: ['مرفوض', 'Refused'], cancelled: ['مسحوب', 'Withdrawn'] };
 const BLAME: [string, string, string][] = [['rep', 'إلغاء من المندوب', 'By the rep'], ['noTruck', 'لا سيارة · علينا', 'No truck · on us'], ['driver', 'إلغاء من السائق', 'By the driver'], ['customer', 'إلغاء من العميل', 'By the customer'], ['none', 'بلا سبب', 'No reason'], ['other', 'أسبابٌ أخرى', 'Other']];
 
 export default function VendorsDailyPage() {
@@ -77,7 +77,6 @@ export default function VendorsDailyPage() {
   const T = d.totals;
   const activePreset = PRESETS.find(([k]) => { const [a, b] = presetRange(k); return a === from && b === to; })?.[0] || '';
   const money = T.buy != null;
-  const SR = d.salesRequests || { list: [], reasons: [] };
   // A daily card opens the shipment orders it counts, read with the page's span and filters.
   const openRows = async (title: string, set: string) => {
     try {
@@ -85,16 +84,6 @@ export default function VendorsDailyPage() {
       setDrill({ title: r.total > r.rows.length ? `${title} — ${t('أوّل', 'first')} ${r.rows.length}` : title, rows: r.rows, cols: orderCols(ar, money), fileName: `vendors-daily-${set}` });
     } catch (e: any) { setError(e?.message || t('تعذّر التحميل', 'Could not load')); }
   };
-  const reqCols = [
-    { key: 'number', label: t('الطلب', 'Request'), render: (r: Row) => <Link href={`/system/vendors-mgmt/requests?id=${r.id}`} className="font-mono text-[#f37121] hover:underline">{r.number}</Link> },
-    { key: 'day', label: t('اليوم', 'Day') }, { key: 'customerName', label: t('العميل', 'Customer') }, { key: 'route', label: t('المسار', 'Route') }, { key: 'branch', label: t('الفرع', 'Branch') },
-    { key: 'trucks', label: t('الشاحنات', 'Trucks'), num: true }, { key: 'placed', label: t('المنفَّذ', 'Placed'), num: true }, { key: 'rest', label: t('المتبقّي', 'Remaining'), num: true },
-    { key: 'status', label: t('الحالة', 'Status'), render: (r: Row) => REQ_STATUS[r.status]?.[ar ? 0 : 1] || r.status, exportAs: (r: Row) => REQ_STATUS[r.status]?.[ar ? 0 : 1] || r.status },
-    { key: 'rejectReason', label: t('سبب الرفض', 'Reject reason'), render: (r: Row) => r.rejectReason || '—' },
-    { key: 'hoursToPlace', label: t('ساعات حتى أوّل شاحنة', 'Hours to first truck'), num: true, render: (r: Row) => (r.hoursToPlace == null ? '—' : r.hoursToPlace) },
-    { key: 'salesRepName', label: t('المبيعات', 'Sales'), render: (r: Row) => r.salesRepName || '—' }, { key: 'handlerName', label: t('المتولّي', 'Handler'), render: (r: Row) => r.handlerName || '—' },
-  ];
-  const showReq = (title: string, f: (r: Row) => boolean) => setDrill({ title, rows: SR.list.filter(f), cols: reqCols, fileName: 'vendors-daily-requests' });
 
   return (
     <div className="space-y-4 pb-10 print:space-y-2" dir={isRTL ? 'rtl' : 'ltr'}>
@@ -138,23 +127,7 @@ export default function VendorsDailyPage() {
         <Kpi ar={ar} label={t('اعتمادٌ على الأفراد', 'Reliance on freelancers')} value={fmtPct(T.freelancerShareExt)} tone={T.freelancerShareExt > 35 ? 'warn' : undefined} sub={t('من التشغيل الخارجي', 'of external work')} onClick={() => openRows(t('رحلات السائقين الأفراد', 'Freelancer trips'), 'freelancer')} />
       </div>
 
-      <Panel title={t('طلبات المبيعات في الفترة', 'Sales requests in the span')} subtitle={t('الطلبات المعتمدة التي أنشأتها المبيعات وكيف أجابها الفريق: شاحناتٌ نُفّذت أو رُفضت أو سحبتها المبيعات أو ما زالت مفتوحة · اضغط رقمًا لعرض طلباته', 'Approved sales requests and how the team answered them · press a number for its requests')}>
-        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
-          <Kpi ar={ar} label={t('الشاحنات المطلوبة', 'Trucks requested')} value={fmtInt(SR.trucks || 0)} sub={t(`${fmtInt(SR.requests || 0)} طلب`, `${fmtInt(SR.requests || 0)} requests`)} onClick={() => showReq(t('طلبات المبيعات', 'Sales requests'), () => true)} />
-          <Kpi ar={ar} label={t('المنفَّذ', 'Placed')} value={fmtInt(SR.placed || 0)} tone="good" sub={fmtPct(SR.placeRate || 0)} onClick={() => showReq(t('طلباتٌ نُفّذت لها شاحنات', 'Requests with placed trucks'), (r) => r.placed > 0)} />
-          <Kpi ar={ar} label={t('رفضها الفريق', 'Refused by the team')} value={fmtInt(SR.rejected || 0)} tone={SR.rejected ? 'bad' : 'muted'} onClick={() => showReq(t('طلباتٌ رفضها الفريق', 'Refused requests'), (r) => r.status === 'rejected')} />
-          <Kpi ar={ar} label={t('سحبتها المبيعات', 'Withdrawn by sales')} value={fmtInt(SR.withdrawn || 0)} tone="muted" onClick={() => showReq(t('طلباتٌ سحبتها المبيعات', 'Withdrawn requests'), (r) => r.status === 'cancelled')} />
-          <Kpi ar={ar} label={t('ما زالت مفتوحة', 'Still open')} value={fmtInt(SR.open || 0)} tone={SR.open ? 'warn' : 'muted'} onClick={() => showReq(t('طلباتٌ مفتوحة', 'Open requests'), (r) => r.status === 'pending' || r.status === 'in_progress')} />
-          <Kpi ar={ar} label={t('متوسط الوقت حتى أوّل شاحنة', 'Avg time to first truck')} value={SR.avgHoursToPlace != null ? `${SR.avgHoursToPlace} ${t('س', 'h')}` : '—'} onClick={() => showReq(t('طلباتٌ نُفّذت لها شاحنات', 'Requests with placed trucks'), (r) => r.hoursToPlace != null)} />
-        </div>
-        {!!SR.reasons.length && (
-          <div className="mt-3">
-            <p className="text-[12px] font-semibold text-slate-600 mb-2">{t('أسباب الرفض (شاحنات)', 'Refusal reasons (trucks)')}</p>
-            <BarList ar={ar} rows={SR.reasons.map((x: Row) => ({ key: x.reason, label: x.reason, value: x.n }))} color="#ef4444" limit={6}
-              onPick={(k) => showReq(`${t('سبب الرفض', 'Reason')}: ${k}`, (r) => r.status === 'rejected' && (r.rejectReason || 'بلا سبب مسجّل') === k)} />
-          </div>
-        )}
-      </Panel>
+      <SalesRealisation data={d.salesRequests} ar={ar} title={t('تحقيق طلبات المبيعات في الفترة', 'Realisation of sales requests in the span')} />
 
       <div className="print:hidden"><VendorRegisterStats ar={ar} query={fq} /></div>
 

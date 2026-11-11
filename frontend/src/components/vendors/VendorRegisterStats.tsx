@@ -40,12 +40,12 @@ export default function VendorRegisterStats({ ar, query = '' }: { ar: boolean; q
     setDrill({ title, rows: sort ? list.slice().sort(sort) : list, cols, fileName: 'vendors-register' });
   };
   const byDays = (a: Row, b: Row) => (a.daysLeft ?? 9999) - (b.daysLeft ?? 9999);
-  const contractCols = [...base, C.contracted, C.end, C.daysLeft, C.trips, C.last];
+  const contractCols = [...base, C.contracted, C.awaitingFile, C.end, C.daysLeft, C.trips, C.last];
 
   return (
     <Panel title={t('سجلّ الموردين: المستندات والعقود', 'Register: papers and contracts')}
       subtitle={t(`شركاتُ السجلّ كما سجّلها النظام (معتمدون، أو عملوا هذا العام، أو قُدِّموا للاعتماد، أو رُفعت لهم مستنداتٌ أو عقد) · التنبيه قبل نهاية العقد بـ${d.contractDays} يومًا · اضغط أيَّ رقمٍ لعرض قائمته`, `Register companies · contract alert ${d.contractDays} days ahead · press any number for its list`)}>
-      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
+      <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-7 gap-3">
         <Kpi ar={ar} label={t('موردو السجلّ', 'Register carriers')} value={fmtInt(T.vendors)} sub={t(`معتمدون ${T.master} · غير معتمدين ${T.outside}`, `master ${T.master} · outside ${T.outside}`)} onClick={() => open(t('موردو السجلّ', 'Register carriers'), () => true)} />
         <Kpi ar={ar} icon={<FileWarning className="w-3.5 h-3.5 text-amber-600" />} label={t('مستنداتٌ مطلوبة ناقصة', 'Missing required papers')} value={fmtInt(T.missingDocs)} tone={T.missingDocs ? 'warn' : 'good'} sub={fmtPct((T.missingDocs / Math.max(1, T.vendors)) * 100)}
           onClick={() => open(t('موردون تنقصهم مستنداتٌ مطلوبة', 'Missing required papers'), (r) => r.docsMissing.length > 0, [...base, C.docsMissing, C.trips, C.last])} />
@@ -53,6 +53,8 @@ export default function VendorRegisterStats({ ar, query = '' }: { ar: boolean; q
           onClick={() => open(t('مستنداتُهم مكتملة', 'Papers complete'), (r) => !r.docsMissing.length)} />
         <Kpi ar={ar} icon={<Handshake className="w-3.5 h-3.5 text-emerald-600" />} label={t('متعاقَدٌ معهم رسميًّا', 'Officially contracted')} value={fmtInt(T.contracted)} tone="good" sub={t(`بلا تاريخ نهاية ${T.noEndDate}`, `${T.noEndDate} without end date`)}
           onClick={() => open(t('متعاقَدٌ معهم رسميًّا', 'Officially contracted'), (r) => r.contracted, contractCols, byDays)} />
+        <Kpi ar={ar} icon={<FileWarning className="w-3.5 h-3.5 text-amber-600" />} label={t('بانتظار رفع ملف العقد', 'Awaiting contract file')} value={fmtInt(T.awaitingFile || 0)} tone={T.awaitingFile ? 'warn' : 'muted'} sub={t('متعاقَدٌ معهم دون ملفّ', 'contracted, no file yet')}
+          onClick={() => open(t('متعاقَدٌ معهم بانتظار رفع ملف العقد', 'Contracted, awaiting the contract file'), (r) => r.awaitingFile, contractCols, byDays)} />
         <Kpi ar={ar} label={t('غير متعاقَدٍ معهم', 'Not contracted')} value={fmtInt(T.notContracted)} tone={T.notContracted ? 'warn' : undefined} sub={t(`منهم نشطون ${T.activeNotContracted}`, `${T.activeNotContracted} active`)}
           onClick={() => open(t('غير متعاقَدٍ معهم (لا عقدَ مسجَّلًا على النظام)', 'Not contracted (no contract recorded)'), (r) => !r.contracted, [...base, C.contractState, C.docsMissing, C.trips, C.last])} />
         <Kpi ar={ar} icon={<CalendarX2 className="w-3.5 h-3.5 text-red-600" />} label={t('عقودٌ تنتهي قريبًا', 'Contracts ending soon')} value={fmtInt(T.expiring)} tone={T.expiring ? 'warn' : 'muted'} sub={t(`منتهية ${T.expired}`, `${T.expired} expired`)}

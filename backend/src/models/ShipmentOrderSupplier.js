@@ -92,8 +92,13 @@ const shipmentOrderSupplierSchema = new mongoose.Schema(
     operatorPhone: { type: String, trim: true, default: '' },
     /** Company papers. cr, nationalAddress, iban and taxCard are required for a new company; `other` carries a typed title. */
     documents: { type: [fileSchema('document')], default: [] },
-    /** Official contract: null = not stated yet (legacy rows fall back to contractStatus), true/false once the team marks it. */
+    /** Official contract: null = not stated yet, true/false once recorded on the system. A recorded contract may wait for its file. */
     contracted: { type: Boolean, default: null },
+    /** Who recorded the contract state and when; `sheet` = carried over from the team's sheet by vendorsSheetContractsToSystem. */
+    contractSource: { type: String, enum: ['', 'system', 'sheet'], default: '' },
+    contractRecordedAt: { type: Date, default: null },
+    contractRecordedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User', default: null },
+    contractRecordedByName: { type: String, default: '' },
     contractEndDate: { type: Date, default: null },
     contractFiles: { type: [fileSchema('contract')], default: [] },
     /** Last contract-expiry notification sent (`<end day>:<soon|expired>`), so each state is announced once. */

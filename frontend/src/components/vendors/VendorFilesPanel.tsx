@@ -151,10 +151,11 @@ export default function VendorFilesPanel({ d, editor, ar, onChanged }: { d: Row;
       <Panel title={t('التعاقد الرسميّ', 'Official contract')}
         actions={editor ? <button type="button" onClick={() => setContract({ contracted: C.marked ? !!C.contracted : null, end: C.endDate || '', files: [] })} className="inline-flex items-center gap-1 px-3 py-1.5 rounded-lg bg-slate-900 text-white text-[12.5px] font-semibold"><Handshake className="w-3.5 h-3.5" />{t('تحديث العقد', 'Update contract')}</button> : null}>
         <dl className="grid grid-cols-2 gap-3 text-[13px]">
-          <div><dt className="text-[11.5px] text-slate-500">{t('تمّ التعاقد معه رسميًّا', 'Officially contracted')}</dt><dd className={`font-bold ${C.contracted ? 'text-emerald-700' : 'text-slate-600'}`}>{C.contracted ? t('نعم', 'Yes') : t('لا', 'No')}{!C.marked && <span className="ms-1 text-[11px] font-normal text-slate-400">{t('(من حالة التعاقد المستوردة)', '(from imported status)')}</span>}</dd></div>
+          <div><dt className="text-[11.5px] text-slate-500">{t('تمّ التعاقد معه رسميًّا', 'Officially contracted')}</dt><dd className={`font-bold ${C.contracted ? 'text-emerald-700' : 'text-slate-600'}`}>{C.contracted ? t('نعم', 'Yes') : t('لا', 'No')}{C.recordedByName && <span className="ms-1 text-[11px] font-normal text-slate-400">({C.recordedByName}{C.recordedAt ? ` · ${C.recordedAt}` : ''})</span>}</dd></div>
           <div><dt className="text-[11.5px] text-slate-500">{t('تاريخ نهاية العقد', 'Contract end')}</dt><dd className={`font-bold tabular-nums ${stateCls}`}>{C.endDate || '—'}{C.daysLeft != null && <span className="ms-1 text-[11.5px] font-semibold">{C.daysLeft < 0 ? t(`(انتهى منذ ${-C.daysLeft} يوم)`, `(ended ${-C.daysLeft}d ago)`) : t(`(باقي ${C.daysLeft} يوم)`, `(${C.daysLeft}d left)`)}</span>}</dd></div>
         </dl>
         {(C.state === 'expiring' || C.state === 'expired') && <p className="mt-2 flex items-center gap-1.5 text-[12.5px] text-red-700"><AlertTriangle className="w-4 h-4" />{t(`يظهر في التنبيهات ويُشعَر به القسم (قبل النهاية بـ${C.alertDays} يومًا)`, `Flagged in alerts and notified (${C.alertDays} days ahead)`)}</p>}
+        {C.awaitingFile && <p className="mt-2 flex items-center gap-1.5 text-[12.5px] font-semibold text-amber-700"><AlertTriangle className="w-4 h-4" />{t('بانتظار رفع ملف العقد — التعاقد محسوبٌ، ارفع الملفّ من «تحديث العقد»', 'Awaiting the contract file — counted as contracted; upload it from «Update contract»')}</p>}
         <p className="mt-3 text-[12px] font-semibold text-slate-600">{t('ملفّات العقد', 'Contract files')}</p>
         {(C.files || []).length ? <ul className="mt-1 space-y-1">{C.files.map((f: Row) => <FileLine key={f._id} f={f} ar={ar} onRemove={editor ? () => removeContractFile(f) : undefined} />)}</ul> : <p className="text-[12.5px] text-slate-400 mt-1">{t('لا ملفّات', 'No files')}</p>}
       </Panel>
@@ -173,7 +174,7 @@ export default function VendorFilesPanel({ d, editor, ar, onChanged }: { d: Row;
           <Field label={t('ملفّات العقد — اكتب اسم كلّ ملفّ', 'Contract files — name each one')}>
             <FilePicker files={contract.files} onChange={(f) => setContract({ ...contract, files: f })} max={10} />
           </Field>
-          {contract.contracted && !(C.files || []).length && !contract.files.length && <p className="text-[12.5px] text-amber-700">{t('أرفِق ملفّ العقد الموقَّع.', 'Attach the signed contract file.')}</p>}
+          {contract.contracted && !(C.files || []).length && !contract.files.length && <p className="text-[12.5px] text-amber-700">{t('يُحفظ التعاقد دون ملفّ ويظهر «بانتظار رفع ملف العقد» حتى يُرفع.', 'Saved without a file; it shows as awaiting the file until uploaded.')}</p>}
         </Modal>
       )}
     </div>

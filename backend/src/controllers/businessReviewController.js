@@ -766,8 +766,12 @@ exports.myActions = async (req, res) => {
       byAction.get(k).push(d);
     }
     const shared = await siblingsOf(actions);
+    // The same task shape the meeting cards use, so this page offers the same statuses and actions.
+    const view = await require('./businessReviewBoardController').taskViewer(actions);
     res.json({
       actions: actions.map((a) => ({ ...a, delegations: byAction.get(String(a._id)) || [], sharedWith: shared.get(String(a._id)) || [] })),
+      tasks: actions.map(view),
+      canRunMeetings: canRunMeetings(req.user),
       summary: {
         total: actions.length,
         open: actions.filter((a) => OPEN_ACTION_STATUSES.includes(a.status)).length,

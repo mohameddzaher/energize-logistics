@@ -212,7 +212,7 @@ export const brSeriesDay = (id: string, day?: string) =>
   api.post<{ meeting: { _id: string }; created: boolean }>(`/api/business-review/series/${id}/day`, day ? { day } : {});
 
 export const brMyActions = (open = false) =>
-  api.get<{ actions: BrAction[]; summary: any }>(`/api/business-review/my-actions${open ? '?open=1' : ''}`);
+  api.get<{ actions: BrAction[]; tasks?: any[]; canRunMeetings?: boolean; summary: any }>(`/api/business-review/my-actions${open ? '?open=1' : ''}`);
 export const brAllActions = (q: Record<string, string> = {}) => {
   const qs = new URLSearchParams(Object.entries(q).filter(([, v]) => v)).toString();
   return api.get<{ actions: BrAction[]; summary: any; byPerson: any[] }>(

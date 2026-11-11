@@ -9,6 +9,7 @@ import '../ui/widgets.dart';
 import '../ui/search_field.dart';
 import 'business_review_board.dart';
 import 'business_review_kit.dart';
+import 'business_review_meeting_depts.dart';
 import 'business_review_meeting.dart';
 
 /// Business review meetings, the mobile half. Same contract as the web (the business-review API) and the same visibility rule, enforced server-side: a department head gets the meetings they sat in and the actions they own; an ordinary employee gets ONLY the tasks delegated to them, and the tabs they don't qualify for simply never appear. The vocabularies (statuses, priorities, cadences) come from `/meta`, so a new status added on the server shows up here without an app release.
@@ -601,6 +602,8 @@ class _ActionsTabState extends State<_ActionsTab> {
   final _searchCtl = TextEditingController(); // Text stays equal to _q after loading.
   bool _onlyOverdue = false;
   int _seq = 0;
+  // My items use the meeting cards' task rows; meeting runners get the full set of actions there too.
+  bool _runner = false;
 
   void _onLive() => _load();
 
@@ -608,14 +611,12 @@ class _ActionsTabState extends State<_ActionsTab> {
   void initState() {
     super.initState();
     _load();
-    Live.instance.on('br:action', _onLive);
-    Live.instance.on('br:updated', _onLive);
+    for (final e in const ['br:action', 'br:updated', 'br:meeting', 'br:assignment']) { Live.instance.on(e, _onLive); }
   }
 
   @override
   void dispose() {
-    Live.instance.off('br:action', _onLive);
-    Live.instance.off('br:updated', _onLive);
+    for (final e in const ['br:action', 'br:updated', 'br:meeting', 'br:assignment']) { Live.instance.off(e, _onLive); }
     _searchCtl.dispose();
     super.dispose();
   }
@@ -634,7 +635,8 @@ class _ActionsTabState extends State<_ActionsTab> {
       final h = widget.mine ? await Api.instance.get('/api/business-review/my-tasks').then<dynamic>((v) => v, onError: (_) => null) : null;
       if (!mounted || my != _seq) return;
       setState(() {
-        _rows = List<Map<String, dynamic>>.from(d['actions'] ?? []);
+        _rows = List<Map<String, dynamic>>.from((widget.mine && d['tasks'] != null ? d['tasks'] : d['actions']) ?? []);
+        _runner = d['canRunMeetings'] == true;
         _summary = Map<String, dynamic>.from(d['summary'] ?? {});
         _handed = h == null ? [] : List<Map<String, dynamic>>.from(h['assignments'] ?? []);
         if (h != null) {
@@ -665,7 +667,7 @@ class _ActionsTabState extends State<_ActionsTab> {
     var list = _rows;
     if (widget.mine) {
       if (_filter == 'done') return list.where((a) => a['status'] == 'done').toList();
-      if (_filter == 'overdue') return list.where((a) => a['isOverdue'] == true && _open.contains(a['status'])).toList();
+      if (_filter == 'overdue') return list.where((a) => (a['overdue'] == true || a['isOverdue'] == true) && _open.contains(a['status'])).toList();
       if (_filter == 'open') return list.where((a) => _open.contains(a['status'])).toList();
       return list;
     }
@@ -868,6 +870,9 @@ class _ActionsTabState extends State<_ActionsTab> {
         Padding(
           padding: const EdgeInsets.fromLTRB(14, 8, 14, 0),
           child: Column(children: [
+            if (widget.mine && rows.isNotEmpty)
+              BrMeetingDepartmentsTab(meetingId: '', meta: widget.meta, tasks: rows, runner: _runner, onChanged: _load),
+            if (!widget.mine)
             for (final a in rows)
               BrActionCard(
                 key: ValueKey(a['_id']),

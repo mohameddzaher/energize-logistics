@@ -3,7 +3,8 @@
  * Dropdown with search for any option list.
  * A native <select> is fine for five options, but our lists (customers, employees, branches) run to hundreds, and users know the name they want and just need to type it. This takes options as passed, unlike `SearchableManagedSelect` which fetches its list from `/api/lookups` and lets users add to it.
  */
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { ChevronDown, Search, X } from 'lucide-react';
 
 // Arabic folding: searching one spelling of alef or ha/ta-marbuta finds the other.
@@ -29,10 +30,33 @@ export default function SearchSelect({
   const [open, setOpen] = useState(false);
   const [q, setQ] = useState('');
   const box = useRef<HTMLDivElement>(null);
+  const pop = useRef<HTMLDivElement>(null);
+  // The list floats in a portal at a fixed position, so a card with overflow-hidden or a scroll box never clips it.
+  const [pos, setPos] = useState<{ left: number; width: number; top?: number; bottom?: number } | null>(null);
+
+  useLayoutEffect(() => {
+    if (!open) { setPos(null); return; }
+    const place = () => {
+      const r = box.current?.getBoundingClientRect();
+      if (!r) return;
+      const width = Math.max(r.width, 220);
+      const left = Math.min(Math.max(8, r.left), window.innerWidth - width - 8);
+      // Opens upward when the space below cannot hold the list.
+      const below = window.innerHeight - r.bottom;
+      setPos(below < 320 && r.top > below ? { left, width, bottom: window.innerHeight - r.top + 4 } : { left, width, top: r.bottom + 4 });
+    };
+    place();
+    window.addEventListener('resize', place);
+    window.addEventListener('scroll', place, true);
+    return () => { window.removeEventListener('resize', place); window.removeEventListener('scroll', place, true); };
+  }, [open]);
 
   useEffect(() => {
     if (!open) return;
-    const close = (e: MouseEvent) => { if (!box.current?.contains(e.target as Node)) setOpen(false); };
+    const close = (e: MouseEvent) => {
+      const n = e.target as Node;
+      if (!box.current?.contains(n) && !pop.current?.contains(n)) setOpen(false);
+    };
     document.addEventListener('mousedown', close);
     return () => document.removeEventListener('mousedown', close);
   }, [open]);
@@ -56,8 +80,9 @@ export default function SearchSelect({
         <ChevronDown className="w-4 h-4 text-slate-400 shrink-0" />
       </button>
 
-      {open && (
-        <div className="absolute z-30 mt-1 w-full min-w-[220px] bg-white border border-slate-200 rounded-lg shadow-xl overflow-hidden">
+      {open && pos && typeof document !== 'undefined' && createPortal(
+        <div ref={pop} dir={ar ? 'rtl' : 'ltr'} style={{ position: 'fixed', left: pos.left, width: pos.width, top: pos.top, bottom: pos.bottom }}
+          className="z-[1000] bg-white border border-slate-200 rounded-lg shadow-xl overflow-hidden">
           <div className="p-2 border-b border-slate-100 flex items-center gap-1.5">
             <Search className="w-3.5 h-3.5 text-slate-400 shrink-0" />
             <input autoFocus value={q} onChange={(e) => setQ(e.target.value)}
@@ -81,7 +106,8 @@ export default function SearchSelect({
             ))}
             {!shown.length && <p className="px-3 py-4 text-center text-[12px] text-slate-400">{ar ? 'لا نتائج' : 'No matches'}</p>}
           </div>
-        </div>
+        </div>,
+        document.body,
       )}
     </div>
   );

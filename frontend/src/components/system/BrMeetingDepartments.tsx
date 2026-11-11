@@ -10,9 +10,9 @@ import { useDialog } from '@/components/system/DialogProvider';
 import SearchSelect from '@/components/system/SearchSelect';
 import api from '@/lib/api';
 import { useSocket } from '@/hooks/useSocket';
-import { StatusPill, ProgressForm, Progress, DatesLine, UpdateLog } from '@/components/system/BusinessReviewKit';
+import { StatusPill, ProgressForm, Progress, DatesLine, UpdateLog, DelegateForm } from '@/components/system/BusinessReviewKit';
 import {
-  brCreateAction, brUpdateAction, brShareAction, brTransferAction, brDeleteAction, type BrMeta, type Lang, type ProgressReport, tx, deptLabel, fmtDate, isoDay,
+  brCreateAction, brUpdateAction, brShareAction, brTransferAction, brDeleteAction, brDelegate, type BrMeta, type Lang, type ProgressReport, tx, deptLabel, fmtDate, isoDay,
 } from '@/lib/businessReview';
 
 type Counts = { total: number; done: number; in_progress: number; open: number; postponed: number; blocked: number; overdue: number; today: number; agenda: number; h48: number; week: number; later: number; nodate: number; onTime: number };
@@ -64,6 +64,12 @@ export default function BrMeetingDepartments({ meetingId, meta, L, notify, initi
   const [d, setD] = useState<{ departments: Card[]; scope: string; canEdit: boolean } | null>(null);
   const [openDept, setOpenDept] = useState(initialDept);
   useEffect(() => { if (initialDept) setOpenDept(initialDept); }, [initialDept]);
+  // An opened department spans the full row and moves; scroll to its top once the layout settles.
+  useEffect(() => {
+    if (!openDept) return;
+    const id = requestAnimationFrame(() => document.getElementById(`br-dept-${openDept}`)?.scrollIntoView({ behavior: 'smooth', block: 'start' }));
+    return () => cancelAnimationFrame(id);
+  }, [openDept]);
   const [filter, setFilter] = useState<Record<string, string>>({});
   const [openTask, setOpenTask] = useState('');
   const seq = useRef(0);
@@ -116,7 +122,7 @@ export default function BrMeetingDepartments({ meetingId, meta, L, notify, initi
           const shown = chip ? c.tasks.filter(chip.test) : f ? c.tasks.filter((x) => x.horizon === f) : c.tasks;
           const pct = c.counts.total ? Math.round((c.counts.done / c.counts.total) * 100) : 0;
           return (
-            <section key={c.key} className={`bg-white rounded-2xl border-2 shadow-sm overflow-hidden ${c.counts.overdue ? 'border-red-400' : c.counts.total ? 'border-slate-300' : 'border-slate-200'} ${open ? 'lg:col-span-2' : ''}`}>
+            <section key={c.key} id={`br-dept-${c.key}`} className={`scroll-mt-20 bg-white rounded-2xl border-2 shadow-sm overflow-hidden ${c.counts.overdue ? 'border-red-400' : c.counts.total ? 'border-slate-300' : 'border-slate-200'} ${open ? 'lg:col-span-2' : ''}`}>
               <button type="button" onClick={() => { setOpenDept(open ? '' : c.key); setOpenTask(''); }}
                 className="w-full text-start px-4 py-3 flex items-center gap-3 bg-slate-50 hover:bg-orange-50 border-b border-slate-200">
                 <Layers className="w-5 h-5 text-[#f37121] shrink-0" />
@@ -196,12 +202,16 @@ export default function BrMeetingDepartments({ meetingId, meta, L, notify, initi
   );
 }
 
-function TaskRow({ task, meta, L, meetingId, canEdit, dept, open, onToggle, onChanged, notify }: {
-  task: Task; meta: BrMeta; L: Lang; meetingId: string; canEdit: boolean; dept: string; open: boolean;
+/**
+ * One task row with its actions; shared by the meeting cards and «البنود المسندة إليّ».
+ * `runner` (meeting runners) adds edit/share/move/delete/follow-up; an owner keeps done/postpone/update and can hand parts to the team.
+ */
+export function TaskRow({ task, meta, L, meetingId, canEdit, runner = canEdit, canDelegate = false, dept, open, onToggle, onChanged, notify }: {
+  task: Task; meta: BrMeta; L: Lang; meetingId: string; canEdit: boolean; runner?: boolean; canDelegate?: boolean; dept: string; open: boolean;
   onToggle: () => void; onChanged: () => void; notify: (m: string, k?: any) => void;
 }) {
   const t = (en: string, ar: string) => tx(L, en, ar);
-  const [mode, setMode] = useState<'' | 'update' | 'postpone' | 'followup' | 'edit' | 'share' | 'transfer'>('');
+  const [mode, setMode] = useState<'' | 'update' | 'postpone' | 'followup' | 'edit' | 'share' | 'transfer' | 'delegate'>('');
   const { confirm } = useDialog();
   const [moveTo, setMoveTo] = useState('');
   const personOpts = (exclude: string[]) => people.filter((p) => !exclude.includes(String(p._id)))
@@ -257,9 +267,11 @@ function TaskRow({ task, meta, L, meetingId, canEdit, dept, open, onToggle, onCh
   const done = task.status === 'done';
 
   return (
-    <div className={open ? 'bg-orange-50/30' : ''}>
-      <button type="button" onClick={onToggle} className="w-full text-start px-4 py-2.5 flex flex-wrap items-center gap-x-3 gap-y-1 hover:bg-slate-50">
-        <span className={`flex-1 min-w-[12rem] font-semibold ${done ? 'text-slate-500 line-through' : 'text-slate-900'}`}>{task.title}</span>
+    <div className={open ? 'bg-orange-50/30' : done ? 'bg-emerald-50' : ''}>
+      <button type="button" onClick={onToggle} className={`w-full text-start px-4 py-2.5 flex flex-wrap items-center gap-x-3 gap-y-1 ${done ? 'border-s-4 border-emerald-500 hover:bg-emerald-100/60' : 'hover:bg-slate-50'}`}>
+        <span className={`flex-1 min-w-[12rem] font-semibold inline-flex items-center gap-1.5 ${done ? 'text-emerald-800' : 'text-slate-900'}`}>
+          {done && <CheckCircle2 className="w-4 h-4 shrink-0 text-emerald-600" />}{task.title}
+        </span>
         <span className="text-[12px] text-slate-600 inline-flex items-center gap-1"><User className="w-3.5 h-3.5 text-slate-400" />{task.assigneeName}</span>
         <span className={`text-[12px] inline-flex items-center gap-1 ${task.overdue ? 'text-red-700 font-bold' : 'text-slate-500'}`}>
           <CalendarDays className="w-3.5 h-3.5" />{fmtDate(task.dueDate)}
@@ -339,6 +351,13 @@ function TaskRow({ task, meta, L, meetingId, canEdit, dept, open, onToggle, onCh
                 className="inline-flex items-center gap-1.5 border border-slate-300 bg-white text-slate-700 text-xs font-bold rounded-lg px-3 py-1.5">
                 <PlayCircle className="w-3.5 h-3.5" />{t('Update status', 'تحديث الحالة')}
               </button>
+              {canDelegate && !done && (
+                <button type="button" onClick={() => setMode('delegate')}
+                  className="inline-flex items-center gap-1.5 border border-emerald-300 text-emerald-700 bg-white text-xs font-bold rounded-lg px-3 py-1.5">
+                  <Users className="w-3.5 h-3.5" />{t('Hand parts to my team', 'توزيع على الفريق')}
+                </button>
+              )}
+              {runner && (<>
               <button type="button" onClick={() => setMode('followup')}
                 className="inline-flex items-center gap-1.5 border border-violet-300 text-violet-700 bg-white text-xs font-bold rounded-lg px-3 py-1.5">
                 <Plus className="w-3.5 h-3.5" />{t('Follow-up task', 'إضافة بند متابعة')}
@@ -365,6 +384,7 @@ function TaskRow({ task, meta, L, meetingId, canEdit, dept, open, onToggle, onCh
                 className="inline-flex items-center gap-1.5 border border-red-300 bg-white text-red-700 text-xs font-bold rounded-lg px-3 py-1.5 disabled:opacity-50">
                 <Trash2 className="w-3.5 h-3.5" />{t('Delete task', 'حذف البند')}
               </button>
+              </>)}
             </div>
           )}
 
@@ -487,6 +507,17 @@ function TaskRow({ task, meta, L, meetingId, canEdit, dept, open, onToggle, onCh
               followup: {
                 icon: Plus, title: t('Follow-up task', 'إضافة بند متابعة'), tone: 'bg-violet-600',
                 body: <NewTask meta={meta} L={L} meetingId={meetingId} dept={dept} followUpOf={task} inline onDone={() => { close(); onChanged(); }} notify={notify} />,
+              },
+              delegate: {
+                icon: Users, title: t('Hand parts to my team', 'توزيع على الفريق'), tone: 'bg-emerald-600',
+                body: <DelegateForm people={meta.people.filter((p) => String(p._id) !== String(meta.me._id))} defaultDue={task.dueDate} priorities={meta.priorities} lang={L} busy={busy}
+                  onCancel={close}
+                  onSubmit={async (rows) => {
+                    setBusy(true);
+                    try { await brDelegate(task._id, rows); notify(t('Delegated', 'تم التوزيع'), 'success'); close(); onChanged(); }
+                    catch (e: any) { notify(e?.message || t('Failed', 'تعذّر'), 'error'); }
+                    setBusy(false);
+                  }} />,
               },
             };
             const c = cfg[mode];

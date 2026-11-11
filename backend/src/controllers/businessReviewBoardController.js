@@ -157,6 +157,48 @@ exports.getBoard = async (req, res) => {
 };
 
 /**
+ * One task as the meeting cards and «البنود المسندة إليّ» both show it, so the two screens read and act on the same thing.
+ * Returns a mapper bound to the related rows it needs (team parts, follow-ups, parent titles, co-owners).
+ */
+async function taskViewer(actions, meetingId = null) {
+  const ids = actions.map((a) => a._id);
+  const [dels, kids, parents, shared] = await Promise.all([
+    ids.length ? BrAssignment.find({ action: { $in: ids } }).select('action assigneeName title status progress dueDate isOverdue').lean() : [],
+    ids.length ? BrAction.find({ followUpOf: { $in: ids } }).select('followUpOf title status').lean() : [],
+    BrAction.find({ _id: { $in: actions.map((a) => a.followUpOf).filter(Boolean) } }).select('title').lean(),
+    require('./businessReviewController').siblingsOf(actions),
+  ]);
+  const group = (rows, key) => { const m = new Map(); for (const x of rows) { const k = String(x[key]); if (!m.has(k)) m.set(k, []); m.get(k).push(x); } return m; };
+  const delsOf = group(dels, 'action');
+  const followUps = group(kids.map((k) => ({ _id: k._id, title: k.title, status: k.status, followUpOf: k.followUpOf })), 'followUpOf');
+  const titleOf = new Map(parents.map((x) => [String(x._id), x.title]));
+  const now = Date.now();
+  const isOpen = (a) => a.status !== 'done' && a.status !== 'cancelled';
+  const overdue = (a) => isOpen(a) && !!a.dueDate && new Date(a.dueDate).getTime() < now;
+  const horizon = (a) => {
+    if (!isOpen(a)) return '';
+    if (!a.dueDate) return 'nodate';
+    const ms = new Date(a.dueDate).getTime() - now;
+    return ms < 0 ? 'late' : ms <= 2 * DAY ? 'h48' : ms <= 7 * DAY ? 'week' : 'later';
+  };
+  return (a) => ({
+    _id: a._id, title: a.title, description: a.description, status: a.status, progress: a.progress, priority: a.priority,
+    assignee: a.assignee, assigneeName: a.assigneeName, raisedByName: a.raisedByName, createdByName: a.createdByName,
+    startDate: a.startDate, dueDate: a.dueDate, expectedDate: a.expectedDate, originalDueDate: a.originalDueDate,
+    postponeReason: a.postponeReason, postponeCount: a.postponeCount, completedAt: a.completedAt, createdAt: a.createdAt,
+    meeting: a.meeting, meetingRef: a.meetingRef, meetingDate: a.meetingDate, fromThisMeeting: !!meetingId && String(a.meeting) === String(meetingId),
+    overdue: overdue(a),
+    horizon: horizon(a),
+    delegations: delsOf.get(String(a._id)) || [],
+    followUpOf: a.followUpOf ? { _id: a.followUpOf, title: titleOf.get(String(a.followUpOf)) || '' } : null,
+    followUps: (followUps.get(String(a._id)) || []).map(({ followUpOf, ...x }) => x),
+    sharedWith: shared.get(String(a._id)) || [],
+    shareGroup: a.shareGroup || null,
+    updates: (a.updates || []).slice(-15).reverse(),
+  });
+}
+
+/**
  * A meeting's departments as cards: every task each department holds in this meeting's series (a daily meeting carries
  * its tasks from day to day; a one-off meeting has only its own), with counts by state, overdue included, and each
  * task's full detail so the page opens it in place. Same visibility as the meeting: its runners and attendees.
@@ -176,12 +218,7 @@ exports.getMeetingDepartments = async (req, res) => {
       .select('-__v').sort({ createdAt: -1 }).limit(3000).lean();
     const ownerSection = await sectionsOfUserIds(actions.map((a) => a.assignee));
     const deptOf = (a) => ownerSection.get(String(a.assignee)) || orgSectionOfRole(a.assigneeRole) || a.department || NO_DEPT;
-    const titleOf = new Map(actions.map((a) => [String(a._id), a.title]));
-    // Parts handed to the owner's team ("توزيع على الفريق"): shown on the task with each person's own state.
-    const dels = actions.length ? await BrAssignment.find({ action: { $in: actions.map((a) => a._id) } })
-      .select('action assigneeName title status progress dueDate isOverdue').lean() : [];
-    const delsOf = new Map();
-    for (const x of dels) { const k = String(x.action); if (!delsOf.has(k)) delsOf.set(k, []); delsOf.get(k).push(x); }
+    const taskView = await taskViewer(actions, meeting._id);
     // The department's head(s), named on its card.
     const managers = await User.find({ isActive: { $ne: false }, role: { $in: [/_manager$/, 'cfo'] } }).select('firstName lastName role').lean();
     const headOf = new Map();
@@ -189,9 +226,6 @@ exports.getMeetingDepartments = async (req, res) => {
     // The CFO heads the finance department, above the accounting manager.
     const cfos = managers.filter((u) => u.role === 'cfo').map(fullName);
     if (cfos.length) headOf.set('Accounting', cfos);
-    const followUps = new Map();
-    for (const a of actions) if (a.followUpOf) { const k = String(a.followUpOf); if (!followUps.has(k)) followUps.set(k, []); followUps.get(k).push({ _id: a._id, title: a.title, status: a.status }); }
-
     const now = Date.now();
     const isOpen = (a) => a.status !== 'done' && a.status !== 'cancelled';
     const overdue = (a) => isOpen(a) && a.dueDate && new Date(a.dueDate).getTime() < now;
@@ -203,8 +237,6 @@ exports.getMeetingDepartments = async (req, res) => {
       return ms < 0 ? 'late' : ms <= 2 * DAY ? 'h48' : ms <= 7 * DAY ? 'week' : 'later';
     };
     const rank = (a) => (overdue(a) ? 0 : a.status === 'blocked' ? 1 : a.status === 'in_progress' ? 2 : a.status === 'open' ? 3 : a.status === 'postponed' ? 4 : 5);
-    // A task given to several owners shows each owner's part on every card that carries it.
-    const shared = await require('./businessReviewController').siblingsOf(actions);
     const keys = [...new Set([...(meeting.departments || []), ...actions.map(deptOf)])];
     const cards = keys.map((key) => {
       const list = actions.filter((a) => deptOf(a) === key)
@@ -234,21 +266,7 @@ exports.getMeetingDepartments = async (req, res) => {
         // The department's part of this meeting's minutes.
         minutes: String(((meeting.minutes || []).find((x) => x.department === key) || {}).body || '').trim(),
         inMinutes: (meeting.minutes || []).some((x) => x.department === key),
-        tasks: list.map((a) => ({
-          _id: a._id, title: a.title, description: a.description, status: a.status, progress: a.progress, priority: a.priority,
-          assignee: a.assignee, assigneeName: a.assigneeName, raisedByName: a.raisedByName, createdByName: a.createdByName,
-          startDate: a.startDate, dueDate: a.dueDate, expectedDate: a.expectedDate, originalDueDate: a.originalDueDate,
-          postponeReason: a.postponeReason, postponeCount: a.postponeCount, completedAt: a.completedAt, createdAt: a.createdAt,
-          meeting: a.meeting, meetingRef: a.meetingRef, meetingDate: a.meetingDate, fromThisMeeting: String(a.meeting) === String(meeting._id),
-          overdue: overdue(a),
-          horizon: horizon(a),
-          delegations: delsOf.get(String(a._id)) || [],
-          followUpOf: a.followUpOf ? { _id: a.followUpOf, title: titleOf.get(String(a.followUpOf)) || '' } : null,
-          followUps: followUps.get(String(a._id)) || [],
-          sharedWith: shared.get(String(a._id)) || [],
-          shareGroup: a.shareGroup || null,
-          updates: (a.updates || []).slice(-15).reverse(),
-        })),
+        tasks: list.map((a) => taskView(a)),
       };
     });
     // Departments with something to discuss first; quiet ones keep the meeting's order after them.
@@ -428,3 +446,5 @@ exports.getDaily = async (req, res) => {
     res.status(500).json({ message: 'تعذّر تحميل الاجتماع اليومي' });
   }
 };
+
+module.exports.taskViewer = taskViewer;

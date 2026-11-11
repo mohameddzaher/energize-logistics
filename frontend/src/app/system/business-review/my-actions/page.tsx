@@ -8,10 +8,11 @@ import { useSocket } from '@/hooks/useSocket';
 import { ClipboardList, AlertTriangle, CheckCircle2, Clock, Filter } from 'lucide-react';
 import { Spinner, PageHeader } from '@/components/hr/HRKit';
 import { KpiTile } from '@/components/system/Scorecard';
-import { ActionCard, TaskCard } from '@/components/system/BusinessReviewKit';
+import { TaskCard } from '@/components/system/BusinessReviewKit';
+import { TaskRow } from '@/components/system/BrMeetingDepartments';
 import {
-  brMeta, brMyActions, brUpdateAction, brDelegate, brMyTasks, brUpdateTask,
-  type BrMeta, type BrAction, type Lang, tx, OPEN_STATUSES,
+  brMeta, brMyActions, brMyTasks, brUpdateTask,
+  type BrMeta, type Lang, tx, OPEN_STATUSES,
 } from '@/lib/businessReview';
 
 export default function MyActionsPage() {
@@ -21,7 +22,10 @@ export default function MyActionsPage() {
   const t = (en: string, ar: string) => tx(L, en, ar);
 
   const [meta, setMeta] = useState<BrMeta | null>(null);
-  const [actions, setActions] = useState<BrAction[]>([]);
+  // Same task shape and row as the meeting cards, so both screens show and do the same thing.
+  const [actions, setActions] = useState<any[]>([]);
+  const [runner, setRunner] = useState(false);
+  const [openTask, setOpenTask] = useState('');
   const [summary, setSummary] = useState<any>(null);
   // Parts of a colleague's task handed to me; they count as mine here too.
   const [handed, setHanded] = useState<any[]>([]);
@@ -32,7 +36,8 @@ export default function MyActionsPage() {
     try {
       const [m, r, h] = await Promise.all([brMeta().catch(() => null), brMyActions(), brMyTasks().catch(() => null)]);
       if (m) setMeta(m);
-      setActions(r.actions || []);
+      setActions(r.tasks || []);
+      setRunner(!!r.canRunMeetings);
       const mine = (h as any)?.assignments || [];
       setHanded(mine);
       const hs = (h as any)?.summary || { total: 0, open: 0, overdue: 0, done: 0 };
@@ -44,11 +49,12 @@ export default function MyActionsPage() {
   useSocket('br:action', load);
   useSocket('br:updated', load);
   useSocket('br:assignment', load);
+  useSocket('br:meeting', load);
 
   const shown = useMemo(() => {
     if (filter === 'all') return actions;
     if (filter === 'done') return actions.filter((a) => a.status === 'done');
-    if (filter === 'overdue') return actions.filter((a) => a.isOverdue && OPEN_STATUSES.includes(a.status));
+    if (filter === 'overdue') return actions.filter((a) => a.overdue);
     return actions.filter((a) => OPEN_STATUSES.includes(a.status));
   }, [actions, filter]);
 
@@ -97,21 +103,18 @@ export default function MyActionsPage() {
       </div>
 
       <div className="space-y-3">
-        {meta && shown.map((a) => (
-          <ActionCard
-            key={a._id} action={a} meta={meta} lang={L} showMeeting
-            canDelegate
-            people={meta.people.filter((p) => p._id !== meta.me._id)}
-            onUpdate={async (v) => {
-              try { await brUpdateAction(a._id, v); await load(); notify(t('Updated', 'تم التحديث'), 'success'); }
-              catch (e: any) { notify(e?.message || t('Failed', 'فشل'), 'error'); }
-            }}
-            onDelegate={async (rows) => {
-              try { await brDelegate(a._id, rows); await load(); notify(t('Delegated', 'تم التوزيع'), 'success'); }
-              catch (e: any) { notify(e?.message || t('Failed', 'فشل'), 'error'); }
-            }}
-          />
-        ))}
+        {meta && !!shown.length && (
+          <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm divide-y divide-slate-100">
+            {shown.map((a) => (
+              <div key={a._id}>
+                {a.meetingRef && <p className="px-4 pt-2 text-[11.5px] font-semibold text-slate-400">{t('Meeting', 'الاجتماع')} <bdi>{a.meetingRef}</bdi></p>}
+                <TaskRow task={a} meta={meta} L={L} meetingId={String(a.meeting || '')} canEdit runner={runner} canDelegate
+                  dept="" open={openTask === String(a._id)} onToggle={() => setOpenTask((x) => (x === String(a._id) ? '' : String(a._id)))}
+                  onChanged={load} notify={notify} />
+              </div>
+            ))}
+          </div>
+        )}
         {meta && !!shownHanded.length && (
           <>
             <h2 className="pt-2 text-[15px] font-black text-slate-900">{t('Handed to me by a colleague', 'مهام موزّعة عليّ من زميل')}</h2>

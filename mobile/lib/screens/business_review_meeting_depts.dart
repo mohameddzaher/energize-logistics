@@ -17,7 +17,11 @@ class BrMeetingDepartmentsTab extends StatefulWidget {
   final bool embedded;
   /// Heading of each department's part of the minutes.
   final String? minutesLabel;
-  const BrMeetingDepartmentsTab({super.key, required this.meetingId, required this.meta, this.embedded = false, this.minutesLabel});
+  /// «البنود المسندة إليّ»: the given tasks as a flat list with the same rows and actions as the meeting cards; the parent loads them.
+  final List<Map<String, dynamic>>? tasks;
+  final bool runner;
+  final VoidCallback? onChanged;
+  const BrMeetingDepartmentsTab({super.key, required this.meetingId, required this.meta, this.embedded = false, this.minutesLabel, this.tasks, this.runner = false, this.onChanged});
   @override
   State<BrMeetingDepartmentsTab> createState() => _BrMeetingDepartmentsTabState();
 }
@@ -59,6 +63,11 @@ class _BrMeetingDepartmentsTabState extends State<BrMeetingDepartmentsTab> {
   Map<String, dynamic>? _d;
   String? _error;
   String _openDept = '';
+  final Map<String, GlobalKey> _deptKeys = {};
+  void _scrollToDept(String key) => WidgetsBinding.instance.addPostFrameCallback((_) {
+        final c = _deptKeys[key]?.currentContext;
+        if (c != null) Scrollable.ensureVisible(c, duration: const Duration(milliseconds: 350), curve: Curves.easeOutCubic);
+      });
   final Map<String, String> _filter = {};
   String _openTask = '';
   Timer? _tick;
@@ -68,6 +77,7 @@ class _BrMeetingDepartmentsTabState extends State<BrMeetingDepartmentsTab> {
   @override
   void initState() {
     super.initState();
+    if (widget.tasks != null) return;
     Live.instance.on('br:action', _soon);
     Live.instance.on('br:meeting', _soon);
     Live.instance.on('br:assignment', _soon);
@@ -86,6 +96,7 @@ class _BrMeetingDepartmentsTabState extends State<BrMeetingDepartmentsTab> {
   }
 
   Future<void> _load() async {
+    if (widget.tasks != null) { widget.onChanged?.call(); return; }
     try {
       final r = await Api.instance.get('/api/business-review/meetings/${widget.meetingId}/departments');
       if (mounted) setState(() { _d = Map<String, dynamic>.from(r); _error = null; });
@@ -324,7 +335,7 @@ class _BrMeetingDepartmentsTabState extends State<BrMeetingDepartmentsTab> {
     );
     if (ok != true) return;
     try {
-      await Api.instance.post('/api/business-review/meetings/${widget.meetingId}/actions', {
+      await Api.instance.post('/api/business-review/meetings/${followUpOf?['meeting'] ?? widget.meetingId}/actions', {
         'title': title.text.trim(), 'description': desc.text.trim(), 'assignee': who, 'department': dept,
         'assignees': [who, ...also.where((x) => x != who)],
         if (due.isNotEmpty) 'dueDate': due,
@@ -337,8 +348,31 @@ class _BrMeetingDepartmentsTabState extends State<BrMeetingDepartmentsTab> {
     }
   }
 
+  Future<void> _delegate(Map t) async {
+    final meId = (widget.meta['me']?['_id'] ?? '').toString();
+    final people = List<Map<String, dynamic>>.from(widget.meta['people'] ?? []).where((p) => p['_id'] != meId).toList();
+    final rows = await brDelegateSheet(context, widget.meta, people, t['dueDate']);
+    if (rows == null || rows.isEmpty) return;
+    try {
+      await Api.instance.post('/api/business-review/actions/${t['_id']}/delegate', {'assignments': rows});
+      if (mounted) brSnack(context, tr('تم التوزيع', 'Delegated'));
+      _load();
+    } catch (e) {
+      if (mounted) brSnack(context, brErr(e));
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
+    if (widget.tasks != null) {
+      return Container(
+        decoration: BoxDecoration(color: T.card, borderRadius: BorderRadius.circular(14), border: Border.all(color: const Color(0xFFCBD5E1))),
+        clipBehavior: Clip.antiAlias,
+        child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+          for (final t in widget.tasks!) _task(t, '${t['department'] ?? ''}', true, runner: widget.runner, delegate: true),
+        ]),
+      );
+    }
     if (_error != null) return ErrorRetry(message: _error!, onRetry: _load);
     final d = _d;
     if (d == null) return const Center(child: CircularProgressIndicator());
@@ -380,12 +414,13 @@ class _BrMeetingDepartmentsTabState extends State<BrMeetingDepartmentsTab> {
     final done = (counts['done'] ?? 0) as num;
     final pct = total == 0 ? 0.0 : done / total;
     return Container(
+      key: _deptKeys.putIfAbsent(key, () => GlobalKey()),
       margin: const EdgeInsets.only(bottom: 10),
       decoration: BoxDecoration(color: T.card, borderRadius: BorderRadius.circular(14),
           border: Border.all(color: ((counts['overdue'] ?? 0) as num) > 0 ? T.danger : const Color(0xFFCBD5E1), width: 1.5)),
       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
         InkWell(
-          onTap: () => setState(() { _openDept = open ? '' : key; _openTask = ''; }),
+          onTap: () { setState(() { _openDept = open ? '' : key; _openTask = ''; }); if (!open) _scrollToDept(key); },
           child: Padding(
             padding: const EdgeInsets.fromLTRB(12, 12, 12, 6),
             child: Row(children: [
@@ -463,20 +498,27 @@ class _BrMeetingDepartmentsTabState extends State<BrMeetingDepartmentsTab> {
     );
   }
 
-  Widget _task(Map<String, dynamic> t, String dept, bool canEdit) {
+  Widget _task(Map<String, dynamic> t, String dept, bool canEdit, {bool? runner, bool delegate = false}) {
+    final isRunner = runner ?? canEdit;
     final open = _openTask == '${t['_id']}';
     final st = brVocab(widget.meta['actionStatuses'] as List?, '${t['status']}');
     final done = t['status'] == 'done';
     final overdue = t['overdue'] == true;
     return Container(
-      color: open ? T.orange.withValues(alpha: 0.04) : null,
+      decoration: BoxDecoration(
+        color: open ? T.orange.withValues(alpha: 0.04) : done ? T.success.withValues(alpha: 0.08) : null,
+        border: done ? const BorderDirectional(start: BorderSide(color: T.success, width: 4)) : null,
+      ),
       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
         InkWell(
           onTap: () => setState(() => _openTask = open ? '' : '${t['_id']}'),
           child: Padding(
             padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
             child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              Text('${t['title']}', style: TextStyle(fontWeight: FontWeight.w800, decoration: done ? TextDecoration.lineThrough : null, color: done ? T.inkFaint : T.ink)),
+              Row(children: [
+                if (done) const Padding(padding: EdgeInsetsDirectional.only(end: 6), child: Icon(Icons.check_circle, size: 18, color: T.success)),
+                Expanded(child: Text('${t['title']}', style: TextStyle(fontWeight: FontWeight.w800, color: done ? const Color(0xFF065F46) : T.ink))),
+              ]),
               const SizedBox(height: 4),
               Wrap(spacing: 6, runSpacing: 4, crossAxisAlignment: WrapCrossAlignment.center, children: [
                 Text('${t['assigneeName']}', style: const TextStyle(fontSize: 12, color: T.inkSoft)),
@@ -527,6 +569,8 @@ class _BrMeetingDepartmentsTabState extends State<BrMeetingDepartmentsTab> {
                   if (!done) FilledButton.icon(style: FilledButton.styleFrom(backgroundColor: T.warn),
                       onPressed: () => _postpone(t), icon: const Icon(Icons.pause, size: 16), label: Text(tr('تأجيل', 'Postpone'))),
                   OutlinedButton.icon(onPressed: () => _update(t), icon: const Icon(Icons.trending_up, size: 16), label: Text(tr('تحديث الحالة', 'Update status'))),
+                  if (delegate && !done) OutlinedButton.icon(onPressed: () => _delegate(t), icon: const Icon(Icons.groups_outlined, size: 16), label: Text(tr('توزيع على الفريق', 'Hand parts to my team'))),
+                  if (isRunner) ...[
                   OutlinedButton.icon(onPressed: () => _newTask(dept, followUpOf: t), icon: const Icon(Icons.add, size: 16), label: Text(tr('إضافة بند متابعة', 'Follow-up task'))),
                   OutlinedButton.icon(onPressed: () => _edit(t), icon: const Icon(Icons.edit_outlined, size: 16), label: Text(tr('تعديل البند', 'Edit task'))),
                   OutlinedButton.icon(onPressed: () => _share(t), icon: const Icon(Icons.group_add_outlined, size: 16), label: Text(tr('إسناده لمسؤولٍ آخر أيضًا', 'Also assign to…'))),
@@ -534,6 +578,7 @@ class _BrMeetingDepartmentsTabState extends State<BrMeetingDepartmentsTab> {
                   if (List.from(t['sharedWith'] ?? []).isNotEmpty)
                     OutlinedButton.icon(onPressed: () => _remove(t, onlyThisOwner: true), icon: const Icon(Icons.person_remove_outlined, size: 16, color: T.danger), label: Text(tr('إزالة هذا المسؤول', 'Remove this owner'), style: const TextStyle(color: T.danger))),
                   OutlinedButton.icon(onPressed: () => _remove(t), icon: const Icon(Icons.delete_outline, size: 16, color: T.danger), label: Text(tr('حذف البند', 'Delete task'), style: const TextStyle(color: T.danger))),
+                  ],
                 ]),
               ],
               BrUpdateLog(updates: List.from(t['updates'] ?? []).reversed.toList(), meta: widget.meta),

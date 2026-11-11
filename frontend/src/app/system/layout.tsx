@@ -42,6 +42,7 @@ import { FLEET_EDIT_ROLES as FLEET_ROLES, FLEET_ADMIN_ROLES } from '@/lib/fleet'
 import { LS2_SECTION_ROLES } from '@/lib/ls2';
 
 import { isManagedSection, canAccessSection, canAccessPage } from '@/lib/sections';
+import { isDataRole } from '@/lib/dataSupport';
 import { ALL_ROLES } from '@/lib/roles';
 import { jpMember, jpManager, jpTop } from '@/lib/jpNav';
 import { PERF_STAFF_ROLES } from '@/lib/performance';
@@ -357,7 +358,7 @@ function SystemLayoutInner({ children }: { children: React.ReactNode }) {
     { href: '/system/vendors-mgmt/jp-dashboard', label: lang === 'ar' ? 'لوحة JP' : 'JP Dashboard', icon: <BarChart3 className="w-5 h-5" />, roles: [], section: 'Vendors Management', visible: (u) => jpManager(u, 'Vendors Management') },
     { href: '/system/vendors-mgmt/management-jp', label: lang === 'ar' ? 'خطّة الإدارة (Management JP)' : 'Management JP', icon: <Crown className="w-5 h-5" />, roles: [], section: 'Vendors Management', visible: (u) => jpManager(u, 'Vendors Management') && !jpTop(u) },
     { href: '/system/vendors-mgmt/complaints', label: lang === 'ar' ? 'الشكاوى' : 'Complaints', icon: <MessageSquare className="w-5 h-5" />, roles: VENDOR_NAV_ROLES, section: 'Vendors Management' },
-    { href: '/system/vendors-mgmt/kpis', label: lang === 'ar' ? 'تقييم الأداء' : 'KPIs', icon: <Target className="w-5 h-5" />, roles: kpiRoles(['super_admin', 'admin', 'it_manager', 'it_specialist', 'vendors_manager']), section: 'Vendors Management', restrict: true },
+    { href: '/system/vendors-mgmt/kpis', label: lang === 'ar' ? 'تقييم الأداء' : 'KPIs', icon: <Target className="w-5 h-5" />, roles: kpiRoles(['super_admin', 'admin', 'it_manager', 'it_specialist', 'vendors_manager', 'operations_manager']), section: 'Vendors Management', restrict: true },
 
     // Fleet Management: our own trucks.
     { href: '/system/fleet/board', label: lang === 'ar' ? 'اللوحة الرئيسية' : 'Fleet Board', icon: <LayoutGrid className="w-5 h-5" />, roles: FLEET_ROLES, section: 'Fleet Management' },
@@ -426,6 +427,7 @@ function SystemLayoutInner({ children }: { children: React.ReactNode }) {
     { href: '/system/ls2/tires', label: lang === 'ar' ? 'الكاوتش' : 'Tires', icon: <Activity className="w-5 h-5" />, roles: LS2_SECTION_ROLES, section: 'Location Solutions' },
     { href: '/system/ls2/temperature', label: lang === 'ar' ? 'الحرارة' : 'Temperature', icon: <Thermometer className="w-5 h-5" />, roles: LS2_SECTION_ROLES, section: 'Location Solutions' },
     { href: '/system/ls2/maintenance', label: lang === 'ar' ? 'الصيانة' : 'Maintenance', icon: <Wrench className="w-5 h-5" />, roles: LS2_SECTION_ROLES, section: 'Location Solutions' },
+    { href: '/system/ls2/maintenance-analytics', label: lang === 'ar' ? 'تحليلات الصيانة' : 'Maintenance Analytics', icon: <BarChart3 className="w-5 h-5" />, roles: LS2_SECTION_ROLES, section: 'Location Solutions' },
     { href: '/system/ls2/fleet-assets', label: lang === 'ar' ? 'السطحات والكاوتشات' : 'Fleet Assets', icon: <Container className="w-5 h-5" />, roles: LS2_SECTION_ROLES, section: 'Location Solutions' },
     // Custody is money: shown only where the server opens it (custodyPages, middleware/custodyGate), owner roles or a permissions-screen grant.
     { href: '/system/ls2/custody', label: lang === 'ar' ? 'عهدة النقل الثقيل' : 'Heavy Transport Custody', icon: <Wallet className="w-5 h-5" />, roles: ['super_admin', 'admin', 'it_manager', 'it_specialist', 'location_manager', 'vehicles_manager', 'cfo', 'accounting_manager', 'accountant'], section: 'Location Solutions', visible: (u: any) => (Array.isArray(u?.custodyPages) ? u.custodyPages.includes('/system/ls2/custody') : true) },
@@ -443,7 +445,7 @@ function SystemLayoutInner({ children }: { children: React.ReactNode }) {
     { href: '/system/performance/overview', label: lang === 'ar' ? 'نظرة كل الأقسام' : 'All Departments', icon: <Crown className="w-5 h-5" />, roles: ['super_admin', 'admin', 'it_manager', 'it_specialist'], section: 'Performance' },
     { href: '/system/performance', label: lang === 'ar' ? 'تقييم مديري الأقسام' : 'Evaluate Managers', icon: <Target className="w-5 h-5" />, roles: ['super_admin', 'admin', 'it_manager', 'it_specialist'], section: 'Performance' },
     { href: '/system/performance/requests', label: lang === 'ar' ? 'طلبات تعديل التقييم' : 'Edit Requests', icon: <Inbox className="w-5 h-5" />, roles: ['super_admin', 'admin', 'it_manager', 'it_specialist'], section: 'Performance' },
-    { href: '/system/performance/settings', label: lang === 'ar' ? 'إعداد المؤشرات' : 'Configure KPIs', icon: <Settings className="w-5 h-5" />, roles: ['super_admin', 'admin', 'it_manager', 'it_specialist'], section: 'Performance' },
+    { href: '/system/performance/settings', label: lang === 'ar' ? 'إعداد المؤشرات' : 'Configure KPIs', icon: <Settings className="w-5 h-5" />, roles: ['super_admin', 'admin', 'it_manager', 'it_specialist'], section: 'Performance', visible: (u: any) => u?.isTopManagement === true || ['super_admin', 'admin', 'it_manager', 'it_specialist'].includes(u?.role) },
     // ---- Marketing ----
     { href: '/system/marketing', label: lang === 'ar' ? 'لوحة التسويق' : 'Marketing Dashboard', icon: <Megaphone className="w-5 h-5" />, roles: MARKETING_ROLES, section: 'Marketing' },
     { href: '/system/marketing/campaigns', label: lang === 'ar' ? 'الحملات' : 'Campaigns', icon: <Target className="w-5 h-5" />, roles: MARKETING_ROLES, section: 'Marketing' },
@@ -687,6 +689,25 @@ function SystemLayoutInner({ children }: { children: React.ReactNode }) {
     { href: '/system/users', label: L.users, icon: <UserCog className="w-5 h-5" />, roles: ['super_admin', 'admin', 'it_manager', 'it_specialist'], section: 'Admin' },
     { href: '/system/permissions', label: lang === 'ar' ? 'الأدوار والصلاحيات' : 'Roles & Permissions', icon: <ShieldCheck className="w-5 h-5" />, roles: ['super_admin', 'admin', 'it_manager', 'it_specialist'], section: 'Admin' },
     { href: '/system/audit', label: L.auditLog, icon: <ClipboardList className="w-5 h-5" />, roles: ['super_admin', 'it_manager', 'it_specialist', 'admin'], section: 'Admin' },
+    // Data & Decision Support: one analysis page per company section, each read from the section's own analytics (backend dataSupportController).
+    { href: '/system/data-support', label: lang === 'ar' ? 'لوحة دعم القرار' : 'Decision Support Home', icon: <LayoutDashboard className="w-5 h-5" />, roles: ['super_admin', 'admin', 'it_manager', 'it_specialist', 'cfo', 'data_manager', 'data_analyst', 'data_entry'], section: 'Data & Decision Support' },
+    { href: '/system/data-support/operations', label: lang === 'ar' ? 'تحليل العمليات والشحنات' : 'Operations & Shipments Analysis', icon: <PackageSearch className="w-5 h-5" />, roles: ['super_admin', 'admin', 'it_manager', 'it_specialist', 'cfo', 'data_manager', 'data_analyst', 'data_entry'], section: 'Data & Decision Support' },
+    { href: '/system/data-support/heavy-transport', label: lang === 'ar' ? 'تحليل النقل الثقيل' : 'Heavy Transport Analysis', icon: <Truck className="w-5 h-5" />, roles: ['super_admin', 'admin', 'it_manager', 'it_specialist', 'cfo', 'data_manager', 'data_analyst', 'data_entry'], section: 'Data & Decision Support' },
+    { href: '/system/data-support/light-transport', label: lang === 'ar' ? 'تحليل النقل الخفيف' : 'Light Transport Analysis', icon: <Award className="w-5 h-5" />, roles: ['super_admin', 'admin', 'it_manager', 'it_specialist', 'cfo', 'data_manager', 'data_analyst', 'data_entry'], section: 'Data & Decision Support' },
+    { href: '/system/data-support/sales', label: lang === 'ar' ? 'تحليل المبيعات والعلاقات' : 'Sales & CRM Analysis', icon: <Target className="w-5 h-5" />, roles: ['super_admin', 'admin', 'it_manager', 'it_specialist', 'cfo', 'data_manager', 'data_analyst', 'data_entry'], section: 'Data & Decision Support' },
+    { href: '/system/data-support/vendors', label: lang === 'ar' ? 'تحليل الموردين' : 'Vendors Analysis', icon: <Handshake className="w-5 h-5" />, roles: ['super_admin', 'admin', 'it_manager', 'it_specialist', 'cfo', 'data_manager', 'data_analyst', 'data_entry'], section: 'Data & Decision Support' },
+    { href: '/system/data-support/customs', label: lang === 'ar' ? 'تحليل التخليص الجمركي' : 'Customs Analysis', icon: <Ship className="w-5 h-5" />, roles: ['super_admin', 'admin', 'it_manager', 'it_specialist', 'cfo', 'data_manager', 'data_analyst', 'data_entry'], section: 'Data & Decision Support' },
+    { href: '/system/data-support/collections', label: lang === 'ar' ? 'تحليل التحصيل' : 'Collections Analysis', icon: <CreditCard className="w-5 h-5" />, roles: ['super_admin', 'admin', 'it_manager', 'it_specialist', 'cfo', 'data_manager', 'data_analyst', 'data_entry'], section: 'Data & Decision Support' },
+    { href: '/system/data-support/hr', label: lang === 'ar' ? 'تحليل الموارد البشرية' : 'HR Analysis', icon: <UserCog className="w-5 h-5" />, roles: ['super_admin', 'admin', 'it_manager', 'it_specialist', 'cfo', 'data_manager', 'data_analyst', 'data_entry'], section: 'Data & Decision Support' },
+    { href: '/system/data-support/finance', label: lang === 'ar' ? 'التحليل المالي' : 'Finance Analysis', icon: <Landmark className="w-5 h-5" />, roles: ['super_admin', 'admin', 'it_manager', 'it_specialist', 'cfo', 'data_manager', 'data_analyst', 'data_entry'], section: 'Data & Decision Support' },
+    { href: '/system/data-support/kpis', label: lang === 'ar' ? 'تقييم الأداء' : 'KPIs', icon: <Target className="w-5 h-5" />, roles: kpiRoles(['super_admin', 'it_manager', 'it_specialist', 'admin', 'data_manager', 'data_analyst', 'data_entry']), section: 'Data & Decision Support', restrict: true },
+    // The team's data-entry screens, grouped here for the data roles only. Each is declared earlier under its own section, which owns the page permission (the catalogue registers the first declaration); the link shows only if that section is open too.
+    { href: '/system/shipment-orders', label: lang === 'ar' ? 'الشحنات' : 'Shipments', icon: <PackageSearch className="w-5 h-5" />, roles: [], section: 'Data & Decision Support', visible: (u: any) => isDataRole(u) && canAccessSection(u?.permissions, 'Shipment Orders') },
+    { href: '/system/shipment-orders/request', label: lang === 'ar' ? 'طلب شحنة' : 'Shipment Request', icon: <ClipboardList className="w-5 h-5" />, roles: [], section: 'Data & Decision Support', visible: (u: any) => isDataRole(u) && canAccessSection(u?.permissions, 'Shipment Orders') && canAskShipment(u) },
+    { href: '/system/shipment-orders/requests', label: lang === 'ar' ? 'الطلبات من المبيعات' : 'Requests from Sales', icon: <Inbox className="w-5 h-5" />, roles: [], section: 'Data & Decision Support', visible: (u: any) => isDataRole(u) && canAccessSection(u?.permissions, 'Shipment Orders') && canPlaceShipment(u) },
+    { href: '/system/fleet', label: lang === 'ar' ? 'حمولات الأسطول' : 'Fleet Loads', icon: <Truck className="w-5 h-5" />, roles: [], section: 'Data & Decision Support', visible: (u: any) => isDataRole(u) && canAccessSection(u?.permissions, 'Fleet Management') },
+    { href: '/system/operations', label: lang === 'ar' ? 'سير عمل التشغيل' : 'Operations Workflow', icon: <ClipboardList className="w-5 h-5" />, roles: [], section: 'Data & Decision Support', visible: (u: any) => isDataRole(u) && canAccessSection(u?.permissions, 'Operations') },
+    { href: '/system/operations/loads', label: lang === 'ar' ? 'متابعة الحمولات والشحنات' : 'Loads & Shipments', icon: <Truck className="w-5 h-5" />, roles: [], section: 'Data & Decision Support', visible: (u: any) => isDataRole(u) && canAccessSection(u?.permissions, 'Operations') },
     // API documentation, built from the code on open; the internal surface is for those the server guards with it (FULL_ACCESS_ROLES).
     { href: '/system/api-docs', label: 'API Reference', icon: <BookOpen className="w-5 h-5" />, roles: ['super_admin', 'admin', 'it_manager', 'it_specialist'], section: 'Admin' },
     { href: '/system/complaints', label: L.complaints, icon: <MessageSquare className="w-5 h-5" />, roles: ['super_admin', 'it_manager', 'it_specialist', 'admin', 'operations_manager', 'operations_team_leader'], section: 'Admin' },
@@ -830,6 +851,7 @@ function SystemLayoutInner({ children }: { children: React.ReactNode }) {
     // Home is always first; when it was missing from the list it dropped below all sections and looked gone to the system admin.
     'Main',
     'Top Management',
+    'Data & Decision Support',
     'Operations',
     'Shipment Orders',
     'Operations Platform',

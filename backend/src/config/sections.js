@@ -156,6 +156,12 @@ const SECTIONS = [
     defaultRoles: ['admin', 'it_manager', 'cfo', 'accounting_manager', 'accountant'],
   },
   {
+    // Data & Decision Support: per-section analysis pages. Its roles are global (config/roles DATA_ROLES) and get it by default through defaultAccess.
+    key: 'Data & Decision Support',
+    apiPrefixes: ['/api/data-support'],
+    defaultRoles: ['admin', 'it_manager', 'it_specialist', 'cfo'],
+  },
+  {
     key: 'Procurement',
     apiPrefixes: ['/api/procurement'],
     defaultRoles: ['admin', 'it_manager', 'procurement_manager', 'procurement_staff'],
@@ -192,6 +198,7 @@ const SECTION_LABELS_AR = {
   'Sales': 'المبيعات',
   'Accounting': 'الإدارة المالية',
   'Procurement': 'المشتريات',
+  'Data & Decision Support': 'إدارة البيانات ودعم القرار',
   'Executive': 'الإدارة العليا',
 };
 
@@ -230,8 +237,8 @@ const defaultAccess = (role, sectionKey) => {
   return s.defaultRoles.includes(role) ? 'edit' : 'none';
 };
 
-// Every section needs a manager and a staff role in config/roles.js. Checked here because this is where both lists are known. Business review is exempt: a forum for all managers, not a team section.
-require('./roles').assertRolesCoverSections(SECTION_KEYS, ['Business Review']);
+// Every section needs a manager and a staff role in config/roles.js. Checked here because this is where both lists are known. Business review is exempt: a forum for all managers, not a team section. Data & Decision Support is exempt: its roles are global (DATA_ROLES), not section roles.
+require('./roles').assertRolesCoverSections(SECTION_KEYS, ['Business Review', 'Data & Decision Support']);
 
 module.exports = {
   SECTIONS, SECTION_KEYS, ACCESS_LEVELS, ALL_ROLES, getSection, defaultAccess,

@@ -24,6 +24,7 @@ import '../screens/contracts_prospects.dart';
 import '../screens/hr_dashboard.dart';
 import '../screens/hr_employees.dart';
 import '../screens/ls2_vehicles.dart';
+import '../screens/ls2_maintenance.dart';
 import '../screens/section_work.dart';
 import '../screens/team_board.dart';
 import '../screens/remote_attendance.dart';
@@ -55,6 +56,7 @@ import '../screens/ops_platform.dart';
 import '../screens/ls2_fleet_assets.dart';
 import '../screens/admin_suite.dart';
 import '../screens/finance.dart';
+import '../screens/data_support.dart';
 import '../screens/hr_finance.dart';
 import '../screens/sales_suite.dart';
 import '../screens/it_recurring.dart';
@@ -177,6 +179,7 @@ class AppSection {
 }
 
 const _admins = ['super_admin', 'admin', 'it_manager', 'it_specialist'];
+const _dataRoles = ['data_manager', 'data_analyst', 'data_entry'];
 
 /// Light transport custody, vehicles and staff adding: for the sector manager, deputy, system admin and finance, by role alone and not by section grant, like the server guard (authorize.strict in routes/lightTransport) and the website menu entries.
 const _ltOwners = ['super_admin', 'admin', 'it_manager', 'it_specialist', 'b2c_manager', 'b2c_deputy', 'cfo', 'accounting_manager', 'accountant'];
@@ -197,6 +200,7 @@ const _htOwners = ['super_admin', 'admin', 'it_manager', 'it_specialist', 'locat
 /// The work chain as it runs: operations, then orders and platform, then collections, then fleet and tracking, then what supports all of it.
 const _sectionOrder = <String>[
   'Top Management',
+  'Data & Decision Support',
   'Operations',
   'Shipment Orders',
   'Vendors Management',
@@ -240,6 +244,8 @@ List<AppSection> sectionsFor(AuthProvider auth) {
     if (s.key == 'Operations' && (_salesRoles.contains(role) || _vendorRoles.contains(role)) && auth.pageAccess['/system/operations'] == true) return true;
     // Top management is an account flag, not a role (User.isTopManagement).
     if (s.key == 'Top Management' && (auth.user?['isTopManagement'] == true || auth.user?['isChairman'] == true)) return true;
+    // The general manager configures KPIs (forms, bands, tiers), as on the server.
+    if (s.key == 'Performance' && auth.user?['isTopManagement'] == true) return true;
     return false;
   }
 
@@ -492,6 +498,7 @@ List<AppSection> sectionsFor(AuthProvider auth) {
       pages: [
         AppPage('اللوحة', 'Dashboard', Icons.dashboard_outlined, (c) => const Ls2DashboardScreen()),
         AppPage('المركبات والصيانة', 'Fleet & Maintenance', Icons.local_shipping_outlined, (c) => const Ls2VehiclesScreen(), path: '/system/ls2/maintenance'),
+        AppPage('تحليلات الصيانة', 'Maintenance Analytics', Icons.insights_outlined, (c) => const Ls2MaintenanceAnalyticsScreen(), path: '/system/ls2/maintenance-analytics'),
         AppPage('الإصلاحات', 'Repairs', Icons.home_repair_service_outlined, (c) => ResourceScreen(config: ls2RepairsCfg), path: '/system/ls2/repairs'),
         AppPage('أصول الأسطول', 'Fleet Assets', Icons.tire_repair_outlined, (c) => const Ls2FleetAssetsScreen(), path: '/system/ls2/fleet-assets'),
         // Heavy store: opens on issue requests, the only way stock leaves it (as in the light store); items are one tap away.
@@ -562,6 +569,27 @@ List<AppSection> sectionsFor(AuthProvider auth) {
         if (jpManager(role, 'accounting') && !_top.contains(role)) AppPage('خطّة الإدارة (Management JP)', 'Management JP', Icons.workspace_premium_outlined, (c) => const JpScreen(scope: 'management'), path: '/system/accounting/management-jp'),
         AppPage('الشكاوى', 'Complaints', Icons.report_outlined, (c) => const SectionWorkScreen(section: 'accounting', complaints: true), path: '/system/accounting/complaints'),
         AppPage('تقييم الأداء', 'KPIs', Icons.leaderboard_outlined, (c) => const TeamBoardScreen(section: 'Accounting'), path: '/system/accounting/kpis'),
+      ],
+    ),
+    AppSection(
+      // Data & Decision Support: one analysis per company section (screens/data_support.dart), then the team's data-entry screens, as on the web.
+      key: 'Data & Decision Support', arTitle: 'إدارة البيانات ودعم القرار', enTitle: 'Data & Decision Support', icon: Icons.insights_outlined,
+      roles: const [..._admins, 'cfo', ..._dataRoles],
+      pages: [
+        AppPage('لوحة دعم القرار', 'Decision Support Home', Icons.dashboard_outlined, (c) => const DataSupportHomeScreen(), path: '/system/data-support'),
+        for (final s in dataSupportSections)
+          AppPage(s.$2, s.$3, s.$5, (c) => DataSupportScreen(section: s.$1, arTitle: s.$2, enTitle: s.$3), path: s.$4),
+        AppPage('تقييم الأداء', 'KPIs', Icons.leaderboard_outlined, (c) => const TeamBoardScreen(section: 'Data & Decision Support'), path: '/system/data-support/kpis'),
+        // Data-entry screens, for the data roles only, and only where their own section is open.
+        if (_dataRoles.contains(role) && auth.canAccessSection('Shipment Orders')) ...[
+          AppPage('الشحنات', 'Shipments', Icons.assignment_outlined, (c) => const ShipmentOrdersScreen(), path: '/system/shipment-orders'),
+          AppPage('طلب شحنة', 'Shipment request', Icons.post_add_outlined, (c) => const ShipmentRequestsScreen(mode: 'ask'), path: '/system/shipment-orders/request'),
+          AppPage('الطلبات من المبيعات', 'Requests from sales', Icons.move_to_inbox_outlined, (c) => const ShipmentRequestsScreen(mode: 'place'), path: '/system/shipment-orders/requests'),
+        ],
+        if (_dataRoles.contains(role) && auth.canAccessSection('Fleet Management'))
+          AppPage('حمولات الأسطول', 'Fleet Loads', Icons.local_shipping_outlined, (c) => const FleetShipmentsScreen(), path: '/system/fleet'),
+        if (_dataRoles.contains(role) && auth.canAccessSection('Operations'))
+          AppPage('سير عمل التشغيل', 'Operations Workflow', Icons.workspaces_outline, (c) => const OpsWorkflowsScreen(), path: '/system/operations'),
       ],
     ),
     AppSection(
@@ -720,6 +748,8 @@ List<AppSection> sectionsFor(AuthProvider auth) {
         AppPage('الفريلانسرز (نقل ثقيل)', 'Freelancers (heavy)', Icons.badge_outlined, (c) => const HeavyFreelancersScreen(), path: '/system/vendors-mgmt/drivers'),
         AppPage('التنبيهات', 'Alerts', Icons.notifications_active_outlined, (c) => const VendorsAlertsScreen(), path: '/system/vendors-mgmt/alerts'),
         AppPage('بحث بالمسار', 'Route search', Icons.alt_route_outlined, (c) => const VendorsRouteSearchScreen(), path: '/system/vendors-mgmt/routes'),
+        if (const [..._admins, 'vendors_manager', 'operations_manager'].contains(role))
+          AppPage('تقييم الأداء', 'KPIs', Icons.leaderboard_outlined, (c) => const TeamBoardScreen(section: 'Vendors Management'), path: '/system/vendors-mgmt/kpis'),
         if (jpMember(role, 'vendors')) AppPage('خطّة العمل (JP)', 'JP', Icons.event_available_outlined, (c) => const JpScreen(section: 'vendors'), path: '/system/vendors-mgmt/jp'),
         if (jpManager(role, 'vendors')) AppPage('لوحة JP', 'JP Dashboard', Icons.insights_outlined, (c) => const JpDashScreen(section: 'vendors'), path: '/system/vendors-mgmt/jp-dashboard'),
         if (jpManager(role, 'vendors') && !_top.contains(role)) AppPage('خطّة الإدارة (Management JP)', 'Management JP', Icons.workspace_premium_outlined, (c) => const JpScreen(scope: 'management'), path: '/system/vendors-mgmt/management-jp'),
@@ -801,9 +831,12 @@ List<AppSection> sectionsFor(AuthProvider auth) {
       key: 'Performance', arTitle: 'تقييم الأداء', enTitle: 'Performance', icon: Icons.military_tech_outlined,
       roles: const ['super_admin', 'admin', 'it_manager', 'it_specialist'], managed: false,
       pages: [
-        AppPage('نظرة كل الأقسام', 'All Departments', Icons.insights_outlined, (c) => const PerformanceOverviewScreen(), path: '/system/performance/overview'),
-        AppPage('التقييمات', 'Evaluations', Icons.rate_review_outlined, (c) => const EvaluationsScreen(), path: '/system/performance'),
-        AppPage('طلبات التعديل', 'Edit Requests', Icons.inbox_outlined, (c) => const PerformanceEditRequestsScreen(), path: '/system/performance/requests'),
+        // The general manager without a top role sees only the KPI configuration.
+        if (_top.contains(role)) ...[
+          AppPage('نظرة كل الأقسام', 'All Departments', Icons.insights_outlined, (c) => const PerformanceOverviewScreen(), path: '/system/performance/overview'),
+          AppPage('التقييمات', 'Evaluations', Icons.rate_review_outlined, (c) => const EvaluationsScreen(), path: '/system/performance'),
+          AppPage('طلبات التعديل', 'Edit Requests', Icons.inbox_outlined, (c) => const PerformanceEditRequestsScreen(), path: '/system/performance/requests'),
+        ],
         AppPage('إعداد المؤشرات', 'Configure', Icons.tune_outlined, (c) => const PerformanceSettingsScreen(), path: '/system/performance/settings'),
       ],
     ),

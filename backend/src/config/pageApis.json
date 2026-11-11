@@ -215,7 +215,8 @@
     },
     "/system/operations/kpis": {
       "apis": [
-        "/api/performance/team"
+        "/api/performance/team",
+        "/api/performance/templates"
       ],
       "wildcard": false
     },
@@ -394,7 +395,8 @@
     },
     "/system/collections-dept/kpis": {
       "apis": [
-        "/api/performance/team"
+        "/api/performance/team",
+        "/api/performance/templates"
       ],
       "wildcard": false
     },
@@ -665,7 +667,8 @@
     },
     "/system/shipment-orders/kpis": {
       "apis": [
-        "/api/performance/team"
+        "/api/performance/team",
+        "/api/performance/templates"
       ],
       "wildcard": false
     },
@@ -691,6 +694,7 @@
         "/api/shipment-orders/insights/options",
         "/api/shipment-requests/team-performance",
         "/api/vendors-mgmt/daily",
+        "/api/vendors-mgmt/daily/rows",
         "/api/vendors-mgmt/filter-options",
         "/api/vendors-mgmt/register-stats"
       ],
@@ -812,7 +816,8 @@
     },
     "/system/vendors-mgmt/kpis": {
       "apis": [
-        "/api/performance/team"
+        "/api/performance/team",
+        "/api/performance/templates"
       ],
       "wildcard": false
     },
@@ -983,7 +988,8 @@
     },
     "/system/fleet/kpis": {
       "apis": [
-        "/api/performance/team"
+        "/api/performance/team",
+        "/api/performance/templates"
       ],
       "wildcard": false
     },
@@ -1002,6 +1008,7 @@
       "apis": [
         "/api/customs-clearance",
         "/api/customs-clearance/dashboard",
+        "/api/customs-clearance/deadline-alerts",
         "/api/customs-clearance/filters"
       ],
       "wildcard": false
@@ -1020,6 +1027,7 @@
         "/api/customs-clearance",
         "/api/customs-clearance/:id",
         "/api/customs-clearance/contracts",
+        "/api/customs-clearance/deadline-alerts",
         "/api/customs-clearance/parties",
         "/api/customs-clearance/release-sheets",
         "/api/customs-clearance/upcoming-alerts",
@@ -1283,7 +1291,8 @@
     },
     "/system/vehicles/kpis": {
       "apis": [
-        "/api/performance/team"
+        "/api/performance/team",
+        "/api/performance/templates"
       ],
       "wildcard": false
     },
@@ -1300,9 +1309,11 @@
         "/api/ls2/assets/vehicle",
         "/api/ls2/custody",
         "/api/ls2/dashboard",
+        "/api/ls2/maintenance/records",
         "/api/ls2/registry-conflicts",
         "/api/ls2/repairs",
         "/api/ls2/settings",
+        "/api/ls2/store",
         "/api/ls2/vehicles",
         "/api/ls2/vehicles/:unitId/tire-sensors"
       ],
@@ -1352,9 +1363,17 @@
     "/system/ls2/maintenance": {
       "apis": [
         "/api/ls2/deferrals",
+        "/api/ls2/maintenance/records",
         "/api/ls2/settings",
+        "/api/ls2/store",
         "/api/ls2/vehicles",
         "/api/ls2/vehicles/:unitId/tire-sensors"
+      ],
+      "wildcard": false
+    },
+    "/system/ls2/maintenance-analytics": {
+      "apis": [
+        "/api/ls2/maintenance/analytics"
       ],
       "wildcard": false
     },
@@ -1438,7 +1457,8 @@
       "apis": [
         "/api/performance/evaluations",
         "/api/performance/evaluations/form",
-        "/api/performance/team"
+        "/api/performance/team",
+        "/api/performance/templates"
       ],
       "wildcard": false
     },
@@ -1536,7 +1556,8 @@
     },
     "/system/marketing/kpis": {
       "apis": [
-        "/api/performance/team"
+        "/api/performance/team",
+        "/api/performance/templates"
       ],
       "wildcard": false
     },
@@ -1623,7 +1644,8 @@
     },
     "/system/bd/kpis": {
       "apis": [
-        "/api/performance/team"
+        "/api/performance/team",
+        "/api/performance/templates"
       ],
       "wildcard": false
     },
@@ -1674,7 +1696,8 @@
     },
     "/system/administration/kpis": {
       "apis": [
-        "/api/performance/team"
+        "/api/performance/team",
+        "/api/performance/templates"
       ],
       "wildcard": false
     },
@@ -1692,6 +1715,7 @@
       "apis": [
         "/api/business-review/actions",
         "/api/business-review/assignments",
+        "/api/business-review/meetings",
         "/api/business-review/meta",
         "/api/business-review/my-actions",
         "/api/business-review/my-tasks"
@@ -1808,7 +1832,8 @@
     },
     "/system/contracts/kpis": {
       "apis": [
-        "/api/performance/team"
+        "/api/performance/team",
+        "/api/performance/templates"
       ],
       "wildcard": false
     },
@@ -1926,7 +1951,8 @@
     },
     "/system/it/kpis": {
       "apis": [
-        "/api/performance/team"
+        "/api/performance/team",
+        "/api/performance/templates"
       ],
       "wildcard": false
     },
@@ -1940,7 +1966,8 @@
     },
     "/system/ls2/kpis": {
       "apis": [
-        "/api/performance/team"
+        "/api/performance/team",
+        "/api/performance/templates"
       ],
       "wildcard": false
     },
@@ -2128,7 +2155,8 @@
     },
     "/system/b2c/kpis": {
       "apis": [
-        "/api/performance/team"
+        "/api/performance/team",
+        "/api/performance/templates"
       ],
       "wildcard": false
     },
@@ -2223,7 +2251,8 @@
     },
     "/system/remote/kpis": {
       "apis": [
-        "/api/performance/team"
+        "/api/performance/team",
+        "/api/performance/templates"
       ],
       "wildcard": false
     },
@@ -2778,7 +2807,8 @@
     },
     "/system/crm/kpis": {
       "apis": [
-        "/api/performance/team"
+        "/api/performance/team",
+        "/api/performance/templates"
       ],
       "wildcard": false
     },
@@ -2841,7 +2871,8 @@
     },
     "/system/sales/kpis": {
       "apis": [
-        "/api/performance/team"
+        "/api/performance/team",
+        "/api/performance/templates"
       ],
       "wildcard": false
     },
@@ -2885,7 +2916,8 @@
     },
     "/system/accounting/kpis": {
       "apis": [
-        "/api/performance/team"
+        "/api/performance/team",
+        "/api/performance/templates"
       ],
       "wildcard": false
     },
@@ -2929,7 +2961,8 @@
     },
     "/system/procurement/kpis": {
       "apis": [
-        "/api/performance/team"
+        "/api/performance/team",
+        "/api/performance/templates"
       ],
       "wildcard": false
     },
@@ -2973,7 +3006,8 @@
     },
     "/system/hr/kpis": {
       "apis": [
-        "/api/performance/team"
+        "/api/performance/team",
+        "/api/performance/templates"
       ],
       "wildcard": false
     },
@@ -3017,7 +3051,8 @@
     },
     "/system/ops/kpis": {
       "apis": [
-        "/api/performance/team"
+        "/api/performance/team",
+        "/api/performance/templates"
       ],
       "wildcard": false
     },
@@ -3061,7 +3096,8 @@
     },
     "/system/customs/kpis": {
       "apis": [
-        "/api/performance/team"
+        "/api/performance/team",
+        "/api/performance/templates"
       ],
       "wildcard": false
     },
@@ -3118,6 +3154,73 @@
       "apis": [
         "/api/audit",
         "/api/audit/options"
+      ],
+      "wildcard": false
+    },
+    "/system/data-support": {
+      "apis": [
+        "/api/data-support/overview"
+      ],
+      "wildcard": false
+    },
+    "/system/data-support/operations": {
+      "apis": [
+        "/api/data-support/sections"
+      ],
+      "wildcard": false
+    },
+    "/system/data-support/heavy-transport": {
+      "apis": [
+        "/api/data-support/sections"
+      ],
+      "wildcard": false
+    },
+    "/system/data-support/light-transport": {
+      "apis": [
+        "/api/data-support/sections"
+      ],
+      "wildcard": false
+    },
+    "/system/data-support/sales": {
+      "apis": [
+        "/api/data-support/sections"
+      ],
+      "wildcard": false
+    },
+    "/system/data-support/vendors": {
+      "apis": [
+        "/api/data-support/sections"
+      ],
+      "wildcard": false
+    },
+    "/system/data-support/customs": {
+      "apis": [
+        "/api/data-support/sections"
+      ],
+      "wildcard": false
+    },
+    "/system/data-support/collections": {
+      "apis": [
+        "/api/data-support/sections"
+      ],
+      "wildcard": false
+    },
+    "/system/data-support/hr": {
+      "apis": [
+        "/api/data-support/sections"
+      ],
+      "wildcard": false
+    },
+    "/system/data-support/finance": {
+      "apis": [
+        "/api/data-support/sections"
+      ],
+      "wildcard": false
+    },
+    "/system/data-support/kpis": {
+      "apis": [
+        "/api/performance/team",
+        "/api/performance/templates"
       ],
       "wildcard": false
     },

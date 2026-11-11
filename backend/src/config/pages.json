@@ -836,6 +836,12 @@
       "en": "Maintenance"
     },
     {
+      "key": "/system/ls2/maintenance-analytics",
+      "section": "Location Solutions",
+      "ar": "تحليلات الصيانة",
+      "en": "Maintenance Analytics"
+    },
+    {
       "key": "/system/ls2/fleet-assets",
       "section": "Location Solutions",
       "ar": "السطحات والكاوتشات",
@@ -2088,6 +2094,72 @@
       "section": "Admin",
       "ar": "سجل المراجعة",
       "en": "Audit Log"
+    },
+    {
+      "key": "/system/data-support",
+      "section": "Data & Decision Support",
+      "ar": "لوحة دعم القرار",
+      "en": "Decision Support Home"
+    },
+    {
+      "key": "/system/data-support/operations",
+      "section": "Data & Decision Support",
+      "ar": "تحليل العمليات والشحنات",
+      "en": "Operations & Shipments Analysis"
+    },
+    {
+      "key": "/system/data-support/heavy-transport",
+      "section": "Data & Decision Support",
+      "ar": "تحليل النقل الثقيل",
+      "en": "Heavy Transport Analysis"
+    },
+    {
+      "key": "/system/data-support/light-transport",
+      "section": "Data & Decision Support",
+      "ar": "تحليل النقل الخفيف",
+      "en": "Light Transport Analysis"
+    },
+    {
+      "key": "/system/data-support/sales",
+      "section": "Data & Decision Support",
+      "ar": "تحليل المبيعات والعلاقات",
+      "en": "Sales & CRM Analysis"
+    },
+    {
+      "key": "/system/data-support/vendors",
+      "section": "Data & Decision Support",
+      "ar": "تحليل الموردين",
+      "en": "Vendors Analysis"
+    },
+    {
+      "key": "/system/data-support/customs",
+      "section": "Data & Decision Support",
+      "ar": "تحليل التخليص الجمركي",
+      "en": "Customs Analysis"
+    },
+    {
+      "key": "/system/data-support/collections",
+      "section": "Data & Decision Support",
+      "ar": "تحليل التحصيل",
+      "en": "Collections Analysis"
+    },
+    {
+      "key": "/system/data-support/hr",
+      "section": "Data & Decision Support",
+      "ar": "تحليل الموارد البشرية",
+      "en": "HR Analysis"
+    },
+    {
+      "key": "/system/data-support/finance",
+      "section": "Data & Decision Support",
+      "ar": "التحليل المالي",
+      "en": "Finance Analysis"
+    },
+    {
+      "key": "/system/data-support/kpis",
+      "section": "Data & Decision Support",
+      "ar": "تقييم الأداء",
+      "en": "KPIs"
     },
     {
       "key": "/system/api-docs",

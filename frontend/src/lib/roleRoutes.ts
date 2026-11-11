@@ -57,6 +57,10 @@ export const ROLE_HOME_ROUTES: Record<string, string> = {
   contracts_staff: '/system/contracts',
   it_manager: '/system/it',
   it_specialist: '/system/it',
+  // The data team lands on its own section home (analysis per section + its data-entry screens).
+  data_manager: '/system/data-support',
+  data_analyst: '/system/data-support',
+  data_entry: '/system/data-support',
 };
 
 export const homeRouteForRole = (role?: string | null) =>
@@ -85,6 +89,7 @@ const SECTION_HOME: [string, string][] = [
   ['HR', ROLE_HOME_ROUTES.hr_manager],
   ['Remote', ROLE_HOME_ROUTES.remote_manager],
   ['Software & IT', ROLE_HOME_ROUTES.it_manager],
+  ['Data & Decision Support', ROLE_HOME_ROUTES.data_manager],
 ].filter(([, href]) => !!href) as [string, string][];
 
 const firstGrantedHome = (perms?: Record<string, string> | null): string | null => {

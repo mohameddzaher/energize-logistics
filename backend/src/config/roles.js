@@ -261,7 +261,7 @@ const assertRolesCoverSections = (sectionKeys, exempt = []) => {
 const DATA_ROLES = ['data_manager', 'data_analyst', 'data_entry'];
 
 module.exports = {
-  DATA_ROLES,
+  DATA_ROLES, DATA_DEPT,
   GLOBAL_ROLES, SECTION_ROLES, assertRolesCoverSections,
   ALL_ROLES, ALL_ROLE_DEFS, MANAGER_ROLES, STAFF_ROLES, TRAINEE_ROLES, isTrainee,
   LABELS_AR, LABELS_EN,

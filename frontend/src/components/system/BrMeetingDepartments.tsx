@@ -4,11 +4,10 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import {
   CheckCircle2, PlayCircle, CircleDashed, PauseCircle, AlertTriangle, Ban, ChevronDown, Plus, CornerDownLeft,
-  Loader2, Link2, CalendarDays, User, Layers, Pencil, Users, X, ArrowLeftRight, Trash2, MoreHorizontal, History,
+  Loader2, Link2, CalendarDays, User, Layers, Pencil, Users, X, ArrowLeftRight, Trash2, History,
 } from 'lucide-react';
 import { useDialog } from '@/components/system/DialogProvider';
 import SearchSelect from '@/components/system/SearchSelect';
-import { Modal } from '@/components/hr/HRKit';
 import api from '@/lib/api';
 import { useSocket } from '@/hooks/useSocket';
 import { StatusPill, ProgressForm, Progress, DatesLine, UpdateLog } from '@/components/system/BusinessReviewKit';
@@ -202,7 +201,6 @@ function TaskRow({ task, meta, L, meetingId, canEdit, dept, open, onToggle, onCh
   const [mode, setMode] = useState<'' | 'update' | 'postpone' | 'followup' | 'edit' | 'share' | 'transfer'>('');
   const { confirm } = useDialog();
   const [moveTo, setMoveTo] = useState('');
-  const [menu, setMenu] = useState(false);
   const personOpts = (exclude: string[]) => people.filter((p) => !exclude.includes(String(p._id)))
     .map((p) => ({ value: String(p._id), label: p.name, hint: p.section ? deptLabel(p.section, L) : '' }));
   const transfer = async () => {
@@ -325,124 +323,175 @@ function TaskRow({ task, meta, L, meetingId, canEdit, dept, open, onToggle, onCh
                 </button>
               )}
               {!done && (
-                <button type="button" onClick={() => setMode(mode === 'postpone' ? '' : 'postpone')}
+                <button type="button" onClick={() => setMode('postpone')}
                   className="inline-flex items-center gap-1.5 bg-amber-500 text-white text-xs font-bold rounded-lg px-3 py-1.5">
                   <PauseCircle className="w-3.5 h-3.5" />{t('Postpone', 'تأجيل')}
                 </button>
               )}
-              <button type="button" onClick={() => setMode(mode === 'update' ? '' : 'update')}
+              <button type="button" onClick={() => setMode('update')}
                 className="inline-flex items-center gap-1.5 border border-slate-300 bg-white text-slate-700 text-xs font-bold rounded-lg px-3 py-1.5">
                 <PlayCircle className="w-3.5 h-3.5" />{t('Update status', 'تحديث الحالة')}
               </button>
-              <div className="relative">
-                <button type="button" onClick={() => setMenu((v) => !v)}
-                  className="inline-flex items-center gap-1.5 border border-slate-300 bg-white text-slate-700 text-xs font-bold rounded-lg px-3 py-1.5 hover:bg-slate-50">
-                  <MoreHorizontal className="w-3.5 h-3.5" />{t('More', 'إجراءات أخرى')}<ChevronDown className="w-3 h-3" />
+              <button type="button" onClick={() => setMode('followup')}
+                className="inline-flex items-center gap-1.5 border border-violet-300 text-violet-700 bg-white text-xs font-bold rounded-lg px-3 py-1.5">
+                <Plus className="w-3.5 h-3.5" />{t('Follow-up task', 'إضافة بند متابعة')}
+              </button>
+              <button type="button" onClick={() => setMode('edit')}
+                className="inline-flex items-center gap-1.5 border border-slate-300 text-slate-700 bg-white text-xs font-bold rounded-lg px-3 py-1.5">
+                <Pencil className="w-3.5 h-3.5" />{t('Edit task', 'تعديل البند')}
+              </button>
+              <button type="button" onClick={() => setMode('share')}
+                className="inline-flex items-center gap-1.5 border border-sky-300 text-sky-700 bg-white text-xs font-bold rounded-lg px-3 py-1.5">
+                <Users className="w-3.5 h-3.5" />{t('Also assign to…', 'إسناده لمسؤولٍ آخر أيضًا')}
+              </button>
+              <button type="button" onClick={() => setMode('transfer')}
+                className="inline-flex items-center gap-1.5 border border-indigo-300 text-indigo-700 bg-white text-xs font-bold rounded-lg px-3 py-1.5">
+                <ArrowLeftRight className="w-3.5 h-3.5" />{t('Move to…', 'نقله لمسؤولٍ آخر')}
+              </button>
+              {!!task.sharedWith?.length && (
+                <button type="button" disabled={busy} onClick={() => remove(true)}
+                  className="inline-flex items-center gap-1.5 border border-red-200 bg-white text-red-600 text-xs font-bold rounded-lg px-3 py-1.5 disabled:opacity-50">
+                  <X className="w-3.5 h-3.5" />{t('Remove this owner', 'إزالة هذا المسؤول')}
                 </button>
-                {menu && (
-                  <div className="absolute z-30 mt-1 w-60 rounded-xl border border-slate-200 bg-white shadow-xl py-1 text-[13px]" onMouseLeave={() => setMenu(false)}>
-                    {[
-                      ['edit', Pencil, t('Edit task', 'تعديل البند'), 'text-slate-700'],
-                      ['followup', Plus, t('Follow-up task', 'إضافة بند متابعة'), 'text-violet-700'],
-                      ['share', Users, t('Also assign to…', 'إسناده لمسؤولٍ آخر أيضًا'), 'text-sky-700'],
-                      ['transfer', ArrowLeftRight, t('Move to…', 'نقله لمسؤولٍ آخر'), 'text-indigo-700'],
-                    ].map(([k, Icon, label, cls]: any) => (
-                      <button key={k} type="button" onClick={() => { setMenu(false); setMode(k); }}
-                        className={`w-full flex items-center gap-2 px-3 py-2 text-start hover:bg-slate-50 font-semibold ${cls}`}><Icon className="w-4 h-4" />{label}</button>
-                    ))}
-                    <div className="my-1 border-t border-slate-100" />
-                    {!!task.sharedWith?.length && (
-                      <button type="button" disabled={busy} onClick={() => { setMenu(false); remove(true); }}
-                        className="w-full flex items-center gap-2 px-3 py-2 text-start hover:bg-red-50 font-semibold text-red-600"><X className="w-4 h-4" />{t('Remove this owner', 'إزالة هذا المسؤول')}</button>
-                    )}
-                    <button type="button" disabled={busy} onClick={() => { setMenu(false); remove(false); }}
-                      className="w-full flex items-center gap-2 px-3 py-2 text-start hover:bg-red-50 font-semibold text-red-700"><Trash2 className="w-4 h-4" />{t('Delete task', 'حذف البند')}</button>
-                  </div>
-                )}
-              </div>
+              )}
+              <button type="button" disabled={busy} onClick={() => remove(false)}
+                className="inline-flex items-center gap-1.5 border border-red-300 bg-white text-red-700 text-xs font-bold rounded-lg px-3 py-1.5 disabled:opacity-50">
+                <Trash2 className="w-3.5 h-3.5" />{t('Delete task', 'حذف البند')}
+              </button>
             </div>
           )}
 
           {/* Every action opens on its own above the page, so the task's details stay as they are and nothing stacks under them. */}
-          <Modal open={!!mode} onClose={() => setMode('')} title={`${({ postpone: t('Postpone', 'تأجيل البند'), edit: t('Edit task', 'تعديل البند'), share: t('Also assign to', 'إسناده لمسؤولٍ آخر أيضًا'), transfer: t('Move to', 'نقله لمسؤولٍ آخر'), update: t('Update status', 'تحديث الحالة'), followup: t('Follow-up task', 'بند متابعة') } as any)[mode] || ''} — ${task.title}`}>
-          <div className="space-y-2">
-          {mode === 'postpone' && (
-            <div className="bg-amber-50 border border-amber-200 rounded-lg p-3 space-y-2">
-            <div className="flex flex-wrap gap-1.5">
-              {QUICK_DATES.map((q) => {
-                const v = q.at();
-                return (
-                  <button key={q.ar} type="button" onClick={() => setNewDue(v)}
-                    className={`px-2.5 py-1 rounded-lg border text-[12px] font-bold ${newDue === v ? 'bg-amber-600 text-white border-amber-600' : 'bg-white text-amber-900 border-amber-300'}`}>
-                    {t(q.en, q.ar)} <span className="font-normal opacity-80">{v.split('-').reverse().join('/')}</span>
-                  </button>
-                );
-              })}
-            </div>
-            <div className="grid gap-2 sm:grid-cols-[10rem_minmax(0,1fr)_auto] items-end">
-              <label className="block text-xs font-semibold text-amber-900">{t('New date', 'الموعد الجديد')}
-                <input type="date" value={newDue} min={isoDay(new Date())} onChange={(e) => setNewDue(e.target.value)}
-                  className="w-full mt-1 px-2 py-1.5 rounded-lg border border-amber-300 bg-white text-sm" />
-              </label>
-              <label className="block text-xs font-semibold text-amber-900">{t('Reason (optional)', 'سبب التأجيل (اختياري)')}
-                <input value={reason} onChange={(e) => setReason(e.target.value)}
-                  className="w-full mt-1 px-2 py-1.5 rounded-lg border border-amber-300 bg-white text-sm" />
-              </label>
-              <button type="button" disabled={busy || !newDue}
-                onClick={() => send({ status: 'postponed', newDueDate: newDue, postponeReason: reason.trim() }, t('Postponed', 'تم تأجيل البند'))}
-                className="bg-amber-600 text-white text-xs font-bold rounded-lg px-3 py-2 disabled:opacity-50">{t('Save postponement', 'تسجيل التأجيل')}</button>
-            </div>
-            </div>
-          )}
-          {mode === 'edit' && (
-            <div className="bg-white border border-slate-200 rounded-lg p-3 space-y-2">
-              <input value={ed.title} onChange={(e) => setEd({ ...ed, title: e.target.value })} placeholder={t('Task', 'نص البند')}
-                className="w-full px-2.5 py-1.5 rounded-lg border border-slate-200 text-sm" />
-              <textarea value={ed.description} onChange={(e) => setEd({ ...ed, description: e.target.value })} rows={2} placeholder={t('Details', 'التفاصيل')}
-                className="w-full px-2.5 py-1.5 rounded-lg border border-slate-200 text-sm" />
-              <div className="grid gap-2 sm:grid-cols-2">
-                <input type="date" value={ed.dueDate} onChange={(e) => setEd({ ...ed, dueDate: e.target.value })} className="px-2.5 py-1.5 rounded-lg border border-slate-200 text-sm" title={t('Due', 'التسليم')} />
-                <select value={ed.priority} onChange={(e) => setEd({ ...ed, priority: e.target.value })} className="px-2.5 py-1.5 rounded-lg border border-slate-200 bg-white text-sm">
-                  {(meta.priorities || []).map((p: any) => <option key={p.key} value={p.key}>{L === 'ar' ? p.ar : p.en}</option>)}
-                </select>
+          {mode && (() => {
+            const lbl = 'block text-[12px] font-bold text-slate-600 mb-1';
+            const inp = 'w-full px-3 py-2 rounded-lg border border-slate-300 bg-white text-sm focus:outline-none focus:ring-2 focus:ring-[#f37121]/40 focus:border-[#f37121]';
+            const close = () => setMode('');
+            const cancel = <button type="button" onClick={close} className="px-4 py-2 rounded-lg text-sm font-semibold text-slate-600 hover:bg-slate-100">{t('Cancel', 'إلغاء')}</button>;
+            const primary = (label: string, onClick: () => void, disabled: boolean, cls: string) => (
+              <button type="button" disabled={busy || disabled} onClick={onClick} className={`inline-flex items-center gap-1.5 px-5 py-2 rounded-lg text-sm font-bold text-white shadow-sm disabled:opacity-40 ${cls}`}>
+                {busy && <Loader2 className="w-4 h-4 animate-spin" />}{label}
+              </button>
+            );
+            const cfg: Record<string, { icon: any; title: string; tone: string; body: any; footer?: any }> = {
+              postpone: {
+                icon: PauseCircle, title: t('Postpone task', 'تأجيل البند'), tone: 'bg-amber-500',
+                body: (
+                  <div className="space-y-4">
+                    <div>
+                      <span className={lbl}>{t('Quick pick', 'اختيار سريع')}</span>
+                      <div className="flex flex-wrap gap-2">
+                        {QUICK_DATES.map((q) => {
+                          const v = q.at();
+                          return (
+                            <button key={q.ar} type="button" onClick={() => setNewDue(v)}
+                              className={`px-3 py-1.5 rounded-full border text-[12.5px] font-bold transition ${newDue === v ? 'bg-amber-500 text-white border-amber-500' : 'bg-white text-slate-700 border-slate-300 hover:border-amber-400'}`}>
+                              {t(q.en, q.ar)} <span className="font-normal opacity-75 tabular-nums">{v.split('-').reverse().join('/')}</span>
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>
+                    <div className="grid gap-3 sm:grid-cols-2">
+                      <label className="block"><span className={lbl}>{t('New due date', 'الموعد الجديد')} *</span>
+                        <input type="date" value={newDue} min={isoDay(new Date())} onChange={(e) => setNewDue(e.target.value)} className={inp} /></label>
+                      <label className="block"><span className={lbl}>{t('Current due date', 'الموعد الحالي')}</span>
+                        <p className="px-3 py-2 rounded-lg bg-slate-50 border border-slate-200 text-sm text-slate-700">{fmtDate(task.dueDate)}</p></label>
+                    </div>
+                    <label className="block"><span className={lbl}>{t('Reason (optional)', 'سبب التأجيل (اختياري)')}</span>
+                      <textarea rows={2} value={reason} onChange={(e) => setReason(e.target.value)} className={inp} /></label>
+                  </div>
+                ),
+                footer: primary(t('Save postponement', 'تسجيل التأجيل'), () => send({ status: 'postponed', newDueDate: newDue, postponeReason: reason.trim() }, t('Postponed', 'تم تأجيل البند')), !newDue, 'bg-amber-500 hover:bg-amber-600'),
+              },
+              edit: {
+                icon: Pencil, title: t('Edit task', 'تعديل البند'), tone: 'bg-[#f37121]',
+                body: (
+                  <div className="space-y-4">
+                    <label className="block"><span className={lbl}>{t('Task', 'نص البند')} *</span>
+                      <input value={ed.title} onChange={(e) => setEd({ ...ed, title: e.target.value })} className={inp} /></label>
+                    <label className="block"><span className={lbl}>{t('Details', 'التفاصيل')}</span>
+                      <textarea rows={3} value={ed.description} onChange={(e) => setEd({ ...ed, description: e.target.value })} className={inp} /></label>
+                    <div className="grid gap-3 sm:grid-cols-2">
+                      <label className="block"><span className={lbl}>{t('Due date', 'موعد التسليم')}</span>
+                        <input type="date" value={ed.dueDate} onChange={(e) => setEd({ ...ed, dueDate: e.target.value })} className={inp} /></label>
+                      <div><span className={lbl}>{t('Priority', 'الأولوية')}</span>
+                        <div className="flex gap-1.5">
+                          {(meta.priorities || []).map((p: any) => (
+                            <button key={p.key} type="button" onClick={() => setEd({ ...ed, priority: p.key })}
+                              className={`flex-1 px-2 py-2 rounded-lg border text-[12.5px] font-bold ${ed.priority === p.key ? 'bg-slate-900 text-white border-slate-900' : 'bg-white text-slate-600 border-slate-300 hover:border-slate-400'}`}>
+                              {L === 'ar' ? p.ar : p.en}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                    </div>
+                    {!!task.sharedWith?.length && <p className="rounded-lg bg-sky-50 border border-sky-200 px-3 py-2 text-[12px] text-sky-800">{t('Title, details, priority and due date change for every owner sharing it.', 'نصُّ البند وتفاصيلُه وأولويّتُه وموعدُه تتغيّر عند كلّ المشتركين فيه.')}</p>}
+                  </div>
+                ),
+                footer: primary(t('Save', 'حفظ التعديل'), () => send({ title: ed.title.trim(), description: ed.description.trim(), dueDate: ed.dueDate || null, priority: ed.priority }, t('Saved', 'حُفظ تعديل البند')), !ed.title.trim(), 'bg-[#f37121] hover:bg-[#e06010]'),
+              },
+              share: {
+                icon: Users, title: t('Also assign to', 'إسناده لمسؤولٍ آخر أيضًا'), tone: 'bg-sky-600',
+                body: (
+                  <div className="space-y-4">
+                    <div><span className={lbl}>{t('Current owner', 'المسؤول الحالي')}</span>
+                      <p className="px-3 py-2 rounded-lg bg-slate-50 border border-slate-200 text-sm font-semibold text-slate-800">{task.assigneeName}</p></div>
+                    <div><span className={lbl}>{t('Add owner', 'إضافة مسؤول')} *</span>
+                      <SearchSelect ar={L === 'ar'} value={shareTo} onChange={setShareTo} placeholder={t('Search by name…', 'ابحث بالاسم…')}
+                        options={personOpts([String(task.assignee?._id || task.assignee), ...(task.sharedWith || []).map((x: any) => String(x.assignee))])} /></div>
+                    <p className="rounded-lg bg-sky-50 border border-sky-200 px-3 py-2 text-[12px] text-sky-800">{t('Both own the task; each reports progress on their part and sees the other’s.', 'يصبحان مسؤولَين عن البند معًا: يظهر في بطاقة قسمه وفي «بنودي» عنده، ويُحدِّث كلٌّ منهما حالةَ جزئه ويرى حالةَ الآخر.')}</p>
+                  </div>
+                ),
+                footer: primary(t('Assign', 'إسناد'), share, !shareTo, 'bg-sky-600 hover:bg-sky-700'),
+              },
+              transfer: {
+                icon: ArrowLeftRight, title: t('Move to another owner', 'نقله لمسؤولٍ آخر'), tone: 'bg-indigo-600',
+                body: (
+                  <div className="space-y-4">
+                    <div className="grid items-end gap-3 sm:grid-cols-[1fr_auto_1fr]">
+                      <div><span className={lbl}>{t('From', 'من')}</span>
+                        <p className="px-3 py-2 rounded-lg bg-slate-50 border border-slate-200 text-sm font-semibold text-slate-800 truncate">{task.assigneeName}</p></div>
+                      <ArrowLeftRight className="hidden sm:block w-4 h-4 text-slate-400 mb-3" />
+                      <div><span className={lbl}>{t('To', 'إلى')} *</span>
+                        <SearchSelect ar={L === 'ar'} value={moveTo} onChange={setMoveTo} placeholder={t('Search by name…', 'ابحث بالاسم…')}
+                          options={personOpts([String(task.assignee?._id || task.assignee)])} /></div>
+                    </div>
+                    <p className="rounded-lg bg-indigo-50 border border-indigo-200 px-3 py-2 text-[12px] text-indigo-800">{t('The task leaves the current owner entirely; the new owner is notified at once.', 'يخرج البند من المسؤول الحالي ويصبح عند المسؤول الجديد وحده، ويصله إشعارٌ فورًا، ويُبلَّغ المسؤول السابق.')}</p>
+                  </div>
+                ),
+                footer: primary(t('Move', 'نقل البند'), transfer, !moveTo, 'bg-indigo-600 hover:bg-indigo-700'),
+              },
+              update: {
+                icon: PlayCircle, title: t('Update status', 'تحديث الحالة'), tone: 'bg-emerald-600',
+                body: <ProgressForm status={task.status} progress={task.progress || 0} statuses={meta.actionStatuses} lang={L} busy={busy}
+                  expectedDate={task.expectedDate} onCancel={close} onSubmit={(v: ProgressReport) => send(v, t('Updated', 'تم تحديث البند'))} />,
+              },
+              followup: {
+                icon: Plus, title: t('Follow-up task', 'إضافة بند متابعة'), tone: 'bg-violet-600',
+                body: <NewTask meta={meta} L={L} meetingId={meetingId} dept={dept} followUpOf={task} inline onDone={() => { close(); onChanged(); }} notify={notify} />,
+              },
+            };
+            const c = cfg[mode];
+            if (!c) return null;
+            const Icon = c.icon;
+            return (
+              <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-slate-900/50 backdrop-blur-[2px] p-0 sm:p-4" onClick={close}>
+                <div onClick={(e) => e.stopPropagation()} role="dialog" aria-modal="true"
+                  className="w-full sm:max-w-xl bg-white rounded-t-2xl sm:rounded-2xl shadow-2xl overflow-hidden max-h-[92vh] flex flex-col">
+                  <div className="flex items-start gap-3 px-5 py-4 border-b border-slate-100">
+                    <span className={`grid place-items-center w-10 h-10 rounded-xl text-white shrink-0 ${c.tone}`}><Icon className="w-5 h-5" /></span>
+                    <div className="min-w-0 flex-1">
+                      <h3 className="text-[16px] font-extrabold text-slate-900">{c.title}</h3>
+                      <p className="text-[12.5px] text-slate-500 truncate" title={task.title}>{task.title}</p>
+                    </div>
+                    <button type="button" onClick={close} aria-label="Close" className="p-1.5 rounded-lg text-slate-400 hover:bg-slate-100 hover:text-slate-700"><X className="w-5 h-5" /></button>
+                  </div>
+                  <div className="px-5 py-4 overflow-y-auto">{c.body}</div>
+                  {c.footer && <div className="flex items-center justify-end gap-2 px-5 py-3 border-t border-slate-100 bg-slate-50/70">{cancel}{c.footer}</div>}
+                </div>
               </div>
-              {!!task.sharedWith?.length && <p className="text-[11.5px] text-sky-700">{t('Title, details, priority and due date change for every owner sharing it.', 'نصُّ البند وتفاصيلُه وأولويّتُه وموعدُه تتغيّر عند كلّ المشتركين فيه.')}</p>}
-              <div className="flex gap-2">
-                <button type="button" disabled={busy || !ed.title.trim()} onClick={() => send({ title: ed.title.trim(), description: ed.description.trim(), dueDate: ed.dueDate || null, priority: ed.priority }, t('Saved', 'حُفظ تعديل البند'))}
-                  className="bg-[#f37121] text-white text-xs font-bold rounded-lg px-3 py-1.5 disabled:opacity-50">{t('Save', 'حفظ التعديل')}</button>
-                <button type="button" onClick={() => setMode('')} className="text-xs text-slate-500 px-2">{t('Cancel', 'إلغاء')}</button>
-              </div>
-            </div>
-          )}
-          {mode === 'share' && (
-            <div className="bg-sky-50 border border-sky-200 rounded-lg p-3 flex flex-wrap items-center gap-2">
-              <span className="text-xs font-bold text-sky-900">{t('Also assign this task to (both own it)', 'أسنِد البندَ نفسَه أيضًا إلى (يصبحان مسؤولَين عنه معًا)')}</span>
-              <SearchSelect className="flex-1 min-w-[14rem]" ar={L === 'ar'} value={shareTo} onChange={setShareTo} placeholder={t('Choose a person…', 'اختر الشخص…')}
-                options={personOpts([String(task.assignee?._id || task.assignee), ...(task.sharedWith || []).map((x: any) => String(x.assignee))])} />
-              <button type="button" disabled={busy || !shareTo} onClick={share} className="bg-sky-600 text-white text-xs font-bold rounded-lg px-3 py-1.5 disabled:opacity-50">{t('Assign', 'إسناد')}</button>
-              <p className="w-full text-[11.5px] text-sky-800">{t('It appears in their department card and their own list; each reports progress on their part.', 'يظهر في بطاقة قسمه وفي «بنودي» عنده، ويُحدِّث كلٌّ منهما حالةَ جزئه، ويرى كلٌّ منهما حالةَ الآخر.')}</p>
-            </div>
-          )}
-          {mode === 'transfer' && (
-            <div className="bg-indigo-50 border border-indigo-200 rounded-lg p-3 flex flex-wrap items-center gap-2">
-              <span className="text-xs font-bold text-indigo-900">{t(`Move from ${task.assigneeName} to`, `نقل البند من ${task.assigneeName} إلى`)}</span>
-              <SearchSelect className="flex-1 min-w-[14rem]" ar={L === 'ar'} value={moveTo} onChange={setMoveTo} placeholder={t('Choose a person…', 'اختر الشخص…')}
-                options={personOpts([String(task.assignee?._id || task.assignee)])} />
-              <button type="button" disabled={busy || !moveTo} onClick={transfer} className="bg-indigo-600 text-white text-xs font-bold rounded-lg px-3 py-1.5 disabled:opacity-50">{t('Move', 'نقل')}</button>
-              <p className="w-full text-[11.5px] text-indigo-800">{t('It leaves the current owner and goes to the new one, who is notified at once.', 'يخرج البند من المسؤول الحالي ويصبح عند المسؤول الجديد وحده، ويصله إشعارٌ فورًا، ويُبلَّغ المسؤول السابق.')}</p>
-            </div>
-          )}
-          {mode === 'update' && (
-            <ProgressForm status={task.status} progress={task.progress || 0} statuses={meta.actionStatuses} lang={L} busy={busy}
-              expectedDate={task.expectedDate} onCancel={() => setMode('')}
-              onSubmit={(v: ProgressReport) => send(v, t('Updated', 'تم تحديث البند'))} />
-          )}
-          {mode === 'followup' && (
-            <NewTask meta={meta} L={L} meetingId={meetingId} dept={dept} followUpOf={task} inline
-              onDone={() => { setMode(''); onChanged(); }} notify={notify} />
-          )}
-          </div>
-          </Modal>
+            );
+          })()}
 
           {!!task.updates?.length && (
             <details className="group rounded-lg border border-slate-200 bg-white">

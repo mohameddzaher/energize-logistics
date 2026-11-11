@@ -9,7 +9,8 @@ import api from '@/lib/api';
 import { useDialog } from '@/components/system/DialogProvider';
 import { useSocket } from '@/hooks/useSocket';
 import { useLatestRequest } from '@/hooks/useLatestRequest';
-import { Receipt, Loader2, Check, Undo2, Ban, X, Paperclip, FileCheck2 } from 'lucide-react';
+import ExportMenu, { type ExportColumn } from '@/components/ls2/ExportMenu';
+import { Receipt, Loader2, Check, Undo2, Ban, X, Paperclip, FileCheck2, ChevronDown, Wallet, FileText } from 'lucide-react';
 
 type Status = 'pending' | 'invoiced' | 'returned' | 'rejected';
 type Tab = Status | 'all';
@@ -120,14 +121,17 @@ export default function CustomsInvoiceRequests({ ar, onOpen }: { ar: boolean; on
             <tbody className="divide-y divide-slate-100">
               {rows.map((r) => (
                 <Fragment key={r.clearanceId}>
-                  <tr className="align-top hover:bg-slate-50/60">
-                    <td className="px-3 py-2">
+                  {/* The whole row opens the invoice breakdown under it; links and actions inside keep their own click. */}
+                  <tr onClick={() => setOpenRow(openRow === r.clearanceId ? null : r.clearanceId)}
+                    className={`align-top cursor-pointer transition ${openRow === r.clearanceId ? 'bg-orange-50/50' : 'hover:bg-slate-50/60'}`}>
+                    <td className="px-3 py-2" onClick={(e) => e.stopPropagation()}>
                       <button type="button" onClick={() => onOpen(r.clearanceId)} className="font-bold text-[#b4471a] hover:underline">{r.refNumber || '—'}</button>
                       <p className="text-[11.5px] text-slate-500"><bdi>{r.blNumber || ''}</bdi>{r.isCompleted ? ` · ${t('مغلقة', 'Closed')}` : ''}</p>
                     </td>
                     <td className="px-3 py-2 text-slate-800">{r.customerName || '—'}</td>
                     <td className="px-3 py-2">
-                      <button type="button" onClick={() => setOpenRow(openRow === r.clearanceId ? null : r.clearanceId)} className="font-bold tabular-nums text-slate-900 hover:underline">{money(r.total)}</button>
+                      <span className="inline-flex items-center gap-1 font-bold tabular-nums text-slate-900">{money(r.total)}
+                        <ChevronDown className={`h-4 w-4 text-slate-400 transition-transform ${openRow === r.clearanceId ? 'rotate-180 text-[#f37121]' : ''}`} /></span>
                       <p className="text-[11px] text-slate-400">{t('مصروفات', 'Expenses')} {money(r.expenses || 0)} + {t('بنود', 'lines')} {money(r.itemsTotal ?? 0)} {t('شامل الضريبة', 'incl. VAT')}</p>
                     </td>
                     <td className="px-3 py-2 text-[12.5px] text-slate-600">{r.requestedByName || '—'}<p className="text-[11px] text-slate-400">{when(r.requestedAt)}</p>{r.note && <p className="text-[11.5px] text-slate-500">«{r.note}»</p>}</td>
@@ -138,7 +142,7 @@ export default function CustomsInvoiceRequests({ ar, onOpen }: { ar: boolean; on
                       {r.decisionNote && <p className="text-[11.5px] text-slate-500">«{r.decisionNote}»</p>}
                       {r.decidedByName && <p className="text-[11px] text-slate-400">{r.decidedByName} · {when(r.decidedAt)}</p>}
                     </td>
-                    <td className="px-3 py-2">
+                    <td className="px-3 py-2" onClick={(e) => e.stopPropagation()}>
                       {r.status === 'pending' ? (
                         <div className="flex flex-wrap gap-1.5">
                           <button type="button" onClick={() => start(r, 'invoiced')} className="inline-flex items-center gap-1 rounded-lg bg-emerald-600 px-2.5 py-1.5 text-[12px] font-bold text-white hover:bg-emerald-700"><Check className="h-3.5 w-3.5" />{t('تمّت الفوترة', 'Invoiced')}</button>
@@ -155,68 +159,83 @@ export default function CustomsInvoiceRequests({ ar, onOpen }: { ar: boolean; on
                         {(() => {
                           const exp = r.lines.filter((l) => l.from === 'stage');
                           const items = r.lines.filter((l) => l.from !== 'stage');
-                          const head = (
-                            <tr className="text-[11px] text-slate-500">
-                              <th className="py-1 text-start font-semibold">{t('البند', 'Line')}</th>
-                              <th className="py-1 text-end font-semibold">{t('المبلغ', 'Amount')}</th>
-                              <th className="py-1 text-end font-semibold">{t('الضريبة', 'VAT')}</th>
-                              <th className="py-1 text-end font-semibold">{t('الإجمالي', 'Total')}</th>
-                              <th className="py-1 ps-3 text-start font-semibold">{t('ملاحظة', 'Note')}</th>
-                            </tr>
+                          const itemsTotal = r.itemsTotal ?? ((r.items || 0) + r.vat);
+                          const Row = ({ l, vat }: { l: Line; vat: boolean }) => (
+                            <li className="flex items-start justify-between gap-3 py-2">
+                              <div className="min-w-0">
+                                <p className="font-semibold text-slate-800 flex items-center gap-1.5">{l.label}
+                                  {l.fileUrl && <a href={l.fileUrl} target="_blank" rel="noreferrer" title={l.fileName || ''} className="text-sky-700"><Paperclip className="h-3.5 w-3.5" /></a>}</p>
+                                <p className="text-[11.5px] text-slate-500">
+                                  {(l.count || 1) > 1 && <span className="me-2 rounded bg-slate-100 px-1.5 py-0.5 font-semibold text-slate-600">{t(`مجموع ${l.count} دفعات`, `${l.count} payments`)}</span>}
+                                  {!!l.pending && <span className="me-2 text-amber-700">{t(`منها ${money(l.pending)} لم تُدفع بعد`, `${money(l.pending)} not yet paid`)}</span>}
+                                  {l.note}
+                                </p>
+                              </div>
+                              <div className="shrink-0 text-end tabular-nums">
+                                <p className="font-bold text-slate-900">{money(l.total)}</p>
+                                {vat && <p className="text-[11px] text-slate-500">{money(l.amount)} + {t('ضريبة', 'VAT')} {money(l.vat)}</p>}
+                              </div>
+                            </li>
                           );
+                          // One sheet per transaction: both parts, their subtotals and the invoice total, as finance sees them here.
+                          const xRows = [
+                            ...exp.map((l) => ({ part: t('مصروفات (بدون ضريبة)', 'Expenses (no VAT)'), label: l.label, count: l.count || 1, amount: l.amount, vat: 0, total: l.total, note: l.note || '' })),
+                            { part: '', label: t('إجمالي المصروفات', 'Expenses total'), count: '', amount: r.expenses || 0, vat: 0, total: r.expenses || 0, note: '' },
+                            ...items.map((l) => ({ part: t('بنود الفوترة (ضريبة 15%)', 'Invoicing lines (VAT 15%)'), label: l.label, count: 1, amount: l.amount, vat: l.vat, total: l.total, note: l.note || '' })),
+                            { part: '', label: t('إجمالي البنود', 'Lines total'), count: '', amount: r.items || 0, vat: r.vat, total: itemsTotal, note: '' },
+                            { part: '', label: t('إجمالي الفاتورة', 'Invoice total'), count: '', amount: (r.expenses || 0) + (r.items || 0), vat: r.vat, total: r.total, note: '' },
+                          ];
+                          const xCols: ExportColumn[] = [
+                            { header: t('الجزء', 'Part'), key: 'part', width: 24 },
+                            { header: t('البند', 'Line'), key: 'label', width: 36 },
+                            { header: t('عدد الدفعات', 'Payments'), key: 'count', width: 11 },
+                            { header: t('المبلغ', 'Amount'), key: 'amount', width: 14 },
+                            { header: t('الضريبة', 'VAT'), key: 'vat', width: 12 },
+                            { header: t('الإجمالي', 'Total'), key: 'total', width: 14 },
+                            { header: t('ملاحظة', 'Note'), key: 'note', width: 30 },
+                          ];
                           return (
-                            <div className="max-w-3xl space-y-3">
-                              <div>
-                                <p className="text-[12px] font-bold text-slate-700">{t('أولًا: المصروفات (مراحل السداد وطلبات الصرف) — بدون ضريبة', 'Expenses (payment stages) — no VAT')}</p>
-                                <table className="w-full text-[12.5px]">
-                                  <thead>{head}</thead>
-                                  <tbody>
-                                    {!exp.length && <tr><td colSpan={5} className="py-1 text-slate-400">{t('لا مصروفات مسجّلة', 'No expenses recorded')}</td></tr>}
-                                    {exp.map((l, i) => (
-                                      <tr key={i} className="border-t border-slate-100">
-                                        <td className="py-1 text-slate-700">{l.label}{(l.count || 1) > 1 && <span className="ms-1 text-[11px] text-slate-500">({t(`مجموع ${l.count} دفعات`, `${l.count} payments`)})</span>}
-                                          {!!l.pending && <span className="ms-1 text-[11px] text-amber-700">{t(`منها ${money(l.pending)} لم تُدفع بعد`, `${money(l.pending)} not yet paid`)}</span>}</td>
-                                        <td className="py-1 text-end tabular-nums">{money(l.amount)}</td>
-                                        <td className="py-1 text-end tabular-nums text-slate-400">—</td>
-                                        <td className="py-1 text-end font-semibold tabular-nums">{money(l.total)}</td>
-                                        <td className="py-1 ps-3 text-slate-500">{l.note || ''}</td>
-                                      </tr>
-                                    ))}
-                                    <tr className="border-t border-slate-300 font-bold text-slate-900">
-                                      <td className="py-1">{t('إجمالي المصروفات', 'Expenses total')}</td>
-                                      <td className="py-1 text-end tabular-nums">{money(r.expenses || 0)}</td><td /><td className="py-1 text-end tabular-nums">{money(r.expenses || 0)}</td><td />
-                                    </tr>
-                                  </tbody>
-                                </table>
+                            <div className="space-y-3 py-1">
+                              <div className="flex flex-wrap items-center justify-between gap-2">
+                                <p className="text-[13px] font-bold text-slate-800">{t('تفاصيل فاتورة', 'Invoice breakdown')} {r.refNumber} <span className="font-normal text-slate-500">· {r.customerName}</span></p>
+                                <ExportMenu fileName={`invoice-${r.refNumber || r.clearanceId}`} lang={ar ? 'ar' : 'en'} variant="subtle"
+                                  options={[{ key: 'one', label: t('هذه المعاملة', 'This transaction'), sheets: [{ name: r.refNumber || t('الفاتورة', 'Invoice'), rows: xRows, columns: xCols }] }]} />
                               </div>
-                              <div>
-                                <p className="text-[12px] font-bold text-slate-700">{t('ثانيًا: بنود طلب الفوترة — عليها ضريبة 15%', 'Invoicing lines — VAT 15%')}</p>
-                                <table className="w-full text-[12.5px]">
-                                  <thead>{head}</thead>
-                                  <tbody>
-                                    {items.map((l, i) => (
-                                      <tr key={i} className="border-t border-slate-100">
-                                        <td className="py-1 text-slate-700">{l.label}
-                                          {l.fileUrl && <a href={l.fileUrl} target="_blank" rel="noreferrer" title={l.fileName || ''} className="ms-1 inline-flex text-sky-700"><Paperclip className="h-3 w-3" /></a>}</td>
-                                        <td className="py-1 text-end tabular-nums">{money(l.amount)}</td>
-                                        <td className="py-1 text-end tabular-nums text-slate-500">{money(l.vat)}</td>
-                                        <td className="py-1 text-end font-semibold tabular-nums">{money(l.total)}</td>
-                                        <td className="py-1 ps-3 text-slate-500">{l.note || ''}</td>
-                                      </tr>
-                                    ))}
-                                    <tr className="border-t border-slate-300 font-bold text-slate-900">
-                                      <td className="py-1">{t('إجمالي البنود', 'Lines total')}</td>
-                                      <td className="py-1 text-end tabular-nums">{money(r.items || 0)}</td>
-                                      <td className="py-1 text-end tabular-nums">{money(r.vat)}</td>
-                                      <td className="py-1 text-end tabular-nums">{money(r.itemsTotal ?? ((r.items || 0) + r.vat))}</td><td />
-                                    </tr>
-                                  </tbody>
-                                </table>
+                              <div className="grid gap-3 lg:grid-cols-2">
+                                <section className="rounded-xl border border-slate-200 bg-white shadow-sm">
+                                  <header className="flex items-center justify-between gap-2 border-b border-slate-100 px-4 py-2.5">
+                                    <h4 className="flex items-center gap-1.5 text-[13px] font-bold text-slate-800"><Wallet className="h-4 w-4 text-slate-500" />{t('المصروفات — مراحل السداد وطلبات الصرف', 'Expenses — payment stages')}</h4>
+                                    <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[11px] font-bold text-slate-600">{t('بدون ضريبة', 'No VAT')}</span>
+                                  </header>
+                                  <ul className="divide-y divide-slate-100 px-4 text-[13px]">
+                                    {exp.length ? exp.map((l, i) => <Row key={i} l={l} vat={false} />) : <li className="py-3 text-center text-slate-400">{t('لا مصروفات مسجّلة', 'No expenses recorded')}</li>}
+                                  </ul>
+                                  <footer className="flex items-center justify-between border-t border-slate-200 bg-slate-50 px-4 py-2 text-[13px] font-bold"><span>{t('إجمالي المصروفات', 'Expenses total')}</span><span className="tabular-nums">{money(r.expenses || 0)}</span></footer>
+                                </section>
+                                <section className="rounded-xl border border-slate-200 bg-white shadow-sm">
+                                  <header className="flex items-center justify-between gap-2 border-b border-slate-100 px-4 py-2.5">
+                                    <h4 className="flex items-center gap-1.5 text-[13px] font-bold text-slate-800"><FileText className="h-4 w-4 text-slate-500" />{t('بنود طلب الفوترة', 'Invoicing lines')}</h4>
+                                    <span className="rounded-full bg-orange-100 px-2 py-0.5 text-[11px] font-bold text-[#b4471a]">{t('ضريبة 15%', 'VAT 15%')}</span>
+                                  </header>
+                                  <ul className="divide-y divide-slate-100 px-4 text-[13px]">
+                                    {items.length ? items.map((l, i) => <Row key={i} l={l} vat />) : <li className="py-3 text-center text-slate-400">{t('لا بنود', 'No lines')}</li>}
+                                  </ul>
+                                  <footer className="flex items-center justify-between border-t border-slate-200 bg-slate-50 px-4 py-2 text-[13px] font-bold"><span>{t('إجمالي البنود شامل الضريبة', 'Lines incl. VAT')}</span><span className="tabular-nums">{money(itemsTotal)}</span></footer>
+                                </section>
                               </div>
-                              <p className="rounded-lg bg-white border border-slate-200 px-3 py-2 text-[13px] font-bold text-slate-900">
-                                {t('إجمالي الفاتورة', 'Invoice total')}: <span className="tabular-nums">{money(r.total)}</span>
-                                <span className="ms-2 text-[11.5px] font-normal text-slate-500">{t(`= مصروفات ${money(r.expenses || 0)} + بنود ${money(r.items || 0)} + ضريبة ${money(r.vat)}`, `= expenses ${money(r.expenses || 0)} + lines ${money(r.items || 0)} + VAT ${money(r.vat)}`)}</span>
-                              </p>
+                              <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+                                {[
+                                  [t('المصروفات', 'Expenses'), r.expenses || 0, 'text-slate-900'],
+                                  [t('البنود قبل الضريبة', 'Lines before VAT'), r.items || 0, 'text-slate-900'],
+                                  [t('الضريبة', 'VAT'), r.vat, 'text-slate-900'],
+                                  [t('إجمالي الفاتورة', 'Invoice total'), r.total, 'text-[#f37121]'],
+                                ].map(([k, v, cls]: any) => (
+                                  <div key={k} className="rounded-xl border border-slate-200 bg-white px-3 py-2">
+                                    <p className="text-[11px] font-semibold text-slate-500">{k}</p>
+                                    <p className={`text-[15px] font-black tabular-nums ${cls}`}>{money(v)}</p>
+                                  </div>
+                                ))}
+                              </div>
                             </div>
                           );
                         })()}

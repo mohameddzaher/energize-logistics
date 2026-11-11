@@ -104,7 +104,8 @@ class _HrArchiveScreenState extends State<HrArchiveScreen> {
             ExportCol('رقم الهوية / الإقامة', 'ID / Iqama', (r) => '${r['iqamaNumber'] ?? ''}'.isNotEmpty ? r['iqamaNumber'] : (r['nationalId'] ?? '—')),
             ExportCol('النوع', 'Type', (r) => _eng(r['engagement'])),
             ExportCol('القسم', 'Department', (r) => '${r['department'] ?? ''}'.isEmpty ? '—' : r['department']),
-            ExportCol('تاريخ انتهاء الخدمة', 'Service ended', (r) => _fmt(r['terminatedAt'])),
+            ExportCol('تاريخ انتهاء الخدمة', 'Service ended', (r) => _fmt(r['endDate'] ?? r['terminatedAt'])),
+            ExportCol('نوع الإنهاء', 'Kind', (r) => '${r['kindLabel'] ?? ''}'.isEmpty ? '—' : r['kindLabel']),
             ExportCol('السبب', 'Reason', (r) => '${r['terminationReason'] ?? ''}'.isEmpty ? '—' : r['terminationReason']),
           ],
         ),
@@ -145,7 +146,8 @@ class _HrArchiveScreenState extends State<HrArchiveScreen> {
                           const SizedBox(height: 2),
                           Text([
                             e['employeeNumber'], e['iqamaNumber'] ?? e['nationalId'], _eng(e['engagement']), e['department'],
-                            if ('${e['terminatedAt'] ?? ''}'.length >= 10) '${tr('انتهت', 'ended')} ${'${e['terminatedAt']}'.substring(0, 10).split('-').reversed.join('/')}',
+                            if ('${e['endDate'] ?? e['terminatedAt'] ?? ''}'.length >= 10) '${tr('انتهت', 'ended')} ${'${e['endDate'] ?? e['terminatedAt']}'.substring(0, 10).split('-').reversed.join('/')}',
+                            if ('${e['kindLabel'] ?? ''}'.isNotEmpty) '${e['kindLabel']}',
                           ].where((x) => x != null && '$x'.isNotEmpty && '$x' != '—').join(' · '),
                               style: const TextStyle(fontSize: 11.5, color: T.inkFaint)),
                           if ('${e['terminationReason'] ?? ''}'.isNotEmpty)

@@ -9,11 +9,12 @@ import { useLanguage } from '@/context/LanguageContext';
 import { useSocket } from '@/hooks/useSocket';
 import api from '@/lib/api';
 import {
-  Target, RefreshCw, Search, Lock,
+  Target, RefreshCw, Search, Lock, SlidersHorizontal, LayoutGrid,
   CheckCircle2, Clock, CircleDashed, AlertTriangle, ChevronLeft, ChevronRight,
 } from 'lucide-react';
 import { Spinner, PageHeader, StatCard } from '@/components/hr/HRKit';
 import { exportToExcel } from '@/utils/exportExcel';
+import SectionKpiSettings from '@/components/performance/SectionKpiSettings';
 import {
   isPerfStaff, isPerfFull, bandStyle, bandLabel, bonusLabel,
   pct, score5, periodLabel, periodKey, currentPeriod,
@@ -30,6 +31,8 @@ interface TeamResponse {
     byBand: { key: string; ar: string; en: string; color: string; count: number }[];
   };
   settings: Settings;
+  // The caller may edit this section's KPI items and weights.
+  canEditKpis?: boolean;
 }
 
 type Scope = 'managers' | 'all';
@@ -106,6 +109,8 @@ export default function TeamBoard({ title, subtitle, department, section, showSc
   // Only full-access users get the toggle; everyone else is scoped by the API.
   const canToggleScope = !!showScopeToggle && isPerfFull(user?.role);
   const [scope, setScope] = useState<Scope>('managers');
+  // A section page shows either the evaluation cards or the section's KPI forms (items and weights).
+  const [view, setView] = useState<'board' | 'kpis'>('board');
 
   const load = useCallback(async () => {
     try {
@@ -172,6 +177,32 @@ export default function TeamBoard({ title, subtitle, department, section, showSc
     { key: 'all', ar: 'كل الموظفين', en: 'All employees' },
   ];
 
+  const kpiToggle = section && data?.canEditKpis ? (
+    <button
+      type="button" onClick={() => setView(view === 'board' ? 'kpis' : 'board')}
+      className="flex items-center gap-1.5 px-3 py-2 rounded-lg bg-slate-900 hover:bg-slate-800 text-white text-sm"
+    >
+      {view === 'board'
+        ? <><SlidersHorizontal className="w-4 h-4" /> {ar ? 'المؤشرات والأوزان' : 'KPIs and weights'}</>
+        : <><LayoutGrid className="w-4 h-4" /> {ar ? 'لوحة التقييم' : 'Evaluation board'}</>}
+    </button>
+  ) : null;
+
+  if (view === 'kpis' && section && data?.canEditKpis) {
+    return (
+      <div className="space-y-6" dir={isRTL ? 'rtl' : 'ltr'}>
+        <PageHeader
+          icon={<SlidersHorizontal className="w-5 h-5" />}
+          title={ar ? 'المؤشرات والأوزان' : 'KPIs and weights'}
+          subtitle={title || ''}
+        >
+          {kpiToggle}
+        </PageHeader>
+        <SectionKpiSettings section={section} />
+      </div>
+    );
+  }
+
   return (
     <div className="space-y-6" dir={isRTL ? 'rtl' : 'ltr'}>
       <PageHeader
@@ -193,6 +224,7 @@ export default function TeamBoard({ title, subtitle, department, section, showSc
           </div>
         )}
         {children}
+        {kpiToggle}
         <button type="button" onClick={() => load()} className="flex items-center gap-1.5 px-3 py-2 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 text-sm">
           <RefreshCw className="w-4 h-4" /> {ar ? 'تحديث' : 'Refresh'}
         </button>
@@ -379,7 +411,7 @@ export default function TeamBoard({ title, subtitle, department, section, showSc
 
                   {m.template && (
                     <p className="text-[10px] text-slate-400 truncate pt-1 border-t border-slate-100">
-                      {m.template.nameAr} · {m.template.criteriaCount} {ar ? 'مؤشرات' : 'criteria'}
+                      {ar ? m.template.nameAr : (m.template.name || m.template.nameAr)} · {m.template.criteriaCount} {ar ? 'مؤشرات' : 'criteria'}
                     </p>
                   )}
                 </div>

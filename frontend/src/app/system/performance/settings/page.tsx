@@ -1,6 +1,6 @@
 'use client';
-// Performance settings (super-admin only). Three things live here:
-// 1. Forms: criteria per department, weights and 1..5 wording; weights must total 100% to save.
+// Performance settings (top management). Three things live here:
+// 1. Forms: criteria per section (or, for older forms, per department), weights and 1..5 wording; weights must total 100% to save. Section managers edit their own section's forms from the section's KPI board.
 // 2. Bands: the performance bands (0-70 / 70-80 / 80-90 / 90-100).
 // 3. Tiers: the bonus table per tier and each department tier.
 import { useState, useEffect, useCallback, useMemo } from 'react';
@@ -8,6 +8,7 @@ import { useDialog } from '@/components/system/DialogProvider';
 import { useAuth } from '@/context/AuthContext';
 import { useLanguage } from '@/context/LanguageContext';
 import api from '@/lib/api';
+import { useSocket } from '@/hooks/useSocket';
 import {
   Settings as SettingsIcon, Plus, Trash2, Save, Loader2, GripVertical,
   AlertTriangle, CheckCircle2, ChevronDown, ChevronRight, Copy,
@@ -15,7 +16,7 @@ import {
 import { Spinner, PageHeader } from '@/components/hr/HRKit';
 import ExportMenu, { exportScopeLabels, type ExportColumn, type ExportSheet } from '@/components/ls2/ExportMenu';
 import {
-  canConfigurePerf, bandStyle, type Band, type Tier, type Template, type Criterion, type Settings,
+  canConfigurePerfUser, bandStyle, type Band, type Tier, type Template, type Criterion, type Settings,
 } from '@/lib/performance';
 import ScrollX from '@/components/system/ScrollX';
 
@@ -46,6 +47,7 @@ export default function PerformanceSettingsPage() {
   const [loading, setLoading] = useState(true);
   const [settings, setSettings] = useState<Settings | null>(null);
   const [departments, setDepartments] = useState<string[]>([]);
+  const [sections, setSections] = useState<{ key: string; ar: string; en: string }[]>([]);
   const [templates, setTemplates] = useState<Template[]>([]);
   const [editing, setEditing] = useState<Template | null>(null);
   const [open, setOpen] = useState<Set<string>>(new Set());
@@ -55,14 +57,17 @@ export default function PerformanceSettingsPage() {
   const load = useCallback(async () => {
     try {
       const [s, t] = await Promise.all([
-        api.get<{ settings: Settings; departments: string[] }>('/api/performance/settings'),
+        api.get<{ settings: Settings; departments: string[]; sections?: { key: string; ar: string; en: string }[] }>('/api/performance/settings'),
         api.get<{ templates: Template[] }>('/api/performance/templates'),
       ]);
-      setSettings(s.settings); setDepartments(s.departments || []); setTemplates(t.templates || []);
+      setSettings(s.settings); setDepartments(s.departments || []); setSections(s.sections || []); setTemplates(t.templates || []);
     } catch (e: any) { setMsg({ kind: 'err', text: e?.message || 'Failed to load' }); }
     setLoading(false);
   }, []);
   useEffect(() => { load(); }, [load]);
+  // A section manager edited a form elsewhere: re-read the list (an open edit is kept).
+  useSocket('performance:updated', useCallback(() => { load(); }, [load]));
+  const sectionName = (key?: string) => { const x = sections.find((y) => y.key === key); return x ? (ar ? x.ar : x.en) : (key || ''); };
 
   const flash = (kind: 'ok' | 'err', text: string) => { setMsg({ kind, text }); setTimeout(() => setMsg(null), 4000); };
 
@@ -91,7 +96,7 @@ export default function PerformanceSettingsPage() {
   const saveTemplate = async () => {
     if (!editing) return;
     if (!editing.nameAr.trim()) return flash('err', ar ? 'اسم النموذج مطلوب' : 'Template name is required');
-    if (!editing.department) return flash('err', ar ? 'اختر القسم' : 'Choose a department');
+    if (!editing.department && !editing.section) return flash('err', ar ? 'اختر القسم' : 'Choose a section or a department');
     if (!weightsOk) return flash('err', ar ? `مجموع الأوزان لازم يساوي 100٪ (حالياً ${Math.round(editTotal * 100) / 100}٪)` : `Weights must total 100% (currently ${Math.round(editTotal * 100) / 100}%)`);
     setSaving(true);
     try {
@@ -135,10 +140,10 @@ export default function PerformanceSettingsPage() {
   const setTierBonus = (i: number, bandKey: string, v: number) =>
     setSettings((s) => s ? { ...s, tiers: s.tiers.map((t, j) => j === i ? { ...t, bonus: { ...t.bonus, [bandKey]: v } } : t) } : s);
 
-  if (!canConfigurePerf(user?.role)) {
+  if (!canConfigurePerfUser(user)) {
     return (
       <div className="p-8 text-slate-500">
-        {ar ? 'هذه الصفحة للمدير العام فقط (super admin).' : 'This page is restricted to super admins.'}
+        {ar ? 'هذه الصفحة للإدارة العليا والمدير العام فقط.' : 'This page is for top management and the general manager.'}
       </div>
     );
   }
@@ -151,7 +156,7 @@ export default function PerformanceSettingsPage() {
   ] as const;
 
   // Export sheets
-  // Built after the canConfigurePerf gate above, not before: the bonus table holds compensation figures, so computing the sheets before the guard would leave a ready financial file for someone who cannot see the screen.
+  // Built after the canConfigurePerfUser gate above, not before: the bonus table holds compensation figures, so computing the sheets before the guard would leave a ready financial file for someone who cannot see the screen.
   const scope = exportScopeLabels(ar);
   const templatesSheet: ExportSheet = {
     name: ar ? 'النماذج' : 'Templates',
@@ -246,7 +251,7 @@ export default function PerformanceSettingsPage() {
       <PageHeader
         icon={<SettingsIcon className="w-5 h-5" />}
         title={ar ? 'إعداد تقييم الأداء' : 'Performance configuration'}
-        subtitle={ar ? 'المؤشرات وأوزانها وشرائح الأداء وجدول البونص — للمدير العام فقط' : 'Criteria, weights, bands and bonus tables — super admin only'}
+        subtitle={ar ? 'المؤشرات وأوزانها وشرائح الأداء وجدول البونص — للإدارة العليا والمدير العام' : 'Criteria, weights, bands and bonus tables — top management and the general manager'}
       >
         <ExportMenu fileName="performance-config" lang={lang as 'ar' | 'en'}
           options={[
@@ -299,7 +304,7 @@ export default function PerformanceSettingsPage() {
                   <div className="min-w-0 flex-1">
                     <p className="font-semibold text-slate-900 truncate">{t.nameAr}{!t.active && <span className="ms-2 text-[11px] text-slate-400">({ar ? 'معطّل' : 'inactive'})</span>}</p>
                     <p className="text-xs text-slate-500">
-                      {t.department} · {(t.criteria || []).length} {ar ? 'مؤشرات' : 'criteria'} · {ar ? 'الطبقة' : 'Tier'} {t.tier}
+                      {t.section ? sectionName(t.section) : t.department} · {(t.criteria || []).length} {ar ? 'مؤشرات' : 'criteria'} · {ar ? 'الطبقة' : 'Tier'} {t.tier}
                       {(t.jobTitles || []).length > 0 && ` · ${t.jobTitles.join('، ')}`}
                     </p>
                   </div>
@@ -335,7 +340,14 @@ export default function PerformanceSettingsPage() {
                 <input value={editing.nameAr} onChange={(e) => setEditing({ ...editing, nameAr: e.target.value })} className={inputCls} placeholder={ar ? 'مثال: التخليص والمعقبون' : ''} />
               </div>
               <div>
-                <label className={labelCls}>{ar ? 'القسم' : 'Department'} *</label>
+                <label className={labelCls}>{ar ? 'القسم في النظام' : 'System section'}</label>
+                <select value={editing.section || ''} onChange={(e) => setEditing({ ...editing, section: e.target.value })} className={inputCls}>
+                  <option value="">{ar ? '— نموذج قسم الموارد البشرية —' : '— HR department form —'}</option>
+                  {sections.map((x) => <option key={x.key} value={x.key}>{ar ? x.ar : x.en}</option>)}
+                </select>
+              </div>
+              <div>
+                <label className={labelCls}>{ar ? 'قسم ملف الموارد البشرية' : 'HR file department'}{!editing.section && ' *'}</label>
                 <input list="perf-depts" value={editing.department} onChange={(e) => setEditing({ ...editing, department: e.target.value })} className={inputCls} />
                 <datalist id="perf-depts">{departments.map((d) => <option key={d} value={d} />)}</datalist>
               </div>

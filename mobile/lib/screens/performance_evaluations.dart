@@ -219,13 +219,19 @@ class _EvaluateEmployeeScreenState extends State<EvaluateEmployeeScreen> {
   bool _saving = false;
   final Map<String, int> _scores = {};
   final Map<String, TextEditingController> _notes = {};
+  // The form chosen by the evaluator when several apply (as on web); null = the server's pick.
+  String? _templateId;
 
   @override
   void initState() { super.initState(); _load(); }
 
   Future<void> _load() async {
     try {
-      final qs = widget.periodKey != null && widget.periodKey!.isNotEmpty ? '?period=${widget.periodKey}' : '';
+      final q = <String, String>{
+        if (widget.periodKey != null && widget.periodKey!.isNotEmpty) 'period': widget.periodKey!,
+        if (_templateId != null) 'template': _templateId!,
+      };
+      final qs = q.isEmpty ? '' : '?${Uri(queryParameters: q).query}';
       final d = await Api.instance.get('/api/performance/evaluations/form/${widget.employeeId}$qs');
       if (!mounted) return;
       final existing = d['evaluation'] is Map ? Map<String, dynamic>.from(d['evaluation']) : null;
@@ -452,16 +458,44 @@ class _EvaluateEmployeeScreenState extends State<EvaluateEmployeeScreen> {
                       ),
                       Expanded(
                         child: ListView(padding: const EdgeInsets.all(14), children: [
-                          ..._criteria.map((c) {
+                          if (_l(_form?['alternatives']).length > 1)
+                            Padding(
+                              padding: const EdgeInsets.only(bottom: 10),
+                              child: DropdownButtonFormField<String>(
+                                initialValue: (_form?['template'] as Map?)?['_id']?.toString(),
+                                isExpanded: true,
+                                decoration: InputDecoration(labelText: tr('نموذج التقييم', 'Evaluation form')),
+                                items: [
+                                  for (final t in _l(_form?['alternatives']))
+                                    DropdownMenuItem(
+                                      value: (t['_id'] ?? '').toString(),
+                                      child: Text(tr((t['nameAr'] ?? '').toString(), (t['name'] ?? t['nameAr'] ?? '').toString()), overflow: TextOverflow.ellipsis),
+                                    ),
+                                ],
+                                onChanged: (v) { if (v == null) return; setState(() { _templateId = v; _loading = true; }); _load(); },
+                              ),
+                            ),
+                          ...List.generate(_criteria.length, (i) {
+                            final c = _criteria[i];
                             final k = (c['key'] ?? '').toString();
                             final w = (c['weight'] as num?)?.toDouble() ?? 0;
+                            // Items sit under their group (job duties, attendance...) when the form has groups.
+                            String groupOf(Map<String, dynamic> x) => tr((x['groupAr'] ?? x['group'] ?? '').toString(), (x['group'] ?? x['groupAr'] ?? '').toString());
+                            final group = groupOf(c);
+                            final newGroup = group.isNotEmpty && (i == 0 || groupOf(_criteria[i - 1]) != group);
                             return Padding(
                               padding: const EdgeInsets.only(bottom: 10),
-                              child: AppCard(
+                              child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+                              if (newGroup)
+                                Padding(
+                                  padding: const EdgeInsets.fromLTRB(4, 4, 4, 6),
+                                  child: Text(group, style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 12.5, color: T.navy)),
+                                ),
+                              AppCard(
                                 child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                                   Row(children: [
                                     Expanded(child: Text(tr((c['titleAr'] ?? c['title'] ?? '').toString(), (c['title'] ?? c['titleAr'] ?? '').toString()), style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 13.5))),
-                                    Chip2('${w.round()}%', T.navy),
+                                    Chip2('${w == w.roundToDouble() ? w.toStringAsFixed(0) : w.toStringAsFixed(2)}%', T.navy),
                                   ]),
                                   if ((c['descriptionAr'] ?? c['description'] ?? '').toString().isNotEmpty) ...[
                                     const SizedBox(height: 3),
@@ -491,6 +525,7 @@ class _EvaluateEmployeeScreenState extends State<EvaluateEmployeeScreen> {
                                   })),
                                 ]),
                               ),
+                              ]),
                             );
                           }),
                           const SizedBox(height: 4),

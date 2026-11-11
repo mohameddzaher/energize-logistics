@@ -4,7 +4,17 @@
  */
 const { nameKey } = require('../utils/nameKey');
 const { isLightDepartment } = require('../utils/lightTransportSync');
-const { SECTION_ROLES } = require('./roles');
+const { SECTION_ROLES, DATA_DEPT, DATA_ROLES, sectionOfRole } = require('./roles');
+
+// The data team has global permission roles but is its own department under its manager, so performance treats it as a section.
+const EXTRA_SECTIONS = { [DATA_DEPT]: { manager: 'data_manager', staff: DATA_ROLES.filter((r) => r !== 'data_manager') } };
+
+/** The section a role is evaluated in: its permission section, or the data department. */
+function perfSectionOfRole(role) {
+  const s = sectionOfRole(role);
+  if (s) return s;
+  return Object.keys(EXTRA_SECTIONS).find((k) => EXTRA_SECTIONS[k].manager === role || EXTRA_SECTIONS[k].staff.includes(role)) || null;
+}
 
 const NONE = Object.freeze({ key: '__none__', label: 'بدون قسم', labelEn: 'No department', known: false, none: true });
 
@@ -71,6 +81,7 @@ function resolveDepartment(raw, index) {
 
 /** Roles that manage a system department: its manager, and the one above if any (the financial manager). */
 function managerRolesOf(sectionKey) {
+  if (EXTRA_SECTIONS[sectionKey]) return [EXTRA_SECTIONS[sectionKey].manager];
   const { JP_SECTIONS } = require('./jpSections');
   const jp = Object.values(JP_SECTIONS).find((s) => s.roleSection === sectionKey);
   if (jp) return jp.managerRoles;
@@ -83,11 +94,18 @@ let byManagerRole = null;
 function sectionOfManagerRole(role) {
   if (!byManagerRole) {
     byManagerRole = new Map();
-    for (const s of SECTION_ROLES) {
-      for (const r of managerRolesOf(s.section)) if (!byManagerRole.has(r)) byManagerRole.set(r, s.section);
+    for (const key of allSections()) {
+      for (const r of managerRolesOf(key)) if (!byManagerRole.has(r)) byManagerRole.set(r, key);
     }
   }
   return byManagerRole.get(role) || null;
+}
+
+const allSections = () => [...SECTION_ROLES.map((s) => s.section), ...Object.keys(EXTRA_SECTIONS)];
+
+/** Every section a role manages; operations_manager also heads Vendors Management, cfo also Accounting. */
+function sectionsManagedBy(role) {
+  return allSections().filter((k) => managerRolesOf(k).includes(role));
 }
 
 /**
@@ -131,4 +149,5 @@ function sectionOwners(index, employees, roleOf) {
 module.exports = {
   NO_KPI_DEPARTMENTS, isKpiExempt,
   NONE, deptFold, buildIndex, loadIndex, resolveDepartment, managerRolesOf, sectionOfManagerRole, sectionOwners,
+  perfSectionOfRole, sectionsManagedBy, allSections, EXTRA_SECTIONS,
 };

@@ -37,7 +37,7 @@ interface FormResponse {
     canOverride: boolean; canRequestEdit: boolean;
     editRequest: EditRequest | null;
   };
-  alternatives: { _id: string; nameAr: string }[];
+  alternatives: { _id: string; nameAr: string; name?: string }[];
 }
 
 export default function EvaluatePage() {
@@ -229,7 +229,7 @@ export default function EvaluatePage() {
           </button>
           <h1 className="text-2xl font-bold text-slate-900">{data.employee.name}</h1>
           <p className="text-sm text-slate-500">
-            {[data.employee.jobTitle, data.employee.department, data.template.nameAr].filter(Boolean).join(' · ')}
+            {[data.employee.jobTitle, data.employee.department, ar ? data.template.nameAr : (data.template.name || data.template.nameAr)].filter(Boolean).join(' · ')}
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
@@ -240,7 +240,7 @@ export default function EvaluatePage() {
               className="border border-slate-200 rounded-lg px-2 py-2 text-sm bg-white focus:outline-none focus:border-[#f37121]"
               title={ar ? 'نموذج التقييم' : 'Evaluation template'}
             >
-              {data.alternatives.map((t) => <option key={t._id} value={t._id}>{t.nameAr}</option>)}
+              {data.alternatives.map((t) => <option key={t._id} value={t._id}>{ar ? t.nameAr : (t.name || t.nameAr)}</option>)}
             </select>
           )}
           <input
@@ -351,8 +351,15 @@ export default function EvaluatePage() {
 
           {criteria.map((c, i) => {
             const chosen = answers[c.key];
+            // Items are shown under their group (job duties, attendance...) when the form has groups.
+            const group = ar ? (c.groupAr || c.group) : (c.group || c.groupAr);
+            const prev = i > 0 ? (ar ? (criteria[i - 1].groupAr || criteria[i - 1].group) : (criteria[i - 1].group || criteria[i - 1].groupAr)) : '';
             return (
-              <div key={c.key} className="bg-white border border-slate-200 rounded-xl p-4 shadow-sm">
+              <div key={c.key}>
+              {group && group !== prev && (
+                <p className="text-xs font-bold text-slate-600 mt-2 mb-2 px-1">{group}</p>
+              )}
+              <div className="bg-white border border-slate-200 rounded-xl p-4 shadow-sm">
                 <div className="flex items-start gap-3">
                   <span className="w-7 h-7 rounded-lg bg-slate-900 text-white text-sm font-bold flex items-center justify-center shrink-0">{i + 1}</span>
                   <div className="min-w-0 flex-1">
@@ -390,6 +397,7 @@ export default function EvaluatePage() {
                     );
                   })}
                 </div>
+              </div>
               </div>
             );
           })}

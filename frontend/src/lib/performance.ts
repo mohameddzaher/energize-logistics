@@ -11,6 +11,8 @@ export const PERF_STAFF_ROLES = [
   ...MANAGER_ROLES,
   // Employees who take part in evaluation through their work, not their management.
   'hr_specialist', 'crm_team_lead', 'b2c_project_lead', 'cfo',
+  // Heads the data department, which performance treats as a section.
+  'data_manager',
 ];
 // Full visibility across every department.
 // it_specialist removed (owner, 2026-10-27) — grades and bonuses are not for it.
@@ -22,6 +24,9 @@ export const PERF_CONFIG_ROLES = ['super_admin', 'admin', 'it_manager', 'it_spec
 export const isPerfStaff = (r?: string | null) => !!r && PERF_STAFF_ROLES.includes(r);
 export const isPerfFull = (r?: string | null) => !!r && PERF_FULL_ROLES.includes(r);
 export const canConfigurePerf = (r?: string | null) => !!r && PERF_CONFIG_ROLES.includes(r);
+// Forms, bands and tiers: top roles or the general manager (User.isTopManagement), the same rule as the server's canConfigure.
+export const canConfigurePerfUser = (u?: { role?: string | null; isTopManagement?: boolean } | null) =>
+  !!u && (canConfigurePerf(u.role) || u.isTopManagement === true);
 
 // ---- Types (mirroring the API) --------------------------------------------
 export interface ScalePoint { score: number; label: string; labelAr: string }
@@ -30,6 +35,8 @@ export interface Criterion {
   title: string; titleAr: string;
   description: string; descriptionAr: string;
   dataSource: string; dataSourceAr: string;
+  // Heading the item is shown under; display only.
+  group?: string; groupAr?: string;
   weight: number;
   scale: ScalePoint[];
 }
@@ -38,6 +45,10 @@ export interface Template {
   description: string; descriptionAr: string;
   department: string; jobTitles: string[]; tier: number;
   active: boolean; criteria: Criterion[]; totalWeight?: number;
+  // System section the form belongs to (empty on older department forms), the account roles it grades, and employees given it by name.
+  section?: string; roles?: string[]; employees?: string[]; source?: string;
+  // Set by the API per caller.
+  canEdit?: boolean;
 }
 export interface Band { key: string; en: string; ar: string; min: number; max: number; color: string }
 export interface Tier { tier: number; en: string; ar: string; cap: number; bonus: Record<string, number> }
@@ -69,7 +80,7 @@ export interface TeamMember {
   // The department as in the employee file, by its approved name; `departmentKey` groups the cards.
   department: string; departmentEn?: string; departmentKey?: string;
   employeeNumber: string; photo: string;
-  template: { _id: string; nameAr: string; tier: number; criteriaCount: number } | null;
+  template: { _id: string; nameAr: string; name?: string; tier: number; criteriaCount: number } | null;
   evaluation: {
     _id: string; status: 'draft' | 'submitted';
     percentage: number | null; weightedScore: number | null;

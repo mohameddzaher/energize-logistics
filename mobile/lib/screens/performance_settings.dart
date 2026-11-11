@@ -9,7 +9,7 @@ import '../ui/export_sheet.dart';
 import '../ui/theme.dart';
 import '../ui/widgets.dart';
 
-/// Performance evaluation setup, general manager only (/system/performance/settings).
+/// Performance evaluation setup for top management (/system/performance/settings). Section managers edit their own section's forms from the section's KPI board (section_kpi_settings.dart).
 /// Three things live here: indicator templates (weights sum to 100%), performance bands, and the bonus table per tier with each section's tier.
 
 const _bandColors = ['red', 'amber', 'blue', 'emerald', 'slate'];
@@ -43,6 +43,11 @@ Map<String, dynamic> _blankCriterion(int i) => {
 
 Map<String, dynamic> _deepCopy(Map m) => Map<String, dynamic>.from(jsonDecode(jsonEncode(m)) as Map);
 
+String _sectionName(List<Map<String, dynamic>> sections, String key) {
+  final x = sections.firstWhere((s) => s['key'] == key, orElse: () => <String, dynamic>{});
+  return x.isEmpty ? key : tr('${x['ar']}', '${x['en']}');
+}
+
 num _weightTotal(Map t) => List.from(t['criteria'] ?? []).fold<num>(0, (s, c) => s + ((c['weight'] is num) ? c['weight'] as num : num.tryParse('${c['weight']}') ?? 0));
 
 class PerformanceSettingsScreen extends StatefulWidget {
@@ -55,6 +60,8 @@ class _PerformanceSettingsScreenState extends State<PerformanceSettingsScreen> w
   late final TabController _tabs = TabController(length: 3, vsync: this);
   Map<String, dynamic>? _settings;
   List<String> _departments = [];
+  // Section keys a form can belong to, with their names.
+  List<Map<String, dynamic>> _sections = [];
   List<Map<String, dynamic>> _templates = [];
   bool _loading = true;
   String? _error;
@@ -81,6 +88,7 @@ class _PerformanceSettingsScreenState extends State<PerformanceSettingsScreen> w
       setState(() {
         _settings = Map<String, dynamic>.from(r[0]['settings'] ?? {});
         _departments = List<String>.from((r[0]['departments'] ?? []).map((e) => e.toString()));
+        _sections = List<Map<String, dynamic>>.from((r[0]['sections'] ?? []).map((e) => Map<String, dynamic>.from(e)));
         _templates = List<Map<String, dynamic>>.from(r[1]['templates'] ?? []);
         _loading = false;
         _error = null;
@@ -111,7 +119,7 @@ class _PerformanceSettingsScreenState extends State<PerformanceSettingsScreen> w
 
   Future<void> _edit(Map<String, dynamic> t) async {
     final saved = await Navigator.push<bool>(context, MaterialPageRoute(
-      builder: (_) => _TemplateEditor(template: t, departments: _departments, tiers: _tiers),
+      builder: (_) => _TemplateEditor(template: t, departments: _departments, sections: _sections, tiers: _tiers),
     ));
     if (saved == true) {
       if (mounted) _snack(tr('تم حفظ النموذج', 'Template saved'));
@@ -238,11 +246,12 @@ class _PerformanceSettingsScreenState extends State<PerformanceSettingsScreen> w
 
   @override
   Widget build(BuildContext context) {
-    // General manager only, like canConfigurePerf on the web and the server guard.
-    if (!const ['super_admin', 'admin', 'it_manager', 'it_specialist'].contains(context.watch<AuthProvider>().role)) {
+    // Top roles or the general manager (isTopManagement), like canConfigurePerfUser on the web and the server guard.
+    final auth = context.watch<AuthProvider>();
+    if (!const ['super_admin', 'admin', 'it_manager', 'it_specialist'].contains(auth.role) && auth.user?['isTopManagement'] != true) {
       return AppScaffold(
         title: Text(tr('إعداد تقييم الأداء', 'Performance configuration')),
-        body: EmptyState(icon: Icons.lock_outline, title: tr('هذه الصفحة للمدير العام فقط.', 'This page is restricted to super admins.')),
+        body: EmptyState(icon: Icons.lock_outline, title: tr('هذه الصفحة للإدارة العليا والمدير العام فقط.', 'This page is for top management and the general manager.')),
       );
     }
     return AppScaffold(
@@ -308,7 +317,7 @@ class _PerformanceSettingsScreenState extends State<PerformanceSettingsScreen> w
           ),
           const SizedBox(height: 4),
           Text(
-            '${t['department'] ?? ''} · ${crit.length} ${tr('مؤشرات', 'criteria')} · ${tr('الطبقة', 'Tier')} ${t['tier'] ?? '—'}'
+            '${(t['section'] ?? '').toString().isNotEmpty ? _sectionName(_sections, t['section'].toString()) : (t['department'] ?? '')} · ${crit.length} ${tr('مؤشرات', 'criteria')} · ${tr('الطبقة', 'Tier')} ${t['tier'] ?? '—'}'
             '${List.from(t['jobTitles'] ?? []).isNotEmpty ? ' · ${List.from(t['jobTitles']).join('، ')}' : ''}',
             style: const TextStyle(fontSize: 11, color: T.inkFaint),
           ),
@@ -460,8 +469,9 @@ class _PerformanceSettingsScreenState extends State<PerformanceSettingsScreen> w
 class _TemplateEditor extends StatefulWidget {
   final Map<String, dynamic> template;
   final List<String> departments;
+  final List<Map<String, dynamic>> sections;
   final List<Map<String, dynamic>> tiers;
-  const _TemplateEditor({required this.template, required this.departments, required this.tiers});
+  const _TemplateEditor({required this.template, required this.departments, required this.sections, required this.tiers});
   @override
   State<_TemplateEditor> createState() => _TemplateEditorState();
 }
@@ -481,7 +491,7 @@ class _TemplateEditorState extends State<_TemplateEditor> {
   Future<void> _save() async {
     final total = _weightTotal(t);
     if ((t['nameAr'] ?? '').toString().trim().isEmpty) return _snack(tr('اسم النموذج مطلوب', 'Template name is required'));
-    if ((t['department'] ?? '').toString().isEmpty) return _snack(tr('اختر القسم', 'Choose a department'));
+    if ((t['department'] ?? '').toString().isEmpty && (t['section'] ?? '').toString().isEmpty) return _snack(tr('اختر القسم', 'Choose a section or a department'));
     if ((total - 100).abs() >= 0.01) {
       return _snack(tr('مجموع الأوزان لازم يساوي 100٪ (حالياً $total٪)', 'Weights must total 100% (currently $total%)'));
     }
@@ -521,12 +531,24 @@ class _TemplateEditorState extends State<_TemplateEditor> {
       body: ListView(padding: const EdgeInsets.all(14), children: [
         TextFormField(initialValue: '${t['nameAr'] ?? ''}', decoration: InputDecoration(labelText: '${tr('اسم النموذج (عربي)', 'Template name (Arabic)')} *'), onChanged: (v) => t['nameAr'] = v),
         const SizedBox(height: 8),
+        DropdownButtonFormField<String>(
+          initialValue: widget.sections.any((x) => x['key'] == t['section']) ? t['section'].toString() : '',
+          isExpanded: true,
+          decoration: InputDecoration(labelText: tr('القسم في النظام', 'System section'), isDense: true),
+          items: [
+            DropdownMenuItem(value: '', child: Text(tr('— نموذج قسم الموارد البشرية —', '— HR department form —'))),
+            for (final x in widget.sections)
+              DropdownMenuItem(value: (x['key'] ?? '').toString(), child: Text(tr('${x['ar']}', '${x['en']}'), overflow: TextOverflow.ellipsis)),
+          ],
+          onChanged: (v) => setState(() => t['section'] = v ?? ''),
+        ),
+        const SizedBox(height: 8),
         Row(children: [
           Expanded(
             child: DropdownButtonFormField<String>(
               initialValue: depts.contains(t['department']) ? t['department'] as String : null,
               isExpanded: true,
-              decoration: InputDecoration(labelText: '${tr('القسم', 'Department')} *', isDense: true),
+              decoration: InputDecoration(labelText: tr('قسم ملف الموارد البشرية', 'HR file department'), isDense: true),
               items: [for (final d in depts) DropdownMenuItem(value: d, child: Text(d, overflow: TextOverflow.ellipsis))],
               onChanged: (v) => setState(() => t['department'] = v ?? ''),
             ),

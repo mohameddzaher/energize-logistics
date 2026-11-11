@@ -1,10 +1,12 @@
 import 'package:flutter/material.dart';
 import '../services/api.dart';
 import '../services/lang.dart';
+import '../services/live.dart';
 import '../ui/app_scaffold.dart';
 import '../ui/theme.dart';
 import '../ui/widgets.dart';
 import 'performance_evaluations.dart';
+import 'section_kpi_settings.dart';
 
 /// Performance evaluation: the mobile twin of the web TeamBoard: the signed-in
 /// manager's team for the current period with each member's score and band.
@@ -20,11 +22,21 @@ class _TeamBoardScreenState extends State<TeamBoardScreen> {
   Map<String, dynamic>? _d;
   bool _loading = true;
   String? _error;
+  late final void Function() _onLive;
 
   @override
   void initState() {
     super.initState();
     _load();
+    // A form, weight or evaluation changed elsewhere: re-read, as the web board does.
+    _onLive = () => _load();
+    Live.instance.on('performance:updated', _onLive);
+  }
+
+  @override
+  void dispose() {
+    Live.instance.off('performance:updated', _onLive);
+    super.dispose();
   }
 
   Future<void> _load() async {
@@ -146,8 +158,23 @@ class _TeamBoardScreenState extends State<TeamBoardScreen> {
       }
       rows.add(_memberCard(m, i, bands));
     }
+    final sec = widget.section;
     return AppScaffold(
       title: Text(tr('تقييم الأداء', 'Performance')),
+      actions: [
+        // The section's KPI items and weights, for whoever the server lets edit them.
+        if (sec != null && sec.isNotEmpty && _d?['canEditKpis'] == true)
+          IconButton(
+            tooltip: tr('المؤشرات والأوزان', 'KPIs and weights'),
+            icon: const Icon(Icons.tune),
+            onPressed: () async {
+              await Navigator.push(context, MaterialPageRoute(
+                builder: (_) => SectionKpiSettingsScreen(section: sec, title: tr('تقييم الأداء', 'Performance')),
+              ));
+              _load();
+            },
+          ),
+      ],
       body: _loading
           ? ListView(padding: const EdgeInsets.all(14), children: const [
               Shimmer(height: 80), SizedBox(height: 10), Shimmer(), SizedBox(height: 10), Shimmer(),

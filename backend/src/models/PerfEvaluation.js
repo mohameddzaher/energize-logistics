@@ -20,6 +20,7 @@ const answerSchema = new mongoose.Schema({
 const snapshotSchema = new mongoose.Schema({
   key: String, order: Number, titleAr: String, title: String,
   descriptionAr: String, description: String, weight: Number,
+  groupAr: String, group: String,
 }, { _id: false });
 
 const perfEvaluationSchema = new mongoose.Schema({

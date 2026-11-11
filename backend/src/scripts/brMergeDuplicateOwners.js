@@ -25,12 +25,14 @@ const mongoose = require('mongoose');
   fs.writeFileSync(file, JSON.stringify({ actions: plan.flat(), assignments: await BrAssignment.find({ action: { $in: dropIds } }).lean() }));
   for (const [keep, ...drop] of plan) {
     const ids = drop.map((x) => x._id);
-    // The furthest-along part wins status and progress, so nothing reported is lost.
-    const best = [keep, ...drop].sort((a, b) => (b.progress || 0) - (a.progress || 0))[0];
+    // The furthest-along part wins its state (progress, then the most recently updated), so nothing reported is lost.
+    const best = [keep, ...drop].sort((a, b) => ((b.progress || 0) - (a.progress || 0)) || (new Date(b.updatedAt) - new Date(a.updatedAt)))[0];
     const updates = [...(keep.updates || []), ...drop.flatMap((x) => x.updates || [])].sort((a, b) => new Date(a.at) - new Date(b.at));
     await BrAssignment.updateMany({ action: { $in: ids } }, { $set: { action: keep._id } });
     await BrAction.updateMany({ followUpOf: { $in: ids } }, { $set: { followUpOf: keep._id } });
-    await BrAction.updateOne({ _id: keep._id }, { $set: { updates, status: best.status, progress: best.progress || 0, completedAt: best.completedAt || keep.completedAt || null } });
+    await BrAction.updateOne({ _id: keep._id }, { $set: { updates, status: best.status, progress: best.progress || 0, completedAt: best.completedAt || keep.completedAt || null,
+      dueDate: best.dueDate || keep.dueDate || null, originalDueDate: best.originalDueDate || keep.originalDueDate || null, postponeCount: best.postponeCount || 0,
+      postponeReason: best.postponeReason || '', expectedDate: best.expectedDate || keep.expectedDate || null } });
     await BrAction.deleteMany({ _id: { $in: ids } });
   }
   console.log(`merged ${plan.length} group(s), removed ${dropIds.length} copy(ies); backup ${file}`);

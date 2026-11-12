@@ -1,9 +1,9 @@
 'use client';
 /**
  * Customer profile: everything known about a customer on one screen.
- * Trips, monthly analysis and the routes actually worked, tied to the agreed price, then the agreed-price list itself (the only editable part). The gap between the two tables is the point: a route worked often with no agreed price is visible. One component opened by three pages (see CustomersRegister).
+ * Customer data is edited in place. Routes are one table: every route worked or agreed, with its agreed price, tiers and trips, so a route worked with no agreed price (or priced but never worked) stands out. One component opened by the sales, operations and shipment-orders pages (see CustomersRegister).
  */
-import { useState, useEffect, useCallback, useMemo } from 'react';
+import { useState, useEffect, useCallback, useMemo, type ReactNode, type KeyboardEvent } from 'react';
 import Link from 'next/link';
 import { useLanguage } from '@/context/LanguageContext';
 import { useAuth } from '@/context/AuthContext';
@@ -12,7 +12,7 @@ import { useLatestRequest } from '@/hooks/useLatestRequest';
 import api from '@/lib/api';
 import { useDialog } from '@/components/system/DialogProvider';
 import {
-  Spinner, PageHeader, StatCard, ErrorNotice, PrimaryButton, Modal, Tabs,
+  Spinner, ErrorNotice, PrimaryButton, Modal, Tabs, SearchableSelect,
 } from '@/components/hr/HRKit';
 import ScrollX from '@/components/system/ScrollX';
 import CustomerPresence from '@/components/system/CustomerPresence';
@@ -22,40 +22,17 @@ import { ColumnFilter, type ColumnFilterOption } from '@/components/ColumnFilter
 import MonthPicker from '@/components/system/MonthPicker';
 import DateRangeFilter from '@/components/system/DateRangeFilter';
 import PortalAccountCard from '@/components/system/PortalAccountCard';
-import CustomerEditDialog from '@/components/customers/CustomerEditDialog';
-import { Lang } from '@/lib/shipmentOrders';
+import { FormField, optionLabel, Lang } from '@/lib/shipmentOrders';
 import {
   canEditCustomers, canEditRoutePrices, ProfilePayload, RunRoute, AgreedRoute, PriceTier, tiersText, foldAr, fmtDay, fmtNum, priceSourceLabel,
 } from '@/lib/customerRegistry';
 import {
-  ResponsiveContainer, ComposedChart, Bar, Line, XAxis, YAxis, Tooltip, CartesianGrid, Legend,
-} from 'recharts';
-import {
-  UserRound, ArrowRight, ArrowLeft, Pencil, KeyRound, Phone, Mail, Search, ChevronLeft, ChevronRight, Route,
+  ArrowRight, ArrowLeft, Pencil, KeyRound, Phone, Mail, Search, ChevronLeft, ChevronRight, Route,
+  Hash, MapPin, Truck, Wallet, Calculator, BadgeCheck, CalendarClock, CalendarCheck, ClipboardList, Inbox,
+  Check, X, Loader2, Plus, Trash2, UserRound, ChevronDown,
 } from 'lucide-react';
 
 const SHEET_LIMIT = 50;
-
-const runRouteCols = (ar: boolean, money: boolean) => ([
-  { key: 'from', ar: 'من', en: 'From' },
-  { key: 'to', ar: 'إلى', en: 'To' },
-  { key: 'sheets', ar: 'الرحلات', en: 'Trips', num: true },
-  ...(money ? [{ key: 'purchase', ar: 'قيمة الشراء', en: 'Purchase', num: true }] : []),
-  { key: 'lastAt', ar: 'آخر رحلة', en: 'Last trip', date: true },
-  { key: 'price', ar: 'السعر المتّفق', en: 'Agreed price', num: true },
-  { key: 'priceAt', ar: 'تاريخ السعر', en: 'Price date', date: true },
-  { key: 'priceSource', ar: 'مصدر السعر', en: 'Price source' },
-  { key: 'tiers', ar: 'السعر بعدد السيارات', en: 'Price by truck count' },
-] as { key: string; ar: string; en: string; num?: boolean; date?: boolean }[]);
-
-const runCell = (r: RunRoute, key: string, ar: boolean): string => {
-  const v: any = (r as any)[key];
-  if (key === 'lastAt' || key === 'priceAt') return fmtDay(v);
-  if (key === 'sheets' || key === 'purchase' || key === 'price') return fmtNum(v);
-  if (key === 'priceSource') return priceSourceLabel(v, ar);
-  if (key === 'tiers') return tiersText(r.tiers, ar);
-  return v == null || v === '' ? '' : String(v);
-};
 
 // `filter`: the column has a server-side Excel-style filter (GET /api/customer-registry/:id/trip-filters).
 const SHEET_COLS: { key: string; ar: string; en: string; date?: boolean; num?: boolean; money?: boolean; filter?: boolean }[] = [
@@ -189,13 +166,286 @@ function TierEditor({ customerId, route, ar, onClose, onSaved }: {
   );
 }
 
+/** Shipment-form preferences autofilled for this customer; same keys and lists as the create form. */
+const DEFAULT_KEYS: [string, string, string][] = [
+  ['truckType', 'نوع الشاحنة', 'Truck type'],
+  ['cargoType', 'نوع الحمولة', 'Cargo type'],
+  ['paymentMethod', 'طريقة الدفع', 'Payment method'],
+  ['driverRentType', 'نوع تأجير السائق', 'Driver rent type'],
+  ['branch', 'الفرع', 'Branch'],
+];
+const EMPTY_DEFAULTS: Record<string, string> = { truckType: '', cargoType: '', paymentMethod: '', driverRentType: '', branch: '' };
+
+type RouteStatus = 'all' | 'priced' | 'no_price' | 'idle';
+
+/** One row of the unified routes table: a route worked (from the sheets), agreed (price list), or both. */
+interface URow {
+  key: string; from: string; to: string;
+  worked: boolean; agreed: boolean; priced: boolean;
+  sheets: number; purchase?: number; lastAt: string | null;
+  price: number | null; priceAt: string | null; priceSource: string; hits: number;
+  tiers: PriceTier[]; tiersAt?: string | null; tiersBy?: string;
+  revenue: number | null; margin: number | null;
+}
+
+const routeKeyOf = (from: string, to: string) => `${foldAr(from)}→${foldAr(to)}`;
+
+const statusLabel = (r: URow, ar: boolean, filtered: boolean): string => {
+  if (r.worked && !r.priced) return ar ? 'بلا سعر متّفق' : 'No agreed price';
+  if (!r.worked) return filtered ? (ar ? 'لا رحلات في الفترة' : 'No trips in period') : (ar ? 'لم يُعمل عليه' : 'Never worked');
+  return ar ? 'مُسعَّر' : 'Priced';
+};
+
+/** One figure in the KPI strip. Cells draw their own top/start border so a short last row leaves no grey gap. */
+function KpiCell({ icon, label, value, tone = 'text-slate-900', sub }: {
+  icon: ReactNode; label: string; value: ReactNode; tone?: string; sub?: ReactNode;
+}) {
+  return (
+    <div className="min-w-0 border-t border-s border-slate-200 px-4 py-3.5">
+      <p className="flex items-center gap-1.5 text-[12px] font-semibold text-slate-500">
+        <span className="text-slate-400 shrink-0">{icon}</span>
+        <span className="truncate" title={label}>{label}</span>
+      </p>
+      <div className={`mt-1.5 text-xl sm:text-2xl font-bold leading-tight tabular-nums break-words ${tone}`}>{value}</div>
+      {sub}
+    </div>
+  );
+}
+
+/** Title row of a card or tab: name, row count, optional hint, then its own tools. */
+function SectionBar({ icon, title, count, hint, children }: {
+  icon: ReactNode; title: string; count?: number; hint?: string; children?: ReactNode;
+}) {
+  return (
+    <div className="flex flex-col lg:flex-row lg:items-center gap-3 px-4 py-3 border-b border-slate-100 bg-slate-50/70">
+      <div className="min-w-0 lg:flex-1">
+        <p className="flex items-center gap-2 font-bold text-slate-900 text-[14.5px]">
+          <span className="text-[#f37121]">{icon}</span>
+          {title}
+          {count != null && (
+            <span className="px-2 py-0.5 rounded-full bg-white border border-slate-200 text-[11.5px] font-semibold text-slate-600 tabular-nums">
+              {count.toLocaleString('en-US')}
+            </span>
+          )}
+        </p>
+        {hint && <p className="mt-0.5 text-[12px] text-slate-500">{hint}</p>}
+      </div>
+      {children && <div className="flex flex-wrap items-center gap-2 lg:justify-end lg:shrink-0">{children}</div>}
+    </div>
+  );
+}
+
+/** Local search box. Module-level so the input keeps focus while typing. */
+function SearchBox({ value, onChange, placeholder, wide }: {
+  value: string; onChange: (v: string) => void; placeholder: string; wide?: boolean;
+}) {
+  return (
+    <div className="relative flex-1 sm:flex-none min-w-[10rem]">
+      <Search className="w-3.5 h-3.5 text-slate-400 absolute top-1/2 -translate-y-1/2 start-2.5 pointer-events-none" />
+      <input value={value} onChange={(e) => onChange(e.target.value)} placeholder={placeholder}
+        className={`w-full ${wide ? 'sm:w-72' : 'sm:w-48'} ps-8 pe-2 py-2 rounded-lg border border-slate-200 bg-white text-[12.5px] text-slate-900 focus:outline-none focus:border-[#f37121] focus:ring-2 focus:ring-[#f37121]/20`} />
+    </div>
+  );
+}
+
+/** Empty table body: what is missing and, when a filter caused it, the way back. */
+function EmptyRow({ colSpan, title, hint, action }: {
+  colSpan: number; title: string; hint?: string; action?: ReactNode;
+}) {
+  return (
+    <tr>
+      <td colSpan={colSpan} className="px-4 py-12">
+        <div className="flex flex-col items-center gap-2 text-center">
+          <span className="w-10 h-10 rounded-full bg-slate-100 text-slate-400 flex items-center justify-center"><Inbox className="w-5 h-5" /></span>
+          <p className="text-[13.5px] font-semibold text-slate-700">{title}</p>
+          {hint && <p className="text-[12px] text-slate-500 max-w-sm">{hint}</p>}
+          {action}
+        </div>
+      </td>
+    </tr>
+  );
+}
+
+const inputCls = 'w-full px-2.5 py-1.5 rounded-lg border border-[#f37121] bg-white text-[13px] text-slate-900 focus:outline-none focus:ring-2 focus:ring-[#f37121]/25';
+
+/**
+ * A customer field shown as text and edited where it stands: click, type, Enter (Ctrl+Enter for notes) saves, Esc cancels.
+ * A select saves on pick. Module-level so the input keeps focus while typing.
+ */
+function InlineField({ label, value, display, editable, kind = 'text', options, required, dir, ar, onSave, wide }: {
+  label: string; value: string; display?: ReactNode; editable: boolean;
+  kind?: 'text' | 'textarea' | 'select'; options?: { value: string; label: string }[];
+  required?: boolean; dir?: 'ltr' | 'rtl'; ar: boolean; onSave: (v: string) => Promise<boolean>; wide?: boolean;
+}) {
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState(value);
+  const [saving, setSaving] = useState(false);
+  useEffect(() => { if (!editing) setDraft(value); }, [value, editing]);
+
+  const commit = async (v: string) => {
+    const next = kind === 'textarea' ? v : v.trim();
+    if (required && !next.trim()) return;
+    if (next === value) { setEditing(false); return; }
+    setSaving(true);
+    const ok = await onSave(next);
+    setSaving(false);
+    if (ok) setEditing(false);
+  };
+  const onKey = (e: KeyboardEvent<HTMLInputElement | HTMLTextAreaElement>) => {
+    if (e.key === 'Escape') { setDraft(value); setEditing(false); }
+    if (e.key === 'Enter' && (kind !== 'textarea' || e.ctrlKey || e.metaKey)) { e.preventDefault(); commit(draft); }
+  };
+  const empty = <span className="text-slate-400 font-normal">{editable ? (ar ? 'أضف…' : 'Add…') : '—'}</span>;
+
+  return (
+    <div className={`min-w-0 ${wide ? 'sm:col-span-2 lg:col-span-4' : ''}`}>
+      <p className="text-[11.5px] font-semibold text-slate-500 mb-1">{label}{required && editable ? ' *' : ''}</p>
+      {kind === 'select' && editable ? (
+        <div className="relative">
+          <select value={value} disabled={saving} onChange={(e) => commit(e.target.value)}
+            className="w-full appearance-none px-2.5 py-1.5 pe-7 rounded-lg border border-slate-200 bg-white text-[13px] font-medium text-slate-900 hover:border-slate-300 focus:outline-none focus:border-[#f37121] focus:ring-2 focus:ring-[#f37121]/20 disabled:opacity-60">
+            <option value="">—</option>
+            {/* A saved value stays visible even if it left the list, so it is not silently wiped. */}
+            {value && !(options || []).some((o) => o.value === value) && <option value={value}>{value}</option>}
+            {(options || []).map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
+          </select>
+          {saving
+            ? <Loader2 className="w-3.5 h-3.5 animate-spin text-slate-400 absolute top-1/2 -translate-y-1/2 end-2 pointer-events-none" />
+            : <ChevronDown className="w-3.5 h-3.5 text-slate-400 absolute top-1/2 -translate-y-1/2 end-2 pointer-events-none" />}
+        </div>
+      ) : editing ? (
+        <div className="flex items-start gap-1.5">
+          {kind === 'textarea' ? (
+            <textarea autoFocus rows={3} onFocus={(e) => e.currentTarget.select()} value={draft} dir={dir} onChange={(e) => setDraft(e.target.value)} onKeyDown={onKey} className={inputCls} />
+          ) : (
+            <input autoFocus onFocus={(e) => e.currentTarget.select()} value={draft} dir={dir} onChange={(e) => setDraft(e.target.value)} onKeyDown={onKey} className={inputCls} />
+          )}
+          <button type="button" onClick={() => commit(draft)} disabled={saving || (required && !draft.trim())}
+            aria-label={ar ? 'حفظ' : 'Save'} title={ar ? 'حفظ' : 'Save'}
+            className="shrink-0 p-1.5 rounded-lg bg-[#f37121] text-white hover:bg-[#e06010] disabled:opacity-50">
+            {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Check className="w-4 h-4" />}
+          </button>
+          <button type="button" onClick={() => { setDraft(value); setEditing(false); }} disabled={saving}
+            aria-label={ar ? 'إلغاء' : 'Cancel'} title={ar ? 'إلغاء' : 'Cancel'}
+            className="shrink-0 p-1.5 rounded-lg border border-slate-200 text-slate-500 hover:text-slate-900">
+            <X className="w-4 h-4" />
+          </button>
+        </div>
+      ) : editable ? (
+        <button type="button" onClick={() => setEditing(true)} title={ar ? 'انقر للتعديل' : 'Click to edit'}
+          className="group w-full flex items-start justify-between gap-2 px-2.5 py-1.5 -mx-px rounded-lg border border-transparent text-start hover:border-slate-200 hover:bg-slate-50">
+          <span className={`min-w-0 text-[13.5px] font-semibold text-slate-900 break-words ${kind === 'textarea' ? 'whitespace-pre-wrap' : ''}`} dir={dir}>
+            {value ? (display ?? value) : empty}
+          </span>
+          <Pencil className="w-3.5 h-3.5 mt-0.5 shrink-0 text-slate-300 group-hover:text-[#f37121]" />
+        </button>
+      ) : (
+        <p className={`px-2.5 py-1.5 text-[13.5px] font-semibold text-slate-900 break-words ${kind === 'textarea' ? 'whitespace-pre-wrap' : ''}`} dir={dir}>
+          {value ? (display ?? value) : empty}
+        </p>
+      )}
+    </div>
+  );
+}
+
+/** Agreed price cell: click to type a price, Enter saves, Esc cancels; an empty value clears the price. */
+function InlinePrice({ value, editable, ar, onSave }: {
+  value: number | null; editable: boolean; ar: boolean; onSave: (v: number | null) => Promise<boolean>;
+}) {
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState('');
+  const [saving, setSaving] = useState(false);
+  const shown = value == null
+    ? <span className="text-amber-700 font-semibold">{ar ? 'بلا سعر' : 'no price'}</span>
+    : <span className="font-semibold text-slate-900">{fmtNum(value)}</span>;
+  if (!editable) return shown;
+  const commit = async () => {
+    const t = draft.trim();
+    const next = t === '' ? null : Number(t);
+    if (next != null && (!Number.isFinite(next) || next < 0)) return;
+    if (next === value) { setEditing(false); return; }
+    setSaving(true);
+    const ok = await onSave(next);
+    setSaving(false);
+    if (ok) setEditing(false);
+  };
+  if (!editing) {
+    return (
+      <button type="button" onClick={() => { setDraft(value == null ? '' : String(value)); setEditing(true); }}
+        title={ar ? 'انقر لتعديل السعر' : 'Click to edit the price'}
+        className="group inline-flex items-center gap-1.5 px-2 py-1 -my-1 rounded-md hover:bg-orange-50">
+        {shown}<Pencil className="w-3 h-3 text-slate-300 group-hover:text-[#f37121]" />
+      </button>
+    );
+  }
+  return (
+    <span className="inline-flex items-center gap-1">
+      <input autoFocus onFocus={(e) => e.currentTarget.select()} type="number" min={0} inputMode="decimal" value={draft} onChange={(e) => setDraft(e.target.value)}
+        onKeyDown={(e) => { if (e.key === 'Enter') commit(); if (e.key === 'Escape') setEditing(false); }}
+        className="w-24 px-2 py-1 rounded-md border border-[#f37121] bg-white text-[13px] text-end tabular-nums focus:outline-none focus:ring-2 focus:ring-[#f37121]/25"
+        aria-label={ar ? 'السعر' : 'Price'} />
+      <button type="button" onClick={commit} disabled={saving} aria-label={ar ? 'حفظ' : 'Save'}
+        className="p-1 rounded-md bg-[#f37121] text-white hover:bg-[#e06010] disabled:opacity-50">
+        {saving ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Check className="w-3.5 h-3.5" />}
+      </button>
+      <button type="button" onClick={() => setEditing(false)} aria-label={ar ? 'إلغاء' : 'Cancel'}
+        className="p-1 rounded-md text-slate-400 hover:text-slate-900"><X className="w-3.5 h-3.5" /></button>
+    </span>
+  );
+}
+
+/** Adds an agreed route from the profile. A route already in the list gets the new price instead of a duplicate row. */
+function AddRouteForm({ cities, ar, onAdd, onClose }: {
+  cities: { value: string; label: string }[]; ar: boolean;
+  onAdd: (from: string, to: string, price: number | null) => Promise<boolean>; onClose: () => void;
+}) {
+  const [from, setFrom] = useState('');
+  const [to, setTo] = useState('');
+  const [price, setPrice] = useState('');
+  const [saving, setSaving] = useState(false);
+  const ok = !!from.trim() && !!to.trim() && (price === '' || Number(price) >= 0);
+  const submit = async () => {
+    if (!ok || saving) return;
+    setSaving(true);
+    const done = await onAdd(from.trim(), to.trim(), price === '' ? null : Number(price));
+    setSaving(false);
+    if (done) { setFrom(''); setTo(''); setPrice(''); }
+  };
+  const sel = (v: string, set: (x: string) => void, ph: string) => (
+    <SearchableSelect value={v} onChange={set} searchAfter={0} allowCustom options={cities}
+      placeholder={ph} searchPlaceholder={ar ? 'اكتب أو ابحث…' : 'Type or search…'}
+      customHint={(t) => (ar ? `استعمل «${t}»` : `Use “${t}”`)} />
+  );
+  return (
+    <div className="px-4 py-3 border-b border-slate-100 bg-orange-50/40">
+      <div className="grid grid-cols-1 sm:grid-cols-[1fr_1fr_8rem_auto] gap-2 items-end">
+        <div className="min-w-0"><p className="text-[11.5px] font-semibold text-slate-500 mb-1">{ar ? 'من' : 'From'}</p>{sel(from, setFrom, ar ? 'من…' : 'From…')}</div>
+        <div className="min-w-0"><p className="text-[11.5px] font-semibold text-slate-500 mb-1">{ar ? 'إلى' : 'To'}</p>{sel(to, setTo, ar ? 'إلى…' : 'To…')}</div>
+        <div>
+          <p className="text-[11.5px] font-semibold text-slate-500 mb-1">{ar ? 'السعر' : 'Price'}</p>
+          <input type="number" min={0} inputMode="decimal" value={price} onChange={(e) => setPrice(e.target.value)}
+            onKeyDown={(e) => { if (e.key === 'Enter') submit(); }}
+            className="w-full px-3 py-2 rounded-lg border border-slate-200 bg-white text-sm text-end tabular-nums focus:outline-none focus:ring-2 focus:ring-[#f37121]/40" />
+        </div>
+        <div className="flex items-center gap-2">
+          <PrimaryButton onClick={submit} disabled={!ok || saving}>
+            {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Check className="w-4 h-4" />}{ar ? 'إضافة' : 'Add'}
+          </PrimaryButton>
+          <button type="button" onClick={onClose} className="px-3 py-2 rounded-lg text-sm text-slate-600 hover:text-slate-900">{ar ? 'إغلاق' : 'Close'}</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export default function CustomerProfile({ id, basePath }: { id: string; basePath: string }) {
   const { lang, isRTL } = useLanguage();
   const ar = lang === 'ar';
   const { user } = useAuth();
-  const { notify } = useDialog();
+  const { notify, confirm } = useDialog();
   const guard = useLatestRequest();
-  const cf = useColumnFilters<RunRoute>();
+  const rcf = useColumnFilters<URow>();
+  const ocf = useColumnFilters<any>();
 
   const [data, setData] = useState<ProfilePayload | null>(null);
   const [loading, setLoading] = useState(true);
@@ -205,13 +455,12 @@ export default function CustomerProfile({ id, basePath }: { id: string; basePath
   // Tiers of the open route are editable by the operations manager and the system admin only.
   const [tierRoute, setTierRoute] = useState<RunRoute | null>(null);
   const [routeQ, setRouteQ] = useState('');
-  const [agreedQ, setAgreedQ] = useState('');
-  const [editOpen, setEditOpen] = useState(false);
+  const [routeStatus, setRouteStatus] = useState<RouteStatus>('all');
+  const [adding, setAdding] = useState(false);
   const [portalOpen, setPortalOpen] = useState(false);
-  const acf = useColumnFilters<AgreedRoute>();
-  const ocf = useColumnFilters<any>();
+  const [fields, setFields] = useState<FormField[]>([]);
 
-  // Trip filters, applied on the server: period, search and per-column values. They drive the cards, chart, routes run and trips together.
+  // Trip filters, applied on the server: period, search and per-column values. They drive the cards, routes and trips together.
   const [period, setPeriod] = useState<TripPeriod>(NO_PERIOD);
   const [tripQ, setTripQ] = useState('');
   const [tripQd, setTripQd] = useState('');
@@ -245,6 +494,16 @@ export default function CustomerProfile({ id, basePath }: { id: string; basePath
   }, [id, page, guard, filterQs]);
 
   useEffect(() => { load(); }, [load]);
+  // Every write (here, the register, another user) emits this event; the file re-reads so all open screens agree.
+  useSocket('shipmentOrders:customers', useCallback(() => load(), [load]));
+
+  // Same option lists the shipment-create form reads: cities for routes, values for the preferences.
+  useEffect(() => {
+    api.get<{ fields: FormField[] }>('/api/customer-registry/options').then((d) => setFields(d.fields || [])).catch(() => {});
+  }, []);
+  const optionsOf = useCallback((key: string) => (fields.find((f) => f.key === key)?.options || [])
+    .map((o) => ({ value: o.key, label: optionLabel(o, lang as Lang) })), [fields, lang]);
+  const cityOptions = useMemo(() => optionsOf('fromCity'), [optionsOf]);
 
   const optsGuard = useLatestRequest();
   const fetchCfOpts = useCallback(async (field: string, q2 = '') => {
@@ -266,38 +525,139 @@ export default function CustomerProfile({ id, basePath }: { id: string; basePath
   });
   const tripFiltersOn = !!(period.mode || tripQd || Object.keys(tripCf).length);
   const clearTripFilters = () => { setPeriod(NO_PERIOD); setTripQ(''); setTripQd(''); setTripCf({}); };
-  useSocket('shipmentOrders:customers', useCallback(() => load(), [load]));
 
   const money = !!data && data.analysis.purchaseTotal !== undefined;
   const editor = canEditCustomers(user);
+  const priceEditor = canEditRoutePrices(user);
+  const filtered = !!data?.filtered;
 
-  const rcols = useMemo(() => runRouteCols(ar, money), [ar, money]);
-  const rgetters = useMemo(
-    () => Object.fromEntries(rcols.map((c) => [c.key, (r: RunRoute) => runCell(r, c.key, ar)])),
-    [rcols, ar],
-  );
-  const runSearched = useMemo(() => {
-    const rows = data?.routes || [];
+  /** Partial save on the registry endpoint; the server keeps every field not sent and emits the live event. */
+  const putCustomer = useCallback(async (patch: Record<string, any>, okMsg?: string): Promise<boolean> => {
+    try {
+      await api.put(`/api/customer-registry/${id}`, patch);
+      notify(okMsg || (ar ? 'تم الحفظ' : 'Saved'), 'success');
+      load();
+      return true;
+    } catch (e: any) {
+      notify(e?.message || (ar ? 'تعذّر الحفظ' : 'Could not save'), 'error');
+      return false;
+    }
+  }, [id, ar, notify, load]);
+
+  // The price list is saved whole, as the edit dialog did; the server carries tiers over by route key.
+  const saveRoutes = useCallback((routes: AgreedRoute[], okMsg?: string) => putCustomer({
+    routes: routes.filter((r) => r.fromCity && r.toCity).map((r) => ({
+      fromCity: r.fromCity, toCity: r.toCity, price: r.price == null ? null : Number(r.price),
+      ...(r.at ? { at: r.at } : {}), ...(r.source ? { source: r.source } : {}), ...(r.hits ? { hits: r.hits } : {}),
+    })),
+  }, okMsg), [putCustomer]);
+
+  const setRoutePrice = useCallback((from: string, to: string, price: number | null) => {
+    const list = [...(data?.customer.routes || [])];
+    const k = routeKeyOf(from, to);
+    const i = list.findIndex((r) => routeKeyOf(r.fromCity, r.toCity) === k);
+    // A price typed by hand is dated today with source "manual", so it wins as the latest agreed price.
+    const stamp = { price, at: new Date().toISOString(), source: 'manual' };
+    if (i >= 0) list[i] = { ...list[i], ...stamp };
+    else list.unshift({ fromCity: from, toCity: to, hits: 1, ...stamp });
+    return saveRoutes(list, ar ? 'حُفظ السعر' : 'Price saved');
+  }, [data, saveRoutes, ar]);
+
+  const removeRoute = useCallback(async (r: URow) => {
+    const ok = await confirm({
+      title: ar ? 'حذف السعر المتّفق عليه' : 'Remove agreed price',
+      message: ar ? `يُحذف المسار ${r.from} ← ${r.to} من قائمة الأسعار المتّفق عليها. لا تتأثّر الرحلات المسجّلة.`
+        : `${r.from} → ${r.to} will be removed from the agreed price list. Recorded trips are not affected.`,
+      tone: 'danger', confirmLabel: ar ? 'حذف' : 'Remove',
+    });
+    if (!ok) return;
+    await saveRoutes((data?.customer.routes || []).filter((x) => routeKeyOf(x.fromCity, x.toCity) !== r.key), ar ? 'حُذف المسار' : 'Route removed');
+  }, [confirm, ar, saveRoutes, data]);
+
+  // Routes worked (sheets) and routes agreed (price list) joined by the folded city pair.
+  const urows = useMemo((): URow[] => {
+    if (!data) return [];
+    const m = new Map<string, URow>();
+    for (const r of data.routes) {
+      const key = routeKeyOf(r.from, r.to);
+      m.set(key, {
+        key, from: r.from, to: r.to, worked: (r.sheets || 0) > 0, agreed: false, priced: false,
+        sheets: r.sheets || 0, purchase: r.purchase, lastAt: r.lastAt,
+        price: r.price, priceAt: r.priceAt, priceSource: r.priceSource || '', hits: 0,
+        tiers: r.tiers || [], tiersAt: r.tiersAt, tiersBy: r.tiersBy, revenue: null, margin: null,
+      });
+    }
+    for (const a of data.customer.routes) {
+      const key = routeKeyOf(a.fromCity, a.toCity);
+      const ex = m.get(key);
+      const tiers = ((a as AgreedRoute & { tiers?: PriceTier[] }).tiers) || [];
+      if (ex) {
+        Object.assign(ex, { agreed: true, price: a.price, priceAt: a.at || null, priceSource: a.source || '', hits: a.hits || 1, tiers: ex.tiers.length ? ex.tiers : tiers });
+      } else {
+        m.set(key, {
+          key, from: a.fromCity, to: a.toCity, worked: false, agreed: true, priced: false,
+          sheets: 0, purchase: money ? 0 : undefined, lastAt: null,
+          price: a.price, priceAt: a.at || null, priceSource: a.source || '', hits: a.hits || 1,
+          tiers, revenue: null, margin: null,
+        });
+      }
+    }
+    const rows = Array.from(m.values());
+    for (const r of rows) {
+      r.priced = r.price != null || r.tiers.length > 0;
+    }
+    // Worked routes first, busiest on top; agreed-only routes after, newest price first.
+    return rows.sort((x, y) => (y.sheets - x.sheets) || (new Date(y.priceAt || 0).getTime() - new Date(x.priceAt || 0).getTime()));
+  }, [data, money]);
+
+  const statusCounts = useMemo(() => ({
+    all: urows.length,
+    priced: urows.filter((r) => r.worked && r.priced).length,
+    no_price: urows.filter((r) => r.worked && !r.priced).length,
+    idle: urows.filter((r) => !r.worked).length,
+  }), [urows]);
+
+  const ucols = useMemo(() => ([
+    { key: 'from', ar: 'من', en: 'From' },
+    { key: 'to', ar: 'إلى', en: 'To' },
+    { key: 'status', ar: 'الحالة', en: 'Status' },
+    { key: 'sheets', ar: 'الرحلات', en: 'Trips', num: true },
+    { key: 'lastAt', ar: 'آخر رحلة', en: 'Last trip', date: true },
+    ...(money ? [
+      { key: 'purchase', ar: 'قيمة الشراء', en: 'Purchase', num: true },
+    ] : []),
+    { key: 'price', ar: 'السعر المتّفق', en: 'Agreed price', num: true },
+    { key: 'tiers', ar: 'السعر بعدد السيارات', en: 'Price by truck count' },
+    { key: 'priceAt', ar: 'تاريخ السعر', en: 'Price date', date: true },
+    { key: 'priceSource', ar: 'مصدر السعر', en: 'Price source' },
+    { key: 'hits', ar: 'تكرار', en: 'Seen', num: true },
+  ] as { key: string; ar: string; en: string; num?: boolean; date?: boolean }[]), [money]);
+
+  const ucell = useCallback((r: URow, key: string): string => {
+    switch (key) {
+      case 'status': return statusLabel(r, ar, filtered);
+      case 'lastAt': case 'priceAt': return r[key] ? fmtDay(r[key]) : '';
+      case 'sheets': return fmtNum(r.sheets);
+      case 'purchase': case 'price': return r[key] == null ? '' : fmtNum(r[key]);
+      case 'priceSource': return priceSourceLabel(r.priceSource, ar);
+      case 'tiers': return tiersText(r.tiers, ar);
+      case 'hits': return r.agreed ? String(r.hits || 1) : '';
+      default: return String((r as any)[key] ?? '');
+    }
+  }, [ar, filtered]);
+  const ugetters = useMemo(() => Object.fromEntries(ucols.map((c) => [c.key, (r: URow) => ucell(r, c.key)])), [ucols, ucell]);
+
+  const routesSearched = useMemo(() => {
     const s = foldAr(routeQ);
-    if (!s) return rows;
-    return rows.filter((r) => foldAr(`${r.from} ${r.to}`).includes(s));
-  }, [data, routeQ]);
-  const runShown = useMemo(() => cf.apply(runSearched, rgetters), [cf, runSearched, rgetters]);
+    return urows.filter((r) => {
+      if (routeStatus === 'priced' && !(r.worked && r.priced)) return false;
+      if (routeStatus === 'no_price' && !(r.worked && !r.priced)) return false;
+      if (routeStatus === 'idle' && r.worked) return false;
+      return !s || foldAr(`${r.from} ${r.to}`).includes(s);
+    });
+  }, [urows, routeQ, routeStatus]);
+  const routesShown = useMemo(() => rcf.apply(routesSearched, ugetters), [rcf, routesSearched, ugetters]);
 
-  const agreedSearched = useMemo(() => {
-    const rows = [...(data?.customer.routes || [])]
-      .sort((a, b) => new Date(b.at || 0).getTime() - new Date(a.at || 0).getTime());
-    const s = foldAr(agreedQ);
-    if (!s) return rows;
-    return rows.filter((r) => foldAr(`${r.fromCity} ${r.toCity}`).includes(s));
-  }, [data, agreedQ]);
-  // Agreed prices and our orders are loaded whole, so their column filters run in the browser.
-  const agetters = useMemo((): Record<string, (r: AgreedRoute) => any> => ({
-    fromCity: (r) => r.fromCity, toCity: (r) => r.toCity,
-    price: (r) => (r.price == null ? '' : fmtNum(r.price)), at: (r) => fmtDay(r.at),
-    source: (r) => priceSourceLabel(r.source, ar), hits: (r) => r.hits || 1,
-  }), [ar]);
-  const agreedShown = useMemo(() => acf.apply(agreedSearched, agetters), [acf, agreedSearched, agetters]);
   const ogetters = useMemo((): Record<string, (o: any) => any> => ({
     number: (o) => o.orderNumber || o.waybillNumber || '', createdAt: (o) => fmtDay(o.createdAt),
     fromCity: (o) => o.fromCity, toCity: (o) => o.toCity, supplierName: (o) => o.supplierName,
@@ -305,15 +665,11 @@ export default function CustomerProfile({ id, basePath }: { id: string; basePath
   }), []);
   const ordersShown = useMemo(() => ocf.apply(data?.orders || [], ogetters), [ocf, data, ogetters]);
 
-  const monthly = useMemo(() => (data?.analysis.monthly || []).map((m) => ({
-    month: m.month, sheets: m.sheets, purchase: m.purchase ?? 0,
-  })), [data]);
-
-  const runExportCols: ExportColumn[] = useMemo(() => rcols.map((c) => ({
+  const routeExportCols: ExportColumn[] = useMemo(() => ucols.map((c) => ({
     header: ar ? c.ar : c.en, key: c.key,
     type: c.num ? 'number' : c.date ? 'date' : 'text',
-    transform: c.key === 'priceSource' ? (v: any) => priceSourceLabel(v, ar) : undefined,
-  })), [rcols, ar]);
+    ...(c.key === 'status' || c.key === 'priceSource' || c.key === 'tiers' ? { transform: (_v: any, r: any) => ucell(r as URow, c.key) } : {}),
+  } as ExportColumn)), [ucols, ar, ucell]);
 
   const agreedExportCols: ExportColumn[] = useMemo(() => ([
     { header: ar ? 'من' : 'From', key: 'fromCity', width: 22 },
@@ -336,357 +692,449 @@ export default function CustomerProfile({ id, basePath }: { id: string; basePath
 
   const c = data.customer;
   const a = data.analysis;
+  // The server sends the code; the shared payload type predates it.
+  const code = String((c as { customerCode?: string }).customerCode || '');
+  const initial = Array.from(c.name.trim())[0] || '?';
+  const defaults = { ...EMPTY_DEFAULTS, ...(c.defaults || {}) };
   const Back = isRTL ? ArrowRight : ArrowLeft;
-  const th = 'px-3 py-2.5 font-semibold whitespace-nowrap';
+  const th = 'px-3 py-3 font-semibold whitespace-nowrap';
+  const td = 'px-3 py-2.5 whitespace-nowrap';
+  const pricedPct = a.routesCount ? Math.round((a.pricedRoutes / a.routesCount) * 100) : 0;
+  const pricedFull = a.pricedRoutes >= a.routesCount;
+  const clearBtn = (onClick: () => void) => (
+    <button type="button" onClick={onClick}
+      className="mt-1 px-3 py-1.5 rounded-lg bg-[#f37121]/10 text-[#f37121] text-[12.5px] font-semibold hover:bg-[#f37121]/20">
+      {ar ? 'مسح الفلاتر' : 'Clear filters'}
+    </button>
+  );
+  const pageFrom = data.sheets.total ? (data.sheets.page - 1) * SHEET_LIMIT + 1 : 0;
+  const pageTo = Math.min(data.sheets.page * SHEET_LIMIT, data.sheets.total);
+  const routeFiltersOn = !!routeQ || routeStatus !== 'all' || rcf.count > 0;
+  const statusChips: [RouteStatus, string, string, string][] = [
+    ['all', 'الكل', 'All', 'text-slate-700'],
+    ['priced', 'مُسعَّرة', 'Priced', 'text-emerald-700'],
+    ['no_price', 'بلا سعر متّفق', 'No agreed price', 'text-amber-700'],
+    ['idle', filtered ? 'لا رحلات في الفترة' : 'لم يُعمل عليها', filtered ? 'No trips in period' : 'Never worked', 'text-slate-600'],
+  ];
+  const optLabel = (k: string, v: string) => optionsOf(k).find((o) => o.value === v)?.label || v;
 
   return (
-    <div className="space-y-5" dir={isRTL ? 'rtl' : 'ltr'}>
-      <Link href={basePath} className="inline-flex items-center gap-1.5 text-sm text-slate-500 hover:text-[#f37121]">
+    <div className="space-y-4 sm:space-y-5" dir={isRTL ? 'rtl' : 'ltr'}>
+      <Link href={basePath} className="inline-flex items-center gap-1.5 text-sm font-medium text-slate-500 hover:text-[#f37121]">
         <Back className="w-4 h-4" /> {ar ? 'سجلّ العملاء' : 'Customer register'}
       </Link>
 
-      <PageHeader icon={<UserRound className="w-5 h-5" />} title={c.name}
-        subtitle={
-          <span className="flex flex-wrap items-center gap-x-3 gap-y-1">
-            {c.phone && <span className="inline-flex items-center gap-1"><Phone className="w-3.5 h-3.5" />{c.phone}</span>}
-            {c.email && <span className="inline-flex items-center gap-1"><Mail className="w-3.5 h-3.5" />{c.email}</span>}
-            <span className={`px-2 py-0.5 rounded-full text-[11px] font-semibold ${c.isActive ? 'bg-emerald-50 text-emerald-700' : 'bg-slate-100 text-slate-500'}`}>
-              {c.isActive ? (ar ? 'نشط' : 'Active') : (ar ? 'موقوف' : 'Inactive')}
-            </span>
-            {a.branches.length > 0 && <span className="text-slate-400">{ar ? 'الفروع: ' : 'Branches: '}{a.branches.join(' · ')}</span>}
-          </span>
-        }>
-        <button type="button" onClick={() => setPortalOpen(true)}
-          className="flex items-center gap-1.5 px-3 py-2 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 text-sm">
-          <KeyRound className="w-4 h-4" /> {ar ? 'حساب البوابة' : 'Portal login'}
-        </button>
-        {editor && <PrimaryButton onClick={() => setEditOpen(true)}><Pencil className="w-4 h-4" /> {ar ? 'تعديل' : 'Edit'}</PrimaryButton>}
-      </PageHeader>
+      {/* Identity: who the customer is, how to reach them, and the file's actions. */}
+      <section className="bg-white border border-slate-200 rounded-2xl shadow-sm overflow-hidden">
+        <div className="h-1 bg-[#f37121]" />
+        <div className="p-4 sm:p-5 flex flex-col lg:flex-row lg:items-start lg:justify-between gap-4">
+          <div className="flex items-start gap-3 sm:gap-4 min-w-0">
+            <div className="w-12 h-12 sm:w-14 sm:h-14 shrink-0 rounded-xl bg-[#f37121]/10 text-[#f37121] flex items-center justify-center text-xl sm:text-2xl font-extrabold">
+              {initial}
+            </div>
+            <div className="min-w-0 space-y-2">
+              <div className="flex flex-wrap items-center gap-2">
+                <h1 className="text-xl sm:text-2xl font-extrabold text-slate-900 break-words">{c.name}</h1>
+                <span className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11.5px] font-semibold border ${c.isActive ? 'bg-emerald-50 text-emerald-700 border-emerald-200' : 'bg-slate-100 text-slate-600 border-slate-200'}`}>
+                  <span className={`w-1.5 h-1.5 rounded-full ${c.isActive ? 'bg-emerald-500' : 'bg-slate-400'}`} />
+                  {c.isActive ? (ar ? 'نشط' : 'Active') : (ar ? 'موقوف' : 'Inactive')}
+                </span>
+              </div>
+              <div className="flex flex-wrap items-center gap-x-4 gap-y-1.5 text-[13px] text-slate-600">
+                {code && (
+                  <span className="inline-flex items-center gap-1" title={ar ? 'كود العميل' : 'Customer code'}>
+                    <Hash className="w-3.5 h-3.5 text-slate-400" />
+                    <span className="font-semibold text-slate-800 tabular-nums" dir="ltr">{code}</span>
+                  </span>
+                )}
+                {c.phone && (
+                  <a href={`tel:${c.phone}`} className="inline-flex items-center gap-1 hover:text-[#f37121]">
+                    <Phone className="w-3.5 h-3.5 text-slate-400" /><span dir="ltr" className="tabular-nums">{c.phone}</span>
+                  </a>
+                )}
+                {c.email && (
+                  <a href={`mailto:${c.email}`} className="inline-flex items-center gap-1 hover:text-[#f37121] min-w-0">
+                    <Mail className="w-3.5 h-3.5 text-slate-400 shrink-0" /><span dir="ltr" className="truncate">{c.email}</span>
+                  </a>
+                )}
+              </div>
+              {a.branches.length > 0 && (
+                <div className="flex flex-wrap items-center gap-1.5">
+                  <span className="inline-flex items-center gap-1 text-[12px] font-semibold text-slate-500">
+                    <MapPin className="w-3.5 h-3.5 text-slate-400" />{ar ? 'الفروع' : 'Branches'}
+                  </span>
+                  {a.branches.map((b) => (
+                    <span key={b} className="px-2 py-0.5 rounded-md bg-slate-100 text-slate-700 text-[12px] font-medium">{b}</span>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+          <div className="flex flex-wrap items-center gap-2 lg:shrink-0">
+            <button type="button" onClick={() => setPortalOpen(true)}
+              className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg border border-slate-200 bg-white hover:bg-slate-50 text-slate-700 text-sm font-medium">
+              <KeyRound className="w-4 h-4" /> {ar ? 'حساب البوابة' : 'Portal login'}
+            </button>
+          </div>
+        </div>
+      </section>
+
       {/* The same customer in the other sections. */}
       <CustomerPresence reg="shipment" id={String(c._id)} ar={ar} onChanged={load} />
 
-      <div className="bg-white border border-slate-200 rounded-2xl shadow-sm p-3 space-y-2">
-        <div className="flex flex-wrap items-center justify-between gap-2">
-          <TripPeriodBar value={period} setValue={setPeriod} ar={ar} />
-          <div className="flex items-center gap-2">
-            <div className="relative">
-              <Search className="w-3.5 h-3.5 text-slate-400 absolute top-1/2 -translate-y-1/2 start-2.5" />
-              <input value={tripQ} onChange={(e) => setTripQ(e.target.value)}
-                placeholder={ar ? 'بحث: رقم، سائق، مركبة، مدينة…' : 'Search: number, driver, vehicle, city…'}
-                className="w-64 ps-8 pe-2 py-2 rounded-lg border border-slate-200 bg-white text-[12.5px] focus:outline-none focus:border-[#f37121]" />
+      {/* Customer data, edited where it is read. */}
+      <section className="bg-white border border-slate-200 rounded-2xl shadow-sm overflow-hidden">
+        <SectionBar icon={<UserRound className="w-4 h-4" />} title={ar ? 'بيانات العميل' : 'Customer details'}
+          hint={editor ? (ar ? 'انقر على أيّ حقلٍ لتعديله؛ يُحفظ التعديل فورًا ويظهر في كلّ الأقسام.' : 'Click any field to edit it; changes save at once and show in every section.') : undefined} />
+        <div className="p-4 space-y-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-x-4 gap-y-3">
+            <InlineField label={ar ? 'الاسم' : 'Name'} value={c.name} editable={editor} required ar={ar}
+              onSave={(v) => putCustomer({ name: v })} />
+            <InlineField label={ar ? 'الجوال' : 'Phone'} value={c.phone || ''} editable={editor} dir="ltr" ar={ar}
+              onSave={(v) => putCustomer({ phone: v })} />
+            <InlineField label={ar ? 'البريد' : 'Email'} value={c.email || ''} editable={editor} dir="ltr" ar={ar}
+              onSave={(v) => putCustomer({ email: v })} />
+            <div className="min-w-0">
+              <p className="text-[11.5px] font-semibold text-slate-500 mb-1">{ar ? 'كود العميل' : 'Customer code'}</p>
+              <p className="px-2.5 py-1.5 text-[13.5px] font-semibold text-slate-900 tabular-nums"><span dir="ltr">{code || '—'}</span></p>
             </div>
-            {tripFiltersOn && (
-              <button type="button" onClick={clearTripFilters}
-                className="px-3 py-2 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-600 text-[12.5px] font-semibold">
-                {ar ? 'مسح الفلاتر' : 'Clear filters'}
-              </button>
-            )}
+          </div>
+          <div className="rounded-xl border border-slate-100 bg-slate-50/60 p-3">
+            <p className="text-[12px] font-bold text-slate-700 mb-2">{ar ? 'التفضيلات المعتمدة (تُملأ تلقائيًّا في الشحنة)' : 'Usual defaults (autofilled on the shipment form)'}</p>
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-x-4 gap-y-3">
+              {DEFAULT_KEYS.map(([k, la, le]) => (
+                <InlineField key={k} kind="select" label={ar ? la : le} value={defaults[k] || ''} display={optLabel(k, defaults[k] || '')}
+                  options={optionsOf(k)} editable={editor} ar={ar}
+                  onSave={(v) => putCustomer({ defaults: { ...defaults, [k]: v } })} />
+              ))}
+            </div>
+          </div>
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4">
+            <InlineField wide kind="textarea" label={ar ? 'ملاحظات' : 'Notes'} value={c.notes || ''} editable={editor} ar={ar}
+              onSave={(v) => putCustomer({ notes: v })} />
           </div>
         </div>
-        {/* States what the figures below cover, so a filtered total is not read as the customer's whole history. */}
-        {data.filtered && (
-          <p className="text-[12px] text-slate-500">
-            {ar ? 'الأرقام والرسم والمسارات والرحلات أدناه بحسب الفلاتر المختارة' : 'Figures, chart, routes and trips below follow the chosen filters'}
-            {data.period && (
-              <span className="font-semibold text-slate-700 tabular-nums">
-                {' — '}{data.period.from ? fmtDay(`${data.period.from}T12:00:00`) : (ar ? 'البداية' : 'start')}
-                {ar ? ' إلى ' : ' to '}{data.period.to ? fmtDay(`${data.period.to}T12:00:00`) : (ar ? 'اليوم' : 'today')}
-              </span>
-            )}
-            {Object.keys(tripCf).length > 0 && (
-              <span>{ar ? ` · فلاتر أعمدة الرحلات: ${Object.keys(tripCf).length}` : ` · trip column filters: ${Object.keys(tripCf).length}`}</span>
-            )}
-          </p>
-        )}
-      </div>
+      </section>
 
-      <div className="grid grid-cols-2 md:grid-cols-4 xl:grid-cols-7 gap-3">
-        <StatCard label={ar ? 'الرحلات (أوامر نقل)' : 'Trips (sheets)'} value={a.sheets.toLocaleString('en-US')} accent="text-[#f37121]" />
-        {money && <StatCard label={ar ? 'قيمة الشراء' : 'Purchase total'} value={fmtNum(a.purchaseTotal)} accent="text-violet-600" />}
-        {money && <StatCard label={ar ? 'متوسّط الرحلة' : 'Avg per trip'} value={fmtNum(a.avgPerSheet)} />}
-        <StatCard label={ar ? 'المسارات المتّفق عليها' : 'Agreed routes'} value={a.routesCount.toLocaleString('en-US')} accent="text-blue-600" />
-        <StatCard label={ar ? 'منها مُسعَّرة' : 'Priced'} value={a.pricedRoutes.toLocaleString('en-US')}
-          accent={a.pricedRoutes < a.routesCount ? 'text-amber-600' : 'text-emerald-600'} />
-        {/* The date is narrower than the card number; at the card font it wraps to two lines. */}
-        <StatCard label={ar ? 'أوّل عمل' : 'First work'} value={<span className="text-lg">{fmtDay(a.firstAt)}</span>} />
-        <StatCard label={ar ? 'آخر عمل' : 'Last work'} value={<span className="text-lg">{fmtDay(a.lastAt)}</span>} />
-      </div>
-
-      {monthly.length > 0 && (
-        <div className="bg-white border border-slate-200 rounded-2xl shadow-sm p-4">
-          <p className="font-extrabold text-slate-900 text-[14.5px] mb-3">{ar ? 'العمل شهرًا بشهر' : 'Month by month'}</p>
-          <div className="h-72">
-            <ResponsiveContainer width="100%" height="100%">
-              <ComposedChart data={monthly}>
-                <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
-                <XAxis dataKey="month" tick={{ fontSize: 11 }} stroke="#94a3b8" />
-                <YAxis yAxisId="l" tick={{ fontSize: 11 }} stroke="#94a3b8" />
-                {money && <YAxis yAxisId="r" orientation="right" tick={{ fontSize: 11 }} stroke="#94a3b8" />}
-                <Tooltip />
-                <Legend />
-                <Bar yAxisId="l" dataKey="sheets" name={ar ? 'الرحلات' : 'Trips'} fill="#f37121" radius={[4, 4, 0, 0]} />
-                {money && <Line yAxisId="r" type="monotone" dataKey="purchase" name={ar ? 'قيمة الشراء' : 'Purchase'} stroke="#7c3aed" dot={false} strokeWidth={2} />}
-              </ComposedChart>
-            </ResponsiveContainer>
+      {/* Period and search drive every figure and table below. */}
+      <section className="bg-white border border-slate-200 rounded-2xl shadow-sm overflow-hidden">
+        <div className="p-3 sm:p-4 space-y-2">
+          <div className="flex flex-col xl:flex-row xl:items-center xl:justify-between gap-2">
+            <div className="max-w-full overflow-x-auto">
+              <TripPeriodBar value={period} setValue={setPeriod} ar={ar} />
+            </div>
+            <div className="flex flex-wrap items-center gap-2">
+              <SearchBox value={tripQ} onChange={setTripQ} wide
+                placeholder={ar ? 'بحث: رقم، سائق، مركبة، مدينة…' : 'Search: number, driver, vehicle, city…'} />
+              {tripFiltersOn && (
+                <button type="button" onClick={clearTripFilters}
+                  className="px-3 py-2 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 text-[12.5px] font-semibold">
+                  {ar ? 'مسح الفلاتر' : 'Clear filters'}
+                </button>
+              )}
+            </div>
           </div>
-        </div>
-      )}
-
-      <Tabs active={tab} onChange={setTab} tabs={[
-        { key: 'routes', label: ar ? 'المسارات التي يعمل عليها' : 'Routes they run', badge: data.routes.length },
-        { key: 'agreed', label: ar ? 'أسعار المسارات المتّفق عليها' : 'Agreed prices', badge: c.routes.length },
-        { key: 'sheets', label: ar ? 'الرحلات' : 'Trips', badge: data.sheets.total },
-        // Stays while open: a period with no orders must not drop the tab the user is on.
-        ...(data.orders.length || tab === 'orders' ? [{ key: 'orders', label: ar ? 'طلباتنا' : 'Our orders', badge: data.orders.length }] : []),
-      ]} />
-
-      {tab === 'routes' && (
-        <div className="bg-white border border-slate-200 rounded-2xl shadow-sm overflow-hidden">
-          <div className="flex flex-wrap items-center justify-between gap-2 px-4 py-3 border-b border-slate-100 bg-slate-50/60">
-            <p className="font-extrabold text-slate-900 text-[14.5px]">
-              {ar ? 'المسارات التي يعمل عليها فعلًا' : 'Routes they actually run'}
-              <span className="ms-2 text-[11.5px] font-semibold text-slate-400 tabular-nums">({runShown.length})</span>
+          {/* States what the figures cover, so a filtered total is not read as the customer's whole history. */}
+          {data.filtered && (
+            <p className="text-[12px] text-slate-600 bg-[#f37121]/5 border border-[#f37121]/20 rounded-lg px-3 py-2">
+              {ar ? 'الأرقام والمسارات والرحلات أدناه بحسب الفلاتر المختارة' : 'Figures, routes and trips below follow the chosen filters'}
+              {data.period && (
+                <span className="font-semibold text-slate-800 tabular-nums">
+                  {' — '}{data.period.from ? fmtDay(`${data.period.from}T12:00:00`) : (ar ? 'البداية' : 'start')}
+                  {ar ? ' إلى ' : ' to '}{data.period.to ? fmtDay(`${data.period.to}T12:00:00`) : (ar ? 'اليوم' : 'today')}
+                </span>
+              )}
+              {Object.keys(tripCf).length > 0 && (
+                <span>{ar ? ` · فلاتر أعمدة الرحلات: ${Object.keys(tripCf).length}` : ` · trip column filters: ${Object.keys(tripCf).length}`}</span>
+              )}
             </p>
-            <div className="flex items-center gap-2">
-              <ClearColumnFilters count={cf.count} onClear={cf.clear} ar={ar} />
-              <div className="relative">
-                <Search className="w-3.5 h-3.5 text-slate-400 absolute top-1/2 -translate-y-1/2 start-2.5" />
-                <input value={routeQ} onChange={(e) => setRouteQ(e.target.value)} placeholder={ar ? 'بحث…' : 'Search…'}
-                  className="w-44 ps-8 pe-2 py-1.5 rounded-lg border border-slate-200 bg-white text-[12.5px] focus:outline-none focus:border-[#f37121]" />
-              </div>
+          )}
+        </div>
+        <div className="border-t border-slate-200 overflow-hidden">
+          <div className={`-mt-px -ms-px grid grid-cols-2 md:grid-cols-4 ${money ? 'xl:grid-cols-7' : 'xl:grid-cols-5'}`}>
+            <KpiCell icon={<Truck className="w-3.5 h-3.5" />} label={ar ? 'الرحلات (أوامر نقل)' : 'Trips (sheets)'}
+              value={a.sheets.toLocaleString('en-US')} tone="text-[#f37121]" />
+            {money && <KpiCell icon={<Wallet className="w-3.5 h-3.5" />} label={ar ? 'قيمة الشراء' : 'Purchase total'} value={fmtNum(a.purchaseTotal)} tone="text-violet-700" />}
+            {money && <KpiCell icon={<Calculator className="w-3.5 h-3.5" />} label={ar ? 'متوسّط الرحلة' : 'Avg per trip'} value={fmtNum(a.avgPerSheet)} />}
+            <KpiCell icon={<Route className="w-3.5 h-3.5" />} label={ar ? 'المسارات المتّفق عليها' : 'Agreed routes'}
+              value={a.routesCount.toLocaleString('en-US')} tone="text-blue-700" />
+            <KpiCell icon={<BadgeCheck className="w-3.5 h-3.5" />} label={ar ? 'منها مُسعَّرة' : 'Priced'}
+              value={a.pricedRoutes.toLocaleString('en-US')} tone={pricedFull ? 'text-emerald-700' : 'text-amber-700'}
+              sub={a.routesCount > 0 ? (
+                <div className="mt-2 flex items-center gap-2">
+                  <div className="h-1.5 flex-1 rounded-full bg-slate-100 overflow-hidden">
+                    <div className={`h-full rounded-full ${pricedFull ? 'bg-emerald-500' : 'bg-amber-500'}`} style={{ width: `${pricedPct}%` }} />
+                  </div>
+                  <span className="text-[11px] font-semibold text-slate-500 tabular-nums">{pricedPct}%</span>
+                </div>
+              ) : undefined} />
+            {/* Dates are set smaller than the figures; at full size they wrap to two lines. */}
+            <KpiCell icon={<CalendarClock className="w-3.5 h-3.5" />} label={ar ? 'أوّل عمل' : 'First work'}
+              value={<span className="text-lg">{fmtDay(a.firstAt)}</span>} />
+            <KpiCell icon={<CalendarCheck className="w-3.5 h-3.5" />} label={ar ? 'آخر عمل' : 'Last work'}
+              value={<span className="text-lg">{fmtDay(a.lastAt)}</span>} />
+          </div>
+        </div>
+      </section>
+
+      <section className="bg-white border border-slate-200 rounded-2xl shadow-sm overflow-hidden">
+        <div className="px-2 sm:px-3 pt-1">
+          <Tabs active={tab} onChange={setTab} tabs={[
+            { key: 'routes', label: ar ? 'المسارات والأسعار' : 'Routes & prices', badge: urows.length },
+            { key: 'sheets', label: ar ? 'الرحلات' : 'Trips', badge: data.sheets.total },
+            // Stays while open: a period with no orders must not drop the tab the user is on.
+            ...(data.orders.length || tab === 'orders' ? [{ key: 'orders', label: ar ? 'طلباتنا' : 'Our orders', badge: data.orders.length }] : []),
+          ]} />
+        </div>
+
+        {tab === 'routes' && (
+          <>
+            <SectionBar icon={<Route className="w-4 h-4" />} title={ar ? 'المسارات والأسعار المتّفق عليها' : 'Routes and agreed prices'} count={routesShown.length}
+              hint={ar ? `كلّ مسارٍ عمل عليه العميل أو له سعرٌ متّفق عليه، في صفٍّ واحد.`
+                : `Every route the customer ran or has an agreed price for, in one row.${money ? ' Revenue and margin are estimates: agreed price × trips.' : ''}`}>
+              <ClearColumnFilters count={rcf.count} onClear={rcf.clear} ar={ar} />
+              <SearchBox value={routeQ} onChange={setRouteQ} placeholder={ar ? 'بحث في المسارات…' : 'Search routes…'} />
               <ExportMenu fileName={`customer-routes-${c.name}`} lang={ar ? 'ar' : 'en'}
                 options={[
-                  { key: 'shown', label: scope.shown, sheets: [{ name: ar ? 'المسارات' : 'Routes', rows: runShown as any[], columns: runExportCols }] },
-                  { key: 'all', label: scope.all, sheets: [{ name: ar ? 'المسارات' : 'Routes', rows: data.routes as any[], columns: runExportCols }] },
+                  { key: 'shown', label: scope.shown, sheets: [{ name: ar ? 'المسارات' : 'Routes', rows: routesShown as any[], columns: routeExportCols }] },
+                  { key: 'all', label: scope.all, sheets: [{ name: ar ? 'المسارات' : 'Routes', rows: urows as any[], columns: routeExportCols }] },
+                  { key: 'prices', label: ar ? 'قائمة الأسعار المتّفق عليها' : 'Agreed price list', sheets: [{ name: ar ? 'الأسعار' : 'Prices', rows: c.routes as any[], columns: agreedExportCols }] },
                 ]} />
+              {priceEditor && !adding && (
+                <PrimaryButton onClick={() => setAdding(true)}><Plus className="w-4 h-4" /> {ar ? 'إضافة مسار' : 'Add route'}</PrimaryButton>
+              )}
+            </SectionBar>
+            {priceEditor && adding && (
+              <AddRouteForm cities={cityOptions} ar={ar} onClose={() => setAdding(false)}
+                onAdd={(f, t, p) => setRoutePrice(f, t, p)} />
+            )}
+            <div className="flex flex-wrap items-center gap-1.5 px-4 py-2.5 border-b border-slate-100">
+              {statusChips.map(([k, la, le, tone]) => (
+                <button key={k} type="button" onClick={() => setRouteStatus(k)}
+                  className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full border text-[12.5px] font-semibold transition-colors ${
+                    routeStatus === k ? 'bg-slate-900 border-slate-900 text-white' : `bg-white border-slate-200 hover:border-slate-300 ${tone}`}`}>
+                  {ar ? la : le}
+                  <span className={`tabular-nums ${routeStatus === k ? 'text-slate-300' : 'text-slate-400'}`}>{statusCounts[k]}</span>
+                </button>
+              ))}
             </div>
-          </div>
-          <ScrollX>
-            <table className="w-full text-[13px]">
-              <thead className="sticky top-0 z-10">
-                <tr className="bg-slate-900 text-slate-300 text-[11.5px]">
-                  {rcols.map((col) => (
-                    <th key={col.key} className={`${th} ${col.num ? 'text-end' : 'text-start'}`}>
-                      <span className="inline-flex items-center gap-1">
-                        {ar ? col.ar : col.en}
-                        {cf.header(col.key, runSearched, rgetters[col.key], ar)}
-                      </span>
-                    </th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-100">
-                {runShown.map((r, i) => (
-                  <tr key={`${r.from}|${r.to}|${i}`} className={`hover:bg-slate-50 ${r.price == null ? 'bg-amber-50/40' : ''}`}>
-                    {rcols.map((col) => (col.key === 'tiers' ? (
-                      <td key={col.key} className="px-3 py-2 whitespace-nowrap">
-                        <span className="inline-flex items-center gap-1.5">
-                          {(r.tiers || []).map((t, j) => (
-                            <span key={j} className="px-2 py-0.5 rounded-full bg-emerald-50 border border-emerald-200 text-emerald-800 text-[11.5px] font-semibold tabular-nums"
-                              title={ar ? 'سعرُ السيارة الواحدة' : 'Price per truck'}>
-                              {tiersText([t], ar)}
-                            </span>
-                          ))}
-                          {!(r.tiers || []).length && <span className="text-slate-300">—</span>}
-                          {data.canEditTiers && (
-                            <button type="button" onClick={() => setTierRoute(r)}
-                              className="p-1 rounded-md text-slate-400 hover:text-[#f37121] hover:bg-orange-50"
-                              title={ar ? 'تعديل شرائح السعر' : 'Edit price tiers'}>
-                              <Pencil className="w-3.5 h-3.5" />
-                            </button>
+            <ScrollX>
+              <table className="w-full text-[13px]">
+                <thead className="sticky top-0 z-10">
+                  <tr className="bg-slate-900 text-slate-300 text-[11.5px]">
+                    {ucols.map((col) => (
+                      <th key={col.key} className={`${th} ${col.num ? 'text-end' : 'text-start'}`}>
+                        <span className="inline-flex items-center gap-1">
+                          {ar ? col.ar : col.en}
+                          {rcf.header(col.key, routesSearched, ugetters[col.key], ar)}
+                        </span>
+                      </th>
+                    ))}
+                    {priceEditor && <th className={th}><span className="sr-only">{ar ? 'إجراءات' : 'Actions'}</span></th>}
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100">
+                  {routesShown.map((r) => {
+                    const noPrice = r.worked && !r.priced;
+                    return (
+                      <tr key={r.key} className={`hover:bg-slate-50 ${noPrice ? 'bg-amber-50/60' : !r.worked ? 'bg-slate-50/70' : ''}`}>
+                        {ucols.map((col) => {
+                          if (col.key === 'from' || col.key === 'to') {
+                            return <td key={col.key} className={`${td} font-semibold ${r.worked ? 'text-slate-900' : 'text-slate-600'}`}>{r[col.key] || '—'}</td>;
+                          }
+                          if (col.key === 'status') {
+                            const cls = noPrice ? 'bg-amber-100 text-amber-800 border-amber-200'
+                              : !r.worked ? 'bg-slate-100 text-slate-600 border-slate-200'
+                                : 'bg-emerald-50 text-emerald-700 border-emerald-200';
+                            return (
+                              <td key={col.key} className={td}>
+                                <span className={`inline-flex px-2 py-0.5 rounded-full border text-[11.5px] font-semibold ${cls}`}>{statusLabel(r, ar, filtered)}</span>
+                              </td>
+                            );
+                          }
+                          if (col.key === 'price') {
+                            return (
+                              <td key={col.key} className={`${td} text-end tabular-nums`}>
+                                <InlinePrice value={r.price} editable={priceEditor} ar={ar} onSave={(p) => setRoutePrice(r.from, r.to, p)} />
+                              </td>
+                            );
+                          }
+                          if (col.key === 'tiers') {
+                            return (
+                              <td key={col.key} className={td}>
+                                <span className="inline-flex items-center gap-1.5">
+                                  {r.tiers.map((t, j) => (
+                                    <span key={j} className="px-2 py-0.5 rounded-full bg-emerald-50 border border-emerald-200 text-emerald-800 text-[11.5px] font-semibold tabular-nums"
+                                      title={ar ? 'سعرُ السيارة الواحدة' : 'Price per truck'}>
+                                      {tiersText([t], ar)}
+                                    </span>
+                                  ))}
+                                  {!r.tiers.length && <span className="text-slate-300">—</span>}
+                                  {data.canEditTiers && (
+                                    <button type="button"
+                                      onClick={() => setTierRoute({ from: r.from, to: r.to, tiers: r.tiers, tiersAt: r.tiersAt, tiersBy: r.tiersBy } as RunRoute)}
+                                      className="p-1 rounded-md text-slate-400 hover:text-[#f37121] hover:bg-orange-50"
+                                      title={ar ? 'تعديل شرائح السعر' : 'Edit price tiers'} aria-label={ar ? 'تعديل شرائح السعر' : 'Edit price tiers'}>
+                                      <Pencil className="w-3.5 h-3.5" />
+                                    </button>
+                                  )}
+                                </span>
+                              </td>
+                            );
+                          }
+                          const v = ucell(r, col.key);
+                          const tone = col.key === 'margin' && r.margin != null ? (r.margin < 0 ? 'text-red-600 font-semibold' : 'text-emerald-700 font-semibold')
+                            : col.num ? 'text-slate-800' : 'text-slate-600';
+                          return <td key={col.key} className={`${td} ${col.num ? 'text-end tabular-nums' : ''} ${tone}`}>{v || <span className="text-slate-300">—</span>}</td>;
+                        })}
+                        {priceEditor && (
+                          <td className={`${td} text-end`}>
+                            {r.agreed && (
+                              <button type="button" onClick={() => removeRoute(r)}
+                                className="p-1.5 rounded-md text-slate-400 hover:text-red-600 hover:bg-red-50"
+                                title={ar ? 'حذف من الأسعار المتّفق عليها' : 'Remove from agreed prices'} aria-label={ar ? 'حذف من الأسعار المتّفق عليها' : 'Remove from agreed prices'}>
+                                <Trash2 className="w-3.5 h-3.5" />
+                              </button>
+                            )}
+                          </td>
+                        )}
+                      </tr>
+                    );
+                  })}
+                  {!routesShown.length && (
+                    <EmptyRow colSpan={ucols.length + (priceEditor ? 1 : 0)}
+                      title={urows.length ? (ar ? 'لا توجد مسارات مطابقة' : 'No matching routes') : (ar ? 'لا توجد مسارات بعد' : 'No routes yet')}
+                      hint={urows.length ? undefined : (priceEditor
+                        ? (ar ? 'تظهر المسارات هنا عند تسجيل رحلاتٍ للعميل، أو أضف سعرًا متّفقًا عليه من «إضافة مسار».' : 'Routes appear as trips are recorded, or add an agreed price with “Add route”.')
+                        : (ar ? 'تظهر المسارات هنا عند تسجيل رحلاتٍ لهذا العميل.' : 'Routes appear here once trips are recorded for this customer.'))}
+                      action={urows.length && routeFiltersOn ? clearBtn(() => { setRouteQ(''); setRouteStatus('all'); rcf.clear(); }) : undefined} />
+                  )}
+                </tbody>
+              </table>
+            </ScrollX>
+          </>
+        )}
+
+        {tab === 'sheets' && (
+          <>
+            <SectionBar icon={<Truck className="w-4 h-4" />} title={ar ? 'الرحلات' : 'Trips'} count={data.sheets.total}>
+              <ClearColumnFilters count={Object.keys(tripCf).length} onClear={() => setTripCf({})} ar={ar} />
+              <ExportMenu fileName={`customer-trips-${c.name}`} lang={ar ? 'ar' : 'en'}
+                options={[{ key: 'page', label: scope.page, sheets: [{ name: ar ? 'الرحلات' : 'Trips', rows: data.sheets.rows, columns: sheetExportCols }] }]} />
+            </SectionBar>
+            <ScrollX>
+              <table className="w-full text-[13px]">
+                <thead className="sticky top-0 z-10">
+                  <tr className="bg-slate-900 text-slate-300 text-[11.5px]">
+                    {sheetCols.map((col) => (
+                      <th key={col.key} className={`${th} ${col.num ? 'text-end' : 'text-start'}`}>
+                        <span className="inline-flex items-center gap-1">
+                          {ar ? col.ar : col.en}
+                          {/* Server-side values: the table is paginated, so the loaded page holds only some of them. */}
+                          {col.filter && (
+                            <ColumnFilter field={col.key} selected={tripCf[col.key] || new Set()}
+                              onChange={(set) => setTripFilter(col.key, set)}
+                              onOpen={() => fetchCfOpts(col.key)}
+                              options={cfOpts[col.key]?.values || []} truncated={!!cfOpts[col.key]?.truncated}
+                              loading={!!cfBusy[col.key]} onQuery={(q) => fetchCfOpts(col.key, q)}
+                              lang={ar ? 'ar' : 'en'} />
                           )}
                         </span>
-                      </td>
-                    ) : (
-                      <td key={col.key} className={`px-3 py-2 whitespace-nowrap ${col.num ? 'text-end tabular-nums' : 'text-slate-700'}`}>
-                        {runCell(r, col.key, ar) || (col.key === 'price' ? <span className="text-amber-600 font-semibold">{ar ? 'بلا سعر' : 'no price'}</span> : '—')}
-                      </td>
-                    )))}
+                      </th>
+                    ))}
                   </tr>
-                ))}
-                {!runShown.length && <tr><td colSpan={rcols.length} className="px-3 py-10 text-center text-slate-400">{ar ? 'لا مسارات.' : 'No routes.'}</td></tr>}
-              </tbody>
-            </table>
-          </ScrollX>
-        </div>
-      )}
+                </thead>
+                <tbody className="divide-y divide-slate-100">
+                  {data.sheets.rows.map((s: any) => (
+                    <tr key={s._id} className="hover:bg-slate-50 even:bg-slate-50/50">
+                      {sheetCols.map((col) => (
+                        <td key={col.key} className={`${td} ${col.num ? 'text-end tabular-nums font-semibold text-slate-900' : col.key === 'reportNumber' ? 'font-semibold text-slate-900 tabular-nums' : 'text-slate-700'}`}>
+                          {col.date ? fmtDay(s[col.key]) : col.num ? fmtNum(s[col.key]) : (s[col.key] || '—')}
+                        </td>
+                      ))}
+                    </tr>
+                  ))}
+                  {!data.sheets.rows.length && (
+                    <EmptyRow colSpan={sheetCols.length}
+                      title={tripFiltersOn ? (ar ? 'لا توجد رحلات ضمن الفلاتر المختارة' : 'No trips match the chosen filters') : (ar ? 'لا توجد رحلات' : 'No trips')}
+                      action={tripFiltersOn ? clearBtn(clearTripFilters) : undefined} />
+                  )}
+                </tbody>
+              </table>
+            </ScrollX>
+            <div className="flex flex-wrap items-center justify-between gap-2 px-4 py-2.5 border-t border-slate-100 bg-slate-50/70 text-[12.5px]">
+              <span className="text-slate-500 tabular-nums">
+                {ar ? `عرض ${pageFrom}–${pageTo} من ${data.sheets.total.toLocaleString('en-US')}` : `Showing ${pageFrom}–${pageTo} of ${data.sheets.total.toLocaleString('en-US')}`}
+              </span>
+              <div className="flex items-center gap-2">
+                <button type="button" disabled={data.sheets.page <= 1} onClick={() => setPage((p) => Math.max(1, p - 1))}
+                  aria-label={ar ? 'الصفحة السابقة' : 'Previous page'}
+                  className="p-1.5 rounded-lg border border-slate-200 bg-white text-slate-600 disabled:opacity-30 hover:text-[#f37121]">
+                  {isRTL ? <ChevronRight className="w-4 h-4" /> : <ChevronLeft className="w-4 h-4" />}
+                </button>
+                <span className="text-slate-700 font-medium tabular-nums">{ar ? `صفحة ${data.sheets.page} من ${data.sheets.pages}` : `Page ${data.sheets.page} of ${data.sheets.pages}`}</span>
+                <button type="button" disabled={data.sheets.page >= data.sheets.pages} onClick={() => setPage((p) => p + 1)}
+                  aria-label={ar ? 'الصفحة التالية' : 'Next page'}
+                  className="p-1.5 rounded-lg border border-slate-200 bg-white text-slate-600 disabled:opacity-30 hover:text-[#f37121]">
+                  {isRTL ? <ChevronLeft className="w-4 h-4" /> : <ChevronRight className="w-4 h-4" />}
+                </button>
+              </div>
+            </div>
+          </>
+        )}
+
+        {tab === 'orders' && (
+          <>
+            <SectionBar icon={<ClipboardList className="w-4 h-4" />} title={ar ? 'طلباتنا' : 'Our orders'} count={ordersShown.length}>
+              <ClearColumnFilters count={ocf.count} onClear={ocf.clear} ar={ar} />
+            </SectionBar>
+            <ScrollX>
+              <table className="w-full text-[13px]">
+                <thead>
+                  <tr className="bg-slate-900 text-slate-300 text-[11.5px]">
+                    {([
+                      ['number', 'الرقم', 'Number'], ['createdAt', 'التاريخ', 'Date'], ['fromCity', 'من', 'From'], ['toCity', 'إلى', 'To'],
+                      ['supplierName', 'المورد', 'Supplier'], ['vehiclePlate', 'المركبة', 'Vehicle'], ['status', 'الحالة', 'Status'],
+                    ] as [string, string, string][]).map(([k, la, le]) => (
+                      <th key={k} className={`${th} text-start`}>
+                        <span className="inline-flex items-center gap-1">{ar ? la : le}{ocf.header(k, data.orders, ogetters[k], ar)}</span>
+                      </th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100">
+                  {!ordersShown.length && (
+                    <EmptyRow colSpan={7} title={ar ? 'لا توجد طلبات' : 'No orders'}
+                      action={ocf.count ? clearBtn(ocf.clear) : undefined} />
+                  )}
+                  {ordersShown.map((o: any) => (
+                    <tr key={o._id} className="hover:bg-slate-50 even:bg-slate-50/50">
+                      <td className={`${td} font-semibold text-slate-900 tabular-nums`}>{o.orderNumber || o.waybillNumber || '—'}</td>
+                      <td className={`${td} text-slate-600 tabular-nums`}>{fmtDay(o.createdAt)}</td>
+                      <td className={`${td} text-slate-700`}>{o.fromCity || '—'}</td>
+                      <td className={`${td} text-slate-700`}>{o.toCity || '—'}</td>
+                      <td className={`${td} text-slate-700`}>{o.supplierName || '—'}</td>
+                      <td className={`${td} text-slate-700`}>{o.vehiclePlate || '—'}</td>
+                      <td className={td}>
+                        {o.status ? <span className="px-2 py-0.5 rounded-md bg-slate-100 text-slate-700 text-[12px] font-medium">{o.status}</span> : '—'}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </ScrollX>
+          </>
+        )}
+      </section>
 
       {tierRoute && (
         <TierEditor customerId={String(c._id)} route={tierRoute} ar={ar}
           onClose={() => setTierRoute(null)} onSaved={() => { setTierRoute(null); load(); }} />
       )}
 
-      {tab === 'agreed' && (
-        <div className="bg-white border border-slate-200 rounded-2xl shadow-sm overflow-hidden">
-          <div className="flex flex-wrap items-center justify-between gap-2 px-4 py-3 border-b border-slate-100 bg-slate-50/60">
-            <p className="font-extrabold text-slate-900 text-[14.5px] flex items-center gap-1.5">
-              <Route className="w-4 h-4 text-[#f37121]" />
-              {ar ? 'قائمة الأسعار المتّفق عليها' : 'Agreed price list'}
-              <span className="text-[11.5px] font-semibold text-slate-400 tabular-nums">({agreedShown.length})</span>
-            </p>
-            <div className="flex items-center gap-2">
-              <ClearColumnFilters count={acf.count} onClear={acf.clear} ar={ar} />
-              <div className="relative">
-                <Search className="w-3.5 h-3.5 text-slate-400 absolute top-1/2 -translate-y-1/2 start-2.5" />
-                <input value={agreedQ} onChange={(e) => setAgreedQ(e.target.value)} placeholder={ar ? 'بحث…' : 'Search…'}
-                  className="w-44 ps-8 pe-2 py-1.5 rounded-lg border border-slate-200 bg-white text-[12.5px] focus:outline-none focus:border-[#f37121]" />
-              </div>
-              <ExportMenu fileName={`customer-prices-${c.name}`} lang={ar ? 'ar' : 'en'}
-                options={[{ key: 'all', label: scope.all, sheets: [{ name: ar ? 'الأسعار' : 'Prices', rows: c.routes as any[], columns: agreedExportCols }] }]} />
-              {canEditRoutePrices(user) && <PrimaryButton onClick={() => setEditOpen(true)}><Pencil className="w-4 h-4" /> {ar ? 'تعديل الأسعار' : 'Edit prices'}</PrimaryButton>}
-            </div>
-          </div>
-          <ScrollX>
-            <table className="w-full text-[13px]">
-              <thead className="sticky top-0 z-10">
-                <tr className="bg-slate-900 text-slate-300 text-[11.5px]">
-                  {([
-                    ['fromCity', 'من', 'From'], ['toCity', 'إلى', 'To'], ['price', 'السعر', 'Price', true],
-                    ['at', 'تاريخ السعر', 'Price date'], ['source', 'المصدر', 'Source'], ['hits', 'تكرار', 'Seen', true],
-                  ] as [string, string, string, boolean?][]).map(([k, a, e, num]) => (
-                    <th key={k} className={`${th} ${num ? 'text-end' : 'text-start'}`}>
-                      <span className="inline-flex items-center gap-1">{ar ? a : e}{acf.header(k, agreedSearched, agetters[k], ar)}</span>
-                    </th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-100">
-                {agreedShown.map((r: AgreedRoute, i: number) => (
-                  <tr key={r._id || `${r.fromCity}|${r.toCity}|${i}`} className="hover:bg-slate-50">
-                    <td className="px-3 py-2 whitespace-nowrap font-semibold text-slate-900">{r.fromCity || '—'}</td>
-                    <td className="px-3 py-2 whitespace-nowrap font-semibold text-slate-900">{r.toCity || '—'}</td>
-                    <td className="px-3 py-2 whitespace-nowrap text-end tabular-nums">
-                      {r.price == null ? <span className="text-amber-600 font-semibold">{ar ? 'بلا سعر' : 'no price'}</span> : fmtNum(r.price)}
-                    </td>
-                    <td className="px-3 py-2 whitespace-nowrap text-slate-600">{fmtDay(r.at)}</td>
-                    <td className="px-3 py-2 whitespace-nowrap text-slate-500">{priceSourceLabel(r.source, ar) || '—'}</td>
-                    <td className="px-3 py-2 whitespace-nowrap text-end tabular-nums text-slate-500">{r.hits || 1}</td>
-                  </tr>
-                ))}
-                {!agreedShown.length && <tr><td colSpan={6} className="px-3 py-10 text-center text-slate-400">{ar ? 'لا أسعار متّفق عليها بعد.' : 'No agreed prices yet.'}</td></tr>}
-              </tbody>
-            </table>
-          </ScrollX>
-        </div>
-      )}
-
-      {tab === 'sheets' && (
-        <div className="bg-white border border-slate-200 rounded-2xl shadow-sm overflow-hidden">
-          <div className="flex flex-wrap items-center justify-between gap-2 px-4 py-3 border-b border-slate-100 bg-slate-50/60">
-            <p className="font-extrabold text-slate-900 text-[14.5px]">
-              {ar ? 'الرحلات' : 'Trips'}
-              <span className="ms-2 text-[11.5px] font-semibold text-slate-400 tabular-nums">({data.sheets.total.toLocaleString('en-US')})</span>
-            </p>
-            <div className="flex items-center gap-2">
-              <ClearColumnFilters count={Object.keys(tripCf).length} onClear={() => setTripCf({})} ar={ar} />
-              <ExportMenu fileName={`customer-trips-${c.name}`} lang={ar ? 'ar' : 'en'}
-                options={[{ key: 'page', label: scope.page, sheets: [{ name: ar ? 'الرحلات' : 'Trips', rows: data.sheets.rows, columns: sheetExportCols }] }]} />
-            </div>
-          </div>
-          <ScrollX>
-            <table className="w-full text-[13px]">
-              <thead className="sticky top-0 z-10">
-                <tr className="bg-slate-900 text-slate-300 text-[11.5px]">
-                  {sheetCols.map((col) => (
-                    <th key={col.key} className={`${th} ${col.num ? 'text-end' : 'text-start'}`}>
-                      <span className="inline-flex items-center gap-1">
-                        {ar ? col.ar : col.en}
-                        {/* Server-side values: the table is paginated, so the loaded page holds only some of them. */}
-                        {col.filter && (
-                          <ColumnFilter field={col.key} selected={tripCf[col.key] || new Set()}
-                            onChange={(set) => setTripFilter(col.key, set)}
-                            onOpen={() => fetchCfOpts(col.key)}
-                            options={cfOpts[col.key]?.values || []} truncated={!!cfOpts[col.key]?.truncated}
-                            loading={!!cfBusy[col.key]} onQuery={(q) => fetchCfOpts(col.key, q)}
-                            lang={ar ? 'ar' : 'en'} />
-                        )}
-                      </span>
-                    </th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-100">
-                {data.sheets.rows.map((s: any) => (
-                  <tr key={s._id} className="hover:bg-slate-50">
-                    {sheetCols.map((col) => (
-                      <td key={col.key} className={`px-3 py-2 whitespace-nowrap ${col.num ? 'text-end tabular-nums' : 'text-slate-700'}`}>
-                        {col.date ? fmtDay(s[col.key]) : col.num ? fmtNum(s[col.key]) : (s[col.key] || '—')}
-                      </td>
-                    ))}
-                  </tr>
-                ))}
-                {!data.sheets.rows.length && <tr><td colSpan={sheetCols.length} className="px-3 py-10 text-center text-slate-400">{ar ? 'لا رحلات.' : 'No trips.'}</td></tr>}
-              </tbody>
-            </table>
-          </ScrollX>
-          <div className="flex items-center justify-end gap-2 px-4 py-2.5 border-t border-slate-100 bg-slate-50/60 text-[12.5px]">
-            <button type="button" disabled={data.sheets.page <= 1} onClick={() => setPage((p) => Math.max(1, p - 1))}
-              className="p-1.5 rounded-lg border border-slate-200 bg-white text-slate-600 disabled:opacity-30 hover:text-[#f37121]">
-              {isRTL ? <ChevronRight className="w-4 h-4" /> : <ChevronLeft className="w-4 h-4" />}
-            </button>
-            <span className="text-slate-600 tabular-nums">{ar ? `صفحة ${data.sheets.page} من ${data.sheets.pages}` : `Page ${data.sheets.page} of ${data.sheets.pages}`}</span>
-            <button type="button" disabled={data.sheets.page >= data.sheets.pages} onClick={() => setPage((p) => p + 1)}
-              className="p-1.5 rounded-lg border border-slate-200 bg-white text-slate-600 disabled:opacity-30 hover:text-[#f37121]">
-              {isRTL ? <ChevronLeft className="w-4 h-4" /> : <ChevronRight className="w-4 h-4" />}
-            </button>
-          </div>
-        </div>
-      )}
-
-      {tab === 'orders' && (
-        <div className="bg-white border border-slate-200 rounded-2xl shadow-sm overflow-hidden">
-          {ocf.count > 0 && (
-            <div className="flex justify-end px-4 py-2 border-b border-slate-100 bg-slate-50/60">
-              <ClearColumnFilters count={ocf.count} onClear={ocf.clear} ar={ar} />
-            </div>
-          )}
-          <ScrollX>
-            <table className="w-full text-[13px]">
-              <thead>
-                <tr className="bg-slate-900 text-slate-300 text-[11.5px]">
-                  {([
-                    ['number', 'الرقم', 'Number'], ['createdAt', 'التاريخ', 'Date'], ['fromCity', 'من', 'From'], ['toCity', 'إلى', 'To'],
-                    ['supplierName', 'المورد', 'Supplier'], ['vehiclePlate', 'المركبة', 'Vehicle'], ['status', 'الحالة', 'Status'],
-                  ] as [string, string, string][]).map(([k, a, e]) => (
-                    <th key={k} className={`${th} text-start`}>
-                      <span className="inline-flex items-center gap-1">{ar ? a : e}{ocf.header(k, data.orders, ogetters[k], ar)}</span>
-                    </th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-100">
-                {!ordersShown.length && <tr><td colSpan={7} className="px-3 py-10 text-center text-slate-400">{ar ? 'لا طلبات.' : 'No orders.'}</td></tr>}
-                {ordersShown.map((o: any) => (
-                  <tr key={o._id} className="hover:bg-slate-50">
-                    <td className="px-3 py-2 whitespace-nowrap font-semibold text-slate-900">{o.orderNumber || o.waybillNumber || '—'}</td>
-                    <td className="px-3 py-2 whitespace-nowrap text-slate-600">{fmtDay(o.createdAt)}</td>
-                    <td className="px-3 py-2 whitespace-nowrap text-slate-700">{o.fromCity || '—'}</td>
-                    <td className="px-3 py-2 whitespace-nowrap text-slate-700">{o.toCity || '—'}</td>
-                    <td className="px-3 py-2 whitespace-nowrap text-slate-700">{o.supplierName || '—'}</td>
-                    <td className="px-3 py-2 whitespace-nowrap text-slate-700">{o.vehiclePlate || '—'}</td>
-                    <td className="px-3 py-2 whitespace-nowrap text-slate-700">{o.status || '—'}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </ScrollX>
-        </div>
-      )}
-
-      {c.notes && (
-        <div className="bg-white border border-slate-200 rounded-2xl shadow-sm p-4">
-          <p className="text-xs font-semibold text-slate-500 mb-1">{ar ? 'ملاحظات' : 'Notes'}</p>
-          <p className="text-sm text-slate-700 whitespace-pre-wrap">{c.notes}</p>
-        </div>
-      )}
-
       <Modal open={portalOpen} onClose={() => setPortalOpen(false)} title={`${ar ? 'حساب البوابة' : 'Portal login'} — ${c.name}`}>
         <PortalAccountCard source="shipment_order_customer" refId={c._id} name={c.name} />
       </Modal>
-
-      <CustomerEditDialog open={editOpen} customer={c} lang={lang as Lang} canEditPrices={canEditRoutePrices(user)}
-        onClose={() => setEditOpen(false)}
-        onSaved={() => { notify(ar ? 'تم الحفظ' : 'Saved', 'success'); load(); }} />
     </div>
   );
 }

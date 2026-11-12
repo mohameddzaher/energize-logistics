@@ -29,8 +29,8 @@ Future<bool> revokeVehicleAuthorization(BuildContext context, Map v, {String? en
     builder: (c) => AlertDialog(
       title: Text(tr('إلغاء التفويض', 'Cancel authorisation')),
       content: Text(tr(
-        'سيُلغى تفويضُ ${who.isNotEmpty ? '«$who»' : 'المفوَّض'} على المركبة $plate: يزول اسمُ المفوَّض ورقمُ التفويض وتاريخُه من سجلّ المركبات ومن ملفّ الموظّف ومن النقل الخفيف. المركبة تبقى في السجلّ.',
-        'The authorisation of ${who.isNotEmpty ? '"$who"' : 'the holder'} on $plate will be cancelled everywhere. The vehicle stays.')),
+        'سيُلغى تفويضُ ${who.isNotEmpty ? '«$who»' : 'المفوَّض'} على المركبة $plate: يزول اسمُ المفوَّض ورقمُ التفويض وتاريخُه من سجلّ المركبات ومن ملفّ الموظّف ومن النقل الخفيف، ويُفكّ مندوبُ النقل الخفيف المسنَد عليها ويُنهى أمرُ تشغيله الجاري. المركبة تبقى في السجلّ.',
+        'The authorisation of ${who.isNotEmpty ? '"$who"' : 'the holder'} on $plate will be cancelled everywhere and its rider released. The vehicle stays.')),
       actions: [
         TextButton(onPressed: () => Navigator.pop(c, false), child: Text(tr('رجوع', 'Back'))),
         FilledButton(style: FilledButton.styleFrom(backgroundColor: T.danger), onPressed: () => Navigator.pop(c, true), child: Text(tr('إلغاء التفويض', 'Cancel authorisation'))),

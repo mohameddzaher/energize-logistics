@@ -83,7 +83,8 @@ const check = (name, ok, extra = '') => { if (ok) pass++; else fail++; console.l
   check('employee vehicles tab empty', cur.length === 0);
   const ord = await LightTransportOrder.findById(order._id).lean();
   check('LT running order auth number/dates cleared', !ord.authorizationNumber && !ord.authorizationStart && !ord.authorizationEnd && !ord.authorizationMoved);
-  check('LT rider assignment untouched by revoke', String((await LightTransportEmployee.findById(ltRow._id).lean()).vehicle) === String(vA._id));
+  { const lr = await LightTransportEmployee.findById(ltRow._id).lean(); check('LT rider released by revoke (owner, 2026-11-12)', !lr.vehicle && !lr.vehiclePlate); }
+  check('LT running order ended by revoke', (await LightTransportOrder.findById(order._id).lean()).status === 'ended');
   const ltList = await call(lt.listVehicles, req({ ...b2cUser }, {}, {}, {}));
   const ltRowA = (ltList.body.vehicles || []).find((x) => String(x._id) === String(vA._id));
   check('B2C vehicle list shows no authorization', ltRowA && !ltRowA.authorizedName && !ltRowA.authNumber && !ltRowA.authStart, ltList.status);
@@ -101,7 +102,7 @@ const check = (name, ok, extra = '') => { if (ok) pass++; else fail++; console.l
   vaDoc = await VehicleMaster.findById(vA._id).lean();
   check('B2C revoke cleared the paper', !vaDoc.authorizedPerson.name && !vaDoc.authorizedPerson.authorizationNumber);
   check('B2C revoke closed HR assignment', (await VehicleAuthorization.countDocuments({ employee: emp._id, status: 'active' })) === 0);
-  check('B2C revoke cleared LT order number', !(await LightTransportOrder.findById(order._id).lean()).authorizationNumber);
+  { const o = await LightTransportOrder.findById(order._id).lean(); check('B2C revoke: no running order keeps the number', o.status === 'ended' || !o.authorizationNumber); }
   check('B2C revoke emitted vreg+lt+hr', ['vreg:updated', 'lt:updated', 'hr:employee'].every((e) => events.includes(e)));
   r = await call(lt.revokeVehicleAuthorization, req(b2cUser, { id: String(vA._id) }, {}));
   check('second revoke answers 400 (nothing to cancel)', r.status === 400, r.body.message);
@@ -146,7 +147,7 @@ const check = (name, ok, extra = '') => { if (ok) pass++; else fail++; console.l
   check('report source still exports', !!rs);
   const ltAfter = await LightTransportEmployee.findById(ltRow._id).lean();
   check('rider released from the vehicle', !ltAfter.vehicle && !ltAfter.vehiclePlate);
-  check('rider history records the end', (ltAfter.history || []).some((h) => /انتهت خدمة المركبة/.test(h.note || '')));
+  check('rider history records the release', (ltAfter.history || []).some((h) => /انتهت خدمة المركبة|أُلغي التفويض/.test(h.note || '')));
   check('running LT order ended', (await LightTransportOrder.findById(order._id).lean()).status === 'ended');
   const legacy = await Vehicle.find({ master: vA._id }).lean();
   check('legacy mirror out of service', legacy.length && legacy.every((x) => x.status === 'out_of_service'), legacy.map((x) => x.status).join(','));

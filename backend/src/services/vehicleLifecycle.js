@@ -38,6 +38,26 @@ async function loadVehicle(vmOrId, { withArchived = false } = {}) {
  * Cancels the vehicle's authorization everywhere at once.
  * @param ctx { user, reason, source, ip }
  */
+/** Frees the vehicle's B2C rider(s) and ends their running orders; used by revoke and end-service. */
+async function releaseRiders(vm, note, date, ctx = {}) {
+  const { LightTransportEmployee, LightTransportOrder } = Models();
+  const by = ctx.user?._id || null;
+  const byName = nameOf(ctx.user);
+  const riders = await LightTransportEmployee.find({ vehicle: vm._id });
+  for (const l of riders) {
+    l.history.push({ kind: 'vehicle', by, byName, fromValue: S(l.vehiclePlate), toValue: '', note });
+    l.vehicle = null;
+    l.vehiclePlate = '';
+    if (l.vehicleHold?.at) l.vehicleHold = { at: null, reason: '' };
+    await l.save(); // eslint-disable-line no-await-in-loop
+  }
+  const orders = await LightTransportOrder.updateMany(
+    { vehicle: vm._id, status: { $in: ['active', 'hold'] } },
+    { $set: { status: 'ended', endDate: date, endReasonAr: note } },
+  );
+  return { riders, endedOrders: orders.modifiedCount || 0 };
+}
+
 async function revokeAuthorization(vmOrId, ctx = {}) {
   const { LightTransportOrder } = Models();
   const vm = await loadVehicle(vmOrId);
@@ -62,9 +82,12 @@ async function revokeAuthorization(vmOrId, ctx = {}) {
     { $set: { authorizationMoved: false, authorizationNumber: '', authorizationStart: null, authorizationEnd: null } },
   );
 
+  // Owner, 2026-11-12: a revoked vehicle is not ridden either; its rider is released and his running order ended.
+  const released = await releaseRiders(vm, `أُلغي التفويض${reason ? ` — ${reason}` : ''}`, new Date(), ctx);
+
   await logAudit({
     user: ctx.user, action: 'revoke_vehicle_authorization', entity: 'VehicleMaster', entityId: vm._id,
-    changes: { after: { plateNumber: vm.plateNumber, previousHolder: holder?.name || '', previousIdNumber: holder?.idNumber || '', authorizationNumber: holder?.authorizationNumber || '', closedAssignments: r.closed, clearedOrders: orders.modifiedCount || 0, reason, source } },
+    changes: { after: { plateNumber: vm.plateNumber, previousHolder: holder?.name || '', previousIdNumber: holder?.idNumber || '', authorizationNumber: holder?.authorizationNumber || '', closedAssignments: r.closed, clearedOrders: orders.modifiedCount || 0, releasedRiders: released.riders.length, endedOrders: released.endedOrders, reason, source } },
     ipAddress: ctx.ip,
   });
   // setHolder already announced; the order change above needs its own clear-then-emit.
@@ -79,6 +102,7 @@ async function revokeAuthorization(vmOrId, ctx = {}) {
       : `أُلغي التفويض عن ${vm.plateNumber}${who ? ` (${who})` : ''}.`,
     closedAssignments: r.closed,
     clearedOrders: orders.modifiedCount || 0,
+    releasedRiders: released.riders.length,
     vehicle: vm,
   };
 }
@@ -88,7 +112,7 @@ async function revokeAuthorization(vmOrId, ctx = {}) {
  * @param body { reason, date }
  */
 async function endService(vmOrId, body = {}, ctx = {}) {
-  const { LightTransportEmployee, LightTransportOrder, Vehicle } = Models();
+  const { Vehicle } = Models();
   const vm = await loadVehicle(vmOrId, { withArchived: true });
   if (vm.archived) throw fail(409, `المركبة ${vm.plateNumber} في الأرشيف بالفعل`, { code: 'ALREADY_ARCHIVED' });
   const holder = VA.holderOf(vm);
@@ -106,18 +130,8 @@ async function endService(vmOrId, body = {}, ctx = {}) {
   const note = `انتهت خدمة المركبة — ${reason}`;
 
   // Its rider is released and his running order closed: a vehicle that is no longer ours cannot be ridden in the section.
-  const riders = await LightTransportEmployee.find({ vehicle: vm._id });
-  for (const l of riders) {
-    l.history.push({ kind: 'vehicle', by, byName, fromValue: S(l.vehiclePlate), toValue: '', note });
-    l.vehicle = null;
-    l.vehiclePlate = '';
-    if (l.vehicleHold?.at) l.vehicleHold = { at: null, reason: '' };
-    await l.save(); // eslint-disable-line no-await-in-loop
-  }
-  const orders = await LightTransportOrder.updateMany(
-    { vehicle: vm._id, status: { $in: ['active', 'hold'] } },
-    { $set: { status: 'ended', endDate: date, endReasonAr: note } },
-  );
+  const { riders, endedOrders } = await releaseRiders(vm, note, date, ctx);
+  const orders = { modifiedCount: endedOrders };
   // The legacy register mirror stops counting it as available.
   const legacy = await VA.legacyVehiclesOf(vm);
   if (legacy.length) await Vehicle.updateMany({ _id: { $in: legacy.map((x) => x._id) } }, { $set: { status: 'out_of_service' } });

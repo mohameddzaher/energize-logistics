@@ -122,8 +122,8 @@ export function useVehicleLifecycle({ ar, onChanged, revokeEndpoint, source }: {
       tone: 'danger',
       confirmLabel: t('إلغاء التفويض', 'Cancel authorisation'),
       message: t(
-        `سيُلغى تفويضُ ${who ? `«${who}»` : 'المفوَّض'} على المركبة ${v.plateNumber}: يزول اسمُ المفوَّض ورقمُ التفويض وتاريخُه من سجلّ المركبات ومن ملفّ الموظّف ومن النقل الخفيف. المركبة تبقى في السجلّ.`,
-        `The authorisation of ${who ? `"${who}"` : 'the holder'} on ${v.plateNumber} will be cancelled: the holder, number and dates go from the registry, the employee file and light transport. The vehicle stays.`),
+        `سيُلغى تفويضُ ${who ? `«${who}»` : 'المفوَّض'} على المركبة ${v.plateNumber}: يزول اسمُ المفوَّض ورقمُ التفويض وتاريخُه من سجلّ المركبات ومن ملفّ الموظّف ومن النقل الخفيف، ويُفكّ مندوبُ النقل الخفيف المسنَد عليها ويُنهى أمرُ تشغيله الجاري. المركبة تبقى في السجلّ.`,
+        `The authorisation of ${who ? `"${who}"` : 'the holder'} on ${v.plateNumber} will be cancelled: the holder, number and dates go from the registry, the employee file and light transport; its light-transport rider is released and his running order ended. The vehicle stays.`),
     }))) return false;
     try {
       const url = revokeEndpoint ? revokeEndpoint(v._id) : `/api/vehicle-registry/${v._id}/authorization`;

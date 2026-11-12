@@ -319,7 +319,20 @@ export default function Ls2FleetAssetsPage() {
     return ar ? v[0] : v[1];
   }, [ar]);
   const fTires = useMemo(() => tires.filter((ti) => matchesTireFilter(ti) && (!q || [ti.serial, ti.tireNumber, ti.type, ti.size, ti.condition, ti.plate, vehicleOf(ti)?.plate, ti.trailerNumber, ti.section, ti.positionLabel, ti.status].some((x) => norm(x).includes(norm(q))))), [tires, q, matchesTireFilter, vehicleOf]);
-  const fEvents = useMemo(() => !q ? events : events.filter((e) => [e.label, e.fromPlate, e.toPlate, e.placeBeforeAr, e.placeAfterAr, e.reason, e.action, e.performedByName].some((x) => norm(x).includes(norm(q)))), [events, q]);
+  // History filters: asset kind, movement, plate and operation-day range (Riyadh). The table and the Excel export both read this list.
+  const [hf, setHf] = useState({ entity: '', action: '', plate: '', from: '', to: '' });
+  const [hShown, setHShown] = useState(300);
+  const dayOf = (d: any) => (d ? new Date(d).toLocaleDateString('en-CA', { timeZone: 'Asia/Riyadh' }) : '');
+  const fEvents = useMemo(() => events.filter((e) => {
+    if (hf.entity && e.entityType !== hf.entity) return false;
+    if (hf.action && e.action !== hf.action) return false;
+    if (hf.plate && ![e.fromPlate, e.toPlate, e.label].some((x) => norm(x).includes(norm(hf.plate)))) return false;
+    const d = dayOf(e.date || e.createdAt);
+    if (hf.from && (!d || d < hf.from)) return false;
+    if (hf.to && (!d || d > hf.to)) return false;
+    return !q || [e.label, e.fromPlate, e.toPlate, e.placeBeforeAr, e.placeAfterAr, e.reason, e.action, e.performedByName].some((x) => norm(x).includes(norm(q)));
+  }), [events, q, hf]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => { setHShown(300); }, [q, hf]);
   const fSensors = useMemo(() => !q ? sensorRows : sensorRows.filter((r) => [r.plate, r.driver].some((x) => norm(x).includes(norm(q)))), [sensorRows, q]);
 
   // ---- Export columns --------------------------------------------------------
@@ -863,6 +876,37 @@ export default function Ls2FleetAssetsPage() {
 
       {/* ---- History --------------------------------------------------------- */}
       {tab === 'history' && (
+        <div className="mb-3 flex flex-wrap items-end gap-2 rounded-xl border border-slate-200 bg-white p-3 shadow-sm">
+          <label className="text-[12px] font-semibold text-slate-600">{ar ? 'الأصل' : 'Asset'}
+            <select value={hf.entity} onChange={(e) => setHf({ ...hf, entity: e.target.value })} className="mt-1 block rounded-lg border border-slate-300 bg-white px-2 py-1.5 text-[13px]">
+              <option value="">{ar ? 'الكل' : 'All'}</option>
+              {Object.entries(ENTITY_LABELS).map(([k, v]) => <option key={k} value={k}>{ar ? v.ar : v.en}</option>)}
+            </select>
+          </label>
+          <label className="text-[12px] font-semibold text-slate-600">{ar ? 'الحركة' : 'Movement'}
+            <select value={hf.action} onChange={(e) => setHf({ ...hf, action: e.target.value })} className="mt-1 block rounded-lg border border-slate-300 bg-white px-2 py-1.5 text-[13px]">
+              <option value="">{ar ? 'الكل' : 'All'}</option>
+              {Object.entries(ACTION_LABELS).map(([k, v]) => <option key={k} value={k}>{ar ? v.ar : v.en}</option>)}
+            </select>
+          </label>
+          <label className="text-[12px] font-semibold text-slate-600">{ar ? 'اللوحة' : 'Plate'}
+            <input value={hf.plate} onChange={(e) => setHf({ ...hf, plate: e.target.value })} placeholder={ar ? 'رقم اللوحة' : 'Plate no.'} className="mt-1 block w-32 rounded-lg border border-slate-300 px-2 py-1.5 text-[13px]" />
+          </label>
+          <label className="text-[12px] font-semibold text-slate-600">{ar ? 'من تاريخ' : 'From'}
+            <input type="date" value={hf.from} onChange={(e) => setHf({ ...hf, from: e.target.value })} className="mt-1 block rounded-lg border border-slate-300 px-2 py-1.5 text-[13px]" />
+          </label>
+          <label className="text-[12px] font-semibold text-slate-600">{ar ? 'إلى تاريخ' : 'To'}
+            <input type="date" value={hf.to} onChange={(e) => setHf({ ...hf, to: e.target.value })} className="mt-1 block rounded-lg border border-slate-300 px-2 py-1.5 text-[13px]" />
+          </label>
+          {(hf.entity || hf.action || hf.plate || hf.from || hf.to) && (
+            <button type="button" onClick={() => setHf({ entity: '', action: '', plate: '', from: '', to: '' })} className="rounded-lg bg-slate-100 px-3 py-1.5 text-[13px] font-semibold text-slate-600 hover:bg-slate-200">{ar ? 'مسح الفلاتر' : 'Clear'}</button>
+          )}
+          <span className="ms-auto text-[13px] font-bold text-slate-700 tabular-nums">
+            {ar ? `${fEvents.length.toLocaleString('en-US')} حركة — والتصدير يشمل كل المعروض بالفلتر` : `${fEvents.length.toLocaleString('en-US')} movements — export includes all filtered`}
+          </span>
+        </div>
+      )}
+      {tab === 'history' && (
         <div className="bg-white border border-slate-200 rounded-xl overflow-hidden shadow-sm">
           <ScrollX>
             <table className="w-full text-sm">
@@ -879,7 +923,7 @@ export default function Ls2FleetAssetsPage() {
                 </tr>
               </thead>
               <tbody>
-                {fEvents.slice(0, 500).map((e) => {
+                {fEvents.slice(0, hShown).map((e) => {
                   const act = ACTION_LABELS[e.action] || ACTION_LABELS.updated;
                   const ent = ENTITY_LABELS[e.entityType] || { en: e.entityType, ar: e.entityType };
                   return (
@@ -898,6 +942,13 @@ export default function Ls2FleetAssetsPage() {
                 {fEvents.length === 0 && <tr><td colSpan={8} className="text-center text-slate-400 py-10">{ar ? 'لا توجد حركات بعد' : 'No movements yet'}</td></tr>}
               </tbody>
             </table>
+            {fEvents.length > hShown && (
+              <div className="flex items-center justify-center gap-3 border-t border-slate-100 py-3 text-[13px]">
+                <span className="text-slate-500">{ar ? `معروض ${hShown.toLocaleString('en-US')} من ${fEvents.length.toLocaleString('en-US')}` : `Showing ${hShown} of ${fEvents.length}`}</span>
+                <button type="button" onClick={() => setHShown((n) => n + 500)} className="rounded-lg bg-slate-900 px-3 py-1.5 font-semibold text-white">{ar ? 'عرض المزيد' : 'Show more'}</button>
+                <button type="button" onClick={() => setHShown(fEvents.length)} className="rounded-lg bg-slate-100 px-3 py-1.5 font-semibold text-slate-700">{ar ? 'عرض الكل' : 'Show all'}</button>
+              </div>
+            )}
           </ScrollX>
         </div>
       )}

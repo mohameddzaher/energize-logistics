@@ -806,7 +806,12 @@ export default function CustomsDetailPage() {
           {/* Free days and return deadline are one fact: typing either fills the other from the unloading date (services/customsDeadlines). */}
           {cargo !== 'vehicles' && (
             <div>
-              <FieldInput label={ar ? 'أيّام السماح للإرجاع' : 'Return free days'} type="number" value={Number(c.returnFreeDays) > 0 ? c.returnFreeDays : ''} onSave={(v) => patch({ returnFreeDays: Number(v) || 0 })} disabled={!canEdit} />
+              <FieldInput label={ar ? 'أيّام السماح للإرجاع' : 'Return free days'} type="number" value={Number(c.returnFreeDays) > 0 ? c.returnFreeDays : (() => {
+                // An older transaction with both dates but no stored days shows the gap; saving anything stores it.
+                const u = String(c.unloadingAppointment || '').slice(0, 10); const d = String(c.returnDeadline || '').slice(0, 10);
+                const n = /^\d{4}-\d{2}-\d{2}$/.test(u) && /^\d{4}-\d{2}-\d{2}$/.test(d) ? Math.round((Date.parse(d) - Date.parse(u)) / 86400000) : -1;
+                return n >= 0 ? n : '';
+              })()} onSave={(v) => patch({ returnFreeDays: Number(v) || 0 })} disabled={!canEdit} />
               <p className="mt-1 text-[11.5px] text-slate-500">{ar ? 'من وكيل الشحن — تكتبها فيُحسب آخر موعد إرجاع من موعد التفريغ.' : 'From the shipping agent; the return deadline is computed from unloading.'}</p>
             </div>
           )}

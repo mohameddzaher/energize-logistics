@@ -290,7 +290,7 @@ export default function CustomsPage() {
     period: (c) => (c.periodMonth ? `${MONTH_LABELS[c.periodMonth - 1][ar ? 0 : 1]} ${c.periodYear || ''}`.trim() : (c.periodYear || '')),
     units: (c) => `${c.cargoType === 'vehicles' ? (ar ? 'سيّارات' : 'Vehicles') : (ar ? 'حاويات' : 'Containers')} · ${c.containerCount || 0}`,
     ret: (c) => RETURN_LABEL[returnState(c)][ar ? 0 : 1],
-    invoice: (c) => (c.awaitingTransportInvoice ? (ar ? 'بانتظار فاتورة النقل' : 'Awaiting transport invoice') : invoiceState(c).text || (ar ? 'غير مفوترة' : 'Not invoiced')),
+    invoice: (c) => (c.awaitingTransportInvoice ? `${c.saleInvoiceNumber ? (ar ? 'مفوترة' : 'Invoiced') : (ar ? 'طلب فوترة عند المالية' : 'Requested')} — ${ar ? 'بانتظار فاتورة النقل' : 'awaiting transport invoice'}` : invoiceState(c).text || (ar ? 'غير مفوترة' : 'Not invoiced')),
     stage: (c) => stageText(c),
   };
   const shownRows = cf.apply(filtered, colGetters);
@@ -544,8 +544,11 @@ export default function CustomsPage() {
                     {c.awaitingTransportInvoice
                       ? (
                         <span className="inline-flex flex-col items-start gap-0.5">
+                          {/* Its real billing state first, then the missing transport invoice. */}
+                          {c.saleInvoiceNumber
+                            ? <span className="px-2 py-1 rounded-full text-xs font-medium bg-green-500/20 text-green-700 whitespace-nowrap">{ar ? 'مفوترة' : 'Invoiced'} · <bdi>{c.saleInvoiceNumber}</bdi></span>
+                            : <span className="px-2 py-1 rounded-full text-xs font-medium bg-amber-100 text-amber-800 whitespace-nowrap">{ar ? 'طلب فوترة عند المالية' : 'Requested from Finance'}</span>}
                           <span className="px-2 py-1 rounded-full text-xs font-bold bg-red-600 text-white whitespace-nowrap">{ar ? 'بانتظار فاتورة النقل' : 'Awaiting transport invoice'}</span>
-                          <span className="text-[11px] text-slate-500 whitespace-nowrap">{ar ? 'مفوترة' : 'Invoiced'} · <bdi>{c.saleInvoiceNumber}</bdi></span>
                         </span>
                       )
                       : invoiceState(c).text

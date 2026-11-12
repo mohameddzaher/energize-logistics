@@ -30,10 +30,20 @@ function applyDerivedDates(doc, prev = {}) {
     // Containers: +3 days. Vehicles: their own day count (default 15), editable on the transaction.
     const days = vehicles ? (Number(get('demurrageDays')) > 0 ? Number(get('demurrageDays')) : VEHICLE_FLOOR_DAYS) : CONTAINER_FLOOR_DAYS;
     doc.demurrageStartDate = addDays(unloading, days);
-    const free = Number(get('returnFreeDays')) || 0;
-    const curRet = ymdOf(get('returnDeadline'));
-    const prevRet = free > 0 ? addDays(ymdOf(prev.unloadingAppointment), free) : '';
-    if (!vehicles && free > 0 && (!curRet || (prevRet && curRet === prevRet && doc.returnDeadline === undefined))) doc.returnDeadline = addDays(unloading, free);
+    // Container return: free days and deadline are one fact. Typed days set the date; a typed date sets the days.
+    if (!vehicles) {
+      const typedFree = doc.returnFreeDays !== undefined && Number(doc.returnFreeDays) > 0 ? Math.round(Number(doc.returnFreeDays)) : 0;
+      const typedDate = doc.returnDeadline !== undefined ? ymdOf(doc.returnDeadline) : '';
+      const daysTo = (d) => Math.round((new Date(`${d}T12:00:00Z`) - new Date(`${unloading}T12:00:00Z`)) / DAY_MS);
+      if (typedFree) doc.returnDeadline = addDays(unloading, typedFree);
+      else if (typedDate) { const n = daysTo(typedDate); if (n >= 0) doc.returnFreeDays = n; }
+      else {
+        const free = Number(get('returnFreeDays')) || 0;
+        const cur = ymdOf(get('returnDeadline'));
+        if (free > 0) doc.returnDeadline = addDays(unloading, free);
+        else if (cur && daysTo(cur) >= 0) doc.returnFreeDays = daysTo(cur);
+      }
+    }
   }
   return doc;
 }

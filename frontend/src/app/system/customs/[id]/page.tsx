@@ -803,8 +803,19 @@ export default function CustomsDetailPage() {
           <FieldInput label={ar ? 'موعد التفريغ' : 'Unloading appointment'} type="date" value={c.unloadingAppointment ? String(c.unloadingAppointment).slice(0, 10) : ''} onSave={(v) => patch({ unloadingAppointment: v })} disabled={!canEdit} />
           <FieldInput label={ar ? 'مكان التفريغ' : 'Unloading location'} value={c.unloadingLocation} onSave={(v) => patch({ unloadingLocation: v })} disabled={!canEdit} />
           <FieldInput label={ar ? 'رقم إذن التسليم' : 'DO number'} value={c.doNumber} onSave={(v) => patch({ doNumber: v })} disabled={!canEdit} />
-          <FieldInput label={ar ? 'أيّام السماح للإرجاع' : 'Return free days'} type="number" value={c.returnFreeDays ?? 0} onSave={(v) => patch({ returnFreeDays: Number(v) || 0 })} disabled={!canEdit} />
-          <FieldInput label={ar ? 'آخر موعد إرجاع' : 'Return deadline'} type="date" value={c.returnDeadline} onSave={(v) => patch({ returnDeadline: v })} disabled={!canEdit} />
+          {/* Free days and return deadline are one fact: typing either fills the other from the unloading date (services/customsDeadlines). */}
+          {cargo !== 'vehicles' && (
+            <div>
+              <FieldInput label={ar ? 'أيّام السماح للإرجاع' : 'Return free days'} type="number" value={Number(c.returnFreeDays) > 0 ? c.returnFreeDays : ''} onSave={(v) => patch({ returnFreeDays: Number(v) || 0 })} disabled={!canEdit} />
+              <p className="mt-1 text-[11.5px] text-slate-500">{ar ? 'من وكيل الشحن — تكتبها فيُحسب آخر موعد إرجاع من موعد التفريغ.' : 'From the shipping agent; the return deadline is computed from unloading.'}</p>
+            </div>
+          )}
+          {cargo !== 'vehicles' && (
+            <div>
+              <FieldInput label={ar ? 'آخر موعد إرجاع' : 'Return deadline'} type="date" value={c.returnDeadline} onSave={(v) => patch({ returnDeadline: v })} disabled={!canEdit} />
+              <p className="mt-1 text-[11.5px] text-slate-500">{ar ? 'أو اكتب التاريخ مباشرة، فتُحسب أيّام السماح.' : 'Or type the date, and the free days are computed.'}</p>
+            </div>
+          )}
           {/* Floor date: unloading + 3 days for containers, + the editable free days (default 15) for vehicles; derived by the server. */}
           {cargo === 'vehicles' && (
             <div>

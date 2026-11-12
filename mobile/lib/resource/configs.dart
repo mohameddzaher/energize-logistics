@@ -939,6 +939,9 @@ final customsCfg = ResourceConfig(
     // Vehicles: free days before the floor date (default 15); containers are always 3. The date itself is derived once unloading is set.
     FieldSpec('demurrageDays', 'أيام الأرضيات (للسيّارات)', 'Free days (vehicles)', type: FieldType.number),
     FieldSpec('demurrageStartDate', 'موعد الأرضيات', 'Demurrage date', type: FieldType.date),
+    // Containers: free days and return deadline fill each other from the unloading date (server side).
+    FieldSpec('returnFreeDays', 'أيّام السماح للإرجاع (من وكيل الشحن)', 'Return free days (from the agent)', type: FieldType.number),
+    FieldSpec('returnDeadline', 'آخر موعد إرجاع', 'Return deadline', type: FieldType.date),
     FieldSpec('notes', 'ملاحظات', 'Notes', type: FieldType.textarea),
   ],
 );

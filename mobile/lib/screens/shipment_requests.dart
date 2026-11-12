@@ -1030,7 +1030,8 @@ class _ShipmentRequestsScreenState extends State<ShipmentRequestsScreen> {
             srStatusChip(r['status'], vendors: _work),
           ]),
           const SizedBox(height: 4),
-          Text('${r['fromCity'] ?? '—'} ← ${r['toCity'] ?? '—'} · ${r['truckType'] ?? ''}${'${r['branch'] ?? ''}'.isEmpty ? '' : ' · ${r['branch']}'}', style: const TextStyle(fontSize: 12.5, color: T.inkSoft)),
+          Text('${tr('من', 'From')}: ${r['fromCity'] ?? '—'}   ·   ${tr('إلى', 'To')}: ${r['toCity'] ?? '—'}', style: const TextStyle(fontSize: 12.5, color: T.inkSoft)),
+          Text('${'${r['truckType'] ?? ''}'.isEmpty ? '' : '${r['truckType']} · '}${'${r['branch'] ?? ''}'.isEmpty ? '' : '${r['branch']} · '}${tr('تاريخ الطلب', 'Requested')}: ${_dateOnly(r['createdAt'])}', style: const TextStyle(fontSize: 12, color: T.inkFaint)),
           const SizedBox(height: 4),
           Wrap(spacing: 6, runSpacing: 4, children: [
             Chip2('${tr('الشاحنات', 'Trucks')} $placed/${fmtNum(trucks)}', placed >= trucks ? T.success : T.navy, icon: Icons.local_shipping_outlined),

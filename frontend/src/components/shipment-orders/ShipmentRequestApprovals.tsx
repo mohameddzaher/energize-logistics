@@ -85,7 +85,7 @@ export default function ShipmentRequestApprovals({ canManage }: { canManage: boo
           <table className="w-full text-[12.5px]">
             <thead className="bg-slate-900 text-slate-200">
               <tr>
-                {[t('رقم الطلب', 'Request'), t('المندوب', 'Rep'), t('العميل', 'Customer'), t('المسار', 'Route'), t('الشاحنات', 'Trucks'), t('نوع الشاحنة', 'Truck type'), t('سعر البيع', 'Selling'), t('الدفع', 'Payment'), t('الفرع', 'Branch'), t('التاريخ', 'Date'), tab === 'pending' ? t('إجراءات', 'Actions') : t('القرار', 'Decision')].map((h) => (
+                {[t('رقم الطلب', 'Request'), t('المندوب', 'Rep'), t('العميل', 'Customer'), t('من', 'From'), t('إلى', 'To'), t('الشاحنات', 'Trucks'), t('نوع الشاحنة', 'Truck type'), t('سعر البيع', 'Selling'), t('الدفع', 'Payment'), t('الفرع', 'Branch'), t('تاريخ الطلب', 'Request date'), tab === 'pending' ? t('إجراءات', 'Actions') : t('القرار', 'Decision')].map((h) => (
                   <th key={h} className="whitespace-nowrap px-3 py-2 text-start font-semibold">{h}</th>
                 ))}
               </tr>
@@ -96,13 +96,15 @@ export default function ShipmentRequestApprovals({ canManage }: { canManage: boo
                   <td className="px-3 py-2 font-bold tabular-nums">{r.number}</td>
                   <td className="px-3 py-2 whitespace-nowrap">{r.createdByName}{r.salesRepName && r.salesRepName !== r.createdByName ? ` · ${r.salesRepName}` : ''}</td>
                   <td className="px-3 py-2 whitespace-nowrap">{r.customerName}</td>
-                  <td className="px-3 py-2 whitespace-nowrap">{r.fromCity} ← {r.toCity}</td>
+                  <td className="px-3 py-2 whitespace-nowrap">{r.fromCity || '—'}</td>
+                  <td className="px-3 py-2 whitespace-nowrap">{r.toCity || '—'}</td>
                   <td className="px-3 py-2 tabular-nums text-end">{r.trucks}</td>
                   <td className="px-3 py-2 whitespace-nowrap">{r.truckType || '—'}</td>
                   <td className="px-3 py-2 tabular-nums text-end font-bold text-[#f37121]">{money(r.sellPrice)}</td>
                   <td className="px-3 py-2 whitespace-nowrap">{r.paymentSubtype ? ((PAYMENT_SUBTYPES as any)[r.paymentSubtype]?.[ar ? 'ar' : 'en'] || r.paymentSubtype) : '—'}</td>
                   <td className="px-3 py-2 whitespace-nowrap">{r.branch || '—'}</td>
-                  <td className="px-3 py-2 whitespace-nowrap">{when(r.createdAt)}</td>
+                  {/* The day the request was made, without the time. */}
+                  <td className="px-3 py-2 whitespace-nowrap tabular-nums" dir="ltr">{r.createdAt ? new Date(r.createdAt).toLocaleDateString('en-GB', { timeZone: 'Asia/Riyadh' }) : '—'}</td>
                   <td className="px-3 py-2 whitespace-nowrap">
                     <div className="flex items-center gap-1.5">
                       {tab === 'pending' ? (

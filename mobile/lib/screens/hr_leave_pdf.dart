@@ -7,8 +7,9 @@ import '../services/lang.dart';
 Future<void> downloadLeaveSheet(BuildContext context, String leaveId) async {
   final messenger = ScaffoldMessenger.of(context);
   try {
-    final bytes = await Api.instance.getBytes('/api/hr/leaves/$leaveId/sheet.pdf');
-    await Printing.layoutPdf(onLayout: (_) async => bytes, name: 'leave-$leaveId');
+    // The server names the file: employee three-part name, ID number, leave date.
+    final (bytes, name) = await Api.instance.getBytesNamed('/api/hr/leaves/$leaveId/sheet.pdf');
+    await Printing.layoutPdf(onLayout: (_) async => bytes, name: name.isNotEmpty ? name.replaceAll(RegExp(r'\.pdf$'), '') : 'leave-$leaveId');
   } catch (e) {
     messenger.showSnackBar(SnackBar(content: Text(e is ApiException ? e.message : tr('تعذّر إصدار ورقة الإجازة', 'Could not build the leave sheet'))));
   }

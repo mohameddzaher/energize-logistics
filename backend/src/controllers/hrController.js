@@ -1412,9 +1412,14 @@ exports.getLeaveSheet = async (req, res) => {
       if (byMe || myBox) signedUpTo = i;
     });
     const pdf = await require('../services/leaveSheet').renderLeaveSheet(leave, { fullView: chain.seesProcess(req.user), signedUpTo });
-    const who = (leave.employee?.employeeNumber || String(leave._id)).replace(/[^\w-]/g, '');
+    // File name: employee's three-part name, ID number, leave start date (owner, 2026-11-12).
+    const e = leave.employee || {};
+    const triple = String(e.arabicName || [e.firstName, e.lastName].filter(Boolean).join(' ')).trim().split(/\s+/).slice(0, 3).join(' ');
+    const idNo = (e.idType === 'national_id' ? (e.nationalId || e.iqamaNumber) : (e.iqamaNumber || e.nationalId)) || '';
+    const fileName = [triple || 'leave', idNo, String(leave.startDate || '').slice(0, 10)].filter(Boolean).join(' - ').replace(/[\\/:*?"<>|]/g, '') + '.pdf';
     res.setHeader('Content-Type', 'application/pdf');
-    res.setHeader('Content-Disposition', `inline; filename="leave-${who}-${leave.startDate || ''}.pdf"`);
+    res.setHeader('Content-Disposition', `inline; filename="leave.pdf"; filename*=UTF-8''${encodeURIComponent(fileName)}`);
+    res.setHeader('X-File-Name', encodeURIComponent(fileName));
     res.send(pdf);
   } catch (error) {
     console.error('leave sheet error:', error);

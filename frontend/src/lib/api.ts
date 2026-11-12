@@ -204,6 +204,23 @@ class ApiClient {
     return res.blob();
   }
 
+  /** A file plus the name the server gave it (X-File-Name), for downloads named by the server. */
+  async getBlobNamed(endpoint: string, retried = false): Promise<{ blob: Blob; name: string }> {
+    const res = await fetch(`${this.baseUrl}${endpoint}`, { method: 'GET', credentials: 'include' });
+    if (res.status === 401 && !retried && !endpoint.startsWith('/api/auth/')) {
+      if (await this.refreshToken()) return this.getBlobNamed(endpoint, true);
+      throw new Error('Authentication required');
+    }
+    if (!res.ok) {
+      const msg = await res.json().catch(() => ({ message: 'Request failed' }));
+      throw new Error(msg.message || 'Request failed');
+    }
+    const raw = res.headers.get('X-File-Name') || '';
+    let name = '';
+    try { name = raw ? decodeURIComponent(raw) : ''; } catch { name = ''; }
+    return { blob: await res.blob(), name };
+  }
+
   // Counterpart of getBlob for a request with a body: bulk waybills are requested with a list of ids and return one file.
   async postBlob(endpoint: string, data: unknown, retried = false): Promise<Blob> {
     const res = await fetch(`${this.baseUrl}${endpoint}`, {

@@ -122,6 +122,8 @@ app.use(cors({
     callback(null, isAllowedOrigin(origin));
   },
   credentials: true,
+  // Downloads carry their own file name (e.g. the leave sheet: name, ID, date); the browser hides it unless exposed.
+  exposedHeaders: ['Content-Disposition', 'X-File-Name'],
 }));
 
 

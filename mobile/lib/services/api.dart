@@ -136,6 +136,27 @@ class Api {
     throw ApiException(res.statusCode, 'تعذّر تحميل الملف (${res.statusCode})');
   }
 
+  /// A file plus the name the server gave it (X-File-Name header), for downloads named by the server.
+  Future<(Uint8List, String)> getBytesNamed(String path, {bool retried = false}) async {
+    final uri = Uri.parse('${AppConfig.apiBase}$path');
+    late http.Response res;
+    try {
+      res = await http.get(uri, headers: _headers()).timeout(const Duration(seconds: 40));
+    } on Exception {
+      throw ApiException(0, 'تعذّر تحميل الملف — تأكد من الإنترنت وأعد المحاولة');
+    }
+    if (res.statusCode == 401 && !retried) {
+      if (await _refresh()) return getBytesNamed(path, retried: true);
+      throw ApiException(401, 'انتهت الجلسة — سجّل الدخول من جديد');
+    }
+    if (res.statusCode >= 200 && res.statusCode < 300) {
+      var name = '';
+      try { name = Uri.decodeComponent(res.headers['x-file-name'] ?? ''); } catch (_) {}
+      return (res.bodyBytes, name);
+    }
+    throw ApiException(res.statusCode, 'تعذّر تحميل الملف (${res.statusCode})');
+  }
+
   /// Sends a request that returns a binary file: waybills of several shipments in one file.
   /// The timeout is wider than for ordinary calls: each waybill is a render in a headless browser on the server, so sixty waybills take about forty seconds.
   Future<Uint8List> postBytes(String path, Object body, {bool retried = false}) async {

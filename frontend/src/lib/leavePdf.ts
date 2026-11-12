@@ -2,11 +2,12 @@
 import api from './api';
 
 export async function downloadLeaveSheet(leaveId: string, fileHint = '') {
-  const blob = await api.getBlob(`/api/hr/leaves/${leaveId}/sheet.pdf`);
+  const { blob, name } = await api.getBlobNamed(`/api/hr/leaves/${leaveId}/sheet.pdf`);
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
   a.href = url;
-  a.download = `leave-${(fileHint || leaveId).replace(/\s+/g, '_')}.pdf`;
+  // The server names the file: employee three-part name, ID number, leave date.
+  a.download = name || `leave-${(fileHint || leaveId).replace(/\s+/g, '_')}.pdf`;
   a.click();
   setTimeout(() => URL.revokeObjectURL(url), 4000);
 }
@@ -16,7 +17,7 @@ export async function downloadLeaveSheet(leaveId: string, fileHint = '') {
  * with a download button. Plain DOM so every screen gets it with one call and no state of its own.
  */
 export async function previewLeaveSheet(leaveId: string, ar = true, fileHint = '') {
-  const blob = await api.getBlob(`/api/hr/leaves/${leaveId}/sheet.pdf`);
+  const { blob, name } = await api.getBlobNamed(`/api/hr/leaves/${leaveId}/sheet.pdf`);
   const url = URL.createObjectURL(blob);
   const wrap = document.createElement('div');
   wrap.setAttribute('dir', ar ? 'rtl' : 'ltr');
@@ -30,7 +31,7 @@ export async function previewLeaveSheet(leaveId: string, ar = true, fileHint = '
   title.style.flex = '1';
   const dl = document.createElement('a');
   dl.href = url;
-  dl.download = `leave-${(fileHint || leaveId).replace(/\s+/g, '_')}.pdf`;
+  dl.download = name || `leave-${(fileHint || leaveId).replace(/\s+/g, '_')}.pdf`;
   dl.textContent = ar ? 'تحميل' : 'Download';
   dl.style.cssText = 'background:#f37121;color:#fff;border-radius:8px;padding:6px 14px;text-decoration:none;font-size:13px';
   const close = document.createElement('button');

@@ -5,7 +5,7 @@ export { exportToExcel, fmt };
 
 import { canAccessSection, roleOf, permsOf, type RoleOrUser } from './sections';
 
-export const HR_STAFF_ROLES = ['super_admin', 'admin', 'it_manager', 'it_specialist', 'hr_manager', 'hr_specialist'];
+export const HR_STAFF_ROLES = ['super_admin', 'admin', 'it_manager', 'it_team_leader', 'it_specialist', 'hr_manager', 'hr_team_leader', 'hr_specialist'];
 // Staff by role OR by a grant from the permissions matrix — the backend and the
 // sidebar both honour the grant, so a page gating on the role list alone shows
 // a granted user the nav link and then a dead "not authorized" screen. Pass the
@@ -16,9 +16,9 @@ export const isHRStaff = (u: RoleOrUser) => HR_STAFF_ROLES.includes(roleOf(u)) |
 // and approving their team's leave when they manage others). Everyone with a
 // login except external clients.
 export const HR_SELF_SERVICE_ROLES = [
-  'super_admin', 'admin', 'it_manager', 'it_specialist', 'employee', 'operations_manager', 'operations_team_leader', 'operations_staff', 'moderator',
-  'workshop_manager', 'workshop_employee', 'procurement_staff', 'b2c_manager', 'b2c_deputy', 'b2c_project_lead', 'b2c_rep_supervisor', 'b2c_inspection_supervisor',
-  'hr_manager', 'hr_specialist', 'remote_employee', 'remote_manager',
+  'super_admin', 'admin', 'it_manager', 'it_team_leader', 'it_specialist', 'employee', 'operations_manager', 'operations_team_leader', 'operations_staff', 'moderator',
+  'workshop_manager', 'workshop_employee', 'procurement_staff', 'b2c_manager', 'b2c_team_leader', 'b2c_deputy', 'b2c_project_lead', 'b2c_rep_supervisor', 'b2c_inspection_supervisor',
+  'hr_manager', 'hr_team_leader', 'hr_specialist', 'remote_employee', 'remote_manager', 'remote_team_leader',
 ];
 
 export type Lang = 'en' | 'ar';
@@ -427,7 +427,7 @@ export const expiryBadge = (v?: string | null, lang: Lang = 'en') => {
  * Everyone else, the employee first, sees a request as under review until it is decided or returned with a question.
  */
 export const seesLeaveProcess = (user: any) => !!user
-  && (['super_admin', 'admin', 'it_manager', 'it_specialist', 'hr_manager', 'hr_specialist'].includes(user.role) || user.isTopManagement === true || user.isChairman === true);
+  && (['super_admin', 'admin', 'it_manager', 'it_team_leader', 'it_specialist', 'hr_manager', 'hr_team_leader', 'hr_specialist'].includes(user.role) || user.isTopManagement === true || user.isChairman === true);
 
 /** The Fridays (YYYY-MM-DD) inside a period, both ends included; twin of backend utils/leaveBalance.fridaysIn. */
 export function fridaysOf(startDate?: string, endDate?: string): string[] {
@@ -462,7 +462,7 @@ export const leaveStatusOptions = (full: boolean) => (full
 export const leaveLastQuestion = (l: any) =>
   (l?.status === 'info_requested' ? [...(l?.thread || [])].reverse().find((t: any) => t.kind === 'question') : undefined);
 
-const FINANCE_STAGE_ROLES = ['cfo', 'accounting_manager', 'accountant'];
+const FINANCE_STAGE_ROLES = ['cfo', 'accounting_manager', 'accounting_team_leader', 'accountant'];
 /** Can this reader decide the request now? Mirrors backend utils/leaveChain canActAt, so a button is never shown for a decision the server refuses. */
 export function canDecideLeave(user: any, l: any, hrStaff: boolean): boolean {
   if (!l || !LEAVE_PENDING.includes(l.status)) return false;
@@ -470,7 +470,7 @@ export function canDecideLeave(user: any, l: any, hrStaff: boolean): boolean {
   // The manager stage is the request's own direct manager only; the chairman decides nothing; other super admins may push the later stages.
   if (l.status === 'pending_manager') return !!(l.manager?._id || l.manager) && String(l.manager?._id || l.manager) === String(user?._id || '');
   if (user?.isChairman === true) return false;
-  if (['super_admin', 'admin', 'it_manager', 'it_specialist'].includes(role)) return true;
+  if (['super_admin', 'admin', 'it_manager', 'it_team_leader', 'it_specialist'].includes(role)) return true;
   if (l.status === 'pending_finance') return FINANCE_STAGE_ROLES.includes(role);
   if (l.status === 'pending_hr') return hrStaff;
   if (l.status === 'pending_executive') return user?.isTopManagement === true;

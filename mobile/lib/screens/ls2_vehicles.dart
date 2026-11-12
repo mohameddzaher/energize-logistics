@@ -68,7 +68,7 @@ class _Ls2VehiclesScreenState extends State<Ls2VehiclesScreen> {
   }
 
   bool _isAdmin(AuthProvider a) =>
-      const ['super_admin', 'admin', 'it_manager', 'it_specialist', 'operations_manager', 'operations_team_leader', 'workshop_manager', 'location_manager', 'vehicles_manager', 'data_manager', 'data_analyst', 'data_entry'].contains(a.role)
+      const ['super_admin', 'admin', 'it_manager', 'it_team_leader', 'it_specialist', 'operations_manager', 'operations_team_leader', 'workshop_manager', 'location_manager', 'location_team_leader', 'vehicles_manager', 'vehicles_team_leader', 'data_manager', 'data_analyst', 'data_entry'].contains(a.role)
       || a.canEditSection('Location Solutions');
 
   List<Map<String, dynamic>> get _shown {

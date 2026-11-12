@@ -48,7 +48,7 @@ function matchPayingBranch(branchName, rows) {
 }
 
 // Who pays for heavy transport: their purchases belong to that branch whichever wallet they used.
-const HEAVY_RECORDER_ROLES = ['fleet_manager', 'fleet_supervisor', 'location_manager'];
+const HEAVY_RECORDER_ROLES = ['fleet_manager', 'fleet_team_leader', 'fleet_supervisor', 'location_manager', 'location_team_leader'];
 
 /**
  * Paying branch of one purchase. The recorder's section decides first, then the wallet's

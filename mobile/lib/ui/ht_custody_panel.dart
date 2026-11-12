@@ -19,7 +19,7 @@ class HtCustodyPanel extends StatefulWidget {
 }
 
 // Matches CUSTODY_ROLES in htCustodyController.
-const _roles = ['super_admin', 'admin', 'it_manager', 'it_specialist', 'location_manager', 'cfo', 'accounting_manager', 'accountant'];
+const _roles = ['super_admin', 'admin', 'it_manager', 'it_team_leader', 'it_specialist', 'location_manager', 'location_team_leader', 'cfo', 'accounting_manager', 'accounting_team_leader', 'accountant'];
 const _acc = {'cash': ('الكاش', 'Cash'), 'card': ('الكارت', 'Card'), 'workshop': ('الورشة', 'Workshop')};
 const _src = {
   'card': ('الكارت', 'Card'), 'workshop': ('الورشة', 'Workshop'), 'bank': ('البنك', 'Bank'),

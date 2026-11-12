@@ -10,7 +10,7 @@ const B2CWalletEntry = require('../models/B2CWalletEntry');
 const User = require('../models/User');
 const { emitToUser } = require('../websocket/socketManager');
 
-const MANAGER_ROLES = ['super_admin', 'admin', 'it_manager', 'it_specialist', 'b2c_manager', 'b2c_deputy'];
+const MANAGER_ROLES = ['super_admin', 'admin', 'it_manager', 'it_team_leader', 'it_specialist', 'b2c_manager', 'b2c_team_leader', 'b2c_deputy'];
 const isManager = (u) => u && MANAGER_ROLES.includes(u.role);
 
 async function balanceOf(pmId) {

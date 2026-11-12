@@ -1,4 +1,5 @@
 import 'dart:async';
+import '../services/roles.dart';
 import 'package:flutter/material.dart';
 import '../services/api.dart';
 import '../services/lang.dart';
@@ -69,6 +70,26 @@ const roleLabels = {
   'location_staff': ('موظف لوكيشن سوليوشن', 'Location Solutions Staff'),
   'administration_manager': ('مدير الشؤون الإدارية', 'Administration Manager'),
   'contracts_staff': ('موظف العقود', 'Contracts Staff'),
+  'operations_team_leader': ('قائد فريق العمليات', 'Operations Team Leader'),
+  'collections_team_leader': ('قائد فريق التحصيل', 'Collections Team Leader'),
+  'ops_platform_team_leader': ('قائد فريق منصة الأوبريشن', 'Operations Platform Team Leader'),
+  'shipment_orders_team_leader': ('قائد فريق طلبات الشحنات', 'Shipment Orders Team Leader'),
+  'fleet_team_leader': ('قائد فريق الأسطول', 'Fleet Team Leader'),
+  'customs_team_leader': ('قائد فريق التخليص الجمركي', 'Customs Team Leader'),
+  'vehicles_team_leader': ('قائد فريق المركبات والتفاويض', 'Vehicles & Authorizations Team Leader'),
+  'location_team_leader': ('قائد فريق لوكيشن سوليوشن', 'Location Solutions Team Leader'),
+  'marketing_team_leader': ('قائد فريق التسويق', 'Marketing Team Leader'),
+  'bd_team_leader': ('قائد فريق تطوير الأعمال', 'Business Development Team Leader'),
+  'it_team_leader': ('قائد فريق تقنية المعلومات', 'IT Team Leader'),
+  'administration_team_leader': ('قائد فريق الشؤون الإدارية', 'Administration Team Leader'),
+  'contracts_team_leader': ('قائد فريق العقود', 'Contracts Team Leader'),
+  'b2c_team_leader': ('قائد فريق قطاع الأفراد', 'B2C Team Leader'),
+  'remote_team_leader': ('قائد فريق العمل عن بُعد', 'Remote Work Team Leader'),
+  'hr_team_leader': ('قائد فريق الموارد البشرية', 'HR Team Leader'),
+  'crm_team_leader': ('قائد فريق إدارة العلاقات', 'CRM Team Leader'),
+  'sales_team_leader': ('قائد فريق المبيعات', 'Sales Team Leader'),
+  'accounting_team_leader': ('قائد فريق الحسابات', 'Accounting Team Leader'),
+  'procurement_team_leader': ('قائد فريق المشتريات', 'Procurement Team Leader'),
 };
 
 /// Roles as the server accepts them (/api/users/roles), including every new role and every user type created from the permissions screen. The static list above was the only source before, so it lacked eleven roles and still held two long-merged ones; users for vehicles or Location Solutions could not be created from the phone and an old role was rejected. The static list is the fallback when the server is unreachable.
@@ -639,8 +660,8 @@ class _PermissionsScreenState extends State<PermissionsScreen> {
   Widget build(BuildContext context) {
     final me = context.watch<AuthProvider>().role;
     // role-only like the web: whoever sets the matrix is not granted access through it, and creating types is for the system admin.
-    final isSuper = const ['super_admin', 'admin', 'it_manager', 'it_specialist'].contains(me);
-    final canMakeRoles = const ['super_admin', 'admin', 'it_manager', 'it_specialist'].contains(me);
+    final isSuper = const ['super_admin', 'admin', 'it_manager', 'it_team_leader', 'it_specialist'].contains(me);
+    final canMakeRoles = const ['super_admin', 'admin', 'it_manager', 'it_team_leader', 'it_specialist'].contains(me);
     final catalog = _catalog;
     final managed = _managed;
     final unmanaged = <String>{for (final p in catalog) if (!managed.contains(p['section'])) p['section'].toString()}.toList();
@@ -1029,7 +1050,7 @@ class _UserFormScreenState extends State<_UserFormScreen> {
   );
 
   Future<void> _pickRole() async {
-    final keys = roleKeys().where((r) => r != 'super_admin' || const ['super_admin', 'admin', 'it_manager', 'it_specialist'].contains(_role)).toList();
+    final keys = roleKeys().where((r) => r != 'super_admin' || const ['super_admin', 'admin', 'it_manager', 'it_team_leader', 'it_specialist'].contains(_role)).toList();
     final picked = await _search(
       title: tr('ابحث باسم الدور…', 'Search a role…'),
       fetch: (q) async => [for (final k in keys) if (q.isEmpty || _fold('$k ${roleLabel(k)}').contains(_fold(q))) {'_id': k}],
@@ -1104,7 +1125,7 @@ class _UserFormScreenState extends State<_UserFormScreen> {
         if (_role == 'client' && _linkedCustomer.isNotEmpty) body['linkedCustomer'] = _linkedCustomer;
         if (_role == 'employee' && (!isNew || _customers.isNotEmpty)) body['assignedCustomers'] = _customers;
         if (isNew) { if (_branch.isNotEmpty) body['branch'] = _branch; } else { body['branch'] = _branch.isEmpty ? null : _branch; }
-        final b2c = _role == 'b2c_project_lead' || _role == 'b2c_manager';
+        final b2c = _role == 'b2c_project_lead' || rightsRoleOf(_role) == 'b2c_manager';
         if (b2c) {
           body['assignedProjects'] = _projects; body['assignedBranches'] = _branches;
           if (!isNew) body['remoteAccess'] = <String>[];
@@ -1266,8 +1287,8 @@ class _UserFormScreenState extends State<_UserFormScreen> {
               onChanged: (v) => setState(() => _linkedCustomer = v ?? ''),
             ),
           ],
-          if (_role == 'b2c_manager' || _role == 'b2c_project_lead') ...[
-            _label('${tr('المشاريع المعينة', 'Assigned Projects')} (${_projects.length})${_role == 'b2c_manager' ? tr(' — اختياري، له صلاحية كل المشاريع', ' — optional, has access to all') : ''}'),
+          if (rightsRoleOf(_role) == 'b2c_manager' || _role == 'b2c_project_lead') ...[
+            _label('${tr('المشاريع المعينة', 'Assigned Projects')} (${_projects.length})${rightsRoleOf(_role) == 'b2c_manager' ? tr(' — اختياري، له صلاحية كل المشاريع', ' — optional, has access to all') : ''}'),
             _checks(_projectOpts, _projects, (p) => '${p['name'] ?? ''}'),
             _label('${tr('الفروع المعينة', 'Assigned Branches')} (${_branches.length})'),
             _checks(_branchOpts, _branches, (b) => '${b['name'] ?? ''}'),

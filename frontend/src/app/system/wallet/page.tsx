@@ -22,6 +22,7 @@ import { getWalletTranslations, getWalletExtraTranslations } from '@/lib/transla
 import ExportMenu, { exportScopeLabels } from '@/components/ls2/ExportMenu';
 import ScrollX from '@/components/system/ScrollX';
 import { useColumnFilters } from '@/hooks/useColumnFilters';
+import { rightsRoleOf } from '@/lib/roles';
 
 interface DailyWallet {
   _id: string;
@@ -115,7 +116,7 @@ export default function WalletPage() {
   const { confirm, notify } = useDialog();
   const { user } = useAuth();
   // The matrix is computed like the list: a role granted edit on this section can edit; otherwise the screen opens for a custom role while its buttons stay unavailable (see operations team).
-  const isManager = ['super_admin', 'admin', 'it_manager', 'it_specialist', 'operations_manager', 'operations_team_leader', 'operations_staff', ...FINANCE_FULL_ROLES].includes(user?.role || '')
+  const isManager = ['super_admin', 'admin', 'it_manager', 'it_team_leader', 'it_specialist', 'operations_manager', 'operations_team_leader', 'operations_staff', ...FINANCE_FULL_ROLES].includes(user?.role || '')
     || canEditSection((user as any)?.permissions, 'Operations');
   // role-only: supervisor and collections view branches, filter and export but record nothing. The server rejects their writes by role whatever they are granted (config/walletViewOnly).
   const isReadOnly = user?.role === 'moderator' || WALLET_VIEW_ONLY_ROLES.includes(user?.role || '');
@@ -127,13 +128,13 @@ export default function WalletPage() {
   // System admin, or a role given full powers from the permissions screen; the server sends them as superAdminPowers. They show the open-day and edit buttons.
   // System admin and finance: edit, delete, move and reopen. See lib/financeAuthority.
   const isSuperAdmin = hasFinancePowers(user as any);
-  const isOpsManager = user?.role === 'operations_manager';
+  const isOpsManager = rightsRoleOf(user?.role) === 'operations_manager';
   /**
    * Who writes into a closed day. Closing counts cash and fixes a balance carried forward; an entry added to a closed day recomputes its balance and every later day and invalidates the explained difference. Buttons were shown on isManager, which includes operations staff, the most frequent recorders, so writing into a closed day means asking for a reopen, which is system admin only.
    * The server enforces it (mayWriteIntoClosedDay); hiding is no substitute.
    */
   // role-only: writing into a closed day is a financial authority the server guards by the same role names.
-  const canWriteClosedDay = ['super_admin', 'admin', 'it_manager', 'it_specialist', 'operations_manager', 'operations_team_leader', ...FINANCE_FULL_ROLES].includes(user?.role || '')
+  const canWriteClosedDay = ['super_admin', 'admin', 'it_manager', 'it_team_leader', 'it_specialist', 'operations_manager', 'operations_team_leader', ...FINANCE_FULL_ROLES].includes(user?.role || '')
     || !!(user as any)?.superAdminPowers;
   // Who is locked to a branch vs. who picks the branch to view. The old rule (super admin or operations manager) was a positive list forgotten whenever a role was added, so accountants, who have no branch by design, hit a no-branch dead end. The question is inverted: only operations staff are locked to their branch.
   const canSelectBranch = canPickWalletBranch(user?.role);

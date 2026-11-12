@@ -10,6 +10,7 @@ import { UserCog, Truck, Check, Loader2, Search, X, Users } from 'lucide-react';
 import { Spinner, PageHeader, SearchableSelect, SmallBadge } from '@/components/hr/HRKit';
 import ExportMenu from '@/components/ls2/ExportMenu';
 import { FleetVehicle, foldAr, canAdminFleet } from '@/lib/fleet';
+import { rightsRoleOf } from '@/lib/roles';
 
 // Assignment report: who supervises what, in one file, for review outside the screen.
 const ASSIGN_COLUMNS = [
@@ -63,7 +64,7 @@ export default function FleetAssignPage() {
     let r = vehicles;
     if (ownerFilter === 'none') r = r.filter((v) => !v.supervisor);
     // The department manager's name shows the whole fleet: that is their scope, not an assignment list.
-    else if (ownerFilter && !supervisors.some((s) => s._id === ownerFilter && s.role === 'fleet_manager')) {
+    else if (ownerFilter && !supervisors.some((s) => s._id === ownerFilter && rightsRoleOf(s.role) === 'fleet_manager')) {
       r = r.filter((v) => v.supervisor === ownerFilter);
     }
     const s = foldAr(q.trim());
@@ -112,7 +113,7 @@ export default function FleetAssignPage() {
   vehicles.forEach((v) => { const k = v.supervisor || 'none'; counts.set(k, (counts.get(k) || 0) + 1); });
 
   // A department manager's scope is the whole department. A per-name count showed zero for the fleet manager next to supervisors with many vehicles, which reads as 'not working'. So the manager's number is the whole fleet and clicking the name shows all of it.
-  const isDeptManager = (s: Supervisor) => s.role === 'fleet_manager';
+  const isDeptManager = (s: Supervisor) => rightsRoleOf(s.role) === 'fleet_manager';
   const scopeCount = (s: Supervisor) => (isDeptManager(s) ? vehicles.length : (counts.get(s._id) || 0));
 
   return (

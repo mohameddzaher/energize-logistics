@@ -11,7 +11,7 @@ export type Lang = 'ar' | 'en';
 // `_manager` is a meeting participant today, with no edit here. The server is
 // still the authority — this only decides which sidebar links are worth showing.
 const BR_EXECUTIVE_ROLES = ['super_admin', 'admin', 'it_manager', 'it_specialist', 'moderator'];
-const BR_SECRETARY_ROLES = ['administration_manager', 'administration_staff'];
+const BR_SECRETARY_ROLES = ['administration_manager', 'administration_team_leader', 'administration_staff'];
 // Mirror of EXTRA_MANAGER_ROLES on the server (config/businessReview), kept identical. This list once treated operations_staff as a manager; the server fixed it while the screen kept the old rule, so staff saw a meeting entry the server rejected. The CFO role is a manager without the _manager suffix.
 const BR_EXTRA_MANAGER_ROLES = ['moderator', 'cfo'];
 

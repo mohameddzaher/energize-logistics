@@ -9,8 +9,8 @@ const { createNotification } = require('../services/notificationService');
 const { endedStaff, userEnded } = require('../utils/endedStaff');
 
 // ── Roles / helpers ──────────────────────────────────────────────────────────
-const SALES_STAFF_ROLES = ['super_admin', 'admin', 'it_manager', 'it_specialist', 'sales_manager', 'sales_rep', 'operations_manager', 'operations_team_leader', 'operations_staff'];
-const SALES_ADMIN_ROLES = ['super_admin', 'admin', 'it_manager', 'it_specialist', 'sales_manager'];
+const SALES_STAFF_ROLES = ['super_admin', 'admin', 'it_manager', 'it_team_leader', 'it_specialist', 'sales_manager', 'sales_team_leader', 'sales_rep', 'operations_manager', 'operations_team_leader', 'operations_staff'];
+const SALES_ADMIN_ROLES = ['super_admin', 'admin', 'it_manager', 'it_team_leader', 'it_specialist', 'sales_manager', 'sales_team_leader'];
 const isStaff = (u) => SALES_STAFF_ROLES.includes(u.role);
 // A role the super_admin granted this section to counts as staff too —
 // otherwise the grant passes the route gate but the handler still rejects it.
@@ -50,7 +50,7 @@ const teamTargetOf = (targets) => {
   return targets.reduce((s2, t) => s2 + (t.amountTarget || 0), 0);
 };
 // A rep is anyone who can own deals: sales + the admins/managers.
-const repFilter = { role: { $in: [...SALES_STAFF_ROLES, 'crm_manager', 'crm_specialist'] }, isActive: true };
+const repFilter = { role: { $in: [...SALES_STAFF_ROLES, 'crm_manager', 'crm_team_leader', 'crm_specialist'] }, isActive: true };
 // The current-reps list excludes anyone whose service HR ended: his account stays active after termination, so the filter alone is not enough.
 const currentReps = async (select) => {
   const [all, ended] = await Promise.all([User.find(repFilter).select(select).sort({ firstName: 1 }).lean(), endedStaff()]);

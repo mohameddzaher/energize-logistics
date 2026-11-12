@@ -34,7 +34,7 @@ export default function CustomsPartyProfile() {
   const t = (a: string, e: string) => (ar ? a : e);
   const { notify } = useDialog();
   const { user } = useAuth();
-  const canEdit = ['super_admin', 'admin', 'it_manager', 'it_specialist', 'operations_manager', 'operations_team_leader', 'customs_manager', 'customs_officer']
+  const canEdit = ['super_admin', 'admin', 'it_manager', 'it_team_leader', 'it_specialist', 'operations_manager', 'operations_team_leader', 'customs_manager', 'customs_team_leader', 'customs_officer']
     .includes((user as any)?.role || '') || canEditSection((user as any)?.permissions, 'Customs');
 
   const [d, setD] = useState<any>(null);

@@ -173,7 +173,7 @@ Map<String, int> _faceted(List<Map<String, dynamic>> rows, Map<String, String> f
 
 /// Who edits the register (canEditLT on the web).
 bool canEditLtUser(AuthProvider a) =>
-    const ['super_admin', 'admin', 'b2c_manager', 'b2c_deputy', 'b2c_project_lead', 'it_manager', 'it_specialist'].contains(a.role) || a.canEditSection('B2C');
+    const ['super_admin', 'admin', 'b2c_manager', 'b2c_team_leader', 'b2c_deputy', 'b2c_project_lead', 'it_manager', 'it_team_leader', 'it_specialist'].contains(a.role) || a.canEditSection('B2C');
 
 class _LightTransportListScreenState extends State<LightTransportListScreen> {
   List<Map<String, dynamic>> _rows = [];
@@ -515,7 +515,7 @@ class _LightTransportListScreenState extends State<LightTransportListScreen> {
     final auth = context.read<AuthProvider>();
     final role = auth.role;
     final canEdit = canEditLtUser(auth);
-    final canAdd = const ['super_admin', 'admin', 'it_manager', 'it_specialist', 'b2c_manager', 'b2c_deputy', 'cfo', 'accounting_manager', 'accountant'].contains(role);
+    final canAdd = const ['super_admin', 'admin', 'it_manager', 'it_team_leader', 'it_specialist', 'b2c_manager', 'b2c_team_leader', 'b2c_deputy', 'cfo', 'accounting_manager', 'accounting_team_leader', 'accountant'].contains(role);
     final canTransfer = ltTransferRoles.contains(role);
     final colFiltered = applyColumnFilters(_rows, ltColumns, _cf);
     final t = _faceted(colFiltered, _f);

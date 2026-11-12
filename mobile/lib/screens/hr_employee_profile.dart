@@ -434,7 +434,7 @@ class _HrEmployeeProfileScreenState extends State<HrEmployeeProfileScreen> {
   /// HR team by role or department grant; isHRStaff on the web.
   bool get _hrStaff {
     final a = context.read<AuthProvider>();
-    return const ['super_admin', 'admin', 'it_manager', 'it_specialist', 'hr_manager', 'hr_specialist'].contains(a.role) || a.canAccessSection('HR');
+    return const ['super_admin', 'admin', 'it_manager', 'it_team_leader', 'it_specialist', 'hr_manager', 'hr_team_leader', 'hr_specialist'].contains(a.role) || a.canAccessSection('HR');
   }
   bool get _freelance => RegExp(r'فري\s*لانس|فريلانس|freelanc', caseSensitive: false).hasMatch('${_emp['registerNumber'] ?? ''}');
   bool get _outOfSystem => '${_emp['systemStatus'] ?? ''}'.trim() == 'خارج النظام';
@@ -696,7 +696,7 @@ class _HrEmployeeProfileScreenState extends State<HrEmployeeProfileScreen> {
                     Text(tr('إعادة إلى النظام', 'Return to the system')),
                   ])),
                 // Delete is for the system admin only; the server answers others with 405.
-                if (const ['super_admin', 'admin', 'it_manager', 'it_specialist'].contains(context.read<AuthProvider>().role))
+                if (const ['super_admin', 'admin', 'it_manager', 'it_team_leader', 'it_specialist'].contains(context.read<AuthProvider>().role))
                   PopupMenuItem(value: 'delete', child: Row(children: [
                     const Icon(Icons.delete_forever_outlined, size: 18, color: T.danger), const SizedBox(width: 10),
                     Text(tr('حذف السجلّ نهائيًّا', 'Delete record permanently'), style: const TextStyle(color: T.danger)),

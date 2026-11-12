@@ -1932,7 +1932,7 @@ exports.listSupervisors = async (req, res) => {
   try {
     // An archived person is neither picked nor assigned to, as if deleted.
     const archSets = await endedStaff();
-    const users = (await User.find({ role: { $in: ['fleet_supervisor', 'fleet_manager'] }, isActive: { $ne: false } })
+    const users = (await User.find({ role: { $in: ['fleet_supervisor', 'fleet_manager', 'fleet_team_leader'] }, isActive: { $ne: false } })
       .select('firstName lastName email role').lean()).filter((u) => !require('../utils/endedStaff').userArchived(archSets, u));
     users.sort((a, b) => `${a.firstName} ${a.lastName}`.localeCompare(`${b.firstName} ${b.lastName}`));
     res.json({ users });
@@ -3427,7 +3427,7 @@ exports.getVehicleLogsSummary = async (req, res) => {
   }
 };
 
-const CLOSED_OVERRIDE = ['super_admin', 'admin', 'it_manager', 'it_specialist', 'operations_manager', 'operations_team_leader', 'fleet_manager'];
+const CLOSED_OVERRIDE = ['super_admin', 'admin', 'it_manager', 'it_team_leader', 'it_specialist', 'operations_manager', 'operations_team_leader', 'fleet_manager', 'fleet_team_leader'];
 
 /** POST /api/fleet/vehicle-logs - a new entry on a vehicle. */
 exports.createVehicleLog = async (req, res) => {

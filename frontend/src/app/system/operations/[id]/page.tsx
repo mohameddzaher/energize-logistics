@@ -134,7 +134,7 @@ export default function WorkflowDetailPage() {
   const [seesAmounts, setSeesAmounts] = useState(false);
   useEffect(() => {
     if (!role) return;
-    if (['super_admin', 'admin', 'it_manager', 'it_specialist'].includes(role || '')) { setMyFields(null); setCanLinkCustoms(true); setSeesAmounts(true); return; }
+    if (['super_admin', 'admin', 'it_manager', 'it_team_leader', 'it_specialist'].includes(role || '')) { setMyFields(null); setCanLinkCustoms(true); setSeesAmounts(true); return; }
     let alive = true;
     api.get<{ roleAccess?: Record<string, string[]>; myFields?: string[]; canLinkCustoms?: boolean; view?: { amounts?: boolean } }>('/api/workflows/permissions')
       .then((d) => { if (alive) { setMyFields(new Set(d?.myFields || d?.roleAccess?.[role] || [])); setCanLinkCustoms(!!d?.canLinkCustoms); setSeesAmounts(!!d?.view?.amounts); } })
@@ -142,7 +142,7 @@ export default function WorkflowDetailPage() {
     return () => { alive = false; };
   }, [role]);
   // role-only: super admin and admin privilege (config/constants TOP_ROLES), not a section grant.
-  const canEditField = (key: string) => ['super_admin', 'admin', 'it_manager', 'it_specialist'].includes(role || '') || myFields === null || myFields.has(key);
+  const canEditField = (key: string) => ['super_admin', 'admin', 'it_manager', 'it_team_leader', 'it_specialist'].includes(role || '') || myFields === null || myFields.has(key);
   const canEditGroup = (group: string) =>
     (SECTIONS.find((s) => s.group === group)?.fields || []).some((f) => canEditField(f.key));
 
@@ -277,12 +277,12 @@ export default function WorkflowDetailPage() {
       // 'Send to operations' removed: manifests arrive from the operations platform already running there, so sending them back is meaningless. The button remained from when manifests were created here by hand.
       draft: [],
       submitted_to_ops: [
-        { stage: 'ops_completed', label: T.markOpsComplete, roles: ['operations_manager', 'operations_team_leader', 'super_admin', 'admin', 'it_manager', 'it_specialist'] },
-        { stage: 'draft', label: T.returnToDraft, roles: ['operations_manager', 'operations_team_leader', 'super_admin', 'admin', 'it_manager', 'it_specialist'] },
+        { stage: 'ops_completed', label: T.markOpsComplete, roles: ['operations_manager', 'operations_team_leader', 'super_admin', 'admin', 'it_manager', 'it_team_leader', 'it_specialist'] },
+        { stage: 'draft', label: T.returnToDraft, roles: ['operations_manager', 'operations_team_leader', 'super_admin', 'admin', 'it_manager', 'it_team_leader', 'it_specialist'] },
       ],
       ops_completed: [
-        { stage: 'submitted_to_collections', label: T.submitToCollections, roles: ['operations_manager', 'operations_team_leader', 'super_admin', 'admin', 'it_manager', 'it_specialist'] },
-        { stage: 'submitted_to_ops', label: T.returnToOps, roles: ['operations_manager', 'operations_team_leader', 'super_admin', 'admin', 'it_manager', 'it_specialist'] },
+        { stage: 'submitted_to_collections', label: T.submitToCollections, roles: ['operations_manager', 'operations_team_leader', 'super_admin', 'admin', 'it_manager', 'it_team_leader', 'it_specialist'] },
+        { stage: 'submitted_to_ops', label: T.returnToOps, roles: ['operations_manager', 'operations_team_leader', 'super_admin', 'admin', 'it_manager', 'it_team_leader', 'it_specialist'] },
       ],
       submitted_to_collections: [
         { stage: 'completed', label: T.markComplete, roles: ['admin', 'employee', 'super_admin'] },
@@ -392,7 +392,7 @@ export default function WorkflowDetailPage() {
                 <button type="button" onClick={handleStartEdit} className="px-4 py-2 rounded-lg bg-slate-100 text-slate-700 text-sm hover:bg-slate-200 transition-colors flex items-center gap-2">
                   <Edit className="w-4 h-4" /> {T.edit}
                 </button>
-                {['super_admin', 'admin', 'it_manager', 'it_specialist', 'operations_manager', 'operations_team_leader'].includes(role || '') && (
+                {['super_admin', 'admin', 'it_manager', 'it_team_leader', 'it_specialist', 'operations_manager', 'operations_team_leader'].includes(role || '') && (
                   <button type="button" onClick={handleDeleteWorkflow}
                     title={lang === 'ar' ? 'حذف أمر النقل' : 'Delete report'}
                     className="p-2 rounded-lg text-slate-400 hover:text-red-600 hover:bg-red-50 transition-colors">
@@ -453,7 +453,7 @@ export default function WorkflowDetailPage() {
             <div className="p-6">
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
                 {/* Selling value only for those in its list: the server does not send it to others, so an empty cell used to read as 'no price'. See SELLING_ROLES in workflowController. */}
-                {section.fields.filter((f) => (f.key !== 'sellingValue' || ['super_admin', 'admin', 'it_manager', 'it_specialist'].includes(role || '') || !!myFields?.has('sellingValue'))
+                {section.fields.filter((f) => (f.key !== 'sellingValue' || ['super_admin', 'admin', 'it_manager', 'it_team_leader', 'it_specialist'].includes(role || '') || !!myFields?.has('sellingValue'))
                   && (seesAmounts || !AMOUNT_KEYS.has(f.key))).map((field) => {
                   const val = formData[field.key];
                   // Field by field: a user may edit some of a group but not all.

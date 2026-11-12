@@ -8,16 +8,16 @@ export type Lang = 'en' | 'ar';
 // Reads are broad: the dashboard and the weekly report are things managers
 // across the company ask to see. Writes are the marketing team + admin/IT tier.
 export const MARKETING_STAFF_ROLES = [
-  'super_admin', 'admin', 'it_manager', 'it_specialist', 'moderator', 'employee',
-  'marketing_manager', 'marketing_specialist', 'bd_manager',
-  'crm_manager', 'crm_team_lead', 'sales_manager', 'operations_manager', 'operations_team_leader',
+  'super_admin', 'admin', 'it_manager', 'it_team_leader', 'it_specialist', 'moderator', 'employee',
+  'marketing_manager', 'marketing_team_leader', 'marketing_specialist', 'bd_manager', 'bd_team_leader',
+  'crm_manager', 'crm_team_leader', 'crm_team_lead', 'sales_manager', 'sales_team_leader', 'operations_manager', 'operations_team_leader',
 ];
 export const MARKETING_ADMIN_ROLES = [
-  'super_admin', 'admin', 'it_manager', 'it_specialist', 'marketing_manager', 'marketing_specialist', 'bd_manager',
+  'super_admin', 'admin', 'it_manager', 'it_team_leader', 'it_specialist', 'marketing_manager', 'marketing_team_leader', 'marketing_specialist', 'bd_manager', 'bd_team_leader',
 ];
 // Roles that see the section pinned in their sidebar.
 export const MARKETING_SECTION_ROLES = [
-  'super_admin', 'admin', 'it_manager', 'it_specialist', 'marketing_manager', 'marketing_specialist', 'moderator', 'bd_manager',
+  'super_admin', 'admin', 'it_manager', 'it_team_leader', 'it_specialist', 'marketing_manager', 'marketing_team_leader', 'marketing_specialist', 'moderator', 'bd_manager', 'bd_team_leader',
 ];
 
 export const isMarketingStaff = (role?: string | null) => !!role && MARKETING_STAFF_ROLES.includes(role);

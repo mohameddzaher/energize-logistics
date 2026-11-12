@@ -35,7 +35,7 @@ const STAGE_AR = {
 const HR_ROLES = rolesOfSection('HR');
 // The CFO sits above the accounting department, so he is added from financeAuthority rather than the section list.
 const FINANCE_ROLES = [...new Set([...rolesOfSection('Accounting'), ...require('../config/financeAuthority').FINANCE_FULL_ROLES])];
-const EXEC_ROLES = ['super_admin', 'admin', 'it_manager', 'it_specialist'];
+const EXEC_ROLES = ['super_admin', 'admin', 'it_manager', 'it_team_leader', 'it_specialist'];
 /** Top management and the chairman are named accounts, not roles; any super admin other than the chairman can push a stalled request past finance, HR or top management (OVERRIDE_ROLES), never past the direct manager. */
 const isTopManagement = (user) => user?.isTopManagement === true;
 const isChairman = (user) => user?.isChairman === true;
@@ -44,7 +44,7 @@ const isChairman = (user) => user?.isChairman === true;
 const seesProcess = (user) => !!user && (EXEC_ROLES.includes(user.role) || HR_ROLES.includes(user.role) || isTopManagement(user) || isChairman(user));
 
 // Who can push a stalled request through: the roles with super admin powers (config/constants TOP_ROLES, IT included by the owner's decision of 2026-11-05).
-const OVERRIDE_ROLES = ['super_admin', 'admin', 'it_manager', 'it_specialist'];
+const OVERRIDE_ROLES = ['super_admin', 'admin', 'it_manager', 'it_team_leader', 'it_specialist'];
 
 /**
  * A manager is his own direct manager: his request starts after the manager stage, with his own approval recorded there (and signed on the sheet). The CFO sits above the accounting department and counts the same.

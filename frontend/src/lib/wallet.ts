@@ -7,25 +7,25 @@ import { SECTION_ROLES } from '@/lib/roles';
 
 /** Who opens the daily custody page (mirror of walletReadRoles on the server). */
 export const WALLET_ROLES = [
-  'super_admin', 'admin', 'it_manager', 'it_specialist',
+  'super_admin', 'admin', 'it_manager', 'it_team_leader', 'it_specialist',
   'operations_manager', 'operations_team_leader', 'operations_staff', 'moderator',
-  'cfo', 'accounting_manager', 'accountant',
-  'collections_manager', 'collections_staff', 'collections_trainee',
+  'cfo', 'accounting_manager', 'accounting_team_leader', 'accountant',
+  'collections_manager', 'collections_team_leader', 'collections_staff', 'collections_trainee',
 ];
 
 /** Who opens its dashboard, the all-branches view (mirror of overviewRoles). */
 export const WALLET_DASHBOARD_ROLES = [
-  'super_admin', 'admin', 'it_manager', 'it_specialist',
+  'super_admin', 'admin', 'it_manager', 'it_team_leader', 'it_specialist',
   'operations_manager', 'operations_team_leader', 'moderator',
-  'cfo', 'accounting_manager', 'accountant',
-  'collections_manager', 'collections_staff', 'collections_trainee',
+  'cfo', 'accounting_manager', 'accounting_team_leader', 'accountant',
+  'collections_manager', 'collections_team_leader', 'collections_staff', 'collections_trainee',
 ];
 
 /** Collections department sees the wallet read-only. Mirror of config/walletViewOnly on the server, which is the guard that rejects any write; here only the buttons are hidden (no collect, expense, purchases or close). */
 export const WALLET_VIEW_ONLY_ROLES = (() => {
   // The whole collections team (manager, staff, trainee) from the role structure (lib/roles, generated from the server).
   const c = SECTION_ROLES.find((x) => x.section === 'Collections');
-  return c ? [c.manager.key, ...c.staff.map((r) => r.key), c.trainee.key] : ['collections_manager', 'collections_staff', 'collections_trainee'];
+  return c ? [c.manager.key, ...c.staff.map((r) => r.key), c.trainee.key] : ['collections_manager', 'collections_team_leader', 'collections_staff', 'collections_trainee'];
 })();
 
 /**

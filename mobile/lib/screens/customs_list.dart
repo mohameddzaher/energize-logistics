@@ -73,8 +73,8 @@ const customsDocKeys = [
   ('saber', 'سابر', 'SABER'),
 ];
 
-const _editRoles = ['super_admin', 'admin', 'it_manager', 'it_specialist', 'operations_manager', 'operations_team_leader', 'customs_manager', 'customs_officer'];
-const _deleteRoles = ['super_admin', 'admin', 'it_manager', 'it_specialist', 'customs_manager', 'customs_officer'];
+const _editRoles = ['super_admin', 'admin', 'it_manager', 'it_team_leader', 'it_specialist', 'operations_manager', 'operations_team_leader', 'customs_manager', 'customs_team_leader', 'customs_officer'];
+const _deleteRoles = ['super_admin', 'admin', 'it_manager', 'it_team_leader', 'it_specialist', 'customs_manager', 'customs_team_leader', 'customs_officer'];
 
 class _CustomsListScreenState extends State<CustomsListScreen> {
   List<Map<String, dynamic>> _list = [];
@@ -533,7 +533,7 @@ class _CustomsListScreenState extends State<CustomsListScreen> {
   Widget build(BuildContext context) {
     final auth = context.watch<AuthProvider>();
     // As on the web: profits for management; edit and delete by roles or by matrix grant.
-    final seesMoney = ['super_admin', 'admin', 'it_manager', 'it_specialist', 'customs_manager'].contains(auth.role);
+    final seesMoney = ['super_admin', 'admin', 'it_manager', 'it_team_leader', 'it_specialist', 'customs_manager', 'customs_team_leader'].contains(auth.role);
     final canEdit = _editRoles.contains(auth.role) || auth.canEditSection('Customs');
     final canDelete = _deleteRoles.contains(auth.role) || auth.canEditSection('Customs');
     final shown = _filtered;

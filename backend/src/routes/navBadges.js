@@ -8,7 +8,7 @@ const router = express.Router();
 const authenticate = require('../middleware/auth');
 const cache = require('../utils/ttlCache');
 
-const CUSTOMS_FINANCE = ['super_admin', 'admin', 'it_manager', 'it_specialist', 'cfo', 'accounting_manager', 'accountant'];
+const CUSTOMS_FINANCE = ['super_admin', 'admin', 'it_manager', 'it_team_leader', 'it_specialist', 'cfo', 'accounting_manager', 'accounting_team_leader', 'accountant'];
 
 router.use(authenticate);
 router.get('/', async (req, res) => {

@@ -10,12 +10,12 @@ const constants = require('../config/constants');
 // Sourced from config/constants when present, with an inline fallback so this
 // router keeps loading if the shared constants have not been extended yet.
 const STAFF_ROLES = constants.BD_STAFF_ROLES || [
-  'super_admin', 'admin', 'it_manager', 'it_specialist',
-  'bd_manager', 'bd_specialist',
-  'sales_manager', 'crm_manager', 'operations_manager', 'operations_team_leader',
+  'super_admin', 'admin', 'it_manager', 'it_team_leader', 'it_specialist',
+  'bd_manager', 'bd_team_leader', 'bd_specialist',
+  'sales_manager', 'sales_team_leader', 'crm_manager', 'crm_team_leader', 'operations_manager', 'operations_team_leader',
 ];
 const EDIT_ROLES = constants.BD_ADMIN_ROLES || [
-  'super_admin', 'admin', 'it_manager', 'it_specialist', 'bd_manager', 'bd_specialist',
+  'super_admin', 'admin', 'it_manager', 'it_team_leader', 'it_specialist', 'bd_manager', 'bd_team_leader', 'bd_specialist',
 ];
 
 router.use(authenticate);

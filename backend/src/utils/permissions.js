@@ -52,7 +52,16 @@ const getSaved = async (role) => cache.wrap(`${PREFIX}role:${role}`, TTL, async 
   if (doc && doc.pages) {
     for (const [k, v] of Object.entries(doc.pages)) pages[k] = !!v;
   }
-  return { overrides, pages, homePage: (doc && doc.homePage) || '' };
+  const own = { overrides, pages, homePage: (doc && doc.homePage) || '' };
+  // A team leader starts from its manager's saved choices; its own row only narrows or widens on top (config/roles RIGHTS_OF).
+  const heir = require('../config/roles').rightsRoleOf(String(role));
+  if (heir === role) return own;
+  const base = await getSaved(heir);
+  return {
+    overrides: { ...base.overrides, ...own.overrides },
+    pages: { ...base.pages, ...own.pages },
+    homePage: own.homePage || base.homePage,
+  };
 });
 
 const getOverrides = async (role) => (await getSaved(role)).overrides;

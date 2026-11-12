@@ -39,7 +39,7 @@ class SettingsScreen extends StatelessWidget {
         _tile(context, Icons.lock_outline, tr('تغيير كلمة المرور', 'Change password'), () => _changePassword(context)),
         _tile(context, Icons.translate, tr('اللغة', 'Language'), () => Lang.instance.toggle(), trailing: Text(tr('العربية', 'English'), style: const TextStyle(fontWeight: FontWeight.w700, color: T.navy))),
         // System admin only, as on the web: recompute risk scores + system info
-        if (const ['super_admin', 'admin', 'it_manager', 'it_specialist'].contains(auth.role)) ...[
+        if (const ['super_admin', 'admin', 'it_manager', 'it_team_leader', 'it_specialist'].contains(auth.role)) ...[
           _tile(context, Icons.shield_outlined, tr('إعادة حساب المخاطر', 'Recalculate risk scores'), () => _recalcRisk(context)),
           AppCard(child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
             Text(tr('معلومات النظام', 'System information'), style: const TextStyle(fontWeight: FontWeight.w800)),

@@ -118,7 +118,7 @@ exports.create = async (req, res) => {
       const User = require('../models/User');
       const deciders = await User.find({
         isActive: { $ne: false },
-        role: { $in: ['location_manager', 'location_staff', ...require('../config/constants').TOP_ROLES] },
+        role: { $in: ['location_manager', 'location_team_leader', 'location_staff', ...require('../config/constants').TOP_ROLES] },
       }).select('_id').lean();
       await Promise.all(deciders.map((u) => createNotification({
         recipient: u._id,

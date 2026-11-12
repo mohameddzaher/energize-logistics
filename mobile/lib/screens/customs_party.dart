@@ -20,7 +20,7 @@ import 'jp.dart' show JpTaskPanel;
 /// Customs parties: customer, shipping agent and carrier. The party profile (data and attachments) and the transaction parties card in its details. Counterpart of `PartyAttachments`, `ClearanceParties` and `customs/parties/[id]` on the web.
 /// The commercial register, tax certificate and contract are attached once in the party profile and read from every transaction the party is in; they are not repeated per transaction.
 
-const _editRoles = ['super_admin', 'admin', 'it_manager', 'it_specialist', 'operations_manager', 'operations_team_leader', 'customs_manager', 'customs_officer'];
+const _editRoles = ['super_admin', 'admin', 'it_manager', 'it_team_leader', 'it_specialist', 'operations_manager', 'operations_team_leader', 'customs_manager', 'customs_team_leader', 'customs_officer'];
 
 /// Who edits customs: the same split as on the server (EDIT_ROLES) plus the matrix grant.
 bool canEditCustoms(BuildContext context) {

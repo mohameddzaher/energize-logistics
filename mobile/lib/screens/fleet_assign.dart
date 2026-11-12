@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../services/roles.dart';
 import 'package:provider/provider.dart';
 import '../services/api.dart';
 import '../services/auth.dart';
@@ -17,7 +18,7 @@ class FleetAssignScreen extends StatefulWidget {
 }
 
 // Same list as canAdminFleet on the web (lib/fleet.ts) and ADMIN_ROLES in routes/fleet.js.
-const _adminRoles = ['super_admin', 'admin', 'it_manager', 'it_specialist', 'operations_manager', 'operations_team_leader', 'fleet_manager'];
+const _adminRoles = ['super_admin', 'admin', 'it_manager', 'it_team_leader', 'it_specialist', 'operations_manager', 'operations_team_leader', 'fleet_manager', 'fleet_team_leader'];
 
 String _supName(Map<String, dynamic> u) {
   final n = '${u['firstName'] ?? ''} ${u['lastName'] ?? ''}'.trim();
@@ -102,7 +103,7 @@ class _FleetAssignScreenState extends State<FleetAssignScreen> {
     ));
   }
 
-  bool _isDeptManager(Map<String, dynamic> s) => s['role'] == 'fleet_manager';
+  bool _isDeptManager(Map<String, dynamic> s) => rightsRoleOf('${s['role']}') == 'fleet_manager';
 
   List<Map<String, dynamic>> get _filtered {
     var r = _vehicles;

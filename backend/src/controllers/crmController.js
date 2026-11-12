@@ -50,7 +50,7 @@ const badId = (id, res) => {
 // Sales staff ride along: their dashboard/pipeline/performance pages subscribe
 // to crm:deal — restricting the fan-out to CRM roles left them permanently stale.
 const crmStaffIds = async () => {
-  const roles = [...new Set([...CRM_STAFF_ROLES, 'sales_manager', 'sales_rep'])];
+  const roles = [...new Set([...CRM_STAFF_ROLES, 'sales_manager', 'sales_team_leader', 'sales_rep'])];
   const staff = await User.find({ role: { $in: roles }, isActive: true }).select('_id').lean();
   return staff.map((s) => s._id);
 };

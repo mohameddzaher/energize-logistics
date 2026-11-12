@@ -8,7 +8,7 @@ const Employee = require('../models/Employee');
 const { makeCustodyController } = require('./custodyLedgerController');
 /** Who opens the custody and who corrects it: the sector manager, deputy, system admin and finance roles (accountant, accounts manager, finance manager). Editing or deleting a recorded entry is limited to the system admin and finance roles. */
 const { FINANCE_FULL_ROLES } = require('../config/financeAuthority');
-const CUSTODY_ROLES = ['super_admin', 'admin', 'it_manager', 'it_specialist', 'b2c_manager', 'b2c_deputy', 'vehicles_manager', ...FINANCE_FULL_ROLES];
+const CUSTODY_ROLES = ['super_admin', 'admin', 'it_manager', 'it_team_leader', 'it_specialist', 'b2c_manager', 'b2c_team_leader', 'b2c_deputy', 'vehicles_manager', 'vehicles_team_leader', ...FINANCE_FULL_ROLES];
 
 /** Rep by ID number: first from the light-transport register (which includes freelancers with no HR file), then from HR using both identity columns (see identity-number-two-columns). Returns `null` if unknown. */
 async function findRep(idNumber) {

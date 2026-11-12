@@ -14,20 +14,20 @@ export type Lang = 'en' | 'ar';
 // broad (all internal staff except B2C + client) so ops data can be embedded
 // across every section dashboard; writes stay limited to the admin tier.
 export const OPS_STAFF_ROLES = [
-  'super_admin', 'admin', 'it_manager', 'it_specialist', 'moderator', 'employee', 'operations_manager', 'operations_team_leader', 'operations_staff',
+  'super_admin', 'admin', 'it_manager', 'it_team_leader', 'it_specialist', 'moderator', 'employee', 'operations_manager', 'operations_team_leader', 'operations_staff',
   'workshop_manager', 'workshop_employee', 'procurement_staff',
-  'hr_manager', 'hr_specialist',
-  'crm_manager', 'crm_team_lead', 'crm_specialist', 'crm_agent',
-  'cfo', 'accounting_manager', 'accountant',
-  'sales_manager', 'sales_rep',
-  'procurement_manager',
-  'customs_manager', 'customs_officer',
-  'remote_manager',
+  'hr_manager', 'hr_team_leader', 'hr_specialist',
+  'crm_manager', 'crm_team_leader', 'crm_team_lead', 'crm_specialist', 'crm_agent',
+  'cfo', 'accounting_manager', 'accounting_team_leader', 'accountant',
+  'sales_manager', 'sales_team_leader', 'sales_rep',
+  'procurement_manager', 'procurement_team_leader',
+  'customs_manager', 'customs_team_leader', 'customs_officer',
+  'remote_manager', 'remote_team_leader',
 ];
-export const OPS_ADMIN_ROLES = ['super_admin', 'admin', 'it_manager', 'it_specialist', 'operations_manager', 'operations_team_leader'];
+export const OPS_ADMIN_ROLES = ['super_admin', 'admin', 'it_manager', 'it_team_leader', 'it_specialist', 'operations_manager', 'operations_team_leader'];
 // Core operations roles — used for the dedicated sidebar section so it isn't
 // shown in every staff member's nav even though they CAN read the data.
-export const OPS_SECTION_ROLES = ['super_admin', 'admin', 'it_manager', 'it_specialist', 'operations_manager', 'operations_team_leader', 'operations_staff', 'moderator', 'employee'];
+export const OPS_SECTION_ROLES = ['super_admin', 'admin', 'it_manager', 'it_team_leader', 'it_specialist', 'operations_manager', 'operations_team_leader', 'operations_staff', 'moderator', 'employee'];
 export const isOpsStaff = (u: RoleOrUser) => OPS_STAFF_ROLES.includes(roleOf(u)) || canAccessSection(permsOf(u), 'Operations Platform');
 export const isOpsAdmin = (u: RoleOrUser) => OPS_ADMIN_ROLES.includes(roleOf(u)) || canEditSection(permsOf(u), 'Operations Platform');
 

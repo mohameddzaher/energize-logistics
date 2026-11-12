@@ -12,11 +12,11 @@ const assetDefaults = require('./assetDefaults');
 const vehicleDefaults = require('./vehicleDefaults');
 
 // Roles that can manage every lookup regardless of module.
-const BASE_WRITE_ROLES = ['super_admin', 'admin', 'it_manager', 'it_specialist'];
+const BASE_WRITE_ROLES = ['super_admin', 'admin', 'it_manager', 'it_team_leader', 'it_specialist'];
 
-const FLEET_ROLES = ['fleet_manager', 'operations_manager', 'operations_team_leader', 'operations_staff'];
-const SO_ROLES = ['shipment_orders_manager', 'shipment_orders_staff', 'shipment_orders_followup', 'operations_manager', 'operations_team_leader', 'operations_staff'];
-const VEHICLE_ROLES = ['vehicles_manager', 'vehicles_staff', 'hr_manager', 'cfo', 'accounting_manager'];
+const FLEET_ROLES = ['fleet_manager', 'fleet_team_leader', 'operations_manager', 'operations_team_leader', 'operations_staff'];
+const SO_ROLES = ['shipment_orders_manager', 'shipment_orders_team_leader', 'shipment_orders_staff', 'shipment_orders_followup', 'operations_manager', 'operations_team_leader', 'operations_staff'];
+const VEHICLE_ROLES = ['vehicles_manager', 'vehicles_team_leader', 'vehicles_staff', 'hr_manager', 'hr_team_leader', 'cfo', 'accounting_manager', 'accounting_team_leader'];
 
 /**
  * Vehicles section lists: every field with fixed choices is now a list managed from the section settings instead of a free field typed in a thousand ways. See config/vehicleDefaults.js.
@@ -27,7 +27,7 @@ const vehicleList = (type, nameAr, nameEn, seed) => ({
 });
 
 
-const B2C_LOOKUP_ROLES = ['b2c_manager', 'b2c_deputy', 'b2c_project_lead', 'it_manager'];
+const B2C_LOOKUP_ROLES = ['b2c_manager', 'b2c_team_leader', 'b2c_deputy', 'b2c_project_lead', 'it_manager', 'it_team_leader'];
 /** A light transport list. Stored by Arabic name, not key: fields have held the Arabic text since import and filters and exports read it, so this limits what is written without changing what is stored. */
 const ltList = (type, nameAr, nameEn, seed) => ([{
   type, module: 'b2c', nameAr, nameEn, roles: B2C_LOOKUP_ROLES, storeLabel: true,
@@ -236,7 +236,7 @@ const REGISTRY = [
   {
     type: 'mediago_ad_company',
     module: 'b2c', nameEn: 'Ad content companies', nameAr: 'شركات المحتوى الإعلاني',
-    roles: ['b2c_manager', 'b2c_deputy', 'b2c_project_lead', 'it_manager'],
+    roles: ['b2c_manager', 'b2c_team_leader', 'b2c_deputy', 'b2c_project_lead', 'it_manager', 'it_team_leader'],
     seed: [
       { key: 'energize', nameAr: 'إنرجايز', nameEn: 'Energize' },
       { key: 'hero_mile', nameAr: 'هيرو مايل', nameEn: 'Hero Mile' },
@@ -245,7 +245,7 @@ const REGISTRY = [
   {
     type: 'hr_project',
     module: 'hr', nameEn: 'Projects', nameAr: 'المشاريع',
-    roles: ['hr_manager', 'hr_specialist'], storeLabel: true,
+    roles: ['hr_manager', 'hr_team_leader', 'hr_specialist'], storeLabel: true,
     seed: [
       { key: 'heavy_transport', nameEn: 'Heavy Transport', nameAr: 'النقل الثقيل' },
       { key: 'customer_service', nameEn: 'Customer Service', nameAr: 'خدمة عملاء' },
@@ -261,27 +261,27 @@ const REGISTRY = [
   {
     type: 'hr_nationality',
     module: 'hr', nameEn: 'Nationalities', nameAr: 'الجنسيات',
-    roles: ['hr_manager', 'hr_specialist'], storeLabel: true,
+    roles: ['hr_manager', 'hr_team_leader', 'hr_specialist'], storeLabel: true,
     seed: ['السعودية', 'مصر', 'باكستان', 'بنجلاديش', 'الهند', 'اليمن', 'السودان', 'سوريا', 'الأردن', 'الفلبين', 'نيبال', 'سريلانكا']
       .map((n, i) => ({ key: `nat_${i}`, nameEn: n, nameAr: n })),
   },
   {
     type: 'hr_iqama_profession',
     module: 'hr', nameEn: 'Iqama Professions', nameAr: 'المهنة في الإقامة',
-    roles: ['hr_manager', 'hr_specialist'], storeLabel: true,
+    roles: ['hr_manager', 'hr_team_leader', 'hr_specialist'], storeLabel: true,
     seed: ['سائق دراجة نارية', 'عامل دراجة نقل', 'عامل تحميل وتنزيل', 'سائق شاحنة ثقيلة', 'سائق', 'فني', 'محاسب', 'مشرف', 'عامل نظافة', 'غير مطلوب']
       .map((n, i) => ({ key: `prof_${i}`, nameEn: n, nameAr: n })),
   },
   {
     type: 'hr_classification',
     module: 'hr', nameEn: 'Classifications', nameAr: 'التصنيف',
-    roles: ['hr_manager', 'hr_specialist'], storeLabel: true,
+    roles: ['hr_manager', 'hr_team_leader', 'hr_specialist'], storeLabel: true,
     seed: ['A', 'B', 'C', 'E1', 'لا يوجد'].map((n, i) => ({ key: `cls_${i}`, nameEn: n, nameAr: n })),
   },
   {
     type: 'hr_work_location',
     module: 'hr', nameEn: 'Work Locations', nameAr: 'مواقع العمل',
-    roles: ['hr_manager', 'hr_specialist'], storeLabel: true,
+    roles: ['hr_manager', 'hr_team_leader', 'hr_specialist'], storeLabel: true,
     seed: ['جدة', 'مكة المكرمة', 'الرياض', 'الدمام', 'جازان', 'ينبع', 'أبها', 'المدينة المنورة']
       .map((n, i) => ({ key: `loc_${i}`, nameEn: n, nameAr: n })),
   },
@@ -290,7 +290,7 @@ const REGISTRY = [
     module: 'hr',
     nameEn: 'Job Titles',
     nameAr: 'المسمّيات الوظيفية',
-    roles: ['hr_manager', 'hr_specialist'],
+    roles: ['hr_manager', 'hr_team_leader', 'hr_specialist'],
     storeLabel: true,
     seed: [
       { key: 'driver', nameEn: 'Driver', nameAr: 'سائق' },
@@ -305,7 +305,7 @@ const REGISTRY = [
     module: 'hr',
     nameEn: 'Termination Reasons',
     nameAr: 'أسباب إنهاء الخدمة',
-    roles: ['hr_manager', 'hr_specialist'],
+    roles: ['hr_manager', 'hr_team_leader', 'hr_specialist'],
     storeLabel: true,
     seed: [
       { key: 'resigned', nameEn: 'Resignation', nameAr: 'استقالة' },
@@ -323,7 +323,7 @@ const REGISTRY = [
     module: 'hr',
     nameEn: 'Contract Status',
     nameAr: 'حالة العقد',
-    roles: ['hr_manager', 'hr_specialist'],
+    roles: ['hr_manager', 'hr_team_leader', 'hr_specialist'],
     storeLabel: true,
     // Uses the contracts page wording, not the import file's.
     // Status is written on the contract itself (`Contract.status`) and the contracts page reads it: valid or ended only, and 'terminated' counts as ended. The import wrote two labels with one meaning into the employee file, which cannot be filtered or counted together. Unified on the contracts page wording because the contract is the document. See utils/contractStatus.
@@ -397,7 +397,7 @@ const REGISTRY = [
     module: 'vendors',
     nameEn: 'Vendor tax classification',
     nameAr: 'التصنيف الضريبي للمورد',
-    roles: ['vendors_manager', 'vendors_team_leader', 'vendors_staff', 'accounting_manager'],
+    roles: ['vendors_manager', 'vendors_team_leader', 'vendors_staff', 'accounting_manager', 'accounting_team_leader'],
     storeLabel: true,
     seed: [
       { key: 'tax_finance', nameEn: 'Taxed — registered with finance', nameAr: 'ضريبي - مالية', order: 1 },
@@ -455,7 +455,7 @@ const REGISTRY = [
     module: 'procurement',
     nameEn: 'Procurement Categories',
     nameAr: 'فئات المشتريات',
-    roles: ['procurement_manager', 'procurement_staff'],
+    roles: ['procurement_manager', 'procurement_team_leader', 'procurement_staff'],
     seed: procurementDefaults.CATEGORIES,
   },
   {
@@ -463,7 +463,7 @@ const REGISTRY = [
     module: 'procurement',
     nameEn: 'Vendor Categories',
     nameAr: 'فئات الموردين',
-    roles: ['procurement_manager', 'procurement_staff', 'operations_manager', 'operations_team_leader', 'operations_staff'],
+    roles: ['procurement_manager', 'procurement_team_leader', 'procurement_staff', 'operations_manager', 'operations_team_leader', 'operations_staff'],
     seed: [
       { key: 'spare_parts', nameEn: 'Spare Parts', nameAr: 'قطع غيار' },
       { key: 'fuel', nameEn: 'Fuel', nameAr: 'وقود' },
@@ -477,7 +477,7 @@ const REGISTRY = [
     module: 'crm',
     nameEn: 'CRM Industries',
     nameAr: 'صناعات العملاء',
-    roles: ['crm_manager', 'crm_specialist', 'sales_manager'],
+    roles: ['crm_manager', 'crm_team_leader', 'crm_specialist', 'sales_manager', 'sales_team_leader'],
     seed: crmDefaults.INDUSTRIES,
   },
   {
@@ -485,7 +485,7 @@ const REGISTRY = [
     module: 'crm',
     nameEn: 'Lead Sources',
     nameAr: 'مصادر العملاء',
-    roles: ['crm_manager', 'crm_specialist', 'sales_manager'],
+    roles: ['crm_manager', 'crm_team_leader', 'crm_specialist', 'sales_manager', 'sales_team_leader'],
     seed: crmDefaults.SOURCES,
   },
   {
@@ -493,7 +493,7 @@ const REGISTRY = [
     module: 'crm',
     nameEn: 'Company Types',
     nameAr: 'أنواع الشركات',
-    roles: ['crm_manager', 'crm_specialist', 'sales_manager'],
+    roles: ['crm_manager', 'crm_team_leader', 'crm_specialist', 'sales_manager', 'sales_team_leader'],
     seed: crmDefaults.COMPANY_TYPES,
   },
   {
@@ -501,7 +501,7 @@ const REGISTRY = [
     module: 'crm',
     nameEn: 'Company Sizes',
     nameAr: 'أحجام الشركات',
-    roles: ['crm_manager', 'crm_specialist', 'sales_manager'],
+    roles: ['crm_manager', 'crm_team_leader', 'crm_specialist', 'sales_manager', 'sales_team_leader'],
     seed: crmDefaults.COMPANY_SIZES,
   },
   {
@@ -509,7 +509,7 @@ const REGISTRY = [
     module: 'it',
     nameEn: 'Custody & Store Item Types',
     nameAr: 'أنواع أصناف العهد والمستودع',
-    roles: ['it_manager', 'it_specialist', 'hr_manager', 'hr_specialist'],
+    roles: ['it_manager', 'it_team_leader', 'it_specialist', 'hr_manager', 'hr_team_leader', 'hr_specialist'],
     seed: assetDefaults.TYPE_SEED,
   },
   {
@@ -517,7 +517,7 @@ const REGISTRY = [
     module: 'it',
     nameEn: 'Item Conditions',
     nameAr: 'حالات الأصناف',
-    roles: ['it_manager', 'it_specialist', 'hr_manager', 'hr_specialist'],
+    roles: ['it_manager', 'it_team_leader', 'it_specialist', 'hr_manager', 'hr_team_leader', 'hr_specialist'],
     seed: assetDefaults.CONDITION_SEED,
   },
   // Mobile line plans are a managed list.
@@ -527,7 +527,7 @@ const REGISTRY = [
     module: 'hr',
     nameEn: 'Mobile line packages',
     nameAr: 'باقات خطوط الجوّال',
-    roles: ['hr_manager', 'hr_specialist', 'it_manager', 'it_specialist'],
+    roles: ['hr_manager', 'hr_team_leader', 'hr_specialist', 'it_manager', 'it_team_leader', 'it_specialist'],
     seed: [
       { key: 'Business Ctrl Plus 200', nameEn: 'Business Ctrl Plus 200', nameAr: 'Business Ctrl Plus 200' },
       { key: 'Business Ctrl Plus 400', nameEn: 'Business Ctrl Plus 400', nameAr: 'Business Ctrl Plus 400' },
@@ -538,7 +538,7 @@ const REGISTRY = [
     module: 'hr',
     nameEn: 'Mobile providers',
     nameAr: 'مزوّدو خدمة الجوّال',
-    roles: ['hr_manager', 'hr_specialist', 'it_manager', 'it_specialist'],
+    roles: ['hr_manager', 'hr_team_leader', 'hr_specialist', 'it_manager', 'it_team_leader', 'it_specialist'],
     seed: [
       { key: 'mobily', nameEn: 'Mobily', nameAr: 'موبايلي' },
       { key: 'stc', nameEn: 'STC', nameAr: 'STC' },
@@ -553,7 +553,7 @@ const REGISTRY = [
     module: 'operations',
     nameEn: 'Paying Branches',
     nameAr: 'الفروع المسدِّدة',
-    roles: ['operations_manager', 'operations_team_leader', 'operations_staff', 'moderator', 'cfo', 'accounting_manager', 'accountant'],
+    roles: ['operations_manager', 'operations_team_leader', 'operations_staff', 'moderator', 'cfo', 'accounting_manager', 'accounting_team_leader', 'accountant'],
     storeLabel: true,
     seed: [
       { key: 'jeddah', nameEn: 'Jeddah', nameAr: 'جدة' },
@@ -574,7 +574,7 @@ const REGISTRY = [
     module: 'operations',
     nameEn: 'Final Report Destinations',
     nameAr: 'وجهات أمر النقل النهائية',
-    roles: ['operations_manager', 'operations_team_leader', 'operations_staff', 'moderator', 'cfo', 'accounting_manager', 'accountant'],
+    roles: ['operations_manager', 'operations_team_leader', 'operations_staff', 'moderator', 'cfo', 'accounting_manager', 'accounting_team_leader', 'accountant'],
     storeLabel: true,
     seed: [
       { key: 'jeddah', nameEn: 'Jeddah', nameAr: 'جدة' },
@@ -664,7 +664,7 @@ const REGISTRY = [
     ]],
   ].map(([type, nameAr, nameEn, seed]) => ({
     type, module: 'customs', nameAr, nameEn,
-    roles: ['customs_manager', 'customs_officer', 'operations_manager', 'operations_team_leader'],
+    roles: ['customs_manager', 'customs_team_leader', 'customs_officer', 'operations_manager', 'operations_team_leader'],
     storeLabel: true, seed,
   })),
   // Collections section lists.
@@ -716,7 +716,7 @@ const REGISTRY = [
     ]],
   ].map(([type, nameAr, nameEn, seed]) => ({
     type, module: 'collections', nameAr, nameEn,
-    roles: ['collections_manager', 'collections_staff', 'cfo', 'accounting_manager'],
+    roles: ['collections_manager', 'collections_team_leader', 'collections_staff', 'cfo', 'accounting_manager', 'accounting_team_leader'],
     storeLabel: true, seed,
   })),
 
@@ -743,7 +743,7 @@ const REGISTRY = [
     module: 'b2c',
     nameEn: 'Rider Vehicle Condition',
     nameAr: 'حالة مركبة المندوب',
-    roles: ['b2c_manager', 'b2c_deputy', 'b2c_project_lead'],
+    roles: ['b2c_manager', 'b2c_team_leader', 'b2c_deputy', 'b2c_project_lead'],
     storeLabel: true,
     seed: [
       { key: 'good', nameAr: 'سليمة', nameEn: 'Good', color: '#16a34a' },
@@ -772,7 +772,7 @@ const REGISTRY = [
     ]],
   ].map(([type, nameAr, nameEn, seed]) => ({
     type, module: 'ls2', nameAr, nameEn,
-    roles: ['location_manager', 'location_staff', 'operations_manager', 'operations_team_leader', 'it_manager', 'it_specialist', 'vehicles_manager', 'procurement_staff', 'b2c_manager', 'b2c_deputy', 'b2c_project_lead'],
+    roles: ['location_manager', 'location_team_leader', 'location_staff', 'operations_manager', 'operations_team_leader', 'it_manager', 'it_team_leader', 'it_specialist', 'vehicles_manager', 'vehicles_team_leader', 'procurement_staff', 'b2c_manager', 'b2c_team_leader', 'b2c_deputy', 'b2c_project_lead'],
     storeLabel: true, seed,
   })),
 ];
@@ -826,7 +826,7 @@ const byType = (type) => REGISTRY.find((r) => r.type === type) || null;
 // Roles allowed to create/update/delete a given type.
 const writeRolesFor = (type) => {
   const entry = byType(type);
-  if (entry && entry.superOnly) return ['super_admin', 'admin', 'it_manager', 'it_specialist'];
+  if (entry && entry.superOnly) return ['super_admin', 'admin', 'it_manager', 'it_team_leader', 'it_specialist'];
   return [...BASE_WRITE_ROLES, ...((entry && entry.roles) || [])];
 };
 
@@ -837,7 +837,7 @@ const canManage = (type, role) => writeRolesFor(type).includes(role);
  * They used to be returned in full tagged `canManage`, so a fleet manager opening the page saw HR, procurement and vehicles lists, and searched for his own among what does not concern him. He could not edit them (the server blocks it), but he could read them. This is organization more than security: a list lives with its section.
  * Top management and IT see all, being owners of the general page; every other role sees only what it can edit. `all` keeps the door open for anyone who needs the full list on purpose.
  */
-const GLOBAL_LOOKUP_ROLES = ['super_admin', 'admin', 'it_manager', 'it_specialist'];
+const GLOBAL_LOOKUP_ROLES = ['super_admin', 'admin', 'it_manager', 'it_team_leader', 'it_specialist'];
 
 const typesForRole = (role, { all = false } = {}) => {
   const meta = REGISTRY.map((r) => ({

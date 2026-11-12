@@ -20,11 +20,11 @@ List<Map<String, dynamic>> soLogFiles(Map h) {
 /// Shared by the shipment orders screens: status vocabulary, the write gate, the server waybill and the follow-up dialog. Mirrors lib/shipmentOrders.ts on web.
 
 /// Same roles as routes/shipmentOrders.js, or an edit grant from the permissions matrix.
-const soEditRoles = ['super_admin', 'admin', 'it_manager', 'it_specialist', 'operations_manager', 'operations_team_leader', 'operations_staff', 'moderator',
-  'shipment_orders_manager', 'shipment_orders_staff', 'shipment_orders_followup', 'data_manager', 'data_analyst', 'data_entry',
+const soEditRoles = ['super_admin', 'admin', 'it_manager', 'it_team_leader', 'it_specialist', 'operations_manager', 'operations_team_leader', 'operations_staff', 'moderator',
+  'shipment_orders_manager', 'shipment_orders_team_leader', 'shipment_orders_staff', 'shipment_orders_followup', 'data_manager', 'data_analyst', 'data_entry',
   // Sales asks for shipments and the vendors team places them (server: config/priceView).
-  'sales_manager', 'sales_rep', 'vendors_manager', 'vendors_team_leader', 'vendors_staff'];
-const soAdminRoles = ['super_admin', 'admin', 'it_manager', 'it_specialist', 'operations_manager', 'operations_team_leader'];
+  'sales_manager', 'sales_team_leader', 'sales_rep', 'vendors_manager', 'vendors_team_leader', 'vendors_staff'];
+const soAdminRoles = ['super_admin', 'admin', 'it_manager', 'it_team_leader', 'it_specialist', 'operations_manager', 'operations_team_leader'];
 bool canEditOrders(BuildContext c) {
   final a = c.read<AuthProvider>();
   return soEditRoles.contains(a.role) || a.canEditSection('Shipment Orders');

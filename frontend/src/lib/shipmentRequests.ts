@@ -2,14 +2,14 @@
 // Shipment Orders, Sales and Vendors Management. Mirrors backend/src/controllers/shipmentRequestsController.js.
 import { roleOf, type RoleOrUser } from './sections';
 
-export const SALES_ROLES = ['sales_manager', 'sales_rep', 'sales_trainee'];
+export const SALES_ROLES = ['sales_manager', 'sales_team_leader', 'sales_rep', 'sales_trainee'];
 export const VENDOR_ROLES = ['vendors_manager', 'vendors_team_leader', 'vendors_staff', 'vendors_trainee'];
-const TOP = ['super_admin', 'admin', 'it_manager', 'it_specialist'];
+const TOP = ['super_admin', 'admin', 'it_manager', 'it_team_leader', 'it_specialist'];
 const DATA = ['data_manager', 'data_analyst', 'data_entry'];
-const SO_TEAM = ['shipment_orders_manager', 'shipment_orders_staff', 'operations_manager', 'operations_team_leader', 'operations_staff'];
+const SO_TEAM = ['shipment_orders_manager', 'shipment_orders_team_leader', 'shipment_orders_staff', 'operations_manager', 'operations_team_leader', 'operations_staff'];
 export const ASK_ROLES = [...TOP, ...DATA, ...SALES_ROLES, ...SO_TEAM];
 export const PLACE_ROLES = [...TOP, ...DATA, ...VENDOR_ROLES, ...SO_TEAM];
-export const FLEET_TEAM_ROLES = ['fleet_manager', 'fleet_supervisor'];
+export const FLEET_TEAM_ROLES = ['fleet_manager', 'fleet_team_leader', 'fleet_supervisor'];
 export const FLEET_PLACE_ROLES = [...TOP, ...DATA, 'operations_manager', 'operations_team_leader', 'operations_staff', ...FLEET_TEAM_ROLES];
 export const READ_ROLES = [...new Set([...ASK_ROLES, ...PLACE_ROLES, ...FLEET_TEAM_ROLES, 'shipment_orders_followup'])];
 export const canAsk = (u: RoleOrUser) => ASK_ROLES.includes(roleOf(u));

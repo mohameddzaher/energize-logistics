@@ -9,7 +9,7 @@ const mongoose = require('mongoose');
  * Supervisory roles in the department, same as the duty-check screen (`b2cDutyController`).
  * Rep supervisors cover their riders; project and sector managers stand in when absent and can be assigned directly in small projects.
  */
-const SUPERVISOR_ROLES = ['b2c_rep_supervisor', 'b2c_inspection_supervisor', 'b2c_project_lead', 'b2c_manager', 'b2c_deputy'];
+const SUPERVISOR_ROLES = ['b2c_rep_supervisor', 'b2c_inspection_supervisor', 'b2c_project_lead', 'b2c_manager', 'b2c_team_leader', 'b2c_deputy'];
 
 /** Display order: closest to the field first. */
 const ROLE_ORDER = {

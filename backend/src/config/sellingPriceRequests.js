@@ -14,7 +14,7 @@ const DATA_TEAM = ['data_manager', 'data_analyst', 'data_entry'];
  */
 const DATA_TEAM_NEEDS_APPROVAL = process.env.SELLING_APPROVAL_DATA_TEAM === '1';
 const REQUEST_ROLES = ['sales_rep', ...(DATA_TEAM_NEEDS_APPROVAL ? DATA_TEAM : [])];
-const APPROVER_ROLES = [...TOP_ROLES, 'sales_manager'];
+const APPROVER_ROLES = [...TOP_ROLES, 'sales_manager', 'sales_team_leader'];
 
 const sellingByRequest = (user) => !!user && REQUEST_ROLES.includes(user.role);
 const canApproveSelling = (user) => !!user && (APPROVER_ROLES.includes(user.role) || user.isTopManagement === true);

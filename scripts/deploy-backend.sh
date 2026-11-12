@@ -236,6 +236,17 @@ for gen in genPageCatalog genPageApis; do
 done
 good "generated page maps are current"
 
+# Team leaders hold their manager's rights; a role list naming a manager without its team leader denies it silently.
+if ! out="$(node "$ROOT/backend/src/scripts/checkTeamLeaderParity.js" 2>&1)"; then
+  bad "team leader missing from a role list — $out"
+  exit 1
+fi
+if ! out="$(node "$ROOT/backend/src/scripts/genFrontendRoles.js" --check 2>&1)"; then
+  bad "frontend/src/lib/roles.ts is stale — $out"
+  exit 1
+fi
+good "role lists and the frontend role mirror are current"
+
 # API docs are really built before deploy. The document is not stored in a file: it is built from the router when requested, so it matches what is mounted. What can still break is the generator, or mounted routes it cannot read, handing partners an incomplete document. So it is built here with the real router and the deploy is rejected if it breaks. It also reports which route has no guard.
 if ! out="$(API_DOCS_ONLY=1 node "$ROOT/backend/src/scripts/checkApiDocs.js" 2>&1)"; then
   bad "api docs do not build — $out"

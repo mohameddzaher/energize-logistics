@@ -6,7 +6,7 @@ import LeaveDesk from '@/components/hr/LeaveDesk';
 export default function TopManagementLeavesPage() {
   const { user } = useAuth();
   // role-only: this stage belongs to the named top-management accounts (and super admins), not to a section grant.
-  const canDecide = (user as any)?.isTopManagement === true || ['super_admin', 'admin', 'it_manager', 'it_specialist'].includes(user?.role || '');
+  const canDecide = (user as any)?.isTopManagement === true || ['super_admin', 'admin', 'it_manager', 'it_team_leader', 'it_specialist'].includes(user?.role || '');
   return (
     <LeaveDesk base="/api/top-management" stage="executive" canDecide={canDecide}
       title={{ ar: 'طلبات الإجازات — الإدارة العليا', en: 'Leave Requests — Top Management' }}

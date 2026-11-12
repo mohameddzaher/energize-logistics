@@ -23,7 +23,7 @@ import {
 import { Spinner } from '@/components/hr/HRKit';
 
 type AnyObj = Record<string, any>;
-const EXEC_ROLES = ['super_admin', 'admin', 'it_manager', 'it_specialist'];
+const EXEC_ROLES = ['super_admin', 'admin', 'it_manager', 'it_team_leader', 'it_specialist'];
 
 // ── formatting helpers ─────────────────────────────────────────────────────
 const n = (v: any) => (v == null || v === '' || Number.isNaN(Number(v)) ? '—' : Number(v).toLocaleString('en-US'));

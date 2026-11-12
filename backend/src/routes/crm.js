@@ -11,7 +11,7 @@ router.use(authenticate);
 
 // The BD team links opportunities to CRM companies — they need to READ the
 // companies list (only). Declared before the section-wide CRM staff wall.
-router.get('/companies', authorize(...STAFF, 'bd_manager', 'bd_specialist'), crm.listCompanies);
+router.get('/companies', authorize(...STAFF, 'bd_manager', 'bd_team_leader', 'bd_specialist'), crm.listCompanies);
 
 router.use(authorize(...STAFF));
 

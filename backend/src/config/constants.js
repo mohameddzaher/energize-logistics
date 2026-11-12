@@ -1,7 +1,7 @@
 // Roles with unrestricted, super_admin-equivalent access to everything. The IT department owns the whole system technically, so they are never gated.
 // Admin and IT (it_manager, it_specialist) equal super admin: they see the whole system with full permissions, and `TOP_ROLES` replaces every check that asked 'is this super admin?' by name. The super admin account itself stays protected from edits (userController) and from the matrix (permissionController).
-const FULL_ACCESS_ROLES = ['super_admin', 'admin', 'it_manager', 'it_specialist'];
-const TOP_ROLES = ['super_admin', 'admin', 'it_manager', 'it_specialist'];
+const FULL_ACCESS_ROLES = ['super_admin', 'admin', 'it_manager', 'it_team_leader', 'it_specialist'];
+const TOP_ROLES = ['super_admin', 'admin', 'it_manager', 'it_team_leader', 'it_specialist'];
 const isTopRole = (role) => TOP_ROLES.includes(String(role || ''));
 
 
@@ -123,69 +123,69 @@ module.exports = {
   })(),
 
   // Roles that can access the Accounting section.
-  MARKETING_STAFF_ROLES: ['super_admin', 'admin', 'it_manager', 'it_specialist', 'marketing_manager', 'marketing_specialist', 'moderator', 'bd_manager'],
-  MARKETING_ADMIN_ROLES: ['super_admin', 'admin', 'it_manager', 'it_specialist', 'marketing_manager', 'marketing_specialist', 'bd_manager'],
-  BD_STAFF_ROLES: ['super_admin', 'admin', 'it_manager', 'it_specialist', 'bd_manager', 'bd_specialist', 'sales_manager', 'crm_manager', 'operations_manager', 'operations_team_leader'],
-  BD_ADMIN_ROLES: ['super_admin', 'admin', 'it_manager', 'it_specialist', 'bd_manager', 'bd_specialist'],
+  MARKETING_STAFF_ROLES: ['super_admin', 'admin', 'it_manager', 'it_team_leader', 'it_specialist', 'marketing_manager', 'marketing_team_leader', 'marketing_specialist', 'moderator', 'bd_manager', 'bd_team_leader'],
+  MARKETING_ADMIN_ROLES: ['super_admin', 'admin', 'it_manager', 'it_team_leader', 'it_specialist', 'marketing_manager', 'marketing_team_leader', 'marketing_specialist', 'bd_manager', 'bd_team_leader'],
+  BD_STAFF_ROLES: ['super_admin', 'admin', 'it_manager', 'it_team_leader', 'it_specialist', 'bd_manager', 'bd_team_leader', 'bd_specialist', 'sales_manager', 'sales_team_leader', 'crm_manager', 'crm_team_leader', 'operations_manager', 'operations_team_leader'],
+  BD_ADMIN_ROLES: ['super_admin', 'admin', 'it_manager', 'it_team_leader', 'it_specialist', 'bd_manager', 'bd_team_leader', 'bd_specialist'],
   // Administration section (secretariat): the office task board.
-  ADMINISTRATION_STAFF_ROLES: ['super_admin', 'admin', 'administration_staff', 'bd_manager', 'it_manager', 'it_specialist'],
-  IT_STAFF_ROLES: ['super_admin', 'admin', 'it_manager', 'it_specialist'],
-  IT_ADMIN_ROLES: ['super_admin', 'admin', 'it_manager', 'it_specialist'],
-  FINANCE_STAFF_ROLES: ['super_admin', 'admin', 'it_manager', 'it_specialist', 'cfo', 'accounting_manager', 'accountant'],
+  ADMINISTRATION_STAFF_ROLES: ['super_admin', 'admin', 'administration_staff', 'bd_manager', 'bd_team_leader', 'it_manager', 'it_team_leader', 'it_specialist'],
+  IT_STAFF_ROLES: ['super_admin', 'admin', 'it_manager', 'it_team_leader', 'it_specialist'],
+  IT_ADMIN_ROLES: ['super_admin', 'admin', 'it_manager', 'it_team_leader', 'it_specialist'],
+  FINANCE_STAFF_ROLES: ['super_admin', 'admin', 'it_manager', 'it_team_leader', 'it_specialist', 'cfo', 'accounting_manager', 'accounting_team_leader', 'accountant'],
   // Roles that can access the Sales section (+ the operations team — they need
   // visibility across CRM/Sales for the 3PL workflow).
-  SALES_STAFF_ROLES: ['super_admin', 'admin', 'it_manager', 'it_specialist', 'sales_manager', 'sales_rep', 'operations_manager', 'operations_team_leader', 'operations_staff'],
+  SALES_STAFF_ROLES: ['super_admin', 'admin', 'it_manager', 'it_team_leader', 'it_specialist', 'sales_manager', 'sales_team_leader', 'sales_rep', 'operations_manager', 'operations_team_leader', 'operations_staff'],
   // Roles that can access the Procurement section. Reuses the existing
   // `purchasing` role (officer level) and adds a procurement_manager.
-  PROCUREMENT_STAFF_ROLES: ['super_admin', 'admin', 'it_manager', 'it_specialist', 'procurement_manager', 'procurement_staff'],
+  PROCUREMENT_STAFF_ROLES: ['super_admin', 'admin', 'it_manager', 'it_team_leader', 'it_specialist', 'procurement_manager', 'procurement_team_leader', 'procurement_staff'],
 
   // Roles that can see/manage the HR back-office (employees, contracts, all
   // leaves/requests, custody, leave types). Everyone else only gets the HR
   // self-service pages (their own profile, requests and leaves).
-  HR_STAFF_ROLES: ['super_admin', 'admin', 'it_manager', 'it_specialist', 'hr_manager', 'hr_specialist'],
+  HR_STAFF_ROLES: ['super_admin', 'admin', 'it_manager', 'it_team_leader', 'it_specialist', 'hr_manager', 'hr_team_leader', 'hr_specialist'],
 
   // Roles that can access the CRM section (companies, contacts, deals, tasks,
   // activities, calendar). Tiered: crm_manager (full) > crm_team_lead (delete /
   // reassign) > crm_specialist (write, no delete) > crm_agent (entry level).
   // crm_manager + crm_team_lead are the "admin" tier (delete + privileged ops).
-  CRM_STAFF_ROLES: ['super_admin', 'admin', 'it_manager', 'it_specialist', 'crm_manager', 'crm_team_lead', 'crm_specialist', 'crm_agent', 'operations_manager', 'operations_team_leader', 'operations_staff'],
-  CRM_ADMIN_ROLES: ['super_admin', 'admin', 'it_manager', 'it_specialist', 'crm_manager', 'crm_team_lead'],
+  CRM_STAFF_ROLES: ['super_admin', 'admin', 'it_manager', 'it_team_leader', 'it_specialist', 'crm_manager', 'crm_team_leader', 'crm_team_lead', 'crm_specialist', 'crm_agent', 'operations_manager', 'operations_team_leader', 'operations_staff'],
+  CRM_ADMIN_ROLES: ['super_admin', 'admin', 'it_manager', 'it_team_leader', 'it_specialist', 'crm_manager', 'crm_team_leader', 'crm_team_lead'],
 
   // Roles that can access the Customs Clearance section.
-  CUSTOMS_STAFF_ROLES: ['super_admin', 'admin', 'it_manager', 'it_specialist', 'operations_manager', 'operations_team_leader', 'customs_manager', 'customs_officer'],
+  CUSTOMS_STAFF_ROLES: ['super_admin', 'admin', 'it_manager', 'it_team_leader', 'it_specialist', 'operations_manager', 'operations_team_leader', 'customs_manager', 'customs_team_leader', 'customs_officer'],
 
   // Roles that can access the Operations Platform: the live mirror of the external UPL field-ops system (B2B, Fleet Management + 3PL).
   // READ is broad (every internal staff role except the B2C team and the client portal) so live ops data can be embedded in all section dashboards. Only the admin tier can create/update/delete (writes proxied to UPL).
   OPS_PLATFORM_STAFF_ROLES: [
-    'super_admin', 'admin', 'it_manager', 'it_specialist', 'moderator', 'employee', 'operations_manager', 'operations_team_leader', 'operations_staff',
+    'super_admin', 'admin', 'it_manager', 'it_team_leader', 'it_specialist', 'moderator', 'employee', 'operations_manager', 'operations_team_leader', 'operations_staff',
     'procurement_staff',
-    'hr_manager', 'hr_specialist',
-    'crm_manager', 'crm_team_lead', 'crm_specialist', 'crm_agent',
-    'cfo', 'accounting_manager', 'accountant',
-    'sales_manager', 'sales_rep',
-    'procurement_manager',
-    'customs_manager', 'customs_officer',
-    'remote_manager',
+    'hr_manager', 'hr_team_leader', 'hr_specialist',
+    'crm_manager', 'crm_team_leader', 'crm_team_lead', 'crm_specialist', 'crm_agent',
+    'cfo', 'accounting_manager', 'accounting_team_leader', 'accountant',
+    'sales_manager', 'sales_team_leader', 'sales_rep',
+    'procurement_manager', 'procurement_team_leader',
+    'customs_manager', 'customs_team_leader', 'customs_officer',
+    'remote_manager', 'remote_team_leader',
   ],
-  OPS_PLATFORM_ADMIN_ROLES: ['super_admin', 'admin', 'it_manager', 'it_specialist', 'operations_manager', 'operations_team_leader'],
+  OPS_PLATFORM_ADMIN_ROLES: ['super_admin', 'admin', 'it_manager', 'it_team_leader', 'it_specialist', 'operations_manager', 'operations_team_leader'],
 
   // Roles that can access the Location Solutions section: the live Wialon GPS/telemetry mirror (sensors, tires, engine temp, maintenance alerts). READ is broad across the fleet/ops/workshop side; the admin tier (super_admin, admin, operations_manager) can acknowledge alerts, mark vehicles serviced and tune thresholds.
   // The section's own roles are listed too: `location_manager` and `location_staff` (config/roles.js) were missing, so their access came only from the permission matrix grant, which name-based guards (sidebar section settings) cannot see. Each section lists its manager and staff in its lists (see role-structure).
   LS2_STAFF_ROLES: [
-    'super_admin', 'admin', 'it_manager', 'it_specialist', 'moderator', 'employee', 'operations_manager', 'operations_team_leader', 'operations_staff',
-    'procurement_staff', 'location_manager', 'location_staff',
+    'super_admin', 'admin', 'it_manager', 'it_team_leader', 'it_specialist', 'moderator', 'employee', 'operations_manager', 'operations_team_leader', 'operations_staff',
+    'procurement_staff', 'location_manager', 'location_team_leader', 'location_staff',
     // The vehicles and authorizations manager works in the section.
-    'vehicles_manager',
+    'vehicles_manager', 'vehicles_team_leader',
   ],
   // The data team edits LS2 records too, tire condition percentages above all (owner).
-  LS2_ADMIN_ROLES: ['super_admin', 'admin', 'it_manager', 'it_specialist', 'operations_manager', 'operations_team_leader', 'location_manager', 'vehicles_manager', 'data_manager', 'data_analyst', 'data_entry'],
+  LS2_ADMIN_ROLES: ['super_admin', 'admin', 'it_manager', 'it_team_leader', 'it_specialist', 'operations_manager', 'operations_team_leader', 'location_manager', 'location_team_leader', 'vehicles_manager', 'vehicles_team_leader', 'data_manager', 'data_analyst', 'data_entry'],
   // Core roles that see the section in their sidebar (others can still reach the
   // data via direct link / embeds but it isn't pinned to their nav).
-  LS2_SECTION_ROLES: ['super_admin', 'admin', 'it_manager', 'it_specialist', 'operations_manager', 'operations_team_leader', 'operations_staff', 'moderator', 'location_manager', 'location_staff'],
+  LS2_SECTION_ROLES: ['super_admin', 'admin', 'it_manager', 'it_team_leader', 'it_specialist', 'operations_manager', 'operations_team_leader', 'operations_staff', 'moderator', 'location_manager', 'location_team_leader', 'location_staff'],
 
   // Roles that can access the Vehicles & Authorizations section: super admin + HR + Accounting. Delete ops are further limited to the admin tier (super_admin, admin, hr_manager, cfo, accounting_manager).
-  VEHICLE_STAFF_ROLES: ['super_admin', 'admin', 'it_manager', 'it_specialist', 'hr_manager', 'hr_specialist', 'cfo', 'accounting_manager', 'accountant'],
-  VEHICLE_ADMIN_ROLES: ['super_admin', 'admin', 'it_manager', 'it_specialist', 'hr_manager', 'cfo', 'accounting_manager'],
+  VEHICLE_STAFF_ROLES: ['super_admin', 'admin', 'it_manager', 'it_team_leader', 'it_specialist', 'hr_manager', 'hr_team_leader', 'hr_specialist', 'cfo', 'accounting_manager', 'accounting_team_leader', 'accountant'],
+  VEHICLE_ADMIN_ROLES: ['super_admin', 'admin', 'it_manager', 'it_team_leader', 'it_specialist', 'hr_manager', 'hr_team_leader', 'cfo', 'accounting_manager', 'accounting_team_leader'],
 
   // Pages inside the Remote (work-from-home) section. A remote_employee is
   // granted a subset of these via User.remoteAccess; remote_manager and

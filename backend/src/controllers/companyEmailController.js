@@ -15,7 +15,7 @@ const who = (req) => `${req.user?.firstName || ''} ${req.user?.lastName || ''}`.
 const rx = (s) => new RegExp(String(s).trim().replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i');
 
 /** Who may see the password; deliberately narrower than who may edit. */
-const REVEAL_ROLES = ['super_admin', 'admin', 'it_manager', 'it_specialist'];
+const REVEAL_ROLES = ['super_admin', 'admin', 'it_manager', 'it_team_leader', 'it_specialist'];
 const canReveal = (user) => REVEAL_ROLES.includes(user?.role) || user?.sectionAccess === 'edit';
 
 // List

@@ -4,7 +4,7 @@
  */
 const { nameKey } = require('../utils/nameKey');
 const { isLightDepartment } = require('../utils/lightTransportSync');
-const { SECTION_ROLES, DATA_DEPT, DATA_ROLES, sectionOfRole } = require('./roles');
+const { SECTION_ROLES, DATA_DEPT, DATA_ROLES, sectionOfRole, isTeamLeader } = require('./roles');
 
 // The data team has global permission roles but is its own department under its manager, so performance treats it as a section.
 const EXTRA_SECTIONS = { [DATA_DEPT]: { manager: 'data_manager', staff: DATA_ROLES.filter((r) => r !== 'data_manager') } };
@@ -79,14 +79,38 @@ function resolveDepartment(raw, index) {
   return { key: `x:${f || text}`, label: text, labelEn: text, known: false };
 }
 
-/** Roles that manage a system department: its manager, and the one above if any (the financial manager). */
+// The CFO heads finance: he sits with the department heads and rates the accounting manager.
+const HEADS = { Accounting: ['cfo'] };
+// A second level under the head: the accounting manager is in the CFO's team and rates the accountants (and the team leader) below him.
+const SUB_HEADS = { Accounting: ['accounting_manager'] };
+
+/**
+ * Heads of a department in performance review: rated by top management, they rate the section's team.
+ * The section manager role only (plus a parent department's manager, e.g. operations over vendors). A team leader holds the manager's rights elsewhere but is staff here.
+ */
 function managerRolesOf(sectionKey) {
+  if (EXTRA_SECTIONS[sectionKey]) return [EXTRA_SECTIONS[sectionKey].manager];
+  if (HEADS[sectionKey]) return HEADS[sectionKey];
+  const def = SECTION_ROLES.find((s) => s.section === sectionKey);
+  if (!def) return [];
+  const { JP_SECTIONS } = require('./jpSections');
+  const jp = Object.values(JP_SECTIONS).find((s) => s.roleSection === sectionKey);
+  return [...new Set([def.manager.key, ...((jp && jp.extraManagers) || []).filter((r) => !isTeamLeader(r))])];
+}
+
+/** Roles that lead a department day to day (leave team, work plan): its heads plus whoever holds the manager's rights. Not used for performance review. */
+function leadRolesOf(sectionKey) {
   if (EXTRA_SECTIONS[sectionKey]) return [EXTRA_SECTIONS[sectionKey].manager];
   const { JP_SECTIONS } = require('./jpSections');
   const jp = Object.values(JP_SECTIONS).find((s) => s.roleSection === sectionKey);
   if (jp) return jp.managerRoles;
   const def = SECTION_ROLES.find((s) => s.section === sectionKey);
   return def ? [def.manager.key] : [];
+}
+
+/** The department this role leads day to day, or null. */
+function sectionLedBy(role) {
+  return allSections().find((k) => leadRolesOf(k).includes(role)) || null;
 }
 
 // Manager role to department. Built once: roles are static config.
@@ -103,7 +127,12 @@ function sectionOfManagerRole(role) {
 
 const allSections = () => [...SECTION_ROLES.map((s) => s.section), ...Object.keys(EXTRA_SECTIONS)];
 
-/** Every section a role manages; operations_manager also heads Vendors Management, cfo also Accounting. */
+/** Roles that rate their section's team from inside the head's team (see SUB_HEADS). */
+const subHeadsOf = (sectionKey) => SUB_HEADS[sectionKey] || [];
+/** Sections where this role is the second-level rater. */
+const sectionsSubHeadedBy = (role) => Object.keys(SUB_HEADS).filter((k) => SUB_HEADS[k].includes(role));
+
+/** Every section a role heads in performance review; operations_manager also heads Vendors Management, cfo heads Accounting. */
 function sectionsManagedBy(role) {
   return allSections().filter((k) => managerRolesOf(k).includes(role));
 }
@@ -148,6 +177,6 @@ function sectionOwners(index, employees, roleOf) {
 
 module.exports = {
   NO_KPI_DEPARTMENTS, isKpiExempt,
-  NONE, deptFold, buildIndex, loadIndex, resolveDepartment, managerRolesOf, sectionOfManagerRole, sectionOwners,
-  perfSectionOfRole, sectionsManagedBy, allSections, EXTRA_SECTIONS,
+  NONE, deptFold, buildIndex, loadIndex, resolveDepartment, managerRolesOf, leadRolesOf, sectionLedBy, sectionOfManagerRole, sectionOwners,
+  perfSectionOfRole, sectionsManagedBy, subHeadsOf, sectionsSubHeadedBy, allSections, EXTRA_SECTIONS,
 };

@@ -62,7 +62,7 @@ const OPEN = CollectionInvoice.OPEN;
  * The department sees what is owed to us, not what we owe.
  * Duplicated from collectionsDeptController on purpose, to avoid mutual coupling between the two files.
  */
-const RECEIVABLES_ONLY = ['collections_manager', 'collections_staff'];
+const RECEIVABLES_ONLY = ['collections_manager', 'collections_team_leader', 'collections_staff'];
 const receivablesOnly = (user) => RECEIVABLES_ONLY.includes(user?.role);
 
 // Ledger filters, built in one place so the table, stats and export never disagree.

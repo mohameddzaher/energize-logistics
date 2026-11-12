@@ -63,12 +63,13 @@ const PRIORITY_KEYS = PRIORITIES.map((p) => p.key);
 
 // ── Tiers ───────────────────────────────────────────────────────────────────
 // The board: sees every meeting, every action, every delegation.
-const EXECUTIVE_ROLES = [...new Set([...FULL_ACCESS_ROLES, 'admin', 'moderator'])];
+// Team leaders are left out even where FULL_ACCESS_ROLES names one (IT): they hold rights, not a board seat.
+const EXECUTIVE_ROLES = [...new Set([...FULL_ACCESS_ROLES, 'admin', 'moderator'])].filter((r) => !require('./roles').isTeamLeader(r));
 
 // The secretariat: runs the meetings, writes the minutes, records the actions.
 // asmaa@energize.com sits here via the `administrator` role.
 // Both manager and staff are included because both levels do this work.
-const SECRETARY_ROLES = ['administration_manager', 'administration_staff'];
+const SECRETARY_ROLES = ['administration_manager', 'administration_team_leader', 'administration_staff'];
 
 // Department heads whose role key does NOT end in `_manager`. Everything ending in `_manager` is picked up automatically.
 // After the org structure fix (config/roles.js) the list is nearly empty; `moderator` remains as a general supervisory role not tied to a department.
@@ -77,6 +78,8 @@ const EXTRA_MANAGER_ROLES = ['moderator', 'cfo'];
 /** Is this role a department head who belongs in the room? */
 const isManagerRole = (role) => {
   if (!role) return false;
+  // A section team leader holds its manager's rights but never the management seat (the secretariat's team leader still runs meetings through SECRETARY_ROLES).
+  if (require('./roles').isTeamLeader(role)) return false;
   if (EXECUTIVE_ROLES.includes(role)) return true;
   if (SECRETARY_ROLES.includes(role)) return true;
   if (EXTRA_MANAGER_ROLES.includes(role)) return true;

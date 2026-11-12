@@ -154,7 +154,7 @@ exports.list = async (req, res) => {
     tot.rate = (tot.achieved + tot.near + tot.far) ? tot.achieved / (tot.achieved + tot.near + tot.far) : null;
 
     // The entry page does not carry the report. Whoever enters orders sees only the rep, residence number, project and the day cell. Totals, targets, evaluation and supervisors are a report for the B2C board (`report=1`), for those who read the board only.
-    const REPORT_ROLES = ['super_admin', 'admin', 'it_manager', 'it_specialist', 'b2c_manager', 'b2c_deputy', 'b2c_project_lead'];
+    const REPORT_ROLES = ['super_admin', 'admin', 'it_manager', 'it_team_leader', 'it_specialist', 'b2c_manager', 'b2c_team_leader', 'b2c_deputy', 'b2c_project_lead'];
     const report = req.query.report === '1' && (REPORT_ROLES.includes(req.user?.role) || E.isEntryHead(req.user));
     if (!report) {
       // Rep order as arranged by the section managers for the project sheet, so entry here follows the sheet's order; reps outside the order follow by name.

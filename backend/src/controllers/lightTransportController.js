@@ -1276,11 +1276,11 @@ const LT_VEHICLE_SELECT = 'serialNumber departmentAr cityAr plateNumber sectorAr
   + 'serviceStatusAr colorAr notesAr registrationTypeAr operatingCard.cardNumber operatingCard.expiryDate insurance.expiryDate '
   + 'vehicleLicense.expiryDate inspection.expiryDate';
 /** Who may edit: sector manager, deputy, system admin (and finance roles, as for everything opened to them). */
-const LT_VEHICLE_EDIT = ['super_admin', 'admin', 'it_manager', 'it_specialist', 'b2c_manager', 'b2c_deputy', ...require('../config/financeAuthority').FINANCE_FULL_ROLES];
+const LT_VEHICLE_EDIT = ['super_admin', 'admin', 'it_manager', 'it_team_leader', 'it_specialist', 'b2c_manager', 'b2c_team_leader', 'b2c_deputy', ...require('../config/financeAuthority').FINANCE_FULL_ROLES];
 exports.LT_VEHICLE_EDIT = LT_VEHICLE_EDIT;
 /** Who edits the vehicle register itself (routes/vehicleRegistry EDIT); only they change the plate from here. */
-const REGISTRY_EDIT = ['super_admin', 'admin', 'it_manager', 'it_specialist', 'vehicles_manager', 'vehicles_staff',
-  'hr_manager', 'hr_specialist', 'cfo', 'accounting_manager', 'accountant'];
+const REGISTRY_EDIT = ['super_admin', 'admin', 'it_manager', 'it_team_leader', 'it_specialist', 'vehicles_manager', 'vehicles_team_leader', 'vehicles_staff',
+  'hr_manager', 'hr_team_leader', 'hr_specialist', 'cfo', 'accounting_manager', 'accounting_team_leader', 'accountant'];
 
 // GET /people?q= - people dropdown for department vehicles: light-transport employees first, then HR. What it shows is what the edit accepts - utils/vehiclePerson.
 exports.people = async (req, res) => {

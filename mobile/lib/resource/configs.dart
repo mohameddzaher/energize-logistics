@@ -1095,8 +1095,8 @@ ResourceConfig b2cRepsCfg({required bool canEdit}) => ResourceConfig(
 // Shipment orders (standalone trial) and customers register.
 // Read from the computed customers register (how many sheets, for how much, how many routes), not the raw customers table, so the row carries its numbers as on the web. Tapping opens the full file, the same as the web page.
 // One register with three entry points: opened from shipment orders, operations and sales, with all reads and writes on /api/customer-registry. Writes used to go to the shipment-orders endpoint guarded by its section, so opening the register from another section gave 403 on first save. Who edits and who removes is decided by role as on the web (canEditCustomers) and passed from the list.
-const customerEditRoles = ['super_admin', 'admin', 'it_manager', 'it_specialist', 'operations_manager', 'operations_team_leader', 'operations_staff', 'moderator', 'sales_manager', 'sales_rep',
-  'shipment_orders_manager', 'shipment_orders_staff', 'shipment_orders_followup', 'data_manager', 'data_analyst', 'data_entry'];
+const customerEditRoles = ['super_admin', 'admin', 'it_manager', 'it_team_leader', 'it_specialist', 'operations_manager', 'operations_team_leader', 'operations_staff', 'moderator', 'sales_manager', 'sales_team_leader', 'sales_rep',
+  'shipment_orders_manager', 'shipment_orders_team_leader', 'shipment_orders_staff', 'shipment_orders_followup', 'data_manager', 'data_analyst', 'data_entry'];
 final customerRemoveRoles = customerEditRoles.where((r) => r != 'sales_rep').toList();
 
 ResourceConfig customersRegisterCfg({required bool canEdit, required bool canDelete}) => ResourceConfig(
@@ -1498,7 +1498,7 @@ ResourceAction _collectAction(bool isCash) => ResourceAction(
 bool collectionsCanEdit = true;
 
 /// Edit amount: by role alone, like the server guard (authorize.strict on collectionsDeptController.AMOUNT_EDIT_ROLES); a section edit grant does not open it.
-const collectionsAmountEditRoles = ['super_admin', 'admin', 'it_manager', 'it_specialist', 'collections_manager', 'cfo', 'accounting_manager'];
+const collectionsAmountEditRoles = ['super_admin', 'admin', 'it_manager', 'it_team_leader', 'it_specialist', 'collections_manager', 'collections_team_leader', 'cfo', 'accounting_manager', 'accounting_team_leader'];
 bool collectionsCanEditAmount = false;
 
 /// Not collected: reverting a recorded collection. The reason is optional and recorded under the user's name. A tax invoice is identified by its number, a cash sheet by its workflow id.

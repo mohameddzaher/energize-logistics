@@ -201,7 +201,7 @@ class _ItEmailsScreenState extends State<ItEmailsScreen> {
   @override
   Widget build(BuildContext context) {
     final auth = context.watch<AuthProvider>();
-    final canEdit = const ['super_admin', 'admin', 'it_manager', 'it_specialist'].contains(auth.role)
+    final canEdit = const ['super_admin', 'admin', 'it_manager', 'it_team_leader', 'it_specialist'].contains(auth.role)
         || auth.canEditSection('Software & IT');
 
     return AppScaffold(

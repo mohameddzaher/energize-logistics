@@ -17,7 +17,7 @@ router.get('/permissions', authorize.strict('super_admin'), getPermissions);
 router.put('/permissions/:role', authorize.strict('super_admin'), updateRolePermissions);
 
 // Custom user types. Reading is open to those who create users, since the users-page dropdown needs it, otherwise a type could be made but not assigned. Creating and deleting is system owner only, as a new type is a new access path.
-router.get('/roles', authorize('super_admin', 'admin', 'it_manager', 'it_specialist', 'hr_manager'), listCustomRoles);
+router.get('/roles', authorize('super_admin', 'admin', 'it_manager', 'it_team_leader', 'it_specialist', 'hr_manager'), listCustomRoles);
 router.post('/roles', authorize.strict('super_admin'), createCustomRole);
 router.put('/roles/:key', authorize.strict('super_admin'), updateCustomRole);
 router.delete('/roles/:key', authorize.strict('super_admin'), deleteCustomRole);

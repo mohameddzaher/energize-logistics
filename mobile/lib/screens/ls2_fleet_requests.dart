@@ -17,7 +17,7 @@ class Ls2FleetRequestsScreen extends StatefulWidget {
 }
 
 const _decideRoles = [
-  'super_admin', 'admin', 'it_manager', 'it_specialist', 'operations_manager', 'operations_team_leader', 'location_manager', 'vehicles_manager',
+  'super_admin', 'admin', 'it_manager', 'it_team_leader', 'it_specialist', 'operations_manager', 'operations_team_leader', 'location_manager', 'location_team_leader', 'vehicles_manager', 'vehicles_team_leader',
 ];
 
 class _Ls2FleetRequestsScreenState extends State<Ls2FleetRequestsScreen> {

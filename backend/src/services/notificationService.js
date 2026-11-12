@@ -67,7 +67,7 @@ const generateDueAlerts = async () => {
     dueDate: { $lt: now },
   }).populate('customer', 'companyName assignedCollector');
 
-  const admins = await User.find({ role: { $in: ['super_admin', 'admin', 'it_manager', 'it_specialist'] }, isActive: true });
+  const admins = await User.find({ role: { $in: ['super_admin', 'admin', 'it_manager', 'it_team_leader', 'it_specialist'] }, isActive: true });
 
   for (const inv of overdue) {
     const overdueDays = Math.ceil((now - inv.dueDate) / (1000 * 60 * 60 * 24));

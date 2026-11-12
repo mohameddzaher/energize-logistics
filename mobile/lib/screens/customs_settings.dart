@@ -192,7 +192,7 @@ class _CustomsSettingsScreenState extends State<CustomsSettingsScreen> {
           EmailTemplateTab(
             endpoint: '/api/customs-clearance/email-template', liveEvent: 'customs:email-template', embedded: true,
             titleAr: 'قالب بريد المتابعة للعميل', titleEn: 'Customer follow-up email template',
-            canEdit: const ['super_admin', 'admin', 'it_manager', 'it_specialist', 'customs_manager'].contains(context.watch<AuthProvider>().role),
+            canEdit: const ['super_admin', 'admin', 'it_manager', 'it_team_leader', 'it_specialist', 'customs_manager', 'customs_team_leader'].contains(context.watch<AuthProvider>().role),
           ),
       ]),
     );

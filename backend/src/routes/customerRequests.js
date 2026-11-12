@@ -8,7 +8,7 @@ const c = require('../controllers/customerRequestsController');
 
 router.param('id', objectIdParam());
 router.use(authenticate);
-const ROLES = ['super_admin', 'admin', 'it_manager', 'it_specialist', 'operations_manager', 'operations_team_leader', 'operations_staff', 'moderator'];
+const ROLES = ['super_admin', 'admin', 'it_manager', 'it_team_leader', 'it_specialist', 'operations_manager', 'operations_team_leader', 'operations_staff', 'moderator'];
 
 router.get('/', authorize(...ROLES), c.list);
 router.get('/unread-count', authorize(...ROLES), c.unreadCount);

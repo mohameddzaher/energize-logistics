@@ -5,18 +5,18 @@ import { canAccessSection, canEditSection, roleOf, permsOf, type RoleOrUser } fr
 export const SECTION = 'Collections';
 
 export const COLLECTIONS_ROLES = [
-  'super_admin', 'admin', 'it_manager', 'it_specialist',
-  'collections_manager', 'collections_staff',
-  'operations_manager', 'operations_team_leader', 'cfo', 'accounting_manager', 'accountant',
+  'super_admin', 'admin', 'it_manager', 'it_team_leader', 'it_specialist',
+  'collections_manager', 'collections_team_leader', 'collections_staff',
+  'operations_manager', 'operations_team_leader', 'cfo', 'accounting_manager', 'accounting_team_leader', 'accountant',
 ];
 
 export const COLLECTIONS_EDIT_ROLES = [
-  'super_admin', 'admin', 'it_manager', 'it_specialist',
-  'collections_manager', 'collections_staff', 'cfo', 'accounting_manager',
+  'super_admin', 'admin', 'it_manager', 'it_team_leader', 'it_specialist',
+  'collections_manager', 'collections_team_leader', 'collections_staff', 'cfo', 'accounting_manager', 'accounting_team_leader',
 ];
 
 // Section settings and deleting parties are for its manager: disabling a party hides a debt from every report.
-export const COLLECTIONS_ADMIN_ROLES = ['super_admin', 'admin', 'it_manager', 'it_specialist', 'collections_manager'];
+export const COLLECTIONS_ADMIN_ROLES = ['super_admin', 'admin', 'it_manager', 'it_team_leader', 'it_specialist', 'collections_manager', 'collections_team_leader'];
 
 export const canViewCollections = (u: RoleOrUser): boolean =>
   COLLECTIONS_ROLES.includes(roleOf(u)) || canAccessSection(permsOf(u), SECTION);
@@ -28,7 +28,7 @@ export const isCollectionsAdmin = (u: RoleOrUser): boolean =>
   COLLECTIONS_ADMIN_ROLES.includes(roleOf(u));
 
 /** Editing an invoice's value is a financial decision, not daily collection work. Role-only: granting the section edit does not open it, and the server guards it with authorize.strict on the same list (collectionsDeptController.AMOUNT_EDIT_ROLES). */
-export const AMOUNT_EDIT_ROLES = ['super_admin', 'admin', 'it_manager', 'it_specialist', 'collections_manager', 'cfo', 'accounting_manager'];
+export const AMOUNT_EDIT_ROLES = ['super_admin', 'admin', 'it_manager', 'it_team_leader', 'it_specialist', 'collections_manager', 'collections_team_leader', 'cfo', 'accounting_manager', 'accounting_team_leader'];
 
 export const canEditInvoiceAmount = (u: RoleOrUser): boolean =>
   AMOUNT_EDIT_ROLES.includes(roleOf(u));
@@ -37,7 +37,7 @@ export const canEditInvoiceAmount = (u: RoleOrUser): boolean =>
  * Who sees what we owe.
  * Collections collects and has nothing to do with supplier payments, net or profit, so amounts owed by us and the net are hidden from its two roles, not from the section: management, finance and the operations manager open the same section and see both sides. The rule is by role because the section is shared by people with different duties.
  */
-const RECEIVABLES_ONLY_ROLES = ['collections_manager', 'collections_staff'];
+const RECEIVABLES_ONLY_ROLES = ['collections_manager', 'collections_team_leader', 'collections_staff'];
 
 /** Whether this user is limited to what is owed to us. */
 export const receivablesOnly = (u: RoleOrUser): boolean =>

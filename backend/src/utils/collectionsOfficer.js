@@ -50,7 +50,7 @@ const clean = (v) => String(v == null ? '' : v).trim();
  * Staff directory: every active user in the department (staff or manager, no test accounts); nickname = the text most written on their accounts, otherwise their first name.
  */
 const DIR_KEY = 'cdr:dir';
-const ROLES = ['collections_staff', 'collections_manager'];
+const ROLES = ['collections_staff', 'collections_manager', 'collections_team_leader'];
 const lower = (v) => clean(v).toLowerCase();
 const cap = (v) => { const x = clean(v); return x ? x[0].toUpperCase() + x.slice(1) : ''; };
 

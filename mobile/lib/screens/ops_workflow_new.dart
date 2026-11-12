@@ -1,4 +1,5 @@
 import 'dart:convert';
+import '../services/roles.dart';
 import 'package:archive/archive.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
@@ -347,7 +348,7 @@ class _OpsWorkflowNewScreenState extends State<OpsWorkflowNewScreen> {
   @override
   Widget build(BuildContext context) {
     final role = context.watch<AuthProvider>().role;
-    final editable = _roleEditable[role] ?? const <String>[];
+    final editable = _roleEditable[role] ?? _roleEditable[rightsRoleOf(role)] ?? const <String>[];
     final mappedCount = _rows.isEmpty ? 0 : _rows.expand((r) => r.entries.where((e) => e.value.isNotEmpty).map((e) => e.key)).toSet().length;
     return AppScaffold(
       title: Text(_import ? tr('استيراد من Excel', 'Import from Excel') : tr('طلب تشغيل جديد', 'New workflow request')),

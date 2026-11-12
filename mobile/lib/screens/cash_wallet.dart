@@ -14,8 +14,8 @@ import 'wallet_common.dart';
 import 'ops_loads_board.dart';
 
 /// Daily cash wallet: the branch's daily wallet with collections, expenses and purchases, with transaction entry and day closing, /api/wallet/daily. The counterpart of /system/wallet on the web: a day, period or month, branch selector, edit, delete and move of a transaction, reopening a day, and export. Finance staff hold the same wallet powers as the system admin; mirrors backend/src/config/financeAuthority.js. The server is the guard.
-const _financeFullRoles = ['cfo', 'accounting_manager', 'accountant'];
-bool _financePowers(String role) => const ['super_admin', 'admin', 'it_manager', 'it_specialist'].contains(role) || _financeFullRoles.contains(role);
+const _financeFullRoles = ['cfo', 'accounting_manager', 'accounting_team_leader', 'accountant'];
+bool _financePowers(String role) => const ['super_admin', 'admin', 'it_manager', 'it_team_leader', 'it_specialist'].contains(role) || _financeFullRoles.contains(role);
 
 class CashWalletScreen extends StatefulWidget {
   const CashWalletScreen({super.key});
@@ -89,12 +89,12 @@ class _CashWalletScreenState extends State<CashWalletScreen> {
   bool get _superPowers => _auth.user?['superAdminPowers'] == true;
   /// System admin and finance staff: edit, delete, move and reopen (hasFinancePowers).
   bool get _finance => _financePowers(_role) || _superPowers;
-  bool get _isManager => const ['super_admin', 'admin', 'it_manager', 'it_specialist', 'operations_manager', 'operations_team_leader', 'operations_staff', ..._financeFullRoles].contains(_role)
+  bool get _isManager => const ['super_admin', 'admin', 'it_manager', 'it_team_leader', 'it_specialist', 'operations_manager', 'operations_team_leader', 'operations_staff', ..._financeFullRoles].contains(_role)
       || _auth.canEditSection('Operations');
   // View only: the supervisor and the collections section; the server rejects their writes by role.
-  bool get _readOnly => const ['moderator', 'collections_manager', 'collections_staff', 'collections_trainee'].contains(_role);
+  bool get _readOnly => const ['moderator', 'collections_manager', 'collections_team_leader', 'collections_staff', 'collections_trainee'].contains(_role);
   /// Writing into a closed day is a financial authority; role-only as on the server (`mayWriteIntoClosedDay`).
-  bool get _canWriteClosedDay => const ['super_admin', 'admin', 'it_manager', 'it_specialist', 'operations_manager', 'operations_team_leader', ..._financeFullRoles].contains(_role) || _superPowers;
+  bool get _canWriteClosedDay => const ['super_admin', 'admin', 'it_manager', 'it_team_leader', 'it_specialist', 'operations_manager', 'operations_team_leader', ..._financeFullRoles].contains(_role) || _superPowers;
   bool get _canSelectBranch => _role.isNotEmpty && _role != 'operations_staff';
 
   @override

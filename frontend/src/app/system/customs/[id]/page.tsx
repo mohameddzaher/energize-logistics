@@ -30,7 +30,7 @@ export default function CustomsDetailPage() {
   const router = useRouter();
   const { notify, confirm } = useDialog();
   const { user } = useAuth();
-  const canEdit = ['super_admin', 'admin', 'it_manager', 'it_specialist', 'operations_manager', 'operations_team_leader', 'customs_manager', 'customs_officer'].includes(user?.role || '') || canEditSection((user as any)?.permissions, 'Customs'); // matrix edit grants count too
+  const canEdit = ['super_admin', 'admin', 'it_manager', 'it_team_leader', 'it_specialist', 'operations_manager', 'operations_team_leader', 'customs_manager', 'customs_team_leader', 'customs_officer'].includes(user?.role || '') || canEditSection((user as any)?.permissions, 'Customs'); // matrix edit grants count too
   const { lang, isRTL } = useLanguage();
   const T = getCustomsTranslations(lang);
   const txx = getCustomsIdExtraTranslations(lang);
@@ -56,7 +56,7 @@ export default function CustomsDetailPage() {
   const [unitSel, setUnitSel] = useState<'all' | number>('all');
 
   // Deletion is for the department manager and staff, matching the route guard on the server.
-  const canDelete = ['super_admin', 'admin', 'it_manager', 'it_specialist', 'customs_manager', 'customs_officer'].includes(user?.role || '') || canEditSection((user as any)?.permissions, 'Customs');
+  const canDelete = ['super_admin', 'admin', 'it_manager', 'it_team_leader', 'it_specialist', 'customs_manager', 'customs_team_leader', 'customs_officer'].includes(user?.role || '') || canEditSection((user as any)?.permissions, 'Customs');
 
   const removeClearance = async () => {
     if (!(await confirm({

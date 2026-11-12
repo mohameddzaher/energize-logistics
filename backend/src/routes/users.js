@@ -48,7 +48,7 @@ router.get('/roles', async (req, res) => {
   res.json({ roles });
 });
 
-router.get('/', authorize('super_admin', 'admin', 'it_manager', 'it_specialist', 'operations_manager'), userController.getUsers);
+router.get('/', authorize('super_admin', 'admin', 'it_manager', 'it_team_leader', 'it_specialist', 'operations_manager'), userController.getUsers);
 router.get('/suggest-manager', authorize('super_admin'), userController.suggestManager);
 
 router.post(

@@ -10,14 +10,14 @@ const R = require('../config/roles');
 const OUT = path.join(__dirname, '..', '..', '..', 'frontend', 'src', 'lib', 'roles.ts');
 const CHECK = process.argv.includes('--check');
 
-const HEAD = `// ⚠️ مولَّد من backend/src/config/roles.js — متعدّلش الملف ده بالإيد.
-// عشان تحدّثه:  node backend/src/scripts/genFrontendRoles.js
+const HEAD = `// Generated from backend/src/config/roles.js; do not edit by hand.
+// Regenerate: node backend/src/scripts/genFrontendRoles.js
 //
-// الهيكل الوظيفي: كل قسم له مدير وموظف. المديرين بينتهوا بـ \`_manager\`
-// والموظفين لأ — القاعدة دي هي اللي بيتحدد بيها مين يقعد في اجتماعات الإدارة.
+// Each section has a manager, a team leader with the manager's rights, staff and a trainee. Managers end in \`_manager\`
+// and nobody else does: that suffix decides who sits in management meetings.
 
 export interface RoleDef { key: string; ar: string; en: string; distinct?: string }
-export interface SectionRoles { section: string; manager: RoleDef; staff: RoleDef[]; trainee: RoleDef }
+export interface SectionRoles { section: string; manager: RoleDef; staff: RoleDef[]; trainee: RoleDef; teamLeader: RoleDef }
 
 export const GLOBAL_ROLES: RoleDef[] = ${JSON.stringify(R.GLOBAL_ROLES, null, 2)};
 
@@ -32,20 +32,33 @@ export const ALL_ROLE_DEFS: RoleDef[] = [
 export const ALL_ROLES: string[] = ALL_ROLE_DEFS.map((r) => r.key);
 export const MANAGER_ROLES: string[] = SECTION_ROLES.map((s) => s.manager.key);
 export const STAFF_ROLES: string[] = SECTION_ROLES.flatMap((s) => s.staff.map((x) => x.key));
-// متدرّبُ القسم: لا يرث شيئًا — يُفتَح له ما يُفتَح من صفحة الصلاحيّات.
+// A section trainee inherits nothing: it sees only what the permissions page opens for it.
 export const TRAINEE_ROLES: string[] = SECTION_ROLES.map((s) => s.trainee.key);
+export const TEAM_LEADER_ROLES: string[] = SECTION_ROLES.map((s) => s.teamLeader.key);
+
+/** Team leader to the manager whose rights it holds (backend config/roles RIGHTS_OF). */
+export const RIGHTS_OF: Record<string, string> = Object.fromEntries(SECTION_ROLES.map((s) => [s.teamLeader.key, s.manager.key]));
+export const rightsRoleOf = (role?: string | null): string => (role && RIGHTS_OF[role]) || role || '';
+export const isTeamLeader = (role?: string | null): boolean => !!role && role in RIGHTS_OF;
+/** Does this role (or a user's role) pass a role list? Also true when the list names the role whose rights it holds. */
+export const roleIn = (roleOrUser: string | { role?: string | null } | null | undefined, list: readonly string[] | ReadonlySet<string>): boolean => {
+  const role = typeof roleOrUser === 'string' ? roleOrUser : roleOrUser?.role;
+  if (!role) return false;
+  const has = (r: string) => ('has' in list ? (list as ReadonlySet<string>).has(r) : (list as readonly string[]).includes(r));
+  return has(role) || has(rightsRoleOf(role));
+};
 
 const AR: Record<string, string> = Object.fromEntries(ALL_ROLE_DEFS.map((r) => [r.key, r.ar]));
 const EN: Record<string, string> = Object.fromEntries(ALL_ROLE_DEFS.map((r) => [r.key, r.en]));
 
-/** اسم الدور للعرض. مفتاح مش معروف بيترجع مقروء بدل ما يظهر snake_case. */
+/** Display name of a role; an unknown key is returned readable instead of snake_case. */
 export const roleLabel = (key?: string | null, lang: 'ar' | 'en' = 'ar'): string => {
   if (!key) return '';
   const m = lang === 'en' ? EN : AR;
   return m[key] || key.split('_').map((w) => w.charAt(0).toUpperCase() + w.slice(1)).join(' ');
 };
 
-/** الأدوار مرتّبة حسب القسم — للقوائم المنسدلة، عشان المستخدم يلاقي دوره جنب قسمه. */
+/** Roles grouped by section, for dropdowns. */
 export const rolesGroupedBySection = (lang: 'ar' | 'en' = 'ar') => [
   { section: lang === 'ar' ? 'أدوار عامة' : 'General', roles: GLOBAL_ROLES.filter((r) => r.key !== 'client') },
   ...SECTION_ROLES.map((s) => ({ section: s.section, roles: [s.manager, ...s.staff, s.trainee] })),
@@ -69,4 +82,4 @@ if (CHECK) {
 
 fs.writeFileSync(OUT, content);
 console.log(`✓ اتكتب ${OUT}`);
-console.log(`  ${R.ALL_ROLES.length} دور · ${R.MANAGER_ROLES.length} مدير · ${R.STAFF_ROLES.length} موظف`);
+console.log(`  ${R.ALL_ROLES.length} roles · ${R.MANAGER_ROLES.length} managers · ${R.TEAM_LEADER_ROLES.length} team leaders · ${R.STAFF_ROLES.length} staff`);

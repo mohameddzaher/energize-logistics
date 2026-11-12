@@ -63,7 +63,7 @@ const SERVICE_LABEL: Record<string, { ar: string; en: string }> = {
   finance: { ar: 'فواتير', en: 'Invoices' },
 };
 
-const CRM_ROLES = ['super_admin', 'admin', 'it_manager', 'it_specialist', 'crm_manager', 'crm_team_lead', 'crm_specialist', 'crm_agent', 'operations_manager', 'operations_team_leader', 'operations_staff'];
+const CRM_ROLES = ['super_admin', 'admin', 'it_manager', 'it_team_leader', 'it_specialist', 'crm_manager', 'crm_team_leader', 'crm_team_lead', 'crm_specialist', 'crm_agent', 'operations_manager', 'operations_team_leader', 'operations_staff'];
 const iso = (d: Date) => d.toISOString().slice(0, 10);
 
 export default function CrmCustomerKpisPage() {

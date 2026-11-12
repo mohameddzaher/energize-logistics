@@ -9,9 +9,9 @@ router.param('attId', objectIdParam());
 const ctrl = require('../controllers/contractsController');
 const authorize = require('../middleware/rbac');
 
-const EDIT_ROLES = ['super_admin', 'admin', 'contracts_manager', 'contracts_staff', 'it_manager', 'it_specialist',
+const EDIT_ROLES = ['super_admin', 'admin', 'contracts_manager', 'contracts_team_leader', 'contracts_staff', 'it_manager', 'it_team_leader', 'it_specialist',
   // Sales (customer contracts) and the vendors team (carrier contracts) work the section in full.
-  'sales_manager', 'sales_rep', 'vendors_manager', 'vendors_team_leader', 'vendors_staff',
+  'sales_manager', 'sales_team_leader', 'sales_rep', 'vendors_manager', 'vendors_team_leader', 'vendors_staff',
   // Vendors is a team inside Operations.
   'operations_manager', 'operations_team_leader', 'operations_staff'];
 const E = authorize(...EDIT_ROLES);

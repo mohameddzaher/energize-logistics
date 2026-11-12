@@ -77,7 +77,7 @@ const resolutionMinutesOf = (reportedAt, resolvedDate) => {
 const CLOSED_STATUSES = new Set(['resolved', 'closed']);
 
 // Roles a report may be assigned to. Matches the permission list in routes/it.js: assigning to someone who cannot edit it leaves nobody able to close it.
-const EDIT_ROLES = ['super_admin', 'admin', 'it_manager', 'it_specialist'];
+const EDIT_ROLES = ['super_admin', 'admin', 'it_manager', 'it_team_leader', 'it_specialist'];
 
 const TICKET_EDITABLE = [
   'title', 'category', 'priority', 'status', 'requester', 'requesterName',

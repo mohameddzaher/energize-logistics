@@ -47,7 +47,7 @@ export default function VehiclesSettingsPage() {
 
   const role = String((user as any)?.role || '');
   // Whoever has an edit grant on the section edits its settings; the server accepts it, so the screen does not hide the button.
-  const canEdit = ['super_admin', 'admin', 'it_manager', 'it_specialist', 'vehicles_manager'].includes(role) || canEditSection((user as any)?.permissions, 'Vehicles');
+  const canEdit = ['super_admin', 'admin', 'it_manager', 'it_team_leader', 'it_specialist', 'vehicles_manager', 'vehicles_team_leader'].includes(role) || canEditSection((user as any)?.permissions, 'Vehicles');
 
   const [tab, setTab] = useState<Tab>('lists');
   const [alerts, setAlerts] = useState<Record<string, AlertCfg> | null>(null);

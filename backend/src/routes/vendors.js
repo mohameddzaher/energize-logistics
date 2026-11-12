@@ -17,7 +17,7 @@ router.get('/:id', vendorController.getVendor);
 
 router.post(
   '/',
-  authorize('super_admin', 'admin', 'it_manager', 'it_specialist', 'operations_manager', 'operations_team_leader', 'operations_staff', 'procurement_manager', 'procurement_staff'),
+  authorize('super_admin', 'admin', 'it_manager', 'it_team_leader', 'it_specialist', 'operations_manager', 'operations_team_leader', 'operations_staff', 'procurement_manager', 'procurement_team_leader', 'procurement_staff'),
   [body('name').notEmpty().withMessage('Vendor name is required')],
   validate,
   vendorController.createVendor
@@ -25,7 +25,7 @@ router.post(
 
 router.put(
   '/:id',
-  authorize('super_admin', 'admin', 'it_manager', 'it_specialist', 'operations_manager', 'operations_team_leader', 'operations_staff', 'procurement_manager', 'procurement_staff'),
+  authorize('super_admin', 'admin', 'it_manager', 'it_team_leader', 'it_specialist', 'operations_manager', 'operations_team_leader', 'operations_staff', 'procurement_manager', 'procurement_team_leader', 'procurement_staff'),
   [body('name').notEmpty().withMessage('Vendor name is required')],
   validate,
   vendorController.updateVendor

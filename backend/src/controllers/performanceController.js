@@ -33,7 +33,8 @@ const canConfigure = (user) => CONFIG_ROLES.includes(user?.role) || isTopManagem
 const canOverride = (role) => CONFIG_ROLES.includes(role);
 
 /** Sections whose forms this user may add to: every section for top roles and the general manager, else the sections he manages. */
-const editableSections = (user) => (canConfigure(user) ? D.allSections() : D.sectionsManagedBy(canonicalRole(user?.role)));
+const editableSections = (user) => (canConfigure(user) ? D.allSections()
+  : [...new Set([...D.sectionsManagedBy(canonicalRole(user?.role)), ...D.sectionsSubHeadedBy(canonicalRole(user?.role))])]);
 
 /**
  * May this user edit this form? Section forms: the section's manager, except a form that grades a section head or the editor himself (a manager does not tune his own grading). Department forms and tiers: top roles and the general manager.
@@ -44,8 +45,10 @@ function canEditTemplate(user, t, ownIds = []) {
   if (!t || !t.section) return false;
   const role = canonicalRole(user?.role);
   const heads = D.managerRolesOf(t.section);
-  if (!heads.includes(role)) return false;
-  if ((t.roles || []).some((r) => heads.includes(r) || r === role)) return false;
+  const subs = D.subHeadsOf(t.section);
+  if (!heads.includes(role) && !subs.includes(role)) return false;
+  // A second-level rater does not edit forms that grade his head or his own level.
+  if ((t.roles || []).some((r) => heads.includes(r) || r === role || (!heads.includes(role) && subs.includes(r)))) return false;
   const own = new Set(ownIds.map(String));
   return !(t.employees || []).some((id) => own.has(String(id)));
 }
@@ -177,9 +180,12 @@ function sectionTeam(org, sectionKey) {
   return org.employees.filter((e) => e.section === sectionKey && !e.manager);
 }
 
-/** Who this user may evaluate (for non-full-access users): a section manager evaluates the staff accounts of every section he manages (operations_manager also heads Vendors Management); nobody else evaluates. */
+/** Who this user may evaluate (for non-full-access users): a section head evaluates the staff accounts of every section he heads (operations_manager also heads Vendors Management, cfo heads Accounting); the accounting manager evaluates the team below him; nobody else evaluates. */
 function evaluableBy(org, user) {
-  return D.sectionsManagedBy(canonicalRole(user.role)).flatMap((section) => sectionTeam(org, section));
+  const role = canonicalRole(user.role);
+  // A second-level rater (accounting manager) rates the team below him, not his peers at his level.
+  const below = D.sectionsSubHeadedBy(role).flatMap((section) => sectionTeam(org, section).filter((e) => !D.subHeadsOf(section).includes(e.role)));
+  return [...D.sectionsManagedBy(role).flatMap((section) => sectionTeam(org, section)), ...below];
 }
 
 /**

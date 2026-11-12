@@ -292,7 +292,7 @@ exports.getDailyWallet = async (req, res) => {
 // Finance roles are included (see config/financeAuthority).
 /** Branches whose wallet an operations officer works on: the ones chosen for the wallet on the account, else the assigned branch plus its extra branches. */
 const userBranchIds = (u) => ((u.walletBranches || []).length ? u.walletBranches : [u.branch, ...(u.assignedBranches || [])]).filter(Boolean).map(String);
-const mayWriteIntoClosedDay = (role) => ['super_admin', 'admin', 'it_manager', 'it_specialist', 'operations_manager', 'operations_team_leader', ...require('../config/financeAuthority').FINANCE_FULL_ROLES].includes(role);
+const mayWriteIntoClosedDay = (role) => ['super_admin', 'admin', 'it_manager', 'it_team_leader', 'it_specialist', 'operations_manager', 'operations_team_leader', ...require('../config/financeAuthority').FINANCE_FULL_ROLES].includes(role);
 const denyClosedDay = (res) => res.status(400).json({
   code: 'DAY_CLOSED',
   message: 'اليومُ مُقفل — لا يُكتب فيه إلّا بعد إعادة فتحه، وإعادةُ الفتح لمدير النظام.',
@@ -618,7 +618,7 @@ const denySettle = (res, what) => res.status(403).json({
     : 'تعديلُ حركةٍ مسجَّلةٍ أو حذفُها لمدير النظام والإدارة الماليّة — والتسجيلُ الجديد متاحٌ كما هو.',
 });
 
-const MANAGER_ROLES = ['super_admin', 'admin', 'it_manager', 'it_specialist', 'operations_manager', 'operations_team_leader', ...require('../config/financeAuthority').FINANCE_FULL_ROLES];
+const MANAGER_ROLES = ['super_admin', 'admin', 'it_manager', 'it_team_leader', 'it_specialist', 'operations_manager', 'operations_team_leader', ...require('../config/financeAuthority').FINANCE_FULL_ROLES];
 const mayTouchWallet = (req, wallet) => {
   if (MANAGER_ROLES.includes(req.user.role)) return true;
   if (!wallet) return false;

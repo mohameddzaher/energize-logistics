@@ -33,7 +33,7 @@ List<Map<String, dynamic>> soFollowUpNotes(Map order) {
   ];
 }
 
-const _noteManagers = {'super_admin', 'admin', 'it_manager', 'it_specialist', 'shipment_orders_manager', 'operations_manager', 'operations_team_leader'};
+const _noteManagers = {'super_admin', 'admin', 'it_manager', 'it_team_leader', 'it_specialist', 'shipment_orders_manager', 'shipment_orders_team_leader', 'operations_manager', 'operations_team_leader'};
 
 /// Follow-up notes: a log that can be added to, edited and deleted, like the web dialog. A note is edited or deleted by its author or the section manager, and the server guards the same rule. Returns the shipment after the last change (or null if nothing changed).
 Future<Map<String, dynamic>?> soQuickNote(BuildContext context, Map<String, dynamic> order) {

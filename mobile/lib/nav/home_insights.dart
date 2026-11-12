@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../services/auth.dart';
+import '../services/roles.dart';
 import '../services/lang.dart';
 import '../ui/theme.dart';
 
@@ -156,7 +157,7 @@ const _sectionInsight = <String, HomeInsight>{
 
 /// Best overview for the user, or null (falls back to self-service only).
 HomeInsight? homeInsightFor(AuthProvider auth) {
-  final byRole = _roleInsight[auth.role];
+  final byRole = _roleInsight[auth.role] ?? _roleInsight[rightsRoleOf(auth.role)];
   if (byRole != null) return byRole;
   // admin sees finance by default.
   if (auth.role == 'admin') return _finance;

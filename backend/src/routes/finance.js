@@ -4,7 +4,7 @@ const router = express.Router();
 const authorize = require('../middleware/rbac');
 const finance = require('../controllers/financeController');
 
-const ROLES = ['super_admin', 'admin', 'it_manager', 'it_specialist', 'cfo', 'accounting_manager', 'accountant'];
+const ROLES = ['super_admin', 'admin', 'it_manager', 'it_team_leader', 'it_specialist', 'cfo', 'accounting_manager', 'accounting_team_leader', 'accountant'];
 
 router.get('/overview', authorize(...ROLES), finance.overview);
 router.get('/departments/:dept', authorize(...ROLES), finance.department);

@@ -13,7 +13,7 @@ String supplierNameKey(dynamic v) => '${v ?? ''}'
     .replaceAll(RegExp(r'\s+'), ' ').trim().toLowerCase();
 
 /// Merge is role-only, like authorize.strict on the server (irreversible).
-const _mergeRoles = {'super_admin', 'admin', 'it_manager', 'it_specialist', 'operations_manager', 'operations_team_leader', 'shipment_orders_manager'};
+const _mergeRoles = {'super_admin', 'admin', 'it_manager', 'it_team_leader', 'it_specialist', 'operations_manager', 'operations_team_leader', 'shipment_orders_manager', 'shipment_orders_team_leader'};
 
 Future<bool> openSupplierMerge(BuildContext context, Map<String, dynamic> supplier) async {
   if (!_mergeRoles.contains(context.read<AuthProvider>().role)) {

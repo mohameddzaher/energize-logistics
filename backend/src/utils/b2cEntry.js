@@ -11,12 +11,12 @@ const ENDED = 'إنهاء خدمة';
 
 const isFinanceFull = (role) => { try { return require('../config/financeAuthority').isFinanceFull(role); } catch (_) { return false; } };
 /** Who sees all projects and enters for any rep. */
-const isEntryHead = (u) => ['super_admin', 'admin', 'it_manager', 'it_specialist', 'b2c_manager', 'b2c_deputy'].includes(u?.role) || isFinanceFull(u?.role);
+const isEntryHead = (u) => ['super_admin', 'admin', 'it_manager', 'it_team_leader', 'it_specialist', 'b2c_manager', 'b2c_team_leader', 'b2c_deputy'].includes(u?.role) || isFinanceFull(u?.role);
 /** Project transfer: sector deputy manager, section manager, super admin and admin (and finance roles as system manager). */
-const TRANSFER_ROLES = ['super_admin', 'admin', 'it_manager', 'it_specialist', 'b2c_manager', 'b2c_deputy'];
+const TRANSFER_ROLES = ['super_admin', 'admin', 'it_manager', 'it_team_leader', 'it_specialist', 'b2c_manager', 'b2c_team_leader', 'b2c_deputy'];
 const canTransfer = (u) => TRANSFER_ROLES.includes(u?.role) || isFinanceFull(u?.role);
 /** Who enters orders, within their projects. */
-const ENTRY_ROLES = ['super_admin', 'admin', 'it_manager', 'it_specialist', 'b2c_manager', 'b2c_deputy', 'b2c_project_lead', 'b2c_rep_supervisor', 'b2c_inspection_supervisor'];
+const ENTRY_ROLES = ['super_admin', 'admin', 'it_manager', 'it_team_leader', 'it_specialist', 'b2c_manager', 'b2c_team_leader', 'b2c_deputy', 'b2c_project_lead', 'b2c_rep_supervisor', 'b2c_inspection_supervisor'];
 
 const S = (v) => String(v ?? '').trim();
 const fold = (v) => S(v).replace(/[أإآٱ]/g, 'ا').replace(/ة/g, 'ه').replace(/[ىئ]/g, 'ي').replace(/\s+/g, '').toLowerCase();

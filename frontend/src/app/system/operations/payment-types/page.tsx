@@ -23,7 +23,7 @@ interface Row {
   conflicts: number;
 }
 
-const WRITE_ROLES = ['super_admin', 'admin', 'it_manager', 'it_specialist', 'operations_manager', 'operations_team_leader', 'moderator', 'cfo', 'accounting_manager', 'collections_manager'];
+const WRITE_ROLES = ['super_admin', 'admin', 'it_manager', 'it_team_leader', 'it_specialist', 'operations_manager', 'operations_team_leader', 'moderator', 'cfo', 'accounting_manager', 'accounting_team_leader', 'collections_manager', 'collections_team_leader'];
 
 export default function PaymentTypesPage() {
   const { user } = useAuth();

@@ -19,11 +19,11 @@ const nameOfEmp = (e) => e?.arabicName || [e?.firstName, e?.lastName].filter(Boo
 
 // Ownership
 /** Who records payment and answers requests: finance staff and anyone granted the section edit access. */
-const PAY_ROLES = ['super_admin', 'admin', 'it_manager', 'it_specialist', 'cfo', 'accounting_manager', 'accountant'];
+const PAY_ROLES = ['super_admin', 'admin', 'it_manager', 'it_team_leader', 'it_specialist', 'cfo', 'accounting_manager', 'accounting_team_leader', 'accountant'];
 /** Undoing a payment is for finance managers only, guarded by `authorize.strict`. */
-const UNDO_ROLES = ['super_admin', 'admin', 'it_manager', 'it_specialist', 'cfo', 'accounting_manager'];
+const UNDO_ROLES = ['super_admin', 'admin', 'it_manager', 'it_team_leader', 'it_specialist', 'cfo', 'accounting_manager', 'accounting_team_leader'];
 /** Who is notified of a new HR request. */
-const FINANCE_NOTIFY_ROLES = ['cfo', 'finance_manager', 'accounting_manager', 'accountant'];
+const FINANCE_NOTIFY_ROLES = ['cfo', 'finance_manager', 'accounting_manager', 'accounting_team_leader', 'accountant'];
 
 const roleIn = (user, list) => list.map(canonicalRole).includes(canonicalRole(user?.role));
 const canPay = (req) => roleIn(req.user, PAY_ROLES) || req.sectionAccess === 'edit';

@@ -23,9 +23,9 @@ import 'vehicle_registry.dart' show VehicleRegistryDetailScreen;
 // canEditVehicles: register a new accident and attach its papers.
 // canEditClaims: edit and delete the accident and rename or delete an attachment (guarded by authorize.strict on the server, so a section grant does not open it).
 
-const _editRoles = ['super_admin', 'admin', 'it_manager', 'it_specialist', 'vehicles_manager', 'vehicles_staff',
-  'hr_manager', 'hr_specialist', 'cfo', 'accounting_manager', 'accountant'];
-const _claimEditRoles = ['super_admin', 'admin', 'it_manager', 'it_specialist', 'cfo', 'accounting_manager', 'vehicles_manager'];
+const _editRoles = ['super_admin', 'admin', 'it_manager', 'it_team_leader', 'it_specialist', 'vehicles_manager', 'vehicles_team_leader', 'vehicles_staff',
+  'hr_manager', 'hr_team_leader', 'hr_specialist', 'cfo', 'accounting_manager', 'accounting_team_leader', 'accountant'];
+const _claimEditRoles = ['super_admin', 'admin', 'it_manager', 'it_team_leader', 'it_specialist', 'cfo', 'accounting_manager', 'accounting_team_leader', 'vehicles_manager', 'vehicles_team_leader'];
 
 bool _canEditVehicles(AuthProvider a) =>
     a.user != null && (_editRoles.contains(a.role) || a.canEditSection('Vehicles'));

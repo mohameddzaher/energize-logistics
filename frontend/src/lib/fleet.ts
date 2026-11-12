@@ -244,9 +244,9 @@ export const foldAr = (x: string) => x.toLowerCase()
 // routes, so the UI must too). Pass the USER: only it carries the grants.
 import { canAccessSection, canEditSection, roleOf, permsOf, type RoleOrUser } from './sections';
 // Mirrors EDIT_ROLES in backend/src/routes/fleet.js, data team included.
-export const FLEET_EDIT_ROLES = ['super_admin', 'admin', 'it_manager', 'it_specialist', 'operations_manager', 'operations_team_leader', 'operations_staff', 'moderator', 'fleet_manager', 'fleet_supervisor',
+export const FLEET_EDIT_ROLES = ['super_admin', 'admin', 'it_manager', 'it_team_leader', 'it_specialist', 'operations_manager', 'operations_team_leader', 'operations_staff', 'moderator', 'fleet_manager', 'fleet_team_leader', 'fleet_supervisor',
   'data_manager', 'data_analyst', 'data_entry'];
-export const FLEET_ADMIN_ROLES = ['super_admin', 'admin', 'it_manager', 'it_specialist', 'operations_manager', 'operations_team_leader', 'fleet_manager'];
+export const FLEET_ADMIN_ROLES = ['super_admin', 'admin', 'it_manager', 'it_team_leader', 'it_specialist', 'operations_manager', 'operations_team_leader', 'fleet_manager', 'fleet_team_leader'];
 
 // Card status on the main board; computed automatically on the server.
 export const BOARD_STATES: Record<string, { ar: string; en: string; card: string; chip: string; dot: string }> = {

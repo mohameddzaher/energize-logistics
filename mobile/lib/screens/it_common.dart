@@ -128,7 +128,7 @@ String idOf(dynamic v) => v == null ? '' : v is Map ? '${v['_id'] ?? ''}' : '$v'
 /// Who writes in the section, like canEditIt: EDIT_ROLES in routes/it.js or an edit grant.
 bool canEditIt(BuildContext context) {
   final a = context.read<AuthProvider>();
-  return const ['super_admin', 'admin', 'it_manager', 'it_specialist'].contains(a.role) || a.canEditSection('Software & IT');
+  return const ['super_admin', 'admin', 'it_manager', 'it_team_leader', 'it_specialist'].contains(a.role) || a.canEditSection('Software & IT');
 }
 
 String _fold(String s) => s.replaceAll(RegExp('[أإآ]'), 'ا').replaceAll('ى', 'ي').replaceAll('ة', 'ه').toLowerCase();

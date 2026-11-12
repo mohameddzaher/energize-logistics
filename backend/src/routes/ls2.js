@@ -25,7 +25,7 @@ const ADMIN = authorize(...LS2_ADMIN_ROLES);
 
 router.use(authenticate);
 // Finance adds store items, so it reaches the store screens and nothing else here.
-const STORE_FINANCE = ['accountant', 'accounting_manager', 'cfo'];
+const STORE_FINANCE = ['accountant', 'accounting_manager', 'accounting_team_leader', 'cfo'];
 const staffOnly = authorize(...LS2_STAFF_ROLES);
 router.use((req, res, next) => (
   STORE_FINANCE.includes(req.user?.role) && /^\/(store|suppliers|vehicles)(\/|$)/.test(req.path) ? next() : staffOnly(req, res, next)));
@@ -104,7 +104,7 @@ router.get('/store/movements', store.listMovements);
 router.get('/store/issue-reasons', store.issueReasons); // The four issue reasons.
 router.get('/store/unknown-plates', store.unknownPlates); // Plates on movements that have no vehicle in the registry.
 // Adding items is for finance and the vehicles manager; section grants do not extend it.
-const STORE_ADD = authorize.strict('super_admin', 'admin', 'it_manager', 'it_specialist', 'accountant', 'accounting_manager', 'cfo', 'vehicles_manager');
+const STORE_ADD = authorize.strict('super_admin', 'admin', 'it_manager', 'it_team_leader', 'it_specialist', 'accountant', 'accounting_manager', 'accounting_team_leader', 'cfo', 'vehicles_manager');
 router.post('/store', STORE_ADD, store.createItem);
 router.post('/store/bulk-create', STORE_ADD, store.createItemsBulk);   // Purchase invoice with several items.
 // Suppliers the parts are bought from. Before /store/:id so it is not captured as an id.

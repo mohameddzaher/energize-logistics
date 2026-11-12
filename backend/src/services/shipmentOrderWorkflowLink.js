@@ -16,7 +16,7 @@ const { termsOfSubtype } = require('../utils/shipmentOrderPayment');
 
 const TICK_MS = 15000;
 // One shipment is one record, so these three alone delete it, from either screen.
-const SHIPMENT_DELETE_ROLES = ['super_admin', 'admin', 'it_manager', 'it_specialist', 'operations_manager', 'operations_team_leader'];
+const SHIPMENT_DELETE_ROLES = ['super_admin', 'admin', 'it_manager', 'it_team_leader', 'it_specialist', 'operations_manager', 'operations_team_leader'];
 const WF_READERS = ['wf:', 'collections-dept:', 'cdr:', 'colledger:', 'opsprivate:', 'ops:'];
 const METHOD = { 'نقدي': 'cash', 'آجل': 'late' };
 

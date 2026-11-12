@@ -7,7 +7,7 @@
 const { ALERT_TYPES: T } = require('../config/ls2Config');
 
 // Roles that act: device readers and the truck owners themselves.
-const ROLES = ['location_manager', 'location_staff', 'fleet_manager', 'fleet_supervisor'];
+const ROLES = ['location_manager', 'location_team_leader', 'location_staff', 'fleet_manager', 'fleet_team_leader', 'fleet_supervisor'];
 const SECTIONS = ['Location Solutions', 'Fleet Management'];
 
 // Sent as a notification whatever the severity: a missed maintenance date is not a "warning" to read later.

@@ -10,7 +10,7 @@ const authenticate = require('../middleware/auth');
 const authorize = require('../middleware/rbac');
 const c = require('../controllers/b2cWalletController');
 
-const ALL = ['super_admin', 'admin', 'it_manager', 'it_specialist', 'b2c_manager', 'b2c_deputy', 'b2c_project_lead'];
+const ALL = ['super_admin', 'admin', 'it_manager', 'it_team_leader', 'it_specialist', 'b2c_manager', 'b2c_team_leader', 'b2c_deputy', 'b2c_project_lead'];
 
 router.use(authenticate);
 // Custody is for project managers; the rep supervisor has none here.

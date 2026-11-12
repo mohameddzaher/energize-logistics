@@ -9,7 +9,7 @@ import '../ui/search_field.dart';
 
 /// Helpers shared by the HR screens, mirroring lib/hr.ts and HRKit on the web: HR team membership, employee picker and a dual-calendar date field.
 
-const hrStaffRoles = ['super_admin', 'admin', 'it_manager', 'it_specialist', 'hr_manager', 'hr_specialist'];
+const hrStaffRoles = ['super_admin', 'admin', 'it_manager', 'it_team_leader', 'it_specialist', 'hr_manager', 'hr_team_leader', 'hr_specialist'];
 
 /// HR team by role or department grant; isHRStaff on the web.
 bool hrIsStaff(BuildContext context) {

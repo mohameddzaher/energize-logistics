@@ -12,7 +12,7 @@ const authorize = require('../middleware/rbac');
 // section (QA sweep 2026-10-27) — see middleware/sectionGate requireSectionAccess.
 const customsOnly = require('../middleware/sectionGate').requireSectionAccess('Customs');
 
-const EDIT_ROLES = ['super_admin', 'admin', 'it_manager', 'it_specialist', 'operations_manager', 'operations_team_leader', 'customs_manager', 'customs_officer'];
+const EDIT_ROLES = ['super_admin', 'admin', 'it_manager', 'it_team_leader', 'it_specialist', 'operations_manager', 'operations_team_leader', 'customs_manager', 'customs_team_leader', 'customs_officer'];
 
 router.use(authenticate);
 
@@ -30,21 +30,21 @@ router.get('/parties', ctrl.listParties);
 router.post('/parties', authorize(...EDIT_ROLES), ctrl.createParty);
 router.get('/parties/:id', ctrl.getPartyProfile);
 router.put('/parties/:id', authorize(...EDIT_ROLES), ctrl.updateParty);
-router.delete('/parties/:id', authorize('super_admin', 'admin', 'it_manager', 'it_specialist', 'customs_manager'), ctrl.deleteParty);
+router.delete('/parties/:id', authorize('super_admin', 'admin', 'it_manager', 'it_team_leader', 'it_specialist', 'customs_manager'), ctrl.deleteParty);
 router.post('/parties/:id/attachments', authorize(...EDIT_ROLES), ctrl.addPartyAttachments);
 router.put('/parties/:id/attachments/:attId', authorize(...EDIT_ROLES), ctrl.updatePartyAttachment);
 router.delete('/parties/:id/attachments/:attId', authorize(...EDIT_ROLES), ctrl.deletePartyAttachment);
 // Contracts, also before `/:id`.
 // Group endpoints before `/:id`.
-const FINANCE_ROLES = ['super_admin', 'admin', 'it_manager', 'it_specialist', 'cfo', 'accounting_manager', 'accountant'];
+const FINANCE_ROLES = ['super_admin', 'admin', 'it_manager', 'it_team_leader', 'it_specialist', 'cfo', 'accounting_manager', 'accounting_team_leader', 'accountant'];
 
 router.get('/settings', ctrl.getSettings);
 // Customer follow-up email from the customs mailbox; the template is edited by the section heads.
 const mail = require('../controllers/customsMailController');
 router.get('/email-template', mail.getTemplate);
 router.post('/email-signature-preview', mail.signaturePreview);
-router.put('/email-template', authorize('super_admin', 'admin', 'it_manager', 'it_specialist', 'customs_manager'), mail.saveTemplate);
-router.put('/settings', authorize('super_admin', 'admin', 'it_manager', 'it_specialist', 'customs_manager'), ctrl.updateSettings);
+router.put('/email-template', authorize('super_admin', 'admin', 'it_manager', 'it_team_leader', 'it_specialist', 'customs_manager'), mail.saveTemplate);
+router.put('/settings', authorize('super_admin', 'admin', 'it_manager', 'it_team_leader', 'it_specialist', 'customs_manager'), ctrl.updateSettings);
 router.get('/upcoming-alerts', ctrl.upcomingAlerts);
 // Demurrage and container-return deadlines still open, nearest first.
 router.get('/deadline-alerts', ctrl.deadlineAlerts);
@@ -58,7 +58,7 @@ router.get('/invoices', ctrl.listClearanceInvoices);
 router.get('/contracts', ctrl.listContracts);
 router.post('/contracts', authorize(...EDIT_ROLES), ctrl.createContract);
 router.put('/contracts/:id', authorize(...EDIT_ROLES), ctrl.updateContract);
-router.delete('/contracts/:id', authorize('super_admin', 'admin', 'it_manager', 'it_specialist', 'customs_manager'), ctrl.deleteContract);
+router.delete('/contracts/:id', authorize('super_admin', 'admin', 'it_manager', 'it_team_leader', 'it_specialist', 'customs_manager'), ctrl.deleteContract);
 router.post('/contracts/:id/files', authorize(...EDIT_ROLES), ctrl.addContractFiles);
 router.delete('/contracts/:id/files/:attId', authorize(...EDIT_ROLES), ctrl.deleteContractFile);
 
@@ -78,7 +78,7 @@ router.delete('/:id/ops-reports/:reportId/follow-ups/:fuId', opsFollowUps.remove
 router.post('/', authorize(...EDIT_ROLES), ctrl.createClearance);
 router.put('/:id', authorize(...EDIT_ROLES), ctrl.updateClearance);
 // Transaction deletion is for the section manager and staff alike (owner request); the deletion is recorded in the audit log with who deleted and the transaction number.
-router.delete('/:id', authorize('super_admin', 'admin', 'it_manager', 'it_specialist', 'customs_manager', 'customs_officer'), ctrl.deleteClearance);
+router.delete('/:id', authorize('super_admin', 'admin', 'it_manager', 'it_team_leader', 'it_specialist', 'customs_manager', 'customs_team_leader', 'customs_officer'), ctrl.deleteClearance);
 
 // Transaction attachments: each stage's papers are uploaded with the transaction.
 // Payment stages: one entry per occurrence, since the same stage is added several times (fees in two payments, return for two containers). The pick list comes from section settings.

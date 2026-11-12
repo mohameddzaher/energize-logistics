@@ -12,8 +12,8 @@ const authorize = require('../middleware/rbac');
 
 // Vehicles & Authorizations — shared by super admin, HR and Accounting. Delete operations are further restricted to the admin tier inside the controller.
 // The section's own roles must be listed here; without them the vehicles manager sees authorizations but cannot act on them, though he owns the section.
-const STAFF = ['super_admin', 'admin', 'it_manager', 'it_specialist', 'vehicles_manager', 'vehicles_staff',
-  'hr_manager', 'hr_specialist', 'cfo', 'accounting_manager', 'accountant'];
+const STAFF = ['super_admin', 'admin', 'it_manager', 'it_team_leader', 'it_specialist', 'vehicles_manager', 'vehicles_team_leader', 'vehicles_staff',
+  'hr_manager', 'hr_team_leader', 'hr_specialist', 'cfo', 'accounting_manager', 'accounting_team_leader', 'accountant'];
 
 router.use(authenticate);
 

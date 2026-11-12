@@ -25,10 +25,10 @@ router.use((req, res, next) => (req.method === 'GET' ? workflowController.primeR
 // IT was outside: the sidebar shows the operations page to the IT manager and specialist but every call returned 403, a dead link. Both roles are in `FULL_ACCESS_ROLES` (no barrier elsewhere), but this route has no `sectionGate`, so the dynamic grant that opens other routes for them does not cover it.
 // Sales writes the selling value only (SELLING_ROLES; a rep through approval): it reaches the update and lock endpoints, and the controller refuses every other field.
 const allWorkflowRoles = [
-  'super_admin', 'admin', 'it_manager', 'it_specialist',
+  'super_admin', 'admin', 'it_manager', 'it_team_leader', 'it_specialist',
   'employee', 'operations_manager', 'operations_team_leader', 'operations_staff',
-  'moderator', 'cfo', 'accounting_manager', 'accountant',
-  'collections_manager', 'collections_staff',
+  'moderator', 'cfo', 'accounting_manager', 'accounting_team_leader', 'accountant',
+  'collections_manager', 'collections_team_leader', 'collections_staff',
   // Vendors manager and team leader work the sheet like operations (purchase side only).
   ...require('../config/priceView').VENDOR_LEADS,
 ];
@@ -36,7 +36,7 @@ const allWorkflowRoles = [
 // (minus what the controller strips: selling price, invoice amounts).
 // Sales and the vendors officers read it too: sales without the purchase side, vendors without the selling value (config/priceView).
 const sellingWriters = [...allWorkflowRoles, ...require('../config/priceView').SALES_ROLES];
-const readWorkflowRoles = [...allWorkflowRoles, ...require('../config/roles').DATA_ROLES, 'shipment_orders_followup', 'fleet_manager', 'fleet_supervisor',
+const readWorkflowRoles = [...allWorkflowRoles, ...require('../config/roles').DATA_ROLES, 'shipment_orders_followup', 'fleet_manager', 'fleet_team_leader', 'fleet_supervisor',
   ...require('../config/priceView').SALES_ROLES, ...require('../config/priceView').VENDOR_ROLES];
 
 // List & export
@@ -56,7 +56,7 @@ router.delete('/:id/customs-link', authorize(...allWorkflowRoles), workflowContr
 
 // Payment types. A customer's type is readable by whoever opens the operations page but writable only by whoever manages it: flipping a customer's type changes where all his manifests are invoiced. Must come before `/:id`.
 const paymentTypes = require('../controllers/paymentTypesController');
-const PT_WRITE = ['super_admin', 'admin', 'it_manager', 'it_specialist', 'operations_manager', 'operations_team_leader', 'moderator', 'cfo', 'accounting_manager', 'collections_manager'];
+const PT_WRITE = ['super_admin', 'admin', 'it_manager', 'it_team_leader', 'it_specialist', 'operations_manager', 'operations_team_leader', 'moderator', 'cfo', 'accounting_manager', 'accounting_team_leader', 'collections_manager', 'collections_team_leader'];
 router.get('/payment-types', authorize(...readWorkflowRoles), paymentTypes.list);
 router.put('/payment-types/:id', authorize(...PT_WRITE), paymentTypes.update);
 router.post('/payment-types/apply', authorize(...PT_WRITE), paymentTypes.applyAll);

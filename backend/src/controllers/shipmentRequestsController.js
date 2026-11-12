@@ -18,7 +18,7 @@ const { startOfDay, endOfDay } = require('../utils/companyDay');
 const { sendMongooseError } = require('../utils/mongooseError');
 
 const EVENT = 'shipmentRequests:changed';
-const SO_TEAM = ['shipment_orders_manager', 'shipment_orders_staff', 'operations_manager', 'operations_team_leader', 'operations_staff'];
+const SO_TEAM = ['shipment_orders_manager', 'shipment_orders_team_leader', 'shipment_orders_staff', 'operations_manager', 'operations_team_leader', 'operations_staff'];
 /** Who writes the sales half (create, amend, resend, withdraw). */
 const ASKERS = [...TOP_ROLES, ...DATA_ROLES, ...PV.SALES_ROLES, ...SO_TEAM];
 /** Who places or rejects (the vendors half). */
@@ -31,7 +31,7 @@ const FLEET_PLACERS = [...TOP_ROLES, ...DATA_ROLES, 'operations_manager', 'opera
 const WORKERS = [...new Set([...PLACERS, ...FLEET_TEAM])];
 const READERS = [...new Set([...ASKERS, ...PLACERS, ...FLEET_TEAM, 'shipment_orders_followup'])];
 /** Leads edit or delete a colleague's sourcing entry and complete a request a colleague holds. */
-const LEADS = [...TOP_ROLES, ...PV.VENDOR_LEADS, 'operations_manager', 'shipment_orders_manager', 'fleet_manager'];
+const LEADS = [...TOP_ROLES, ...PV.VENDOR_LEADS, 'operations_manager', 'operations_team_leader', 'shipment_orders_manager', 'shipment_orders_team_leader', 'fleet_manager', 'fleet_team_leader'];
 const CLAIM_MS = 60 * 60 * 1000;
 
 const { rightsRoleOf } = require('../config/roles');
@@ -497,7 +497,7 @@ exports.claim = async (req, res) => {
 const TEAM_ROLES = () => {
   const { rolesOfSection } = require('../config/roles');
   return {
-    vendors: [...new Set([...rolesOfSection('Vendors Management'), ...rolesOfSection('Operations'), 'shipment_orders_manager', 'shipment_orders_staff'])],
+    vendors: [...new Set([...rolesOfSection('Vendors Management'), ...rolesOfSection('Operations'), 'shipment_orders_manager', 'shipment_orders_team_leader', 'shipment_orders_staff'])],
     fleet: [...FLEET_TEAM],
   };
 };
@@ -1130,7 +1130,7 @@ exports.decide = async (req, res) => {
 exports.getApprovers = async (req, res) => {
   try {
     const ids = await approverIds();
-    const options = await teamOptions(PV.SALES_ROLES.filter((r) => r !== 'sales_manager'));
+    const options = await teamOptions(PV.SALES_ROLES.filter((r) => rightsRoleOf(r) !== 'sales_manager'));
     res.json({ approvers: ids, options, canEdit: isSalesManager(req.user), canApprove: await canApprove(req.user) });
   } catch (e) { res.status(500).json({ message: 'تعذّر التحميل' }); }
 };

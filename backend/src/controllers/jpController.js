@@ -16,7 +16,7 @@ const logAudit = require('../utils/auditLogger');
 const { endedStaff, userEnded, userArchived } = require('../utils/endedStaff');
 
 // Super admin and admin see the whole system with full permissions.
-const TOP_ROLES = ['super_admin', 'admin', 'it_manager', 'it_specialist'];
+const TOP_ROLES = ['super_admin', 'admin', 'it_manager', 'it_team_leader', 'it_specialist'];
 const sameId = (a, b) => !!a && !!b && String(a._id || a) === String(b._id || b);
 const nameOf = (u) => (u ? [u.firstName, u.lastName].filter(Boolean).join(' ').trim() || u.email || '' : '');
 const HOUR = 3600000;

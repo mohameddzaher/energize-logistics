@@ -97,7 +97,7 @@ class _Ls2FleetAssetsScreenState extends State<Ls2FleetAssetsScreen> {
 
   /// Section admin rank, like isLs2Admin on the web (only they may import).
   bool _isAdmin(AuthProvider a) =>
-      const ['super_admin', 'admin', 'it_manager', 'it_specialist', 'operations_manager', 'operations_team_leader', 'workshop_manager', 'location_manager', 'vehicles_manager', 'data_manager', 'data_analyst', 'data_entry'].contains(a.role)
+      const ['super_admin', 'admin', 'it_manager', 'it_team_leader', 'it_specialist', 'operations_manager', 'operations_team_leader', 'workshop_manager', 'location_manager', 'location_team_leader', 'vehicles_manager', 'vehicles_team_leader', 'data_manager', 'data_analyst', 'data_entry'].contains(a.role)
       || a.canEditSection('Location Solutions');
 
   // Import the workshop sheet (JSON): safe to repeat, a tyre found on another vehicle is recorded as a move.

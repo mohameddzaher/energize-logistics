@@ -1,3 +1,4 @@
+import { rightsRoleOf } from '@/lib/roles';
 // First page each role opens after login, unless a landing page is set for it on the permissions screen (that takes precedence; see `landingFor`). Each role here lands on a page in its own section.
 // The dashboard (/system/dashboard) used to be the fallback for super admin, employee and every unlisted role, but it belonged to a removed customers-and-finance section, so it was deleted.
 export const ROLE_HOME_ROUTES: Record<string, string> = {
@@ -63,8 +64,9 @@ export const ROLE_HOME_ROUTES: Record<string, string> = {
   data_entry: '/system/data-support',
 };
 
+// A team leader lands where its manager does unless listed itself.
 export const homeRouteForRole = (role?: string | null) =>
-  (role && ROLE_HOME_ROUTES[role]) || '/system/hr/me';
+  (role && (ROLE_HOME_ROUTES[role] || ROLE_HOME_ROUTES[rightsRoleOf(role)])) || '/system/hr/me';
 
 /** The first section granted to this user. The map above is keyed by role name, so a role created on the permissions screen is not in it and fell back to the profile page; someone who created a role and granted operations edit would see the person land on personal data and conclude the grant was not saved. */
 const SECTION_HOME: [string, string][] = [

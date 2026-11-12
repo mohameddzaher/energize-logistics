@@ -15,7 +15,7 @@ import {
 } from 'lucide-react';
 import { fmt } from '@/utils/exportExcel';
 import ExportMenu, { exportScopeLabels, type ExportColumn } from '@/components/ls2/ExportMenu';
-import { ALL_ROLE_DEFS, rolesGroupedBySection } from '@/lib/roles';
+import { ALL_ROLE_DEFS, rolesGroupedBySection, rightsRoleOf } from '@/lib/roles';
 import { getSectionLabel } from '@/lib/translations';
 import { SearchableSelect } from '@/components/hr/HRKit';
 import HrQuickFilters from '@/components/hr/HrQuickFilters';
@@ -290,7 +290,7 @@ export default function UsersPage() {
   const fetchBranches = async () => {
     try {
       // role-only: same editors as the permissions page.
-      if (['super_admin', 'admin', 'it_manager', 'it_specialist', 'operations_manager', 'operations_team_leader'].includes(currentUser?.role || '')) {
+      if (['super_admin', 'admin', 'it_manager', 'it_team_leader', 'it_specialist', 'operations_manager', 'operations_team_leader'].includes(currentUser?.role || '')) {
         api.get<any>('/api/shipment-orders/branch-access').then((d) => setShipBranches(d.branches || [])).catch(() => {});
       }
       const data = await api.get<any>('/api/branches?active=true');
@@ -379,7 +379,7 @@ export default function UsersPage() {
       if (formData.branch) {
         payload.branch = formData.branch;
       }
-      if (formData.role === 'b2c_project_lead' || formData.role === 'b2c_manager') {
+      if (formData.role === 'b2c_project_lead' || rightsRoleOf(formData.role) === 'b2c_manager') {
         payload.assignedProjects = formData.assignedProjects;
         payload.assignedBranches = formData.assignedBranches;
         if (formData.role === 'b2c_project_lead' && formData.manager) {
@@ -474,7 +474,7 @@ export default function UsersPage() {
       }
       payload.branch = formData.branch || null;
       if (SHIPMENT_BRANCH_ROLES.includes(formData.role)) payload.shipmentBranches = formData.shipmentBranches;
-      if (formData.role === 'b2c_project_lead' || formData.role === 'b2c_manager') {
+      if (formData.role === 'b2c_project_lead' || rightsRoleOf(formData.role) === 'b2c_manager') {
         payload.assignedProjects = formData.assignedProjects;
         payload.assignedBranches = formData.assignedBranches;
         payload.manager = formData.manager || null;
@@ -495,10 +495,10 @@ export default function UsersPage() {
       // HR: link/unlink this login to an employee profile.
       payload.linkedEmployee = formData.linkedEmployee || null;
       payload.isTopManagement = !!formData.isTopManagement;
-      if (['super_admin', 'admin', 'it_manager', 'it_specialist'].includes(currentUser?.role || '')) { payload.accessSections = formData.accessSections; payload.accessPages = formData.accessPages; if (OPS_TEAM_ROLES.includes(formData.role)) payload.walletBranches = formData.walletBranches; }
-      if (['super_admin', 'admin', 'it_manager', 'it_specialist'].includes(currentUser?.role || '')) payload.isChairman = !!formData.isChairman;
+      if (['super_admin', 'admin', 'it_manager', 'it_team_leader', 'it_specialist'].includes(currentUser?.role || '')) { payload.accessSections = formData.accessSections; payload.accessPages = formData.accessPages; if (OPS_TEAM_ROLES.includes(formData.role)) payload.walletBranches = formData.walletBranches; }
+      if (['super_admin', 'admin', 'it_manager', 'it_team_leader', 'it_specialist'].includes(currentUser?.role || '')) payload.isChairman = !!formData.isChairman;
       // Sent only for the eligible roles, so editing anyone else never clears or moves a box.
-      if (['hr_manager', 'cfo', 'accounting_manager'].includes(formData.role)) payload.leaveSheetSigner = formData.leaveSheetSigner || '';
+      if (['hr_manager', 'hr_team_leader', 'cfo', 'accounting_manager', 'accounting_team_leader'].includes(formData.role)) payload.leaveSheetSigner = formData.leaveSheetSigner || '';
       await api.put(`/api/users/${selectedUser._id}`, payload);
       setShowEditModal(false);
       setSelectedUser(null);
@@ -1026,7 +1026,7 @@ export default function UsersPage() {
       )}
 
       {/* The chairman is a super admin account with the final leave stage; only a super admin can tick it, and ticking it makes the account super admin. */}
-      {selectedUser && formData.role !== 'client' && ['super_admin', 'admin', 'it_manager', 'it_specialist'].includes(currentUser?.role || '') && (
+      {selectedUser && formData.role !== 'client' && ['super_admin', 'admin', 'it_manager', 'it_team_leader', 'it_specialist'].includes(currentUser?.role || '') && (
         <label className="flex items-center gap-2 px-3 py-2.5 rounded-lg border border-slate-200 bg-slate-50 cursor-pointer">
           <input type="checkbox" className="w-4 h-4 accent-[#f37121]" checked={!!formData.isChairman}
             onChange={(e) => setFormData({ ...formData, isChairman: e.target.checked, ...(e.target.checked ? { role: 'super_admin' } : {}) })} />
@@ -1037,14 +1037,14 @@ export default function UsersPage() {
 
       {/* The finance and HR boxes of the leave sheet carry this account's name and signature once the stage approves, whoever in the department clicked. */}
       {/* Only a department head can hold its box (the server checks the same): HR manager for HR, financial or accounts manager for finance. */}
-      {selectedUser && ['hr_manager', 'cfo', 'accounting_manager'].includes(formData.role) && (
+      {selectedUser && ['hr_manager', 'hr_team_leader', 'cfo', 'accounting_manager', 'accounting_team_leader'].includes(formData.role) && (
         <div>
           <label className="block text-slate-700 text-sm font-medium mb-1.5">{lang === 'ar' ? 'يوقّع ورقة الإجازة عن' : 'Signs the leave sheet as'}</label>
           <select value={formData.leaveSheetSigner || ''} onChange={(e) => setFormData({ ...formData, leaveSheetSigner: e.target.value })}
             className="w-full px-3 py-2.5 rounded-lg bg-white border border-slate-200 text-slate-900 text-sm">
             <option value="">{lang === 'ar' ? '— لا يوقّع عن قسم —' : '— none —'}</option>
-            {formData.role !== 'hr_manager' && <option value="finance">{lang === 'ar' ? 'المدير المالي' : 'Finance Manager'}</option>}
-            {formData.role === 'hr_manager' && <option value="hr">{lang === 'ar' ? 'مدير الموارد البشرية' : 'HR Manager'}</option>}
+            {rightsRoleOf(formData.role) !== 'hr_manager' && <option value="finance">{lang === 'ar' ? 'المدير المالي' : 'Finance Manager'}</option>}
+            {rightsRoleOf(formData.role) === 'hr_manager' && <option value="hr">{lang === 'ar' ? 'مدير الموارد البشرية' : 'HR Manager'}</option>}
           </select>
           <p className="mt-1 text-xs text-slate-500">{lang === 'ar' ? 'حساب واحد لكل خانة؛ اختياره هنا يرفعه عن الحساب السابق.' : 'One account per box; choosing it here clears the previous one.'}</p>
         </div>
@@ -1130,14 +1130,14 @@ export default function UsersPage() {
             </div>
           </div>
         )}
-        {isEdit && ['operations_staff', 'operations_team_leader'].includes(formData.role) && ['super_admin', 'admin', 'it_manager', 'it_specialist'].includes(currentUser?.role || '') && (
+        {isEdit && ['operations_staff', 'operations_team_leader'].includes(formData.role) && ['super_admin', 'admin', 'it_manager', 'it_team_leader', 'it_specialist'].includes(currentUser?.role || '') && (
           <UserSectionAccess ar={lang === 'ar'} section="Vendors Management"
             title={lang === 'ar' ? 'يعمل على الموردين' : 'Works on vendors'}
             hint={lang === 'ar' ? 'إن أُغلق لا يظهر له قسم الموردين. وإن فُتح تختار الصفحات التي تظهر له.' : 'Off hides the vendors section; on lets you pick its pages.'}
             sections={formData.accessSections} pages={formData.accessPages}
             onChange={(v) => setFormData({ ...formData, accessSections: v.sections, accessPages: v.pages })} />
         )}
-        {isEdit && ['operations_staff', 'operations_team_leader'].includes(formData.role) && ['super_admin', 'admin', 'it_manager', 'it_specialist'].includes(currentUser?.role || '') && (() => {
+        {isEdit && ['operations_staff', 'operations_team_leader'].includes(formData.role) && ['super_admin', 'admin', 'it_manager', 'it_team_leader', 'it_specialist'].includes(currentUser?.role || '') && (() => {
           // The branch wallet is opened per person: closing it closes both wallet pages; open, it works on the branches ticked here (none ticked = his own branches).
           const on = formData.accessPages['/system/wallet'] !== false;
           const setOn = (v: boolean) => {
@@ -1197,12 +1197,12 @@ export default function UsersPage() {
       )}
 
       {/* B2C-specific: assigned projects + assigned branches + manager */}
-      {(formData.role === 'b2c_manager' || formData.role === 'b2c_project_lead') && (
+      {(rightsRoleOf(formData.role) === 'b2c_manager' || formData.role === 'b2c_project_lead') && (
         <>
           <div>
             <label className="block text-slate-700 text-sm font-medium mb-1.5">
               {lang === 'ar' ? 'المشاريع المعينة' : 'Assigned Projects'} ({formData.assignedProjects.length})
-              {formData.role === 'b2c_manager' && (
+              {rightsRoleOf(formData.role) === 'b2c_manager' && (
                 <span className="text-slate-500 text-xs font-normal ms-2">
                   {lang === 'ar' ? '(اختياري — له صلاحية كل المشاريع)' : '(optional — has access to all)'}
                 </span>

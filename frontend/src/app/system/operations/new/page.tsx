@@ -11,6 +11,7 @@ import * as XLSX from 'xlsx';
 import ScrollX from '@/components/system/ScrollX';
 import CustomerNamePicker from '@/components/operations/CustomerNamePicker';
 import ManagedSelect from '@/components/system/ManagedSelect';
+import { rightsRoleOf } from '@/lib/roles';
 
 // ── Field Definitions ──
 interface FieldDef {
@@ -149,7 +150,7 @@ export default function NewOperationsPage() {
   const [unmappedHeaders, setUnmappedHeaders] = useState<string[]>([]);
 
   const userRole = user?.role || '';
-  const editableSections = ROLE_EDITABLE[userRole] || [];
+  const editableSections = ROLE_EDITABLE[userRole] || ROLE_EDITABLE[rightsRoleOf(userRole)] || [];
 
   const updateField = (key: string, value: string) => {
     setFormData((prev) => ({ ...prev, [key]: value }));

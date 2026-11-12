@@ -18,8 +18,8 @@ import 'jp.dart' show JpTaskPanel;
 export 'crm_vendor_detail.dart';
 
 // CRM roles, same as the web (lib/crm.ts).
-const crmStaffRoles = ['super_admin', 'admin', 'it_manager', 'it_specialist', 'crm_manager', 'crm_team_lead', 'crm_specialist', 'crm_agent', 'operations_manager', 'operations_team_leader', 'operations_staff'];
-const crmAdminRoles = ['super_admin', 'admin', 'it_manager', 'it_specialist', 'crm_manager', 'crm_team_lead'];
+const crmStaffRoles = ['super_admin', 'admin', 'it_manager', 'it_team_leader', 'it_specialist', 'crm_manager', 'crm_team_leader', 'crm_team_lead', 'crm_specialist', 'crm_agent', 'operations_manager', 'operations_team_leader', 'operations_staff'];
+const crmAdminRoles = ['super_admin', 'admin', 'it_manager', 'it_team_leader', 'it_specialist', 'crm_manager', 'crm_team_leader', 'crm_team_lead'];
 bool isCrmAdmin(AuthProvider a) => crmAdminRoles.contains(a.role) || a.canEditSection('CRM');
 bool isCrmStaff(AuthProvider a) => crmStaffRoles.contains(a.role) || a.canAccessSection('CRM') || isCrmAdmin(a);
 

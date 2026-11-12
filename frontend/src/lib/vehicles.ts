@@ -9,8 +9,8 @@ const pick = (lang: Lang, en: string, ar: string) => (lang === 'ar' ? ar : en);
 // By role OR by a grant from the permissions matrix (the backend honours the
 // grant, so the pages must too). Pass the USER: only it carries the grants.
 import { canAccessSection, canEditSection, roleOf, permsOf, type RoleOrUser } from './sections';
-export const VEHICLE_STAFF_ROLES = ['super_admin', 'admin', 'it_manager', 'it_specialist', 'hr_manager', 'hr_specialist', 'cfo', 'accounting_manager', 'accountant'];
-export const VEHICLE_ADMIN_ROLES = ['super_admin', 'admin', 'it_manager', 'it_specialist', 'hr_manager', 'cfo', 'accounting_manager'];
+export const VEHICLE_STAFF_ROLES = ['super_admin', 'admin', 'it_manager', 'it_team_leader', 'it_specialist', 'hr_manager', 'hr_team_leader', 'hr_specialist', 'cfo', 'accounting_manager', 'accounting_team_leader', 'accountant'];
+export const VEHICLE_ADMIN_ROLES = ['super_admin', 'admin', 'it_manager', 'it_team_leader', 'it_specialist', 'hr_manager', 'hr_team_leader', 'cfo', 'accounting_manager', 'accounting_team_leader'];
 export const isVehicleStaff = (u: RoleOrUser) => VEHICLE_STAFF_ROLES.includes(roleOf(u)) || canAccessSection(permsOf(u), 'Vehicles');
 export const isVehicleAdmin = (u: RoleOrUser) => VEHICLE_ADMIN_ROLES.includes(roleOf(u)) || canEditSection(permsOf(u), 'Vehicles');
 

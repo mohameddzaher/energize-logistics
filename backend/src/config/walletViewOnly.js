@@ -3,7 +3,7 @@
 const collections = require('./roles').SECTION_ROLES.find((x) => x.section === 'Collections');
 const WALLET_VIEW_ONLY_ROLES = collections
   ? [collections.manager.key, ...collections.staff.map((r) => r.key), collections.trainee.key]
-  : ['collections_manager', 'collections_staff', 'collections_trainee'];
+  : ['collections_manager', 'collections_team_leader', 'collections_staff', 'collections_trainee'];
 const WALLET_VIEW_PAGES = ['/system/wallet', '/system/wallet-dashboard'];
 const READ = new Set(['GET', 'HEAD', 'OPTIONS']);
 

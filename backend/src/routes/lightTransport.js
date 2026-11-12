@@ -11,7 +11,7 @@ const authorize = require('../middleware/rbac');
 
 // authenticate + sectionGate('B2C') are applied at mount time in server.js.
 // Section roles first; users granted the section via the permissions matrix pass the same `authorize` (it reads `req.sectionAccess`); see middleware/sectionGate.
-const EDIT = ['super_admin', 'admin', 'b2c_manager', 'b2c_deputy', 'b2c_project_lead', 'it_manager', 'it_specialist', ...require('../config/financeAuthority').FINANCE_FULL_ROLES];
+const EDIT = ['super_admin', 'admin', 'b2c_manager', 'b2c_team_leader', 'b2c_deputy', 'b2c_project_lead', 'it_manager', 'it_team_leader', 'it_specialist', ...require('../config/financeAuthority').FINANCE_FULL_ROLES];
 
 // Section dashboard: one call computes staff, vehicles and housing together.
 router.get('/overview', c.overview);
@@ -22,7 +22,7 @@ router.get('/employees/:id', c.getEmployee);
 // A rep's orders split by project, month by month, for his profile (b2cEntryController.repOrders).
 router.get('/employees/:id/orders', require('../controllers/b2cEntryController').repOrders);
 // Adding an employee creates his HR file, so it is limited to the sector manager, deputy, system admin and finance roles, not everyone granted the section.
-router.post('/employees', authorize.strict('super_admin', 'b2c_manager', 'b2c_deputy', ...require('../config/financeAuthority').FINANCE_FULL_ROLES), c.createEmployee);
+router.post('/employees', authorize.strict('super_admin', 'b2c_manager', 'b2c_team_leader', 'b2c_deputy', ...require('../config/financeAuthority').FINANCE_FULL_ROLES), c.createEmployee);
 // Section project vehicles: a window onto the vehicle registry itself (see the controller).
 router.get('/vehicles', c.listVehicles);
 // People dropdown (actual leader and authorized person): section staff first, then HR.

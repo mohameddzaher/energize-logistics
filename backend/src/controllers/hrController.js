@@ -26,7 +26,7 @@ const NO_WORKDAY = 'اختر تاريخ البداية والنهاية';
 const chain = require('../utils/leaveChain');
 
 // ── Roles / helpers ──────────────────────────────────────────────────────────
-const HR_STAFF_ROLES = ['super_admin', 'admin', 'it_manager', 'it_specialist', 'hr_manager', 'hr_specialist'];
+const HR_STAFF_ROLES = ['super_admin', 'admin', 'it_manager', 'it_team_leader', 'it_specialist', 'hr_manager', 'hr_team_leader', 'hr_specialist'];
 const isHRStaff = (user) => HR_STAFF_ROLES.includes(user.role);
 // A role the super_admin granted this section to counts as staff too —
 // otherwise the grant passes the route gate but the handler still rejects it.

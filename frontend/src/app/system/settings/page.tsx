@@ -67,7 +67,7 @@ function InfoRow({ label, value }: { label: string; value: ReactNode }) {
 export default function SettingsPage() {
   const { user, refreshUser } = useAuth();
   // role-only: system settings are for the system admin.
-  const isSuperAdmin = ['super_admin', 'admin', 'it_manager', 'it_specialist'].includes(user?.role || '');
+  const isSuperAdmin = ['super_admin', 'admin', 'it_manager', 'it_team_leader', 'it_specialist'].includes(user?.role || '');
 
   const { lang } = useLanguage();
   const ar = lang === 'ar';

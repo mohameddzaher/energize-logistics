@@ -19,9 +19,9 @@ class FleetVehicleLogsScreen extends StatefulWidget {
 }
 
 const _editRoles = {
-  'super_admin', 'admin', 'it_manager', 'it_specialist',
+  'super_admin', 'admin', 'it_manager', 'it_team_leader', 'it_specialist',
   'operations_manager', 'operations_team_leader', 'operations_staff', 'moderator',
-  'fleet_manager', 'fleet_supervisor',
+  'fleet_manager', 'fleet_team_leader', 'fleet_supervisor',
 };
 
 class _FleetVehicleLogsScreenState extends State<FleetVehicleLogsScreen> {

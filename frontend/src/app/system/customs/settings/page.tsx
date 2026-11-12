@@ -65,7 +65,7 @@ export default function CustomsSettingsPage() {
 
       {tab === 'email' && (
         <EmailTemplateEditor ar={ar} endpoint="/api/customs-clearance/email-template" liveEvent="customs:email-template" previewEndpoint="/api/customs-clearance/email-signature-preview"
-          canEdit={['super_admin', 'admin', 'it_manager', 'it_specialist', 'customs_manager'].includes(user?.role || '')}
+          canEdit={['super_admin', 'admin', 'it_manager', 'it_team_leader', 'it_specialist', 'customs_manager', 'customs_team_leader'].includes(user?.role || '')}
           title={t('قالب بريد المتابعة للعميل', 'Customer follow-up email template')}
           signatureHint={t('مثال: للاستفسار عن شحنتكم تواصلوا معنا على 920031911', 'e.g. For any question about your shipment call 920031911')} />
       )}

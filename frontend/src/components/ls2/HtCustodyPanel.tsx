@@ -12,7 +12,7 @@ import { useSocket } from '@/hooks/useSocket';
 import { useLatestRequest } from '@/hooks/useLatestRequest';
 import { Wallet } from 'lucide-react';
 
-const HT_CUSTODY_ROLES = ['super_admin', 'admin', 'it_manager', 'it_specialist', 'location_manager', 'cfo', 'accounting_manager', 'accountant'];
+const HT_CUSTODY_ROLES = ['super_admin', 'admin', 'it_manager', 'it_team_leader', 'it_specialist', 'location_manager', 'location_team_leader', 'cfo', 'accounting_manager', 'accounting_team_leader', 'accountant'];
 const ACC: Record<string, [string, string]> = { cash: ['الكاش', 'Cash'], card: ['الكارت', 'Card'], workshop: ['الورشة', 'Workshop'] };
 const SRC: Record<string, [string, string]> = {
   card: ['الكارت', 'Card'], workshop: ['الورشة', 'Workshop'], bank: ['البنك', 'Bank'],

@@ -25,7 +25,7 @@ const SECTIONS = [
     // Operations workflows section. The workflows API had no owning section, so the permission matrix could neither grant nor deny it; a role line in the route alone guarded it. Adding it was verified not to remove access from anyone: roles with operations denied are not in the route's role list already.
     apiPrefixes: ['/api/wallet', '/api/workflows', '/api/customer-requests'],
     // Accounting and collections are included: custody is a financial entry that is reviewed and closed, and the section guard runs before the route's role list, so leaving them out returns 403 even when the endpoint is open to them.
-    defaultRoles: ['admin', 'it_manager', 'it_specialist', 'employee', 'operations_manager', 'operations_staff', 'moderator', 'procurement_manager', 'procurement_staff', 'cfo', 'accounting_manager', 'accountant', 'collections_manager', 'collections_staff',
+    defaultRoles: ['admin', 'it_manager', 'it_team_leader', 'it_specialist', 'employee', 'operations_manager', 'operations_team_leader', 'operations_staff', 'moderator', 'procurement_manager', 'procurement_team_leader', 'procurement_staff', 'cfo', 'accounting_manager', 'accounting_team_leader', 'accountant', 'collections_manager', 'collections_team_leader', 'collections_staff',
       // Vendors manager and team leader: operations rights on the workflow (owner's rule).
       'vendors_manager', 'vendors_team_leader'],
   },
@@ -33,12 +33,12 @@ const SECTIONS = [
     // Collections section: customers we collect from and vendors we pay. The prefix is /api/collections-dept, not /api/collections (taken by collection follow-ups under customers and finance). express matches on segment boundaries so they do not clash, but the explicit name avoids confusion.
     key: 'Collections',
     apiPrefixes: ['/api/collections-dept'],
-    defaultRoles: ['admin', 'it_manager', 'it_specialist', 'operations_manager', 'cfo', 'accounting_manager'],
+    defaultRoles: ['admin', 'it_manager', 'it_team_leader', 'it_specialist', 'operations_manager', 'operations_team_leader', 'cfo', 'accounting_manager', 'accounting_team_leader'],
   },
   {
     key: 'Operations Platform',
     apiPrefixes: ['/api/ops'],
-    defaultRoles: ['admin', 'it_manager', 'operations_manager', 'operations_staff', 'moderator', 'employee'],
+    defaultRoles: ['admin', 'it_manager', 'it_team_leader', 'operations_manager', 'operations_team_leader', 'operations_staff', 'moderator', 'employee'],
   },
   {
     // Trial: shipments created natively instead of on the external UPL system.
@@ -46,52 +46,52 @@ const SECTIONS = [
     key: 'Shipment Orders',
     apiPrefixes: ['/api/shipment-orders'],
     // Sales asks for shipments and the vendors team places them, both from this section (owner, 2026-11-09).
-    defaultRoles: ['admin', 'it_manager', 'it_specialist', 'operations_manager', 'operations_staff', 'moderator',
-      'sales_manager', 'sales_rep', 'vendors_manager', 'vendors_team_leader', 'vendors_staff'],
+    defaultRoles: ['admin', 'it_manager', 'it_team_leader', 'it_specialist', 'operations_manager', 'operations_team_leader', 'operations_staff', 'moderator',
+      'sales_manager', 'sales_team_leader', 'sales_rep', 'vendors_manager', 'vendors_team_leader', 'vendors_staff'],
   },
   {
     // Vendors management: carrier register, their trucks and freelance drivers, sales requests to place, and the section's analysis.
     key: 'Vendors Management',
     apiPrefixes: ['/api/vendors-mgmt'],
     // Vendors is a team inside Operations: the operations team works it by default; a super admin closes it per user (User.accessSections).
-    defaultRoles: ['admin', 'it_manager', 'it_specialist', 'operations_manager', 'operations_staff'],
+    defaultRoles: ['admin', 'it_manager', 'it_team_leader', 'it_specialist', 'operations_manager', 'operations_team_leader', 'operations_staff'],
   },
   {
     // Our own trucks — booking, drivers, follow-up calls. Sibling of the
     // Shipment Orders trial (that one books supplier trucks).
     key: 'Fleet Management',
     apiPrefixes: ['/api/fleet'],
-    defaultRoles: ['admin', 'it_manager', 'it_specialist', 'operations_manager', 'operations_staff', 'moderator', 'fleet_manager', 'fleet_supervisor'],
+    defaultRoles: ['admin', 'it_manager', 'it_team_leader', 'it_specialist', 'operations_manager', 'operations_team_leader', 'operations_staff', 'moderator', 'fleet_manager', 'fleet_team_leader', 'fleet_supervisor'],
   },
   {
     key: 'Customs',
     apiPrefixes: ['/api/customs-clearance'],
-    defaultRoles: ['admin', 'it_manager', 'operations_manager', 'customs_manager', 'customs_officer'],
+    defaultRoles: ['admin', 'it_manager', 'it_team_leader', 'operations_manager', 'operations_team_leader', 'customs_manager', 'customs_team_leader', 'customs_officer'],
   },
   {
     key: 'Vehicles',
     apiPrefixes: ['/api/vehicles'],
-    defaultRoles: ['admin', 'it_manager', 'hr_manager', 'hr_specialist', 'cfo', 'accounting_manager', 'accountant'],
+    defaultRoles: ['admin', 'it_manager', 'it_team_leader', 'hr_manager', 'hr_team_leader', 'hr_specialist', 'cfo', 'accounting_manager', 'accounting_team_leader', 'accountant'],
   },
   {
     key: 'Location Solutions',
     apiPrefixes: ['/api/ls2'],
-    defaultRoles: ['admin', 'it_manager', 'operations_manager', 'operations_staff', 'moderator', 'vehicles_manager'],
+    defaultRoles: ['admin', 'it_manager', 'it_team_leader', 'operations_manager', 'operations_team_leader', 'operations_staff', 'moderator', 'vehicles_manager', 'vehicles_team_leader'],
   },
   {
     key: 'Marketing',
     apiPrefixes: ['/api/marketing'],
-    defaultRoles: ['admin', 'it_manager', 'it_specialist', 'marketing_manager', 'marketing_specialist', 'bd_manager'],
+    defaultRoles: ['admin', 'it_manager', 'it_team_leader', 'it_specialist', 'marketing_manager', 'marketing_team_leader', 'marketing_specialist', 'bd_manager', 'bd_team_leader'],
   },
   {
     key: 'Business Development',
     apiPrefixes: ['/api/business-development'],
-    defaultRoles: ['admin', 'it_manager', 'bd_manager', 'bd_specialist', 'sales_manager', 'crm_manager', 'operations_manager'],
+    defaultRoles: ['admin', 'it_manager', 'it_team_leader', 'bd_manager', 'bd_team_leader', 'bd_specialist', 'sales_manager', 'sales_team_leader', 'crm_manager', 'crm_team_leader', 'operations_manager', 'operations_team_leader'],
   },
   {
     key: 'Software & IT',
     apiPrefixes: ['/api/it'],
-    defaultRoles: ['admin', 'it_manager', 'it_specialist'],
+    defaultRoles: ['admin', 'it_manager', 'it_team_leader', 'it_specialist'],
   },
   {
     // Business review meetings: the standing forum between department heads and the board. Broad by default because ordinary employees also open it to see work delegated to them; the controller, not this list, separates manager and employee views.
@@ -109,25 +109,25 @@ const SECTIONS = [
     // Administration (secretariat): the shared office task board.
     key: 'Administration',
     apiPrefixes: ['/api/admin-tasks'],
-    defaultRoles: ['admin', 'administration_staff', 'bd_manager', 'it_manager', 'it_specialist'],
+    defaultRoles: ['admin', 'administration_staff', 'bd_manager', 'bd_team_leader', 'it_manager', 'it_team_leader', 'it_specialist'],
   },
   {
     // Contracts: 3PL vendor contracts and analysis, other departments' contracts.
     key: 'Contracts',
     apiPrefixes: ['/api/contracts'],
     // Sales sign customer contracts and the vendors team signs carrier contracts here; vendors is a team inside Operations, so the operations team has it too. Narrowed per role from the permissions page.
-    defaultRoles: ['admin', 'contracts_manager', 'it_manager', 'it_specialist', 'operations_manager', 'operations_staff',
-      'sales_manager', 'sales_rep', 'vendors_manager', 'vendors_team_leader', 'vendors_staff'],
+    defaultRoles: ['admin', 'contracts_manager', 'contracts_team_leader', 'it_manager', 'it_team_leader', 'it_specialist', 'operations_manager', 'operations_team_leader', 'operations_staff',
+      'sales_manager', 'sales_team_leader', 'sales_rep', 'vendors_manager', 'vendors_team_leader', 'vendors_staff'],
   },
   {
     key: 'B2C',
     apiPrefixes: ['/api/b2c', '/api/b2c-wallet'],
-    defaultRoles: ['admin', 'it_manager', 'b2c_manager', 'b2c_deputy', 'b2c_project_lead'],
+    defaultRoles: ['admin', 'it_manager', 'it_team_leader', 'b2c_manager', 'b2c_team_leader', 'b2c_deputy', 'b2c_project_lead'],
   },
   {
     key: 'Remote',
     apiPrefixes: ['/api/remote'],
-    defaultRoles: ['admin', 'it_manager', 'remote_manager', 'remote_employee'],
+    defaultRoles: ['admin', 'it_manager', 'it_team_leader', 'remote_manager', 'remote_team_leader', 'remote_employee'],
   },
   {
     key: 'HR',
@@ -137,34 +137,34 @@ const SECTIONS = [
     // must never be blocked by removing back-office HR access, so they are
     // exempt from the gate.
     exemptSelfService: true,
-    defaultRoles: ['admin', 'it_manager', 'hr_manager', 'hr_specialist'],
+    defaultRoles: ['admin', 'it_manager', 'it_team_leader', 'hr_manager', 'hr_team_leader', 'hr_specialist'],
   },
   {
     key: 'CRM',
     apiPrefixes: ['/api/crm', '/api/crm-vendors'],
-    defaultRoles: ['admin', 'it_manager', 'crm_manager', 'crm_team_lead', 'crm_specialist', 'crm_agent', 'operations_manager', 'operations_staff'],
+    defaultRoles: ['admin', 'it_manager', 'it_team_leader', 'crm_manager', 'crm_team_leader', 'crm_team_lead', 'crm_specialist', 'crm_agent', 'operations_manager', 'operations_team_leader', 'operations_staff'],
   },
   {
     key: 'Sales',
     apiPrefixes: ['/api/sales'],
-    defaultRoles: ['admin', 'it_manager', 'sales_manager', 'sales_rep', 'operations_manager', 'operations_staff'],
+    defaultRoles: ['admin', 'it_manager', 'it_team_leader', 'sales_manager', 'sales_team_leader', 'sales_rep', 'operations_manager', 'operations_team_leader', 'operations_staff'],
   },
   {
     // Finance management. The internal key stays Accounting so stored permissions for accountant roles do not need migrating; only the displayed name changed.
     key: 'Accounting',
     apiPrefixes: ['/api/accounting', '/api/finance'],
-    defaultRoles: ['admin', 'it_manager', 'cfo', 'accounting_manager', 'accountant'],
+    defaultRoles: ['admin', 'it_manager', 'it_team_leader', 'cfo', 'accounting_manager', 'accounting_team_leader', 'accountant'],
   },
   {
     // Data & Decision Support: per-section analysis pages. Its roles are global (config/roles DATA_ROLES) and get it by default through defaultAccess.
     key: 'Data & Decision Support',
     apiPrefixes: ['/api/data-support'],
-    defaultRoles: ['admin', 'it_manager', 'it_specialist', 'cfo'],
+    defaultRoles: ['admin', 'it_manager', 'it_team_leader', 'it_specialist', 'cfo'],
   },
   {
     key: 'Procurement',
     apiPrefixes: ['/api/procurement'],
-    defaultRoles: ['admin', 'it_manager', 'procurement_manager', 'procurement_staff'],
+    defaultRoles: ['admin', 'it_manager', 'it_team_leader', 'procurement_manager', 'procurement_team_leader', 'procurement_staff'],
   },
 ];
 

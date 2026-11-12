@@ -10,7 +10,7 @@ const authorize = require('../middleware/rbac');
 
 // Everything in the Remote section requires auth + a remote-related role.
 router.use(authenticate);
-router.use(authorize('super_admin', 'admin', 'it_manager', 'it_specialist', 'remote_manager', 'remote_employee'));
+router.use(authorize('super_admin', 'admin', 'it_manager', 'it_team_leader', 'it_specialist', 'remote_manager', 'remote_team_leader', 'remote_employee'));
 
 // Attendance
 router.post('/attendance/toggle', remote.toggleAttendance);

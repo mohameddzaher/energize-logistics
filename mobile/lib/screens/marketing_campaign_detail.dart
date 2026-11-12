@@ -29,7 +29,7 @@ const _campaignStatus = {
 };
 
 // Marketing roles as on the web (lib/marketing.ts); editing needs canEditMarketing.
-const _mktAdminRoles = ['super_admin', 'admin', 'it_manager', 'it_specialist', 'marketing_manager', 'marketing_specialist', 'bd_manager'];
+const _mktAdminRoles = ['super_admin', 'admin', 'it_manager', 'it_team_leader', 'it_specialist', 'marketing_manager', 'marketing_team_leader', 'marketing_specialist', 'bd_manager', 'bd_team_leader'];
 bool canEditMarketing(AuthProvider a) => _mktAdminRoles.contains(a.role) || a.canEditSection('Marketing');
 
 const _platforms = <(String, String, String)>[

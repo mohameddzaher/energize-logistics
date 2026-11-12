@@ -59,6 +59,11 @@ const ok = (l, c, x = '') => { console.log(`  ${c ? G + '✓' + O : R + '✗ FAI
   ok('كل مديري الأقسام معدودين', Roles.MANAGER_ROLES.every((r) => br.isManagerRole(r)));
   ok('it_specialist مدير لأنه صلاحية نظام كاملة (مقصود)', br.isManagerRole('it_specialist'));
   ok('administration_staff هو السكرتارية (مقصود)', br.isSecretary({ role: 'administration_staff' }));
+  // Team leaders hold their manager's rights but never sit in management meetings.
+  const seated = Roles.TEAM_LEADER_ROLES.filter((r) => br.isManagerRole(r) || br.isExecutive({ role: r }));
+  ok('Team leaders have no management seat', seated.length === 0, seated.join(', ') || `${Roles.TEAM_LEADER_ROLES.length} team leaders`);
+  const wrongHeir = Roles.TEAM_LEADER_ROLES.filter((r) => !Roles.MANAGER_ROLES.includes(Roles.rightsRoleOf(r)) || Roles.sectionOfRole(r) !== Roles.sectionOfRole(Roles.rightsRoleOf(r)));
+  ok('Every team leader holds its own section manager rights', wrongHeir.length === 0, wrongHeir.join(', ') || '—');
 
   console.log('\n── قاعدة البيانات ──');
   const valid = new Set(require('../config/roles').ALL_ROLES);

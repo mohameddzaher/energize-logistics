@@ -92,7 +92,7 @@ async function canApprove(u) {
 /** Everyone who approves: operations managers (and leads with their rights) plus the delegated members. */
 async function approverIds() {
   const User = require('../models/User');
-  const roles = ['operations_manager', ...Object.entries(ROLES.RIGHTS_OF).filter(([, r]) => r === 'operations_manager').map(([k]) => k)];
+  const roles = ['operations_manager', 'operations_team_leader', ...Object.entries(ROLES.RIGHTS_OF).filter(([, r]) => r === 'operations_manager').map(([k]) => k)];
   const [mgrs, dels] = await Promise.all([User.find({ role: { $in: roles }, isActive: { $ne: false } }).select('_id').lean(), delegatedApprovers()]);
   return [...new Set([...mgrs.map((u) => String(u._id)), ...dels])];
 }

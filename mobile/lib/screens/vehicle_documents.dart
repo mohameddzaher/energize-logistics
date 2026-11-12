@@ -383,9 +383,9 @@ class _VehicleDocumentsScreenState extends State<VehicleDocumentsScreen> {
   }
 
   // Who writes in the section: the same split as on the server and on web. Three scattered lists used to diverge at the first new role, so the vehicles manager saw the section but could not edit it from mobile alone.
-  static const _editRoles = {'super_admin', 'admin', 'it_manager', 'it_specialist', 'vehicles_manager', 'vehicles_staff',
-    'hr_manager', 'hr_specialist', 'cfo', 'accounting_manager', 'accountant'};
-  static const _adminRoles = {'super_admin', 'admin', 'it_manager', 'it_specialist', 'vehicles_manager', 'hr_manager'};
+  static const _editRoles = {'super_admin', 'admin', 'it_manager', 'it_team_leader', 'it_specialist', 'vehicles_manager', 'vehicles_team_leader', 'vehicles_staff',
+    'hr_manager', 'hr_team_leader', 'hr_specialist', 'cfo', 'accounting_manager', 'accounting_team_leader', 'accountant'};
+  static const _adminRoles = {'super_admin', 'admin', 'it_manager', 'it_team_leader', 'it_specialist', 'vehicles_manager', 'vehicles_team_leader', 'hr_manager', 'hr_team_leader'};
 
   /// Removing a Petro App chip is an action recorded with who removed it and when.
   /// It is a condition of employee clearance, so it cannot be a silent field wipe: emptying it drops the condition, and two months later there is no answer to 'who removed it and when?'.

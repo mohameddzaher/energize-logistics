@@ -1,3 +1,4 @@
+const { rightsRoleOf } = require('../config/roles');
 const mongoose = require('mongoose');
 const { startOfDay, endOfDay } = require('../utils/companyDay');
 const User = require('../models/User');
@@ -12,7 +13,7 @@ const { emitToUser, emitToAll } = require('../websocket/socketManager');
 const { grantedBySection } = require('../utils/sectionAccess');
 
 // ── Helpers ───────────────────────────────────────────────────────────────
-const STAFF_ROLES = ['super_admin', 'admin', 'it_manager', 'it_specialist', 'remote_manager'];
+const STAFF_ROLES = ['super_admin', 'admin', 'it_manager', 'it_team_leader', 'it_specialist', 'remote_manager', 'remote_team_leader'];
 const isStaff = (user) => STAFF_ROLES.includes(user.role);
 // A role the super_admin granted this section to counts as staff too —
 // otherwise the grant passes the route gate but the handler still rejects it.
@@ -34,7 +35,7 @@ const daysBetween = (start, end) => {
 // meaning "all remote employees" (full admins). remote_employee sees only self.
 const scopeEmployeeIds = async (user) => {
   if (isFullAdmin(user)) return null; // all
-  if (user.role === 'remote_manager') {
+  if (rightsRoleOf(user.role) === 'remote_manager') {
     const team = await User.find({ role: 'remote_employee', manager: user._id }).select('_id').lean();
     return team.map((u) => u._id);
   }
@@ -69,7 +70,7 @@ const buildScopedFilter = async (req, dateField = 'date') => {
 
 // Notify an employee's reviewers (their manager + all full admins).
 const reviewersFor = async (employeeUserId, managerId) => {
-  const admins = await User.find({ role: { $in: ['super_admin', 'admin', 'it_manager', 'it_specialist'] }, isActive: true }).select('_id').lean();
+  const admins = await User.find({ role: { $in: ['super_admin', 'admin', 'it_manager', 'it_team_leader', 'it_specialist'] }, isActive: true }).select('_id').lean();
   const ids = admins.map((a) => String(a._id));
   if (managerId) ids.push(String(managerId));
   return [...new Set(ids)].filter((id) => id !== String(employeeUserId));
@@ -280,7 +281,7 @@ exports.reviewLeave = async (req, res) => {
     if (!leave) return res.status(404).json({ message: 'Leave request not found' });
 
     // A remote_manager may only review their own team's requests.
-    if (req.user.role === 'remote_manager') {
+    if (rightsRoleOf(req.user.role) === 'remote_manager') {
       const ids = await scopeEmployeeIds(req.user);
       if (!ids.map(String).includes(String(leave.user))) {
         return res.status(403).json({ message: 'Not your team member' });
@@ -446,7 +447,7 @@ exports.createTask = async (req, res) => {
     if (!user || !title) return res.status(400).json({ message: 'Assignee and title are required' });
 
     // remote_manager may only assign to their own team.
-    if (req.user.role === 'remote_manager') {
+    if (rightsRoleOf(req.user.role) === 'remote_manager') {
       const ids = await scopeEmployeeIds(req.user);
       if (!ids.map(String).includes(String(user))) {
         return res.status(403).json({ message: 'Not your team member' });
@@ -478,7 +479,7 @@ exports.updateTask = async (req, res) => {
 
     const owner = String(task.user) === String(req.user._id);
     if (!owner && !staffReq(req)) return res.status(403).json({ message: 'Insufficient permissions' });
-    if (req.user.role === 'remote_manager' && !owner) {
+    if (rightsRoleOf(req.user.role) === 'remote_manager' && !owner) {
       const ids = await scopeEmployeeIds(req.user);
       if (!ids.map(String).includes(String(task.user))) {
         return res.status(403).json({ message: 'Not your team member' });
@@ -508,7 +509,7 @@ exports.deleteTask = async (req, res) => {
     if (!staffReq(req)) return res.status(403).json({ message: 'Insufficient permissions' });
     const task = await RemoteTask.findById(req.params.id);
     if (!task) return res.status(404).json({ message: 'Task not found' });
-    if (req.user.role === 'remote_manager') {
+    if (rightsRoleOf(req.user.role) === 'remote_manager') {
       const ids = await scopeEmployeeIds(req.user);
       if (!ids.map(String).includes(String(task.user))) {
         return res.status(403).json({ message: 'Not your team member' });
@@ -650,7 +651,7 @@ exports.deleteAnnouncement = async (req, res) => {
     if (!staffReq(req)) return res.status(403).json({ message: 'Insufficient permissions' });
     const a = await RemoteAnnouncement.findById(req.params.id);
     if (!a) return res.status(404).json({ message: 'Announcement not found' });
-    if (req.user.role === 'remote_manager' && String(a.author) !== String(req.user._id)) {
+    if (rightsRoleOf(req.user.role) === 'remote_manager' && String(a.author) !== String(req.user._id)) {
       return res.status(403).json({ message: 'You can only delete your own announcements' });
     }
     await a.deleteOne();

@@ -18,33 +18,33 @@ import 'customs_detail.dart';
 /// One screen for the section and for the management plan. Permission comes from the server: each task carries `can` and `/me` says manager or member, so no role list is repeated here except what the drawer uses to hide a page the server would refuse (the two maps below, generated from backend/src/config/jpSections.js).
 const jpManagerRoles = <String, List<String>>{
   'operations': ['operations_manager', 'operations_team_leader'],
-  'collections': ['collections_manager'],
-  'ops': ['ops_platform_manager'],
-  'shipment-orders': ['shipment_orders_manager'],
-  'vendors': ['vendors_manager', 'operations_manager', 'operations_team_leader'],
-  'fleet': ['fleet_manager'],
-  'customs': ['customs_manager'],
-  'vehicles': ['vehicles_manager'],
-  'ls2': ['location_manager'],
-  'marketing': ['marketing_manager'],
-  'bd': ['bd_manager'],
-  'it': ['it_manager'],
-  'administration': ['administration_manager'],
-  'contracts': ['contracts_manager'],
-  'b2c': ['b2c_manager'],
-  'remote': ['remote_manager'],
-  'hr': ['hr_manager'],
-  'crm': ['crm_manager'],
-  'sales': ['sales_manager'],
-  'accounting': ['accounting_manager', 'cfo'],
-  'procurement': ['procurement_manager'],
+  'collections': ['collections_manager', 'collections_team_leader'],
+  'ops': ['ops_platform_manager', 'ops_platform_team_leader'],
+  'shipment-orders': ['shipment_orders_manager', 'shipment_orders_team_leader'],
+  'vendors': ['vendors_manager', 'vendors_team_leader', 'operations_manager', 'operations_team_leader'],
+  'fleet': ['fleet_manager', 'fleet_team_leader'],
+  'customs': ['customs_manager', 'customs_team_leader'],
+  'vehicles': ['vehicles_manager', 'vehicles_team_leader'],
+  'ls2': ['location_manager', 'location_team_leader'],
+  'marketing': ['marketing_manager', 'marketing_team_leader'],
+  'bd': ['bd_manager', 'bd_team_leader'],
+  'it': ['it_manager', 'it_team_leader'],
+  'administration': ['administration_manager', 'administration_team_leader'],
+  'contracts': ['contracts_manager', 'contracts_team_leader'],
+  'b2c': ['b2c_manager', 'b2c_team_leader'],
+  'remote': ['remote_manager', 'remote_team_leader'],
+  'hr': ['hr_manager', 'hr_team_leader'],
+  'crm': ['crm_manager', 'crm_team_leader'],
+  'sales': ['sales_manager', 'sales_team_leader'],
+  'accounting': ['accounting_manager', 'accounting_team_leader', 'cfo'],
+  'procurement': ['procurement_manager', 'procurement_team_leader'],
 };
 const jpStaffRoles = <String, List<String>>{
   'operations': ['operations_staff', 'operations_trainee', 'vendors_manager', 'vendors_team_leader', 'vendors_staff', 'shipment_orders_followup'],
   'collections': ['collections_staff', 'collections_trainee'],
   'ops': ['ops_platform_staff', 'ops_platform_trainee'],
   'shipment-orders': ['shipment_orders_staff', 'shipment_orders_followup', 'shipment_orders_trainee'],
-  'vendors': ['vendors_team_leader', 'vendors_staff', 'vendors_trainee', 'operations_staff'],
+  'vendors': ['vendors_staff', 'vendors_trainee', 'operations_staff'],
   'fleet': ['fleet_supervisor', 'fleet_trainee'],
   'customs': ['customs_officer', 'customs_trainee'],
   'vehicles': ['vehicles_staff', 'vehicles_trainee'],
@@ -64,7 +64,7 @@ const jpStaffRoles = <String, List<String>>{
 };
 
 bool jpManager(String role, String section) =>
-    const ['super_admin', 'admin', 'it_manager', 'it_specialist'].contains(role) || role == 'admin' || (jpManagerRoles[section] ?? const []).contains(role);
+    const ['super_admin', 'admin', 'it_manager', 'it_team_leader', 'it_specialist'].contains(role) || role == 'admin' || (jpManagerRoles[section] ?? const []).contains(role);
 bool jpMember(String role, String section) =>
     jpManager(role, section) || (jpStaffRoles[section] ?? const []).contains(role);
 

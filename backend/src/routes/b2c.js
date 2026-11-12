@@ -13,11 +13,11 @@ const { denyRepSupervisor: noSup } = require('../middleware/b2cGuards');
 router.use(authenticate);
 
 // Project managers currently have the same access as heads.
-const READ = ['super_admin', 'admin', 'it_manager', 'it_specialist', 'b2c_manager', 'b2c_deputy', 'b2c_project_lead'];
+const READ = ['super_admin', 'admin', 'it_manager', 'it_team_leader', 'it_specialist', 'b2c_manager', 'b2c_team_leader', 'b2c_deputy', 'b2c_project_lead'];
 // Rep supervisor: the two check screens only, over his own reps (decided by the controller). The check screens are for both supervisor kinds: the operational one sees them, and for the check supervisor they are his whole job.
 const DUTY = [...READ, 'b2c_rep_supervisor', 'b2c_inspection_supervisor'];
-const WRITE = ['super_admin', 'admin', 'it_manager', 'it_specialist', 'b2c_manager', 'b2c_deputy', 'b2c_project_lead'];
-const ADMIN_WRITE = ['super_admin', 'admin', 'it_manager', 'it_specialist', 'b2c_manager', 'b2c_deputy', 'b2c_project_lead'];
+const WRITE = ['super_admin', 'admin', 'it_manager', 'it_team_leader', 'it_specialist', 'b2c_manager', 'b2c_team_leader', 'b2c_deputy', 'b2c_project_lead'];
+const ADMIN_WRITE = ['super_admin', 'admin', 'it_manager', 'it_team_leader', 'it_specialist', 'b2c_manager', 'b2c_team_leader', 'b2c_deputy', 'b2c_project_lead'];
 
 // Projects
 router.get('/projects', authorize(...READ), b2cController.getProjects);

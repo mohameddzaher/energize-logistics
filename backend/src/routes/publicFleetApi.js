@@ -298,7 +298,7 @@ async function assignmentSnapshot() {
     (async () => FleetDriver.find({ isActive: { $ne: false }, vehicle: { $ne: null },
       ...require('../utils/archivedHidden').notArchivedIdNumber(await require('../utils/endedStaff').endedStaff(), 'iqama') })
       .select('name phone working offReason vehicle').lean())(),
-    User.find({ role: { $in: ['fleet_supervisor', 'fleet_manager'] }, isActive: { $ne: false } })
+    User.find({ role: { $in: ['fleet_supervisor', 'fleet_manager', 'fleet_team_leader'] }, isActive: { $ne: false } })
       .select('firstName lastName email phone role').lean(),
   ]);
 
@@ -347,7 +347,7 @@ async function assignmentSnapshot() {
   }
   const supervisors = sups.map((u) => {
     const id = String(u._id);
-    const isManager = u.role === 'fleet_manager';
+    const isManager = require('../config/roles').rightsRoleOf(u.role) === 'fleet_manager';
     return {
       id,
       name: fullName(u),

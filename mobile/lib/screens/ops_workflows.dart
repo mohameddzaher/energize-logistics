@@ -27,7 +27,7 @@ class OpsWorkflowsScreen extends StatefulWidget {
 }
 
 /// Finance roles hold the same powers on this page as the system admin (lib/financeAuthority).
-const _financeFullRoles = ['cfo', 'accounting_manager', 'accountant'];
+const _financeFullRoles = ['cfo', 'accounting_manager', 'accounting_team_leader', 'accountant'];
 
 /// Filter bar columns, same as the web (WorkflowFilterBar).
 const _barFields = [
@@ -142,10 +142,10 @@ class _OpsWorkflowsScreenState extends State<OpsWorkflowsScreen> {
   late final void Function(dynamic) _onUnlockAll;
 
   String get _role => context.read<AuthProvider>().role;
-  bool get _full => const ['super_admin', 'admin', 'it_manager', 'it_specialist'].contains(_role) || _financeFullRoles.contains(_role);
+  bool get _full => const ['super_admin', 'admin', 'it_manager', 'it_team_leader', 'it_specialist'].contains(_role) || _financeFullRoles.contains(_role);
   bool _has(String f) => _myFields?.contains(f) ?? false;
   bool get _canCreate => _full || _role == 'moderator';
-  bool get _canDelete => const ['super_admin', 'admin', 'it_manager', 'it_specialist', 'operations_manager', 'operations_team_leader'].contains(_role);
+  bool get _canDelete => const ['super_admin', 'admin', 'it_manager', 'it_team_leader', 'it_specialist', 'operations_manager', 'operations_team_leader'].contains(_role);
   // Invoice amounts (net invoice onward): the server decides who sees them.
   bool _seesAmounts = false;
   bool _seesSelling = false;

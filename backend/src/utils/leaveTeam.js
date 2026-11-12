@@ -43,11 +43,10 @@ const ownersMap = () => cache.wrap('hr:leaveteam:owners', OWNERS_TTL, async () =
 /** The section whose manager this account is, or null. */
 function managedSection(user) {
   const role = canonicalRole(user?.role || '');
-  const sec = D.sectionOfManagerRole(role);
-  if (sec) return sec;
-  // A section's own manager role, when the JP map names it differently.
+  // Leads, not performance heads: the team leader and the accounting manager keep their team here.
   const own = sectionOfRole(role);
-  return own && D.managerRolesOf(own).includes(role) ? own : null;
+  if (own && D.leadRolesOf(own).includes(role)) return own;
+  return D.sectionLedBy(role);
 }
 
 /** Mongo filter for the employees under this account (rules 1-3), before exclusions. */

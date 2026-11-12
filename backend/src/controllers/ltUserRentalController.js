@@ -8,7 +8,7 @@ const { todayKey } = require('../utils/companyDay');
 
 const S = (v) => String(v ?? '').trim();
 const who = (u) => [u?.firstName, u?.lastName].filter(Boolean).join(' ').trim();
-const DELETE_ROLES = ['super_admin', 'admin', 'it_manager', 'it_specialist', 'b2c_manager', 'b2c_deputy'];
+const DELETE_ROLES = ['super_admin', 'admin', 'it_manager', 'it_team_leader', 'it_specialist', 'b2c_manager', 'b2c_team_leader', 'b2c_deputy'];
 const changed = () => {
   // Invalidate before announcing: utils/ltRental.announce clears the section cache and then broadcasts.
   require('../utils/ltRental').announce();

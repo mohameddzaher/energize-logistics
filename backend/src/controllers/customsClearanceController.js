@@ -248,10 +248,10 @@ exports._search = { searchValuesOf, searchClearances, SEARCH_INDEX_FIELDS };
  * Profit is for management, not the team
  * Analytics and profit are management matters. System admin and section manager see profit and margin; for others the number is removed on the server, not hidden in the screen.
  */
-const MONEY_ROLES = ['super_admin', 'admin', 'it_manager', 'it_specialist', 'customs_manager'];
+const MONEY_ROLES = ['super_admin', 'admin', 'it_manager', 'it_team_leader', 'it_specialist', 'customs_manager', 'customs_team_leader'];
 const seesMoney = (req) => MONEY_ROLES.includes(req.user && req.user.role);
 // Profit of a single transaction: for management, and for finance, which reviews it from its own screen.
-const PROFIT_ROLES = [...MONEY_ROLES, 'cfo', 'accounting_manager', 'accountant'];
+const PROFIT_ROLES = [...MONEY_ROLES, 'cfo', 'accounting_manager', 'accounting_team_leader', 'accountant'];
 /**
  * Transaction date
  * Day, month and period filters are measured on it. `createdAt` is unsuitable: records imported from the master were all entered on one day, so a date filter dropped all or kept all. The date is what the business knows: paper receipt, then declaration, then first of its month in the master, then entry day (Riyadh time).
@@ -1870,7 +1870,7 @@ exports.issueInvoice = async (req, res) => {
     try {
       const User = require('../models/User');
       const { createNotification } = require('../services/notificationService');
-      const fin = await User.find({ role: { $in: ['cfo', 'accounting_manager', 'accountant'] }, isActive: { $ne: false } }).select('_id').lean();
+      const fin = await User.find({ role: { $in: ['cfo', 'accounting_manager', 'accounting_team_leader', 'accountant'] }, isActive: { $ne: false } }).select('_id').lean();
       await Promise.all(fin.map((u) => createNotification({
         recipient: u._id, type: 'status_changed',
         title: 'طلب فوترة — تخليص جمركي',
@@ -2686,7 +2686,7 @@ exports.deleteNote = async (req, res) => {
     const note = clearance.notesLog.id(req.params.noteId);
     if (!note) return res.status(404).json({ message: 'الملاحظة غير موجودة' });
     // Another person's note is deleted only by the manager: it is a trace of its author.
-    const boss = ['super_admin', 'admin', 'it_manager', 'it_specialist', 'customs_manager'].includes(req.user.role);
+    const boss = ['super_admin', 'admin', 'it_manager', 'it_team_leader', 'it_specialist', 'customs_manager', 'customs_team_leader'].includes(req.user.role);
     if (!boss && String(note.by || '') !== String(req.user._id)) {
       return res.status(403).json({ message: 'لا تُحذف ملاحظةُ غيرك' });
     }

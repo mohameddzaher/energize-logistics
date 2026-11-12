@@ -48,7 +48,7 @@ export default function HrMasterGridPage() {
   const t = (a: string, e: string) => (ar ? a : e);
   const { notify } = useDialog();
   const { user } = useAuth();
-  const canEdit = ['super_admin', 'admin', 'it_manager', 'it_specialist', 'hr_manager', 'hr_specialist'].includes((user as any)?.role)
+  const canEdit = ['super_admin', 'admin', 'it_manager', 'it_team_leader', 'it_specialist', 'hr_manager', 'hr_team_leader', 'hr_specialist'].includes((user as any)?.role)
     || canEditSection((user as any)?.permissions, 'HR');
   // Actions, employee number, name and ID stay pinned to the right.
   const pin = usePinnedColumns(4);

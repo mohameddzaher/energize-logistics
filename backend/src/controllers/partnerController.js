@@ -12,7 +12,7 @@ const { invalidateUserCache } = require('../middleware/auth');
 
 // Who may mint an outside login. Deliberately narrow: this hands somebody
 // outside the company a key to their own data.
-const ACCOUNT_ADMIN_ROLES = ['super_admin', 'admin', 'it_manager', 'it_specialist'];
+const ACCOUNT_ADMIN_ROLES = ['super_admin', 'admin', 'it_manager', 'it_team_leader', 'it_specialist'];
 const canAdmin = (req) => ACCOUNT_ADMIN_ROLES.includes(req.user.role);
 
 exports.getRegisters = async (req, res) => {

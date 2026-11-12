@@ -20,7 +20,7 @@ import {
 } from 'lucide-react';
 
 // role-only: the server guards the catalog with the same list (routes/apiDocs DOCS_ROLES).
-const DOCS_ROLES = ['super_admin', 'admin', 'it_manager', 'it_specialist'];
+const DOCS_ROLES = ['super_admin', 'admin', 'it_manager', 'it_team_leader', 'it_specialist'];
 const METHODS = ['GET', 'POST', 'PUT', 'PATCH', 'DELETE'] as const;
 type Method = typeof METHODS[number];
 
@@ -621,7 +621,7 @@ export default function ApiDocsPage() {
   // role-only: the internal API map is for top roles and IT; the server enforces the same list.
   const allowed = !!user && DOCS_ROLES.includes(user.role);
   // role-only: the server reveals the partner key to the same roles (routes/apiDocs KEY_ROLES).
-  const canRevealKey = !!user && ['super_admin', 'admin', 'it_manager', 'it_specialist'].includes(user.role);
+  const canRevealKey = !!user && ['super_admin', 'admin', 'it_manager', 'it_team_leader', 'it_specialist'].includes(user.role);
   const [cat, setCat] = useState<Catalog | null>(null);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(true);

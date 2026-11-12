@@ -22,7 +22,7 @@ class OpsPrivateScreen extends StatefulWidget {
 }
 
 /// Selling prices screen: restricted by names on purpose (as on the web).
-const _roles = ['super_admin', 'admin', 'it_manager', 'it_specialist', 'operations_manager', 'operations_team_leader', 'cfo', 'accounting_manager', 'accountant'];
+const _roles = ['super_admin', 'admin', 'it_manager', 'it_team_leader', 'it_specialist', 'operations_manager', 'operations_team_leader', 'cfo', 'accounting_manager', 'accounting_team_leader', 'accountant'];
 
 /// Columns the server accepts filtering on: (key, Arabic label, English label, is money).
 const _filterCols = [

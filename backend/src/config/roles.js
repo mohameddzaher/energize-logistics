@@ -53,7 +53,7 @@ const SECTION_ROLES = [
           + 'ويتّصل بالسائق ويكتب ملاحظةَ متابعة. وشاشتُه الشحناتُ بطاقاتٍ كبيرةً للجوّال أوّلًا.' },
     ] },
 
-  // Vendors management: the 3PL carriers we buy loads from. The team leader holds the manager's rights in the section without sitting in management meetings, so its key is not *_manager.
+  // Vendors management: the 3PL carriers we buy loads from. Its team leader is the section's generated team leader (see below), written here for its own description.
   { section: 'Vendors Management',
     manager: { key: 'vendors_manager', ar: 'مدير قسم الموردين', en: 'Vendors Manager' },
     staff: [
@@ -147,6 +147,23 @@ const SECTION_ROLES = [
   // Business review intentionally has no manager or staff role: it is a forum for all section managers with management, so access follows the role in the user's own section.
 ];
 
+// Every section has a team leader: the person directly under the section manager, holding exactly the manager's rights (RIGHTS_OF) without the manager's meeting seat or the manager's place in performance review (rated by the section manager as staff). Key and name derive from the manager; a staff entry already carrying the derived key (operations, vendors) is kept as written. Listed first in `staff`, so the section is granted by default (sections.defaultAccess).
+const TEAM_LEADER_DISTINCT = 'له صلاحيّاتُ مدير القسم كاملةً، ولا يجلس في اجتماعات الإدارة، ويقيّمه مديرُ القسم مع فريقه.';
+for (const s of SECTION_ROLES) {
+  const key = s.manager.key.replace(/_manager$/, '_team_leader');
+  let tl = s.staff.find((x) => x.key === key);
+  if (!tl) {
+    tl = {
+      key,
+      ar: s.manager.ar.replace(/^مدير\s+(قسم\s+)?/, 'قائد فريق '),
+      en: s.manager.en.replace(/\s+Manager$/, ' Team Leader'),
+      distinct: TEAM_LEADER_DISTINCT,
+    };
+    s.staff.unshift(tl);
+  }
+  s.teamLeader = tl;
+}
+
 // Every section also has a trainee role. It differs in permission, not title: it inherits nothing and sees only what is granted on the permissions page, section by section and page by page. Matrix silence means none (utils/permissions.inheritsNothing). Not part of `staff`, since staff gets the section by default (sections.defaultAccess reads rolesOfSection). Key and name derive from the section manager.
 for (const s of SECTION_ROLES) {
   s.trainee = {
@@ -160,6 +177,7 @@ for (const s of SECTION_ROLES) {
 const MANAGER_ROLES = SECTION_ROLES.map((s) => s.manager.key);
 const STAFF_ROLES = SECTION_ROLES.flatMap((s) => s.staff.map((x) => x.key));
 const TRAINEE_ROLES = SECTION_ROLES.map((s) => s.trainee.key);
+const TEAM_LEADER_ROLES = SECTION_ROLES.map((s) => s.teamLeader.key);
 const ALL_ROLE_DEFS = [
   ...GLOBAL_ROLES,
   ...SECTION_ROLES.flatMap((s) => [s.manager, ...s.staff, s.trainee]),
@@ -181,9 +199,21 @@ const rolesOfSection = (section) => {
   return s ? [s.manager.key, ...s.staff.map((y) => y.key)] : [];
 };
 
-/** A role that holds another role's rights wherever that role is named in a guard or a rule (rbac, workflow fields). */
-const RIGHTS_OF = { operations_team_leader: 'operations_manager' };
+/** A role that holds another role's rights wherever that role is named in a guard or a rule: each section's team leader holds its manager's. */
+const RIGHTS_OF = Object.fromEntries(SECTION_ROLES.map((s) => [s.teamLeader.key, s.manager.key]));
 const rightsRoleOf = (role) => RIGHTS_OF[role] || role;
+const isTeamLeader = (role) => Object.prototype.hasOwnProperty.call(RIGHTS_OF, role);
+/**
+ * Does this role pass a role list? True when the list names it or names the role whose rights it holds.
+ * Accepts a role key or a user object. Use it for every in-code role check, so a team leader never needs adding by hand.
+ */
+const roleIn = (roleOrUser, list) => {
+  const role = roleOrUser && typeof roleOrUser === 'object' ? roleOrUser.role : roleOrUser;
+  if (!role || !list) return false;
+  const has = (r) => (typeof list.has === 'function' ? list.has(r) : list.includes(r));
+  const key = canonicalRole(String(role));
+  return has(key) || has(rightsRoleOf(key));
+};
 
 /**
  * The department a role belongs to in the company's structure (business review, team lists), which can be wider than its permission section:
@@ -235,6 +265,8 @@ const canonicalRole = (role) => RENAMED[role] || role;
       if (/_manager$/.test(st.key)) problems.push(`دور الموظف «${st.key}» بينتهي بـ _manager — هيتحسب مدير بالغلط`);
     }
     if (!/_trainee$/.test(s.trainee.key) || /^مدير/.test(s.trainee.ar)) problems.push(`متدرّبُ قسم «${s.section}» لم يُشتقّ اسمُه (${s.trainee.key} / ${s.trainee.ar})`);
+    // The team leader is staff (never *_manager, or it would take a meeting seat) and its key must follow the rule, since clients derive the heir by it.
+    if (s.teamLeader.key !== s.manager.key.replace(/_manager$/, '_team_leader') || /^مدير/.test(s.teamLeader.ar)) problems.push(`قائدُ فريق قسم «${s.section}» لم يُشتقّ اسمُه (${s.teamLeader.key} / ${s.teamLeader.ar})`);
   }
   const dupes = ALL_ROLES.filter((r, i) => ALL_ROLES.indexOf(r) !== i);
   if (dupes.length) problems.push(`مفاتيح مكرّرة: ${[...new Set(dupes)].join(', ')}`);
@@ -263,7 +295,7 @@ const DATA_ROLES = ['data_manager', 'data_analyst', 'data_entry'];
 module.exports = {
   DATA_ROLES, DATA_DEPT,
   GLOBAL_ROLES, SECTION_ROLES, assertRolesCoverSections,
-  ALL_ROLES, ALL_ROLE_DEFS, MANAGER_ROLES, STAFF_ROLES, TRAINEE_ROLES, isTrainee,
+  ALL_ROLES, ALL_ROLE_DEFS, MANAGER_ROLES, STAFF_ROLES, TRAINEE_ROLES, isTrainee, TEAM_LEADER_ROLES, isTeamLeader, roleIn,
   LABELS_AR, LABELS_EN,
   sectionOfRole, rolesOfSection, isManager, isStaff, RIGHTS_OF, rightsRoleOf, ORG_PARENT, orgSectionOfRole,
   RENAMED, canonicalRole,

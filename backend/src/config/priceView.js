@@ -4,7 +4,7 @@
  * everyone else keeps what their own screen rules already give them. One list, read by the shipment screens, the
  * analytics, the shipment requests and the operations workflow, so the two halves can never leak through another door.
  */
-const SALES_ROLES = ['sales_manager', 'sales_rep', 'sales_trainee'];
+const SALES_ROLES = ['sales_manager', 'sales_team_leader', 'sales_rep', 'sales_trainee'];
 const VENDOR_ROLES = ['vendors_manager', 'vendors_team_leader', 'vendors_staff', 'vendors_trainee'];
 // Manager and team leader hold the same rights in the section (owner's rule).
 const VENDOR_LEADS = ['vendors_manager', 'vendors_team_leader'];
@@ -17,7 +17,7 @@ const isVendorLead = (u) => VENDOR_LEADS.includes(roleOf(u));
 /** { sell, buy }: may this user see the selling price / the purchase side (buy, advance, driver fare). */
 const priceView = (u) => ({ sell: !isVendorRole(u), buy: !isSalesRole(u) });
 
-const FLEET_ROLES = ['fleet_manager', 'fleet_supervisor'];
+const FLEET_ROLES = ['fleet_manager', 'fleet_team_leader', 'fleet_supervisor'];
 /**
  * Selling price on a shipment request (owner, 2026-11-11): in Operations only the manager (and whoever holds his
  * rights, the team leader) sees it; operations staff complete trucks on purchase alone. The fleet never sees the
@@ -25,8 +25,9 @@ const FLEET_ROLES = ['fleet_manager', 'fleet_supervisor'];
  */
 // Who sees the selling price on sales requests (owner's list): top management and IT, finance (CFO, accounts manager, accountant), the general manager, the sales team, the data team, and from operations the operations manager alone (not the team leader).
 const REQUEST_SELL_ROLES = new Set([
-  'super_admin', 'admin', 'it_manager', 'it_specialist', 'it_trainee',
-  'cfo', 'accounting_manager', 'accountant', 'general_manager',
+  'super_admin', 'admin', 'it_manager', 'it_team_leader', 'it_specialist', 'it_trainee',
+  'cfo', 'accounting_manager', 'accounting_team_leader', 'accountant', 'general_manager',
+  // team-leader-exception: the operations team leader does not see the selling price (owner).
   'operations_manager', ...SALES_ROLES, 'data_manager', 'data_analyst', 'data_entry',
 ]);
 const requestSellVisible = (u) => REQUEST_SELL_ROLES.has(roleOf(u));

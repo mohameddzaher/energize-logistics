@@ -12,7 +12,7 @@ import IssueRequests from '@/components/store/IssueRequests';
 import { Tabs } from '@/components/hr/HRKit';
 import { isLs2Staff, isLs2Admin } from '@/lib/ls2';
 
-const STORE_ADD_ROLES = ['super_admin', 'admin', 'it_manager', 'it_specialist', 'accountant', 'accounting_manager', 'cfo', 'vehicles_manager'];
+const STORE_ADD_ROLES = ['super_admin', 'admin', 'it_manager', 'it_team_leader', 'it_specialist', 'accountant', 'accounting_manager', 'accounting_team_leader', 'cfo', 'vehicles_manager', 'vehicles_team_leader'];
 
 /** Heavy-transport trucks from the Location mirror. They have no project (our fleet runs on waybills), so their description and driver show in its place. */
 const plateSource = {

@@ -10,7 +10,7 @@ const emails = require('../controllers/companyEmailController');
 const authenticate = require('../middleware/auth');
 const authorize = require('../middleware/rbac');
 
-const EDIT_ROLES = ['super_admin', 'admin', 'it_manager', 'it_specialist'];
+const EDIT_ROLES = ['super_admin', 'admin', 'it_manager', 'it_team_leader', 'it_specialist'];
 
 router.use(authenticate);
 

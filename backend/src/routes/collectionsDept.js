@@ -12,15 +12,15 @@ router.use(authenticate);
 
 // Who reads the section. `sectionGate` is mounted above this prefix in server.js, so a user granted Collections from the permissions page also passes here (rbac reads req.sectionAccess).
 const READ_ROLES = [
-  'super_admin', 'admin', 'it_manager', 'it_specialist',
-  'collections_manager', 'collections_staff',
-  'operations_manager', 'operations_team_leader', 'cfo', 'accounting_manager', 'accountant',
+  'super_admin', 'admin', 'it_manager', 'it_team_leader', 'it_specialist',
+  'collections_manager', 'collections_team_leader', 'collections_staff',
+  'operations_manager', 'operations_team_leader', 'cfo', 'accounting_manager', 'accounting_team_leader', 'accountant',
 ];
 // Who writes: the section owns its work and finance shares it.
 // No narrower delete list: `authorize` also passes when `sectionGate` grants the section edit, and an edit grant passes every endpoint in it by design, so a narrower list prevents nothing and misleads readers into thinking delete is guarded. Deleting is low-risk anyway: a party with statements is deactivated, not deleted (see `deleteParty`), so what is erased is a row with no history. One list.
 const EDIT_ROLES = [
-  'super_admin', 'admin', 'it_manager', 'it_specialist',
-  'collections_manager', 'collections_staff', 'cfo', 'accounting_manager',
+  'super_admin', 'admin', 'it_manager', 'it_team_leader', 'it_specialist',
+  'collections_manager', 'collections_team_leader', 'collections_staff', 'cfo', 'accounting_manager', 'accounting_team_leader',
 ];
 
 router.get('/dashboard', authorize(...READ_ROLES), ctrl.dashboard);

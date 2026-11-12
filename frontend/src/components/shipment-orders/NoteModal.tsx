@@ -10,7 +10,7 @@ import type { ShipmentOrder } from '@/lib/shipmentOrders';
 import { fmtDT, Lang } from '@/lib/shipmentOrders';
 import { followUpNotes, orderRef, relTime } from './OrderViews';
 
-const NOTE_MANAGERS = new Set(['super_admin', 'admin', 'it_manager', 'it_specialist', 'shipment_orders_manager', 'operations_manager', 'operations_team_leader']);
+const NOTE_MANAGERS = new Set(['super_admin', 'admin', 'it_manager', 'it_team_leader', 'it_specialist', 'shipment_orders_manager', 'shipment_orders_team_leader', 'operations_manager', 'operations_team_leader']);
 
 export default function NoteModal({ order, ar, onClose, onSaved }: {
   order: ShipmentOrder;

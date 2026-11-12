@@ -11,8 +11,8 @@ const authorize = require('../middleware/rbac');
 const ctrl = require('../controllers/operationsPrivateController');
 
 const ROLES = [
-  'super_admin', 'admin', 'it_manager', 'it_specialist',
-  'operations_manager', 'operations_team_leader', 'cfo', 'accounting_manager', 'accountant',
+  'super_admin', 'admin', 'it_manager', 'it_team_leader', 'it_specialist',
+  'operations_manager', 'operations_team_leader', 'cfo', 'accounting_manager', 'accounting_team_leader', 'accountant',
 ];
 
 router.use(authenticate);

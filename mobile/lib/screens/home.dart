@@ -129,7 +129,7 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   bool _canSeeBoard(AuthProvider auth) =>
-      const ['super_admin', 'admin', 'administration_staff', 'bd_manager', 'it_manager', 'it_specialist'].contains(auth.role) ||
+      const ['super_admin', 'admin', 'administration_staff', 'bd_manager', 'bd_team_leader', 'it_manager', 'it_team_leader', 'it_specialist'].contains(auth.role) ||
       auth.canAccessSection('Administration');
 
   String _greeting() {
@@ -154,7 +154,7 @@ class _HomeScreenState extends State<HomeScreen> {
   Widget build(BuildContext context) {
     final auth = context.watch<AuthProvider>();
     final sections = sectionsFor(auth);
-    final selfPages = selfServicePages(_hasTeam, isPartner: auth.role == 'client', approvesLeaves: auth.user?['approvesLeaves'] == true || _hasTeam || const ['super_admin', 'admin', 'it_manager', 'it_specialist'].contains(auth.role));
+    final selfPages = selfServicePages(_hasTeam, isPartner: auth.role == 'client', approvesLeaves: auth.user?['approvesLeaves'] == true || _hasTeam || const ['super_admin', 'admin', 'it_manager', 'it_team_leader', 'it_specialist'].contains(auth.role));
 
     return Scaffold(
       appBar: AppBar(

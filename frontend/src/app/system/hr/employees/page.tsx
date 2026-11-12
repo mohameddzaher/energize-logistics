@@ -26,6 +26,7 @@ import { EmployeeFormModal } from '@/components/hr/EmployeeFormModal';
 import { getHrEmployeesTranslations } from '@/lib/translations';
 import ScrollX from '@/components/system/ScrollX';
 import B2cOpBadge from '@/components/b2c/B2cOpBadge';
+import { rightsRoleOf } from '@/lib/roles';
 
 export default function HREmployeesPage() {
   const { confirm, notify } = useDialog();
@@ -283,7 +284,7 @@ export default function HREmployeesPage() {
                 <td {...pin.td(0, 'px-4 py-3', 'bg-white group-hover:bg-slate-100')} onClick={(ev) => ev.stopPropagation()}>
                   <div className="flex items-center gap-1">
                     <button type="button" onClick={() => openEdit(e)} className="p-1.5 rounded-lg text-slate-700 hover:text-[#f37121] hover:bg-slate-100" title={tx.edit}><Edit className="w-4 h-4" /></button>
-                    {(['super_admin', 'admin', 'it_manager', 'it_specialist'].includes(user?.role || '') || user?.role === 'hr_manager') && e.employmentStatus !== 'terminated' && (
+                    {(['super_admin', 'admin', 'it_manager', 'it_team_leader', 'it_specialist'].includes(user?.role || '') || rightsRoleOf(user?.role) === 'hr_manager') && e.employmentStatus !== 'terminated' && (
                       <button type="button" onClick={() => openFileToEndService(e)}
                         className="p-1.5 rounded-lg text-slate-700 hover:text-amber-600 hover:bg-slate-100"
                         title={ar ? 'إنهاء الخدمة — من ملفّ الموظّف' : 'End service — in the employee file'}>
@@ -291,7 +292,7 @@ export default function HREmployeesPage() {
                       </button>
                     )}
                     {/* Delete is for the system admin only; the server enforces it separately from section grants. */}
-                    {['super_admin', 'admin', 'it_manager', 'it_specialist'].includes(user?.role || '') && (
+                    {['super_admin', 'admin', 'it_manager', 'it_team_leader', 'it_specialist'].includes(user?.role || '') && (
                       <button type="button" onClick={() => removeForGood(e)}
                         className="p-1.5 rounded-lg text-slate-400 hover:text-red-600 hover:bg-red-50"
                         title={ar ? 'حذف السجلّ نهائيًّا (مدير النظام)' : 'Delete the record permanently (system admin)'}>

@@ -46,9 +46,9 @@ const _statusMeta = {
 };
 
 // Who writes and who deletes: canEditVehicles / canAdminVehicles on web
-const _vehEditRoles = {'super_admin', 'admin', 'it_manager', 'it_specialist', 'vehicles_manager', 'vehicles_staff',
-  'hr_manager', 'hr_specialist', 'cfo', 'accounting_manager', 'accountant'};
-const _vehAdminRoles = {'super_admin', 'admin', 'it_manager', 'it_specialist', 'vehicles_manager', 'hr_manager'};
+const _vehEditRoles = {'super_admin', 'admin', 'it_manager', 'it_team_leader', 'it_specialist', 'vehicles_manager', 'vehicles_team_leader', 'vehicles_staff',
+  'hr_manager', 'hr_team_leader', 'hr_specialist', 'cfo', 'accounting_manager', 'accounting_team_leader', 'accountant'};
+const _vehAdminRoles = {'super_admin', 'admin', 'it_manager', 'it_team_leader', 'it_specialist', 'vehicles_manager', 'vehicles_team_leader', 'hr_manager', 'hr_team_leader'};
 bool canEditVehicles(AuthProvider a) => _vehEditRoles.contains(a.role) || a.canEditSection('Vehicles');
 bool canAdminVehicles(AuthProvider a) => _vehAdminRoles.contains(a.role) || (a.role != 'client' && a.canEditSection('Vehicles'));
 

@@ -13,8 +13,8 @@ const { emitToUser, emitToAll } = require('../websocket/socketManager');
 const { grantedBySection } = require('../utils/sectionAccess');
 
 // ── Roles / helpers ──────────────────────────────────────────────────────────
-const STAFF = ['super_admin', 'admin', 'it_manager', 'it_specialist', 'procurement_manager', 'procurement_staff'];
-const MANAGERS = ['super_admin', 'admin', 'it_manager', 'it_specialist', 'procurement_manager'];
+const STAFF = ['super_admin', 'admin', 'it_manager', 'it_team_leader', 'it_specialist', 'procurement_manager', 'procurement_team_leader', 'procurement_staff'];
+const MANAGERS = ['super_admin', 'admin', 'it_manager', 'it_team_leader', 'it_specialist', 'procurement_manager', 'procurement_team_leader'];
 const isStaff = (u) => STAFF.includes(u.role);
 // A role the super_admin granted this section to counts as staff too —
 // otherwise the grant passes the route gate but the handler still rejects it.

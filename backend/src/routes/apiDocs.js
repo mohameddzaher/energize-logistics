@@ -13,7 +13,7 @@ const authenticate = require('../middleware/auth');
 const { FULL_ACCESS_ROLES } = require('../config/constants');
 
 // Who reads the internal surface: top roles and IT (the page and the server use the same list).
-const DOCS_ROLES = [...new Set([...FULL_ACCESS_ROLES, 'it_manager', 'it_specialist'])];
+const DOCS_ROLES = [...new Set([...FULL_ACCESS_ROLES, 'it_manager', 'it_team_leader', 'it_specialist'])];
 const docsOnly = (req, res, next) => (DOCS_ROLES.includes(req.user?.role)
   ? next()
   : res.status(403).json({ message: 'The internal API documentation is for administration and IT only' }));
@@ -52,7 +52,7 @@ router.get('/internal.json', authenticate, docsOnly, (req, res) => {
  * manager can reveal it from the docs page; every reveal is audited, like the
  * company email passwords.
  */
-const KEY_ROLES = [...new Set([...FULL_ACCESS_ROLES, 'it_manager'])];
+const KEY_ROLES = [...new Set([...FULL_ACCESS_ROLES, 'it_manager', 'it_team_leader'])];
 router.get('/partner-key', authenticate, async (req, res) => {
   if (!KEY_ROLES.includes(req.user?.role)) return res.status(403).json({ message: 'Only administrators and the IT manager can reveal the partner key' });
   res.set('Cache-Control', 'no-store');

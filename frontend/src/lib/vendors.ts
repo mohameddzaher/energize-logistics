@@ -4,7 +4,7 @@ import { roleOf, canEditSection, permsOf, type RoleOrUser } from './sections';
 
 export const VENDOR_ROLES = ['vendors_manager', 'vendors_team_leader', 'vendors_staff', 'vendors_trainee'];
 export const VENDOR_LEADS = ['vendors_manager', 'vendors_team_leader'];
-const TOP = ['super_admin', 'admin', 'it_manager', 'it_specialist'];
+const TOP = ['super_admin', 'admin', 'it_manager', 'it_team_leader', 'it_specialist'];
 export const VENDOR_NAV_ROLES = [...TOP, ...VENDOR_ROLES, 'operations_manager', 'operations_team_leader', 'operations_staff', 'data_manager', 'data_analyst', 'data_entry'];
 export const isVendorLead = (u: RoleOrUser) => [...TOP, ...VENDOR_LEADS, 'operations_manager', 'operations_team_leader', 'data_manager'].includes(roleOf(u));
 export const canEditVendors = (u: RoleOrUser) => VENDOR_NAV_ROLES.includes(roleOf(u)) || canEditSection(permsOf(u), 'Vendors Management');

@@ -10,7 +10,7 @@ import 'theme.dart';
 import 'widgets.dart';
 
 /// Portal account, twin of PortalAccountCard on the web: a card in each customer or supplier profile that asks the server whether this row has a portal login. It offers creating one (email + password), or shows the account with change password, suspend and delete. Management is limited to ACCOUNT_ADMIN_ROLES on the server.
-const _adminRoles = ['super_admin', 'admin', 'it_manager', 'it_specialist'];
+const _adminRoles = ['super_admin', 'admin', 'it_manager', 'it_team_leader', 'it_specialist'];
 
 /// The web login page partners use; the site lives on the API host without the `api.` prefix.
 final _loginUrl = '${AppConfig.apiBase.replaceFirst('://api.', '://')}/login';

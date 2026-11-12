@@ -405,7 +405,8 @@ exports.addSignature = async (req, res) => {
   try {
     const { name, dataUrl, isDefault } = req.body || {};
     if (!dataUrl || !SIG_RX.test(dataUrl)) return res.status(400).json({ message: 'A valid signature image is required' });
-    if (dataUrl.length > 400000) return res.status(400).json({ message: 'Signature image too large (max ~300KB)' });
+    // PNG scans are several times larger than JPG; ~1.5 MB of image is accepted.
+    if (dataUrl.length > 2100000) return res.status(400).json({ message: 'صورة التوقيع كبيرة جدًّا (الحدّ الأقصى نحو 1.5 ميجابايت).' });
     const user = await User.findById(req.user._id).select('+signatures');
     const makeDefault = !user.signatures.length || !!isDefault;
     if (makeDefault) user.signatures.forEach((s) => { s.isDefault = false; });

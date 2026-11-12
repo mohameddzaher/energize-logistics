@@ -36,11 +36,12 @@ class _SignaturesScreenState extends State<SignaturesScreen> {
     final picked = await pickFileAsDataUrl();
     if (picked == null || !mounted) return;
     if (!picked.dataUrl.startsWith('data:image/')) {
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(tr('التوقيع لازم يكون صورة (PNG/JPG)', 'Signature must be an image'))));
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(tr('يجب أن يكون التوقيع صورة (PNG أو JPG).', 'Signature must be an image (PNG or JPG).'))));
       return;
     }
-    if (picked.sizeBytes > 300 * 1024) {
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(tr('الصورة كبيرة (أقصى ~300KB)', 'Image too large (~300KB max)'))));
+    // PNG and JPG both accepted; the server takes about 1.5 MB.
+    if (picked.sizeBytes > 1500 * 1024) {
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(tr('الصورة كبيرة — الحدّ الأقصى نحو 1.5 ميجابايت', 'Image too large (~1.5 MB max)'))));
       return;
     }
     final name = TextEditingController(text: picked.fileName.replaceAll(RegExp(r'\.[^.]+$'), ''));

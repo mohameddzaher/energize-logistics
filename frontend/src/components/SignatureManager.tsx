@@ -13,17 +13,23 @@ const PAD_HEIGHT = 200;
 // Caps the bitmap so a wide retina pad stays far below the server's 400 KB data-URL limit.
 const MAX_PAD_PX = 1200;
 
-// Downscale an uploaded image to a max width and re-encode as PNG (keeps it small).
-function downscale(dataUrl: string, maxW = 500): Promise<string> {
+// Downscale an uploaded PNG or JPG to a max width as PNG (transparency kept); narrower again while it is still too large for the server.
+const SIG_MAX_CHARS = 1800000;
+function downscale(dataUrl: string, maxW = 600): Promise<string> {
   return new Promise((resolve) => {
     const img = new Image();
     img.onload = () => {
-      const scale = Math.min(1, maxW / img.width);
-      const c = document.createElement('canvas');
-      c.width = Math.round(img.width * scale);
-      c.height = Math.round(img.height * scale);
-      c.getContext('2d')!.drawImage(img, 0, 0, c.width, c.height);
-      resolve(c.toDataURL('image/png'));
+      let w = maxW; let out = dataUrl;
+      do {
+        const scale = Math.min(1, w / img.width);
+        const c = document.createElement('canvas');
+        c.width = Math.max(1, Math.round(img.width * scale));
+        c.height = Math.max(1, Math.round(img.height * scale));
+        c.getContext('2d')!.drawImage(img, 0, 0, c.width, c.height);
+        out = c.toDataURL('image/png');
+        w = Math.round(w * 0.75);
+      } while (out.length > SIG_MAX_CHARS && w > 120);
+      resolve(out);
     };
     img.onerror = () => resolve(dataUrl);
     img.src = dataUrl;

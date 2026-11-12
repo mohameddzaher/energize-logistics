@@ -26,7 +26,7 @@ const EDITABLE = [
   'legacySerial', 'periodMonth', 'periodYear', 'city',
   'declarationNumber', 'declarationDate', 'papersReceivedDate',
   'unloadingAppointment', 'unloadingLocation', 'doNumber', 'exitPermitNumber',
-  'returnDeadline', 'returnFreeDays', 'demurrageStartDate',
+  'returnDeadline', 'returnFreeDays', 'demurrageStartDate', 'demurrageDays',
   // Stages are not written here: they have rules (two mutually exclusive paths, stages that close), so they go through `setStage` only. See PATCH /:id/stage.
   // Links the transaction to the customer and agent files.
   'customerParty', 'agentParty',
@@ -490,8 +490,9 @@ exports.updateClearance = async (req, res) => {
     }
     const data = pick(req.body, existing);
     data.lastModifiedBy = req.user._id;
-    // Containers' floor date is derived from unloading and cannot be typed.
-    if (existing.cargoType !== 'vehicles' && data.cargoType !== 'vehicles' && (data.unloadingAppointment || existing.unloadingAppointment)) delete data.demurrageStartDate;
+    // The floor date is derived from unloading (containers + 3 days, vehicles + their editable day count) and is not typed once unloading is known.
+    if (data.unloadingAppointment || existing.unloadingAppointment) delete data.demurrageStartDate;
+    if (data.demurrageDays !== undefined) data.demurrageDays = Math.max(0, Math.min(365, Math.round(Number(data.demurrageDays) || 0))) || null;
     customsDeadlines.applyDerivedDates(data, existing);
     await attachPartyFields(data);
     // Customer or container count changed: contract prices follow
@@ -1158,13 +1159,14 @@ exports.deadlineAlerts = async (req, res) => {
       const rows = await CustomsClearance.find({
         cancelled: { $ne: true }, upcoming: { $ne: true }, isCompleted: { $ne: true },
         $or: [{ demurrageStartDate: { $gt: '' } }, { returnDeadline: { $gt: '' } }],
-      }).select('refNumber blNumber customerName shippingAgent port branch cargoType containerCount unloadingAppointment demurrageStartDate returnDeadline '
+      }).select('refNumber blNumber customerName shippingAgent port branch cargoType containerCount unloadingAppointment demurrageStartDate demurrageDays returnDeadline '
         + 'cancelled upcoming isCompleted stagesDone transportRoute pipelineVersion stageDone containers.route containers.stagesDone').lean();
       const items = [];
       for (const c of rows) {
         for (const a of customsDeadlines.alertsOf(c, pipelineOf(c))) {
           items.push({ ...a, clearanceId: c._id, refNumber: c.refNumber, blNumber: c.blNumber || '', customerName: c.customerName || '',
-            cargoType: c.cargoType === 'vehicles' ? 'vehicles' : 'containers', units: Number(c.containerCount) || 0, unloadingAppointment: String(c.unloadingAppointment || '').slice(0, 10) });
+            cargoType: c.cargoType === 'vehicles' ? 'vehicles' : 'containers', units: Number(c.containerCount) || 0, unloadingAppointment: String(c.unloadingAppointment || '').slice(0, 10),
+            port: c.port || '', branch: c.branch || '', demurrageDays: c.cargoType === 'vehicles' ? (Number(c.demurrageDays) || customsDeadlines.VEHICLE_FLOOR_DAYS) : customsDeadlines.CONTAINER_FLOOR_DAYS });
         }
       }
       items.sort((a, b) => String(a.deadlineAt).localeCompare(String(b.deadlineAt)));

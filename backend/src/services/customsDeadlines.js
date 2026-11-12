@@ -1,6 +1,6 @@
 /**
  * Customs deadlines: the demurrage (floor) date and the container return date, and the live alerts they raise.
- * Demurrage: containers get unloading + 3 days, fixed; vehicles default to unloading + 15 days and stay editable.
+ * Demurrage: containers get unloading + 3 days, fixed; vehicles get unloading + their day count (default 15, editable).
  * A deadline runs to the end of its day (Riyadh). The demurrage alert clears once every unit has left the port;
  * the return alert clears once every container is returned.
  */
@@ -27,13 +27,9 @@ function applyDerivedDates(doc, prev = {}) {
   const unloading = ymdOf(get('unloadingAppointment'));
   const vehicles = get('cargoType') === 'vehicles';
   if (unloading) {
-    if (!vehicles) doc.demurrageStartDate = addDays(unloading, CONTAINER_FLOOR_DAYS);
-    else {
-      // A vehicle date still equal to the old default follows a moved unloading date; a hand-edited one stays.
-      const cur = ymdOf(get('demurrageStartDate'));
-      const prevDefault = addDays(ymdOf(prev.unloadingAppointment), VEHICLE_FLOOR_DAYS);
-      if (!cur || (prevDefault && cur === prevDefault && doc.demurrageStartDate === undefined)) doc.demurrageStartDate = addDays(unloading, VEHICLE_FLOOR_DAYS);
-    }
+    // Containers: +3 days. Vehicles: their own day count (default 15), editable on the transaction.
+    const days = vehicles ? (Number(get('demurrageDays')) > 0 ? Number(get('demurrageDays')) : VEHICLE_FLOOR_DAYS) : CONTAINER_FLOOR_DAYS;
+    doc.demurrageStartDate = addDays(unloading, days);
     const free = Number(get('returnFreeDays')) || 0;
     const curRet = ymdOf(get('returnDeadline'));
     const prevRet = free > 0 ? addDays(ymdOf(prev.unloadingAppointment), free) : '';

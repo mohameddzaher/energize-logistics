@@ -136,6 +136,8 @@ const customsClearanceSchema = new mongoose.Schema(
     returnFreeDays: { type: Number, default: 0 },
     // Demurrage liability date: the day demurrage starts being charged to us.
     demurrageStartDate: { type: String, trim: true, default: '' }, // YYYY-MM-DD
+    // Free days before the floor date on a vehicles transaction (null = 15). Containers are always 3.
+    demurrageDays: { type: Number, default: null },
 
     // Filled from the customer contract.
     // Which contract and destination, and what was written into revenue. If the container count or customer changes the fill is redone for what remains at the contract value, without overwriting what the employee edited.

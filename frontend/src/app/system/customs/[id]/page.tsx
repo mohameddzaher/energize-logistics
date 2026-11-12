@@ -805,13 +805,22 @@ export default function CustomsDetailPage() {
           <FieldInput label={ar ? 'رقم إذن التسليم' : 'DO number'} value={c.doNumber} onSave={(v) => patch({ doNumber: v })} disabled={!canEdit} />
           <FieldInput label={ar ? 'أيّام السماح للإرجاع' : 'Return free days'} type="number" value={c.returnFreeDays ?? 0} onSave={(v) => patch({ returnFreeDays: Number(v) || 0 })} disabled={!canEdit} />
           <FieldInput label={ar ? 'آخر موعد إرجاع' : 'Return deadline'} type="date" value={c.returnDeadline} onSave={(v) => patch({ returnDeadline: v })} disabled={!canEdit} />
-          {/* Containers: unloading + 3 days, derived by the server. Vehicles: defaults to unloading + 15 days and stays editable. */}
+          {/* Floor date: unloading + 3 days for containers, + the editable free days (default 15) for vehicles; derived by the server. */}
+          {cargo === 'vehicles' && (
+            <div>
+              <FieldInput label={ar ? 'أيام الأرضيات (سيّارات)' : 'Free days (vehicles)'} type="number" value={(c as any).demurrageDays || 15}
+                onSave={(v) => patch({ demurrageDays: Math.max(1, Math.round(Number(v) || 15)) } as any)} disabled={!canEdit} />
+              <p className="mt-1 text-[11.5px] text-slate-500">{ar ? 'افتراضيًّا 15 يومًا من موعد التفريغ — عدِّلها هنا، فيتغيّر موعد الأرضيات تلقائيًّا.' : 'Default 15 days after unloading; change it here and the date follows.'}</p>
+            </div>
+          )}
           <div>
             <FieldInput label={ar ? 'موعد الأرضيات' : 'Demurrage date'} type="date" value={c.demurrageStartDate ? String(c.demurrageStartDate).slice(0, 10) : ''} onSave={(v) => patch({ demurrageStartDate: v })}
-              disabled={!canEdit || (cargo !== 'vehicles' && !!c.unloadingAppointment)} />
-            <p className="mt-1 text-[11.5px] text-slate-500">{cargo === 'vehicles'
-              ? (ar ? 'افتراضيًّا موعد التفريغ + 15 يومًا، ويمكن تعديله.' : 'Defaults to unloading + 15 days; editable.')
-              : (ar ? 'يُحسب تلقائيًّا: موعد التفريغ + 3 أيام.' : 'Automatic: unloading + 3 days.')}</p>
+              disabled={!canEdit || !!c.unloadingAppointment} />
+            <p className="mt-1 text-[11.5px] text-slate-500">{!c.unloadingAppointment
+              ? (ar ? 'يُحسب تلقائيًّا عند إدخال موعد التفريغ.' : 'Calculated once the unloading date is entered.')
+              : cargo === 'vehicles'
+                ? (ar ? `تلقائيّ: موعد التفريغ + ${(c as any).demurrageDays || 15} يومًا.` : `Automatic: unloading + ${(c as any).demurrageDays || 15} days.`)
+                : (ar ? 'تلقائيّ: موعد التفريغ + 3 أيام.' : 'Automatic: unloading + 3 days.')}</p>
           </div>
           <FieldInput label={ar ? 'المدينة' : 'City'} value={c.city} onSave={(v) => patch({ city: v })} disabled={!canEdit} />
           <FieldSelect label={ar ? 'الشهر' : 'Month'} value={String(c.periodMonth || '')} disabled={!canEdit}

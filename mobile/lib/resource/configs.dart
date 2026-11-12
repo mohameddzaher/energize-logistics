@@ -936,6 +936,8 @@ final customsCfg = ResourceConfig(
     ]),
     FieldSpec('declarationDate', 'تاريخ البيان', 'Declaration date', type: FieldType.date),
     // Containers: derived by the server as unloading + 3 days (a typed value is ignored). Vehicles: default unloading + 15 days, editable.
+    // Vehicles: free days before the floor date (default 15); containers are always 3. The date itself is derived once unloading is set.
+    FieldSpec('demurrageDays', 'أيام الأرضيات (للسيّارات)', 'Free days (vehicles)', type: FieldType.number),
     FieldSpec('demurrageStartDate', 'موعد الأرضيات', 'Demurrage date', type: FieldType.date),
     FieldSpec('notes', 'ملاحظات', 'Notes', type: FieldType.textarea),
   ],

@@ -148,7 +148,16 @@ class _AlertsSheetState extends State<_AlertsSheet> {
                                     Text('${_typeLabel(a)} · ${a['date']}${(a['customerName'] ?? '').toString().isNotEmpty ? ' · ${a['customerName']}' : ''}', style: const TextStyle(fontSize: 12, color: T.inkSoft)),
                                   ])),
                                   const SizedBox(width: 6),
-                                  Text(deadlineCountdown(ms), style: TextStyle(fontWeight: FontWeight.w800, fontSize: 12, color: c)),
+                                  Column(crossAxisAlignment: CrossAxisAlignment.end, children: [
+                                    Text(deadlineCountdown(ms), style: TextStyle(fontWeight: FontWeight.w800, fontSize: 12, color: c)),
+                                    if (a['type'] == 'demurrage' && a['cargoType'] == 'vehicles')
+                                      TextButton.icon(
+                                        style: TextButton.styleFrom(visualDensity: VisualDensity.compact, padding: EdgeInsets.zero),
+                                        onPressed: () => _editDays(context, a),
+                                        icon: const Icon(Icons.edit_calendar_outlined, size: 16),
+                                        label: Text('${a['demurrageDays'] ?? 15} ${tr('يومًا', 'days')}', style: const TextStyle(fontSize: 12)),
+                                      ),
+                                  ]),
                                 ]),
                               ),
                             );
@@ -160,6 +169,29 @@ class _AlertsSheetState extends State<_AlertsSheet> {
           ));
         },
       );
+}
+
+/// Vehicles: change the free days; the server moves the floor date and the feed refreshes on the customs event.
+Future<void> _editDays(BuildContext context, Map a) async {
+  final ctl = TextEditingController(text: '${a['demurrageDays'] ?? 15}');
+  final ok = await showDialog<bool>(context: context, builder: (c) => AlertDialog(
+    title: Text(tr('أيام الأرضيات', 'Free days')),
+    content: TextField(controller: ctl, keyboardType: TextInputType.number, autofocus: true,
+        decoration: InputDecoration(helperText: tr('موعد الأرضيات = موعد التفريغ + هذه الأيام', 'Demurrage date = unloading + these days'))),
+    actions: [
+      TextButton(onPressed: () => Navigator.pop(c, false), child: Text(tr('إلغاء', 'Cancel'))),
+      FilledButton(onPressed: () => Navigator.pop(c, true), child: Text(tr('حفظ', 'Save'))),
+    ],
+  ));
+  final n = int.tryParse(ctl.text.trim()) ?? 0;
+  ctl.dispose();
+  if (ok != true || n <= 0) return;
+  try {
+    await Api.instance.put('/api/customs-clearance/${a['clearanceId']}', {'demurrageDays': n});
+    await _Feed.instance.load();
+  } catch (e) {
+    if (context.mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e is ApiException ? e.message : '$e')));
+  }
 }
 
 /// One transaction's open deadlines, for the top of its detail screen.

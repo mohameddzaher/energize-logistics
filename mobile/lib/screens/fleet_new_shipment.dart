@@ -464,6 +464,11 @@ class _FleetNewShipmentScreenState extends State<FleetNewShipmentScreen> {
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(tr('حدد مدينتي التحميل والتنزيل', 'Set from/to cities'))));
       return;
     }
+    // The rent is required: fleet sales are counted from it.
+    if (!((num.tryParse(_vehicleRent.text.trim()) ?? 0) > 0)) {
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(tr('إيجار السيارة مطلوب — اكتب قيمة أكبر من صفر.', 'Vehicle rent is required.'))));
+      return;
+    }
     if (_isEdit && _vehicle == null) {
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(tr('اختر السيارة.', 'Pick the vehicle.'))));
       return;
@@ -712,7 +717,7 @@ class _FleetNewShipmentScreenState extends State<FleetNewShipmentScreen> {
                 ]),
                 const SizedBox(height: 10),
                 Row(children: [
-                  Expanded(child: TextField(controller: _vehicleRent, keyboardType: const TextInputType.numberWithOptions(decimal: true), onChanged: (_) => setState(() {}), decoration: InputDecoration(labelText: tr('إيجار السيارة', 'Vehicle rent')))),
+                  Expanded(child: TextField(controller: _vehicleRent, keyboardType: const TextInputType.numberWithOptions(decimal: true), onChanged: (_) => setState(() {}), decoration: InputDecoration(labelText: tr('إيجار السيارة *', 'Vehicle rent *'), errorText: (num.tryParse(_vehicleRent.text.trim()) ?? 0) > 0 ? null : tr('مطلوب', 'Required')))),
                   const SizedBox(width: 10),
                   Expanded(child: TextField(controller: _fullRent, keyboardType: const TextInputType.numberWithOptions(decimal: true), onChanged: (_) => setState(() {}), decoration: InputDecoration(labelText: tr('الإيجار كامل (اختياري)', 'Full rent (optional)')))),
                 ]),

@@ -207,7 +207,10 @@ class _FleetAnalyticsScreenState extends State<FleetAnalyticsScreen> {
         StatGrid(
           spacing: 8,
           children: [
-            _tile(tr('إجمالي إيجار السيارات', 'Total vehicle rent'), _money(totals['totalIncome']), T.success, Icons.payments_outlined),
+            // Per load: vehicle rent when written, else full rent.
+            _tile(tr('إجمالي المبيعات', 'Total sales'), _money(totals['totalIncome']), T.success, Icons.payments_outlined),
+            if (((totals['missingRent'] ?? 0) as num) > 0)
+              _tile(tr('حمولات بلا إيجار سيارة', 'Loads without vehicle rent'), '${totals['missingRent']}', T.danger, Icons.warning_amber_rounded),
             _tile(tr('إجمالي الإيجار كامل', 'Total full rent'), _money(totals['totalFullRent']), T.info, Icons.receipt_long_outlined),
             _tile(tr('حصة قسم الفروع', 'Branch dept share'), _money(totals['branchShare']), T.warn, Icons.call_split_rounded),
             _tile(tr('عدد الرحلات', 'Trips'), '${totals['tripCount'] ?? 0}', T.navy, Icons.route_outlined),

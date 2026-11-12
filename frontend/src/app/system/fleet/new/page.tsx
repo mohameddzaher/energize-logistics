@@ -207,6 +207,8 @@ function CreateFleetShipmentInner() {
       return;
     }
     if (!vehicleId) { notify(ar ? 'اختر السيارة.' : 'Pick the vehicle.', 'error'); return; }
+    // The rent is required: fleet sales are counted from it.
+    if (!(Number(form.price) > 0)) { notify(ar ? 'إيجار السيارة مطلوب — اكتب قيمة أكبر من صفر.' : 'Vehicle rent is required.', 'error'); return; }
     setSaving(true);
     try {
       const payload: Record<string, any> = {
@@ -493,10 +495,10 @@ function CreateFleetShipmentInner() {
       {card(ar ? 'بيانات الحمولة والتسعير' : 'Load & pricing', UsersIcon, (
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
           <div>
-            <label className={labelCls}>{ar ? 'إيجار السيارة' : 'Vehicle rent'}</label>
-            <input type="number" min={0} value={form.price ?? ''} onChange={(e) => set('price', e.target.value)}
-              className={inputCls} placeholder="0" />
-            <p className="text-[11px] text-slate-500 mt-1">{ar ? 'الفلوس الداخلة لقسم إدارة الأسطول من هذه الحمولة.' : 'The money that goes into the fleet section.'}</p>
+            <label className={labelCls}>{ar ? 'إيجار السيارة' : 'Vehicle rent'} <span className="text-red-600">*</span></label>
+            <input type="number" min={1} required value={form.price ?? ''} onChange={(e) => set('price', e.target.value)}
+              className={`${inputCls} ${!(Number(form.price) > 0) ? 'border-red-300' : ''}`} placeholder="0" />
+            <p className="text-[11px] text-slate-500 mt-1">{ar ? 'مطلوب — المبلغ الداخل لقسم إدارة الأسطول من هذه الحمولة.' : 'Required — the amount the fleet section earns from this load.'}</p>
           </div>
           <div>
             <label className={labelCls}>{ar ? 'الإيجار كامل (اختياري)' : 'Full rent (optional)'}</label>

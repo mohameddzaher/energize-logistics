@@ -492,9 +492,18 @@ exports.shipmentFilterValues = async (req, res) => {
   }
 };
 
+/**
+ * A load's sale for fleet analytics (owner, 2026-11-12): «إيجار السيارة» when written, else «الإيجار كامل».
+ * Fleet analytics read the fleet alone, not the operations workflow.
+ */
+const loadSales = (s) => (Number(s && s.price) > 0 ? Number(s.price) : Number(s && s.fullRent) || 0);
+const SALES_EXPR = { $cond: [{ $gt: [{ $ifNull: ['$price', 0] }, 0] }, '$price', { $ifNull: ['$fullRent', 0] }] };
+const PRICE_REQUIRED = { message: 'إيجار السيارة مطلوب — اكتب قيمة أكبر من صفر.', code: 'PRICE_REQUIRED', fields: ['price'] };
+
 exports.createShipment = async (req, res) => {
   try {
     const data = pick(req.body, SHIPMENT_EDITABLE);
+    if (!(Number(data.price) > 0)) return res.status(400).json(PRICE_REQUIRED);
 
     if (!data.customer && req.body.newCustomer && String(req.body.newCustomer.name || '').trim()) {
       const nm = String(req.body.newCustomer.name).trim();
@@ -600,6 +609,10 @@ exports.updateShipment = async (req, res) => {
     if (!shipment) return res.status(404).json({ message: 'Shipment not found' });
 
     const data = pick(req.body, SHIPMENT_EDITABLE);
+    // The rent cannot be cleared; a load saved from the full form must carry it.
+    if ((data.price !== undefined && !(Number(data.price) > 0)) || (req.body.fullForm && !(Number(data.price !== undefined ? data.price : shipment.price) > 0))) {
+      return res.status(400).json(PRICE_REQUIRED);
+    }
     applyPaymentSubtype(data);
 
     // «الإيجار كامل» is the workflow's selling price: from these roles a change goes to approval (config/sellingPriceRequests). «إيجار السيارة» is the purchase price and needs none.
@@ -1457,7 +1470,7 @@ async function customerRows(req) {
     { $group: {
       _id: '$customer',
       trips: { $sum: 1 },
-      income: { $sum: { $ifNull: ['$price', 0] } },
+      income: { $sum: SALES_EXPR },
       lastTrip: { $max: { $ifNull: ['$loadDate', '$createdAt'] } },
       firstTrip: { $min: { $ifNull: ['$loadDate', '$createdAt'] } },
       openTrips: { $sum: { $cond: [{ $in: ['$status', ['requesting', 'loading', 'uploaded', 'on_way', 'late']] }, 1, 0] } },
@@ -2164,7 +2177,8 @@ exports.getAnalytics = async (req, res) => {
     const targetBasis = cfg.targetBasis === 'net' ? 'net' : 'gross';
 
     // Vehicle rent (price) is the fleet section's income. The difference between full rent and vehicle rent (when present) is the branches section's share: shown separately and not part of the section income.
-    const income = (s) => Number(s.price) || 0;
+    const income = loadSales;
+    const missingRent = shipments.filter((s) => !(Number(s.price) > 0)).length;
     const totalIncome = shipments.reduce((a, s) => a + income(s), 0);
     const totalFullRent = shipments.reduce((a, s) => a + (Number(s.fullRent) || 0), 0);
     const branchShare = shipments.reduce((a, s) => {
@@ -2275,20 +2289,20 @@ exports.getAnalytics = async (req, res) => {
     if (customersF.length) trendFilter.$and.push({ customer: { $in: _oids(customersF) } });
     if (supervisors.length) trendFilter.$and.push({ supervisor: { $in: _oids(supervisors) } });
     if (trailerTypes.length) trendFilter.$and.push({ trailerType: { $in: trailerTypes } });
-    const trendDocs = await FleetShipment.find(trendFilter).select('price loadDate createdAt').lean();
+    const trendDocs = await FleetShipment.find(trendFilter).select('price fullRent loadDate createdAt').lean();
     const trendMap = new Map();
     const firstMonth = _monthKeyShift(todayKey().slice(0, 7), -11);
     for (let i = 0; i < 12; i++) { const k = _monthKeyShift(firstMonth, i); trendMap.set(k, { month: k, income: 0, trips: 0 }); }
     for (const s of trendDocs) {
       const k = dayKeyOf(new Date(s.loadDate || s.createdAt)).slice(0, 7);
-      if (trendMap.has(k)) { const m = trendMap.get(k); m.income += Number(s.price) || 0; m.trips += 1; }
+      if (trendMap.has(k)) { const m = trendMap.get(k); m.income += loadSales(s); m.trips += 1; }
     }
     const monthlyTrend = [...trendMap.values()];
 
     const body = {
       period: { from: start, to: end, monthsInRange, preset: period.preset },
       totals: {
-        totalIncome, totalFullRent, branchShare, tripCount, totalDriverExpense,
+        totalIncome, totalFullRent, branchShare, tripCount, totalDriverExpense, missingRent,
         vehicleCount: vehiclesOut.length, customerCount: customersOut.length,
         vehiclesAchieved, vehiclesBelow, targetBasis,
         avgTripIncome: tripCount ? Math.round(totalIncome / tripCount) : 0,
@@ -2324,7 +2338,7 @@ exports.getCustomerProfile = async (req, res) => {
       askedLimit(req.query, 1000, 20000),
     );
     const num = (v) => Number(v) || 0;
-    const income = shipments.reduce((a, s) => a + num(s.price), 0);
+    const income = shipments.reduce((a, s) => a + loadSales(s), 0);
     const fullRent = shipments.reduce((a, s) => a + num(s.fullRent), 0);
     const byStatus = {};
     for (const s of shipments) byStatus[s.status] = (byStatus[s.status] || 0) + 1;
@@ -2333,7 +2347,7 @@ exports.getCustomerProfile = async (req, res) => {
     const bump = (map, key, s) => {
       if (!key) return;
       const cur = map.get(key) || { key, trips: 0, income: 0 };
-      cur.trips += 1; cur.income += num(s.price);
+      cur.trips += 1; cur.income += loadSales(s);
       map.set(key, cur);
     };
     const months = new Map(); const routes = new Map(); const vehicles = new Map(); const pay = new Map();
@@ -2588,7 +2602,7 @@ exports.getDriverKpis = async (req, res) => {
       const a = agg.get(key);
       a.trips += 1;
       if (share) a.shared += 1;
-      a.income += Number(s.price) || 0;
+      a.income += loadSales(s);
       a.fullRent += Number(s.fullRent) || 0;
       a.expense += Number(s.driverExpense) || 0;
       if (s.status === 'cancelled') a.cancelled += 1;
@@ -2945,7 +2959,7 @@ exports.getVehicleAnalytics = async (req, res) => {
 
     const sums = {
       trips: { $sum: 1 },
-      income: { $sum: { $ifNull: ['$price', 0] } },
+      income: { $sum: SALES_EXPR },
       fullRent: { $sum: { $ifNull: ['$fullRent', 0] } },
       driverExpense: { $sum: { $ifNull: ['$driverExpense', 0] } },
     };

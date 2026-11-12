@@ -36,7 +36,7 @@ const QF_KEYS = [
 type Cust = { _id: string | null; name: string; customerType: string; rating: number; trips: number; income: number };
 type Analytics = {
   period: { from: string; to: string; monthsInRange: number; preset?: string };
-  totals: { totalIncome: number; totalFullRent: number; branchShare: number; tripCount: number; totalDriverExpense: number; vehicleCount: number; customerCount: number; vehiclesAchieved: number; vehiclesBelow: number; avgTripIncome: number; targetBasis?: 'gross' | 'net' };
+  totals: { totalIncome: number; totalFullRent: number; missingRent?: number; branchShare: number; tripCount: number; totalDriverExpense: number; vehicleCount: number; customerCount: number; vehiclesAchieved: number; vehiclesBelow: number; avgTripIncome: number; targetBasis?: 'gross' | 'net' };
   byTrailerType: Record<string, number>;
   byCustomerType: { heavy: { count: number; income: number }; branch: { count: number; income: number } };
   vehicles: { _id: string; plate: string; name?: string; trailerType?: string; supervisorName?: string; trips: number; income: number; driverExpense?: number; achievedValue?: number; shortfall?: number; monthlyTarget: number; periodTarget: number; achievedPct: number | null; achieved: boolean | null; firstLoadAt?: string | null; lastLoadAt?: string | null }[];
@@ -355,7 +355,11 @@ function FleetAnalyticsInner({ active = true }: { active?: boolean }) {
       {data && (
         <>
           <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3">
-            <StatCard label={ar ? 'إجمالي إيجار السيارات' : 'Total vehicle rent'} value={money(data.totals.totalIncome)} accent="text-emerald-600" />
+            {/* Per load: vehicle rent when written, else full rent (the fleet alone, not the workflow). */}
+            <StatCard label={ar ? 'إجمالي المبيعات' : 'Total sales'} value={money(data.totals.totalIncome)} accent="text-emerald-600" />
+            {!!data.totals.missingRent && (
+              <StatCard label={ar ? 'حمولات بلا إيجار سيارة' : 'Loads without vehicle rent'} value={data.totals.missingRent} accent="text-red-600" />
+            )}
             <StatCard label={ar ? 'إجمالي الإيجار كامل' : 'Total full rent'} value={money(data.totals.totalFullRent)} accent="text-sky-600" />
             <StatCard label={ar ? 'حصة قسم الفروع' : 'Branches’ share'} value={money(data.totals.branchShare)} accent="text-amber-600" />
             <StatCard label={ar ? 'عدد الرحلات' : 'Trips'} value={data.totals.tripCount} accent="text-[#f37121]" />

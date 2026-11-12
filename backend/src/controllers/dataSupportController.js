@@ -110,7 +110,7 @@ async function operations(p) {
         (rq.trend || []).map((r) => ({ label: r.day, trucks: num(r.trucks), placed: num(r.placed), rejected: num(r.rejected) }))),
       chart('weekday', 'الشحنات حسب يوم الأسبوع', 'Shipments by weekday', 'bar',
         [series('orders', 'الشحنات', 'Orders')],
-        (ins?.weekday || []).map((r) => ({ label: WEEKDAYS_AR[num(r.key)] || String(r.key), orders: num(r.orders) }))),
+        (ins?.weekday || []).map((r) => ({ label: WEEKDAYS_AR[num(r.day ?? r.key)] || '—', orders: num(r.orders) }))),
     ],
     tables: [
       table('branches', 'ترتيب الفروع', 'Branches ranking', [col('name', 'الفرع', 'Branch'), ...FIG_COLS, col('share', 'الحصة', 'Share', 'pct')], (ins?.branches || []).map(figRow)),

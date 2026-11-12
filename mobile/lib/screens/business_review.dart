@@ -604,6 +604,7 @@ class _ActionsTabState extends State<_ActionsTab> {
   int _seq = 0;
   // My items use the meeting cards' task rows; meeting runners get the full set of actions there too.
   bool _runner = false;
+  String _headDept = '';
 
   void _onLive() => _load();
 
@@ -636,7 +637,8 @@ class _ActionsTabState extends State<_ActionsTab> {
       if (!mounted || my != _seq) return;
       setState(() {
         _rows = List<Map<String, dynamic>>.from((widget.mine && d['tasks'] != null ? d['tasks'] : d['actions']) ?? []);
-        _runner = d['canRunMeetings'] == true;
+        _runner = d['canRunMeetings'] == true || '${d['headDept'] ?? ''}'.isNotEmpty;
+        _headDept = '${d['headDept'] ?? ''}';
         _summary = Map<String, dynamic>.from(d['summary'] ?? {});
         _handed = h == null ? [] : List<Map<String, dynamic>>.from(h['assignments'] ?? []);
         if (h != null) {
@@ -871,7 +873,7 @@ class _ActionsTabState extends State<_ActionsTab> {
           padding: const EdgeInsets.fromLTRB(14, 8, 14, 0),
           child: Column(children: [
             if (widget.mine && rows.isNotEmpty)
-              BrMeetingDepartmentsTab(meetingId: '', meta: widget.meta, tasks: rows, runner: _runner, onChanged: _load),
+              BrMeetingDepartmentsTab(meetingId: '', meta: widget.meta, tasks: rows, runner: _runner, headDept: _headDept, onChanged: _load),
             if (!widget.mine)
             for (final a in rows)
               BrActionCard(

@@ -7,6 +7,7 @@ const { BrMeeting, BrAction, BrAssignment } = require('../models/BusinessReview'
 const { sendMongooseError, stripEmpty } = require('../utils/mongooseError');
 const { startOfDay, endOfDay } = require('../utils/companyDay');
 const User = require('../models/User');
+const brScope = require('../utils/brScope');
 // Referenced by populate('linkedEmployee') below. Requiring it here means this
 // controller never depends on some other module having registered it first —
 // otherwise the participants list dies with a MissingSchemaError.
@@ -236,7 +237,14 @@ exports.getMeeting = async (req, res) => {
     const wasThere = (meeting.attendees || []).some((a) => sameId(a.user, req.user._id));
     if (!canRunMeetings(req.user) && !wasThere) return deny(res, 'You did not attend this meeting');
 
-    const actions = await BrAction.find({ meeting: meeting._id }).sort({ createdAt: 1 }).lean();
+    let actions = await BrAction.find({ meeting: meeting._id }).sort({ createdAt: 1 }).lean();
+    // A department head reads only his department: its tasks and its part of the minutes.
+    const hd = await brScope.headDept(req.user);
+    if (hd) {
+      const deptOf = await brScope.deptResolver(actions);
+      actions = actions.filter((a) => deptOf(a) === hd);
+      meeting.minutes = (meeting.minutes || []).filter((x) => x.department === hd);
+    }
     // Delegation counts let the meeting page show a manager's action as "passed
     // to 3 people" without exposing who, to someone who shouldn't see it.
     const actionIds = actions.map((a) => a._id);
@@ -258,8 +266,9 @@ exports.getMeeting = async (req, res) => {
       can: {
         edit: canRunMeetings(req.user),
         writeMinutes: canRunMeetings(req.user),
-        raiseActions: canRunMeetings(req.user),
+        raiseActions: canRunMeetings(req.user) || !!hd,
       },
+      headDept: hd || null,
     });
   } catch (error) {
     console.error('br get meeting error:', error);
@@ -535,15 +544,19 @@ async function announceAction(action, meeting) {
 
 exports.createAction = async (req, res) => {
   try {
-    if (!canRunMeetings(req.user)) return deny(res, 'Only the administration can raise actions');
+    const runner = canRunMeetings(req.user);
+    const hd = runner ? null : await brScope.headDept(req.user);
+    if (!runner && !hd) return deny(res, 'Only the administration or a department head can raise actions');
     const meeting = await BrMeeting.findById(req.params.id).lean();
     if (!meeting) return res.status(404).json({ message: 'Meeting not found' });
+    if (!runner && !(meeting.attendees || []).some((a) => sameId(a.user, req.user._id))) return deny(res, 'You did not attend this meeting');
 
     // One owner or several (`assignees`): a task handed to two department heads appears under both departments.
     const ids = [...new Set([...(Array.isArray(req.body.assignees) ? req.body.assignees : []), req.body.assignee].filter(Boolean).map(String))];
     if (!req.body.title || !ids.length) return res.status(400).json({ message: 'عنوان البند والمكلَّف مطلوبان' });
     const targets = await User.find({ _id: { $in: ids } }).select('firstName lastName role').lean();
     if (targets.length !== ids.length) return res.status(400).json({ message: 'المكلَّف غير موجود' });
+    if (!runner && !(await brScope.allInDept(ids, hd))) return deny(res, 'يُسنَد البند داخل قسمك فقط');
 
     const group = targets.length > 1 ? new mongoose.Types.ObjectId() : null;
     const actions = [];
@@ -593,9 +606,10 @@ async function transferTo(action, targetId, actor) {
 /** POST /actions/:id/transfer — the task goes to another owner entirely (runner only). */
 exports.transferAction = async (req, res) => {
   try {
-    if (!canRunMeetings(req.user)) return deny(res, 'Only the administration can transfer an action');
     const action = await BrAction.findById(req.params.actionId);
     if (!action) return res.status(404).json({ message: 'Action not found' });
+    if (!(await brScope.canManageAction(req.user, action))) return deny(res, 'Only the administration or the department head can transfer an action');
+    if (!canRunMeetings(req.user) && !(await brScope.allInDept([req.body.assignee], await brScope.headDept(req.user)))) return deny(res, 'يُنقل البند داخل قسمك فقط');
     if (!req.body.assignee) return res.status(400).json({ message: 'اختر المسؤول الجديد' });
     if (sameId(action.assignee, req.body.assignee)) return res.status(400).json({ message: 'البند لدى هذا المسؤول بالفعل' });
     const r = await transferTo(action, req.body.assignee, req.user);
@@ -613,9 +627,10 @@ exports.transferAction = async (req, res) => {
 /** Give an existing task to another department head as well; both share one group from now on. */
 exports.shareAction = async (req, res) => {
   try {
-    if (!canRunMeetings(req.user)) return deny(res, 'Only the administration can share an action');
     const action = await BrAction.findById(req.params.actionId);
     if (!action) return res.status(404).json({ message: 'Action not found' });
+    if (!(await brScope.canManageAction(req.user, action))) return deny(res, 'Only the administration or the department head can share an action');
+    if (!canRunMeetings(req.user) && !(await brScope.allInDept([req.body.assignee], await brScope.headDept(req.user)))) return deny(res, 'يُسنَد البند داخل قسمك فقط');
     const target = await User.findById(req.body.assignee).select('firstName lastName role').lean();
     if (!target) return res.status(400).json({ message: 'المكلَّف غير موجود' });
     if (!action.shareGroup) { action.shareGroup = new mongoose.Types.ObjectId(); await action.save(); }
@@ -666,8 +681,11 @@ exports.updateAction = async (req, res) => {
     if (!action) return res.status(404).json({ message: 'Action not found' });
 
     const owner = sameId(action.assignee, req.user._id);
-    const runner = canRunMeetings(req.user);
+    // `runner` here means "may change what the task is": the administration, or the head of the task's department.
+    const runner = await brScope.canManageAction(req.user, action);
     if (!owner && !runner) return deny(res, 'This action is not yours');
+    if (req.body.assignee && !sameId(action.assignee, req.body.assignee) && !canRunMeetings(req.user)
+      && !(await brScope.allInDept([req.body.assignee], await brScope.headDept(req.user)))) return deny(res, 'يُنقل البند داخل قسمك فقط');
 
     const before = action.status;
 
@@ -691,7 +709,8 @@ exports.updateAction = async (req, res) => {
     logUpdate(action, req.user, req.body, before);
     await action.save();
     // What the task is stays the same for every department sharing it; each keeps its own status and dates.
-    if (runner && action.shareGroup) {
+    // Only the administration changes the task for every department sharing it; a head's edit stays in his department.
+    if (canRunMeetings(req.user) && action.shareGroup) {
       const same = {};
       ['title', 'description', 'priority'].forEach((f) => { if (req.body[f] !== undefined) same[f] = action[f]; });
       // An edited due date (not a postponement, which is one owner's own) moves with the task for every owner.
@@ -727,12 +746,18 @@ exports.updateAction = async (req, res) => {
 
 exports.deleteAction = async (req, res) => {
   try {
-    if (!canRunMeetings(req.user)) return deny(res);
     const action = await BrAction.findById(req.params.actionId);
     if (!action) return res.status(404).json({ message: 'Action not found' });
+    if (!(await brScope.canManageAction(req.user, action))) return deny(res);
     // The task is deleted for every owner sharing it; `only=1` removes just this owner's part.
     const only = String(req.query.only || '') === '1';
-    const rows = action.shareGroup && !only ? await BrAction.find({ shareGroup: action.shareGroup }).select('_id assignee title').lean() : [{ _id: action._id, assignee: action.assignee, title: action.title }];
+    let rows = action.shareGroup && !only ? await BrAction.find({ shareGroup: action.shareGroup }).select('_id assignee assigneeRole department title').lean() : [{ _id: action._id, assignee: action.assignee, title: action.title }];
+    // A department head removes only his department's copies of a shared task.
+    if (!canRunMeetings(req.user) && rows.length > 1) {
+      const hd = await brScope.headDept(req.user);
+      const deptOf = await brScope.deptResolver(rows);
+      rows = rows.filter((r) => deptOf(r) === hd);
+    }
     const ids = rows.map((r) => r._id);
     await BrAssignment.deleteMany({ action: { $in: ids } });
     await BrAction.updateMany({ followUpOf: { $in: ids } }, { $set: { followUpOf: null } });
@@ -772,6 +797,8 @@ exports.myActions = async (req, res) => {
       actions: actions.map((a) => ({ ...a, delegations: byAction.get(String(a._id)) || [], sharedWith: shared.get(String(a._id)) || [] })),
       tasks: actions.map(view),
       canRunMeetings: canRunMeetings(req.user),
+      // A department head manages his own tasks here like on the meeting card.
+      headDept: await brScope.headDept(req.user),
       summary: {
         total: actions.length,
         open: actions.filter((a) => OPEN_ACTION_STATUSES.includes(a.status)).length,
@@ -850,7 +877,7 @@ exports.delegate = async (req, res) => {
     const action = await BrAction.findById(req.params.actionId);
     if (!action) return res.status(404).json({ message: 'Action not found' });
     // You delegate YOUR action. The secretariat can do it on a manager's behalf.
-    if (!sameId(action.assignee, req.user._id) && !canRunMeetings(req.user)) {
+    if (!sameId(action.assignee, req.user._id) && !(await brScope.canManageAction(req.user, action))) {
       return deny(res, 'You can only delegate an action assigned to you');
     }
 

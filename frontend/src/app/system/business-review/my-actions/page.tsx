@@ -25,6 +25,7 @@ export default function MyActionsPage() {
   // Same task shape and row as the meeting cards, so both screens show and do the same thing.
   const [actions, setActions] = useState<any[]>([]);
   const [runner, setRunner] = useState(false);
+  const [headDept, setHeadDept] = useState('');
   const [openTask, setOpenTask] = useState('');
   const [summary, setSummary] = useState<any>(null);
   // Parts of a colleague's task handed to me; they count as mine here too.
@@ -37,7 +38,8 @@ export default function MyActionsPage() {
       const [m, r, h] = await Promise.all([brMeta().catch(() => null), brMyActions(), brMyTasks().catch(() => null)]);
       if (m) setMeta(m);
       setActions(r.tasks || []);
-      setRunner(!!r.canRunMeetings);
+      setRunner(!!r.canRunMeetings || !!r.headDept);
+      setHeadDept(r.headDept || '');
       const mine = (h as any)?.assignments || [];
       setHanded(mine);
       const hs = (h as any)?.summary || { total: 0, open: 0, overdue: 0, done: 0 };
@@ -108,7 +110,7 @@ export default function MyActionsPage() {
             {shown.map((a) => (
               <div key={a._id}>
                 {a.meetingRef && <p className="px-4 pt-2 text-[11.5px] font-semibold text-slate-400">{t('Meeting', 'الاجتماع')} <bdi>{a.meetingRef}</bdi></p>}
-                <TaskRow task={a} meta={meta} L={L} meetingId={String(a.meeting || '')} canEdit runner={runner} canDelegate
+                <TaskRow task={a} meta={meta} L={L} meetingId={String(a.meeting || '')} canEdit runner={runner} onlyDept={headDept} canDelegate
                   dept="" open={openTask === String(a._id)} onToggle={() => setOpenTask((x) => (x === String(a._id) ? '' : String(a._id)))}
                   onChanged={load} notify={notify} />
               </div>

@@ -20,8 +20,9 @@ class BrMeetingDepartmentsTab extends StatefulWidget {
   /// «البنود المسندة إليّ»: the given tasks as a flat list with the same rows and actions as the meeting cards; the parent loads them.
   final List<Map<String, dynamic>>? tasks;
   final bool runner;
+  final String? headDept;
   final VoidCallback? onChanged;
-  const BrMeetingDepartmentsTab({super.key, required this.meetingId, required this.meta, this.embedded = false, this.minutesLabel, this.tasks, this.runner = false, this.onChanged});
+  const BrMeetingDepartmentsTab({super.key, required this.meetingId, required this.meta, this.embedded = false, this.minutesLabel, this.tasks, this.runner = false, this.headDept, this.onChanged});
   @override
   State<BrMeetingDepartmentsTab> createState() => _BrMeetingDepartmentsTabState();
 }
@@ -63,6 +64,10 @@ class _BrMeetingDepartmentsTabState extends State<BrMeetingDepartmentsTab> {
   Map<String, dynamic>? _d;
   String? _error;
   String _openDept = '';
+  /// A department head works inside his department only (set by the server); his card opens by itself.
+  String get _headDept => '${_d?['headDept'] ?? widget.headDept ?? ''}';
+  List<Map<String, dynamic>> _participants() => List<Map<String, dynamic>>.from(widget.meta['participants'] ?? [])
+      .where((p) => _headDept.isEmpty || p['section'] == _headDept).toList();
   final Map<String, GlobalKey> _deptKeys = {};
   void _scrollToDept(String key) => WidgetsBinding.instance.addPostFrameCallback((_) {
         final c = _deptKeys[key]?.currentContext;
@@ -99,7 +104,13 @@ class _BrMeetingDepartmentsTabState extends State<BrMeetingDepartmentsTab> {
     if (widget.tasks != null) { widget.onChanged?.call(); return; }
     try {
       final r = await Api.instance.get('/api/business-review/meetings/${widget.meetingId}/departments');
-      if (mounted) setState(() { _d = Map<String, dynamic>.from(r); _error = null; });
+      if (mounted) {
+        setState(() {
+          _d = Map<String, dynamic>.from(r);
+          _error = null;
+          if (_openDept.isEmpty && '${r['headDept'] ?? ''}'.isNotEmpty) _openDept = '${r['headDept']}';
+        });
+      }
     } catch (e) {
       if (mounted) setState(() => _error = brErr(e));
     }
@@ -205,7 +216,7 @@ class _BrMeetingDepartmentsTabState extends State<BrMeetingDepartmentsTab> {
 
   /// Give the same task to another owner too; it appears in their department card and their own list.
   Future<void> _share(Map t) async {
-    final people = List<Map<String, dynamic>>.from(widget.meta['participants'] ?? []);
+    final people = _participants();
     final owner = '${t['assignee'] is Map ? t['assignee']['_id'] : t['assignee'] ?? ''}';
     final taken = [owner, ...List<Map>.from(t['sharedWith'] ?? []).map((x) => '${x['assignee']}')];
     final p = await brPickPerson(context, people, exclude: taken, title: tr('إسناده لمسؤولٍ آخر أيضًا', 'Also assign to'));
@@ -221,7 +232,7 @@ class _BrMeetingDepartmentsTabState extends State<BrMeetingDepartmentsTab> {
 
   /// Move the task to another owner entirely; the new owner is notified at once.
   Future<void> _transfer(Map t) async {
-    final people = List<Map<String, dynamic>>.from(widget.meta['participants'] ?? []);
+    final people = _participants();
     final owner = '${t['assignee'] is Map ? t['assignee']['_id'] : t['assignee'] ?? ''}';
     final p = await brPickPerson(context, people, exclude: [owner], title: tr('نقله لمسؤولٍ آخر', 'Move to'));
     if (p == null) return;
@@ -263,7 +274,7 @@ class _BrMeetingDepartmentsTabState extends State<BrMeetingDepartmentsTab> {
 
   /// A new task for a department, or a follow-up on one task (same owner by default).
   Future<void> _newTask(String dept, {Map? followUpOf}) async {
-    final people = List<Map<String, dynamic>>.from(widget.meta['participants'] ?? [])
+    final people = _participants()
       ..sort((a, b) => (b['section'] == dept ? 1 : 0) - (a['section'] == dept ? 1 : 0));
     // The department head: the CFO for finance, else the section's manager.
     final head = people.where((p) => p['section'] == dept && p['role'] == 'cfo').firstOrNull

@@ -14,6 +14,7 @@ const {
 } = require('../config/businessReview');
 const { sectionOfRole } = require('../config/roles');
 const { sectionsOfUserIds } = require('../utils/userSection');
+const brScope = require('../utils/brScope');
 const { sendMongooseError } = require('../utils/mongooseError');
 const { emitToAll } = require('../websocket/socketManager');
 const brSeries = require('../services/brSeries');
@@ -61,6 +62,11 @@ exports.getBoard = async (req, res) => {
     // A task belongs to its owner's department: the manager speaks for it. The stored department was the meeting's first department on older tasks, so it is only the fallback for owners without a section (board, secretariat).
     const ownerSection = await sectionsOfUserIds(shown.map((a) => a.assignee));
     const deptOf = (a) => ownerSection.get(String(a.assignee)) || orgSectionOfRole(a.assigneeRole) || a.department || NO_DEPT;
+    // A department head sees his department only (and anything assigned to him personally).
+    const hd = runner ? null : await brScope.headDept(req.user);
+    if (hd) {
+      for (let i = shown.length - 1; i >= 0; i -= 1) if (deptOf(shown[i]) !== hd && String(shown[i].assignee) !== String(req.user._id)) shown.splice(i, 1);
+    }
     if (req.query.department) {
       for (let i = shown.length - 1; i >= 0; i -= 1) if (deptOf(shown[i]) !== req.query.department) shown.splice(i, 1);
     }
@@ -237,7 +243,9 @@ exports.getMeetingDepartments = async (req, res) => {
       return ms < 0 ? 'late' : ms <= 2 * DAY ? 'h48' : ms <= 7 * DAY ? 'week' : 'later';
     };
     const rank = (a) => (overdue(a) ? 0 : a.status === 'blocked' ? 1 : a.status === 'in_progress' ? 2 : a.status === 'open' ? 3 : a.status === 'postponed' ? 4 : 5);
-    const keys = [...new Set([...(meeting.departments || []), ...actions.map(deptOf)])];
+    // A department head gets his own department's card only, and manages it.
+    const hd = runner ? null : await brScope.headDept(req.user);
+    const keys = hd ? [hd] : [...new Set([...(meeting.departments || []), ...actions.map(deptOf)])];
     const cards = keys.map((key) => {
       const list = actions.filter((a) => deptOf(a) === key)
         .sort((x, y) => rank(x) - rank(y) || new Date(x.dueDate || 8.64e15) - new Date(y.dueDate || 8.64e15));
@@ -271,7 +279,7 @@ exports.getMeetingDepartments = async (req, res) => {
     });
     // Departments with something to discuss first; quiet ones keep the meeting's order after them.
     cards.sort((x, y) => (y.counts.overdue - x.counts.overdue) || ((y.counts.total - y.counts.done) - (x.counts.total - x.counts.done)));
-    res.json({ departments: cards, scope: meeting.series ? 'series' : 'meeting', canEdit: runner });
+    res.json({ departments: cards, scope: meeting.series ? 'series' : 'meeting', canEdit: runner || !!hd, runner, headDept: hd || null });
   } catch (error) {
     console.error('br meeting departments error:', error);
     res.status(500).json({ message: 'تعذّر تحميل أقسام الاجتماع' });
@@ -387,8 +395,15 @@ exports.getDaily = async (req, res) => {
     const meetings = await BrMeeting.find({ series: series._id }).sort({ seriesDay: -1 }).limit(Math.min(120, Number(req.query.limit) || 60))
       .select('refNumber title seriesDay scheduledAt status attendees minutes departments').lean();
     const ids = meetings.map((m) => m._id);
-    const acts = ids.length ? await BrAction.find({ meeting: { $in: ids } })
+    let acts = ids.length ? await BrAction.find({ meeting: { $in: ids } })
       .select('meeting department assignee assigneeName assigneeRole status title dueDate progress').lean() : [];
+    // A department head's day view: his department's tasks and minutes only.
+    const hd = runner ? null : await brScope.headDept(req.user);
+    if (hd) {
+      const deptOf = await brScope.deptResolver(acts);
+      acts = acts.filter((a) => deptOf(a) === hd);
+      for (const m of meetings) m.minutes = (m.minutes || []).filter((x) => x.department === hd);
+    }
     const byMeeting = new Map();
     for (const a of acts) { const k = String(a.meeting); if (!byMeeting.has(k)) byMeeting.set(k, []); byMeeting.get(k).push(a); }
     const actOwner = await sectionsOfUserIds(acts.map((a) => a.assignee));
@@ -416,7 +431,7 @@ exports.getDaily = async (req, res) => {
     let todayDetail = null;
     if (todayMeeting) {
       const list = byMeeting.get(String(todayMeeting._id)) || [];
-      const depts = [...new Set([...(todayMeeting.departments || []), ...list.map(deptOfAction)])];
+      const depts = hd ? [hd] : [...new Set([...(todayMeeting.departments || []), ...list.map(deptOfAction)])];
       todayDetail = {
         ...summary(todayMeeting),
         title: todayMeeting.title,
@@ -440,6 +455,7 @@ exports.getDaily = async (req, res) => {
       scheduledToday: (series.weekdays || []).includes(brSeries.weekdayOf(today)),
       days: meetings.filter((m) => m.seriesDay !== today).map(summary),
       canEdit: runner,
+      headDept: hd || null,
     });
   } catch (error) {
     console.error('br daily error:', error);

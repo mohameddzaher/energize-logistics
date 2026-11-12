@@ -61,9 +61,11 @@ export default function BrMeetingDepartments({ meetingId, meta, L, notify, initi
   minutesLabel?: string;
 }) {
   const t = (en: string, ar: string) => tx(L, en, ar);
-  const [d, setD] = useState<{ departments: Card[]; scope: string; canEdit: boolean } | null>(null);
+  const [d, setD] = useState<{ departments: Card[]; scope: string; canEdit: boolean; headDept?: string | null } | null>(null);
   const [openDept, setOpenDept] = useState(initialDept);
   useEffect(() => { if (initialDept) setOpenDept(initialDept); }, [initialDept]);
+  // A department head has one card (his own): open it straight away.
+  useEffect(() => { if (d?.headDept && !openDept) setOpenDept(d.headDept); }, [d?.headDept]); // eslint-disable-line react-hooks/exhaustive-deps
   // An opened department spans the full row and moves; scroll to its top once the layout settles.
   useEffect(() => {
     if (!openDept) return;
@@ -185,12 +187,12 @@ export default function BrMeetingDepartments({ meetingId, meta, L, notify, initi
                   {!shown.length && <p className="px-4 py-6 text-center text-sm text-slate-400">{t('No tasks here.', 'لا توجد بنود هنا.')}</p>}
                   <div className="divide-y divide-slate-100">
                     {shown.map((task) => (
-                      <TaskRow key={task._id} task={task} meta={meta} L={L} meetingId={meetingId} canEdit={d.canEdit} dept={c.key}
+                      <TaskRow key={task._id} task={task} meta={meta} L={L} meetingId={meetingId} canEdit={d.canEdit} onlyDept={d.headDept || ''} dept={c.key}
                         open={openTask === task._id} onToggle={() => setOpenTask(openTask === task._id ? '' : task._id)}
                         onChanged={load} notify={notify} />
                     ))}
                   </div>
-                  {d.canEdit && <NewTask meta={meta} L={L} meetingId={meetingId} dept={c.key} onDone={load} notify={notify} />}
+                  {d.canEdit && <NewTask meta={meta} L={L} meetingId={meetingId} dept={c.key} onlyDept={d.headDept || ''} onDone={load} notify={notify} />}
                 </div>
               )}
             </section>
@@ -206,8 +208,10 @@ export default function BrMeetingDepartments({ meetingId, meta, L, notify, initi
  * One task row with its actions; shared by the meeting cards and «البنود المسندة إليّ».
  * `runner` (meeting runners) adds edit/share/move/delete/follow-up; an owner keeps done/postpone/update and can hand parts to the team.
  */
-export function TaskRow({ task, meta, L, meetingId, canEdit, runner = canEdit, canDelegate = false, dept, open, onToggle, onChanged, notify }: {
-  task: Task; meta: BrMeta; L: Lang; meetingId: string; canEdit: boolean; runner?: boolean; canDelegate?: boolean; dept: string; open: boolean;
+export function TaskRow({ task, meta, L, meetingId, canEdit, runner = canEdit, canDelegate = false, onlyDept = '', dept, open, onToggle, onChanged, notify }: {
+  task: Task; meta: BrMeta; L: Lang; meetingId: string; canEdit: boolean; runner?: boolean; canDelegate?: boolean;
+  /** A department head works inside his department: share/move/assign lists show its people only. */
+  onlyDept?: string; dept: string; open: boolean;
   onToggle: () => void; onChanged: () => void; notify: (m: string, k?: any) => void;
 }) {
   const t = (en: string, ar: string) => tx(L, en, ar);
@@ -243,7 +247,7 @@ export function TaskRow({ task, meta, L, meetingId, canEdit, runner = canEdit, c
   const [ed, setEd] = useState({ title: task.title || '', description: task.description || '', dueDate: task.dueDate ? isoDay(new Date(task.dueDate)) : '', priority: task.priority || 'medium' });
   // Several people can be added in one go; each becomes an owner of the same task.
   const [shareTo, setShareTo] = useState<string[]>([]);
-  const people = [...meta.participants].sort((a, b) => String(a.section || '').localeCompare(String(b.section || '')));
+  const people = [...meta.participants].filter((p) => !onlyDept || p.section === onlyDept).sort((a, b) => String(a.section || '').localeCompare(String(b.section || '')));
   const share = async () => {
     if (!shareTo.length) return;
     setBusy(true);
@@ -506,7 +510,7 @@ export function TaskRow({ task, meta, L, meetingId, canEdit, runner = canEdit, c
               },
               followup: {
                 icon: Plus, title: t('Follow-up task', 'إضافة بند متابعة'), tone: 'bg-violet-600',
-                body: <NewTask meta={meta} L={L} meetingId={meetingId} dept={dept} followUpOf={task} inline onDone={() => { close(); onChanged(); }} notify={notify} />,
+                body: <NewTask meta={meta} L={L} meetingId={meetingId} dept={dept} onlyDept={onlyDept} followUpOf={task} inline onDone={() => { close(); onChanged(); }} notify={notify} />,
               },
               delegate: {
                 icon: Users, title: t('Hand parts to my team', 'توزيع على الفريق'), tone: 'bg-emerald-600',
@@ -558,13 +562,13 @@ export function TaskRow({ task, meta, L, meetingId, canEdit, runner = canEdit, c
 }
 
 /** A new task for a department, or a follow-up on one task (defaults to the same owner). */
-function NewTask({ meta, L, meetingId, dept, followUpOf, inline, onDone, notify }: {
-  meta: BrMeta; L: Lang; meetingId: string; dept: string; followUpOf?: Task; inline?: boolean;
+function NewTask({ meta, L, meetingId, dept, onlyDept = '', followUpOf, inline, onDone, notify }: {
+  meta: BrMeta; L: Lang; meetingId: string; dept: string; onlyDept?: string; followUpOf?: Task; inline?: boolean;
   onDone: () => void; notify: (m: string, k?: any) => void;
 }) {
   const t = (en: string, ar: string) => tx(L, en, ar);
   // The department's heads first, then everyone else who can own a task.
-  const people = [...meta.participants].sort((a, b) => Number(b.section === dept) - Number(a.section === dept));
+  const people = [...meta.participants].filter((p) => !onlyDept || p.section === onlyDept).sort((a, b) => Number(b.section === dept) - Number(a.section === dept));
   // The department head: the CFO for finance, else the section's manager.
   const head = people.find((p) => p.section === dept && p.role === 'cfo')
     || people.find((p) => p.section === dept && /_manager$/.test(p.role)) || people.find((p) => p.section === dept);

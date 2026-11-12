@@ -472,15 +472,10 @@ exports.endOrder = async (req, res) => {
     if (order.vehicle && req.body.releaseAuthorization) {
       const vehicle = await VehicleMaster.findById(order.vehicle);
       if (vehicle && S(vehicle.authorizedPerson?.iqamaNumber) === S(order.employeeIdNumber)) {
-        const before = vehicle.authorizedPerson?.name || '';
-        vehicle.authorizedPerson = { name: '', iqamaNumber: '', phone: '', authorizationNumber: '', startDate: null, expiryDate: null };
-        vehicle.renewals = vehicle.renewals || [];
-        vehicle.renewals.push({
-          document: 'authorization', newExpiry: new Date(), previousNumber: before, newNumber: '',
-          note: `رُفع التفويضُ من قسم النقل الخفيف — إغلاق أمر ${order.orderNumber}`,
-          byName: byName(req.user), at: new Date(),
+        // The shared revoke path (services/vehicleLifecycle): paper, assignment log, HR file and running orders together.
+        await require('../services/vehicleLifecycle').revokeAuthorization(vehicle, {
+          user: req.user, reason: `إغلاق أمر ${order.orderNumber}`, source: 'قسم النقل الخفيف', ip: req.ip,
         });
-        await vehicle.save();
       }
     }
 

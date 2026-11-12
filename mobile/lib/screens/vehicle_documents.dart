@@ -1,6 +1,7 @@
 import '../ui/person_docs.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import 'vehicle_lifecycle.dart' show revokeVehicleAuthorization;
 import '../services/api.dart';
 import '../services/auth.dart';
 import '../services/lang.dart';
@@ -907,28 +908,8 @@ class _VehicleDocumentsScreenState extends State<VehicleDocumentsScreen> {
 
   // Authorizations: authorize and revoke on the row, two actions rather than two fields to clear
   Future<void> _revokeAuth(Map v) async {
-    final who = _s(_sub(v, 'authorizedPerson')['name']);
-    final ok = await showDialog<bool>(
-      context: context,
-      builder: (c) => AlertDialog(
-        title: Text(tr('إلغاء التفويض', 'Revoke authorisation')),
-        content: Text(tr(
-          'سيُلغى تفويضُ ${who.isNotEmpty ? '«$who»' : 'المفوَّض'} على المركبة ${_s(v['plateNumber'])}. المركبةُ تبقى في السجلّ كما هي — الذي يزول هو التفويضُ وحدَه، ويختفي من ملفّ الموظّف في الموارد البشريّة.',
-          'The authorisation of ${who.isNotEmpty ? '"$who"' : 'the holder'} on vehicle ${_s(v['plateNumber'])} will be revoked. The vehicle stays in the registry — only the authorisation goes, and it disappears from the employee\'s HR file.')),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(c, false), child: Text(tr('رجوع', 'Back'))),
-          FilledButton(style: FilledButton.styleFrom(backgroundColor: T.danger), onPressed: () => Navigator.pop(c, true), child: Text(tr('إلغاء التفويض', 'Revoke'))),
-        ],
-      ),
-    );
-    if (ok != true) return;
-    try {
-      final r = await Api.instance.post('/api/vehicle-registry/${v['_id']}/authorization', {'action': 'revoke'});
-      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(_s(r is Map ? r['message'] : null).isEmpty ? tr('أُلغي التفويض', 'Revoked') : r['message'].toString())));
-      _load();
-    } catch (e) {
-      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.toString())));
-    }
+    // The shared revoke (vehicle_lifecycle.dart), same path as the registry, the profile and B2C.
+    if (await revokeVehicleAuthorization(context, v, source: 'authorizations')) _load();
   }
 
   Future<void> _assignAuth(Map v) async {

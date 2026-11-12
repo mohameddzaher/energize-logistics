@@ -379,16 +379,15 @@ exports.revokeVehicle = async (req, res) => {
 
     const vm = await VA.masterOfLegacy(vehicle);
     if (vm) {
-      let r;
-      if (VA.holderOf(vm)) {
-        r = await VA.setHolder(vm, null, { userId: req.user._id, byName: actorName(req), reason: revokedReason || '' });
-      } else {
-        // The paper is already cancelled but an open assignment remains: close it to match.
-        r = await VA.syncLegacyFromMaster(vm.toObject(), { userId: req.user._id, reason: revokedReason || '', at: endDate });
-        VA.announce(r);
-        if (!r.closed) return res.status(400).json({ message: 'Vehicle has no active authorization to revoke', code: 'NOT_AUTHORIZED' });
+      // Same revoke as every other screen (services/vehicleLifecycle).
+      try {
+        await require('../services/vehicleLifecycle').revokeAuthorization(vm, { user: req.user, reason: revokedReason || '', source: 'ملفّ الموظّف', ip: req.ip });
+      } catch (err) {
+        if (err.status === 400) return res.status(400).json({ message: 'Vehicle has no active authorization to revoke', code: 'NOT_AUTHORIZED' });
+        throw err;
       }
-      const last = await VehicleAuthorization.findOne({ vehicle: { $in: r.vehicles }, status: { $ne: 'active' } }).sort({ updatedAt: -1 });
+      const legacyIds = (await VA.legacyVehiclesOf(vm)).map((x) => x._id);
+      const last = await VehicleAuthorization.findOne({ vehicle: { $in: legacyIds }, status: { $ne: 'active' } }).sort({ updatedAt: -1 });
       return res.json({ authorization: last });
     }
 

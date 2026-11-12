@@ -72,6 +72,9 @@ router.delete('/driver-cards/:id', authorize(...ADMIN), c.deleteDriverCard);
 router.get('/settings', c.getSettings);
 router.put('/settings', authorize(...ADMIN), c.updateSettings);
 
+// Vehicles whose service ended. Before `/:id`, otherwise 'archive' would be read as an id.
+router.get('/archive', c.archiveList);
+
 router.get('/', c.list);
 router.post('/', authorize(...EDIT), c.create);
 router.get('/:id', c.getOne);
@@ -88,6 +91,9 @@ router.post('/:id/renew', authorize(...EDIT), c.renew);
 router.post('/:id/fuel-card', authorize(...EDIT), c.fuelCardAction);
 // An authorization is revoked and reassigned in one action that closes both records; see authorizationAction.
 router.post('/:id/authorization', authorize(...EDIT), c.authorizationAction);
+// End of service moves the vehicle to the archive (refused while authorized); restore brings it back. Same roles as editing.
+router.post('/:id/end-service', authorize(...EDIT), c.endService);
+router.post('/:id/restore', authorize(...EDIT), c.restoreService);
 router.delete('/:id', authorize(...ADMIN), c.remove);
 
 module.exports = router;

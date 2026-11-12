@@ -22,6 +22,7 @@ import 'vehicle_registry_columns.dart';
 import 'vehicle_registry_dash.dart' show VehicleRegistryDashboardScreen, VehicleRegistryAlertsScreen;
 import 'vehicle_registry_form.dart';
 import 'vehicle_renew.dart';
+import 'vehicle_lifecycle.dart';
 
 /// Vehicle Registry: list, details, analytics, alerts and settings, built on the Vehicles_2026 master (326 vehicles) through /api/vehicle-registry. Mobile has no charts: cards, proportional bars and chips.
 
@@ -227,6 +228,8 @@ class _VehicleRegistryListScreenState extends State<VehicleRegistryListScreen> {
             onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const VehicleRegistryDashboardScreen()))),
         IconButton(tooltip: tr('الانتهاءات والتجديد', 'Expiries & Renewals'), icon: const Icon(Icons.event_busy_outlined),
             onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const VehicleRegistryAlertsScreen()))),
+        IconButton(tooltip: tr('الأرشيف', 'Archive'), icon: const Icon(Icons.archive_outlined),
+            onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const VehicleArchiveScreen()))),
         IconButton(tooltip: tr('الأعمدة', 'Columns'), icon: const Icon(Icons.view_column_outlined), onPressed: _pickColumns),
         IconButton(tooltip: tr('تصدير Excel', 'Export to Excel'), icon: const Icon(Icons.file_download_outlined), onPressed: _loading ? null : () => _export(rows)),
       ],
@@ -331,6 +334,20 @@ class _VehicleRegistryListScreenState extends State<VehicleRegistryListScreen> {
                                         if (canEdit)
                                           IconButton(visualDensity: VisualDensity.compact, icon: const Icon(Icons.edit_outlined, size: 18, color: T.inkSoft),
                                               onPressed: () async { if (await showVehicleRegistryForm(context, v)) _load(); }),
+                                        if (canEdit)
+                                          PopupMenuButton<String>(
+                                            tooltip: tr('إجراءات', 'Actions'),
+                                            icon: const Icon(Icons.more_vert, size: 18, color: T.inkSoft),
+                                            onSelected: (k) async {
+                                              final ok = k == 'revoke' ? await revokeVehicleAuthorization(context, v, source: 'registry') : await endVehicleService(context, v);
+                                              if (ok) _load();
+                                            },
+                                            itemBuilder: (_) => [
+                                              if (((v['authorizedPerson'] as Map?)?['name'] ?? '').toString().isNotEmpty)
+                                                PopupMenuItem(value: 'revoke', child: Text(tr('إلغاء التفويض', 'Cancel authorisation'))),
+                                              PopupMenuItem(value: 'end', child: Text(tr('إنهاء الخدمة', 'End service'))),
+                                            ],
+                                          ),
                                         if (canDelete)
                                           IconButton(visualDensity: VisualDensity.compact, icon: const Icon(Icons.delete_outline, size: 18, color: T.danger), onPressed: () => _delete(v)),
                                       ]),
@@ -502,7 +519,10 @@ class _VehicleRegistryDetailScreenState extends State<VehicleRegistryDetailScree
   @override
   Widget build(BuildContext context) {
     final v = _v;
-    final canEdit = canEditVehicles(context.watch<AuthProvider>());
+    final canEditRole = canEditVehicles(context.watch<AuthProvider>());
+    // An archived vehicle is read-only; only restore is offered.
+    final archived = v?['archived'] == true;
+    final canEdit = canEditRole && !archived;
     Map o(String k) => v?[k] is Map ? v![k] as Map : const {};
     const neutral = Color(0xFF64748B);
     Color docAccent(String k) => statusColor((v?['docStatuses']?[k]?['status'] ?? 'none').toString());
@@ -547,8 +567,49 @@ class _VehicleRegistryDetailScreenState extends State<VehicleRegistryDetailScree
                         // Its rider from the personnel section and his status today; written in 'light transport employees'.
                         if (b2cOpChip((v['b2cRider'] as Map?)?['opStatus']) != null)
                           Padding(padding: const EdgeInsets.only(top: 6), child: b2cOpChip((v['b2cRider'] as Map?)?['opStatus'], who: ((v['b2cRider'] as Map?)?['name'] ?? '').toString())!),
+                        // Lifecycle actions: the same server path as the web registry and profile.
+                        if (canEdit || (canEditRole && archived))
+                          Padding(
+                            padding: const EdgeInsets.only(top: 8),
+                            child: Wrap(spacing: 8, runSpacing: 6, children: [
+                              if (canEdit && authOn && (auth['name'] ?? '').toString().isNotEmpty)
+                                OutlinedButton.icon(
+                                  style: OutlinedButton.styleFrom(foregroundColor: T.danger),
+                                  icon: const Icon(Icons.person_remove_outlined, size: 18), label: Text(tr('إلغاء التفويض', 'Cancel authorisation')),
+                                  onPressed: () async { if (await revokeVehicleAuthorization(context, v, source: 'profile')) _load(); },
+                                ),
+                              if (canEdit)
+                                OutlinedButton.icon(
+                                  icon: const Icon(Icons.archive_outlined, size: 18), label: Text(tr('إنهاء الخدمة', 'End service')),
+                                  onPressed: () async { if (await endVehicleService(context, v)) _load(); },
+                                ),
+                              if (canEditRole && archived)
+                                FilledButton.icon(
+                                  icon: const Icon(Icons.unarchive_outlined, size: 18), label: Text(tr('إعادة إلى السجلّ', 'Restore')),
+                                  onPressed: () async { if (await restoreVehicle(context, v)) _load(); },
+                                ),
+                            ]),
+                          ),
                       ]),
                     ),
+                    if (archived) ...[
+                      const SizedBox(height: 10),
+                      AppCard(
+                        topAccent: T.inkSoft,
+                        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                          Text(tr('مركبة مؤرشفة — انتهت خدمتها', 'Archived vehicle — service ended'), style: const TextStyle(fontWeight: FontWeight.w800)),
+                          const SizedBox(height: 4),
+                          Text('${tr('التاريخ', 'Date')}: ${((o('archive')['endDate'] ?? '').toString().length >= 10) ? o('archive')['endDate'].toString().substring(0, 10) : '—'} · ${tr('السبب', 'Reason')}: ${o('archive')['reason'] ?? '—'}',
+                              style: const TextStyle(fontSize: 12.5)),
+                          if ((o('archive')['byName'] ?? '').toString().isNotEmpty)
+                            Text('${tr('بواسطة', 'By')}: ${o('archive')['byName']}', style: const TextStyle(fontSize: 11.5, color: T.inkFaint)),
+                          if (v['archiveLog'] is List)
+                            ...(v['archiveLog'] as List).whereType<Map>().map((e) => Text(
+                                '${e['action'] == 'end' ? tr('إنهاء الخدمة', 'Ended') : tr('إعادة', 'Restored')} · ${(e['date'] ?? '').toString().length >= 10 ? e['date'].toString().substring(0, 10) : '—'} · ${e['reason'] ?? ''}',
+                                style: const TextStyle(fontSize: 11.5, color: T.inkSoft))),
+                        ]),
+                      ),
+                    ],
                     const SizedBox(height: 10),
                     // Document status: the card is an entry to its family page, and the renew button works from there.
                     GridView.count(

@@ -746,6 +746,12 @@
       "en": "Periodic Inspection"
     },
     {
+      "key": "/system/vehicles/registry/archive",
+      "section": "Vehicles",
+      "ar": "الأرشيف",
+      "en": "Archive"
+    },
+    {
       "key": "/system/vehicles/registry/dashboard",
       "section": "Vehicles",
       "ar": "تحليلات المركبات",

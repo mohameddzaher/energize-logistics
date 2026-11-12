@@ -118,6 +118,7 @@ import '../screens/vehicle_claims.dart';
 import '../screens/vehicle_corporate.dart';
 import '../screens/vehicle_records.dart';
 import '../screens/vehicle_driver_cards.dart';
+import '../screens/vehicle_lifecycle.dart' show VehicleArchiveScreen;
 import '../screens/hr_master.dart';
 import '../screens/hr_ops.dart';
 import '../screens/collections_invoices.dart';
@@ -634,6 +635,8 @@ List<AppSection> sectionsFor(AuthProvider auth) {
           AppPage('الحوادث والمطالبات', 'Accidents & Claims', Icons.car_crash_outlined, (c) => const VehicleClaimsScreen(), path: '/system/vehicles/registry/claims'),
           AppPage('وثائق تأمين الشركة', 'Company Policies', Icons.verified_user_outlined, (c) => const VehicleCorporatePoliciesScreen(), path: '/system/vehicles/registry/corporate'),
           AppPage('سجلّات القسم', 'Registers', Icons.inventory_2_outlined, (c) => const VehicleRecordsScreen(), path: '/system/vehicles/registry/records'),
+          // Vehicles whose service ended: kept with their history, restored from here.
+          AppPage('الأرشيف', 'Archive', Icons.archive_outlined, (c) => const VehicleArchiveScreen(), path: '/system/vehicles/registry/archive'),
         ],
         if (const ['super_admin', 'it_manager', 'it_specialist', 'admin', 'vehicles_manager', 'vehicles_staff', 'hr_manager', 'hr_specialist'].contains(role))
           AppPage('بطاقات السائقين', 'Driver Cards', Icons.badge_outlined, (c) => const VehicleDriverCardsScreen(), path: '/system/vehicles/driver-cards'),

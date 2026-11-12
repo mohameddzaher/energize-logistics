@@ -178,7 +178,8 @@ async function buildVehicleReport(id, query, lang) {
   // Queried by the stored key rather than scanning the whole register: full documents for every vehicle on each report is costly on a limited link, and one row is enough.
   const wantedReg = registryPlateKey(String(id).replace(/^r(?=[^\s])/, '')) || registryPlateKey(id);
   let reg = wantedReg
-    ? await VehicleMaster.findOne({ $or: [{ plateKey: wantedReg }, { plateNumber: String(id).trim() }] }).lean()
+    // An archived vehicle's file still prints its report (opened from the archive).
+    ? await VehicleMaster.findOne({ $or: [{ plateKey: wantedReg }, { plateNumber: String(id).trim() }] }).setOptions({ withArchived: true }).lean()
     : null;
   // Finally by digits, with collisions resolved by sector, not by chance.
   // Location Solutions writes plates in Latin and the vehicle register in Arabic, so the keys never meet and digit matching remains, which can collide (a trailer in heavy transport and a bike in light transport). Skipping collisions was correct in itself but left the truck report without serial number, sector and documents that exist in the register.

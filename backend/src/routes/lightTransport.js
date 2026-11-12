@@ -28,6 +28,8 @@ router.get('/vehicles', c.listVehicles);
 // People dropdown (actual leader and authorized person): section staff first, then HR.
 router.get('/people', c.people);
 router.put('/vehicles/:id', authorize.strict(...c.LT_VEHICLE_EDIT), c.updateVehicle);
+// Cancelling the authorization from here runs the vehicles section's own revoke, so both sections and the HR file change together.
+router.post('/vehicles/:id/revoke-authorization', authorize.strict(...c.LT_VEHICLE_EDIT), c.revokeVehicleAuthorization);
 router.put('/employees/:id', authorize(...EDIT), c.updateEmployee);
 // Project transfer is the only way to change a rep's project; the controller decides who may (utils/b2cEntry.canTransfer).
 router.post('/employees/:id/transfer-project', authorize(...EDIT), require('../controllers/b2cEntryController').transferProject);

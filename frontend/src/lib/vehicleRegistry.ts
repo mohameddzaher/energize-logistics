@@ -5,6 +5,10 @@ export type DocStatus = { status: 'expired' | 'critical' | 'warning' | 'valid' |
 
 export type VReg = {
   _id: string;
+  /** End of service: archived vehicles keep their history but leave every active list (backend utils/vehicleActive). */
+  archived?: boolean;
+  archive?: { endDate?: string | null; reason?: string; byName?: string; at?: string | null; lastRider?: string };
+  archiveLog?: { action: 'end' | 'restore'; date?: string | null; reason?: string; byName?: string; at?: string }[];
   plateNumber: string; plateLettersAr?: string; plateDigits?: string;
   chassisNumber?: string; serialNumber?: string;
   sectorAr?: string; sectorCode?: string;

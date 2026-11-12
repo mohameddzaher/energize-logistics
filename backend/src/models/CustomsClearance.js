@@ -459,12 +459,16 @@ const customsClearanceSchema = new mongoose.Schema(
 );
 
 /** Has the transport invoice arrived? Three entry paths: its own field, a "transport invoice" entry in payment stages with an attachment, or its item in the customer invoice with an attachment. */
+/**
+ * A transport invoice is in when any one of the four transport lines (port→customer, port→yard, yard→customer,
+ * transport invoice) carries both an amount and its file (owner, 2026-11-12); or it was marked not required.
+ */
 function hasTransportInvoice(c) {
   if (!c) return false;
   const t = c.transportInvoice || {};
-  if (t.notRequired || t.fileUrl) return true;
-  if ((c.paymentStages || []).some((p) => p && TRANSPORT_STAGE_KEYS.includes(p.key) && p.fileUrl)) return true;
-  return (c.saleItems || []).some((x) => x && TRANSPORT_STAGE_KEYS.includes(x.key) && x.fileUrl);
+  if (t.notRequired) return true;
+  const full = (x) => x && TRANSPORT_STAGE_KEYS.includes(x.key) && x.fileUrl && Number(x.amount) > 0;
+  return (c.saleItems || []).some(full) || (c.paymentStages || []).some(full);
 }
 
 /** Why this stage is closed for this transaction, or '' if it is on its path. */

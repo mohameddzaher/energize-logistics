@@ -156,7 +156,8 @@ const DISPLAY_NESTED = ['invoiceRequest.status', 'billing.invoiceStatus', 'billi
   'costs.total', 'revenue.clearanceFee', 'revenue.totalInvoiced', 'revenue.profit'];
 // Search has its own index (see SEARCH_INDEX_FIELDS below), so the list reads only what is displayed or computed from.
 // Read for computation but not sent: stage percentage and whether it awaits the transport invoice.
-const DERIVE_ONLY = ['upcoming', 'papersReceivedDate', 'declarationDate', 'stagesDone', 'transportRoute', 'pipelineVersion', 'stageDone.doInvoicePaid', 'transportInvoiceReceived',
+const DERIVE_ONLY = ['saleItems.key', 'saleItems.amount', 'saleItems.fileUrl', 'paymentStages.key', 'paymentStages.amount', 'paymentStages.fileUrl', 'transportInvoice.notRequired',
+  'upcoming', 'papersReceivedDate', 'declarationDate', 'stagesDone', 'transportRoute', 'pipelineVersion', 'stageDone.doInvoicePaid', 'transportInvoiceReceived',
   'containers.route', 'containers.stagesDone',
   // Container (or vehicle) numbers: searched, and only one line is sent (see toWire).
   'containers.containerNumber'];
@@ -266,7 +267,9 @@ const txDateOf = (c) => {
 
 /** Invoiced but not closed: awaiting the transport invoice. */
 // Closing no longer waits for a transport invoice in the payment stages: the request is sent with its lines and then closed. So no transaction is awaiting a transport invoice except leftovers from before.
-const awaitsTransportInvoice = (c) => (!!c.saleInvoiceNumber || c.invoiceRequest?.status === 'pending') && !c.isCompleted && !c.cancelled;
+// Read live, so open transactions follow the rule without a re-save.
+const awaitsTransportInvoice = (c) => (!!c.saleInvoiceNumber || c.invoiceRequest?.status === 'pending') && !c.isCompleted && !c.cancelled
+  && !CustomsClearance.hasTransportInvoice(c);
 
 /**
  * A list row as it crosses the network.
@@ -428,6 +431,8 @@ exports.getClearance = async (req, res) => {
     if (!clearance) return res.status(404).json({ message: 'Clearance not found' });
     // The document leaves without its profit (see toJSON in the model); whoever is entitled gets it here.
     const profit = PROFIT_ROLES.includes(req.user.role) ? Number(clearance.revenue && clearance.revenue.profit) || 0 : undefined;
+    // Computed on read so open transactions follow the current rule without a re-save.
+    clearance.transportInvoiceReceived = CustomsClearance.hasTransportInvoice(clearance);
     const alerts = customsDeadlines.alertsOf(clearance.toObject(), pipelineOf(clearance.toObject()));
     res.json({ clearance, alerts, ...(profit !== undefined ? { profit } : {}) });
   } catch (error) {
@@ -2460,7 +2465,7 @@ exports.getDashboard = async (req, res) => {
         CustomsClearance.find(filter)
           .select('refNumber blNumber customerName customerParty shippingAgent agentParty carrierName carrierParty branch cargoType containerCount '
             + 'containers.route containers.stagesDone stage stagesDone transportRoute pipelineVersion stageDone.doInvoicePaid stageDone.containersReturned saleInvoiceNumber saleInvoiceAt '
-            + 'transportInvoiceReceived isCompleted completedAt completedBy cancelled upcoming expectedDate returnDeadline createdAt createdBy updatedAt declarationNumber port '
+            + 'saleItems.key saleItems.amount saleItems.fileUrl paymentStages.key paymentStages.amount paymentStages.fileUrl transportInvoice.notRequired transportInvoiceReceived isCompleted completedAt completedBy cancelled upcoming expectedDate returnDeadline createdAt createdBy updatedAt declarationNumber port '
             + 'papersReceivedDate declarationDate periodYear periodMonth invoiceRequest.status')
           .sort({ createdAt: -1 }).lean()
           // Upcoming ones are measured by their expected date, their only date.

@@ -13,6 +13,7 @@ import { useDialog } from '@/components/system/DialogProvider';
 import DocumentFamilyPage, { commonColumns, type DocColumn, type DocField } from '@/components/vehicles/DocumentFamilyPage';
 import { docStateLabel, type PersonDocs } from '@/components/system/PersonDocDate';
 import { fmtDate, canEditVehicles, type VReg } from '@/lib/vehicleRegistry';
+import { useVehicleLifecycle } from '@/components/vehicles/VehicleLifecycle';
 
 const COLUMNS: DocColumn[] = [
   ...commonColumns(),
@@ -64,32 +65,20 @@ export default function Page() {
   const ar = useLanguage().lang === 'ar';
   const t = (a: string, e: string) => (ar ? a : e);
   const { user } = useAuth();
-  const { confirm, notify } = useDialog();
+  const { notify } = useDialog();
   const canEdit = canEditVehicles(user);
 
   // Revoking an authorization touches two records. Clearing the employee name on the vehicle does not revoke it: the authorization lives in two places, the paper on the vehicle and an assignment linking it to the employee, which his HR file reads. Clearing empties the paper but keeps the assignment, so his file still says he is authorized on a vehicle, and that blocks his clearance until noticed by hand. The action has its own named button and closes both records in one call.
   // Assigning also works from here. "No authorization" was plain text; assigning meant opening edit and retyping the employee name and residency number from another tab, where a digit gets wrong and the authorization attaches to nobody. Now the name is picked from the register and the residency number comes with it.
   const [assigning, setAssigning] = useState<{ v: VReg; reload: () => void } | null>(null);
 
-  const revoke = async (v: VReg, reload: () => void) => {
-    const who = v.authorizedPerson?.name || '';
-    if (!(await confirm({
-      title: t('إلغاء التفويض', 'Revoke authorisation'),
-      tone: 'danger',
-      confirmLabel: t('إلغاء التفويض', 'Revoke'),
-      message: t(
-        `سيُلغى تفويضُ ${who ? `«${who}»` : 'المفوَّض'} على المركبة ${v.plateNumber}. المركبةُ تبقى في السجلّ كما هي — الذي يزول هو التفويضُ وحدَه، ويختفي من ملفّ الموظّف في الموارد البشريّة.`,
-        `The authorisation of ${who ? `"${who}"` : 'the holder'} on vehicle ${v.plateNumber} will be revoked. The vehicle stays in the registry — only the authorisation goes, and it disappears from the employee's HR file.`),
-    }))) return;
-    try {
-      const r = await api.post<{ message: string }>(`/api/vehicle-registry/${v._id}/authorization`, { action: 'revoke' });
-      notify(r?.message || t('أُلغي التفويض', 'Revoked'), 'success');
-      reload();
-    } catch (e: any) { notify(e?.message || t('تعذّر الإلغاء', 'Could not revoke'), 'error'); }
-  };
+  // The shared revoke (components/vehicles/VehicleLifecycle → POST /:id/authorization), the same as the registry, the profile and B2C.
+  const lc = useVehicleLifecycle({ ar, source: 'authorizations' });
+  const revoke = async (v: VReg, reload: () => void) => { if (await lc.revoke(v)) reload(); };
 
   return (
     <>
+    {lc.element}
     {assigning && (
       <AssignModal v={assigning.v} ar={ar}
         onClose={() => setAssigning(null)}

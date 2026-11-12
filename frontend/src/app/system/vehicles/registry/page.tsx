@@ -24,8 +24,9 @@ import PersonLookup from '@/components/vehicles/PersonLookup';
 // The same question is asked here and in every family page form, so it has one definition. See components/vehicles/ReqToggle.
 import { ReqToggle } from '@/components/vehicles/ReqToggle';
 import { LEAD, LEAD_CELL, LEAD_2, useLeadOffset } from '@/components/vehicles/stickyLead';
-import { Car, Plus, Edit, Trash2, BarChart3, CalendarClock, X, Save, ArrowRight, Columns3, Check } from 'lucide-react';
+import { Car, Plus, Edit, Trash2, BarChart3, CalendarClock, X, Save, ArrowRight, Columns3, Check, Archive } from 'lucide-react';
 import ScrollX from '@/components/system/ScrollX';
+import { useVehicleLifecycle, RevokeButton, EndServiceButton } from '@/components/vehicles/VehicleLifecycle';
 // Every date has two calendars: papers are issued in Hijri and typing a hand conversion invites errors. Gregorian is stored; Hijri is an input and display layer.
 import HijriGregorianField from '@/components/vehicles/HijriGregorianField';
 import PersonSelect from '@/components/system/PersonSelect';
@@ -124,6 +125,8 @@ function VehicleRegistryListInner() {
     router.push(`/system/vehicles/registry/overview${p ? `?${p}` : ''}`);
   };
   useSocket('vreg:updated', useCallback(() => load(), [load]));
+  // Cancel authorization and end service: the same server path as every other screen.
+  const lc = useVehicleLifecycle({ ar, onChanged: load, source: 'registry' });
 
   // Readable names for filters that do not come from the server; otherwise the chip shows its code key.
   const EXTRA_LABELS: Record<string, { ar: string; en: string; values?: Record<string, { ar: string; en: string }> }> = {
@@ -192,6 +195,7 @@ function VehicleRegistryListInner() {
         <div className="flex items-center gap-2">
           <Link href="/system/vehicles/registry/dashboard" className="flex items-center gap-1.5 px-3 py-2 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 text-sm"><BarChart3 className="w-4 h-4" /> {ar ? 'التحليلات' : 'Analytics'}</Link>
           <Link href="/system/vehicles/registry/expiring" className="flex items-center gap-1.5 px-3 py-2 rounded-lg bg-red-600 hover:bg-red-700 text-white text-sm"><CalendarClock className="w-4 h-4" /> {ar ? 'الانتهاءات والتجديد' : 'Expiries & Renewals'}</Link>
+          <Link href="/system/vehicles/registry/archive" className="flex items-center gap-1.5 px-3 py-2 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 text-sm"><Archive className="w-4 h-4" /> {ar ? 'الأرشيف' : 'Archive'}</Link>
           {/* Column picker: the table carries every register column; this controls which are shown. */}
           <div className="relative">
             <button onClick={() => setColsOpen((o) => !o)}
@@ -290,6 +294,8 @@ function VehicleRegistryListInner() {
                     <td className={`${LEAD_CELL} px-3 py-2`}>
                       <div className="flex items-center gap-1">
                         {canEdit && <button onClick={() => { setEditing(v); setShowForm(true); }} className="p-1.5 rounded hover:bg-slate-100 text-slate-500"><Edit className="w-3.5 h-3.5" /></button>}
+                        {canEdit && v.authorizedPerson?.name && <RevokeButton ar={ar} onClick={() => lc.revoke(v)} />}
+                        {canEdit && <EndServiceButton ar={ar} onClick={() => lc.endService(v)} />}
                         {canDelete && <button onClick={() => del(v)} className="p-1.5 rounded hover:bg-red-50 text-red-500"><Trash2 className="w-3.5 h-3.5" /></button>}
                       </div>
                     </td>
@@ -346,7 +352,10 @@ function VehicleRegistryListInner() {
         </ScrollX>
       </div>
 
-      {showForm && <VehicleForm vehicle={editing} onClose={() => setShowForm(false)} onSaved={() => { setShowForm(false); load(); }} />}
+      {showForm && <VehicleForm vehicle={editing} onClose={() => setShowForm(false)} onSaved={() => { setShowForm(false); load(); }}
+        onRevoke={async (v) => { if (await lc.revoke(v)) setShowForm(false); }}
+        onEndService={(v) => { setShowForm(false); lc.endService(v); }} />}
+      {lc.element}
     </div>
   );
 }
@@ -386,7 +395,10 @@ const patchOf = (orig: any, cur: any) => {
   return out;
 };
 
-function VehicleForm({ vehicle, onClose, onSaved }: { vehicle: VReg | null; onClose: () => void; onSaved: () => void }) {
+function VehicleForm({ vehicle, onClose, onSaved, onRevoke, onEndService }: {
+  vehicle: VReg | null; onClose: () => void; onSaved: () => void;
+  onRevoke?: (v: VReg) => void; onEndService?: (v: VReg) => void;
+}) {
   const { lang } = useLanguage();
   const ar = lang === 'ar';
   const { notify } = useDialog();
@@ -445,7 +457,12 @@ function VehicleForm({ vehicle, onClose, onSaved }: { vehicle: VReg | null; onCl
       <div className="bg-white rounded-2xl w-full max-w-2xl max-h-[90vh] overflow-y-auto p-5" onClick={(e) => e.stopPropagation()}>
         <div className="flex items-center justify-between mb-4">
           <h3 className="font-bold text-lg">{vehicle ? (ar ? 'تعديل مركبة' : 'Edit vehicle') : (ar ? 'إضافة مركبة' : 'Add vehicle')}</h3>
-          <button onClick={onClose}><X className="w-5 h-5 text-slate-400" /></button>
+          <div className="flex items-center gap-2">
+            {/* Revoke and end service are actions, not field edits: clearing the name here would not close the employee's assignment. */}
+            {vehicle && onRevoke && vehicle.authorizedPerson?.name && <RevokeButton ar={ar} onClick={() => onRevoke(vehicle)} />}
+            {vehicle && onEndService && <EndServiceButton ar={ar} onClick={() => onEndService(vehicle)} />}
+            <button onClick={onClose}><X className="w-5 h-5 text-slate-400" /></button>
+          </div>
         </div>
         {/* Choice fields are lists, not free text: free text yields variants of one value (three spellings, three filter options, three brands). Lists are managed in section settings and new options added inline are shared. */}
         {/* Sections are cards, not faint lines: a thin divider and gray title made 36 fields blur together. */}

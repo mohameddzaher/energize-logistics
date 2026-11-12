@@ -675,7 +675,8 @@ function decorate(v, cfg) {
 
 exports.getOne = async (req, res) => {
   try {
-    const v = await VehicleMaster.findById(req.params.id).lean();
+    // The profile also opens archived vehicles, read-only, from the archive page.
+    const v = await VehicleMaster.findById(req.params.id).setOptions({ withArchived: true }).lean();
     if (!v) return res.status(404).json({ message: 'Vehicle not found' });
     const cfg = await getConfig();
     res.json({ vehicle: decorate(v, cfg) });
@@ -706,10 +707,11 @@ const badInput = async (e, res) => {
     const value = (e.keyValue || {})[field];
     const label = FIELD_AR[field] || field || 'أحد الأرقام الفريدة';
     let other = null;
-    try { other = await VehicleMaster.findOne({ [field]: value }).select('plateNumber').lean(); } catch (_) { /* The generic message is enough */ }
+    // The holder may be an archived vehicle, which no active query sees; name it as such.
+    try { other = await VehicleMaster.findOne({ [field]: value }).setOptions({ withArchived: true }).select('plateNumber archived').lean(); } catch (_) { /* The generic message is enough */ }
     res.status(400).json({
       message: other
-        ? `${label} «${value}» مسجَّلٌ على المركبة ${other.plateNumber} — ولا يتكرّر على مركبتين.`
+        ? `${label} «${value}» مسجَّلٌ على المركبة ${other.plateNumber}${other.archived ? ' (في الأرشيف — أعِدها من صفحة الأرشيف)' : ''} — ولا يتكرّر على مركبتين.`
         : `${label} «${value}» مكرَّر — ولا يتكرّر على مركبتين.`,
     });
     return true;
@@ -755,6 +757,7 @@ exports.create = async (req, res) => {
         ? { ...rest, name: holder.name, iqamaNumber: holder.idNumber, phone: holder.phone, jobTitleAr: rest.jobTitleAr || holder.jobTitleAr }
         : { ...rest, name: '', iqamaNumber: '', phone: '' };
     }
+    for (const k of ['archived', 'archive', 'archiveLog']) delete body[k];
     const v = await VehicleMaster.create({ ...body, isActive: true });
     // The plate key is derived on save (models/VehicleMaster), so its recorded accidents are counted.
     await syncAccidentCount(v.plateKey);
@@ -770,7 +773,8 @@ exports.create = async (req, res) => {
 // Update merges, it does not replace.
 // `$set: req.body` used to write the whole sub-object: sending `{ operatingCard: { expiryDate } }` erased `cardNumber` and `statusCode` with it, so a page editing two fields damaged fields it does not even display. The list projection is partial (it does not return `insurance.status` or `fuelCard.consumptionTypeCode`), so the client has nothing to resend to preserve them.
 // Flattening is done here, not in the client, because `express-mongo-sanitize` strips any key containing a dot before it reaches the controller, so a dotted path sent from the browser vanishes silently: the user says 'saved' and nothing changed.
-const NEVER_SET = new Set(['_id', '__v', 'createdAt', 'updatedAt', 'docStatuses', 'overallStatus', 'overallDays']);
+// The archive state is written only by end-service / restore (services/vehicleLifecycle), never by an edit.
+const NEVER_SET = new Set(['_id', '__v', 'createdAt', 'updatedAt', 'docStatuses', 'overallStatus', 'overallDays', 'archived', 'archive', 'archiveLog']);
 
 const flattenPatch = (src, prefix = '', out = {}) => {
   for (const [k, v] of Object.entries(src || {})) {
@@ -3494,26 +3498,15 @@ exports.authorizationAction = async (req, res) => {
     // The paper, then the assignment log follows (utils/vehicleAuthorization). This endpoint used to write both by hand while others wrote the paper only; now everything goes through the same service, and the plate link is in it (one space or two, any order).
     const VA = require('../utils/vehicleAuthorization');
 
+    // Revoking goes through the one shared path (services/vehicleLifecycle), used by every screen that offers it.
     if (action === 'revoke') {
-      const who = String(v.authorizedPerson?.name || '').trim();
-      const reason = String(req.body?.reason || '').trim().slice(0, 500);
-      const r = await VA.setHolder(v, null, {
-        userId: req.user?._id, byName, reason: reason || 'أُلغي من صفحة التفاويض',
-      });
-      await logAudit({
-        user: req.user?._id, action: 'revoke_vehicle_authorization', entity: 'VehicleMaster',
-        entityId: v._id,
-        changes: { after: { plateNumber: v.plateNumber, previousHolder: who, closedAssignments: r.closed, reason } },
-        ipAddress: req.ip,
-      });
-      emit('vreg:updated', {});
-      return res.json({
-        message: r.closed
-          ? `أُلغي التفويض عن ${v.plateNumber}${who ? ` (${who})` : ''} — وأُغلق ${r.closed} إسنادًا في ملفّ الموظّف.`
-          : `أُلغي التفويض عن ${v.plateNumber}${who ? ` (${who})` : ''}.`,
-        closedAssignments: r.closed,
-        vehicle: r.vehicle,
-      });
+      const L = require('../services/vehicleLifecycle');
+      try {
+        const r = await L.revokeAuthorization(v, {
+          user: req.user, reason: req.body?.reason, source: S_SOURCE(req.body?.source), ip: req.ip,
+        });
+        return res.json({ message: r.message, closedAssignments: r.closedAssignments, clearedOrders: r.clearedOrders, vehicle: r.vehicle });
+      } catch (err) { return L.reply(res, err, 'تعذّر إلغاء التفويض'); }
     }
 
     // Assign: the paper is written, and an assignment is opened if the employee is known.
@@ -3550,6 +3543,50 @@ exports.authorizationAction = async (req, res) => {
     console.error('authorizationAction error:', e);
     return sendMongooseError(res, e, 'تعذّر تنفيذ الإجراء');
   }
+};
+
+// Where the revoke was pressed, for the vehicle log and audit only.
+const SOURCES = { registry: 'سجل المركبات', profile: 'ملفّ المركبة', authorizations: 'صفحة التفاويض', b2c: 'مركبات النقل الخفيف', mobile: 'تطبيق الجوال' };
+function S_SOURCE(k) { return SOURCES[String(k || '').trim()] || SOURCES.authorizations; }
+
+/** POST /:id/end-service { reason, date }: refused while authorized; see services/vehicleLifecycle. */
+exports.endService = async (req, res) => {
+  const L = require('../services/vehicleLifecycle');
+  try {
+    const r = await L.endService(req.params.id, req.body || {}, { user: req.user, ip: req.ip });
+    res.json({ message: r.message, releasedRiders: r.releasedRiders, endedOrders: r.endedOrders });
+  } catch (e) { L.reply(res, e, 'تعذّر إنهاء خدمة المركبة'); }
+};
+
+/** POST /:id/restore { reason? } */
+exports.restoreService = async (req, res) => {
+  const L = require('../services/vehicleLifecycle');
+  try {
+    const r = await L.restoreService(req.params.id, req.body || {}, { user: req.user, ip: req.ip });
+    res.json({ message: r.message });
+  } catch (e) { L.reply(res, e, 'تعذّر إعادة المركبة'); }
+};
+
+/** GET /archive?q=: vehicles whose service ended, newest first, with their history counts. */
+exports.archiveList = async (req, res) => {
+  try {
+    const q = String(req.query?.q || '').trim();
+    const filter = { archived: true };
+    if (q) {
+      const rx = new RegExp(q.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i');
+      filter.$or = [{ plateNumber: rx }, { serialNumber: rx }, { chassisNumber: rx }, { brandAr: rx }, { 'archive.reason': rx }, { ownerNameAr: rx }];
+    }
+    const rows = await VehicleMaster.find(filter)
+      .select('plateNumber plateKey serialNumber chassisNumber brandAr modelAr modelYear sectorAr departmentAr cityAr ownerNameAr registrationTypeAr archive archiveLog renewals.document accidentCount')
+      .sort({ 'archive.at': -1 }).lean();
+    const vehicles = rows.map((v) => ({
+      ...v,
+      renewals: undefined,
+      authorizationEntries: (v.renewals || []).filter((r) => r.document === 'authorization').length,
+      renewalEntries: (v.renewals || []).length,
+    }));
+    res.json({ vehicles, total: vehicles.length });
+  } catch (e) { console.error('vreg archive', e); res.status(500).json({ message: 'تعذّر تحميل الأرشيف' }); }
 };
 
 // Used by the backfill script; see backfillClaimDrivers.

@@ -18,6 +18,7 @@ import { useColumnFilters, ClearColumnFilters } from '@/components/useColumnFilt
 import { usePinnedColumns } from '@/components/hr/usePinnedColumns';
 import { Truck, Pencil, Search, Loader2, X } from 'lucide-react';
 import { useLatestRequest } from '@/hooks/useLatestRequest';
+import { useVehicleLifecycle, RevokeButton } from '@/components/vehicles/VehicleLifecycle';
 
 interface Row {
   _id: string; serialNumber: string; project: string; city: string; plateNumber: string;
@@ -101,6 +102,9 @@ export default function B2cVehiclesPage() {
   useSocket('lt:updated', reloadLive);
   // The edit and plate columns are pinned at the start of the table so the row identity and action stay visible while scrolling.
   const pin = usePinnedColumns(2);
+  // Cancelling the authorization from here runs the vehicles section's own revoke on the server (services/vehicleLifecycle).
+  const revokeUrl = useCallback((id: string) => `/api/light-transport/vehicles/${id}/revoke-authorization`, []);
+  const lc = useVehicleLifecycle({ ar, onChanged: reloadLive, revokeEndpoint: revokeUrl });
 
   const getters: Record<string, (r: Row) => any> = useMemo(() => ({
     project: (r) => r.project, city: (r) => r.city, driver: (r) => r.driverName, authorized: (r) => r.authorizedName,
@@ -217,7 +221,7 @@ export default function B2cVehiclesPage() {
         <ScrollX>
           <table className="w-full min-w-[2200px] text-[13px]">
             <thead className="bg-slate-900 text-slate-300 text-xs sticky top-0 z-10"><tr>
-              <th {...pin.th(0, 'px-2 py-2.5 w-10')} />
+              <th {...pin.th(0, 'px-2 py-2.5')} />
               <th {...pin.th(1, 'px-3 py-2.5 text-start font-semibold whitespace-nowrap')}>{t('رقم اللوحة', 'Plate')}</th>
               {th(null, t('الرقم التسلسلي', 'Serial no.'))}
               {th('project', t('المشروع', 'Project'))}
@@ -244,7 +248,12 @@ export default function B2cVehiclesPage() {
                 <tr key={r._id} className="group hover:bg-slate-50">
                   <td {...pin.td(0, 'px-2 py-2 text-center')}>
                     {d.canEdit && (
-                      <button type="button" onClick={() => setEditing(r)} title={t('تعديل', 'Edit')} className="p-1.5 rounded hover:bg-slate-100 text-slate-400 hover:text-[#f37121]"><Pencil className="w-3.5 h-3.5" /></button>
+                      <div className="flex items-center gap-1">
+                        <button type="button" onClick={() => setEditing(r)} title={t('تعديل', 'Edit')} className="p-1.5 rounded hover:bg-slate-100 text-slate-400 hover:text-[#f37121]"><Pencil className="w-3.5 h-3.5" /></button>
+                        {(r.authorizedName || r.authorizedId) && (
+                          <RevokeButton ar={ar} onClick={() => lc.revoke({ _id: r._id, plateNumber: r.plateNumber, authorizedPerson: { name: r.authorizedName, iqamaNumber: r.authorizedId } })} />
+                        )}
+                      </div>
                     )}
                   </td>
                   <td {...pin.td(1, 'px-3 py-2 font-bold text-slate-900 whitespace-nowrap')}><bdi>{r.plateNumber || '—'}</bdi></td>
@@ -284,6 +293,7 @@ export default function B2cVehiclesPage() {
         </ScrollX>
       </div>
 
+      {lc.element}
       {editing && <VehicleForm row={editing} ar={ar} canEditPlate={!!d.canEditPlate} onClose={() => setEditing(null)} onSaved={() => { setEditing(null); refreshPeople(); load(); }} />}
     </div>
   );

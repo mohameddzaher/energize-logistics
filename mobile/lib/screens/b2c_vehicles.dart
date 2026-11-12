@@ -8,6 +8,7 @@ import '../ui/lookup_field.dart';
 import '../ui/theme.dart';
 import '../ui/widgets.dart';
 import '../ui/search_field.dart';
+import 'vehicle_lifecycle.dart' show revokeVehicleAuthorization;
 
 /// Light-transport vehicles: vehicles of the section's projects (Keeta, HungerStation, Amazon, Ninja). A window onto the vehicle register itself, not a copy: edits here are written to the vehicles section and show there at once, and edits there show here, since both screens hear the same event. What can be edited here is what the section manages: project, city, operating state, color, notes, document dates, the actual driver and the authorization. The plate is edited only by those who edit the vehicle register. The actual driver is the vehicle's rider from "light-transport employees": chosen from the section's employees and linked, never typed by hand. The authorized person is chosen the same way. Matches the web screen `/system/b2c/vehicles`.
 
@@ -229,6 +230,23 @@ class _B2cVehiclesScreenState extends State<B2cVehiclesScreen> {
         line(tr('انتهاء الفحص الدوري', 'Inspection end'), _dmy(r['inspectionEnd']), color: docColor(r['inspectionEnd'])),
         if (_s(r['color']).isNotEmpty) line(tr('اللون', 'Colour'), r['color']),
         if (_s(r['notes']).isNotEmpty) line(tr('ملاحظات', 'Notes'), r['notes']),
+        // Cancelling runs the vehicles section's own revoke on the server (services/vehicleLifecycle).
+        if (canEdit && (_s(r['authorizedName']).isNotEmpty || _s(r['authorizedId']).isNotEmpty))
+          Align(
+            alignment: AlignmentDirectional.centerEnd,
+            child: TextButton.icon(
+              style: TextButton.styleFrom(foregroundColor: T.danger),
+              icon: const Icon(Icons.person_remove_outlined, size: 18),
+              label: Text(tr('إلغاء التفويض', 'Cancel authorisation')),
+              onPressed: () async {
+                final ok = await revokeVehicleAuthorization(context, {
+                  '_id': r['_id'], 'plateNumber': r['plateNumber'],
+                  'authorizedPerson': {'name': r['authorizedName'], 'iqamaNumber': r['authorizedId']},
+                }, endpoint: '/api/light-transport/vehicles/${r['_id']}/revoke-authorization');
+                if (ok) _load();
+              },
+            ),
+          ),
       ]),
     );
   }

@@ -20,9 +20,10 @@ import {
 import { useAuth } from '@/context/AuthContext';
 import {
   Car, ArrowRight, Satellite, IdCard, ShieldCheck, Fuel, FileText, ClipboardCheck,
-  AlertTriangle, History, Building2, ChevronLeft, ExternalLink, RefreshCcw,
+  AlertTriangle, History, Building2, ChevronLeft, ExternalLink, RefreshCcw, Archive,
 } from 'lucide-react';
 import ScrollX from '@/components/system/ScrollX';
+import { useVehicleLifecycle, RevokeButton, EndServiceButton, RestoreButton } from '@/components/vehicles/VehicleLifecycle';
 
 /** Family colour when it has no document with a status (identity and ownership). */
 const NEUTRAL = '#64748b';
@@ -91,7 +92,7 @@ export default function VehicleRegistryDetail() {
   const params = useParams();
   const router = useRouter();
   const { user } = useAuth();
-  const canEdit = canEditVehicles(user);
+  const canEditRole = canEditVehicles(user);
   const id = String(params?.id || '');
   const [v, setV] = useState<VReg | null>(null);
   const [loading, setLoading] = useState(true);
@@ -121,9 +122,13 @@ export default function VehicleRegistryDetail() {
   }, [id, noteDraft, load]);
   // Anything touching the vehicle broadcasts this event: edits, renewals, accidents, settings.
   useSocket('vreg:updated', useCallback(() => load(), [load]));
+  // Cancel authorization / end service / restore: the shared server path.
+  const lc = useVehicleLifecycle({ ar, onChanged: load, source: 'profile' });
 
   if (loading) return <Spinner />;
   if (!v) return <div className="p-8 text-slate-500">{t('المركبة غير موجودة', 'Not found')}</div>;
+  // An archived vehicle is read-only: its file and history are shown, only restore is offered.
+  const canEdit = canEditRole && !v.archived;
 
   // Presentational pieces are defined at module level; see the comment there.
   const val = (x: unknown) => (x === null || x === undefined || x === '' ? <span className="text-slate-300 font-normal">—</span> : (x as React.ReactNode));
@@ -262,6 +267,9 @@ export default function VehicleRegistryDetail() {
             {outOfService && (
               <span className="px-2.5 py-1 rounded-lg text-[11.5px] font-extrabold bg-white/15 text-white">{v.serviceStatusAr}</span>
             )}
+            {canEdit && v.authorizedPerson?.name && <RevokeButton ar={ar} onClick={() => lc.revoke(v)} />}
+            {canEdit && <EndServiceButton onDark ar={ar} onClick={() => lc.endService(v)} />}
+            {canEditRole && v.archived && <RestoreButton onDark ar={ar} onClick={() => lc.restore(v)} />}
             <ReportButton onDark subject="vehicle" id={v.plateNumber} label={t('تقرير PDF شامل', 'Full PDF report')} />
             <ExportMenu fileName={`vehicle-${v.plateNumber}`} lang={ar ? 'ar' : 'en'}
               options={[{
@@ -275,13 +283,28 @@ export default function VehicleRegistryDetail() {
                   ],
                 }],
               }]} />
-            <button type="button" onClick={() => router.push('/system/vehicles/registry')}
+            <button type="button" onClick={() => router.push(v.archived ? '/system/vehicles/registry/archive' : '/system/vehicles/registry')}
               className="flex items-center gap-1.5 px-3 py-2 rounded-lg bg-white/10 hover:bg-white/20 text-white text-sm font-medium transition-colors">
               <ArrowRight className={`w-4 h-4 ${isRTL ? '' : 'rotate-180'}`} /> {t('رجوع', 'Back')}
             </button>
           </div>
         </div>
       </header>
+
+      {v.archived && (
+        <div className="rounded-2xl border-2 border-slate-300 bg-slate-100 p-4">
+          <p className="font-extrabold text-slate-900 flex items-center gap-1.5 text-[14px]">
+            <Archive className="w-4 h-4" />{t('مركبة مؤرشفة — انتهت خدمتها', 'Archived vehicle — service ended')}
+          </p>
+          <p className="text-[13px] text-slate-700 mt-1.5">
+            {t('تاريخ إنهاء الخدمة', 'End date')}: <b className="font-mono">{v.archive?.endDate ? fmtDate(v.archive.endDate) : '—'}</b>
+            {' · '}{t('السبب', 'Reason')}: <b>{v.archive?.reason || '—'}</b>
+            {v.archive?.byName ? <>{' · '}{t('بواسطة', 'By')}: {v.archive.byName}</> : null}
+            {v.archive?.lastRider ? <>{' · '}{t('آخر راكب', 'Last rider')}: {v.archive.lastRider}</> : null}
+          </p>
+          <p className="text-[12px] text-slate-500 mt-1">{t('لا تظهر في السجلّ ولا التحليلات ولا التنبيهات. البيانات والسجلّ أدناه محفوظة كما هي.', 'Not shown in the registry, analytics or alerts. The data and history below are kept as they were.')}</p>
+        </div>
+      )}
 
       {/* Document status, readable from a distance. */}
       <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-2.5">
@@ -537,9 +560,39 @@ export default function VehicleRegistryDetail() {
         </div>
       )}
 
+      {!!v.archiveLog?.length && (
+        <div className="rounded-2xl border border-slate-200 bg-white shadow-sm overflow-hidden">
+          <div className="px-4 py-3 bg-slate-50 border-b border-slate-200">
+            <p className="font-extrabold text-slate-900 flex items-center gap-1.5 text-[14.5px]">
+              <Archive className="w-4 h-4 text-slate-400" />{t('سجلّ إنهاء الخدمة والإعادة', 'End-of-service log')}
+            </p>
+          </div>
+          <ScrollX>
+            <table className="w-full text-[13px]">
+              <thead className="bg-slate-100 text-slate-600 text-[11.5px]">
+                <tr>{[t('الإجراء', 'Action'), t('التاريخ', 'Date'), t('السبب', 'Reason'), t('بواسطة', 'By'), t('وقت التسجيل', 'Recorded')]
+                  .map((h) => <th key={h} className="px-3 py-2.5 text-start font-bold whitespace-nowrap">{h}</th>)}</tr>
+              </thead>
+              <tbody className="divide-y divide-slate-100">
+                {v.archiveLog.map((r, i) => (
+                  <tr key={i}>
+                    <td className="px-3 py-2.5 font-semibold text-slate-900">{r.action === 'end' ? t('إنهاء الخدمة', 'Service ended') : t('إعادة إلى السجلّ', 'Restored')}</td>
+                    <td className="px-3 py-2.5 font-mono text-slate-700">{r.date ? fmtDate(r.date) : '—'}</td>
+                    <td className="px-3 py-2.5 text-slate-700">{r.reason || '—'}</td>
+                    <td className="px-3 py-2.5 text-slate-600">{r.byName || '—'}</td>
+                    <td className="px-3 py-2.5 font-mono text-slate-500">{r.at ? fmtDate(r.at) : '—'}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </ScrollX>
+        </div>
+      )}
+
       {/* JP tasks linked to this vehicle; added from here. */}
       <JpTaskPanel section="vehicles" kind="vehicle" refId={String(v._id)} ar={ar} />
 
+      {lc.element}
       {renewing && (
         <RenewModal row={renewing} ar={ar}
           onClose={() => setRenewing(null)}

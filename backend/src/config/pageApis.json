@@ -1238,6 +1238,13 @@
       ],
       "wildcard": false
     },
+    "/system/vehicles/registry/archive": {
+      "apis": [
+        "/api/vehicle-registry",
+        "/api/vehicle-registry/archive"
+      ],
+      "wildcard": false
+    },
     "/system/vehicles/registry/dashboard": {
       "apis": [
         "/api/vehicle-registry/dashboard"
@@ -2133,6 +2140,7 @@
         "/api/light-transport/people",
         "/api/light-transport/vehicles",
         "/api/lookups/types",
+        "/api/vehicle-registry",
         "/api/vehicle-registry/people"
       ],
       "wildcard": false

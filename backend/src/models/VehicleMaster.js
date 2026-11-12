@@ -182,7 +182,30 @@ const vehicleMasterSchema = new mongoose.Schema({
     name: { type: String, default: '' },
     opStatus: { type: String, default: '' },
   },
+
+  // End of service («إنهاء خدمة المركبة»): a leased vehicle returned, sold, scrapped. The record is archived with all its history, never deleted, and every active-vehicle query skips it (utils/vehicleActive).
+  archived: { type: Boolean, default: false, index: true },
+  archive: {
+    endDate: { type: Date, default: null },
+    reason: { type: String, default: '' },
+    by: { type: mongoose.Schema.Types.ObjectId, ref: 'User', default: null },
+    byName: { type: String, default: '' },
+    at: { type: Date, default: null },
+    // Who rode it when it left; the rider link itself is released.
+    lastRider: { type: String, default: '' },
+  },
+  // Every end of service and restore, oldest first.
+  archiveLog: [{
+    action: { type: String, enum: ['end', 'restore'], required: true },
+    date: { type: Date, default: null },
+    reason: { type: String, default: '' },
+    by: { type: mongoose.Schema.Types.ObjectId, ref: 'User', default: null },
+    byName: { type: String, default: '' },
+    at: { type: Date, default: Date.now },
+  }],
 }, { timestamps: true });
+
+require('../utils/vehicleActive').installArchiveFilter(vehicleMasterSchema);
 
 // Document expiry dates are indexed through index:true on their fields above.
 
@@ -373,7 +396,7 @@ vehicleMasterSchema.post('findOneAndUpdate', async function (doc) {
 for (const op of ['updateOne', 'updateMany']) {
   vehicleMasterSchema.pre(op, async function () {
     if (this.getOptions().skipAuthSync || !touchesAuth(this.getUpdate())) return;
-    this._authIds = await this.model.find(this.getFilter()).distinct('_id');
+    this._authIds = await this.model.find(this.getFilter()).setOptions({ withArchived: true }).distinct('_id');
   });
   vehicleMasterSchema.post(op, async function () {
     for (const id of this._authIds || []) await syncAuth(id, this.getOptions().authCtx);
@@ -423,7 +446,7 @@ vehicleMasterSchema.post('save', async function (doc) {
 for (const op of ['findOneAndUpdate', 'updateOne', 'updateMany']) {
   vehicleMasterSchema.pre(op, async function () {
     if (!touchesIdent(this.getUpdate())) return;
-    this._identBefore = await this.model.find(this.getFilter()).select('plateNumber registrationTypeAr').lean();
+    this._identBefore = await this.model.find(this.getFilter()).setOptions({ withArchived: true }).select('plateNumber registrationTypeAr').lean();
   });
   vehicleMasterSchema.post(op, async function () {
     for (const v of this._identBefore || []) await pushIdent(v._id, { plateNumber: v.plateNumber, registrationTypeAr: v.registrationTypeAr }); // eslint-disable-line no-await-in-loop

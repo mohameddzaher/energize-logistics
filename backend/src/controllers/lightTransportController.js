@@ -1475,3 +1475,17 @@ exports.updateVehicle = async (req, res) => {
     return require('../utils/mongooseError').sendMongooseError(res, e, 'تعذّر تعديل المركبة');
   }
 };
+
+// POST /vehicles/:id/revoke-authorization - the same revoke as the vehicles section (services/vehicleLifecycle), limited to the department's vehicles.
+exports.revokeVehicleAuthorization = async (req, res) => {
+  const L = require('../services/vehicleLifecycle');
+  try {
+    if (!LT_VEHICLE_EDIT.includes(req.user?.role)) return res.status(403).json({ message: 'إلغاءُ التفويض من مركبات القسم لمدير القطاع ونائبه' });
+    const { VehicleMaster } = require('../models/VehicleMaster');
+    const ridden = await LightTransportEmployee.distinct('vehicle', { isActive: { $ne: false }, vehicle: { $ne: null } });
+    const v = await VehicleMaster.findOne({ _id: req.params.id, ...BOARD.vehicleScope(ridden) });
+    if (!v) return res.status(404).json({ message: 'المركبةُ ليست من مركبات القسم' });
+    const r = await L.revokeAuthorization(v, { user: req.user, reason: req.body?.reason, source: 'مركبات النقل الخفيف', ip: req.ip });
+    res.json({ message: r.message, closedAssignments: r.closedAssignments, clearedOrders: r.clearedOrders });
+  } catch (e) { L.reply(res, e, 'تعذّر إلغاء التفويض'); }
+};

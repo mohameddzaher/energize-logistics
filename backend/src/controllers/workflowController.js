@@ -1619,7 +1619,8 @@ exports.updateWorkflow = async (req, res) => {
     const kindMoved = String(before.paymentType || '') !== String(workflow.paymentType || '')
       || String(before.paymentSubtype || '') !== String(workflow.paymentSubtype || '');
     // Every cell that brings a report into the collections screen or removes it. Operations review wrote nothing there and the report was missing from cash invoices; no broadcast was sent for it. A change in any of them clears the collections cache then announces to everyone (below).
-    const GATE_FIELDS = ['operationsReview', 'accountingReview', 'paymentDate', 'invoiceNumber', 'collectedAmount', 'collectionDate', 'cashCollectionStatus'];
+    // Customer and prices feed the collections figures too, so changing them refreshes Collections at once.
+    const GATE_FIELDS = ['operationsReview', 'accountingReview', 'paymentDate', 'invoiceNumber', 'collectedAmount', 'collectionDate', 'cashCollectionStatus', 'username', 'sellingValue', 'purchaseValue'];
     const gateMoved = kindMoved || GATE_FIELDS.some((f) => String(before[f] ?? '') !== String(workflow[f] ?? ''));
     if (gateMoved) invalidateCollectionsReaders();
 
@@ -2222,7 +2223,9 @@ exports.bulkUpdate = async (req, res) => {
         || (Object.prototype.hasOwnProperty.call(t.patch, 'paymentSubtype')
           && String(t.patch.paymentSubtype || '') !== t.subBefore));
       // Cells of the collections door too (operations review, payment date, and so on); see the single edit.
-      const BULK_GATE = ['operationsReview', 'accountingReview', 'paymentDate', 'invoiceNumber', 'collectedAmount', 'collectionDate', 'cashCollectionStatus'];
+      const BULK_GATE = ['operationsReview', 'accountingReview', 'paymentDate', 'invoiceNumber', 'collectedAmount', 'collectionDate', 'cashCollectionStatus', 'username', 'sellingValue', 'purchaseValue'];
+      // A customer named in bulk gets its collections file, as in the single edit.
+      if (patch.username) require('../utils/ensureCollectionsParty').ensureCollectionsParty(patch.username, { source: 'operations_workflow' }).catch(() => {});
       const gateMoved = kindMoved || perRow.some((t) => BULK_GATE.some((f) => Object.prototype.hasOwnProperty.call(t.patch, f)));
       if (gateMoved) invalidateCollectionsReaders();
       try { emitToAll('workflow:bulkImported', { bulkUpdate: true, updated }); } catch (e) {}

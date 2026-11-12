@@ -6,8 +6,14 @@
  */
 const { TOP_ROLES } = require('./constants');
 
-// The data team and sales reps change the selling price through the sales manager's approval.
-const REQUEST_ROLES = ['data_manager', 'data_analyst', 'data_entry', 'sales_rep'];
+const DATA_TEAM = ['data_manager', 'data_analyst', 'data_entry'];
+/**
+ * Owner, 2026-11-12: the data team writes the selling price directly, like the purchase price.
+ * The approval path is kept for later: set SELLING_APPROVAL_DATA_TEAM=1 in the backend .env (and reload) to route
+ * the data team's selling edits through the sales manager again. Sales reps always go through approval.
+ */
+const DATA_TEAM_NEEDS_APPROVAL = process.env.SELLING_APPROVAL_DATA_TEAM === '1';
+const REQUEST_ROLES = ['sales_rep', ...(DATA_TEAM_NEEDS_APPROVAL ? DATA_TEAM : [])];
 const APPROVER_ROLES = [...TOP_ROLES, 'sales_manager'];
 
 const sellingByRequest = (user) => !!user && REQUEST_ROLES.includes(user.role);
@@ -17,4 +23,4 @@ const canApproveSelling = (user) => !!user && (APPROVER_ROLES.includes(user.role
 const PAGE = '/system/selling-requests';
 const EVENT = 'sellingRequests:changed';
 
-module.exports = { REQUEST_ROLES, APPROVER_ROLES, sellingByRequest, canApproveSelling, PAGE, EVENT };
+module.exports = { DATA_TEAM, DATA_TEAM_NEEDS_APPROVAL, REQUEST_ROLES, APPROVER_ROLES, sellingByRequest, canApproveSelling, PAGE, EVENT };

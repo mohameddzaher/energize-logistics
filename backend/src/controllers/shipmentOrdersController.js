@@ -69,6 +69,8 @@ const moneyEditable = (user) => {
   if (canEditMoney(user)) return MONEY_FIELDS;
   if (PV.isSalesRole(user)) return canApproveSelling(user) ? ['sellPrice'] : [];
   if (PV.isVendorRole(user)) return PV.BUY_FIELDS;
+  // The data team writes both prices; the selling one goes to approval only while that switch is on (config/sellingPriceRequests).
+  if (require('../config/sellingPriceRequests').DATA_TEAM.includes(user && user.role)) return sellingByRequest(user) ? ['buyPrice'] : ['buyPrice', 'sellPrice'];
   return sellingByRequest(user) ? ['buyPrice'] : [];
 };
 const moneyByRequest = (user) => {

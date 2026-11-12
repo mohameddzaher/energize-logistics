@@ -346,7 +346,7 @@ export default function OperationsWorkflowPage() {
   // Record payment for a batch
   // Receipts arrive in batches with one date and one branch; opening each row to type the same date was many chances for error.
   const [showBulkPay, setShowBulkPay] = useState(false);
-  const [bulkPay, setBulkPay] = useState({ paymentDate: '', payingBranch: '', paymentType: '', finalReportDestination: '', documentNumber: '', sendingDate: '', branchDeliveryDate: '', deliveryDate: '', operationsReview: '' });
+  const [bulkPay, setBulkPay] = useState({ paymentDate: '', payingBranch: '', paymentType: '', finalReportDestination: '', documentNumber: '', sendingDate: '', branchDeliveryDate: '', deliveryDate: '', operationsReview: '', username: '', fromLocation: '', toLocation: '', truckType: '', loadType: '' });
   // All filter results, not just the 50-row page
   // The table pages by 50 and selection covers the shown page. When this is chosen the table's own conditions are sent and the server selects everything that matches, with a confirmed count.
   const [allMatching, setAllMatching] = useState(false);
@@ -851,7 +851,7 @@ export default function OperationsWorkflowPage() {
         notify(r.message || (lang === 'ar' ? 'تم الحفظ' : 'Saved'), skipped.length ? 'error' : 'success');
         if (!skipped.length) {
           setShowBulkPay(false); setSelectedIds(new Set()); setAllMatching(false);
-          setBulkPay({ paymentDate: '', payingBranch: '', paymentType: '', finalReportDestination: '', documentNumber: '', sendingDate: '', branchDeliveryDate: '', deliveryDate: '', operationsReview: '' });
+          setBulkPay({ paymentDate: '', payingBranch: '', paymentType: '', finalReportDestination: '', documentNumber: '', sendingDate: '', branchDeliveryDate: '', deliveryDate: '', operationsReview: '', username: '', fromLocation: '', toLocation: '', truckType: '', loadType: '' });
         }
         fetchWorkflows(true); fetchStats();
         // The other server worker clears its cache within a second; the second refetch catches what the first missed.
@@ -1094,7 +1094,7 @@ export default function OperationsWorkflowPage() {
             <div className="relative">
               <button type="button" onClick={() => { setShowBulkPay((p) => !p); setBulkResult(null); }}
                 className="flex items-center gap-1.5 px-3 py-2 rounded-lg bg-purple-600 hover:bg-purple-700 text-white text-sm font-medium transition-colors">
-                <CheckSquare className="w-4 h-4" /> {lang === 'ar' ? 'تسجيل سداد' : 'Record payment'} ({selectedCount.toLocaleString('en-US')})
+                <CheckSquare className="w-4 h-4" /> {lang === 'ar' ? 'تعديل بيانات' : 'Edit data'} ({selectedCount.toLocaleString('en-US')})
               </button>
               {showBulkPay && (
                 <div className="absolute top-full mt-2 end-0 bg-white border border-slate-200 rounded-xl shadow-xl z-50 p-4 w-[340px] max-w-[calc(100vw-2rem)] overflow-visible" onClick={(e) => e.stopPropagation()}>
@@ -1113,7 +1113,26 @@ export default function OperationsWorkflowPage() {
                   <p className="text-[11px] text-slate-500 mb-3">
                     {lang === 'ar' ? 'غيِّر ما تريد فقط — ما تتركه فارغًا لا يُغيَّر.' : 'Change only what you need — blank fields are left unchanged.'}
                   </p>
-                  <div className="space-y-2.5">
+                  <div className="space-y-2.5 max-h-[60vh] overflow-y-auto pe-1">
+                    {/* Order data for the whole selection (e.g. one customer name on many orders); each field shows only to roles that may write it, and the server re-checks per row. */}
+                    {['username', 'fromLocation', 'toLocation', 'truckType', 'loadType'].some((f) => has(f)) && (
+                      <p className="text-[12px] font-bold text-slate-800 pt-1">{lang === 'ar' ? 'بيانات أمر النقل' : 'Order data'}</p>
+                    )}
+                    {has('username') && (
+                      <div>
+                        <label className="block text-xs font-semibold text-slate-600 mb-1">{lang === 'ar' ? 'اسم العميل' : 'Customer'}</label>
+                        <CustomerNamePicker value={bulkPay.username} ar={lang === 'ar'} onChange={(v) => setBulkPay((p) => ({ ...p, username: v }))} />
+                      </div>
+                    )}
+                    {([['fromLocation', 'من', 'From'], ['toLocation', 'إلى', 'To'], ['truckType', 'نوع الشاحنة', 'Truck type'], ['loadType', 'نوع الحمولة', 'Load type']] as const).filter(([k]) => has(k)).map(([k, a, e]) => (
+                      <div key={k}>
+                        <label className="block text-xs font-semibold text-slate-600 mb-1">{lang === 'ar' ? a : e}</label>
+                        <input value={(bulkPay as any)[k]} onChange={(ev) => setBulkPay((p) => ({ ...p, [k]: ev.target.value }))}
+                          placeholder={lang === 'ar' ? '— لا يُغيَّر —' : '— leave unchanged —'}
+                          className="w-full px-2.5 py-2 rounded-lg bg-white border border-slate-200 text-slate-900 text-[13px] focus:outline-none focus:ring-2 focus:ring-[#f37121]/40" />
+                      </div>
+                    ))}
+                    <p className="text-[12px] font-bold text-slate-800 pt-1">{lang === 'ar' ? 'السداد والتسليم' : 'Payment & delivery'}</p>
                     <div>
                       <label className="block text-xs font-semibold text-slate-600 mb-1">{lang === 'ar' ? 'تاريخ السداد' : 'Payment date'}</label>
                       <DateField ar={lang === 'ar'} label={lang === 'ar' ? 'تاريخ السداد' : 'Payment date'}

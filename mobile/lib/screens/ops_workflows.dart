@@ -5,6 +5,7 @@ import '../services/api.dart';
 import '../services/auth.dart';
 import '../services/lang.dart';
 import '../services/live.dart';
+import '../ui/ops_customer_field.dart';
 import '../ui/app_scaffold.dart';
 import '../ui/customs_link.dart';
 import '../ui/export_sheet.dart';
@@ -583,9 +584,12 @@ class _OpsWorkflowsScreenState extends State<OpsWorkflowsScreen> {
     }
   }
 
-  /// Record a payment for a batch; an empty field means leave that column untouched.
+  /// Edit data for a batch (order data, payment, delivery); an empty field means leave that column untouched.
   Future<void> _bulkPay() async {
     final date = TextEditingController(), send = TextEditingController(), bdel = TextEditingController();
+    // Order data for the whole selection, shown only for fields this role may write.
+    final cust = TextEditingController();
+    final data = {for (final k in const ['fromLocation', 'toLocation', 'truckType', 'loadType']) k: TextEditingController()};
     final branch = TextEditingController(), dest = TextEditingController(), doc = TextEditingController();
     String ptype = '', opsReview = '';
     bool running = false;
@@ -613,6 +617,8 @@ class _OpsWorkflowsScreenState extends State<OpsWorkflowsScreen> {
             );
         Future<void> run() async {
           final fields = <String, dynamic>{
+            if (cust.text.trim().isNotEmpty) 'username': cust.text.trim(),
+            for (final e in data.entries) if (e.value.text.trim().isNotEmpty) e.key: e.value.text.trim(),
             if (date.text.trim().isNotEmpty) 'paymentDate': date.text.trim(),
             if (branch.text.trim().isNotEmpty) 'payingBranch': branch.text.trim(),
             if (ptype.isNotEmpty) 'paymentType': ptype,
@@ -668,7 +674,7 @@ class _OpsWorkflowsScreenState extends State<OpsWorkflowsScreen> {
             padding: EdgeInsets.fromLTRB(16, 14, 16, MediaQuery.of(c).viewInsets.bottom + 12),
             child: SingleChildScrollView(
               child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, mainAxisSize: MainAxisSize.min, children: [
-                Text(tr('تسجيل سداد', 'Record payment'), style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w800)),
+                Text(tr('تعديل بيانات', 'Edit data'), style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w800)),
                 const SizedBox(height: 8),
                 Text(tr('يُطبَّق على', 'Apply to'), style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 12.5)),
                 const SizedBox(height: 4),
@@ -684,6 +690,14 @@ class _OpsWorkflowsScreenState extends State<OpsWorkflowsScreen> {
                 Text(tr('غيِّر ما تريد فقط — ما تتركه فارغًا لا يُغيَّر.', 'Change only what you need — blank fields are left unchanged.'),
                     style: const TextStyle(fontSize: 11, color: T.inkFaint)),
                 const SizedBox(height: 10),
+                if (_has('username') || data.keys.any(_has))
+                  Padding(padding: const EdgeInsets.only(bottom: 6), child: Text(tr('بيانات أمر النقل', 'Order data'), style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 13))),
+                if (_has('username'))
+                  Padding(padding: const EdgeInsets.only(bottom: 8), child: OpsCustomerField(controller: cust, label: tr('اسم العميل', 'Customer'))),
+                for (final f in const [('fromLocation', 'من', 'From'), ('toLocation', 'إلى', 'To'), ('truckType', 'نوع الشاحنة', 'Truck type'), ('loadType', 'نوع الحمولة', 'Load type')])
+                  if (_has(f.$1))
+                    Padding(padding: const EdgeInsets.only(bottom: 8), child: TextField(controller: data[f.$1], decoration: InputDecoration(labelText: tr(f.$2, f.$3), hintText: tr('— لا يُغيَّر —', '— leave unchanged —'), isDense: true))),
+                Padding(padding: const EdgeInsets.only(bottom: 6, top: 4), child: Text(tr('السداد والتسليم', 'Payment & delivery'), style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 13))),
                 dateField(date, tr('تاريخ السداد', 'Payment date')),
                 Padding(padding: const EdgeInsets.only(bottom: 8), child: LookupField(type: 'workflow_paying_branch', controller: branch, label: tr('الفرع المسدِّد', 'Paying branch'), noAdd: true)),
                 Padding(
@@ -742,7 +756,7 @@ class _OpsWorkflowsScreenState extends State<OpsWorkflowsScreen> {
         );
       }),
     );
-    for (final c in [date, send, bdel, branch, dest, doc]) { c.dispose(); }
+    for (final c in [date, send, bdel, branch, dest, doc, cust, ...data.values]) { c.dispose(); }
   }
 
   // Export
@@ -1032,7 +1046,7 @@ class _OpsWorkflowsScreenState extends State<OpsWorkflowsScreen> {
                 style: FilledButton.styleFrom(backgroundColor: T.violet, visualDensity: VisualDensity.compact),
                 onPressed: _busy ? null : _bulkPay,
                 icon: const Icon(Icons.task_alt, size: 16),
-                label: Text(tr('تسجيل سداد ($_selectedCount)', 'Record payment ($_selectedCount)')),
+                label: Text(tr('تعديل بيانات ($_selectedCount)', 'Edit data ($_selectedCount)')),
               ),
               if (_canDelete)
                 FilledButton.icon(

@@ -17,7 +17,7 @@ import { Spinner, PageHeader, Select, SearchableSelect, PrimaryButton, PhoneSA }
 import { ContactButtons } from '@/components/crm/CrmKit';
 import {
   FormField, OrderCustomer, OrderVehicle, OrderSupplier, GROUP_LABELS, fieldLabel, optionLabel,
-  FIXED_KEYS, Lang, canEditOrders, vocabLabel, OrderDriver,
+  FIXED_KEYS, Lang, canEditOrders, vocabLabel, OrderDriver, PREF_KEYS, prefList, prefOnly,
 } from '@/lib/shipmentOrders';
 import { useOrderStatuses } from '@/hooks/useOrderStatuses';
 import { useLatestRequest } from '@/hooks/useLatestRequest';
@@ -278,9 +278,9 @@ function CreateShipmentInner() {
     if (!c) return;
     setForm((f) => {
       const next = { ...f };
+      // One agreed value fills the box; several are offered first under the field (see renderField), never picked silently.
       const d = c.defaults || {};
-      (['truckType', 'cargoType', 'paymentMethod', 'driverRentType', 'branch'] as const)
-        .forEach((k) => { if (!next[k] && d[k]) next[k] = d[k]; });
+      PREF_KEYS.forEach((k) => { const one = prefOnly(d[k]); if (!next[k] && one) next[k] = one; });
       const route = findRoute(c, next.fromCity, next.toCity);
       // A price already typed stays; the route only fills an empty box.
       // Only on a new shipment: on an edit an empty price stays empty rather than taking a number nobody chose.
@@ -583,6 +583,24 @@ function CreateShipmentInner() {
   const renderField = (f: FormField) => {
     const label = fieldLabel(f, lang as Lang);
     const v = form[f.key] ?? '';
+    // The chosen customer's agreed values for this field: listed first, and offered as one-tap choices when there are several.
+    const prefs = (PREF_KEYS as readonly string[]).includes(f.key)
+      ? prefList((customers.find((x) => x._id === customerId)?.defaults as Record<string, unknown> | undefined)?.[f.key]) : [];
+    const prefOpts = prefs.length ? [...f.options].sort((a, b) => Number(prefs.includes(b.key)) - Number(prefs.includes(a.key))) : f.options;
+    const prefChips = prefs.length > 1 && !v ? (
+      <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
+        <span className="text-[11.5px] font-semibold text-slate-500">{ar ? 'المعتمد لهذا العميل:' : 'Agreed for this customer:'}</span>
+        {prefs.map((p) => {
+          const o = f.options.find((x) => x.key === p);
+          return (
+            <button key={p} type="button" onClick={() => set(f.key, p)}
+              className="px-2.5 py-1 rounded-full border border-[#f37121]/40 bg-[#f37121]/5 text-[12px] font-semibold text-[#c2560f] hover:bg-[#f37121]/15">
+              {o ? optionLabel(o, lang as Lang) : p}
+            </button>
+          );
+        })}
+      </div>
+    ) : null;
     const bad = miss(f.key);
     if (hiddenPrice(f.key)) return null;
     // The other team's half: shown, not editable.
@@ -636,7 +654,7 @@ function CreateShipmentInner() {
           <div key={f._id} className="col-span-full">
             {lab}
             <div className={`flex flex-wrap gap-2 ${bad ? 'p-2 rounded-xl border border-red-300 bg-red-50/50' : ''}`}>
-              {f.options.map((o) => (
+              {prefOpts.map((o) => (
                 <button key={o.key} type="button" onClick={() => set(f.key, o.key)}
                   className={`group flex items-center gap-2 px-4 py-2.5 rounded-xl border text-sm font-semibold transition-all ${v === o.key
                     ? 'border-[#f37121] bg-[#f37121] text-white shadow-md shadow-[#f37121]/25'
@@ -645,9 +663,11 @@ function CreateShipmentInner() {
                     {v === o.key && <Check className="w-3 h-3" />}
                   </span>
                   {optionLabel(o, lang as Lang)}
+                  {prefs.includes(o.key) && <span className={`text-[10.5px] font-semibold ${v === o.key ? 'text-white/80' : 'text-[#c2560f]'}`}>{ar ? 'معتمد' : 'agreed'}</span>}
                 </button>
               ))}
             </div>
+            {prefChips}
           </div>
         );
       case 'select':
@@ -660,8 +680,9 @@ function CreateShipmentInner() {
                 placeholder={ar ? `اختر ${label}` : `Choose ${label}`}
                 searchPlaceholder={ar ? 'اكتب للبحث…' : 'Type to search…'}
                 emptyLabel={ar ? 'لا توجد نتائج' : 'No matches'}
-                options={f.options.map((o) => ({ value: o.key, label: optionLabel(o, lang as Lang) }))} />
+                options={prefOpts.map((o) => ({ value: o.key, label: optionLabel(o, lang as Lang), ...(prefs.includes(o.key) ? { hint: ar ? 'معتمد لهذا العميل' : 'agreed for this customer' } : {}) }))} />
             </div>
+            {prefChips}
             {/* Missing list items are added in place. A new city or load type used to stop the form and send the user to section settings, losing what was typed. What is added is written to the same settings and appears for everyone at once (`so:fields`). */}
             {/* Branch is the company's branches, so nothing can be added from here (`locked`). */}
             {(f as any).locked ? null : addingFor === f._id ? (

@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../services/api.dart';
+import '../services/customer_prefs.dart';
 import '../services/lang.dart';
 import '../ui/app_scaffold.dart';
 import '../ui/search_field.dart';
@@ -139,8 +140,10 @@ class _ShipmentOrdersChatScreenState extends State<ShipmentOrdersChatScreen> {
     _say(false, '${c['name']}');
     _answers['customerName'] = c['name'];
     final d = c['defaults'] is Map ? c['defaults'] as Map : const {};
-    for (final k in const ['truckType', 'cargoType', 'paymentMethod', 'driverRentType', 'branch']) {
-      if ((_answers[k] ?? '').toString().isEmpty && (d[k] ?? '').toString().isNotEmpty) _answers[k] = d[k];
+    // Only a single agreed value is filled; with several the step still asks.
+    for (final k in customerPrefKeys) {
+      final one = prefOnly(d[k]);
+      if ((_answers[k] ?? '').toString().isEmpty && one.isNotEmpty) _answers[k] = one;
     }
     final routes = List.from(c['routes'] ?? const []);
     if (routes.isNotEmpty) {

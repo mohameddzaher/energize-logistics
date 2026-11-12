@@ -189,10 +189,9 @@ function shapeRow(c, sheets, orders) {
   put(out, 'lastSheetAt', s.last || null);
   // notes and lastOrderAt are not sent: no table or export column for them (REGISTRY_COLS in lib/customerRegistry.ts). Notes are read and written in the customer file, /api/customer-registry/:id, not in the register.
   // Approved preferences are read in the table too: whoever fills a shipment wants to know the customer has an agreed truck type and payment method.
-  put(out, 'truckType', c.defaults?.truckType);
-  put(out, 'cargoType', c.defaults?.cargoType);
-  put(out, 'paymentMethod', c.defaults?.paymentMethod);
-  put(out, 'branch', c.defaults?.branch);
+  // Several values per preference read as one text cell in the table and its export.
+  const { prefList } = require('../utils/customerPrefs');
+  for (const k of ['truckType', 'cargoType', 'paymentMethod', 'branch']) put(out, k, prefList(c.defaults?.[k]).join('، '));
   return out;
 }
 
@@ -281,7 +280,7 @@ exports.profile = async (req, res) => {
         const orderMatch = { source: { $ne: 'platform' }, customerName: { $in: names.length ? names : [c.name] } };
         if (period?.range) orderMatch.createdAt = period.range;
 
-        const [agg, monthly, byRoute, sheetsPage, total, orders] = await Promise.all([
+        const [agg, monthly, byRoute, sheetsPage, total, orders, routesWorked, ordersTotal] = await Promise.all([
           OperationsWorkflow.aggregate([
             { $match: match },
             {
@@ -326,9 +325,17 @@ exports.profile = async (req, res) => {
             .limit(limit)
             .lean(),
           OperationsWorkflow.countDocuments(match),
+          // Transport orders created for this customer in the shipment-orders section. Their number is waybillNumber (or the platform reference); `orderNumber` does not exist on the model, which left the number column empty.
           ShipmentOrder.find(orderMatch)
-            .select('orderNumber createdAt fromCity toCity status supplierName vehiclePlate price')
+            .select('waybillNumber reference createdAt fromCity toCity truckType status supplierName vehiclePlate sellPrice salesRepName')
             .sort({ createdAt: -1 }).limit(50).lean(),
+          // Distinct routes worked: byRoute is capped at 100 rows, so the count is taken on its own.
+          OperationsWorkflow.aggregate([
+            { $match: match },
+            { $group: { _id: { from: '$fromLocation', to: '$toLocation' } } },
+            { $count: 'n' },
+          ]),
+          ShipmentOrder.countDocuments(orderMatch),
         ]);
 
         const a = agg[0] || { sheets: 0, purchase: 0, first: null, last: null, branches: [] };
@@ -362,7 +369,7 @@ exports.profile = async (req, res) => {
           customer: {
             _id: String(c._id), customerCode: c.customerCode || '', name: c.name, phone: c.phone || '', email: c.email || '',
             notes: c.notes || '', isActive: c.isActive !== false,
-            defaults: c.defaults || {},
+            defaults: require('../utils/customerPrefs').normDefaults(c.defaults),
             routes: (c.routes || []).map((r) => ({
               _id: String(r._id || ''), fromCity: r.fromCity || '', toCity: r.toCity || '',
               price: r.price ?? null, at: r.at || null, source: r.source || '', hits: r.hits || 1,
@@ -377,13 +384,16 @@ exports.profile = async (req, res) => {
             branches: (a.branches || []).filter(Boolean),
             routesCount: (c.routes || []).length,
             pricedRoutes: (c.routes || []).filter((r) => r.price > 0).length,
-            orders: orders.length,
+            orders: ordersTotal,
+            routesWorked: routesWorked[0]?.n || 0,
+            activeMonths: monthly.length,
             monthly: monthly.map((m) => ({ month: m._id, sheets: m.sheets, purchase: money ? r2(m.purchase) : undefined })),
           },
           routes,
           // A reader without the purchase side gets the sheets without it too, not only the totals.
           sheets: { rows: money ? sheetsPage : sheetsPage.map(({ purchaseValue, ...r }) => r), total, page, pages: Math.max(1, Math.ceil(total / limit)) },
-          orders,
+          // Selling price only for readers allowed money figures.
+          orders: money ? orders : orders.map(({ sellPrice, ...o }) => o),
           period: period ? { from: period.from, to: period.to } : null,
           filtered: !!(period || conds.length),
         };

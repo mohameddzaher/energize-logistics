@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../services/api.dart';
 import '../services/auth.dart';
+import '../services/customer_prefs.dart';
 import '../services/lang.dart';
 import '../services/live.dart';
 import '../resource/configs.dart' show customerEditRoles;
@@ -191,27 +192,43 @@ class _CustomerRegistryProfileScreenState extends State<CustomerRegistryProfileS
     await _put({key: next});
   }
 
-  Future<void> _pickDefault(Map<String, String> defaults, String key, String label) async {
-    final cur = defaults[key] ?? '';
+  /// Several values per preference (e.g. two truck types): a checklist sheet, saved on «حفظ».
+  Future<void> _pickDefault(Map<String, List<String>> defaults, String key, String label) async {
+    final cur = List<String>.from(defaults[key] ?? const []);
     final opts = _optionsOf(key);
-    final picked = await showModalBottomSheet<String>(
+    // A saved value no longer in the list stays as a choice, so it is not silently wiped.
+    final all = [...cur.where((v) => !opts.any((o) => o.$1 == v)).map((v) => (v, v)), ...opts];
+    final picked = await showModalBottomSheet<List<String>>(
       context: context, backgroundColor: Colors.white, isScrollControlled: true,
       shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(22))),
-      builder: (c) => SafeArea(child: ConstrainedBox(
-        constraints: BoxConstraints(maxHeight: MediaQuery.of(c).size.height * 0.7),
-        child: ListView(shrinkWrap: true, children: [
-          Padding(padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
-              child: Text(label, style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 16))),
-          ListTile(title: const Text('—'), trailing: cur.isEmpty ? const Icon(Icons.check, color: T.orange) : null, onTap: () => Navigator.pop(c, '')),
-          // A saved value stays listed even if it left the list, so it is not silently wiped.
-          if (cur.isNotEmpty && !opts.any((o) => o.$1 == cur))
-            ListTile(title: Text(cur), trailing: const Icon(Icons.check, color: T.orange), onTap: () => Navigator.pop(c, cur)),
-          for (final o in opts)
-            ListTile(title: Text(o.$2), trailing: o.$1 == cur ? const Icon(Icons.check, color: T.orange) : null, onTap: () => Navigator.pop(c, o.$1)),
-        ]),
-      )),
+      builder: (c) {
+        final sel = List<String>.from(cur);
+        return StatefulBuilder(builder: (c, set) => SafeArea(child: ConstrainedBox(
+          constraints: BoxConstraints(maxHeight: MediaQuery.of(c).size.height * 0.75),
+          child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+            Padding(padding: const EdgeInsets.fromLTRB(16, 16, 16, 2),
+                child: Text(label, style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 16))),
+            Padding(padding: const EdgeInsets.fromLTRB(16, 0, 16, 6),
+                child: Text(tr('يمكن اختيار أكثر من قيمة.', 'You can choose more than one.'), style: const TextStyle(fontSize: 12, color: T.inkSoft))),
+            Flexible(child: ListView(shrinkWrap: true, children: [
+              for (final o in all)
+                CheckboxListTile(
+                  dense: true, activeColor: T.orange, value: sel.contains(o.$1), title: Text(o.$2),
+                  onChanged: (on) => set(() { if (on == true) { sel.add(o.$1); } else { sel.remove(o.$1); } }),
+                ),
+            ])),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 8, 16, 12),
+              child: FilledButton(
+                style: FilledButton.styleFrom(backgroundColor: T.orange, padding: const EdgeInsets.symmetric(vertical: 14)),
+                onPressed: () => Navigator.pop(c, sel), child: Text(tr('حفظ', 'Save'))),
+            ),
+          ]),
+        )));
+      },
     );
-    if (picked == null || picked == cur) return;
+    if (picked == null) return;
+    if (picked.length == cur.length && picked.every(cur.contains)) return;
     await _put({'defaults': {...defaults, key: picked}});
   }
 
@@ -572,6 +589,10 @@ class _CustomerRegistryProfileScreenState extends State<CustomerRegistryProfileS
                       _routesCard(d, money),
                       const SizedBox(height: 12),
                       _tripsCard(sheets, trips, money),
+                      if (List.from(d['orders'] ?? []).isNotEmpty) ...[
+                        const SizedBox(height: 12),
+                        _ordersCard(d, a, money),
+                      ],
                     ],
                   ),
                 ),
@@ -669,14 +690,12 @@ class _CustomerRegistryProfileScreenState extends State<CustomerRegistryProfileS
 
   Widget _detailsCard(Map<String, dynamic> c) {
     final edit = _canEdit;
-    final defaults = <String, String>{
-      for (final k in _defaultKeys) k.$1: '',
-      ...Map<String, dynamic>.from(c['defaults'] ?? {}).map((k, v) => MapEntry(k, (v ?? '').toString())),
-    };
-    String optLabel(String key, String v) {
-      for (final o in _optionsOf(key)) { if (o.$1 == v) return o.$2; }
-      return v;
-    }
+    final raw = c['defaults'] is Map ? c['defaults'] as Map : const {};
+    final defaults = <String, List<String>>{for (final k in _defaultKeys) k.$1: prefList(raw[k.$1])};
+    String optLabel(String key, List<String> vs) => vs.map((v) {
+          for (final o in _optionsOf(key)) { if (o.$1 == v) return o.$2; }
+          return v;
+        }).join('، ');
     const div = Divider(height: 1, color: T.line);
     return AppCard(
       child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
@@ -701,10 +720,13 @@ class _CustomerRegistryProfileScreenState extends State<CustomerRegistryProfileS
           padding: const EdgeInsets.fromLTRB(10, 10, 10, 4),
           decoration: BoxDecoration(color: T.canvas, borderRadius: BorderRadius.circular(12)),
           child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-            Text(tr('التفضيلات المعتمدة (تُملأ تلقائيًّا في الشحنة)', 'Usual defaults (autofilled on the shipment form)'),
-                style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w800, color: T.inkSoft)),
+            Text(tr('التفضيلات المعتمدة', 'Agreed preferences'),
+                style: const TextStyle(fontSize: 12.5, fontWeight: FontWeight.w800, color: T.ink)),
+            Text(tr('يمكن اختيار أكثر من قيمة. القيمة الوحيدة تُملأ تلقائيًّا في أمر النقل، والقيم المتعدّدة تُعرَض أوّلًا للاختيار منها.',
+                'Several values allowed. A single value is filled on the transport order; several are offered first.'),
+                style: const TextStyle(fontSize: 11, color: T.inkSoft)),
             for (final k in _defaultKeys)
-              _fieldRow(tr(k.$2, k.$3), optLabel(k.$1, defaults[k.$1] ?? ''),
+              _fieldRow(tr(k.$2, k.$3), optLabel(k.$1, defaults[k.$1] ?? const []),
                   onTap: edit ? () => _pickDefault(defaults, k.$1, tr(k.$2, k.$3)) : null),
           ]),
         ),
@@ -725,7 +747,8 @@ class _CustomerRegistryProfileScreenState extends State<CustomerRegistryProfileS
         children: [
           _tile(tr('الرحلات (أوامر نقل)', 'Trips (sheets)'), '${a['sheets'] ?? 0}', T.orange, Icons.route_outlined),
           if (money) _tile(tr('قيمة الشراء', 'Purchase total'), _money(a['purchaseTotal']), T.violet, Icons.payments_outlined),
-          if (money) _tile(tr('متوسّط الرحلة', 'Avg per trip'), _money(a['avgPerSheet']), T.navy, Icons.trending_up_rounded),
+          _tile(tr('المسارات المنفّذة', 'Routes worked'), '${a['routesWorked'] ?? List.from(_data?['routes'] ?? []).length}', T.navy, Icons.signpost_outlined),
+          _tile(tr('أشهر النشاط', 'Active months'), '${a['activeMonths'] ?? List.from(a['monthly'] ?? []).length}', T.violet, Icons.date_range_outlined),
           _tile(tr('مسارات متّفق عليها', 'Agreed routes'), '${a['routesCount'] ?? 0}', T.info, Icons.alt_route_outlined),
           _tile(tr('منها مُسعَّرة', 'Priced'), '${a['pricedRoutes'] ?? 0}',
               (a['pricedRoutes'] ?? 0) < (a['routesCount'] ?? 0) ? T.warn : T.success, Icons.sell_outlined),
@@ -904,6 +927,64 @@ class _CustomerRegistryProfileScreenState extends State<CustomerRegistryProfileS
           ],
         ]),
       );
+
+  /// Transport orders created for this customer in the shipment-orders section (latest 50), as on the web.
+  Widget _ordersCard(Map<String, dynamic> d, Map<String, dynamic> a, bool money) {
+    final orders = List<Map<String, dynamic>>.from(d['orders'] ?? []);
+    final total = (a['orders'] ?? orders.length) as num;
+    return AppCard(
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        _cardTitle(tr('أوامر النقل المنشأة لهذا العميل', 'Transport orders for this customer'), Icons.assignment_outlined, count: '$total'),
+        const SizedBox(height: 2),
+        Text(total > orders.length
+                ? tr('من قسم «طلبات الشحنات»؛ يُعرَض أحدث ${orders.length}.', 'From Shipment Orders; latest ${orders.length} shown.')
+                : tr('من قسم «طلبات الشحنات».', 'From Shipment Orders.'),
+            style: const TextStyle(fontSize: 11.5, color: T.inkSoft)),
+        const SizedBox(height: 6),
+        for (var i = 0; i < orders.length; i++) ...[
+          if (i > 0) const Divider(height: 1, color: T.line),
+          Padding(
+            padding: const EdgeInsets.symmetric(vertical: 7),
+            child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                Text('#${orders[i]['reference'] is String && (orders[i]['reference'] as String).isNotEmpty ? orders[i]['reference'] : (orders[i]['waybillNumber'] ?? '—')}',
+                    textDirection: TextDirection.ltr, style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w900, color: T.ink)),
+                Text('${orders[i]['fromCity'] ?? '—'} ← ${orders[i]['toCity'] ?? '—'}', style: const TextStyle(fontSize: 12.5, fontWeight: FontWeight.w700)),
+                Text([
+                  _day(orders[i]['createdAt']),
+                  if ('${orders[i]['truckType'] ?? ''}'.isNotEmpty) '${orders[i]['truckType']}',
+                  if ('${orders[i]['supplierName'] ?? ''}'.isNotEmpty) '${orders[i]['supplierName']}',
+                  if ('${orders[i]['vehiclePlate'] ?? ''}'.isNotEmpty) '${orders[i]['vehiclePlate']}',
+                ].join(' · '), style: const TextStyle(fontSize: 11, color: T.inkFaint)),
+              ])),
+              Column(crossAxisAlignment: CrossAxisAlignment.end, children: [
+                Chip2(_orderStatus('${orders[i]['status'] ?? ''}'), T.navy),
+                if (money && orders[i]['sellPrice'] != null) Padding(
+                  padding: const EdgeInsets.only(top: 4),
+                  child: Text(_money(orders[i]['sellPrice']), style: const TextStyle(fontSize: 12.5, fontWeight: FontWeight.w800, color: T.ink)),
+                ),
+              ]),
+            ]),
+          ),
+        ],
+      ]),
+    );
+  }
+
+  String _orderStatus(String k) => switch (k) {
+        'requesting' => tr('قيد الطلب', 'Requesting'),
+        'loading' => tr('جاري التحميل', 'Loading'),
+        'uploaded' => tr('تم التحميل', 'Uploaded'),
+        'on_way' => tr('في الطريق', 'On way'),
+        'arrived' => tr('وصلت', 'Arrived'),
+        'bond_sent' => tr('أُرسل السند', 'Bond sent'),
+        'bond_received' => tr('استُلم السند', 'Bond received'),
+        'late' => tr('متأخرة', 'Late'),
+        'invoiced' => tr('تمت الفوترة', 'Invoiced'),
+        'cancelled' => tr('ملغاة', 'Cancelled'),
+        '' => '—',
+        _ => k,
+      };
 
   Widget _tile(String label, String value, Color color, IconData icon) => AppCard(
         padding: const EdgeInsets.all(12),

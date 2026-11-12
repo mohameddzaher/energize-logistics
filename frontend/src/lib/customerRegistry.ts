@@ -94,13 +94,18 @@ export interface RunRoute {
 export interface ProfilePayload {
   customer: {
     _id: string; name: string; phone: string; email: string; notes: string; isActive: boolean;
-    defaults: Record<string, string>;
+    /** Several values per preference (server-normalised lists). */
+    defaults: Record<string, string[]>;
     routes: AgreedRoute[];
   };
   analysis: {
     sheets: number; purchaseTotal?: number; avgPerSheet?: number;
     firstAt: string | null; lastAt: string | null;
-    branches: string[]; routesCount: number; pricedRoutes: number; orders: number;
+    branches: string[]; routesCount: number; pricedRoutes: number;
+    /** Transport orders created for the customer in shipment orders (all, not only the 50 listed). */
+    orders: number;
+    /** Distinct routes worked and months with at least one trip, under the chosen filters. */
+    routesWorked?: number; activeMonths?: number;
     monthly: { month: string; sheets: number; purchase?: number }[];
   };
   routes: RunRoute[];

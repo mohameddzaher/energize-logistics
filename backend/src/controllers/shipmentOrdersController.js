@@ -1881,6 +1881,8 @@ const ownershipFilter = (v) => {
   return null;
 };
 
+const { withPrefs } = require('../utils/customerPrefs');
+
 exports.listCustomers = async (req, res) => {
   try {
     const { q } = req.query;
@@ -1889,7 +1891,7 @@ exports.listCustomers = async (req, res) => {
     // The new-shipment picker is the customers page: every active row, read fresh
     // because the cache is per worker and an edit there must show at once.
     if (String(req.query.picker || '') === '1') {
-      const customers = await ShipmentOrderCustomer.find(filter).select(CUSTOMER_LIST_FIELDS).sort({ name: 1 }).limit(5000).lean();
+      const customers = (await ShipmentOrderCustomer.find(filter).select(CUSTOMER_LIST_FIELDS).sort({ name: 1 }).limit(5000).lean()).map(withPrefs);
       return res.json({ customers, total: customers.length });
     }
     const out = await cache.wrap(registryKey('customers', req), REGISTRY_TTL, async () => {
@@ -1901,7 +1903,7 @@ exports.listCustomers = async (req, res) => {
           .lean(),
         ShipmentOrderCustomer.countDocuments(filter),
       ]);
-      return { customers, total };
+      return { customers: customers.map(withPrefs), total };
     });
     res.json(out);
   } catch (error) {

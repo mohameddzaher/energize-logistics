@@ -2,6 +2,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../services/api.dart';
+import '../services/customer_prefs.dart';
 import '../services/auth.dart';
 import '../services/lang.dart';
 import '../services/live.dart';
@@ -318,11 +319,14 @@ class _ShipmentRequestFormScreenState extends State<ShipmentRequestFormScreen> {
     setState(() {
       _customer = c;
       _newCustomer = false;
+      // One agreed value fills; several are left for the user to choose.
       final d = (c['defaults'] as Map?) ?? const {};
       for (final k in ['cargoType', 'branch', 'paymentSubtype']) {
-        if ('${d[k] ?? ''}'.isNotEmpty && '${_form[k] ?? ''}'.isEmpty) { _form[k] = d[k]; _ctrls.remove(k); }
+        final one = prefOnly(d[k]);
+        if (one.isNotEmpty && '${_form[k] ?? ''}'.isEmpty) { _form[k] = one; _ctrls.remove(k); }
       }
-      if (_types.isEmpty && '${d['truckType'] ?? ''}'.isNotEmpty) _form['truckTypes'] = ['${d['truckType']}'];
+      final trucks = prefList(d['truckType']);
+      if (_types.isEmpty && trucks.length == 1) _form['truckTypes'] = trucks;
       _routePrice();
     });
   }

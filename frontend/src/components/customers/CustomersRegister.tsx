@@ -397,8 +397,8 @@ export default function CustomersRegister({ basePath }: { basePath: string }) {
         </div>
       </div>
 
-      <Modal open={!!portalFor} onClose={() => setPortalFor(null)} title={`${ar ? 'حساب البوابة' : 'Portal login'} — ${portalFor?.name || ''}`}>
-        {portalFor && <PortalAccountCard source="shipment_order_customer" refId={String(portalFor._id)} name={portalFor.name} />}
+      <Modal open={!!portalFor} onClose={() => setPortalFor(null)} title={ar ? 'حساب بوابة العملاء' : 'Customer portal account'}>
+        {portalFor && <PortalAccountCard source="shipment_order_customer" refId={String(portalFor._id)} name={portalFor.name} bare />}
       </Modal>
 
       <CustomerEditDialog open={editOpen} customer={editing} lang={lang as Lang} canEditPrices={canEditRoutePrices(user)}

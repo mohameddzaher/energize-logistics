@@ -1,4 +1,7 @@
+import 'dart:math';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+import '../config.dart';
 import 'package:provider/provider.dart';
 import '../services/api.dart';
 import '../services/auth.dart';
@@ -8,6 +11,16 @@ import 'widgets.dart';
 
 /// Portal account, twin of PortalAccountCard on the web: a card in each customer or supplier profile that asks the server whether this row has a portal login. It offers creating one (email + password), or shows the account with change password, suspend and delete. Management is limited to ACCOUNT_ADMIN_ROLES on the server.
 const _adminRoles = ['super_admin', 'admin', 'it_manager', 'it_specialist'];
+
+/// The web login page partners use; the site lives on the API host without the `api.` prefix.
+final _loginUrl = '${AppConfig.apiBase.replaceFirst('://api.', '://')}/login';
+
+/// A strong password without look-alike characters, so it can be read out over the phone.
+String _makePassword() {
+  const pool = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnpqrstuvwxyz23456789';
+  final r = Random.secure();
+  return List.generate(12, (_) => pool[r.nextInt(pool.length)]).join();
+}
 
 class PortalAccountCard extends StatefulWidget {
   final String source; // Register key: 'fleet_customer', 'crm_company', etc.
@@ -25,6 +38,8 @@ class _PortalAccountCardState extends State<PortalAccountCard> {
   bool _loading = true, _busy = false, _openForm = false, _showPw = false;
   final _email = TextEditingController();
   final _pw = TextEditingController();
+  // Shown once after create or reset so the credentials can be copied and sent; cleared on close.
+  (String, String)? _issued;
 
   @override
   void initState() { super.initState(); _load(); }
@@ -55,6 +70,7 @@ class _PortalAccountCardState extends State<PortalAccountCard> {
         'source': widget.source, 'refId': widget.refId, 'email': _email.text.trim(), 'password': _pw.text, 'firstName': widget.name,
       });
       _account = Map<String, dynamic>.from(r['account']);
+      _issued = ('${_account!['email'] ?? _email.text.trim()}', _pw.text);
       _openForm = false; _email.clear(); _pw.clear();
       _msg((r['message'] ?? tr('تم إنشاء حساب الدخول', 'Login created')).toString());
     } catch (e) { _msg(e is ApiException ? e.message : tr('تعذّر إنشاء الحساب', 'Failed to create the login')); }
@@ -62,10 +78,12 @@ class _PortalAccountCardState extends State<PortalAccountCard> {
   }
 
   Future<void> _resetPassword() async {
-    final ctrl = TextEditingController();
+    final ctrl = TextEditingController(text: _makePassword());
     final pw = await showDialog<String>(context: context, builder: (c) => AlertDialog(
       title: Text(tr('تغيير كلمة المرور', 'Reset password')),
-      content: TextField(controller: ctrl, obscureText: true, decoration: InputDecoration(labelText: tr('كلمة المرور الجديدة (8 أحرف على الأقل)', 'New password (min 8 characters)'))),
+      content: TextField(controller: ctrl, decoration: InputDecoration(
+          labelText: tr('كلمة المرور الجديدة (8 أحرف على الأقل)', 'New password (min 8 characters)'),
+          helperText: tr('تظهر مرّةً واحدة بعد الحفظ لنسخها.', 'Shown once after saving so you can copy it.'))),
       actions: [
         TextButton(onPressed: () => Navigator.pop(c), child: Text(tr('إلغاء', 'Cancel'))),
         FilledButton(onPressed: () => Navigator.pop(c, ctrl.text), child: Text(tr('تغيير', 'Reset'))),
@@ -76,6 +94,7 @@ class _PortalAccountCardState extends State<PortalAccountCard> {
     setState(() => _busy = true);
     try {
       await Api.instance.patch('/api/partners/account/${_account!['_id']}', {'password': pw});
+      _issued = ('${_account!['email'] ?? ''}', pw);
       _msg(tr('تم تغيير كلمة المرور — تم إنهاء جلساته على كل الأجهزة', 'Password reset — the partner is signed out of every device'));
     } catch (e) { _msg(e is ApiException ? e.message : tr('فشل', 'Failed')); }
     if (mounted) setState(() => _busy = false);
@@ -105,10 +124,24 @@ class _PortalAccountCardState extends State<PortalAccountCard> {
     try {
       await Api.instance.delete('/api/partners/account/${_account!['_id']}');
       _account = null;
+      _issued = null;
       _msg(tr('تم حذف الحساب', 'Login deleted'));
     } catch (e) { _msg(e is ApiException ? e.message : tr('فشل', 'Failed')); }
     if (mounted) setState(() => _busy = false);
   }
+
+  Future<void> _copy(String text) async {
+    await Clipboard.setData(ClipboardData(text: text));
+    _msg(tr('نُسخ', 'Copied'));
+  }
+
+  Widget _credRow(String label, String value) => Row(children: [
+        Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Text(label, style: const TextStyle(fontSize: 11, color: T.inkFaint, fontWeight: FontWeight.w700)),
+          Text(value, textDirection: TextDirection.ltr, style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w700, color: T.ink)),
+        ])),
+        IconButton(visualDensity: VisualDensity.compact, tooltip: tr('نسخ', 'Copy'), icon: const Icon(Icons.copy_outlined, size: 17, color: T.inkSoft), onPressed: () => _copy(value)),
+      ]);
 
   @override
   Widget build(BuildContext context) {
@@ -135,27 +168,55 @@ class _PortalAccountCardState extends State<PortalAccountCard> {
                     'A login lets this $kindLabel see their own shipments, waybills and invoices.'),
                 style: const TextStyle(color: T.inkFaint, fontSize: 11.5)),
           ])),
-          if (a != null)
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-              decoration: BoxDecoration(color: (a['isActive'] == true ? T.success : T.danger).withValues(alpha: 0.12), borderRadius: BorderRadius.circular(20)),
-              child: Text(a['isActive'] == true ? tr('مفعّل', 'Active') : tr('موقوف', 'Suspended'),
-                  style: TextStyle(fontSize: 11, color: a['isActive'] == true ? T.success : T.danger, fontWeight: FontWeight.w700)),
-            ),
+          Chip2(
+            a == null ? tr('لا يوجد حساب', 'No account') : a['isActive'] == true ? tr('مفعّل', 'Active') : tr('موقوف', 'Suspended'),
+            a == null ? T.inkFaint : a['isActive'] == true ? T.success : T.danger,
+          ),
         ]),
         const SizedBox(height: 10),
+        if (_issued != null) ...[
+          Container(
+            decoration: BoxDecoration(color: T.success.withValues(alpha: 0.07), borderRadius: BorderRadius.circular(12), border: Border.all(color: T.success.withValues(alpha: 0.3))),
+            padding: const EdgeInsets.fromLTRB(10, 6, 4, 6),
+            child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+              Row(children: [
+                Expanded(child: Text(tr('بيانات الدخول — انسخها وأرسلها الآن', 'Login details — copy and send them now'),
+                    style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 12.5, color: T.success))),
+                IconButton(visualDensity: VisualDensity.compact, icon: const Icon(Icons.close, size: 18), onPressed: () => setState(() => _issued = null)),
+              ]),
+              _credRow(tr('صفحة الدخول', 'Login page'), _loginUrl),
+              _credRow(tr('البريد الإلكتروني', 'Email'), _issued!.$1),
+              _credRow(tr('كلمة المرور', 'Password'), _issued!.$2),
+              Align(
+                alignment: AlignmentDirectional.centerEnd,
+                child: TextButton.icon(
+                  icon: const Icon(Icons.copy_all_outlined, size: 16), label: Text(tr('نسخ الكل', 'Copy all')),
+                  onPressed: () => _copy('${tr('صفحة الدخول', 'Login page')}: $_loginUrl\n${tr('البريد', 'Email')}: ${_issued!.$1}\n${tr('كلمة المرور', 'Password')}: ${_issued!.$2}'),
+                ),
+              ),
+              Text(tr('لا تظهر كلمة المرور مرّةً أخرى بعد الإغلاق.', 'The password is not shown again after you close this.'),
+                  style: const TextStyle(fontSize: 11, color: T.inkSoft)),
+            ]),
+          ),
+          const SizedBox(height: 10),
+        ],
         if (a != null) ...[
-          Row(children: [
-            const Icon(Icons.mail_outline, size: 16, color: T.inkFaint),
-            const SizedBox(width: 6),
-            Expanded(child: SelectableText('${a['email'] ?? ''}', style: const TextStyle(fontWeight: FontWeight.w600))),
-          ]),
-          const SizedBox(height: 4),
-          Text(
-            a['lastLogin'] != null
-                ? '${tr('آخر دخول', 'Last login')}: ${(DateTime.tryParse('${a['lastLogin']}')?.toLocal().toString() ?? '').split('.').first}'
-                : tr('لم يسجّل الدخول بعد', 'Has never signed in yet'),
-            style: const TextStyle(color: T.inkFaint, fontSize: 11.5),
+          Container(
+            decoration: BoxDecoration(color: T.canvas, borderRadius: BorderRadius.circular(12)),
+            padding: const EdgeInsets.fromLTRB(10, 4, 4, 4),
+            child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+              _credRow(tr('بريد الدخول', 'Login email'), '${a['email'] ?? ''}'),
+              _credRow(tr('صفحة الدخول', 'Login page'), _loginUrl),
+              Padding(
+                padding: const EdgeInsets.symmetric(vertical: 6),
+                child: Text(
+                  a['lastLogin'] != null
+                      ? '${tr('آخر دخول', 'Last sign-in')}: ${(DateTime.tryParse('${a['lastLogin']}')?.toLocal().toString() ?? '').split('.').first}'
+                      : tr('لم يسجّل الدخول بعد', 'Has not signed in yet'),
+                  style: const TextStyle(color: T.inkSoft, fontSize: 12),
+                ),
+              ),
+            ]),
           ),
           if (canManage) ...[
             const SizedBox(height: 8),
@@ -174,13 +235,17 @@ class _PortalAccountCardState extends State<PortalAccountCard> {
           ],
         ] else if (canManage) ...[
           if (_openForm) ...[
-            TextField(controller: _email, keyboardType: TextInputType.emailAddress, decoration: InputDecoration(labelText: tr('البريد الإلكتروني للدخول', 'Login email'))),
+            TextField(controller: _email, keyboardType: TextInputType.emailAddress, textDirection: TextDirection.ltr,
+                decoration: InputDecoration(labelText: tr('البريد الإلكتروني للدخول', 'Login email'))),
             const SizedBox(height: 8),
             TextField(
-              controller: _pw, obscureText: !_showPw,
+              controller: _pw, obscureText: !_showPw, textDirection: TextDirection.ltr,
               decoration: InputDecoration(
                 labelText: tr('كلمة المرور (8 أحرف على الأقل)', 'Password (min 8 characters)'),
-                suffixIcon: IconButton(onPressed: () => setState(() => _showPw = !_showPw), icon: Icon(_showPw ? Icons.visibility_off : Icons.visibility)),
+                suffixIcon: Row(mainAxisSize: MainAxisSize.min, children: [
+                  IconButton(tooltip: tr('توليد', 'Generate'), onPressed: () => setState(() { _pw.text = _makePassword(); _showPw = true; }), icon: const Icon(Icons.auto_fix_high_outlined)),
+                  IconButton(onPressed: () => setState(() => _showPw = !_showPw), icon: Icon(_showPw ? Icons.visibility_off : Icons.visibility)),
+                ]),
               ),
             ),
             const SizedBox(height: 8),
@@ -198,7 +263,7 @@ class _PortalAccountCardState extends State<PortalAccountCard> {
               alignment: AlignmentDirectional.centerStart,
               child: FilledButton.icon(
                 style: FilledButton.styleFrom(backgroundColor: T.orange),
-                onPressed: () => setState(() => _openForm = true),
+                onPressed: () => setState(() { _openForm = true; _pw.text = _makePassword(); _showPw = true; }),
                 icon: const Icon(Icons.person_add_alt, size: 16),
                 label: Text(tr('إنشاء حساب دخول لهذا $kindLabel', 'Create a login for this $kindLabel')),
               ),

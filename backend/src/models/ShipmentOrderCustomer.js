@@ -1,4 +1,5 @@
 const mongoose = require('mongoose');
+const { prefList } = require('../utils/customerPrefs');
 
 // A customer of the shipment-orders trial section, with the two things that
 // make creating an order fast: the prices agreed per route, and the defaults
@@ -46,13 +47,14 @@ const shipmentOrderCustomerSchema = new mongoose.Schema(
       tiersBy: { type: String, trim: true, default: '' },
     }],
 
-    // What this customer usually ships with — prefilled, always editable.
+    // What this customer usually ships with, several values per field (e.g. two truck types). One value prefills the shipment form; several are offered first.
+    // Rows saved before hold one string; the setter and utils/customerPrefs read both shapes as a list, so no migration is needed.
     defaults: {
-      truckType: { type: String, trim: true, default: '' },
-      cargoType: { type: String, trim: true, default: '' },
-      paymentMethod: { type: String, trim: true, default: '' },
-      driverRentType: { type: String, trim: true, default: '' },
-      branch: { type: String, trim: true, default: '' },
+      truckType: { type: [String], default: [], set: prefList },
+      cargoType: { type: [String], default: [], set: prefList },
+      paymentMethod: { type: [String], default: [], set: prefList },
+      driverRentType: { type: [String], default: [], set: prefList },
+      branch: { type: [String], default: [], set: prefList },
     },
 
     isActive: { type: Boolean, default: true },

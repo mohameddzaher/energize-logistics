@@ -6,11 +6,12 @@
 import { useState, useEffect, useMemo, useCallback } from 'react';
 import { Plus, X, Check, Loader2, Search, Route } from 'lucide-react';
 import {
-  Modal, Field, TextInput, TextArea, Select, SearchableSelect, PrimaryButton,
+  Modal, Field, TextInput, TextArea, SearchableSelect, PrimaryButton,
 } from '@/components/hr/HRKit';
 import { useDialog } from '@/components/system/DialogProvider';
 import api from '@/lib/api';
-import { FormField, optionLabel, Lang } from '@/lib/shipmentOrders';
+import { FormField, optionLabel, Lang, prefList } from '@/lib/shipmentOrders';
+import PrefMultiSelect from '@/components/customers/PrefMultiSelect';
 import { AgreedRoute, foldAr, fmtDay, priceSourceLabel } from '@/lib/customerRegistry';
 
 export interface EditableCustomer {
@@ -20,12 +21,13 @@ export interface EditableCustomer {
   email?: string;
   notes?: string;
   routes?: AgreedRoute[];
-  defaults?: Record<string, string>;
+  /** Several values per preference; older rows hold one string. */
+  defaults?: Record<string, string | string[]>;
 }
 
-const EMPTY_DEFAULTS = { truckType: '', cargoType: '', paymentMethod: '', driverRentType: '', branch: '' };
+const EMPTY_DEFAULTS: Record<string, string[]> = { truckType: [], cargoType: [], paymentMethod: [], driverRentType: [], branch: [] };
 
-const DEFAULT_KEYS: [keyof typeof EMPTY_DEFAULTS, string, string][] = [
+const DEFAULT_KEYS: [string, string, string][] = [
   ['truckType', 'نوع الشاحنة', 'Truck type'],
   ['cargoType', 'نوع الحمولة', 'Cargo type'],
   ['paymentMethod', 'طريقة الدفع', 'Payment method'],
@@ -68,7 +70,7 @@ export default function CustomerEditDialog({
       email: customer?.email || '',
       notes: customer?.notes || '',
       routes: (customer?.routes || []).map((r) => ({ ...r, price: r.price ?? '' })),
-      defaults: { ...EMPTY_DEFAULTS, ...(customer?.defaults || {}) },
+      defaults: Object.fromEntries(Object.keys(EMPTY_DEFAULTS).map((k) => [k, prefList(customer?.defaults?.[k])])),
     });
   }, [open, customer]);
 
@@ -216,18 +218,14 @@ export default function CustomerEditDialog({
       )}
 
       <div className="mt-4">
-        <p className="text-xs font-semibold text-slate-600 mb-2">{ar ? 'التفضيلات المعتمدة (تُملأ تلقائياً في الشحنة)' : 'Usual defaults (autofilled on the form)'}</p>
+        <p className="text-xs font-semibold text-slate-600 mb-2">{ar ? 'التفضيلات المعتمدة (تُملأ تلقائيًّا في الشحنة؛ يمكن اختيار أكثر من قيمة)' : 'Usual defaults (autofilled on the form)'}</p>
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
           {DEFAULT_KEYS.map(([k, labelAr, labelEn]) => (
             <Field key={k} label={ar ? labelAr : labelEn}>
-              <Select value={form.defaults[k] || ''} onChange={(e) => setForm((f: any) => ({ ...f, defaults: { ...f.defaults, [k]: e.target.value } }))}>
-                <option value="">—</option>
-                {/* A saved value stays visible even if it is no longer in the list, so it is not silently wiped. */}
-                {form.defaults[k] && !optionsOf(k).some((o) => o.key === form.defaults[k]) && (
-                  <option value={form.defaults[k]}>{form.defaults[k]}</option>
-                )}
-                {optionsOf(k).map((o) => <option key={o.key} value={o.key}>{optionLabel(o, lang)}</option>)}
-              </Select>
+              {/* Several values allowed; a saved value no longer in the list still shows as a chip, so it is not silently wiped. */}
+              <PrefMultiSelect ar={ar} value={form.defaults[k] || []}
+                options={optionsOf(k).map((o) => ({ value: o.key, label: optionLabel(o, lang) }))}
+                onChange={(next) => setForm((f: any) => ({ ...f, defaults: { ...f.defaults, [k]: next } }))} />
             </Field>
           ))}
         </div>

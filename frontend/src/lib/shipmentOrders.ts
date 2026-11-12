@@ -15,11 +15,29 @@ export interface OrderCustomer {
   email?: string;
   notes?: string;
   routes: OrderRoute[];
-  defaults?: {
-    truckType?: string; cargoType?: string; paymentMethod?: string;
-    driverRentType?: string; branch?: string;
-  };
+  /** Several values per preference; rows saved before hold one string. Read through `prefList`. */
+  defaults?: Partial<Record<PrefKey, string | string[]>>;
 }
+
+export const PREF_KEYS = ['truckType', 'cargoType', 'paymentMethod', 'driverRentType', 'branch'] as const;
+export type PrefKey = typeof PREF_KEYS[number];
+
+/** A customer preference as a list, whether stored as one string (older rows) or several. */
+export const prefList = (v: unknown): string[] => {
+  const raw = Array.isArray(v) ? v : (v == null ? [] : [v]);
+  const out: string[] = [];
+  for (const x of raw) {
+    const t = String(x ?? '').trim();
+    if (t && !out.includes(t)) out.push(t);
+  }
+  return out;
+};
+
+/** The value the shipment form may fill by itself: only when the customer has exactly one; several are offered, never picked silently. */
+export const prefOnly = (v: unknown): string => {
+  const l = prefList(v);
+  return l.length === 1 ? l[0] : '';
+};
 
 export interface FormFieldOption {
   key: string; ar: string; en: string;

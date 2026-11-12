@@ -11,7 +11,7 @@ import { Bot, Send, Check, Loader2, RotateCcw, UserPlus, ExternalLink, SkipForwa
 import { Spinner, PageHeader } from '@/components/hr/HRKit';
 import {
   FormField, OrderCustomer, OrderVehicle, GROUP_LABELS, fieldLabel, optionLabel,
-  FIXED_KEYS, Lang, canEditOrders, money,
+  FIXED_KEYS, Lang, canEditOrders, money, PREF_KEYS, prefOnly,
 } from '@/lib/shipmentOrders';
 
 const fold = (x: string) => x.toLowerCase()
@@ -127,9 +127,9 @@ export default function ChatCreatePage() {
     // Same autofill as the form page — defaults now, route price on the fly.
     setAnswers((a) => {
       const nextA: Record<string, any> = { ...a, customerName: c.name };
+      // Only a single agreed value is filled; with several the step still asks.
       const d = c.defaults || {};
-      (['truckType', 'cargoType', 'paymentMethod', 'driverRentType', 'branch'] as const)
-        .forEach((k) => { if (!nextA[k] && d[k]) nextA[k] = d[k]; });
+      PREF_KEYS.forEach((k) => { const one = prefOnly(d[k]); if (!nextA[k] && one) nextA[k] = one; });
       return nextA;
     });
     if ((c.routes || []).length) {

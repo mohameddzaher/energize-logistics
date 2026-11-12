@@ -22,13 +22,14 @@ import { ColumnFilter, type ColumnFilterOption } from '@/components/ColumnFilter
 import MonthPicker from '@/components/system/MonthPicker';
 import DateRangeFilter from '@/components/system/DateRangeFilter';
 import PortalAccountCard from '@/components/system/PortalAccountCard';
-import { FormField, optionLabel, Lang } from '@/lib/shipmentOrders';
+import { FormField, optionLabel, Lang, prefList, statusLabel as orderStatusLabel, orderStatus } from '@/lib/shipmentOrders';
+import PrefMultiSelect from '@/components/customers/PrefMultiSelect';
 import {
   canEditCustomers, canEditRoutePrices, ProfilePayload, RunRoute, AgreedRoute, PriceTier, tiersText, foldAr, fmtDay, fmtNum, priceSourceLabel,
 } from '@/lib/customerRegistry';
 import {
   ArrowRight, ArrowLeft, Pencil, KeyRound, Phone, Mail, Search, ChevronLeft, ChevronRight, Route,
-  Hash, MapPin, Truck, Wallet, Calculator, BadgeCheck, CalendarClock, CalendarCheck, ClipboardList, Inbox,
+  Hash, MapPin, Truck, Wallet, CalendarRange, BadgeCheck, CalendarClock, CalendarCheck, ClipboardList, Inbox, Signpost,
   Check, X, Loader2, Plus, Trash2, UserRound, ChevronDown,
 } from 'lucide-react';
 
@@ -174,7 +175,6 @@ const DEFAULT_KEYS: [string, string, string][] = [
   ['driverRentType', 'نوع تأجير السائق', 'Driver rent type'],
   ['branch', 'الفرع', 'Branch'],
 ];
-const EMPTY_DEFAULTS: Record<string, string> = { truckType: '', cargoType: '', paymentMethod: '', driverRentType: '', branch: '' };
 
 type RouteStatus = 'all' | 'priced' | 'no_price' | 'idle';
 
@@ -185,7 +185,6 @@ interface URow {
   sheets: number; purchase?: number; lastAt: string | null;
   price: number | null; priceAt: string | null; priceSource: string; hits: number;
   tiers: PriceTier[]; tiersAt?: string | null; tiersBy?: string;
-  revenue: number | null; margin: number | null;
 }
 
 const routeKeyOf = (from: string, to: string) => `${foldAr(from)}→${foldAr(to)}`;
@@ -196,6 +195,15 @@ const statusLabel = (r: URow, ar: boolean, filtered: boolean): string => {
   return ar ? 'مُسعَّر' : 'Priced';
 };
 
+/** A multi-value preference saved on each add or remove. Module-level so its busy state survives re-renders. */
+function InlinePrefs({ value, options, editable, ar, onSave }: {
+  value: string[]; options: { value: string; label: string }[]; editable: boolean; ar: boolean; onSave: (next: string[]) => Promise<boolean>;
+}) {
+  const [busy, setBusy] = useState(false);
+  const change = async (next: string[]) => { setBusy(true); await onSave(next); setBusy(false); };
+  return <PrefMultiSelect value={value} options={options} disabled={!editable} busy={busy} ar={ar} onChange={change} />;
+}
+
 /** One figure in the KPI strip. Cells draw their own top/start border so a short last row leaves no grey gap. */
 function KpiCell({ icon, label, value, tone = 'text-slate-900', sub }: {
   icon: ReactNode; label: string; value: ReactNode; tone?: string; sub?: ReactNode;
@@ -204,7 +212,7 @@ function KpiCell({ icon, label, value, tone = 'text-slate-900', sub }: {
     <div className="min-w-0 border-t border-s border-slate-200 px-4 py-3.5">
       <p className="flex items-center gap-1.5 text-[12px] font-semibold text-slate-500">
         <span className="text-slate-400 shrink-0">{icon}</span>
-        <span className="truncate" title={label}>{label}</span>
+        <span className="line-clamp-2 leading-snug" title={label}>{label}</span>
       </p>
       <div className={`mt-1.5 text-xl sm:text-2xl font-bold leading-tight tabular-nums break-words ${tone}`}>{value}</div>
       {sub}
@@ -230,7 +238,7 @@ function SectionBar({ icon, title, count, hint, children }: {
         </p>
         {hint && <p className="mt-0.5 text-[12px] text-slate-500">{hint}</p>}
       </div>
-      {children && <div className="flex flex-wrap items-center gap-2 lg:justify-end lg:shrink-0">{children}</div>}
+      {children && <div className="flex flex-wrap lg:flex-nowrap items-center gap-2 lg:justify-end lg:shrink-0 whitespace-nowrap [&>*]:shrink-0">{children}</div>}
     </div>
   );
 }
@@ -584,7 +592,7 @@ export default function CustomerProfile({ id, basePath }: { id: string; basePath
         key, from: r.from, to: r.to, worked: (r.sheets || 0) > 0, agreed: false, priced: false,
         sheets: r.sheets || 0, purchase: r.purchase, lastAt: r.lastAt,
         price: r.price, priceAt: r.priceAt, priceSource: r.priceSource || '', hits: 0,
-        tiers: r.tiers || [], tiersAt: r.tiersAt, tiersBy: r.tiersBy, revenue: null, margin: null,
+        tiers: r.tiers || [], tiersAt: r.tiersAt, tiersBy: r.tiersBy,
       });
     }
     for (const a of data.customer.routes) {
@@ -598,7 +606,7 @@ export default function CustomerProfile({ id, basePath }: { id: string; basePath
           key, from: a.fromCity, to: a.toCity, worked: false, agreed: true, priced: false,
           sheets: 0, purchase: money ? 0 : undefined, lastAt: null,
           price: a.price, priceAt: a.at || null, priceSource: a.source || '', hits: a.hits || 1,
-          tiers, revenue: null, margin: null,
+          tiers,
         });
       }
     }
@@ -659,10 +667,22 @@ export default function CustomerProfile({ id, basePath }: { id: string; basePath
   const routesShown = useMemo(() => rcf.apply(routesSearched, ugetters), [rcf, routesSearched, ugetters]);
 
   const ogetters = useMemo((): Record<string, (o: any) => any> => ({
-    number: (o) => o.orderNumber || o.waybillNumber || '', createdAt: (o) => fmtDay(o.createdAt),
-    fromCity: (o) => o.fromCity, toCity: (o) => o.toCity, supplierName: (o) => o.supplierName,
-    vehiclePlate: (o) => o.vehiclePlate, status: (o) => o.status,
-  }), []);
+    // The platform reference when there is one, else our waybill number; the same rule as the shipment-orders list.
+    number: (o) => String(o.reference || o.waybillNumber || ''), createdAt: (o) => fmtDay(o.createdAt),
+    fromCity: (o) => o.fromCity, toCity: (o) => o.toCity, truckType: (o) => o.truckType, supplierName: (o) => o.supplierName,
+    vehiclePlate: (o) => o.vehiclePlate, salesRepName: (o) => o.salesRepName,
+    sellPrice: (o) => (o.sellPrice == null ? '' : fmtNum(o.sellPrice)), status: (o) => orderStatusLabel(o.status, lang as Lang),
+  }), [lang]);
+  const orderCols = useMemo(() => ([
+    ['number', 'رقم أمر النقل', 'Order no.'], ['createdAt', 'تاريخ الإنشاء', 'Created'], ['fromCity', 'من', 'From'], ['toCity', 'إلى', 'To'],
+    ['truckType', 'نوع الشاحنة', 'Truck type'], ['supplierName', 'المورد', 'Supplier'], ['vehiclePlate', 'المركبة', 'Vehicle'],
+    ['salesRepName', 'مندوب المبيعات', 'Sales rep'],
+    ...(money ? [['sellPrice', 'سعر البيع', 'Selling price', true]] : []),
+    ['status', 'الحالة', 'Status'],
+  ] as [string, string, string, boolean?][]), [money]);
+  const orderExportCols: ExportColumn[] = useMemo(() => orderCols.map(([k, la, le, num]) => ({
+    header: ar ? la : le, key: k, type: num ? 'number' : 'text', transform: (_v: any, r: any) => (k === 'sellPrice' ? r.sellPrice : ogetters[k](r)),
+  } as ExportColumn)), [orderCols, ar, ogetters]);
   const ordersShown = useMemo(() => ocf.apply(data?.orders || [], ogetters), [ocf, data, ogetters]);
 
   const routeExportCols: ExportColumn[] = useMemo(() => ucols.map((c) => ({
@@ -695,7 +715,7 @@ export default function CustomerProfile({ id, basePath }: { id: string; basePath
   // The server sends the code; the shared payload type predates it.
   const code = String((c as { customerCode?: string }).customerCode || '');
   const initial = Array.from(c.name.trim())[0] || '?';
-  const defaults = { ...EMPTY_DEFAULTS, ...(c.defaults || {}) };
+  const defaults: Record<string, string[]> = Object.fromEntries(DEFAULT_KEYS.map(([k]) => [k, prefList(c.defaults?.[k])]));
   const Back = isRTL ? ArrowRight : ArrowLeft;
   const th = 'px-3 py-3 font-semibold whitespace-nowrap';
   const td = 'px-3 py-2.5 whitespace-nowrap';
@@ -716,7 +736,6 @@ export default function CustomerProfile({ id, basePath }: { id: string; basePath
     ['no_price', 'بلا سعر متّفق', 'No agreed price', 'text-amber-700'],
     ['idle', filtered ? 'لا رحلات في الفترة' : 'لم يُعمل عليها', filtered ? 'No trips in period' : 'Never worked', 'text-slate-600'],
   ];
-  const optLabel = (k: string, v: string) => optionsOf(k).find((o) => o.value === v)?.label || v;
 
   return (
     <div className="space-y-4 sm:space-y-5" dir={isRTL ? 'rtl' : 'ltr'}>
@@ -800,12 +819,18 @@ export default function CustomerProfile({ id, basePath }: { id: string; basePath
             </div>
           </div>
           <div className="rounded-xl border border-slate-100 bg-slate-50/60 p-3">
-            <p className="text-[12px] font-bold text-slate-700 mb-2">{ar ? 'التفضيلات المعتمدة (تُملأ تلقائيًّا في الشحنة)' : 'Usual defaults (autofilled on the shipment form)'}</p>
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-x-4 gap-y-3">
+            <p className="text-[12.5px] font-bold text-slate-800">{ar ? 'التفضيلات المعتمدة' : 'Agreed preferences'}</p>
+            <p className="text-[11.5px] text-slate-500 mb-3">
+              {ar ? 'يمكن اختيار أكثر من قيمة. القيمة الوحيدة تُملأ تلقائيًّا في أمر النقل، والقيم المتعدّدة تُعرَض أوّلًا للاختيار منها.'
+                : 'Several values allowed. A single value is filled on the transport order; several are offered first to choose from.'}
+            </p>
+            <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-5 gap-x-4 gap-y-3">
               {DEFAULT_KEYS.map(([k, la, le]) => (
-                <InlineField key={k} kind="select" label={ar ? la : le} value={defaults[k] || ''} display={optLabel(k, defaults[k] || '')}
-                  options={optionsOf(k)} editable={editor} ar={ar}
-                  onSave={(v) => putCustomer({ defaults: { ...defaults, [k]: v } })} />
+                <div key={k} className="min-w-0">
+                  <p className="text-[11.5px] font-semibold text-slate-500 mb-1">{ar ? la : le}</p>
+                  <InlinePrefs value={defaults[k]} options={optionsOf(k)} editable={editor} ar={ar}
+                    onSave={(next) => putCustomer({ defaults: { ...defaults, [k]: next } })} />
+                </div>
               ))}
             </div>
           </div>
@@ -851,12 +876,15 @@ export default function CustomerProfile({ id, basePath }: { id: string; basePath
           )}
         </div>
         <div className="border-t border-slate-200 overflow-hidden">
-          <div className={`-mt-px -ms-px grid grid-cols-2 md:grid-cols-4 ${money ? 'xl:grid-cols-7' : 'xl:grid-cols-5'}`}>
+          <div className={`-mt-px -ms-px grid grid-cols-2 md:grid-cols-4 ${money ? 'xl:grid-cols-8' : 'xl:grid-cols-7'}`}>
             <KpiCell icon={<Truck className="w-3.5 h-3.5" />} label={ar ? 'الرحلات (أوامر نقل)' : 'Trips (sheets)'}
               value={a.sheets.toLocaleString('en-US')} tone="text-[#f37121]" />
             {money && <KpiCell icon={<Wallet className="w-3.5 h-3.5" />} label={ar ? 'قيمة الشراء' : 'Purchase total'} value={fmtNum(a.purchaseTotal)} tone="text-violet-700" />}
-            {money && <KpiCell icon={<Calculator className="w-3.5 h-3.5" />} label={ar ? 'متوسّط الرحلة' : 'Avg per trip'} value={fmtNum(a.avgPerSheet)} />}
-            <KpiCell icon={<Route className="w-3.5 h-3.5" />} label={ar ? 'المسارات المتّفق عليها' : 'Agreed routes'}
+            <KpiCell icon={<Signpost className="w-3.5 h-3.5" />} label={ar ? 'المسارات المنفّذة' : 'Routes worked'}
+              value={(a.routesWorked ?? data.routes.length).toLocaleString('en-US')} />
+            <KpiCell icon={<CalendarRange className="w-3.5 h-3.5" />} label={ar ? 'أشهر النشاط' : 'Active months'}
+              value={(a.activeMonths ?? a.monthly.length).toLocaleString('en-US')} />
+            <KpiCell icon={<Route className="w-3.5 h-3.5" />} label={ar ? 'مسارات متّفق عليها' : 'Agreed routes'}
               value={a.routesCount.toLocaleString('en-US')} tone="text-blue-700" />
             <KpiCell icon={<BadgeCheck className="w-3.5 h-3.5" />} label={ar ? 'منها مُسعَّرة' : 'Priced'}
               value={a.pricedRoutes.toLocaleString('en-US')} tone={pricedFull ? 'text-emerald-700' : 'text-amber-700'}
@@ -883,15 +911,15 @@ export default function CustomerProfile({ id, basePath }: { id: string; basePath
             { key: 'routes', label: ar ? 'المسارات والأسعار' : 'Routes & prices', badge: urows.length },
             { key: 'sheets', label: ar ? 'الرحلات' : 'Trips', badge: data.sheets.total },
             // Stays while open: a period with no orders must not drop the tab the user is on.
-            ...(data.orders.length || tab === 'orders' ? [{ key: 'orders', label: ar ? 'طلباتنا' : 'Our orders', badge: data.orders.length }] : []),
+            ...(a.orders || tab === 'orders' ? [{ key: 'orders', label: ar ? 'أوامر النقل' : 'Transport orders', badge: a.orders }] : []),
           ]} />
         </div>
 
         {tab === 'routes' && (
           <>
             <SectionBar icon={<Route className="w-4 h-4" />} title={ar ? 'المسارات والأسعار المتّفق عليها' : 'Routes and agreed prices'} count={routesShown.length}
-              hint={ar ? `كلّ مسارٍ عمل عليه العميل أو له سعرٌ متّفق عليه، في صفٍّ واحد.`
-                : `Every route the customer ran or has an agreed price for, in one row.${money ? ' Revenue and margin are estimates: agreed price × trips.' : ''}`}>
+              hint={ar ? 'كلّ مسارٍ عمل عليه العميل أو له سعرٌ متّفق عليه، في صفٍّ واحد.'
+                : 'Every route the customer ran or has an agreed price for, in one row.'}>
               <ClearColumnFilters count={rcf.count} onClear={rcf.clear} ar={ar} />
               <SearchBox value={routeQ} onChange={setRouteQ} placeholder={ar ? 'بحث في المسارات…' : 'Search routes…'} />
               <ExportMenu fileName={`customer-routes-${c.name}`} lang={ar ? 'ar' : 'en'}
@@ -983,8 +1011,7 @@ export default function CustomerProfile({ id, basePath }: { id: string; basePath
                             );
                           }
                           const v = ucell(r, col.key);
-                          const tone = col.key === 'margin' && r.margin != null ? (r.margin < 0 ? 'text-red-600 font-semibold' : 'text-emerald-700 font-semibold')
-                            : col.num ? 'text-slate-800' : 'text-slate-600';
+                          const tone = col.num ? 'text-slate-800' : 'text-slate-600';
                           return <td key={col.key} className={`${td} ${col.num ? 'text-end tabular-nums' : ''} ${tone}`}>{v || <span className="text-slate-300">—</span>}</td>;
                         })}
                         {priceEditor && (
@@ -1085,18 +1112,21 @@ export default function CustomerProfile({ id, basePath }: { id: string; basePath
 
         {tab === 'orders' && (
           <>
-            <SectionBar icon={<ClipboardList className="w-4 h-4" />} title={ar ? 'طلباتنا' : 'Our orders'} count={ordersShown.length}>
+            {/* The tab badge carries the count, so the bar states what the list is instead of repeating the number. */}
+            <SectionBar icon={<ClipboardList className="w-4 h-4" />} title={ar ? 'أوامر النقل المنشأة لهذا العميل' : 'Transport orders created for this customer'}
+              hint={ar
+                ? `أوامر النقل المسجّلة للعميل في قسم «طلبات الشحنات»${a.orders > data.orders.length ? `؛ يُعرَض أحدث ${data.orders.length} من ${a.orders.toLocaleString('en-US')}` : ''}.`
+                : `Transport orders recorded for the customer in Shipment Orders${a.orders > data.orders.length ? `; latest ${data.orders.length} of ${a.orders.toLocaleString('en-US')} shown` : ''}.`}>
               <ClearColumnFilters count={ocf.count} onClear={ocf.clear} ar={ar} />
+              <ExportMenu fileName={`customer-transport-orders-${c.name}`} lang={ar ? 'ar' : 'en'}
+                options={[{ key: 'shown', label: scope.shown, sheets: [{ name: ar ? 'أوامر النقل' : 'Transport orders', rows: ordersShown, columns: orderExportCols }] }]} />
             </SectionBar>
             <ScrollX>
               <table className="w-full text-[13px]">
                 <thead>
                   <tr className="bg-slate-900 text-slate-300 text-[11.5px]">
-                    {([
-                      ['number', 'الرقم', 'Number'], ['createdAt', 'التاريخ', 'Date'], ['fromCity', 'من', 'From'], ['toCity', 'إلى', 'To'],
-                      ['supplierName', 'المورد', 'Supplier'], ['vehiclePlate', 'المركبة', 'Vehicle'], ['status', 'الحالة', 'Status'],
-                    ] as [string, string, string][]).map(([k, la, le]) => (
-                      <th key={k} className={`${th} text-start`}>
+                    {orderCols.map(([k, la, le, num]) => (
+                      <th key={k} className={`${th} ${num ? 'text-end' : 'text-start'}`}>
                         <span className="inline-flex items-center gap-1">{ar ? la : le}{ocf.header(k, data.orders, ogetters[k], ar)}</span>
                       </th>
                     ))}
@@ -1104,22 +1134,31 @@ export default function CustomerProfile({ id, basePath }: { id: string; basePath
                 </thead>
                 <tbody className="divide-y divide-slate-100">
                   {!ordersShown.length && (
-                    <EmptyRow colSpan={7} title={ar ? 'لا توجد طلبات' : 'No orders'}
+                    <EmptyRow colSpan={orderCols.length} title={ar ? 'لا توجد أوامر نقل' : 'No transport orders'}
+                      hint={ocf.count ? undefined : (ar ? 'تظهر هنا أوامر النقل التي تُنشأ لهذا العميل في قسم «طلبات الشحنات».' : 'Transport orders created for this customer in Shipment Orders appear here.')}
                       action={ocf.count ? clearBtn(ocf.clear) : undefined} />
                   )}
-                  {ordersShown.map((o: any) => (
-                    <tr key={o._id} className="hover:bg-slate-50 even:bg-slate-50/50">
-                      <td className={`${td} font-semibold text-slate-900 tabular-nums`}>{o.orderNumber || o.waybillNumber || '—'}</td>
-                      <td className={`${td} text-slate-600 tabular-nums`}>{fmtDay(o.createdAt)}</td>
-                      <td className={`${td} text-slate-700`}>{o.fromCity || '—'}</td>
-                      <td className={`${td} text-slate-700`}>{o.toCity || '—'}</td>
-                      <td className={`${td} text-slate-700`}>{o.supplierName || '—'}</td>
-                      <td className={`${td} text-slate-700`}>{o.vehiclePlate || '—'}</td>
-                      <td className={td}>
-                        {o.status ? <span className="px-2 py-0.5 rounded-md bg-slate-100 text-slate-700 text-[12px] font-medium">{o.status}</span> : '—'}
-                      </td>
-                    </tr>
-                  ))}
+                  {ordersShown.map((o: any) => {
+                    const st = orderStatus(o.status);
+                    return (
+                      <tr key={o._id} className="hover:bg-slate-50 even:bg-slate-50/50">
+                        <td className={`${td} font-bold text-slate-900 tabular-nums`}><span dir="ltr">{ogetters.number(o) || '—'}</span></td>
+                        <td className={`${td} text-slate-600 tabular-nums`}>{fmtDay(o.createdAt)}</td>
+                        <td className={`${td} font-semibold text-slate-800`}>{o.fromCity || '—'}</td>
+                        <td className={`${td} font-semibold text-slate-800`}>{o.toCity || '—'}</td>
+                        <td className={`${td} text-slate-700`}>{o.truckType || '—'}</td>
+                        <td className={`${td} text-slate-700`}>{o.supplierName || '—'}</td>
+                        <td className={`${td} text-slate-700 tabular-nums`}>{o.vehiclePlate || '—'}</td>
+                        <td className={`${td} text-slate-700`}>{o.salesRepName || '—'}</td>
+                        {money && <td className={`${td} text-end tabular-nums font-semibold text-slate-900`}>{o.sellPrice == null ? '—' : fmtNum(o.sellPrice)}</td>}
+                        <td className={td}>
+                          {o.status
+                            ? <span className={`px-2 py-0.5 rounded-md text-[12px] font-semibold ${st ? `${st.bg} ${st.text}` : 'bg-slate-100 text-slate-700'}`}>{orderStatusLabel(o.status, lang as Lang)}</span>
+                            : '—'}
+                        </td>
+                      </tr>
+                    );
+                  })}
                 </tbody>
               </table>
             </ScrollX>
@@ -1132,8 +1171,8 @@ export default function CustomerProfile({ id, basePath }: { id: string; basePath
           onClose={() => setTierRoute(null)} onSaved={() => { setTierRoute(null); load(); }} />
       )}
 
-      <Modal open={portalOpen} onClose={() => setPortalOpen(false)} title={`${ar ? 'حساب البوابة' : 'Portal login'} — ${c.name}`}>
-        <PortalAccountCard source="shipment_order_customer" refId={c._id} name={c.name} />
+      <Modal open={portalOpen} onClose={() => setPortalOpen(false)} title={ar ? 'حساب بوابة العملاء' : 'Customer portal account'}>
+        <PortalAccountCard source="shipment_order_customer" refId={c._id} name={c.name} bare />
       </Modal>
     </div>
   );

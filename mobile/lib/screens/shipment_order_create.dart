@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 import '../services/api.dart';
+import '../services/customer_prefs.dart';
 import '../services/lang.dart';
 import '../services/live.dart';
 import '../ui/app_scaffold.dart';
@@ -386,10 +387,12 @@ class _ShipmentOrderCreateScreenState extends State<ShipmentOrderCreateScreen> {
     setState(() {
       _customer = c;
       _newCustomer = false;
-      final d = c['defaults'] as Map<String, dynamic>? ?? {};
-      for (final k in ['truckType', 'cargoType', 'paymentMethod', 'driverRentType', 'branch']) {
-        if ((d[k] ?? '').toString().isNotEmpty && (_form[k] ?? '').toString().isEmpty) {
-          _form[k] = d[k];
+      // One agreed value fills the field; several are offered first under it (see _prefChips), never picked silently.
+      final d = c['defaults'] is Map ? c['defaults'] as Map : const {};
+      for (final k in customerPrefKeys) {
+        final one = prefOnly(d[k]);
+        if (one.isNotEmpty && (_form[k] ?? '').toString().isEmpty) {
+          _form[k] = one;
           _ctrls.remove(k);
         }
       }
@@ -852,6 +855,36 @@ class _ShipmentOrderCreateScreenState extends State<ShipmentOrderCreateScreen> {
     }
   }
 
+  /// One-tap choices when the customer has several agreed values for the field and none is chosen yet.
+  Widget? _prefChips(String k, List<String> prefs, List<Map<String, dynamic>> options, String current) {
+    if (prefs.length < 2 || current.isNotEmpty) return null;
+    return Padding(
+      padding: const EdgeInsets.only(top: 6),
+      child: Wrap(spacing: 6, runSpacing: 6, crossAxisAlignment: WrapCrossAlignment.center, children: [
+        Text(tr('المعتمد لهذا العميل:', 'Agreed for this customer:'), style: const TextStyle(fontSize: 11.5, color: T.inkSoft, fontWeight: FontWeight.w700)),
+        for (final p in prefs)
+          ActionChip(
+            visualDensity: VisualDensity.compact,
+            backgroundColor: T.orange.withValues(alpha: 0.08),
+            side: BorderSide(color: T.orange.withValues(alpha: 0.35)),
+            label: Text(() {
+              final o = options.firstWhere((x) => x['key'] == p, orElse: () => const {});
+              return o.isEmpty ? p : tr('${o['ar'] ?? p}', '${o['en'] ?? o['ar'] ?? p}');
+            }(), style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: T.ink)),
+            onPressed: () => setState(() {
+              _form[k] = p;
+              // The rental type writes the payment method with it, as when picked from the list.
+              if (k == 'driverRentType') {
+                final opt = options.firstWhere((o) => o['key'] == p, orElse: () => const {});
+                final pay = (opt['paymentMethod'] ?? '').toString();
+                if (pay.isNotEmpty) _form['paymentMethod'] = pay;
+              }
+            }),
+          ),
+      ]),
+    );
+  }
+
   Widget _fieldInput(Map<String, dynamic> f) {
     final k = (f['key'] ?? '').toString();
     final label = tr((f['labelAr'] ?? k).toString(), (f['labelEn'] ?? '').toString().isEmpty ? (f['labelAr'] ?? k).toString() : (f['labelEn'] ?? '').toString());
@@ -892,8 +925,12 @@ class _ShipmentOrderCreateScreenState extends State<ShipmentOrderCreateScreen> {
     }
 
     if (type == 'select' || type == 'cards') {
-      final options = List<Map<String, dynamic>>.from(f['options'] ?? []);
+      // The customer's agreed values come first and are marked; with several, they are offered as one-tap chips.
+      final prefs = customerPrefKeys.contains(k) ? prefList((_customer?['defaults'] is Map ? _customer!['defaults'] as Map : const {})[k]) : const <String>[];
+      final options = List<Map<String, dynamic>>.from(f['options'] ?? [])
+        ..sort((a, b) => (prefs.contains(b['key']) ? 1 : 0).compareTo(prefs.contains(a['key']) ? 1 : 0));
       final current = (_form[k] ?? '').toString();
+      final chips = _prefChips(k, prefs, options, current);
       // What is not in the list is added in place (as on the web), written to the settings themselves.
       // Long lists (e.g. the From / To cities) open a searchable sheet instead of a dropdown.
       if (options.length > 15) {
@@ -914,6 +951,7 @@ class _ShipmentOrderCreateScreenState extends State<ShipmentOrderCreateScreen> {
                   overflow: TextOverflow.ellipsis, style: TextStyle(color: current.isEmpty ? T.inkFaint : T.ink)),
             ),
           ),
+          if (chips != null) chips,
         ]);
       }
       return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [DropdownButtonFormField<String>(
@@ -923,7 +961,10 @@ class _ShipmentOrderCreateScreenState extends State<ShipmentOrderCreateScreen> {
         items: options
             .map((o) => DropdownMenuItem(
                 value: (o['key'] ?? '').toString(),
-                child: Text(tr((o['ar'] ?? o['key'] ?? '').toString(), (o['en'] ?? o['ar'] ?? o['key'] ?? '').toString()), overflow: TextOverflow.ellipsis)))
+                child: Text(
+                    '${tr((o['ar'] ?? o['key'] ?? '').toString(), (o['en'] ?? o['ar'] ?? o['key'] ?? '').toString())}'
+                    '${prefs.contains(o['key']) ? tr(' — معتمد للعميل', ' — agreed') : ''}',
+                    overflow: TextOverflow.ellipsis)))
             .toList(),
         onChanged: (v) => setState(() {
           _form[k] = v;
@@ -936,6 +977,7 @@ class _ShipmentOrderCreateScreenState extends State<ShipmentOrderCreateScreen> {
           }
         }),
       ),
+        if (chips != null) chips,
         // Branch is the company's branches; nothing is added to them from here (`locked`).
         if (f['locked'] != true) Align(
           alignment: AlignmentDirectional.centerStart,

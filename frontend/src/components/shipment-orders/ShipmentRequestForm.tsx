@@ -12,7 +12,7 @@ import { useSocket } from '@/hooks/useSocket';
 import api from '@/lib/api';
 import { Spinner, SearchableSelect, PhoneSA } from '@/components/hr/HRKit';
 import {
-  type FormField, type OrderCustomer, GROUP_LABELS, fieldLabel, optionLabel, type Lang,
+  type FormField, type OrderCustomer, GROUP_LABELS, fieldLabel, optionLabel, type Lang, prefList, prefOnly,
 } from '@/lib/shipmentOrders';
 import { findRoute, VENDOR_FORM_KEYS, type ShipmentRequest } from '@/lib/shipmentRequests';
 import { Check, Loader2, MapPin, Package, Clock3, Wallet, Users, Minus, Plus, Send, AlertCircle, UserPlus, Sparkles } from 'lucide-react';
@@ -105,11 +105,13 @@ export default function ShipmentRequestForm({ editId, onDone }: { editId?: strin
   const pickCustomer = (id: string) => {
     setCustomerId(id);
     const c = customers.find((x) => x._id === id);
-    const dflt = (c as any)?.defaults || {};
+    const dflt = c?.defaults || {};
     setForm((f) => {
       const n = { ...f };
-      (['cargoType', 'branch'] as const).forEach((k) => { if (!n[k] && dflt[k]) n[k] = dflt[k]; });
-      if (!(n.truckTypes || []).length && dflt.truckType) n.truckTypes = [dflt.truckType];
+      // One agreed value fills; several are listed first in the choices, never picked silently.
+      (['cargoType', 'branch'] as const).forEach((k) => { const one = prefOnly(dflt[k]); if (!n[k] && one) n[k] = one; });
+      const trucks = prefList(dflt.truckType);
+      if (!(n.truckTypes || []).length && trucks.length === 1) n.truckTypes = trucks;
       return n;
     });
   };
@@ -185,6 +187,11 @@ export default function ShipmentRequestForm({ editId, onDone }: { editId?: strin
     const label = fieldLabel(f, lang as Lang);
     const v = form[f.key] ?? '';
     const bad = miss(f.key);
+    // The customer's agreed values for this field come first and carry a tag; several are never picked for the user.
+    const prefs = ['truckType', 'cargoType', 'paymentMethod', 'driverRentType', 'branch'].includes(f.key) ? prefList(customer?.defaults?.[f.key as 'truckType']) : [];
+    const prefOpts = prefs.length ? [...f.options].sort((a, b) => Number(prefs.includes(b.key)) - Number(prefs.includes(a.key))) : f.options;
+    const agreedTag = (key: string, on: boolean) => (prefs.includes(key)
+      ? <span className={`text-[10.5px] font-semibold ${on ? 'text-white/80' : 'text-[#c2560f]'}`}>{t('معتمد', 'agreed')}</span> : null);
     const required = f.required || f.key === 'sellPrice' || f.key === 'fromCity' || f.key === 'toCity';
     const lab = <label className={bad ? labelMissCls : labelCls}>{label}{required && <span className="text-red-500"> *</span>}</label>;
     // Truck type is a multi-choice on a request: any ticked type is acceptable for this load.
@@ -196,7 +203,7 @@ export default function ShipmentRequestForm({ editId, onDone }: { editId?: strin
           {lab}
           <p className="-mt-0.5 mb-1.5 text-[11.5px] text-slate-500">{t('اختر نوعًا أو أكثر يصلح لهذه الحمولة، ويحدّد فريق الموردين النوعَ النهائيّ لكلّ شاحنة.', 'Tick one or more types that suit this load; the vendors team fixes the final type per truck.')}</p>
           <div className={`flex flex-wrap gap-2 ${bad ? 'p-2 rounded-xl border border-red-300 bg-red-50/50' : ''}`}>
-            {f.options.map((o) => {
+            {prefOpts.map((o) => {
               const on = picked.includes(o.key);
               return (
                 <button key={o.key} type="button" onClick={() => toggle(o.key)}
@@ -204,7 +211,7 @@ export default function ShipmentRequestForm({ editId, onDone }: { editId?: strin
                     ? 'border-[#f37121] bg-[#f37121] text-white shadow-md shadow-[#f37121]/25'
                     : 'border-slate-200 bg-white text-slate-700 hover:border-[#f37121]/40 hover:bg-[#f37121]/[0.04]'}`}>
                   <span className={`w-4 h-4 rounded border flex items-center justify-center ${on ? 'border-white bg-white/20' : 'border-slate-300'}`}>{on && <Check className="w-3 h-3" />}</span>
-                  {optionLabel(o, lang as Lang)}
+                  {optionLabel(o, lang as Lang)}{agreedTag(o.key, on)}
                 </button>
               );
             })}
@@ -218,13 +225,13 @@ export default function ShipmentRequestForm({ editId, onDone }: { editId?: strin
           <div key={f._id} className="col-span-full">
             {lab}
             <div className={`flex flex-wrap gap-2 ${bad ? 'p-2 rounded-xl border border-red-300 bg-red-50/50' : ''}`}>
-              {f.options.map((o) => (
+              {prefOpts.map((o) => (
                 <button key={o.key} type="button" onClick={() => set(f.key, o.key)}
                   className={`flex items-center gap-2 px-4 py-2.5 rounded-xl border text-sm font-semibold transition-all ${v === o.key
                     ? 'border-[#f37121] bg-[#f37121] text-white shadow-md shadow-[#f37121]/25'
                     : 'border-slate-200 bg-white text-slate-700 hover:border-[#f37121]/40 hover:bg-[#f37121]/[0.04]'}`}>
                   <span className={`w-4 h-4 rounded-full border flex items-center justify-center ${v === o.key ? 'border-white bg-white/20' : 'border-slate-300'}`}>{v === o.key && <Check className="w-3 h-3" />}</span>
-                  {optionLabel(o, lang as Lang)}
+                  {optionLabel(o, lang as Lang)}{agreedTag(o.key, v === o.key)}
                 </button>
               ))}
             </div>
@@ -237,7 +244,7 @@ export default function ShipmentRequestForm({ editId, onDone }: { editId?: strin
             <div className={bad ? 'rounded-lg ring-2 ring-red-400/60' : ''}>
               <SearchableSelect value={v} onChange={(x) => set(f.key, x)} searchAfter={0}
                 placeholder={t(`اختر ${label}`, `Choose ${label}`)} searchPlaceholder={t('اكتب للبحث…', 'Type to search…')} emptyLabel={t('لا نتائج', 'No matches')}
-                options={f.options.map((o) => ({ value: o.key, label: optionLabel(o, lang as Lang) }))} />
+                options={prefOpts.map((o) => ({ value: o.key, label: optionLabel(o, lang as Lang), ...(prefs.includes(o.key) ? { hint: t('معتمد لهذا العميل', 'agreed for this customer') } : {}) }))} />
             </div>
             {(f as any).locked ? null : addingFor === f._id ? (
               <div className="mt-1.5 flex items-center gap-1.5">

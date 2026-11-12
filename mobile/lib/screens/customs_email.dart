@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+import '../ui/email_attachments.dart';
+import '../ui/file_upload.dart';
 import '../services/api.dart';
 import '../services/lang.dart';
 import '../ui/app_scaffold.dart';
@@ -33,6 +35,7 @@ class _CustomsFollowUpEmailScreenState extends State<CustomsFollowUpEmailScreen>
   final _ccCtrl = TextEditingController();
   final _subject = TextEditingController();
   final _body = TextEditingController();
+  List<PickedFile> _files = [];
   bool _sending = false;
 
   @override
@@ -90,7 +93,7 @@ class _CustomsFollowUpEmailScreenState extends State<CustomsFollowUpEmailScreen>
     setState(() => _sending = true);
     try {
       final r = await Api.instance.post('/api/customs-clearance/${widget.clearanceId}/email', {
-        'to': _to, 'cc': _cc, 'subject': _subject.text, 'body': _body.text,
+        'to': _to, 'cc': _cc, 'subject': _subject.text, 'body': _body.text, 'attachments': attachmentsPayload(_files),
         'unit': _unit.isEmpty ? null : int.parse(_unit),
       });
       if (!mounted) return;
@@ -195,6 +198,8 @@ class _CustomsFollowUpEmailScreenState extends State<CustomsFollowUpEmailScreen>
                   TextField(controller: _subject, decoration: InputDecoration(labelText: tr('الموضوع', 'Subject'))),
                   const SizedBox(height: 10),
                   TextField(controller: _body, minLines: 8, maxLines: 18, decoration: InputDecoration(labelText: tr('نصّ الرسالة', 'Message'), alignLabelWithHint: true)),
+                  const SizedBox(height: 10),
+                  EmailAttachmentsField(files: _files, onChanged: (v) => setState(() => _files = v)),
                   if ('${d['signature'] ?? ''}'.isNotEmpty || '${d['signatureImage'] ?? ''}'.isNotEmpty) ...[
                     const SizedBox(height: 10),
                     Container(

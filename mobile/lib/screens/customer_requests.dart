@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+import '../ui/email_attachments.dart';
+import '../ui/file_upload.dart';
 import '../services/api.dart';
 import '../services/lang.dart';
 import '../services/live.dart';
@@ -328,6 +330,7 @@ class _EmailSheetState extends State<_EmailSheet> {
   final _cc = TextEditingController();
   late final _subject = TextEditingController(text: 'Re: ${widget.req['subject']} (#${widget.req['number']})');
   final _text = TextEditingController();
+  List<PickedFile> _files = [];
   String _lang = 'en';
   bool _busy = false;
 
@@ -349,7 +352,7 @@ class _EmailSheetState extends State<_EmailSheet> {
     setState(() => _busy = true);
     try {
       await Api.instance.post('/api/customer-requests/${widget.req['_id']}/email', {
-        'from': _from, 'to': _to.text, 'cc': _cc.text, 'subject': _subject.text.trim(), 'text': _text.text.trim(), 'lang': _lang,
+        'from': _from, 'to': _to.text, 'cc': _cc.text, 'subject': _subject.text.trim(), 'text': _text.text.trim(), 'lang': _lang, 'attachments': attachmentsPayload(_files),
       });
       if (mounted) Navigator.pop(context, true);
     } catch (e) {
@@ -383,6 +386,8 @@ class _EmailSheetState extends State<_EmailSheet> {
         ]),
         TextField(controller: _text, minLines: 5, maxLines: 10, textDirection: _lang == 'ar' ? TextDirection.rtl : TextDirection.ltr,
             decoration: InputDecoration(labelText: tr('الرسالة', 'Message'), helperText: tr('طلبُ العميل يُضاف تحت ردّك تلقائيًّا', 'The request is quoted under your reply'))),
+        const SizedBox(height: 10),
+        EmailAttachmentsField(files: _files, onChanged: (v) => setState(() => _files = v)),
         const SizedBox(height: 12),
         FilledButton.icon(onPressed: _busy || _from.isEmpty ? null : _send, icon: const Icon(Icons.send), label: Text(tr('إرسال', 'Send'))),
       ])),

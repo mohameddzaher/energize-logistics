@@ -10,6 +10,8 @@ import { useDialog } from '@/components/system/DialogProvider';
 import { Modal } from '@/components/hr/HRKit';
 import { EmailList } from '@/components/collections/SendStatementModal';
 import { Loader2, Send, Mail, AlertTriangle } from 'lucide-react';
+import EmailAttachments from '@/components/system/EmailAttachments';
+import type { UploadFile } from '@/lib/uploadFiles';
 
 interface Sent { at: string; byName?: string; to: string[]; subject?: string; unit?: string }
 interface Draft {
@@ -30,6 +32,7 @@ export default function SendFollowUpEmail({ clearanceId, ar, onClose, onSent }: 
   const [subject, setSubject] = useState('');
   const [body, setBody] = useState('');
   const [sending, setSending] = useState(false);
+  const [files, setFiles] = useState<UploadFile[]>([]);
 
   // Picking a container rebuilds subject and body for it; addresses typed by hand are kept.
   useEffect(() => {
@@ -51,7 +54,7 @@ export default function SendFollowUpEmail({ clearanceId, ar, onClose, onSent }: 
     if (!to.length) { notify(t('أضف بريد العميل في «إلى»', 'Add the customer email in «To»'), 'error'); return; }
     setSending(true);
     try {
-      const r = await api.post<{ to: string[]; savedToSent: boolean }>(`/api/customs-clearance/${clearanceId}/email`, { to, cc, subject, body, unit: unit === '' ? null : Number(unit) });
+      const r = await api.post<{ to: string[]; savedToSent: boolean }>(`/api/customs-clearance/${clearanceId}/email`, { to, cc, subject, body, unit: unit === '' ? null : Number(unit), attachments: files.map((f) => ({ dataUrl: f.dataUrl, fileName: f.fileName })) });
       notify(t(`أُرسلت الرسالة إلى ${r.to.join('، ')}${r.savedToSent ? ' — ونسختُها في «المرسل»' : ''}`, `Sent to ${r.to.join(', ')}`), 'success');
       onSent?.();
       onClose();
@@ -101,6 +104,7 @@ export default function SendFollowUpEmail({ clearanceId, ar, onClose, onSent }: 
             <span className="mb-1 block text-[12.5px] font-semibold text-slate-700">{t('نصّ الرسالة', 'Message')}</span>
             <textarea rows={12} value={body} onChange={(e) => setBody(e.target.value)} dir="auto" className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm leading-7" />
           </label>
+          <EmailAttachments ar={ar} value={files} onChange={setFiles} />
           {/* The closing block exactly as sent: the line from settings, its image, and the company signature with the logo and animated truck. */}
           {d.signaturePreview ? (
             <div className="rounded-xl border border-dashed border-slate-300 bg-white px-4 py-2">

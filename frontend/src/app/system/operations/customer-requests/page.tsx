@@ -9,6 +9,8 @@ import api from '@/lib/api';
 import { useLanguage } from '@/context/LanguageContext';
 import { useSocket } from '@/hooks/useSocket';
 import { useDialog } from '@/components/system/DialogProvider';
+import EmailAttachments from '@/components/system/EmailAttachments';
+import type { UploadFile } from '@/lib/uploadFiles';
 
 const fmt = (d?: string) => (d ? new Date(d).toLocaleString('en-GB', { dateStyle: 'medium', timeStyle: 'short' }) : '');
 const REF_AR: Record<string, string> = { invoice: 'فاتورة', shipment: 'شحنة', date: 'تاريخ', other: 'مرجع' };
@@ -172,6 +174,7 @@ function EmailModal({ req, ar, onClose, onSent }: { req: any; ar: boolean; onClo
   const [mailLang, setMailLang] = useState<'en' | 'ar'>('en');
   const [text, setText] = useState('');
   const [busy, setBusy] = useState(false);
+  const [files, setFiles] = useState<UploadFile[]>([]);
 
   useEffect(() => {
     api.get<{ mailboxes: { email: string; name: string }[]; preferred: string }>('/api/customer-requests/mailboxes')
@@ -182,7 +185,7 @@ function EmailModal({ req, ar, onClose, onSent }: { req: any; ar: boolean; onClo
   const send = async () => {
     setBusy(true);
     try {
-      const r = await api.post<{ request: any; savedToSent: boolean }>(`/api/customer-requests/${req._id}/email`, { from, to, cc, subject, text, lang: mailLang });
+      const r = await api.post<{ request: any; savedToSent: boolean }>(`/api/customer-requests/${req._id}/email`, { from, to, cc, subject, text, lang: mailLang, attachments: files.map((f) => ({ dataUrl: f.dataUrl, fileName: f.fileName })) });
       notify(tx('Email sent', 'أُرسل الإيميل') + (r.savedToSent ? '' : tx(' (not copied to Sent)', ' (لم يُنسخ في المرسل)')), 'success');
       onSent(r.request);
     } catch (e: any) { notify(e?.message || tx('Could not send', 'تعذّر الإرسال'), 'error'); }
@@ -230,6 +233,7 @@ function EmailModal({ req, ar, onClose, onSent }: { req: any; ar: boolean; onClo
             <textarea rows={8} className={input} dir={mailLang === 'ar' ? 'rtl' : 'ltr'} value={text} onChange={(e) => setText(e.target.value)} />
             <p className="mt-1 text-[11.5px] text-slate-400">{tx('The customer’s request is quoted under your reply automatically.', 'طلبُ العميل يُضاف تحت ردّك تلقائيًّا.')}</p>
           </div>
+          <EmailAttachments ar={ar} value={files} onChange={setFiles} />
           <div className="flex justify-end gap-2">
             <button type="button" onClick={onClose} className="rounded-lg bg-slate-100 px-4 py-2 text-sm text-slate-600">{tx('Cancel', 'إلغاء')}</button>
             <button type="button" onClick={send} disabled={busy || !from || !to.trim() || !subject.trim() || !text.trim()}

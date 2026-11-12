@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:printing/printing.dart';
+import '../ui/email_attachments.dart';
+import '../ui/file_upload.dart';
 import '../services/api.dart';
 import '../services/lang.dart';
 import '../ui/app_scaffold.dart';
@@ -67,6 +69,7 @@ class _SendStatementScreenState extends State<SendStatementScreen> {
   final _ccCtrl = TextEditingController();
   final _subject = TextEditingController();
   final _body = TextEditingController();
+  List<PickedFile> _files = [];
   bool _excel = true;
   bool _pdfBusy = false;
   bool _sending = false;
@@ -140,7 +143,7 @@ class _SendStatementScreenState extends State<SendStatementScreen> {
     try {
       final r = await Api.instance.post('/api/collections-dept/invoices/${widget.kind}/send', {
         'query': queryObject(widget.params), 'to': _to, 'cc': _cc,
-        'subject': _subject.text, 'body': _body.text, 'attachExcel': _excel, 'lang': Lang.instance.ar ? 'ar' : 'en',
+        'subject': _subject.text, 'body': _body.text, 'attachExcel': _excel, 'lang': Lang.instance.ar ? 'ar' : 'en', 'attachments': attachmentsPayload(_files),
       });
       if (!mounted) return;
       final to = (r is Map && r['to'] is List) ? (r['to'] as List).join('، ') : _to.join('، ');
@@ -232,6 +235,8 @@ class _SendStatementScreenState extends State<SendStatementScreen> {
                   TextField(controller: _subject, decoration: InputDecoration(labelText: tr('الموضوع', 'Subject'))),
                   const SizedBox(height: 10),
                   TextField(controller: _body, minLines: 6, maxLines: 14, decoration: InputDecoration(labelText: tr('نصّ الرسالة', 'Message'), alignLabelWithHint: true)),
+                  const SizedBox(height: 10),
+                  EmailAttachmentsField(files: _files, onChanged: (v) => setState(() => _files = v)),
                   if ('${d['signature'] ?? ''}'.isNotEmpty || '${d['signatureImage'] ?? ''}'.isNotEmpty) ...[
                     const SizedBox(height: 10),
                     Container(

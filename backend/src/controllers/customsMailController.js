@@ -234,6 +234,9 @@ exports.send = async (req, res) => {
     const sigImg = /^data:image\/([a-z+]+);base64,(.+)$/i.exec(tpl.signatureImage || '');
     if (sigImg) attachments.push({ filename: tpl.signatureImageName || `signature.${sigImg[1] === 'jpeg' ? 'jpg' : sigImg[1]}`, content: Buffer.from(sigImg[2], 'base64'), cid: 'sig@energize', contentDisposition: 'inline' });
     attachments.push(...signatureAttachments());
+    // Files the employee attached on the screen.
+    const userFiles = require('../utils/emailAttachments').emailAttachments(req.body.attachments);
+    attachments.push(...userFiles);
     const sigHtml = `${sigImg ? '<div style="margin-top:14px"><img src="cid:sig@energize" alt="" style="max-width:320px;max-height:140px"></div>' : ''}${signatureHtml('customs', sig)}`;
     const html = `<div dir="rtl" style="font-family:Tahoma,Arial,sans-serif;font-size:14px;line-height:1.8;color:#0f172a">${esc(text).replace(/\n/g, '<br>')}${sigHtml}</div>`;
 
@@ -242,7 +245,7 @@ exports.send = async (req, res) => {
 
     const unit = unitOf(req.body.unit);
     const unitNo = unit !== null && c.containers && c.containers[unit] ? (c.containers[unit].containerNumber || `#${unit + 1}`) : '';
-    const entry = { at: new Date(), by: req.user._id, byName: nameOf(req.user), to, cc, subject, unit: unitNo };
+    const entry = { at: new Date(), by: req.user._id, byName: nameOf(req.user), to, cc, subject, unit: unitNo, files: userFiles.map((f) => f.filename) };
     c.emailLog.push(entry);
     // Also in the transaction notes, so the team sees the follow-up where it reads the file's history.
     c.notesLog.push({ text: `أُرسل بريد متابعة للعميل إلى ${to.join('، ')}${unitNo ? ` — بخصوص الحاوية ${unitNo}` : ''}`, by: req.user._id, byName: nameOf(req.user), at: new Date() });

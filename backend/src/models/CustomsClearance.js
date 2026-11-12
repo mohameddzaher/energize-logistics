@@ -437,6 +437,7 @@ const customsClearanceSchema = new mongoose.Schema(
         cc: { type: [String], default: [] },
         subject: { type: String, default: '' },
         unit: { type: String, default: '' },   // container number when the email was about one container
+        files: { type: [String], default: [] }, // names of the files attached
       },
     ],
 

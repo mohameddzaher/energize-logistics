@@ -2,6 +2,8 @@
 /** Send to customer: the account statement by email from the collections mailbox. It takes the page filter as is (customer, invoice, state, period, columns, selection), the same one that prints the statement PDF, so the employee sees before sending the message filled from the department template, the customer's email from their profile and the attached PDF. They edit then send, and it leaves from collections@ immediately. All computation is on the server (collectionsMailController). */
 import { useEffect, useMemo, useState } from 'react';
 import api from '@/lib/api';
+import EmailAttachments from '@/components/system/EmailAttachments';
+import type { UploadFile } from '@/lib/uploadFiles';
 import { useDialog } from '@/components/system/DialogProvider';
 import { Modal } from '@/components/hr/HRKit';
 import { Loader2, Send, X, Plus, FileText, Mail, AlertTriangle } from 'lucide-react';
@@ -66,6 +68,7 @@ export default function SendStatementModal({ kind, params, ar, onClose }: {
   const [pdfUrl, setPdfUrl] = useState('');
   const [pdfBusy, setPdfBusy] = useState(false);
   const [sending, setSending] = useState(false);
+  const [files, setFiles] = useState<UploadFile[]>([]);
 
   useEffect(() => {
     let live = true;
@@ -90,7 +93,7 @@ export default function SendStatementModal({ kind, params, ar, onClose }: {
     setSending(true);
     try {
       const r = await api.post<{ to: string[]; savedToSent: boolean; partyLogged: boolean }>(`/api/collections-dept/invoices/${kind}/send`, {
-        query: paramsToObject(params), to, cc, subject, body, attachExcel: excel, lang: ar ? 'ar' : 'en',
+        query: paramsToObject(params), to, cc, subject, body, attachExcel: excel, lang: ar ? 'ar' : 'en', attachments: files.map((f) => ({ dataUrl: f.dataUrl, fileName: f.fileName })),
       });
       notify(t(`أُرسلت الرسالة إلى ${r.to.join('، ')}${r.savedToSent ? ' — ونسختُها في «المرسل»' : ''}`, `Sent to ${r.to.join(', ')}`), 'success');
       onClose();
@@ -137,6 +140,7 @@ export default function SendStatementModal({ kind, params, ar, onClose }: {
             <span className="mb-1 block text-[12.5px] font-semibold text-slate-700">{t('نصّ الرسالة', 'Message')}</span>
             <textarea rows={9} value={body} onChange={(e) => setBody(e.target.value)} dir="auto" className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm leading-7" />
           </label>
+          <EmailAttachments ar={ar} value={files} onChange={setFiles} />
           {d.companySignature && (
             <div className="rounded-xl border border-dashed border-slate-200 px-3 py-2">
               <p className="mb-1 text-[11.5px] font-semibold text-slate-500">{t('توقيع الشركة — يُضاف في آخر الرسالة مع الشعار', 'Company signature — appended with the logo')}</p>

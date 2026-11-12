@@ -224,7 +224,9 @@ exports.email = async (req, res) => {
     const { sendFromMailbox } = require('../utils/mailer');
     let sent;
     try {
-      sent = await sendFromMailbox(from, { fromName: 'Energize Logistics', to, cc, subject, text: plain, html });
+      // Files attached to the reply on the screen.
+      const attachments = require('../utils/emailAttachments').emailAttachments(req.body.attachments);
+      sent = await sendFromMailbox(from, { fromName: 'Energize Logistics', to, cc, subject, text: plain, html, attachments });
     } catch (err) {
       return res.status(err.status || 502).json({ message: err.message || 'تعذّر إرسال البريد', code: err.code });
     }

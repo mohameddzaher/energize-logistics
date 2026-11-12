@@ -172,6 +172,8 @@ exports.send = async (req, res) => {
     const sigImg = /^data:image\/([a-z+]+);base64,(.+)$/i.exec(tpl.signatureImage || '');
     if (sigImg) attachments.push({ filename: tpl.signatureImageName || `signature.${sigImg[1] === 'jpeg' ? 'jpg' : sigImg[1]}`, content: Buffer.from(sigImg[2], 'base64'), cid: 'sig@energize', contentDisposition: 'inline' });
     attachments.push(...signatureAttachments());
+    // Files the employee attached on the screen.
+    attachments.push(...require('../utils/emailAttachments').emailAttachments(req.body.attachments));
     const sigHtml = `${sigImg ? '<div style="margin-top:14px"><img src="cid:sig@energize" alt="" style="max-width:320px;max-height:140px"></div>' : ''}${signatureHtml('collections', sig)}`;
     const html = `<div dir="${lang === 'ar' ? 'rtl' : 'ltr'}" style="font-family:Tahoma,Arial,sans-serif;font-size:14px;line-height:1.8;color:#0f172a">${esc(text).replace(/\n/g, '<br>')}${sigHtml}</div>`;
     const textWithSig = `${text}\n\n--\n${signatureText('collections', sig)}`;

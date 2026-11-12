@@ -474,9 +474,9 @@ export default function ShipmentRequestsBoard({ mode }: { mode: BoardMode }) {
           <Inbox className="w-8 h-8 mx-auto mb-2 text-slate-300" />{rows.length ? t('لا طلبات تطابق الفلاتر', 'No requests match the filters') : t('لا طلبات هنا', 'No requests here')}
         </div>
       ) : view === 'table' ? (
-        <div className="rounded-2xl border border-slate-200 bg-white shadow-sm overflow-auto max-h-[75vh]">
+        <div className="rounded-2xl border border-slate-200 bg-white shadow-sm overflow-x-auto">
           <table className="w-full text-[12.5px]">
-            <thead className="sticky top-0 z-10 bg-slate-900 text-slate-200">
+            <thead className="bg-slate-900 text-slate-200">
               <tr>
                 {visCols.map((c) => (
                   <th key={c.key} className={`whitespace-nowrap px-3 py-2 font-semibold ${c.num ? 'text-end' : 'text-start'}`}>{cf.head(c.key, ar ? c.ar : c.en)}</th>

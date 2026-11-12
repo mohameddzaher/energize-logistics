@@ -81,9 +81,9 @@ export default function ShipmentRequestApprovals({ canManage }: { canManage: boo
       {loading ? <Spinner /> : !rows.length ? (
         <div className="rounded-2xl border border-dashed border-slate-300 bg-white py-12 text-center text-slate-500">{t('لا طلبات هنا', 'No requests here')}</div>
       ) : (
-        <div className="rounded-2xl border border-slate-200 bg-white shadow-sm overflow-auto max-h-[75vh]">
+        <div className="rounded-2xl border border-slate-200 bg-white shadow-sm overflow-x-auto">
           <table className="w-full text-[12.5px]">
-            <thead className="sticky top-0 z-10 bg-slate-900 text-slate-200">
+            <thead className="bg-slate-900 text-slate-200">
               <tr>
                 {[t('رقم الطلب', 'Request'), t('المندوب', 'Rep'), t('العميل', 'Customer'), t('المسار', 'Route'), t('الشاحنات', 'Trucks'), t('نوع الشاحنة', 'Truck type'), t('سعر البيع', 'Selling'), t('الدفع', 'Payment'), t('الفرع', 'Branch'), t('التاريخ', 'Date'), tab === 'pending' ? t('إجراءات', 'Actions') : t('القرار', 'Decision')].map((h) => (
                   <th key={h} className="whitespace-nowrap px-3 py-2 text-start font-semibold">{h}</th>

@@ -239,11 +239,11 @@ export default function ShipmentFormFields({ embedded = false }: { embedded?: bo
                 : 'Branch options are all company branches, read from Reference Data («Paying branches») — add or edit a branch there.'}
           </p>
         )}
-        {/* «From / To» read one shared city list, edited in the «القوائم» tab for every section; see listFields. */}
+        {/* «From / To» are one shared city list; editing it here edits that list (updateField → applyCityOptions). */}
         {hasOptions && (form.key === 'fromCity' || form.key === 'toCity') && (
           <p className="mt-4 text-[12px] text-slate-600 bg-slate-50 border border-slate-200 rounded-lg px-3 py-2">
-            {ar ? `خياراتُ «من» و«إلى» قائمةٌ واحدة («مدن الشحن») في تبويب «القوائم» (${form.options.length} مدينة)، وهي نفسُها في إدارة الأسطول وسير عمل التشغيل — تُضاف المدينةُ أو تُحذف من هناك فتتغيّر في كلّ مكانٍ فورًا.`
-                : `«From» and «To» share one list («Shipment cities») in the «Lists» tab (${form.options.length} cities), the same in fleet management and the operations workflow — add or remove a city there and it changes everywhere at once.`}
+            {ar ? `«من» و«إلى» قائمةٌ واحدة («مدن الشحن»، ${form.options.length} مدينة)، وهي نفسُها في إدارة الأسطول وسير عمل التشغيل. ما تحذفه أو تضيفه هنا ثمّ تحفظه يتغيّر في الحقلين وفي كلّ الأقسام فورًا.`
+                : `«From» and «To» share one list («Shipment cities», ${form.options.length} cities), the same in fleet management and the operations workflow. What you remove or add here and save changes in both fields and every section at once.`}
           </p>
         )}
         {hasOptions && form.key === 'paymentSubtype' && (
@@ -260,7 +260,7 @@ export default function ShipmentFormFields({ embedded = false }: { embedded?: bo
           </div>
         )}
 
-        {hasOptions && form.key !== 'paymentSubtype' && form.key !== 'branch' && form.key !== 'fromCity' && form.key !== 'toCity' && (
+        {hasOptions && form.key !== 'paymentSubtype' && form.key !== 'branch' && (
           <div className="mt-4">
             {form.key === 'driverRentType' && (
               <p className="mb-2 text-[12px] text-slate-600 bg-slate-50 border border-slate-200 rounded-lg px-3 py-2">

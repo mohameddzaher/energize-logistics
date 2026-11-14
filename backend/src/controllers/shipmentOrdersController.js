@@ -2662,6 +2662,41 @@ async function cityLookupOptions() {
   });
 }
 exports.cityOptions = async () => (await cityLookupOptions()).map((o) => o.ar);
+
+/** Makes the shared city list equal to `options` (the full list the editor saved): absent cities are removed, new ones added, an English name edit is kept. */
+async function applyCityOptions(options, user) {
+  const Lookup = require('../models/Lookup');
+  const S = (v) => String(v == null ? '' : v).trim();
+  const wanted = new Map();
+  for (const o of options) {
+    const ar = S(o && (o.ar || o.key));
+    if (ar && !wanted.has(ar)) wanted.set(ar, S(o.en) || ar);
+  }
+  // An empty list is never a deliberate edit of 385 cities; it is a broken client.
+  if (!wanted.size) return { added: [], removed: [] };
+  const rows = await Lookup.find({ type: 'shipment_city' }).select('nameAr nameEn deleted isActive order').lean();
+  const live = rows.filter((r) => !r.deleted && r.isActive !== false);
+  const removed = live.filter((r) => !wanted.has(S(r.nameAr)));
+  if (removed.length) await Lookup.deleteMany({ _id: { $in: removed.map((r) => r._id) } });
+  const byName = new Map(rows.map((r) => [S(r.nameAr), r]));
+  let order = rows.reduce((m, r) => Math.max(m, r.order || 0), 0);
+  const added = [];
+  for (const [ar, en] of wanted) {
+    const r = byName.get(ar);
+    if (!r) {
+      try {
+        await Lookup.create({ type: 'shipment_city', key: ar, nameAr: ar, nameEn: en, order: (order += 1), createdBy: user && user._id });
+        added.push(ar);
+      } catch (e) { if (e.code !== 11000) throw e; } // the key is held by a renamed row: the city is already listed under it
+    } else if (r.deleted || r.isActive === false) {
+      await Lookup.updateOne({ _id: r._id }, { $set: { deleted: false, isActive: true, nameEn: en } });
+      added.push(ar);
+    } else if (en !== S(r.nameEn)) {
+      await Lookup.updateOne({ _id: r._id }, { $set: { nameEn: en } });
+    }
+  }
+  return { added, removed: removed.map((r) => S(r.nameAr)) };
+}
 const CITY_FIELDS = new Set(['fromCity', 'toCity']);
 
 exports.listFields = async (req, res) => {
@@ -2733,15 +2768,30 @@ exports.updateField = async (req, res) => {
     if (field.isSystem) delete data.group;
     // Payment type has four types keyed like the operations workflow; a fifth option or a renamed one would split the order from the statement. So its shape, label and requiredness are configurable, not its options.
     if (field.key === 'branch') delete data.options; // From the company branches, see listFields
-    if (CITY_FIELDS.has(field.key)) delete data.options; // From the shared city list, see listFields
+    // The city editor on this field edits the shared list itself. Dropping the options here returned 200 while the
+    // deletions were lost, so the cities "came back" on the next read.
+    let cityChange = null;
+    if (CITY_FIELDS.has(field.key)) {
+      if (Array.isArray(data.options)) cityChange = await applyCityOptions(data.options, req.user);
+      delete data.options;
+    }
     if (field.key === 'paymentSubtype') {
       delete data.options;
       if (data.inputType && !['cards', 'select'].includes(data.inputType)) delete data.inputType;
     }
     Object.assign(field, data);
     await field.save();
+    if (cityChange && (cityChange.added.length || cityChange.removed.length)) {
+      await logAudit({ user: req.user._id, action: 'update_shipment_cities', entity: 'Lookup', entityKey: 'shipment_city',
+        changes: { details: `مدن الشحن: حُذف ${cityChange.removed.length} وأُضيف ${cityChange.added.length} من حقل «${field.labelAr}»`, removed: cityChange.removed, added: cityChange.added },
+        ipAddress: req.ip }).catch(() => {});
+      await cache.clearShared('so:').catch(() => {});
+      emit('lookup:changed', { type: 'shipment_city' });
+    }
     emit('shipmentOrders:fields', {});
-    res.json({ field });
+    const out = field.toObject();
+    if (CITY_FIELDS.has(field.key)) out.options = await cityLookupOptions();
+    res.json({ field: out, cities: cityChange || undefined });
   } catch (error) {
     return sendMongooseError(res, error, 'Failed to update the field');
   }

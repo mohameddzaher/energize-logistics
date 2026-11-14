@@ -183,7 +183,9 @@ function build() {
 
     const apis = new Set();
     let wildcard = false;
-    const entries = [file, ...subPages(path.join(APP, rel)), ...(OPENED_FROM[p.key] || []).flatMap((d) => subPages(path.join(APP, d)))];
+    // A section's KPI page opens an employee's evaluation at /system/performance/evaluate/[id], outside its folder; any page rendering the team board owns that screen's calls (the controller scopes each one to the caller's team).
+    const opened = [...(OPENED_FROM[p.key] || []), ...(/components\/performance\/TeamBoard/.test(fs.readFileSync(file, 'utf8')) ? ['performance'] : [])];
+    const entries = [file, ...subPages(path.join(APP, rel)), ...opened.flatMap((d) => subPages(path.join(APP, d)))];
     for (const entry of entries) {
       for (const [f, names] of fileClosure(entry)) {
         const got = apisIn(scopedSource(f, names));

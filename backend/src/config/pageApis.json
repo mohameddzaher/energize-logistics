@@ -215,6 +215,8 @@
     },
     "/system/operations/kpis": {
       "apis": [
+        "/api/performance/evaluations",
+        "/api/performance/evaluations/form",
         "/api/performance/team",
         "/api/performance/templates"
       ],
@@ -395,6 +397,8 @@
     },
     "/system/collections-dept/kpis": {
       "apis": [
+        "/api/performance/evaluations",
+        "/api/performance/evaluations/form",
         "/api/performance/team",
         "/api/performance/templates"
       ],
@@ -667,6 +671,8 @@
     },
     "/system/shipment-orders/kpis": {
       "apis": [
+        "/api/performance/evaluations",
+        "/api/performance/evaluations/form",
         "/api/performance/team",
         "/api/performance/templates"
       ],
@@ -816,6 +822,8 @@
     },
     "/system/vendors-mgmt/kpis": {
       "apis": [
+        "/api/performance/evaluations",
+        "/api/performance/evaluations/form",
         "/api/performance/team",
         "/api/performance/templates"
       ],
@@ -988,6 +996,8 @@
     },
     "/system/fleet/kpis": {
       "apis": [
+        "/api/performance/evaluations",
+        "/api/performance/evaluations/form",
         "/api/performance/team",
         "/api/performance/templates"
       ],
@@ -1298,6 +1308,8 @@
     },
     "/system/vehicles/kpis": {
       "apis": [
+        "/api/performance/evaluations",
+        "/api/performance/evaluations/form",
         "/api/performance/team",
         "/api/performance/templates"
       ],
@@ -1569,6 +1581,8 @@
     },
     "/system/marketing/kpis": {
       "apis": [
+        "/api/performance/evaluations",
+        "/api/performance/evaluations/form",
         "/api/performance/team",
         "/api/performance/templates"
       ],
@@ -1657,6 +1671,8 @@
     },
     "/system/bd/kpis": {
       "apis": [
+        "/api/performance/evaluations",
+        "/api/performance/evaluations/form",
         "/api/performance/team",
         "/api/performance/templates"
       ],
@@ -1709,6 +1725,8 @@
     },
     "/system/administration/kpis": {
       "apis": [
+        "/api/performance/evaluations",
+        "/api/performance/evaluations/form",
         "/api/performance/team",
         "/api/performance/templates"
       ],
@@ -1845,6 +1863,8 @@
     },
     "/system/contracts/kpis": {
       "apis": [
+        "/api/performance/evaluations",
+        "/api/performance/evaluations/form",
         "/api/performance/team",
         "/api/performance/templates"
       ],
@@ -1964,6 +1984,8 @@
     },
     "/system/it/kpis": {
       "apis": [
+        "/api/performance/evaluations",
+        "/api/performance/evaluations/form",
         "/api/performance/team",
         "/api/performance/templates"
       ],
@@ -1979,6 +2001,8 @@
     },
     "/system/ls2/kpis": {
       "apis": [
+        "/api/performance/evaluations",
+        "/api/performance/evaluations/form",
         "/api/performance/team",
         "/api/performance/templates"
       ],
@@ -2169,6 +2193,8 @@
     },
     "/system/b2c/kpis": {
       "apis": [
+        "/api/performance/evaluations",
+        "/api/performance/evaluations/form",
         "/api/performance/team",
         "/api/performance/templates"
       ],
@@ -2265,6 +2291,8 @@
     },
     "/system/remote/kpis": {
       "apis": [
+        "/api/performance/evaluations",
+        "/api/performance/evaluations/form",
         "/api/performance/team",
         "/api/performance/templates"
       ],
@@ -2821,6 +2849,8 @@
     },
     "/system/crm/kpis": {
       "apis": [
+        "/api/performance/evaluations",
+        "/api/performance/evaluations/form",
         "/api/performance/team",
         "/api/performance/templates"
       ],
@@ -2885,6 +2915,8 @@
     },
     "/system/sales/kpis": {
       "apis": [
+        "/api/performance/evaluations",
+        "/api/performance/evaluations/form",
         "/api/performance/team",
         "/api/performance/templates"
       ],
@@ -2930,6 +2962,8 @@
     },
     "/system/accounting/kpis": {
       "apis": [
+        "/api/performance/evaluations",
+        "/api/performance/evaluations/form",
         "/api/performance/team",
         "/api/performance/templates"
       ],
@@ -2975,6 +3009,8 @@
     },
     "/system/procurement/kpis": {
       "apis": [
+        "/api/performance/evaluations",
+        "/api/performance/evaluations/form",
         "/api/performance/team",
         "/api/performance/templates"
       ],
@@ -3020,6 +3056,8 @@
     },
     "/system/hr/kpis": {
       "apis": [
+        "/api/performance/evaluations",
+        "/api/performance/evaluations/form",
         "/api/performance/team",
         "/api/performance/templates"
       ],
@@ -3065,6 +3103,8 @@
     },
     "/system/ops/kpis": {
       "apis": [
+        "/api/performance/evaluations",
+        "/api/performance/evaluations/form",
         "/api/performance/team",
         "/api/performance/templates"
       ],
@@ -3110,6 +3150,8 @@
     },
     "/system/customs/kpis": {
       "apis": [
+        "/api/performance/evaluations",
+        "/api/performance/evaluations/form",
         "/api/performance/team",
         "/api/performance/templates"
       ],
@@ -3233,6 +3275,8 @@
     },
     "/system/data-support/kpis": {
       "apis": [
+        "/api/performance/evaluations",
+        "/api/performance/evaluations/form",
         "/api/performance/team",
         "/api/performance/templates"
       ],

@@ -10,7 +10,9 @@
  * Left for the team, in the Excel report only:
  *  - no primary and several suppliers (whose it is cannot be read from history);
  *  - a plate that matches more than one registered truck, or a phone shared by several drivers.
- * Our own trucks (ownership 'ours') are never linked. Usage: node src/scripts/inferSupplierLinks.js [--apply] [--out=report.xlsx]
+ * Our own trucks (ownership 'ours') are never linked. Usage: node src/scripts/inferSupplierLinks.js [--apply] [--only=primary] [--out=report.xlsx]
+ * --only=primary writes just the rows with no supplier yet. Extra links wait for the team: many are one carrier under two
+ * names in the supplier register, which a merge fixes, not a link.
  */
 require('dotenv').config({ quiet: true });
 const fs = require('fs');
@@ -20,6 +22,7 @@ const XLSX = require('xlsx');
 const { canonicalPlateKey } = require('../utils/plateKey');
 
 const APPLY = process.argv.includes('--apply');
+const ONLY_PRIMARY = process.argv.includes('--only=primary');
 const outArg = (process.argv.find((a) => a.startsWith('--out=')) || '').slice(6);
 const BACKUP_DIR = fs.existsSync('/opt/energize/backups') ? '/opt/energize/backups' : path.join(process.cwd(), 'backups');
 const S = (v) => String(v == null ? '' : v).trim();
@@ -160,6 +163,7 @@ const iqamaKey = (v) => { const d = digits(v); return /^[12]\d{9}$/.test(d) ? d 
   if (!APPLY) { console.log('Dry run (pass --apply to write).'); process.exit(0); }
 
   // Backup the rows about to change, then write additively.
+  if (ONLY_PRIMARY) { plan.vehicles = plan.vehicles.filter((p) => p.action === 'primary'); plan.drivers = plan.drivers.filter((p) => p.action === 'primary'); }
   const vIds = plan.vehicles.map((p) => p.id); const dIds = plan.drivers.map((p) => p.id);
   const bk = path.join(BACKUP_DIR, `supplier-links-before-${Date.now()}.json`);
   fs.writeFileSync(bk, JSON.stringify({

@@ -18,6 +18,7 @@ import '../ui/list_pager.dart';
 import 'ops_workflow_detail.dart';
 import 'ops_workflow_new.dart';
 import 'selling_requests.dart';
+import 'shipment_requests.dart' show pickRemote;
 
 /// Operations workflow of statements (counterpart of /system/operations): cards, filter bar and column filters, period (day / month / range), selection and bulk actions (record payment, delete, "everything matching the filter"), export in its scopes, new request and import, and live row locks.
 class OpsWorkflowsScreen extends StatefulWidget {
@@ -584,12 +585,45 @@ class _OpsWorkflowsScreenState extends State<OpsWorkflowsScreen> {
     }
   }
 
+  /// Bulk edit columns beyond the payment block (web BULK_ORDER/PRICE/TRUCK/MONEY): (group, key, ar, en, kind).
+  /// The city/branch/truck/load kinds pick from the shipment orders' section-settings lists (/api/workflows/form-lists).
+  static const _bulkSpecs = [
+    ('order', 'fromLocation', 'من', 'From', 'city'), ('order', 'toLocation', 'إلى', 'To', 'city'), ('order', 'branch', 'الفرع', 'Branch', 'branch'),
+    ('order', 'reportDate', 'تاريخ أمر النقل', 'Report date', 'date'), ('order', 'truckType', 'نوع الشاحنة', 'Truck type', 'truck'),
+    ('order', 'truckSize', 'حجم الشاحنة', 'Truck size', 'text'), ('order', 'loadType', 'نوع الحمولة', 'Load type', 'load'),
+    ('order', 'quantity', 'الكمية', 'Quantity', 'text'), ('order', 'volume', 'الحجم', 'Volume', 'text'), ('order', 'product', 'المنتج', 'Product', 'text'),
+    ('order', 'goodsValue', 'قيمة البضاعة', 'Goods value', 'number'), ('order', 'region', 'المنطقة', 'Region', 'text'), ('order', 'country', 'الدولة', 'Country', 'text'),
+    ('order', 'loadingTime', 'وقت التحميل', 'Loading time', 'text'), ('order', 'executionStatus', 'حالة التنفيذ', 'Execution status', 'text'),
+    ('order', 'taxIndicator', 'خاضع للضريبة', 'Tax indicator', 'text'), ('order', 'paymentMethod', 'طريقة الدفع', 'Payment method', 'text'),
+    ('order', 'representativeName', 'اسم المندوب', 'Representative', 'text'), ('order', 'userPhone', 'جوال العميل', 'Customer phone', 'text'),
+    ('price', 'purchaseValue', 'سعر الشراء', 'Purchase price', 'number'), ('price', 'sellingValue', 'سعر البيع', 'Selling price', 'number'),
+    ('price', 'driverCost', 'تكلفة السائق', 'Driver cost', 'number'), ('price', 'paymentAmount', 'مبلغ السداد', 'Payment amount', 'number'),
+    ('truck', 'carOwner', 'مالك الشاحنة', 'Truck owner', 'text'), ('truck', 'ownerType', 'نوع المالك', 'Owner type', 'text'),
+    ('truck', 'ownerName', 'اسم المالك', 'Owner name', 'text'), ('truck', 'ownerPhone', 'جوال المالك', 'Owner phone', 'text'),
+    ('truck', 'carName', 'اسم الشاحنة', 'Truck name', 'text'), ('truck', 'carNumber', 'رقم الشاحنة', 'Truck number', 'text'), ('truck', 'plateNumber', 'رقم اللوحة', 'Plate', 'text'),
+    ('truck', 'driverName', 'اسم السائق', 'Driver name', 'text'), ('truck', 'driverPhone', 'جوال السائق', 'Driver phone', 'text'),
+    ('truck', 'driverRentalType', 'نوع تأجير السائق', 'Driver rental type', 'text'),
+    ('money', 'invoiceNumber', 'رقم الفاتورة', 'Invoice no.', 'text'), ('money', 'invoiceDate', 'تاريخ الفاتورة', 'Invoice date', 'date'),
+    ('money', 'netInvoice', 'صافي الفاتورة', 'Net invoice', 'number'), ('money', 'tax', 'الضريبة', 'VAT', 'number'), ('money', 'totalInvoice', 'إجمالي الفاتورة', 'Invoice total', 'number'),
+    ('money', 'invoiceNotes', 'ملاحظات الفاتورة', 'Invoice notes', 'text'), ('money', 'collectedAmount', 'مبلغ التحصيل', 'Collected amount', 'number'),
+    ('money', 'collectionDate', 'تاريخ التحصيل', 'Collection date', 'date'),
+  ];
+
   /// Edit data for a batch (order data, payment, delivery); an empty field means leave that column untouched.
   Future<void> _bulkPay() async {
     final date = TextEditingController(), send = TextEditingController(), bdel = TextEditingController();
     // Order data for the whole selection, shown only for fields this role may write.
     final cust = TextEditingController();
-    final data = {for (final k in const ['fromLocation', 'toLocation', 'truckType', 'loadType']) k: TextEditingController()};
+    final data = {for (final f in _bulkSpecs) f.$2: TextEditingController()};
+    String accReview = '';
+    // Lists from the shipment orders' section settings, loaded once per sheet.
+    var lists = <String, List<String>>{};
+    try {
+      final d = await Api.instance.get('/api/workflows/form-lists');
+      List<String> l(String k) => [for (final e in ((d is Map ? d[k] : null) as List?) ?? const []) '$e'];
+      lists = {'city': l('cities'), 'branch': l('branches'), 'truck': l('truckTypes'), 'load': l('loadTypes')};
+    } catch (_) {/* the fields stay typed */}
+    if (!mounted) return;
     final branch = TextEditingController(), dest = TextEditingController(), doc = TextEditingController();
     String ptype = '', opsReview = '';
     bool running = false;
@@ -615,8 +649,49 @@ class _OpsWorkflowsScreenState extends State<OpsWorkflowsScreen> {
                 },
               ),
             );
+        // One input per spec: a searchable list for the four section lists, a date picker, a number or text box.
+        Widget specField((String, String, String, String, String) f) {
+          final ctrl = data[f.$2]!;
+          final label = tr(f.$3, f.$4);
+          final list = lists[f.$5];
+          if (f.$5 == 'date') return dateField(ctrl, label);
+          if (list != null && list.isNotEmpty) {
+            return Padding(
+              padding: const EdgeInsets.only(bottom: 8),
+              child: TextField(
+                controller: ctrl, readOnly: true,
+                decoration: InputDecoration(labelText: label, hintText: tr('— لا يُغيَّر —', '— leave unchanged —'), isDense: true,
+                    suffixIcon: ctrl.text.isEmpty ? const Icon(Icons.arrow_drop_down) : IconButton(icon: const Icon(Icons.close, size: 18), onPressed: () => set(ctrl.clear))),
+                onTap: () async {
+                  final v = await pickRemote(c, title: label,
+                      fetch: (q) async => [for (final x in list) if (q.isEmpty || x.contains(q)) {'v': x}],
+                      label: (x) => '${x['v']}');
+                  if (v != null) set(() => ctrl.text = '${v['v']}');
+                },
+              ),
+            );
+          }
+          return Padding(
+            padding: const EdgeInsets.only(bottom: 8),
+            child: TextField(controller: ctrl,
+                keyboardType: f.$5 == 'number' ? const TextInputType.numberWithOptions(decimal: true) : TextInputType.text,
+                decoration: InputDecoration(labelText: label, hintText: tr('— لا يُغيَّر —', '— leave unchanged —'), isDense: true,
+                    helperText: f.$2 == 'sellingValue' && ctrl.text.isNotEmpty ? tr('يُطبَّق على كلّ أمرٍ على حدة؛ ومن يحتاج اعتمادًا يُرسَل له طلبٌ لكلّ أمر.', 'Applied report by report; approval roles send one request per report.') : null),
+                onChanged: f.$2 == 'sellingValue' ? (_) => set(() {}) : null),
+          );
+        }
+        Widget group(String g, String ar, String en) {
+          final fs = _bulkSpecs.where((f) => f.$1 == g && _has(f.$2)).toList();
+          if (fs.isEmpty) return const SizedBox.shrink();
+          return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+            if (ar.isNotEmpty) Padding(padding: const EdgeInsets.only(bottom: 6, top: 4), child: Text(tr(ar, en), style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 13))),
+            for (final f in fs) specField(f),
+          ]);
+        }
         Future<void> run() async {
           final fields = <String, dynamic>{
+            if (accReview == 'تم') 'accountingReview': 'تم',
+            if (accReview == 'clear') 'accountingReview': '',
             if (cust.text.trim().isNotEmpty) 'username': cust.text.trim(),
             for (final e in data.entries) if (e.value.text.trim().isNotEmpty) e.key: e.value.text.trim(),
             if (date.text.trim().isNotEmpty) 'paymentDate': date.text.trim(),
@@ -646,6 +721,8 @@ class _OpsWorkflowsScreenState extends State<OpsWorkflowsScreen> {
             if (picked != null && mounted) {
               final skippedNos = skipped.map((x) => '${x['reportNumber']}').toSet();
               final shown = Map<String, dynamic>.from(fields);
+              // A selling price sent for approval is not the row's price yet.
+              if (r['sellingRequested'] != null) shown.remove('sellingValue');
               final pt = '${shown['paymentType'] ?? ''}';
               if (pt.isNotEmpty && pt != 'cash' && pt != 'tax') {
                 shown['paymentSubtype'] = pt;
@@ -690,13 +767,11 @@ class _OpsWorkflowsScreenState extends State<OpsWorkflowsScreen> {
                 Text(tr('غيِّر ما تريد فقط — ما تتركه فارغًا لا يُغيَّر.', 'Change only what you need — blank fields are left unchanged.'),
                     style: const TextStyle(fontSize: 11, color: T.inkFaint)),
                 const SizedBox(height: 10),
-                if (_has('username') || data.keys.any(_has))
+                if (_has('username'))
                   Padding(padding: const EdgeInsets.only(bottom: 6), child: Text(tr('بيانات أمر النقل', 'Order data'), style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 13))),
                 if (_has('username'))
                   Padding(padding: const EdgeInsets.only(bottom: 8), child: OpsCustomerField(controller: cust, label: tr('اسم العميل', 'Customer'))),
-                for (final f in const [('fromLocation', 'من', 'From'), ('toLocation', 'إلى', 'To'), ('truckType', 'نوع الشاحنة', 'Truck type'), ('loadType', 'نوع الحمولة', 'Load type')])
-                  if (_has(f.$1))
-                    Padding(padding: const EdgeInsets.only(bottom: 8), child: TextField(controller: data[f.$1], decoration: InputDecoration(labelText: tr(f.$2, f.$3), hintText: tr('— لا يُغيَّر —', '— leave unchanged —'), isDense: true))),
+                group('order', _has('username') ? '' : 'بيانات أمر النقل', _has('username') ? '' : 'Order data'),
                 Padding(padding: const EdgeInsets.only(bottom: 6, top: 4), child: Text(tr('السداد والتسليم', 'Payment & delivery'), style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 13))),
                 dateField(date, tr('تاريخ السداد', 'Payment date')),
                 Padding(padding: const EdgeInsets.only(bottom: 8), child: LookupField(type: 'workflow_paying_branch', controller: branch, label: tr('الفرع المسدِّد', 'Paying branch'), noAdd: true)),
@@ -731,6 +806,21 @@ class _OpsWorkflowsScreenState extends State<OpsWorkflowsScreen> {
                       DropdownMenuItem(value: 'clear', child: Text(tr('إزالة العلامة', 'Clear the mark'))),
                     ],
                     onChanged: (v) => set(() => opsReview = v ?? ''),
+                  ),
+                group('price', 'الأسعار', 'Prices'),
+                group('truck', 'الشاحنة والسائق', 'Truck & driver'),
+                group('money', 'الفاتورة والتحصيل', 'Invoice & collection'),
+                if (_canEditAccReview)
+                  DropdownButtonFormField<String>(
+                    initialValue: accReview,
+                    isExpanded: true,
+                    decoration: InputDecoration(labelText: tr('مراجعة الحسابات', 'Accounts review'), isDense: true),
+                    items: [
+                      DropdownMenuItem(value: '', child: Text(tr('— لا تُغيَّر —', '— leave unchanged —'))),
+                      DropdownMenuItem(value: 'تم', child: Text(tr('تمّت المراجعة', 'Reviewed'))),
+                      DropdownMenuItem(value: 'clear', child: Text(tr('إزالة العلامة', 'Clear the mark'))),
+                    ],
+                    onChanged: (v) => set(() => accReview = v ?? ''),
                   ),
                 if (resultMsg != null) ...[
                   const SizedBox(height: 10),

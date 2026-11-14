@@ -94,6 +94,7 @@
         "/api/workflows/customs-search",
         "/api/workflows/export",
         "/api/workflows/filters",
+        "/api/workflows/form-lists",
         "/api/workflows/import-invoices",
         "/api/workflows/invoice-checks",
         "/api/workflows/permissions",

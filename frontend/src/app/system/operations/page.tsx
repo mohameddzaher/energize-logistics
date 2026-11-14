@@ -16,6 +16,7 @@ import ExportMenu from '@/components/ls2/ExportMenu';
 import ColumnChooser, { useVisibleColumns, type ChooserColumn } from '@/components/system/ColumnChooser';
 import DateRangeFilter, { DateField } from '@/components/system/DateRangeFilter';
 import ManagedSelect from '@/components/system/ManagedSelect';
+import { SearchableSelect } from '@/components/hr/HRKit';
 import { useSocket } from '@/hooks/useSocket';
 import { useLatestRequest } from '@/hooks/useLatestRequest';
 import {
@@ -28,6 +29,38 @@ import WorkflowFilterBar, { type FilterBarField } from '@/components/operations/
 import InvoiceCheckCards from '@/components/operations/InvoiceCheckCards';
 import CustomerNamePicker from '@/components/operations/CustomerNamePicker';
 import CustomsLinkBadge, { type CustomsLinkView } from '@/components/customs/CustomsLinkBadge';
+
+// Bulk edit («تعديل بيانات»): every column a role may write, except a report's identity (number, reference) and the
+// columns kept in their own groups below the payment block. `kind` picks the input; the four lists come from the
+// shipment orders' section settings (/api/workflows/form-lists).
+type BulkSpec = readonly [key: string, ar: string, en: string, kind: 'text' | 'number' | 'date' | 'city' | 'branch' | 'truck' | 'load' | 'review'];
+const BULK_ORDER: readonly BulkSpec[] = [
+  ['fromLocation', 'من', 'From', 'city'], ['toLocation', 'إلى', 'To', 'city'], ['branch', 'الفرع', 'Branch', 'branch'],
+  ['reportDate', 'تاريخ أمر النقل', 'Report date', 'date'], ['truckType', 'نوع الشاحنة', 'Truck type', 'truck'],
+  ['truckSize', 'حجم الشاحنة', 'Truck size', 'text'], ['loadType', 'نوع الحمولة', 'Load type', 'load'],
+  ['quantity', 'الكمية', 'Quantity', 'text'], ['volume', 'الحجم', 'Volume', 'text'], ['product', 'المنتج', 'Product', 'text'],
+  ['goodsValue', 'قيمة البضاعة', 'Goods value', 'number'], ['region', 'المنطقة', 'Region', 'text'], ['country', 'الدولة', 'Country', 'text'],
+  ['loadingTime', 'وقت التحميل', 'Loading time', 'text'], ['executionStatus', 'حالة التنفيذ', 'Execution status', 'text'],
+  ['taxIndicator', 'خاضع للضريبة', 'Tax indicator', 'text'], ['paymentMethod', 'طريقة الدفع', 'Payment method', 'text'],
+  ['representativeName', 'اسم المندوب', 'Representative', 'text'], ['userPhone', 'جوال العميل', 'Customer phone', 'text'],
+];
+const BULK_PRICE: readonly BulkSpec[] = [
+  ['purchaseValue', 'سعر الشراء', 'Purchase price', 'number'], ['sellingValue', 'سعر البيع', 'Selling price', 'number'],
+  ['driverCost', 'تكلفة السائق', 'Driver cost', 'number'], ['paymentAmount', 'مبلغ السداد', 'Payment amount', 'number'],
+];
+const BULK_TRUCK: readonly BulkSpec[] = [
+  ['carOwner', 'مالك الشاحنة', 'Truck owner', 'text'], ['ownerType', 'نوع المالك', 'Owner type', 'text'],
+  ['ownerName', 'اسم المالك', 'Owner name', 'text'], ['ownerPhone', 'جوال المالك', 'Owner phone', 'text'],
+  ['carName', 'اسم الشاحنة', 'Truck name', 'text'], ['carNumber', 'رقم الشاحنة', 'Truck number', 'text'], ['plateNumber', 'رقم اللوحة', 'Plate', 'text'],
+  ['driverName', 'اسم السائق', 'Driver name', 'text'], ['driverPhone', 'جوال السائق', 'Driver phone', 'text'],
+  ['driverRentalType', 'نوع تأجير السائق', 'Driver rental type', 'text'],
+];
+const BULK_MONEY: readonly BulkSpec[] = [
+  ['invoiceNumber', 'رقم الفاتورة', 'Invoice no.', 'text'], ['invoiceDate', 'تاريخ الفاتورة', 'Invoice date', 'date'],
+  ['netInvoice', 'صافي الفاتورة', 'Net invoice', 'number'], ['tax', 'الضريبة', 'VAT', 'number'], ['totalInvoice', 'إجمالي الفاتورة', 'Invoice total', 'number'],
+  ['invoiceNotes', 'ملاحظات الفاتورة', 'Invoice notes', 'text'], ['collectedAmount', 'مبلغ التحصيل', 'Collected amount', 'number'],
+  ['collectionDate', 'تاريخ التحصيل', 'Collection date', 'date'], ['accountingReview', 'مراجعة الحسابات', 'Accounts review', 'review'],
+];
 
 interface Workflow {
   _id: string;
@@ -346,7 +379,17 @@ export default function OperationsWorkflowPage() {
   // Record payment for a batch
   // Receipts arrive in batches with one date and one branch; opening each row to type the same date was many chances for error.
   const [showBulkPay, setShowBulkPay] = useState(false);
-  const [bulkPay, setBulkPay] = useState({ paymentDate: '', payingBranch: '', paymentType: '', finalReportDestination: '', documentNumber: '', sendingDate: '', branchDeliveryDate: '', deliveryDate: '', operationsReview: '', username: '', fromLocation: '', toLocation: '', truckType: '', loadType: '' });
+  // Unfilled = leave the column alone; every key is optional.
+  const [bulkPay, setBulkPay] = useState<Record<string, string>>({});
+  // Bulk-edit dropdowns read the shipment orders' section-settings lists (cities shared with fleet, branches, truck and load types).
+  const [formLists, setFormLists] = useState<{ cities: string[]; branches: string[]; truckTypes: string[]; loadTypes: string[] }>({ cities: [], branches: [], truckTypes: [], loadTypes: [] });
+  const loadFormLists = useCallback(() => {
+    api.get<{ cities: string[]; branches: string[]; truckTypes: string[]; loadTypes: string[] }>('/api/workflows/form-lists')
+      .then((d) => setFormLists({ cities: d.cities || [], branches: d.branches || [], truckTypes: d.truckTypes || [], loadTypes: d.loadTypes || [] }))
+      .catch(() => {});
+  }, []);
+  useSocket('shipmentOrders:fields', loadFormLists);
+  useEffect(() => { if (showBulkPay) loadFormLists(); }, [showBulkPay, loadFormLists]);
   // All filter results, not just the 50-row page
   // The table pages by 50 and selection covers the shown page. When this is chosen the table's own conditions are sent and the server selects everything that matches, with a confirmed count.
   const [allMatching, setAllMatching] = useState(false);
@@ -389,6 +432,42 @@ export default function OperationsWorkflowPage() {
     return () => { alive = false; };
   }, [role]);
   const has = (f: string) => !!myFields?.has(f);
+  // One bulk-edit input. A plain function, not a component defined in render (that remounts the input on every keystroke).
+  const bulkInput = ([k, a, e, kind]: BulkSpec) => {
+    const ar = lang === 'ar';
+    const v = bulkPay[k] || '';
+    const set = (x: string) => setBulkPay((p) => ({ ...p, [k]: x }));
+    const cls = 'w-full px-2.5 py-2 rounded-lg bg-white border border-slate-200 text-slate-900 text-[13px] focus:outline-none focus:ring-2 focus:ring-[#f37121]/40';
+    const keep = ar ? '— لا يُغيَّر —' : '— leave unchanged —';
+    const list = kind === 'city' ? formLists.cities : kind === 'branch' ? formLists.branches : kind === 'truck' ? formLists.truckTypes : kind === 'load' ? formLists.loadTypes : null;
+    let input;
+    if (list) {
+      input = (
+        <SearchableSelect value={v} onChange={set} searchAfter={8} placeholder={keep}
+          options={[{ value: '', label: keep }, ...(v && !list.includes(v) ? [v] : []).concat(list).map((c) => ({ value: c, label: c }))]} />
+      );
+    } else if (kind === 'date') {
+      input = <DateField ar={ar} label={ar ? a : e} value={v} onChange={set} />;
+    } else if (kind === 'review') {
+      input = (
+        <select value={v} onChange={(ev) => set(ev.target.value)} className={cls}>
+          <option value="">{keep}</option>
+          <option value="تم">{ar ? 'تمّت المراجعة' : 'Reviewed'}</option>
+          <option value="clear">{ar ? 'إزالة العلامة' : 'Clear the mark'}</option>
+        </select>
+      );
+    } else {
+      input = <input value={v} onChange={(ev) => set(ev.target.value)} placeholder={keep} dir={kind === 'number' ? 'ltr' : undefined}
+        type={kind === 'number' ? 'number' : 'text'} step={kind === 'number' ? 'any' : undefined} min={kind === 'number' ? 0 : undefined} className={cls} />;
+    }
+    return (
+      <div key={k}>
+        <label className="block text-xs font-semibold text-slate-600 mb-1">{ar ? a : e}</label>
+        {input}
+        {k === 'sellingValue' && v && <p className="mt-1 text-[11px] text-slate-500">{ar ? 'يُطبَّق على كلّ أمر نقلٍ على حدة؛ ومن يحتاج سعرُه اعتمادًا يُرسَل له طلبٌ لكلّ أمر.' : 'Applied report by report; roles that need approval send one request per report.'}</p>}
+      </div>
+    );
+  };
 
   // Invoice amounts (net invoice onward): finance, collections and top roles only — the server decides.
   const canViewFinancials = full || !!view.amounts;
@@ -827,13 +906,13 @@ export default function OperationsWorkflowPage() {
       Object.entries(bulkPay).filter(([, v]) => String(v || '').trim()));
     // Clearing the mark is a deliberate empty value
     // The rule above drops empties because they mean leave this column alone, but removing the review mark is a wanted empty, so it is passed explicitly with a special value that cannot be confused with an unfilled field.
-    if (bulkPay.operationsReview === 'clear') fields.operationsReview = '';
+    for (const k of ['operationsReview', 'accountingReview']) if (bulkPay[k] === 'clear') fields[k] = '';
     if (!Object.keys(fields).length) return;
     const run = async () => {
       setBulkPaying(true); setBulkResult(null);
       try {
         const picked = allMatching ? null : new Set(selectedIds);
-        const r = await api.post<{ message: string; skipped?: { reportNumber: string; reason: string }[]; skippedCount?: number }>(
+        const r = await api.post<{ message: string; skipped?: { reportNumber: string; reason: string }[]; skippedCount?: number; sellingRequested?: number }>(
           '/api/workflows/bulk-update', { ...selectionPayload(), fields });
         const skipped = r.skipped || [];
         setBulkResult({ message: r.message, skipped, more: Math.max(0, (r.skippedCount || skipped.length) - skipped.length) });
@@ -842,6 +921,8 @@ export default function OperationsWorkflowPage() {
         if (picked) {
           const skippedNos = new Set(skipped.map((x) => String(x.reportNumber)));
           const shown: Record<string, any> = { ...fields };
+          // A selling price sent for approval is not the row's price yet.
+          if (r.sellingRequested) delete shown.sellingValue;
           if (shown.paymentType && !['cash', 'tax', ''].includes(String(shown.paymentType))) {
             shown.paymentSubtype = shown.paymentType;
             shown.paymentType = shown.paymentType === 'deferred_invoice' ? 'tax' : 'cash';
@@ -851,7 +932,7 @@ export default function OperationsWorkflowPage() {
         notify(r.message || (lang === 'ar' ? 'تم الحفظ' : 'Saved'), skipped.length ? 'error' : 'success');
         if (!skipped.length) {
           setShowBulkPay(false); setSelectedIds(new Set()); setAllMatching(false);
-          setBulkPay({ paymentDate: '', payingBranch: '', paymentType: '', finalReportDestination: '', documentNumber: '', sendingDate: '', branchDeliveryDate: '', deliveryDate: '', operationsReview: '', username: '', fromLocation: '', toLocation: '', truckType: '', loadType: '' });
+          setBulkPay({});
         }
         fetchWorkflows(true); fetchStats();
         // The other server worker clears its cache within a second; the second refetch catches what the first missed.
@@ -1115,23 +1196,16 @@ export default function OperationsWorkflowPage() {
                   </p>
                   <div className="space-y-2.5 max-h-[60vh] overflow-y-auto pe-1">
                     {/* Order data for the whole selection (e.g. one customer name on many orders); each field shows only to roles that may write it, and the server re-checks per row. */}
-                    {['username', 'fromLocation', 'toLocation', 'truckType', 'loadType'].some((f) => has(f)) && (
+                    {BULK_ORDER.some(([k]) => has(k)) || has('username') ? (
                       <p className="text-[12px] font-bold text-slate-800 pt-1">{lang === 'ar' ? 'بيانات أمر النقل' : 'Order data'}</p>
-                    )}
+                    ) : null}
                     {has('username') && (
                       <div>
                         <label className="block text-xs font-semibold text-slate-600 mb-1">{lang === 'ar' ? 'اسم العميل' : 'Customer'}</label>
-                        <CustomerNamePicker value={bulkPay.username} ar={lang === 'ar'} onChange={(v) => setBulkPay((p) => ({ ...p, username: v }))} />
+                        <CustomerNamePicker value={bulkPay.username || ''} ar={lang === 'ar'} onChange={(v) => setBulkPay((p) => ({ ...p, username: v }))} />
                       </div>
                     )}
-                    {([['fromLocation', 'من', 'From'], ['toLocation', 'إلى', 'To'], ['truckType', 'نوع الشاحنة', 'Truck type'], ['loadType', 'نوع الحمولة', 'Load type']] as const).filter(([k]) => has(k)).map(([k, a, e]) => (
-                      <div key={k}>
-                        <label className="block text-xs font-semibold text-slate-600 mb-1">{lang === 'ar' ? a : e}</label>
-                        <input value={(bulkPay as any)[k]} onChange={(ev) => setBulkPay((p) => ({ ...p, [k]: ev.target.value }))}
-                          placeholder={lang === 'ar' ? '— لا يُغيَّر —' : '— leave unchanged —'}
-                          className="w-full px-2.5 py-2 rounded-lg bg-white border border-slate-200 text-slate-900 text-[13px] focus:outline-none focus:ring-2 focus:ring-[#f37121]/40" />
-                      </div>
-                    ))}
+                    {BULK_ORDER.filter(([k]) => has(k)).map((spec) => bulkInput(spec))}
                     <p className="text-[12px] font-bold text-slate-800 pt-1">{lang === 'ar' ? 'السداد والتسليم' : 'Payment & delivery'}</p>
                     <div>
                       <label className="block text-xs font-semibold text-slate-600 mb-1">{lang === 'ar' ? 'تاريخ السداد' : 'Payment date'}</label>
@@ -1193,6 +1267,13 @@ export default function OperationsWorkflowPage() {
                         </select>
                       </div>
                     )}
+                    {/* Prices, truck and driver, invoice and collection: every other column the role may write, each blank = unchanged. */}
+                    {BULK_PRICE.some(([k]) => has(k)) && <p className="text-[12px] font-bold text-slate-800 pt-1">{lang === 'ar' ? 'الأسعار' : 'Prices'}</p>}
+                    {BULK_PRICE.filter(([k]) => has(k)).map((spec) => bulkInput(spec))}
+                    {BULK_TRUCK.some(([k]) => has(k)) && <p className="text-[12px] font-bold text-slate-800 pt-1">{lang === 'ar' ? 'الشاحنة والسائق' : 'Truck & driver'}</p>}
+                    {BULK_TRUCK.filter(([k]) => has(k)).map((spec) => bulkInput(spec))}
+                    {BULK_MONEY.some(([k]) => has(k)) && <p className="text-[12px] font-bold text-slate-800 pt-1">{lang === 'ar' ? 'الفاتورة والتحصيل' : 'Invoice & collection'}</p>}
+                    {BULK_MONEY.filter(([k]) => has(k)).map((spec) => bulkInput(spec))}
                     {/* Customer delivery is not bulk-filled from here The customer's payment term starts from it, so it is an event recorded per invoice on the day it reaches the customer, written by Collections from the Deliver button on the invoices page. Writing one date on fifty transport orders would start fifty terms on a day nobody received. */}
                   </div>
                   {bulkResult && (

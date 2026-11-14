@@ -179,7 +179,8 @@ export default function FleetSettingsPage() {
       </div>
 
       {/* Department dropdown lists: rent type, payment type, load type and ready-made follow-up notes. The last used to be eight lines in code, so adding a ninth waited for a release. */}
-      <ReferenceDataManager module="fleet" alsoType="jp_task_fleet" embedded />
+      {/* «From / To» cities are the list shipment orders use too: an edit here or there changes both at once. */}
+      <ReferenceDataManager module="fleet" alsoType={['jp_task_fleet', 'shipment_city']} embedded />
 
       {/* Vehicle targets */}
       <div className="rounded-2xl border border-slate-200 bg-white shadow-sm overflow-hidden">

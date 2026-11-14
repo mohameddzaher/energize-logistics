@@ -5,6 +5,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { useAuth } from '@/context/AuthContext';
 import { useLanguage } from '@/context/LanguageContext';
 import api from '@/lib/api';
+import { useSocket } from '@/hooks/useSocket';
 import { useDialog } from '@/components/system/DialogProvider';
 import {
   SlidersHorizontal, Plus, Pencil, Trash2, Check, Loader2, X,
@@ -59,6 +60,8 @@ export default function ShipmentFormFields({ embedded = false }: { embedded?: bo
     setLoading(false);
   }, []);
   useEffect(() => { load(); }, [load]);
+  // A colleague's edit, or a list change in reference data (cities, branches), shows here without reloading.
+  useSocket('shipmentOrders:fields', load);
 
   const openCreate = () => { setEditing(null); setForm(JSON.parse(JSON.stringify(EMPTY))); setShowModal(true); };
   const openEdit = (f: FormField) => {
@@ -236,6 +239,13 @@ export default function ShipmentFormFields({ embedded = false }: { embedded?: bo
                 : 'Branch options are all company branches, read from Reference Data («Paying branches») — add or edit a branch there.'}
           </p>
         )}
+        {/* «From / To» read one shared city list, edited in the «القوائم» tab for every section; see listFields. */}
+        {hasOptions && (form.key === 'fromCity' || form.key === 'toCity') && (
+          <p className="mt-4 text-[12px] text-slate-600 bg-slate-50 border border-slate-200 rounded-lg px-3 py-2">
+            {ar ? `خياراتُ «من» و«إلى» قائمةٌ واحدة («مدن الشحن») في تبويب «القوائم» (${form.options.length} مدينة)، وهي نفسُها في إدارة الأسطول وسير عمل التشغيل — تُضاف المدينةُ أو تُحذف من هناك فتتغيّر في كلّ مكانٍ فورًا.`
+                : `«From» and «To» share one list («Shipment cities») in the «Lists» tab (${form.options.length} cities), the same in fleet management and the operations workflow — add or remove a city there and it changes everywhere at once.`}
+          </p>
+        )}
         {hasOptions && form.key === 'paymentSubtype' && (
           <div className="mt-4">
             <p className="mb-2 text-[12px] text-slate-600 bg-slate-50 border border-slate-200 rounded-lg px-3 py-2">
@@ -250,7 +260,7 @@ export default function ShipmentFormFields({ embedded = false }: { embedded?: bo
           </div>
         )}
 
-        {hasOptions && form.key !== 'paymentSubtype' && form.key !== 'branch' && (
+        {hasOptions && form.key !== 'paymentSubtype' && form.key !== 'branch' && form.key !== 'fromCity' && form.key !== 'toCity' && (
           <div className="mt-4">
             {form.key === 'driverRentType' && (
               <p className="mb-2 text-[12px] text-slate-600 bg-slate-50 border border-slate-200 rounded-lg px-3 py-2">

@@ -162,7 +162,8 @@ class _FleetSettingsScreenState extends State<FleetSettingsScreen> {
                       ),
                       const SizedBox(height: 16),
                       // Section dropdown lists, like ReferenceDataManager on the web page.
-                      const FleetReferenceLists(),
+                      // «From / To» cities are shared with shipment orders: an edit here or there changes both.
+                      const FleetReferenceLists(alsoType: 'jp_task_fleet,shipment_city'),
                       const SizedBox(height: 16),
                       Text(tr('الهدف الشهري لكل سيارة', 'Monthly target per vehicle'), style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 15)),
                       const SizedBox(height: 8),

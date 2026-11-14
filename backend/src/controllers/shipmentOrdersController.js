@@ -2643,16 +2643,26 @@ exports.setBranchAccess = async (req, res) => {
 /** «From / To» cities: the owner's list plus what the section settings added, the same list the shipment form shows. */
 /** Links a carrier driver to his HR file by residence number; used when a request completion registers a new driver. */
 exports.syncDriverEmployee = (id) => syncDriverEmployee(id);
-exports.cityOptions = async () => {
-  const base = require('../config/shipmentCities');
-  const rows = await ShipmentOrderField.find({ key: { $in: ['fromCity', 'toCity'] }, deleted: { $ne: true } }).select('options').lean();
-  const out = [...base];
-  for (const f of rows) for (const o of f.options || []) {
-    const c = String(o?.ar || o?.key || '').trim();
-    if (c && !out.includes(c)) out.push(c);
-  }
-  return out;
-};
+/**
+ * «From / To» cities: one list in reference data (`shipment_city`), the same for both fields and every section.
+ * It used to be a list fixed in code plus each field's own options, so a city deleted in the settings came back on
+ * the next read and the two fields drifted apart.
+ */
+async function cityLookupOptions() {
+  return cache.wrap('so:cities', 60 * 1000, async () => {
+    const Lookup = require('../models/Lookup');
+    const rows = await Lookup.find({ type: 'shipment_city', deleted: { $ne: true }, isActive: { $ne: false } })
+      .sort({ order: 1, nameAr: 1 }).select('nameAr nameEn').lean();
+    // Before scripts/migrateShipmentCities.js has run (a fresh database) the list does not exist yet: the old fixed list stands in.
+    if (!rows.length && !(await Lookup.exists({ type: 'shipment_city' }))) {
+      return require('../config/shipmentCities').map((c) => ({ key: c, ar: c, en: c }));
+    }
+    return rows.filter((r) => String(r.nameAr || '').trim())
+      .map((r) => ({ key: r.nameAr.trim(), ar: r.nameAr.trim(), en: (r.nameEn || r.nameAr).trim() }));
+  });
+}
+exports.cityOptions = async () => (await cityLookupOptions()).map((o) => o.ar);
+const CITY_FIELDS = new Set(['fromCity', 'toCity']);
 
 exports.listFields = async (req, res) => {
   try {
@@ -2667,13 +2677,13 @@ exports.listFields = async (req, res) => {
       branch.options = await companyBranchOptions();
       branch.locked = true;
     }
-    // «From / To» start from the owner's list (config/shipmentCities); cities added in the section settings join it.
-    const base = require('../config/shipmentCities');
+    // «From / To» read the shared city list (reference data «مدن الشحن»), edited there for every section.
+    const cities = fields.some((f) => CITY_FIELDS.has(f.key)) ? await cityLookupOptions() : [];
     for (const f of fields) {
-      if (f.key !== 'fromCity' && f.key !== 'toCity') continue;
-      const added = (f.options || []).filter((o) => o && (o.ar || o.key) && !base.includes(o.ar || o.key));
-      f.options = [...base.map((c) => ({ key: c, ar: c, en: c })), ...added];
+      if (!CITY_FIELDS.has(f.key)) continue;
+      f.options = cities;
       f.inputType = 'select';
+      f.locked = true;
     }
     res.json({ fields });
   } catch (error) {
@@ -2723,6 +2733,7 @@ exports.updateField = async (req, res) => {
     if (field.isSystem) delete data.group;
     // Payment type has four types keyed like the operations workflow; a fifth option or a renamed one would split the order from the statement. So its shape, label and requiredness are configurable, not its options.
     if (field.key === 'branch') delete data.options; // From the company branches, see listFields
+    if (CITY_FIELDS.has(field.key)) delete data.options; // From the shared city list, see listFields
     if (field.key === 'paymentSubtype') {
       delete data.options;
       if (data.inputType && !['cards', 'select'].includes(data.inputType)) delete data.inputType;
@@ -2975,6 +2986,21 @@ exports.addFieldOption = async (req, res) => {
     }
     const ar = String(req.body.ar || req.body.label || '').trim();
     if (!ar) return res.status(400).json({ message: 'اكتب الاسم' });
+    // A city typed on the form joins the shared list, so it is offered in every section at once.
+    if (CITY_FIELDS.has(field.key)) {
+      const Lookup = require('../models/Lookup');
+      const same = await Lookup.findOne({ type: 'shipment_city', nameAr: ar }).lean();
+      if (same && !same.deleted && same.isActive !== false) return res.status(409).json({ message: 'موجود في القائمة', field });
+      if (same) await Lookup.updateOne({ _id: same._id }, { $set: { deleted: false, isActive: true } });
+      else {
+        const last = await Lookup.findOne({ type: 'shipment_city' }).sort({ order: -1 }).select('order').lean();
+        await Lookup.create({ type: 'shipment_city', key: ar, nameAr: ar, nameEn: String(req.body.en || '').trim() || ar, order: ((last && last.order) || 0) + 1, createdBy: req.user && req.user._id });
+      }
+      await require('../utils/ttlCache').clearShared('so:').catch(() => {});
+      emit('shipmentOrders:fields', { list: 'shipment_city' });
+      emit('lookup:changed', { type: 'shipment_city' });
+      return res.status(201).json({ field: { ...field.toObject(), options: await cityLookupOptions() } });
+    }
     const key = String(req.body.key || ar).trim();
     const exists = (field.options || []).some((o) => String(o.key).trim() === key
       || String(o.ar || '').trim() === ar);

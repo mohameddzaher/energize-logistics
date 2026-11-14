@@ -43,6 +43,8 @@ const readWorkflowRoles = [...allWorkflowRoles, ...require('../config/roles').DA
 router.get('/export', authorize(...readWorkflowRoles), workflowController.exportWorkflows);
 router.get('/permissions', authorize(...readWorkflowRoles), workflowController.getFieldPermissions);
 router.get('/stats', authorize(...readWorkflowRoles), workflowController.getWorkflowStats);
+// Dropdown lists of the bulk edit, read from the shipment orders' section settings (cities, branches, truck and load types).
+router.get('/form-lists', authorize(...readWorkflowRoles), workflowController.formLists);
 // Values for one column filter, computed in the database. Must come before `/:id`, otherwise 'filters' is read as a record id and the server returns 404 on every list open.
 router.get('/filters', authorize(...readWorkflowRoles), workflowController.filterOptions);
 // The four invoice checks (gap in the sequence, missing manifest, value difference, customer name), also before `/:id`. Money is checked inside the controller (canSeeMoney).

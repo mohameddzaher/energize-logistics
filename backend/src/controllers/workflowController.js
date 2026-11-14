@@ -1325,6 +1325,27 @@ async function pushSellingValue(workflow, value) {
 }
 exports._pushSellingValue = pushSellingValue;
 
+/**
+ * Choices for the bulk edit's dropdowns, from the lists the shipment orders' section settings own: cities (shared
+ * with fleet management), company branches, and the truck and load types of the shipment form. A list edited there
+ * reaches this screen through `shipmentOrders:fields`.
+ */
+exports.formLists = async (req, res) => {
+  try {
+    const so = require('./shipmentOrdersController');
+    const Field = require('../models/ShipmentOrderField');
+    const [cities, branches, fields] = await Promise.all([
+      so.cityOptions(),
+      so.companyBranchOptions(),
+      Field.find({ key: { $in: ['truckType', 'cargoType'] }, deleted: { $ne: true } }).select('key options').lean(),
+    ]);
+    const opts = (k) => ((fields.find((f) => f.key === k) || {}).options || []).map((o) => String(o.ar || o.key || '').trim()).filter(Boolean);
+    res.json({ cities, branches: branches.map((b) => b.ar), truckTypes: opts('truckType'), loadTypes: opts('cargoType') });
+  } catch (e) {
+    res.status(500).json({ message: 'تعذّر تحميل القوائم' });
+  }
+};
+
 /** Whoever reads sellingValue and keeps what it read; cleared before any broadcast. */
 /** Cache of the collections section (dashboard, tree and ledger); cleared before any broadcast that reads it. */
 function invalidateCollectionsReaders() {
@@ -2070,18 +2091,27 @@ exports.bulkUpdate = async (req, res) => {
     if (bulkBranchError) return res.status(400).json({ message: bulkBranchError });
     // The same rules apply in bulk: nobody gains by selecting many what they lack singly. (Re-applied per row below because payment type differs between reports.)
     const refused = patch.__rejected || [];
-    // Selling value is not written in bulk. Each report is written to the operations platform call by call (see pushSellingValue), and one price for a hundred reports of various customers and routes is not pricing. It is edited report by report.
-    if (Object.prototype.hasOwnProperty.call(patch, 'sellingValue')) {
+    // Selling value is taken out of the shared patch and applied row by row through the single edit's own path:
+    // a request for the roles that need approval, otherwise prepareSellingValue (validation, unchanged rows skipped)
+    // and source 'manual' so nothing overwrites it. The platform push it used to wait on is off since the cutover.
+    const hasSelling = Object.prototype.hasOwnProperty.call(patch, 'sellingValue');
+    const sellingRaw = hasSelling ? patch.sellingValue : undefined;
+    if (hasSelling) {
       delete patch.sellingValue;
-      refused.push('sellingValue');
+      const v = Number(sellingRaw);
+      if (sellingRaw === '' || sellingRaw === null || !Number.isFinite(v) || v < 0) {
+        return res.status(400).json({ code: 'BAD_SELLING_VALUE', fields: ['sellingValue'], message: 'سعر البيع يجب أن يكون رقمًا لا يقلّ عن صفر.' });
+      }
+      if (ids.length > 2000) return res.status(400).json({ message: 'سعرُ البيع يُعدَّل جماعيًّا لـ 2000 أمر نقل على الأكثر في المرّة.' });
     }
+    const sellingAsRequest = hasSelling && sellingByRequest(req.user);
     if (patch.username !== undefined) {
       const chk = await require('../utils/approvedCustomerName').checkCustomerName(patch.username, '');
       if (chk.error) return res.status(400).json({ code: 'CUSTOMER_NOT_APPROVED', message: chk.error });
       patch.username = chk.value;
     }
     const keys = Object.keys(patch);
-    if (!keys.length) {
+    if (!keys.length && !hasSelling) {
       return res.status(403).json({
         code: 'FIELDS_NOT_ALLOWED', fields: refused,
         message: `صلاحيّتك لا تسمح بتعديل: ${refused.join('، ')} — لم يُحفظ شيء.`,
@@ -2091,7 +2121,10 @@ exports.bulkUpdate = async (req, res) => {
     const wantsPayment = keys.includes('paymentDate') && patch.paymentDate && String(patch.paymentDate).trim();
     const rows = await OperationsWorkflow.find({ _id: { $in: ids } })
       // paymentTypeSource and what the type derives from: without them each row reads as 'not manual and not unified' and what a person chose or unified would be re-derived (see fillPaymentTypeFromCustomer).
-      .select('reportNumber applicationStatus paymentType paymentSubtype paymentTypeSource paymentMethod reportDate tax netInvoice username lockedBy lockedByName lockedAt invoiceNumber').lean();
+      .select(hasSelling
+        ? '-__v'
+        : 'reportNumber applicationStatus paymentType paymentSubtype paymentTypeSource paymentMethod reportDate tax netInvoice username lockedBy lockedByName lockedAt invoiceNumber').lean();
+    const sellingDone = []; let sellingRequested = 0;
 
     // Rules are applied row by row. Payment type differs between reports, so one edit does not produce one change: a cash report in the batch drops the invoice columns and a tax report derives its tax from its net. One rule for all would have written an invoice on a cash customer.
     const skipped = []; const perRow = [];
@@ -2121,6 +2154,22 @@ exports.bulkUpdate = async (req, res) => {
         continue;
       }
       const rowPatch = { ...patch };
+      if (hasSelling) {
+        if (sellingAsRequest) {
+          const rq = await sellingRequests().createRequest({ workflow: r, origin: 'workflow', raw: sellingRaw, user: req.user });
+          if (rq.error) skipped.push({ reportNumber: r.reportNumber, reason: (rq.error.body && rq.error.body.message) || 'تعذّر طلب تعديل سعر البيع' });
+          else if (rq.request) sellingRequested += 1;
+        } else {
+          const prep = await prepareSellingValue(r, sellingRaw);
+          if (prep.error) skipped.push({ reportNumber: r.reportNumber, reason: (prep.error.body && prep.error.body.message) || 'تعذّر تعديل سعر البيع' });
+          else if (!prep.unchanged) {
+            rowPatch.sellingValue = prep.value;
+            rowPatch.sellingValueSource = 'manual';
+            sellingDone.push(r.reportNumber);
+          }
+        }
+        if (!Object.keys(rowPatch).length) continue;
+      }
       // Who wrote the payment date is recorded with it in the batch, as in the single edit.
       if (Object.prototype.hasOwnProperty.call(patch, 'paymentDate') && patch.paymentDate) {
         rowPatch.paymentDateBy = req.user._id;
@@ -2229,6 +2278,11 @@ exports.bulkUpdate = async (req, res) => {
       if (patch.username) require('../utils/ensureCollectionsParty').ensureCollectionsParty(patch.username, { source: 'operations_workflow' }).catch(() => {});
       const gateMoved = kindMoved || perRow.some((t) => BULK_GATE.some((f) => Object.prototype.hasOwnProperty.call(t.patch, f)));
       if (gateMoved) invalidateCollectionsReaders();
+      // Selling readers (private page, collections) are cleared before the broadcast, as announceSellingValue does per row.
+      if (sellingDone.length) {
+        invalidateSellingReaders();
+        try { emitToAll('operationsPrivate:updated', { bulk: true, count: sellingDone.length }); } catch (e) { /* */ }
+      }
       try { emitToAll('workflow:bulkImported', { bulkUpdate: true, updated }); } catch (e) {}
       if (gateMoved) {
         try { emitToAll('collections:changed', { source: 'workflow', field: kindMoved ? 'paymentType' : 'gate', bulk: true }); } catch (e) { /* */ }
@@ -2239,7 +2293,7 @@ exports.bulkUpdate = async (req, res) => {
         details: `${updated} أمر نقل · ${keys.join('، ')}`, ip: req.ip,
         changes: {
           details: `${updated} أمر نقل · ${keys.join('، ')}`,
-          fields: Object.fromEntries(keys.map((k) => [k, patch[k]])),
+          fields: { ...Object.fromEntries(keys.map((k) => [k, patch[k]])), ...(hasSelling ? { sellingValue: sellingRaw } : {}) },
           reports: perRow.slice(0, 2000).map((t) => t.reportNumber),
           skipped: skipped.slice(0, 500),
         },
@@ -2253,9 +2307,13 @@ exports.bulkUpdate = async (req, res) => {
       skipped: skipped.slice(0, 300),
       skippedCount: skipped.length,
       refusedFields: refused.length ? refused : undefined,
-      message: skipped.length
-        ? `حُفظ ${updated} من ${ids.length} — و${skipped.length} لم يُحفظ.`
-        : `حُفظ ${updated} أمر نقل.`,
+      ...(sellingRequested ? { sellingRequested } : {}),
+      message: (!updated && sellingRequested && !skipped.length)
+        ? `أُرسل ${sellingRequested} طلبَ تعديل سعر بيع للاعتماد.`
+        : (skipped.length
+          ? `حُفظ ${updated} من ${ids.length} — و${skipped.length} لم يُحفظ.`
+          : `حُفظ ${updated} أمر نقل.`)
+          + (sellingRequested ? ` وأُرسل ${sellingRequested} طلبَ تعديل سعر بيع للاعتماد.` : ''),
     });
   } catch (e) {
     console.error('bulkUpdate error:', e);

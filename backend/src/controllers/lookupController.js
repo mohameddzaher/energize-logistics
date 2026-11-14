@@ -5,6 +5,17 @@ const { emitToAll } = require('../websocket/socketManager');
 const LISTS = require('../utils/hrLists');
 
 const emit = (event, payload = {}) => { try { emitToAll(event, payload); } catch (e) {} };
+// Lists that feed the shipment form (cities, paying branches) also refresh every screen holding that form: shipment
+// orders, fleet loads and the operations workflow listen to `shipmentOrders:fields`. The cache is cleared first so the
+// re-read that follows the event gets the new list.
+const FORM_LISTS = new Set(['shipment_city', 'workflow_paying_branch']);
+const announce = (type) => {
+  emit('lookup:changed', { type });
+  if (!FORM_LISTS.has(type)) return;
+  // Both workers' caches are cleared before the event, or a re-read landing on the other worker gets the old list.
+  Promise.resolve().then(() => require('../utils/ttlCache').clearShared('so:')).catch(() => {})
+    .finally(() => emit('shipmentOrders:fields', { list: type }));
+};
 
 const slugify = (s) =>
   String(s || '')
@@ -83,7 +94,7 @@ exports.createLookup = async (req, res) => {
 
     await logAudit({ user: req.user._id, action: 'create_lookup', entity: 'Lookup', entityId: item._id, changes: { after: { type, key, nameEn } }, ipAddress: req.ip }).catch(() => {});
     if (LISTS.isHrList(type)) LISTS.forget();
-    emit('lookup:changed', { type });
+    announce(type);
     res.status(201).json({ item });
   } catch (error) {
     if (error.code === 11000) return res.status(409).json({ message: 'This item already exists' });
@@ -133,7 +144,7 @@ exports.updateLookup = async (req, res) => {
         await logAudit({ user: req.user._id, action: 'rename_hr_list_item', entity: 'Lookup', entityId: item._id, changes: { details: `«${nameBefore}» ← «${item.nameAr}» على ${r.touched} ملفّ`, before: { nameAr: nameBefore }, after: { nameAr: item.nameAr, employees: r.touched } }, ipAddress: req.ip }).catch(() => {});
       }
     }
-    emit('lookup:changed', { type: item.type });
+    announce(item.type);
     res.json({ item });
   } catch (error) {
     res.status(500).json({ message: 'Failed to update lookup' });
@@ -159,13 +170,13 @@ exports.deleteLookup = async (req, res) => {
       item.isActive = false;
       await item.save();
       await logAudit({ user: req.user._id, action: 'delete_lookup', entity: 'Lookup', entityId: item._id, changes: { before: { type: item.type, key: item.key } }, ipAddress: req.ip }).catch(() => {});
-      emit('lookup:changed', { type: item.type });
+      announce(item.type);
       return res.json({ message: 'Lookup deleted', tombstoned: true });
     }
 
     await item.deleteOne();
     await logAudit({ user: req.user._id, action: 'delete_lookup', entity: 'Lookup', entityId: item._id, changes: { before: { type: item.type, key: item.key } }, ipAddress: req.ip }).catch(() => {});
-    emit('lookup:changed', { type: item.type });
+    announce(item.type);
     res.json({ message: 'Lookup deleted' });
   } catch (error) {
     res.status(500).json({ message: 'Failed to delete lookup' });

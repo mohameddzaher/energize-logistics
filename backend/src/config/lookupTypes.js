@@ -357,6 +357,17 @@ const REGISTRY = [
     ],
   },
   // Shipment cancellation reasons: a shipment is never cancelled without a reason. The list is managed from the section settings and can be extended from the cancel field itself.
+  // «From / To» cities: one list for both fields and every section that books a load (shipment orders, fleet management,
+  // the operations workflow). No `seed`: boot seeding re-creates missing seeded rows, which is how deleted cities kept
+  // coming back. Filled once by scripts/migrateShipmentCities.js; from then on edited only here.
+  {
+    type: 'shipment_city',
+    module: 'shipment_orders',
+    nameEn: 'Shipment cities (From / To)',
+    nameAr: 'مدن الشحن (من / إلى)',
+    roles: [...new Set([...SO_ROLES, ...FLEET_ROLES])],
+    storeLabel: true,
+  },
   {
     type: 'so_cancel_reason',
     module: 'shipment_orders',

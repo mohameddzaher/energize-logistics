@@ -351,11 +351,46 @@ exports.getVehicleAssets = async (req, res) => {
       Ls2Trailer.findOne({ currentPlateKey: key }).lean(),
       Ls2AssetEvent.find({ $or: [{ fromPlateKey: key }, { toPlateKey: key }] }).sort({ date: -1 }).limit(100).lean(),
     ]);
-    res.json({ flatbed, tires, trailer, events });
+    const history = await tireConditionHistory(tires);
+    res.json({ flatbed, tires: tires.map((t) => ({ ...t, conditionHistory: history.get(String(t._id)) || [] })), trailer, events });
   } catch (e) {
     sendMongooseError(res, e, e.message);
   }
 };
+
+/**
+ * Every change of a tire's condition % or grade, oldest first, read from its events: the snapshot taken after each
+ * event, the edit notes («الحالة: 70%», «الدرجة: جديد») and the percent recorded on dismount. A row is kept only when
+ * the percent or grade differs from the one before it.
+ */
+async function tireConditionHistory(tires) {
+  if (!tires.length) return new Map();
+  const events = await Ls2AssetEvent.find({ entityType: 'tire', refId: { $in: tires.map((t) => t._id) } })
+    .select('refId action date createdAt stateAfter percentAfter notes performedByName fromPlate toPlate').sort({ date: 1, createdAt: 1 }).lean();
+  const out = new Map();
+  const last = new Map();
+  for (const e of events) {
+    const k = String(e.refId);
+    const notes = String(e.notes || '');
+    const pm = notes.match(/الحالة:?\s*(\d+)%/);
+    let percent = pm ? Number(pm[1]) : (e.stateAfter ? (e.percentAfter ?? null) : undefined);
+    if (/الحالة:\s*بلا تقييم/.test(notes)) percent = null;
+    const gm = notes.match(/الدرجة:\s*(جديد|مستعمل)/);
+    const grade = gm ? (gm[1] === 'جديد' ? 'new' : 'used') : (['new', 'used'].includes(e.stateAfter) ? e.stateAfter : undefined);
+    const prev = last.get(k) || { percent: undefined, grade: undefined };
+    const next = { percent: percent === undefined ? prev.percent : percent, grade: grade === undefined ? prev.grade : grade };
+    if (next.percent !== prev.percent || next.grade !== prev.grade) {
+      if (!out.has(k)) out.set(k, []);
+      out.get(k).push({
+        date: e.date || e.createdAt, action: e.action, percent: next.percent ?? null, grade: next.grade ?? null,
+        prevPercent: prev.percent ?? null, prevGrade: prev.grade ?? null, by: e.performedByName || '', notes,
+        plate: e.fromPlate || e.toPlate || '',
+      });
+    }
+    last.set(k, next);
+  }
+  return out;
+}
 
 // ---- Tires ----
 // POST /assets/tires - register a new tire (optionally mounted straight away).

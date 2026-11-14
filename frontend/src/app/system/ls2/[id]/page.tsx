@@ -29,6 +29,7 @@ import {
 import LiveMap from '@/components/ls2/LiveMap';
 import RegisterServiceModal from '@/components/ls2/RegisterServiceModal';
 import VehicleServiceRecord from '@/components/ls2/VehicleServiceRecord';
+import MaintenanceTypeSummary from '@/components/ls2/MaintenanceTypeSummary';
 import VehicleAssets from '@/components/ls2/VehicleAssets';
 import TireSensorCell from '@/components/ls2/TireSensorCell';
 import ScrollX from '@/components/system/ScrollX';
@@ -368,8 +369,8 @@ export default function Ls2VehicleDetailPage() {
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">
         {/* Map */}
-        <div className="lg:col-span-2 bg-white border border-slate-200 rounded-xl overflow-hidden shadow-sm">
-          <div className="px-5 py-3 border-b border-slate-100 flex items-center justify-between">
+        <div className="lg:col-span-2 bg-white border border-slate-200 rounded-xl overflow-hidden shadow-sm flex flex-col">
+          <div className="px-5 py-3 border-b border-slate-100 flex flex-wrap items-center justify-between gap-2">
             <h2 className="text-sm font-semibold text-slate-900 flex items-center gap-2"><MapPin className="w-4 h-4 text-[#f37121]" /> {lang === 'ar' ? 'الموقع المباشر' : 'Live Position'} {v.status === 'moving' && !track && <span className="flex items-center gap-1 text-[10px] text-emerald-600"><span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />{lang === 'ar' ? 'يتحرك' : 'moving'}</span>}{track && <span className="text-[10px] text-[#f37121]">· {t.track} ({range.from}{range.from !== range.to ? `→${range.to}` : ''})</span>}</h2>
             <div className="flex items-center gap-3">
               <button type="button" onClick={toggleTrack} disabled={trackLoading} className={`flex items-center gap-1 text-xs font-medium ${track ? 'text-[#f37121]' : 'text-slate-500 hover:text-[#f37121]'}`}>
@@ -378,9 +379,12 @@ export default function Ls2VehicleDetailPage() {
               {v.position && <a href={osmLink(v.position.lat, v.position.lng)} target="_blank" rel="noopener noreferrer" className="text-xs text-[#f37121] hover:underline">{t.openInMap}</a>}
             </div>
           </div>
+          {/* The map body takes the whole card: at least 320px (55vw on phones), and as tall as the plan card beside it on desktop. */}
           {v.position ? (
-            <LiveMap lat={v.position.lat} lng={v.position.lng} label={v.plate || v.name} speed={v.speed} height={320} track={track || undefined} />
-          ) : <p className="text-slate-400 text-sm py-16 text-center">{t.noData}</p>}
+            <div className="flex-1 min-h-[max(260px,55vw)] sm:min-h-[320px] lg:min-h-[380px]">
+              <LiveMap lat={v.position.lat} lng={v.position.lng} label={v.plate || v.name} speed={v.speed} fill track={track || undefined} />
+            </div>
+          ) : <p className="flex-1 flex items-center justify-center text-slate-400 text-sm py-16">{t.noData}</p>}
         </div>
 
         {/* Service plan (mirrored from Location Solutions) */}
@@ -416,6 +420,7 @@ export default function Ls2VehicleDetailPage() {
             })}
             {intervals.length === 0 && <p className="text-slate-400 text-sm py-3">{t.noData}</p>}
           </div>
+          <MaintenanceTypeSummary unitId={v.unitId} lang={lang as Lang} isRTL={isRTL} />
         </div>
       </div>
 

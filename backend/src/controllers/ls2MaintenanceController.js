@@ -5,14 +5,11 @@
  */
 const mongoose = require('mongoose');
 const Ls2Vehicle = require('../models/Ls2Vehicle');
-const Ls2ServiceLog = require('../models/Ls2ServiceLog');
-const Ls2Repair = require('../models/Ls2Repair');
 const Ls2AssetEvent = require('../models/Ls2AssetEvent');
 const { Ls2StoreItem } = require('../models/Ls2Store');
 const { Ls2MaintenanceRecord, MAINTENANCE_TYPES } = require('../models/Ls2MaintenanceRecord');
 const { postIssue, cancelIssue } = require('./storeIssueRequestController');
 const { todayKey } = require('../utils/companyDay');
-const { vehiclePlateKey } = require('../utils/plateKey');
 const cache = require('../utils/ttlCache');
 const logAudit = require('../utils/auditLogger');
 
@@ -188,128 +185,208 @@ exports.cancelRecord = async (req, res) => {
   } catch (e) { console.error('ls2 maintenance cancel', e); res.status(500).json({ message: 'تعذّر إلغاء سجل الصيانة' }); }
 };
 
+const ledger = require('../services/ls2MaintenanceLedger');
+
+const periodOf = (q) => ({
+  from: YMD.test(String(q.from || '')) ? q.from : '',
+  to: YMD.test(String(q.to || '')) ? q.to : '',
+  unitId: q.unitId ? Number(q.unitId) : null,
+  type: MAINTENANCE_TYPES.includes(String(q.type || '')) ? q.type : '',
+});
+
+/**
+ * GET /maintenance/entries?unitId&from&to&type&includeCancelled=1
+ * Every maintenance entry (records, unlinked service logs, unmigrated repairs, store issues) with its full detail.
+ */
+exports.listEntries = async (req, res) => {
+  try {
+    const p = periodOf(req.query || {});
+    const key = `ls2:maint:en:${JSON.stringify({ ...p, c: req.query.includeCancelled === '1' })}`;
+    const hit = cache.get(key);
+    if (hit !== undefined) return res.json(hit);
+    const { entries } = await ledger.collectEntries({ ...p, includeCancelled: req.query.includeCancelled === '1' });
+    const body = { entries: entries.map((e) => ({ ...e, typeAr: TYPE_AR[e.type] })) };
+    cache.set(key, body, 30000);
+    res.json(body);
+  } catch (e) { console.error('ls2 maintenance entries', e); res.status(500).json({ message: 'تعذّر تحميل سجلات الصيانة' }); }
+};
+
+const zero = () => ({ count: 0, parts: 0, labour: 0, towing: 0, unsplit: 0, total: 0 });
+const addTo = (acc, e) => {
+  acc.count += 1; acc.parts += e.partsCost; acc.labour += e.labourCost; acc.towing += e.towingCost;
+  acc.unsplit += e.unsplitCost; acc.total += e.totalCost;
+};
+const roundB = (o) => Object.fromEntries(Object.entries(o).map(([k, v]) => [k, typeof v === 'number' && k !== 'count' ? r2(v) : v]));
+const addDaysYmd = (ymd, n) => { const d = new Date(`${ymd}T00:00:00Z`); d.setUTCDate(d.getUTCDate() + n); return d.toISOString().slice(0, 10); };
+
 /**
  * GET /maintenance/analytics?unitId&from&to&type
- * Costs come from active records only. Older service logs and repairs written before records existed carry one
- * undivided cost, so they are summed apart under `legacy` instead of being guessed into parts or labour.
+ * Built on the maintenance ledger, so every figure is a sum of entries the drill-down lists.
+ * Distance comes from the daily odometer snapshots; service status is the live interval state of each truck.
  */
 exports.analytics = async (req, res) => {
   try {
-    const key = `ls2:maint:an:${JSON.stringify(req.query || {})}`;
+    const p = periodOf(req.query || {});
+    const key = `ls2:maint:an:${JSON.stringify(p)}`;
     const hit = cache.get(key);
     if (hit !== undefined) return res.json(hit);
 
-    const from = YMD.test(String(req.query.from || '')) ? req.query.from : '';
-    const to = YMD.test(String(req.query.to || '')) ? req.query.to : '';
-    const unitId = req.query.unitId ? Number(req.query.unitId) : null;
-    const type = MAINTENANCE_TYPES.includes(String(req.query.type || '')) ? req.query.type : '';
-
-    const filter = { status: 'active' };
-    if (unitId) filter.unitId = unitId;
-    if (type) filter.type = type;
-    if (from || to) filter.date = { ...(from ? { $gte: from } : {}), ...(to ? { $lte: to } : {}) };
-
-    const dateRange = (field) => ((from || to) ? { [field]: { ...(from ? { $gte: new Date(`${from}T00:00:00+03:00`) } : {}), ...(to ? { $lte: new Date(`${to}T23:59:59.999+03:00`) } : {}) } } : {});
-    const vehicles = await Ls2Vehicle.find({}).select('unitId plate name driver').lean();
-    const vehicle = unitId ? vehicles.find((v) => v.unitId === unitId) : null;
-    const vKey = vehicle ? vehiclePlateKey(vehicle) : null;
-
-    const [records, legacyLogs, legacyRepairs, tireEvents] = await Promise.all([
-      Ls2MaintenanceRecord.find(filter).lean(),
-      (!type || type === 'periodic')
-        ? Ls2ServiceLog.find({ cost: { $gt: 0 }, ...(unitId ? { unitId } : {}), ...dateRange('serviceDate') }).select('_id cost unitId').lean()
-        : [],
-      (!type || type === 'accident' || type === 'roadside')
-        ? Ls2Repair.find({ cost: { $gt: 0 }, ...(unitId ? { unitId } : {}), ...(type === 'accident' ? { category: 'accident' } : type === 'roadside' ? { category: 'breakdown' } : {}), ...dateRange('repairDate') }).select('cost unitId').lean()
-        : [],
+    const { entries, unmatched, fleet } = await ledger.collectEntries(p);
+    // An open period runs from the first entry to today, so distance and buckets have real bounds.
+    const from = p.from || entries.reduce((m, e) => (e.date && e.date < m ? e.date : m), todayKey());
+    const to = p.to || todayKey();
+    const [mileage, tireEvents] = await Promise.all([
+      require('./ls2Controller').mileageByUnit(from, to),
       Ls2AssetEvent.find({
-        entityType: 'tire', action: { $in: ['mounted', 'transferred', 'scrapped', 'damaged'] },
-        ...(vKey ? { $or: [{ toPlateKey: vKey }, { fromPlateKey: vKey }] } : {}),
-        ...dateRange('date'),
+        entityType: 'tire', action: { $in: ['mounted', 'transferred', 'removed', 'scrapped', 'damaged', 'retired'] },
+        date: { $gte: require('../utils/companyDay').startOfDay(from), $lte: require('../utils/companyDay').endOfDay(to) },
       }).select('action toPlateKey fromPlateKey toPlate fromPlate').lean(),
     ]);
 
-    const linkedLogs = new Set(records.map((r) => r.serviceLog && String(r.serviceLog)).filter(Boolean));
-    const legacyServices = legacyLogs.filter((l) => !linkedLogs.has(String(l._id)));
-
-    const zero = () => ({ count: 0, parts: 0, labour: 0, towing: 0, total: 0 });
-    const add = (acc, r) => { acc.count += 1; acc.parts += r.partsCost || 0; acc.labour += r.labourCost || 0; acc.towing += r.towingCost || 0; acc.total += r.totalCost || 0; };
-    const round = (o) => ({ ...o, parts: r2(o.parts), labour: r2(o.labour), towing: r2(o.towing), total: r2(o.total) });
-
     const totals = zero();
-    const byType = Object.fromEntries(MAINTENANCE_TYPES.map((t) => [t, zero()]));
+    const byType = Object.fromEntries(MAINTENANCE_TYPES.map((t) => [t, { ...zero(), lastDate: '' }]));
+    const bySource = {};
     const byVehicle = new Map();
     const trend = new Map();
     const parts = new Map();
-    const tireByPlate = new Map();
-    const vById = new Map(vehicles.map((v) => [v.unitId, v]));
-    // Daily buckets for a short range, monthly otherwise.
-    const spanDays = from && to ? (new Date(to) - new Date(from)) / 86400000 : 999;
-    const bucketOf = (ymd) => (spanDays <= 62 ? ymd : ymd.slice(0, 7));
+    const tireByUnit = new Map();
+    const spanDays = (new Date(to) - new Date(from)) / 86400000;
+    const granularity = spanDays <= 62 ? 'day' : 'month';
+    const bucketOf = (ymd) => (granularity === 'day' ? ymd : ymd.slice(0, 7));
+    const tireRow = (unitId, plate) => {
+      if (!tireByUnit.has(unitId)) tireByUnit.set(unitId, { unitId, plate, storeQty: 0, storeCost: 0, fitted: 0, removed: 0, scrapped: 0 });
+      return tireByUnit.get(unitId);
+    };
 
-    for (const r of records) {
-      add(totals, r);
-      add(byType[r.type], r);
-      if (!byVehicle.has(r.unitId)) {
-        const v = vById.get(r.unitId);
-        byVehicle.set(r.unitId, { unitId: r.unitId, plate: (v && (v.plate || v.name)) || r.plate, driver: (v && v.driver) || '', ...zero(), byType: Object.fromEntries(MAINTENANCE_TYPES.map((t) => [t, 0])) });
+    for (const e of entries) {
+      addTo(totals, e);
+      addTo(byType[e.type], e);
+      if (e.date > byType[e.type].lastDate) byType[e.type].lastDate = e.date;
+      if (!bySource[e.source]) bySource[e.source] = { source: e.source, count: 0, total: 0 };
+      bySource[e.source].count += 1; bySource[e.source].total += e.totalCost;
+
+      if (!byVehicle.has(e.unitId)) {
+        const v = fleet.byId.get(e.unitId);
+        byVehicle.set(e.unitId, {
+          unitId: e.unitId, plate: e.plate, driver: (v && v.driver) || '', ...zero(), dates: [],
+          byType: Object.fromEntries(MAINTENANCE_TYPES.map((t) => [t, 0])), countByType: Object.fromEntries(MAINTENANCE_TYPES.map((t) => [t, 0])),
+        });
       }
-      const bv = byVehicle.get(r.unitId);
-      add(bv, r); bv.byType[r.type] += r.totalCost || 0;
-      const b = bucketOf(r.date);
-      if (!trend.has(b)) trend.set(b, { bucket: b, parts: 0, labour: 0, towing: 0, total: 0, ...Object.fromEntries(MAINTENANCE_TYPES.map((t) => [t, 0])) });
+      const bv = byVehicle.get(e.unitId);
+      addTo(bv, e); bv.byType[e.type] += e.totalCost; bv.countByType[e.type] += 1; bv.dates.push(e.date);
+
+      const b = bucketOf(e.date);
+      if (!trend.has(b)) trend.set(b, { bucket: b, total: 0, count: 0, ...Object.fromEntries(MAINTENANCE_TYPES.flatMap((t) => [[t, 0], [`${t}Count`, 0]])) });
       const tb = trend.get(b);
-      tb.parts += r.partsCost || 0; tb.labour += r.labourCost || 0; tb.towing += r.towingCost || 0; tb.total += r.totalCost || 0; tb[r.type] += r.totalCost || 0;
-      for (const p of r.parts || []) {
-        const k = String(p.item);
-        if (!parts.has(k)) parts.set(k, { item: k, name: p.itemName, unit: p.unit, isTire: !!p.isTire, quantity: 0, cost: 0, records: 0 });
-        const pp = parts.get(k); pp.quantity += p.quantity; pp.cost += p.total || 0; pp.records += 1;
-        if (p.isTire) {
-          const pk = r.plate || String(r.unitId);
-          if (!tireByPlate.has(pk)) tireByPlate.set(pk, { plate: pk, storeQty: 0, storeCost: 0, fitted: 0, scrapped: 0 });
-          const t = tireByPlate.get(pk); t.storeQty += p.quantity; t.storeCost += p.total || 0;
-        }
+      tb.total += e.totalCost; tb.count += 1; tb[e.type] += e.totalCost; tb[`${e.type}Count`] += 1;
+
+      for (const l of e.parts) {
+        if (!parts.has(l.item)) parts.set(l.item, { item: l.item, name: l.name, code: l.code, unit: l.unit, isTire: l.isTire, quantity: 0, cost: 0, entries: 0, vehicles: new Set() });
+        const pp = parts.get(l.item);
+        pp.quantity += l.quantity; pp.cost += l.total; pp.entries += 1; pp.vehicles.add(e.unitId);
+        if (l.isTire) { const t = tireRow(e.unitId, e.plate); t.storeQty += l.quantity; t.storeCost += l.total; }
       }
     }
 
-    // Tyre registry: tyres fitted onto a truck and tyres scrapped off one, per plate.
-    const plateByKey = new Map(vehicles.map((v) => [vehiclePlateKey(v), v.plate || v.name]));
-    for (const e of tireEvents) {
-      const fitted = (e.action === 'mounted' || e.action === 'transferred') && e.toPlateKey;
-      const scrapped = (e.action === 'scrapped' || e.action === 'damaged') && e.fromPlateKey;
-      if (!fitted && !scrapped) continue;
-      const k = fitted ? e.toPlateKey : e.fromPlateKey;
-      if (vKey && k !== vKey) continue;
-      const pk = plateByKey.get(k) || (fitted ? e.toPlate : e.fromPlate) || k;
-      if (!tireByPlate.has(pk)) tireByPlate.set(pk, { plate: pk, storeQty: 0, storeCost: 0, fitted: 0, scrapped: 0 });
-      const t = tireByPlate.get(pk);
-      if (fitted) t.fitted += 1; else t.scrapped += 1;
+    // Tyre registry events of the period, attributed to the truck they went on or came off.
+    for (const ev of tireEvents) {
+      const onKey = ['mounted', 'transferred'].includes(ev.action) ? ev.toPlateKey : null;
+      const offKey = ['removed', 'transferred', 'scrapped', 'damaged', 'retired'].includes(ev.action) ? ev.fromPlateKey : null;
+      for (const [k, field] of [[onKey, 'fitted'], [offKey, ['scrapped', 'damaged', 'retired'].includes(ev.action) ? 'scrapped' : 'removed']]) {
+        const v = k && fleet.byKey.get(k);
+        if (!v || (p.unitId && v.unitId !== p.unitId)) continue;
+        tireRow(v.unitId, v.plate || v.name)[field] += 1;
+      }
     }
-    const tireRows = [...tireByPlate.values()].map((t) => ({ ...t, storeCost: r2(t.storeCost) }))
-      .sort((a, b) => (b.storeQty + b.fitted) - (a.storeQty + a.fitted));
 
+    // Distance of the period; fleet cost per 1,000 km uses every truck with odometer data, serviced or not.
+    const kmOf = (uid) => (mileage.get(uid) || {}).km || 0;
+    const scopeIds = p.unitId ? [p.unitId] : fleet.vehicles.map((v) => v.unitId);
+    const kmTotal = scopeIds.reduce((a, uid) => a + kmOf(uid), 0);
+    const kmVehicles = scopeIds.filter((uid) => kmOf(uid) > 0).length;
+    const costWithKm = entries.filter((e) => kmOf(e.unitId) > 0).reduce((a, e) => a + e.totalCost, 0);
+
+    const vehicleRows = [...byVehicle.values()].map((v) => {
+      const km = kmOf(v.unitId);
+      const dates = [...new Set(v.dates)].sort();
+      const gaps = dates.slice(1).map((d, i) => (new Date(d) - new Date(dates[i])) / 86400000);
+      const { dates: _d, ...rest } = v;
+      return {
+        ...roundB(rest), byType: Object.fromEntries(Object.entries(v.byType).map(([k, x]) => [k, r2(x)])),
+        km: Math.round(km), costPer1000Km: km > 0 ? r2((v.total / km) * 1000) : null,
+        per10kKm: km > 0 ? r2((v.count / km) * 10000) : null,
+        visitDays: dates.length, firstDate: dates[0] || '', lastDate: dates[dates.length - 1] || '',
+        avgDaysBetween: gaps.length ? r2(gaps.reduce((a, g) => a + g, 0) / gaps.length) : null,
+      };
+    }).sort((a, b) => b.total - a.total);
+
+    const partRows = [...parts.values()].map((x) => ({ ...x, cost: r2(x.cost), vehicles: x.vehicles.size }));
+    const tireRows = [...tireByUnit.values()].map((t) => ({ ...t, storeCost: r2(t.storeCost) }))
+      .sort((a, b) => (b.storeQty + b.fitted + b.scrapped) - (a.storeQty + a.fitted + a.scrapped));
+
+    // Periodic services due now, from each truck's live interval state (the maintenance page reads the same).
+    const serviceRows = [];
+    for (const v of fleet.vehicles) {
+      if (p.unitId && v.unitId !== p.unitId) continue;
+      for (const iv of v.serviceIntervals || []) {
+        if (iv.statusLevel !== 'overdue' && iv.statusLevel !== 'due') continue;
+        const remaining = iv.remainingKm ?? iv.remainingDays ?? iv.remaining ?? null;
+        serviceRows.push({
+          unitId: v.unitId, plate: v.plate || v.name, service: iv.name, status: iv.statusLevel, remaining,
+          unit: iv.remainingKm != null ? 'km' : iv.remainingDays != null ? 'days' : 'h',
+          lastServiceAt: iv.lastServiceAt || null, lastServiceKm: iv.lastServiceKm ?? null,
+        });
+      }
+    }
+    serviceRows.sort((a, b) => (a.remaining ?? 1e9) - (b.remaining ?? 1e9));
+
+    // Every bucket of the period is present, so a quiet month reads as zero instead of disappearing.
+    const trendRows = [];
+    for (let d = from; d <= to; d = granularity === 'day' ? addDaysYmd(d, 1) : addDaysYmd(`${d.slice(0, 7)}-01`, 32).slice(0, 7) + '-01') {
+      const b = bucketOf(d);
+      if (trendRows.length && trendRows[trendRows.length - 1].bucket === b) continue;
+      const row = trend.get(b) || { bucket: b, total: 0, count: 0, ...Object.fromEntries(MAINTENANCE_TYPES.flatMap((t) => [[t, 0], [`${t}Count`, 0]])) };
+      trendRows.push(Object.fromEntries(Object.entries(row).map(([k, x]) => [k, typeof x === 'number' && !k.endsWith('ount') ? r2(x) : x])));
+      if (trendRows.length > 800) break;
+    }
+
+    const vehiclesServiced = byVehicle.size;
     const body = {
-      filters: { from, to, unitId, type },
-      totals: round(totals),
-      byType: MAINTENANCE_TYPES.map((t) => ({ type: t, typeAr: TYPE_AR[t], ...round(byType[t]) })),
-      byVehicle: [...byVehicle.values()].map((v) => ({ ...round(v), byType: Object.fromEntries(Object.entries(v.byType).map(([k, x]) => [k, r2(x)])) }))
-        .sort((a, b) => b.total - a.total),
-      trend: [...trend.values()].sort((a, b) => a.bucket.localeCompare(b.bucket))
-        .map((t) => Object.fromEntries(Object.entries(t).map(([k, x]) => [k, typeof x === 'number' ? r2(x) : x]))),
-      granularity: spanDays <= 62 ? 'day' : 'month',
-      topParts: [...parts.values()].map((p) => ({ ...p, cost: r2(p.cost) })).sort((a, b) => b.cost - a.cost).slice(0, 25),
+      filters: { ...p, from, to },
+      totals: {
+        ...roundB(totals), vehicles: vehiclesServiced,
+        avgPerVehicle: vehiclesServiced ? r2(totals.total / vehiclesServiced) : 0,
+        km: Math.round(kmTotal), kmVehicles,
+        costPer1000Km: kmTotal > 0 ? r2((costWithKm / kmTotal) * 1000) : null,
+        tireQty: tireRows.reduce((a, t) => a + t.storeQty, 0),
+      },
+      byType: MAINTENANCE_TYPES.map((t) => ({ type: t, typeAr: TYPE_AR[t], ...roundB(byType[t]) })),
+      bySource: Object.values(bySource).map((s) => ({ ...s, total: r2(s.total) })),
+      byVehicle: vehicleRows,
+      trend: trendRows,
+      granularity,
+      topPartsByCost: [...partRows].sort((a, b) => b.cost - a.cost).slice(0, 30),
+      topPartsByQty: [...partRows].sort((a, b) => b.quantity - a.quantity).slice(0, 30),
+      partsCount: partRows.length,
       tires: {
         storeQty: tireRows.reduce((a, t) => a + t.storeQty, 0),
         storeCost: r2(tireRows.reduce((a, t) => a + t.storeCost, 0)),
         fitted: tireRows.reduce((a, t) => a + t.fitted, 0),
+        removed: tireRows.reduce((a, t) => a + t.removed, 0),
         scrapped: tireRows.reduce((a, t) => a + t.scrapped, 0),
-        byVehicle: tireRows.slice(0, 50),
+        byVehicle: tireRows,
       },
-      legacy: {
-        services: { count: legacyServices.length, cost: r2(legacyServices.reduce((a, l) => a + (l.cost || 0), 0)) },
-        repairs: { count: legacyRepairs.length, cost: r2(legacyRepairs.reduce((a, l) => a + (l.cost || 0), 0)) },
+      services: {
+        overdue: serviceRows.filter((s) => s.status === 'overdue').length,
+        due: serviceRows.filter((s) => s.status === 'due').length,
+        vehiclesOverdue: new Set(serviceRows.filter((s) => s.status === 'overdue').map((s) => s.unitId)).size,
+        vehiclesDue: new Set(serviceRows.filter((s) => s.status === 'due').map((s) => s.unitId)).size,
+        rows: serviceRows,
       },
-      vehicles: vehicles.map((v) => ({ unitId: v.unitId, plate: v.plate || v.name })).sort((a, b) => String(a.plate).localeCompare(String(b.plate))),
+      // Store issues whose plate matches no fleet truck: listed, never summed into the fleet figures.
+      unmatchedIssues: { count: unmatched.length, cost: r2(unmatched.reduce((a, u) => a + u.total, 0)), rows: unmatched.slice(0, 500) },
+      priceBasis: entries.flatMap((e) => e.parts).reduce((acc, l) => { acc[l.priceBasis] = (acc[l.priceBasis] || 0) + 1; return acc; }, {}),
+      vehicles: fleet.vehicles.map((v) => ({ unitId: v.unitId, plate: v.plate || v.name })).sort((a, b) => String(a.plate).localeCompare(String(b.plate))),
     };
     cache.set(key, body, 30000);
     res.json(body);

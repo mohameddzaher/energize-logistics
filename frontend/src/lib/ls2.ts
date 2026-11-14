@@ -103,6 +103,8 @@ export interface Repair {
   repairDate: string; odometerKm: number | null; cost: number | null;
   workshop: string; partsReplaced: string; description: string; driver: string;
   performedByName: string; createdAt: string;
+  // The maintenance type the repair now counts under, and its migrated record if any.
+  maintenanceType?: MaintenanceType; migratedRecord?: string | null;
 }
 export interface ServiceLog {
   _id: string; unitId: number; plate: string; action: string;
@@ -336,6 +338,23 @@ export const maintenanceTypeLabel = (t: string, lang: Lang) => {
 };
 export interface MaintenancePart { item: string; itemName: string; itemCode?: string; unit?: string; quantity: number; unitPrice: number; total: number; isTire?: boolean }
 export interface MaintenanceWork { label: string; cost: number | null; note?: string }
+/** One entry of the maintenance ledger (/api/ls2/maintenance/entries): a record, an older service log or repair, or a store issue. */
+export type MaintenanceSource = 'record' | 'service_log' | 'repair' | 'store_issue';
+export interface MaintenanceEntryPart { item: string; name: string; code?: string; unit?: string; quantity: number; unitPrice: number; total: number; isTire?: boolean; priceBasis?: 'issue' | 'purchase' | 'item' }
+export interface MaintenanceEntry {
+  key: string; source: MaintenanceSource; id: string; unitId: number; plate: string; driver?: string; type: MaintenanceType; typeAr?: string;
+  date: string; odometerKm: number | null; title: string; location?: string; ref?: string; issueReasonAr?: string; repairCategory?: string;
+  parts: MaintenanceEntryPart[]; work: MaintenanceWork[];
+  checklist?: { label: string; status: 'done' | 'deferred' | 'na'; deferKm: number | null; resolved: boolean; note?: string }[];
+  partsCost: number; labourCost: number; towingCost: number; unsplitCost: number; totalCost: number;
+  notes?: string; by?: string; recordedAt?: string; cancelled?: boolean; cancelReason?: string; cancelledByName?: string; sourceRepair?: string | null;
+}
+export const MAINTENANCE_SOURCE_LABEL: Record<MaintenanceSource, { ar: string; en: string }> = {
+  record: { ar: 'سجل صيانة', en: 'Maintenance record' },
+  service_log: { ar: 'سجل خدمة سابق', en: 'Earlier service log' },
+  repair: { ar: 'إصلاح سابق', en: 'Earlier repair' },
+  store_issue: { ar: 'صرف من المخزن', en: 'Store issue' },
+};
 export interface MaintenanceRecord {
   _id: string; unitId: number; plate: string; driver?: string; type: MaintenanceType; date: string; odometerKm: number | null;
   title?: string; location?: string; parts: MaintenancePart[]; work: MaintenanceWork[];

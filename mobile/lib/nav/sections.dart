@@ -501,7 +501,7 @@ List<AppSection> sectionsFor(AuthProvider auth) {
         AppPage('اللوحة', 'Dashboard', Icons.dashboard_outlined, (c) => const Ls2DashboardScreen()),
         AppPage('المركبات والصيانة', 'Fleet & Maintenance', Icons.local_shipping_outlined, (c) => const Ls2VehiclesScreen(), path: '/system/ls2/maintenance'),
         AppPage('تحليلات الصيانة', 'Maintenance Analytics', Icons.insights_outlined, (c) => const Ls2MaintenanceAnalyticsScreen(), path: '/system/ls2/maintenance-analytics'),
-        AppPage('الإصلاحات', 'Repairs', Icons.home_repair_service_outlined, (c) => ResourceScreen(config: ls2RepairsCfg), path: '/system/ls2/repairs'),
+        AppPage('الإصلاحات السابقة', 'Earlier repairs', Icons.home_repair_service_outlined, (c) => ResourceScreen(config: ls2RepairsCfg), path: '/system/ls2/repairs'),
         AppPage('أصول الأسطول', 'Fleet Assets', Icons.tire_repair_outlined, (c) => const Ls2FleetAssetsScreen(), path: '/system/ls2/fleet-assets'),
         // Heavy store: opens on issue requests, the only way stock leaves it (as in the light store); items are one tap away.
         AppPage('مخزن النقل الثقيل', 'Store', Icons.inventory_2_outlined, (c) => const LtIssueRequestsScreen(cfg: htIssueCfg), path: '/system/ls2/store'),

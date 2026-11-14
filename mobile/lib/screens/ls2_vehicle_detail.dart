@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_map/flutter_map.dart';
+import 'package:latlong2/latlong.dart';
 import '../services/api.dart';
 import '../services/lang.dart';
 import 'ls2_track_map.dart';
@@ -65,6 +67,8 @@ class _Ls2VehicleDetailScreenState extends State<Ls2VehicleDetailScreen> {
   bool _loading = true;
   String? _error;
   late final void Function() _onLive;
+  // A type picked on the overview's plan card, opened in the Maintenance tab.
+  final ValueNotifier<String?> _jumpType = ValueNotifier(null);
 
   @override
   void initState() {
@@ -72,6 +76,7 @@ class _Ls2VehicleDetailScreenState extends State<Ls2VehicleDetailScreen> {
     _load();
     _onLive = () => _load();
     Live.instance.on('ls2:updated', _onLive);
+    Live.instance.on('ls2:store', _onLive);
     // Identity and documents come from the vehicle registry; edits there show here immediately.
     Live.instance.on('vreg:updated', _onLive);
   }
@@ -79,7 +84,9 @@ class _Ls2VehicleDetailScreenState extends State<Ls2VehicleDetailScreen> {
   @override
   void dispose() {
     Live.instance.off('ls2:updated', _onLive);
+    Live.instance.off('ls2:store', _onLive);
     Live.instance.off('vreg:updated', _onLive);
+    _jumpType.dispose();
     super.dispose();
   }
 
@@ -142,8 +149,8 @@ class _Ls2VehicleDetailScreenState extends State<Ls2VehicleDetailScreen> {
             : _error != null
                 ? ErrorRetry(message: _error!, onRetry: () { setState(() => _loading = true); _load(); })
                 : TabBarView(children: [
-                    _OverviewTab(vehicleId: widget.vehicleId, vehicle: _vehicle!, onRefresh: _load),
-                    _MaintenanceTab(vehicleId: widget.vehicleId, plate: widget.plate),
+                    _OverviewTab(vehicleId: widget.vehicleId, vehicle: _vehicle!, onRefresh: _load, jumpType: _jumpType),
+                    _MaintenanceTab(vehicleId: widget.vehicleId, plate: widget.plate, jumpType: _jumpType),
                     _TripsTab(vehicleId: widget.vehicleId),
                     _DistanceFuelTab(vehicleId: widget.vehicleId),
                     _AlertsTab(alerts: _alerts, onRefresh: _load),
@@ -158,7 +165,8 @@ class _OverviewTab extends StatelessWidget {
   final String vehicleId;
   final Map<String, dynamic> vehicle;
   final Future<void> Function() onRefresh;
-  const _OverviewTab({required this.vehicleId, required this.vehicle, required this.onRefresh});
+  final ValueNotifier<String?> jumpType;
+  const _OverviewTab({required this.vehicleId, required this.vehicle, required this.onRefresh, required this.jumpType});
 
   // Manual edit of tire brand/type (PATCH /meta); picked up live via ls2:updated.
   Future<void> _editTireBrand(BuildContext context) async {
@@ -350,6 +358,22 @@ class _OverviewTab extends StatelessWidget {
           ),
         ),
         const SizedBox(height: 12),
+        FadeSlideIn(
+          delayMs: 90,
+          child: _PlanCard(
+            unitId: int.tryParse(vehicleId) ?? 0,
+            intervals: _l(maintenance['intervals']),
+            onOpenType: (t) {
+              jumpType.value = t;
+              DefaultTabController.of(context).animateTo(1);
+            },
+          ),
+        ),
+        if (_m(v['position'])['lat'] != null && _m(v['position'])['lng'] != null) ...[
+          const SizedBox(height: 12),
+          FadeSlideIn(delayMs: 95, child: _LiveLocationCard(vehicle: v)),
+        ],
+        const SizedBox(height: 12),
         // Identity from the vehicle registry; the device values are shown as "per device"
         FadeSlideIn(delayMs: 100, child: _RegistryCard(registry: _m(v['registry']), conflicts: _m(v['conflicts']), profile: profile)),
         const SizedBox(height: 12),
@@ -489,7 +513,8 @@ class _RegistryCard extends StatelessWidget {
 class _MaintenanceTab extends StatefulWidget {
   final String vehicleId;
   final String plate;
-  const _MaintenanceTab({required this.vehicleId, required this.plate});
+  final ValueNotifier<String?> jumpType;
+  const _MaintenanceTab({required this.vehicleId, required this.plate, required this.jumpType});
   @override
   State<_MaintenanceTab> createState() => _MaintenanceTabState();
 }
@@ -498,40 +523,70 @@ class _MaintenanceTabState extends State<_MaintenanceTab> {
   Map<String, dynamic>? _d;
   bool _loading = true;
   String? _error;
-  // Maintenance type shown: periodic keeps the interval cards; the other three list their records.
-  String _type = 'periodic';
+  // Ledger entries of this truck (all sources, cancelled records included for display only).
+  List<Map<String, dynamic>> _entries = [];
+  // Types whose card is open; nothing is open until a tile is tapped.
+  final Set<String> _open = {};
   late final void Function(dynamic) _onLive;
+  late final void Function() _onStore;
+  final Map<String, GlobalKey> _cardKeys = {for (final t in kMaintTypes) t.$1: GlobalKey()};
+
+  // Opens the type picked on the overview and scrolls to its card once it is built.
+  void _onJump() {
+    final t = widget.jumpType.value;
+    if (t == null) return;
+    widget.jumpType.value = null;
+    setState(() => _open.add(t));
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      final ctx = _cardKeys[t]?.currentContext;
+      if (ctx != null) Scrollable.ensureVisible(ctx, duration: const Duration(milliseconds: 300), alignment: 0.05);
+    });
+  }
 
   @override
   void initState() {
     super.initState();
+    widget.jumpType.addListener(_onJump);
+    if (widget.jumpType.value != null) WidgetsBinding.instance.addPostFrameCallback((_) { if (mounted) _onJump(); });
     _load();
     // The poller's pulse carries `vehicles`; only real writes reload.
     _onLive = (d) { if (d is! Map || d['vehicles'] == null) _load(); };
     Live.instance.onData('ls2:updated', _onLive);
+    _onStore = () => _load();
+    Live.instance.on('ls2:store', _onStore);
   }
 
   @override
   void dispose() {
+    widget.jumpType.removeListener(_onJump);
     Live.instance.offData('ls2:updated', _onLive);
+    Live.instance.off('ls2:store', _onStore);
     super.dispose();
   }
 
-  Future<void> _addRecord() async {
+  Future<void> _addRecord(String type) async {
     final vehicle = _m(_d?['vehicle']);
     final saved = await showModalBottomSheet<bool>(
       context: context,
       isScrollControlled: true,
-      builder: (_) => MaintenanceRecordSheet(unitId: int.tryParse(widget.vehicleId) ?? 0, type: _type, odometer: _numOrNull(vehicle['odometerKm'])),
+      builder: (_) => MaintenanceRecordSheet(unitId: int.tryParse(widget.vehicleId) ?? 0, type: type, odometer: _numOrNull(vehicle['odometerKm'])),
     );
     if (saved == true) _load();
   }
 
   Future<void> _load() async {
     try {
-      final d = await Api.instance.get('/api/ls2/vehicles/${widget.vehicleId}/maintenance');
+      final res = await Future.wait([
+        Api.instance.get('/api/ls2/vehicles/${widget.vehicleId}/maintenance'),
+        loadMaintenanceEntries(unitId: int.tryParse(widget.vehicleId), includeCancelled: true),
+      ]);
       if (!mounted) return;
-      setState(() { _d = Map<String, dynamic>.from(d); _loading = false; _error = null; });
+      setState(() {
+        _d = Map<String, dynamic>.from(res[0] as Map);
+        _entries = res[1] as List<Map<String, dynamic>>;
+        _loading = false;
+        _error = null;
+      });
     } catch (e) {
       if (mounted) setState(() { _loading = false; _error = e.toString(); });
     }
@@ -713,6 +768,114 @@ class _MaintenanceTabState extends State<_MaintenanceTab> {
     }
   }
 
+  Widget _intervalCard(Map<String, dynamic> iv) {
+    final level = (iv['statusLevel'] ?? 'ok').toString();
+    final color = level == 'overdue' ? T.danger : level == 'due' ? T.warn : T.success;
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 8),
+      child: AppCard(
+        topAccent: color,
+        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Row(children: [
+            Expanded(child: Text((iv['name'] ?? '').toString(), style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 13.5))),
+            Chip2(level == 'overdue' ? tr('متأخرة', 'Overdue') : level == 'due' ? tr('مستحقة', 'Due') : tr('سليمة', 'OK'), color),
+          ]),
+          const SizedBox(height: 5),
+          Wrap(spacing: 6, runSpacing: 6, children: [
+            if (iv['remainingKm'] != null) Chip2('${tr('المتبقي', 'Remaining')}: ${_fmt(iv['remainingKm'])} ${tr('كم', 'km')}', color),
+            if (iv['nextServiceKm'] != null) Chip2('${tr('عند', 'At')}: ${_fmt(iv['nextServiceKm'])} ${tr('كم', 'km')}', T.navy),
+            if (iv['lastServiceAt'] != null) Chip2('${tr('آخر خدمة', 'Last')}: ${_dt(iv['lastServiceAt']).split(' ').first}', T.inkFaint),
+            if (iv['serviceCount'] != null) Chip2('${tr('مرات الخدمة', 'Services')}: ${_fmt(iv['serviceCount'])}', T.inkFaint),
+          ]),
+          const SizedBox(height: 6),
+          Align(
+            alignment: AlignmentDirectional.centerEnd,
+            child: TextButton.icon(
+              onPressed: () => _registerService(iv),
+              icon: const Icon(Icons.build_circle_outlined, size: 17),
+              label: Text(tr('تسجيل خدمة', 'Register service'), style: const TextStyle(fontSize: 12.5, fontWeight: FontWeight.w700)),
+            ),
+          ),
+        ]),
+      ),
+    );
+  }
+
+  Widget _deferralCard(Map<String, dynamic> d) => Padding(
+        padding: const EdgeInsets.only(bottom: 8),
+        child: AppCard(
+          topAccent: T.warn,
+          child: Row(children: [
+            Expanded(
+              child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                Text((d['labelAr'] ?? d['label'] ?? '').toString(), style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 13)),
+                Text(
+                  '${tr('يستحق عند', 'Due at')} ${_fmt(d['dueAtOdometerKm'])} ${tr('كم', 'km')}'
+                  '${d['remainingKm'] != null ? ' · ${tr('باقي', 'left')} ${_fmt(d['remainingKm'])}' : ''}'
+                  '${d['estimatedDueDate'] != null ? ' · ≈${d['estimatedDueDate']}' : ''}',
+                  style: const TextStyle(fontSize: 11.5, color: T.inkSoft),
+                ),
+              ]),
+            ),
+            FilledButton.tonal(onPressed: () => _resolveDeferral(d), child: Text(tr('إنهاء', 'Resolve'), style: const TextStyle(fontSize: 12))),
+          ]),
+        ),
+      );
+
+  /// One type's own card: its full history, plus the interval plan for periodic and «سجل جديد» for the others.
+  Widget _typeCard(String type, List<Map<String, dynamic>> intervals, List<Map<String, dynamic>> deferrals) {
+    final color = maintTypeColor(type);
+    final rows = _entries.where((e) => e['type'] == type).toList();
+    return Padding(
+      key: _cardKeys[type],
+      padding: const EdgeInsets.only(top: 12),
+      child: AppCard(
+        topAccent: color,
+        padding: const EdgeInsets.all(12),
+        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Row(children: [
+            Icon(kMaintIcons[type], color: color, size: 20),
+            const SizedBox(width: 6),
+            Expanded(child: Text(maintTypeLabel(type), style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 15))),
+            if (type != 'periodic')
+              FilledButton.icon(
+                onPressed: () => _addRecord(type),
+                style: FilledButton.styleFrom(visualDensity: VisualDensity.compact),
+                icon: const Icon(Icons.add, size: 17),
+                label: Text(tr('سجل جديد', 'New record'), style: const TextStyle(fontSize: 12.5)),
+              ),
+            IconButton(
+              visualDensity: VisualDensity.compact, tooltip: tr('إغلاق', 'Close'),
+              onPressed: () => setState(() => _open.remove(type)), icon: const Icon(Icons.close, size: 18, color: T.inkFaint),
+            ),
+          ]),
+          if (type == 'periodic') ...[
+            const SizedBox(height: 8),
+            Text(tr('فواصل الخدمة', 'Service intervals'), style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 13.5)),
+            const SizedBox(height: 6),
+            if (intervals.isEmpty) Text(tr('لا توجد فواصل خدمة لهذه المركبة', 'No service intervals for this vehicle'), style: const TextStyle(color: T.inkFaint, fontSize: 12)),
+            ...intervals.map(_intervalCard),
+            if (deferrals.isNotEmpty) ...[
+              const SizedBox(height: 4),
+              Text(tr('مهام مؤجلة', 'Deferred tasks'), style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 13.5)),
+              const SizedBox(height: 6),
+              ...deferrals.map(_deferralCard),
+            ],
+          ],
+          const SizedBox(height: 8),
+          Text('${tr('السجل الكامل', 'Full history')} (${rows.where((e) => e['cancelled'] != true).length})', style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 13.5)),
+          const SizedBox(height: 6),
+          if (rows.isEmpty) Text(tr('لا توجد سجلات من هذا النوع لهذه المركبة.', 'No entries of this type for this vehicle.'), style: const TextStyle(color: T.inkFaint, fontSize: 12)),
+          for (final e in rows)
+            Padding(
+              padding: const EdgeInsets.only(bottom: 8),
+              child: MaintenanceEntryCard(e: e, onCancel: () async { if (await cancelMaintenanceRecord(context, e)) _load(); }),
+            ),
+        ]),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     if (_loading) {
@@ -724,144 +887,23 @@ class _MaintenanceTabState extends State<_MaintenanceTab> {
     final vehicle = _m(_d?['vehicle']);
     final intervals = _l(_m(vehicle['maintenance'])['intervals']);
     final deferrals = _l(_d?['deferrals']);
-    final history = _l(_d?['history']);
-    final records = _l(_d?['records']);
-    final shown = records.where((r) => r['type'] == _type).toList();
-    final counts = <String, int>{};
-    for (final r in records) {
-      if (r['status'] == 'active') counts['${r['type']}'] = (counts['${r['type']}'] ?? 0) + 1;
-    }
-    final recordCards = shown.map((r) => Padding(
-          padding: const EdgeInsets.only(bottom: 8),
-          child: MaintenanceRecordCard(r: r, onCancel: () async { if (await cancelMaintenanceRecord(context, r)) _load(); }),
-        ));
+    final summary = maintenanceTypeSummary(_entries);
 
     return RefreshIndicator(
       onRefresh: _load,
       child: ListView(padding: const EdgeInsets.all(14), children: [
-        // The four maintenance types.
-        SingleChildScrollView(
-          scrollDirection: Axis.horizontal,
-          child: Row(children: [
-            for (final t in kMaintTypes)
-              Padding(
-                padding: const EdgeInsetsDirectional.only(end: 6),
-                child: ChoiceChip(
-                  label: Text('${tr(t.$2, t.$3)}${(counts[t.$1] ?? 0) > 0 ? ' (${counts[t.$1]})' : ''}'),
-                  selected: _type == t.$1,
-                  selectedColor: t.$4.withValues(alpha: 0.18),
-                  onSelected: (_) => setState(() => _type = t.$1),
-                ),
-              ),
-          ]),
-        ),
-        const SizedBox(height: 10),
-        if (_type != 'periodic') ...[
-          Align(
-            alignment: AlignmentDirectional.centerStart,
-            child: FilledButton.icon(
-              onPressed: _addRecord,
-              icon: const Icon(Icons.add, size: 18),
-              label: Text('${tr('تسجيل', 'New')} ${maintTypeLabel(_type)}'),
-            ),
-          ),
-          const SizedBox(height: 10),
-          if (shown.isEmpty)
-            EmptyState(icon: Icons.build_outlined, title: tr('لا توجد سجلات من هذا النوع', 'No records of this type')),
-          ...recordCards,
-        ] else ...[
-        Text(tr('فواصل الخدمة', 'Service intervals'), style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 15)),
+        Text(tr('سجلات الصيانة حسب النوع', 'Maintenance by type'), style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 15)),
         const SizedBox(height: 8),
-        ...intervals.map((iv) {
-          final level = (iv['statusLevel'] ?? 'ok').toString();
-          final color = level == 'overdue' ? T.danger : level == 'due' ? T.warn : T.success;
-          return Padding(
-            padding: const EdgeInsets.only(bottom: 8),
-            child: AppCard(
-              topAccent: color,
-              child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                Row(children: [
-                  Expanded(child: Text((iv['name'] ?? '').toString(), style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 13.5))),
-                  Chip2(
-                    level == 'overdue' ? tr('متأخرة', 'Overdue') : level == 'due' ? tr('مستحقة', 'Due') : tr('سليمة', 'OK'),
-                    color,
-                  ),
-                ]),
-                const SizedBox(height: 5),
-                Wrap(spacing: 6, runSpacing: 6, children: [
-                  if (iv['remainingKm'] != null) Chip2('${tr('المتبقي', 'Remaining')}: ${_fmt(iv['remainingKm'])} ${tr('كم', 'km')}', color),
-                  if (iv['nextServiceKm'] != null) Chip2('${tr('عند', 'At')}: ${_fmt(iv['nextServiceKm'])} ${tr('كم', 'km')}', T.navy),
-                  if (iv['serviceCount'] != null) Chip2('${tr('مرات الخدمة', 'Services')}: ${_fmt(iv['serviceCount'])}', T.inkFaint),
-                ]),
-                const SizedBox(height: 6),
-                Align(
-                  alignment: AlignmentDirectional.centerEnd,
-                  child: TextButton.icon(
-                    onPressed: () => _registerService(iv),
-                    icon: const Icon(Icons.build_circle_outlined, size: 17),
-                    label: Text(tr('تسجيل خدمة', 'Register service'), style: const TextStyle(fontSize: 12.5, fontWeight: FontWeight.w700)),
-                  ),
-                ),
-              ]),
-            ),
-          );
-        }),
-        if (deferrals.isNotEmpty) ...[
-          const SizedBox(height: 10),
-          Text(tr('مهام مؤجلة', 'Deferred tasks'), style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 15)),
+        MaintenanceTypeGrid(
+          summary: summary, open: _open,
+          onToggle: (t) => setState(() => _open.contains(t) ? _open.remove(t) : _open.add(t)),
+        ),
+        if (deferrals.isNotEmpty && !_open.contains('periodic')) ...[
           const SizedBox(height: 8),
-          ...deferrals.map((d) => Padding(
-            padding: const EdgeInsets.only(bottom: 8),
-            child: AppCard(
-              topAccent: T.warn,
-              child: Row(children: [
-                Expanded(
-                  child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                    Text((d['labelAr'] ?? d['label'] ?? '').toString(), style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 13)),
-                    Text(
-                      '${tr('يستحق عند', 'Due at')} ${_fmt(d['dueAtOdometerKm'])} ${tr('كم', 'km')}'
-                      '${d['remainingKm'] != null ? ' · ${tr('باقي', 'left')} ${_fmt(d['remainingKm'])}' : ''}'
-                      '${d['estimatedDueDate'] != null ? ' · ≈${d['estimatedDueDate']}' : ''}',
-                      style: const TextStyle(fontSize: 11.5, color: T.inkSoft),
-                    ),
-                  ]),
-                ),
-                FilledButton.tonal(
-                  onPressed: () => _resolveDeferral(d),
-                  child: Text(tr('إنهاء', 'Resolve'), style: const TextStyle(fontSize: 12)),
-                ),
-              ]),
-            ),
-          )),
+          Chip2('${deferrals.length} ${tr('مهمة مؤجلة — في الصيانة الدورية', 'deferred tasks — under periodic')}', T.warn, icon: Icons.schedule),
         ],
-        if (history.isNotEmpty) ...[
-          const SizedBox(height: 10),
-          Text(tr('سجل الخدمات', 'Service history'), style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 15)),
-          const SizedBox(height: 8),
-          ...history.take(15).map((h) => Padding(
-            padding: const EdgeInsets.only(bottom: 8),
-            child: AppCard(
-              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-              child: Row(children: [
-                Expanded(
-                  child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                    Text((h['intervalName'] ?? h['serviceType'] ?? '').toString(), style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 12.5)),
-                    Text('${_dt(h['serviceDate'])} · ${_fmt(h['odometerKm'])} ${tr('كم', 'km')}${(h['performedByName'] ?? '').toString().isNotEmpty ? ' · ${h['performedByName']}' : ''}',
-                        style: const TextStyle(fontSize: 11, color: T.inkSoft)),
-                  ]),
-                ),
-                if (h['cost'] != null) Chip2('${_fmt(h['cost'])} ${tr('ر.س', 'SAR')}', T.violet),
-              ]),
-            ),
-          )),
-        ],
-        if (shown.isNotEmpty) ...[
-          const SizedBox(height: 10),
-          Text(tr('سجلات الصيانة الدورية (القطع وأعمال الفني)', 'Periodic records (parts and work)'), style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 15)),
-          const SizedBox(height: 8),
-          ...recordCards,
-        ],
-        ],
+        for (final t in kMaintTypes)
+          if (_open.contains(t.$1)) _typeCard(t.$1, intervals, deferrals),
         const SizedBox(height: 20),
       ]),
     );
@@ -1136,6 +1178,144 @@ class _AlertsTab extends StatelessWidget {
                 );
               },
             ),
+    );
+  }
+}
+
+
+/// Live position on a map that fills the card width; height follows the width (220 to 420).
+class _LiveLocationCard extends StatelessWidget {
+  final Map<String, dynamic> vehicle;
+  const _LiveLocationCard({required this.vehicle});
+
+  @override
+  Widget build(BuildContext context) {
+    final pos = _m(vehicle['position']);
+    final point = LatLng(_numOrNull(pos['lat'])!.toDouble(), _numOrNull(pos['lng'])!.toDouble());
+    return Container(
+      decoration: BoxDecoration(color: T.card, borderRadius: BorderRadius.circular(16), border: Border.all(color: T.line), boxShadow: T.softShadow),
+      clipBehavior: Clip.antiAlias,
+      child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+        Padding(
+          padding: const EdgeInsets.fromLTRB(14, 12, 14, 10),
+          child: Row(children: [
+            const Icon(Icons.my_location, size: 18, color: T.orange),
+            const SizedBox(width: 6),
+            Expanded(child: Text(tr('الموقع المباشر', 'Live location'), style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 14))),
+            Text(_dt(vehicle['lastMessageAt']), style: const TextStyle(fontSize: 11, color: T.inkFaint)),
+          ]),
+        ),
+        LayoutBuilder(builder: (c, box) {
+          final h = (box.maxWidth * 0.6).clamp(220.0, 420.0);
+          return SizedBox(
+            width: box.maxWidth, height: h,
+            child: FlutterMap(
+              // A new key per position recentres the map when the truck moves.
+              key: ValueKey('${point.latitude},${point.longitude}'),
+              options: MapOptions(initialCenter: point, initialZoom: 13),
+              children: [
+                TileLayer(urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png', userAgentPackageName: 'com.energize.energizeMobile'),
+                MarkerLayer(markers: [
+                  Marker(point: point, width: 40, height: 40, child: const Icon(Icons.local_shipping, color: T.orange, size: 32)),
+                ]),
+              ],
+            ),
+          );
+        }),
+      ]),
+    );
+  }
+}
+
+/// Service plan on the overview: the periodic intervals, then one summary row per other maintenance type.
+class _PlanCard extends StatefulWidget {
+  final int unitId;
+  final List<Map<String, dynamic>> intervals;
+  final void Function(String type) onOpenType;
+  const _PlanCard({required this.unitId, required this.intervals, required this.onOpenType});
+  @override
+  State<_PlanCard> createState() => _PlanCardState();
+}
+
+class _PlanCardState extends State<_PlanCard> {
+  List<Map<String, dynamic>> _entries = [];
+  late final void Function(dynamic) _onLive;
+  late final void Function() _onStore;
+
+  @override
+  void initState() {
+    super.initState();
+    _load();
+    // The poller's pulse carries `vehicles`; only real writes reload.
+    _onLive = (d) { if (d is! Map || d['vehicles'] == null) _load(); };
+    _onStore = () => _load();
+    Live.instance.onData('ls2:updated', _onLive);
+    Live.instance.on('ls2:store', _onStore);
+  }
+
+  @override
+  void dispose() {
+    Live.instance.offData('ls2:updated', _onLive);
+    Live.instance.off('ls2:store', _onStore);
+    super.dispose();
+  }
+
+  Future<void> _load() async {
+    try {
+      final rows = await loadMaintenanceEntries(unitId: widget.unitId);
+      if (mounted) setState(() => _entries = rows);
+    } catch (_) { /* keep the last figures */ }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final summary = maintenanceTypeSummary(_entries);
+    return AppCard(
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Text(tr('خطة الصيانة', 'Service plan'), style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 14)),
+        const SizedBox(height: 6),
+        if (widget.intervals.isEmpty) Text(tr('لا توجد فواصل خدمة', 'No service intervals'), style: const TextStyle(fontSize: 12, color: T.inkFaint)),
+        for (final iv in widget.intervals)
+          Padding(
+            padding: const EdgeInsets.only(bottom: 5),
+            child: Row(children: [
+              Expanded(child: Text('${iv['name'] ?? ''}', maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 12.5, fontWeight: FontWeight.w700))),
+              Builder(builder: (_) {
+                final level = '${iv['statusLevel'] ?? 'ok'}';
+                final rem = _numOrNull(iv['remainingKm']);
+                final color = level == 'overdue' ? T.danger : level == 'due' ? T.warn : T.success;
+                return Chip2(rem == null ? '—' : rem < 0 ? '−${_fmt(rem.abs())} ${tr('كم متأخرة', 'km over')}' : '${_fmt(rem)} ${tr('كم متبقية', 'km left')}', color);
+              }),
+            ]),
+          ),
+        const Divider(height: 18),
+        for (final t in kMaintTypes.where((t) => t.$1 != 'periodic'))
+          InkWell(
+            onTap: () => widget.onOpenType(t.$1),
+            child: Padding(
+              padding: const EdgeInsets.symmetric(vertical: 6),
+              child: Row(children: [
+                Icon(kMaintIcons[t.$1], size: 18, color: t.$4),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                    Text('${tr(t.$2, t.$3)} · ${summary[t.$1]!.$1} ${tr('سجل', 'entries')}', style: const TextStyle(fontSize: 12.5, fontWeight: FontWeight.w800)),
+                    Builder(builder: (_) {
+                      final latest = _entries.firstWhere((e) => e['type'] == t.$1 && e['cancelled'] != true, orElse: () => const {});
+                      final last = summary[t.$1]!.$2;
+                      return Text(
+                        last.isEmpty ? tr('لا توجد سجلات', 'No entries') : '${tr('آخرها', 'Latest')} $last${'${latest['title'] ?? ''}'.isNotEmpty ? ' · ${latest['title']}' : ''}',
+                        maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 11, color: T.inkSoft),
+                      );
+                    }),
+                  ]),
+                ),
+                Text('${_fmt(summary[t.$1]!.$3)} ${tr('ر.س', 'SAR')}', style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.w900, color: t.$4)),
+                const Icon(Icons.chevron_right, size: 18, color: T.inkFaint),
+              ]),
+            ),
+          ),
+      ]),
     );
   }
 }

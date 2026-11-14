@@ -436,7 +436,7 @@ function SystemLayoutInner({ children }: { children: React.ReactNode }) {
     { href: '/system/ls2/store', label: lang === 'ar' ? 'مخزن النقل الثقيل' : 'Store', icon: <Boxes className="w-5 h-5" />, roles: [...LS2_SECTION_ROLES, 'accountant', 'accounting_manager', 'accounting_team_leader', 'cfo', 'vehicles_manager', 'vehicles_team_leader'], section: 'Location Solutions' },
     // Who spare parts are bought from; also added from the supplier field in the item form.
     { href: '/system/ls2/suppliers', label: lang === 'ar' ? 'الموردون' : 'Suppliers', icon: <Truck className="w-5 h-5" />, roles: LS2_SECTION_ROLES, section: 'Location Solutions' },
-    { href: '/system/ls2/repairs', label: lang === 'ar' ? 'الصيانة الاستثنائية' : 'Exceptional Repairs', icon: <Hammer className="w-5 h-5" />, roles: LS2_SECTION_ROLES, section: 'Location Solutions' },
+    { href: '/system/ls2/repairs', label: lang === 'ar' ? 'الإصلاحات السابقة' : 'Earlier repairs', icon: <Hammer className="w-5 h-5" />, roles: LS2_SECTION_ROLES, section: 'Location Solutions' },
     // Fleet management request ('I need this truck but its maintenance is overdue'); the decision is made here.
     { href: '/system/ls2/fleet-requests', label: lang === 'ar' ? 'طلبات الأسطول' : 'Fleet Requests', icon: <ShieldQuestion className="w-5 h-5" />, roles: LS2_SECTION_ROLES, section: 'Location Solutions' },
     { href: '/system/ls2/alerts', label: lang === 'ar' ? 'التنبيهات' : 'Alerts', icon: <Bell className="w-5 h-5" />, roles: LS2_SECTION_ROLES, section: 'Location Solutions' },

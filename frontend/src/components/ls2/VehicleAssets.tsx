@@ -4,21 +4,44 @@
 // plus its asset movement history ("what was on it, what is on it now").
 // Read-only here — moves are made on /system/ls2/fleet-assets — and it renders
 // nothing at all if the plate has no registry data yet (fleet not imported).
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, Fragment } from 'react';
 import Link from 'next/link';
-import { CircleDot, Container, History, ExternalLink } from 'lucide-react';
+import { CircleDot, Container, History, ExternalLink, ChevronDown } from 'lucide-react';
+import { useSocket } from '@/hooks/useSocket';
 import api from '@/lib/api';
 import { fmtDateTime, plateDigitsKey, type Lang } from '@/lib/ls2';
 import VehicleAssetSheet from './VehicleAssetSheet';
 import ScrollX from '@/components/system/ScrollX';
 
-interface TireAsset { _id: string; tireNumber: string; serial: string; type: string; sensor: 'yes' | 'no' | 'unknown'; positionNumber: number | null; positionLabel: string; section: string; isSpare?: boolean }
+interface ConditionChange { date: string; action: string; percent: number | null; grade: 'new' | 'used' | null; prevPercent: number | null; prevGrade: 'new' | 'used' | null; by: string; notes: string }
+interface TireAsset { _id: string; tireNumber: string; serial: string; type: string; sensor: 'yes' | 'no' | 'unknown'; positionNumber: number | null; positionLabel: string; section: string; isSpare?: boolean; condition?: 'new' | 'used'; conditionPercent?: number | null; conditionHistory?: ConditionChange[] }
 interface AssetEvent { _id: string; entityType: string; label: string; action: string; fromPlate: string | null; fromPosition: string; toPlate: string | null; toPosition: string; date: string; reason: string; notes: string; performedByName: string }
 interface Payload { flatbed: { numbering: number | null; batch: string; brand: string; currentTrailerNumber: string | null } | null; trailer: { trailerNumber: string } | null; tires: TireAsset[]; events: AssetEvent[] }
 
 const ACTION_AR: Record<string, string> = { registered: 'تسجيل', mounted: 'تركيب', removed: 'إنزال', transferred: 'نقل', retired: 'إعدام', updated: 'تعديل' };
 const ACTION_EN: Record<string, string> = { registered: 'Registered', mounted: 'Mounted', removed: 'Removed', transferred: 'Transferred', retired: 'Retired', updated: 'Edited' };
 const ENTITY_AR: Record<string, string> = { tire: 'فردة', trailer: 'تيدر', flatbed: 'سطحة' };
+const gradeLabel = (g: string | null | undefined, ar: boolean) => (g === 'new' ? (ar ? 'جديد' : 'New') : g === 'used' ? (ar ? 'مستعمل' : 'Used') : '—');
+const pctCls = (p: number | null | undefined) => (p == null ? 'bg-slate-100 text-slate-500' : p >= 70 ? 'bg-emerald-100 text-emerald-700' : p >= 40 ? 'bg-amber-100 text-amber-800' : 'bg-rose-100 text-rose-700');
+
+/** One tire's condition changes, newest first. */
+function ConditionHistory({ rows, ar, lang }: { rows: ConditionChange[]; ar: boolean; lang: Lang }) {
+  const arrow = ar ? '←' : '→';
+  if (!rows.length) return <p className="text-[11px] text-slate-500 py-1">{ar ? 'لا يوجد تغيير مسجّل على حالة هذه الفردة.' : 'No condition change recorded for this tire.'}</p>;
+  return (
+    <ul className="space-y-1 py-1">
+      {[...rows].reverse().map((c, i) => (
+        <li key={i} className="text-[11px] text-slate-700 flex flex-wrap items-baseline gap-x-2">
+          <span className="text-slate-500 tabular-nums whitespace-nowrap">{fmtDateTime(c.date, lang)}</span>
+          <span className="tabular-nums">{ar ? 'الحالة' : 'Condition'}: {c.prevPercent != null ? `${c.prevPercent}%` : '—'} {arrow} <b>{c.percent != null ? `${c.percent}%` : (ar ? 'بلا تقييم' : 'unrated')}</b></span>
+          {c.grade !== c.prevGrade && <span>{ar ? 'الدرجة' : 'Grade'}: {gradeLabel(c.prevGrade, ar)} {arrow} <b>{gradeLabel(c.grade, ar)}</b></span>}
+          <span className="text-slate-500">{ar ? ACTION_AR[c.action] || c.action : ACTION_EN[c.action] || c.action}</span>
+          {c.by && <span className="text-slate-500">· {c.by}</span>}
+        </li>
+      ))}
+    </ul>
+  );
+}
 
 export default function VehicleAssets({ plate, lang }: { plate?: string | null; lang: Lang }) {
   const ar = lang === 'ar';
@@ -32,6 +55,9 @@ export default function VehicleAssets({ plate, lang }: { plate?: string | null; 
     try { setData(await api.get<Payload>(`/api/ls2/assets/vehicle/${encodeURIComponent(plate)}`)); } catch { /* section stays hidden */ }
   }, [plate]);
   useEffect(() => { load(); }, [load]);
+  // Tire moves, edits and dismount ratings all announce ls2:updated; the poller's pulse carries `vehicles` and is skipped.
+  useSocket('ls2:updated', useCallback((d: any) => { if (!d?.vehicles) load(); }, [load]));
+  const [openTire, setOpenTire] = useState<string | null>(null);
 
   if (!data || (!data.flatbed && !data.trailer && !data.tires.length && !data.events.length)) return null;
 
@@ -82,11 +108,15 @@ export default function VehicleAssets({ plate, lang }: { plate?: string | null; 
                 <th className="text-start font-medium px-2 py-2">{ar ? 'النوع' : 'Type'}</th>
                 <th className="text-center font-medium px-2 py-2">{ar ? 'رقم الفردة' : 'Tire no.'}</th>
                 <th className="text-center font-medium px-2 py-2">{ar ? 'سينسور' : 'Sensor'}</th>
+                <th className="text-center font-medium px-2 py-2">{ar ? 'الدرجة' : 'Grade'}</th>
+                <th className="text-center font-medium px-2 py-2">{ar ? 'الحالة %' : 'Condition %'}</th>
+                <th className="text-center font-medium px-2 py-2">{ar ? 'سجل الحالة' : 'History'}</th>
               </tr>
             </thead>
             <tbody>
               {data.tires.map((t) => (
-                <tr key={t._id} className="border-b border-slate-50">
+                <Fragment key={t._id}>
+                <tr className="border-b border-slate-50">
                   <td className="px-2 py-1.5 text-slate-700">{t.positionLabel || (t.positionNumber != null ? `اطار ${t.positionNumber}` : '—')}</td>
                   <td className="px-2 py-1.5 text-slate-500">{t.section || '—'}</td>
                   <td className="px-2 py-1.5 font-mono font-medium text-slate-800">{t.serial}{t.isSpare && <span className="ms-1.5 inline-block px-1.5 py-0.5 rounded bg-violet-100 text-violet-700 text-[10px] font-bold">{ar ? 'استبن' : 'spare'}</span>}</td>
@@ -99,7 +129,18 @@ export default function VehicleAssets({ plate, lang }: { plate?: string | null; 
                         ? <span className="px-1.5 py-0.5 rounded bg-slate-100 text-slate-500">{ar ? 'لا يوجد' : 'No'}</span>
                         : <span className="text-slate-300">—</span>}
                   </td>
+                  <td className="px-2 py-1.5 text-center text-slate-700">{gradeLabel(t.condition, ar)}</td>
+                  <td className="px-2 py-1.5 text-center"><span className={`px-1.5 py-0.5 rounded font-semibold tabular-nums ${pctCls(t.conditionPercent)}`}>{t.conditionPercent != null ? `${t.conditionPercent}%` : (ar ? 'بلا تقييم' : 'unrated')}</span></td>
+                  <td className="px-2 py-1.5 text-center">
+                    <button type="button" onClick={() => setOpenTire((p) => (p === t._id ? null : t._id))} className="inline-flex items-center gap-0.5 text-slate-600 hover:text-slate-900">
+                      {(t.conditionHistory || []).length} <ChevronDown className={`w-3 h-3 transition-transform ${openTire === t._id ? 'rotate-180' : ''}`} />
+                    </button>
+                  </td>
                 </tr>
+                {openTire === t._id && (
+                  <tr className="bg-slate-50/70 border-b border-slate-100"><td colSpan={9} className="px-3 py-1"><ConditionHistory rows={t.conditionHistory || []} ar={ar} lang={lang} /></td></tr>
+                )}
+                </Fragment>
               ))}
             </tbody>
           </table>

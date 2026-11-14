@@ -781,15 +781,24 @@ final branchesCfg = ResourceConfig(
 );
 
 
-// Location Solutions: repairs.
+// Location Solutions: older exceptional repairs, read-only. New exceptional work is entered as a preventive,
+// roadside or accident maintenance record (POST /api/ls2/repairs answers 410); each repair shows its new type.
 final ls2RepairsCfg = ResourceConfig(
   filterField: 'status',
-  arTitle: 'الإصلاحات', enTitle: 'Repairs', icon: Icons.home_repair_service_outlined,
+  arTitle: 'الإصلاحات السابقة', enTitle: 'Earlier repairs', icon: Icons.home_repair_service_outlined,
+  canCreate: false,
   endpoint: '/api/ls2/repairs', listKey: 'items', liveEvent: 'ls2:updated', updateMethod: 'PATCH',
   searchFields: const ['description', 'category', 'status', 'plate'],
   titleOf: (r) => _s(r, 'title').isNotEmpty ? _s(r, 'title') : (_s(r, 'description').isNotEmpty ? _s(r, 'description') : _s(r, 'category')),
   subtitleOf: (r) => [_s(r, 'plate'), _s(r, 'vehicleName')].where((x) => x.isNotEmpty).join(' · '),
   chipsOf: (r) => [
+    switch (_s(r, 'maintenanceType')) {
+      'accident' => ('الحوادث', T.danger),
+      'roadside' => ('الصيانة على الطريق', T.warn),
+      'preventive' => ('الصيانة الوقائية', T.info),
+      _ => ('', T.info),
+    },
+    if (r['migratedRecord'] != null) ('منقول إلى سجلات الصيانة', T.success),
     if (_s(r, 'category').isNotEmpty) (_s(r, 'category'), T.violet),
     switch (_s(r, 'severity')) {
       'high' => ('خطيرة', T.danger),

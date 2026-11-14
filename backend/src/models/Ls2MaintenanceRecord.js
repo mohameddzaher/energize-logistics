@@ -42,6 +42,8 @@ const recordSchema = new mongoose.Schema({
   partsCost: { type: Number, default: 0 },
   labourCost: { type: Number, default: 0 },
   towingCost: { type: Number, default: 0 },
+  // One undivided amount carried from a source that never split parts from labour (a migrated repair).
+  unsplitCost: { type: Number, default: 0 },
   totalCost: { type: Number, default: 0 },
   notes: { type: String, default: '' },
   // Periodic only: the service interval and its log.
@@ -49,6 +51,9 @@ const recordSchema = new mongoose.Schema({
   intervalId: { type: Number, default: null },
   intervalName: { type: String, default: '' },
   issueRequest: { type: mongoose.Schema.Types.ObjectId, ref: 'StoreIssueRequest', default: null, index: true },
+  // Set on records migrated from an exceptional repair (scripts/migrateLs2RepairsToRecords); the repair is kept.
+  sourceRepair: { type: mongoose.Schema.Types.ObjectId, ref: 'Ls2Repair', default: null },
+  repairCategory: { type: String, default: '' },
   issueRequestNo: { type: String, default: '' },
   status: { type: String, enum: ['active', 'cancelled'], default: 'active', index: true },
   cancelledAt: { type: Date, default: null },
@@ -60,6 +65,7 @@ const recordSchema = new mongoose.Schema({
 
 recordSchema.index({ unitId: 1, date: -1 });
 recordSchema.index({ status: 1, date: -1 });
+recordSchema.index({ sourceRepair: 1 }, { unique: true, partialFilterExpression: { sourceRepair: { $type: 'objectId' } } });
 
 module.exports = {
   Ls2MaintenanceRecord: mongoose.models.Ls2MaintenanceRecord || mongoose.model('Ls2MaintenanceRecord', recordSchema),

@@ -1,11 +1,7 @@
 'use client';
-// Maintenance — a live mirror of each truck's REAL service plan from Location
-// Solutions (Wialon). Every vehicle carries its own service intervals (Group A/B/C,
-// TR Wheels…); each shows when it was last serviced (date + odometer) and how far
-// it is from the next one — next = last-service odometer + interval, exactly as
-// Wialon computes it. Read-only: services are registered inside Location Solutions
-// and reflected here automatically. Expand a row to see every service and register
-// one right here; the row also links out to the vehicle's full profile.
+// Maintenance: each truck's service plan mirrored from Location Solutions (next = last-service odometer + interval).
+// Expanding a truck shows the four maintenance-type tiles; nothing opens until one is picked: periodic opens the
+// interval cards (register a service there), the other three open their history and add new records.
 import { useState, useEffect, useCallback, useMemo, Fragment } from 'react';
 import { useRouter } from 'next/navigation';
 import { useSearchParams } from 'next/navigation';

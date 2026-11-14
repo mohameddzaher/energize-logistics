@@ -148,6 +148,7 @@ router.get('/maintenance/records', maint.listRecords); // ?unitId&type&from&to&s
 router.post('/maintenance/records', ADMIN, maint.createRecord);
 router.post('/maintenance/records/:id/cancel', oid, ADMIN, maint.cancelRecord);
 router.get('/maintenance/analytics', maint.analytics); // ?unitId&from&to&type
+router.get('/maintenance/entries', maint.listEntries); // ?unitId&from&to&type&includeCancelled=1
 
 router.get('/deferrals', ls2.listDeferrals); // fleet-wide open deferred tasks (Maintenance page)
 router.get('/vehicles', ls2.listVehicles);

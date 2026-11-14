@@ -42,11 +42,13 @@ class _Ls2VehicleAssetsScreenState extends State<Ls2VehicleAssetsScreen> {
     _load();
     _onLive = () => _load();
     Live.instance.on('ls2:updated', _onLive);
+    Live.instance.on('ls2:store', _onLive);
   }
 
   @override
   void dispose() {
     Live.instance.off('ls2:updated', _onLive);
+    Live.instance.off('ls2:store', _onLive);
     super.dispose();
   }
 
@@ -249,10 +251,11 @@ class _Ls2VehicleAssetsScreenState extends State<Ls2VehicleAssetsScreen> {
                 if (t['isSpare'] == true) Chip2(tr('استبن', 'Spare'), T.violet, icon: Icons.star_outline),
                 if ((t['positionLabel'] ?? '').toString().isNotEmpty) Chip2(t['positionLabel'].toString(), T.navy, icon: Icons.my_location_outlined),
                 if (cond != null) Chip2(tr(cond.$1, cond.$2), cond.$3),
-                if (t['conditionPercent'] != null) Chip2('${t['conditionPercent']}%', T.orange),
+                Chip2(t['conditionPercent'] != null ? '${tr('الحالة', 'Condition')} ${t['conditionPercent']}%' : tr('الحالة: بلا تقييم', 'Condition: not rated'), T.orange, icon: Icons.speed),
                 if ((t['type'] ?? '').toString().isNotEmpty) Chip2('${t['type']} ${t['size'] ?? ''}'.trim(), T.inkFaint),
                 if (t['sensor'] == 'yes') Chip2(tr('حساس', 'Sensor'), T.cyan, icon: Icons.sensors),
               ]),
+              TireConditionHistory(rows: _l(t['conditionHistory'])),
             ]),
           ),
         ]),
@@ -293,6 +296,7 @@ class _Ls2VehicleAssetsScreenState extends State<Ls2VehicleAssetsScreen> {
                   Chip2(t['sensor'] == 'yes' ? tr('به حساس', 'Has sensor') : t['sensor'] == 'no' ? tr('بدون حساس', 'No sensor') : tr('الحساس غير معروف', 'Sensor unknown'),
                       t['sensor'] == 'yes' ? T.cyan : T.inkFaint, icon: Icons.sensors),
                 ]),
+                TireConditionHistory(rows: _l(t['conditionHistory'])),
                 const SizedBox(height: 10),
                 SizedBox(
                   width: double.infinity,
@@ -368,5 +372,55 @@ class _Ls2VehicleAssetsScreenState extends State<Ls2VehicleAssetsScreen> {
         ),
       )),
     );
+  }
+}
+
+
+/// A tire's condition % and grade changes, oldest first (server: tireConditionHistory); collapsed until tapped.
+class TireConditionHistory extends StatefulWidget {
+  final List<Map<String, dynamic>> rows;
+  const TireConditionHistory({super.key, required this.rows});
+  @override
+  State<TireConditionHistory> createState() => _TireConditionHistoryState();
+}
+
+class _TireConditionHistoryState extends State<TireConditionHistory> {
+  bool _open = false;
+
+  String _grade(dynamic g) => g == 'new' ? tr('جديد', 'New') : g == 'used' ? tr('مستعمل', 'Used') : '—';
+  String _pct(dynamic p) => p == null ? tr('بلا تقييم', 'not rated') : '$p%';
+
+  @override
+  Widget build(BuildContext context) {
+    final rows = widget.rows;
+    if (rows.isEmpty) {
+      return Padding(
+        padding: const EdgeInsets.only(top: 4),
+        child: Text(tr('لا يوجد سجل لتغيّر الحالة', 'No condition changes recorded'), style: const TextStyle(fontSize: 10.5, color: T.inkFaint)),
+      );
+    }
+    return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+      InkWell(
+        onTap: () => setState(() => _open = !_open),
+        child: Padding(
+          padding: const EdgeInsets.only(top: 4),
+          child: Row(mainAxisSize: MainAxisSize.min, children: [
+            Icon(_open ? Icons.expand_less : Icons.expand_more, size: 16, color: T.navy),
+            Text('${tr('سجل الحالة', 'Condition history')} (${rows.length})', style: const TextStyle(fontSize: 11.5, fontWeight: FontWeight.w800, color: T.navy)),
+          ]),
+        ),
+      ),
+      if (_open)
+        for (final r in rows.reversed)
+          Padding(
+            padding: const EdgeInsets.only(top: 3),
+            child: Text(
+              '${_d(r['date'])} · ${tr('الحالة', 'Condition')} ${_pct(r['prevPercent'])} ${tr('←', '→')} ${_pct(r['percent'])}'
+              '${r['grade'] != r['prevGrade'] ? ' · ${tr('الدرجة', 'Grade')} ${_grade(r['prevGrade'])} ${tr('←', '→')} ${_grade(r['grade'])}' : ''}'
+              '${'${r['by'] ?? ''}'.isNotEmpty ? ' · ${r['by']}' : ''}',
+              style: const TextStyle(fontSize: 11, color: T.inkSoft),
+            ),
+          ),
+    ]);
   }
 }

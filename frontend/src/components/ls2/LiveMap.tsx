@@ -30,11 +30,13 @@ function loadLeaflet(): Promise<any> {
   return window.__leafletLoading;
 }
 
-export default function LiveMap({ lat, lng, label, speed, height = 320, track }: { lat: number; lng: number; label?: string; speed?: number | null; height?: number; track?: { lat: number; lng: number }[] }) {
+// `fill` makes the map take its container's full height (the container sets it); otherwise `height` px.
+export default function LiveMap({ lat, lng, label, speed, height = 320, track, fill = false }: { lat: number; lng: number; label?: string; speed?: number | null; height?: number; track?: { lat: number; lng: number }[]; fill?: boolean }) {
   const containerRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<any>(null);
   const markerRef = useRef<any>(null);
   const trackRef = useRef<any>(null);
+  const roRef = useRef<ResizeObserver | null>(null);
 
   // Init the map once.
   useEffect(() => {
@@ -48,8 +50,14 @@ export default function LiveMap({ lat, lng, label, speed, height = 320, track }:
       mapRef.current = map; markerRef.current = marker;
       // Leaflet mis-measures size when its container was hidden/animating on init.
       setTimeout(() => map.invalidateSize(), 200);
+      // The card resizes with its neighbour and the window; Leaflet must re-measure or it leaves a grey band.
+      if (typeof ResizeObserver !== 'undefined' && containerRef.current) {
+        const ro = new ResizeObserver(() => { if (mapRef.current) mapRef.current.invalidateSize(); });
+        ro.observe(containerRef.current);
+        roRef.current = ro;
+      }
     }).catch(() => {});
-    return () => { cancelled = true; if (mapRef.current) { mapRef.current.remove(); mapRef.current = null; markerRef.current = null; } };
+    return () => { cancelled = true; roRef.current?.disconnect(); roRef.current = null; if (mapRef.current) { mapRef.current.remove(); mapRef.current = null; markerRef.current = null; } };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -75,5 +83,5 @@ export default function LiveMap({ lat, lng, label, speed, height = 320, track }:
     }
   }, [track]);
 
-  return <div ref={containerRef} style={{ height }} className="w-full rounded-b-xl overflow-hidden bg-slate-100" />;
+  return <div ref={containerRef} style={fill ? undefined : { height }} className={`w-full overflow-hidden bg-slate-100 ${fill ? 'h-full' : 'rounded-b-xl'}`} />;
 }

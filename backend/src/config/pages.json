@@ -874,8 +874,8 @@
     {
       "key": "/system/ls2/repairs",
       "section": "Location Solutions",
-      "ar": "الصيانة الاستثنائية",
-      "en": "Exceptional Repairs"
+      "ar": "الإصلاحات السابقة",
+      "en": "Earlier repairs"
     },
     {
       "key": "/system/ls2/fleet-requests",

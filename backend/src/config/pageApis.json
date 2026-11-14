@@ -1316,9 +1316,9 @@
         "/api/ls2/assets/vehicle",
         "/api/ls2/custody",
         "/api/ls2/dashboard",
+        "/api/ls2/maintenance/entries",
         "/api/ls2/maintenance/records",
         "/api/ls2/registry-conflicts",
-        "/api/ls2/repairs",
         "/api/ls2/settings",
         "/api/ls2/store",
         "/api/ls2/vehicles",
@@ -1370,6 +1370,7 @@
     "/system/ls2/maintenance": {
       "apis": [
         "/api/ls2/deferrals",
+        "/api/ls2/maintenance/entries",
         "/api/ls2/maintenance/records",
         "/api/ls2/settings",
         "/api/ls2/store",
@@ -1380,7 +1381,10 @@
     },
     "/system/ls2/maintenance-analytics": {
       "apis": [
-        "/api/ls2/maintenance/analytics"
+        "/api/ls2/maintenance/analytics",
+        "/api/ls2/maintenance/entries",
+        "/api/ls2/maintenance/records",
+        "/api/ls2/store"
       ],
       "wildcard": false
     },
@@ -1429,7 +1433,9 @@
     },
     "/system/ls2/repairs": {
       "apis": [
+        "/api/ls2/maintenance/records",
         "/api/ls2/repairs",
+        "/api/ls2/store",
         "/api/ls2/vehicles"
       ],
       "wildcard": false

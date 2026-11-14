@@ -784,45 +784,33 @@ exports.listRepairs = async (req, res) => {
     if (req.query.category) filter.category = req.query.category;
     if (req.query.status) filter.status = req.query.status;
     const items = await Ls2Repair.find(filter).sort({ repairDate: -1 }).limit(500).lean();
-    res.json({ items, total: items.length });
+    // Each repair is shown under the maintenance type it now belongs to, with its migrated record if any.
+    const { Ls2MaintenanceRecord } = require('../models/Ls2MaintenanceRecord');
+    const { repairType } = require('../services/ls2MaintenanceLedger');
+    const migrated = await Ls2MaintenanceRecord.find({ sourceRepair: { $in: items.map((r) => r._id) } }).select('sourceRepair').lean();
+    const recOf = new Map(migrated.map((m) => [String(m.sourceRepair), String(m._id)]));
+    res.json({ items: items.map((r) => ({ ...r, maintenanceType: repairType(r.category), migratedRecord: recOf.get(String(r._id)) || null })), total: items.length });
   } catch (error) {
     fail(res, error, 'Failed to load repairs');
   }
 };
 
-exports.createRepair = async (req, res) => {
-  try {
-    const unitId = Number(req.body.unitId);
-    const v = await Ls2Vehicle.findOne({ unitId }).lean();
-    if (!v) return res.status(404).json({ message: 'Vehicle not found' });
-    const b = req.body || {};
-    if (!b.title || !String(b.title).trim()) return res.status(400).json({ message: 'A title is required' });
-    const item = await Ls2Repair.create({
-      // Driver at the time: the manually entered one if present, otherwise the vehicle's current driver.
-      unitId, plate: v.plate, driver: (b.driver != null && String(b.driver).trim()) ? String(b.driver).trim() : v.driver,
-      title: String(b.title).trim(),
-      category: b.category || 'other',
-      severity: b.severity || 'medium',
-      status: b.status || 'done',
-      repairDate: b.repairDate ? new Date(b.repairDate) : new Date(),
-      odometerKm: b.odometerKm != null ? Number(b.odometerKm) : v.odometerKm,
-      cost: b.cost != null ? Number(b.cost) : null,
-      workshop: b.workshop || '',
-      partsReplaced: b.partsReplaced || '',
-      description: b.description || '',
-      performedBy: req.user._id,
-      performedByName: `${req.user.firstName || ''} ${req.user.lastName || ''}`.trim(),
-    });
-    clearLs2All();
-    emitToAll('ls2:updated', { at: Date.now(), repair: unitId });
-    res.status(201).json({ item });
-  } catch (error) {
-    fail(res, error, 'Failed to create repair');
-  }
-};
+// Exceptional work is now entered as a preventive, roadside or accident maintenance record; old repairs stay readable.
+exports.createRepair = async (req, res) => res.status(410).json({
+  code: 'REPAIRS_REPLACED',
+  message: 'الإصلاحات الاستثنائية أصبحت ثلاثة أنواع: صيانة وقائية، صيانة على الطريق، حوادث — سجّلها من صفحة الصيانة أو ملف المركبة',
+});
+
+// A repair already migrated to a maintenance record is read from the record; editing the copy would split them.
+async function migratedRecordOf(repairId) {
+  const { Ls2MaintenanceRecord } = require('../models/Ls2MaintenanceRecord');
+  return Ls2MaintenanceRecord.findOne({ sourceRepair: repairId }).select('_id').lean();
+}
+const MIGRATED = { code: 'REPAIR_MIGRATED', message: 'هذا الإصلاح نُقل إلى سجلات الصيانة — عدّله أو ألغِه من سجل الصيانة' };
 
 exports.updateRepair = async (req, res) => {
   try {
+    if (await migratedRecordOf(req.params.repairId)) return res.status(409).json(MIGRATED);
     const allowed = ['title', 'category', 'severity', 'status', 'repairDate', 'odometerKm', 'cost', 'workshop', 'partsReplaced', 'description', 'driver'];
     const set = {};
     for (const k of allowed) if (req.body[k] !== undefined) set[k] = req.body[k];
@@ -838,6 +826,7 @@ exports.updateRepair = async (req, res) => {
 
 exports.deleteRepair = async (req, res) => {
   try {
+    if (await migratedRecordOf(req.params.repairId)) return res.status(409).json(MIGRATED);
     const item = await Ls2Repair.findByIdAndDelete(req.params.repairId);
     if (!item) return res.status(404).json({ message: 'Repair not found' });
     clearLs2All();
@@ -1441,3 +1430,5 @@ exports.refresh = async (req, res) => {
     fail(res, error, 'Failed to refresh');
   }
 };
+
+exports.mileageByUnit = mileageByUnit;

@@ -829,6 +829,8 @@ class _Ls2FleetAssetsScreenState extends State<Ls2FleetAssetsScreen> {
               _chip(sheet, Icons.timeline, tr('حياة الفردة', 'Tire life'), T.orange, () async {
                 await Navigator.push(context, MaterialPageRoute(builder: (_) => Ls2TireProfileScreen(tireId: '${t['_id']}', serial: '${t['serial'] ?? ''}')));
               }),
+              // Grade and condition %, as on the web edit form.
+              _chip(sheet, Icons.tune, tr('الدرجة ونسبة الحالة', 'Grade & condition %'), T.info, () => _editCondition(t)),
               if (status == 'mounted')
                 _chip(sheet, Icons.download_outlined, tr('فك من الشاحنة', 'Dismount'), T.warn, () => _dismount(t)),
               if (status == 'mounted')
@@ -874,6 +876,43 @@ class _Ls2FleetAssetsScreenState extends State<Ls2FleetAssetsScreen> {
       );
 
   // Remove: straight to the warehouse (with a condition percentage), renewal, damaged or scrap.
+  Future<void> _editCondition(Map t) async {
+    String grade = t['condition'] == 'new' ? 'new' : 'used';
+    final pct = TextEditingController(text: t['conditionPercent'] != null ? '${t['conditionPercent']}' : '');
+    final ok = await showDialog<bool>(context: context, builder: (c) => StatefulBuilder(builder: (c, set) => AlertDialog(
+      title: Text(tr('الدرجة ونسبة الحالة', 'Grade & condition %')),
+      content: Column(mainAxisSize: MainAxisSize.min, children: [
+        DropdownButtonFormField<String>(
+          initialValue: grade,
+          decoration: InputDecoration(labelText: tr('الدرجة', 'Grade')),
+          items: [
+            DropdownMenuItem(value: 'new', child: Text(tr('جديد (من الشراء)', 'New (from purchase)'))),
+            DropdownMenuItem(value: 'used', child: Text(tr('مستعمل (يشمل المجدَّد)', 'Used (incl. retreaded)'))),
+          ],
+          onChanged: (v) => set(() => grade = v ?? grade),
+        ),
+        const SizedBox(height: 10),
+        TextField(controller: pct, keyboardType: TextInputType.number,
+            decoration: InputDecoration(labelText: tr('نسبة الحالة %', 'Condition %'), hintText: tr('غير مقيَّمة', 'Not rated'))),
+      ]),
+      actions: [
+        TextButton(onPressed: () => Navigator.pop(c, false), child: Text(tr('إلغاء', 'Cancel'))),
+        FilledButton(onPressed: () => Navigator.pop(c, true), child: Text(tr('حفظ', 'Save'))),
+      ],
+    )));
+    final text = pct.text.trim();
+    pct.dispose();
+    if (ok != true) return;
+    final n = int.tryParse(text);
+    try {
+      await Api.instance.patch('/api/ls2/assets/tires/${t['_id']}', {'condition': grade, 'conditionPercent': text.isEmpty ? null : (n ?? 0).clamp(0, 100)});
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(tr('تم التحديث', 'Updated'))));
+      _load();
+    } catch (e) {
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.toString())));
+    }
+  }
+
   Future<void> _dismount(Map<String, dynamic> t) async {
     // The spare is the only position allowed to stay empty, since the vehicle runs without it. Any other position must be filled, so a replacement is mandatory (or a mutual swap).
     final needsReplacement = t['status'] == 'mounted'

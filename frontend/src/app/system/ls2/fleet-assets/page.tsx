@@ -1634,6 +1634,8 @@ function TireFormModal({ tire, flatbeds, ar, onClose, onSaved }: {
   const [type, setType] = useState(tire?.type || '');
   const [size, setSize] = useState(tire?.size || '');
   const [condition, setCondition] = useState<'new' | 'used'>(tire?.condition === 'used' ? 'used' : 'new');
+  // The condition percentage is editable on the tire itself, not only when it returns to the shelf.
+  const [pct, setPct] = useState<string>(tire?.conditionPercent != null ? String(tire.conditionPercent) : '');
   const [sensor, setSensor] = useState(tire?.sensor || 'unknown');
   const [notes, setNotes] = useState(tire?.notes || '');
   const [mountPlate, setMountPlate] = useState('');
@@ -1646,7 +1648,7 @@ function TireFormModal({ tire, flatbeds, ar, onClose, onSaved }: {
     setBusy(true);
     try {
       if (isEdit) {
-        await api.patch(`/api/ls2/assets/tires/${tire!._id}`, { serial: serial.trim(), tireNumber, type, size, sensor, notes });
+        await api.patch(`/api/ls2/assets/tires/${tire!._id}`, { serial: serial.trim(), tireNumber, type, size, sensor, notes, condition, conditionPercent: pct === '' ? null : Math.max(0, Math.min(100, Number(pct))) });
       } else {
         await api.post('/api/ls2/assets/tires', {
           serial: serial.trim(), type, size, sensor, notes, condition,
@@ -1693,13 +1695,17 @@ function TireFormModal({ tire, flatbeds, ar, onClose, onSaved }: {
               <option value="unknown">{ar ? 'غير محدد' : 'Unknown'}</option>
             </select>
           </div>
-          {!isEdit && (
+          <div>
+            <label className={labelCls}>{ar ? 'الدرجة' : 'Grade'}</label>
+            <select value={condition} onChange={(e) => setCondition(e.target.value as any)} className={inputCls}>
+              <option value="new">{ar ? 'جديد (من الشراء)' : 'New (from purchase)'}</option>
+              <option value="used">{ar ? 'مستعمل (يشمل المجدَّد)' : 'Used (incl. retreaded)'}</option>
+            </select>
+          </div>
+          {isEdit && (
             <div>
-              <label className={labelCls}>{ar ? 'الدرجة' : 'Grade'}</label>
-              <select value={condition} onChange={(e) => setCondition(e.target.value as any)} className={inputCls}>
-                <option value="new">{ar ? 'جديد (من الشراء)' : 'New (from purchase)'}</option>
-                <option value="used">{ar ? 'مستعمل (يشمل المجدَّد)' : 'Used (incl. retreaded)'}</option>
-              </select>
+              <label className={labelCls}>{ar ? 'نسبة الحالة %' : 'Condition %'}</label>
+              <input type="number" min={0} max={100} value={pct} onChange={(e) => setPct(e.target.value)} placeholder={ar ? 'غير مقيَّمة' : 'Not rated'} className={inputCls} />
             </div>
           )}
         </div>

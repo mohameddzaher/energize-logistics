@@ -446,18 +446,24 @@ exports.createTire = async (req, res) => {
 // PATCH /assets/tires/:id — edit identity fields (not location — use /move).
 exports.updateTire = async (req, res) => {
   try {
-    const allowed = ['tireNumber', 'type', 'size', 'sensor', 'notes', 'serial', 'positionLabel', 'isSpare'];
+    const allowed = ['tireNumber', 'type', 'size', 'sensor', 'notes', 'serial', 'positionLabel', 'isSpare', 'condition', 'conditionPercent'];
     const current = await Ls2TireAsset.findById(req.params.id);
     if (!current) return res.status(404).json({ message: 'Not found' });
+    // Grade and condition % are edited on the tire too; blank clears the rating.
+    if (req.body.condition !== undefined && !['new', 'used'].includes(req.body.condition)) delete req.body.condition;
+    if (req.body.conditionPercent !== undefined) {
+      const v = req.body.conditionPercent;
+      req.body.conditionPercent = v === '' || v == null ? null : Math.max(0, Math.min(100, Math.round(Number(v)) || 0));
+    }
     // The edit form sends every field; only real changes reach the log.
     const patch = {};
-    for (const k of allowed) if (req.body[k] !== undefined && String(req.body[k]) !== String(current[k] ?? '')) patch[k] = req.body[k];
+    for (const k of allowed) if (req.body[k] !== undefined && String(req.body[k] ?? '') !== String(current[k] ?? '')) patch[k] = req.body[k];
     if (!Object.keys(patch).length) return res.json({ tire: current, unchanged: true });
     const tire = await Ls2TireAsset.findByIdAndUpdate(req.params.id, patch, { new: true });
     if (!tire) return res.status(404).json({ message: 'Not found' });
     await logEvent(req, {
       entityType: 'tire', refId: tire._id, label: tire.serial, action: 'updated',
-      notes: Object.keys(patch).map((k) => `${k}: ${patch[k]}`).join(', '),
+      notes: Object.keys(patch).map((k) => (k === 'conditionPercent' ? `الحالة: ${patch[k] == null ? 'بلا تقييم' : `${patch[k]}%`}` : k === 'condition' ? `الدرجة: ${patch[k] === 'new' ? 'جديد' : 'مستعمل'}` : `${k}: ${patch[k]}`)).join(', '),
     });
     res.json({ tire });
   } catch (e) {

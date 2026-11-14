@@ -551,9 +551,8 @@ class _MaintenanceTabState extends State<_MaintenanceTab> {
     // status per checklist row: done | deferred | na
     final rowStatus = <int, String>{for (var i = 0; i < template.length; i++) i: 'done'};
     final rowDefer = <int, TextEditingController>{for (var i = 0; i < template.length; i++) i: TextEditingController(text: '$kMinDeferKm')};
-    // Part 1: spare parts from the heavy store; part 2: technician work lines.
+    // Spare parts from the heavy store.
     final parts = <PartLine>[];
-    final work = <(TextEditingController, TextEditingController)>[];
 
     await showModalBottomSheet(
       context: context,
@@ -572,32 +571,14 @@ class _MaintenanceTabState extends State<_MaintenanceTab> {
               const SizedBox(height: 10),
               TextField(controller: notes, decoration: InputDecoration(labelText: tr('ملاحظات', 'Notes'))),
               const SizedBox(height: 12),
-              Text(tr('١. قطع الغيار (من مخزن النقل الثقيل)', '1. Spare parts (heavy store)'), style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 13.5)),
+              Text(tr('قطع الغيار (من مخزن النقل الثقيل)', 'Spare parts (heavy store)'), style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 14.5, color: T.ink)),
               const SizedBox(height: 6),
               StorePartsEditor(lines: parts, onChanged: () => setS(() {})),
               const SizedBox(height: 12),
-              Row(children: [
-                Expanded(child: Text(tr('٢. أعمال الفني (تشحيم، ضبط…)', '2. Technician work (greasing…)'), style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 13.5))),
-                TextButton.icon(
-                  onPressed: () => setS(() => work.add((TextEditingController(), TextEditingController()))),
-                  icon: const Icon(Icons.add, size: 16),
-                  label: Text(tr('إضافة عمل', 'Add work')),
-                ),
-              ]),
-              for (var w = 0; w < work.length; w++)
-                Padding(
-                  padding: const EdgeInsets.only(bottom: 6),
-                  child: Row(children: [
-                    Expanded(child: TextField(controller: work[w].$1, decoration: InputDecoration(isDense: true, labelText: tr('العمل المنفّذ', 'Work done')))),
-                    const SizedBox(width: 8),
-                    SizedBox(width: 90, child: TextField(controller: work[w].$2, keyboardType: TextInputType.number, decoration: InputDecoration(isDense: true, labelText: tr('التكلفة', 'Cost')))),
-                    IconButton(icon: const Icon(Icons.delete_outline, size: 19, color: T.danger), onPressed: () => setS(() => work.removeAt(w))),
-                  ]),
-                ),
               if (template.isNotEmpty) ...[
                 const SizedBox(height: 12),
-                Text(tr('قائمة الفحص', 'Checklist'), style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 13.5)),
-                Text(tr('التأجيل مسموح فقط لمسافة ${_fmt(kMinDeferKm)} كم أو أكثر.', 'Deferral needs at least $kMinDeferKm km.'), style: const TextStyle(fontSize: 11, color: T.inkSoft)),
+                Text(tr('قائمة الفحص', 'Checklist'), style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 14.5, color: T.ink)),
+                Text(tr('التأجيل مسموح فقط لمسافة ${_fmt(kMinDeferKm)} كم أو أكثر.', 'Deferral needs at least $kMinDeferKm km.'), style: const TextStyle(fontSize: 12, color: T.inkSoft, fontWeight: FontWeight.w600)),
                 const SizedBox(height: 6),
                 ...List.generate(template.length, (i) {
                       final row = template[i];
@@ -605,7 +586,7 @@ class _MaintenanceTabState extends State<_MaintenanceTab> {
                       return Padding(
                         padding: const EdgeInsets.only(bottom: 8),
                         child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                          Text(label, style: const TextStyle(fontSize: 12.5, fontWeight: FontWeight.w700)),
+                          Text(label, style: const TextStyle(fontSize: 13.5, fontWeight: FontWeight.w800, color: T.ink)),
                           Row(children: [
                             Expanded(
                               child: SegmentedButton<String>(
@@ -659,10 +640,6 @@ class _MaintenanceTabState extends State<_MaintenanceTab> {
                         'odometerKm': num.tryParse(odometer.text),
                         if (notes.text.trim().isNotEmpty) 'notes': notes.text.trim(),
                         'parts': [for (final p in parts) {'item': p.item['_id'], 'quantity': p.quantity}],
-                        'work': [
-                          for (final w in work)
-                            if (w.$1.text.trim().isNotEmpty) {'label': w.$1.text.trim(), 'cost': num.tryParse(w.$2.text.trim())},
-                        ],
                         if (template.isNotEmpty)
                           'checklist': [
                             for (var i = 0; i < template.length; i++)

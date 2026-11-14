@@ -8,7 +8,7 @@
 // turn into an odometer deadline and alert on before it runs out.
 import { useState, useEffect } from 'react';
 import { useDialog } from '@/components/system/DialogProvider';
-import { CheckCircle2, Loader2, Clock, MinusCircle, Plus, Trash2 } from 'lucide-react';
+import { CheckCircle2, Loader2, Clock, MinusCircle } from 'lucide-react';
 import api from '@/lib/api';
 import { ls2Text, serviceTemplateKey, MIN_DEFER_KM, type Lang, type ServiceInterval, type ChecklistItem, type ChecklistTemplates } from '@/lib/ls2';
 import StorePartsPicker, { partsProblem, type PartLine, type StoreItem } from './StorePartsPicker';
@@ -18,8 +18,6 @@ type Status = 'done' | 'deferred' | 'na';
 // deferrals against it, so it must not vary with the registrar's UI language.
 // `labelAr` is carried for display here and in the history/deferral lists.
 type Row = { label: string; labelAr: string; status: Status; deferKm: string; note: string };
-// Technician work line (greasing, adjustment…); its cost is optional.
-type WorkLine = { label: string; cost: string };
 
 export default function RegisterServiceModal({
   unitId, interval, currentOdo, lang, isRTL, onClose, onSaved,
@@ -40,7 +38,6 @@ export default function RegisterServiceModal({
   const [notes, setNotes] = useState('');
   const [parts, setParts] = useState<PartLine[]>([]);
   const [storeItems, setStoreItems] = useState<Map<string, StoreItem>>(new Map());
-  const [work, setWork] = useState<WorkLine[]>([]);
   const [saving, setSaving] = useState(false);
   const [rows, setRows] = useState<Row[]>([]);
 
@@ -68,9 +65,7 @@ export default function RegisterServiceModal({
   // Deferred (مؤجّل) needs at least MIN_DEFER_KM; the server refuses less.
   const shortDefer = rows.some((r) => r.status === 'deferred' && !(Number(r.deferKm) >= MIN_DEFER_KM));
   const partsError = partsProblem(parts, storeItems, ar);
-  const workError = work.some((w) => w.cost !== '' && !(Number(w.cost) >= 0)) ? (ar ? 'تكلفة بند العمل غير صحيحة' : 'Invalid work cost') : null;
-  const incomplete = shortDefer || !!partsError || !!workError;
-  const setWorkLine = (i: number, patch: Partial<WorkLine>) => setWork((w) => w.map((x, k) => (k === i ? { ...x, ...patch } : x)));
+  const incomplete = shortDefer || !!partsError;
 
   const submit = async () => {
     setSaving(true);
@@ -81,7 +76,6 @@ export default function RegisterServiceModal({
         serviceDate: date || undefined,
         notes: notes || undefined,
         parts: parts.map((p) => ({ item: p.item, quantity: Number(p.quantity) })),
-        work: work.filter((w) => w.label.trim()).map((w) => ({ label: w.label.trim(), cost: w.cost === '' ? null : Number(w.cost) })),
         checklist: rows.map((r) => ({
           label: r.label,
           labelAr: r.labelAr,
@@ -109,52 +103,29 @@ export default function RegisterServiceModal({
     <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/40 p-4" onClick={() => !saving && onClose()}>
       <div className="bg-white rounded-2xl shadow-xl w-full max-w-2xl max-h-[92vh] overflow-y-auto p-5" dir={isRTL ? 'rtl' : 'ltr'} onClick={(e) => e.stopPropagation()}>
         <h3 className="text-base font-bold text-slate-900 flex items-center gap-2 mb-1"><CheckCircle2 className="w-5 h-5 text-[#f37121]" /> {ar ? 'تسجيل صيانة' : 'Register Service'}</h3>
-        <p className="text-xs text-slate-500 mb-4">{interval.name}</p>
+        <p className="text-[13px] font-semibold text-slate-600 mb-4">{interval.name}</p>
         <div className="space-y-3">
           <div>
-            <label className="text-xs font-medium text-slate-600 mb-1 block">{ar ? 'العداد وقت الصيانة (كم)' : 'Odometer at service (km)'}</label>
+            <label className="text-[13px] font-bold text-slate-800 mb-1.5 block">{ar ? 'العداد وقت الصيانة (كم)' : 'Odometer at service (km)'}</label>
             <input type="number" value={odo} onChange={(e) => setOdo(e.target.value)} className="w-full px-3 py-2 rounded-lg border border-slate-200 text-sm tabular-nums" />
-            <p className="text-[10px] text-slate-400 mt-1">{ar ? 'المبدئي = العداد الحالي. عدّله لو الصيانة اتعملت وهو أقل.' : 'Defaults to current odometer. Edit if the service was done earlier.'}</p>
+            <p className="text-[11.5px] text-slate-500 mt-1">{ar ? 'يبدأ بالعدّاد الحالي، وعدِّله إن كانت الصيانة قد أُجريت عند قراءةٍ أقلّ.' : 'Defaults to current odometer. Edit if the service was done earlier.'}</p>
           </div>
           <div>
-            <label className="text-xs font-medium text-slate-600 mb-1 block">{ar ? 'تاريخ الصيانة' : 'Service date'}</label>
+            <label className="text-[13px] font-bold text-slate-800 mb-1.5 block">{ar ? 'تاريخ الصيانة' : 'Service date'}</label>
             <input type="date" value={date} onChange={(e) => setDate(e.target.value)} className="w-full px-3 py-2 rounded-lg border border-slate-200 text-sm" />
           </div>
 
           {/* Part 1: spare parts from the heavy store */}
           <div className="border border-slate-200 rounded-xl p-3">
-            <p className="text-xs font-bold text-slate-700 mb-2">{ar ? '١. قطع الغيار (من مخزن النقل الثقيل)' : '1. Spare parts (heavy-transport store)'}</p>
+            <p className="text-sm font-extrabold text-slate-900 mb-2">{ar ? 'قطع الغيار (من مخزن النقل الثقيل)' : 'Spare parts (heavy-transport store)'}</p>
             <StorePartsPicker value={parts} onChange={setParts} ar={ar} onItems={setStoreItems} />
             {partsError && parts.length > 0 && <p className="text-[11px] text-red-600 mt-1">{partsError}</p>}
-          </div>
-
-          {/* Part 2: technician work */}
-          <div className="border border-slate-200 rounded-xl p-3">
-            <div className="flex items-center justify-between mb-2">
-              <p className="text-xs font-bold text-slate-700">{ar ? '٢. أعمال الفني (تشحيم، ضبط…)' : '2. Technician work (greasing, adjustment…)'}</p>
-              <button type="button" onClick={() => setWork((w) => [...w, { label: '', cost: '' }])}
-                className="inline-flex items-center gap-1 px-2 py-1 rounded-md bg-slate-100 hover:bg-slate-200 text-slate-700 text-[11px] font-medium">
-                <Plus className="w-3 h-3" /> {ar ? 'إضافة عمل' : 'Add work'}
-              </button>
-            </div>
-            {work.length === 0 && <p className="text-[11px] text-slate-400">{ar ? 'لا توجد أعمال مضافة.' : 'No work lines.'}</p>}
-            <div className="space-y-1.5">
-              {work.map((w, i) => (
-                <div key={i} className="flex items-center gap-2">
-                  <input value={w.label} onChange={(e) => setWorkLine(i, { label: e.target.value })} placeholder={ar ? 'العمل المنفّذ' : 'Work done'}
-                    className="flex-1 min-w-0 px-2 py-1.5 rounded-md border border-slate-200 text-sm" />
-                  <input type="number" min={0} value={w.cost} onChange={(e) => setWorkLine(i, { cost: e.target.value })} placeholder={ar ? 'التكلفة' : 'Cost'}
-                    className="w-28 px-2 py-1.5 rounded-md border border-slate-200 text-sm tabular-nums" />
-                  <button type="button" onClick={() => setWork((x) => x.filter((_, k) => k !== i))} className="p-1 text-slate-400 hover:text-red-600"><Trash2 className="w-3.5 h-3.5" /></button>
-                </div>
-              ))}
-            </div>
           </div>
 
           {/* Checklist — only when this service has a template configured */}
           {rows.length > 0 && (
             <div className="border border-slate-200 rounded-xl p-3">
-              <p className="text-xs font-bold text-slate-700 mb-2">{t.checklist}</p>
+              <p className="text-sm font-extrabold text-slate-900 mb-2">{t.checklist}</p>
               <div className="space-y-2">
                 {rows.map((r, i) => (
                   <div key={i} className="rounded-lg bg-slate-50 p-2.5">
@@ -195,15 +166,15 @@ export default function RegisterServiceModal({
                   </div>
                 ))}
               </div>
-              <p className="text-[10px] text-slate-500 mt-2">{t.deferHint}</p>
-              <p className={`text-[10px] mt-1 ${shortDefer ? 'text-red-600 font-semibold' : 'text-slate-500'}`}>
+              <p className="text-[11.5px] text-slate-600 mt-2">{t.deferHint}</p>
+              <p className={`text-[11.5px] mt-1 ${shortDefer ? 'text-red-600 font-semibold' : 'text-slate-600'}`}>
                 {ar ? `التأجيل مسموح فقط لمسافة ${MIN_DEFER_KM.toLocaleString('en-US')} كم أو أكثر؛ ما دون ذلك يُنجَز الآن.` : `Deferral is allowed only for ${MIN_DEFER_KM.toLocaleString('en-US')} km or more; anything shorter is done now.`}
               </p>
             </div>
           )}
 
           <div>
-            <label className="text-xs font-medium text-slate-600 mb-1 block">{ar ? 'ملاحظات (اختياري)' : 'Notes (optional)'}</label>
+            <label className="text-[13px] font-bold text-slate-800 mb-1.5 block">{ar ? 'ملاحظات (اختياري)' : 'Notes (optional)'}</label>
             <textarea rows={2} value={notes} onChange={(e) => setNotes(e.target.value)} className="w-full px-3 py-2 rounded-lg border border-slate-200 text-sm" />
           </div>
         </div>

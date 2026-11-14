@@ -16,6 +16,8 @@ import { Modal, SearchableSelect } from '@/components/hr/HRKit';
 import SearchableManagedSelect from '@/components/system/SearchableManagedSelect';
 import DriverPicker from '@/components/shipment-orders/DriverPicker';
 import type { OrderSupplier, OrderVehicle, OrderDriver } from '@/lib/shipmentOrders';
+import { outsideHint, offerSupplierLink } from '@/lib/supplierLinks';
+import { foldAr } from '@/lib/customerRegistry';
 import { vehicleAvailabilityText, seatsOf, type FleetVehicle, type FleetDriver } from '@/lib/fleet';
 import { type ShipmentRequest, type SourcingEntry } from '@/lib/shipmentRequests';
 import { CheckCircle2, Loader2, Plus, Trash2, Copy, Pencil, Check, X, Building2, User as UserIcon } from 'lucide-react';
@@ -192,6 +194,31 @@ function TruckEditor({ i, row, reps, helpers, types, miss, onChange, onRemove, a
   const [supBusy, setSupBusy] = useState(false);
   const supGuard = useLatestRequest();
   const kind = row.kind;
+  const { notify, confirm } = useDialog();
+  // Typing in the truck field also searches trucks outside this supplier's register (a truck may work for several suppliers).
+  const [vq, setVq] = useState('');
+  const [outside, setOutside] = useState<OrderVehicle[]>([]);
+  const [vBusy, setVBusy] = useState(false);
+  const vGuard = useLatestRequest();
+  const searchVeh = useCallback(async (q: string) => {
+    setVq(q);
+    if (!q.trim() || !row.supplierId) { setOutside([]); return; }
+    const my = vGuard.begin(); setVBusy(true);
+    try {
+      const d = await api.get<{ vehicles: OrderVehicle[] }>(`/api/shipment-orders/vehicles?limit=30&ownership=not_ours&notSupplier=${row.supplierId}&q=${encodeURIComponent(q.trim())}`);
+      if (vGuard.isCurrent(my)) setOutside(d.vehicles || []);
+    } catch { /* keep */ }
+    if (vGuard.isCurrent(my)) setVBusy(false);
+  }, [vGuard, row.supplierId]);
+  const ownShown = vq.trim() ? vehs.filter((v) => foldAr(`${v.plate} ${v.truckType || ''} ${v.defaultDriverName || ''}`).includes(foldAr(vq.trim()))) : vehs;
+  const pickVehicle = async (id: string) => {
+    onChange({ vehicleId: id, newPlate: '' });
+    const v = outside.find((x) => x._id === id);
+    if (!v) return;
+    const linked = await offerSupplierLink({ kind: 'vehicle', id, label: v.plate, supplierId: row.supplierId, supplierName: row.supplierName, ar, confirm, notify });
+    if (linked) setVehs((p) => [v, ...p]);
+    else setVehs((p) => (p.some((x) => x._id === id) ? p : [...p, v]));
+  };
   // Approved carriers only, of the chosen kind (another agent's approval: missing status = approved).
   const searchSup = useCallback(async (q: string) => {
     const my = supGuard.begin(); setSupBusy(true);
@@ -289,9 +316,13 @@ function TruckEditor({ i, row, reps, helpers, types, miss, onChange, onRemove, a
           {!row.newFreelancer && (
             <div className={ring('vehicle')}>
               <SearchableSelect value={row.vehicleId} searchAfter={0} disabled={!row.supplierId}
-                onChange={(v) => onChange({ vehicleId: v, newPlate: '' })}
+                onChange={pickVehicle} onSearch={searchVeh} loading={vBusy}
                 placeholder={row.supplierId ? t('من سيارات المورّد المسجَّلة', "From the carrier's registered trucks") : t('اختر المورّد أوّلًا', 'Pick the carrier first')}
-                options={vehs.map((v) => ({ value: v._id, label: v.plate, hint: [v.truckType, v.defaultDriverName].filter(Boolean).join(' · ') }))} />
+                searchPlaceholder={t('اكتب اللوحة للبحث في كل الشاحنات', 'Type a plate to search every truck')}
+                options={[
+                  ...ownShown.map((v) => ({ value: v._id, label: v.plate, hint: [v.truckType, v.defaultDriverName].filter(Boolean).join(' · ') })),
+                  ...outside.filter((v) => !vehs.some((x) => x._id === v._id)).map((v) => ({ value: v._id, label: v.plate, hint: [outsideHint(v, ar), v.truckType].filter(Boolean).join(' · ') })),
+                ]} />
             </div>
           )}
           {!row.vehicleId && <input value={row.newPlate} onChange={(e) => onChange({ newPlate: e.target.value })} placeholder={row.newFreelancer ? t('لوحة سيارته *', 'His truck plate *') : t('أو أضِف لوحةً جديدة على هذا المورّد', 'or add a new plate for this carrier')} className={`${inputCls} mt-1.5 ${bad('vehicle') ? 'border-red-400 bg-red-50' : ''}`} />}
@@ -310,7 +341,7 @@ function TruckEditor({ i, row, reps, helpers, types, miss, onChange, onRemove, a
           ) : (
             <>
               <div className={ring('driver')}>
-                <DriverPicker value={row.driverName} ar={ar} contextDrivers={drivers} supplierId={row.supplierId} vehicleId={row.vehicleId} requireIqama registeredOnly
+                <DriverPicker value={row.driverName} ar={ar} contextDrivers={drivers} supplierId={row.supplierId} supplierName={row.supplierName} vehicleId={row.vehicleId} requireIqama registeredOnly
                   placeholder={t('من سائقي المورّد المسجَّلين', "From the carrier's registered drivers")}
                   onPick={(d) => onChange({ driverName: d.name, driverId: (d.driver as any)?._id || '' })} />
               </div>

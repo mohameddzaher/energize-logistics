@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
 import '../services/api.dart';
+import '../services/supplier_links.dart';
 import '../services/lang.dart';
 import '../ui/contact.dart';
 import '../ui/theme.dart';
@@ -15,14 +16,21 @@ Future<Map<String, dynamic>?> pickShipmentDriver(
   BuildContext context, {
   required List<Map<String, dynamic>> local,
   String? supplierId,
+  String? supplierName,
   String? vehicleId,
   bool startWithNew = false,
-}) {
-  return showModalBottomSheet<Map<String, dynamic>>(
+}) async {
+  final d = await showModalBottomSheet<Map<String, dynamic>>(
     context: context,
     isScrollControlled: true,
     builder: (_) => _DriverSheet(local: local, supplierId: supplierId, vehicleId: vehicleId, startWithNew: startWithNew),
   );
+  // A registered driver from outside the supplier's register is still picked; linking him is offered once.
+  final sid = supplierId ?? '';
+  if (d != null && sid.isNotEmpty && d['_id'] != null && !isLinkedTo(d, sid) && !local.any((x) => x['_id'] == d['_id']) && context.mounted) {
+    await offerSupplierLink(context, vehicle: false, id: '${d['_id']}', label: '${d['name'] ?? ''}', supplierId: sid, supplierName: supplierName ?? '');
+  }
+  return d;
 }
 
 class _DriverSheet extends StatefulWidget {

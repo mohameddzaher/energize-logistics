@@ -167,6 +167,8 @@ export interface OrderDriver extends PersonDocs {
   companyName?: string;
   sponsorName?: string;
   supplier?: OrderSupplier | string | null;
+  /** Every supplier it is linked to, primary included (a truck or driver may work for several). */
+  suppliers?: (OrderSupplier | string)[];
   vehicle?: OrderVehicle | string | null;
   /** His HR file if he is our employee; name, mobile and nationality come from it. */
   employee?: string | null;
@@ -186,6 +188,8 @@ export interface OrderVehicle {
   operationCardNumber?: string;
   operationCardExpiry?: string;
   supplier?: OrderSupplier | string | null;
+  /** Every supplier it is linked to, primary included (a truck or driver may work for several). */
+  suppliers?: (OrderSupplier | string)[];
   /** Whose truck it is, explicit and not by absence. An empty `supplier` used to mean ours, then thirteen thousand trucks from order history arrived without a supplier reference and were read as our fleet, which is fifty-eight. Absence means unknown, not ours. */
   ownership?: 'supplier' | 'ours' | 'unknown';
   /** Our truck in the vehicle register; make, color and model year come from it. */

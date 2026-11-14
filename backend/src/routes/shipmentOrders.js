@@ -4,6 +4,7 @@ const router = express.Router();
 // A malformed id in the URL means no record (404), not a server error; see utils/idParam.
 const { objectIdParam } = require('../utils/idParam');
 router.param('id', objectIdParam());
+router.param('supplierId', objectIdParam());
 const so = require('../controllers/shipmentOrdersController');
 const authenticate = require('../middleware/auth');
 const authorize = require('../middleware/rbac');
@@ -90,12 +91,17 @@ router.get('/fleet-summary', so.fleetSummary);
 router.post('/vehicles', authorize(...EDIT_ROLES), so.createVehicle);
 router.put('/vehicles/:id', authorize(...EDIT_ROLES), so.updateVehicle);
 router.delete('/vehicles/:id', authorize(...ADMIN_ROLES), so.deleteVehicle);
+// A truck or driver may work for several suppliers: link one more, or remove one link.
+router.post('/vehicles/:id/suppliers', authorize(...EDIT_ROLES), so.linkVehicleSupplier);
+router.delete('/vehicles/:id/suppliers/:supplierId', authorize(...EDIT_ROLES), so.unlinkVehicleSupplier);
 
 // Drivers of the carriers' trucks, each with a file (iqama, operating card, sponsor), vendor and truck. Imported from the operations platform and corrected here.
 router.get('/drivers', so.listDrivers);
 router.post('/drivers', authorize(...EDIT_ROLES), so.createDriver);
 router.put('/drivers/:id', authorize(...EDIT_ROLES), so.updateDriver);
 router.delete('/drivers/:id', authorize(...ADMIN_ROLES), so.deleteDriver);
+router.post('/drivers/:id/suppliers', authorize(...EDIT_ROLES), so.linkDriverSupplier);
+router.delete('/drivers/:id/suppliers/:supplierId', authorize(...EDIT_ROLES), so.unlinkDriverSupplier);
 
 // Form fields (the settings page). Changing the form is an admin act.
 router.get('/fields', so.listFields);

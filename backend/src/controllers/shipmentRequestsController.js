@@ -728,7 +728,8 @@ async function resolvePlacedDriver(req, t, supplierId) {
     const iq = cleanIqama(t.newDriver.residenceNumber);
     const known = await Driver.findOne({ residenceNumber: iq, isActive: { $ne: false } }).lean();
     if (known) {
-      if (!known.supplier && supplierId) await Driver.updateOne({ _id: known._id }, { $set: { supplier: supplierId } });
+      // Registered for this supplier: he becomes its driver too (a driver may work for several).
+      if (supplierId) await Driver.updateOne({ _id: known._id }, known.supplier ? { $addToSet: { suppliers: supplierId } } : { $set: { supplier: supplierId } });
       return known;
     }
     const created = await Driver.create({
@@ -742,7 +743,7 @@ async function resolvePlacedDriver(req, t, supplierId) {
   const name = String(t.driverName || '').trim();
   const { arabicSearchRegex } = require('../utils/arabicSearch');
   const live = { isActive: { $ne: false }, name: arabicSearchRegex(name) };
-  const d = (supplierId && await Driver.findOne({ ...live, supplier: supplierId }).lean()) || await Driver.findOne(live).lean();
+  const d = (supplierId && await Driver.findOne({ $and: [live, require('../utils/supplierLinks').linkedTo(supplierId)] }).lean()) || await Driver.findOne(live).lean();
   if (!d) fail(`السائق «${name}» غير مسجَّل — سجّله سائقًا جديدًا برقم إقامته`);
   return d;
 }

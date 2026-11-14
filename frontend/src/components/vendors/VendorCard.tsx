@@ -19,7 +19,7 @@ import { KIND, kindLabel, contractTone, monthName, canEditVendors, CHANNELS, isV
 import VendorFilesPanel, { ApprovalBlock } from './VendorFilesPanel';
 import NewVendorModal from './NewVendorModal';
 import { ResponsiveContainer, BarChart, Bar, XAxis, YAxis, Tooltip, CartesianGrid } from 'recharts';
-import { ArrowRight, Pencil, Phone, MessageCircle, Plus, Trash2, AlertTriangle, Truck, UserRound, Tags, CalendarClock, Building2 } from 'lucide-react';
+import { ArrowRight, Pencil, Phone, MessageCircle, Plus, Trash2, AlertTriangle, Truck, UserRound, Tags, CalendarClock, Building2, X } from 'lucide-react';
 
 type Row = Record<string, any>;
 const FILE: [string, string, string, ('text' | 'number' | 'bool' | 'textarea' | 'owner' | 'contract' | 'tax' | 'type')?][] = [
@@ -68,6 +68,32 @@ export default function VendorCard({ id, name }: { id?: string; name?: string })
 
   if (!d && !error) return <Spinner />;
   if (!d) return <ErrorNotice error={error} onRetry={load} lang={ar ? 'ar' : 'en'} />;
+
+  const vendorId = String(d.vendor?._id || id || '');
+  const linkCol = (kind: 'vehicles' | 'drivers') => ({
+    key: 'link', label: t('الارتباط', 'Link'),
+    render: (r: Row) => {
+      const primary = String(r.supplier || '');
+      const mine = primary === vendorId;
+      const primaryName = (r.suppliers || []).find((s: Row) => String(s._id) === primary)?.name || '';
+      return (
+        <span className="inline-flex items-center gap-1.5 whitespace-nowrap">
+          {mine
+            ? <span className="text-[11px] font-semibold text-emerald-700">{t('أساسي', 'Primary')}</span>
+            : <span className="text-[11px] font-semibold text-amber-700" title={primaryName}>{t(`مرتبط — الأساسي: ${primaryName || '—'}`, `Linked — primary: ${primaryName || '—'}`)}</span>}
+          {editor && (
+            <button type="button" title={t('إلغاء ربطه بهذا المورد', 'Unlink from this carrier')} className="text-slate-400 hover:text-red-600"
+              onClick={async () => {
+                const label = kind === 'vehicles' ? r.plate : r.name;
+                if (!(await confirm({ title: t('إلغاء الربط', 'Unlink'), message: t(`يُزال «${label}» من سجلّ هذا المورد. لا تتأثّر الشحنات السابقة.`, `“${label}” is removed from this carrier's register. Past shipments are unaffected.`), tone: 'danger' as any }))) return;
+                try { await api.delete(kind === 'vehicles' ? `/api/shipment-orders/vehicles/${r._id}/suppliers/${vendorId}` : `/api/shipment-orders/drivers/${r._id}/suppliers/${vendorId}`); notify(t('أُلغي الربط', 'Unlinked'), 'success'); load(); }
+                catch (e: any) { notify(e?.message || t('تعذّر إلغاء الربط', 'Could not unlink'), 'error'); }
+              }}><X className="w-3.5 h-3.5" /></button>
+          )}
+        </span>
+      );
+    },
+  });
   const v = d.vendor;
   const A = d.activity;
   const money = A.buy != null;
@@ -247,11 +273,13 @@ export default function VendorCard({ id, name }: { id?: string; name?: string })
 
       {tab === 'fleet' && (
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+          {/* A truck or driver may work for several carriers: rows primarily another carrier's are marked, and a link can be removed here. */}
           <Panel title={t('سيارات المورّد في السجلّ', 'Registered trucks')} subtitle={t('ومن الشحنات: اللوحات الأكثر تشغيلًا هذا العام', 'Plus the most used plates this year')} pad={false}>
             <DataGrid ar={ar} rows={d.vehicles || []} rowKey={(r) => r._id} empty={t('لا سيارات مسجّلة — تُسجَّل من «السيارات» أو عند إكمال الشحنة', 'No trucks registered')} cols={[
               { key: 'plate', label: t('اللوحة', 'Plate'), render: (r) => <span className="font-semibold"><Truck className="inline w-3.5 h-3.5 me-1 text-slate-400" />{r.plate}</span> },
               { key: 'truckType', label: t('النوع', 'Type') }, { key: 'brand', label: t('الماركة', 'Make') }, { key: 'defaultDriverName', label: t('السائق المعتاد', 'Usual driver') },
               { key: 'operationCardExpiry', label: t('بطاقة التشغيل', 'Op. card'), render: (r) => r.operationCardExpiry || '—' },
+              linkCol('vehicles'),
             ]} />
             {!!A.plates?.length && <div className="p-4 border-t border-slate-100"><BarList ar={ar} rows={A.plates.map((p: Row) => ({ key: p.name, label: p.name, value: p.trips }))} limit={8} color="#64748b" /></div>}
           </Panel>
@@ -260,6 +288,7 @@ export default function VendorCard({ id, name }: { id?: string; name?: string })
               { key: 'name', label: t('السائق', 'Driver'), render: (r) => <span className="font-semibold"><UserRound className="inline w-3.5 h-3.5 me-1 text-slate-400" />{r.name}</span> },
               { key: 'phone', label: t('الجوال', 'Phone') }, { key: 'nationality', label: t('الجنسية', 'Nationality') },
               { key: 'driverCardExpiry', label: t('بطاقة السائق', 'Driver card'), render: (r) => r.driverCardExpiry || '—' },
+              linkCol('drivers'),
             ]} />
             {!!A.drivers?.length && <div className="p-4 border-t border-slate-100"><BarList ar={ar} rows={A.drivers.map((p: Row) => ({ key: p.name, label: p.name, value: p.trips }))} limit={8} color="#0ea5e9" /></div>}
           </Panel>

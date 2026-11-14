@@ -1853,11 +1853,8 @@ const anyOf = (q, fields) => {
   return { $and: words.map((w) => ({ $or: fields.map((f) => ({ [f]: flexSpaceRegex(w) })) })) };
 };
 
-/** The same vehicle query narrowed to the plate field. */
-const plateScope = (filter, q) => {
-  const { $or, $and, ...rest } = filter;
-  return { ...rest, ...anyOf(q, ['plate']) };
-};
+const { linkedTo, notLinkedTo, SUPPLIER_SET, oid: supplierOid } = require('../utils/supplierLinks');
+
 
 // The three lists: read-only fields, cached two minutes.
 // The cluster delivers ~70 KB/s, so a list costs its size, not its computation: 500 full customers are 315 KB (~4.5 s) and 1000 trucks 463 KB (~5 s). Import fields (owner, IBAN, register, operating card, ...) are read by no screen or app, since the edit form sends only editable fields. Caching is safe because the three models' hooks clear `so:registry:` on every write.
@@ -1865,8 +1862,8 @@ const REGISTRY_TTL = 2 * 60 * 1000;
 const CUSTOMER_LIST_FIELDS = 'customerCode name phone email notes routes defaults';
 // Its financial papers are read from the row: commercial register, IBAN and its manager by number are what is requested at his first payment, and a card used to be opened for each supplier.
 const SUPPLIER_LIST_FIELDS = 'name type phone email notes commercialRegister taxCard iban bankName managerName managerPhone paymentTerms inMaster followOwner contractStatus vendorSigned ourSigned headOffice vehicleTypes fleetSize rating';
-const VEHICLE_LIST_FIELDS = 'plate name truckType brand color supplier ownership vehicleMaster defaultDriverName defaultDriverPhone operationCardNumber operationCardExpiry modelYear notes';
-const DRIVER_LIST_FIELDS = 'name phone nationality residenceNumber driverCardNumber driverCardExpiry supplier vehicle employee sponsorName notes';
+const VEHICLE_LIST_FIELDS = 'plate name truckType brand color supplier suppliers ownership vehicleMaster defaultDriverName defaultDriverPhone operationCardNumber operationCardExpiry modelYear notes';
+const DRIVER_LIST_FIELDS = 'name phone nationality residenceNumber driverCardNumber driverCardExpiry supplier suppliers vehicle employee sponsorName notes';
 const registryKey = (kind, req, extra = '') => `so:registry:${kind}:${String(req.query.q || '')}:${req.query.limit || ''}:${extra}`;
 
 // Truck ownership is requested explicitly.
@@ -2108,12 +2105,15 @@ exports.listSuppliers = async (req, res) => {
           .lean(),
         ShipmentOrderSupplier.countDocuments(filter),
         ShipmentOrderVehicle.aggregate([
-          { $match: { isActive: { $ne: false }, supplier: { $ne: null } } },
-          { $group: { _id: '$supplier', n: { $sum: 1 } } },
+          // Counted over every linked supplier, not only the primary: a truck working for two carriers counts for both.
+          { $match: { isActive: { $ne: false }, $or: [{ supplier: { $ne: null } }, { 'suppliers.0': { $exists: true } }] } },
+          { $project: { s: SUPPLIER_SET } }, { $unwind: '$s' },
+          { $group: { _id: '$s', n: { $sum: 1 } } },
         ]),
         ShipmentOrderDriver.aggregate([
-          { $match: { isActive: { $ne: false }, supplier: { $ne: null } } },
-          { $group: { _id: '$supplier', n: { $sum: 1 } } },
+          { $match: { isActive: { $ne: false }, $or: [{ supplier: { $ne: null } }, { 'suppliers.0': { $exists: true } }] } },
+          { $project: { s: SUPPLIER_SET } }, { $unwind: '$s' },
+          { $group: { _id: '$s', n: { $sum: 1 } } },
         ]),
       ]);
       const byId = {};
@@ -2229,6 +2229,11 @@ exports.mergeSupplier = async (req, res) => {
       ShipmentOrderDriverM.updateMany({ supplier: from._id }, { $set: { supplier: keep._id } }),
       User.updateMany({ 'partner.source': 'shipment_order_supplier', 'partner.refId': String(from._id) }, { $set: { 'partner.refId': String(keep._id) } }),
     ]);
+    // A secondary link to the merged supplier becomes a link to the survivor (two updates: one field cannot be added to and pulled from at once).
+    for (const M of [ShipmentOrderVehicleM, ShipmentOrderDriverM]) {
+      await M.updateMany({ suppliers: from._id }, { $addToSet: { suppliers: keep._id } });
+      await M.updateMany({ suppliers: from._id }, { $pull: { suppliers: from._id } });
+    }
     // Shipments carrying the merged supplier's name as text (from the platform) take the survivor's name if different.
     if (String(from.name).trim() !== String(keep.name).trim()) {
       await ShipmentOrder.updateMany({ supplierName: from.name }, { $set: { supplierName: keep.name } });
@@ -2256,27 +2261,29 @@ exports.mergeSupplier = async (req, res) => {
 exports.listVehicles = async (req, res) => {
   try {
     const { q } = req.query;
-    const filter = { isActive: { $ne: false } };
-    if (q && q.trim()) {
-      Object.assign(filter, anyOf(q, ['plate', 'name', 'truckType', 'defaultDriverName',
-        'defaultDriverPhone', 'operationCardNumber', 'recordNumber', 'modelYear', 'externalId']));
-    }
-    if (req.query.supplier) filter.supplier = req.query.supplier;
+    // Scope (supplier, ownership) and search are separate clauses: both can carry an $or, and the plate-first read swaps only the search.
+    const scope = [{ isActive: { $ne: false } }];
+    if (req.query.supplier) scope.push(linkedTo(req.query.supplier));
+    if (req.query.notSupplier) scope.push(notLinkedTo(req.query.notSupplier));
     const own = ownershipFilter(req.query.ownership);
-    if (own && !req.query.supplier) Object.assign(filter, own);
+    if (own && !req.query.supplier) scope.push(own);
+    const searched = q && q.trim();
+    const filter = { $and: [...scope, ...(searched ? [anyOf(q, ['plate', 'name', 'truckType', 'defaultDriverName',
+      'defaultDriverPhone', 'operationCardNumber', 'recordNumber', 'modelYear', 'externalId'])] : [])] };
     const out = await cache.wrap(
-      registryKey('vehicles', req, `${req.query.supplier || ''}:${req.query.ownership || ''}`),
+      registryKey('vehicles', req, `${req.query.supplier || ''}:${req.query.notSupplier || ''}:${req.query.ownership || ''}`),
       REGISTRY_TTL, async () => {
       const limit = askedLimit(req.query.limit, 1000, 5000);
       const read = (where, max) => ShipmentOrderVehicle.find(where)
         .select(VEHICLE_LIST_FIELDS)
         .populate('supplier', 'name type')
+        .populate('suppliers', 'name type')
         .populate('vehicleMaster', VEHICLE_MASTER_FIELDS)
         .sort({ plate: 1 })
         .limit(max)
         .lean();
       // A truck found by its plate comes first; a match on a phone or card number follows.
-      const byPlate = q && q.trim() ? await read(plateScope(filter, q), limit) : [];
+      const byPlate = searched ? await read({ $and: [...scope, anyOf(q, ['plate'])] }, limit) : [];
       const seen = new Set(byPlate.map((v) => String(v._id)));
       const rest = (await read(filter, limit)).filter((v) => !seen.has(String(v._id)));
       const total = await ShipmentOrderVehicle.countDocuments(filter);
@@ -2285,6 +2292,7 @@ exports.listVehicles = async (req, res) => {
     });
     res.json(out);
   } catch (error) {
+    console.error('list vehicles:', error.message);
     res.status(500).json({ message: 'Failed to load vehicles' });
   }
 };
@@ -2326,7 +2334,7 @@ async function registrySummary() {
             $lookup: {
               from: 'shipmentordervehicles',
               let: { s: '$_id' },
-              pipeline: [{ $match: { $expr: { $eq: ['$supplier', '$$s'] }, isActive: { $ne: false } } }, { $count: 'n' }],
+              pipeline: [{ $match: { $expr: { $or: [{ $eq: ['$supplier', '$$s'] }, { $in: ['$$s', { $ifNull: ['$suppliers', []] }] }] }, isActive: { $ne: false } } }, { $count: 'n' }],
               as: 'v',
             },
           },
@@ -2363,8 +2371,10 @@ exports.createVehicle = async (req, res) => {
 
 exports.updateVehicle = async (req, res) => {
   try {
+    const before = await ShipmentOrderVehicle.findById(req.params.id).select('supplier').lean();
     const updated = await ShipmentOrderVehicle.findByIdAndUpdate(req.params.id, coherentOwnership(pick(req.body, VEHICLE_EDITABLE)), { new: true });
     if (!updated) return res.status(404).json({ message: 'Vehicle not found' });
+    await dropReplacedPrimary(ShipmentOrderVehicle, before, updated);
     await syncVehicleMaster(updated._id);
     // Shipments hold the plate as a snapshot; those on this truck follow an edit.
     await ShipmentOrder.updateMany({ vehicle: updated._id, vehiclePlate: { $ne: updated.plate } }, { vehiclePlate: updated.plate });
@@ -2400,9 +2410,10 @@ exports.listDrivers = async (req, res) => {
   try {
     const { q } = req.query;
     const filter = { isActive: { $ne: false } };
+    const and = [];
     if (q && q.trim()) {
-      Object.assign(filter, anyOf(q, ['name', 'phone', 'residenceNumber', 'driverCardNumber',
-        'nationality', 'sponsorName', 'companyName', 'email', 'externalId']));
+      const text = anyOf(q, ['name', 'phone', 'residenceNumber', 'driverCardNumber',
+        'nationality', 'sponsorName', 'companyName', 'email', 'externalId']);
       // Mobile however written.
       // The three forms of the same Saudi mobile are one number: matched without the leading zero or country code, even if what was typed is a part of it.
       const { westernDigits } = require('../utils/arabicSearch');
@@ -2411,20 +2422,24 @@ exports.listDrivers = async (req, res) => {
         const bare = t.replace(/\D/g, '').replace(/^(00)?966/, '').replace(/^0/, '');
         if (bare.length >= 4) {
           const rxBare = new RegExp(bare.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'));
-          filter.$or = [...filter.$or, { phone: rxBare }, { residenceNumber: rxBare }, { driverCardNumber: rxBare }];
-        }
-      }
+          // Several words give an $and of per-word $or, so the number match is offered beside the text match, not spread into it.
+          and.push({ $or: [text, { phone: rxBare }, { residenceNumber: rxBare }, { driverCardNumber: rxBare }] });
+        } else and.push(text);
+      } else and.push(text);
     }
     // By a specific supplier's driver, or a specific truck's driver: the two questions this list is opened for from another screen.
-    if (req.query.supplier) filter.supplier = req.query.supplier;
+    if (req.query.supplier) and.push(linkedTo(req.query.supplier));
+    if (req.query.notSupplier) and.push(notLinkedTo(req.query.notSupplier));
     if (req.query.vehicle) filter.vehicle = req.query.vehicle;
+    if (and.length) filter.$and = and;
     const out = await cache.wrap(
-      registryKey('drivers', req, `${req.query.supplier || ''}:${req.query.vehicle || ''}`),
+      registryKey('drivers', req, `${req.query.supplier || ''}:${req.query.notSupplier || ''}:${req.query.vehicle || ''}`),
       REGISTRY_TTL, async () => {
         const [drivers, total] = await Promise.all([
           ShipmentOrderDriver.find(filter)
             .select(DRIVER_LIST_FIELDS)
             .populate('supplier', 'name type')
+            .populate('suppliers', 'name type')
             .populate('vehicle', 'plate name')
             .populate('employee', EMPLOYEE_FIELDS)
             .sort({ name: 1 })
@@ -2479,8 +2494,10 @@ exports.createDriver = async (req, res) => {
 
 exports.updateDriver = async (req, res) => {
   try {
+    const before = await ShipmentOrderDriver.findById(req.params.id).select('supplier').lean();
     const updated = await ShipmentOrderDriver.findByIdAndUpdate(req.params.id, pick(req.body, DRIVER_EDITABLE), { new: true });
     if (!updated) return res.status(404).json({ message: 'Driver not found' });
+    await dropReplacedPrimary(ShipmentOrderDriver, before, updated);
     await syncDriverEmployee(updated._id);
     const driver = await ShipmentOrderDriver.findById(updated._id);
     emit('shipmentOrders:fleet', {});
@@ -2489,6 +2506,68 @@ exports.updateDriver = async (req, res) => {
     return sendMongooseError(res, error, 'Failed to update the driver');
   }
 };
+
+/**
+ * The edit form's supplier is the primary one: changing it corrects who the truck or driver belongs to, so the old primary is unlinked.
+ * Other links stay; they are added and removed explicitly (linkSupplier / unlinkSupplier).
+ */
+async function dropReplacedPrimary(Model, before, after) {
+  const old = before && before.supplier && String(before.supplier);
+  if (!old || (after.supplier && String(after.supplier) === old)) return;
+  await Model.updateOne({ _id: after._id }, { $pull: { suppliers: before.supplier } });
+}
+
+/**
+ * Links a truck or driver to one more supplier (the picker's «ربط بالمورد»). A row with no primary takes this one as primary.
+ * Our own trucks are managed in fleet management and are never a supplier's.
+ */
+const linkSupplierTo = (Model, kind) => async (req, res) => {
+  try {
+    const sid = supplierOid(req.body && req.body.supplier);
+    if (!sid) return res.status(400).json({ message: 'اختر المورد' });
+    const sup = await ShipmentOrderSupplier.findOne({ _id: sid, mergedInto: null }).select('name').lean();
+    if (!sup) return res.status(404).json({ message: 'المورد غير موجود' });
+    const row = await Model.findById(req.params.id).select('supplier suppliers ownership').lean();
+    if (!row) return res.status(404).json({ message: kind === 'vehicle' ? 'الشاحنة غير موجودة' : 'السائق غير موجود' });
+    if (row.ownership === 'ours') return res.status(409).json({ message: 'هذه الشاحنة من أسطولنا، ولا تُربط بمورد.', code: 'OUR_FLEET' });
+    if (!row.supplier) {
+      await Model.updateOne({ _id: row._id }, { $set: { supplier: sid, ...(kind === 'vehicle' ? { ownership: 'supplier' } : {}) } });
+    } else {
+      await Model.updateOne({ _id: row._id }, { $addToSet: { suppliers: sid } });
+    }
+    const out = await Model.findById(row._id).populate('supplier', 'name type').populate('suppliers', 'name type').lean();
+    emit('shipmentOrders:fleet', {});
+    res.json({ [kind]: out });
+  } catch (error) {
+    return sendMongooseError(res, error, 'Failed to link the supplier');
+  }
+};
+
+/** Removes one supplier link. If it was the primary, the next linked supplier becomes primary; a truck left with none has an unknown owner. */
+const unlinkSupplierFrom = (Model, kind) => async (req, res) => {
+  try {
+    const sid = supplierOid(req.params.supplierId);
+    const row = await Model.findById(req.params.id).select('supplier suppliers').lean();
+    if (!row || !sid) return res.status(404).json({ message: 'Not found' });
+    const rest = (row.suppliers || []).filter((x) => String(x) !== String(sid));
+    const set = { suppliers: rest };
+    if (row.supplier && String(row.supplier) === String(sid)) {
+      set.supplier = rest[0] || null;
+      if (kind === 'vehicle' && !rest[0]) set.ownership = 'unknown';
+    }
+    await Model.updateOne({ _id: row._id }, { $set: set });
+    const out = await Model.findById(row._id).populate('supplier', 'name type').populate('suppliers', 'name type').lean();
+    emit('shipmentOrders:fleet', {});
+    res.json({ [kind]: out });
+  } catch (error) {
+    return sendMongooseError(res, error, 'Failed to unlink the supplier');
+  }
+};
+
+exports.linkVehicleSupplier = linkSupplierTo(ShipmentOrderVehicle, 'vehicle');
+exports.unlinkVehicleSupplier = unlinkSupplierFrom(ShipmentOrderVehicle, 'vehicle');
+exports.linkDriverSupplier = linkSupplierTo(ShipmentOrderDriver, 'driver');
+exports.unlinkDriverSupplier = unlinkSupplierFrom(ShipmentOrderDriver, 'driver');
 
 exports.deleteDriver = async (req, res) => {
   try {

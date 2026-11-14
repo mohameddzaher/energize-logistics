@@ -6,6 +6,7 @@ import '../services/customer_prefs.dart';
 import '../services/auth.dart';
 import '../services/lang.dart';
 import '../services/live.dart';
+import '../services/supplier_links.dart';
 import '../ui/app_scaffold.dart';
 import '../ui/export_sheet.dart';
 import '../ui/ops_report_detail.dart' show opsPaymentKindLabel;
@@ -1636,13 +1637,26 @@ class _PlaceTrucksScreenState extends State<PlaceTrucksScreen> {
   }
 
   Future<void> _pickVehicle(_Truck t) async {
+    final sid = '${t.supplier?['_id'] ?? ''}';
     final v = await pickRemote(context,
       title: tr('سيارات المورّد', "Vendor's trucks"),
-      fetch: (q) async => t.vehicles.where((x) => q.isEmpty || '${x['plate']} ${x['defaultDriverName'] ?? ''}'.contains(q)).toList(),
+      // Typing also searches trucks outside this supplier's register (a truck may work for several suppliers).
+      fetch: (q) async {
+        final own = t.vehicles.where((x) => q.isEmpty || '${x['plate']} ${x['defaultDriverName'] ?? ''}'.contains(q)).toList();
+        if (q.trim().isEmpty || sid.isEmpty) return own;
+        final d = await Api.instance.get('/api/shipment-orders/vehicles?limit=30&ownership=not_ours&notSupplier=$sid&q=${Uri.encodeQueryComponent(q.trim())}');
+        final out = List<Map<String, dynamic>>.from(((d['vehicles'] as List?) ?? const []).map((e) => Map<String, dynamic>.from(e)));
+        return [...own, ...out.where((x) => !own.any((o) => o['_id'] == x['_id']))];
+      },
       label: (x) => '${x['plate'] ?? ''}',
-      sub: (x) => [x['truckType'], x['defaultDriverName']].where((e) => '${e ?? ''}'.isNotEmpty).join(' · '),
+      sub: (x) => [if (sid.isNotEmpty && !isLinkedTo(x, sid)) outsideHint(x), x['truckType'], x['defaultDriverName']].where((e) => '${e ?? ''}'.isNotEmpty).join(' · '),
     );
     if (v == null) return;
+    if (sid.isNotEmpty && !isLinkedTo(v, sid) && mounted) {
+      final linked = await offerSupplierLink(context, vehicle: true, id: '${v['_id']}', label: '${v['plate'] ?? ''}', supplierId: sid, supplierName: '${t.supplier?['name'] ?? ''}');
+      if (linked && mounted) setState(() => t.vehicles = [v, ...t.vehicles]);
+    }
+    if (!mounted) return;
     setState(() {
       t.vehicle = v;
       t.plate.clear();
@@ -1656,17 +1670,24 @@ class _PlaceTrucksScreenState extends State<PlaceTrucksScreen> {
   }
 
   Future<void> _pickDriver(_Truck t) async {
+    final sid = '${t.supplier?['_id'] ?? ''}';
     final v = await pickRemote(context,
-      title: tr('السائق', 'Driver'),
+      // Typing searches every driver: name, phone or iqama.
+      title: tr('السائق — اكتب الاسم أو الجوال أو الإقامة للبحث في كل السائقين', 'Driver — type a name, phone or iqama to search every driver'),
       fetch: (q) async {
         if (q.isEmpty) return t.drivers;
         final d = await Api.instance.get('/api/shipment-orders/drivers?limit=40&q=${Uri.encodeQueryComponent(q)}');
         return List<Map<String, dynamic>>.from(((d['drivers'] as List?) ?? const []).map((e) => Map<String, dynamic>.from(e)));
       },
       label: (x) => '${x['name'] ?? ''}',
-      sub: (x) => [x['phone'], x['residenceNumber']].where((e) => '${e ?? ''}'.isNotEmpty && '$e' != '0').join(' · '),
+      sub: (x) => [if (sid.isNotEmpty && !isLinkedTo(x, sid)) outsideHint(x), x['phone'], x['residenceNumber']].where((e) => '${e ?? ''}'.isNotEmpty && '$e' != '0').join(' · '),
     );
-    if (v != null) setState(() { t.driver = v; t.newDriver = false; });
+    if (v == null || !mounted) return;
+    setState(() { t.driver = v; t.newDriver = false; });
+    if (sid.isNotEmpty && !isLinkedTo(v, sid)) {
+      final linked = await offerSupplierLink(context, vehicle: false, id: '${v['_id']}', label: '${v['name'] ?? ''}', supplierId: sid, supplierName: '${t.supplier?['name'] ?? ''}');
+      if (linked && mounted) setState(() => t.drivers = [v, ...t.drivers]);
+    }
   }
 
   List<String> _problems() {
@@ -1793,7 +1814,7 @@ class _PlaceTrucksScreenState extends State<PlaceTrucksScreen> {
         if (t.vehicle != null)
           _pickBtn('${t.vehicle!['plate']}', Icons.local_shipping_outlined, () => _pickVehicle(t))
         else ...[
-          if (t.vehicles.isNotEmpty) _pickBtn(tr('اختر من سيارات المورّد…', "Pick from the carrier's trucks…"), Icons.local_shipping_outlined, () => _pickVehicle(t)),
+          if (t.supplier != null) _pickBtn(t.vehicles.isNotEmpty ? tr('اختر من سيارات المورّد… أو ابحث في كل الشاحنات', "Pick the carrier's truck… or search all") : tr('ابحث في كل الشاحنات باللوحة…', 'Search every truck by plate…'), Icons.local_shipping_outlined, () => _pickVehicle(t)),
           Padding(padding: const EdgeInsets.only(top: 6), child: TextField(controller: t.plate, decoration: InputDecoration(labelText: t.vehicles.isEmpty ? tr('لوحة السيارة *', 'Plate *') : tr('أو أضِف لوحة جديدة', 'Or add a new plate')))),
         ],
         if (t.vehicle != null) Align(alignment: AlignmentDirectional.centerStart, child: TextButton(onPressed: () => setState(() => t.vehicle = null), child: Text(tr('لوحة جديدة بدلًا منها', 'Use a new plate instead')))),

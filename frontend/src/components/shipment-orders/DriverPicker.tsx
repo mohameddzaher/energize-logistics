@@ -8,6 +8,7 @@ import { SearchableSelect, PhoneSA } from '@/components/hr/HRKit';
 import { useDialog } from '@/components/system/DialogProvider';
 import { useLatestRequest } from '@/hooks/useLatestRequest';
 import type { OrderDriver } from '@/lib/shipmentOrders';
+import { isLinkedTo, outsideHint, offerSupplierLink } from '@/lib/supplierLinks';
 
 // '0' is not a value: the imported driver register holds '0' and '-' where there is no value, in mobile, residency and operating card date. They displayed as '0' beside the name, 'card until 0', and filled the shipment mobile with '0'. A masked blank is treated as blank, and a date is a date or nothing.
 export const realVal = (v: unknown) => {
@@ -20,13 +21,15 @@ const realDate = (v: unknown) => {
 };
 
 export default function DriverPicker({
-  value, onPick, contextDrivers, supplierId, vehicleId, ar, compact, placeholder, requireIqama, registeredOnly,
+  value, onPick, contextDrivers, supplierId, supplierName, vehicleId, ar, compact, placeholder, requireIqama, registeredOnly,
 }: {
   value: string;
   /** Selected driver: registered (`_id` with mobile) or a name typed as is. */
   onPick: (d: { name: string; phone?: string; driver?: OrderDriver }) => void;
   contextDrivers: OrderDriver[];
   supplierId?: string;
+  /** Named in the «ربط بالمورد؟» question when a driver from outside its register is picked. */
+  supplierName?: string;
   vehicleId?: string;
   ar: boolean;
   compact?: boolean;
@@ -59,6 +62,14 @@ export default function DriverPicker({
 
   // 'Already exists' is a warning, not a silent pick: the server returns the existing driver if it matches a mobile, residency or folded name. Name alone may be another person (many with the same name), so adding is allowed; mobile and residency identify one man, who is not registered twice.
   const { confirm } = useDialog();
+  // A driver from outside the chosen supplier's register is still picked; linking him is offered once.
+  const pick = (p: { name: string; phone?: string; driver?: OrderDriver }) => {
+    onPick(p);
+    const d = p.driver as (OrderDriver & { _id?: string }) | undefined;
+    if (supplierId && d?._id && !isLinkedTo(d, supplierId) && !contextDrivers.some((c: any) => c._id === d._id)) {
+      offerSupplierLink({ kind: 'driver', id: d._id, label: d.name, supplierId, supplierName: supplierName || '', ar, confirm, notify });
+    }
+  };
   const save = async (force = false) => {
     const name = form.name.trim();
     if (!name) { notify(ar ? 'اكتب اسم السائق' : 'Enter the driver name', 'error'); return; }
@@ -75,7 +86,7 @@ export default function DriverPicker({
         const by = r.matchedBy === 'phone' ? (ar ? 'بنفس رقم الجوال' : 'with the same phone')
           : r.matchedBy === 'iqama' ? (ar ? 'بنفس رقم الإقامة' : 'with the same iqama') : (ar ? 'بنفس الاسم' : 'with the same name');
         const info = [realVal(r.driver.phone), realVal(r.driver.residenceNumber)].filter(Boolean).join(' · ');
-        const pick = await confirm({
+        const useExisting = await confirm({
           title: ar ? 'هذا السائق موجود بالفعل' : 'This driver already exists',
           message: ar
             ? `«${r.driver.name}» مسجَّل ${by}${info ? ` (${info})` : ''}. نختاره بدل إضافته مرّةً ثانية؟`
@@ -83,8 +94,8 @@ export default function DriverPicker({
           confirmLabel: ar ? 'اختيار الموجود' : 'Pick existing',
           cancelLabel: r.matchedBy === 'name' ? (ar ? 'شخص آخر — أضفه' : 'Different person — add') : (ar ? 'رجوع' : 'Back'),
         });
-        if (pick) {
-          onPick({ name: r.driver.name, phone: realVal(r.driver.phone) || undefined, driver: r.driver });
+        if (useExisting) {
+          pick({ name: r.driver.name, phone: realVal(r.driver.phone) || undefined, driver: r.driver });
           setAdding(false);
           setForm({ name: '', phone: '', residenceNumber: '' });
         } else if (r.matchedBy === 'name') {
@@ -126,7 +137,8 @@ export default function DriverPicker({
     );
   }
 
-  const list = q ? hits : contextDrivers;
+  // Searching reads every driver: the supplier's own come first, the rest are marked as outside its register.
+  const list = q && supplierId ? [...hits.filter((d) => isLinkedTo(d, supplierId)), ...hits.filter((d) => !isLinkedTo(d, supplierId))] : q ? hits : contextDrivers;
   return (
     <div className="flex gap-2">
       <div className="flex-1 min-w-0">
@@ -137,10 +149,12 @@ export default function DriverPicker({
           onChange={(x) => {
             const d = [...hits, ...contextDrivers].find((y) => y.name === x);
             if (registeredOnly && !d) return;
-            onPick({ name: x, phone: realVal(d?.phone) || undefined, driver: d });
+            pick({ name: x, phone: realVal(d?.phone) || undefined, driver: d });
           }}
           placeholder={placeholder || (ar ? 'يُملأ تلقائياً عند اختيار السيارة' : 'Autofills from the vehicle')}
-          searchPlaceholder={ar ? 'الاسم أو الجوال أو رقم الإقامة…' : 'Name, phone or iqama…'}
+          searchPlaceholder={supplierId
+            ? (ar ? 'اكتب الاسم أو الجوال أو الإقامة للبحث في كل السائقين' : 'Type a name, phone or iqama to search every driver')
+            : (ar ? 'الاسم أو الجوال أو رقم الإقامة…' : 'Name, phone or iqama…')}
           emptyLabel={ar ? 'لا نتائج — اكتب الاسم أو سجّله كسائق جديد' : 'No matches — type the name or register a new driver'}
           options={list.map((d) => {
             const exp = realDate(d.driverCardExpiry);
@@ -148,7 +162,7 @@ export default function DriverPicker({
             return {
               value: d.name,
               label: d.name,
-              hint: [d.phone, d.residenceNumber, d.nationality].map(realVal).filter(Boolean).join(' · ') || undefined,
+              hint: [supplierId && q && !isLinkedTo(d, supplierId) ? outsideHint(d, ar) : '', d.phone, d.residenceNumber, d.nationality].map(realVal).filter(Boolean).join(' · ') || undefined,
               badge: exp
                 ? (over ? (ar ? `بطاقة التشغيل منتهية ${exp}` : `Driver card expired ${exp}`)
                   : (ar ? `بطاقة التشغيل حتى ${exp}` : `Card valid to ${exp}`))

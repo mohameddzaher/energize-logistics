@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 import '../services/api.dart';
+import '../services/supplier_links.dart';
 import '../services/customer_prefs.dart';
 import '../services/lang.dart';
 import '../services/live.dart';
@@ -175,7 +176,7 @@ class _ShipmentOrderCreateScreenState extends State<ShipmentOrderCreateScreen> {
   Future<void> _chooseDriver({bool startWithNew = false}) async {
     if (_notOwned('driverName')) return;
     final d = await pickShipmentDriver(context,
-        local: _drivers, supplierId: _supplier?['_id']?.toString(), vehicleId: _vehicle?['_id']?.toString(), startWithNew: startWithNew);
+        local: _drivers, supplierId: _supplier?['_id']?.toString(), supplierName: _supplier?['name']?.toString(), vehicleId: _vehicle?['_id']?.toString(), startWithNew: startWithNew);
     if (d == null || !mounted) return;
     setState(() {
       if (!_drivers.any((x) => x['_id'] == d['_id'])) _drivers = [d, ..._drivers];
@@ -418,6 +419,11 @@ class _ShipmentOrderCreateScreenState extends State<ShipmentOrderCreateScreen> {
   }
 
   void _applyVehicle(Map<String, dynamic> v) {
+    // A truck registered to another supplier than the agreed one: offer to link it (an unknown-owner truck takes the agreed supplier on save already).
+    final agreed = '${_supplier?['_id'] ?? ''}';
+    if (agreed.isNotEmpty && v['supplier'] != null && v['ownership'] != 'ours' && !isLinkedTo(v, agreed)) {
+      offerSupplierLink(context, vehicle: true, id: '${v['_id']}', label: '${v['plate'] ?? ''}', supplierId: agreed, supplierName: '${_supplier?['name'] ?? ''}');
+    }
     setState(() {
       _vehicle = v;
       _newVehicle = false;
@@ -562,7 +568,7 @@ class _ShipmentOrderCreateScreenState extends State<ShipmentOrderCreateScreen> {
     var dPhone = soRealVal(veh?['defaultDriverPhone']);
     // The driver works like the first truck's. A truck with no registered driver opens the same driver field: search by name, phone and residence number, and "new driver". Closing without a choice adds it with no driver.
     if (dName.isEmpty) {
-      final d = await pickShipmentDriver(context, local: const [], supplierId: sup['_id']?.toString(), vehicleId: veh?['_id']?.toString());
+      final d = await pickShipmentDriver(context, local: const [], supplierId: sup['_id']?.toString(), supplierName: sup['name']?.toString(), vehicleId: veh?['_id']?.toString());
       if (!mounted) return;
       if (d != null) { dName = '${d['name'] ?? ''}'; dPhone = soRealVal(d['phone']); }
     }
@@ -598,7 +604,7 @@ class _ShipmentOrderCreateScreenState extends State<ShipmentOrderCreateScreen> {
   Future<void> _changeExtraDriver(int i) async {
     final t = _extraTrucks[i];
     final d = await pickShipmentDriver(context, local: const [],
-        supplierId: (t['supplier'] as Map?)?['_id']?.toString(), vehicleId: (t['vehicle'] as Map?)?['_id']?.toString());
+        supplierId: (t['supplier'] as Map?)?['_id']?.toString(), supplierName: (t['supplier'] as Map?)?['name']?.toString(), vehicleId: (t['vehicle'] as Map?)?['_id']?.toString());
     if (d == null || !mounted) return;
     setState(() { t['driverName'] = '${d['name'] ?? ''}'; t['driverPhone'] = soRealVal(d['phone']); });
   }

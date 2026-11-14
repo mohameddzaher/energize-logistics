@@ -23,6 +23,7 @@ import { useOrderStatuses } from '@/hooks/useOrderStatuses';
 import { useLatestRequest } from '@/hooks/useLatestRequest';
 import { useSocket } from '@/hooks/useSocket';
 import DriverPicker, { realVal } from '@/components/shipment-orders/DriverPicker';
+import { isLinkedTo, outsideHint, offerSupplierLink } from '@/lib/supplierLinks';
 import { canAccessSection, permsOf } from '@/lib/sections';
 
 // Labels are the form's wayfinding — near-black and readable, not a whisper.
@@ -83,7 +84,7 @@ function CreateShipmentInner() {
   // Customer of a saved shipment: fixed for the team, editable by management and the operations manager.
   const customerLocked = !!editId && !!moneyEdit.customerLocked;
   const moneyByRequest = (key: string) => !!editId && moneyEdit.byRequest.includes(key);
-  const { notify } = useDialog();
+  const { notify, confirm } = useDialog();
 
   const [fields, setFields] = useState<FormField[]>([]);
   // An option added from the list itself; see saveOption.
@@ -299,6 +300,12 @@ function CreateShipmentInner() {
     // Picking a truck shows its owner but does not change the chosen supplier. The supplier is filled from the truck's owner only when none is chosen yet; a supplier picked first is a deal decision and used to be silently replaced by the truck owner, saving the shipment on a supplier nobody agreed with.
     const sup = typeof v.supplier === 'object' && v.supplier ? v.supplier._id : (v.supplier || '');
     if (sup && !supplierId) setSupplierId(String(sup));
+    // A carrier's truck outside the agreed supplier's register: offer to link it (a truck may work for several suppliers).
+    // An unknown-owner truck takes the agreed supplier on save already, so only a truck registered to another supplier asks.
+    if (supplierId && sup && v.ownership !== 'ours' && !isLinkedTo(v, supplierId)) {
+      offerSupplierLink({ kind: 'vehicle', id: v._id, label: v.plate, supplierId, supplierName: suppliers.find((x) => x._id === supplierId)?.name || '', ar, confirm, notify })
+        .then((linked) => { if (linked) setVehicles((p) => p.map((x) => (x._id === v._id ? { ...x, suppliers: [...(x.suppliers || []), supplierId] } : x))); });
+    }
     setForm((f) => ({
       ...f,
       driverName: f.driverName || realVal(v.defaultDriverName),
@@ -809,7 +816,7 @@ function CreateShipmentInner() {
   const supplierName = suppliers.find((x) => x._id === supplierId)?.name || '';
   const ownerSupId = vehicle && typeof vehicle.supplier === 'object' && vehicle.supplier
     ? String(vehicle.supplier._id) : String(vehicle?.supplier || '');
-  const ownerDiffers = !!(vehicle && supplierId && ownerSupId && ownerSupId !== supplierId);
+  const ownerDiffers = !!(vehicle && supplierId && ownerSupId && !isLinkedTo(vehicle, supplierId));
 
   return (
     <div className="space-y-5 w-full pb-28" dir={isRTL ? 'rtl' : 'ltr'}>
@@ -1007,7 +1014,7 @@ function CreateShipmentInner() {
                 options={vehicles.map((v) => ({
                   value: v._id,
                   label: [v.plate, v.name].filter(Boolean).join(' — '),
-                  hint: [supplierOf(v), v.defaultDriverName].filter(Boolean).join(' · '),
+                  hint: [supplierId && v.ownership !== 'ours' && !isLinkedTo(v, supplierId) ? outsideHint(v, ar) : supplierOf(v), v.defaultDriverName].filter(Boolean).join(' · '),
                 }))} />
               {/* A plate we have not seen is typed here, not opened as a four-field form. */}
               <input value={newPlate} onChange={(e) => { setNewPlate(e.target.value); if (e.target.value.trim()) setVehicleId(''); }}
@@ -1047,7 +1054,7 @@ function CreateShipmentInner() {
               <label className={labelCls}>{ar ? 'السائق' : 'Driver'}</label>
               {/* Combo box: registered drivers are suggestions, not a restriction (`allowCustom`), so someone not in the register is typed and work continues. Typing searches all drivers on the server by name, mobile and residency; choosing a registered one fills his mobile and says whether his operating card is expired. */}
               <DriverPicker ar={ar} value={form.driverName || ''} contextDrivers={drivers}
-                supplierId={supplierId || undefined} vehicleId={vehicleId || undefined}
+                supplierId={supplierId || undefined} supplierName={supplierName} vehicleId={vehicleId || undefined}
                 onPick={(d) => {
                   if (d.driver) setDrivers((p) => (p.some((x) => x._id === d.driver!._id) ? p : [d.driver!, ...p]));
                   set('driverName', d.name);

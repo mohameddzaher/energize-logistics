@@ -793,6 +793,36 @@ class _VendorCardScreenState extends State<VendorCardScreen> with _LiveLoad {
   String? _error;
   late String? _id = widget.id;
 
+  // A truck or driver may work for several carriers: rows primarily another carrier's say so, and a link can be removed here.
+  String get _vendorId => '${(_d?['vendor'] as Map?)?['_id'] ?? _id ?? ''}';
+  String _linkNote(Map x) {
+    final primary = '${x['supplier'] ?? ''}';
+    if (primary == _vendorId) return '';
+    final name = ((x['suppliers'] as List?) ?? const []).whereType<Map>().where((s) => '${s['_id']}' == primary).map((s) => '${s['name'] ?? ''}').firstOrNull ?? '';
+    return tr('مرتبط — الأساسي: ${name.isEmpty ? '—' : name}', 'Linked — primary: ${name.isEmpty ? '—' : name}');
+  }
+  Widget _unlinkBtn(bool vehicle, Map x) => IconButton(
+    tooltip: tr('إلغاء ربطه بهذا المورد', 'Unlink from this carrier'), icon: const Icon(Icons.link_off, size: 18),
+    onPressed: () async {
+      final label = vehicle ? '${x['plate'] ?? ''}' : '${x['name'] ?? ''}';
+      final ok = await showDialog<bool>(context: context, builder: (c) => AlertDialog(
+        title: Text(tr('إلغاء الربط', 'Unlink')),
+        content: Text(tr('يُزال «$label» من سجلّ هذا المورد. لا تتأثّر الشحنات السابقة.', '“$label” is removed from this carrier\'s register. Past shipments are unaffected.')),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(c, false), child: Text(tr('رجوع', 'Back'))),
+          FilledButton(onPressed: () => Navigator.pop(c, true), child: Text(tr('إلغاء الربط', 'Unlink'))),
+        ],
+      ));
+      if (ok != true) return;
+      try {
+        await Api.instance.delete(vehicle ? '/api/shipment-orders/vehicles/${x['_id']}/suppliers/$_vendorId' : '/api/shipment-orders/drivers/${x['_id']}/suppliers/$_vendorId');
+        reload();
+      } catch (e) {
+        if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('$e')));
+      }
+    },
+  );
+
   @override
   void initState() { super.initState(); reload(); startLive(); }
   @override
@@ -929,13 +959,15 @@ class _VendorCardScreenState extends State<VendorCardScreen> with _LiveLoad {
                 SectionCard(title: '${tr('سيارات المورّد في السجل', 'Registered trucks')} (${_list(d['vehicles']).length})', child: Column(children: [
                   for (final x in _list(d['vehicles']).take(40))
                     ListTile(dense: true, contentPadding: EdgeInsets.zero, title: Text('${x['plate']}', style: const TextStyle(fontWeight: FontWeight.w700)),
-                      subtitle: Text([x['truckType'], x['brand'], x['defaultDriverName'], if ('${x['operationCardExpiry'] ?? ''}'.isNotEmpty) '${tr('بطاقة التشغيل', 'Op card')} ${x['operationCardExpiry']}'].where((e) => '${e ?? ''}'.isNotEmpty).join(' · '))),
+                      subtitle: Text([_linkNote(x), x['truckType'], x['brand'], x['defaultDriverName'], if ('${x['operationCardExpiry'] ?? ''}'.isNotEmpty) '${tr('بطاقة التشغيل', 'Op card')} ${x['operationCardExpiry']}'].where((e) => '${e ?? ''}'.isNotEmpty).join(' · ')),
+                      trailing: _unlinkBtn(true, x)),
                 ])),
               if (_list(d['drivers']).isNotEmpty)
                 SectionCard(title: '${tr('سائقو المورّد في السجل', 'Registered drivers')} (${_list(d['drivers']).length})', child: Column(children: [
                   for (final x in _list(d['drivers']).take(40))
                     ListTile(dense: true, contentPadding: EdgeInsets.zero, title: Text('${x['name']}', style: const TextStyle(fontWeight: FontWeight.w700)),
-                      subtitle: Text([x['phone'], x['nationality'], x['residenceNumber'], if ('${x['driverCardExpiry'] ?? ''}'.isNotEmpty) '${tr('البطاقة', 'Card')} ${x['driverCardExpiry']}'].where((e) => '${e ?? ''}'.isNotEmpty).join(' · '))),
+                      subtitle: Text([_linkNote(x), x['phone'], x['nationality'], x['residenceNumber'], if ('${x['driverCardExpiry'] ?? ''}'.isNotEmpty) '${tr('البطاقة', 'Card')} ${x['driverCardExpiry']}'].where((e) => '${e ?? ''}'.isNotEmpty).join(' · ')),
+                      trailing: _unlinkBtn(false, x)),
                 ])),
               if (_list(a['lastTrips']).isNotEmpty)
                 SectionCard(title: tr('آخر الرحلات', 'Latest trips'), child: Column(children: [

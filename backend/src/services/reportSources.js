@@ -2347,8 +2347,8 @@ async function buildCarrierReport(id, query, lang) {
   if (!sup) return null;
 
   const [vehicles, drivers, orders] = await Promise.all([
-    Veh.find({ supplier: sup._id, isActive: { $ne: false } }).select('plate brand color truckType operationCardExpiry defaultDriverName').sort({ plate: 1 }).lean(),
-    Drv.find({ supplier: sup._id, isActive: { $ne: false } }).select('name phone residenceNumber nationality driverCardExpiry vehicle').sort({ name: 1 }).lean(),
+    Veh.find({ ...require('../utils/supplierLinks').linkedTo(sup._id), isActive: { $ne: false } }).select('plate brand color truckType operationCardExpiry defaultDriverName').sort({ plate: 1 }).lean(),
+    Drv.find({ ...require('../utils/supplierLinks').linkedTo(sup._id), isActive: { $ne: false } }).select('name phone residenceNumber nationality driverCardExpiry vehicle').sort({ name: 1 }).lean(),
     ShipmentOrder.find({ supplier: sup._id, createdAt: { $gte: from, $lte: to } })
       .select('waybillNumber customerName fromCity toCity vehiclePlate buyPrice status createdAt').sort({ createdAt: -1 }).limit(400).lean(),
   ]);

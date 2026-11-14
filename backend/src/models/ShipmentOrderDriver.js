@@ -47,6 +47,8 @@ const shipmentOrderDriverSchema = new mongoose.Schema(
 shipmentOrderDriverSchema.index({ name: 1 });
 // Active drivers per supplier, counted on every suppliers screen, from the index alone.
 shipmentOrderDriverSchema.index({ supplier: 1, isActive: 1 });
+// A truck or driver may work for several suppliers; `supplier` stays the primary inside `suppliers` (utils/supplierLinks).
+shipmentOrderDriverSchema.plugin(require('../utils/supplierLinks').supplierSetPlugin);
 
 // Saved shipment-order lists are cleared on every write.
 // A driver appears in the trucks list (its usual driver) and in the supplier's driver count, so any write to it, from any screen or script, clears the whole prefix.

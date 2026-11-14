@@ -8,6 +8,7 @@ const ShipmentOrder = require('../models/ShipmentOrder');
 const ShipmentOrderSupplier = require('../models/ShipmentOrderSupplier');
 const ShipmentOrderVehicle = require('../models/ShipmentOrderVehicle');
 const ShipmentOrderDriver = require('../models/ShipmentOrderDriver');
+const { linkedTo, supplierIdsOf } = require('../utils/supplierLinks');
 const ShipmentRequest = require('../models/ShipmentRequest');
 const { VendorFollowUp, VendorApprovedPrice, VendorSetting } = require('../models/VendorsMgmt');
 const VA = require('../services/vendorActivity');
@@ -902,8 +903,9 @@ exports.getVendor = async (req, res) => {
     const [act, follow, vehicles, drivers, approved, Y, days] = await Promise.all([
       activityOf({ id: v._id, year: req.query.year }),
       VendorFollowUp.find({ supplier: v._id }).sort({ at: -1 }).limit(200).lean(),
-      ShipmentOrderVehicle.find({ supplier: v._id, isActive: { $ne: false } }).select('plate name truckType brand color modelYear operationCardExpiry defaultDriverName defaultDriverPhone').lean(),
-      ShipmentOrderDriver.find({ supplier: v._id, isActive: { $ne: false } }).select('name phone nationality residenceNumber driverCardExpiry vehicle').lean(),
+      // Trucks and drivers linked to this carrier, primary or not (utils/supplierLinks); `supplier` tells the card which are his primarily.
+      ShipmentOrderVehicle.find({ ...linkedTo(v._id), isActive: { $ne: false } }).select('plate name truckType brand color modelYear operationCardExpiry defaultDriverName defaultDriverPhone supplier suppliers').populate('suppliers', 'name').lean(),
+      ShipmentOrderDriver.find({ ...linkedTo(v._id), isActive: { $ne: false } }).select('name phone nationality residenceNumber driverCardExpiry vehicle supplier suppliers').populate('suppliers', 'name').lean(),
       VendorApprovedPrice.find({ isActive: { $ne: false } }).lean(),
       VA.yearly(yearOf(req.query)),
       alertDays(),
@@ -1570,10 +1572,11 @@ exports.listFreelancers = async (req, res) => {
       .select('name phone followOwner notes createdAt').sort({ createdAt: -1 }).lean();
     const ids = rows.map((r) => r._id);
     const [vehicles, drivers] = await Promise.all([
-      V.find({ supplier: { $in: ids }, isActive: { $ne: false } }).select('supplier plate truckType').lean(),
-      D.find({ supplier: { $in: ids }, isActive: { $ne: false } }).select('supplier name phone residenceNumber').lean(),
+      V.find({ $or: [{ supplier: { $in: ids } }, { suppliers: { $in: ids } }], isActive: { $ne: false } }).select('supplier suppliers plate truckType').lean(),
+      D.find({ $or: [{ supplier: { $in: ids } }, { suppliers: { $in: ids } }], isActive: { $ne: false } }).select('supplier suppliers name phone residenceNumber').lean(),
     ]);
-    const by = (list) => { const m = new Map(); for (const x of list) { const k = String(x.supplier); if (!m.has(k)) m.set(k, []); m.get(k).push(x); } return m; };
+    // A truck linked to two freelancers is listed under both.
+    const by = (list) => { const m = new Map(); for (const x of list) { for (const k of supplierIdsOf(x)) { if (!m.has(k)) m.set(k, []); m.get(k).push(x); } } return m; };
     const vs = by(vehicles); const ds = by(drivers);
     res.json({ freelancers: rows.map((r) => ({ ...r, vehicles: vs.get(String(r._id)) || [], drivers: ds.get(String(r._id)) || [] })) });
   } catch (e) {

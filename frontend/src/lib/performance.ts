@@ -186,9 +186,10 @@ export function periodLabel(p: Period, lang: Lang): string {
   if (p.type === 'year') return `Year ${p.year}`;
   return `Q${p.quarter} ${p.year}`;
 }
+// Every section evaluates monthly by default; quarter and year are chosen from the period picker.
 export function currentPeriod(): Period {
   const now = new Date();
-  return { type: 'quarter', quarter: Math.floor(now.getMonth() / 3) + 1, year: now.getFullYear() };
+  return { type: 'month', month: now.getMonth() + 1, year: now.getFullYear() };
 }
 
 // ---- Formatters ------------------------------------------------------------

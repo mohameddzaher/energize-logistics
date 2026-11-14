@@ -29,6 +29,7 @@ router.delete('/templates/:id', perf.deleteTemplate);    // super_admin only
 // Declared before /evaluations/:id so the literal paths aren't swallowed.
 router.get('/team', perf.getTeam);
 router.get('/overview', perf.getOverview);
+router.get('/report', perf.getReport);         // general manager's detailed review (controller-guarded)
 
 // Edit requests: a submitted evaluation is locked to its evaluator; changing it
 // needs super-admin approval. Literal path declared before /evaluations/:id.

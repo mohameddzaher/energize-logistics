@@ -9,6 +9,7 @@ import '../ui/widgets.dart';
 import '../ui/stat_grid.dart';
 import '../ui/search_field.dart';
 import 'performance_evaluations.dart';
+import 'perf_period.dart';
 
 /// Performance evaluation (top management): all-sections overview with coverage, average percentage, distribution by band, and each section's performance. Mirrors web /system/performance/overview.
 class PerformanceOverviewScreen extends StatefulWidget {
@@ -24,18 +25,13 @@ class _PerformanceOverviewScreenState extends State<PerformanceOverviewScreen> {
   String _q = '';
   // Search controller owned by the screen: the field sits in the middle of a list that is rebuilt, so its text is not lost while the term still filters.
   final _searchCtl = TextEditingController();
-  // The period is a quarter as on the web (currentPeriod), navigated with arrows.
-  int _year = DateTime.now().year;
-  int _quarter = (DateTime.now().month - 1) ~/ 3 + 1;
+  // Monthly by default, as on the web; quarter or year from the period bar.
+  PerfPeriod _period = PerfPeriod.now();
   int _seq = 0;
 
   void _onLive() => _load();
 
-  String get _periodKey => '$_year-Q$_quarter';
-  String get _periodLabel {
-    const q = ['', 'الأول', 'الثاني', 'الثالث', 'الرابع'];
-    return tr('الربع ${q[_quarter]} $_year', 'Q$_quarter $_year');
-  }
+  String get _periodKey => _period.key;
 
   @override
   void initState() {
@@ -51,11 +47,8 @@ class _PerformanceOverviewScreenState extends State<PerformanceOverviewScreen> {
     super.dispose();
   }
 
-  void _step(int dir) {
-    var q = _quarter + dir;
-    var y = _year;
-    if (q > 4) { q = 1; y += 1; } else if (q < 1) { q = 4; y -= 1; }
-    setState(() { _quarter = q; _year = y; _loading = _data == null; });
+  void _setPeriod(PerfPeriod p) {
+    setState(() { _period = p; _loading = _data == null; });
     _load();
   }
 
@@ -120,19 +113,8 @@ class _PerformanceOverviewScreenState extends State<PerformanceOverviewScreen> {
               : RefreshIndicator(
                   onRefresh: _load,
                   child: ListView(keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag, padding: const EdgeInsets.all(14), children: [
-                    AppCard(
-                      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                      child: Row(children: [
-                        IconButton(onPressed: () => _step(-1), icon: const Icon(Icons.chevron_left), tooltip: tr('السابق', 'Previous')),
-                        Expanded(
-                          child: Column(children: [
-                            Text(_periodLabel, textAlign: TextAlign.center, style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 14)),
-                            Text('${totals['evaluated'] ?? 0}/${totals['headcount'] ?? 0} ${tr('تم تقييمهم', 'evaluated')}', style: const TextStyle(fontSize: 11, color: T.inkFaint)),
-                          ]),
-                        ),
-                        IconButton(onPressed: () => _step(1), icon: const Icon(Icons.chevron_right), tooltip: tr('التالي', 'Next')),
-                      ]),
-                    ),
+                    PerfPeriodBar(period: _period, onChanged: _setPeriod,
+                        subtitle: '${totals['evaluated'] ?? 0}/${totals['headcount'] ?? 0} ${tr('تم تقييمهم', 'evaluated')}'),
                     const SizedBox(height: 10),
                     StatGrid(
                       spacing: 8,
@@ -213,6 +195,9 @@ class _PerformanceOverviewScreenState extends State<PerformanceOverviewScreen> {
                           ),
                         );
                       }),
+                    const SizedBox(height: 16),
+                    // Each person's evaluation with its full form, by department, status or name.
+                    PerfReportList(period: _period),
                     const SizedBox(height: 24),
                   ]),
                 ),

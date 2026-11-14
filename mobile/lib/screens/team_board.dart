@@ -7,6 +7,7 @@ import '../ui/theme.dart';
 import '../ui/widgets.dart';
 import 'performance_evaluations.dart';
 import 'section_kpi_settings.dart';
+import 'perf_period.dart';
 
 /// Performance evaluation: the mobile twin of the web TeamBoard: the signed-in
 /// manager's team for the current period with each member's score and band.
@@ -39,11 +40,14 @@ class _TeamBoardScreenState extends State<TeamBoardScreen> {
     super.dispose();
   }
 
+  // Monthly by default (as on the web); quarter or year from the period bar.
+  PerfPeriod _period = PerfPeriod.now();
+
   Future<void> _load() async {
     try {
       final sec = widget.section;
       final d = await Api.instance.get(
-        '/api/performance/team${sec == null || sec.isEmpty ? '' : '?section=${Uri.encodeQueryComponent(sec)}'}');
+        '/api/performance/team?period=${_period.key}${sec == null || sec.isEmpty ? '' : '&section=${Uri.encodeQueryComponent(sec)}'}');
       if (!mounted) return;
       setState(() { _d = Map<String, dynamic>.from(d); _loading = false; _error = null; });
     } catch (e) {
@@ -196,19 +200,13 @@ class _TeamBoardScreenState extends State<TeamBoardScreen> {
                       : ListView(
                           padding: const EdgeInsets.all(14),
                           children: [
-                            if (_d?['periodLabel'] != null)
-                              FadeSlideIn(
-                                child: AppCard(
-                                  child: Row(children: [
-                                    const Icon(Icons.calendar_month_outlined, size: 18, color: T.navy),
-                                    const SizedBox(width: 8),
-                                    Text('${tr('الفترة', 'Period')}: ${_d!['periodLabel']}', style: const TextStyle(fontWeight: FontWeight.w800)),
-                                    const Spacer(),
-                                    if (summary?['avgPercentage'] != null)
-                                      Chip2('${tr('المتوسط', 'Avg')}: ${(summary!['avgPercentage'] as num).toStringAsFixed(1)}%', T.navy),
-                                  ]),
-                                ),
+                            FadeSlideIn(
+                              child: PerfPeriodBar(
+                                period: _period,
+                                onChanged: (p) { setState(() => _period = p); _load(); },
+                                subtitle: summary?['avgPercentage'] != null ? '${tr('المتوسط', 'Avg')}: ${(summary!['avgPercentage'] as num).toStringAsFixed(1)}%' : null,
                               ),
+                            ),
                             const SizedBox(height: 10),
                             ...rows,
                             const SizedBox(height: 6),

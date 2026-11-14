@@ -1479,7 +1479,12 @@
     },
     "/system/performance/overview": {
       "apis": [
-        "/api/performance/overview"
+        "/api/performance/evaluations",
+        "/api/performance/evaluations/form",
+        "/api/performance/overview",
+        "/api/performance/report",
+        "/api/performance/team",
+        "/api/performance/templates"
       ],
       "wildcard": false
     },

@@ -88,9 +88,10 @@ function periodLabel(p = {}, ar = true) {
 }
 // Parse ?period=2026-Q3 / 2026-M07 / 2026 back into a period object.
 function parsePeriod(q) {
+  // Evaluations are monthly by default in every section; a quarter or year is chosen on the screen.
   if (!q) {
     const now = new Date();
-    return { type: 'quarter', quarter: Math.floor(now.getMonth() / 3) + 1, year: now.getFullYear() };
+    return { type: 'month', month: now.getMonth() + 1, year: now.getFullYear() };
   }
   let m = /^(\d{4})-Q([1-4])$/.exec(q);
   if (m) return { type: 'quarter', quarter: Number(m[2]), year: Number(m[1]) };
@@ -599,7 +600,7 @@ exports.listEvaluations = async (req, res) => {
     if (req.query.period) q.periodKey = periodKeyOf(parsePeriod(req.query.period));
     if (req.query.employee) q.employee = req.query.employee;
     if (req.query.status) q.status = req.query.status;
-    if (!isFull(req.user.role)) {
+    if (!seesAll(req.user)) {
       const allowed = await visibleEmployees(req.user);
       q.employee = { $in: allowed.map((e) => e._id) };
     }
@@ -903,9 +904,72 @@ exports.deleteEvaluation = async (req, res) => {
 };
 
 // ---- Company-wide view (super admin) --------------------------------------
+// Company-wide results: top roles and the general manager (User.isTopManagement).
+const seesAll = (user) => isFull(user?.role) || isTopManagement(user);
+
+/** Periods an evaluation may carry that lie inside the chosen one: a quarter holds its quarterly and monthly evaluations, a year all of them. */
+function periodKeysWithin(p) {
+  const y = p.year;
+  const m2 = (m) => `${y}-M${String(m).padStart(2, '0')}`;
+  if (p.type === 'month') return [m2(p.month)];
+  if (p.type === 'quarter') { const f = (p.quarter - 1) * 3 + 1; return [`${y}-Q${p.quarter}`, m2(f), m2(f + 1), m2(f + 2)]; }
+  if (p.type === 'year') return [`${y}`, ...[1, 2, 3, 4].map((q) => `${y}-Q${q}`), ...Array.from({ length: 12 }, (_, i) => m2(i + 1))];
+  return [periodKeyOf(p)];
+}
+
+/**
+ * GET /performance/report?period=&department=&employee=&status=&q=
+ * Every evaluation inside the period with its full detail (each criterion's wording, weight, score and note, the
+ * evaluator, percentage, band and bonus), for the general manager's review by department, person or all.
+ */
+exports.getReport = async (req, res) => {
+  try {
+    if (!seesAll(req.user)) return res.status(403).json({ message: 'Not allowed' });
+    const period = parsePeriod(req.query.period);
+    const q = { periodKey: { $in: periodKeysWithin(period) } };
+    if (req.query.employee && mongoose.isValidObjectId(req.query.employee)) q.employee = req.query.employee;
+    if (['draft', 'submitted'].includes(req.query.status)) q.status = req.query.status;
+    let rows = await PerfEvaluation.find(q).sort({ department: 1, employeeName: 1, periodKey: 1 }).limit(5000).lean();
+    const index = await D.loadIndex();
+    const deptOf = (v) => D.resolveDepartment(v.department, index);
+    if (req.query.department) {
+      const want = D.resolveDepartment(req.query.department, index).key;
+      rows = rows.filter((v) => deptOf(v).key === want);
+    }
+    const term = String(req.query.q || '').trim().toLowerCase();
+    if (term) rows = rows.filter((v) => `${v.employeeName} ${v.jobTitle} ${v.evaluatorName}`.toLowerCase().includes(term));
+    const evaluations = rows.map((v) => {
+      const byKey = new Map((v.answers || []).map((a) => [a.criterionKey, a]));
+      return {
+        _id: v._id, employee: v.employee, employeeName: v.employeeName, jobTitle: v.jobTitle,
+        department: deptOf(v).label || v.department, departmentKey: deptOf(v).key || v.department,
+        evaluatorName: v.evaluatorName, periodKey: v.periodKey, period: v.period, periodLabel: periodLabel(v.period, true),
+        evaluationDate: v.evaluationDate, status: v.status, submittedAt: v.submittedAt, updatedAt: v.updatedAt,
+        weightedScore: v.weightedScore, percentage: v.percentage, band: v.band, bonusMultiplier: v.bonusMultiplier, notes: v.notes,
+        criteria: (v.criteriaSnapshot || []).slice().sort((a, b) => (a.order || 0) - (b.order || 0)).map((c) => ({
+          key: c.key, titleAr: c.titleAr, title: c.title, groupAr: c.groupAr, weight: c.weight,
+          score: byKey.get(c.key)?.score ?? null, note: byKey.get(c.key)?.note || '',
+        })),
+      };
+    });
+    const done = evaluations.filter((v) => v.status === 'submitted' && v.percentage != null);
+    res.json({
+      period, periodKey: periodKeyOf(period), periodLabel: periodLabel(period, true),
+      totals: {
+        count: evaluations.length, submitted: done.length,
+        people: new Set(evaluations.map((v) => String(v.employee))).size,
+        avgPercentage: done.length ? Math.round((done.reduce((a, v) => a + v.percentage, 0) / done.length) * 10) / 10 : null,
+        bonus: Math.round(done.reduce((a, v) => a + (v.bonusMultiplier || 0), 0) * 100) / 100,
+      },
+      departments: [...new Map(evaluations.map((v) => [v.departmentKey, v.department])).entries()].map(([key, name]) => ({ key, name })),
+      evaluations,
+    });
+  } catch (e) { fail(res, e, 'Failed to load the report'); }
+};
+
 exports.getOverview = async (req, res) => {
   try {
-    if (!isFull(req.user.role)) return res.status(403).json({ message: 'Not allowed' });
+    if (!seesAll(req.user)) return res.status(403).json({ message: 'Not allowed' });
     const period = parsePeriod(req.query.period);
     const periodKey = periodKeyOf(period);
     const [org, evals, settings, templates] = await Promise.all([

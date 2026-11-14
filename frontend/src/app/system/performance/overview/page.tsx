@@ -10,11 +10,13 @@ import api from '@/lib/api';
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell,
 } from 'recharts';
-import { Building2, RefreshCw, ArrowLeft, ArrowRight, Info } from 'lucide-react';
+import { Building2, RefreshCw, Info } from 'lucide-react';
+import { PeriodPicker } from '@/components/performance/TeamBoard';
+import PerformanceReport from '@/components/performance/PerformanceReport';
 import { Spinner, PageHeader, StatCard } from '@/components/hr/HRKit';
 import ExportMenu, { exportScopeLabels, type ExportColumn } from '@/components/ls2/ExportMenu';
 import {
-  canConfigurePerf, bandStyle, pct, periodLabel, periodKey, currentPeriod,
+  canConfigurePerfUser, bandStyle, pct, periodLabel, periodKey, currentPeriod,
   type Lang, type Period, type Settings, type Band,
 } from '@/lib/performance';
 import ScrollX from '@/components/system/ScrollX';
@@ -53,21 +55,11 @@ export default function PerformanceOverviewPage() {
   useEffect(() => { load(); }, [load]);
   useSocket('performance:updated', useCallback(() => load(), [load]));
 
-  const step = (dir: number) => {
-    const p = { ...period };
-    let q = (p.quarter || 1) + dir;
-    if (q > 4) { q = 1; p.year += 1; } else if (q < 1) { q = 4; p.year -= 1; }
-    p.quarter = q;
-    setPeriod(p);
-  };
-
-  if (!canConfigurePerf(user?.role)) {
+  if (!canConfigurePerfUser(user as any)) {
     return <div className="text-slate-500 p-8">{ar ? 'هذه الصفحة للمدير العام فقط' : 'This page is restricted to super admins'}</div>;
   }
   if (loading && !data) return <Spinner />;
   const t = data?.totals;
-  const Prev = isRTL ? ArrowRight : ArrowLeft;
-  const Next = isRTL ? ArrowLeft : ArrowRight;
 
   const chartData = (data?.departments || [])
     .filter((d) => d.avgPercentage != null)
@@ -104,11 +96,8 @@ export default function PerformanceOverviewPage() {
         title={ar ? 'تقييم الأداء — كل الأقسام' : 'Performance — all departments'}
         subtitle={`${periodLabel(period, lang as Lang)} · ${t?.evaluated ?? 0}/${t?.headcount ?? 0} ${ar ? 'تم تقييمهم' : 'evaluated'}`}
       >
-        <div className="flex items-center gap-1 bg-white border border-slate-200 rounded-lg px-1">
-          <button type="button" onClick={() => step(-1)} className="p-1.5 text-slate-400 hover:text-[#f37121]"><Prev className="w-4 h-4" /></button>
-          <span className="text-sm font-medium text-slate-800 px-2 min-w-[110px] text-center">{periodLabel(period, lang as Lang)}</span>
-          <button type="button" onClick={() => step(1)} className="p-1.5 text-slate-400 hover:text-[#f37121]"><Next className="w-4 h-4" /></button>
-        </div>
+        {/* Month by default; quarter or year from the same picker as the section boards. */}
+        <PeriodPicker period={period} onChange={setPeriod} lang={lang as Lang} isRTL={isRTL} />
         <Link href="/system/performance" className="px-3 py-2 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 text-sm">
           {ar ? 'لوحتي' : 'My board'}
         </Link>
@@ -241,6 +230,9 @@ export default function PerformanceOverviewPage() {
           </table>
         </ScrollX>
       </div>
+
+      {/* Each person's evaluation with its full form, by department, person or all. */}
+      <PerformanceReport period={period} lang={lang as Lang} />
     </div>
   );
 }

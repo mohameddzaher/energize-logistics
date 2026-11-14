@@ -37,8 +37,8 @@ interface TeamResponse {
 
 type Scope = 'managers' | 'all';
 
-// Quarter/month/year stepper — bonuses are quarterly, so quarter is the default.
-function PeriodPicker({ period, onChange, lang, isRTL }: {
+// Month/quarter/year stepper; monthly is the default (currentPeriod).
+export function PeriodPicker({ period, onChange, lang, isRTL }: {
   period: Period; onChange: (p: Period) => void; lang: Lang; isRTL: boolean;
 }) {
   const ar = lang === 'ar';
@@ -71,8 +71,8 @@ function PeriodPicker({ period, onChange, lang, isRTL }: {
         }}
         className="border border-slate-200 rounded-lg px-2 py-1.5 text-sm bg-white focus:outline-none focus:border-[#f37121]"
       >
-        <option value="quarter">{ar ? 'ربع سنوي' : 'Quarterly'}</option>
         <option value="month">{ar ? 'شهري' : 'Monthly'}</option>
+        <option value="quarter">{ar ? 'ربع سنوي' : 'Quarterly'}</option>
         <option value="year">{ar ? 'سنوي' : 'Yearly'}</option>
       </select>
       <div className="flex items-center gap-1 bg-white border border-slate-200 rounded-lg px-1">

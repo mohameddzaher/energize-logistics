@@ -1007,11 +1007,29 @@ exports.createDriver = async (req, res) => {
   }
 };
 
+/**
+ * A driver whose HR file is still working is never removed from the fleet here (owner, 2026-11-12): HR alone ends
+ * service, and an ended file drops him from every section (utils/endedStaff). Drivers without a file can be removed.
+ */
+async function hrWorkingFile(driver) {
+  if (!driver || !driver.employee) return null;
+  const emp = await require('../models/Employee').findById(driver.employee).select('arabicName firstName lastName employmentStatus').lean();
+  if (!emp || emp.employmentStatus === 'terminated') return null;
+  const sets = await endedStaff();
+  if (require('../utils/endedStaff').employeeArchived(sets, emp._id)) return null;
+  return emp;
+}
+const HR_OWNS_DRIVER = (emp) => ({
+  code: 'DRIVER_HR_ACTIVE',
+  message: `لا يُحذف ${emp.arabicName || [emp.firstName, emp.lastName].filter(Boolean).join(' ')} من الأسطول — ملفّه في الموارد البشريّة ما زال على رأس العمل. إنهاء الخدمة يكون من الموارد البشريّة، فيُزال من الأقسام تلقائيًّا.`,
+});
+
 exports.updateDriver = async (req, res) => {
   try {
     const driver = await FleetDriver.findById(req.params.id);
     if (!driver) return res.status(404).json({ message: 'Driver not found' });
     const data = pick(req.body, DRIVER_EDITABLE);
+    if (data.isActive === false) { const emp = await hrWorkingFile(driver); if (emp) return res.status(409).json(HR_OWNS_DRIVER(emp)); }
     // Linked to his file: what is edited here is written to the file too
     // These five fields used to be silently dropped from the request with a saved response, and the list reads from HR, so the fleet manager saw his edit not take. Now the edit is written to the file itself (so the two copies stay one) and recorded as made from fleet.
     let hrWritten = null;
@@ -1166,7 +1184,9 @@ exports.driverHrCandidates = async (req, res) => {
 
 exports.deleteDriver = async (req, res) => {
   try {
-    const before = await FleetDriver.findById(req.params.id).select('vehicle').lean();
+    const before = await FleetDriver.findById(req.params.id).select('vehicle employee').lean();
+    const emp = await hrWorkingFile(before);
+    if (emp) return res.status(409).json(HR_OWNS_DRIVER(emp));
     const driver = await FleetDriver.findByIdAndUpdate(
       req.params.id, { isActive: false, vehicle: null, seat: 1 }, { new: true },
     );

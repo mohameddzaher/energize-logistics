@@ -1,7 +1,7 @@
 'use client';
 // Clearance parties page: serves customers and shipping agents with the same code.
 // The structure is identical (name, contact, numbers, an openable file); only the party's role differs. Two identical pages in two files would mean fixing every bug twice and forgetting one.
-import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
+import { useState, useEffect, useCallback, useMemo, useRef, type ReactNode } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/context/AuthContext';
 import { useLanguage } from '@/context/LanguageContext';
@@ -12,7 +12,8 @@ import { useCustomsSearch, matchesSearch, searchKey } from '@/components/customs
 import { useColumnFilters, ClearColumnFilters } from '@/components/useColumnFilters';
 import { canEditSection } from '@/lib/sections';
 import { Spinner, PageHeader, SearchInput, PrimaryButton, Modal, Field, TextInput, Loader2 } from '@/components/hr/HRKit';
-import ExportMenu, { type ExportColumn } from '@/components/ls2/ExportMenu';
+import ExportMenu, { exportScopeLabels, type ExportColumn } from '@/components/ls2/ExportMenu';
+import ColumnChooser, { useVisibleColumns, type ChooserColumn } from '@/components/system/ColumnChooser';
 import { Users, Ship, Truck, Plus, Pencil, Trash2, Mail, Phone, ChevronLeft } from 'lucide-react';
 import ScrollX from '@/components/system/ScrollX';
 
@@ -126,20 +127,80 @@ export default function PartiesPage({ kind }: { kind: PartyKind }) {
     } catch (e: any) { notify(e?.message || t('تعذّر الحذف', 'Could not delete'), 'error'); }
   };
 
-  const cols: ExportColumn[] = [
-    { header: t('الاسم', 'Name'), key: 'name', width: 28 },
-    ...(kind !== 'customer' ? [{ header: t('البريد', 'Email'), key: 'email', width: 26 }] : []),
-    { header: t('الجوال', 'Phone'), key: 'phone', width: 16 },
-    { header: t('معاملات', 'Deals'), key: 'deals', width: 10 },
-    { header: t('حاويات', 'Containers'), key: 'containers', width: 10 },
-    { header: t('الإيراد', 'Revenue'), key: 'revenue', width: 14 },
-    ...(seesMoney ? [{ header: t('الربح', 'Profit'), key: 'profit', width: 14 }] : []),
+  // One list for the column chooser, the table and the export; each kind keeps its own choice since agents and carriers have an email column customers lack.
+  const chooserCols: ChooserColumn[] = useMemo(() => [
+    { key: 'name', label: ar ? 'الاسم' : 'Name', locked: true },
+    ...(kind !== 'customer' ? [{ key: 'email', label: ar ? 'البريد' : 'Email' }] : []),
+    { key: 'contact', label: ar ? 'التواصل' : 'Contact' },
+    { key: 'deals', label: ar ? 'معاملات' : 'Deals' },
+    { key: 'containers', label: ar ? 'حاويات' : 'Containers' },
+    { key: 'revenue', label: ar ? 'الإيراد' : 'Revenue' },
+    ...(seesMoney ? [{ key: 'profit', label: ar ? 'الربح' : 'Profit' }, { key: 'margin', label: ar ? 'الهامش' : 'Margin' }] : []),
+    { key: 'last', label: ar ? 'آخر معاملة' : 'Last deal' },
+  ], [ar, kind, seesMoney]);
+  const { visible, setVisible } = useVisibleColumns(`customs:parties:${kind}:cols`, chooserCols);
+
+  const marginOf = (p: Party) => (p.revenue ? Math.round((p.profit / p.revenue) * 1000) / 10 : 0);
+  // `col` ties each export field to its screen column, so a hidden column leaves the file too.
+  const allExport: (ExportColumn & { col: string })[] = [
+    { col: 'name', header: t('الاسم', 'Name'), key: 'name', width: 28 },
+    ...(kind !== 'customer' ? [{ col: 'email', header: t('البريد', 'Email'), key: 'email', width: 26 }] : []),
+    { col: 'contact', header: t('الجوال', 'Phone'), key: 'phone', width: 16 },
+    { col: 'deals', header: t('معاملات', 'Deals'), key: 'deals', width: 10 },
+    { col: 'containers', header: t('حاويات', 'Containers'), key: 'containers', width: 10 },
+    { col: 'revenue', header: t('الإيراد', 'Revenue'), key: 'revenue', width: 14 },
+    ...(seesMoney ? [
+      { col: 'profit', header: t('الربح', 'Profit'), key: 'profit', width: 14 },
+      { col: 'margin', header: t('الهامش %', 'Margin %'), key: 'margin', width: 10, transform: (_v: any, r: Party) => (r.revenue ? marginOf(r) : '') },
+    ] : []),
+    { col: 'last', header: t('آخر معاملة', 'Last deal'), key: 'lastDealAt', width: 14, transform: (v: any) => (v ? new Date(v).toLocaleDateString('en-GB') : '') },
   ];
+  const cols: ExportColumn[] = allExport.filter((c) => visible.includes(c.col));
 
   if (loading) return <Spinner />;
   const Icon = kind === 'agent' ? Ship : kind === 'carrier' ? Truck : Users;
   const meta = KIND_META[kind];
   const title = t(meta.ar, meta.en);
+
+  const tableCols: { key: string; label: string; filter?: string; td: (p: Party) => ReactNode }[] = [
+    {
+      key: 'name', label: t('الاسم', 'Name'), filter: 'name',
+      td: (p) => (
+        <td key="name" className="px-3 py-2.5 font-semibold text-slate-900 whitespace-nowrap">
+          {p.name}
+          {p.isActive === false && <span className="ms-1.5 text-[10px] text-slate-400">({t('معطَّل', 'inactive')})</span>}
+        </td>
+      ),
+    },
+    ...(kind !== 'customer' ? [{
+      key: 'email', label: t('البريد', 'Email'),
+      td: (p: Party) => (
+        <td key="email" className="px-3 py-2.5 text-slate-600">
+          {p.email ? <a href={`mailto:${p.email}`} onClick={(e) => e.stopPropagation()} className="inline-flex items-center gap-1 hover:text-[#f37121]"><Mail className="w-3.5 h-3.5" />{p.email}</a>
+            : <span className="text-red-400 text-xs">{t('بلا بريد', 'no email')}</span>}
+          {contactsOf(p).length > 1 && <span className="ms-1 rounded-full bg-slate-100 px-1.5 text-[10.5px] text-slate-500">+{contactsOf(p).length - 1}</span>}
+        </td>
+      ),
+    }] : []),
+    {
+      key: 'contact', label: t('التواصل', 'Contact'),
+      td: (p) => (
+        <td key="contact" className="px-3 py-2.5 text-slate-600 whitespace-nowrap">
+          {p.phone ? <a href={`tel:${p.phone}`} onClick={(e) => e.stopPropagation()} className="inline-flex items-center gap-1 hover:text-[#f37121]"><Phone className="w-3.5 h-3.5" />{p.phone}</a> : '—'}
+          {p.contactPerson ? <span className="text-xs text-slate-400 ms-1">· {p.contactPerson}</span> : null}
+        </td>
+      ),
+    },
+    { key: 'deals', label: t('معاملات', 'Deals'), filter: 'deals', td: (p) => <td key="deals" className="px-3 py-2.5 tabular-nums">{money(p.deals)}</td> },
+    { key: 'containers', label: t('حاويات', 'Containers'), filter: 'containers', td: (p) => <td key="containers" className="px-3 py-2.5 tabular-nums">{money(p.containers)}</td> },
+    { key: 'revenue', label: t('الإيراد', 'Revenue'), td: (p) => <td key="revenue" className="px-3 py-2.5 tabular-nums text-emerald-700">{money(p.revenue)}</td> },
+    ...(seesMoney ? [
+      { key: 'profit', label: t('الربح', 'Profit'), td: (p: Party) => <td key="profit" className={`px-3 py-2.5 tabular-nums font-semibold ${p.profit >= 0 ? 'text-emerald-700' : 'text-red-600'}`}>{money(p.profit)}</td> },
+      { key: 'margin', label: t('الهامش', 'Margin'), td: (p: Party) => <td key="margin" className="px-3 py-2.5 tabular-nums text-slate-600">{p.revenue ? `${marginOf(p)}%` : '—'}</td> },
+    ] : []),
+    { key: 'last', label: t('آخر معاملة', 'Last deal'), filter: 'last', td: (p) => <td key="last" className="px-3 py-2.5 text-slate-500 whitespace-nowrap">{dt(p.lastDealAt)}</td> },
+  ];
+  const viewCols = tableCols.filter((c) => visible.includes(c.key));
 
   const Stat = ({ label, value, accent }: { label: string; value: string | number; accent?: string }) => (
     <div className="bg-white border border-slate-200 rounded-xl px-4 py-3 shadow-sm">
@@ -153,7 +214,10 @@ export default function PartiesPage({ kind }: { kind: PartyKind }) {
       <PageHeader icon={<Icon className="w-6 h-6 text-[#f37121]" />} title={title}
         subtitle={t('اضغط على أيّ اسم ليُفتح ملفُّه الكامل', 'Tap any name to open its full profile')}>
         <ExportMenu fileName={`customs-${kind}s`} lang={ar ? 'ar' : 'en'}
-          options={[{ key: 'shown', label: t('المعروض', 'Shown'), sheets: [{ name: title, rows: shown, columns: cols }] }]} />
+          options={[
+            { key: 'shown', label: exportScopeLabels(ar).shown, sheets: [{ name: title, rows: shown, columns: cols }] },
+            { key: 'all', label: exportScopeLabels(ar).all, sheets: [{ name: title, rows, columns: cols }] },
+          ]} />
         {canEdit && (
           <PrimaryButton onClick={() => setEditing({ name: '', kind })}>
             <Plus className="w-4 h-4" /> {t(meta.newAr, meta.newEn)}
@@ -170,52 +234,35 @@ export default function PartiesPage({ kind }: { kind: PartyKind }) {
       </div>
 
       <ClearColumnFilters count={cf.count} onClear={cf.clear} ar={ar} />
-      <SearchInput value={q} onChange={setQ}
-        placeholder={t('ابحث بالاسم أو الجوال أو البريد أو السجل أو الرقم الضريبي — أو برقم حاويةٍ أو بوليصةٍ من معاملاته…', 'Name, phone, email, CR, tax no. — or a container / BL number from their deals…')} />
+      <div className="flex flex-wrap items-center gap-2">
+        <div className="min-w-[240px] flex-1">
+          <SearchInput value={q} onChange={setQ}
+            placeholder={t('ابحث بالاسم أو الجوال أو البريد أو السجل أو الرقم الضريبي — أو برقم حاويةٍ أو بوليصةٍ من معاملاته…', 'Name, phone, email, CR, tax no. — or a container / BL number from their deals…')} />
+        </div>
+        <ColumnChooser columns={chooserCols} visible={visible} onChange={setVisible} ar={ar} />
+      </div>
 
       <div className="bg-white border border-slate-200 rounded-xl overflow-hidden shadow-sm">
         <ScrollX>
           <table className="w-full text-sm">
             <thead className="table-head">
               <tr>
-                {([[t('الاسم', 'Name'), 'name'], ...(kind !== 'customer' ? [[t('البريد', 'Email'), '']] : []), [t('التواصل', 'Contact'), ''],
-                  [t('معاملات', 'Deals'), 'deals'], [t('حاويات', 'Containers'), 'containers'], [t('الإيراد', 'Revenue'), ''],
-                  ...(seesMoney ? [[t('الربح', 'Profit'), ''], [t('الهامش', 'Margin'), '']] : []), [t('آخر معاملة', 'Last deal'), 'last'], ['', '']] as [string, string][]).map(([h, k], i) => (
-                  <th key={i} className="px-3 py-2.5 text-start font-semibold whitespace-nowrap">
-                    <span className="inline-flex items-center gap-1">{h}{k ? cf.header(k, searched, colGetters[k], ar) : null}</span>
+                {viewCols.map((c) => (
+                  <th key={c.key} className="px-3 py-2.5 text-start font-semibold whitespace-nowrap">
+                    <span className="inline-flex items-center gap-1">{c.label}{c.filter ? cf.header(c.filter, searched, colGetters[c.filter], ar) : null}</span>
                   </th>
                 ))}
+                <th className="px-3 py-2.5" />
               </tr>
             </thead>
             <tbody>
               {shown.length === 0 ? (
-                <tr><td colSpan={10} className="px-4 py-12 text-center text-slate-400">{t('لا نتائج', 'No results')}</td></tr>
+                <tr><td colSpan={viewCols.length + 1} className="px-4 py-12 text-center text-slate-400">{t('لا نتائج', 'No results')}</td></tr>
               ) : shown.map((p) => {
-                const margin = p.revenue ? Math.round((p.profit / p.revenue) * 1000) / 10 : 0;
                 return (
                   <tr key={p._id} className={`border-b border-slate-100 hover:bg-slate-50 cursor-pointer ${p.isActive === false ? 'opacity-50' : ''}`}
                     onClick={() => router.push(`/system/customs/parties/${p._id}`)}>
-                    <td className="px-3 py-2.5 font-semibold text-slate-900 whitespace-nowrap">
-                      {p.name}
-                      {p.isActive === false && <span className="ms-1.5 text-[10px] text-slate-400">({t('معطَّل', 'inactive')})</span>}
-                    </td>
-                    {kind !== 'customer' && (
-                      <td className="px-3 py-2.5 text-slate-600">
-                        {p.email ? <a href={`mailto:${p.email}`} onClick={(e) => e.stopPropagation()} className="inline-flex items-center gap-1 hover:text-[#f37121]"><Mail className="w-3.5 h-3.5" />{p.email}</a>
-                          : <span className="text-red-400 text-xs">{t('بلا بريد', 'no email')}</span>}
-                        {contactsOf(p).length > 1 && <span className="ms-1 rounded-full bg-slate-100 px-1.5 text-[10.5px] text-slate-500">+{contactsOf(p).length - 1}</span>}
-                      </td>
-                    )}
-                    <td className="px-3 py-2.5 text-slate-600 whitespace-nowrap">
-                      {p.phone ? <a href={`tel:${p.phone}`} onClick={(e) => e.stopPropagation()} className="inline-flex items-center gap-1 hover:text-[#f37121]"><Phone className="w-3.5 h-3.5" />{p.phone}</a> : '—'}
-                      {p.contactPerson ? <span className="text-xs text-slate-400 ms-1">· {p.contactPerson}</span> : null}
-                    </td>
-                    <td className="px-3 py-2.5 tabular-nums">{money(p.deals)}</td>
-                    <td className="px-3 py-2.5 tabular-nums">{money(p.containers)}</td>
-                    <td className="px-3 py-2.5 tabular-nums text-emerald-700">{money(p.revenue)}</td>
-                    {seesMoney && <td className={`px-3 py-2.5 tabular-nums font-semibold ${p.profit >= 0 ? 'text-emerald-700' : 'text-red-600'}`}>{money(p.profit)}</td>}
-                    {seesMoney && <td className="px-3 py-2.5 tabular-nums text-slate-600">{p.revenue ? `${margin}%` : '—'}</td>}
-                    <td className="px-3 py-2.5 text-slate-500 whitespace-nowrap">{dt(p.lastDealAt)}</td>
+                    {viewCols.map((c) => c.td(p))}
                     <td className="px-3 py-2.5 whitespace-nowrap" onClick={(e) => e.stopPropagation()}>
                       <div className="flex items-center gap-1">
                         {canEdit && <button type="button" onClick={() => setEditing(p)} className="p-1 text-slate-400 hover:text-[#f37121]" title={t('تعديل', 'Edit')}><Pencil className="w-3.5 h-3.5" /></button>}

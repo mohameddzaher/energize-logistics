@@ -1,7 +1,7 @@
 'use client';
 import { useSearchParams } from 'next/navigation';
 /** Contract customers: the other party of every deal. Previously the department had a full vendor register but customers were only rows in department contracts searched by name, so there was no answer to whether a customer's contract is signed and until when. Contract-specific fields are written here; the rest is read from its source on every open (shipments and value from operations statements, credit term and collector from collections, uploaded contracts from department contracts), because a copied number goes stale within a day. */
-import { useState, useEffect, useCallback, useMemo, useRef, Suspense } from 'react';
+import { useState, useEffect, useCallback, useMemo, useRef, Suspense, type ReactNode } from 'react';
 import { useAuth } from '@/context/AuthContext';
 import { useLanguage } from '@/context/LanguageContext';
 import { useSocket } from '@/hooks/useSocket';
@@ -15,6 +15,7 @@ import {
   PrimaryButton, ErrorNotice, SmallBadge, StatCard,
 } from '@/components/hr/HRKit';
 import ExportMenu, { exportScopeLabels, type ExportColumn } from '@/components/ls2/ExportMenu';
+import ColumnChooser, { useVisibleColumns, type ChooserColumn } from '@/components/system/ColumnChooser';
 import {
   ContractCustomer, CUSTOMER_STATUS, EXPIRY_META,
   canViewContracts, canEditContracts, fmtN, fmtD, foldAr,
@@ -150,34 +151,120 @@ function ContractCustomersInner() {
     expiring: customers.filter((c) => c.expiry === 'due' || c.expiry === 'expired').length,
   }), [customers]);
 
-  const cols: ExportColumn[] = [
-    { header: t('العميل', 'Customer'), key: 'name', width: 34 },
-    { header: t('القطاع', 'Sector'), key: 'sector', width: 16 },
-    { header: t('النوع', 'Type'), key: 'customerType', width: 12 },
-    { header: t('حالة العقد', 'Contract'), key: 'status', width: 14,
+  // `col` ties each export field to the screen column that shows it, so a hidden column leaves the file too; fields with no column of their own ride with the name, which cannot be hidden.
+  const allExport: (ExportColumn & { col: string })[] = [
+    { col: 'name', header: t('العميل', 'Customer'), key: 'name', width: 34 },
+    { col: 'name', header: t('القطاع', 'Sector'), key: 'sector', width: 16 },
+    { col: 'name', header: t('النوع', 'Type'), key: 'customerType', width: 12 },
+    { col: 'status', header: t('حالة العقد', 'Contract'), key: 'status', width: 14,
       transform: (v: any) => (v ? (ar ? CUSTOMER_STATUS[v as keyof typeof CUSTOMER_STATUS].ar : CUSTOMER_STATUS[v as keyof typeof CUSTOMER_STATUS].en) : '') },
-    { header: t('تاريخ العقد', 'Signed on'), key: 'contractDate', width: 14, transform: (v: any) => fmtD(v) },
-    { header: t('ينتهي في', 'Ends'), key: 'endDate', width: 14, transform: (v: any) => fmtD(v) },
-    { header: t('مهلة السداد (يوم)', 'Term (days)'), key: 'paymentTermDays', width: 16 },
-    { header: t('عدد الشحنات', 'Loads'), key: 'loads', width: 12 },
-    { header: t('قيمة البيع', 'Sold value'), key: 'value', width: 16 },
-    { header: t('آخر شحنة', 'Last load'), key: 'lastLoad', width: 14, transform: (v: any) => fmtD(v) },
-    { header: t('العقود المرفوعة', 'Agreements'), key: 'agreements', width: 14 },
-    { header: t('مسؤول التنشيط', 'Our rep'), key: 'energizeRep', width: 18 },
-    { header: t('جهة الاتصال', 'Contact'), key: 'contactPerson', width: 20 },
-    { header: t('الجوال', 'Phone'), key: 'phone', width: 16 },
-    { header: t('المقر', 'HQ'), key: 'headquarters', width: 14 },
-    { header: t('السجل التجاري', 'CR'), key: 'crNumber', width: 16 },
-    { header: t('الرقم الضريبي', 'VAT no.'), key: 'taxNumber', width: 18 },
-    { header: t('وثائق ناقصة', 'Missing docs'), key: 'missingDocuments', width: 24 },
-    { header: t('ملاحظات', 'Notes'), key: 'notes', width: 30 },
+    { col: 'period', header: t('تاريخ العقد', 'Signed on'), key: 'contractDate', width: 14, transform: (v: any) => fmtD(v) },
+    { col: 'period', header: t('ينتهي في', 'Ends'), key: 'endDate', width: 14, transform: (v: any) => fmtD(v) },
+    { col: 'term', header: t('مهلة السداد (يوم)', 'Term (days)'), key: 'paymentTermDays', width: 16 },
+    { col: 'loads', header: t('عدد الشحنات', 'Loads'), key: 'loads', width: 12 },
+    { col: 'value', header: t('قيمة البيع', 'Sold value'), key: 'value', width: 16 },
+    { col: 'lastLoad', header: t('آخر شحنة', 'Last load'), key: 'lastLoad', width: 14, transform: (v: any) => fmtD(v) },
+    { col: 'agreements', header: t('العقود المرفوعة', 'Agreements'), key: 'agreements', width: 14 },
+    { col: 'name', header: t('مسؤول التنشيط', 'Our rep'), key: 'energizeRep', width: 18 },
+    { col: 'name', header: t('جهة الاتصال', 'Contact'), key: 'contactPerson', width: 20 },
+    { col: 'name', header: t('الجوال', 'Phone'), key: 'phone', width: 16 },
+    { col: 'name', header: t('المقر', 'HQ'), key: 'headquarters', width: 14 },
+    { col: 'name', header: t('السجل التجاري', 'CR'), key: 'crNumber', width: 16 },
+    { col: 'name', header: t('الرقم الضريبي', 'VAT no.'), key: 'taxNumber', width: 18 },
+    { col: 'status', header: t('وثائق ناقصة', 'Missing docs'), key: 'missingDocuments', width: 24 },
+    { col: 'name', header: t('ملاحظات', 'Notes'), key: 'notes', width: 30 },
   ];
+
+  const chooserCols: ChooserColumn[] = useMemo(() => [
+    { key: 'name', label: ar ? 'العميل' : 'Customer', locked: true },
+    { key: 'status', label: ar ? 'حالة العقد' : 'Contract' },
+    { key: 'period', label: ar ? 'المدة' : 'Period' },
+    { key: 'term', label: ar ? 'مهلة السداد' : 'Term' },
+    { key: 'loads', label: ar ? 'شحناته معنا' : 'Loads with us' },
+    { key: 'value', label: ar ? 'قيمة البيع' : 'Sold value' },
+    { key: 'lastLoad', label: ar ? 'آخر شحنة' : 'Last load' },
+    { key: 'agreements', label: ar ? 'العقود' : 'Agreements' },
+  ], [ar]);
+  const { visible, setVisible } = useVisibleColumns('contracts:customers:cols', chooserCols);
+  const cols: ExportColumn[] = allExport.filter((c) => visible.includes(c.col));
 
   if (!canViewContracts(user)) return <div className="text-slate-500 p-8">{t('غير مصرّح', 'Not authorized')}</div>;
   if (loading) return <Spinner />;
 
   const set = (k: string, v: any) => setForm((f: any) => ({ ...f, [k]: v }));
   const th = 'text-start font-semibold px-4 py-3 whitespace-nowrap';
+  const stOf = (c: ContractCustomer) => CUSTOMER_STATUS[(c.status || 'unsigned') as keyof typeof CUSTOMER_STATUS];
+  const exOf = (c: ContractCustomer) => (c.expiry && c.expiry !== 'valid' ? EXPIRY_META[c.expiry as 'due' | 'expired'] : null);
+  const tableCols: { key: string; label: string; td: (c: ContractCustomer) => ReactNode }[] = [
+    {
+      key: 'name', label: t('العميل', 'Customer'),
+      td: (c) => (
+        <td key="name" className="px-4 py-3">
+          <p className="font-bold text-slate-900">{c.customerCode && <span className="me-1.5 rounded bg-[#12325c] px-1.5 py-0.5 font-mono text-[11px] text-white" dir="ltr">{c.customerCode}</span>}{c.name}</p>
+          <p className="text-[11.5px] text-slate-500">
+            {[c.sector, c.headquarters, c.energizeRep].filter(Boolean).join(' · ') || '—'}
+          </p>
+        </td>
+      ),
+    },
+    {
+      key: 'status', label: t('حالة العقد', 'Contract'),
+      td: (c) => {
+        const st = stOf(c);
+        return (
+          <td key="status" className="px-4 py-3 whitespace-nowrap">
+            <span className={`text-xs font-semibold rounded-full px-2.5 py-1 ${st.cls}`}>{ar ? st.ar : st.en}</span>
+            {/* Missing documents are shown with the status: a signed contract without a commercial register is not a complete contract and is the first thing asked. */}
+            {c.status === 'signed' && !c.documentsReceived && (
+              <span className="ms-1.5 text-[11px] text-amber-600">{t('وثائق ناقصة', 'docs missing')}</span>
+            )}
+          </td>
+        );
+      },
+    },
+    {
+      key: 'period', label: t('المدة', 'Period'),
+      td: (c) => {
+        const ex = exOf(c);
+        return (
+          <td key="period" className="px-4 py-3 whitespace-nowrap text-slate-600 text-[13px]">
+            {c.startDate || c.endDate ? (
+              <>
+                {fmtD(c.startDate)} — {fmtD(c.endDate)}
+                {ex && <span className={`ms-1.5 text-[11px] font-semibold rounded-full px-2 py-0.5 ${ex.cls}`}>{ar ? ex.ar : ex.en}</span>}
+              </>
+            ) : <span className="text-slate-300">—</span>}
+          </td>
+        );
+      },
+    },
+    {
+      key: 'term', label: t('مهلة السداد', 'Term'),
+      td: (c) => (
+        <td key="term" className="px-4 py-3 text-slate-700 tabular-nums whitespace-nowrap">
+          {c.paymentTermDays ? t(`${c.paymentTermDays} يوم`, `${c.paymentTermDays} days`) : '—'}
+          {/* A collection term that differs from the contract is itself the news: one of the two numbers is wrong and a customer is being chased on it. */}
+          {c.collectionsTerms && String(c.collectionsTerms) !== String(c.paymentTermDays) && (
+            <span className="block text-[11px] text-amber-600">{t('التحصيل:', 'collections:')} {c.collectionsTerms}</span>
+          )}
+        </td>
+      ),
+    },
+    { key: 'loads', label: t('شحناته معنا', 'Loads with us'), td: (c) => <td key="loads" className="px-4 py-3 tabular-nums text-slate-800 font-semibold">{c.loads ? fmtN(c.loads) : <span className="text-slate-300">—</span>}</td> },
+    { key: 'value', label: t('قيمة البيع', 'Sold value'), td: (c) => <td key="value" className="px-4 py-3 tabular-nums text-slate-800">{c.value ? fmtN(Math.round(c.value)) : <span className="text-slate-300">—</span>}</td> },
+    { key: 'lastLoad', label: t('آخر شحنة', 'Last load'), td: (c) => <td key="lastLoad" className="px-4 py-3 text-slate-600 whitespace-nowrap text-[13px]">{c.lastLoad ? fmtD(c.lastLoad) : <span className="text-slate-300">—</span>}</td> },
+    {
+      key: 'agreements', label: t('العقود', 'Agreements'),
+      td: (c) => (
+        <td key="agreements" className="px-4 py-3">
+          {c.agreements
+            ? <SmallBadge bg="bg-blue-500/15" text="text-blue-700" label={String(c.agreements)} />
+            : <span className="text-slate-300">—</span>}
+        </td>
+      ),
+    },
+  ];
+  const viewCols = tableCols.filter((c) => visible.includes(c.key));
 
   const sq = foldAr(suggestQ.trim());
   const shownSuggestions = (suggestions || []).filter((s) => !sq || foldAr(s.name).includes(sq));
@@ -223,66 +310,25 @@ function ContractCustomersInner() {
         ))}
       </div>
 
-      <div className="max-w-md">
-        <SearchInput value={q} onChange={setQ}
-          placeholder={t('ابحث بالاسم أو جهة الاتصال أو المندوب…', 'Name, contact or rep…')} />
+      <div className="flex flex-wrap items-center gap-2">
+        <div className="min-w-[240px] flex-1 max-w-md">
+          <SearchInput value={q} onChange={setQ}
+            placeholder={t('ابحث بالاسم أو جهة الاتصال أو المندوب…', 'Name, contact or rep…')} />
+        </div>
+        <ColumnChooser columns={chooserCols} visible={visible} onChange={setVisible} ar={ar} />
       </div>
 
       <ScrollX className="bg-white border border-slate-200 rounded-xl shadow-sm">
         <table className="w-full text-sm">
           <thead><tr className="bg-slate-900 border-b border-slate-200 text-slate-300">
-            <th className={th}>{t('العميل', 'Customer')}</th>
-            <th className={th}>{t('حالة العقد', 'Contract')}</th>
-            <th className={th}>{t('المدة', 'Period')}</th>
-            <th className={th}>{t('مهلة السداد', 'Term')}</th>
-            <th className={th}>{t('شحناته معنا', 'Loads with us')}</th>
-            <th className={th}>{t('قيمة البيع', 'Sold value')}</th>
-            <th className={th}>{t('آخر شحنة', 'Last load')}</th>
-            <th className={th}>{t('العقود', 'Agreements')}</th>
+            {viewCols.map((c) => <th key={c.key} className={th}>{c.label}</th>)}
             <th className={th}>{t('إجراءات', 'Actions')}</th>
           </tr></thead>
           <tbody>
             {shown.map((c) => {
-              const st = CUSTOMER_STATUS[(c.status || 'unsigned') as keyof typeof CUSTOMER_STATUS];
-              const ex = c.expiry && c.expiry !== 'valid' ? EXPIRY_META[c.expiry as 'due' | 'expired'] : null;
               return (
                 <tr key={c._id} className="border-b border-slate-200/70 hover:bg-slate-50">
-                  <td className="px-4 py-3">
-                    <p className="font-bold text-slate-900">{c.customerCode && <span className="me-1.5 rounded bg-[#12325c] px-1.5 py-0.5 font-mono text-[11px] text-white" dir="ltr">{c.customerCode}</span>}{c.name}</p>
-                    <p className="text-[11.5px] text-slate-500">
-                      {[c.sector, c.headquarters, c.energizeRep].filter(Boolean).join(' · ') || '—'}
-                    </p>
-                  </td>
-                  <td className="px-4 py-3 whitespace-nowrap">
-                    <span className={`text-xs font-semibold rounded-full px-2.5 py-1 ${st.cls}`}>{ar ? st.ar : st.en}</span>
-                    {/* Missing documents are shown with the status: a signed contract without a commercial register is not a complete contract and is the first thing asked. */}
-                    {c.status === 'signed' && !c.documentsReceived && (
-                      <span className="ms-1.5 text-[11px] text-amber-600">{t('وثائق ناقصة', 'docs missing')}</span>
-                    )}
-                  </td>
-                  <td className="px-4 py-3 whitespace-nowrap text-slate-600 text-[13px]">
-                    {c.startDate || c.endDate ? (
-                      <>
-                        {fmtD(c.startDate)} — {fmtD(c.endDate)}
-                        {ex && <span className={`ms-1.5 text-[11px] font-semibold rounded-full px-2 py-0.5 ${ex.cls}`}>{ar ? ex.ar : ex.en}</span>}
-                      </>
-                    ) : <span className="text-slate-300">—</span>}
-                  </td>
-                  <td className="px-4 py-3 text-slate-700 tabular-nums whitespace-nowrap">
-                    {c.paymentTermDays ? t(`${c.paymentTermDays} يوم`, `${c.paymentTermDays} days`) : '—'}
-                    {/* A collection term that differs from the contract is itself the news: one of the two numbers is wrong and a customer is being chased on it. */}
-                    {c.collectionsTerms && String(c.collectionsTerms) !== String(c.paymentTermDays) && (
-                      <span className="block text-[11px] text-amber-600">{t('التحصيل:', 'collections:')} {c.collectionsTerms}</span>
-                    )}
-                  </td>
-                  <td className="px-4 py-3 tabular-nums text-slate-800 font-semibold">{c.loads ? fmtN(c.loads) : <span className="text-slate-300">—</span>}</td>
-                  <td className="px-4 py-3 tabular-nums text-slate-800">{c.value ? fmtN(Math.round(c.value)) : <span className="text-slate-300">—</span>}</td>
-                  <td className="px-4 py-3 text-slate-600 whitespace-nowrap text-[13px]">{c.lastLoad ? fmtD(c.lastLoad) : <span className="text-slate-300">—</span>}</td>
-                  <td className="px-4 py-3">
-                    {c.agreements
-                      ? <SmallBadge bg="bg-blue-500/15" text="text-blue-700" label={String(c.agreements)} />
-                      : <span className="text-slate-300">—</span>}
-                  </td>
+                  {viewCols.map((col) => col.td(c))}
                   <td className="px-4 py-3">
                     <div className="flex items-center justify-end gap-1">
                       {canEdit && (
@@ -303,7 +349,7 @@ function ContractCustomersInner() {
               );
             })}
             {!shown.length && (
-              <tr><td colSpan={9} className="text-center text-slate-500 py-14">
+              <tr><td colSpan={viewCols.length + 1} className="text-center text-slate-500 py-14">
                 {customers.length
                   ? t('لا نتائج مطابقة', 'No matches')
                   : t('السجل فارغ — ابدأ من «عملاء بلا سجل»، فهم في كشوفنا بالفعل.',

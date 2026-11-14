@@ -1,7 +1,7 @@
 'use client';
 // Fleet customers: a register, not a card gallery. Two cards per row suits ten customers, not two hundred and twenty: rows cannot be compared, sorted, or ranked by activity. So it is a table, one row per customer with trips, income and last activity, plus filter and search; clicking a row opens the full file.
 // Row figures are computed by the server with the list, not one query per row.
-import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
+import { useState, useEffect, useCallback, useMemo, useRef, type ReactNode } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/context/AuthContext';
 import { useLanguage } from '@/context/LanguageContext';
@@ -17,6 +17,7 @@ import {
   Spinner, PageHeader, SearchInput, PrimaryButton, Modal, Field, TextInput, TextArea, ErrorNotice, StatCard,
 } from '@/components/hr/HRKit';
 import ExportMenu from '@/components/ls2/ExportMenu';
+import ColumnChooser, { useVisibleColumns, type ChooserColumn } from '@/components/system/ColumnChooser';
 import FilterPanel, { type FilterValues } from '@/components/system/FilterPanel';
 import SearchableManagedSelect from '@/components/system/SearchableManagedSelect';
 import { FleetCustomer, canEditFleet, canAdminFleet } from '@/lib/fleet';
@@ -26,24 +27,25 @@ const PAY_AR: Record<string, string> = { tax: 'ضريبي', cash: 'كاش' };
 const PAY_EN: Record<string, string> = { tax: 'Tax invoice', cash: 'Cash' };
 
 // Agreed routes are exported flattened into a single cell: a customer is one row in the file, and splitting it per route would break any later aggregation.
+// `col` is the screen column that carries the field, so hiding a column drops its fields from the file; fields with no column of their own ride with the name, which cannot be hidden.
 const CUSTOMER_COLUMNS = [
-  { header: 'العميل', key: 'name', width: 30 },
-  { header: 'نوع الدفع', key: 'paymentType', transform: (v: any) => PAY_AR[v] || '', width: 12 },
-  { header: 'الجوال', key: 'phone', width: 16 },
-  { header: 'البريد', key: 'email', width: 24 },
-  { header: 'الرقم الضريبي', key: 'taxNumber', width: 18 },
-  { header: 'الفئة', key: 'customerType', transform: (v: any) => (v === 'heavy' ? 'نقل ثقيل' : v === 'branch' ? 'فروع' : ''), width: 12 },
-  { header: 'الحمولات', key: 'trips', width: 10 },
-  { header: 'الجارية', key: 'openTrips', width: 10 },
-  { header: 'الدخل', key: 'income', width: 14 },
-  { header: 'متوسط الحمولة', key: 'avgTrip', width: 14 },
-  { header: 'آخر حمولة', key: 'lastTrip', transform: (v: any) => (v ? new Date(v).toLocaleDateString('en-GB') : ''), width: 14 },
-  { header: 'شركة الـCRM', key: 'crm', transform: (v: any) => v?.name || '', width: 26 },
-  { header: 'التقييم', key: 'rating', width: 10 },
-  { header: 'أسعار المسارات', key: 'routes', transform: (v: any) => (v || []).map((r: any) => `${r.fromCity || ''}→${r.toCity || ''}${r.price != null ? ` (${r.price})` : ''}`).join(' | '), width: 44 },
-  { header: 'عدد المسارات', key: 'routes', transform: (v: any) => (v || []).length, width: 12 },
-  { header: 'الحالة', key: 'isActive', transform: (v: any) => (v === false ? 'معطَّل' : 'نشط'), width: 10 },
-  { header: 'ملاحظات', key: 'notes', width: 28 },
+  { col: 'name', header: 'العميل', key: 'name', width: 30 },
+  { col: 'payment', header: 'نوع الدفع', key: 'paymentType', transform: (v: any) => PAY_AR[v] || '', width: 12 },
+  { col: 'contact', header: 'الجوال', key: 'phone', width: 16 },
+  { col: 'contact', header: 'البريد', key: 'email', width: 24 },
+  { col: 'contact', header: 'الرقم الضريبي', key: 'taxNumber', width: 18 },
+  { col: 'name', header: 'الفئة', key: 'customerType', transform: (v: any) => (v === 'heavy' ? 'نقل ثقيل' : v === 'branch' ? 'فروع' : ''), width: 12 },
+  { col: 'trips', header: 'الحمولات', key: 'trips', width: 10 },
+  { col: 'name', header: 'الجارية', key: 'openTrips', width: 10 },
+  { col: 'income', header: 'الدخل', key: 'income', width: 14 },
+  { col: 'avgTrip', header: 'متوسط الحمولة', key: 'avgTrip', width: 14 },
+  { col: 'lastTrip', header: 'آخر حمولة', key: 'lastTrip', transform: (v: any) => (v ? new Date(v).toLocaleDateString('en-GB') : ''), width: 14 },
+  { col: 'crm', header: 'شركة الـCRM', key: 'crm', transform: (v: any) => v?.name || '', width: 26 },
+  { col: 'name', header: 'التقييم', key: 'rating', width: 10 },
+  { col: 'routes', header: 'أسعار المسارات', key: 'routes', transform: (v: any) => (v || []).map((r: any) => `${r.fromCity || ''}→${r.toCity || ''}${r.price != null ? ` (${r.price})` : ''}`).join(' | '), width: 44 },
+  { col: 'routes', header: 'عدد المسارات', key: 'routes', transform: (v: any) => (v || []).length, width: 12 },
+  { col: 'name', header: 'الحالة', key: 'isActive', transform: (v: any) => (v === false ? 'معطَّل' : 'نشط'), width: 10 },
+  { col: 'name', header: 'ملاحظات', key: 'notes', width: 28 },
 ];
 
 const EMPTY = {
@@ -202,7 +204,95 @@ export default function FleetCustomersPage() {
     </th>
   );
 
+  // Chosen columns drive the table and the export; search and filters run on the server over every field.
+  const chooserCols: ChooserColumn[] = useMemo(() => [
+    { key: 'name', label: ar ? 'العميل' : 'Customer', locked: true },
+    { key: 'payment', label: ar ? 'نوع الدفع' : 'Payment' },
+    { key: 'contact', label: ar ? 'التواصل' : 'Contact' },
+    { key: 'trips', label: ar ? 'حمولات' : 'Trips' },
+    { key: 'income', label: ar ? 'الدخل' : 'Income' },
+    { key: 'avgTrip', label: ar ? 'متوسط الحمولة' : 'Avg / trip' },
+    { key: 'lastTrip', label: ar ? 'آخر حمولة' : 'Last trip' },
+    { key: 'crm', label: ar ? 'الـCRM' : 'CRM' },
+    { key: 'routes', label: ar ? 'المسارات' : 'Routes' },
+  ], [ar]);
+  const { visible, setVisible } = useVisibleColumns('fleet:customers:cols', chooserCols);
+  const exportCols = useMemo(() => CUSTOMER_COLUMNS.filter((c) => visible.includes(c.col)), [visible]);
+
   if (loading) return <Spinner />;
+
+  const thCls = 'px-3 py-2.5 font-semibold whitespace-nowrap';
+  const tableCols: { key: string; th: ReactNode; td: (c: FleetCustomer) => ReactNode }[] = [
+    {
+      key: 'name',
+      th: <Th key="name" k="name" label={t('العميل', 'Customer')} />,
+      td: (c) => (
+        <td key="name" className="px-3 py-2.5">
+          <p className="font-bold text-slate-900">{c.customerCode && <span className="me-1.5 rounded bg-[#12325c] px-1.5 py-0.5 font-mono text-[11px] text-white" dir="ltr">{c.customerCode}</span>}{c.name}</p>
+          <div className="flex items-center gap-1.5 mt-0.5">
+            {c.isActive === false && <span className="text-[10px] px-1.5 py-0.5 rounded bg-slate-200 text-slate-600">{t('معطَّل', 'Disabled')}</span>}
+            {!!c.openTrips && <span className="text-[10px] px-1.5 py-0.5 rounded bg-amber-100 text-amber-700">{t(`${c.openTrips} جارية`, `${c.openTrips} open`)}</span>}
+            {!!c.rating && <span className="text-[10px] text-amber-500">{'★'.repeat(c.rating)}</span>}
+          </div>
+        </td>
+      ),
+    },
+    {
+      key: 'payment',
+      th: <th key="payment" className={`${thCls} text-start`}>{t('نوع الدفع', 'Payment')}</th>,
+      td: (c) => (
+        <td key="payment" className="px-3 py-2.5 whitespace-nowrap">
+          {c.paymentType
+            ? <span className={`text-[11px] px-2 py-1 rounded-lg font-semibold ${c.paymentType === 'tax' ? 'bg-indigo-50 text-indigo-700' : 'bg-emerald-50 text-emerald-700'}`}>
+              {ar ? PAY_AR[c.paymentType] || c.paymentType : PAY_EN[c.paymentType] || c.paymentType}</span>
+            : <span className="text-slate-300">—</span>}
+        </td>
+      ),
+    },
+    {
+      key: 'contact',
+      th: <th key="contact" className={`${thCls} text-start`}>{t('التواصل', 'Contact')}</th>,
+      td: (c) => <td key="contact" className="px-3 py-2.5 text-slate-600 text-xs">{[c.phone, c.email].filter(Boolean).join(' · ') || '—'}</td>,
+    },
+    {
+      key: 'trips',
+      th: <Th key="trips" k="trips" label={t('حمولات', 'Trips')} num />,
+      td: (c) => <td key="trips" className="px-3 py-2.5 text-center font-semibold text-slate-800">{c.trips || 0}</td>,
+    },
+    {
+      key: 'income',
+      th: <Th key="income" k="income" label={t('الدخل', 'Income')} num />,
+      td: (c) => <td key="income" className="px-3 py-2.5 text-center font-semibold text-emerald-700">{money(c.income)}</td>,
+    },
+    {
+      key: 'avgTrip',
+      th: <Th key="avgTrip" k="avgTrip" label={t('متوسط الحمولة', 'Avg / trip')} num />,
+      td: (c) => <td key="avgTrip" className="px-3 py-2.5 text-center text-slate-700">{money(c.avgTrip)}</td>,
+    },
+    {
+      key: 'lastTrip',
+      th: <Th key="lastTrip" k="lastTrip" label={t('آخر حمولة', 'Last trip')} num />,
+      td: (c) => <td key="lastTrip" className="px-3 py-2.5 text-center text-slate-600 whitespace-nowrap">{date(c.lastTrip)}</td>,
+    },
+    {
+      key: 'crm',
+      th: <th key="crm" className={`${thCls} text-start`}>{t('الـCRM', 'CRM')}</th>,
+      td: (c) => (
+        <td key="crm" className="px-3 py-2.5 text-xs">
+          {c.crm
+            ? <span className="inline-flex items-center gap-1 text-slate-600" title={c.crm.name}><Link2 className="w-3 h-3 text-sky-500" />{(c.crm.arabicName || c.crm.name).slice(0, 22)}</span>
+            : <span className="text-slate-300">—</span>}
+        </td>
+      ),
+    },
+    {
+      key: 'routes',
+      th: <th key="routes" className={`${thCls} text-center`}>{t('المسارات', 'Routes')}</th>,
+      td: (c) => <td key="routes" className="px-3 py-2.5 text-center text-slate-600">{(c.routes || []).length || '—'}</td>,
+    },
+  ];
+  const viewCols = tableCols.filter((c) => visible.includes(c.key));
+  const actions = editor || admin;
 
   const setRoute = (i: number, k: string, v: any) =>
     setForm((f: any) => ({ ...f, routes: f.routes.map((r: any, x: number) => (x === i ? { ...r, [k]: v } : r)) }));
@@ -215,9 +305,9 @@ export default function FleetCustomersPage() {
           `${total} customers — the agreed payment type prefills each new shipment`)}>
         <ExportMenu lang={ar ? 'ar' : 'en'} fileName="fleet-customers"
           options={[
-            { key: 'page', label: t(`الصفحة المعروضة (${shown.length})`, `This page (${shown.length})`), sheets: [{ name: 'Customers', rows: shown as any[], columns: CUSTOMER_COLUMNS }] },
-            { key: 'view', label: t(`نتيجة الفلتر (${sorted.length})`, `Filtered (${sorted.length})`), sheets: [{ name: 'Customers', rows: sorted as any[], columns: CUSTOMER_COLUMNS }] },
-            { key: 'all', label: t(`كل العملاء (${total})`, `All customers (${total})`), sheets: [{ name: 'Customers', rows: customers as any[], columns: CUSTOMER_COLUMNS }] },
+            { key: 'page', label: t(`الصفحة المعروضة (${shown.length})`, `This page (${shown.length})`), sheets: [{ name: 'Customers', rows: shown as any[], columns: exportCols }] },
+            { key: 'view', label: t(`نتيجة الفلتر (${sorted.length})`, `Filtered (${sorted.length})`), sheets: [{ name: 'Customers', rows: sorted as any[], columns: exportCols }] },
+            { key: 'all', label: t(`كل العملاء (${total})`, `All customers (${total})`), sheets: [{ name: 'Customers', rows: customers as any[], columns: exportCols }] },
           ]} />
         {editor && <PrimaryButton onClick={openCreate}><Plus className="w-4 h-4" /> {t('إضافة عميل', 'Add customer')}</PrimaryButton>}
       </PageHeader>
@@ -244,6 +334,7 @@ export default function FleetCustomersPage() {
           <SearchInput value={search} onChange={setSearch}
             placeholder={t('بحث بالاسم أو الجوال أو الرقم الضريبي أو اسم الشركة في الـCRM…', 'Search name, phone, tax no. or CRM company…')} />
         </div>
+        <ColumnChooser columns={chooserCols} visible={visible} onChange={setVisible} ar={ar} />
       </div>
 
       <div className="rounded-2xl border border-slate-200 bg-white shadow-sm overflow-hidden">
@@ -251,52 +342,20 @@ export default function FleetCustomersPage() {
           <table className="w-full text-[13px]">
             <thead className="bg-slate-50 text-slate-600 border-b border-slate-200">
               <tr>
-                <Th k="name" label={t('العميل', 'Customer')} />
-                <th className="px-3 py-2.5 font-semibold text-start whitespace-nowrap">{t('نوع الدفع', 'Payment')}</th>
-                <th className="px-3 py-2.5 font-semibold text-start whitespace-nowrap">{t('التواصل', 'Contact')}</th>
-                <Th k="trips" label={t('حمولات', 'Trips')} num />
-                <Th k="income" label={t('الدخل', 'Income')} num />
-                <Th k="avgTrip" label={t('متوسط الحمولة', 'Avg / trip')} num />
-                <Th k="lastTrip" label={t('آخر حمولة', 'Last trip')} num />
-                <th className="px-3 py-2.5 font-semibold text-start whitespace-nowrap">{t('الـCRM', 'CRM')}</th>
-                <th className="px-3 py-2.5 font-semibold text-center whitespace-nowrap">{t('المسارات', 'Routes')}</th>
-                {(editor || admin) && <th className="px-3 py-2.5 w-20" />}
+                {viewCols.map((c) => c.th)}
+                {actions && <th className="px-3 py-2.5 w-20" />}
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
               {shown.length === 0 ? (
-                <tr><td colSpan={10} className="py-12 text-center text-slate-500">
+                <tr><td colSpan={viewCols.length + (actions ? 1 : 0)} className="py-12 text-center text-slate-500">
                   {total === 0 ? t('لا يوجد عملاء بعد.', 'No customers yet.') : t('لا نتائج مطابقة.', 'No matches.')}
                 </td></tr>
               ) : shown.map((c) => (
                 <tr key={c._id} onClick={() => router.push(`/system/fleet/customers/${c._id}`)}
                   className={`cursor-pointer hover:bg-orange-50/40 ${c.isActive === false ? 'opacity-55' : ''}`}>
-                  <td className="px-3 py-2.5">
-                    <p className="font-bold text-slate-900">{c.customerCode && <span className="me-1.5 rounded bg-[#12325c] px-1.5 py-0.5 font-mono text-[11px] text-white" dir="ltr">{c.customerCode}</span>}{c.name}</p>
-                    <div className="flex items-center gap-1.5 mt-0.5">
-                      {c.isActive === false && <span className="text-[10px] px-1.5 py-0.5 rounded bg-slate-200 text-slate-600">{t('معطَّل', 'Disabled')}</span>}
-                      {!!c.openTrips && <span className="text-[10px] px-1.5 py-0.5 rounded bg-amber-100 text-amber-700">{t(`${c.openTrips} جارية`, `${c.openTrips} open`)}</span>}
-                      {!!c.rating && <span className="text-[10px] text-amber-500">{'★'.repeat(c.rating)}</span>}
-                    </div>
-                  </td>
-                  <td className="px-3 py-2.5 whitespace-nowrap">
-                    {c.paymentType
-                      ? <span className={`text-[11px] px-2 py-1 rounded-lg font-semibold ${c.paymentType === 'tax' ? 'bg-indigo-50 text-indigo-700' : 'bg-emerald-50 text-emerald-700'}`}>
-                        {ar ? PAY_AR[c.paymentType] || c.paymentType : PAY_EN[c.paymentType] || c.paymentType}</span>
-                      : <span className="text-slate-300">—</span>}
-                  </td>
-                  <td className="px-3 py-2.5 text-slate-600 text-xs">{[c.phone, c.email].filter(Boolean).join(' · ') || '—'}</td>
-                  <td className="px-3 py-2.5 text-center font-semibold text-slate-800">{c.trips || 0}</td>
-                  <td className="px-3 py-2.5 text-center font-semibold text-emerald-700">{money(c.income)}</td>
-                  <td className="px-3 py-2.5 text-center text-slate-700">{money(c.avgTrip)}</td>
-                  <td className="px-3 py-2.5 text-center text-slate-600 whitespace-nowrap">{date(c.lastTrip)}</td>
-                  <td className="px-3 py-2.5 text-xs">
-                    {c.crm
-                      ? <span className="inline-flex items-center gap-1 text-slate-600" title={c.crm.name}><Link2 className="w-3 h-3 text-sky-500" />{(c.crm.arabicName || c.crm.name).slice(0, 22)}</span>
-                      : <span className="text-slate-300">—</span>}
-                  </td>
-                  <td className="px-3 py-2.5 text-center text-slate-600">{(c.routes || []).length || '—'}</td>
-                  {(editor || admin) && (
+                  {viewCols.map((col) => col.td(c))}
+                  {actions && (
                     <td className="px-3 py-2.5" onClick={(e) => e.stopPropagation()}>
                       <div className="flex items-center gap-1">
                         {editor && <button type="button" onClick={() => openEdit(c)} className="p-1.5 rounded-lg text-slate-400 hover:text-[#f37121] hover:bg-slate-100" title={t('تعديل', 'Edit')}><Pencil className="w-3.5 h-3.5" /></button>}

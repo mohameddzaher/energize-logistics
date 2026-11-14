@@ -21,6 +21,7 @@ import {
 } from '@/components/hr/HRKit';
 import ScrollX from '@/components/system/ScrollX';
 import ExportMenu, { exportScopeLabels, type ExportColumn } from '@/components/ls2/ExportMenu';
+import ColumnChooser, { useVisibleColumns, type ChooserColumn } from '@/components/system/ColumnChooser';
 import { useColumnFilters, ClearColumnFilters } from '@/components/useColumnFilters';
 import PortalAccountCard from '@/components/system/PortalAccountCard';
 import CustomerEditDialog, { type EditableCustomer } from '@/components/customers/CustomerEditDialog';
@@ -117,6 +118,10 @@ export default function CustomersRegister({ basePath }: { basePath: string }) {
 
   const money = !!summary && summary.purchaseTotal !== undefined;
   const cols = useMemo(() => REGISTRY_COLS.filter((c) => !c.money || money), [money]);
+  // Chosen columns drive the table and the export; search and column filters still read every column.
+  const chooserCols: ChooserColumn[] = useMemo(() => cols.map((c) => ({ key: c.key as string, label: ar ? c.ar : c.en, locked: c.key === 'name' })), [cols, ar]);
+  const { visible, setVisible } = useVisibleColumns('customers:register:cols', chooserCols);
+  const viewCols = useMemo(() => cols.filter((c) => visible.includes(c.key as string)), [cols, visible]);
 
   const getters = useMemo(
     () => Object.fromEntries(cols.map((c) => [c.key as string, (r: RegistryRow) => cellOf(r, c, ar)])),
@@ -190,7 +195,7 @@ export default function CustomersRegister({ basePath }: { basePath: string }) {
     catch (e: any) { notify(e?.message || 'Request failed', 'error'); }
   }, [ar, confirm, notify, load]);
 
-  const exportCols: ExportColumn[] = useMemo(() => cols.map((c) => ({
+  const exportCols: ExportColumn[] = useMemo(() => viewCols.map((c) => ({
     header: ar ? c.ar : c.en,
     key: c.key as string,
     width: c.width,
@@ -198,7 +203,7 @@ export default function CustomersRegister({ basePath }: { basePath: string }) {
     transform: c.key === 'isActive'
       ? (v: any) => (v === false ? (ar ? 'موقوف' : 'Inactive') : (ar ? 'نشط' : 'Active'))
       : undefined,
-  })), [cols, ar]);
+  })), [viewCols, ar]);
 
   const routePriceCols: ExportColumn[] = useMemo(() => ([
     { header: ar ? 'العميل' : 'Customer', key: 'customer', width: 28 },
@@ -289,6 +294,7 @@ export default function CustomersRegister({ basePath }: { basePath: string }) {
               </button>
             )}
             <ClearColumnFilters count={cf.count} onClear={cf.clear} ar={ar} />
+            <ColumnChooser columns={chooserCols} visible={visible} onChange={setVisible} ar={ar} />
           </div>
         </div>
 
@@ -296,7 +302,7 @@ export default function CustomersRegister({ basePath }: { basePath: string }) {
           <table className="w-full text-[13px]">
             <thead className="sticky top-0 z-10">
               <tr className="bg-slate-900 text-slate-300 text-[11.5px]">
-                {cols.map((c) => (
+                {viewCols.map((c) => (
                   <th key={c.key as string} className={`${th} ${c.num ? 'text-end' : 'text-start'}`}>
                     <span className="inline-flex items-center gap-1">
                       <button type="button" className="inline-flex items-center gap-1 hover:text-white"
@@ -317,7 +323,7 @@ export default function CustomersRegister({ basePath }: { basePath: string }) {
               {pageRows.map((r) => (
                 <tr key={r._id} className="hover:bg-orange-50/40 cursor-pointer"
                   onClick={() => router.push(`${basePath}/${r._id}`)}>
-                  {cols.map((c, ci) => {
+                  {viewCols.map((c, ci) => {
                     if (c.key === 'name') {
                       return (
                         <td key="name" className="px-3 py-2 whitespace-nowrap font-semibold text-slate-900">
@@ -369,7 +375,7 @@ export default function CustomersRegister({ basePath }: { basePath: string }) {
                 </tr>
               ))}
               {!pageRows.length && (
-                <tr><td colSpan={cols.length + 1} className="px-3 py-10 text-center text-slate-400">{ar ? 'لا يوجد عملاء بهذه الشريحة.' : 'No customers match.'}</td></tr>
+                <tr><td colSpan={viewCols.length + 1} className="px-3 py-10 text-center text-slate-400">{ar ? 'لا يوجد عملاء بهذه الشريحة.' : 'No customers match.'}</td></tr>
               )}
             </tbody>
           </table>

@@ -40,6 +40,14 @@ const pickEdit = (body) => { const o = pick(body); delete o.quantity; return o; 
 const YMD = /^\d{4}-\d{2}-\d{2}$/;
 const dayOf = (v) => (YMD.test(String(v || '').trim()) ? String(v).trim() : '');
 const r2 = (n) => Math.round((Number(n) || 0) * 100) / 100;
+const r3 = (n) => Math.round((Number(n) || 0) * 1000) / 1000;
+/** Quantity as typed: fractions allowed (1.5 belts), Arabic digits and the Arabic/comma decimal separator accepted; NaN when not a number. */
+const qtyOf = (v) => {
+  if (typeof v === 'number') return r3(v);
+  const t = String(v ?? '').trim().replace(/[\u0660-\u0669]/g, (d) => String(d.charCodeAt(0) - 0x0660))
+    .replace(/[\u06F0-\u06F9]/g, (d) => String(d.charCodeAt(0) - 0x06F0)).replace(/[\u066B,]/g, '.');
+  return t === '' || !/^-?\d*\.?\d+$/.test(t) ? NaN : r3(Number(t));
+};
 const foldName = (s) => String(s || '').trim().toLowerCase()
   .replace(/[أإآ]/g, 'ا').replace(/ى/g, 'ي').replace(/ة/g, 'ه').replace(/[\u064B-\u0652\u0640]/g, '').replace(/\s+/g, ' ');
 
@@ -146,7 +154,7 @@ async function createItems(req, rows) {
   const out = [];
   for (const b of rows) {
     const data = pick(b);
-    const qty = Math.max(0, Number(data.quantity) || 0);
+    const qty = Math.max(0, qtyOf(data.quantity) || 0);
     // eslint-disable-next-line no-await-in-loop
     const sup = await resolveSupplier(req, b.supplier, b.supplierName);
     const purchaseDate = dayOf(b.purchaseDate) || todayKey();
@@ -186,7 +194,7 @@ exports.createItemsBulk = async (req, res) => {
       else if (isHeavyRim(req, name)) errors.push({ line, message: RIM_IN_STORE.message });
       seen.add(foldName(name));
       if (needsPrice(req) && !(Number(b?.unitPrice) > 0)) errors.push({ line, message: 'اكتب سعر القطعة الواحدة' });
-      if (!(Number(b?.quantity) >= 0)) errors.push({ line, message: 'العدد غير صحيح' });
+      if (!(qtyOf(b?.quantity ?? 0) >= 0)) errors.push({ line, message: 'العدد غير صحيح' });
     });
     if (errors.length) return res.status(400).json({ message: 'رُفضت الدفعة — لم يُضَف أيّ صنف', errors });
     const shared = { supplier: req.body.supplier, supplierName: req.body.supplierName, purchaseDate: req.body.purchaseDate };
@@ -229,7 +237,7 @@ exports.addMovement = async (req, res) => {
     const item = await Ls2StoreItem.findById(req.params.id);
     if (!item) return res.status(404).json({ message: 'Not found' });
     const type = req.body.type === 'in' ? 'in' : req.body.type === 'out' ? 'out' : null;
-    const qty = Math.abs(Number(req.body.quantity) || 0);
+    const qty = Math.abs(qtyOf(req.body.quantity) || 0);
     if (!type) return res.status(400).json({ message: 'نوع الحركة غير صحيح' });
     if (qty <= 0) return res.status(400).json({ message: 'أدخل كمية صحيحة' });
     const issueReason = type === 'out' ? issueReasonOf(req.body) : '';
@@ -250,7 +258,7 @@ exports.addMovement = async (req, res) => {
     const sup = type === 'in' ? await resolveSupplier(req, req.body.supplier, req.body.supplierName) : null;
     const date = dayOf(req.body.date) || todayKey();
     if (type === 'in') { if (sup) Object.assign(item, sup); item.purchaseDate = date; }
-    item.quantity += type === 'in' ? qty : -qty;
+    item.quantity = r3(item.quantity + (type === 'in' ? qty : -qty));
     // The plate is typed as workshop staff know it and resolved to its register vehicle when known.
     const vehiclePlate = (req.body.vehiclePlate || '').trim();
     const vehicleMaster = await resolveLs2Plate(vehiclePlate, { heavy: (item.warehouse || 'heavy') === 'heavy' }).catch(() => null);
@@ -291,7 +299,7 @@ exports.addBulkMovement = async (req, res) => {
     if (!raw.length) return res.status(400).json({ message: 'اختر صنفًا واحدًا على الأقل' });
     if (raw.length > 300) return res.status(400).json({ message: 'الحد الأقصى ٣٠٠ صنف في المرة الواحدة' });
 
-    const fallback = Math.max(1, Number(req.body?.quantityEach) || 1);
+    const fallback = qtyOf(req.body?.quantityEach) > 0 ? qtyOf(req.body.quantityEach) : 1;
     const vehiclePlate = (req.body?.vehiclePlate || '').trim();
     const reason = (req.body?.reason || '').trim();
     const issueReason = type === 'out' ? issueReasonOf(req.body) : '';
@@ -306,13 +314,13 @@ exports.addBulkMovement = async (req, res) => {
     raw.forEach((l, i) => {
       const id = String(l.item || l.id || l);
       const q = l.quantity === undefined || l.quantity === null || l.quantity === ''
-        ? fallback : Number(l.quantity);
+        ? fallback : qtyOf(l.quantity);
       if (!id) { errors.push({ line: i + 1, message: 'الصنف غير محدَّد' }); return; }
-      if (!Number.isInteger(q) || q < 1) {
-        errors.push({ id, line: i + 1, message: `الكمية «${l.quantity}» غير صالحة — يلزم رقم صحيح لا يقل عن ١` });
+      if (!(q > 0)) {
+        errors.push({ id, line: i + 1, message: `الكمية «${l.quantity}» غير صالحة — أدخل رقمًا أكبر من صفر (مثل 1 أو 1.5)` });
         return;
       }
-      wanted.set(id, asLines ? (wanted.get(id) || 0) + q : q);
+      wanted.set(id, asLines ? r3((wanted.get(id) || 0) + q) : q);
       if (l && typeof l === 'object' && l.unitPrice !== undefined && l.unitPrice !== '' && l.unitPrice !== null) prices.set(id, Number(l.unitPrice));
     });
 
@@ -349,7 +357,7 @@ exports.addBulkMovement = async (req, res) => {
     const movements = [];
     for (const [id, qty] of wanted) {
       const it = found.get(id);
-      it.quantity += type === 'in' ? qty : -qty;
+      it.quantity = r3(it.quantity + (type === 'in' ? qty : -qty));
       if (type === 'in') { if (it.warehouse !== 'light') it.unitPrice = prices.get(id); if (sup) Object.assign(it, sup); it.purchaseDate = date; }
       await it.save();
       movements.push({
@@ -407,7 +415,7 @@ exports.reverseMovement = async (req, res) => {
     if (!item) return res.status(404).json({ message: 'الصنف غير موجود' });
 
     // Reversing a receipt removes quantity from the store, so it fails if that stock was already issued.
-    const after = item.quantity - effectOf(mv.type, mv.quantity);
+    const after = r3(item.quantity - effectOf(mv.type, mv.quantity));
     if (after < 0) {
       return res.status(400).json({
         message: `لا يمكن التراجع: العملية تحتاج سحب ${mv.quantity} ${item.unit} والرصيد الحالي ${item.quantity} فقط. سجّل وارد أولاً ثم أعد المحاولة.`,

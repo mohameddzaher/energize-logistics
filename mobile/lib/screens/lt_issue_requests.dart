@@ -5,6 +5,7 @@ import 'package:provider/provider.dart';
 import '../services/api.dart';
 import '../services/auth.dart';
 import '../services/lang.dart';
+import '../services/qty.dart';
 import '../services/live.dart';
 import '../ui/app_scaffold.dart';
 import '../ui/search_field.dart';
@@ -444,7 +445,7 @@ class _IssueRequestFormState extends State<_IssueRequestForm> {
           final it = l.item;
           if (it == null) return (null, l.serverErr);
           final raw = l.qty.text.trim();
-          final q = num.tryParse(raw) ?? 0;
+          final q = parseQty(raw) ?? 0;
           final id = '${it['_id']}';
           used[id] = _r3((used[id] ?? 0) + (q > 0 ? q : 0));
           final after = _r3(_num(it['quantity']) - used[id]!);
@@ -477,7 +478,7 @@ class _IssueRequestFormState extends State<_IssueRequestForm> {
         'vehiclePlate': _plate.trim(),
         'issueReason': _issueReason,
         'note': _note.text.trim(),
-        'lines': [for (final l in filled) {'item': l.item?['_id'], 'quantity': num.tryParse(l.qty.text.trim()) ?? 0}],
+        'lines': [for (final l in filled) {'item': l.item?['_id'], 'quantity': parseQty(l.qty.text) ?? 0}],
       });
       if (!mounted) return;
       Navigator.pop(context, Map<String, dynamic>.from(d['request'] ?? {}));
@@ -499,7 +500,7 @@ class _IssueRequestFormState extends State<_IssueRequestForm> {
   Widget build(BuildContext context) {
     final computed = _computed();
     final filled = _lines.where((l) => l.item != null || l.qty.text.trim().isNotEmpty).toList();
-    final incomplete = filled.any((l) => l.item == null || !((num.tryParse(l.qty.text.trim()) ?? 0) > 0));
+    final incomplete = filled.any((l) => l.item == null || !((parseQty(l.qty.text) ?? 0) > 0));
     final anyErr = computed.any((c) => c.$2 != null);
     final canSave = _date.isNotEmpty && _plate.trim().isNotEmpty && _issueReason.isNotEmpty && filled.isNotEmpty && !incomplete && !anyErr && !_busy;
     final hit = _plates.where((p) => storePlateKey(p['plate']) == storePlateKey(_plate)).firstOrNull;

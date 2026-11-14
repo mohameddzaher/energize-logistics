@@ -5,6 +5,7 @@ import '../services/api.dart';
 import '../services/auth.dart';
 import '../services/lang.dart';
 import '../services/live.dart';
+import '../services/qty.dart';
 import '../ui/app_scaffold.dart';
 import '../ui/export_sheet.dart';
 import '../ui/lookup_field.dart';
@@ -1014,7 +1015,7 @@ class _MovementSheetState extends State<_MovementSheet> {
   void dispose() { _qty.dispose(); _reason.dispose(); _price.dispose(); super.dispose(); }
 
   Future<void> _submit() async {
-    final qty = num.tryParse(_qty.text.trim()) ?? 0;
+    final qty = parseQty(_qty.text) ?? 0;
     final price = num.tryParse(_price.text.trim()) ?? 0;
     if (qty <= 0) { setState(() => _err = tr('أدخل كمية صحيحة', 'Enter a quantity')); return; }
     if (_isIn && !_isLightStore(widget.base) && price <= 0) { setState(() => _priceErr = tr('اكتب سعر القطعة الواحدة', 'Enter the price per piece')); return; }
@@ -1041,7 +1042,7 @@ class _MovementSheetState extends State<_MovementSheet> {
     final hit = _plate.trim().isEmpty
         ? const <String, dynamic>{}
         : widget.plates.firstWhere((r) => widget.pk(r['plate']) == widget.pk(_plate), orElse: () => const {});
-    final total = (num.tryParse(_qty.text.trim()) ?? 0) * (num.tryParse(_price.text.trim()) ?? 0);
+    final total = (parseQty(_qty.text) ?? 0) * (num.tryParse(_price.text.trim()) ?? 0);
     return Padding(
       padding: EdgeInsets.fromLTRB(18, 16, 18, MediaQuery.of(context).viewInsets.bottom + 18),
       child: SingleChildScrollView(
@@ -1051,7 +1052,7 @@ class _MovementSheetState extends State<_MovementSheet> {
           Text('${it['name']} · ${tr('الرصيد', 'balance')}: ${it['quantity']} ${it['unit'] ?? ''}', style: const TextStyle(fontSize: 12.5, color: T.inkFaint)),
           const SizedBox(height: 14),
           if (_err != null) _errBox(_err!),
-          TextField(controller: _qty, keyboardType: TextInputType.number, autofocus: true, onChanged: (_) => setState(() => _err = null), decoration: InputDecoration(labelText: tr('الكمية *', 'Quantity *'))),
+          TextField(controller: _qty, keyboardType: qtyKeyboard, autofocus: true, onChanged: (_) => setState(() => _err = null), decoration: InputDecoration(labelText: tr('الكمية *', 'Quantity *'))),
           const SizedBox(height: 10),
           if (isIn) ...[
             if (!_isLightStore(widget.base)) ...[
@@ -1174,7 +1175,8 @@ class _BulkMovementSheetState extends State<_BulkMovementSheet> {
     super.dispose();
   }
 
-  num _n(String id) { final v = num.tryParse(_qty[id]!.text.trim()) ?? 1; return v < 1 ? 1 : v; }
+  // Fractions are allowed (1.5 belts); an empty or invalid field means one piece.
+  num _n(String id) { final v = parseQty(_qty[id]!.text) ?? 1; return v > 0 ? v : 1; }
 
   Future<void> _submit() async {
     if (!_isIn && _issueReason.isEmpty) { setState(() => _err = tr('اختر سبب الصرف', 'Choose the issue reason')); return; }
@@ -1295,7 +1297,7 @@ class _BulkMovementSheetState extends State<_BulkMovementSheet> {
                     const SizedBox(height: 6),
                     Row(children: [
                       SizedBox(width: 80, child: TextField(
-                        controller: _qty[id], keyboardType: TextInputType.number, textAlign: TextAlign.center,
+                        controller: _qty[id], keyboardType: qtyKeyboard, textAlign: TextAlign.center,
                         onChanged: (_) => setState(() {}),
                         decoration: InputDecoration(isDense: true, labelText: tr('الكمية', 'Qty')),
                       )),
@@ -1388,10 +1390,10 @@ class _ItemFormSheetState extends State<_ItemFormSheet> {
       'unit': _unit.text.trim(),
       if (!_light) 'unitPrice': num.tryParse(_price.text.trim()) ?? 0,
       if (_light) 'supplierItemName': _supName.text.trim(),
-      'minQuantity': num.tryParse(_minQ.text.trim()) ?? 0, 'notes': _notes.text.trim(),
+      'minQuantity': parseQty(_minQ.text) ?? 0, 'notes': _notes.text.trim(),
       'purchaseDate': _date,
       if (_supplier.isNotEmpty) ..._supplierBody(_supplier) else ...{'supplier': '', 'supplierName': ''},
-      if (_isNew) 'quantity': _light ? 0 : (num.tryParse(_qty.text.trim()) ?? 0),
+      if (_isNew) 'quantity': _light ? 0 : (parseQty(_qty.text) ?? 0),
     };
     setState(() { _busy = true; _err = null; });
     try {
@@ -1405,7 +1407,7 @@ class _ItemFormSheetState extends State<_ItemFormSheet> {
 
   @override
   Widget build(BuildContext context) {
-    final total = (num.tryParse(_qty.text.trim()) ?? 0) * (num.tryParse(_price.text.trim()) ?? 0);
+    final total = (parseQty(_qty.text) ?? 0) * (num.tryParse(_price.text.trim()) ?? 0);
     return Padding(
       padding: EdgeInsets.fromLTRB(18, 16, 18, MediaQuery.of(context).viewInsets.bottom + 18),
       child: SingleChildScrollView(child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
@@ -1433,7 +1435,7 @@ class _ItemFormSheetState extends State<_ItemFormSheet> {
         ]),
         const SizedBox(height: 10),
         if (!_light) Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          if (_isNew) Expanded(flex: 2, child: TextField(controller: _qty, keyboardType: TextInputType.number, onChanged: (_) => setState(() {}), decoration: InputDecoration(labelText: tr('العدد', 'Quantity')))),
+          if (_isNew) Expanded(flex: 2, child: TextField(controller: _qty, keyboardType: qtyKeyboard, onChanged: (_) => setState(() {}), decoration: InputDecoration(labelText: tr('العدد', 'Quantity')))),
           if (_isNew) const SizedBox(width: 10),
           Expanded(flex: 3, child: TextField(
             controller: _price, keyboardType: const TextInputType.numberWithOptions(decimal: true),
@@ -1450,7 +1452,7 @@ class _ItemFormSheetState extends State<_ItemFormSheet> {
             child: Text('${tr('الإجمالي', 'Total')}: ${_money(total)} ${tr('ر.س', 'SAR')}', style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w800, color: T.success)),
           ),
         const SizedBox(height: 10),
-        TextField(controller: _minQ, keyboardType: TextInputType.number, decoration: InputDecoration(labelText: tr('حد التنبيه (نقص)', 'Min qty (low alert)'))),
+        TextField(controller: _minQ, keyboardType: qtyKeyboard, decoration: InputDecoration(labelText: tr('حد التنبيه (نقص)', 'Min qty (low alert)'))),
         const SizedBox(height: 10),
         TextField(controller: _notes, maxLines: 2, decoration: InputDecoration(labelText: tr('ملاحظات', 'Notes'))),
         if (!_isNew)
@@ -1537,7 +1539,7 @@ class _BulkCreateScreenState extends State<_BulkCreateScreen> {
         if (_supplier.isNotEmpty) ..._supplierBody(_supplier),
         'items': filled.map((x) => {
               'name': x.name.text.trim(), 'category': x.cat.text.trim(), 'code': x.code.text.trim(),
-              'quantity': _isLightStore(widget.base) ? 0 : (num.tryParse(x.qty.text.trim()) ?? 0), 'unit': x.unit,
+              'quantity': _isLightStore(widget.base) ? 0 : (parseQty(x.qty.text) ?? 0), 'unit': x.unit,
               if (!_isLightStore(widget.base)) 'unitPrice': num.tryParse(x.price.text.trim()) ?? 0,
               if (_isLightStore(widget.base)) 'supplierItemName': x.supName.text.trim(),
             }).toList(),
@@ -1602,7 +1604,7 @@ class _BulkCreateScreenState extends State<_BulkCreateScreen> {
         const SizedBox(height: 8),
         Row(children: [
           if (!_isLightStore(widget.base)) ...[
-          Expanded(flex: 2, child: TextField(controller: r.qty, keyboardType: TextInputType.number, onChanged: (_) => setState(() {}), decoration: InputDecoration(labelText: tr('العدد', 'Qty'), isDense: true))),
+          Expanded(flex: 2, child: TextField(controller: r.qty, keyboardType: qtyKeyboard, onChanged: (_) => setState(() {}), decoration: InputDecoration(labelText: tr('العدد', 'Qty'), isDense: true))),
           const SizedBox(width: 8),
           ],
           Expanded(flex: 3, child: DropdownButtonFormField<String>(

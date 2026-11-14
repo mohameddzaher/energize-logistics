@@ -636,7 +636,8 @@ function BulkOutModal({ items, plates, ar, kind = 'out', onClose, onDone, base, 
   const [busy, setBusy] = useState(false);
   const [errors, setErrors] = useState<Record<string, string>>({});
 
-  const n = (id: string) => Math.max(1, Number(qty[id]) || 1);
+  // Fractions are allowed (1.5 belts); an empty or invalid field means one piece.
+  const n = (id: string) => (Number(qty[id]) > 0 ? Math.round(Number(qty[id]) * 1000) / 1000 : 1);
   const { noPrices } = useStoreFlags();
   const unpriced = isIn && !noPrices ? items.filter((i) => !(Number(price[i._id]) > 0)) : [];
   const short = isIn ? [] : items.filter((i) => i.quantity < n(i._id));
@@ -724,7 +725,7 @@ function BulkOutModal({ items, plates, ar, kind = 'out', onClose, onDone, base, 
                     <span className="text-[11.5px] text-slate-600 tabular-nums whitespace-nowrap">
                       {i.quantity} {i.unit}
                     </span>
-                    <input type="number" min={1} value={qty[i._id] ?? '1'}
+                    <input type="number" min={0} step="any" inputMode="decimal" value={qty[i._id] ?? '1'}
                       onChange={(e) => setQty((q) => ({ ...q, [i._id]: e.target.value }))}
                       className="w-20 px-2 py-1 rounded-lg border border-slate-300 text-[13px] text-center tabular-nums" />
                     {isIn && !noPrices && (
@@ -879,7 +880,7 @@ function MovementModal({ move, plates, ar, onClose, onDone, base, suppliers }: {
         </div>
         <p className="text-sm text-slate-500 mb-4">{move.item.name} · {ar ? 'الرصيد الحالي' : 'current'}: <b>{move.item.quantity}</b> {move.item.unit}</p>
         <div className="space-y-3">
-          <div><label className="block text-xs font-semibold text-slate-600 mb-1">{ar ? 'الكمية' : 'Quantity'} *</label><input type="number" min={1} value={qty} onChange={(e) => setQty(e.target.value)} className={inp} autoFocus /></div>
+          <div><label className="block text-xs font-semibold text-slate-600 mb-1">{ar ? 'الكمية' : 'Quantity'} *</label><input type="number" min={0} step="any" inputMode="decimal" value={qty} onChange={(e) => setQty(e.target.value)} className={inp} autoFocus /></div>
           {isIn && !noPrices && (
             <div>
               <label className="block text-xs font-semibold text-slate-600 mb-1">{ar ? 'سعر القطعة الواحدة (ر.س)' : 'Unit price (SAR)'} *</label>
@@ -958,9 +959,9 @@ function ItemFormModal({ item, ar, onClose, onSaved, base, suppliers }: { item: 
           </div>
           <div><label className={formLabel}>{ar ? 'تاريخ الشراء' : 'Purchase date'}</label><input type="date" className={formInput} value={f.purchaseDate || ''} onChange={(e) => set('purchaseDate', e.target.value)} /></div>
           <div><label className={formLabel}>{ar ? 'الوحدة' : 'Unit'}</label><ManagedSelect type="ls2_store_unit" storeLabel value={f.unit || ''} onChange={(v) => set('unit', v)} placeholder={ar ? 'قطعة / لتر…' : 'Piece / litre…'} /></div>
-          {!item && !noInitialQty && <div><label className={formLabel}>{ar ? 'العدد' : 'Quantity'}</label><input type="number" min={0} className={formInput} value={f.quantity} onChange={(e) => set('quantity', e.target.value === '' ? '' : Number(e.target.value))} /></div>}
+          {!item && !noInitialQty && <div><label className={formLabel}>{ar ? 'العدد' : 'Quantity'}</label><input type="number" min={0} step="any" inputMode="decimal" className={formInput} value={f.quantity} onChange={(e) => set('quantity', e.target.value === '' ? '' : Number(e.target.value))} /></div>}
           {!noPrices && <div><label className={formLabel}>{ar ? 'سعر القطعة الواحدة (ر.س) *' : 'Unit price (SAR) *'}</label><input type="number" min={0} step="0.01" className={formInput} value={f.unitPrice || ''} onChange={(e) => set('unitPrice', e.target.value === '' ? 0 : Number(e.target.value))} /></div>}
-          <div><label className={formLabel}>{ar ? 'حد التنبيه (نقص)' : 'Min qty (low alert)'}</label><input type="number" className={formInput} value={f.minQuantity || 0} onChange={(e) => set('minQuantity', Number(e.target.value))} /></div>
+          <div><label className={formLabel}>{ar ? 'حد التنبيه (نقص)' : 'Min qty (low alert)'}</label><input type="number" min={0} step="any" inputMode="decimal" className={formInput} value={f.minQuantity || 0} onChange={(e) => set('minQuantity', Number(e.target.value))} /></div>
           {!item && !noPrices && total > 0 && <p className="md:col-span-2 rounded-lg bg-emerald-50 px-3 py-2 text-[13px] text-emerald-800">{ar ? 'الإجمالي' : 'Total'}: <b>{total.toLocaleString('en-US', { maximumFractionDigits: 2 })}</b> {ar ? 'ر.س' : 'SAR'}</p>}
           <div className="md:col-span-2"><label className={formLabel}>{ar ? 'ملاحظات' : 'Notes'}</label><textarea className={formInput} rows={2} value={f.notes || ''} onChange={(e) => set('notes', e.target.value)} /></div>
         </div>
@@ -1040,7 +1041,7 @@ function BulkCreateModal({ ar, onClose, onSaved, base, suppliers }: { ar: boolea
                   {supplierItemName && <td className="px-2 py-1.5 min-w-[12rem]"><input className={cell} value={r.supplierItemName} onChange={(e) => setRow(r.id, 'supplierItemName', e.target.value)} /></td>}
                   <td className="px-2 py-1.5"><input className={cell} value={r.category} onChange={(e) => setRow(r.id, 'category', e.target.value)} /></td>
                   <td className="px-2 py-1.5 w-28"><input className={cell} value={r.code} onChange={(e) => setRow(r.id, 'code', e.target.value)} /></td>
-                  {!noInitialQty && <td className="px-2 py-1.5 w-20"><input type="number" min={0} className={cell} value={r.quantity} onChange={(e) => setRow(r.id, 'quantity', e.target.value)} /></td>}
+                  {!noInitialQty && <td className="px-2 py-1.5 w-20"><input type="number" min={0} step="any" inputMode="decimal" className={cell} value={r.quantity} onChange={(e) => setRow(r.id, 'quantity', e.target.value)} /></td>}
                   <td className="px-2 py-1.5 w-24">
                     <select className={cell} value={r.unit} onChange={(e) => setRow(r.id, 'unit', e.target.value)}>
                       {[...new Set([r.unit, ...units])].map((u) => <option key={u} value={u}>{u}</option>)}

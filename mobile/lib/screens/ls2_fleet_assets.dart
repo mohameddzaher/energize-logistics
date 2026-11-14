@@ -918,7 +918,8 @@ class _Ls2FleetAssetsScreenState extends State<Ls2FleetAssetsScreen> {
     final needsReplacement = t['status'] == 'mounted'
         && !(t['isSpare'] == true || (t['section'] ?? '').toString().contains('استبن'));
     String destination = 'store';
-    final percent = TextEditingController();
+    // Starts from the tire's current rating (edited on the tire or set at its last dismount).
+    final percent = TextEditingController(text: t['conditionPercent'] != null ? '${t['conditionPercent']}' : '');
     final reason = TextEditingController();
     Map<String, dynamic>? replacement;
     bool swap = false;

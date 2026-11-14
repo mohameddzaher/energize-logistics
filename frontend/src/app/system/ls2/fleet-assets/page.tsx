@@ -1251,7 +1251,8 @@ function DismountTireModal({ tire, tires, ar, busy, onClose, onSubmit }: {
   onClose: () => void; onSubmit: (body: any) => void;
 }) {
   const [destination, setDestination] = useState<string>('');
-  const [percent, setPercent] = useState('');
+  // Starts from the tire's current rating (edited on the tire or set at its last dismount).
+  const [percent, setPercent] = useState(tire.conditionPercent != null ? String(tire.conditionPercent) : '');
   // السلسلة: [البديلة، ثمّ ما يملأ مكانها، ثمّ …] — راجع ReplacementChain.
   const [chain, setChain] = useState<string[]>([]);
   const replacementId = chain[0] || '';

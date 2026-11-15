@@ -374,6 +374,7 @@ exports.updateUser = async (req, res) => {
     }
     const nextBranches = branchesFrom(req, user.role);
     if (nextBranches) { user.shipmentBranches = nextBranches; announceBranchAccess(); }
+    const managerBefore = user.manager;
     if (manager !== undefined) user.manager = manager || null;
     if (remoteAccess !== undefined) {
       user.remoteAccess = (role === 'remote_employee' || user.role === 'remote_employee') && Array.isArray(remoteAccess) ? remoteAccess : [];
@@ -409,6 +410,11 @@ exports.updateUser = async (req, res) => {
     await user.save();
     // Role/active/lock changes must take effect now, not after the cache TTL.
     invalidateUserCache(user._id);
+    // Requests and leaves still waiting on the old direct manager follow the change (utils/managerHandover).
+    let handedOver = null;
+    if (manager !== undefined && String(managerBefore || '') !== String(user.manager || '')) {
+      handedOver = await require('../utils/managerHandover').handOverToNewManager(user._id, managerBefore, user.manager, req.user).catch(() => null);
+    }
 
     await logAudit({
       user: req.user._id,
@@ -419,11 +425,12 @@ exports.updateUser = async (req, res) => {
         before,
         after: { firstName: user.firstName, lastName: user.lastName, role: user.role, email: user.email, isTopManagement: user.isTopManagement === true, isChairman: user.isChairman === true, leaveSheetSigner: user.leaveSheetSigner || '' },
         passwordChanged: !!req.body.password || undefined,
+        managerHandover: handedOver && (handedOver.requests || handedOver.leaves) ? handedOver : undefined,
       },
       ipAddress: req.ip,
     });
 
-    res.json({ user });
+    res.json({ user, managerHandover: handedOver || undefined });
   } catch (error) {
     res.status(500).json({ message: 'Failed to update user' });
   }

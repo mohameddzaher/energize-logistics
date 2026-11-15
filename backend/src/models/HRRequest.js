@@ -50,7 +50,7 @@ const hrRequestSchema = new mongoose.Schema(
       at: { type: Date, default: Date.now },
       by: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
       byName: { type: String, trim: true },
-      action: { type: String, enum: ['created', 'forwarded', 'in_progress', 'resolved', 'rejected', 'closed', 'cancelled', 'reopened', 'status'] },
+      action: { type: String, enum: ['created', 'forwarded', 'in_progress', 'resolved', 'rejected', 'closed', 'cancelled', 'reopened', 'status', 'manager_changed'] },
       fromSection: { type: String, trim: true },
       toSection: { type: String, trim: true },
       status: { type: String, trim: true },

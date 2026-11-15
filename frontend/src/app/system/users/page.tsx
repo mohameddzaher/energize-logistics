@@ -8,6 +8,7 @@ import api from '@/lib/api';
 import DataTable from '@/components/system/DataTable';
 import RowMenu from '@/components/system/RowMenu';
 import { useSocket } from '@/hooks/useSocket';
+import { useDialog } from '@/components/system/DialogProvider';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   UserCog, Plus, X, RefreshCw, Lock, Unlock, KeyRound,
@@ -143,6 +144,7 @@ const SHIPMENT_BRANCH_ROLES = ['data_entry', 'data_analyst', 'shipment_orders_fo
 const OPS_TEAM_ROLES = ['operations_manager', 'operations_team_leader', 'operations_staff'];
 
 export default function UsersPage() {
+  const { notify: notifyMsg } = useDialog();
   const { user: currentUser } = useAuth();
   const { lang } = useLanguage();
   const T = getUsersTranslations(lang);
@@ -499,7 +501,12 @@ export default function UsersPage() {
       if (['super_admin', 'admin', 'it_manager', 'it_team_leader', 'it_specialist'].includes(currentUser?.role || '')) payload.isChairman = !!formData.isChairman;
       // Sent only for the eligible roles, so editing anyone else never clears or moves a box.
       if (['hr_manager', 'hr_team_leader', 'cfo', 'accounting_manager', 'accounting_team_leader'].includes(formData.role)) payload.leaveSheetSigner = formData.leaveSheetSigner || '';
-      await api.put(`/api/users/${selectedUser._id}`, payload);
+      const saved = await api.put<{ managerHandover?: { requests: number; leaves: number } }>(`/api/users/${selectedUser._id}`, payload);
+      // What still waited on the old direct manager moved to the new one (backend utils/managerHandover).
+      const ho = saved?.managerHandover;
+      if (ho && (ho.requests || ho.leaves)) {
+        notifyMsg(lang === 'ar' ? `انتقل إلى المدير المباشر الجديد: ${ho.requests} طلب و${ho.leaves} إجازة كانت تنتظر المدير السابق.` : `Moved to the new direct manager: ${ho.requests} request(s) and ${ho.leaves} leave(s) that waited on the previous one.`);
+      }
       setShowEditModal(false);
       setSelectedUser(null);
       fetchUsers();

@@ -23,7 +23,7 @@ const _openStatuses = ['open', 'in_progress', 'received'];
 const _actionLabels = {
   'created': ('قُدِّم الطلب', 'Submitted'), 'forwarded': ('حُوِّل', 'Forwarded'), 'in_progress': ('بدأ التنفيذ', 'Started'),
   'resolved': ('أُنجز', 'Resolved'), 'rejected': ('رُفض', 'Rejected'), 'closed': ('أُغلق', 'Closed'),
-  'cancelled': ('ألغاه صاحبه', 'Cancelled by the requester'), 'status': ('تغيّرت الحالة', 'Status changed'),
+  'cancelled': ('ألغاه صاحبه', 'Cancelled by the requester'), 'status': ('تغيّرت الحالة', 'Status changed'), 'manager_changed': ('تغيّر المدير المباشر', 'Direct manager changed'),
 };
 
 String _person(dynamic u) => u is Map ? '${u['firstName'] ?? ''} ${u['lastName'] ?? ''}'.trim() : '';

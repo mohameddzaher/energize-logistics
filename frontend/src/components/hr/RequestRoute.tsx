@@ -15,6 +15,7 @@ const ACTION: Record<string, { ar: string; en: string }> = {
   closed: { ar: 'أُغلق', en: 'Closed' },
   cancelled: { ar: 'ألغاه صاحبه', en: 'Cancelled by the requester' },
   status: { ar: 'تغيّرت الحالة', en: 'Status changed' },
+  manager_changed: { ar: 'تغيّر المدير المباشر', en: 'Direct manager changed' },
 };
 
 export const targetName = (key: string | null | undefined, targets: Target[], ar: boolean) => {

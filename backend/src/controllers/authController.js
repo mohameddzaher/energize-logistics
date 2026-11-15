@@ -4,14 +4,25 @@ const logAudit = require('../utils/auditLogger');
 const { invalidateUserCache, revokeAccessToken } = require('../middleware/auth');
 const { COOKIE_OPTIONS } = require('../config/constants');
 
-// How many devices or browsers a user can stay logged in on at once.
-const MAX_SESSIONS = 8;
+// Devices or browsers one account stays logged in on at once. At 8, 55 of 73 accounts were full (shared office
+// logins, phone + several browsers), so each new login silently logged another device out.
+const MAX_SESSIONS = 40;
 
 // Sliding session. The refresh token used to expire 7 days after login, not after last use, so a daily user was logged out on day 8 for no visible reason. Now a token past half its life is replaced at refresh and the old one stays valid for a short grace period. The grace is needed because a user may have ten tabs refreshing at the same moment; revoking the old token immediately would log nine of them out.
 const REFRESH_DAYS = Number(process.env.JWT_REFRESH_DAYS || 30);
 const REFRESH_MS = REFRESH_DAYS * 24 * 60 * 60 * 1000;
 // How long the old token stays valid after its replacement is issued; enough for tabs refreshing together.
 const GRACE_MS = 5 * 60 * 1000;
+
+// A rotated token now also stays in the sessions array until it expires: the in-memory grace below is per worker
+// (prod runs two) and empty after a restart, so a tab whose refresh landed on the other worker was logged out.
+// Expired tokens are pruned on every session write, so the array holds only live sessions.
+const isExpired = (t) => { const d = jwt.decode(t); return !d || !d.exp || d.exp * 1000 <= Date.now(); };
+async function addSession(userId, token, sessions, extra = {}) {
+  const dead = (sessions || []).filter(isExpired);
+  if (dead.length) await User.updateOne({ _id: userId }, { $pull: { refreshTokens: { $in: dead } } });
+  await User.updateOne({ _id: userId }, { $push: { refreshTokens: { $each: [token], $slice: -MAX_SESSIONS } }, ...(Object.keys(extra).length ? { $set: extra } : {}) });
+}
 
 // A token in its grace period lives here, not in the user's sessions array. It used to share the array with its replacement, so one session took two slots, the array reached nine and slice(-8) evicted another device; with eight devices every refresh logged out an unrelated person. Age is measured by time, not a deferred delete: a deferred delete invalidated the old token after five minutes even if the response carrying the new one was lost in the network, leaving the device on an unknown token, and a restart before the delete kept the old token valid forever.
 const grace = new Map(); // token to grace-expiry time
@@ -41,7 +52,8 @@ const generateRefreshToken = (userId) => {
   return jwt.sign(
     { userId, sid: require('crypto').randomBytes(9).toString('base64url') },
     process.env.JWT_REFRESH_SECRET,
-    { expiresIn: process.env.JWT_REFRESH_EXPIRY || `${REFRESH_DAYS}d` },
+    // One lifetime for the token and its cookie; JWT_REFRESH_EXPIRY=7d on prod cut the 30-day cookie to 7 days.
+    { expiresIn: `${REFRESH_DAYS}d` },
   );
 };
 
@@ -81,10 +93,7 @@ exports.login = async (req, res) => {
 
     // Keep this device's session alongside existing ones (phone, desktop and other browsers stay logged in); capped to the most recent MAX_SESSIONS.
     // Atomic update, not user.save(): two simultaneous logins of one user (mobile and web) read and saved the same version, so the second hit VersionError and returned 500. Pushing in the DB does not conflict.
-    await User.updateOne({ _id: user._id }, {
-      $push: { refreshTokens: { $each: [refreshToken], $slice: -MAX_SESSIONS } },
-      $set: { refreshToken, lastLogin: new Date() }, // refreshToken: legacy field, kept in sync
-    });
+    await addSession(user._id, refreshToken, user.refreshTokens, { refreshToken, lastLogin: new Date() }); // refreshToken: legacy field, kept in sync
     // A cached (pre-login) copy may be stale now that we've updated the user.
     invalidateUserCache(user._id);
 
@@ -183,7 +192,7 @@ exports.refresh = async (req, res) => {
     }
     // Migrate a legacy-only session into the sessions array.
     if (!sessions.includes(token)) {
-      await User.updateOne({ _id: user._id }, { $push: { refreshTokens: { $each: [token], $slice: -MAX_SESSIONS } } });
+      await addSession(user._id, token, sessions);
     }
 
     if (!user.isActive || user.isLocked) {
@@ -201,12 +210,9 @@ exports.refresh = async (req, res) => {
     let outgoing = token;
     if (isStale(decoded)) {
       outgoing = generateRefreshToken(user._id);
-      // Atomic in the DB, not read-modify-write. Two tabs refreshing at once carry the same token and each reads and writes the whole array, so the second write erases the first's replacement and the last response to reach the browser wins; if the loser holds the last cookie the user is logged out. $pull then $push with $slice makes it one DB operation.
-      await User.updateOne({ _id: user._id }, { $pull: { refreshTokens: token } });
-      await User.updateOne({ _id: user._id }, {
-        $push: { refreshTokens: { $each: [outgoing], $slice: -MAX_SESSIONS } },
-        $set: { refreshToken: outgoing },
-      });
+      // Atomic $pull/$push, never a read-modify-write of the whole array: tabs refreshing together would erase each other's tokens.
+      // The old token is kept until it expires (see addSession): a tab still holding it, on either worker, stays in.
+      await addSession(user._id, outgoing, sessions, { refreshToken: outgoing });
       // The old token stays accepted during the grace period, in memory, not in the array.
       grace.set(token, Date.now() + GRACE_MS);
     }

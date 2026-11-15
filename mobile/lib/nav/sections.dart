@@ -1,3 +1,4 @@
+import '../screens/incoming_requests.dart';
 import '../screens/heavy_freelancers.dart';
 import '../services/roles.dart';
 import '../screens/mediago_ads.dart';
@@ -256,8 +257,8 @@ List<AppSection> sectionsFor(AuthProvider auth) {
       key: 'Top Management', arTitle: 'الإدارة العليا', enTitle: 'Top Management', icon: Icons.workspace_premium_outlined,
       roles: const ['super_admin', 'admin', 'it_manager', 'it_team_leader', 'it_specialist'],
       pages: [
-        AppPage('طلبات الإجازات', 'Leave Requests', Icons.event_available_outlined, (c) => TopLeavesScreen(canDecide: auth.user?['isTopManagement'] == true || _top.contains(role)), path: '/system/top-management'),
-        AppPage('طلبات الموظفين', 'Staff Requests', Icons.mark_email_unread_outlined, (c) => const TopRequestsScreen(), path: '/system/top-management/requests'),
+        // Its leave page was removed: top management approves leaves from «موافقات الإجازات».
+        AppPage('طلبات الموظفين', 'Staff Requests', Icons.mark_email_unread_outlined, (c) => const IncomingRequestsScreen(target: 'Top Management', title: ('طلبات الموظفين — الإدارة العليا', 'Staff Requests — Top Management')), path: '/system/top-management/requests'),
         // The chairman's office: every leave and staff request for information; top management's approval is final.
         if (auth.user?['isChairman'] == true || _top.contains(role)) ...[
           AppPage('اعتمادات رئيس مجلس الإدارة — الإجازات', 'Chairman’s Approvals — Leaves', Icons.verified_outlined, (c) => const TopLeavesScreen(base: '/api/chairman', stage: 'executive', canDecide: false, title: ('رئاسة مجلس الإدارة — الإجازات', 'Chairman’s Office — Leaves')), path: '/system/chairman'),
@@ -462,7 +463,7 @@ List<AppSection> sectionsFor(AuthProvider auth) {
         AppPage('الأرشيف', 'Archive', Icons.archive_outlined, (c) => const HrArchiveScreen(), path: '/system/hr/archive'),
         AppPage('طلبات الإجازات', 'Leave Requests', Icons.event_available_outlined, (c) => const HrLeavesScreen(), path: '/system/hr/leaves'),
         AppPage('الإجازات', 'Leaves', Icons.event_note_outlined, (c) => const HrLeaveRegisterScreen(), path: '/system/hr/leave-register'),
-        AppPage('طلبات الموظفين', 'Employee Requests', Icons.mark_email_unread_outlined, (c) => const HrRequestsScreen(), path: '/system/hr/requests'),
+        AppPage('طلبات الموظفين', 'Employee Requests', Icons.mark_email_unread_outlined, (c) => const IncomingRequestsScreen(target: 'HR', title: ('طلبات الموظفين — الموارد البشرية', 'Staff Requests — HR')), path: '/system/hr/requests'),
         // Section requests: the receiving side. See screens/staff_requests.dart.
         AppPage('طلبات الأقسام', 'Section Requests', Icons.move_to_inbox_outlined, (c) => const StaffRequestsScreen(side: 'hr'), path: '/system/hr/staff-requests'),
         // Library of official forms and letters.
@@ -554,7 +555,7 @@ List<AppSection> sectionsFor(AuthProvider auth) {
         // Finance's leave stage comes right after the direct manager; same desk as top management on its own API.
         if (const [..._admins, 'cfo', 'accounting_manager', 'accounting_team_leader', 'accountant'].contains(role)) ...[
           AppPage('طلبات الإجازات', 'Leave Requests', Icons.event_available_outlined, (c) => const TopLeavesScreen(base: '/api/finance-desk', stage: 'finance', canDecide: true, title: ('طلبات الإجازات — الإدارة المالية', 'Leave Requests — Finance')), path: '/system/finance/leaves'),
-          AppPage('طلبات الموظفين', 'Staff Requests', Icons.mark_email_unread_outlined, (c) => const TopRequestsScreen(base: '/api/finance-desk'), path: '/system/finance/staff-requests'),
+          AppPage('طلبات الموظفين', 'Staff Requests', Icons.mark_email_unread_outlined, (c) => const IncomingRequestsScreen(target: 'Accounting', title: ('طلبات الموظفين — الإدارة المالية', 'Staff Requests — Finance')), path: '/system/finance/staff-requests'),
         ],
         AppPage('ماليات التشغيل', 'Operations Finance', Icons.assignment_outlined, (c) => const FinanceDeptScreen(dept: 'operations', arTitle: 'ماليات التشغيل', enTitle: 'Operations Finance'), path: '/system/finance/operations'),
         AppPage('ماليات إدارة الأسطول', 'Fleet Finance', Icons.local_shipping_outlined, (c) => const FinanceDeptScreen(dept: 'fleet', arTitle: 'ماليات إدارة الأسطول', enTitle: 'Fleet Finance'), path: '/system/finance/fleet'),
@@ -927,6 +928,8 @@ List<AppPage> selfServicePages(bool hasTeam, {bool isPartner = false, bool? appr
       AppPage('المساعد', 'Assistant', Icons.auto_awesome_outlined, (c) => const AssistantScreen(), path: '/system/assistant'),
       AppPage('إجازاتي', 'My Leaves', Icons.beach_access_outlined, (c) => const MyLeavesScreen()),
       AppPage('طلباتي', 'My Requests', Icons.description_outlined, (c) => const MyRequestsScreen()),
+      // Requests reaching the user as direct manager or as the department they were sent to.
+      AppPage('الطلبات الواردة', 'Incoming Requests', Icons.inbox_outlined, (c) => const IncomingRequestsScreen(), path: '/system/hr/incoming-requests'),
       if (approvesLeaves ?? hasTeam) AppPage('موافقات الإجازات', 'Leave Approvals', Icons.fact_check_outlined, (c) => const ApprovalsScreen()),
       if (hasTeam) AppPage('تقييم فريقي', 'Evaluate Team', Icons.rate_review_outlined, (c) => const EvaluationsScreen()),
       AppPage('الإعدادات', 'Settings', Icons.settings_outlined, (c) => const SettingsScreen()),

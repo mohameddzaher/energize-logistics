@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'incoming_requests.dart';
 import '../services/api.dart';
 import '../services/hijri.dart';
 import '../services/lang.dart';
@@ -198,7 +199,7 @@ class _HrDashboardScreenState extends State<HrDashboardScreen> {
                         const SizedBox(width: 10),
                         Expanded(child: FadeSlideIn(delayMs: 160, child: Pressable(onTap: () => _push(const HrLeavesScreen()), child: StatCard(label: tr('إجازات قيد المراجعة', 'Pending leaves'), value: s['pendingLeaves'] ?? 0, color: T.warn, icon: Icons.hourglass_top_outlined)))),
                         const SizedBox(width: 10),
-                        Expanded(child: FadeSlideIn(delayMs: 200, child: Pressable(onTap: () => _push(const HrRequestsScreen()), child: StatCard(label: tr('طلبات مفتوحة', 'Open requests'), value: s['openRequests'] ?? 0, color: T.violet, icon: Icons.mark_email_unread_outlined)))),
+                        Expanded(child: FadeSlideIn(delayMs: 200, child: Pressable(onTap: () => _push(const IncomingRequestsScreen(target: 'HR', title: ('طلبات الموظفين — الموارد البشرية', 'Staff Requests — HR'))), child: StatCard(label: tr('طلبات مفتوحة', 'Open requests'), value: s['openRequests'] ?? 0, color: T.violet, icon: Icons.mark_email_unread_outlined)))),
                       ]),
                       const SizedBox(height: 10),
                       Row(children: [

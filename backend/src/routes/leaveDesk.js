@@ -8,6 +8,7 @@ const chain = require('../utils/leaveChain');
 const SIG_FIELDS = ['employeeSignature', ...Object.values(chain.DECISION_FIELD).map((f) => `${f}.signature`)];
 
 function leaveDesk({ stage, allow, denyMessage, requests = false }) {
+  // `requests` names the department whose requests this desk shows (a section key or 'Top Management').
   const router = express.Router();
   router.use((req, res, next) => (allow(req.user) ? next() : res.status(403).json({ message: denyMessage })));
 
@@ -42,11 +43,13 @@ function leaveDesk({ stage, allow, denyMessage, requests = false }) {
   });
 
   if (requests) {
-    // GET /requests?status= — every staff request to HR (documents, letters…), newest first.
+    // GET /requests?status= — the employee requests sent to this desk's department (now or earlier), newest first.
+    // It used to list every request in the company, whoever it was addressed to.
     router.get('/requests', async (req, res) => {
       try {
         const HRRequest = require('../models/HRRequest');
-        const filter = {};
+        const mine = { $or: [{ targetSection: requests }, { 'history.toSection': requests }] };
+        const filter = { ...mine };
         const st = String(req.query.status || '');
         if (st === 'open') filter.status = { $in: ['open', 'in_progress', 'received'] };
         else if (st) filter.status = st;
@@ -56,7 +59,7 @@ function leaveDesk({ stage, allow, denyMessage, requests = false }) {
           .populate('thread.sender', 'firstName lastName')
           .select('-thread.attachments')
           .sort({ createdAt: -1 }).limit(1000).lean();
-        const counts = Object.fromEntries((await HRRequest.aggregate([{ $group: { _id: '$status', n: { $sum: 1 } } }])).map((r) => [r._id, r.n]));
+        const counts = Object.fromEntries((await HRRequest.aggregate([{ $match: mine }, { $group: { _id: '$status', n: { $sum: 1 } } }])).map((r) => [r._id, r.n]));
         res.json({ requests: rows, counts });
       } catch (e) {
         console.error(`leave desk ${stage} requests:`, e);

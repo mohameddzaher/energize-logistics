@@ -194,8 +194,11 @@ export interface HRRequest {
   requester: any; employee?: any; manager?: any;
   category: string; subject: string;
   thread: { _id?: string; sender: any; body?: string; link?: string; at?: string }[];
-  status: 'open' | 'in_progress' | 'received' | 'resolved' | 'closed';
+  status: 'open' | 'in_progress' | 'received' | 'resolved' | 'closed' | 'rejected' | 'cancelled';
   assignedTo?: any; readByRequester?: boolean; readByHR?: boolean;
+  // manager: with the direct manager · department: with targetSection · done (backend utils/requestRouting).
+  stage?: 'manager' | 'department' | 'done'; targetSection?: string | null; targetLabel?: string; canAct?: boolean;
+  history?: { at?: string; by?: any; byName?: string; action: string; fromSection?: string; toSection?: string; status?: string; note?: string }[];
   createdAt?: string; updatedAt?: string;
 }
 
@@ -297,6 +300,8 @@ export const REQUEST_STATUS: Record<string, { bg: string; text: string; en: stri
   received: { bg: 'bg-purple-500/20', text: 'text-purple-700', en: 'Received', ar: 'تم الاستلام' },
   resolved: { bg: 'bg-green-500/20', text: 'text-green-700', en: 'Resolved', ar: 'تم التسليم' },
   closed: { bg: 'bg-gray-500/20', text: 'text-gray-600', en: 'Closed', ar: 'مغلق' },
+  rejected: { bg: 'bg-red-500/20', text: 'text-red-700', en: 'Rejected', ar: 'مرفوض' },
+  cancelled: { bg: 'bg-slate-500/20', text: 'text-slate-600', en: 'Cancelled', ar: 'ملغى' },
 };
 
 export const EMPLOYMENT_STATUS: Record<string, { bg: string; text: string; en: string; ar: string }> = {

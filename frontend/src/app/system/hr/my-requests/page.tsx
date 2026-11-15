@@ -13,6 +13,7 @@ import { getHrMyRequestsTranslations } from '@/lib/translations';
 import ExportMenu, { exportScopeLabels, type ExportColumn } from '@/components/ls2/ExportMenu';
 import ScrollX from '@/components/system/ScrollX';
 import { gregDay, hijriCell, pairLabels } from '@/lib/hrDates';
+import RequestRoute, { whereNow, type Target } from '@/components/hr/RequestRoute';
 
 export default function MyRequestsPage() {
   const { notify, confirm } = useDialog();
@@ -27,11 +28,15 @@ export default function MyRequestsPage() {
   // While open and unanswered it belongs to its owner. The first reply in the thread or a status change locks it: a reply answers a specific text, and changing it afterwards makes the reply answer a question never asked.
   const [editing, setEditing] = useState<HRRequest | null>(null);
   const editable = (r: HRRequest) =>
-    r.status === 'open' && (r.thread || []).filter((m2: any) => String(m2.sender?._id || m2.sender) !== String(r.requester?._id || r.requester)).length === 0;
+    r.status === 'open' && (r.thread || []).filter((m2: any) => String(m2.sender?._id || m2.sender) !== String(r.requester?._id || r.requester)).length === 0
+    && (r.history || []).every((h) => h.action === 'created');
+  // Where a new request goes: the direct manager, or (a department manager) a department he picks.
+  const [routing, setRouting] = useState<{ needsTarget: boolean; manager: { name: string } | null; targets: Target[] }>({ needsTarget: false, manager: null, targets: [] });
+  useEffect(() => { api.get<any>('/api/hr/me/request-routing').then(setRouting).catch(() => {}); }, []);
 
   const openEdit = (r: HRRequest) => {
     setEditing(r);
-    setForm({ category: r.category, subject: r.subject, body: (r.thread?.[0]?.body) || '' });
+    setForm({ category: r.category, subject: r.subject, body: (r.thread?.[0]?.body) || '', targetSection: r.targetSection || '' });
     setShowForm(true);
   };
 
@@ -41,7 +46,7 @@ export default function MyRequestsPage() {
     catch (e: any) { notify(e.message, 'error'); }
   };
 
-  const [form, setForm] = useState({ category: 'salary_certificate', subject: '', body: '' });
+  const [form, setForm] = useState({ category: 'salary_certificate', subject: '', body: '', targetSection: '' });
   const [saving, setSaving] = useState(false);
   const [open, setOpen] = useState<HRRequest | null>(null);
   const [reply, setReply] = useState('');
@@ -63,7 +68,7 @@ export default function MyRequestsPage() {
       if (editing) await api.put(`/api/hr/me/requests/${editing._id}`, form);
       else await api.post('/api/hr/me/requests', form);
       setShowForm(false); setEditing(null);
-      setForm({ category: 'salary_certificate', subject: '', body: '' });
+      setForm({ category: 'salary_certificate', subject: '', body: '', targetSection: '' });
       load();
     }
     catch (e: any) { notify(e.message, 'error'); }
@@ -71,11 +76,18 @@ export default function MyRequestsPage() {
   };
 
   const sendReply = async () => {
-    if (!open || !reply.trim()) return;
+    if (!open || (!reply.trim() && !files.length)) return;
     setBusy(true);
-    try { const d = await api.post<{ request: HRRequest }>(`/api/hr/requests/${open._id}/reply`, { body: reply }); setOpen(d.request); setReply(''); setFiles([]); load(); }
+    // The picked files were never sent before; they go with the message now.
+    try { const d = await api.post<{ request: HRRequest }>(`/api/hr/requests/${open._id}/reply`, { body: reply, files }); setOpen(d.request); setReply(''); setFiles([]); load(); }
     catch (e: any) { notify(e.message, 'error'); }
     setBusy(false);
+  };
+
+  const cancelRequest = async (r: HRRequest) => {
+    if (!(await confirm(ar ? 'إلغاء هذا الطلب؟' : 'Cancel this request?'))) return;
+    try { const d = await api.post<{ request: HRRequest }>(`/api/hr/me/requests/${r._id}/action`, { action: 'cancel' }); setOpen(d.request); load(); }
+    catch (e: any) { notify(e.message, 'error'); }
   };
 
   // The "last update Gregorian" label is never shown; the main name is last update date.
@@ -84,6 +96,7 @@ export default function MyRequestsPage() {
     { header: tx.colCategory, key: 'category', transform: (v) => categoryLabel(v, lang), width: 22 },
     { header: tx.colSubject, key: 'subject', width: 32 },
     { header: tx.colStatus, key: 'status', transform: (v) => (ar ? REQUEST_STATUS[v]?.ar : REQUEST_STATUS[v]?.en) || v, width: 16 },
+    { header: ar ? 'عند' : 'With', key: '_id', transform: (_v, r) => whereNow(r, routing.targets, ar), width: 26 },
     // Gregorian with the time, then the Hijri of the same day right after (lib/hrDates).
     { header: updatedLabels[0], key: 'updatedAt', transform: (v) => fmtDateTime(v), width: 22 },
     { header: updatedLabels[1], key: 'updatedAt', type: 'hijri', transform: (v) => gregDay(v), width: 16 },
@@ -119,7 +132,7 @@ export default function MyRequestsPage() {
                 <tr key={r._id} className="border-b border-slate-200/70 hover:bg-slate-100 cursor-pointer" onClick={() => setOpen(r)}>
                   <td className="px-4 py-3 text-slate-700">{categoryLabel(r.category, lang)}</td>
                   <td className="px-4 py-3 text-slate-900 font-medium">{r.subject} {!r.readByRequester && <span className="ms-1 inline-block w-2 h-2 rounded-full bg-[#f37121]" />}</td>
-                  <td className="px-4 py-3 whitespace-nowrap"><Badge style={REQUEST_STATUS[r.status]} lang={lang} /></td>
+                  <td className="px-4 py-3 whitespace-nowrap"><Badge style={REQUEST_STATUS[r.status]} lang={lang} /><p className="text-[11px] text-slate-500 mt-1">{whereNow(r, routing.targets, ar)}</p></td>
                   <td className="px-4 py-3 text-slate-800 text-xs whitespace-nowrap">{fmtDateTime(r.updatedAt)}</td>
                 <td className="px-4 py-3 text-slate-800 text-xs whitespace-nowrap tabular-nums" dir="ltr">{hijriCell(r.updatedAt)}</td>
                   <td className="px-4 py-3" onClick={(e) => e.stopPropagation()}>
@@ -141,9 +154,22 @@ export default function MyRequestsPage() {
         title={editing ? (ar ? 'تعديل الطلب' : 'Edit request') : tx.newHrRequest}
         footer={<>
           <button type="button" onClick={() => setShowForm(false)} className="px-4 py-2 text-slate-500 hover:text-slate-900 text-sm">{tx.cancel}</button>
-          <PrimaryButton onClick={submit} disabled={saving || !form.subject.trim()}>{saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Check className="w-4 h-4" />}{tx.submit}</PrimaryButton>
+          <PrimaryButton onClick={submit} disabled={saving || !form.subject.trim() || (!editing && routing.needsTarget && !form.targetSection)}>{saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Check className="w-4 h-4" />}{tx.submit}</PrimaryButton>
         </>}>
         <div className="space-y-3">
+          {!editing && (routing.needsTarget ? (
+            <Field label={ar ? 'يُرسَل إلى' : 'Send to'}>
+              <Select value={form.targetSection} onChange={(e) => setForm((f) => ({ ...f, targetSection: e.target.value }))}>
+                <option value="">{ar ? 'اختر القسم أو الإدارة العليا…' : 'Choose a department or top management…'}</option>
+                {routing.targets.map((x) => <option key={x.key} value={x.key}>{ar ? x.ar : x.en}</option>)}
+              </Select>
+            </Field>
+          ) : (
+            <p className="text-[12px] text-slate-600 bg-slate-50 border border-slate-200 rounded-lg px-3 py-2">
+              {ar ? `يُرسَل الطلب أوّلًا إلى مديرك المباشر${routing.manager ? ` (${routing.manager.name})` : ''}، وهو يحوّله إلى القسم المختص أو يتّخذ الإجراء.`
+                : `Your request goes first to your direct manager${routing.manager ? ` (${routing.manager.name})` : ''}, who sends it to the right department or acts on it.`}
+            </p>
+          ))}
           <Field label={tx.categoryLabel}><Select value={form.category} onChange={(e) => setForm((f) => ({ ...f, category: e.target.value }))}>{REQUEST_CATEGORIES.map((c) => <option key={c.key} value={c.key}>{ar ? c.ar : c.en}</option>)}</Select></Field>
           <Field label={tx.subjectLabel}><TextInput value={form.subject} onChange={(e) => setForm((f) => ({ ...f, subject: e.target.value }))} /></Field>
           <Field label={tx.detailsLabel}><TextArea rows={4} value={form.body} onChange={(e) => setForm((f) => ({ ...f, body: e.target.value }))} placeholder={tx.detailsPlaceholder} /></Field>
@@ -154,7 +180,12 @@ export default function MyRequestsPage() {
       <Modal open={!!open} onClose={() => setOpen(null)} wide title={open?.subject || ''}>
         {open && (
           <div className="space-y-4">
-            <div className="flex items-center gap-2 text-sm text-slate-500">{categoryLabel(open.category, lang)} · <Badge style={REQUEST_STATUS[open.status]} lang={lang} /></div>
+            <div className="flex items-center gap-2 text-sm text-slate-500">{categoryLabel(open.category, lang)} · <Badge style={REQUEST_STATUS[open.status]} lang={lang} />
+              {['open', 'in_progress', 'received'].includes(open.status) && (
+                <button type="button" onClick={() => cancelRequest(open)} className="ms-auto text-xs font-semibold text-red-600 hover:underline">{ar ? 'إلغاء الطلب' : 'Cancel request'}</button>
+              )}
+            </div>
+            <RequestRoute r={open} targets={routing.targets} ar={ar} />
             <div className="space-y-3 max-h-64 overflow-y-auto">
               {open.thread.length === 0 && <p className="text-slate-500 text-sm">{tx.noMessagesYet}</p>}
               {open.thread.map((m, i) => {
@@ -171,7 +202,7 @@ export default function MyRequestsPage() {
                 );
               })}
             </div>
-            {!['resolved', 'closed'].includes(open.status) && (
+            {['open', 'in_progress', 'received'].includes(open.status) && (
               <div className="border-t border-slate-200 pt-3 space-y-2">
                 <div className="flex items-center gap-2">
                   <div className="flex-1"><TextInput placeholder={tx.replyPlaceholder} value={reply} onChange={(e) => setReply(e.target.value)} /></div>

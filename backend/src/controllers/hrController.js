@@ -2300,8 +2300,10 @@ exports.deleteMyLeave = async (req, res) => {
   }
 };
 
-// ── HR requests (general) ────────────────────────────────────────────────────
+// HR requests (general): routed through the direct manager to a department, see utils/requestRouting.
+const routing = require('../utils/requestRouting');
 const populateRequest = (q) => q
+  .populate('manager', 'firstName lastName')
   .populate('requester', 'firstName lastName email')
   .populate('employee', 'firstName lastName arabicName iqamaNumber nationalId idType employeeNumber')
   .populate('assignedTo', 'firstName lastName')
@@ -2312,6 +2314,10 @@ exports.listRequests = async (req, res) => {
     if (denyNonStaff(req, res)) return;
     const filter = {};
     if (req.query.status) filter.status = req.query.status;
+    // HR sees what was sent to HR (or what it acted on); the top roles see every request.
+    if (!require('../config/constants').isTopRole(req.user.role)) {
+      Object.assign(filter, { $or: [{ targetSection: 'HR', stage: { $ne: 'manager' } }, { targetSection: { $exists: false }, stage: { $exists: false } }, { participants: req.user._id }] });
+    }
     // An archived employee's requests are hidden, by his file or his login account.
     const sets = await endedStaff();
     const requests = await populateRequest(HRRequest.find(andAll(filter, notArchivedRef(sets, 'employee'), notArchivedUserRef(sets, 'requester')))).sort({ updatedAt: -1 }).limit(1000).lean();
@@ -2330,23 +2336,68 @@ exports.listMyRequests = async (req, res) => {
   }
 };
 
+/** The requester's direct manager account, when it can receive the request. */
+const directManagerOf = async (user) => {
+  if (!user.manager || routing.needsTarget(user)) return null;
+  const m = await User.findOne({ _id: user.manager, isActive: true }).select('firstName lastName isTopManagement').lean();
+  return m && String(m._id) !== String(user._id) ? m : null;
+};
+
+/** Tells whoever now holds the request; the live event refreshes their screens. */
+const notifyHolders = async (r, { title, message }) => {
+  const ref = { relatedEntity: 'HRRequest', relatedEntityId: r._id, event: 'hr:request' };
+  const stage = routing.stageOf(r);
+  if (stage === 'manager') return notifyUser(r.manager, { title, message, ...ref });
+  if (stage !== 'department') return null;
+  const target = routing.targetOf(r);
+  if (target === 'HR') return notifyHR({ title, message, ...ref });
+  if (target === routing.TOP_TARGET) return notifyTopManagement({ title, message, ...ref, event: 'hr:request' });
+  const { notifySection } = require('../services/notificationService');
+  await notifySection(target, { title, message, relatedEntity: 'HRRequest', relatedEntityId: r._id }).catch(() => {});
+  const { emitToAll } = require('../websocket/socketManager');
+  try { emitToAll('hr:request', { id: String(r._id) }); } catch (e) { /* */ }
+  return null;
+};
+
+// GET /me/request-routing: where a new request of this user goes, and the departments he may pick from.
+exports.requestRouting = async (req, res) => {
+  try {
+    const manager = await directManagerOf(req.user);
+    res.json({
+      needsTarget: !manager,
+      manager: manager ? { _id: manager._id, name: fullName(manager) } : null,
+      targets: routing.TARGETS,
+    });
+  } catch (error) {
+    res.status(500).json({ message: 'تعذّر تحميل مسار الطلب' });
+  }
+};
+
 exports.createMyRequest = async (req, res) => {
   try {
     const { category, subject, body } = req.body;
     if (!subject || !subject.trim()) return res.status(400).json({ message: 'Subject is required' });
     await ensureSelfEmployee(req);
+    const manager = await directManagerOf(req.user);
+    const target = String(req.body.targetSection || '').trim();
+    if (!manager && !routing.TARGET_KEYS.has(target)) {
+      return res.status(400).json({ message: 'اختر القسم الذي يُرسَل إليه الطلب' });
+    }
     const request = await HRRequest.create({
       requester: req.user._id,
       employee: req.user.linkedEmployee || undefined,
-      manager: req.user.manager || undefined,
+      manager: manager ? manager._id : undefined,
       category: category || 'other',
       subject: subject.trim(),
       thread: body && body.trim() ? [{ sender: req.user._id, body: body.trim() }] : [],
       status: 'open',
+      stage: manager ? 'manager' : 'department',
+      targetSection: manager ? undefined : target,
+      history: [{ by: req.user._id, byName: fullName(req.user), action: 'created', toSection: manager ? undefined : target }],
       readByRequester: true,
       readByHR: false,
     });
-    await notifyHR({ title: 'New HR request', message: `${fullName(req.user)}: ${subject.trim().slice(0, 80)}`, relatedEntity: 'HRRequest', relatedEntityId: request._id, event: 'hr:request' });
+    await notifyHolders(request, { title: manager ? 'طلب موظف ينتظر إجراءك' : `طلب جديد إلى ${routing.targetLabel(target)}`, message: `${fullName(req.user)}: ${subject.trim().slice(0, 80)}` });
     const populated = await populateRequest(HRRequest.findById(request._id)).lean();
     res.status(201).json({ request: populated });
   } catch (error) {
@@ -2359,8 +2410,8 @@ exports.replyRequest = async (req, res) => {
   try {
     const request = await HRRequest.findById(req.params.id);
     if (!request) return res.status(404).json({ message: 'Request not found' });
-    const staff = hrStaffReq(req);
     const owner = String(request.requester) === String(req.user._id);
+    const staff = !owner && await routing.canSee(req.user, request, { hrGranted: hrStaffReq(req) });
     if (!staff && !owner) return res.status(403).json({ message: 'No access to this request' });
 
     const { body, link, files } = req.body;
@@ -2381,13 +2432,14 @@ exports.replyRequest = async (req, res) => {
     if (staff) {
       request.readByHR = true;
       request.readByRequester = false;
-      if (request.status === 'open') request.status = 'in_progress';
-      if (!request.assignedTo) request.assignedTo = req.user._id;
-      await notifyUser(request.requester, { title: 'HR replied to your request', message: (body || 'A link was shared').slice(0, 100), relatedEntity: 'HRRequest', relatedEntityId: request._id, event: 'hr:request' });
+      if (request.status === 'open' && routing.stageOf(request) === 'department') request.status = 'in_progress';
+      if (!request.assignedTo && routing.stageOf(request) === 'department') request.assignedTo = req.user._id;
+      if (!(request.participants || []).some((p) => String(p) === String(req.user._id))) request.participants.push(req.user._id);
+      await notifyUser(request.requester, { title: 'رُدَّ على طلبك', message: (body || 'أُرفق ملف').slice(0, 100), relatedEntity: 'HRRequest', relatedEntityId: request._id, event: 'hr:request' });
     } else {
       request.readByRequester = true;
       request.readByHR = false;
-      await notifyHR({ title: 'Reply on HR request', message: `${fullName(req.user)} replied.`, relatedEntity: 'HRRequest', relatedEntityId: request._id, event: 'hr:request' });
+      await notifyHolders(request, { title: 'ردّ على طلب موظف', message: `${fullName(req.user)} ردّ على الطلب.` });
     }
     await request.save();
     const populated = await populateRequest(HRRequest.findById(request._id)).lean();
@@ -2404,8 +2456,12 @@ exports.updateRequestStatus = async (req, res) => {
     const request = await HRRequest.findById(req.params.id);
     if (!request) return res.status(404).json({ message: 'Request not found' });
     const { status } = req.body;
-    if (!['open', 'in_progress', 'received', 'resolved', 'closed'].includes(status)) return res.status(400).json({ message: 'Invalid status' });
+    if (!['open', 'in_progress', 'received', 'resolved', 'closed', 'rejected'].includes(status)) return res.status(400).json({ message: 'Invalid status' });
+    if (!(await routing.canAct(req.user, request, { hrGranted: true }))) return res.status(403).json({ message: 'الطلب ليس عند قسمك الآن' });
     request.status = status;
+    if (['resolved', 'closed', 'rejected'].includes(status)) request.stage = 'done';
+    request.history.push({ by: req.user._id, byName: fullName(req.user), action: 'status', status });
+    if (!(request.participants || []).some((p) => String(p) === String(req.user._id))) request.participants.push(req.user._id);
     await request.save();
     await notifyUser(request.requester, { title: 'Request status updated', message: `Your request is now: ${status}.`, relatedEntity: 'HRRequest', relatedEntityId: request._id, event: 'hr:request' });
     res.json({ request });
@@ -2776,7 +2832,8 @@ exports.getDashboard = async (req, res) => {
       Employee.countDocuments({ ...HRQ, employmentStatus: 'suspended' }),
       Employee.countDocuments({ ...HRQ, employmentStatus: 'terminated' }),
       LeaveRequest.countDocuments(andAll({ status: { $in: chain.OPEN_STATUSES } }, noArch)),
-      HRRequest.countDocuments(andAll({ status: { $in: ['open', 'in_progress'] } }, noArch, notArchivedUserRef(sets, 'requester'))),
+      // Only requests sent to HR; one still with a direct manager or another department is not HR's.
+      HRRequest.countDocuments(andAll({ status: { $in: ['open', 'in_progress'] }, $or: [{ targetSection: 'HR', stage: 'department' }, { targetSection: { $exists: false }, stage: { $exists: false } }] }, noArch, notArchivedUserRef(sets, 'requester'))),
       // Employee-held custody only — IT store items are `in_stock`/employee null.
       Asset.countDocuments(andAll({ status: 'assigned', employee: { $ne: null } }, noArch)),
       Contract.find(andAll({ status: 'active', endDate: { $gte: today, $lte: in90 } }, noArch)).populate('employee', 'firstName lastName arabicName').sort({ endDate: 1 }).limit(50).lean(),
@@ -2922,7 +2979,8 @@ exports.getMyTeam = async (req, res) => {
 
 /** A general request can be edited and deleted while open and unanswered. The first reply in the thread or status change locks it: a reply answers specific text, and changing it afterwards makes the reply answer a question never asked. */
 const requestIsUntouched = (r) => r.status === 'open'
-  && (r.thread || []).filter((m) => String(m.sender) !== String(r.requester)).length === 0;
+  && (r.thread || []).filter((m) => String(m.sender) !== String(r.requester)).length === 0
+  && (r.history || []).every((h) => h.action === 'created');
 
 exports.updateMyRequest = async (req, res) => {
   try {
@@ -2932,8 +2990,14 @@ exports.updateMyRequest = async (req, res) => {
     if (!requestIsUntouched(r)) {
       return res.status(400).json({ message: 'لا يُعدَّل الطلب بعد أن رُدَّ عليه أو تغيّرت حالته' });
     }
-    for (const f of ['subject', 'body', 'category', 'priority', 'attachmentUrl', 'attachments']) {
+    for (const f of ['subject', 'category']) {
       if (req.body[f] !== undefined) r[f] = req.body[f];
+    }
+    // The text lives in the first thread message; writing `body` on the request was silently dropped.
+    if (req.body.body !== undefined) {
+      const text = String(req.body.body || '').trim();
+      if (r.thread.length && String(r.thread[0].sender) === String(r.requester)) r.thread[0].body = text;
+      else if (text) r.thread.unshift({ sender: r.requester, body: text });
     }
     if (!String(r.subject || '').trim()) return res.status(400).json({ message: 'اكتب موضوع الطلب' });
     r.readByHR = false;
@@ -2958,5 +3022,94 @@ exports.deleteMyRequest = async (req, res) => {
     res.json({ message: 'حُذف الطلب' });
   } catch (error) {
     res.status(500).json({ message: 'تعذّر حذف الطلب' });
+  }
+};
+
+
+// Incoming requests: what the user handles as a direct manager, as a member of the department it was sent to, or
+// as top management. GET /me/incoming-requests?box=pending|all
+exports.listIncomingRequests = async (req, res) => {
+  try {
+    const opts = { hrGranted: hrStaffReq(req) };
+    const base = await routing.visibleFilter(req.user, opts);
+    const sets = await endedStaff();
+    const rows = await populateRequest(HRRequest.find(andAll(base, notArchivedUserRef(sets, 'requester'))))
+      .populate('employee', 'firstName lastName arabicName department jobTitle employeeNumber idType iqamaNumber nationalId')
+      .sort({ updatedAt: -1 }).limit(1000).lean();
+    const out = [];
+    for (const r of rows) {
+      const canAct = await routing.canAct(req.user, r, opts);
+      if (req.query.box === 'pending' && !canAct) continue;
+      out.push({ ...r, stage: routing.stageOf(r), targetSection: routing.stageOf(r) === 'manager' ? null : routing.targetOf(r), targetLabel: routing.stageOf(r) === 'manager' ? '' : routing.targetLabel(routing.targetOf(r)), canAct });
+    }
+    res.json({ requests: out, pending: out.filter((r) => r.canAct).length, targets: routing.TARGETS });
+  } catch (error) {
+    console.error('listIncomingRequests error:', error);
+    res.status(500).json({ message: 'تعذّر تحميل الطلبات الواردة' });
+  }
+};
+
+const ACTION_AR = { forwarded: 'حُوِّل طلبك', resolved: 'أُنجز طلبك', rejected: 'رُفض طلبك', closed: 'أُغلق طلبك', in_progress: 'طلبك قيد التنفيذ', cancelled: 'أُلغي الطلب' };
+
+// POST /me/requests/:id/action {action: forward|in_progress|resolve|reject|close|cancel, toSection, note}
+exports.actOnRequest = async (req, res) => {
+  try {
+    const r = await HRRequest.findById(req.params.id);
+    if (!r) return res.status(404).json({ message: 'الطلب غير موجود' });
+    const action = String(req.body.action || '');
+    const note = String(req.body.note || '').trim();
+    const me = { by: req.user._id, byName: fullName(req.user) };
+    const owner = String(r.requester) === String(req.user._id);
+    const stage = routing.stageOf(r);
+
+    if (action === 'cancel') {
+      if (!owner) return res.status(403).json({ message: 'يُلغي الطلبَ صاحبُه فقط' });
+      if (stage === 'done') return res.status(400).json({ message: 'الطلب مُنتهٍ' });
+      r.status = 'cancelled'; r.stage = 'done';
+      r.history.push({ ...me, action: 'cancelled', note });
+    } else {
+      if (!(await routing.canAct(req.user, r, { hrGranted: hrStaffReq(req) }))) {
+        return res.status(403).json({ message: stage === 'done' ? 'الطلب مُنتهٍ' : 'الطلب ليس عندك الآن' });
+      }
+      if (action === 'forward') {
+        const to = String(req.body.toSection || '').trim();
+        if (!routing.TARGET_KEYS.has(to)) return res.status(400).json({ message: 'اختر القسم' });
+        if (stage === 'department' && to === routing.targetOf(r)) return res.status(400).json({ message: 'الطلب عند هذا القسم بالفعل' });
+        r.history.push({ ...me, action: 'forwarded', fromSection: stage === 'manager' ? 'manager' : routing.targetOf(r), toSection: to, note });
+        r.stage = 'department'; r.targetSection = to; r.status = 'open'; r.assignedTo = undefined; r.readByHR = false;
+      } else if (action === 'in_progress') {
+        if (stage !== 'department') return res.status(400).json({ message: 'حوِّل الطلب أو أنجزه' });
+        r.status = 'in_progress'; if (!r.assignedTo) r.assignedTo = req.user._id;
+        r.history.push({ ...me, action: 'in_progress', note });
+      } else if (['resolve', 'reject', 'close'].includes(action)) {
+        if (action === 'reject' && !note) return res.status(400).json({ message: 'اكتب سبب الرفض' });
+        const st = { resolve: 'resolved', reject: 'rejected', close: 'closed' }[action];
+        r.status = st; r.stage = 'done';
+        r.history.push({ ...me, action: st, note });
+      } else {
+        return res.status(400).json({ message: 'إجراء غير معروف' });
+      }
+      if (!(r.participants || []).some((p) => String(p) === String(req.user._id))) r.participants.push(req.user._id);
+    }
+    // A note is also a message the requester reads in the conversation.
+    if (note) r.thread.push({ sender: req.user._id, body: note });
+    r.readByRequester = owner;
+    await r.save();
+
+    const done = r.history[r.history.length - 1];
+    if (!owner) {
+      const where = done.action === 'forwarded' ? ` إلى ${routing.targetLabel(done.toSection)}` : '';
+      await notifyUser(r.requester, { title: `${ACTION_AR[done.action] || 'تحديث على طلبك'}${where}`, message: r.subject.slice(0, 100), relatedEntity: 'HRRequest', relatedEntityId: r._id, event: 'hr:request' });
+    }
+    if (done.action === 'forwarded') {
+      await notifyHolders(r, { title: `طلب محوَّل إلى ${routing.targetLabel(done.toSection)}`, message: `${fullName(req.user)}: ${r.subject.slice(0, 80)}` });
+    } else if (owner) {
+      await notifyHolders({ ...r.toObject(), stage }, { title: 'أُلغي طلب موظف', message: r.subject.slice(0, 100) });
+    }
+    const populated = await populateRequest(HRRequest.findById(r._id)).lean();
+    res.json({ request: populated });
+  } catch (error) {
+    console.error('actOnRequest error:', error);
+    return sendMongooseError(res, error, 'تعذّر تنفيذ الإجراء');
   }
 };

@@ -9,7 +9,7 @@ const { isTopRole } = require('../config/constants');
 
 const allow = (u) => u?.isTopManagement === true || isTopRole(u?.role);
 router.use(authenticate);
-router.use(require('./leaveDesk')({ stage: 'executive', allow, denyMessage: 'هذا القسم للإدارة العليا', requests: true }));
+router.use(require('./leaveDesk')({ stage: 'executive', allow, denyMessage: 'هذا القسم للإدارة العليا', requests: 'Top Management' }));
 
 // GET /activity — the company's latest actions as readable lines, the audit log's own wording.
 router.get('/activity', (req, res, next) => (allow(req.user) ? next() : res.status(403).json({ message: 'هذا القسم للإدارة العليا' })), (req, res) => {

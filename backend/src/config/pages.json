@@ -2,12 +2,6 @@
   "generatedFrom": "frontend/src/app/system/layout.tsx",
   "pages": [
     {
-      "key": "/system/top-management",
-      "section": "Top Management",
-      "ar": "طلبات الإجازات",
-      "en": "Leave Requests"
-    },
-    {
       "key": "/system/top-management/requests",
       "section": "Top Management",
       "ar": "طلبات الموظفين",
@@ -1644,6 +1638,12 @@
       "section": "Self Service",
       "ar": "طلباتي",
       "en": "My Requests"
+    },
+    {
+      "key": "/system/hr/incoming-requests",
+      "section": "Self Service",
+      "ar": "الطلبات الواردة",
+      "en": "Incoming Requests"
     },
     {
       "key": "/system/settings",

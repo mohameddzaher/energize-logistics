@@ -228,8 +228,8 @@ app.use('/api/top-management', require('./routes/topManagement'));
   const leaveDesk = require('./routes/leaveDesk');
   const chain = require('./utils/leaveChain');
   const { isTopRole } = require('./config/constants');
-  app.use('/api/finance-desk', authenticate, leaveDesk({ stage: 'finance', allow: (u) => chain.FINANCE_ROLES.includes(u?.role) || isTopRole(u?.role), denyMessage: 'هذه الصفحة للإدارة المالية', requests: true }));
-  app.use('/api/chairman', authenticate, leaveDesk({ stage: 'executive', allow: (u) => chain.isChairman(u) || isTopRole(u?.role), denyMessage: 'هذه الصفحة لرئاسة مجلس الإدارة', requests: true }));
+  app.use('/api/finance-desk', authenticate, leaveDesk({ stage: 'finance', allow: (u) => chain.FINANCE_ROLES.includes(u?.role) || isTopRole(u?.role), denyMessage: 'هذه الصفحة للإدارة المالية', requests: 'Accounting' }));
+  app.use('/api/chairman', authenticate, leaveDesk({ stage: 'executive', allow: (u) => chain.isChairman(u) || isTopRole(u?.role), denyMessage: 'هذه الصفحة لرئاسة مجلس الإدارة', requests: 'Top Management' }));
 }
 // Section requests to HR: guarded in the controller, see the file header.
 app.use('/api/staff-requests', require('./routes/staffRequests'));

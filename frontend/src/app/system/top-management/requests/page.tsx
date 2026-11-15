@@ -1,7 +1,9 @@
 'use client';
-// Top management: every staff request to HR across the company.
-import StaffRequestsDesk from '@/components/hr/StaffRequestsDesk';
+// Top management: the staff requests sent to it, by a direct manager, a department, or a department manager.
+import IncomingRequests from '@/components/hr/IncomingRequests';
 
 export default function TopManagementRequestsPage() {
-  return <StaffRequestsDesk base="/api/top-management" title={{ ar: 'طلبات الموظفين — الإدارة العليا', en: 'Staff Requests — Top Management' }} subtitle={{ ar: 'كل ما طلبه الموظفون من الموارد البشرية (أوراق، خطابات، مستندات…) وحالته الآن.', en: 'Everything staff asked HR for (letters, documents…) and where it stands.' }} />;
+  return <IncomingRequests target="Top Management"
+    title={{ ar: 'طلبات الموظفين — الإدارة العليا', en: 'Staff Requests — Top Management' }}
+    subtitle={{ ar: 'الطلبات المرسلة إلى الإدارة العليا: من مدير مباشر أو قسم حوّلها، أو من مدير قسم مباشرةً.', en: 'Requests sent to top management: forwarded by a direct manager or a department, or sent by a department manager.' }} />;
 }

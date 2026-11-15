@@ -7,6 +7,7 @@ import '../ui/app_scaffold.dart';
 import '../ui/theme.dart';
 import '../ui/widgets.dart';
 import '../ui/export_sheet.dart';
+import 'incoming_requests.dart' show RequestRouteCard, reqStatusLabels, whereNow;
 
 /// My requests: HR requests (salary certificate, letters, ...): history + new request + opening a request to read HR's reply and answer it (same path as the web).
 class MyRequestsScreen extends StatefulWidget {
@@ -24,13 +25,9 @@ const _categories = [
   ('other', 'أخرى', 'Other'),
 ];
 
-const _reqStatus = {
-  'open': ('مفتوح', 'Open', Color(0xFFD97706)),
-  'in_progress': ('قيد التنفيذ', 'In progress', Color(0xFF2563EB)),
-  'received': ('تم الاستلام', 'Received', Color(0xFF7C3AED)),
-  'resolved': ('تم التسليم', 'Delivered', Color(0xFF059669)),
-  'closed': ('مغلق', 'Closed', Color(0xFF64748B)),
-};
+const _reqStatus = reqStatusLabels;
+// Departments a request can be sent to, from /api/hr/me/request-routing (loaded once).
+List<Map<String, dynamic>> _targets = const [];
 
 String _catLabel(String? key) {
   final c = _categories.firstWhere((x) => x.$1 == key, orElse: () => _categories.last);
@@ -69,6 +66,9 @@ class _MyRequestsScreenState extends State<MyRequestsScreen> {
 
   Future<void> _load() async {
     try {
+      if (_targets.isEmpty) {
+        try { _targets = List<Map<String, dynamic>>.from((await Api.instance.get('/api/hr/me/request-routing'))['targets'] ?? []); } catch (_) {}
+      }
       final d = await Api.instance.get('/api/hr/me/requests');
       if (!mounted) return;
       setState(() {
@@ -96,7 +96,9 @@ class _MyRequestsScreenState extends State<MyRequestsScreen> {
     if (r['status'] != 'open') return false;
     final me = '${r['requester'] is Map ? r['requester']['_id'] : r['requester']}';
     final thread = List<Map<String, dynamic>>.from(r['thread'] ?? const []);
-    return thread.where((m) => '${m['sender'] is Map ? m['sender']['_id'] : m['sender']}' != me).isEmpty;
+    final history = List<Map>.from(r['history'] ?? const []);
+    return thread.where((m) => '${m['sender'] is Map ? m['sender']['_id'] : m['sender']}' != me).isEmpty
+        && history.every((h) => h['action'] == 'created');
   }
 
   Future<void> _remove(Map<String, dynamic> r) async {
@@ -233,6 +235,7 @@ class _MyRequestsScreenState extends State<MyRequestsScreen> {
                                         const SizedBox(width: 8),
                                         Icon(Lang.instance.ar ? Icons.chevron_left : Icons.chevron_right, size: 17, color: T.inkFaint),
                                       ]),
+                                      Text(whereNow(r, _targets), style: const TextStyle(fontSize: 12, color: T.navy, fontWeight: FontWeight.w600)),
                                       if (thread.isNotEmpty) ...[
                                         const SizedBox(height: 6),
                                         Text('${tr('آخر رسالة', 'Latest')}: ${thread.last['body'] ?? ''}',
@@ -320,6 +323,25 @@ class _RequestThreadSheetState extends State<_RequestThreadSheet> {
     }
   }
 
+  Future<void> _cancel() async {
+    final ok = await showDialog<bool>(context: context, builder: (c) => AlertDialog(
+      content: Text(tr('إلغاء هذا الطلب؟', 'Cancel this request?')),
+      actions: [TextButton(onPressed: () => Navigator.pop(c, false), child: Text(tr('رجوع', 'Back'))),
+        FilledButton(onPressed: () => Navigator.pop(c, true), child: Text(tr('إلغاء الطلب', 'Cancel request')))],
+    ));
+    if (ok != true) return;
+    setState(() => _sending = true);
+    try {
+      await Api.instance.post('/api/hr/me/requests/${widget.requestId}/action', {'action': 'cancel'});
+      await _load();
+      await widget.onChanged();
+    } catch (e) {
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.toString())));
+    } finally {
+      if (mounted) setState(() => _sending = false);
+    }
+  }
+
   String _senderName(dynamic sender) {
     if (sender is Map) {
       final ar = (sender['arabicName'] ?? '').toString();
@@ -335,7 +357,7 @@ class _RequestThreadSheetState extends State<_RequestThreadSheet> {
     final r = _r;
     final thread = List<Map<String, dynamic>>.from(r?['thread'] ?? []);
     final st = _reqStatus[r?['status']] ?? ('—', '—', const Color(0xFF64748B));
-    final closed = (r?['status'] == 'closed');
+    final closed = !['open', 'in_progress', 'received'].contains(r?['status']);
     return Padding(
       padding: EdgeInsets.only(bottom: MediaQuery.of(context).viewInsets.bottom),
       child: DraggableScrollableSheet(
@@ -359,6 +381,13 @@ class _RequestThreadSheetState extends State<_RequestThreadSheet> {
                             ]),
                             const SizedBox(height: 4),
                             Text(_catLabel(r['category']), style: const TextStyle(fontSize: 12.5, color: T.inkSoft)),
+                            const SizedBox(height: 10),
+                            RequestRouteCard(r: r, targets: _targets),
+                            if (!closed) Align(alignment: AlignmentDirectional.centerEnd, child: TextButton.icon(
+                              onPressed: _sending ? null : _cancel,
+                              icon: const Icon(Icons.cancel_outlined, size: 18, color: T.danger),
+                              label: Text(tr('إلغاء الطلب', 'Cancel request'), style: const TextStyle(color: T.danger)),
+                            )),
                             if ((r['body'] ?? '').toString().isNotEmpty) ...[
                               const SizedBox(height: 10),
                               AppCard(child: Text(r['body'].toString(), style: const TextStyle(fontSize: 13.5, height: 1.4))),
@@ -487,10 +516,27 @@ class _NewRequestSheetState extends State<_NewRequestSheet> {
   final _subject = TextEditingController();
   final _body = TextEditingController();
   bool _busy = false;
+  // Where the request goes: the direct manager, or (a department manager) the department he picks.
+  bool _needsTarget = false;
+  String _managerName = '';
+  String? _target;
+
+  Future<void> _loadRouting() async {
+    try {
+      final d = await Api.instance.get('/api/hr/me/request-routing');
+      if (!mounted) return;
+      setState(() {
+        _needsTarget = d['needsTarget'] == true;
+        _managerName = d['manager'] is Map ? '${d['manager']['name'] ?? ''}' : '';
+        _targets = List<Map<String, dynamic>>.from(d['targets'] ?? []);
+      });
+    } catch (_) {}
+  }
 
   @override
   void initState() {
     super.initState();
+    if (widget.editing == null) _loadRouting();
     final r = widget.editing;
     if (r != null) {
       if (_categories.any((c) => c.$1 == r['category'])) _category = '${r['category']}';
@@ -509,9 +555,13 @@ class _NewRequestSheetState extends State<_NewRequestSheet> {
 
   Future<void> _save() async {
     if (_subject.text.trim().isEmpty || _busy) return;
+    if (widget.editing == null && _needsTarget && _target == null) {
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(tr('اختر القسم الذي يُرسَل إليه الطلب', 'Choose where to send the request'))));
+      return;
+    }
     setState(() => _busy = true);
     try {
-      final body = {'category': _category, 'subject': _subject.text, 'body': _body.text};
+      final body = {'category': _category, 'subject': _subject.text, 'body': _body.text, if (_target != null) 'targetSection': _target};
       if (widget.editing != null) {
         await Api.instance.put('/api/hr/me/requests/${widget.editing!['_id']}', body);
       } else {
@@ -536,6 +586,20 @@ class _NewRequestSheetState extends State<_NewRequestSheet> {
         children: [
           Text(widget.editing != null ? tr('تعديل الطلب', 'Edit request') : tr('طلب جديد', 'New request'), style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
           const SizedBox(height: 14),
+          if (widget.editing == null) ...[
+            if (_needsTarget)
+              DropdownButtonFormField<String>(
+                initialValue: _target, isExpanded: true,
+                decoration: InputDecoration(labelText: tr('يُرسَل إلى *', 'Send to *')),
+                items: [for (final t in _targets) DropdownMenuItem(value: '${t['key']}', child: Text(tr('${t['ar']}', '${t['en']}')))],
+                onChanged: (v) => setState(() => _target = v),
+              )
+            else
+              Text(tr('يُرسَل الطلب أوّلًا إلى مديرك المباشر${_managerName.isEmpty ? '' : ' ($_managerName)'}، وهو يحوّله إلى القسم المختص أو يتّخذ الإجراء.',
+                  'Your request goes first to your direct manager${_managerName.isEmpty ? '' : ' ($_managerName)'}, who sends it on or acts on it.'),
+                  style: const TextStyle(fontSize: 12.5, color: T.inkSoft)),
+            const SizedBox(height: 10),
+          ],
           DropdownButtonFormField<String>(
             initialValue: _category,
             decoration: InputDecoration(labelText: tr('نوع الطلب', 'Request type')),

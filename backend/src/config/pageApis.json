@@ -14,16 +14,11 @@
     "/api/uploads"
   ],
   "pages": {
-    "/system/top-management": {
-      "apis": [
-        "/api/hr/leaves",
-        "/api/top-management"
-      ],
-      "wildcard": false
-    },
     "/system/top-management/requests": {
       "apis": [
-        "/api/top-management"
+        "/api/hr/me/incoming-requests",
+        "/api/hr/me/requests",
+        "/api/hr/requests"
       ],
       "wildcard": false
     },
@@ -2472,6 +2467,8 @@
     },
     "/system/hr/requests": {
       "apis": [
+        "/api/hr/me/incoming-requests",
+        "/api/hr/me/requests",
         "/api/hr/requests"
       ],
       "wildcard": false
@@ -2558,6 +2555,15 @@
     },
     "/system/hr/my-requests": {
       "apis": [
+        "/api/hr/me/request-routing",
+        "/api/hr/me/requests",
+        "/api/hr/requests"
+      ],
+      "wildcard": false
+    },
+    "/system/hr/incoming-requests": {
+      "apis": [
+        "/api/hr/me/incoming-requests",
         "/api/hr/me/requests",
         "/api/hr/requests"
       ],
@@ -2718,7 +2724,9 @@
     },
     "/system/finance/staff-requests": {
       "apis": [
-        "/api/finance-desk"
+        "/api/hr/me/incoming-requests",
+        "/api/hr/me/requests",
+        "/api/hr/requests"
       ],
       "wildcard": false
     },

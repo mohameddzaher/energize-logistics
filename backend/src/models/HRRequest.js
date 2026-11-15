@@ -1,8 +1,8 @@
 const mongoose = require('mongoose');
 
-// A general (non-leave) request an employee sends to HR: salary certificate,
-// official letter, document, complaint, etc. It's a small two-way thread so HR
-// and the employee can go back and forth, with a simple received/resolved flow.
+// A general (non-leave) request an employee sends: salary certificate, letter, complaint, ... It goes to his direct
+// manager first, who handles it or sends it to a department or top management (utils/requestRouting). A small
+// two-way thread carries the conversation; `history` records every hand-over and decision.
 const threadMessageSchema = new mongoose.Schema(
   {
     sender: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
@@ -37,9 +37,25 @@ const hrRequestSchema = new mongoose.Schema(
 
     status: {
       type: String,
-      enum: ['open', 'in_progress', 'received', 'resolved', 'closed'],
+      enum: ['open', 'in_progress', 'received', 'resolved', 'closed', 'rejected', 'cancelled'],
       default: 'open',
     },
+    // manager: waiting on the direct manager · department: with `targetSection` (a section key or 'Top Management') · done.
+    stage: { type: String, enum: ['manager', 'department', 'done'] },
+    targetSection: { type: String, trim: true },
+    // Everyone who acted on it keeps seeing it after it moves on.
+    participants: [{ type: mongoose.Schema.Types.ObjectId, ref: 'User' }],
+    history: [{
+      _id: false,
+      at: { type: Date, default: Date.now },
+      by: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
+      byName: { type: String, trim: true },
+      action: { type: String, enum: ['created', 'forwarded', 'in_progress', 'resolved', 'rejected', 'closed', 'cancelled', 'reopened', 'status'] },
+      fromSection: { type: String, trim: true },
+      toSection: { type: String, trim: true },
+      status: { type: String, trim: true },
+      note: { type: String, trim: true },
+    }],
     assignedTo: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
 
     // Unread flags so each side sees a badge when the other replies.
@@ -52,5 +68,7 @@ const hrRequestSchema = new mongoose.Schema(
 hrRequestSchema.index({ requester: 1, createdAt: -1 });
 hrRequestSchema.index({ status: 1, createdAt: -1 });
 hrRequestSchema.index({ employee: 1 });
+hrRequestSchema.index({ manager: 1, stage: 1 });
+hrRequestSchema.index({ targetSection: 1, stage: 1 });
 
 module.exports = mongoose.model('HRRequest', hrRequestSchema);

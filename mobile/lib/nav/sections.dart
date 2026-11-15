@@ -257,7 +257,7 @@ List<AppSection> sectionsFor(AuthProvider auth) {
       key: 'Top Management', arTitle: 'الإدارة العليا', enTitle: 'Top Management', icon: Icons.workspace_premium_outlined,
       roles: const ['super_admin', 'admin', 'it_manager', 'it_team_leader', 'it_specialist'],
       pages: [
-        // Its leave page was removed: top management approves leaves from «موافقات الإجازات».
+        AppPage('طلبات الإجازات', 'Leave Requests', Icons.event_available_outlined, (c) => TopLeavesScreen(canDecide: auth.user?['isTopManagement'] == true || _top.contains(role)), path: '/system/top-management'),
         AppPage('طلبات الموظفين', 'Staff Requests', Icons.mark_email_unread_outlined, (c) => const IncomingRequestsScreen(target: 'Top Management', title: ('طلبات الموظفين — الإدارة العليا', 'Staff Requests — Top Management')), path: '/system/top-management/requests'),
         // The chairman's office: every leave and staff request for information; top management's approval is final.
         if (auth.user?['isChairman'] == true || _top.contains(role)) ...[

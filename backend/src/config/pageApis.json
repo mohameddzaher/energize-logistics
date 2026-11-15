@@ -14,6 +14,13 @@
     "/api/uploads"
   ],
   "pages": {
+    "/system/top-management": {
+      "apis": [
+        "/api/hr/leaves",
+        "/api/top-management"
+      ],
+      "wildcard": false
+    },
     "/system/top-management/requests": {
       "apis": [
         "/api/hr/me/incoming-requests",

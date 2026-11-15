@@ -31,13 +31,14 @@ router.get('/', async (req, res) => {
     // Same filter as the approvals inbox, so the badge and the list agree (archived staff wait on nobody).
     const { withoutArchivedRef } = require('../utils/archivedHidden');
     const OPEN_AT = (t) => ({ ...OPEN_REQ, stage: 'department', targetSection: t });
-    const [mine, atHr, openReq, atFin, topReq, finReq] = await Promise.all([
+    const [mine, atHr, openReq, atTop, atFin, topReq, finReq] = await Promise.all([
       // Leave approvals: what waits on this reader's own stations (team as manager, HR, top management).
       withoutArchivedRef(chain.inboxFilter(req.user)).then((f) => LeaveRequest.countDocuments(f)).catch(() => 0),
       // HR follows every request from filing to the end, so its page counts all open ones, not only those at its stage.
       hr ? withoutArchivedRef({ status: { $in: chain.OPEN_STATUSES } }).then((f) => LeaveRequest.countDocuments(f)) : 0,
       // Employee requests sent to HR (older ones without a route were all to HR).
       hr ? HRRequest.countDocuments({ ...OPEN_REQ, $or: [{ targetSection: 'HR', stage: 'department' }, { targetSection: { $exists: false }, stage: { $exists: false } }] }) : 0,
+      top ? LeaveRequest.countDocuments({ status: 'pending_executive' }) : 0,
       fin ? LeaveRequest.countDocuments({ status: 'pending_finance' }) : 0,
       top ? HRRequest.countDocuments(OPEN_AT('Top Management')) : 0,
       fin ? HRRequest.countDocuments(OPEN_AT('Accounting')) : 0,
@@ -45,7 +46,7 @@ router.get('/', async (req, res) => {
     if (mine) out['/system/hr/leave-approvals'] = mine;
     if (atHr) out['/system/hr/leaves'] = atHr;
     if (openReq && hr) out['/system/hr/requests'] = openReq;
-    // Top management approves leaves from the approvals inbox (counted above); its own leave page was removed.
+    if (atTop) out['/system/top-management'] = atTop;
     if (topReq) out['/system/top-management/requests'] = topReq;
     if (atFin) out['/system/finance/leaves'] = atFin;
     if (finReq) out['/system/finance/staff-requests'] = finReq;

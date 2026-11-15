@@ -6,7 +6,8 @@ import Footer from '../components/Footer'
 import FloatingButtons from '../components/FloatingButtons'
 import { AuthProvider } from '@/context/AuthContext'
 
-const inter = Inter({ subsets: ['latin'], variable: '--font-inter', display: 'swap' })
+// No Arial stand-in: it has no unicode-range, so it would take Arabic letters before the Arabic font.
+const inter = Inter({ subsets: ['latin'], variable: '--font-inter', display: 'swap', adjustFontFallback: false })
 // The one Arabic typeface: Inter has no Arabic letters, so they fell to the device font.
 const arabic = IBM_Plex_Sans_Arabic({ subsets: ['arabic'], weight: ['400', '500', '600', '700'], variable: '--font-arabic', display: 'swap' })
 
@@ -208,6 +209,10 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
   return (
     <html lang="en" suppressHydrationWarning style={{ height: '100%' }}>
       <head>
+        {/* Set the system language before first paint so the fallback font is Arabic, not the phone's locale (e.g. Urdu Nastaliq). */}
+        <script
+          dangerouslySetInnerHTML={{ __html: "try{if(location.pathname.indexOf('/system')===0&&localStorage.getItem('system-lang')==='ar')document.documentElement.lang='ar'}catch(e){}" }}
+        />
         <link rel="dns-prefetch" href="https://fonts.googleapis.com" />
         <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="anonymous" />
         <script

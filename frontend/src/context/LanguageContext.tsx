@@ -49,6 +49,12 @@ export function LanguageProvider({ children }: { children: ReactNode }) {
     setLangState(read(key) || 'en');
   }, []);
 
+  // Without lang="ar" a phone set to Urdu fills any Arabic glyph from its Nastaliq font.
+  useEffect(() => {
+    document.documentElement.lang = lang;
+    return () => { document.documentElement.lang = 'en'; };
+  }, [lang]);
+
   const toggleLang = () => {
     setLang(lang === 'en' ? 'ar' : 'en');
   };

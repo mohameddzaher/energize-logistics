@@ -85,13 +85,32 @@ async function ensureRepProject(nameAr) {
   try { require('../utils/hrLists').forget(); } catch (_) { /* */ }
 }
 
+/**
+ * Media Go is a B2C project without delivery orders (ads). Created once at boot with its rep-list row;
+ * a project deleted on purpose (audited delete) is not brought back.
+ */
+exports.ensureB2CProjectDefaults = async () => {
+  const NAME = 'Media Go';
+  const re = /^\s*media\s*go\s*$/i;
+  if (await B2CProject.exists({ $or: [{ name: re }, { nameAr: re }] })) return;
+  const AuditLog = require('../models/AuditLog');
+  if (await AuditLog.exists({ action: 'delete_b2c_project', 'changes.before.name': re })) return;
+  await B2CProject.create({ name: NAME, nameAr: NAME, ordersEnabled: false, monthlyTarget: 0, dailyTarget: 0, color: '#7c3aed', description: 'إعلانات — بدون طلبات توصيل' })
+    .catch((e) => { if (e.code !== 11000) throw e; });
+  await ensureRepProject(NAME);
+  cache.clear('b2c:');
+};
+
 exports.createProject = async (req, res) => {
   try {
-    const { name, code, description, color, monthlyTarget, dailyTarget, expectedWorkingDays } = req.body;
+    const { name, code, description, color, dailyTarget, expectedWorkingDays } = req.body;
+    const ordersEnabled = req.body.ordersEnabled !== false;
+    // A project without delivery orders has no orders target.
+    const monthlyTarget = ordersEnabled ? req.body.monthlyTarget : 0;
     // nameAr joins the order project to the reps' project (lt_project); without it a new project never received a rep's orders.
     const nameAr = String(req.body.nameAr || name || '').trim();
     const project = await B2CProject.create({
-      name, nameAr, code, description, color, monthlyTarget, dailyTarget, expectedWorkingDays,
+      name, nameAr, code, description, color, monthlyTarget, dailyTarget: ordersEnabled ? dailyTarget : 0, expectedWorkingDays, ordersEnabled,
       createdBy: req.user._id,
     });
     await ensureRepProject(nameAr);
@@ -107,10 +126,13 @@ exports.createProject = async (req, res) => {
 
 exports.updateProject = async (req, res) => {
   try {
-    const { name, code, description, color, monthlyTarget, dailyTarget, expectedWorkingDays, isActive } = req.body;
+    const { name, code, description, color, expectedWorkingDays, isActive } = req.body;
+    let { monthlyTarget, dailyTarget } = req.body;
+    const ordersEnabled = req.body.ordersEnabled === undefined ? undefined : req.body.ordersEnabled !== false;
+    if (ordersEnabled === false) { monthlyTarget = 0; dailyTarget = 0; }
     const project = await B2CProject.findByIdAndUpdate(
       req.params.id,
-      { name, code, description, color, monthlyTarget, dailyTarget, expectedWorkingDays, isActive },
+      { name, code, description, color, monthlyTarget, dailyTarget, expectedWorkingDays, isActive, ordersEnabled },
       { new: true, runValidators: true }
     );
     if (!project) return res.status(404).json({ message: 'Project not found' });

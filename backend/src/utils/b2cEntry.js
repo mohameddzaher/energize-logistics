@@ -24,13 +24,22 @@ const fold = (v) => S(v).replace(/[أإآٱ]/g, 'ا').replace(/ة/g, 'ه').repla
 /** Order projects by their Arabic names. */
 async function projects() {
   const B2CProject = require('../models/B2CProject');
-  const rows = await B2CProject.find({ isActive: true }).lean();
-  const byAr = new Map(); const byId = new Map();
-  for (const p of rows) {
+  const all = await B2CProject.find({ isActive: true }).lean();
+  // Order projects only: a project without delivery orders never enters entry sheets, attendance or targets.
+  const rows = all.filter((p) => p.ordersEnabled !== false);
+  const byAr = new Map(); const byId = new Map(); const anyByAr = new Map();
+  for (const p of all) {
+    for (const n of [p.nameAr, p.name]) if (S(n)) anyByAr.set(fold(n), p);
+    if (p.ordersEnabled === false) continue;
     byId.set(String(p._id), p);
     for (const n of [p.nameAr, p.name]) if (S(n)) byAr.set(fold(n), p);
   }
-  return { rows, byAr, byId, of: (projectAr) => byAr.get(fold(projectAr)) || null };
+  return {
+    rows, all, byAr, byId,
+    of: (projectAr) => byAr.get(fold(projectAr)) || null,
+    // Any active project, order or not: the rep's account follows him onto it.
+    ofAny: (projectAr) => anyByAr.get(fold(projectAr)) || null,
+  };
 }
 
 /** Orders branch from the register city (Jeddah, Makkah). */
@@ -81,10 +90,11 @@ async function ensureRep(lt, user) {
 async function syncRepOf(lt) {
   const B2CRep = require('../models/B2CRep');
   const P = await projects();
-  const proj = P.of(lt.projectAr);
+  // ofAny: a rep moved to a non-order project (Media Go) must leave his old order project, not stay counted there.
+  const proj = P.ofAny(lt.projectAr);
   const branch = await branchFor(lt.cityAr);
   const set = {};
-  if (proj) { set.project = proj._id; set.monthlyTarget = proj.monthlyTarget ?? 450; }
+  if (proj) { set.project = proj._id; set.monthlyTarget = proj.ordersEnabled === false ? 0 : (proj.monthlyTarget ?? 450); }
   if (branch) set.branch = branch;
   // The Arabic name and phone follow their owner. They used to be written once from the sheet and never moved, so the name of 122 accounts differed from the register. The account's English name (`englishName`) is its name on the app and is left alone.
   if (S(lt.name)) set.arabicName = S(lt.name);

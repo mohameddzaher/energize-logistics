@@ -1053,12 +1053,15 @@ final b2cProjectsCfg = ResourceConfig(
   titleOf: (r) => _s(r, 'name'),
   subtitleOf: (r) => _s(r, 'code'),
   chipsOf: (r) => [
-    if (r['monthlyTarget'] != null) ('هدف شهري: ${r['monthlyTarget']}', T.navy),
-    if (r['dailyTarget'] != null) ('يومي: ${r['dailyTarget']}', T.cyan),
+    if (r['ordersEnabled'] == false) ('بدون طلبات توصيل', T.navy)
+    else if (r['monthlyTarget'] != null) ('هدف شهري: ${r['monthlyTarget']}', T.navy),
+    if (r['ordersEnabled'] != false && r['dailyTarget'] != null) ('يومي: ${r['dailyTarget']}', T.cyan),
   ],
   fields: const [
     FieldSpec('name', 'اسم المشروع', 'Name', required: true),
     FieldSpec('code', 'الكود', 'Code'),
+    // Untick for a project without delivery orders (ads): it stays out of order entry and targets.
+    FieldSpec('ordersEnabled', 'مشروع توصيل (له طلبات)', 'Delivery project (has orders)', type: FieldType.checkbox, checkedByDefault: true),
     FieldSpec('monthlyTarget', 'الهدف الشهري', 'Monthly target', type: FieldType.number),
     FieldSpec('dailyTarget', 'الهدف اليومي', 'Daily target', type: FieldType.number),
     FieldSpec('expectedWorkingDays', 'أيام العمل المتوقعة', 'Working days', type: FieldType.number),

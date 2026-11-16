@@ -18,6 +18,7 @@ interface Project {
   dailyTarget: number;
   expectedWorkingDays: number;
   isActive: boolean;
+  ordersEnabled?: boolean;
   createdAt: string;
 }
 
@@ -29,6 +30,7 @@ const DEFAULT_FORM = {
   monthlyTarget: 400,
   dailyTarget: 15,
   expectedWorkingDays: 26,
+  ordersEnabled: true,
 };
 
 export default function B2CProjectsPage() {
@@ -68,6 +70,7 @@ export default function B2CProjectsPage() {
       color: p.color || '#f37121',
       monthlyTarget: p.monthlyTarget, dailyTarget: p.dailyTarget,
       expectedWorkingDays: p.expectedWorkingDays,
+      ordersEnabled: p.ordersEnabled !== false,
     });
     setError('');
     setShowModal(true);
@@ -158,6 +161,11 @@ export default function B2CProjectsPage() {
                 </div>
               </div>
               {p.description && <p className="text-slate-500 text-sm mb-3 line-clamp-2">{p.description}</p>}
+              {p.ordersEnabled === false ? (
+                <div className="bg-violet-50 border border-violet-200 rounded-lg p-3 text-center text-violet-800 text-sm font-semibold">
+                  {lang === 'ar' ? 'بدون طلبات توصيل — لا أهداف ولا إدخال طلبات' : 'No delivery orders — no targets or order entry'}
+                </div>
+              ) : (
               <div className="grid grid-cols-3 gap-2 text-center">
                 <div className="bg-slate-100 rounded-lg p-2">
                   <p className="text-slate-500 text-[10px] uppercase">{T.monthlyTarget}</p>
@@ -172,6 +180,7 @@ export default function B2CProjectsPage() {
                   <p className="text-slate-900 text-sm font-bold">{p.expectedWorkingDays}</p>
                 </div>
               </div>
+              )}
               <div className="mt-3 flex items-center gap-2">
                 <span className={`inline-block w-2 h-2 rounded-full ${p.isActive ? 'bg-green-400' : 'bg-slate-300'}`} />
                 <span className="text-xs text-slate-500">{p.isActive ? tx.active : tx.inactive}</span>
@@ -214,6 +223,17 @@ export default function B2CProjectsPage() {
                     <textarea value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} rows={2}
                       className="w-full px-3 py-2 rounded-lg bg-slate-50 border border-slate-200 text-slate-900 text-sm focus:outline-none focus:ring-2 focus:ring-[#f37121]/50" />
                   </div>
+                  <label className="flex items-start gap-2 p-3 rounded-lg border border-slate-200 bg-slate-50 cursor-pointer">
+                    <input type="checkbox" className="mt-0.5" checked={form.ordersEnabled}
+                      onChange={(e) => setForm({ ...form, ordersEnabled: e.target.checked })} />
+                    <span className="text-sm">
+                      <span className="font-medium text-slate-800">{lang === 'ar' ? 'مشروع توصيل (له طلبات)' : 'Delivery project (has orders)'}</span>
+                      <span className="block text-xs text-slate-500">{lang === 'ar'
+                        ? 'أزِل العلامة لمشروع بلا طلبات توصيل (مثل الإعلانات): يبقى مشروعًا للموظفين والمركبات والنقل، ولا يدخل إدخال الطلبات ولا الأهداف.'
+                        : 'Untick for a project with no delivery orders (e.g. ads): staff, vehicles and transfers work as usual, but it stays out of order entry and targets.'}</span>
+                    </span>
+                  </label>
+                  {form.ordersEnabled && (
                   <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                     <div>
                       <label className="block text-slate-700 text-sm font-medium mb-1.5">{T.monthlyTarget}</label>
@@ -231,6 +251,7 @@ export default function B2CProjectsPage() {
                         className="w-full px-3 py-2 rounded-lg bg-slate-50 border border-slate-200 text-slate-900 text-sm focus:outline-none focus:ring-2 focus:ring-[#f37121]/50" />
                     </div>
                   </div>
+                  )}
                   <div>
                     <label className="block text-slate-700 text-sm font-medium mb-1.5">{T.color}</label>
                     <input type="color" value={form.color} onChange={(e) => setForm({ ...form, color: e.target.value })}

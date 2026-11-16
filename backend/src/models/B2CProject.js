@@ -14,6 +14,9 @@ const b2cProjectSchema = new mongoose.Schema(
     monthlyTarget: { type: Number, default: 400 },
     dailyTarget: { type: Number, default: 15 },
     expectedWorkingDays: { type: Number, default: 26 },
+    // false = a project with no delivery orders (Media Go: ads). Its staff, vehicles and transfers work like any project,
+    // but it stays out of order entry, attendance and order targets (utils/b2cEntry.projects).
+    ordersEnabled: { type: Boolean, default: true },
     isActive: { type: Boolean, default: true },
     createdBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
   },

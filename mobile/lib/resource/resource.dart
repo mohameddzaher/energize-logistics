@@ -35,10 +35,12 @@ class FieldSpec {
   final bool lookupServerSearch;
   /// Title that follows the form selection, e.g. the container count label becomes the vehicle count label when a transaction type is chosen. Receives the current form values; without it the title is fixed.
   final String Function(Map<String, dynamic> values)? labelOf;
+  /// Checkbox value when the row has none (a new record, or a field older rows lack).
+  final bool checkedByDefault;
   const FieldSpec(this.name, this.ar, this.en,
       {this.type = FieldType.text, this.required = false, this.options,
        this.lookupEndpoint, this.lookupListKey, this.lookupQuery, this.lookupLabel,
-       this.lookupValue, this.lookupServerSearch = false, this.labelOf});
+       this.lookupValue, this.lookupServerSearch = false, this.labelOf, this.checkedByDefault = false});
 
   String get label => tr(ar, en);
 }
@@ -719,7 +721,7 @@ class _ResourceFormState extends State<_ResourceForm> {
       final v = row?[f.name];
       switch (f.type) {
         case FieldType.checkbox:
-          _values[f.name] = v == true;
+          _values[f.name] = v == null ? f.checkedByDefault : v == true;
         case FieldType.select:
           _values[f.name] = (v ?? '').toString();
         case FieldType.lookup:

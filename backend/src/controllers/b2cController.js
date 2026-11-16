@@ -69,13 +69,32 @@ exports.getProjects = async (req, res) => {
   }
 };
 
+/** A project added here is also a choice in the reps' project list (lt_project), revived if it was removed. */
+async function ensureRepProject(nameAr) {
+  if (!nameAr) return;
+  const Lookup = require('../models/Lookup');
+  const esc = nameAr.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const re = new RegExp(`^\\s*${esc}\\s*$`, 'i');
+  const row = await Lookup.findOne({ type: 'lt_project', $or: [{ nameAr: re }, { nameEn: re }] });
+  if (row) {
+    if (row.deleted || row.isActive === false) await Lookup.updateOne({ _id: row._id }, { $set: { deleted: false, isActive: true } });
+  } else {
+    const last = await Lookup.findOne({ type: 'lt_project' }).sort({ order: -1 }).select('order').lean();
+    await Lookup.create({ type: 'lt_project', key: `lt_project_${new mongoose.Types.ObjectId()}`, nameAr, nameEn: nameAr, order: (last?.order || 0) + 1, isActive: true, isSystem: false });
+  }
+  try { require('../utils/hrLists').forget(); } catch (_) { /* */ }
+}
+
 exports.createProject = async (req, res) => {
   try {
     const { name, code, description, color, monthlyTarget, dailyTarget, expectedWorkingDays } = req.body;
+    // nameAr joins the order project to the reps' project (lt_project); without it a new project never received a rep's orders.
+    const nameAr = String(req.body.nameAr || name || '').trim();
     const project = await B2CProject.create({
-      name, code, description, color, monthlyTarget, dailyTarget, expectedWorkingDays,
+      name, nameAr, code, description, color, monthlyTarget, dailyTarget, expectedWorkingDays,
       createdBy: req.user._id,
     });
+    await ensureRepProject(nameAr);
     await logAudit({ user: req.user._id, action: 'create_b2c_project', entity: 'B2CProject', entityId: project._id, changes: { after: { name, code } }, ipAddress: req.ip });
     cache.clear('b2c:');
     try { emitToAll('b2c:project:created', { project }); } catch (e) {}

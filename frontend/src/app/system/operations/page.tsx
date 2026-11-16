@@ -1097,7 +1097,7 @@ export default function OperationsWorkflowPage() {
   };
 
   const ColHead = (field: keyof Workflow, label: string, color = 'text-slate-300', pinned = false) => (!colOn(field as string) ? null : (
-    <th className={`px-3 py-3 text-start text-xs font-semibold whitespace-nowrap ${pinned ? 'sticky z-20 bg-slate-900' : ''}`}
+    <th className={`px-3 py-3 text-start text-xs font-semibold whitespace-nowrap ${pinned ? 'md:sticky z-20 bg-slate-900' : ''}`}
       style={pinned ? { insetInlineStart: 'var(--wf-pin, 0px)' } : undefined}>
       <span className={`inline-flex items-center ${color}`}>
         {label}
@@ -1587,7 +1587,7 @@ export default function OperationsWorkflowPage() {
           <table className="w-full" style={{ minWidth: Math.max(960, visibleCols.length * 80) }}>
             <thead>
               <tr className="bg-slate-900 border-b border-slate-200">
-                <th ref={measurePinOffset} className="px-3 py-3 sticky start-0 bg-slate-900 z-10 w-20">
+                <th ref={measurePinOffset} className="px-3 py-3 md:sticky start-0 bg-slate-900 z-10 w-20">
                   <div className="flex items-center gap-2">
                     <input
                       type="checkbox"
@@ -1663,7 +1663,7 @@ export default function OperationsWorkflowPage() {
                   <tr key={wf._id} className={`hover:bg-slate-100 transition-colors ${editingId === wf._id ? '' : 'cursor-pointer'} ${locked ? 'opacity-60' : ''} ${isSelected ? 'bg-[#f37121]/5' : ''} ${editingId === wf._id ? 'ring-1 ring-[#f37121]/40' : ''}`}
                     onClick={() => { if (editingId !== wf._id) router.push(`/system/operations/${wf._id}`); }}>
                     {/* Checkbox + Actions */}
-                    <td className="px-3 py-2.5 sticky start-0 bg-white z-10" onClick={(e) => e.stopPropagation()}>
+                    <td className="px-3 py-2.5 md:sticky start-0 bg-white z-10" onClick={(e) => e.stopPropagation()}>
                       <div className="flex items-center gap-1.5">
                         {saveState[wf._id] === 'saving' && <Loader2 className="w-3.5 h-3.5 animate-spin text-slate-500" aria-label={lang === 'ar' ? 'يُحفظ' : 'Saving'} />}
                         {saveState[wf._id] === 'saved' && <Check className="w-3.5 h-3.5 text-emerald-600" aria-label={lang === 'ar' ? 'حُفظ' : 'Saved'} />}
@@ -1735,7 +1735,7 @@ export default function OperationsWorkflowPage() {
                       const textCell = (field: keyof Workflow, color = 'text-slate-700') => {
                         const isSystemPulled = (systemPulledFields.has(field as string) && wf.reportNumber) || !owns(field);
                         return (
-                          <td className={`px-3 py-2.5 text-sm whitespace-nowrap ${field === 'reportNumber' ? 'sticky z-10 bg-white border-e border-slate-200' : ''}`}
+                          <td className={`px-3 py-2.5 text-sm whitespace-nowrap ${field === 'reportNumber' ? 'md:sticky z-10 bg-white border-e border-slate-200' : ''}`}
                             style={field === 'reportNumber' ? { insetInlineStart: 'var(--wf-pin, 0px)' } : undefined}
                             onClick={isSystemPulled ? (e) => e.stopPropagation() : cellClick(field)}
                             title={!owns(field) ? noPermMsg : isSystemPulled ? 'البيانات المسحوبة من النظام لا تُعدّل' : undefined}>

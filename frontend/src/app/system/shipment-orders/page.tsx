@@ -706,14 +706,14 @@ function ShipmentOrdersInner() {
       <ScrollX className="bg-white border border-slate-200 rounded-xl shadow-sm">
         <table className="w-full text-sm [&_tbody_td]:text-[14px] [&_tbody_td]:font-medium [&_tbody_td]:text-slate-900">
           <thead><tr className="bg-slate-900 border-b border-slate-200 text-slate-300">
-            <th className="px-3 py-3 w-[44px] sticky start-0 z-10 bg-slate-900">
+            <th className="px-3 py-3 w-[44px] md:sticky start-0 z-10 bg-slate-900">
               <input type="checkbox" className="w-4 h-4 accent-[#f37121]"
                 checked={picked.size > 0 && orders.every((o) => picked.has(o._id))}
                 onChange={(e) => setPicked(e.target.checked ? new Set(orders.map((o) => o._id)) : new Set())}
                 aria-label={ar ? 'تحديد الكل' : 'Select all'} />
             </th>
             {shownHeads.map(([h, col], i) => (
-              <th key={i} className={`font-semibold px-4 py-3 whitespace-nowrap ${i === 0 ? 'text-center sticky start-[44px] z-10 bg-slate-900' : 'text-start'}`}>
+              <th key={i} className={`font-semibold px-4 py-3 whitespace-nowrap ${i === 0 ? 'text-center md:sticky start-[44px] z-10 bg-slate-900' : 'text-start'}`}>
                 <span className="inline-flex items-center">
                   {h}
                   {/* Opening the funnel requests only its own column, not all ten. */}
@@ -766,12 +766,12 @@ function ShipmentOrdersInner() {
               return (
                 <tr key={o._id} onClick={() => setDetail(o)}
                   className="border-b border-slate-200/70 hover:bg-slate-50 cursor-pointer">
-                  <td className="px-3 py-3 w-[44px] sticky start-0 z-10 bg-white" onClick={(e) => e.stopPropagation()}>
+                  <td className="px-3 py-3 w-[44px] md:sticky start-0 z-10 bg-white" onClick={(e) => e.stopPropagation()}>
                     <input type="checkbox" className="w-4 h-4 accent-[#f37121]"
                       checked={picked.has(o._id)} onChange={() => togglePick(o._id)}
                       aria-label={String(o.waybillNumber)} />
                   </td>
-                  <td className="px-4 py-3 text-center text-slate-900 !font-extrabold !text-[15px] tabular-nums whitespace-nowrap sticky start-[44px] z-10 bg-white shadow-[inset_-1px_0_0_#e2e8f0]">
+                  <td className="px-4 py-3 text-center text-slate-900 !font-extrabold !text-[15px] tabular-nums whitespace-nowrap md:sticky start-[44px] z-10 bg-white shadow-[inset_-1px_0_0_#e2e8f0]">
                     {(o as any).reference || o.waybillNumber}
                   </td>
                   {on('customerName') && (

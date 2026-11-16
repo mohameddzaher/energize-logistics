@@ -391,7 +391,7 @@ export default function OpsBoardPage() {
                   {shownCols.map((c) => {
                     const pinned = c.key === 'reportNumber';
                     return (
-                      <th key={c.key} className={`px-3 py-3 text-start text-xs font-semibold whitespace-nowrap text-slate-300 ${pinned ? 'sticky start-0 z-20 bg-slate-900' : ''}`}>
+                      <th key={c.key} className={`px-3 py-3 text-start text-xs font-semibold whitespace-nowrap text-slate-300 ${pinned ? 'md:sticky start-0 z-20 bg-slate-900' : ''}`}>
                         <span className="inline-flex items-center">
                           {c.label}
                           {FILTER_FIELDS.has(c.key) && (
@@ -416,7 +416,7 @@ export default function OpsBoardPage() {
                 {rows.map((r) => (
                   <tr key={r._id} className="hover:bg-slate-100 transition-colors">
                     {shownCols.map((c) => (
-                      <td key={c.key} className={`px-3 py-2.5 whitespace-nowrap text-slate-700 ${c.key === 'reportNumber' ? 'sticky start-0 z-10 bg-white border-e border-slate-200' : ''}`}>
+                      <td key={c.key} className={`px-3 py-2.5 whitespace-nowrap text-slate-700 ${c.key === 'reportNumber' ? 'md:sticky start-0 z-10 bg-white border-e border-slate-200' : ''}`}>
                         {c.key === 'applicationStatus' ? statusSelect(r, true)
                           : c.key === 'reportNumber' ? <span className="font-semibold text-slate-900 tabular-nums">{r.reportNumber}</span>
                             : (cell(r, c.key) || <span className="text-slate-300">—</span>)}

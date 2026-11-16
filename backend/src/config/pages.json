@@ -1028,46 +1028,16 @@
       "en": "KPIs"
     },
     {
-      "key": "/system/administration",
-      "section": "Administration",
-      "ar": "لوحة المهام",
-      "en": "Task Board"
-    },
-    {
-      "key": "/system/administration/jp",
-      "section": "Administration",
-      "ar": "خطّة العمل (JP)",
-      "en": "JP"
-    },
-    {
-      "key": "/system/administration/jp-dashboard",
-      "section": "Administration",
-      "ar": "لوحة JP",
-      "en": "JP Dashboard"
-    },
-    {
-      "key": "/system/administration/management-jp",
-      "section": "Administration",
-      "ar": "خطّة الإدارة (Management JP)",
-      "en": "Management JP"
-    },
-    {
-      "key": "/system/administration/complaints",
-      "section": "Administration",
-      "ar": "الشكاوى",
-      "en": "Complaints"
-    },
-    {
-      "key": "/system/administration/kpis",
-      "section": "Administration",
-      "ar": "تقييم الأداء",
-      "en": "KPIs"
-    },
-    {
       "key": "/system/business-review/daily",
       "section": "Business Review",
       "ar": "الاجتماعات ومتابعة الأقسام",
       "en": "Meetings & departments"
+    },
+    {
+      "key": "/system/business-review/archive",
+      "section": "Business Review",
+      "ar": "الأرشيف",
+      "en": "Archive"
     },
     {
       "key": "/system/business-review/my-actions",

@@ -11,6 +11,7 @@ require('../models/Employee');
 const { startOfDay, endOfDay, todayKey, dayKeyOf } = require('../utils/companyDay');
 const {
   canRunMeetings, isParticipant, isManagerRole, OPEN_ACTION_STATUSES, CADENCE_KEYS, departments,
+  ARCHIVE_AFTER_MS, archivedCond, liveCond,
 } = require('../config/businessReview');
 const { sectionOfRole } = require('../config/roles');
 const { sectionsOfUserIds } = require('../utils/userSection');
@@ -220,7 +221,8 @@ exports.getMeetingDepartments = async (req, res) => {
     const meetingIds = meeting.series
       ? (await BrMeeting.find({ series: meeting.series }).select('_id').lean()).map((m) => m._id)
       : [meeting._id];
-    const actions = await BrAction.find({ meeting: { $in: meetingIds } })
+    // Finished more than a day ago: in the archive, not on the meeting.
+    const actions = await BrAction.find({ meeting: { $in: meetingIds }, ...liveCond() })
       .select('-__v').sort({ createdAt: -1 }).limit(3000).lean();
     const ownerSection = await sectionsOfUserIds(actions.map((a) => a.assignee));
     const deptOf = (a) => ownerSection.get(String(a.assignee)) || orgSectionOfRole(a.assigneeRole) || a.department || NO_DEPT;
@@ -283,6 +285,100 @@ exports.getMeetingDepartments = async (req, res) => {
   } catch (error) {
     console.error('br meeting departments error:', error);
     res.status(500).json({ message: 'تعذّر تحميل أقسام الاجتماع' });
+  }
+};
+
+/**
+ * GET /archive — tasks finished more than a day ago, with where they came from and their whole timeline.
+ * Same scope as the board: the administration sees all; a department head his department; a manager the meetings he attended and his own tasks.
+ * Filters: from/to (company days) on `dateBy` (closed | assigned | due), department, assignee, meeting cadence, status, q.
+ * `options` lists the departments, people and meetings found in the reader's archive, unfiltered, for the pickers.
+ */
+exports.getArchive = async (req, res) => {
+  try {
+    const runner = canRunMeetings(req.user);
+    if (!runner && !isParticipant(req.user)) return res.status(403).json({ message: 'Not allowed' });
+    const filter = { ...archivedCond() };
+    if (!runner) {
+      const attended = await BrMeeting.find({ 'attendees.user': req.user._id }).distinct('_id');
+      filter.$and = [{ $or: [{ meeting: { $in: attended } }, { assignee: req.user._id }] }];
+    }
+    let rows = await BrAction.find(filter)
+      .select('shareGroup meeting meetingRef meetingTitle meetingDate title description department assignee assigneeName assigneeRole raisedByName createdByName startDate dueDate expectedDate originalDueDate postponeReason postponeCount priority status completedAt cancelledAt createdAt updatedAt updates')
+      .sort({ completedAt: -1, updatedAt: -1 }).limit(20000).lean();
+
+    const ownerSection = await sectionsOfUserIds(rows.map((a) => a.assignee));
+    const deptOf = (a) => ownerSection.get(String(a.assignee)) || orgSectionOfRole(a.assigneeRole) || a.department || NO_DEPT;
+    const hd = runner ? null : await brScope.headDept(req.user);
+    if (hd) rows = rows.filter((a) => deptOf(a) === hd || String(a.assignee) === String(req.user._id));
+
+    const meetings = new Map((await BrMeeting.find({ _id: { $in: [...new Set(rows.map((a) => String(a.meeting)))] } })
+      .select('refNumber title cadence scheduledAt seriesDay series').lean()).map((m) => [String(m._id), m]));
+    const closedAt = (a) => (a.status === 'done' ? a.completedAt : a.cancelledAt) || a.updatedAt;
+    const options = {
+      departments: [...new Set(rows.map(deptOf))].sort(),
+      people: [...new Map(rows.map((a) => [String(a.assignee), { _id: a.assignee, name: a.assigneeName }])).values()].sort((x, y) => String(x.name).localeCompare(String(y.name), 'ar')),
+      cadences: [...new Set([...meetings.values()].map((m) => m.cadence).filter(Boolean))],
+    };
+
+    const { from, to } = periodOf({ from: req.query.from, to: req.query.to, period: 'all' });
+    const dateBy = ['assigned', 'due'].includes(req.query.dateBy) ? req.query.dateBy : 'closed';
+    const dateOf = (a) => (dateBy === 'assigned' ? a.createdAt : dateBy === 'due' ? a.dueDate : closedAt(a));
+    const q = String(req.query.q || '').trim().toLowerCase();
+    rows = rows.filter((a) => {
+      const d = dateOf(a);
+      if ((from || to) && (!d || (from && new Date(d) < from) || (to && new Date(d) > to))) return false;
+      if (req.query.department && deptOf(a) !== req.query.department) return false;
+      if (req.query.assignee && String(a.assignee) !== String(req.query.assignee)) return false;
+      if (req.query.status && a.status !== req.query.status) return false;
+      if (req.query.cadence && (meetings.get(String(a.meeting)) || {}).cadence !== req.query.cadence) return false;
+      if (q && ![a.title, a.description, a.assigneeName, a.meetingRef, a.meetingTitle, a.raisedByName, a.createdByName]
+        .some((x) => String(x || '').toLowerCase().includes(q))) return false;
+      return true;
+    });
+
+    const ids = rows.map((a) => a._id);
+    const [shared, dels] = await Promise.all([
+      require('./businessReviewController').siblingsOf(rows),
+      ids.length ? BrAssignment.find({ action: { $in: ids } }).select('action assigneeName status').lean() : [],
+    ]);
+    const delBy = new Map();
+    for (const d of dels) { const k = String(d.action); if (!delBy.has(k)) delBy.set(k, []); delBy.get(k).push(d.assigneeName); }
+
+    const totals = { total: 0, done: 0, cancelled: 0, onTime: 0, late: 0, noDue: 0 };
+    let daysSum = 0; let daysN = 0;
+    const items = rows.map((a) => {
+      const m = meetings.get(String(a.meeting)) || {};
+      const closed = closedAt(a);
+      const due = a.dueDate ? new Date(a.dueDate) : null;
+      // On time: done by the due date it ended with; the original date tells how far it slipped.
+      const timing = a.status !== 'done' ? '' : !due ? 'nodue' : new Date(closed) <= due ? 'ontime' : 'late';
+      const start = a.startDate || a.meetingDate || a.createdAt;
+      const days = start && closed ? Math.max(0, Math.round((new Date(closed) - new Date(start)) / DAY)) : null;
+      totals.total += 1; totals[a.status] = (totals[a.status] || 0) + 1;
+      if (timing === 'ontime') totals.onTime += 1; else if (timing === 'late') totals.late += 1; else if (timing === 'nodue') totals.noDue += 1;
+      if (a.status === 'done' && days != null) { daysSum += days; daysN += 1; }
+      const last = (a.updates || []).slice(-1)[0] || null;
+      return {
+        _id: a._id, title: a.title, description: a.description, department: deptOf(a), priority: a.priority, status: a.status,
+        assignee: a.assignee, assigneeName: a.assigneeName,
+        sharedWith: (shared.get(String(a._id)) || []).map((x) => x.assigneeName),
+        delegatedTo: delBy.get(String(a._id)) || [],
+        assignedByName: a.createdByName || '', raisedByName: a.raisedByName || '',
+        meeting: a.meeting, meetingRef: a.meetingRef || m.refNumber || '', meetingTitle: a.meetingTitle || m.title || '',
+        meetingDate: a.meetingDate || m.scheduledAt || null, meetingCadence: m.cadence || '',
+        assignedAt: a.createdAt, startDate: start, dueDate: a.dueDate, originalDueDate: a.originalDueDate,
+        postponeCount: a.postponeCount || 0, postponeReason: a.postponeReason || '',
+        closedAt: closed, archivedAt: closed ? new Date(new Date(closed).getTime() + ARCHIVE_AFTER_MS) : null,
+        timing, days,
+        updatesCount: (a.updates || []).length,
+        lastUpdate: last ? { at: last.at, byName: last.byName, text: last.text } : null,
+      };
+    });
+    res.json({ items, totals: { ...totals, avgDays: daysN ? Math.round((daysSum / daysN) * 10) / 10 : null }, options, dateBy, runner });
+  } catch (error) {
+    console.error('br archive error:', error);
+    res.status(500).json({ message: 'تعذّر تحميل الأرشيف' });
   }
 };
 
@@ -395,7 +491,7 @@ exports.getDaily = async (req, res) => {
     const meetings = await BrMeeting.find({ series: series._id }).sort({ seriesDay: -1 }).limit(Math.min(120, Number(req.query.limit) || 60))
       .select('refNumber title seriesDay scheduledAt status attendees minutes departments').lean();
     const ids = meetings.map((m) => m._id);
-    let acts = ids.length ? await BrAction.find({ meeting: { $in: ids } })
+    let acts = ids.length ? await BrAction.find({ meeting: { $in: ids }, ...liveCond() })
       .select('meeting department assignee assigneeName assigneeRole status title dueDate progress').lean() : [];
     // A department head's day view: his department's tasks and minutes only.
     const hd = runner ? null : await brScope.headDept(req.user);

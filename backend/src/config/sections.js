@@ -106,9 +106,9 @@ const SECTIONS = [
     defaultRoles: [],
   },
   {
-    // Administration (secretariat): the shared office task board.
+    // Administration (secretariat): kept as a department for its roles and business review; its task board was retired in favour of business review.
     key: 'Administration',
-    apiPrefixes: ['/api/admin-tasks'],
+    apiPrefixes: [],
     defaultRoles: ['admin', 'administration_staff', 'bd_manager', 'bd_team_leader', 'it_manager', 'it_team_leader', 'it_specialist'],
   },
   {

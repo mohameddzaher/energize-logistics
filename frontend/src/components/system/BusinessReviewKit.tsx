@@ -208,10 +208,10 @@ export function SharedWith({ list, lang, statuses }: { list?: any[]; lang: Lang;
   const t = (en: string, ar: string) => tx(lang, en, ar);
   return (
     <p className="text-[11px] text-violet-700 mt-1 flex flex-wrap items-center gap-1.5">
-      <Users className="w-3.5 h-3.5" />{t('Shared with', 'مشترك مع')}:
+      <Users className="w-3.5 h-3.5" />{t('Worked together with', 'بمشاركة')}:
       {list.map((s) => (
         <span key={s._id} className="px-1.5 py-0.5 rounded bg-violet-50 border border-violet-200">
-          {s.assigneeName}{s.department ? ` · ${deptLabel(s.department, lang)}` : ''} · {vocabLabel(statuses, s.status, lang)} {s.progress}%
+          {s.assigneeName}{s.department ? ` · ${deptLabel(s.department, lang)}` : ''}
         </span>
       ))}
     </p>

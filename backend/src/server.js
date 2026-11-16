@@ -74,7 +74,6 @@ const performanceRoutes = require('./routes/performance');
 const marketingRoutes = require('./routes/marketing');
 const businessDevelopmentRoutes = require('./routes/businessDevelopment');
 const itRoutes = require('./routes/it');
-const adminTaskRoutes = require('./routes/adminTasks');
 const contractsRoutes = require('./routes/contracts');
 // Customer and vendor accounts and their portal: partner account provisioning (staff side) and the partner-facing portal (client side).
 const partnerRoutes = require('./routes/partners');
@@ -327,7 +326,6 @@ app.use('/api/performance', authenticate, performanceRoutes);
 app.use('/api/marketing', authenticate, sectionGate('Marketing'), marketingRoutes);
 app.use('/api/business-development', authenticate, sectionGate('Business Development'), businessDevelopmentRoutes);
 app.use('/api/it', authenticate, sectionGate('Software & IT'), itRoutes);
-app.use('/api/admin-tasks', authenticate, sectionGate('Administration'), adminTaskRoutes);
 app.use('/api/contracts', authenticate, sectionGate('Contracts'), contractsRoutes);
 // Not section-gated: /api/partners is used from every section's customer profile
 // page, and /api/portal belongs to outside partners who have no section at all.

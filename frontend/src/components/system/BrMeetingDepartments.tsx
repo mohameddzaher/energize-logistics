@@ -277,6 +277,11 @@ export function TaskRow({ task, meta, L, meetingId, canEdit, runner = canEdit, c
           {done && <CheckCircle2 className="w-4 h-4 shrink-0 text-emerald-600" />}{task.title}
         </span>
         <span className="text-[12px] text-slate-600 inline-flex items-center gap-1"><User className="w-3.5 h-3.5 text-slate-400" />{task.assigneeName}</span>
+        {!!task.sharedWith?.length && (
+          <span className="text-[11.5px] px-1.5 py-0.5 rounded bg-sky-50 border border-sky-200 text-sky-800 inline-flex items-center gap-1">
+            <Users className="w-3.5 h-3.5" />{t('With', 'بمشاركة')} {task.sharedWith.map((x: any) => x.assigneeName).join('، ')}
+          </span>
+        )}
         <span className={`text-[12px] inline-flex items-center gap-1 ${task.overdue ? 'text-red-700 font-bold' : 'text-slate-500'}`}>
           <CalendarDays className="w-3.5 h-3.5" />{fmtDate(task.dueDate)}
         </span>
@@ -293,14 +298,13 @@ export function TaskRow({ task, meta, L, meetingId, canEdit, runner = canEdit, c
             <p>{t('Owner', 'المسؤول')}: <b className="text-slate-800">{task.assigneeName}</b></p>
             {!!task.sharedWith?.length && (
               <p className="sm:col-span-2 inline-flex flex-wrap items-center gap-1.5">
-                <Users className="w-3.5 h-3.5 text-sky-600" />{t('Shared with', 'مشترك مع')}:
+                <Users className="w-3.5 h-3.5 text-sky-600" />{t('Worked together with', 'بمشاركة')}:
                 {task.sharedWith.map((x: any) => (
                   <span key={x._id} className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-sky-50 border border-sky-200 text-sky-800">
-                    <b>{x.assigneeName}</b> · {deptLabel(x.department, L)} · <StatusPill statuses={meta.actionStatuses} value={x.status} lang={L} /> {x.progress || 0}%
-                    {x.expectedDate && <span className="text-sky-700"> · {t('ETA', 'متوقَّع')} {fmtDate(x.expectedDate)}</span>}
-                    {x.lastUpdate?.text && <span className="text-slate-600 max-w-[22rem] truncate" title={x.lastUpdate.text}> · {x.lastUpdate.text}</span>}
+                    <b>{x.assigneeName}</b>{x.department ? ` · ${deptLabel(x.department, L)}` : ''}
                   </span>
                 ))}
+                <span className="text-[11.5px] text-slate-500">{t('— any edit by one shows for the other.', '— أيُّ تعديلٍ من أحدهما يظهر عند الآخر.')}</span>
               </p>
             )}
             {task.raisedByName && <p>{t('Requested by', 'بطلب من')}: <b className="text-slate-800">{task.raisedByName}</b></p>}
@@ -456,7 +460,7 @@ export function TaskRow({ task, meta, L, meetingId, canEdit, runner = canEdit, c
                         </div>
                       </div>
                     </div>
-                    {!!task.sharedWith?.length && <p className="rounded-lg bg-sky-50 border border-sky-200 px-3 py-2 text-[12px] text-sky-800">{t('Title, details, priority and due date change for every owner sharing it.', 'نصُّ البند وتفاصيلُه وأولويّتُه وموعدُه تتغيّر عند كلّ المشتركين فيه.')}</p>}
+                    {!!task.sharedWith?.length && <p className="rounded-lg bg-sky-50 border border-sky-200 px-3 py-2 text-[12px] text-sky-800">{t('This task is worked together: every change here applies to everyone sharing it.', 'هذا البند مشترك: كلُّ تعديلٍ هنا يسري عند جميع المشتركين فيه.')}</p>}
                   </div>
                 ),
                 footer: primary(t('Save', 'حفظ التعديل'), () => send({ title: ed.title.trim(), description: ed.description.trim(), dueDate: ed.dueDate || null, priority: ed.priority }, t('Saved', 'حُفظ تعديل البند')), !ed.title.trim(), 'bg-[#f37121] hover:bg-[#e06010]'),

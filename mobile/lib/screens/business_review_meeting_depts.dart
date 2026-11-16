@@ -199,7 +199,7 @@ class _BrMeetingDepartmentsTabState extends State<BrMeetingDepartmentsTab> {
               ]),
             ],
             if (List.from(t['sharedWith'] ?? []).isNotEmpty)
-              Padding(padding: const EdgeInsets.only(top: 6), child: Text(tr('النصُّ والتفاصيلُ والأولويّةُ والموعدُ تتغيّر عند كلّ المشتركين فيه.', 'Text, details, priority and date change for every owner sharing it.'), style: const TextStyle(fontSize: 11.5, color: T.info))),
+              Padding(padding: const EdgeInsets.only(top: 6), child: Text(tr('هذا البند مشترك: كلُّ تعديلٍ هنا يسري عند جميع المشتركين فيه.', 'Shared task: every change here applies to everyone sharing it.'), style: const TextStyle(fontSize: 11.5, color: T.info))),
             const SizedBox(height: 12),
             SizedBox(width: double.infinity, child: FilledButton(
               onPressed: () { if (title.text.trim().isNotEmpty) Navigator.pop(c, true); },
@@ -553,8 +553,8 @@ class _BrMeetingDepartmentsTabState extends State<BrMeetingDepartmentsTab> {
                 ),
               _line(tr('المسؤول', 'Owner'), '${t['assigneeName']}'),
               if (List.from(t['sharedWith'] ?? []).isNotEmpty)
-                _line(tr('مشترك مع', 'Shared with'), List<Map>.from(t['sharedWith']).map((x) =>
-                    '${x['assigneeName']} (${brDept(context, '${x['department'] ?? ''}')} · ${brVocab(widget.meta['actionStatuses'] as List?, '${x['status']}').label} ${x['progress'] ?? 0}%${(x['lastUpdate'] is Map && '${x['lastUpdate']['text'] ?? ''}'.isNotEmpty) ? ' — ${x['lastUpdate']['text']}' : ''})').join('، '), color: T.info),
+                _line(tr('بمشاركة', 'Worked together with'), '${List<Map>.from(t['sharedWith']).map((x) =>
+                    '${x['assigneeName']} (${brDept(context, '${x['department'] ?? ''}')})').join('، ')} — ${tr('أيُّ تعديلٍ من أحدهما يظهر عند الآخر', 'any edit by one shows for the other')}', color: T.info),
               if ('${t['raisedByName'] ?? ''}'.isNotEmpty) _line(tr('بطلب من', 'Requested by'), '${t['raisedByName']}'),
               _line(tr('أُسند في', 'Raised in'), '${t['meetingRef']} · ${brDate(t['meetingDate'] ?? t['createdAt'])}${t['fromThisMeeting'] == true ? ' (${tr('هذا الاجتماع', 'this meeting')})' : ''}'),
               _line(tr('التسليم', 'Due'), brDate(t['dueDate']), color: overdue ? T.danger : null),

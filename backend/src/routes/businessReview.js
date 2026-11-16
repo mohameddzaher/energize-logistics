@@ -25,6 +25,8 @@ router.get('/dashboard', br.getDashboard);
 const board = require('../controllers/businessReviewBoardController');
 router.get('/board', board.getBoard);
 router.get('/daily', board.getDaily);
+// Tasks finished more than a day ago, out of the meetings.
+router.get('/archive', board.getArchive);
 router.get('/series', board.listSeries);
 router.post('/series', board.createSeries);
 router.put('/series/:id', board.updateSeries);

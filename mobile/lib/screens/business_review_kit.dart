@@ -248,7 +248,7 @@ Future<Map<String, dynamic>?> brProgressSheet(BuildContext context, Map<String, 
 String brSharedLine(Map a, Map meta) {
   final list = List<Map>.from(a['sharedWith'] ?? []);
   if (list.isEmpty) return '';
-  return '${tr('مشترك مع', 'Shared with')}: ${list.map((s) => '${s['assigneeName']} (${brVocab(meta['actionStatuses'] as List?, '${s['status']}').label} ${s['progress']}%)').join('، ')}';
+  return '${tr('بمشاركة', 'Worked together with')}: ${list.map((s) => '${s['assigneeName']}').join('، ')}';
 }
 
 /// Start, expected and postponement, one line; DatesLine on the web.

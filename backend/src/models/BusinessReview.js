@@ -160,6 +160,8 @@ const brActionSchema = new mongoose.Schema({
   progress: { type: Number, default: 0, min: 0, max: 100 },
 
   completedAt: { type: Date, default: null },
+  // When it was cancelled; with completedAt it dates the closing that sends a task to the archive a day later.
+  cancelledAt: { type: Date, default: null },
   // Stamped by the daily sweep so lists and dashboards don't recompute it.
   isOverdue: { type: Boolean, default: false, index: true },
   // Set once per breach so the overdue alert is not re-sent every night.

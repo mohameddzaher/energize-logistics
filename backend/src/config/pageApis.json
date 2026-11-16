@@ -1690,60 +1690,6 @@
       ],
       "wildcard": false
     },
-    "/system/administration": {
-      "apis": [
-        "/api/admin-tasks",
-        "/api/admin-tasks/assignees"
-      ],
-      "wildcard": false
-    },
-    "/system/administration/jp": {
-      "apis": [
-        "/api/customs-clearance",
-        "/api/customs-clearance/parties",
-        "/api/jp/link-options",
-        "/api/jp/me",
-        "/api/jp/projects",
-        "/api/jp/tasks",
-        "/api/lookups/types"
-      ],
-      "wildcard": false
-    },
-    "/system/administration/jp-dashboard": {
-      "apis": [
-        "/api/jp/daily",
-        "/api/jp/dashboard"
-      ],
-      "wildcard": false
-    },
-    "/system/administration/management-jp": {
-      "apis": [
-        "/api/customs-clearance",
-        "/api/customs-clearance/parties",
-        "/api/jp/link-options",
-        "/api/jp/me",
-        "/api/jp/projects",
-        "/api/jp/tasks",
-        "/api/lookups/types"
-      ],
-      "wildcard": false
-    },
-    "/system/administration/complaints": {
-      "apis": [
-        "/api/section-work",
-        "/api/section-work/assignees"
-      ],
-      "wildcard": false
-    },
-    "/system/administration/kpis": {
-      "apis": [
-        "/api/performance/evaluations",
-        "/api/performance/evaluations/form",
-        "/api/performance/team",
-        "/api/performance/templates"
-      ],
-      "wildcard": false
-    },
     "/system/business-review/daily": {
       "apis": [
         "/api/business-review/actions",
@@ -1751,6 +1697,13 @@
         "/api/business-review/meetings",
         "/api/business-review/meta",
         "/api/business-review/series"
+      ],
+      "wildcard": false
+    },
+    "/system/business-review/archive": {
+      "apis": [
+        "/api/business-review/archive",
+        "/api/business-review/meta"
       ],
       "wildcard": false
     },

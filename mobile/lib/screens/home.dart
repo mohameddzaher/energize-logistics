@@ -27,7 +27,6 @@ class HomeScreen extends StatefulWidget {
 
 class _HomeScreenState extends State<HomeScreen> {
   bool _hasTeam = false;
-  int _openTasks = 0;
   int _pendingApprovals = 0;
   int _myLeaves = 0;
   double _leaveAvailable = 0;
@@ -109,28 +108,21 @@ class _HomeScreenState extends State<HomeScreen> {
         Api.instance.get('/api/hr/me/leaves').catchError((_) => {}),
         // Show the inbox, not team requests: manager, HR, accounts and admin each see what reached their station.
         Api.instance.get('/api/hr/leaves/inbox').catchError((_) => {}),
-        if (_canSeeBoard(auth)) Api.instance.get('/api/admin-tasks').catchError((_) => {}),
       ]);
       if (!mounted) return;
       final leaves = List<Map<String, dynamic>>.from(results[1]['leaves'] ?? []);
       final inbox = List<Map<String, dynamic>>.from(results[2]['leaves'] ?? []);
-      final tasks = results.length > 3 ? List<Map<String, dynamic>>.from(results[3]['tasks'] ?? []) : <Map<String, dynamic>>[];
       setState(() {
         _hasTeam = results[0]['hasTeam'] == true;
         _myLeaves = leaves.where((l) => leaveIsOpen(l['status'])).length;
         _leaveAvailable = ((results[1]['balance']?['available']) ?? 0).toDouble();
         _pendingApprovals = inbox.where((l) => leaveIsActionable(l['status'])).length;
-        _openTasks = tasks.where((t) => t['status'] != 'done').length;
         _statsLoading = false;
       });
     } catch (_) {
       if (mounted) setState(() => _statsLoading = false);
     }
   }
-
-  bool _canSeeBoard(AuthProvider auth) =>
-      const ['super_admin', 'admin', 'administration_staff', 'bd_manager', 'bd_team_leader', 'it_manager', 'it_team_leader', 'it_specialist', 'business_consultant'].contains(auth.role) ||
-      auth.canAccessSection('Administration');
 
   String _greeting() {
     final h = DateTime.now().hour;
@@ -265,10 +257,6 @@ class _HomeScreenState extends State<HomeScreen> {
               ])
             else
               Row(children: [
-                if (_canSeeBoard(auth)) ...[
-                  Expanded(child: FadeSlideIn(delayMs: 80, child: StatCard(label: tr('مهام مفتوحة', 'Open tasks'), value: _openTasks, color: T.violet, icon: Icons.view_kanban_outlined))),
-                  const SizedBox(width: 10),
-                ],
                 Expanded(child: FadeSlideIn(delayMs: 140, child: StatCard(label: tr('رصيد إجازاتي', 'Leave balance'), value: _leaveAvailable, color: T.cyan, icon: Icons.beach_access_outlined))),
                 const SizedBox(width: 10),
                 Expanded(

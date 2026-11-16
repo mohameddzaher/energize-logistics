@@ -53,6 +53,24 @@ const PROGRESS_OF = Object.fromEntries(ACTION_STATUSES.map((s) => [s.key, s.prog
 const ACTION_STATUS_KEYS = ACTION_STATUSES.map((s) => s.key);
 const OPEN_ACTION_STATUSES = ['open', 'in_progress', 'blocked', 'postponed'];
 
+/**
+ * Archive: a task finished (done or cancelled) more than a day ago leaves every meeting and lives in the archive page.
+ * Computed at read time, so it is exact to the hour with no job, and reopening a task brings it back at once.
+ * Rows from before the closing stamps existed fall back to their last update.
+ */
+const ARCHIVE_AFTER_MS = 24 * 60 * 60 * 1000;
+const archivedCond = (now = Date.now()) => {
+  const cut = new Date(now - ARCHIVE_AFTER_MS);
+  return { $or: [
+    { status: 'done', completedAt: { $lte: cut } },
+    { status: 'done', completedAt: null, updatedAt: { $lte: cut } },
+    { status: 'cancelled', cancelledAt: { $lte: cut } },
+    { status: 'cancelled', cancelledAt: null, updatedAt: { $lte: cut } },
+  ] };
+};
+/** Merge into a BrAction filter to keep archived tasks out of a meeting. */
+const liveCond = (now) => ({ $nor: [archivedCond(now)] });
+
 const PRIORITIES = [
   { key: 'low', ar: 'منخفضة', en: 'Low', color: '#94a3b8' },
   { key: 'medium', ar: 'متوسطة', en: 'Medium', color: '#0ea5e9' },
@@ -117,7 +135,7 @@ const meta = () => ({
 module.exports = {
   CADENCES, CADENCE_KEYS,
   MEETING_STATUSES, MEETING_STATUS_KEYS, HELD_MEETING_STATUSES, OPEN_MEETING_STATUSES,
-  ACTION_STATUSES, ACTION_STATUS_KEYS, OPEN_ACTION_STATUSES, PROGRESS_OF,
+  ACTION_STATUSES, ACTION_STATUS_KEYS, OPEN_ACTION_STATUSES, PROGRESS_OF, ARCHIVE_AFTER_MS, archivedCond, liveCond,
   PRIORITIES, PRIORITY_KEYS,
   EXECUTIVE_ROLES, SECRETARY_ROLES, EXTRA_MANAGER_ROLES,
   isManagerRole, isExecutive, isSecretary, canRunMeetings, isParticipant,

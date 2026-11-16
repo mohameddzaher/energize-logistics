@@ -6,7 +6,6 @@ import '../screens/jp.dart';
 import 'package:flutter/material.dart';
 import '../services/auth.dart';
 import '../services/lang.dart';
-import '../screens/tasks_board.dart';
 import '../screens/my_leaves.dart';
 import '../screens/my_requests.dart';
 import '../screens/approvals.dart';
@@ -339,18 +338,6 @@ List<AppSection> sectionsFor(AuthProvider auth) {
       roles: const [],
       pages: [
         AppPage('مراجعة الأعمال', 'Business Review', Icons.event_note_outlined, (c) => const BusinessReviewScreen()),
-      ],
-    ),
-    AppSection(
-      key: 'Administration', arTitle: 'الشؤون الإدارية', enTitle: 'Administration', icon: Icons.dashboard_customize_outlined,
-      roles: const [..._admins, 'administration_staff', 'bd_manager', 'bd_team_leader', 'administration_manager', 'administration_team_leader'],
-      pages: [
-        AppPage('لوحة المهام', 'Task Board', Icons.view_kanban_outlined, (c) => const TasksBoardScreen(), path: '/system/administration'),
-        AppPage('الشكاوى', 'Complaints', Icons.report_outlined, (c) => const SectionWorkScreen(section: 'administration', complaints: true), path: '/system/administration/complaints'),
-        AppPage('تقييم الأداء', 'KPIs', Icons.leaderboard_outlined, (c) => const TeamBoardScreen(section: 'Administration'), path: '/system/administration/kpis'),
-        if (jpMember(role, 'administration')) AppPage('خطّة العمل (JP)', 'JP', Icons.event_available_outlined, (c) => const JpScreen(section: 'administration'), path: '/system/administration/jp'),
-        if (jpManager(role, 'administration')) AppPage('لوحة JP', 'JP Dashboard', Icons.insights_outlined, (c) => const JpDashScreen(section: 'administration'), path: '/system/administration/jp-dashboard'),
-        if (jpManager(role, 'administration') && !_top.contains(role)) AppPage('خطّة الإدارة (Management JP)', 'Management JP', Icons.workspace_premium_outlined, (c) => const JpScreen(scope: 'management'), path: '/system/administration/management-jp'),
       ],
     ),
     AppSection(

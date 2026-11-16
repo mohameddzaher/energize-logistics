@@ -54,6 +54,8 @@ function applyProgress(item, body) {
   } else if (before === 'done' && item.status !== 'done') {
     item.completedAt = null;
   }
+  if (item.status === 'cancelled') item.cancelledAt = item.cancelledAt || new Date();
+  else if (before === 'cancelled') item.cancelledAt = null;
   return '';
 }
 
@@ -237,7 +239,8 @@ exports.getMeeting = async (req, res) => {
     const wasThere = (meeting.attendees || []).some((a) => sameId(a.user, req.user._id));
     if (!canRunMeetings(req.user) && !wasThere) return deny(res, 'You did not attend this meeting');
 
-    let actions = await BrAction.find({ meeting: meeting._id }).sort({ createdAt: 1 }).lean();
+    // Finished more than a day ago: in the archive, not on the meeting.
+    let actions = await BrAction.find({ meeting: meeting._id, ...require('../config/businessReview').liveCond() }).sort({ createdAt: 1 }).lean();
     // A department head reads only his department: its tasks and its part of the minutes.
     const hd = await brScope.headDept(req.user);
     if (hd) {
@@ -641,13 +644,40 @@ exports.shareAction = async (req, res) => {
       title: action.title, description: action.description, raisedBy: action.raisedBy, priority: action.priority,
       startDate: action.startDate, dueDate: action.dueDate,
     }, req.user, action.shareGroup);
+    // One task worked by two people: the partner joins it where it stands, with its history.
+    SHARED_STATE.forEach((f) => { if (action[f] !== undefined) copy[f] = action[f]; });
+    copy.updates = (action.updates || []).map((u) => { const { _id, ...rest } = u.toObject ? u.toObject() : u; return rest; });
+    copy.updates.push({ by: req.user._id, byName: fullName(req.user), text: `أُسند أيضًا إلى ${fullName(target)} — بمشاركة ${action.assigneeName}`, statusFrom: '', statusTo: '', progress: null, at: new Date() });
+    await copy.save();
+    action.updates.push({ by: req.user._id, byName: fullName(req.user), text: `أُسند أيضًا إلى ${fullName(target)}`, statusFrom: '', statusTo: '', progress: null, at: new Date() });
+    await action.save();
+    emit('br:action', { id: String(action._id) });
     await announceAction(copy, meeting);
+    await notify(action.assignee, { title: 'أصبح بندك مشتركًا', message: `${action.title} — بمشاركة ${fullName(target)}`, entity: 'BrAction', entityId: action._id });
     res.status(201).json({ action: copy });
   } catch (error) {
     console.error('br share action error:', error);
     return sendMongooseError(res, error, 'تعذّر مشاركة البند');
   }
 };
+
+/** What a shared task is and where it stands: one task worked by several people, so every copy carries the same values. */
+const SHARED_STATE = ['title', 'description', 'priority', 'status', 'progress', 'dueDate', 'expectedDate', 'startDate',
+  'originalDueDate', 'postponeReason', 'postponeCount', 'completedAt', 'cancelledAt', 'isOverdue', 'overdueNotifiedAt', 'dueSoonNotifiedAt'];
+
+/** Writes this copy's state (and its newest log lines) onto the other copies of its group, so an edit by either owner shows for both. */
+async function syncShared(action, newUpdates = []) {
+  if (!action.shareGroup) return [];
+  const set = Object.fromEntries(SHARED_STATE.map((f) => [f, action[f] === undefined ? null : action[f]]));
+  const others = await BrAction.find({ shareGroup: action.shareGroup, _id: { $ne: action._id } }).select('_id').lean();
+  if (!others.length) return [];
+  await BrAction.updateMany({ _id: { $in: others.map((o) => o._id) } }, {
+    $set: set,
+    ...(newUpdates.length ? { $push: { updates: { $each: newUpdates.map((u) => (u.toObject ? u.toObject() : u)).map(({ _id, ...u }) => u) } } } : {}),
+  });
+  for (const o of others) emit('br:action', { id: String(o._id) });
+  return others;
+}
 
 /** The other owners of each shared action, for "shared with" on cards and the board. */
 async function siblingsOf(actions) {
@@ -706,26 +736,22 @@ exports.updateAction = async (req, res) => {
     // The owner reports progress, expected date and postponement; the board reads it live.
     const bad = applyProgress(action, req.body);
     if (bad) return res.status(400).json({ message: bad, code: 'POSTPONE_NEEDS_DATE_REASON' });
+    const logged = action.updates.length;
     logUpdate(action, req.user, req.body, before);
     await action.save();
-    // What the task is stays the same for every department sharing it; each keeps its own status and dates.
-    // Only the administration changes the task for every department sharing it; a head's edit stays in his department.
-    if (canRunMeetings(req.user) && action.shareGroup) {
-      const same = {};
-      ['title', 'description', 'priority'].forEach((f) => { if (req.body[f] !== undefined) same[f] = action[f]; });
-      // An edited due date (not a postponement, which is one owner's own) moves with the task for every owner.
-      if (req.body.dueDate !== undefined && req.body.status !== 'postponed') same.dueDate = action.dueDate;
-      if (Object.keys(same).length) await BrAction.updateMany({ shareGroup: action.shareGroup, _id: { $ne: action._id } }, { $set: same });
-    }
+    // A shared task is one task worked by several owners: any owner's edit (status, dates, note) shows for all of them.
+    await syncShared(action, action.updates.slice(logged));
     emit('br:action', { id: String(action._id) });
 
     // Co-owners of a shared task hear when one owner's part changes state.
-    if (action.shareGroup && before !== action.status) {
+    const noted = !!String(req.body.note || '').trim();
+    if (action.shareGroup && (before !== action.status || noted)) {
       const others = await BrAction.find({ shareGroup: action.shareGroup, _id: { $ne: action._id } }).select('assignee').lean();
-      const label = { done: 'أنجز', in_progress: 'بدأ العمل على', blocked: 'تعثّر في', postponed: 'أجّل', open: 'أعاد فتح', cancelled: 'ألغى' }[action.status] || 'حدّث';
+      const label = before === action.status ? 'أضاف ملاحظة على'
+        : ({ done: 'أنجز', in_progress: 'بدأ العمل على', blocked: 'تعثّر في', postponed: 'أجّل', open: 'أعاد فتح', cancelled: 'ألغى' }[action.status] || 'حدّث');
       for (const o of others) {
         if (sameId(o.assignee, req.user._id)) continue;
-        await notify(o.assignee, { title: 'تحديث على بند مشترك', message: `${action.assigneeName} ${label} جزءه من: ${action.title}`, entity: 'BrAction', entityId: o._id });
+        await notify(o.assignee, { title: 'تحديث على بند مشترك', message: `${fullName(req.user)} ${label}: ${action.title}`, entity: 'BrAction', entityId: o._id });
       }
     }
 
@@ -775,7 +801,7 @@ exports.deleteAction = async (req, res) => {
 /** All items assigned to me: the manager's own board. */
 exports.myActions = async (req, res) => {
   try {
-    const filter = { assignee: req.user._id };
+    const filter = { assignee: req.user._id, ...require('../config/businessReview').liveCond() };
     if (req.query.status) filter.status = req.query.status;
     else if (req.query.open === '1') filter.status = { $in: OPEN_ACTION_STATUSES };
 

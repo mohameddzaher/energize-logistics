@@ -71,7 +71,6 @@ const MARKETING_ROLES = ['super_admin', 'admin', 'it_manager', 'it_team_leader',
 const BD_ROLES = ['super_admin', 'admin', 'it_manager', 'it_team_leader', 'it_specialist', 'business_consultant', 'bd_manager', 'bd_team_leader', 'bd_specialist', 'sales_manager', 'sales_team_leader', 'crm_manager', 'crm_team_leader', 'operations_manager', 'operations_team_leader'];
 const IT_ROLES = ['super_admin', 'admin', 'it_manager', 'it_team_leader', 'it_specialist', 'business_consultant'];
 // Administrative affairs (secretariat): the shared office task board.
-const ADMINISTRATION_ROLES = ['super_admin', 'admin', 'administration_staff', 'bd_manager', 'bd_team_leader', 'it_manager', 'it_team_leader', 'it_specialist', 'business_consultant'];
 // Contracts management: 3PL vendor contracts, analysis and other departments' contracts.
 const CONTRACTS_ROLES = ['super_admin', 'admin', 'contracts_manager', 'contracts_team_leader', 'contracts_staff', 'it_manager', 'it_team_leader', 'it_specialist', 'business_consultant', 'operations_manager', 'operations_team_leader',
   'sales_manager', 'sales_team_leader', 'sales_rep', 'vendors_manager', 'vendors_team_leader', 'vendors_staff'];
@@ -469,15 +468,10 @@ function SystemLayoutInner({ children }: { children: React.ReactNode }) {
     { href: '/system/bd/complaints', label: lang === 'ar' ? 'الشكاوى' : 'Complaints', icon: <MessageSquare className="w-5 h-5" />, roles: BD_ROLES, section: 'Business Development' },
     { href: '/system/bd/kpis', label: lang === 'ar' ? 'تقييم الأداء' : 'KPIs', icon: <Target className="w-5 h-5" />, roles: kpiRoles(BD_ROLES), section: 'Business Development', restrict: true },
     // Administration (secretariat).
-    { href: '/system/administration', label: lang === 'ar' ? 'لوحة المهام' : 'Task Board', icon: <ClipboardList className="w-5 h-5" />, roles: ADMINISTRATION_ROLES, section: 'Administration' },
-    { href: '/system/administration/jp', label: lang === 'ar' ? 'خطّة العمل (JP)' : 'JP', icon: <CalendarCheck className="w-5 h-5" />, roles: [], section: 'Administration', visible: (u) => jpMember(u, 'Administration') },
-    { href: '/system/administration/jp-dashboard', label: lang === 'ar' ? 'لوحة JP' : 'JP Dashboard', icon: <BarChart3 className="w-5 h-5" />, roles: [], section: 'Administration', visible: (u) => jpManager(u, 'Administration') },
-    { href: '/system/administration/management-jp', label: lang === 'ar' ? 'خطّة الإدارة (Management JP)' : 'Management JP', icon: <Crown className="w-5 h-5" />, roles: [], section: 'Administration', visible: (u) => jpManager(u, 'Administration') && !jpTop(u) },
-    { href: '/system/administration/complaints', label: lang === 'ar' ? 'الشكاوى' : 'Complaints', icon: <MessageSquare className="w-5 h-5" />, roles: ['super_admin', 'admin', 'it_manager', 'it_team_leader', 'it_specialist', 'business_consultant'], section: 'Administration' },
-    { href: '/system/administration/kpis', label: lang === 'ar' ? 'تقييم الأداء' : 'KPIs', icon: <Target className="w-5 h-5" />, roles: kpiRoles(['super_admin', 'admin', 'it_manager', 'it_team_leader', 'it_specialist', 'business_consultant']), section: 'Administration', restrict: true },
     // Contracts.
     // Business review meetings: the managers/board forum. `my-tasks` is listed for EVERY role because ordinary employees receive delegated work there; the other three pages check their own tier server-side.
     { href: '/system/business-review/daily', label: lang === 'ar' ? 'الاجتماعات ومتابعة الأقسام' : 'Meetings & departments', icon: <CalendarCheck className="w-5 h-5" />, roles: [], section: 'Business Review', visible: (u) => isBrParticipant(u.role) },
+    { href: '/system/business-review/archive', label: lang === 'ar' ? 'الأرشيف' : 'Archive', icon: <Archive className="w-5 h-5" />, roles: [], section: 'Business Review', visible: (u) => isBrParticipant(u.role) },
     { href: '/system/business-review/my-actions', label: lang === 'ar' ? 'البنود المسندة إليّ' : 'My Actions', icon: <ClipboardList className="w-5 h-5" />, roles: [], section: 'Business Review', visible: (u) => isBrParticipant(u.role) },
     { href: '/system/business-review/actions', label: lang === 'ar' ? 'سجل المتابعة' : 'Action Register', icon: <ListTodo className="w-5 h-5" />, roles: [], section: 'Business Review', visible: (u) => isBrRunner(u.role) },
     // Everyone — an ordinary employee's ONLY link into this section.

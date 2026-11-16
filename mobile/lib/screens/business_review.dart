@@ -7,6 +7,7 @@ import '../ui/export_sheet.dart';
 import '../ui/theme.dart';
 import '../ui/widgets.dart';
 import '../ui/search_field.dart';
+import 'business_review_archive.dart';
 import 'business_review_board.dart';
 import 'business_review_kit.dart';
 import 'business_review_meeting_depts.dart';
@@ -93,6 +94,7 @@ class _BusinessReviewScreenState extends State<BusinessReviewScreen> {
       // Meetings and department follow-up are one tab, as on the web (the board was merged into it).
       if (participant) (tr('الاجتماعات ومتابعة الأقسام', 'Meetings & departments'), BrDailyTab(meta: _meta!)),
       if (participant) (tr('بنودي', 'My actions'), _ActionsTab(meta: _meta!, mine: true)),
+      if (participant) (tr('الأرشيف', 'Archive'), BrArchiveTab(meta: _meta!)),
       if (runner) (tr('سجل المتابعة', 'Register'), _ActionsTab(meta: _meta!, mine: false)),
       (tr('مهامي', 'My tasks'), _TasksTab(meta: _meta!)),
     ];

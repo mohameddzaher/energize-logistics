@@ -10,7 +10,8 @@ module.exports = {
       fontFamily: {
       sans: ['var(--font-inter)', 'var(--font-arabic)', 'system-ui', 'sans-serif'],
       serif: ['Merriweather', 'serif'],
-      mono: ['Fira Code', 'monospace'],
+      // Fira Code is never loaded and no monospace font has Arabic letters: without the Arabic font here, a plate in Arabic fell to the phone's own font (Urdu Nastaliq on an Urdu phone).
+      mono: ['ui-monospace', 'SFMono-Regular', 'Menlo', 'Consolas', 'Liberation Mono', 'var(--font-arabic)', 'monospace'],
     },
   },
   },

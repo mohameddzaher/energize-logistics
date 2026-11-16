@@ -39,7 +39,7 @@ async function sweepOnce() {
         // eslint-disable-next-line no-await-in-loop
         await notifySection('HR', {
           type: 'system_alert',
-          title: `انتظار نقل الكفالة: أخرِج ${name} من النظام`,
+          title: `نقل كفالة لشركة أخرى: أخرِج ${name} من النظام`,
           message: `${e.employeeNumber ? `#${e.employeeNumber} · ` : ''}${when} — «خروج من النظام» من ملفّ الموظف ينقله إلى الأرشيف.`,
           relatedEntity: 'Employee', relatedEntityId: e._id,
         });

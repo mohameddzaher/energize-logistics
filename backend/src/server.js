@@ -442,6 +442,15 @@ if (!DOCS_ONLY) connectDB().then(async () => {
   const { ensureDefaultLookups } = require('./config/lookupTypes');
   await ensureDefaultLookups();
   await require('./controllers/b2cController').ensureB2CProjectDefaults().catch((e) => console.error('[b2c] project defaults:', e.message));
+  // Stored work-status text follows its label (utils/hrEngagement); a renamed termination kind is rewritten on files that hold the old text.
+  {
+    const Employee = require('./models/Employee');
+    const ENG = require('./utils/hrEngagement');
+    const want = ENG.workStatusTextOf({ employmentStatus: 'terminated', terminationKind: 'transfer_pending' });
+    Employee.updateMany({ terminationKind: 'transfer_pending', employmentStatus: 'terminated', workStatusText: { $ne: want } }, { $set: { workStatusText: want } })
+      .then((r) => { if (r.modifiedCount) console.log(`[hr] work-status text renamed on ${r.modifiedCount} files`); })
+      .catch((e) => console.error('[hr] status rename:', e.message));
+  }
   // Day/month/year dates and stale «required» marks on filled fields are corrected once per start; see utils/employeeDateRepair.
   require('./utils/employeeDateRepair').repairEmployeeDates()
     .then((n) => { if (n) console.log(`[hr] repaired dates/marks on ${n} employee files`); })

@@ -326,7 +326,7 @@ class _HrEmployeeProfileScreenState extends State<HrEmployeeProfileScreen> {
     final archivesNow = _outOfSystem || _freelance;
     String kind = '';
     const kinds = [
-      ('transfer_pending', 'انتظار نقل الكفالة', 'Awaiting sponsorship transfer'),
+      ('transfer_pending', 'نقل كفالة لشركة أخرى', 'Sponsorship transferred to another company'),
       ('final_exit', 'خروج نهائي', 'Final exit'),
       ('saudi_end', 'نهاية خدمة (سعودي)', 'End of service (Saudi)'),
     ];

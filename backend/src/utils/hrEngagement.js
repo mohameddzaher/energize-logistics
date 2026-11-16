@@ -47,7 +47,7 @@ const ENGAGEMENT_MATCH = {
  * Not working is service ended: awaiting sponsorship transfer or final exit. Out of the system (or freelancer) archives at once; otherwise it waits for removal, then archive.
  */
 const TERMINATION_KINDS = {
-  transfer_pending: { ar: 'انتظار نقل الكفالة', en: 'Awaiting sponsorship transfer' },
+  transfer_pending: { ar: 'نقل كفالة لشركة أخرى', en: 'Sponsorship transferred to another company' },
   final_exit: { ar: 'خروج نهائي', en: 'Final exit' },
   // A Saudi citizen has no sponsor to transfer from and no final exit: his service simply ends (owner, 2026-11-10).
   saudi_end: { ar: 'نهاية خدمة (سعودي)', en: 'End of service (Saudi)' },

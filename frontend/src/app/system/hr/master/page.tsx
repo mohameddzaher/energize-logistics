@@ -207,7 +207,7 @@ function HrMasterInner() {
           sub={t('بلا حالة محدّدة · ينتظر الخروج من النظام', 'no status set · awaiting system exit')}
           halves={H('noKind')} onHalf={(k) => drill({ employment: 'nokind', engagement: k })} ar={ar}
           onClick={() => drill({ employment: 'nokind' })} />
-        <Big label={t('لا يعمل — انتظار نقل الكفالة', 'Not working — awaiting transfer')} value={d.totals.transfer ?? 0} c="#d97706"
+        <Big label={t('لا يعمل — نقل كفالة لشركة أخرى', 'Not working — transferred to another company')} value={d.totals.transfer ?? 0} c="#d97706"
           halves={H('transfer')} onHalf={(k) => open('iqama', { employment: 'transfer', engagement: k })} ar={ar}
           onClick={() => open('iqama', { employment: 'transfer' })} />
         <Big label={t('لا يعمل — خروج نهائي', 'Not working — final exit')} value={d.totals.finalExit ?? 0} c="#b91c1c"

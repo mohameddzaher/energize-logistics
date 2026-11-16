@@ -930,7 +930,7 @@ function RenewModal({ open, employeeId, ar, onClose, onDone }: { open: boolean; 
 // End of service.
 /** Not working and its three states: matches TERMINATION_KINDS on the server (utils/hrEngagement). */
 const TERMINATION_KINDS: { key: string; ar: string; en: string; hint: string; hintEn: string }[] = [
-  { key: 'transfer_pending', ar: 'انتظار نقل الكفالة', en: 'Awaiting sponsorship transfer', hint: 'شهر واحد — وتنبيهاتٌ يومية لإخراجه من النظام', hintEn: 'One month — daily reminders to take him out of the system' },
+  { key: 'transfer_pending', ar: 'نقل كفالة لشركة أخرى', en: 'Sponsorship transferred to another company', hint: 'شهر واحد — وتنبيهاتٌ يومية لإخراجه من النظام', hintEn: 'One month — daily reminders to take him out of the system' },
   { key: 'final_exit', ar: 'خروج نهائي', en: 'Final exit', hint: '', hintEn: '' },
   { key: 'saudi_end', ar: 'نهاية خدمة (سعودي)', en: 'End of service (Saudi)', hint: 'مواطن: لا كفالة تُنقل ولا خروج نهائي', hintEn: 'Citizen: no sponsorship to transfer and no final exit' },
 ];

@@ -217,7 +217,7 @@ class _HrDashboardScreenState extends State<HrDashboardScreen> {
                             sub: tr('بلا حالة محدّدة · ينتظر الخروج من النظام', 'no status set · awaiting system exit'),
                             onTap: () => _drill({'employment': 'nokind'}), onHalf: (k) => _drill({'employment': 'nokind', 'engagement': k})),
                         const SizedBox(height: 8),
-                        _halfCard(tr('لا يعمل — انتظار نقل الكفالة', 'Not working — awaiting transfer'), mt['transfer'], mt, 'transfer', T.warn,
+                        _halfCard(tr('لا يعمل — نقل كفالة لشركة أخرى', 'Not working — transferred to another company'), mt['transfer'], mt, 'transfer', T.warn,
                             onTap: () => _open('iqama', {'employment': 'transfer'}), onHalf: (k) => _open('iqama', {'employment': 'transfer', 'engagement': k})),
                         const SizedBox(height: 8),
                         _halfCard(tr('لا يعمل — خروج نهائي', 'Not working — final exit'), mt['finalExit'], mt, 'finalExit', T.danger,

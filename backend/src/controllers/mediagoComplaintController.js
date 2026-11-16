@@ -221,7 +221,7 @@ exports.meta = async (req, res) => {
 };
 
 // Light-transport motorcycles: from the vehicle register itself (light-transport sector or its projects), type motorcycle (registered as one label in the register and another in the section sheet; see lightTransportController).
-const LT_VEHICLE_PROJECTS = /^(كيتا|هنجرستيشن|هنقرستيشن|امازون|أمازون|نينجا)$/;
+const { LT_VEHICLE_PROJECTS } = require('../utils/b2cBoard');
 exports.motorcycles = async (req, res) => {
   try {
     const q = S(req.query.q).slice(0, 40);

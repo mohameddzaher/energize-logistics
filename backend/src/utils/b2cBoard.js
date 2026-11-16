@@ -133,7 +133,7 @@ function authOf(v, today = new Date().toISOString().slice(0, 10)) {
 
 // Section vehicles.
 /** Every vehicle the vehicles section attributes to light transport, by its sector (the light transport name or its code) or by its department (one of the section's projects), plus every vehicle with a rider from the section register. Authorized or not: authorization is a counted state, not an entry condition. */
-const LT_VEHICLE_PROJECTS = /^(كيتا|هنجرستيشن|هنقرستيشن|امازون|أمازون|نينجا)$/;
+const LT_VEHICLE_PROJECTS = /^(كيتا|هنجرستيشن|هنقرستيشن|امازون|أمازون|نينجا|media ?go|ميديا ?جو)$/i;
 const UNUSED_PROJECT = 'غير مستخدمة';
 const vehicleScope = (riddenIds = []) => ({
   isActive: { $ne: false },

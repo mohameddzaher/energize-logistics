@@ -62,6 +62,7 @@ const REGISTRY = [
     { key: 'ninja', nameAr: 'نينجا', nameEn: 'Ninja' },
     { key: 'kita', nameAr: 'كيتا', nameEn: 'Kita' },
     { key: 'hungerstation', nameAr: 'هنجرستيشن', nameEn: 'HungerStation' },
+    { key: 'media_go', nameAr: 'Media Go', nameEn: 'Media Go' },
     { key: 'jamarat', nameAr: 'منقل الجمار', nameEn: 'Jamarat transport' },
     { key: 'owner', nameAr: 'مالك', nameEn: 'Owner' },
     { key: 'unused', nameAr: 'غير مستخدمة', nameEn: 'Not in use' },

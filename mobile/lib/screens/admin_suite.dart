@@ -49,6 +49,7 @@ const roleLabels = {
   'customs_officer': ('مخلّص جمركي', 'Customs Officer'),
   'it_manager': ('مدير تقنية المعلومات', 'IT Manager'),
   'it_specialist': ('أخصائي تقنية معلومات', 'IT Specialist'),
+  'business_consultant': ('مستشار أعمال', 'Business Consultant'),
   'marketing_manager': ('مدير التسويق', 'Marketing Manager'),
   'marketing_specialist': ('أخصائي تسويق', 'Marketing Specialist'),
   'bd_manager': ('مدير تطوير الأعمال', 'BD Manager'),
@@ -660,8 +661,8 @@ class _PermissionsScreenState extends State<PermissionsScreen> {
   Widget build(BuildContext context) {
     final me = context.watch<AuthProvider>().role;
     // role-only like the web: whoever sets the matrix is not granted access through it, and creating types is for the system admin.
-    final isSuper = const ['super_admin', 'admin', 'it_manager', 'it_team_leader', 'it_specialist'].contains(me);
-    final canMakeRoles = const ['super_admin', 'admin', 'it_manager', 'it_team_leader', 'it_specialist'].contains(me);
+    final isSuper = const ['super_admin', 'admin', 'it_manager', 'it_team_leader', 'it_specialist', 'business_consultant'].contains(me);
+    final canMakeRoles = const ['super_admin', 'admin', 'it_manager', 'it_team_leader', 'it_specialist', 'business_consultant'].contains(me);
     final catalog = _catalog;
     final managed = _managed;
     final unmanaged = <String>{for (final p in catalog) if (!managed.contains(p['section'])) p['section'].toString()}.toList();
@@ -983,7 +984,10 @@ class _UserFormScreenState extends State<_UserFormScreen> {
       _projects = List.from(u['assignedProjects'] ?? const []).map(_idOf).toList();
       _branches = List.from(u['assignedBranches'] ?? const []).map(_idOf).toList();
       _accessSections = Map<String, dynamic>.from(u['accessSections'] is Map ? u['accessSections'] as Map : const {});
-      _vendorsOn = _accessSections['Vendors Management'] != 'none';
+      // Follow-up has no vendors section by default: on means an explicit edit grant.
+      _vendorsOn = u['role'] == 'shipment_orders_followup'
+          ? _accessSections['Vendors Management'] == 'edit'
+          : _accessSections['Vendors Management'] != 'none';
       _vendorsOn0 = _vendorsOn;
       _accessPages = Map<String, dynamic>.from(u['accessPages'] is Map ? u['accessPages'] as Map : const {});
       _walletOn = _accessPages['/system/wallet'] != false;
@@ -1050,7 +1054,7 @@ class _UserFormScreenState extends State<_UserFormScreen> {
   );
 
   Future<void> _pickRole() async {
-    final keys = roleKeys().where((r) => r != 'super_admin' || const ['super_admin', 'admin', 'it_manager', 'it_team_leader', 'it_specialist'].contains(_role)).toList();
+    final keys = roleKeys().where((r) => r != 'super_admin' || const ['super_admin', 'admin', 'it_manager', 'it_team_leader', 'it_specialist', 'business_consultant'].contains(_role)).toList();
     final picked = await _search(
       title: tr('ابحث باسم الدور…', 'Search a role…'),
       fetch: (q) async => [for (final k in keys) if (q.isEmpty || _fold('$k ${roleLabel(k)}').contains(_fold(q))) {'_id': k}],
@@ -1123,6 +1127,11 @@ class _UserFormScreenState extends State<_UserFormScreen> {
         body['partner'] = {'source': _partnerSource, 'refId': _partnerRefId};
       } else {
         if (_role == 'client' && _linkedCustomer.isNotEmpty) body['linkedCustomer'] = _linkedCustomer;
+        if (_role == 'shipment_orders_followup' && !isNew && _vendorsOn0 != null && _vendorsOn != _vendorsOn0) {
+          final s = Map<String, dynamic>.from(_accessSections);
+          if (_vendorsOn) { s['Vendors Management'] = 'edit'; } else { s.remove('Vendors Management'); }
+          body['accessSections'] = s;
+        }
         if (_role == 'employee' && (!isNew || _customers.isNotEmpty)) body['assignedCustomers'] = _customers;
         if (isNew) { if (_branch.isNotEmpty) body['branch'] = _branch; } else { body['branch'] = _branch.isEmpty ? null : _branch; }
         final b2c = _role == 'b2c_project_lead' || rightsRoleOf(_role) == 'b2c_manager';
@@ -1262,7 +1271,7 @@ class _UserFormScreenState extends State<_UserFormScreen> {
               _label('${tr('فروع إضافية يعمل عليها', 'Extra branches')} (${_branches.where((b) => b != _branch).length})'),
               _checks(_branchOpts.where((b) => _idOf(b) != _branch).toList(), _branches, (b) => '${b['name'] ?? ''}'),
             ],
-            if (_vendorsOn0 != null && const ['operations_staff', 'operations_team_leader'].contains(_role))
+            if (_vendorsOn0 != null && const ['operations_staff', 'operations_team_leader', 'shipment_orders_followup'].contains(_role))
               SwitchListTile(
                 contentPadding: EdgeInsets.zero,
                 value: _vendorsOn, activeThumbColor: T.orange,

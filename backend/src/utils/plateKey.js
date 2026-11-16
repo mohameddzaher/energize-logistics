@@ -158,3 +158,28 @@ const canonicalPlateKey = (p) => {
 };
 module.exports.canonicalPlateKey = canonicalPlateKey;
 module.exports.AR2LAT = AR2LAT;
+
+/**
+ * A plate in both alphabets, for exports that need both columns.
+ * The registry's own text wins for each alphabet; conversion with the Saudi letter table is only the fallback for a vehicle outside the registry.
+ * On the plate each Latin letter sits under its Arabic one, so the Latin run reads in the reverse order of the Arabic run.
+ */
+const LAT2AR = { A: 'ا', B: 'ب', J: 'ح', D: 'د', R: 'ر', S: 'س', X: 'ص', T: 'ط', E: 'ع', G: 'ق', K: 'ك', L: 'ل', Z: 'م', N: 'ن', H: 'ه', U: 'و', V: 'ى' };
+const HAS_AR = /[ء-ي]/;
+const HAS_LAT = /[A-Za-z]/;
+const convertPlate = (p, toAr) => {
+  const s = formatPlate(p);
+  const digits = (s.match(/\d+/) || [''])[0];
+  const letters = [...s.replace(/[\d\s]/g, '')];
+  const mapped = letters.map((c) => (toAr ? LAT2AR[c.toUpperCase()] : AR2LAT[c])).filter(Boolean).reverse();
+  if (!mapped.length || mapped.length !== letters.length) return '';
+  return toAr ? [mapped.join(' '), digits].filter(Boolean).join(' ') : [digits, mapped.join('')].filter(Boolean).join(' ');
+};
+/** { ar, en } for a plate as stored and, when known, the registry's plate for the same vehicle. */
+const plateBothAlphabets = (stored, registry) => {
+  const cands = [registry, stored].map((x) => formatPlate(x)).filter(Boolean);
+  const ar = cands.find((x) => HAS_AR.test(x)) || '';
+  const en = [stored, registry].map((x) => formatPlate(x)).find((x) => x && HAS_LAT.test(x)) || '';
+  return { ar: ar || (en ? convertPlate(en, true) : ''), en: en || (ar ? convertPlate(ar, false) : '') };
+};
+module.exports.plateBothAlphabets = plateBothAlphabets;

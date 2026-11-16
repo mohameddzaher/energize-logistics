@@ -292,7 +292,7 @@ export default function UsersPage() {
   const fetchBranches = async () => {
     try {
       // role-only: same editors as the permissions page.
-      if (['super_admin', 'admin', 'it_manager', 'it_team_leader', 'it_specialist', 'operations_manager', 'operations_team_leader'].includes(currentUser?.role || '')) {
+      if (['super_admin', 'admin', 'it_manager', 'it_team_leader', 'it_specialist', 'business_consultant', 'operations_manager', 'operations_team_leader'].includes(currentUser?.role || '')) {
         api.get<any>('/api/shipment-orders/branch-access').then((d) => setShipBranches(d.branches || [])).catch(() => {});
       }
       const data = await api.get<any>('/api/branches?active=true');
@@ -1137,8 +1137,8 @@ export default function UsersPage() {
             </div>
           </div>
         )}
-        {isEdit && ['operations_staff', 'operations_team_leader'].includes(formData.role) && ['super_admin', 'admin', 'it_manager', 'it_team_leader', 'it_specialist'].includes(currentUser?.role || '') && (
-          <UserSectionAccess ar={lang === 'ar'} section="Vendors Management"
+        {isEdit && ['operations_staff', 'operations_team_leader', 'shipment_orders_followup'].includes(formData.role) && ['super_admin', 'admin', 'it_manager', 'it_team_leader', 'it_specialist'].includes(currentUser?.role || '') && (
+          <UserSectionAccess ar={lang === 'ar'} section="Vendors Management" defaultOn={formData.role !== 'shipment_orders_followup'}
             title={lang === 'ar' ? 'يعمل على الموردين' : 'Works on vendors'}
             hint={lang === 'ar' ? 'إن أُغلق لا يظهر له قسم الموردين. وإن فُتح تختار الصفحات التي تظهر له.' : 'Off hides the vendors section; on lets you pick its pages.'}
             sections={formData.accessSections} pages={formData.accessPages}

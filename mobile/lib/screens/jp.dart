@@ -64,7 +64,7 @@ const jpStaffRoles = <String, List<String>>{
 };
 
 bool jpManager(String role, String section) =>
-    const ['super_admin', 'admin', 'it_manager', 'it_team_leader', 'it_specialist'].contains(role) || role == 'admin' || (jpManagerRoles[section] ?? const []).contains(role);
+    const ['super_admin', 'admin', 'it_manager', 'it_team_leader', 'it_specialist', 'business_consultant'].contains(role) || role == 'admin' || (jpManagerRoles[section] ?? const []).contains(role);
 bool jpMember(String role, String section) =>
     jpManager(role, section) || (jpStaffRoles[section] ?? const []).contains(role);
 

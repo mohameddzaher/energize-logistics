@@ -337,6 +337,12 @@ export default function ShipmentRequestForm({ editId, onDone }: { editId?: strin
                 placeholder={t('اختر العميل', 'Choose the customer')} searchPlaceholder={t('اكتب اسم العميل أو رقمه…', 'Type the customer name…')}
                 options={customers.map((c) => ({ value: c._id, label: c.name, hint: (c as any).customerCode || c.phone || '' }))} />
             </div>
+            {customer?.ordersHold && (
+              <p className="mt-2 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-[12.5px] font-semibold text-red-700">
+                {t('طلبات هذا العميل موقوفة: سيذهب الطلب إلى مدير المبيعات للاعتماد قبل وصوله إلى الموردين.', 'This customer is on hold: the request goes to the sales manager for approval before reaching vendors.')}
+                {customer.ordersHoldReason ? ` (${customer.ordersHoldReason})` : ''}
+              </p>
+            )}
             {!loaded?.placed?.length && (newCust.open ? (
               <div className="mt-2 grid grid-cols-1 sm:grid-cols-3 gap-2 rounded-xl border border-slate-200 bg-slate-50 p-3">
                 <input value={newCust.name} onChange={(e) => setNewCust((s) => ({ ...s, name: e.target.value }))} placeholder={t('اسم العميل الجديد', 'New customer name')} className={inputCls} />

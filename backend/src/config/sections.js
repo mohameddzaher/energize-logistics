@@ -221,6 +221,7 @@ const defaultAccess = (role, sectionKey) => {
   if (FULL_ACCESS_ROLES.includes(role)) return 'edit';
   // Data team: all sections by default; the saved matrix narrows it (see config/roles).
   if (require('./roles').DATA_ROLES.includes(role)) return 'edit';
+  if (require('./constants').CONSULTANT_ROLES.includes(role)) return 'edit';
   // A scoped role has no section; its single screen is in config/scopedRoles.js.
   if (require('./scopedRoles').isScopedRole(role)) return 'none';
   const s = getSection(sectionKey);

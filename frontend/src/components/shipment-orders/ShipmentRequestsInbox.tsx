@@ -4,7 +4,7 @@ import { useLanguage } from '@/context/LanguageContext';
 import { useAuth } from '@/context/AuthContext';
 import { PageHeader } from '@/components/hr/HRKit';
 import ShipmentRequestsBoard from '@/components/shipment-orders/ShipmentRequestsBoard';
-import { canPlace, canFleetPlace } from '@/lib/shipmentRequests';
+import { canPlace, canFleetPlace, isFollowup } from '@/lib/shipmentRequests';
 import { Inbox } from 'lucide-react';
 
 export default function ShipmentRequestsInbox({ mode = 'vendors' }: { mode?: 'vendors' | 'fleet' }) {
@@ -12,7 +12,7 @@ export default function ShipmentRequestsInbox({ mode = 'vendors' }: { mode?: 've
   const { lang, isRTL } = useLanguage();
   const ar = lang === 'ar';
   const fleet = mode === 'fleet';
-  if (!(fleet ? canFleetPlace(user) : canPlace(user))) return <div className="p-8 text-slate-500">{ar ? 'لا تملك صلاحية.' : 'Not authorized.'}</div>;
+  if (!(fleet ? canFleetPlace(user) : (canPlace(user) || isFollowup(user)))) return <div className="p-8 text-slate-500">{ar ? 'لا تملك صلاحية.' : 'Not authorized.'}</div>;
   return (
     <div className="space-y-4" dir={isRTL ? 'rtl' : 'ltr'}>
       <PageHeader icon={<Inbox className="w-6 h-6 text-[#f37121]" />}

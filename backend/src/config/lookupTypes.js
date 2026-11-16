@@ -12,7 +12,7 @@ const assetDefaults = require('./assetDefaults');
 const vehicleDefaults = require('./vehicleDefaults');
 
 // Roles that can manage every lookup regardless of module.
-const BASE_WRITE_ROLES = ['super_admin', 'admin', 'it_manager', 'it_team_leader', 'it_specialist'];
+const BASE_WRITE_ROLES = ['super_admin', 'admin', 'it_manager', 'it_team_leader', 'it_specialist', 'business_consultant'];
 
 const FLEET_ROLES = ['fleet_manager', 'fleet_team_leader', 'operations_manager', 'operations_team_leader', 'operations_staff'];
 const SO_ROLES = ['shipment_orders_manager', 'shipment_orders_team_leader', 'shipment_orders_staff', 'shipment_orders_followup', 'operations_manager', 'operations_team_leader', 'operations_staff'];
@@ -837,7 +837,7 @@ const byType = (type) => REGISTRY.find((r) => r.type === type) || null;
 // Roles allowed to create/update/delete a given type.
 const writeRolesFor = (type) => {
   const entry = byType(type);
-  if (entry && entry.superOnly) return ['super_admin', 'admin', 'it_manager', 'it_team_leader', 'it_specialist'];
+  if (entry && entry.superOnly) return ['super_admin', 'admin', 'it_manager', 'it_team_leader', 'it_specialist', 'business_consultant'];
   return [...BASE_WRITE_ROLES, ...((entry && entry.roles) || [])];
 };
 
@@ -848,7 +848,7 @@ const canManage = (type, role) => writeRolesFor(type).includes(role);
  * They used to be returned in full tagged `canManage`, so a fleet manager opening the page saw HR, procurement and vehicles lists, and searched for his own among what does not concern him. He could not edit them (the server blocks it), but he could read them. This is organization more than security: a list lives with its section.
  * Top management and IT see all, being owners of the general page; every other role sees only what it can edit. `all` keeps the door open for anyone who needs the full list on purpose.
  */
-const GLOBAL_LOOKUP_ROLES = ['super_admin', 'admin', 'it_manager', 'it_team_leader', 'it_specialist'];
+const GLOBAL_LOOKUP_ROLES = ['super_admin', 'admin', 'it_manager', 'it_team_leader', 'it_specialist', 'business_consultant'];
 
 const typesForRole = (role, { all = false } = {}) => {
   const meta = REGISTRY.map((r) => ({

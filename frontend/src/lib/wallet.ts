@@ -7,7 +7,7 @@ import { SECTION_ROLES } from '@/lib/roles';
 
 /** Who opens the daily custody page (mirror of walletReadRoles on the server). */
 export const WALLET_ROLES = [
-  'super_admin', 'admin', 'it_manager', 'it_team_leader', 'it_specialist',
+  'super_admin', 'admin', 'it_manager', 'it_team_leader', 'it_specialist', 'business_consultant',
   'operations_manager', 'operations_team_leader', 'operations_staff', 'moderator',
   'cfo', 'accounting_manager', 'accounting_team_leader', 'accountant',
   'collections_manager', 'collections_team_leader', 'collections_staff', 'collections_trainee',
@@ -15,7 +15,7 @@ export const WALLET_ROLES = [
 
 /** Who opens its dashboard, the all-branches view (mirror of overviewRoles). */
 export const WALLET_DASHBOARD_ROLES = [
-  'super_admin', 'admin', 'it_manager', 'it_team_leader', 'it_specialist',
+  'super_admin', 'admin', 'it_manager', 'it_team_leader', 'it_specialist', 'business_consultant',
   'operations_manager', 'operations_team_leader', 'moderator',
   'cfo', 'accounting_manager', 'accounting_team_leader', 'accountant',
   'collections_manager', 'collections_team_leader', 'collections_staff', 'collections_trainee',

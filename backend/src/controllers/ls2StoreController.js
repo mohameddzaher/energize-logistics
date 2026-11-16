@@ -485,9 +485,19 @@ exports.listMovements = async (req, res) => {
     const vmIds = [...new Set(rows.map((m) => m.vehicleMaster && String(m.vehicleMaster)).filter(Boolean))];
     const { VehicleMaster } = require('../models/VehicleMaster');
     const regPlate = new Map(vmIds.length ? (await VehicleMaster.find({ _id: { $in: vmIds } }).select('plateNumber').lean()).map((v) => [String(v._id), v.plateNumber]) : []);
-    const movements = rows.map((m) => ({
+    // Unlinked movements still find their registry vehicle by plate, so the export has the Arabic plate as registered.
+    const { resolveMany } = require('../utils/vehicleRef');
+    const { canonicalPlateKey, plateBothAlphabets } = require('../utils/plateKey');
+    const byKey = await resolveMany(rows.filter((m) => !m.vehicleMaster && m.vehiclePlate).map((m) => m.vehiclePlate));
+    const movements = rows.map((m) => {
+      const reg = m.vehicleMaster ? regPlate.get(String(m.vehicleMaster)) || '' : '';
+      const both = m.vehiclePlate || reg
+        ? plateBothAlphabets(m.vehiclePlate, reg || byKey.get(canonicalPlateKey(m.vehiclePlate))?.plateNumber || '')
+        : { ar: '', en: '' };
+      return { ...m, reg, vehiclePlateAr: both.ar, vehiclePlateEn: both.en };
+    }).map(({ reg, ...m }) => ({
       ...m,
-      vehicleRegistryPlate: m.vehicleMaster ? regPlate.get(String(m.vehicleMaster)) || '' : '',
+      vehicleRegistryPlate: reg,
       date: m.date || new Date(new Date(m.createdAt).getTime() + 3 * 3600 * 1000).toISOString().slice(0, 10),
       unit: units.get(String(m.item))?.unit || '', itemCode: units.get(String(m.item))?.code || '',
       total: m.unitPrice != null ? r2(m.quantity * m.unitPrice) : null,

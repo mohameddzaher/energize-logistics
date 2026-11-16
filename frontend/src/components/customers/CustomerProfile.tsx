@@ -28,7 +28,7 @@ import {
   canEditCustomers, canEditRoutePrices, ProfilePayload, RunRoute, AgreedRoute, PriceTier, tiersText, foldAr, fmtDay, fmtNum, priceSourceLabel,
 } from '@/lib/customerRegistry';
 import {
-  ArrowRight, ArrowLeft, Pencil, KeyRound, Phone, Mail, Search, ChevronLeft, ChevronRight, Route,
+  ArrowRight, ArrowLeft, Pencil, KeyRound, Hand, Phone, Mail, Search, ChevronLeft, ChevronRight, Route,
   Hash, MapPin, Truck, Wallet, CalendarRange, BadgeCheck, CalendarClock, CalendarCheck, ClipboardList, Inbox, Signpost,
   Check, X, Loader2, Plus, Trash2, UserRound, ChevronDown,
 } from 'lucide-react';
@@ -450,7 +450,7 @@ export default function CustomerProfile({ id, basePath }: { id: string; basePath
   const { lang, isRTL } = useLanguage();
   const ar = lang === 'ar';
   const { user } = useAuth();
-  const { notify, confirm } = useDialog();
+  const { notify, confirm, prompt } = useDialog();
   const guard = useLatestRequest();
   const rcf = useColumnFilters<URow>();
   const ocf = useColumnFilters<any>();
@@ -551,6 +551,26 @@ export default function CustomerProfile({ id, basePath }: { id: string; basePath
       return false;
     }
   }, [id, ar, notify, load]);
+
+  // «وقف طلبات»: the sales manager's switch; while on, every new shipment request for this customer waits for his approval.
+  const setOrdersHold = useCallback(async (on: boolean) => {
+    let reason = '';
+    if (on) {
+      const r = await prompt({
+        title: ar ? 'وقف طلبات العميل' : 'Hold customer orders',
+        message: ar ? 'كلُّ طلبِ شحنةٍ جديدٍ لهذا العميل سينتظر اعتمادَ مدير المبيعات قبل أن يصل إلى الموردين. اكتب السبب (اختياري).'
+          : 'Every new shipment request for this customer will wait for the sales manager before reaching vendors. Reason (optional).',
+        placeholder: ar ? 'مثال: مديونية متأخّرة' : 'e.g. overdue balance', confirmLabel: ar ? 'وقف الطلبات' : 'Hold orders',
+      });
+      if (r === null) return;
+      reason = r.trim();
+    } else if (!(await confirm({ title: ar ? 'رفع وقف الطلبات' : 'Release hold', message: ar ? 'تعود طلباتُ هذا العميل إلى الموردين مباشرةً دون اعتماد.' : 'Requests for this customer go straight to vendors again.', confirmLabel: ar ? 'رفع الوقف' : 'Release' }))) return;
+    try {
+      await api.put(`/api/customer-registry/${id}/orders-hold`, { on, reason });
+      notify(on ? (ar ? 'أُوقفت طلبات العميل' : 'Orders on hold') : (ar ? 'رُفع وقف الطلبات' : 'Hold released'), 'success');
+      load();
+    } catch (e: any) { notify(e?.message || (ar ? 'تعذّر الحفظ' : 'Could not save'), 'error'); }
+  }, [id, ar, prompt, confirm, notify, load]);
 
   // The price list is saved whole, as the edit dialog did; the server carries tiers over by route key.
   const saveRoutes = useCallback((routes: AgreedRoute[], okMsg?: string) => putCustomer({
@@ -758,6 +778,13 @@ export default function CustomerProfile({ id, basePath }: { id: string; basePath
                   <span className={`w-1.5 h-1.5 rounded-full ${c.isActive ? 'bg-emerald-500' : 'bg-slate-400'}`} />
                   {c.isActive ? (ar ? 'نشط' : 'Active') : (ar ? 'موقوف' : 'Inactive')}
                 </span>
+                {data.ordersHold?.on && (
+                  <span title={[data.ordersHold.reason, data.ordersHold.by].filter(Boolean).join(' · ')}
+                    className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11.5px] font-semibold border bg-red-50 text-red-700 border-red-200">
+                    <span className="w-1.5 h-1.5 rounded-full bg-red-500" />
+                    {ar ? 'طلباته موقوفة — تحتاج اعتماد مدير المبيعات' : 'Orders on hold — sales manager approval'}
+                  </span>
+                )}
               </div>
               <div className="flex flex-wrap items-center gap-x-4 gap-y-1.5 text-[13px] text-slate-600">
                 {code && (
@@ -790,6 +817,12 @@ export default function CustomerProfile({ id, basePath }: { id: string; basePath
             </div>
           </div>
           <div className="flex flex-wrap items-center gap-2 lg:shrink-0">
+            {data.canSetOrdersHold && (
+              <button type="button" onClick={() => setOrdersHold(!data.ordersHold?.on)}
+                className={`inline-flex items-center gap-1.5 px-3 py-2 rounded-lg border text-sm font-medium ${data.ordersHold?.on ? 'border-emerald-200 bg-emerald-50 hover:bg-emerald-100 text-emerald-800' : 'border-red-200 bg-white hover:bg-red-50 text-red-700'}`}>
+                <Hand className="w-4 h-4" /> {data.ordersHold?.on ? (ar ? 'رفع وقف الطلبات' : 'Release hold') : (ar ? 'وقف الطلبات' : 'Hold orders')}
+              </button>
+            )}
             <button type="button" onClick={() => setPortalOpen(true)}
               className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg border border-slate-200 bg-white hover:bg-slate-50 text-slate-700 text-sm font-medium">
               <KeyRound className="w-4 h-4" /> {ar ? 'حساب البوابة' : 'Portal login'}

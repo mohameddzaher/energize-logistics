@@ -110,6 +110,7 @@ const _executive = HomeInsight('النظرة التنفيذية', 'Executive sna
 // Role to best overview, ordered by role priority, then falling back to the section grant.
 const _roleInsight = <String, HomeInsight>{
   'super_admin': _executive,
+  'business_consultant': _executive,
   'cfo': _finance,
   'accounting_manager': _finance,
   'accountant': _finance,

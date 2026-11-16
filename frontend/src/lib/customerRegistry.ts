@@ -6,7 +6,7 @@ import { SO_EDIT_ROLES, SO_ADMIN_ROLES } from './shipmentOrders';
 // Who edits a customer: one rule for the three entry points, identical to the /api/customer-registry guard: shipment-orders roles, the sales manager (agreed price is their job), and anyone granted shipment-orders edit in the matrix. Reps read only. Price tiers are outside this rule; the server decides in canEditTiers.
 export const CUSTOMER_EDIT_ROLES = [...SO_EDIT_ROLES, 'sales_manager', 'sales_team_leader', 'sales_rep'];
 /** Destination prices (agreed and tiers): operations manager and system admin only; the server is the guard. */
-export const canEditRoutePrices = (u: RoleOrUser) => ['super_admin', 'admin', 'it_manager', 'it_team_leader', 'it_specialist', 'operations_manager', 'operations_team_leader'].includes(roleOf(u));
+export const canEditRoutePrices = (u: RoleOrUser) => ['super_admin', 'admin', 'it_manager', 'it_team_leader', 'it_specialist', 'business_consultant', 'operations_manager', 'operations_team_leader'].includes(roleOf(u));
 export const canEditCustomers = (u: RoleOrUser) =>
   CUSTOMER_EDIT_ROLES.includes(roleOf(u)) || canEditSection(permsOf(u), 'Shipment Orders');
 /** Removing hides the customer, and re-adding the name restores it. */
@@ -111,6 +111,9 @@ export interface ProfilePayload {
   routes: RunRoute[];
   /** Operations manager and system admin only; the server enforces it. */
   canEditTiers?: boolean;
+  /** «وقف طلبات»: new shipment requests wait for the sales manager. */
+  ordersHold?: { on: boolean; reason: string; at: string | null; by: string };
+  canSetOrdersHold?: boolean;
   sheets: { rows: any[]; total: number; page: number; pages: number };
   orders: any[];
   /** Resolved period (YYYY-MM-DD, Riyadh days, inclusive) when one was asked for. */

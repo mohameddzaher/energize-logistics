@@ -4,7 +4,7 @@ import { roleOf, type RoleOrUser } from './sections';
 
 export const SALES_ROLES = ['sales_manager', 'sales_team_leader', 'sales_rep', 'sales_trainee'];
 export const VENDOR_ROLES = ['vendors_manager', 'vendors_team_leader', 'vendors_staff', 'vendors_trainee'];
-const TOP = ['super_admin', 'admin', 'it_manager', 'it_team_leader', 'it_specialist'];
+const TOP = ['super_admin', 'admin', 'it_manager', 'it_team_leader', 'it_specialist', 'business_consultant'];
 const DATA = ['data_manager', 'data_analyst', 'data_entry'];
 const SO_TEAM = ['shipment_orders_manager', 'shipment_orders_team_leader', 'shipment_orders_staff', 'operations_manager', 'operations_team_leader', 'operations_staff'];
 export const ASK_ROLES = [...TOP, ...DATA, ...SALES_ROLES, ...SO_TEAM];
@@ -13,7 +13,10 @@ export const FLEET_TEAM_ROLES = ['fleet_manager', 'fleet_team_leader', 'fleet_su
 export const FLEET_PLACE_ROLES = [...TOP, ...DATA, 'operations_manager', 'operations_team_leader', 'operations_staff', ...FLEET_TEAM_ROLES];
 export const READ_ROLES = [...new Set([...ASK_ROLES, ...PLACE_ROLES, ...FLEET_TEAM_ROLES, 'shipment_orders_followup'])];
 export const canAsk = (u: RoleOrUser) => ASK_ROLES.includes(roleOf(u));
-export const canPlace = (u: RoleOrUser) => PLACE_ROLES.includes(roleOf(u));
+/** Follow-up reads the board (its branches); switched on for vendors on the users page, it works it too. */
+export const isFollowup = (u: RoleOrUser) => roleOf(u) === 'shipment_orders_followup';
+const followupOnVendors = (u: RoleOrUser) => isFollowup(u) && typeof u === 'object' && (u as any)?.permissions?.['Vendors Management'] === 'edit';
+export const canPlace = (u: RoleOrUser) => PLACE_ROLES.includes(roleOf(u)) || followupOnVendors(u);
 export const canFleetPlace = (u: RoleOrUser) => FLEET_PLACE_ROLES.includes(roleOf(u));
 /** The fleet is credited as one team on requests. */
 export const FLEET_NAME = 'النقل الثقيل';

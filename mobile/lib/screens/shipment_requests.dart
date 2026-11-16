@@ -547,6 +547,16 @@ class _ShipmentRequestFormScreenState extends State<ShipmentRequestFormScreen> {
                       const SizedBox(height: 6),
                       TextField(controller: _ncPhone, keyboardType: TextInputType.phone, decoration: InputDecoration(labelText: tr('الجوال', 'Phone'))),
                     ],
+                    if (!_newCustomer && _customer?['ordersHold'] == true)
+                      Container(
+                        margin: const EdgeInsets.only(top: 8),
+                        padding: const EdgeInsets.all(10),
+                        decoration: BoxDecoration(color: T.danger.withValues(alpha: 0.08), borderRadius: BorderRadius.circular(10), border: Border.all(color: T.danger.withValues(alpha: 0.3))),
+                        child: Text(
+                          '${tr('طلبات هذا العميل موقوفة: سيذهب الطلب إلى مدير المبيعات للاعتماد قبل وصوله إلى الموردين.', 'This customer is on hold: the request goes to the sales manager before reaching vendors.')}'
+                          '${'${_customer?['ordersHoldReason'] ?? ''}'.isEmpty ? '' : ' (${_customer?['ordersHoldReason']})'}',
+                          style: const TextStyle(fontSize: 12.5, color: T.danger, fontWeight: FontWeight.w700)),
+                      ),
                     if (placed == 0)
                       Align(alignment: AlignmentDirectional.centerStart, child: TextButton(
                         onPressed: () => setState(() { _newCustomer = !_newCustomer; if (_newCustomer) _customer = null; }),

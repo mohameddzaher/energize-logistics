@@ -9,8 +9,8 @@ const { createNotification } = require('../services/notificationService');
 const { endedStaff, userEnded } = require('../utils/endedStaff');
 
 // ── Roles / helpers ──────────────────────────────────────────────────────────
-const SALES_STAFF_ROLES = ['super_admin', 'admin', 'it_manager', 'it_team_leader', 'it_specialist', 'sales_manager', 'sales_team_leader', 'sales_rep', 'operations_manager', 'operations_team_leader', 'operations_staff'];
-const SALES_ADMIN_ROLES = ['super_admin', 'admin', 'it_manager', 'it_team_leader', 'it_specialist', 'sales_manager', 'sales_team_leader'];
+const SALES_STAFF_ROLES = ['super_admin', 'admin', 'it_manager', 'it_team_leader', 'it_specialist', 'business_consultant', 'sales_manager', 'sales_team_leader', 'sales_rep', 'operations_manager', 'operations_team_leader', 'operations_staff'];
+const SALES_ADMIN_ROLES = ['super_admin', 'admin', 'it_manager', 'it_team_leader', 'it_specialist', 'business_consultant', 'sales_manager', 'sales_team_leader'];
 const isStaff = (u) => SALES_STAFF_ROLES.includes(u.role);
 // A role the super_admin granted this section to counts as staff too —
 // otherwise the grant passes the route gate but the handler still rejects it.

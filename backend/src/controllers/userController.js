@@ -10,8 +10,11 @@ const { invalidateUserCache } = require('../middleware/auth');
  * The check lives in the controller so it applies whichever route grants page access (see middleware/rbac).
  */
 const guardSuperAdminRole = (req, res, { currentRole, nextRole } = {}) => {
-  if (require('../config/constants').isTopRole(canonicalRole(req.user?.role))) return false;
-  const touches = canonicalRole(currentRole) === 'super_admin' || canonicalRole(nextRole) === 'super_admin';
+  if (require('../config/constants').isOwnerRole(canonicalRole(req.user?.role))) return false;
+  const C = require('../config/constants');
+  // A consultant may not mint or edit a full-access account either: that account would bypass the matrix he is held to.
+  const guarded = C.isTopRole(canonicalRole(req.user?.role)) ? (r) => C.isOwnerRole(r) : (r) => r === 'super_admin';
+  const touches = guarded(canonicalRole(currentRole)) || guarded(canonicalRole(nextRole));
   if (!touches) return false;
   res.status(403).json({
     message: 'حسابُ مديرِ النظام لا يُنشَأ ولا يُعدَّل إلّا من مديرِ النظام | Only a super admin may create or modify a super admin account',
@@ -257,14 +260,15 @@ exports.updateUser = async (req, res) => {
     }
 
     // Top management is set by a super admin only: it signs the last leave stage for the whole company.
-    if (req.body.isTopManagement !== undefined) {
-      if (!require('../config/constants').isTopRole(req.user.role)) return res.status(403).json({ message: 'الإدارة العليا يحدّدها مدير النظام فقط' });
+    // Refused only when it changes: the users screen always sends the current value.
+    if (req.body.isTopManagement !== undefined && (req.body.isTopManagement === true || req.body.isTopManagement === 'true') !== (user.isTopManagement === true)) {
+      if (!require('../config/constants').isOwnerRole(req.user.role)) return res.status(403).json({ message: 'الإدارة العليا يحدّدها مدير النظام فقط' });
       user.isTopManagement = req.body.isTopManagement === true || req.body.isTopManagement === 'true';
     }
 
     // The leave sheet's finance or HR signer: one account per box, so naming a new one clears the previous holder.
     if (req.body.leaveSheetSigner !== undefined && String(req.body.leaveSheetSigner || '') !== String(user.leaveSheetSigner || '')) {
-      if (!require('../config/constants').isTopRole(req.user.role)) return res.status(403).json({ message: 'موقّع ورقة الإجازة يحدّده مدير النظام فقط' });
+      if (!require('../config/constants').isOwnerRole(req.user.role)) return res.status(403).json({ message: 'موقّع ورقة الإجازة يحدّده مدير النظام فقط' });
       const box = ['finance', 'hr'].includes(req.body.leaveSheetSigner) ? req.body.leaveSheetSigner : '';
       // Each box belongs to its department head: one pick on a specialist's account silently moved the HR box away from the HR manager (2026-11-05).
       const ELIGIBLE = { hr: ['hr_manager', 'hr_team_leader'], finance: ['cfo', 'accounting_manager', 'accounting_team_leader'] };
@@ -354,7 +358,7 @@ exports.updateUser = async (req, res) => {
     if (assignedBranches !== undefined) user.assignedBranches = Array.isArray(assignedBranches) ? assignedBranches : [];
     // Per-user permission exceptions (works on vendors or not, which of its pages): the system owner's call only.
     if (req.body.accessSections !== undefined || req.body.accessPages !== undefined) {
-      if (!require('../config/constants').isTopRole(req.user.role)) return res.status(403).json({ message: 'صلاحيّات المستخدم يحدّدها مدير النظام فقط' });
+      if (!require('../config/constants').isOwnerRole(req.user.role)) return res.status(403).json({ message: 'صلاحيّات المستخدم يحدّدها مدير النظام فقط' });
       const { SECTION_KEYS } = require('../config/sections');
       const pageKeys = new Set(require('../config/pages').PAGES.map((p) => p.key));
       if (req.body.accessSections !== undefined) {
@@ -369,7 +373,7 @@ exports.updateUser = async (req, res) => {
       }
     }
     if (req.body.walletBranches !== undefined) {
-      if (!require('../config/constants').isTopRole(req.user.role)) return res.status(403).json({ message: 'فروع المحفظة يحدّدها مدير النظام فقط' });
+      if (!require('../config/constants').isOwnerRole(req.user.role)) return res.status(403).json({ message: 'فروع المحفظة يحدّدها مدير النظام فقط' });
       user.walletBranches = Array.isArray(req.body.walletBranches) ? req.body.walletBranches.filter((x) => mongoose.isValidObjectId(x)) : [];
     }
     const nextBranches = branchesFrom(req, user.role);

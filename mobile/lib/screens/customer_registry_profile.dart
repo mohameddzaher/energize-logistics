@@ -139,6 +139,35 @@ class _CustomerRegistryProfileScreenState extends State<CustomerRegistryProfileS
     }).toList();
   }
 
+  Map<String, dynamic> get _hold => Map<String, dynamic>.from(_data?['ordersHold'] ?? const {});
+
+  /// «وقف طلبات»: while on, new shipment requests for this customer wait for the sales manager.
+  Future<void> _toggleHold() async {
+    final on = _hold['on'] != true;
+    final reason = TextEditingController();
+    final ok = await showDialog<bool>(context: context, builder: (c) => AlertDialog(
+      title: Text(on ? tr('وقف طلبات العميل', 'Hold customer orders') : tr('رفع وقف الطلبات', 'Release hold')),
+      content: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Text(on
+            ? tr('كلُّ طلبِ شحنةٍ جديدٍ لهذا العميل سينتظر اعتمادَ مدير المبيعات قبل أن يصل إلى الموردين.', 'Every new shipment request for this customer will wait for the sales manager.')
+            : tr('تعود طلباتُ هذا العميل إلى الموردين مباشرةً دون اعتماد.', 'Requests go straight to vendors again.')),
+        if (on) TextField(controller: reason, decoration: InputDecoration(labelText: tr('السبب (اختياري)', 'Reason (optional)'))),
+      ]),
+      actions: [
+        TextButton(onPressed: () => Navigator.pop(c, false), child: Text(tr('إلغاء', 'Cancel'))),
+        FilledButton(onPressed: () => Navigator.pop(c, true), child: Text(on ? tr('وقف الطلبات', 'Hold orders') : tr('رفع الوقف', 'Release'))),
+      ],
+    ));
+    if (ok != true) return;
+    try {
+      await Api.instance.put('/api/customer-registry/${widget.customerId}/orders-hold', {'on': on, 'reason': reason.text.trim()});
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(on ? tr('أُوقفت طلبات العميل', 'Orders on hold') : tr('رُفع وقف الطلبات', 'Hold released'))));
+      await _load();
+    } catch (e) {
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.toString())));
+    }
+  }
+
   // Read during build only, so it watches the session.
   bool get _canEdit {
     final auth = context.watch<AuthProvider>();
@@ -633,9 +662,23 @@ class _CustomerRegistryProfileScreenState extends State<CustomerRegistryProfileS
             Wrap(spacing: 6, runSpacing: 6, children: [
               Chip2(active ? tr('نشط', 'Active') : tr('موقوف', 'Inactive'), active ? T.success : T.inkFaint),
               if (code.isNotEmpty) Chip2(code, T.navy, icon: Icons.tag),
+              if (_hold['on'] == true) Chip2(tr('طلباته موقوفة', 'Orders on hold'), T.danger, icon: Icons.back_hand_outlined),
             ]),
           ])),
         ]),
+        if (_hold['on'] == true && '${_hold['reason'] ?? ''}'.isNotEmpty) ...[
+          const SizedBox(height: 8),
+          Text('${tr('سبب الوقف', 'Hold reason')}: ${_hold['reason']}', style: const TextStyle(fontSize: 12.5, color: T.danger, fontWeight: FontWeight.w600)),
+        ],
+        if (_data?['canSetOrdersHold'] == true) ...[
+          const SizedBox(height: 10),
+          OutlinedButton.icon(
+            onPressed: _toggleHold,
+            icon: const Icon(Icons.back_hand_outlined, size: 18),
+            label: Text(_hold['on'] == true ? tr('رفع وقف الطلبات', 'Release hold') : tr('وقف الطلبات', 'Hold orders')),
+            style: OutlinedButton.styleFrom(foregroundColor: _hold['on'] == true ? T.success : T.danger),
+          ),
+        ],
         if (phone.isNotEmpty) ...[
           const SizedBox(height: 10),
           Row(children: [

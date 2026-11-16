@@ -29,12 +29,12 @@ class IssueCfg {
 const ltIssueCfg = IssueCfg(
   base: '/api/light-transport/store/issue-requests', itemsBase: '/api/light-transport/store',
   titleAr: 'مخزن النقل الخفيف — طلبات الصرف', titleEn: 'Light Transport Store — Issue Requests', vehiclesKind: 'light', section: 'B2C',
-  editRoles: ['super_admin', 'admin', 'b2c_manager', 'b2c_team_leader', 'b2c_deputy', 'b2c_project_lead', 'it_manager', 'it_team_leader', 'it_specialist', 'cfo', 'accounting_manager', 'accounting_team_leader', 'accountant'],
+  editRoles: ['super_admin', 'admin', 'b2c_manager', 'b2c_team_leader', 'b2c_deputy', 'b2c_project_lead', 'it_manager', 'it_team_leader', 'it_specialist', 'business_consultant', 'cfo', 'accounting_manager', 'accounting_team_leader', 'accountant'],
 );
 const htIssueCfg = IssueCfg(
   base: '/api/ls2/store/issue-requests', itemsBase: '/api/ls2/store',
   titleAr: 'مخزن النقل الثقيل — طلبات الصرف', titleEn: 'Heavy Transport Store — Issue Requests', vehiclesKind: 'heavy', section: 'Location Solutions',
-  editRoles: ['super_admin', 'admin', 'it_manager', 'it_team_leader', 'it_specialist', 'operations_manager', 'operations_team_leader', 'workshop_manager', 'location_manager', 'location_team_leader', 'vehicles_manager', 'vehicles_team_leader'],
+  editRoles: ['super_admin', 'admin', 'it_manager', 'it_team_leader', 'it_specialist', 'business_consultant', 'operations_manager', 'operations_team_leader', 'workshop_manager', 'location_manager', 'location_team_leader', 'vehicles_manager', 'vehicles_team_leader'],
 );
 
 num _num(dynamic v) => v is num ? v : num.tryParse(v?.toString() ?? '') ?? 0;

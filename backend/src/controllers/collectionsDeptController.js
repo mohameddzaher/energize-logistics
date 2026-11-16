@@ -2227,7 +2227,7 @@ exports.NO_INVOICE_TOKENS = NO_INVOICE_TOKENS;
  * The ledger holds the invoice total as it came from the collection sheet or its statements. The value is corrected here (for example a negative settlement) and then locked on what was written (`totalLocked`): the statement sum no longer recomputes it. The edit is recorded with both values and its writer.
  */
 /** Who corrects an invoice value: only this list decides (`authorize.strict` on the route), with no section grant or page permission. Mirrored in the UI as `AMOUNT_EDIT_ROLES` in frontend/src/lib/collections.ts and in the app as `collectionsAmountEditRoles`. */
-exports.AMOUNT_EDIT_ROLES = ['super_admin', 'admin', 'it_manager', 'it_team_leader', 'it_specialist', 'collections_manager', 'collections_team_leader', 'cfo', 'accounting_manager', 'accounting_team_leader'];
+exports.AMOUNT_EDIT_ROLES = ['super_admin', 'admin', 'it_manager', 'it_team_leader', 'it_specialist', 'business_consultant', 'collections_manager', 'collections_team_leader', 'cfo', 'accounting_manager', 'accounting_team_leader'];
 
 exports.updateTaxInvoiceAmount = async (req, res) => {
   try {

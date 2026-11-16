@@ -31,7 +31,7 @@ import { useVehicleLifecycle, RevokeButton, EndServiceButton } from '@/component
 import HijriGregorianField from '@/components/vehicles/HijriGregorianField';
 import PersonSelect from '@/components/system/PersonSelect';
 
-const EDIT_ROLES = ['super_admin', 'admin', 'it_manager', 'it_team_leader', 'it_specialist', 'hr_manager', 'hr_team_leader', 'hr_specialist', 'cfo', 'accounting_manager', 'accounting_team_leader', 'accountant'];
+const EDIT_ROLES = ['super_admin', 'admin', 'it_manager', 'it_team_leader', 'it_specialist', 'business_consultant', 'hr_manager', 'hr_team_leader', 'hr_specialist', 'cfo', 'accounting_manager', 'accounting_team_leader', 'accountant'];
 
 
 function VehicleRegistryListInner() {

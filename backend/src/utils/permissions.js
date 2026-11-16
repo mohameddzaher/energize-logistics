@@ -259,6 +259,7 @@ const explicitlyGrantedPagesForUser = async (user) => {
 };
 
 module.exports = {
+  userSectionOf,
   getOverrideForUser, effectivePermissionsForUser, effectivePagesForUser, explicitlyGrantedPagesForUser, userSectionOf,
   liftFinance,
   invalidate, getOverride, effectivePermissions, effectivePages, homePageFor,

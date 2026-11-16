@@ -13,7 +13,7 @@ const authenticate = require('../middleware/auth');
 const so = require('../controllers/shipmentOrdersController');
 const authorize = require('../middleware/rbac');
 // The sales manager edits. The registry is also opened from sales (three entry points to one registry) and the agreed customer price is sales work first, so the sales manager adds and edits like the operations manager; the rep reads but does not write, delete (customer deactivation) stays with the admin list, and price tiers are guarded in the controller. Reps edit customer data too, but prices are guarded in the controller for the operations manager and system admin only (customerRoutes.canEditPrices).
-const EDIT_ROLES = ['super_admin', 'admin', 'it_manager', 'it_team_leader', 'it_specialist', 'operations_manager', 'operations_team_leader', 'operations_staff', 'moderator', 'sales_manager', 'sales_team_leader', 'sales_rep',
+const EDIT_ROLES = ['super_admin', 'admin', 'it_manager', 'it_team_leader', 'it_specialist', 'business_consultant', 'operations_manager', 'operations_team_leader', 'operations_staff', 'moderator', 'sales_manager', 'sales_team_leader', 'sales_rep',
   'shipment_orders_manager', 'shipment_orders_team_leader', 'shipment_orders_staff', 'shipment_orders_followup', ...require('../config/roles').DATA_ROLES];
 // Removing only hides the customer and adding the name again restores it, so the team can do it.
 const REMOVE_ROLES = EDIT_ROLES.filter((r) => r !== 'sales_rep');
@@ -33,6 +33,8 @@ router.get('/:id/trip-filters', ctrl.tripFilterOptions);
 router.put('/:id', authorize(...EDIT_ROLES), so.updateCustomer);
 // Price tiers by vehicle count. Guarded in the controller: operations manager and system admin only.
 router.put('/:id/route-tiers', ctrl.setRouteTiers);
+// «وقف طلبات». Guarded in the controller: the sales manager and the super-admin tier.
+router.put('/:id/orders-hold', ctrl.setOrdersHold);
 router.delete('/:id', authorize(...REMOVE_ROLES), so.deleteCustomer);
 
 module.exports = router;

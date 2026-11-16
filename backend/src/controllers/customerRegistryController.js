@@ -400,7 +400,12 @@ exports.profile = async (req, res) => {
       },
     );
     // Whoever may edit the tiers is computed per requester, outside the shared cached response. The agreed price is treated like the tiers: for the same two roles.
-    res.json({ ...body, canEditTiers: exports.canEditTiers(req.user.role), canEditPrices: exports.canEditTiers(req.user.role) });
+    // The hold is read from the row just loaded, not the cached body, so a change shows at once.
+    res.json({
+      ...body, canEditTiers: exports.canEditTiers(req.user.role), canEditPrices: exports.canEditTiers(req.user.role),
+      ordersHold: { on: !!c.ordersHold, reason: c.ordersHoldReason || '', at: c.ordersHoldAt || null, by: c.ordersHoldBy || '' },
+      canSetOrdersHold: exports.canSetOrdersHold(req.user),
+    });
   } catch (e) {
     console.error('customer registry profile:', e);
     res.status(500).json({ message: 'تعذّر تحميل ملف العميل' });
@@ -450,6 +455,33 @@ exports.tripFilterOptions = async (req, res) => {
  */
 const { PRICE_EDITORS: TIER_EDITORS } = require('../utils/customerRoutes');
 exports.canEditTiers = (role) => TIER_EDITORS.includes(role);
+
+/** «وقف طلبات» is the sales manager's call (and the super-admin tier's). */
+exports.canSetOrdersHold = (u) => !!u && (require('../config/roles').rightsRoleOf(u.role) === 'sales_manager' || require('../config/constants').isTopRole(u.role));
+
+/** PUT /api/customer-registry/:id/orders-hold  { on, reason } */
+exports.setOrdersHold = async (req, res) => {
+  try {
+    if (!exports.canSetOrdersHold(req.user)) return res.status(403).json({ message: 'وقفُ طلبات العميل لمدير المبيعات' });
+    const on = req.body.on === true || req.body.on === 'true';
+    const customer = await ShipmentOrderCustomer.findById(req.params.id);
+    if (!customer) return res.status(404).json({ message: 'العميل غير موجود' });
+    const before = { on: !!customer.ordersHold, reason: customer.ordersHoldReason || '' };
+    customer.ordersHold = on;
+    customer.ordersHoldReason = on ? String(req.body.reason || '').trim().slice(0, 300) : '';
+    customer.ordersHoldAt = on ? new Date() : null;
+    customer.ordersHoldBy = on ? [req.user.firstName, req.user.lastName].filter(Boolean).join(' ').trim() : '';
+    await customer.save();
+    await require('../utils/auditLogger')({
+      user: req.user, action: on ? 'customer_orders_hold' : 'customer_orders_release', entity: 'ShipmentOrderCustomer', entityId: customer._id,
+      changes: { before, after: { on, reason: customer.ordersHoldReason } }, ipAddress: req.ip,
+    });
+    try { require('../websocket/socketManager').emitToAll('shipmentOrders:customers', {}); } catch (_) { /* */ }
+    res.json({ ordersHold: { on, reason: customer.ordersHoldReason, at: customer.ordersHoldAt, by: customer.ordersHoldBy } });
+  } catch (e) {
+    res.status(500).json({ message: 'تعذّر حفظ وقف الطلبات' });
+  }
+};
 
 exports.setRouteTiers = async (req, res) => {
   try {

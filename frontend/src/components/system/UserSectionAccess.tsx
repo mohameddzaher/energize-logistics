@@ -14,18 +14,20 @@ const loadCatalog = () => {
   return catalogCache;
 };
 
-export default function UserSectionAccess({ ar, section, title, hint, sections, pages, onChange }: {
+export default function UserSectionAccess({ ar, section, title, hint, sections, pages, onChange, defaultOn = true }: {
   ar: boolean; section: string; title: string; hint?: string;
+  /** Whether the role has the section without an exception; off means switching on writes an explicit edit grant. */
+  defaultOn?: boolean;
   sections: Record<string, string>; pages: Record<string, boolean>;
   onChange: (next: { sections: Record<string, string>; pages: Record<string, boolean> }) => void;
 }) {
   const t = (a: string, e: string) => (ar ? a : e);
   const [catalog, setCatalog] = useState<Page[]>([]);
   useEffect(() => { loadCatalog().then((c) => setCatalog(c.filter((p) => p.section === section))); }, [section]);
-  const on = sections[section] !== 'none';
+  const on = defaultOn ? sections[section] !== 'none' : sections[section] === 'edit';
   const setOn = (v: boolean) => {
     const s = { ...sections };
-    if (v) delete s[section]; else s[section] = 'none';
+    if (defaultOn) { if (v) delete s[section]; else s[section] = 'none'; } else if (v) s[section] = 'edit'; else delete s[section];
     const p = { ...pages };
     // Closing the section clears its page choices; reopening starts from all its pages.
     for (const c of catalog) delete p[c.key];

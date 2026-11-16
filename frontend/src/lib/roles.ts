@@ -44,6 +44,11 @@ export const GLOBAL_ROLES: RoleDef[] = [
     "en": "Data Entry Specialist"
   },
   {
+    "key": "business_consultant",
+    "ar": "مستشار أعمال",
+    "en": "Business Consultant"
+  },
+  {
     "key": "employee",
     "ar": "موظف",
     "en": "Employee"

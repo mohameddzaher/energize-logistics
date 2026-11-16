@@ -36,9 +36,12 @@ const CLAIM_MS = 60 * 60 * 1000;
 
 const { rightsRoleOf } = require('../config/roles');
 const inList = (list, u) => !!u && (list.includes(u.role) || list.includes(rightsRoleOf(u.role)));
+/** A follow-up user switched on for vendors (users page «يعمل على الموردين») works the board like the vendors team. */
+const followupOnVendors = (u) => !!u && u.role === 'shipment_orders_followup'
+  && require('../utils/permissions').userSectionOf(u, 'Vendors Management') === 'edit';
 const isAsker = (u) => inList(ASKERS, u);
-const isPlacer = (u) => inList(PLACERS, u);
-const isWorker = (u) => inList(WORKERS, u);
+const isPlacer = (u) => inList(PLACERS, u) || followupOnVendors(u);
+const isWorker = (u) => inList(WORKERS, u) || followupOnVendors(u);
 const isFleetPlacer = (u) => inList(FLEET_PLACERS, u);
 const isLead = (u) => inList(LEADS, u);
 const fullName = (u) => (u ? `${u.firstName || ''} ${u.lastName || ''}`.trim() : '');
@@ -66,8 +69,14 @@ async function canApprove(u) {
   if (isSalesManager(u)) return true;
   return PV.isSalesRole(u) && (await approverIds()).includes(String(u._id));
 }
-/** A sales member's request waits for approval; the manager's own, top roles' and other sections' do not. */
-const needsApproval = (u) => PV.isSalesRole(u) && !isSalesManager(u);
+/** The customer when it is on «وقف طلبات», else null. */
+async function heldCustomer(id) {
+  if (!id || !mongoose.isValidObjectId(String(id))) return null;
+  const c = await ShipmentOrderCustomer.findById(id).select('name ordersHold ordersHoldReason').lean();
+  return c && c.ordersHold ? c : null;
+}
+/** A request waits for the sales manager only when its customer is on hold. The manager (and the top tier) is not stopped by his own request; a delegate is, since nobody approves his own. */
+const needsApproval = async (u, customerId) => !isSalesManager(u) && !!(await heldCustomer(customerId));
 async function notifyApprovers(title, message, id, exceptId) {
   try {
     const User = require('../models/User');
@@ -108,6 +117,8 @@ const DATE_KEYS = ['pickupTime', 'startTime', 'arrivalTime'];
 const pick = (body, keys) => Object.fromEntries(keys.filter((k) => body[k] !== undefined).map((k) => [k, body[k]]));
 const bad = (res, message, extra = {}) => res.status(400).json({ message, ...extra });
 
+/** Branch-limited roles (follow-up, data entry) read the requests of their branches only, as on the Shipments page. */
+const branchScoped = async (req) => (await so.branchScope(req)) || {};
 /** A sales rep sees what they asked for or what is written on them; everyone else in the readers sees all. */
 const scopeFor = (user) => {
   if (user?.role === 'sales_rep' || user?.role === 'sales_trainee') {
@@ -243,7 +254,7 @@ exports.list = async (req, res) => {
     await expireClaims().catch(() => {});
     // A delegated approver (a sales rep) reads every request in the approvals view, not only his own.
     const approverView = !!req.query.approval && await canApprove(req.user);
-    const base = approverView ? {} : { ...scopeFor(req.user) };
+    const base = approverView ? {} : { ...scopeFor(req.user), ...(await branchScoped(req)) };
     const and = [];
     // The working board sees approved requests only; so does anyone who does not ask.
     if (req.query.view === 'work' || !isAsker(req.user)) and.push(APPROVED);
@@ -316,7 +327,7 @@ exports.list = async (req, res) => {
 exports.get = async (req, res) => {
   try {
     await expireClaims({ id: req.params.id }).catch(() => {});
-    const r = await ShipmentRequest.findOne({ _id: req.params.id, ...((await canApprove(req.user)) ? {} : scopeFor(req.user)) }).lean();
+    const r = await ShipmentRequest.findOne({ _id: req.params.id, ...((await canApprove(req.user)) ? {} : { ...scopeFor(req.user), ...(await branchScoped(req)) }) }).lean();
     if (!r || (notApproved(r) && !isAsker(req.user))) return res.status(404).json({ message: 'الطلب غير موجود' });
     // The placed trucks with their live state, so the request reads as the transport orders it became.
     const orders = r.placed.length
@@ -334,7 +345,7 @@ exports.get = async (req, res) => {
 /** Open requests waiting for the vendors team: the sidebar badge. */
 exports.pendingCount = async (req, res) => {
   try {
-    const n = await ShipmentRequest.countDocuments({ status: { $in: OPEN }, ...APPROVED });
+    const n = await ShipmentRequest.countDocuments({ status: { $in: OPEN }, ...APPROVED, ...(await branchScoped(req)) });
     res.json({ count: n });
   } catch (e) { res.json({ count: 0 }); }
 };
@@ -348,7 +359,7 @@ exports.create = async (req, res) => {
     const err = await prepareSalesHalf(req, data, { creating: true });
     if (err) return errOut(res, err);
     const who = fullName(req.user);
-    const wait = needsApproval(req.user);
+    const wait = await needsApproval(req.user, data.customer);
     const r = await ShipmentRequest.create({
       ...data, status: 'pending',
       ...(wait ? { approvalStatus: 'pending' } : {}),
@@ -388,7 +399,11 @@ exports.update = async (req, res) => {
     if (changed.length) r.log.push({ action: 'edited', by: req.user._id, byName: who, note: changed.join('، ') });
     let resent = false;
     let backToApproval = false;
-    if (req.body.resubmit && r.approvalStatus === 'returned') {
+    if (changed.includes('customer') && !notApproved(r) && !r.placed.length && await needsApproval(req.user, r.customer)) {
+      r.approvalStatus = 'pending';
+      r.log.push({ action: 'approval_requested', by: req.user._id, byName: who, note: 'العميل موقوفةٌ طلباته' });
+      backToApproval = true;
+    } else if (req.body.resubmit && r.approvalStatus === 'returned') {
       r.approvalStatus = 'pending';
       r.log.push({ action: 'approval_requested', by: req.user._id, byName: who, note: String(req.body.note || '').trim() || 'بعد التعديل' });
       backToApproval = true;
@@ -1153,6 +1168,11 @@ module.exports.PLACERS = PLACERS;
 module.exports.READERS = READERS;
 module.exports.WORKERS = WORKERS;
 module.exports.FLEET_PLACERS = FLEET_PLACERS;
+/** Strict role guard that also admits a follow-up user switched on for vendors (users page), whom a role list cannot name. */
+module.exports.gate = (kind) => {
+  const strict = require('../middleware/rbac').strict(...(kind === 'PLACERS' ? PLACERS : WORKERS));
+  return (req, res, next) => (followupOnVendors(req.user) ? next() : strict(req, res, next));
+};
 module.exports.APPROVED = APPROVED;
 module.exports.canApprove = canApprove;
 module.exports.EVENT = EVENT;

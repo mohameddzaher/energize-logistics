@@ -25,7 +25,7 @@ const FLEET_ROLES = ['fleet_manager', 'fleet_team_leader', 'fleet_supervisor'];
  */
 // Who sees the selling price on sales requests (owner's list): top management and IT, finance (CFO, accounts manager, accountant), the general manager, the sales team, the data team, and from operations the operations manager alone (not the team leader).
 const REQUEST_SELL_ROLES = new Set([
-  'super_admin', 'admin', 'it_manager', 'it_team_leader', 'it_specialist', 'it_trainee',
+  'super_admin', 'admin', 'it_manager', 'it_team_leader', 'it_specialist', 'business_consultant', 'it_trainee',
   'cfo', 'accounting_manager', 'accounting_team_leader', 'accountant', 'general_manager',
   // team-leader-exception: the operations team leader does not see the selling price (owner).
   'operations_manager', ...SALES_ROLES, 'data_manager', 'data_analyst', 'data_entry',

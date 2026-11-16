@@ -16,6 +16,8 @@ const GLOBAL_ROLES = [
   { key: 'data_manager', ar: 'مدير إدارة البيانات ودعم القرار', en: 'Data & Decision Support Manager' },
   { key: 'data_analyst', ar: 'محلل بيانات', en: 'Data Analyst' },
   { key: 'data_entry', ar: 'مدخل بيانات', en: 'Data Entry Specialist' },
+  // Super-admin powers, narrowed from the permissions page (config/constants CONSULTANT_ROLES).
+  { key: 'business_consultant', ar: 'مستشار أعمال', en: 'Business Consultant' },
   { key: 'employee', ar: 'موظف', en: 'Employee' },
   // External partner (customer or vendor): gets the portal, not company sections.
   { key: 'client', ar: 'شريك خارجي', en: 'External Partner' },

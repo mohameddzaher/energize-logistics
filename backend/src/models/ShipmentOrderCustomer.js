@@ -58,6 +58,11 @@ const shipmentOrderCustomerSchema = new mongoose.Schema(
     },
 
     isActive: { type: Boolean, default: true },
+    // «وقف طلبات»: new shipment requests for this customer wait for the sales manager's approval (shipmentRequestsController.needsApproval).
+    ordersHold: { type: Boolean, default: false },
+    ordersHoldReason: { type: String, trim: true, default: '' },
+    ordersHoldAt: { type: Date, default: null },
+    ordersHoldBy: { type: String, trim: true, default: '' },
     // Why the row is hidden, when a cleanup rather than a person hid it.
     hiddenReason: { type: String, default: undefined },
     createdBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },

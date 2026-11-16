@@ -59,7 +59,7 @@ const fullName = (u) => (u ? `${u.firstName || ''} ${u.lastName || ''}`.trim() :
 // Who edits money after a shipment is created.
 // Selling price, buying price, advance and driver fare are written at creation by whoever creates the shipment, then only system managers and the operations manager change them. Another role is a one-line addition here; the web and phone screens read the same list from /api/shipment-orders/money-editors.
 const MONEY_FIELDS = ['sellPrice', 'buyPrice', 'advanceAmount', 'driverRentPrice'];
-const MONEY_EDIT_ROLES = ['super_admin', 'admin', 'it_manager', 'it_team_leader', 'it_specialist', 'operations_manager', 'operations_team_leader'];
+const MONEY_EDIT_ROLES = ['super_admin', 'admin', 'it_manager', 'it_team_leader', 'it_specialist', 'business_consultant', 'operations_manager', 'operations_team_leader'];
 const canEditMoney = (user) => !!user && MONEY_EDIT_ROLES.includes(user.role);
 const { sellingByRequest, canApproveSelling } = require('../config/sellingPriceRequests');
 const PV = require('../config/priceView');
@@ -404,6 +404,7 @@ const columnFilters = (query, skipKey = null) => {
  * Read from the database each time: the auth cache is per worker and a change on
  * the permissions page must apply at once.
  */
+exports.branchScope = branchScope;
 async function branchScope(req) {
   const { SHIPMENT_BRANCH_ROLES } = require('../config/shipmentBranchRoles');
   if (!SHIPMENT_BRANCH_ROLES.includes(req.user?.role)) return null;
@@ -1659,7 +1660,7 @@ exports.addNote = async (req, res) => {
 
 // Edit and delete a follow-up note.
 // Only the note entry is edited (`from === to` with no attachment): a status-transition entry is history and is not rewritten. The note's author or the section manager may edit it.
-const NOTE_MANAGERS = new Set(['super_admin', 'admin', 'it_manager', 'it_team_leader', 'it_specialist', 'shipment_orders_manager', 'shipment_orders_team_leader', 'operations_manager', 'operations_team_leader']);
+const NOTE_MANAGERS = new Set(['super_admin', 'admin', 'it_manager', 'it_team_leader', 'it_specialist', 'business_consultant', 'shipment_orders_manager', 'shipment_orders_team_leader', 'operations_manager', 'operations_team_leader']);
 const noteEntry = async (req, res) => {
   if (!mongoose.Types.ObjectId.isValid(String(req.params.logId))) { res.status(400).json({ message: 'قيدٌ غير صالح' }); return null; }
   const order = await ShipmentOrder.findById(req.params.id).select('statusLog').lean();
@@ -1859,7 +1860,7 @@ const { linkedTo, notLinkedTo, SUPPLIER_SET, oid: supplierOid } = require('../ut
 // The three lists: read-only fields, cached two minutes.
 // The cluster delivers ~70 KB/s, so a list costs its size, not its computation: 500 full customers are 315 KB (~4.5 s) and 1000 trucks 463 KB (~5 s). Import fields (owner, IBAN, register, operating card, ...) are read by no screen or app, since the edit form sends only editable fields. Caching is safe because the three models' hooks clear `so:registry:` on every write.
 const REGISTRY_TTL = 2 * 60 * 1000;
-const CUSTOMER_LIST_FIELDS = 'customerCode name phone email notes routes defaults';
+const CUSTOMER_LIST_FIELDS = 'customerCode name phone email notes routes defaults ordersHold ordersHoldReason';
 // Its financial papers are read from the row: commercial register, IBAN and its manager by number are what is requested at his first payment, and a card used to be opened for each supplier.
 const SUPPLIER_LIST_FIELDS = 'name type phone email notes commercialRegister taxCard iban bankName managerName managerPhone paymentTerms inMaster followOwner contractStatus vendorSigned ourSigned headOffice vehicleTypes fleetSize rating';
 const VEHICLE_LIST_FIELDS = 'plate name truckType brand color supplier suppliers ownership vehicleMaster defaultDriverName defaultDriverPhone operationCardNumber operationCardExpiry modelYear notes';

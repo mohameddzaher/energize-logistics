@@ -7,7 +7,7 @@ const READ_METHODS = new Set(['GET', 'HEAD', 'OPTIONS']);
  * A guard written with the old name opens for nobody: it looks wider than it is. An account still stored under the old name is blocked from a door it owns. Both cases are silent: no log error, only "no permission" on screen.
  * So both sides are normalized before comparing: the guard's list and the account's role. A rename then cannot break a door nobody updated.
  */
-const build = (roles, { strict = false } = {}) => {
+const build = (roles, { strict = false, owner = false } = {}) => {
   const allowed = new Set(roles.map(canonicalRole));
   const guard = (req, res, next) => {
     if (!req.user) {
@@ -21,7 +21,8 @@ const build = (roles, { strict = false } = {}) => {
     if (allowed.has(require('../config/roles').rightsRoleOf(canonicalRole(req.user.role)))) return next();
 
     // Admin and IT pass wherever super admin passes, even in strict guards (config/constants: TOP_ROLES).
-    if (require('../config/constants').isTopRole(req.user.role) && allowed.has('super_admin')) return next();
+    const C = require('../config/constants');
+    if (C.isTopRole(req.user.role) && allowed.has('super_admin') && !(owner && !C.isOwnerRole(req.user.role))) return next();
 
     // A door a matrix grant cannot open. `authorize.strict` reads no section stamp and no page tick: its list is everything. It is for whoever owns the matrix itself; if their screen could be opened by a tick, the holder could grant themselves everything in two clicks. Also covers data erasure, which is irreversible.
     if (strict) return res.status(403).json({ message: 'Insufficient permissions' });
@@ -51,5 +52,8 @@ const authorize = (...roles) => build(roles);
 
 /** Its list alone decides; no section stamp or page tick opens it. */
 authorize.strict = (...roles) => build(roles, { strict: true });
+
+/** Strict, and closed to the business consultant too: the doors that hand over the system itself. */
+authorize.owner = (...roles) => build(roles, { strict: true, owner: true });
 
 module.exports = authorize;

@@ -209,9 +209,10 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
   return (
     <html lang="en" suppressHydrationWarning style={{ height: '100%' }}>
       <head>
-        {/* Set the system language before first paint so the fallback font is Arabic, not the phone's locale (e.g. Urdu Nastaliq). */}
+        {/* Set the system language before first paint so the fallback font is Arabic, not the phone's locale (e.g. Urdu Nastaliq).
+            The app is marked untranslatable: Chrome on an Urdu/English phone auto-translated the Arabic data into Urdu and broke React's DOM. */}
         <script
-          dangerouslySetInnerHTML={{ __html: "try{if(location.pathname.indexOf('/system')===0&&localStorage.getItem('system-lang')==='ar')document.documentElement.lang='ar'}catch(e){}" }}
+          dangerouslySetInnerHTML={{ __html: "try{var p=location.pathname,h=document.documentElement;if(p.indexOf('/system')===0||p.indexOf('/portal')===0||p.indexOf('/login')===0){h.setAttribute('translate','no');h.classList.add('notranslate');var m=document.createElement('meta');m.name='google';m.content='notranslate';document.head.appendChild(m)}if(p.indexOf('/system')===0&&localStorage.getItem('system-lang')==='ar')h.lang='ar'}catch(e){}" }}
         />
         <link rel="dns-prefetch" href="https://fonts.googleapis.com" />
         <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="anonymous" />

@@ -735,7 +735,8 @@ const REGISTRY = [
   // The sheet typed them freely so one value had two spellings (sponsorship, motorbike, 'not used' with or without a space). Each spelling becomes a separate item in analysis, splitting counts across phantom items.
   // Seeds are the values actually in the data after unification at import, not an imagined list, so the screen matches the record from day one.
   ...ltList('lt_project', 'مشاريع النقل الخفيف', 'Light-transport Projects',
-    ['كيتا', 'امازون', 'هنجرستيشن', 'نينجا', 'صيانة', '(غير محدد)']),
+    // Appended only: seed keys are index-based, so inserting would rename existing keys.
+    ['كيتا', 'امازون', 'هنجرستيشن', 'نينجا', 'صيانة', '(غير محدد)', 'Media Go']),
   ...ltList('lt_city', 'فروع النقل الخفيف', 'Light-transport Branches', ['جدة', 'مكة المكرمة']),
   ...ltList('lt_job_title', 'وظائف النقل الخفيف', 'Light-transport Job Titles',
     ['مندوب', 'مشرف', 'إداري', 'ميكانيكي', 'عامل نظافة']),

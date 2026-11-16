@@ -55,6 +55,20 @@ export function LanguageProvider({ children }: { children: ReactNode }) {
     return () => { document.documentElement.lang = 'en'; };
   }, [lang]);
 
+  // Browser auto-translate (Chrome on an Urdu/English phone) rewrote the Arabic data and broke React's DOM.
+  // The head script covers a first load; this covers arriving here by client navigation.
+  useEffect(() => {
+    const h = document.documentElement;
+    h.setAttribute('translate', 'no');
+    h.classList.add('notranslate');
+    if (!document.querySelector('meta[name="google"][content="notranslate"]')) {
+      const m = document.createElement('meta');
+      m.name = 'google';
+      m.content = 'notranslate';
+      document.head.appendChild(m);
+    }
+  }, []);
+
   const toggleLang = () => {
     setLang(lang === 'en' ? 'ar' : 'en');
   };

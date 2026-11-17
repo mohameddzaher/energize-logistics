@@ -1113,13 +1113,25 @@ extension on _ShipmentRequestsScreenState {
         await showSourcingSheet(context, r, team: widget.mode == 'fleet' ? 'fleet' : 'vendors', canAdd: _work && _can['work'] == true, canLead: _can['lead'] == true);
         _load();
       },
-      child: Padding(padding: const EdgeInsets.only(top: 4), child: Row(children: [
-        const Icon(Icons.travel_explore, size: 15, color: T.navy),
-        const SizedBox(width: 4),
-        Expanded(child: Text(tr('تحصيل السيارات: ${x.$1}/${x.$2} · بقي ${x.$3}', 'Sourced: ${x.$1}/${x.$2} · ${x.$3} left'),
-            style: const TextStyle(fontSize: 11.5, fontWeight: FontWeight.w700, color: T.navy))),
-        const Icon(Icons.chevron_left, size: 16, color: T.inkFaint),
-      ])),
+      // Filled pill: green for trucks sourced, red for those still missing; all green once complete.
+      child: Padding(padding: const EdgeInsets.only(top: 4), child: Align(alignment: AlignmentDirectional.centerStart, child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(6),
+          gradient: () {
+            final p = x.$2 > 0 ? (x.$1 / x.$2).clamp(0.0, 1.0).toDouble() : 0.0;
+            const g = Color(0xFF16A34A), red = Color(0xFFDC2626);
+            return LinearGradient(begin: AlignmentDirectional.centerStart, end: AlignmentDirectional.centerEnd,
+                colors: const [g, g, red, red], stops: [0, p, p, 1]);
+          }(),
+        ),
+        child: Row(mainAxisSize: MainAxisSize.min, children: [
+          const Icon(Icons.travel_explore, size: 15, color: Colors.white),
+          const SizedBox(width: 4),
+          Text(tr('تحصيل السيارات: ${x.$1}/${x.$2} · بقي ${x.$3}', 'Sourced: ${x.$1}/${x.$2} · ${x.$3} left'),
+              style: const TextStyle(fontSize: 11.5, fontWeight: FontWeight.w800, color: Colors.white)),
+        ]),
+      ))),
     );
   }
 }

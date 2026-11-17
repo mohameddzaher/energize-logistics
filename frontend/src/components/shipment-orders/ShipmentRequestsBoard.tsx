@@ -318,7 +318,7 @@ export default function ShipmentRequestsBoard({ mode }: { mode: BoardMode }) {
           </>
         )}
         {work && canWork && ['pending', 'in_progress', 'completed'].includes(r.status) && (
-          <Btn onClick={() => setSourcingOf(r)} icon={Truck}>{t('تحصيل السيارات', 'Sourced')}</Btn>
+          <SourcingButton r={r} rtl={isRTL} onClick={() => setSourcingOf(r)}><Truck className="w-3.5 h-3.5" />{t('تحصيل السيارات', 'Sourced')} {r.sourced || 0}/{r.trucks}</SourcingButton>
         )}
         {mode === 'sales' && asker && ['pending', 'in_progress', 'rejected'].includes(r.status) && approvalOf(r) !== 'rejected' && (
           <>
@@ -503,7 +503,7 @@ export default function ShipmentRequestsBoard({ mode }: { mode: BoardMode }) {
                       );
                       if (c.key === 'sourcing') return (
                         <td key={c.key} className="px-3 py-2 whitespace-nowrap">
-                          <button type="button" onClick={() => setSourcingOf(r)} className={`rounded-md px-2 py-0.5 text-[12px] font-bold tabular-nums hover:bg-emerald-100 ${(r.sourced || 0) >= r.trucks ? 'bg-emerald-50 text-emerald-800' : 'bg-slate-100 text-slate-700'}`}>{sourcingLine(r, ar)}</button>
+                          <SourcingButton r={r} rtl={isRTL} onClick={() => setSourcingOf(r)}>{sourcingLine(r, ar)}</SourcingButton>
                         </td>
                       );
                       if (c.key === 'progress') return (
@@ -540,7 +540,7 @@ export default function ShipmentRequestsBoard({ mode }: { mode: BoardMode }) {
                   <span className="font-extrabold tabular-nums text-slate-900">{ar ? 'طلب رقم' : 'Request'} {r.number}</span>
                   <StatusText dot={st.dot}>{statusText(r)}</StatusText>
                   <span className={`text-[12px] font-semibold ${vendorProgress(r, ar, pmode).tone}`}>{vendorProgress(r, ar, pmode).label}</span>
-                  <button type="button" onClick={() => setSourcingOf(r)} className="rounded-md bg-slate-100 px-2 py-0.5 text-[11.5px] font-semibold text-slate-700 hover:bg-emerald-50">{t('تحصيل السيارات', 'Sourced')} {sourcingLine(r, ar)}</button>
+                  <SourcingButton r={r} rtl={isRTL} onClick={() => setSourcingOf(r)}>{t('تحصيل السيارات', 'Sourced')} {sourcingLine(r, ar)}</SourcingButton>
                   {r.resubmits ? <span className="text-[11px] text-slate-500">{t(`أُعيد ${r.resubmits}×`, `resent ${r.resubmits}×`)}</span> : null}
                   <span className="ms-auto text-[11.5px] text-slate-500">{when(r.createdAt)} · {r.createdByName}</span>
                 </div>
@@ -632,6 +632,20 @@ export default function ShipmentRequestsBoard({ mode }: { mode: BoardMode }) {
 }
 
 /** Status as plain text with a small square marker: a work system, not coloured pills. */
+/** Sourcing progress as a filled button: green for trucks sourced, red for those still missing; all green once complete. */
+function SourcingButton({ r, rtl, onClick, children }: { r: ShipmentRequest; rtl: boolean; onClick: () => void; children: React.ReactNode }) {
+  const total = Number(r.trucks) || 0;
+  const pct = total ? Math.min(100, Math.round(((Number(r.sourced) || 0) / total) * 100)) : 0;
+  const G = '#16a34a'; const R = '#dc2626';
+  return (
+    <button type="button" onClick={onClick} title={`${r.sourced || 0} / ${total}`}
+      style={{ background: `linear-gradient(to ${rtl ? 'left' : 'right'}, ${G} 0%, ${G} ${pct}%, ${R} ${pct}%, ${R} 100%)` }}
+      className="inline-flex items-center gap-1 rounded-md px-2 py-0.5 text-[12px] font-bold tabular-nums text-white whitespace-nowrap shadow-sm hover:brightness-110">
+      {children}
+    </button>
+  );
+}
+
 function StatusText({ dot, children }: { dot: string; children: React.ReactNode }) {
   return <span className="inline-flex items-center gap-2 whitespace-nowrap text-[12.5px] font-semibold text-slate-700"><span className={`h-2 w-2 rounded-[2px] ${dot}`} />{children}</span>;
 }

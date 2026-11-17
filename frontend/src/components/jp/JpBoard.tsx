@@ -189,7 +189,8 @@ function Block({ icon, title, span2, children }: { icon: React.ReactNode; title:
   );
 }
 
-function TaskCard({ task, now, ar, busy, onDone, onReopen, onEdit, onDelete, onAttach, onRemoveFile, onHandDown, onComment, meId, onTrack, onAdjust }: {
+function TaskCard({ task, now, ar, busy, onDone, onReopen, onEdit, onDelete, onAttach, onRemoveFile, onHandDown, onComment, meId, onTrack, onAdjust, onPostpone }: {
+  onPostpone: (t: JpTask) => void;
   task: JpTask; now: number; ar: boolean; busy: boolean; meId: string;
   onTrack: (t: JpTask, action: 'start' | 'pause') => void; onAdjust: (t: JpTask) => void;
   onComment: (t: JpTask, text: string) => Promise<boolean>;
@@ -274,6 +275,12 @@ function TaskCard({ task, now, ar, busy, onDone, onReopen, onEdit, onDelete, onA
               {task.can.track && !done && (task.timerStartedAt
                 ? <button type="button" disabled={busy} onClick={() => onTrack(task, 'pause')} className="rounded-lg border border-slate-200 px-2.5 py-1 font-semibold text-slate-700 hover:bg-slate-50">{t('إيقاف مؤقّت', 'Pause')}</button>
                 : <button type="button" disabled={busy} onClick={() => onTrack(task, 'start')} className="rounded-lg bg-emerald-600 px-2.5 py-1 font-semibold text-white hover:bg-emerald-700">{task.progress === 'paused' ? t('استئناف', 'Resume') : t('بدأتُ العمل', 'Start')}</button>)}
+              {task.can.postpone && !done && (
+                <button type="button" disabled={busy} onClick={() => onPostpone(task)} className="rounded-lg border border-amber-300 bg-amber-50 px-2.5 py-1 font-semibold text-amber-800 hover:bg-amber-100">{t('تأجيل', 'Postpone')}</button>
+              )}
+              {task.can.complete && !done && (
+                <button type="button" disabled={busy} onClick={() => onDone(task)} className="rounded-lg bg-[#f37121] px-2.5 py-1 font-semibold text-white hover:bg-[#e0651a]">{t('تمّ الإنجاز', 'Done')}</button>
+              )}
               {task.can.adjust && (
                 <button type="button" onClick={() => onAdjust(task)} className="text-[11.5px] text-slate-400 underline-offset-2 hover:text-slate-700 hover:underline">{t('تصحيح الوقت', 'Adjust time')}</button>
               )}
@@ -303,6 +310,18 @@ function TaskCard({ task, now, ar, busy, onDone, onReopen, onEdit, onDelete, onA
           )}
 
           {done && task.doneNote && <p className="mt-2 text-[12.5px] text-emerald-800 bg-emerald-50 border border-emerald-100 rounded-lg px-2.5 py-1.5 whitespace-pre-wrap">{task.doneNote}</p>}
+          {(() => {
+            // The latest step after assignment (postponed, paused, reopened…) with its note, so the reason is read on the card.
+            const last = [...(task.events || [])].reverse().find((e) => e.type !== 'created' && e.type !== 'done');
+            if (!last || (done && last.type !== 'reopened') || !last.note) return null;
+            const w: Record<string, [string, string]> = { started: ['بدأ العمل', 'Started'], paused: ['أوقف مؤقّتًا', 'Paused'], postponed: ['أُجِّلت', 'Postponed'], reopened: ['أُعيد فتحها', 'Reopened'], reassigned: ['نُقلت', 'Reassigned'] };
+            return (
+              <p className={`mt-2 text-[12.5px] rounded-lg px-2.5 py-1.5 whitespace-pre-wrap border ${last.type === 'postponed' ? 'bg-amber-50 border-amber-100 text-amber-900' : 'bg-slate-50 border-slate-100 text-slate-700'}`}>
+                <span className="font-bold">{ar ? w[last.type]?.[0] : w[last.type]?.[1]}{task.postponeCount && last.type === 'postponed' ? ` (${task.postponeCount}×)` : ''}: </span>{last.note}
+                <span className="text-[11px] opacity-70"> — {last.byName}</span>
+              </p>
+            );
+          })()}
 
           {(task.attachments.length > 0 || task.can.attach) && (
             <div className="mt-2 flex flex-wrap items-center gap-1.5">
@@ -404,6 +423,10 @@ function JpBoardInner({ scope, section }: { scope: JpScope; section?: string }) 
   const [adjusting, setAdjusting] = useState<JpTask | null>(null);
   const [adj, setAdj] = useState({ minutes: '', day: '', note: '' });
   const [doneNote, setDoneNote] = useState('');
+  // One dialog for the other steps: start / pause / reopen take an optional note, postpone needs a reason and a new deadline.
+  const [step, setStep] = useState<{ task: JpTask; kind: 'start' | 'pause' | 'reopen' | 'postpone' } | null>(null);
+  const [stepNote, setStepNote] = useState('');
+  const [stepDue, setStepDue] = useState<Due>(NO_DUE);
   const [doneFile, setDoneFile] = useState<{ dataUrl: string; fileName: string } | null>(null);
   const [projForm, setProjForm] = useState<{ _id?: string; name: string; description: string; endDate: string } | null>(null);
   const [handing, setHanding] = useState<{ task?: JpTask; project?: JpProject } | null>(null);
@@ -500,9 +523,17 @@ function JpBoardInner({ scope, section }: { scope: JpScope; section?: string }) 
     } catch (e) { say(e); } finally { setSaving(false); }
   };
 
-  const track = async (task: JpTask, action: 'start' | 'pause') => {
+  const track = (task: JpTask, action: 'start' | 'pause') => { setStep({ task, kind: action }); setStepNote(''); };
+  const saveStep = async () => {
+    if (!step) return;
+    const { task, kind } = step;
     setBusyId(task._id);
-    try { await api.post(`/api/jp/tasks/${task._id}/progress`, { action }); load(); } catch (e) { say(e); } finally { setBusyId(''); }
+    try {
+      if (kind === 'postpone') await api.post(`/api/jp/tasks/${task._id}/postpone`, { reason: stepNote, ...dueBody(stepDue) });
+      else if (kind === 'reopen') await api.post(`/api/jp/tasks/${task._id}/done`, { done: false, note: stepNote });
+      else await api.post(`/api/jp/tasks/${task._id}/progress`, { action: kind, note: stepNote });
+      setStep(null); load();
+    } catch (e) { say(e); } finally { setBusyId(''); }
   };
   const saveAdjust = async () => {
     if (!adjusting) return;
@@ -548,10 +579,7 @@ function JpBoardInner({ scope, section }: { scope: JpScope; section?: string }) 
       setDoneFor(null); setDoneNote(''); setDoneFile(null); load();
     } catch (e) { say(e); } finally { setBusyId(''); }
   };
-  const reopen = async (task: JpTask) => {
-    setBusyId(task._id);
-    try { await api.post(`/api/jp/tasks/${task._id}/done`, { done: false }); load(); } catch (e) { say(e); } finally { setBusyId(''); }
-  };
+  const reopen = (task: JpTask) => { setStep({ task, kind: 'reopen' }); setStepNote(''); };
   const remove = async (task: JpTask) => {
     if (!(await confirm({ message: t(`حذفُ «${task.title}»؟`, `Delete “${task.title}”?`), confirmLabel: t('حذف', 'Delete') }))) return;
     try { await api.delete(`/api/jp/tasks/${task._id}`); load(); } catch (e) { say(e); }
@@ -861,24 +889,47 @@ function JpBoardInner({ scope, section }: { scope: JpScope; section?: string }) 
           {tasks.map((task) => (
             <TaskCard key={task._id} task={task} now={now} ar={ar} busy={busyId === task._id} meId={me.me}
               onDone={(x) => { setDoneFor(x); setDoneNote(''); setDoneFile(null); }} onReopen={reopen}
-              onTrack={track} onAdjust={(x) => { setAdjusting(x); setAdj({ minutes: '', day: ymd(new Date()), note: '' }); }}
+              onTrack={track} onPostpone={(x) => { setStep({ task: x, kind: 'postpone' }); setStepNote(''); setStepDue({ kind: 'date', date: ymd(new Date(Date.now() + 86400000)), hours: '' }); }} onAdjust={(x) => { setAdjusting(x); setAdj({ minutes: '', day: ymd(new Date()), note: '' }); }}
               onEdit={startEdit} onDelete={remove} onAttach={attach} onRemoveFile={removeFile}
               onHandDown={(x) => openHand({ task: x })} onComment={comment} />
           ))}
         </ul>
       )}
 
-      {/* Completion: note and file are optional */}
+      {/* Other steps, each with its note: start, pause, reopen (optional), postpone (reason and new deadline required). */}
+      <Modal open={!!step} onClose={() => setStep(null)}
+        title={step?.kind === 'postpone' ? t('تأجيل المهمّة', 'Postpone task') : step?.kind === 'reopen' ? t('إعادة فتح المهمّة', 'Reopen task') : step?.kind === 'pause' ? t('إيقاف مؤقّت', 'Pause') : t('بدء العمل', 'Start work')}
+        footer={(
+          <>
+            <button type="button" onClick={() => setStep(null)} className="px-4 py-2 rounded-lg text-sm text-slate-600 hover:text-slate-900">{t('إلغاء', 'Cancel')}</button>
+            <PrimaryButton onClick={saveStep} disabled={!!busyId || (step?.kind === 'postpone' && (stepNote.trim().length < 3 || !stepDue.kind))}>
+              {step?.kind === 'postpone' ? t('تأجيل', 'Postpone') : step?.kind === 'reopen' ? t('إعادة فتح', 'Reopen') : step?.kind === 'pause' ? t('إيقاف', 'Pause') : t('ابدأ', 'Start')}
+            </PrimaryButton>
+          </>
+        )}>
+        <p className="text-[14px] font-semibold text-slate-900">{step?.task.title}</p>
+        {step?.kind === 'postpone' && (
+          <Field label={t('الموعد الجديد', 'New deadline')}>
+            <DuePicker value={stepDue} onChange={setStepDue} ar={ar} />
+          </Field>
+        )}
+        <Field label={step?.kind === 'postpone' ? t('سبب التأجيل (مطلوب)', 'Reason (required)') : step?.kind === 'reopen' ? t('لماذا تُعاد؟ (اختياري)', 'Why? (optional)') : step?.kind === 'pause' ? t('سبب الإيقاف (اختياري)', 'Why pause? (optional)') : t('ملاحظة (اختياري)', 'Note (optional)')}>
+          <TextArea rows={3} value={stepNote} onChange={(e) => setStepNote(e.target.value)}
+            placeholder={step?.kind === 'postpone' ? t('مثال: العميل طلب موعدًا الأسبوع القادم', 'e.g. the customer asked for next week') : t('اكتب ما يفيد من يتابع المهمّة', 'Anything useful for whoever follows the task')} />
+        </Field>
+      </Modal>
+
+      {/* Completion: what was done is required (it is what the dashboard shows); a proof file is optional. */}
       <Modal open={!!doneFor} onClose={() => setDoneFor(null)} title={t('إتمام المهمّة', 'Complete task')}
         footer={(
           <>
             <button type="button" onClick={() => setDoneFor(null)} className="px-4 py-2 rounded-lg text-sm text-slate-600 hover:text-slate-900">{t('إلغاء', 'Cancel')}</button>
-            <PrimaryButton onClick={confirmDone} disabled={!!busyId}><Check className="w-4 h-4" />{t('تمّت', 'Done')}</PrimaryButton>
+            <PrimaryButton onClick={confirmDone} disabled={!!busyId || doneNote.trim().length < 3}><Check className="w-4 h-4" />{t('تمّ الإنجاز', 'Done')}</PrimaryButton>
           </>
         )}>
         <p className="text-[14px] font-semibold text-slate-900">{doneFor?.title}</p>
-        <Field label={t('ملاحظة (اختياري)', 'Note (optional)')}>
-          <TextArea rows={3} value={doneNote} onChange={(e) => setDoneNote(e.target.value)} placeholder={t('ماذا تمّ؟', 'What was done?')} />
+        <Field label={t('ماذا تمّ؟ (مطلوب)', 'What was done? (required)')}>
+          <TextArea rows={3} value={doneNote} onChange={(e) => setDoneNote(e.target.value)} placeholder={t('مثال: زرت العميل واتفقنا على 5 شحنات أسبوعيًّا', 'e.g. visited the customer, agreed 5 shipments a week')} />
         </Field>
         <Field label={t('ملفٌّ يثبت الإتمام (اختياري)', 'Proof file (optional)')}>
           <label className="inline-flex items-center gap-2 px-3 py-2 rounded-lg bg-white border border-dashed border-slate-300 text-sm text-slate-600 cursor-pointer hover:border-[#f37121]">

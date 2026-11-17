@@ -52,7 +52,10 @@ export interface JpTask {
   doneAt?: string | null; doneNote?: string; createdAt: string;
   attachments: JpAttachment[];
   comments?: JpComment[];
-  can: { complete: boolean; edit: boolean; remove: boolean; attach: boolean; comment?: boolean; track?: boolean; adjust?: boolean };
+  can: { complete: boolean; edit: boolean; remove: boolean; attach: boolean; comment?: boolean; track?: boolean; adjust?: boolean; postpone?: boolean };
+  /** The task's story: each step with its note (backend models/JpModels events). */
+  events?: { type: string; note: string; fromAt?: string | null; toAt?: string | null; byName: string; at: string }[];
+  postponeCount?: number;
   /** Working day, expected time and actual time. */
   workDate?: string | null; expectedMinutes?: number | null;
   progress?: 'todo' | 'doing' | 'paused'; timerStartedAt?: string | null;

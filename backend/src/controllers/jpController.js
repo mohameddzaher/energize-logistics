@@ -155,6 +155,7 @@ const shape = (t, req, w) => {
     // What this caller may do on this task; the screen reads it and does not guess.
     can: {
       complete: mine || w.canManage,
+      postpone: (mine || w.canManage) && t.status !== 'done',
       // The timer is for whoever works on the task; time correction is for the manager.
       track: mine,
       adjust: w.canManage,
@@ -412,6 +413,7 @@ exports.createTask = async (req, res) => {
 
     const doc = await JpTask.create({
       links, ...plan,
+      events: [{ type: 'created', by: req.user._id, byName: nameOf(req.user) }],
       scope: w.scope, section: w.section,
       // A manager assigns, anyone else requests; decided by who wrote it, not by what was sent. An employee assigning to themself means 'I am working on this': it is their task, not a request to anyone.
       kind: w.canManage || sameId(assignedTo, req.user._id) ? 'task' : 'request',
@@ -470,7 +472,9 @@ exports.updateTask = async (req, res) => {
     if (b.assignedTo !== undefined && String(b.assignedTo) !== assigneeKey(t)) {
       const team = await teamOf(w, { wide: w.top, assign: true });
       if (!(team.some((m) => sameId(m._id, b.assignedTo)) || sameId(b.assignedTo, req.user._id))) throw bad('اختر من يُسنَد إليه من فريق القسم');
+      const before = assigneeName(t);
       Object.assign(t, assigneeFields(b.assignedTo, team)); reassigned = true;
+      t.events.push({ type: 'reassigned', note: `${before || '—'} ← ${assigneeName(t) || '—'}`, by: req.user._id, byName: nameOf(req.user) });
     }
     const deadline = readDeadline(b);
     if (deadline) Object.assign(t, deadline);
@@ -492,12 +496,16 @@ exports.setDone = async (req, res) => {
     const { t, w, mine } = got;
     if (!(mine || w.canManage)) return res.status(403).json({ message: 'الإتمامُ لمن أُسنِدت إليه المهمّة' });
     const done = req.body.done !== false;
+    const note = String(req.body.note || '').trim().slice(0, 2000);
+    // Closing says what was done; reopening says why. That record is what the plan's dashboard reads.
+    if (done && note.length < 3) throw bad('اكتب ما تمّ إنجازه');
     if (done) {
       // Done stops a running timer; time up to this moment is counted.
       closeTimer(t, req.user);
       t.progress = 'todo';
       t.status = 'done'; t.doneAt = new Date(); t.doneBy = req.user._id;
-      t.doneNote = String(req.body.note || '').trim();
+      t.doneNote = note;
+      t.events.push({ type: 'done', note, toAt: t.deadlineAt || null, by: req.user._id, byName: nameOf(req.user) });
       const f = req.body.file;
       if (f && f.dataUrl) {
         const stored = saveUploadFile(f.dataUrl, 'jp', f.fileName);
@@ -506,6 +514,7 @@ exports.setDone = async (req, res) => {
     } else {
       // Completion reverted: it reopens and its attachments stay.
       t.status = 'open'; t.doneAt = null; t.doneBy = null; t.doneNote = '';
+      t.events.push({ type: 'reopened', note, by: req.user._id, byName: nameOf(req.user) });
     }
     await t.save();
     if (done) await notify(t.createdBy, req.user._id, 'تمّت مهمّة', `${t.title} — ${nameOf(req.user)}`, t._id);
@@ -527,6 +536,8 @@ exports.progress = async (req, res) => {
     if (!mine) return res.status(403).json({ message: 'المؤقّتُ لمن يعمل على المهمّة' });
     if (t.status === 'done') throw bad('المهمّةُ تمّت — أعد فتحها أوّلًا');
     const action = String(req.body.action || '');
+    const note = String(req.body.note || '').trim().slice(0, 2000);
+    if (action === 'start' || action === 'pause') t.events.push({ type: action === 'start' ? 'started' : 'paused', note, by: req.user._id, byName: nameOf(req.user) });
     if (action === 'start') {
       if (!t.timerStartedAt) {
         const others = await JpTask.find({ assignedTo: req.user._id, timerStartedAt: { $ne: null }, _id: { $ne: t._id } });
@@ -542,6 +553,34 @@ exports.progress = async (req, res) => {
     broadcast(w);
     res.json({ task: shape(await POP(JpTask.findById(t._id)).lean(), req, w) });
   } catch (e) { fail(res, e, 'تعذّر الحفظ'); }
+};
+
+/**
+ * POST /api/jp/tasks/:id/postpone - { reason, deadlineKind, deadlineDate | deadlineHours }
+ * The assignee (or the manager) moves the deadline and must say why; the assigner is told. Recorded with old and new deadline.
+ */
+exports.postpone = async (req, res) => {
+  try {
+    const got = await loadTask(req, res); if (!got) return;
+    const { t, w, mine } = got;
+    if (!(mine || w.canManage)) return res.status(403).json({ message: 'التأجيلُ لمن أُسنِدت إليه المهمّة' });
+    if (t.status === 'done') throw bad('المهمّةُ تمّت — أعد فتحها أوّلًا');
+    const reason = String(req.body.reason || '').trim().slice(0, 2000);
+    if (reason.length < 3) throw bad('اكتب سبب التأجيل');
+    const deadline = readDeadline(req.body);
+    if (!deadline || !deadline.deadlineAt) throw bad('اختر الموعد الجديد');
+    const fromAt = t.deadlineAt || null;
+    Object.assign(t, deadline);
+    // A running timer stops: postponing means the work is set aside.
+    if (t.timerStartedAt) { closeTimer(t, req.user); t.progress = 'paused'; }
+    t.postponeCount = (t.postponeCount || 0) + 1;
+    t.events.push({ type: 'postponed', note: reason, fromAt, toAt: t.deadlineAt, by: req.user._id, byName: nameOf(req.user) });
+    await t.save();
+    if (!sameId(t.createdBy, req.user._id)) await notify(t.createdBy, req.user._id, 'أُجِّلت مهمّة', `${t.title} — ${nameOf(req.user)}: ${reason}`, t._id);
+    await logAudit({ user: req.user._id, action: 'update', entity: 'JpTask', entityId: t._id, changes: { details: `تأجيل «${t.title}»: ${reason}` }, ipAddress: req.ip }).catch(() => {});
+    broadcast(w);
+    res.json({ task: shape(await POP(JpTask.findById(t._id)).lean(), req, w) });
+  } catch (e) { fail(res, e, 'تعذّر التأجيل'); }
 };
 
 /** POST /api/jp/tasks/:id/time - { minutes (+/-), day: 'YYYY-MM-DD', note } - manager correction. */
@@ -898,7 +937,7 @@ exports.dashboard = async (req, res) => {
     const members = new Map(team.map((m) => [String(m._id), { ...m, ...blank() }]));
     // Active, not-ended accounts: an assignee outside the section's roles still counts as a member.
     const activeIds = new Set((await teamOf(w, { wide: true, assign: true })).map((m) => String(m._id)));
-    const totals = { total: 0, tasks: 0, requests: 0, open: 0, done: 0, overdue: 0, onTime: 0, late: 0, noDeadline: 0, withFiles: 0, dueSoon: 0 };
+    const totals = { total: 0, tasks: 0, requests: 0, open: 0, done: 0, overdue: 0, onTime: 0, late: 0, noDeadline: 0, withFiles: 0, dueSoon: 0, postponed: 0 };
     const byAction = {}; const byProject = new Map();
     const dayKey = (d) => new Date(new Date(d).getTime() + 3 * HOUR).toISOString().slice(0, 10);
     const daily = new Map();
@@ -912,6 +951,7 @@ exports.dashboard = async (req, res) => {
       if (s === 'overdue') totals.overdue += 1;
       if (!t.deadlineAt) totals.noDeadline += 1;
       if ((t.attachments || []).length) totals.withFiles += 1;
+      if (t.postponeCount) totals.postponed += 1;
       if (s === 'open' && t.deadlineAt && new Date(t.deadlineAt).getTime() - now <= 24 * HOUR) totals.dueSoon += 1;
       const onTime = s === 'done' && t.deadlineAt ? new Date(t.doneAt) <= new Date(t.deadlineAt) : null;
       if (onTime === true) totals.onTime += 1; if (onTime === false) totals.late += 1;
@@ -998,8 +1038,15 @@ exports.dashboard = async (req, res) => {
       dueSoon: tasks.filter((t) => stateOf(t, now) === 'open' && t.deadlineAt && new Date(t.deadlineAt).getTime() - now <= 24 * HOUR).sort((a, b) => new Date(a.deadlineAt) - new Date(b.deadlineAt)).slice(0, 50).map(slim),
       recentDone: tasks.filter((t) => t.status === 'done').sort((a, b) => new Date(b.doneAt) - new Date(a.doneAt)).slice(0, 20).map(slim),
       // The whole list is under the filters; the status filter is applied in the screen on top of it, so cards still count every status and one can be picked.
-      tasks: tasks.slice().sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt)).slice(0, 500).map((t) => ({
+      // Every task in full: what was asked, with whom, and its whole story (each step with its note and time), so the manager reads one person's work end to end.
+      tasks: tasks.slice().sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt)).slice(0, 3000).map((t) => ({
         ...slim(t), action: t.action || '', comments: (t.comments || []).length,
+        assignedToId: assigneeKey(t), details: t.details || '', contact: t.contact || '',
+        workDate: t.workDate || null, deadlineKind: t.deadlineKind || '', postponeCount: t.postponeCount || 0,
+        lastPostponeReason: ([...(t.events || [])].reverse().find((e) => e.type === 'postponed') || {}).note || '',
+        events: (t.events || []).map((e) => ({ type: e.type, note: e.note || '', fromAt: e.fromAt, toAt: e.toAt, byName: e.byName || '', at: e.at })),
+        commentList: (t.comments || []).map((c) => ({ byName: c.byName || '', text: c.text, at: c.at })),
+        fileList: (t.attachments || []).map((a) => ({ name: a.fileName || '', url: a.fileUrl || '', phase: a.phase || '' })),
         dueSoon: stateOf(t, now) === 'open' && !!t.deadlineAt && new Date(t.deadlineAt).getTime() - now <= 24 * HOUR,
       })),
       team: team.map((m) => ({ _id: m._id, name: m.name })),

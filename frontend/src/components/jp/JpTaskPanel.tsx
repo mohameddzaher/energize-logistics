@@ -38,9 +38,15 @@ export default function JpTaskPanel({ section, kind, refId, ar, compact }: {
   }, [section, kind, load]);
   useSocket('jp:changed', useCallback((d: { scope?: string; section?: string }) => { if (d?.section === section) load(); }, [load, section]));
 
-  const done = async (x: JpTask) => {
+  // Closing asks what was done (required), reopening asks why (optional): the note is the task's record.
+  const [noteFor, setNoteFor] = useState<JpTask | null>(null);
+  const [note, setNote] = useState('');
+  const done = (x: JpTask) => { setNoteFor(x); setNote(''); };
+  const saveDone = async () => {
+    if (!noteFor) return;
+    const x = noteFor;
     setBusy(x._id);
-    try { await api.post(`/api/jp/tasks/${x._id}/done`, { done: x.status !== 'done' }); load(); }
+    try { await api.post(`/api/jp/tasks/${x._id}/done`, { done: x.status !== 'done', note }); setNoteFor(null); load(); }
     catch (e: any) { notify(e?.message || t('تعذّر', 'Failed'), 'error'); }
     setBusy('');
   };
@@ -48,7 +54,16 @@ export default function JpTaskPanel({ section, kind, refId, ar, compact }: {
   if (hidden || !me || tasks === null) return null;
   const now = Date.now();
   const openCount = tasks.filter((x) => x.status !== 'done').length;
+  const closing = noteFor ? noteFor.status !== 'done' : true;
   return (
+    <>
+    <Modal open={!!noteFor} onClose={() => setNoteFor(null)} title={closing ? t('تمّ الإنجاز', 'Done') : t('إعادة فتح المهمّة', 'Reopen task')}
+      footer={<PrimaryButton onClick={saveDone} disabled={!!busy || (closing && note.trim().length < 3)}>{closing ? t('تمّ الإنجاز', 'Done') : t('إعادة فتح', 'Reopen')}</PrimaryButton>}>
+      <p className="text-[14px] font-semibold text-slate-900">{noteFor?.title}</p>
+      <Field label={closing ? t('ماذا تمّ؟ (مطلوب)', 'What was done? (required)') : t('لماذا تُعاد؟ (اختياري)', 'Why? (optional)')}>
+        <TextArea rows={3} value={note} onChange={(e) => setNote(e.target.value)} />
+      </Field>
+    </Modal>
     <section className="bg-white border border-slate-200 rounded-2xl shadow-sm overflow-hidden">
       <header className="flex items-center justify-between gap-2 px-5 py-3.5 border-b border-slate-100">
         <h3 className="text-[14px] font-bold text-slate-900 flex items-center gap-2">
@@ -90,6 +105,7 @@ export default function JpTaskPanel({ section, kind, refId, ar, compact }: {
       )}
       {open && <QuickAdd me={me} section={section} kind={kind} refId={refId} ar={ar} onClose={() => setOpen(false)} onSaved={() => { setOpen(false); load(); }} />}
     </section>
+    </>
   );
 }
 

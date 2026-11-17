@@ -96,6 +96,22 @@ const jpTaskSchema = new mongoose.Schema({
     at: { type: Date, default: Date.now },
   }],
 
+  /**
+   * What happened to the task and why, in order: assigned, started, paused, postponed (reason, old and new deadline), done (what was done), reopened, reassigned.
+   * The assignee answers every step with a note, so the plan and its dashboard show the whole story of each task.
+   */
+  events: [{
+    _id: false,
+    type: { type: String, enum: ['created', 'started', 'paused', 'postponed', 'done', 'reopened', 'reassigned'], required: true },
+    note: { type: String, trim: true, default: '', maxlength: 2000 },
+    fromAt: { type: Date, default: null },
+    toAt: { type: Date, default: null },
+    by: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
+    byName: { type: String, default: '' },
+    at: { type: Date, default: Date.now },
+  }],
+  postponeCount: { type: Number, default: 0 },
+
   /** What the task relates to. A follow-up task on a transport invoice only makes sense with its transaction, and contact the customer with its customer. So a task links to what it concerns (transaction, customer, shipping agent or carrier), opens from it and is read there. Allowed kinds per department are in controllers/jpController (LINK_KINDS); the name is captured at link time to display without another read. */
   links: [{
     _id: false,

@@ -27,6 +27,7 @@ router.delete('/tasks/:id', c.deleteTask);
 router.post('/tasks/:id/done', c.setDone);
 // Timer, time correction and daily log.
 router.post('/tasks/:id/progress', c.progress);
+router.post('/tasks/:id/postpone', c.postpone);
 router.post('/tasks/:id/time', c.adjustTime);
 router.post('/tasks/:id/hand-down', c.handDown);
 router.post('/tasks/:id/attachments', c.addAttachment);

@@ -4,7 +4,7 @@
  * Top to bottom: filters (employee, day or range, project, type, contact method); six cards (open, late, due today), each opening its list below; the team, whose row filters the board; projects, contact methods and last 14 days; the task list itself, so every number above has rows below.
  * The server applies the filters to everything and returns 403 for non-managers, so the message is shown instead of an empty board.
  */
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { Fragment, useCallback, useEffect, useMemo, useState } from 'react';
 import { useLanguage } from '@/context/LanguageContext';
 import { useSocket } from '@/hooks/useSocket';
 import { useLatestRequest } from '@/hooks/useLatestRequest';
@@ -14,8 +14,9 @@ import Link from 'next/link';
 import { Spinner, PageHeader } from '@/components/hr/HRKit';
 import DateRangeFilter from '@/components/system/DateRangeFilter';
 import JpDaily from '@/components/jp/JpDaily';
+import ExportMenu from '@/components/ls2/ExportMenu';
 import {
-  BarChart3, Clock, FolderKanban, Users, UserX, ListChecks, X, Paperclip, MessageSquare, Tags, Link2,
+  BarChart3, Clock, FolderKanban, Users, UserX, ListChecks, X, Paperclip, MessageSquare, Tags, Link2, ChevronDown, CalendarClock,
 } from 'lucide-react';
 
 interface Row {
@@ -23,7 +24,20 @@ interface Row {
   deadlineAt: string | null; doneAt: string | null; createdAt: string; project: string; files: number; doneNote: string;
   state: 'open' | 'overdue' | 'done'; action: string; comments: number; dueSoon: boolean;
   spentMinutes?: number; expectedMinutes?: number | null; links?: { kind: string; label: string; href: string }[];
+  assignedToId?: string; details?: string; contact?: string; workDate?: string | null; postponeCount?: number; lastPostponeReason?: string;
+  events?: JpEvent[]; commentList?: { byName: string; text: string; at: string }[]; fileList?: { name: string; url: string; phase: string }[];
 }
+interface JpEvent { type: string; note: string; fromAt?: string | null; toAt?: string | null; byName: string; at: string }
+/** Words and colours for each step of a task's story. */
+const EVENT_WORDS: Record<string, { ar: string; en: string; cls: string }> = {
+  created: { ar: 'أُسنِدت', en: 'Assigned', cls: 'bg-slate-500' },
+  started: { ar: 'بدأ العمل', en: 'Started', cls: 'bg-sky-500' },
+  paused: { ar: 'أوقف مؤقّتًا', en: 'Paused', cls: 'bg-slate-400' },
+  postponed: { ar: 'أُجِّلت', en: 'Postponed', cls: 'bg-amber-500' },
+  done: { ar: 'تمّ الإنجاز', en: 'Done', cls: 'bg-emerald-600' },
+  reopened: { ar: 'أُعيد فتحها', en: 'Reopened', cls: 'bg-violet-500' },
+  reassigned: { ar: 'نُقلت إلى آخر', en: 'Reassigned', cls: 'bg-indigo-500' },
+};
 interface Member {
   _id: string; name: string; roleAr: string; roleEn: string; former?: boolean;
   assigned: number; open: number; done: number; overdue: number; onTime: number; late: number; requestsMade: number;
@@ -33,7 +47,7 @@ interface Dash {
   sectionAr: string; sectionEn: string;
   totals: {
     total: number; tasks: number; requests: number; open: number; done: number; overdue: number; onTime: number; late: number;
-    noDeadline: number; withFiles: number; dueSoon: number; completionRate: number | null; onTimeRate: number | null;
+    noDeadline: number; withFiles: number; dueSoon: number; completionRate: number | null; onTimeRate: number | null; postponed?: number;
   };
   members: Member[];
   idle: { _id: string; name: string }[];
@@ -49,7 +63,7 @@ interface Dash {
   totals2?: { minutes: number };
 }
 
-type StatusKey = '' | 'open' | 'overdue' | 'soon' | 'done';
+type StatusKey = '' | 'open' | 'overdue' | 'soon' | 'done' | 'postponed';
 const pctText = (v: number | null) => (v == null ? '—' : `${v}%`);
 const selectCls = 'h-9 px-2.5 rounded-lg bg-white border border-slate-200 text-[13px] text-slate-700 focus:outline-none focus:ring-2 focus:ring-[#f37121]/40';
 
@@ -105,6 +119,9 @@ export default function JpDashboard({ scope, section }: { scope: JpScope; sectio
   const [link, setLink] = useState('');
   const [status, setStatus] = useState<StatusKey>('');
   const [search, setSearch] = useState('');
+  // Task rows open into their full story; the list grows by 200 on request.
+  const [openRow, setOpenRow] = useState('');
+  const [limit, setLimit] = useState(200);
   const [now, setNow] = useState(() => Date.now());
   const { begin, isCurrent } = useLatestRequest();
   const q = qs(scope, section);
@@ -137,8 +154,10 @@ export default function JpDashboard({ scope, section }: { scope: JpScope; sectio
   const rows = useMemo(() => {
     const s = search.trim().toLowerCase();
     return (data?.tasks || []).filter((r) => (
-      (status === '' || (status === 'soon' ? r.dueSoon : r.state === status))
-      && (!s || `${r.title} ${r.assignedToName} ${r.createdByName} ${r.project}`.toLowerCase().includes(s))
+      (status === '' || (status === 'soon' ? r.dueSoon : status === 'postponed' ? (r.postponeCount || 0) > 0 : r.state === status))
+      && (!s || [r.title, r.assignedToName, r.createdByName, r.project, r.details, r.contact, r.doneNote,
+        ...(r.links || []).map((l) => l.label), ...(r.events || []).map((e) => e.note), ...(r.commentList || []).map((c) => c.text)]
+        .join(' ').toLowerCase().includes(s))
     ));
   }, [data, status, search]);
 
@@ -215,6 +234,7 @@ export default function JpDashboard({ scope, section }: { scope: JpScope; sectio
         <Stat label={t('متأخّرة', 'Late')} value={String(T.overdue)} tone={T.overdue ? 'text-red-600' : 'text-slate-900'} hint={t('فات موعدها', 'Past deadline')} on={status === 'overdue'} onClick={() => pick('overdue')} />
         <Stat label={t('خلال 24 ساعة', 'Due in 24h')} value={String(T.dueSoon)} tone={T.dueSoon ? 'text-amber-600' : 'text-slate-900'} hint={t('موعدها قريب', 'Deadline near')} on={status === 'soon'} onClick={() => pick('soon')} />
         <Stat label={t('تمّت', 'Done')} value={String(T.done)} tone="text-emerald-700" hint={t(`${T.onTime} في موعدها · ${T.late} بعده`, `${T.onTime} on time · ${T.late} late`)} on={status === 'done'} onClick={() => pick('done')} />
+        <Stat label={t('أُجِّلت', 'Postponed')} value={String(T.postponed || 0)} tone={T.postponed ? 'text-amber-700' : 'text-slate-900'} hint={t('بسببٍ مكتوب', 'with a reason')} on={status === 'postponed'} onClick={() => pick('postponed')} />
         <Stat label={t('نسبة الإتمام', 'Completion')} value={pctText(T.completionRate)} />
         <Stat label={t('في موعدها', 'On time')} value={pctText(T.onTimeRate)} hint={t('من التي لها موعد', 'of those with a deadline')} />
         <Stat label={t('الوقت المسجّل', 'Time logged')} value={data.totals2?.minutes ? fmtMinutes(data.totals2.minutes, ar) : '—'} hint={t('بالمؤقّت', 'by timer')} />
@@ -386,70 +406,172 @@ export default function JpDashboard({ scope, section }: { scope: JpScope; sectio
         </Panel>
       </div>
 
-      {/* 7. The tasks themselves */}
+      {/* 7. The tasks themselves: filter by person, open any row for its whole story (each step, note and time). */}
       <section className="bg-white border border-slate-200 rounded-2xl shadow-sm overflow-hidden">
         <header className="flex flex-wrap items-center justify-between gap-2 px-5 py-3.5 border-b border-slate-100">
           <h2 className="flex items-center gap-2 text-[14px] font-bold text-slate-900">
             <span className="text-[#f37121]"><ListChecks className="w-4 h-4" /></span>
             {status === 'overdue' ? t('المتأخّرة', 'Late') : status === 'soon' ? t('تستحقّ خلال 24 ساعة', 'Due within 24h')
-              : status === 'done' ? t('التي تمّت', 'Done') : status === 'open' ? t('القائمة', 'Open') : t('كلُّ المهامّ', 'All tasks')}
+              : status === 'done' ? t('التي تمّت', 'Done') : status === 'open' ? t('القائمة', 'Open') : status === 'postponed' ? t('المؤجَّلة', 'Postponed') : t('كلُّ المهامّ', 'All tasks')}
             <span className="text-[12px] font-semibold text-slate-400 tabular-nums">({rows.length})</span>
           </h2>
-          <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder={t('بحث في العنوان أو الاسم…', 'Search title or name…')}
-            className="w-56 px-3 py-1.5 rounded-lg border border-slate-200 bg-white text-[12.5px] focus:outline-none focus:border-[#f37121]" />
+          <div className="flex flex-wrap items-center gap-2">
+            <select value={assignee} onChange={(e) => setAssignee(e.target.value)} className={selectCls} aria-label={person}>
+              <option value="">{t('كلُّ الأشخاص', 'Everyone')}</option>
+              {data.members.map((m) => <option key={m._id} value={m._id}>{m.name}{m.assigned ? ` (${m.assigned})` : ''}</option>)}
+            </select>
+            <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder={t('بحث في المهمّة والتفاصيل والملاحظات…', 'Search task, details, notes…')}
+              className="w-64 h-9 px-3 rounded-lg border border-slate-200 bg-white text-[12.5px] focus:outline-none focus:border-[#f37121]" />
+            <ExportMenu fileName="jp-tasks" lang={ar ? 'ar' : 'en'}
+              options={[{ key: 'shown', label: t('المعروض بكلّ التفاصيل', 'Shown, all details'), sheets: [{ name: t('المهامّ', 'Tasks'), rows, columns: [
+                { header: t('المطلوب', 'Task'), key: 'title' },
+                { header: t('إلى', 'To'), key: 'assignedToName' }, { header: t('من', 'From'), key: 'createdByName' },
+                { header: t('الحالة', 'State'), key: 'state', transform: (v: any) => (STATE_BADGE[v as Row['state']] ? (ar ? STATE_BADGE[v as Row['state']].ar : STATE_BADGE[v as Row['state']].en) : v) },
+                { header: t('أُسنِدت في', 'Assigned on'), key: 'createdAt', transform: (v: any) => (v ? new Date(v).toLocaleString('en-GB') : '') },
+                { header: t('الموعد', 'Deadline'), key: 'deadlineAt', transform: (v: any) => (v ? new Date(v).toLocaleString('en-GB') : '') },
+                { header: t('تمّت في', 'Done on'), key: 'doneAt', transform: (v: any) => (v ? new Date(v).toLocaleString('en-GB') : '') },
+                { header: t('التفاصيل', 'Details'), key: 'details' },
+                { header: t('التواصل', 'Contact'), key: 'action', transform: (v: any, r: any) => [v ? (ar ? (ACTION_WORDS as any)[v]?.ar : (ACTION_WORDS as any)[v]?.en) : '', r.contact].filter(Boolean).join(' · ') },
+                { header: t('تتعلّق بـ', 'Related to'), key: 'links', transform: (v: any) => (v || []).map((l: any) => l.label).join('، ') },
+                { header: t('ما تمّ', 'What was done'), key: 'doneNote' },
+                { header: t('مرّات التأجيل', 'Postponed'), key: 'postponeCount', type: 'number' as const },
+                { header: t('آخر سبب تأجيل', 'Last postpone reason'), key: 'lastPostponeReason' },
+                { header: t('سجلّ المهمّة', 'Task log'), key: 'events', transform: (v: any) => (v || []).map((e: JpEvent) => `${new Date(e.at).toLocaleString('en-GB')} — ${ar ? EVENT_WORDS[e.type]?.ar : EVENT_WORDS[e.type]?.en} — ${e.byName}${e.note ? `: ${e.note}` : ''}`).join(' | ') },
+                { header: t('الوقت (دقائق)', 'Time (min)'), key: 'spentMinutes', type: 'number' as const },
+              ] }] }]} />
+          </div>
         </header>
         <div className="overflow-x-auto">
           <table className="w-full text-[13px]">
             <thead>
-              <tr className="bg-slate-900 text-slate-200 text-[11.5px]">
-                <th className="text-start font-medium px-4 py-2.5">{t('المطلوب', 'Task')}</th>
+              <tr>
+                <th className="w-8" />
+                <th className="text-start font-medium px-3 py-2.5">{t('المطلوب', 'Task')}</th>
                 <th className="text-start font-medium px-3 py-2">{t('إلى', 'To')}</th>
                 <th className="text-start font-medium px-3 py-2">{t('من', 'From')}</th>
-                <th className="text-start font-medium px-3 py-2">{t('المشروع', 'Project')}</th>
                 <th className="text-start font-medium px-3 py-2">{t('الموعد', 'Deadline')}</th>
                 <th className="text-start font-medium px-3 py-2">{t('الحالة', 'State')}</th>
+                <th className="text-start font-medium px-3 py-2">{t('آخر ما حدث', 'Latest')}</th>
                 <th className="text-start font-medium px-3 py-2">{t('الوقت', 'Time')}</th>
                 <th className="text-start font-medium px-3 py-2">{t('أُسنِدت في', 'Assigned on')}</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
-              {rows.slice(0, 200).map((r) => {
+              {rows.slice(0, limit).map((r) => {
                 const dl = deadlineLine({ deadlineAt: r.deadlineAt, deadlineKind: 'hours', status: r.state === 'done' ? 'done' : 'open', doneAt: r.doneAt }, now, ar);
                 const b = STATE_BADGE[r.state];
+                const isOpen = openRow === r._id;
+                const last = [...(r.events || [])].reverse().find((e) => e.type !== 'created');
                 return (
-                  <tr key={r._id} className="hover:bg-slate-50 align-top">
-                    <td className="px-4 py-2.5 max-w-[340px]">
-                      <p className="font-semibold text-slate-900">{r.title}</p>
-                      <p className="mt-0.5 flex items-center gap-2 text-[11.5px] text-slate-400">
-                        <span className="font-semibold text-slate-500">{r.kind === 'task' ? t('مهمّة', 'Task') : t('طلب', 'Request')}</span>
-                        {!!r.files && <span className="inline-flex items-center gap-0.5"><Paperclip className="w-3 h-3" />{r.files}</span>}
-                        {!!r.comments && <span className="inline-flex items-center gap-0.5"><MessageSquare className="w-3 h-3" />{r.comments}</span>}
-                      </p>
-                      {!!(r.links || []).length && (
-                        <p className="mt-1 flex flex-wrap gap-1.5">
-                          {r.links!.map((l, i) => l.href
-                            ? <Link key={i} href={l.href} className="inline-flex items-center gap-1 text-[12px] font-semibold text-[#c2410c] hover:underline"><Link2 className="w-3 h-3" />{l.label}</Link>
-                            : <span key={i} className="inline-flex items-center gap-1 text-[12px] text-slate-500"><Link2 className="w-3 h-3" />{l.label}</span>)}
+                  <Fragment key={r._id}>
+                    <tr onClick={() => setOpenRow(isOpen ? '' : r._id)} className={`cursor-pointer align-top ${isOpen ? 'bg-orange-50/50' : 'hover:bg-slate-50'}`}>
+                      <td className="ps-3 pt-3 text-slate-400"><ChevronDown className={`w-4 h-4 transition-transform ${isOpen ? 'rotate-180 text-[#f37121]' : ''}`} /></td>
+                      <td className="px-3 py-2.5 max-w-[320px]">
+                        <p className="font-semibold text-slate-900">{r.title}</p>
+                        <p className="mt-0.5 flex flex-wrap items-center gap-2 text-[11.5px] text-slate-400">
+                          <span className="font-semibold text-slate-500">{r.kind === 'task' ? t('مهمّة', 'Task') : t('طلب', 'Request')}</span>
+                          {r.action && <span>{ar ? (ACTION_WORDS as any)[r.action]?.ar : (ACTION_WORDS as any)[r.action]?.en}</span>}
+                          {!!r.files && <span className="inline-flex items-center gap-0.5"><Paperclip className="w-3 h-3" />{r.files}</span>}
+                          {!!r.comments && <span className="inline-flex items-center gap-0.5"><MessageSquare className="w-3 h-3" />{r.comments}</span>}
+                          {!!r.postponeCount && <span className="rounded bg-amber-100 px-1.5 font-semibold text-amber-800">{t(`أُجِّلت ${r.postponeCount}×`, `postponed ${r.postponeCount}×`)}</span>}
                         </p>
-                      )}
-                      {r.doneNote && <p className="mt-1 text-[12px] text-emerald-800">{r.doneNote}</p>}
-                    </td>
-                    <td className="px-3 py-2.5 whitespace-nowrap text-slate-800">{r.assignedToName}</td>
-                    <td className="px-3 py-2.5 whitespace-nowrap text-slate-500">{r.createdByName}</td>
-                    <td className="px-3 py-2.5 whitespace-nowrap text-slate-500">{r.project || '—'}</td>
-                    <td className={`px-3 py-2.5 text-[12.5px] ${TONE_CLASS[dl.tone]}`}>{dl.text}</td>
-                    <td className="px-3 py-2.5 whitespace-nowrap"><span className="inline-flex items-center gap-2 text-[12.5px] font-semibold text-slate-700"><span className={`h-2 w-2 rounded-[2px] ${b.dot}`} />{ar ? b.ar : b.en}</span></td>
-                    <td className="px-3 py-2.5 whitespace-nowrap tabular-nums text-slate-700">{r.spentMinutes ? fmtMinutes(r.spentMinutes, ar) : <span className="text-slate-300">—</span>}{r.expectedMinutes ? <span className="ms-1 text-[11px] text-slate-400">/ {fmtMinutes(r.expectedMinutes, ar)}</span> : null}</td>
-                    <td className="px-3 py-2.5 whitespace-nowrap text-slate-500 tabular-nums">{new Date(r.createdAt).toLocaleDateString(ar ? 'ar-EG-u-nu-latn' : 'en-GB', { day: 'numeric', month: 'short' })}</td>
-                  </tr>
+                        {!!(r.links || []).length && (
+                          <p className="mt-1 flex flex-wrap gap-1.5">
+                            {r.links!.map((l, i) => l.href
+                              ? <Link key={i} href={l.href} onClick={(e) => e.stopPropagation()} className="inline-flex items-center gap-1 text-[12px] font-semibold text-[#c2410c] hover:underline"><Link2 className="w-3 h-3" />{l.label}</Link>
+                              : <span key={i} className="inline-flex items-center gap-1 text-[12px] text-slate-500"><Link2 className="w-3 h-3" />{l.label}</span>)}
+                          </p>
+                        )}
+                      </td>
+                      <td className="px-3 py-2.5 whitespace-nowrap text-slate-800">{r.assignedToName}</td>
+                      <td className="px-3 py-2.5 whitespace-nowrap text-slate-500">{r.createdByName}</td>
+                      <td className={`px-3 py-2.5 text-[12.5px] ${TONE_CLASS[dl.tone]}`}>{dl.text}</td>
+                      <td className="px-3 py-2.5 whitespace-nowrap"><span className="inline-flex items-center gap-2 text-[12.5px] font-semibold text-slate-700"><span className={`h-2 w-2 rounded-[2px] ${b.dot}`} />{ar ? b.ar : b.en}</span></td>
+                      <td className="px-3 py-2.5 max-w-[260px] text-[12.5px]">
+                        {last ? (
+                          <>
+                            <span className="font-semibold text-slate-800">{ar ? EVENT_WORDS[last.type]?.ar : EVENT_WORDS[last.type]?.en}</span>
+                            {last.note && <span className="block text-slate-600 line-clamp-2">{last.note}</span>}
+                          </>
+                        ) : <span className="text-slate-300">—</span>}
+                      </td>
+                      <td className="px-3 py-2.5 whitespace-nowrap tabular-nums text-slate-700">{r.spentMinutes ? fmtMinutes(r.spentMinutes, ar) : <span className="text-slate-300">—</span>}{r.expectedMinutes ? <span className="ms-1 text-[11px] text-slate-400">/ {fmtMinutes(r.expectedMinutes, ar)}</span> : null}</td>
+                      <td className="px-3 py-2.5 whitespace-nowrap text-slate-500 tabular-nums">{fmtDT(r.createdAt, ar)}</td>
+                    </tr>
+                    {isOpen && (
+                      <tr className="bg-orange-50/30">
+                        <td />
+                        <td colSpan={8} className="px-3 pb-4 pt-1"><TaskStory r={r} ar={ar} /></td>
+                      </tr>
+                    )}
+                  </Fragment>
                 );
               })}
-              {!rows.length && <tr><td colSpan={8} className="px-4 py-10 text-center text-slate-400">{t('لا شيء يطابق هذا الاختيار', 'Nothing matches')}</td></tr>}
+              {!rows.length && <tr><td colSpan={9} className="px-4 py-10 text-center text-slate-400">{t('لا شيء يطابق هذا الاختيار', 'Nothing matches')}</td></tr>}
             </tbody>
           </table>
         </div>
-        {rows.length > 200 && <p className="px-5 py-2.5 text-[12px] text-slate-400 border-t border-slate-100">{t(`تُعرَض أوّلُ 200 من ${rows.length} — ضيِّق الفلاتر لرؤية الباقي.`, `Showing the first 200 of ${rows.length} — narrow the filters to see the rest.`)}</p>}
+        {rows.length > limit && (
+          <div className="flex items-center justify-center gap-3 px-5 py-3 border-t border-slate-100">
+            <span className="text-[12px] text-slate-500">{t(`المعروض ${limit} من ${rows.length}`, `Showing ${limit} of ${rows.length}`)}</span>
+            <button type="button" onClick={() => setLimit((n) => n + 200)} className="rounded-lg border border-slate-200 px-3 py-1.5 text-[12.5px] font-semibold text-slate-700 hover:border-[#f37121]">{t('عرض المزيد', 'Show more')}</button>
+          </div>
+        )}
       </section>
+    </div>
+  );
+}
+
+const fmtDT = (v: string | null | undefined, ar: boolean) => (v ? new Date(v).toLocaleString(ar ? 'ar-EG-u-nu-latn' : 'en-GB', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }) : '—');
+
+/** One task in full: what was asked, with whom and when, and every step with its note. */
+function TaskStory({ r, ar }: { r: Row; ar: boolean }) {
+  const t = (a: string, e: string) => (ar ? a : e);
+  const fact = (label: string, value: React.ReactNode) => (
+    <div><p className="text-[11px] font-semibold text-slate-500">{label}</p><div className="text-[13px] text-slate-900">{value || <span className="text-slate-300">—</span>}</div></div>
+  );
+  return (
+    <div className="grid gap-3 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.2fr)]">
+      <div className="space-y-3 rounded-xl border border-slate-200 bg-white p-3">
+        <div className="grid grid-cols-2 gap-3">
+          {fact(t('أُسنِدت في', 'Assigned on'), fmtDT(r.createdAt, ar))}
+          {fact(t('الموعد', 'Deadline'), fmtDT(r.deadlineAt, ar))}
+          {fact(t('يوم العمل', 'Work day'), r.workDate ? new Date(r.workDate).toLocaleDateString(ar ? 'ar-EG-u-nu-latn' : 'en-GB') : '')}
+          {fact(t('تمّت في', 'Done on'), r.doneAt ? fmtDT(r.doneAt, ar) : '')}
+          {fact(t('طريقة التواصل', 'Contact method'), r.action ? (ar ? (ACTION_WORDS as any)[r.action]?.ar : (ACTION_WORDS as any)[r.action]?.en) : '')}
+          {fact(t('مع مَن', 'With whom'), r.contact)}
+          {fact(t('المشروع', 'Project'), r.project)}
+          {fact(t('الوقت', 'Time'), r.spentMinutes ? `${fmtMinutes(r.spentMinutes, ar)}${r.expectedMinutes ? ` / ${fmtMinutes(r.expectedMinutes, ar)}` : ''}` : '')}
+        </div>
+        {fact(t('التفاصيل', 'Details'), r.details ? <p className="whitespace-pre-wrap">{r.details}</p> : '')}
+        {r.doneNote && fact(t('ما تمّ إنجازه', 'What was done'), <p className="whitespace-pre-wrap text-emerald-800">{r.doneNote}</p>)}
+        {!!(r.fileList || []).length && fact(t('المرفقات', 'Files'), (
+          <div className="flex flex-wrap gap-1.5">{r.fileList!.map((f, i) => (
+            <a key={i} href={f.url} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 rounded bg-slate-100 px-2 py-0.5 text-[12px] text-slate-700 hover:text-[#c2410c]">
+              <Paperclip className="w-3 h-3" />{f.name || t('ملف', 'file')}{f.phase === 'done' ? ` · ${t('عند الإنجاز', 'on completion')}` : ''}
+            </a>))}</div>
+        ))}
+        {!!(r.commentList || []).length && fact(t('التعليقات', 'Comments'), (
+          <ul className="space-y-1.5">{r.commentList!.map((c, i) => (
+            <li key={i} className="rounded-lg bg-slate-50 px-2.5 py-1.5"><span className="font-semibold">{c.byName}</span> <span className="text-[11px] text-slate-500">{fmtDT(c.at, ar)}</span><p className="whitespace-pre-wrap">{c.text}</p></li>))}</ul>
+        ))}
+      </div>
+      <div className="rounded-xl border border-slate-200 bg-white p-3">
+        <p className="mb-2 flex items-center gap-1.5 text-[12.5px] font-bold text-slate-700"><CalendarClock className="w-4 h-4 text-[#f37121]" />{t('سجلّ المهمّة', 'Task log')}</p>
+        {(r.events || []).length ? (
+          <ol className="relative space-y-3 border-s-2 border-slate-100 ps-4">
+            {r.events!.map((e, i) => (
+              <li key={i} className="relative">
+                <span className={`absolute -start-[1.4rem] top-1 h-3 w-3 rounded-full ring-2 ring-white ${EVENT_WORDS[e.type]?.cls || 'bg-slate-400'}`} />
+                <p className="text-[12.5px]"><span className="font-bold text-slate-900">{ar ? EVENT_WORDS[e.type]?.ar : EVENT_WORDS[e.type]?.en}</span>
+                  <span className="text-slate-500"> · {e.byName} · {fmtDT(e.at, ar)}</span></p>
+                {e.type === 'postponed' && <p className="text-[12px] text-amber-800">{t('من', 'from')} {fmtDT(e.fromAt, ar)} {t('إلى', 'to')} {fmtDT(e.toAt, ar)}</p>}
+                {e.note && <p className="mt-0.5 whitespace-pre-wrap rounded-lg bg-slate-50 px-2.5 py-1.5 text-[12.5px] text-slate-800">{e.note}</p>}
+              </li>
+            ))}
+          </ol>
+        ) : <p className="text-[12.5px] text-slate-400">{t('لا خطوات مسجّلة بعد — المهامّ القديمة لا سجلَّ لها قبل هذه الميزة.', 'No steps recorded yet — older tasks have no log before this feature.')}</p>}
+      </div>
     </div>
   );
 }

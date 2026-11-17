@@ -225,6 +225,20 @@ class _JpScreenState extends State<JpScreen> {
     try { await f(); await _load(); } catch (e) { _say(e); }
   }
 
+  /// Start / pause / reopen with an optional note, postpone with a required reason and a new deadline.
+  Future<void> _step(Map<String, dynamic> t, String kind) async {
+    final r = await askJpStep(context, t, kind);
+    if (r == null) return;
+    final id = t['_id'];
+    if (kind == 'postpone') {
+      await _run(() => Api.instance.post('/api/jp/tasks/$id/postpone', {'reason': r.$1, 'deadlineKind': 'date', 'deadlineDate': r.$2}));
+    } else if (kind == 'reopen') {
+      await _run(() => Api.instance.post('/api/jp/tasks/$id/done', {'done': false, 'note': r.$1}));
+    } else {
+      await _run(() => Api.instance.post('/api/jp/tasks/$id/progress', {'action': kind, 'note': r.$1}));
+    }
+  }
+
   void _openForm({Map<String, dynamic>? task}) {
     showModalBottomSheet(
       context: context, isScrollControlled: true, backgroundColor: Colors.white,
@@ -249,7 +263,8 @@ class _JpScreenState extends State<JpScreen> {
           const SizedBox(height: 6),
           Text((t['title'] ?? '').toString(), style: const TextStyle(color: T.inkSoft)),
           const SizedBox(height: 12),
-          TextField(controller: note, maxLines: 3, decoration: InputDecoration(labelText: tr('ملاحظة (اختياري)', 'Note (optional)'), border: const OutlineInputBorder())),
+          TextField(controller: note, maxLines: 3, onChanged: (_) => set(() {}),
+              decoration: InputDecoration(labelText: tr('ماذا تمّ؟ (مطلوب)', 'What was done? (required)'), hintText: tr('مثال: زرت العميل واتفقنا على 5 شحنات', 'e.g. visited, agreed 5 shipments'), border: const OutlineInputBorder())),
           const SizedBox(height: 10),
           OutlinedButton.icon(
             onPressed: () async { final p = await pickFileAsDataUrl(); if (p != null) set(() => file = p); },
@@ -259,7 +274,7 @@ class _JpScreenState extends State<JpScreen> {
           const SizedBox(height: 12),
           FilledButton.icon(
             style: FilledButton.styleFrom(backgroundColor: T.success),
-            onPressed: () => Navigator.pop(c, true), icon: const Icon(Icons.check), label: Text(tr('تمّت', 'Done')),
+            onPressed: note.text.trim().length < 3 ? null : () => Navigator.pop(c, true), icon: const Icon(Icons.check), label: Text(tr('تمّ الإنجاز', 'Done')),
           ),
         ]),
       )),
@@ -531,7 +546,7 @@ class _JpScreenState extends State<JpScreen> {
           padding: EdgeInsets.zero, constraints: const BoxConstraints(minWidth: 36, minHeight: 36),
           icon: Icon(done ? Icons.check_circle : Icons.radio_button_unchecked, color: done ? T.success : T.inkFaint, size: 28),
           onPressed: can['complete'] != true ? null : () => done
-              ? _run(() => Api.instance.post('/api/jp/tasks/${t['_id']}/done', {'done': false}))
+              ? _step(t, 'reopen')
               : _complete(t),
         ),
         const SizedBox(width: 6),
@@ -556,8 +571,8 @@ class _JpScreenState extends State<JpScreen> {
                   icon: t['timerStartedAt'] != null ? Icons.timer : Icons.timer_outlined),
               if (can['track'] == true && !done)
                 t['timerStartedAt'] != null
-                    ? OutlinedButton(onPressed: () => _run(() => Api.instance.post('/api/jp/tasks/${t['_id']}/progress', {'action': 'pause'})), child: Text(tr('إيقاف مؤقّت', 'Pause'), style: const TextStyle(fontSize: 12)))
-                    : FilledButton(onPressed: () => _run(() => Api.instance.post('/api/jp/tasks/${t['_id']}/progress', {'action': 'start'})), child: Text(t['progress'] == 'paused' ? tr('استئناف', 'Resume') : tr('بدأتُ العمل', 'Start'), style: const TextStyle(fontSize: 12))),
+                    ? OutlinedButton(onPressed: () => _step(t, 'pause'), child: Text(tr('إيقاف مؤقّت', 'Pause'), style: const TextStyle(fontSize: 12)))
+                    : FilledButton(onPressed: () => _step(t, 'start'), child: Text(t['progress'] == 'paused' ? tr('استئناف', 'Resume') : tr('بدأتُ العمل', 'Start'), style: const TextStyle(fontSize: 12))),
               if (can['adjust'] == true)
                 TextButton(onPressed: () => _adjust(t), child: Text(tr('تصحيح الوقت', 'Adjust time'), style: const TextStyle(fontSize: 11.5))),
             ])),
@@ -587,6 +602,22 @@ class _JpScreenState extends State<JpScreen> {
             '${tr('أُسنِدت في القسم إلى', 'Assigned in section to')}: ${handed.map((h) => '${h['name']} (${h['state'] == 'done' ? tr('تمّت', 'done') : h['state'] == 'overdue' ? tr('متأخّرة', 'late') : tr('قائمة', 'open')})').join('، ')}',
             style: const TextStyle(fontSize: 12, color: T.inkSoft))),
           if (done && (t['doneNote'] ?? '').toString().isNotEmpty) Padding(padding: const EdgeInsets.only(top: 6), child: Text(t['doneNote'].toString(), style: const TextStyle(fontSize: 12.5, color: T.success))),
+          // Latest step after assignment with its note (why it was postponed, paused or reopened).
+          () {
+            final evs = List<Map>.from(t['events'] ?? const []).reversed.where((e) => e['type'] != 'created' && e['type'] != 'done').toList();
+            if (evs.isEmpty || '${evs.first['note'] ?? ''}'.isEmpty || (done && evs.first['type'] != 'reopened')) return const SizedBox.shrink();
+            final e = evs.first;
+            const w = {'started': ('بدأ العمل', 'Started'), 'paused': ('أوقف مؤقّتًا', 'Paused'), 'postponed': ('أُجِّلت', 'Postponed'), 'reopened': ('أُعيد فتحها', 'Reopened'), 'reassigned': ('نُقلت', 'Reassigned')};
+            final lbl = w[e['type']];
+            return Padding(padding: const EdgeInsets.only(top: 6), child: Text(
+              '${lbl == null ? '' : tr(lbl.$1, lbl.$2)}${e['type'] == 'postponed' && (t['postponeCount'] ?? 0) > 0 ? ' (${t['postponeCount']}×)' : ''}: ${e['note']} — ${e['byName'] ?? ''}',
+              style: TextStyle(fontSize: 12.5, color: e['type'] == 'postponed' ? T.warn : T.inkSoft, fontWeight: FontWeight.w600)));
+          }(),
+          if (!done && (can['postpone'] == true || can['complete'] == true))
+            Padding(padding: const EdgeInsets.only(top: 6), child: Wrap(spacing: 6, children: [
+              if (can['postpone'] == true) OutlinedButton.icon(onPressed: () => _step(t, 'postpone'), icon: const Icon(Icons.event_repeat, size: 16), label: Text(tr('تأجيل', 'Postpone'), style: const TextStyle(fontSize: 12))),
+              if (can['complete'] == true) FilledButton.icon(style: FilledButton.styleFrom(backgroundColor: T.orange), onPressed: () => _complete(t), icon: const Icon(Icons.check, size: 16), label: Text(tr('تمّ الإنجاز', 'Done'), style: const TextStyle(fontSize: 12))),
+            ])),
           if (files.isNotEmpty) Padding(padding: const EdgeInsets.only(top: 6), child: Wrap(spacing: 6, runSpacing: 6, children: [
             for (final a in files) Row(mainAxisSize: MainAxisSize.min, children: [
               InkWell(
@@ -867,6 +898,7 @@ class _JpDashScreenState extends State<JpDashScreen> {
   Map<String, dynamic>? _d;
   String? _error;
   String _assignee = '';
+  int _allLimit = 100;
   // Dashboard filters as on the web: range, project, type and contact method, all on the server.
   String _from = '', _to = '', _project = '', _kind = '', _action = '';
   // Section-specific filters: task type (the section's own titles) and what the task is linked to.
@@ -1129,7 +1161,11 @@ class _JpDashScreenState extends State<JpDashScreen> {
                     final state = '${r['state'] ?? 'open'}';
                     final spent = ((r['spentMinutes'] ?? 0) as num);
                     final lks = List<Map<String, dynamic>>.from(r['links'] ?? const []);
-                    return Padding(
+                    final evs = List<Map>.from(r['events'] ?? const []).reversed.where((e) => e['type'] != 'created').toList();
+                    return InkWell(
+                      // Tap: the task in full with its whole story.
+                      onTap: () => showJpStory(context, r),
+                      child: Padding(
                       padding: const EdgeInsets.symmetric(vertical: 7),
                       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                         Row(children: [
@@ -1145,9 +1181,13 @@ class _JpDashScreenState extends State<JpDashScreen> {
                         ),
                         const SizedBox(height: 2),
                         Text('${r['assignedToName']} · ${dl.$1}${spent > 0 ? ' · ${_fmtMin(spent)}${r['expectedMinutes'] != null ? ' / ${_fmtMin(r['expectedMinutes'])}' : ''}' : ''}', style: TextStyle(fontSize: 12, color: dl.$2)),
+                        if (evs.isNotEmpty && '${evs.first['note'] ?? ''}'.isNotEmpty)
+                          Padding(padding: const EdgeInsets.only(top: 2), child: Text('${_jpEventWord(evs.first['type'])}: ${evs.first['note']}', maxLines: 2, overflow: TextOverflow.ellipsis,
+                              style: TextStyle(fontSize: 12, color: evs.first['type'] == 'postponed' ? T.warn : T.inkSoft))),
                       ]),
-                    );
+                    ));
                   }
+                  final all = List<Map<String, dynamic>>.from((d['tasks'] ?? const []).map((e) => Map<String, dynamic>.from(e)));
                   final byTitle = List<Map<String, dynamic>>.from(d['byTitle'] ?? []);
                   final t2 = Map<String, dynamic>.from(d['totals2'] ?? {});
                   final team = List<Map<String, dynamic>>.from(d['team'] ?? []);
@@ -1247,6 +1287,11 @@ class _JpDashScreenState extends State<JpDashScreen> {
                     _head(tr('تستحقّ خلال 24 ساعة', 'Due within 24 hours')),
                     if (soon.isEmpty) Text(tr('لا شيء يستحقّ قريبًا', 'Nothing due soon'), style: const TextStyle(color: T.inkFaint)),
                     for (final r in soon) line(r),
+                    // Every task under the filters (pick a person above to read all of theirs); tap one for its full story.
+                    _head(tr('كلُّ المهامّ (${all.length})', 'All tasks (${all.length})')),
+                    if (all.isEmpty) Text(tr('لا مهامّ', 'No tasks'), style: const TextStyle(color: T.inkFaint)),
+                    for (final r in all.take(_allLimit)) line(r),
+                    if (all.length > _allLimit) TextButton(onPressed: () => setState(() => _allLimit += 100), child: Text(tr('عرض المزيد', 'Show more'))),
                   ].expand((w) => [w, if (w is AppCard) const SizedBox(height: 8)]).toList());
                 })),
     );
@@ -1326,7 +1371,10 @@ class _JpTaskPanelState extends State<JpTaskPanel> {
 
   Future<void> _toggle(Map<String, dynamic> t) async {
     try {
-      await Api.instance.post('/api/jp/tasks/${t['_id']}/done', {'done': t['status'] != 'done'});
+      final closing = t['status'] != 'done';
+      final r = await askJpStep(context, t, closing ? 'done' : 'reopen');
+      if (r == null) return;
+      await Api.instance.post('/api/jp/tasks/${t['_id']}/done', {'done': closing, 'note': r.$1});
       await _load();
     } catch (e) { if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.toString()))); }
   }
@@ -1502,4 +1550,115 @@ class JpPersonField extends StatelessWidget {
       ),
     );
   }
+}
+
+
+/// Note for a task step: done (what was done, required), postpone (reason required + new date), start / pause / reopen (optional).
+/// Returns (note, date YYYY-MM-DD for postpone) or null when cancelled.
+Future<(String, String)?> askJpStep(BuildContext context, Map<String, dynamic> t, String kind) {
+  final note = TextEditingController();
+  final tomorrow = DateTime.now().add(const Duration(days: 1));
+  String ymdOf(DateTime d) => '${d.year.toString().padLeft(4, '0')}-${d.month.toString().padLeft(2, '0')}-${d.day.toString().padLeft(2, '0')}';
+  var date = ymdOf(tomorrow);
+  final required = kind == 'done' || kind == 'postpone';
+  const titles = {'done': ('تمّ الإنجاز', 'Done'), 'postpone': ('تأجيل المهمّة', 'Postpone task'), 'reopen': ('إعادة فتح المهمّة', 'Reopen task'), 'pause': ('إيقاف مؤقّت', 'Pause'), 'start': ('بدء العمل', 'Start work')};
+  const labels = {'done': ('ماذا تمّ؟ (مطلوب)', 'What was done? (required)'), 'postpone': ('سبب التأجيل (مطلوب)', 'Reason (required)'), 'reopen': ('لماذا تُعاد؟ (اختياري)', 'Why? (optional)'), 'pause': ('سبب الإيقاف (اختياري)', 'Why pause? (optional)'), 'start': ('ملاحظة (اختياري)', 'Note (optional)')};
+  return showModalBottomSheet<(String, String)>(
+    context: context, isScrollControlled: true, backgroundColor: Colors.white,
+    shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(22))),
+    builder: (c) => StatefulBuilder(builder: (c, set) => Padding(
+      padding: EdgeInsets.fromLTRB(18, 18, 18, MediaQuery.of(c).viewInsets.bottom + 18),
+      child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+        Text(tr(titles[kind]!.$1, titles[kind]!.$2), style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 16)),
+        const SizedBox(height: 6),
+        Text((t['title'] ?? '').toString(), style: const TextStyle(color: T.inkSoft)),
+        if (kind == 'postpone') ...[
+          const SizedBox(height: 12),
+          Text(tr('الموعد الجديد', 'New deadline'), style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 12.5)),
+          const SizedBox(height: 6),
+          Wrap(spacing: 6, runSpacing: 6, children: [
+            for (final q in [(1, 'غدًا', 'Tomorrow'), (2, 'بعد يومين', 'In 2 days'), (7, 'بعد أسبوع', 'In a week')])
+              ChoiceChip(label: Text(tr(q.$2, q.$3)), selected: date == ymdOf(DateTime.now().add(Duration(days: q.$1))),
+                  onSelected: (_) => set(() => date = ymdOf(DateTime.now().add(Duration(days: q.$1))))),
+            ActionChip(avatar: const Icon(Icons.event, size: 16), label: Text(date), onPressed: () async {
+              final d = await showDatePicker(context: c, initialDate: DateTime.tryParse(date) ?? tomorrow, firstDate: DateTime.now(), lastDate: DateTime(2100));
+              if (d != null) set(() => date = ymdOf(d));
+            }),
+          ]),
+        ],
+        const SizedBox(height: 12),
+        TextField(controller: note, maxLines: 3, onChanged: (_) => set(() {}),
+            decoration: InputDecoration(labelText: tr(labels[kind]!.$1, labels[kind]!.$2), border: const OutlineInputBorder())),
+        const SizedBox(height: 12),
+        FilledButton(
+          style: FilledButton.styleFrom(backgroundColor: kind == 'postpone' ? T.warn : kind == 'done' ? T.success : T.navy),
+          onPressed: required && note.text.trim().length < 3 ? null : () => Navigator.pop(c, (note.text.trim(), date)),
+          child: Text(tr(titles[kind]!.$1, titles[kind]!.$2)),
+        ),
+      ]),
+    )),
+  );
+}
+
+
+const _jpEvents = {
+  'created': ('أُسنِدت', 'Assigned'), 'started': ('بدأ العمل', 'Started'), 'paused': ('أوقف مؤقّتًا', 'Paused'),
+  'postponed': ('أُجِّلت', 'Postponed'), 'done': ('تمّ الإنجاز', 'Done'), 'reopened': ('أُعيد فتحها', 'Reopened'), 'reassigned': ('نُقلت', 'Reassigned'),
+};
+String _jpEventWord(dynamic type) { final w = _jpEvents['$type']; return w == null ? '$type' : tr(w.$1, w.$2); }
+String _jpDT(dynamic v) {
+  final d = DateTime.tryParse('${v ?? ''}')?.toLocal();
+  if (d == null) return '—';
+  return '${d.day}/${d.month}/${d.year} ${d.hour.toString().padLeft(2, '0')}:${d.minute.toString().padLeft(2, '0')}';
+}
+
+/// One dashboard task in full: what was asked, with whom, when, and each step with its note.
+Future<void> showJpStory(BuildContext context, Map<String, dynamic> r) {
+  final evs = List<Map>.from(r['events'] ?? const []);
+  final comments = List<Map>.from(r['commentList'] ?? const []);
+  Widget fact(String a, String e, String v) => v.isEmpty ? const SizedBox.shrink() : Padding(
+        padding: const EdgeInsets.only(bottom: 6),
+        child: Text.rich(TextSpan(children: [TextSpan(text: '${tr(a, e)}: ', style: const TextStyle(fontWeight: FontWeight.w700, color: T.inkSoft)), TextSpan(text: v)]), style: const TextStyle(fontSize: 13)));
+  return showModalBottomSheet<void>(
+    context: context, isScrollControlled: true, backgroundColor: Colors.white,
+    shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(22))),
+    builder: (c) => DraggableScrollableSheet(
+      expand: false, initialChildSize: 0.8, maxChildSize: 0.95,
+      builder: (c, sc) => ListView(controller: sc, padding: const EdgeInsets.fromLTRB(18, 4, 18, 24), children: [
+        Text('${r['title'] ?? ''}', style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 16)),
+        const SizedBox(height: 10),
+        fact('إلى', 'To', '${r['assignedToName'] ?? ''}'),
+        fact('من', 'From', '${r['createdByName'] ?? ''}'),
+        fact('أُسنِدت في', 'Assigned on', _jpDT(r['createdAt'])),
+        fact('الموعد', 'Deadline', r['deadlineAt'] == null ? '' : _jpDT(r['deadlineAt'])),
+        fact('تمّت في', 'Done on', r['doneAt'] == null ? '' : _jpDT(r['doneAt'])),
+        fact('مع مَن', 'With whom', '${r['contact'] ?? ''}'),
+        fact('تتعلّق بـ', 'Related to', List<Map>.from(r['links'] ?? const []).map((l) => '${l['label']}').join('، ')),
+        fact('التفاصيل', 'Details', '${r['details'] ?? ''}'),
+        fact('ما تمّ إنجازه', 'What was done', '${r['doneNote'] ?? ''}'),
+        const Divider(height: 22),
+        Text(tr('سجلّ المهمّة', 'Task log'), style: const TextStyle(fontWeight: FontWeight.w800)),
+        const SizedBox(height: 8),
+        if (evs.isEmpty) Text(tr('لا خطوات مسجّلة — المهامّ القديمة لا سجلَّ لها.', 'No steps recorded — older tasks have no log.'), style: const TextStyle(color: T.inkFaint)),
+        for (final e in evs) Padding(
+          padding: const EdgeInsets.only(bottom: 10),
+          child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Container(margin: const EdgeInsets.only(top: 5), width: 9, height: 9, decoration: BoxDecoration(shape: BoxShape.circle,
+                color: e['type'] == 'done' ? T.success : e['type'] == 'postponed' ? T.warn : e['type'] == 'started' ? T.info : T.inkFaint)),
+            const SizedBox(width: 8),
+            Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Text('${_jpEventWord(e['type'])} · ${e['byName'] ?? ''} · ${_jpDT(e['at'])}', style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 12.5)),
+              if (e['type'] == 'postponed') Text('${tr('من', 'from')} ${_jpDT(e['fromAt'])} ${tr('إلى', 'to')} ${_jpDT(e['toAt'])}', style: const TextStyle(fontSize: 12, color: T.warn)),
+              if ('${e['note'] ?? ''}'.isNotEmpty) Text('${e['note']}', style: const TextStyle(fontSize: 13)),
+            ])),
+          ]),
+        ),
+        if (comments.isNotEmpty) ...[
+          const Divider(height: 22),
+          Text(tr('التعليقات', 'Comments'), style: const TextStyle(fontWeight: FontWeight.w800)),
+          for (final cm in comments) Padding(padding: const EdgeInsets.only(top: 6), child: Text('${cm['byName']} (${_jpDT(cm['at'])}): ${cm['text']}', style: const TextStyle(fontSize: 13))),
+        ],
+      ]),
+    ),
+  );
 }

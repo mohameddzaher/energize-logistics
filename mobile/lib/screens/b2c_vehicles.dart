@@ -206,6 +206,7 @@ class _B2cVehiclesScreenState extends State<B2cVehiclesScreen> {
         const Divider(height: 14),
         line(tr('الرقم التسلسلي', 'Serial no.'), r['serialNumber'], ltr: true),
         line(tr('المشروع', 'Project'), r['project'], bold: true),
+        line(tr('خدمة Media Go', 'Media Go service'), r['mediaGo'] == true ? tr('مفعّلة', 'On') : tr('غير مفعّلة', 'Off')),
         line(tr('المدينة', 'City'), r['city']),
         line(tr('حالة التشغيل', 'Service status'), r['serviceStatus']),
         line(tr('هوية القائد الفعلي', 'Actual driver ID'), r['driverId'], ltr: true),
@@ -270,6 +271,8 @@ class _VehicleSheetState extends State<_VehicleSheet> {
   late final Map<String, String> _dates = {for (final k in _dateKeys) k: _day(widget.row[k])};
   // The two people are chosen: `_driverTouched` = touched, and `_driver` = the selection (or null = none).
   bool _driverTouched = false;
+  // «خدمة Media Go» on the vehicle (yes/no); sent only when changed.
+  late bool _mediaGo = widget.row['mediaGo'] == true;
   Map<String, dynamic>? _driver;
   bool _holderTouched = false;
   Map<String, dynamic>? _holder;
@@ -325,6 +328,7 @@ class _VehicleSheetState extends State<_VehicleSheet> {
       for (final k in _dateKeys)
         if (_dates[k] != _day(widget.row[k])) k: _dates[k],
       if (_driverTouched) 'driverLt': _s(_driver?['ltId']),
+      if (_mediaGo != (widget.row['mediaGo'] == true)) 'mediaGo': _mediaGo,
       if (_holderTouched && _holder != null) ...{
         'authorizedEmployee': _s(_holder!['employeeId']), 'authorizedLt': _s(_holder!['ltId']), 'authorizedId': _s(_holder!['idNumber']),
       },
@@ -424,6 +428,9 @@ class _VehicleSheetState extends State<_VehicleSheet> {
             const SizedBox(width: 10),
             Expanded(child: LookupField(type: 'vehicle_city', controller: _c['city']!, label: tr('المدينة', 'City'), noAdd: true)),
           ]),
+          SwitchListTile(contentPadding: EdgeInsets.zero, value: _mediaGo, title: Text(tr('خدمة Media Go', 'Media Go service')),
+              subtitle: Text(tr('صندوق Media Go على المركبة', 'Media Go box on the vehicle'), style: const TextStyle(fontSize: 11.5)),
+              onChanged: (v) => setState(() => _mediaGo = v)),
           gap,
           Row(children: [
             Expanded(child: LookupField(type: 'vehicle_service_status', controller: _c['serviceStatus']!, label: tr('حالة التشغيل', 'Service status'), noAdd: true)),

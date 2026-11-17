@@ -143,6 +143,7 @@ export default function VehicleRegistryDetail() {
     [t('الرقم التسلسلي', 'Serial'), v.serialNumber],
     [t('القطاع', 'Sector'), v.sectorAr],
     [t('الإدارة', 'Department'), v.departmentAr],
+    [t('خدمة Media Go', 'Media Go service'), (v as any).mediaGo ? t('نعم', 'Yes') : t('لا', 'No')],
     [t('المدينة', 'City'), v.cityAr],
     [t('المالك', 'Owner'), v.ownerNameAr],
     [t('حالة التشغيل', 'Service status'), v.serviceStatusAr],
@@ -375,6 +376,16 @@ export default function VehicleRegistryDetail() {
           <Row label={t('الرقم التسلسلي', 'Serial')} mono>{val(v.serialNumber)}</Row>
           <Row label={t('القطاع', 'Sector')}>{val(v.sectorAr)}</Row>
           <Row label={t('الإدارة', 'Department')}>{val(v.departmentAr)}</Row>
+          {/* «خدمة Media Go»: the vehicle's box carries Media Go (yes/no); same field as the B2C vehicles page. */}
+          <Row label={t('خدمة Media Go', 'Media Go service')}>
+            {canEdit ? (
+              <label className="inline-flex items-center gap-2 cursor-pointer">
+                <input type="checkbox" checked={!!(v as any).mediaGo} className="accent-[#f37121]"
+                  onChange={async (e) => { try { await api.put(`/api/vehicle-registry/${id}`, { mediaGo: e.target.checked }); await load(); } catch { /* shown by the global guard */ } }} />
+                {(v as any).mediaGo ? t('مفعّلة', 'On') : t('غير مفعّلة', 'Off')}
+              </label>
+            ) : ((v as any).mediaGo ? t('مفعّلة', 'On') : t('غير مفعّلة', 'Off'))}
+          </Row>
           <Row label={t('المدينة', 'City')}>{val(v.cityAr)}</Row>
           <Row label={t('نوع التسجيل', 'Registration type')}>{val(v.registrationTypeAr)}</Row>
           <Row label={t('الماركة / الطراز', 'Brand / model')}>{val([v.brandAr, v.modelAr].filter(Boolean).join(' '))}</Row>

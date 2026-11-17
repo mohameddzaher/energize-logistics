@@ -461,7 +461,10 @@ if (!DOCS_ONLY) connectDB().then(async () => {
     .catch((e) => console.error('[jp] company links:', e.message));
   // Approved prices became per customer + route: the old route-only unique index is replaced (small collection).
   require('./models/VendorsMgmt').VendorApprovedPrice.syncIndexes().catch((e) => console.error('[vendors] price indexes:', e.message));
-  await require('./controllers/b2cController').ensureB2CProjectDefaults().catch((e) => console.error('[b2c] project defaults:', e.message));
+  // Media Go is a service flag, not a project: anything still filed under it moves to the flag once (utils/mediaGoMigrate).
+  require('./utils/mediaGoMigrate').run()
+    .then((n) => { if (n) console.log(`[mediaGo] moved ${n} records from project to service`); })
+    .catch((e) => console.error('[mediaGo] migrate:', e.message));
   // Stored work-status text follows its label (utils/hrEngagement); a renamed termination kind is rewritten on files that hold the old text.
   {
     const Employee = require('./models/Employee');

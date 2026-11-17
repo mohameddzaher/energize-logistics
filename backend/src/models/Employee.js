@@ -72,6 +72,8 @@ const employeeSchema = new mongoose.Schema(
     transferDeadline: { type: Date, default: null },
     // Sister company is a work status, not a termination: a current employee on our sponsorship working for a sister company, treated as a normal employee in every section. See utils/hrEngagement.
     sisterCompany: { type: Boolean, default: false, index: true },
+    // «خدمة Media Go» (yes/no): the rider's box carries Media Go; he still works his project. Copied both ways with the B2C register (utils/mediaGoSync).
+    mediaGo: { type: Boolean, default: false, index: true },
     // Last alert window sent (day plus morning/evening); prevents duplicates across the two server workers.
     transferAlertKey: { type: String, default: '' },
 
@@ -376,5 +378,10 @@ for (const op of ['updateOne', 'updateMany', 'findOneAndUpdate']) {
     } catch (e) { console.error('employee person → copies (query):', e.message); }
   });
 }
+
+require('../utils/mediaGoSync').attach(employeeSchema, {
+  idsOf: (docs) => docs.map((d) => d._id),
+  push: (ids, v) => require('../utils/mediaGoSync').fromEmployee(ids, v),
+});
 
 module.exports = mongoose.model('Employee', employeeSchema);

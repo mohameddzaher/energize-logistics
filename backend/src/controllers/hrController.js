@@ -370,6 +370,8 @@ exports.updateEmployee = async (req, res) => {
       'qiwaContractNumber', 'gosiNumber', 'absherStatus', 'sponsorName', 'workPermitExpiry',
       // `branch` is the main branch; `branches` are extra branches he actually works on. See models/Employee.
       'jobTitle', 'department', 'staffCategory', 'hireDate', 'actualWorkStartDate', 'workLocation', 'branchName', 'branch', 'branches',
+      // «خدمة Media Go» yes/no (copied to the B2C register by the model hook).
+      'mediaGo',
       'phone', 'email', 'address', 'emergencyContactName', 'emergencyContactPhone',
       'basicSalary', 'allowances', 'directManager', 'notes',
       // Banking
@@ -411,7 +413,7 @@ exports.updateEmployee = async (req, res) => {
       if (H.getField(f)?.type === 'date' && /^1[34]\d\d-\d{1,2}-\d{1,2}$/.test(String(next || '').trim())) {
         next = require('../utils/hijri').fromHijriString(String(next).trim()) || next;
       }
-      if (f === 'isOutsideKingdom') next = next === true || next === 'true' || next === '1';
+      if (f === 'isOutsideKingdom' || f === 'mediaGo') next = next === true || next === 'true' || next === '1';
       // Extra branches are an array, but an old form may send a comma-separated string. The main branch must not repeat inside it.
       if (f === 'branches') {
         const arr = Array.isArray(next) ? next : String(next || '').split(',');

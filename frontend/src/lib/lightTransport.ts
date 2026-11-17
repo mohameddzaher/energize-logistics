@@ -15,6 +15,8 @@ export interface LTEmployee extends PersonDocs {
   hireDate?: string | null;
   cityAr?: string;
   projectAr?: string;
+  /** «خدمة Media Go» yes/no (a service on the rider, not a project); synced with the HR file. */
+  mediaGo?: boolean;
   jobTitleAr?: string;
   staffKind?: 'rep' | 'driver' | 'admin' | 'unknown';
   contractTypeAr?: string;
@@ -403,6 +405,7 @@ export const LT_COLUMNS: LTCol[] = [
   { key: 'jobTitleAr', ar: 'الوظيفة', en: 'Job', get: (e) => e.jobTitleAr || '', width: 12 },
   { key: 'staffKind', ar: 'النوع', en: 'Kind', get: (e) => KIND_AR[e.staffKind || ''] || '', width: 10 },
   { key: 'projectAr', ar: 'المشروع', en: 'Project', get: (e) => e.projectAr || '', width: 14 },
+  { key: 'mediaGo', ar: 'خدمة Media Go', en: 'Media Go', get: (e) => (e.mediaGo ? 'نعم' : 'لا'), width: 10 },
   { key: 'cityAr', ar: 'الفرع', en: 'Branch', get: (e) => e.cityAr || '', width: 12 },
   { key: 'supervisorName', ar: 'المشرف التشغيلي', en: 'Ops supervisor', get: (e) => e.supervisorName || '', width: 18 },
   // Check supervisor: whom he reports to in the morning, not necessarily the operational one.

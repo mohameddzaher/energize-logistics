@@ -35,7 +35,7 @@ const CHIP_KEY_AR: Record<string, string> = {
   project: 'المشروع', city: 'الفرع', jobTitle: 'الوظيفة', contractType: 'نوع التعاقد', register: 'السجل',
   vehicleType: 'نوع المركبة', supervisor: 'المشرف', dutySupervisor: 'مشرف التفقد', staffKind: 'النوع',
   status: 'الحالة', housing: 'السكن', hasVehicle: 'المركبة', hiredFrom: 'التعيين من', hiredTo: 'التعيين إلى',
-  contractKind: 'العقد', doc: 'الوثيقة', inService: 'الخدمة',
+  contractKind: 'العقد', doc: 'الوثيقة', inService: 'الخدمة', mediaGo: 'خدمة Media Go',
   // From the department dashboard filters.
   rep: 'المندوب', vehicle: 'المركبة', auth: 'التفويض', cr: 'السجل التجاري', engagement: 'الارتباط', category: 'الفئة',
 };
@@ -43,7 +43,7 @@ const CHIP_KEY_EN: Record<string, string> = {
   project: 'Project', city: 'Branch', jobTitle: 'Job', contractType: 'Contract', register: 'Register',
   vehicleType: 'Vehicle type', supervisor: 'Supervisor', dutySupervisor: 'Duty supervisor', staffKind: 'Kind',
   status: 'Status', housing: 'Housing', hasVehicle: 'Vehicle', hiredFrom: 'Hired from', hiredTo: 'Hired to',
-  contractKind: 'Contract', doc: 'Document', inService: 'Service',
+  contractKind: 'Contract', doc: 'Document', inService: 'Service', mediaGo: 'Media Go',
   rep: 'Rep', vehicle: 'Vehicle', auth: 'Authorisation', cr: 'Register', engagement: 'Engagement', category: 'Category',
 };
 /** Dashboard filter values by name; the keys are what the server sends (utils/b2cBoard). */
@@ -156,7 +156,7 @@ function LightTransportEmployeesInner() {
   const sp = useSearchParams();
   const [f, setF] = useState<Record<string, string>>(() => {
     const keys = ['project', 'city', 'jobTitle', 'contractType', 'register', 'vehicleType',
-      'supervisor', 'dutySupervisor', 'staffKind', 'status', 'housing', 'hasVehicle', 'hiredFrom', 'hiredTo',
+      'supervisor', 'dutySupervisor', 'staffKind', 'status', 'housing', 'hasVehicle', 'hiredFrom', 'hiredTo', 'mediaGo',
       // Two derived keys computed on rows, not in the database; see `LOCAL_KEYS`.
       'contractKind', 'doc',
       // From the dashboard's total-reps figures: only people in service; see `listEmployees`.
@@ -309,6 +309,7 @@ function LightTransportEmployeesInner() {
 
   /** Filter value as read by people: no supervisor id and no English key in the chip. */
   const chipValue = (k: string, v: string) => {
+    if (k === 'mediaGo') return v === 'yes' ? t('مفعّلة', 'On') : t('غير مفعّلة', 'Off');
     if (k === 'contractKind') return ar ? ({ sponsored: 'على الكفالة', freelance: 'فري لانسر', users: 'يوزرات', none: 'بلا نوع عقد' } as Record<string, string>)[v] || v
       : ({ sponsored: 'Sponsored', freelance: 'Freelance', none: 'No contract type' } as Record<string, string>)[v] || v;
     if (k === 'staffKind') {
@@ -472,6 +473,13 @@ function LightTransportEmployeesInner() {
         {/* Status list is built from all rows, not from the reps aggregate: the aggregate is now reps-only, so a status held only by an administrative row would drop out and be unfilterable. */}
         <MultiFilter ar={ar} value={f.status || ''} onChange={(v) => setF((p) => ({ ...p, status: v }))} label={t('كل الحالات', 'All statuses')}
           list={[...new Set(rows.map((r) => String(r.workStatusShown || '')).filter(Boolean))].sort((a, b) => a.localeCompare(b, 'ar'))} />
+        {/* «خدمة Media Go»: a service on the rider (yes/no), filtered on the server. */}
+        <select value={f.mediaGo || ''} onChange={(e) => setF((p) => ({ ...p, mediaGo: e.target.value }))} aria-label={t('خدمة Media Go', 'Media Go')}
+          className={`px-3 py-2 rounded-lg border text-sm ${f.mediaGo ? 'bg-[#f37121]/5 border-[#f37121]/50 font-semibold text-slate-900' : 'bg-white border-slate-200 text-slate-800'}`}>
+          <option value="">{t('خدمة Media Go: الكل', 'Media Go: all')}</option>
+          <option value="yes">{t('Media Go مفعّلة', 'Media Go on')}</option>
+          <option value="no">{t('Media Go غير مفعّلة', 'Media Go off')}</option>
+        </select>
         <select value={f.housing || ''} onChange={(e) => setF((p) => ({ ...p, housing: e.target.value }))} aria-label={t('السكن', 'Housing')}
           className="px-3 py-2 rounded-lg bg-white border border-slate-200 text-sm text-slate-800">
           <option value="">{t('كل السكن', 'All housing')}</option>
@@ -686,6 +694,13 @@ function LightTransportEmployeesInner() {
               {!!editing._id && !!origProject && (
                 <p className="mt-1 text-[11px] text-slate-500">{t('لتغيير المشروع: «نقل مشروع» من صفحة المندوب', 'To change the project use “Transfer project” on the rep’s page')}</p>
               )}
+            </Field>
+            {/* A service, not a project: yes or no (default no). Written to his HR file at once. */}
+            <Field label={t('خدمة Media Go', 'Media Go service')}>
+              <label className="inline-flex items-center gap-2 py-2 text-sm text-slate-700">
+                <input type="checkbox" checked={!!editing.mediaGo} onChange={(ev) => setEditing((p) => ({ ...p!, mediaGo: ev.target.checked }))} className="accent-[#f37121]" />
+                {t('مفعّلة (صندوق Media Go على مركبته)', 'On (Media Go box on his vehicle)')}
+              </label>
             </Field>
             <Field label={t('الفرع', 'Branch')}>
               <ManagedSelect storeLabel type="lt_city" value={editing.cityAr || ''}

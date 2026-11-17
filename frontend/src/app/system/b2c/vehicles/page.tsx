@@ -22,6 +22,8 @@ import { useVehicleLifecycle, RevokeButton } from '@/components/vehicles/Vehicle
 
 interface Row {
   _id: string; serialNumber: string; project: string; city: string; plateNumber: string;
+  /** «خدمة Media Go»: the vehicle's box carries Media Go (yes/no). */
+  mediaGo?: boolean;
   driverId: string; driverName: string; authorizedId: string; authorizedName: string; authorizedPhone: string;
   authStart: string; authEnd: string; authNumber: string; durationDays: number | null; daysLeft: number | null;
   /** In dashboard meaning: the rider's project (otherwise administration), the authorization status, and the rider from the department register. */
@@ -64,6 +66,7 @@ export default function B2cVehiclesPage() {
   const { notify } = useDialog();
   const [d, setD] = useState<Payload | null>(null);
   const [q, setQ] = useState('');
+  const [mg, setMg] = useState<'' | 'yes' | 'no'>('');
   const [state, setState] = useState<StateKey>('');
   // The dashboard opens this page on a specific figure (`?state=`), so its vehicles show, not all.
   useEffect(() => {
@@ -113,6 +116,8 @@ export default function B2cVehiclesPage() {
   const shown = useMemo(() => {
     const k = q.trim().toLowerCase();
     const base = (d?.vehicles || []).filter((r) => {
+      if (mg === 'yes' && !r.mediaGo) return false;
+      if (mg === 'no' && r.mediaGo) return false;
       if (state === 'noAuthorization' && (r.authorizedName || r.authNumber)) return false;
       if (state === 'expired' && !(r.daysLeft != null && r.daysLeft < 0)) return false;
       if (state === 'expiringSoon' && !(r.daysLeft != null && r.daysLeft >= 0 && r.daysLeft <= 30)) return false;
@@ -126,7 +131,7 @@ export default function B2cVehiclesPage() {
         .some((v) => String(v || '').toLowerCase().includes(k));
     });
     return cf.apply(base, getters);
-  }, [d, q, state, cf, getters]);
+  }, [d, q, mg, state, cf, getters]);
 
   if (!d) return <Spinner />;
 
@@ -134,6 +139,7 @@ export default function B2cVehiclesPage() {
     { header: t('رقم اللوحة', 'Plate'), key: 'plateNumber', width: 14 },
     { header: t('الرقم التسلسلي', 'Serial no.'), key: 'serialNumber', width: 16 },
     { header: t('المشروع', 'Project'), key: 'project', width: 16 },
+    { header: t('خدمة Media Go', 'Media Go'), key: 'mediaGo', width: 12, transform: (v: any) => (v ? t('نعم', 'Yes') : t('لا', 'No')) },
     { header: t('المدينة', 'City'), key: 'city', width: 12 },
     { header: t('حالة التشغيل', 'Service status'), key: 'serviceStatus', width: 14 },
     { header: t('هوية القائد الفعلي', 'Actual driver ID'), key: 'driverId', width: 16 },
@@ -213,6 +219,12 @@ export default function B2cVehiclesPage() {
           <Search className="w-4 h-4 text-slate-400 absolute top-1/2 -translate-y-1/2 start-2.5" />
           <input value={q} onChange={(e) => setQ(e.target.value)} placeholder={t('اللوحة / الاسم / الهوية / رقم التفويض…', 'plate / name / ID / auth. number…')} className="ps-8 pe-3 py-2 rounded-lg border border-slate-200 text-sm w-80 max-w-full" />
         </div>
+        <select value={mg} onChange={(e) => setMg(e.target.value as any)} aria-label="Media Go"
+          className={`px-3 py-2 rounded-lg border text-sm ${mg ? 'bg-[#f37121]/5 border-[#f37121]/50 font-semibold' : 'bg-white border-slate-200'}`}>
+          <option value="">{t('خدمة Media Go: الكل', 'Media Go: all')}</option>
+          <option value="yes">{t('Media Go مفعّلة', 'Media Go on')}</option>
+          <option value="no">{t('Media Go غير مفعّلة', 'Media Go off')}</option>
+        </select>
         <ClearColumnFilters count={cf.count} onClear={cf.clear} ar={ar} />
         <span className="ms-auto text-xs text-slate-400">{shown.length} {t('مركبة', 'vehicles')}</span>
       </div>
@@ -225,6 +237,7 @@ export default function B2cVehiclesPage() {
               <th {...pin.th(1, 'px-3 py-2.5 text-start font-semibold whitespace-nowrap')}>{t('رقم اللوحة', 'Plate')}</th>
               {th(null, t('الرقم التسلسلي', 'Serial no.'))}
               {th('project', t('المشروع', 'Project'))}
+              {th(null, t('خدمة Media Go', 'Media Go'))}
               {th('city', t('المدينة', 'City'))}
               {th('service', t('حالة التشغيل', 'Service status'))}
               {th(null, t('هوية القائد الفعلي', 'Actual driver ID'))}
@@ -259,6 +272,7 @@ export default function B2cVehiclesPage() {
                   <td {...pin.td(1, 'px-3 py-2 font-bold text-slate-900 whitespace-nowrap')}><bdi>{r.plateNumber || '—'}</bdi></td>
                   <td className="px-3 py-2 text-slate-500 whitespace-nowrap"><bdi>{r.serialNumber || '—'}</bdi></td>
                   <td className="px-3 py-2 font-semibold text-slate-800 whitespace-nowrap">{r.project || '—'}</td>
+                  <td className="px-3 py-2 whitespace-nowrap">{r.mediaGo ? <span className="rounded-md bg-violet-50 px-2 py-0.5 text-[12px] font-bold text-violet-700">Media Go</span> : <span className="text-slate-300">—</span>}</td>
                   <td className="px-3 py-2 text-slate-600 whitespace-nowrap">{r.city || '—'}</td>
                   <td className="px-3 py-2 text-slate-600 whitespace-nowrap">{r.serviceStatus || '—'}</td>
                   <td className="px-3 py-2 text-slate-600 whitespace-nowrap"><bdi>{r.driverId || '—'}</bdi></td>
@@ -310,13 +324,14 @@ function VehicleForm({ row, ar, canEditPlate, onClose, onSaved }: { row: Row; ar
     notes: row.notes || '', operatingCardNumber: row.operatingCardNumber || '', operatingCardEnd: row.operatingCardEnd || '',
     insuranceEnd: row.insuranceEnd || '', licenseEnd: row.licenseEnd || '', inspectionEnd: row.inspectionEnd || '',
     authStart: row.authStart, authEnd: row.authEnd, authNumber: row.authNumber,
+    mediaGo: !!row.mediaGo,
   };
   const [f, setF] = useState(initial);
   // The two people are picked: `undefined` means untouched, `null` means none, otherwise the chosen person.
   const [driver, setDriver] = useState<Person | null | undefined>(undefined);
   const [holder, setHolder] = useState<Person | null | undefined>(undefined);
   const [busy, setBusy] = useState(false);
-  const set = (k: keyof typeof f, v: string) => setF((p) => ({ ...p, [k]: v }));
+  const set = (k: keyof typeof f, v: string | boolean) => setF((p) => ({ ...p, [k]: v }));
   const days = f.authStart && f.authEnd ? Math.round((new Date(f.authEnd).getTime() - new Date(f.authStart).getTime()) / 86400000) : null;
   const save = async () => {
     if (days != null && days < 0) { notify(t('نهايةُ التفويض قبل بدايته', 'End is before start'), 'error'); return; }
@@ -351,6 +366,12 @@ function VehicleForm({ row, ar, canEditPlate, onClose, onSaved }: { row: Row; ar
         </p>
         {canEditPlate && <Field label={t('رقم اللوحة', 'Plate')}><TextInput value={f.plateNumber} onChange={(e) => set('plateNumber', e.target.value)} /></Field>}
         <Field label={t('المشروع', 'Project')}><ManagedSelect storeLabel noAdd type="vehicle_department" value={f.project} onChange={(v) => set('project', v)} /></Field>
+        <Field label={t('خدمة Media Go', 'Media Go service')}>
+          <label className="inline-flex items-center gap-2 py-2 text-sm text-slate-700">
+            <input type="checkbox" checked={!!f.mediaGo} onChange={(e) => set('mediaGo', e.target.checked)} className="accent-[#f37121]" />
+            {t('مفعّلة (صندوق Media Go على المركبة)', 'On (Media Go box on the vehicle)')}
+          </label>
+        </Field>
         <Field label={t('المدينة', 'City')}><ManagedSelect storeLabel noAdd type="vehicle_city" value={f.city} onChange={(v) => set('city', v)} /></Field>
         <Field label={t('حالة التشغيل', 'Service status')}><ManagedSelect storeLabel noAdd type="vehicle_service_status" value={f.serviceStatus} onChange={(v) => set('serviceStatus', v)} /></Field>
         <Field label={t('اللون', 'Colour')}><ManagedSelect storeLabel noAdd type="vehicle_color" value={f.color} onChange={(v) => set('color', v)} /></Field>

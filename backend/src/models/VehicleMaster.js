@@ -37,6 +37,8 @@ const vehicleMasterSchema = new mongoose.Schema({
   commercialRegistration: { type: String, default: '' },
   // Fields added with the section files update: department and city, since sector alone was too coarse for queries such as vehicles of one department in one city.
   departmentAr: { type: String, default: '', index: true },
+  // «خدمة Media Go» (yes/no): the vehicle's box carries Media Go ads.
+  mediaGo: { type: Boolean, default: false, index: true },
   cityAr: { type: String, default: '', index: true },
   // Possession status: owner or user. A platform requirement, so it is a field rather than free text.
   possessionStatusAr: { type: String, default: '', index: true },

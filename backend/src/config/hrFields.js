@@ -56,6 +56,8 @@ const GROUPS = [
       { key: 'employerNumber', ar: 'رقم صاحب العمل', en: 'Employer no.', type: 'text' },
       // A B2C employee's project comes from the B2C record and is written there (models/LightTransport, utils/hrLists).
       { key: 'project', ar: 'المشروع', en: 'Project', type: 'text', groupable: true, choice: true, strict: true, lookup: 'hr_project' },
+      // A service, not a project: yes/no, copied both ways with the B2C register (utils/mediaGoSync).
+      { key: 'mediaGo', ar: 'خدمة Media Go', en: 'Media Go service', type: 'bool', groupable: true },
       // Department comes only from the department list, no 'other' or free typing (utils/hrLists).
       { key: 'department', ar: 'القسم', en: 'Department', type: 'text', groupable: true, choice: true, strict: true, lookup: 'hr_department' },
       // For B2C and heavy transport employees only: administrative, driver, technician (utils/hrLists.categoryError).

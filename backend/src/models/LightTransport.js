@@ -63,6 +63,8 @@ const employeeSchema = new mongoose.Schema({
   // What belongs to this section alone; all are managed lists from section settings.
   cityAr: { type: String, trim: true, default: '', index: true },       // Branch.
   projectAr: { type: String, trim: true, default: '', index: true },    // Project.
+  // «خدمة Media Go» (yes/no), not a project: the rider keeps his project. Copied both ways with the HR file (utils/mediaGoSync).
+  mediaGo: { type: Boolean, default: false, index: true },
   jobTitleAr: { type: String, trim: true, default: '', index: true },   // Rider / supervisor / mechanic ...
   contractTypeAr: { type: String, trim: true, default: '', index: true }, // Sponsored / freelance.
   registerNumber: { type: String, trim: true, default: '', index: true }, // Which registry he is sponsored under.
@@ -220,6 +222,10 @@ for (const op of ['updateOne', 'updateMany', 'findOneAndUpdate']) {
   });
 }
 employeeSchema.statics.syncRider = syncRider;
+require('../utils/mediaGoSync').attach(employeeSchema, {
+  idsOf: (docs) => docs.map((d) => d.employee).filter(Boolean),
+  push: (ids, v) => require('../utils/mediaGoSync').fromRegister(ids, v),
+});
 employeeSchema.post('save', async function (doc) {
   if (!doc.$locals.repSync) return;
   try { await require('../utils/b2cEntry').syncRepOf(doc); } catch (_) { /* */ }

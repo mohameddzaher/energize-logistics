@@ -28,7 +28,7 @@ export const EMPTY_EMPLOYEE = {
   insuranceCompany: '', insuranceExpiry: '', socialInsuranceStatus: '', visaExpiry: '', lastTravelDate: '', lastReturnDate: '',
   vehiclePlate: '', licenseType: '', licenseExpiry: '',
   driverCardNumber: '', driverCardType: '', driverCardStatus: '', driverCardExpiry: '', workCard: '', ajeerStatus: '', ajeerExpiry: '',
-  companyEmail: '', employerNumber: '', isOutsideKingdom: false, iqamaProfessionRequirements: '',
+  companyEmail: '', employerNumber: '', isOutsideKingdom: false, mediaGo: false, iqamaProfessionRequirements: '',
   contractOccupation: '', contractStartDate: '', contractEndDate: '', annualLeaveDays: '', probationPeriod: '',
   insuranceClass: '', medicalInsuranceNumber: '', medicalInsuranceRegister: '', insuranceRequirements: '',
   healthCertNumber: '', healthCertExpiry: '',
@@ -317,6 +317,13 @@ export function EmployeeFormModal({ open, employee, onClose, onSaved }: {
         <DocInput k="bank" label={vtx.bank} cash form={form} set={set} mark={marks['bank'] || ''} setMark={setMark} choices={choices} ar={ar} />
         <Field label={ar ? 'المشروع' : 'Project'}><SearchableSelect value={form.project || ''} onChange={(v) => set('project', v)} placeholder={ar ? '— اختر —' : '— choose —'} searchPlaceholder={ar ? 'ابحث…' : 'Search…'} searchAfter={0}
           options={[...(form.project && !(choices.project || []).some((o) => o.value === form.project) ? [{ value: form.project, label: form.project }] : []), ...(choices.project || []).map((o) => ({ value: o.value, label: o.value }))]} /></Field>
+        {/* A service, not a project: yes or no (default no); the rider keeps his project. Shows in B2C at once. */}
+        <Field label={ar ? 'خدمة Media Go' : 'Media Go service'}>
+          <label className="inline-flex items-center gap-2 text-sm text-slate-700 py-2">
+            <input type="checkbox" checked={!!form.mediaGo} onChange={(e) => set('mediaGo', e.target.checked)} />
+            {ar ? 'مفعَّلة (صندوق Media Go على مركبته)' : 'On (Media Go box on his vehicle)'}
+          </label>
+        </Field>
         {/* Chosen, not typed: our own registers plus freelancer and training; the type is derived from it. */}
         <Field label={vtx.registerNumber}>
           <Select value={form.registerNumber || ''} onChange={(e) => set('registerNumber', e.target.value)}>

@@ -48,6 +48,7 @@ final ltColumns = <ColDef>[
   ColDef('jobTitleAr', 'الوظيفة', 'Job', (e) => _s(e, 'jobTitleAr')),
   ColDef('staffKind', 'النوع', 'Kind', (e) => _kindAr[_s(e, 'staffKind')] ?? ''),
   ColDef('projectAr', 'المشروع', 'Project', (e) => _s(e, 'projectAr')),
+  ColDef('mediaGo', 'خدمة Media Go', 'Media Go', (e) => e['mediaGo'] == true ? 'نعم' : 'لا'),
   ColDef('cityAr', 'الفرع', 'Branch', (e) => _s(e, 'cityAr')),
   ColDef('supervisorName', 'المشرف التشغيلي', 'Ops supervisor', (e) => _s(e, 'supervisorName')),
   ColDef('dutySupervisorName', 'مشرف التفقد', 'Duty supervisor', (e) => _s(e, 'dutySupervisorName')),
@@ -443,6 +444,7 @@ class _LightTransportListScreenState extends State<LightTransportListScreen> {
                     for (final n in _opt('supervisorsUnlinked')) (n, '$n ${tr('(بلا حساب)', '(no account)')}'),
                   ]),
                   multi('status', 'الحالة', 'Status', [for (final x in statuses) (x, x)]),
+                  drop('mediaGo', 'خدمة Media Go', 'Media Go service', [('yes', tr('مفعّلة', 'On')), ('no', tr('غير مفعّلة', 'Off'))]),
                   drop('housing', 'السكن', 'Housing', [('none', tr('بلا سكن', 'Unhoused')), for (final h in _housing) (_s(h, '_id'), _s(h, 'name'))]),
                   Row(children: [date('hiredFrom', 'التعيين من', 'Hired from'), const SizedBox(width: 10), date('hiredTo', 'التعيين إلى', 'Hired to')]),
                 ]),
@@ -785,6 +787,7 @@ class _LtEditEmployeeSheetState extends State<LtEditEmployeeSheet> {
   Map<String, dynamic> get e => widget.employee;
   late final _name = TextEditingController(text: _s(e, 'name'));
   late final _project = TextEditingController(text: _s(e, 'projectAr'));
+  late bool _mediaGo = e['mediaGo'] == true;
   late final _city = TextEditingController(text: _s(e, 'cityAr'));
   late final _job = TextEditingController(text: _s(e, 'jobTitleAr'));
   late final _contract = TextEditingController(text: _s(e, 'contractTypeAr'));
@@ -817,6 +820,7 @@ class _LtEditEmployeeSheetState extends State<LtEditEmployeeSheet> {
       await Api.instance.put('/api/light-transport/employees/${e['_id']}', {
         'name': _name.text.trim(),
         if (!_hasProject) 'projectAr': _project.text.trim(),
+        'mediaGo': _mediaGo,
         'cityAr': _city.text.trim(),
         'jobTitleAr': _job.text.trim(),
         if (e['hrLinked'] != true) 'contractTypeAr': _contract.text.trim(),
@@ -874,6 +878,8 @@ class _LtEditEmployeeSheetState extends State<LtEditEmployeeSheet> {
                 style: const TextStyle(fontSize: 11, color: T.inkFaint)),
           ] else
             LookupField(type: 'lt_project', controller: _project, label: tr('المشروع', 'Project')),
+          SwitchListTile(contentPadding: EdgeInsets.zero, value: _mediaGo, title: Text(tr('خدمة Media Go', 'Media Go service')),
+              onChanged: (v) => setState(() => _mediaGo = v)),
           gap,
           LookupField(type: 'lt_city', controller: _city, label: tr('الفرع', 'Branch')),
           gap,

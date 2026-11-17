@@ -178,6 +178,9 @@ exports.listEmployees = async (req, res) => {
     supervisorFilter(filter, q.supervisor);
     supervisorFilter(filter, q.dutySupervisor, 'dutySupervisorUser');
     if (S(q.housing)) filter.housing = S(q.housing) === 'none' ? null : S(q.housing);
+    // «خدمة Media Go»: yes / no.
+    if (S(q.mediaGo) === 'yes') filter.mediaGo = true;
+    else if (S(q.mediaGo) === 'no') filter.mediaGo = { $ne: true };
     // Those with a vehicle and those without; a frequent question.
     if (q.hasVehicle === 'yes') filter.vehicle = { $ne: null };
     if (q.hasVehicle === 'no') filter.vehicle = null;
@@ -767,7 +770,9 @@ exports.getEmployee = async (req, res) => {
 // `supervisorName` is not one of them: it is derived from the chosen account. See `applySupervisor`.
 const EDITABLE = ['name', 'nationalityAr', 'phone', 'cityAr', 'projectAr', 'jobTitleAr', 'contractTypeAr',
   // `workStatusAr` is not one of them: work status comes from HR. See `shownStatus`.
-  'registerNumber', 'vehicleTypeAr', 'housingRoom', 'notesAr', 'hireDate'];
+  'registerNumber', 'vehicleTypeAr', 'housingRoom', 'notesAr', 'hireDate',
+  // «خدمة Media Go» yes/no, not a project; copied to the HR file by the model hook (utils/mediaGoSync).
+  'mediaGo'];
 
 /**
  * Supervisor assignment: an account is chosen, the rest is derived.
@@ -1256,7 +1261,7 @@ const ltVehicleRow = (v) => {
   const start = ymd(a.startDate); const end = ymd(a.expiryDate);
   const today = require('../utils/companyDay').todayKey();
   return {
-    _id: v._id, serialNumber: v.serialNumber || '', project: v.departmentAr || '', city: v.cityAr || '', plateNumber: v.plateNumber || '',
+    _id: v._id, serialNumber: v.serialNumber || '', project: v.departmentAr || '', city: v.cityAr || '', plateNumber: v.plateNumber || '', mediaGo: !!v.mediaGo,
     driverId: d.idNumber || '', driverName: d.name || '',
     authorizedId: a.iqamaNumber || '', authorizedName: a.name || '', authorizedPhone: a.phone || '',
     authStart: start, authEnd: end, authNumber: a.authorizationNumber || '',
@@ -1272,7 +1277,7 @@ const ltVehicleRow = (v) => {
     inspectionEnd: ymd(v.inspection?.expiryDate),
   };
 };
-const LT_VEHICLE_SELECT = 'serialNumber departmentAr cityAr plateNumber sectorAr actualDriver authorizedPerson updatedAt '
+const LT_VEHICLE_SELECT = 'serialNumber departmentAr cityAr plateNumber sectorAr actualDriver authorizedPerson updatedAt mediaGo '
   + 'serviceStatusAr colorAr notesAr registrationTypeAr operatingCard.cardNumber operatingCard.expiryDate insurance.expiryDate '
   + 'vehicleLicense.expiryDate inspection.expiryDate';
 /** Who may edit: sector manager, deputy, system admin (and finance roles, as for everything opened to them). */
@@ -1386,6 +1391,7 @@ exports.updateVehicle = async (req, res) => {
     };
     const $set = {};
     if (b.project !== undefined) $set.departmentAr = text(b.project);
+    if (b.mediaGo !== undefined) $set.mediaGo = b.mediaGo === true || b.mediaGo === 'true' || b.mediaGo === '1';
     if (b.city !== undefined) $set.cityAr = text(b.city);
     // What the department manages of vehicle data
     // Written to the vehicle register itself and through its path (findByIdAndUpdate) so its hooks run: derivation, authorization mirror, and copying the plate to its copies.

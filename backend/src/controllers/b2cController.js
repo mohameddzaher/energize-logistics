@@ -85,22 +85,6 @@ async function ensureRepProject(nameAr) {
   try { require('../utils/hrLists').forget(); } catch (_) { /* */ }
 }
 
-/**
- * Media Go is a B2C project without delivery orders (ads). Created once at boot with its rep-list row;
- * a project deleted on purpose (audited delete) is not brought back.
- */
-exports.ensureB2CProjectDefaults = async () => {
-  const NAME = 'Media Go';
-  const re = /^\s*media\s*go\s*$/i;
-  if (await B2CProject.exists({ $or: [{ name: re }, { nameAr: re }] })) return;
-  const AuditLog = require('../models/AuditLog');
-  if (await AuditLog.exists({ action: 'delete_b2c_project', 'changes.before.name': re })) return;
-  await B2CProject.create({ name: NAME, nameAr: NAME, ordersEnabled: false, monthlyTarget: 0, dailyTarget: 0, color: '#7c3aed', description: 'إعلانات — بدون طلبات توصيل' })
-    .catch((e) => { if (e.code !== 11000) throw e; });
-  await ensureRepProject(NAME);
-  cache.clear('b2c:');
-};
-
 exports.createProject = async (req, res) => {
   try {
     const { name, code, description, color, dailyTarget, expectedWorkingDays } = req.body;

@@ -128,6 +128,7 @@ export default function LightTransportProfile() {
     [t('الوظيفة', 'Job'), e.jobTitleAr],
     [t('النوع', 'Kind'), ar ? KIND_AR[e.staffKind || ''] : KIND_EN[e.staffKind || '']],
     [t('المشروع', 'Project'), e.projectAr],
+    [t('خدمة Media Go', 'Media Go service'), e.mediaGo ? t('نعم', 'Yes') : t('لا', 'No')],
     [t('الفرع', 'Branch'), e.cityAr],
     [t('المشرف', 'Supervisor'), e.supervisorName],
     [t('انتهاء كارت التشغيل', 'Operating card expiry'), fmtDate(e.operatingCard?.expiryDate)],
@@ -172,7 +173,7 @@ export default function LightTransportProfile() {
                 )}
               </div>
               <p className="text-white/60 text-[12.5px] mt-0.5 font-mono">
-                {[e.idNumber, e.jobTitleAr, e.projectAr, e.cityAr, e.vehiclePlate].filter(Boolean).join(' · ')}
+                {[e.idNumber, e.jobTitleAr, e.projectAr, e.mediaGo ? 'Media Go' : '', e.cityAr, e.vehiclePlate].filter(Boolean).join(' · ')}
               </p>
             </div>
           </div>
@@ -226,6 +227,7 @@ export default function LightTransportProfile() {
         <Section isRTL={isRTL} title={t('التشغيل', 'Deployment')} icon={<Building2 className="w-4 h-4" />} accent="#0891b2">
           <Row label={t('الوظيفة', 'Job')}>{val(e.jobTitleAr)}</Row>
           <Row label={t('المشروع', 'Project')}>{val(e.projectAr)}</Row>
+          <Row label={t('خدمة Media Go', 'Media Go service')}>{e.mediaGo ? <span className="rounded-md bg-violet-50 px-2 py-0.5 text-[12px] font-bold text-violet-700">{t('مفعّلة', 'On')}</span> : t('غير مفعّلة', 'Off')}</Row>
           <Row label={t('الفرع', 'Branch')}>{val(e.cityAr)}</Row>
           {/* The supervisor is a system account: without one, his riders do not appear in the duty check. */}
           <Row label={t('المشرف', 'Supervisor')}>

@@ -1025,6 +1025,8 @@ class _EditEmployeeSheetState extends State<EditEmployeeSheet> {
   late final Map<String, TextEditingController> _dt;
   String _gender = '';
   bool _outside = false;
+  // «خدمة Media Go» yes/no, copied to the B2C register by the server.
+  bool _mediaGo = false;
 
   // Documents: a value, or a status explaining why there is none, like the web form. A new employee's empty documents are marked "required" on the server; one who needs no document picks "not required". Choice fields are lists of used values (/api/hr/master/choices); the bank allows "cash salary".
   static const _docs = [
@@ -1062,6 +1064,7 @@ class _EditEmployeeSheetState extends State<EditEmployeeSheet> {
     _dt = {for (final f in _dates) f.$1: TextEditingController(text: asText(widget.employee?[f.$1]))};
     _gender = (widget.employee?['gender'] ?? '').toString();
     _outside = widget.employee?['isOutsideKingdom'] == true;
+    _mediaGo = widget.employee?['mediaGo'] == true;
     for (final f in _moreChoices) {
       _pick[f.$1] = (widget.employee?[f.$1] ?? '').toString();
     }
@@ -1151,6 +1154,7 @@ class _EditEmployeeSheetState extends State<EditEmployeeSheet> {
         for (final f in _dates) f.$1: _dt[f.$1]!.text.trim(),
         'gender': _gender,
         'isOutsideKingdom': _outside,
+        'mediaGo': _mediaGo,
         // "Auto" on an existing file clears the flag; on a new one nothing is sent so the default applies.
         'markStatus': {
           for (final f in _docs)
@@ -1214,6 +1218,13 @@ class _EditEmployeeSheetState extends State<EditEmployeeSheet> {
               value: _outside,
               title: Text(tr('خارج المملكة', 'Outside the Kingdom')),
               onChanged: (v) => setState(() => _outside = v),
+            ),
+            SwitchListTile(
+              contentPadding: EdgeInsets.zero,
+              value: _mediaGo,
+              title: Text(tr('خدمة Media Go', 'Media Go service')),
+              subtitle: Text(tr('صندوق Media Go على مركبته — يبقى على مشروعه', 'Media Go box on his vehicle — he keeps his project'), style: const TextStyle(fontSize: 11.5)),
+              onChanged: (v) => setState(() => _mediaGo = v),
             ),
             ..._numbers.map((f) => Padding(
                   padding: const EdgeInsets.only(bottom: 10),

@@ -594,6 +594,8 @@ export default function ShipmentRequestsBoard({ mode }: { mode: BoardMode }) {
                   <span className="rounded-lg bg-slate-900 px-2 py-0.5 text-[12.5px] font-extrabold tabular-nums text-white">#{r.number}</span>
                   <StatusText dot={st.dot}>{statusText(r)}</StatusText>
                   <span className={`text-[12px] font-semibold ${vendorProgress(r, ar, pmode).tone}`}>{vendorProgress(r, ar, pmode).label}</span>
+                  {/* Sourcing at the top: the first thing the team looks for on a card. */}
+                  <SourcingButton r={r} rtl={isRTL} onClick={() => setSourcingOf(r)}><Truck className="w-3.5 h-3.5" />{t('تحصيل السيارات', 'Sourced')} {sourcingLine(r, ar)}</SourcingButton>
                   <span className="ms-auto text-[11.5px] text-slate-500">{when(r.createdAt)} · {r.createdByName}</span>
                 </div>
                 <div className="flex-1 p-4 space-y-3.5">
@@ -646,7 +648,7 @@ export default function ShipmentRequestsBoard({ mode }: { mode: BoardMode }) {
                     ))}
                   </dl>
                   {r.notes && <p className="text-[12.5px] text-slate-700 bg-amber-50/60 border border-amber-100 rounded-lg px-3 py-2">{r.notes}</p>}
-                  {/* Two progress lines: trucks placed as transport orders, and trucks sourced so far. */}
+                  {/* Progress of trucks placed as transport orders (sourcing is in the header). */}
                   <div className="space-y-2">
                     <div>
                       <div className="mb-1 flex items-center justify-between text-[12px] text-slate-600">
@@ -655,10 +657,7 @@ export default function ShipmentRequestsBoard({ mode }: { mode: BoardMode }) {
                       </div>
                       <div className="h-2 rounded-full bg-slate-100"><div className="h-2 rounded-full bg-emerald-500 transition-all" style={{ width: `${pct}%` }} /></div>
                     </div>
-                    <div className="flex flex-wrap items-center gap-2">
-                      <SourcingButton r={r} rtl={isRTL} onClick={() => setSourcingOf(r)}><Truck className="w-3.5 h-3.5" />{t('تحصيل السيارات', 'Sourced')} {sourcingLine(r, ar)}</SourcingButton>
-                      {r.resubmits ? <span className="text-[11px] text-slate-500">{t(`أُعيد ${r.resubmits}×`, `resent ${r.resubmits}×`)}</span> : null}
-                    </div>
+                    {r.resubmits ? <p className="text-[11px] text-slate-500">{t(`أُعيد ${r.resubmits}×`, `resent ${r.resubmits}×`)}</p> : null}
                     {!!r.placed.length && (
                       <div className="flex flex-wrap gap-1.5">
                         {r.placed.map((p) => (

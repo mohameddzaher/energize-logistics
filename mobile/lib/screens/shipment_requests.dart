@@ -1108,6 +1108,8 @@ class _ShipmentRequestsScreenState extends State<ShipmentRequestsScreen> {
             Expanded(child: Text('${r['customerName'] ?? '—'}', style: const TextStyle(fontWeight: FontWeight.w800), overflow: TextOverflow.ellipsis)),
             srStatusChip(r['status'], vendors: _work),
           ]),
+          // Sourcing at the top of the card, as on the web.
+          _sourcedLine(r),
           const SizedBox(height: 4),
           Text('${tr('من', 'From')}: ${r['fromCity'] ?? '—'}   ·   ${tr('إلى', 'To')}: ${r['toCity'] ?? '—'}', style: const TextStyle(fontSize: 12.5, color: T.inkSoft)),
           Text('${'${r['truckType'] ?? ''}'.isEmpty ? '' : '${r['truckType']} · '}${'${r['branch'] ?? ''}'.isEmpty ? '' : '${r['branch']} · '}${tr('تاريخ الطلب', 'Requested')}: ${_dateOnly(r['createdAt'])}', style: const TextStyle(fontSize: 12, color: T.inkFaint)),
@@ -1131,7 +1133,6 @@ class _ShipmentRequestsScreenState extends State<ShipmentRequestsScreen> {
           ]),
           const SizedBox(height: 6),
           srProgressLine(r, vendors: _work),
-          _sourcedLine(r),
           if (!_work && srApprovalOf(r) == 'returned' && '${r['approvalReason'] ?? ''}'.isNotEmpty)
             Padding(padding: const EdgeInsets.only(top: 6), child: Text('${tr('ملاحظة المدير', 'Manager note')}: ${r['approvalReason']}', style: const TextStyle(fontSize: 12, color: T.violet, fontWeight: FontWeight.w700))),
           if (r['status'] == 'rejected')

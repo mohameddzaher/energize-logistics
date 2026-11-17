@@ -130,11 +130,18 @@ input[type="week"] {
 }
 .table-head th { color: inherit; }
 
+/* Every table header in the system is dark (slate-900, light text), whatever classes the page wrote: one rule, so a new or forgotten table cannot drift. Opt out with .light-head on the table. Inputs and selects in header cells keep their own look. */
+[data-system] table:not(.light-head) > thead,
+[data-system] table:not(.light-head) > thead > tr,
+[data-system] table:not(.light-head) > thead > tr > th { background-color: #0f172a; color: #e2e8f0; border-color: #1e293b; }
+[data-system] table:not(.light-head) > thead > tr > th :where(span, div, p, button, a, label, svg) { color: inherit; }
+[data-system] table:not(.light-head) > thead > tr > th :where(button):hover { color: #ffffff; }
+
 /* Dashboards: legible text on screens. Card titles were faint and the divider line invisible on all section dashboards. Inside [data-dash] (set by app/system/layout on dashboard paths) light greys darken two steps (except over dark backgrounds), small headings go bold and dividers get clearer. One rule instead of editing forty pages; each new dashboard gets it automatically. */
-[data-dash] .text-slate-400:not(:is(.bg-slate-900, .bg-slate-800, .bg-black, .table-head) *) { color: #475569; }   /* → slate-600 */
-[data-dash] .text-slate-500:not(:is(.bg-slate-900, .bg-slate-800, .bg-black, .table-head) *) { color: #334155; }   /* → slate-700 */
-[data-dash] .text-slate-600:not(:is(.bg-slate-900, .bg-slate-800, .bg-black, .table-head) *) { color: #1e293b; }   /* → slate-800 */
-[data-dash] .text-slate-700:not(:is(.bg-slate-900, .bg-slate-800, .bg-black, .table-head) *) { color: #0f172a; }   /* → slate-900 */
+[data-dash] .text-slate-400:not(:is(.bg-slate-900, .bg-slate-800, .bg-black, .table-head, thead) *) { color: #475569; }   /* → slate-600 */
+[data-dash] .text-slate-500:not(:is(.bg-slate-900, .bg-slate-800, .bg-black, .table-head, thead) *) { color: #334155; }   /* → slate-700 */
+[data-dash] .text-slate-600:not(:is(.bg-slate-900, .bg-slate-800, .bg-black, .table-head, thead) *) { color: #1e293b; }   /* → slate-800 */
+[data-dash] .text-slate-700:not(:is(.bg-slate-900, .bg-slate-800, .bg-black, .table-head, thead) *) { color: #0f172a; }   /* → slate-900 */
 [data-dash] .font-normal.text-slate-400,
 [data-dash] .font-medium { font-weight: 700; }
 [data-dash] .font-semibold { font-weight: 700; }

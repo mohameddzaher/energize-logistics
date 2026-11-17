@@ -69,6 +69,11 @@ class T {
         focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(14), borderSide: const BorderSide(color: navy, width: 1.6)),
         labelStyle: GoogleFonts.ibmPlexSansArabic(color: inkSoft),
       ),
+      // Every table header is dark with light text, as on the web; set once here so no table drifts.
+      dataTableTheme: DataTableThemeData(
+        headingRowColor: WidgetStateProperty.all(const Color(0xFF0F172A)),
+        headingTextStyle: GoogleFonts.ibmPlexSansArabic(color: const Color(0xFFE2E8F0), fontWeight: FontWeight.w700, fontSize: 12.5),
+      ),
       // Drag handle and rounded corners on all sheets so users can dismiss them easily.
       bottomSheetTheme: const BottomSheetThemeData(
         showDragHandle: true,

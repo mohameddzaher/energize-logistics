@@ -131,7 +131,6 @@ class _MediaGoAdsScreenState extends State<MediaGoAdsScreen> {
                         scrollDirection: Axis.horizontal,
                         child: DataTable(
                           showCheckboxColumn: false, headingRowHeight: 38, dataRowMinHeight: 46, dataRowMaxHeight: 58, columnSpacing: 16, horizontalMargin: 12,
-                          headingTextStyle: const TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: T.inkSoft),
                           columns: [
                             DataColumn(label: Text(tr('الطلب', 'Request'))),
                             DataColumn(label: Text(tr('الإعلان', 'Ad'))),

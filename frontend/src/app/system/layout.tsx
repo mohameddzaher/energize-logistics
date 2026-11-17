@@ -1153,7 +1153,7 @@ function SystemLayoutInner({ children }: { children: React.ReactNode }) {
 
         {/* Page Content */}
         {/* Department dashboards show on a meeting screen, so their text is made clearer (globals.css: [data-dash]). */}
-        <main className="flex-1 p-4 md:p-6 overflow-x-auto min-w-0" data-dash={isDashboardPath(pathname) ? '' : undefined}>
+        <main className="flex-1 p-4 md:p-6 overflow-x-auto min-w-0" data-system="" data-dash={isDashboardPath(pathname) ? '' : undefined}>
           {pageBlocked ? (
             <div className="max-w-lg mx-auto mt-16 text-center">
               <div className="w-14 h-14 rounded-2xl bg-slate-100 text-slate-400 flex items-center justify-center mx-auto mb-4">

@@ -76,13 +76,14 @@ const FILTERABLE = [...new Set([
   'department', 'branchName', 'project', 'nationality', 'workStatusText', 'bank',
   'licenseType', 'insuranceCompany', 'directManagerName', 'iqamaProfession', 'idType',
   'gender', 'driverCardStatus', 'insuranceClass', 'contractStatusText', 'systemStatus',
-])].filter((k) => !['isOutsideKingdom', 'isFreelancer'].includes(k));
+])].filter((k) => !H.ALL_FIELDS.some((f) => f.key === k && f.type === 'bool'));
 
 // Date fields that accept a range (from/to), also derived from the field definitions. This was a hand-written list, so any date field added there stayed unfilterable until someone remembered it, found not by an error but by a user typing a range and seeing nothing change. Derivation makes forgetting impossible.
 const DATE_FILTERABLE = H.ALL_FIELDS.filter((f) => f.type === 'date').map((f) => f.key);
 
 // Boolean fields. The dashboard shows their values as read (yes/no), and they are excluded from FILTERABLE above because $in on a string does not match a BSON boolean. They arrived at the server and were ignored: clicking freelancer changed nothing, with no explanation. They are translated to true/false here before becoming a condition.
-const BOOL_FILTERABLE = ['isOutsideKingdom', 'isFreelancer'];
+// Derived from the definitions (type 'bool'): a hand-written list named two fields, so a new yes/no field (Media Go) reached the filter as a string and matched nobody.
+const BOOL_FILTERABLE = H.ALL_FIELDS.filter((f) => f.type === 'bool').map((f) => f.key);
 const asBool = (v) => {
   const t = String(v ?? '').trim();
   if (['نعم', 'true', '1'].includes(t)) return true;

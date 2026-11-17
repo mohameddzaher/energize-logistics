@@ -781,6 +781,7 @@ class _HrEmployeeProfileScreenState extends State<HrEmployeeProfileScreen> {
                               _info(tr('المسمى الوظيفي', 'Job title'), _emp['jobTitle']),
                               _info(tr('القسم', 'Department'), _emp['department']),
                               _info(tr('المشروع', 'Project'), _emp['project']),
+                              _info(tr('خدمة Media Go', 'Media Go service'), _emp['mediaGo'] == true ? tr('مفعّلة', 'On') : tr('غير مفعّلة', 'Off')),
                               _info(tr('الفرع', 'Branch'), (_emp['branch'] as Map<String, dynamic>?)?['name']),
                               _info(tr('تاريخ التعيين', 'Hire date'), _date(_emp['hireDate'])),
                               _info(tr('المدير المباشر', 'Manager'),

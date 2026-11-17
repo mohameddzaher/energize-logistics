@@ -482,6 +482,8 @@ function VehicleForm({ vehicle, onClose, onSaved, onRevoke, onEndService }: {
           <div><L>{ar ? 'حالة التشغيل' : 'Service status'}</L><ManagedSelect storeLabel type="vehicle_service_status" value={f.serviceStatusAr || ''} onChange={(v) => set('serviceStatusAr', v)} /></div>
           <div><L>{ar ? 'حالة الحيازة' : 'Possession'}</L><ManagedSelect storeLabel type="vehicle_possession_status" value={f.possessionStatusAr || ''} onChange={(v) => set('possessionStatusAr', v)} /></div>
           <div><L>{ar ? 'الإدارة' : 'Department'}</L><ManagedSelect storeLabel type="vehicle_department" value={f.departmentAr || ''} onChange={(v) => set('departmentAr', v)} /></div>
+          <div><L>{ar ? 'خدمة Media Go' : 'Media Go service'}</L>
+            <label className="inline-flex items-center gap-2 py-2 text-sm text-slate-700"><input type="checkbox" checked={!!f.mediaGo} onChange={(e) => set('mediaGo', e.target.checked)} className="accent-[#f37121]" />{ar ? 'مفعّلة (صندوق Media Go)' : 'On (Media Go box)'}</label></div>
           <div><L>{ar ? 'المدينة' : 'City'}</L><ManagedSelect storeLabel type="vehicle_city" value={f.cityAr || ''} onChange={(v) => set('cityAr', v)} /></div>
           {/* The owner is searched too: many vehicles are registered under an employee, so search by employee rather than typing a name that does not match their file. */}
           <div className="sm:col-span-2 lg:col-span-3">

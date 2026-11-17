@@ -465,7 +465,7 @@ exports.supervisors = async (req, res) => {
 const OVERVIEW_FACETS = ['city', 'jobTitle', 'contractType', 'register', 'staffKind', 'project',
   'supervisor', 'housing', 'hasVehicle', 'status', 'vehicleType',
   // Quick dashboard filters; see utils/b2cBoard.QUICK.
-  'rep', 'vehicle', 'auth', 'cr', 'engagement', 'category'];
+  'rep', 'vehicle', 'auth', 'cr', 'engagement', 'category', 'mediaGo'];
 
 /** Name of the B2C department in the HR departments list (its key is light_transport). */
 const b2cDepartment = () => cache.wrap('lt:b2cdept', 60000, async () => {
@@ -492,7 +492,7 @@ async function vehicleRows(riderRows, select = '', holderRows = []) {
   const byVehicle = group(riderRows);
   const heldBy = group(holderRows);
   const vehicles = await VehicleMaster.find(BOARD.vehicleScope([...byVehicle.keys(), ...heldBy.keys()]))
-    .select(`plateNumber serialNumber registrationTypeAr departmentAr cityAr sectorAr serviceStatusAr serviceStatusCode authorizedPerson actualDriver ${select}`)
+    .select(`plateNumber serialNumber registrationTypeAr departmentAr cityAr sectorAr serviceStatusAr serviceStatusCode authorizedPerson actualDriver mediaGo ${select}`)
     .lean();
   const today = require('../utils/companyDay').todayKey();
   const { vehicleState } = require('../utils/ltRider');
@@ -670,6 +670,7 @@ exports.overview = async (req, res) => {
       engagement: optionList(live(without('engagement')), (r) => BOARD.engagementOf(r), (v) => BOARD.ENGAGEMENT_AR[v] || v),
       category: optionList(live(without('category')), (r) => BOARD.categoryOf(r), (v) => BOARD.CATEGORY_AR[v] || v),
       city: optionList(live(without('city')), (r) => S(r.cityAr) || '—', (v) => (v === '—' ? 'غير محدد' : v)),
+      mediaGo: optionList(live(without('mediaGo')), (r) => (r.mediaGo ? 'yes' : 'no'), (v) => (v === 'yes' ? 'مفعّلة' : 'غير مفعّلة')),
       // Terminated staff are not an option: their place is HR (ended staff rule).
       status: optionList(without('status').filter((r) => !isEnded(r)), (r) => r.workStatusShown),
     };

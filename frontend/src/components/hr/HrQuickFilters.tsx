@@ -1,6 +1,6 @@
 'use client';
 /**
- * Quick filter bar: department, job category, commercial registration, city, work status, project, nationality, residency profession.
+ * Quick filter bar: department, job category, commercial registration, city, work status, project, Media Go service, nationality, residency profession.
  * It writes to the same filter that the full filter panel and the server (`buildFilter`) read, so every number on screen follows it. Counts per value use all filters except their own (`filterOptions`). Each list has search.
  */
 import { useEffect, useRef, useState } from 'react';
@@ -20,6 +20,8 @@ export const QUICK_KEYS: { key: string; ar: string; en: string }[] = [
   { key: 'branchName', ar: 'المدينة', en: 'City' },
   { key: 'workStatusText', ar: 'حالة العمل', en: 'Work status' },
   { key: 'project', ar: 'المشروع', en: 'Project' },
+  // A yes/no service on the rider (not a project); values نعم / لا.
+  { key: 'mediaGo', ar: 'خدمة Media Go', en: 'Media Go service' },
   { key: 'nationality', ar: 'الجنسية', en: 'Nationality' },
   // Company owner request.
   { key: 'iqamaProfession', ar: 'المهنة في الإقامة', en: 'Iqama occupation' },

@@ -160,6 +160,8 @@ const QUICK = [
   { key: 'category', ar: 'الفئة', en: 'Category' },
   { key: 'city', ar: 'المدينة', en: 'City' },
   { key: 'status', ar: 'حالة العمل', en: 'Work status' },
+  // A yes/no service (the box on the rider's vehicle), not a project: yes / no.
+  { key: 'mediaGo', ar: 'خدمة Media Go', en: 'Media Go service' },
 ];
 /** Keys that concern the person only; a vehicle passes through them via its rider. */
 const PERSON_ONLY = ['rep', 'cr', 'engagement', 'category', 'status', 'jobTitle', 'contractType', 'register',
@@ -194,6 +196,7 @@ function personTests(q, { typeKey = (x) => S(x), contractKindOf } = {}) {
     const s = set('housing');
     t.housing = (r) => [...s].some((v) => (v === 'none' ? !r.housing : idOf(r.housing) === v));
   }
+  if (has('mediaGo')) { const s = set('mediaGo'); t.mediaGo = (r) => s.has(r.mediaGo ? 'yes' : 'no'); }
   if (q.hasVehicle === 'yes') t.hasVehicle = (r) => !!r.vehicle;
   if (q.hasVehicle === 'no') t.hasVehicle = (r) => !r.vehicle;
   if (has('vehicleType')) { const s = set('vehicleType', typeKey); t.vehicleType = (r) => s.has(typeKey(r.vehicleTypeShown)); }
@@ -217,6 +220,8 @@ function vehicleTests(q, people, { typeKey = (x) => S(x) } = {}) {
   if (has('auth')) { const s = set('auth'); t.auth = (v) => s.has(v.auth); }
   if (has('vehicleType')) { const s = set('vehicleType', typeKey); t.vehicleType = (v) => s.has(v.typeKey); }
   if (q.hasVehicle === 'no') t.hasVehicle = (v) => !v.riders.length;
+  // A vehicle carries Media Go when the vehicle itself is marked or one of its riders is.
+  if (has('mediaGo')) { const s = set('mediaGo'); t.mediaGo = (v) => s.has(v.v?.mediaGo || (v.riders || []).some((r) => r.mediaGo) ? 'yes' : 'no'); }
   const personKeys = people.keys.filter((k) => PERSON_ONLY.includes(k));
   const fn = (v, skip) => {
     if (!Object.entries(t).every(([k, f]) => k === skip || f(v))) return false;

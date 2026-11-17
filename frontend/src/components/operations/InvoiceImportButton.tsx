@@ -6,7 +6,7 @@
 import { useRef, useState } from 'react';
 import api from '@/lib/api';
 import { useDialog } from '@/components/system/DialogProvider';
-import { Modal } from '@/components/hr/HRKit';
+import { Modal, SearchableSelect } from '@/components/hr/HRKit';
 import { FileUp, Loader2, CheckCircle2, AlertTriangle } from 'lucide-react';
 
 type Result = {
@@ -17,8 +17,12 @@ type Result = {
   checks?: {
     missingReports: { invoiceNumber: string; reportNumber: string; customerName: string; total: number | null }[];
     valueDiffs: { invoiceNumber: string; customerName: string; uploadedValue: number; reportsValue: number; difference: number }[];
-    nameMismatches: { invoiceNumber: string; reportNumber: string; uploadedCustomer: string; workflowCustomer: string }[];
+    nameMismatches: { invoiceNumber: string; reportNumber: string; uploadedCustomer: string; workflowCustomer: string; registerMatch?: string | null }[];
   };
+  /** Customers-page names, for choosing the corrected customer per row (preview only). */
+  customerNames?: string[];
+  /** Outcome of the chosen customer changes (apply only). */
+  customerChanges?: { done: number; failed: { reportNumber: string; reason: string }[] };
 };
 const LABEL: Record<string, string> = {
   documentNumber: 'رقم السند', invoiceNumber: 'رقم الفاتورة', netInvoice: 'صافي الفاتورة', tax: 'الضريبة',
@@ -38,13 +42,16 @@ export default function InvoiceImportButton({ ar, onDone }: { ar: boolean; onDon
   const [busy, setBusy] = useState(false);
   const [file, setFile] = useState<{ name: string; dataUrl: string } | null>(null);
   const [res, setRes] = useState<Result | null>(null);
+  // Chosen customer per report (customers-page name); empty means leave the transport order's customer as it is.
+  const [custPick, setCustPick] = useState<Record<string, string>>({});
 
   const send = async (apply: boolean, f = file) => {
     if (!f) return;
     setBusy(true);
     try {
       // Run in the background and poll: a big file takes longer than any request may stay open (proxy and browser timeouts).
-      const { jobId } = await api.post<{ jobId: string }>('/api/workflows/import-invoices', { dataUrl: f.dataUrl, apply, fileName: f.name, background: true }, { timeoutMs: 120000 });
+      const customerChanges = apply ? Object.entries(custPick).filter(([, v]) => v).map(([reportNumber, customerName]) => ({ reportNumber, customerName })) : undefined;
+      const { jobId } = await api.post<{ jobId: string }>('/api/workflows/import-invoices', { dataUrl: f.dataUrl, apply, fileName: f.name, background: true, customerChanges }, { timeoutMs: 120000 });
       let r: Result | null = null;
       for (let i = 0; i < 900 && !r; i += 1) {
         await new Promise((ok) => setTimeout(ok, 2000));
@@ -55,6 +62,9 @@ export default function InvoiceImportButton({ ar, onDone }: { ar: boolean; onDon
       }
       if (!r) throw new Error(t('استغرقت المعالجة أكثر من 30 دقيقة — أعد المحاولة', 'Processing took over 30 minutes — try again'));
       setRes(r);
+      // Preview: a file name that is exactly a customers-page name is preselected; others wait for a choice.
+      if (!apply) setCustPick(Object.fromEntries((r.checks?.nameMismatches || []).filter((m) => m.registerMatch).map((m) => [m.reportNumber, m.registerMatch as string])));
+      if (apply && r.customerChanges?.failed?.length) notify(t(`لم يتغيّر العميل في ${r.customerChanges.failed.length} أمر نقل — انظر القائمة`, `${r.customerChanges.failed.length} customer changes failed`), 'error');
       if (apply) { notify(t(`كُتبت بياناتُ ${r.updated} كشفًا`, `${r.updated} reports updated`), 'success'); onDone(); }
     } catch (e: any) { notify(e?.message || t('تعذّر الرفع', 'Upload failed'), 'error'); }
     setBusy(false);
@@ -169,15 +179,47 @@ export default function InvoiceImportButton({ ar, onDone }: { ar: boolean; onDon
                 {c && !!c.nameMismatches.length && (
                   <Block tone="border-sky-200 bg-sky-50 text-sky-900" icon={<AlertTriangle className="h-4 w-4" />}
                     title={t(`اسم العميل مختلف (${c.nameMismatches.length})`, `Customer name differs (${c.nameMismatches.length})`)}
-                    hint={t('للتنبيه فقط: يبقى اسمُ العميل في سير العمل كما هو ولا يتغيّر بالرفع، وتُكتب بيانات الفاتورة فقط.', 'Warning only: the workflow customer stays as it is; only the invoice data is written.')}>
+                    hint={res.preview
+                      ? t('لتغيير عميل أمر النقل اختر اسمه من صفحة العملاء في العمود الأخير. إن كان الاسمُ في الملفّ مطابقًا تمامًا لعميلٍ مسجّل اختير تلقائيًّا؛ وإن لم يُطابق تُرك فارغًا ولا يتغيّر العميل حتى تختاره. «بلا تغيير» يُبقي العميل كما هو.', 'Pick the customers-page name to change a transport order’s customer. An exact match is preselected; otherwise nothing changes until you pick.')
+                      : t('العميل يتغيّر فقط حيث اخترتَ اسمًا من صفحة العملاء.', 'Customers changed only where a name was picked.')}>
+                    {res.preview && (
+                      <div className="mb-2 flex flex-wrap items-center gap-2 text-[12px]">
+                        <span className="font-semibold">{t(`سيتغيّر العميل في ${Object.values(custPick).filter(Boolean).length} أمر نقل`, `${Object.values(custPick).filter(Boolean).length} customers will change`)}</span>
+                        <button type="button" onClick={() => setCustPick({})} className="rounded-md border border-sky-300 bg-white px-2 py-0.5 font-semibold hover:bg-sky-100">{t('بلا تغيير للكلّ', 'Change none')}</button>
+                        <button type="button" onClick={() => setCustPick(Object.fromEntries(c.nameMismatches.filter((m) => m.registerMatch).map((m) => [m.reportNumber, m.registerMatch as string])))} className="rounded-md border border-sky-300 bg-white px-2 py-0.5 font-semibold hover:bg-sky-100">{t('المطابق تمامًا فقط', 'Exact matches only')}</button>
+                      </div>
+                    )}
                     <table className="w-full text-[12.5px] text-slate-800">
-                      <thead className="bg-sky-100/60 text-sky-900"><tr><th className={th}>{t('رقم الكشف', 'Report')}</th><th className={th}>{t('رقم الفاتورة', 'Invoice')}</th><th className={th}>{t('العميل في الملفّ', 'Customer in file')}</th><th className={th}>{t('العميل في سير العمل (يبقى)', 'Customer in workflow (kept)')}</th></tr></thead>
+                      <thead className="bg-sky-100/60 text-sky-900"><tr>
+                        <th className={th}>{t('رقم الكشف', 'Report')}</th><th className={th}>{t('رقم الفاتورة', 'Invoice')}</th>
+                        <th className={th}>{t('العميل في الملفّ', 'Customer in file')}</th><th className={th}>{t('العميل في سير العمل الآن', 'Customer in workflow now')}</th>
+                        {res.preview && <th className={th}>{t('العميل الجديد (من صفحة العملاء)', 'New customer (customers page)')}</th>}
+                      </tr></thead>
                       <tbody className="divide-y divide-slate-100">
-                        {c.nameMismatches.slice(0, 200).map((m, i) => (
-                          <tr key={i}><td className={`${td} font-bold tabular-nums`}>{m.reportNumber}</td><td className={td}>{m.invoiceNumber}</td><td className={td}>{m.uploadedCustomer}</td><td className={`${td} font-bold`}>{m.workflowCustomer}</td></tr>
+                        {c.nameMismatches.slice(0, 500).map((m, i) => (
+                          <tr key={i}>
+                            <td className={`${td} font-bold tabular-nums`}>{m.reportNumber}</td><td className={td}>{m.invoiceNumber}</td>
+                            <td className={td}>{m.uploadedCustomer}{m.registerMatch ? <span className="ms-1 rounded bg-emerald-100 px-1 text-[10.5px] font-bold text-emerald-800">{t('مسجّل', 'in register')}</span> : <span className="ms-1 rounded bg-amber-100 px-1 text-[10.5px] font-bold text-amber-800">{t('غير مسجّل', 'not in register')}</span>}</td>
+                            <td className={`${td} font-bold`}>{m.workflowCustomer}</td>
+                            {res.preview && (
+                              <td className={`${td} min-w-[16rem]`}>
+                                <SearchableSelect value={custPick[m.reportNumber] || ''} searchAfter={0}
+                                  onChange={(v) => setCustPick((p) => ({ ...p, [m.reportNumber]: v }))}
+                                  options={[{ value: '', label: t('— بلا تغيير —', '— no change —') }, ...(res.customerNames || []).map((n) => ({ value: n, label: n }))]}
+                                  placeholder={t('— بلا تغيير —', '— no change —')} searchPlaceholder={t('ابحث في صفحة العملاء…', 'Search customers…')} />
+                              </td>
+                            )}
+                          </tr>
                         ))}
                       </tbody>
                     </table>
+                  </Block>
+                )}
+
+                {!res.preview && !!res.customerChanges?.failed?.length && (
+                  <Block tone="border-red-200 bg-red-50 text-red-900" icon={<AlertTriangle className="h-4 w-4" />}
+                    title={t(`لم يتغيّر العميل (${res.customerChanges.failed.length})`, `Customer not changed (${res.customerChanges.failed.length})`)}>
+                    <ul className="space-y-0.5 text-[12.5px]">{res.customerChanges.failed.slice(0, 200).map((f, i) => <li key={i}><b className="tabular-nums">{f.reportNumber}</b> — {f.reason}</li>)}</ul>
                   </Block>
                 )}
 
@@ -211,13 +253,13 @@ export default function InvoiceImportButton({ ar, onDone }: { ar: boolean; onDon
                 {res.preview ? (
                   <div className="flex items-center justify-end gap-2 border-t border-slate-200 pt-3">
                     <button type="button" onClick={() => setOpen(false)} className="rounded-lg px-4 py-2 font-semibold text-slate-600 hover:bg-slate-100">{t('إلغاء', 'Cancel')}</button>
-                    <button type="button" onClick={() => send(true)} disabled={busy || !res.toUpdate}
+                    <button type="button" onClick={() => send(true)} disabled={busy || (!res.toUpdate && !Object.values(custPick).some(Boolean))}
                       className="inline-flex items-center gap-1.5 rounded-lg bg-emerald-600 px-5 py-2 text-[13px] font-bold text-white disabled:opacity-40">
-                      {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <CheckCircle2 className="h-4 w-4" />}{t(`تطبيق على ${res.toUpdate} كشفًا`, `Apply to ${res.toUpdate} reports`)}
+                      {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <CheckCircle2 className="h-4 w-4" />}{t(`تطبيق على ${res.toUpdate} كشفًا`, `Apply to ${res.toUpdate} reports`)}{Object.values(custPick).some(Boolean) ? t(` + تغيير ${Object.values(custPick).filter(Boolean).length} عميل`, ` + ${Object.values(custPick).filter(Boolean).length} customers`) : ''}
                     </button>
                   </div>
                 ) : (
-                  <p className="flex items-center gap-1.5 font-semibold text-emerald-700"><CheckCircle2 className="h-4 w-4" />{t('تمّ التطبيق — والفواتير الضريبيّة وصلت التحصيل.', 'Applied — tax invoices are in Collections.')}</p>
+                  <p className="flex items-center gap-1.5 font-semibold text-emerald-700"><CheckCircle2 className="h-4 w-4" />{t('تمّ التطبيق — والفواتير الضريبيّة وصلت التحصيل.', 'Applied — tax invoices are in Collections.')}{res.customerChanges?.done ? t(` وتغيّر العميل في ${res.customerChanges.done} أمر نقل.`, ` ${res.customerChanges.done} customers changed.`) : ''}</p>
                 )}
               </div>
             );

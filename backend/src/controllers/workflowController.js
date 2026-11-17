@@ -2792,6 +2792,49 @@ exports.invoiceCheckList = async (req, res) => {
  * Each row passes the single-edit rules (permission, lock by someone else, payment type, tax derivation); a tax invoice number reaches collections at once (syncOpsInvoices).
  * apply: false returns a preview only: what will and will not be written and why.
  */
+/**
+ * Customer-name differences in an invoice file: each row's file name is matched to the customers register (the
+ * customers page). Only a register name may replace a transport order's customer, so the screen offers a register
+ * list per row, preselected when the file name is exactly a register name.
+ */
+async function annotateNameMismatches(checks) {
+  const list = checks?.nameMismatches || [];
+  if (!list.length) return { names: [] };
+  const ShipmentOrderCustomer = require('../models/ShipmentOrderCustomer');
+  const names = (await ShipmentOrderCustomer.find({ isActive: { $ne: false } }).select('name').sort({ name: 1 }).lean())
+    .map((c) => String(c.name || '').trim()).filter(Boolean);
+  const set = new Set(names);
+  for (const m of list) m.registerMatch = set.has(String(m.uploadedCustomer || '').trim()) ? String(m.uploadedCustomer).trim() : null;
+  return { names };
+}
+
+/**
+ * Applies chosen customer changes `[{ reportNumber, customerName }]` through the same path as editing the customer
+ * cell in the table (updateWorkflow): permissions, lock, shipment link and ledger sync all behave as a hand edit.
+ * A name that is not exactly a register name is refused.
+ */
+async function applyCustomerChanges(req, changes) {
+  const out = { done: 0, failed: [] };
+  if (!Array.isArray(changes) || !changes.length) return out;
+  const ShipmentOrderCustomer = require('../models/ShipmentOrderCustomer');
+  const names = new Set((await ShipmentOrderCustomer.find({ isActive: { $ne: false } }).select('name').lean()).map((c) => String(c.name || '').trim()));
+  for (const ch of changes.slice(0, 2000)) {
+    const reportNumber = String(ch?.reportNumber || '').trim();
+    const name = String(ch?.customerName || '').trim();
+    if (!reportNumber || !name) continue;
+    if (!names.has(name)) { out.failed.push({ reportNumber, reason: 'الاسم ليس من صفحة العملاء' }); continue; }
+    const wf = await OperationsWorkflow.findOne({ reportNumber }).select('_id username').lean(); // eslint-disable-line no-await-in-loop
+    if (!wf) { out.failed.push({ reportNumber, reason: 'أمر النقل غير موجود' }); continue; }
+    if (String(wf.username || '').trim() === name) { out.done += 1; continue; }
+    const rec = { code: 200, body: null };
+    const fake = { status(c) { rec.code = c; return fake; }, json(b) { rec.body = b; return fake; } };
+    await exports.updateWorkflow({ user: req.user, ip: req.ip, params: { id: String(wf._id) }, body: { username: name } }, fake); // eslint-disable-line no-await-in-loop
+    if (rec.code < 400) out.done += 1;
+    else out.failed.push({ reportNumber, reason: rec.body?.message || 'تعذّر التغيير' });
+  }
+  return out;
+}
+
 exports.importInvoices = async (req, res) => {
   try {
     const XLSX = require('xlsx');
@@ -2949,7 +2992,8 @@ exports.importInvoices = async (req, res) => {
     if (!req.body.apply) {
       const overlay = new Map(plan.map((p) => [p.reportNumber, p.patch]));
       const checks = await invChecks.checkLines(lines, overlay);
-      return res.json({ preview: true, ...summary, checks });
+      const { names: customerNames } = await annotateNameMismatches(checks);
+      return res.json({ preview: true, ...summary, checks, customerNames });
     }
 
     // Writing
@@ -2998,7 +3042,8 @@ exports.importInvoices = async (req, res) => {
       user: req.user, action: 'import_invoices', entity: 'OperationsWorkflow',
       details: `رفع بيانات فواتير: ${updated} أمر نقل من ${byReport.size} في الملفّ (${notFound.length} غير موجود، ${skipped.length} لم يُكتب)`, ip: req.ip,
     });
-    return res.json({ preview: false, updated, savedLines, ...summary, checks });
+    const customerChanges = await applyCustomerChanges(req, req.body.customerChanges);
+    return res.json({ preview: false, updated, savedLines, ...summary, checks, customerChanges });
   } catch (e) {
     console.error('importInvoices:', e);
     res.status(500).json({ message: e.message || 'تعذّر رفع بيانات الفواتير' });

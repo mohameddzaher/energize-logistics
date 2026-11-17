@@ -2804,7 +2804,15 @@ async function annotateNameMismatches(checks) {
   const names = (await ShipmentOrderCustomer.find({ isActive: { $ne: false } }).select('name').sort({ name: 1 }).lean())
     .map((c) => String(c.name || '').trim()).filter(Boolean);
   const set = new Set(names);
-  for (const m of list) m.registerMatch = set.has(String(m.uploadedCustomer || '').trim()) ? String(m.uploadedCustomer).trim() : null;
+  // Spelling-folded match (ة/ه, أ/ا, ى/ي, diacritics, spaces): offered as a suggestion, never chosen by itself.
+  const fold = (x) => String(x || '').replace(/[\u064B-\u0652\u0640]/g, '').replace(/[أإآ]/g, 'ا').replace(/ة/g, 'ه').replace(/ى/g, 'ي').replace(/\s+/g, '').toLowerCase();
+  const byFold = new Map();
+  for (const n of names) { const k = fold(n); if (!byFold.has(k)) byFold.set(k, n); }
+  for (const m of list) {
+    const up = String(m.uploadedCustomer || '').trim();
+    m.registerMatch = set.has(up) ? up : null;
+    m.registerSuggest = m.registerMatch ? null : (byFold.get(fold(up)) || null);
+  }
   return { names };
 }
 
@@ -2837,6 +2845,12 @@ async function applyCustomerChanges(req, changes) {
 
 exports.importInvoices = async (req, res) => {
   try {
+    // Customers only: apply the chosen customer corrections without writing any invoice data from the file.
+    if (req.body.apply === true && req.body.customersOnly === true) {
+      const customerChanges = await applyCustomerChanges(req, req.body.customerChanges);
+      try { emitToAll('workflow:bulkImported', { customersOnly: true, updated: customerChanges.done }); } catch (_) { /* */ }
+      return res.json({ preview: false, customersOnly: true, updated: 0, fileRows: 0, reports: 0, toUpdate: 0, unchanged: 0, notFound: [], skipped: [], badRows: [], sample: [], customerChanges });
+    }
     const XLSX = require('xlsx');
     const dataUrl = String(req.body.dataUrl || '');
     const m = dataUrl.match(/^data:[^;]*;base64,(.*)$/);

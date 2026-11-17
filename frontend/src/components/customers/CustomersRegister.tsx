@@ -227,7 +227,8 @@ export default function CustomersRegister({ basePath }: { basePath: string }) {
         subtitle={ar
           ? `${(summary?.total || 0).toLocaleString('en-US')} عميل — الأرقامُ تُضغَط، والصفُّ يُفتح على ملفّ العميل`
           : `${(summary?.total || 0).toLocaleString('en-US')} customers — cards filter, a row opens the full file`}>
-        {/* Export sits in the header beside the page's main action, as on the other registers. */}
+        {/* Columns and export sit in the header beside the page's main action, as on the other registers. */}
+        <ColumnChooser columns={chooserCols} visible={visible} onChange={setVisible} ar={ar} />
         <ExportMenu fileName="customers" lang={ar ? 'ar' : 'en'}
           options={[
             { key: 'page', label: scope.page, sheets: [{ name: sheetName, rows: pageRows, columns: exportCols }] },
@@ -294,7 +295,6 @@ export default function CustomersRegister({ basePath }: { basePath: string }) {
               </button>
             )}
             <ClearColumnFilters count={cf.count} onClear={cf.clear} ar={ar} />
-            <ColumnChooser columns={chooserCols} visible={visible} onChange={setVisible} ar={ar} />
           </div>
         </div>
 

@@ -2632,6 +2632,25 @@
       ],
       "wildcard": false
     },
+    "/system/sales/shipment-request": {
+      "apis": [
+        "/api/auth/me/prefs",
+        "/api/fleet/drivers",
+        "/api/fleet/vehicles",
+        "/api/lookups/types",
+        "/api/shipment-orders/customers",
+        "/api/shipment-orders/drivers",
+        "/api/shipment-orders/fields",
+        "/api/shipment-orders/sales-reps",
+        "/api/shipment-orders/sourcing-reps",
+        "/api/shipment-orders/suppliers",
+        "/api/shipment-orders/vehicles",
+        "/api/shipment-requests",
+        "/api/shipment-requests/approvers",
+        "/api/shipment-requests/team-members"
+      ],
+      "wildcard": false
+    },
     "/system/sales/customers": {
       "apis": [
         "/api/customer-hub/presence",
@@ -2831,25 +2850,6 @@
         "/api/performance/evaluations/form",
         "/api/performance/team",
         "/api/performance/templates"
-      ],
-      "wildcard": false
-    },
-    "/system/sales/shipment-request": {
-      "apis": [
-        "/api/auth/me/prefs",
-        "/api/fleet/drivers",
-        "/api/fleet/vehicles",
-        "/api/lookups/types",
-        "/api/shipment-orders/customers",
-        "/api/shipment-orders/drivers",
-        "/api/shipment-orders/fields",
-        "/api/shipment-orders/sales-reps",
-        "/api/shipment-orders/sourcing-reps",
-        "/api/shipment-orders/suppliers",
-        "/api/shipment-orders/vehicles",
-        "/api/shipment-requests",
-        "/api/shipment-requests/approvers",
-        "/api/shipment-requests/team-members"
       ],
       "wildcard": false
     },

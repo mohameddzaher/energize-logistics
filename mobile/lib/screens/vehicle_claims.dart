@@ -25,7 +25,7 @@ import 'vehicle_registry.dart' show VehicleRegistryDetailScreen;
 
 const _editRoles = ['super_admin', 'admin', 'it_manager', 'it_team_leader', 'it_specialist', 'business_consultant', 'vehicles_manager', 'vehicles_team_leader', 'vehicles_staff',
   'hr_manager', 'hr_team_leader', 'hr_specialist', 'cfo', 'accounting_manager', 'accounting_team_leader', 'accountant'];
-const _claimEditRoles = ['super_admin', 'admin', 'it_manager', 'it_team_leader', 'it_specialist', 'business_consultant', 'cfo', 'accounting_manager', 'accounting_team_leader', 'vehicles_manager', 'vehicles_team_leader'];
+const _claimEditRoles = ['super_admin', 'admin', 'it_manager', 'it_team_leader', 'it_specialist', 'business_consultant', 'cfo', 'accounting_manager', 'accounting_team_leader', 'accountant', 'vehicles_manager', 'vehicles_team_leader'];
 
 bool _canEditVehicles(AuthProvider a) =>
     a.user != null && (_editRoles.contains(a.role) || a.canEditSection('Vehicles'));

@@ -15,8 +15,8 @@ const authorize = require('../middleware/rbac');
 const EDIT = ['super_admin', 'admin', 'it_manager', 'it_team_leader', 'it_specialist', 'business_consultant', 'vehicles_manager', 'vehicles_team_leader', 'vehicles_staff',
   'hr_manager', 'hr_team_leader', 'hr_specialist', 'cfo', 'accounting_manager', 'accounting_team_leader', 'accountant'];
 const ADMIN = ['super_admin', 'admin', 'it_manager', 'it_team_leader', 'it_specialist', 'business_consultant', 'vehicles_manager', 'vehicles_team_leader', 'hr_manager', 'hr_team_leader'];
-// Editing, closing and deleting accidents: management, finance and the vehicles manager (the owner's call). `strict`: neither a section grant nor a page grant opens it, the list is everything. Recording a new accident and attaching its papers stay with the vehicles team.
-const CLAIM_EDIT = ['super_admin', 'admin', 'it_manager', 'it_team_leader', 'it_specialist', 'business_consultant', 'cfo', 'accounting_manager', 'accounting_team_leader', 'vehicles_manager', 'vehicles_team_leader'];
+// Editing, closing and deleting accidents: management, finance (accountant included) and the vehicles manager. `strict`: neither a section grant nor a page grant opens it, the list is everything. Recording a new accident and attaching its papers stay with the vehicles team.
+const CLAIM_EDIT = ['super_admin', 'admin', 'it_manager', 'it_team_leader', 'it_specialist', 'business_consultant', 'cfo', 'accounting_manager', 'accounting_team_leader', 'accountant', 'vehicles_manager', 'vehicles_team_leader'];
 
 router.get('/dashboard', c.dashboard);
 // Overview: a card per column, each linking to a filtered page.

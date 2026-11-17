@@ -396,11 +396,11 @@ export const canAdminVehicles = (user: any): boolean =>
   !!user && (ADMIN_ROLES.includes(user.role) || (user.role !== 'client' && canEditSection(user?.permissions, 'Vehicles')));
 
 /**
- * Editing and deleting accidents is limited to management, the finance manager and the accounts manager. The server guards it with authorize.strict, so a section grant does not open it.
+ * Editing and deleting accidents is limited to management, finance (CFO, accounts manager, team leader, accountant) and the vehicles manager. The server guards it with authorize.strict, so a section grant does not open it.
  * Recording a new accident and attaching its papers stay with section editors (canEditVehicles).
  */
 // Mirrors CLAIM_EDIT in backend/src/routes/vehicleRegistry.js, vehicles manager included.
-export const CLAIM_EDIT_ROLES = ['super_admin', 'admin', 'it_manager', 'it_team_leader', 'it_specialist', 'business_consultant', 'cfo', 'accounting_manager', 'accounting_team_leader', 'vehicles_manager', 'vehicles_team_leader'];
+export const CLAIM_EDIT_ROLES = ['super_admin', 'admin', 'it_manager', 'it_team_leader', 'it_specialist', 'business_consultant', 'cfo', 'accounting_manager', 'accounting_team_leader', 'accountant', 'vehicles_manager', 'vehicles_team_leader'];
 export const canEditClaims = (user: any): boolean => !!user && CLAIM_EDIT_ROLES.includes(user.role);
 
 // Accidents: create, edit, delete.

@@ -74,6 +74,7 @@ export default function ShipmentRequestsBoard({ mode }: { mode: BoardMode }) {
   // Sourcing: who may record (anyone on the working board) and who corrects anyone's entry (data team).
   const [canSource, setCanSource] = useState(false);
   const [sourcingAll, setSourcingAll] = useState(false);
+  const [fleetSourcingLead, setFleetSourcingLead] = useState(false);
   // The operations manager (and price editors) set this customer's approved range on the route from here; it is written to the routes page.
   const [canEditRange, setCanEditRange] = useState(false);
   const [rangeFor, setRangeFor] = useState<ShipmentRequest | null>(null);
@@ -158,10 +159,10 @@ export default function ShipmentRequestsBoard({ mode }: { mode: BoardMode }) {
     if (to) p.set('to', to);
     p.set('limit', '1000');
     try {
-      const d = await api.get<{ requests: ShipmentRequest[]; byStatus: Record<string, number>; openTrucks: number; branches?: string[]; branchList?: { name: string; open: number }[]; can?: { lead?: boolean; source?: boolean; sourcingAll?: boolean; editRange?: boolean } }>(`/api/shipment-requests?${p}`);
+      const d = await api.get<{ requests: ShipmentRequest[]; byStatus: Record<string, number>; openTrucks: number; branches?: string[]; branchList?: { name: string; open: number }[]; can?: { lead?: boolean; source?: boolean; sourcingAll?: boolean; fleetSourcingLead?: boolean; editRange?: boolean } }>(`/api/shipment-requests?${p}`);
       if (!guard.isCurrent(my)) return;
       setRows(d.requests || []); setByStatus(d.byStatus || {}); setOpenTrucks(d.openTrucks || 0); setError('');
-      setBranches(d.branches || []); setBranchList(d.branchList || (d.branches || []).map((name) => ({ name, open: 0 }))); setCanLead(!!d.can?.lead); setCanSource(!!d.can?.source); setSourcingAll(!!d.can?.sourcingAll); setCanEditRange(!!d.can?.editRange);
+      setBranches(d.branches || []); setBranchList(d.branchList || (d.branches || []).map((name) => ({ name, open: 0 }))); setCanLead(!!d.can?.lead); setCanSource(!!d.can?.source); setSourcingAll(!!d.can?.sourcingAll); setFleetSourcingLead(!!d.can?.fleetSourcingLead); setCanEditRange(!!d.can?.editRange);
     } catch (e: any) { if (guard.isCurrent(my)) setError(e?.message || t('تعذّر التحميل', 'Could not load')); }
     if (guard.isCurrent(my)) setLoading(false);
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -715,7 +716,7 @@ export default function ShipmentRequestsBoard({ mode }: { mode: BoardMode }) {
       )}
       {placing && <PlaceModal req={placing} onClose={() => setPlacing(null)} onDone={() => { setPlacing(null); load(); }} />}
       {fleetPlacing && <FleetPlaceModal req={fleetPlacing} onClose={() => setFleetPlacing(null)} onDone={() => { setFleetPlacing(null); load(); }} />}
-      {sourcingOf && <SourcingModal req={sourcingOf} team={fleet ? 'fleet' : 'vendors'} canAdd={work && canSource} canAll={sourcingAll} onClose={() => setSourcingOf(null)}
+      {sourcingOf && <SourcingModal req={sourcingOf} team={fleet ? 'fleet' : 'vendors'} canAdd={work && canSource} canAll={sourcingAll} canFleet={fleetSourcingLead} onClose={() => setSourcingOf(null)}
         onChanged={(nr) => { setSourcingOf(nr); setRows((p) => p.map((x) => (x._id === nr._id ? nr : x))); }} />}
       {rejecting && <RejectModal req={rejecting} onClose={() => setRejecting(null)} onDone={() => { setRejecting(null); load(); }} />}
       {editing && (

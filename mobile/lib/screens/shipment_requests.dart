@@ -1184,7 +1184,7 @@ extension on _ShipmentRequestsScreenState {
     if (!_work && x.$1 == 0) return const SizedBox.shrink();
     return InkWell(
       onTap: () async {
-        await showSourcingSheet(context, r, team: widget.mode == 'fleet' ? 'fleet' : 'vendors', canAdd: _work && _can['source'] == true, canLead: _can['sourcingAll'] == true);
+        await showSourcingSheet(context, r, team: widget.mode == 'fleet' ? 'fleet' : 'vendors', canAdd: _work && _can['source'] == true, canLead: _can['sourcingAll'] == true, canFleet: _can['fleetSourcingLead'] == true);
         _load();
       },
       // Filled pill: green for trucks sourced, red for those still missing; all green once complete.
@@ -1438,7 +1438,7 @@ class _ShipmentRequestDetailScreenState extends State<ShipmentRequestDetailScree
                           for (final e in List<Map>.from(r['sourcing'] ?? const []))
                             Text('${e['byName']}: ${e['count']} · ${soFmtDT(e['at'])}${'${e['helperName'] ?? ''}'.isEmpty ? '' : ' · ${tr('بمساعدة', 'helped by')} ${e['helperName']}'}', style: const TextStyle(fontSize: 12.5)),
                           Align(alignment: AlignmentDirectional.centerStart, child: TextButton.icon(
-                            onPressed: () async { await showSourcingSheet(context, r, team: widget.mode == 'fleet' ? 'fleet' : 'vendors', canAdd: work && open && _can['source'] == true, canLead: _can['sourcingAll'] == true); _load(); },
+                            onPressed: () async { await showSourcingSheet(context, r, team: widget.mode == 'fleet' ? 'fleet' : 'vendors', canAdd: work && open && _can['source'] == true, canLead: _can['sourcingAll'] == true, canFleet: _can['fleetSourcingLead'] == true); _load(); },
                             icon: const Icon(Icons.travel_explore, size: 18),
                             label: Text(work && open ? tr('تسجيل / تعديل التحصيل', 'Record / edit') : tr('التفاصيل', 'Details')),
                           )),
@@ -2258,13 +2258,13 @@ class _FleetPlaceScreenState extends State<FleetPlaceScreen> {
 // ── «تحصيل السيارات» sheet ──────────────────────────────────────────────────
 
 /// Who reported finding how many trucks, when and with whose help; members add theirs, authors (and leads) edit or delete.
-Future<void> showSourcingSheet(BuildContext context, Map<String, dynamic> request, {required String team, required bool canAdd, required bool canLead}) =>
+Future<void> showSourcingSheet(BuildContext context, Map<String, dynamic> request, {required String team, required bool canAdd, required bool canLead, bool canFleet = false}) =>
     showModalBottomSheet<void>(
       context: context,
       isScrollControlled: true,
       backgroundColor: Colors.white,
       shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
-      builder: (_) => _SourcingSheet(request: request, team: team, canAdd: canAdd, canLead: canLead),
+      builder: (_) => _SourcingSheet(request: request, team: team, canAdd: canAdd, canLead: canLead, canFleet: canFleet),
     );
 
 class _SourcingSheet extends StatefulWidget {
@@ -2272,7 +2272,9 @@ class _SourcingSheet extends StatefulWidget {
   final String team;
   final bool canAdd;
   final bool canLead;
-  const _SourcingSheet({required this.request, required this.team, required this.canAdd, required this.canLead});
+  /// Fleet manager / team leader: corrects the fleet team's entries (recorded as «النقل الثقيل»).
+  final bool canFleet;
+  const _SourcingSheet({required this.request, required this.team, required this.canAdd, required this.canLead, this.canFleet = false});
   @override
   State<_SourcingSheet> createState() => _SourcingSheetState();
 }
@@ -2289,7 +2291,8 @@ class _SourcingSheetState extends State<_SourcingSheet> {
     if (widget.canAdd) srTeamMembers('helpers').then((v) { if (mounted) setState(() => _members = v); }).catchError((_) {});
   }
 
-  String get _me => '${context.read<AuthProvider>().user?['_id'] ?? ''}';
+  // The account id arrives as `_id` or `id` depending on the endpoint; reading one only hid edit/delete on one's own entries.
+  String get _me => '${context.read<AuthProvider>().user?['_id'] ?? context.read<AuthProvider>().user?['id'] ?? ''}';
 
   Future<void> _edit([Map? e]) async {
     final count = TextEditingController(text: e == null ? '' : '${e['count']}');
@@ -2365,7 +2368,7 @@ class _SourcingSheetState extends State<_SourcingSheet> {
               leading: CircleAvatar(radius: 15, backgroundColor: T.navy.withValues(alpha: 0.1), child: Text('${e['count']}', style: const TextStyle(fontWeight: FontWeight.w900, color: T.navy))),
               title: Text('${e['byName'] ?? ''}', style: const TextStyle(fontWeight: FontWeight.w700)),
               subtitle: Text([soFmtDT(e['at']), if ('${e['helperName'] ?? ''}'.isNotEmpty) '${tr('بمساعدة', 'helped by')} ${e['helperName']}', e['note']].where((v) => '${v ?? ''}'.isNotEmpty).join(' · ')),
-              trailing: ('${e['by']}' == _me || widget.canLead)
+              trailing: ('${e['by']}' == _me || widget.canLead || (widget.canFleet && e['team'] == 'fleet'))
                   ? Row(mainAxisSize: MainAxisSize.min, children: [
                       IconButton(icon: const Icon(Icons.edit_outlined, size: 18), onPressed: _busy ? null : () => _edit(e)),
                       IconButton(icon: const Icon(Icons.delete_outline, size: 18, color: T.danger), onPressed: _busy ? null : () => _call(() => Api.instance.delete('/api/shipment-requests/${_r['_id']}/sourcing/${e['_id']}${widget.team == 'fleet' ? '?team=fleet' : ''}'))),

@@ -22,7 +22,7 @@ const SO_TEAM = ['shipment_orders_manager', 'shipment_orders_team_leader', 'ship
 /** Who writes the sales half (create, amend, resend, withdraw). */
 const ASKERS = [...TOP_ROLES, ...DATA_ROLES, ...PV.SALES_ROLES, ...SO_TEAM];
 /** Who places or rejects (the vendors half). */
-// The follow-up team (operations) creates the transport orders for their branches, so it works the board like the vendors team (owner, 2026-11-17); its list stays scoped to its branches (branchScoped).
+// The follow-up team (operations) creates the transport orders for their branches, so it works the board like the vendors team; its list stays scoped to its branches (branchScoped).
 const PLACERS = [...TOP_ROLES, ...DATA_ROLES, ...PV.VENDOR_ROLES, ...SO_TEAM, 'shipment_orders_followup'];
 /** Our own fleet works the same board: claims, records sourced trucks and completes on our trucks (fleet-place). */
 const FLEET_TEAM = PV.FLEET_ROLES;
@@ -37,6 +37,8 @@ const SOURCERS = READERS;
 const PRICE_EDITORS = [...TOP_ROLES, ...PV.VENDOR_LEADS, 'operations_manager', 'operations_team_leader', 'data_manager'];
 /** The data team (and top management) correct anyone's sourcing entry. */
 const SOURCING_ALL = [...TOP_ROLES, ...DATA_ROLES];
+/** The fleet records sourcing as one team («النقل الثقيل»), so its manager and team leader correct the team's entries. */
+const FLEET_SOURCING_LEADS = ['fleet_manager', 'fleet_team_leader'];
 /** Leads complete a request a colleague holds. */
 const LEADS = [...TOP_ROLES, ...PV.VENDOR_LEADS, 'operations_manager', 'operations_team_leader', 'shipment_orders_manager', 'shipment_orders_team_leader', 'fleet_manager', 'fleet_team_leader'];
 const CLAIM_MS = 60 * 60 * 1000;
@@ -59,7 +61,7 @@ const teamOf = (req) => {
   return asked === 'fleet' && isFleetPlacer(req.user) ? 'fleet' : 'vendors';
 };
 const shownName = (team, user) => (team === 'fleet' ? FLEET_NAME : fullName(user));
-const canOf = (u) => ({ ask: isAsker(u), place: isPlacer(u), work: isWorker(u), fleet: isFleetPlacer(u), lead: isLead(u), source: inList(SOURCERS, u) || followupOnVendors(u), sourcingAll: inList(SOURCING_ALL, u), editRange: inList(PRICE_EDITORS, u) });
+const canOf = (u) => ({ ask: isAsker(u), place: isPlacer(u), work: isWorker(u), fleet: isFleetPlacer(u), lead: isLead(u), source: inList(SOURCERS, u) || followupOnVendors(u), sourcingAll: inList(SOURCING_ALL, u), fleetSourcingLead: inList(FLEET_SOURCING_LEADS, u), editRange: inList(PRICE_EDITORS, u) });
 
 // ── Sales-manager approval ─────────────────────────────────────────────────
 /** Approved or from before the rule: what the working board (vendors, operations, fleet) may see. */
@@ -594,7 +596,8 @@ async function sourcingEntryFor(req, res) {
   if (!r) { res.status(404).json({ message: 'الطلب غير موجود' }); return {}; }
   const e = r.sourcing.id(req.params.entryId);
   if (!e) { res.status(404).json({ message: 'السجلّ غير موجود' }); return {}; }
-  if (String(e.by) !== String(req.user._id) && !inList(SOURCING_ALL, req.user)) {
+  const fleetLead = e.team === 'fleet' && inList(FLEET_SOURCING_LEADS, req.user);
+  if (String(e.by) !== String(req.user._id) && !inList(SOURCING_ALL, req.user) && !fleetLead) {
     res.status(403).json({ message: 'يعدّل التسجيلَ أو يحذفه مَن كتبه فقط' }); return {};
   }
   return { r, e };

@@ -16,7 +16,7 @@ const BASE_WRITE_ROLES = ['super_admin', 'admin', 'it_manager', 'it_team_leader'
 
 const FLEET_ROLES = ['fleet_manager', 'fleet_team_leader', 'operations_manager', 'operations_team_leader', 'operations_staff'];
 const SO_ROLES = ['shipment_orders_manager', 'shipment_orders_team_leader', 'shipment_orders_staff', 'shipment_orders_followup', 'operations_manager', 'operations_team_leader', 'operations_staff'];
-const VEHICLE_ROLES = ['vehicles_manager', 'vehicles_team_leader', 'vehicles_staff', 'hr_manager', 'hr_team_leader', 'cfo', 'accounting_manager', 'accounting_team_leader'];
+const VEHICLE_ROLES = ['vehicles_manager', 'vehicles_team_leader', 'vehicles_staff', 'hr_manager', 'hr_team_leader', 'cfo', 'accounting_manager', 'accounting_team_leader', 'accountant'];
 
 /**
  * Vehicles section lists: every field with fixed choices is now a list managed from the section settings instead of a free field typed in a thousand ways. See config/vehicleDefaults.js.

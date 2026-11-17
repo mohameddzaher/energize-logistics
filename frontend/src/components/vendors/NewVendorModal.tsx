@@ -1,6 +1,6 @@
 'use client';
 /**
- * «إضافة مورد»: a carrier company joins with its four required papers (each may be several files), optional extra
+ * Add vendor: a carrier company joins with its four required papers (each may be several files), optional extra
  * papers named by the user, the owner's mobile and the operator the team deals with. A heavy-transport freelancer is not added
  * here; he belongs to the freelancers page. The server enforces the same rules and puts the carrier in approval.
  */
@@ -34,7 +34,7 @@ export default function NewVendorModal({ ar, owners = [], initialName = '', alia
   const t = (a: string, e: string) => (ar ? a : e);
   const { notify } = useDialog();
   const [v, setV] = useState({ name: initialName, phone: '', ownerName: '', ownerPhone: '', operatorName: '', operatorPhone: '', followOwner: '' });
-  // «مسؤول المتابعة» is a person from operations, sales or the data team (or the fleet), picked from the same list as «بمساعدة».
+  // The follow-up owner is a person from operations, sales or the data team (or the fleet), picked from the same list as the helper.
   const [people, setPeople] = useState<{ value: string; label: string; roleAr?: string }[]>([]);
   useEffect(() => { api.get<{ options: any[] }>('/api/shipment-requests/team-members?team=helpers').then((d) => setPeople(d.options || [])).catch(() => {}); }, []);
   const [docs, setDocs] = useState<Record<string, PickedFile[]>>({});

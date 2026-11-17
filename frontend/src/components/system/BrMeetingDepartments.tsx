@@ -205,7 +205,7 @@ export default function BrMeetingDepartments({ meetingId, meta, L, notify, initi
 }
 
 /**
- * One task row with its actions; shared by the meeting cards and «البنود المسندة إليّ».
+ * One task row with its actions; shared by the meeting cards and the 'assigned to me' list.
  * `runner` (meeting runners) adds edit/share/move/delete/follow-up; an owner keeps done/postpone/update and can hand parts to the team.
  */
 export function TaskRow({ task, meta, L, meetingId, canEdit, runner = canEdit, canDelegate = false, onlyDept = '', dept, open, onToggle, onChanged, notify }: {

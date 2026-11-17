@@ -78,22 +78,14 @@ ${getFontCss()}
   * { box-sizing: border-box; margin: 0; padding: 0; }
   html, body { font-family: 'Tajawal', 'Noto Sans Arabic', system-ui, sans-serif; direction: rtl; color: #1a1a1a; background: transparent; -webkit-font-smoothing: antialiased; text-rendering: optimizeLegibility; }
   .sheet { width: 210mm; height: 297mm; position: relative; background: transparent; overflow: hidden; }
-  /* ── الورقةُ واحدة، فالمقاساتُ محسوبة ────────────────────────────────────
-     أمر النقل تُسلَّم بيدٍ وتُطبَع بالمئات، فصفحةٌ ثانيةٌ لها ثمنٌ يوميّ. وقد
-     زادها الإقرار، فضُغط المستندُ كلُّه بدل أن يُقسَم: الخطوطُ أصغرُ بقدرٍ
-     يبقى مقروءًا، والتذييلُ المطبوعُ في الورق يشغل نحوَ أربعةٍ وعشرين
-     مليمترًا لا ستّين — فالصندوقُ يمتدّ إلى ٤٤مم من أسفلَ بأمان.
-     وكلُّ تغييرٍ هنا يُعايَن بالعين: «overflow:hidden» يقصّ ما زاد صامتًا. */
-  /* ── والمحتوى أُنزل قليلًا والخطُّ كُبّر قليلًا ─────────────────────────────
-     كانت تبقى فجوةٌ بيضاء بين الختم وتذييلِ الورق المطبوع، والفراغُ المدفوعُ
-     ثمنُه ورقًا أولى به السطورُ نفسُها. فنزل أعلى الصندوق ثلاثةَ مليمترات
-     وارتفع أسفلُه ثلاثة، وكُبّرت الخطوطُ بنحو السُّدس — والقصُّ صامت
-     («overflow:hidden») فكلُّ تغييرٍ هنا يُعايَن بالعين على صفحةٍ مرسومة. */
+  /* One page, so sizes are budgeted: transport orders are printed by the hundred and a second page costs paper daily.
+     Fonts are reduced to what stays readable and the printed letterhead footer takes about 24 mm, so the box ends 44 mm
+     from the bottom. overflow:hidden clips silently, so check every change on a rendered page. */
+  /* Content box moved down 3 mm and up 3 mm from the bottom, fonts about a sixth larger, to use the white gap above the
+     printed footer. Clipping is silent (overflow:hidden), so check on a rendered page. */
   .content { position: absolute; top: 30mm; bottom: 34mm; left: 15mm; right: 15mm; display: flex; flex-direction: column; }
-  /* ── أرقامُ التواصل في الجهة المقابلة للّوجو ────────────────────────────────
-     اللوجو مطبوعٌ في الورق أعلى اليسار، وتبقى الجهةُ المقابلةُ بياضًا. والسائقُ
-     يحمل هذه الورقة وحدَها: فمن أراد أن يسأل عن حمولةٍ وجد الرقمَ في يده بدل
-     أن يبحث. وهي خارجَ صندوق المحتوى حتّى لا تزاحم سطورَه. */
+  /* Contact numbers opposite the printed logo (top right): the driver carries only this sheet, so the number is in hand.
+     Outside the content box so it does not crowd the lines. */
   .contacts { position: absolute; top: 14mm; right: 15mm; text-align: right; direction: ltr; }
   .contacts .k { font-size: 9px; font-weight: 800; color: #F58220; letter-spacing: 0.4px; margin-bottom: 1px; direction: rtl; text-align: right; }
   .contacts .n { font-size: 10.6px; font-weight: 700; color: #1a1a1a; line-height: 1.45; }
@@ -125,30 +117,22 @@ ${getFontCss()}
   .amount-words { font-size: 11.5px; font-weight: 700; }
   .fare-section .fare-row .value { font-size: 16.2px; font-weight: 800; color: #1a1a1a; text-align: center; }
   .fare-section .fare-row .en-label { font-size: 10.6px; font-weight: 700; color: #2a2a2a; text-align: left; direction: ltr; letter-spacing: 0.3px; }
-  /* ── الإقرارُ في ذيل الورقة نفسِها ────────────────────────────────────────
-     صفحةٌ ثانيةٌ لكلّ أمر نقل تعني ضعفَ الورق يوميًّا، فبقي في ورقته: عمودان
-     متجاوران (العربيُّ والأرديّ) بخطٍّ صغيرٍ يبقى مقروءًا، وخانتا توقيعٍ
-     وتاريخٍ تحتهما. */
+  /* The driver's pledge stays on the same page (a second page doubles paper): two side-by-side columns (Arabic and Urdu)
+     in small readable type, with signature and date boxes below. */
   .pledge { margin-top: 4px; border: 1px solid #e0d2c2; border-radius: 4px; padding: 4px 7px 5px; }
   .pledge .head { display: flex; justify-content: space-between; align-items: baseline; font-size: 10.6px; font-weight: 800; color: #F58220; margin-bottom: 2px; }
   .pledge .head .ur-t { font-family: 'Noto Naskh Arabic', 'Tajawal', sans-serif; font-weight: 600; }
   .pledge .cols { display: grid; grid-template-columns: 1fr 1fr; gap: 7px; }
   .pledge p { font-size: 7.9px; line-height: 1.45; color: #2a2a2a; text-align: justify; }
   .pledge .ur { font-family: 'Noto Naskh Arabic', 'Tajawal', sans-serif; font-size: 7.7px; line-height: 1.52; border-inline-start: 1px dashed #ececec; padding-inline-start: 7px; }
-  /* ── والاسمان يقفان معًا لا متقاطعَين ────────────────────────────────────
-     كانت الخانةُ تُكتب «التاريخ · تاریخ» في سطرٍ واحد، والفقرةُ الأردية إلى
-     يسارها — فيُقرأ الاسمُ العربيُّ عند العمود الأرديّ وبالعكس. فصارت كلُّ
-     لغةٍ تحت أختها في الخانة نفسِها: لا يسارَ ولا يمينَ يُفهَم منه شيء.
-     والسطرُ تحتهما يُترَك فارغًا — السائقُ يوقّع ويكتب التاريخ بيده. */
+  /* Each language's label sits under the other in the same box, so neither reads against the wrong column.
+     The line below is left blank: the driver signs and dates by hand. */
   .pledge .sign { display: grid; grid-template-columns: 1fr 1fr; gap: 26px; margin-top: 5px; padding-top: 5px; border-top: 1px dashed #ececec; }
   .pledge .sign .k { font-size: 9.6px; font-weight: 700; color: #2a2a2a; line-height: 1.35; }
   .pledge .sign .k .ur-k { display: block; font-family: 'Noto Naskh Arabic', 'Tajawal', sans-serif; font-size: 9px; font-weight: 400; color: #555; }
   .pledge .sign .l { margin-top: 12px; border-bottom: 1px solid #1a1a1a; }
   .fill { font-weight: 800; border-bottom: 1px solid #1a1a1a; padding: 0 7px; }
-  /* ── والختمُ يتبع ما قبله ──────────────────────────────────────────────
-     كان «margin-top:auto» يدفعه إلى قاع الصندوق، فتفتح بين الإقرار والختم
-     فجوةٌ بيضاء ويبقى تحته فراغٌ ثانٍ إلى حافّة الورقة. والمساحةُ المتروكة
-     أولى بها السطورُ نفسُها: فُردت أعلاه، والختمُ صار يجلس تحت الإقرار. */
+  /* The stamp follows the pledge directly (margin-top:auto pushed it to the bottom and left white gaps). */
   .stamp-wrap { padding-top: 3px; text-align: center; }
   .stamp-wrap img { width: 95px; height: auto; display: inline-block; }
 </style>

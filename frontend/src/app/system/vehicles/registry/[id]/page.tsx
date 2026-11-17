@@ -376,7 +376,7 @@ export default function VehicleRegistryDetail() {
           <Row label={t('الرقم التسلسلي', 'Serial')} mono>{val(v.serialNumber)}</Row>
           <Row label={t('القطاع', 'Sector')}>{val(v.sectorAr)}</Row>
           <Row label={t('الإدارة', 'Department')}>{val(v.departmentAr)}</Row>
-          {/* «خدمة Media Go»: the vehicle's box carries Media Go (yes/no); same field as the B2C vehicles page. */}
+          {/* Media Go: the vehicle's box carries Media Go (yes/no); same field as the B2C vehicles page. */}
           <Row label={t('خدمة Media Go', 'Media Go service')}>
             {canEdit ? (
               <label className="inline-flex items-center gap-2 cursor-pointer">

@@ -1,5 +1,5 @@
 'use client';
-// The carriers' trucks: the same register as Shipment Orders «الموردون والمركبات», opened on the trucks.
+// The carriers' trucks: the same register as Shipment Orders' vendors-and-vehicles page, opened on the trucks.
 import { useLanguage } from '@/context/LanguageContext';
 import FleetRegister from '@/components/shipment-orders/FleetRegister';
 

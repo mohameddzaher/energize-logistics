@@ -1,9 +1,9 @@
 /**
- * A shipment order carried by our own fleet (owner, 2026-11-10).
- * Shipment orders (3PL) treats the fleet as a supplier: when the order's supplier is our company («تنشيط»), the same
- * load appears in «إدارة الأسطول» as a linked FleetShipment (same transport order number, `shipmentOrder` ref), so the
+ * A shipment order carried by our own fleet.
+ * Shipment orders (3PL) treats the fleet as a supplier: when the order's supplier is our own company, the same
+ * load appears in fleet management as a linked FleetShipment (same transport order number, `shipmentOrder` ref), so the
  * fleet works it like its own: status, driver, follow-ups. Both sides follow each other at once.
- * Money: «إيجار السيارة» is the order's purchase price; «الإيجار كامل», when written, is its selling price; the fleet
+ * Money: the vehicle rent is the order's purchase price; the full rent, when written, is its selling price; the fleet
  * never sees the order's selling price. The order keeps the one operations-workflow row (the fleet load does not create
  * its own), so the workflow reads purchase = fleet price and sale = what sales wrote.
  * Writes are diffed updateOne calls that do not call back, so the two sides settle instead of looping.

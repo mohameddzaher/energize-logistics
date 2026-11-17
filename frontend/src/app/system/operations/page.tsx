@@ -30,7 +30,7 @@ import InvoiceCheckCards from '@/components/operations/InvoiceCheckCards';
 import CustomerNamePicker from '@/components/operations/CustomerNamePicker';
 import CustomsLinkBadge, { type CustomsLinkView } from '@/components/customs/CustomsLinkBadge';
 
-// Bulk edit («تعديل بيانات»): every column a role may write, except a report's identity (number, reference) and the
+// Bulk edit: every column a role may write, except a report's identity (number, reference) and the
 // columns kept in their own groups below the payment block. `kind` picks the input; the four lists come from the
 // shipment orders' section settings (/api/workflows/form-lists).
 type BulkSpec = readonly [key: string, ar: string, en: string, kind: 'text' | 'number' | 'date' | 'city' | 'branch' | 'truck' | 'load' | 'review'];
@@ -479,7 +479,7 @@ export default function OperationsWorkflowPage() {
   // Purchase value: hidden from sales (the server strips it too).
   const canSeePurchase = (view as any).purchase !== false;
 
-  // Extra read-only columns, off until picked in «الأعمدة»: the people behind the load (from its shipment) and row fields the table did not offer.
+  // Extra read-only columns, off until picked in the columns menu: the people behind the load (from its shipment) and row fields the table did not offer.
   const extraColumns = useMemo<ChooserColumn[]>(() => {
     const ar = lang === 'ar';
     const c = (key: string, a: string, e: string) => ({ key, label: ar ? a : e });

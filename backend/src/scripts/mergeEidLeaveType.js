@@ -1,5 +1,5 @@
 /**
- * Folds the duplicate «إجازة عيد» type into «اجازة عيد الفطر» / «اجازة عيد الأضحى»: each request goes to the Eid its dates fall on, then the empty duplicate is removed.
+ * Folds the duplicate generic Eid leave type into the Eid al-Fitr / Eid al-Adha leave types: each request goes to the Eid its dates fall on, then the empty duplicate is removed.
  * Both targets do not deduct, like the duplicate, so no balance changes. A request near neither Eid is left alone and reported.
  * Each moved request and the removed type are written to deletedrecords/auditlogs first. Idempotent. `--dry` lists only.
  *   node src/scripts/mergeEidLeaveType.js [--dry]

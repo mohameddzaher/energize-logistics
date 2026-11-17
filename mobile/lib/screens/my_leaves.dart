@@ -138,7 +138,7 @@ class _MyLeavesScreenState extends State<MyLeavesScreen> {
   }
 
   String _typeName(dynamic t) => t is Map ? '${(Lang.instance.ar ? t['nameAr'] : t['nameEn']) ?? t['nameAr'] ?? ''}' : '';
-  // Stages are shown to process viewers only (seesLeaveProcess); the employee reads «قيد المراجعة».
+  // Stages are shown to process viewers only (seesLeaveProcess); the employee reads 'under review'.
   bool get _full => seesLeaveProcess(context.read<AuthProvider>().user);
   String _statusName(dynamic s, {bool own = false}) { final st = leaveStatusFor(s, own: own, full: _full, canAct: !own && s == 'pending_manager'); return tr(st.$1, st.$2); }
   String _userName(dynamic u) => u is Map ? '${u['firstName'] ?? ''} ${u['lastName'] ?? ''}'.trim() : '';
@@ -478,7 +478,7 @@ class _NewLeaveSheetState extends State<_NewLeaveSheet> {
   String? _employee;
   DateTime? _start;
   DateTime? _end;
-  // «يوم واحد»: one date sets both start and end.
+  // Single-day mode: one date sets both start and end.
   bool _single = false;
   final _reason = TextEditingController();
   bool _busy = false;
@@ -960,7 +960,7 @@ class _MemberBalanceCard extends StatelessWidget {
   }
 }
 
-/// «يوم واحد» / «عدة أيام» switch for the leave dates.
+/// Single-day / multi-day switch for the leave dates.
 Widget _dayModeToggle(bool single, ValueChanged<bool> onChanged) => Wrap(spacing: 8, children: [
       ChoiceChip(label: Text(tr('يوم واحد', 'One day')), selected: single, onSelected: (_) => onChanged(true)),
       ChoiceChip(label: Text(tr('عدة أيام', 'Several days')), selected: !single, onSelected: (_) => onChanged(false)),

@@ -2,7 +2,7 @@
 /**
  * Last-resort guard for an error in the root or /system layout itself.
  * The `/system` guard covers screens; this covers what happens before them, so Next's generic message is never shown.
- * The common cause is a deploy: a page opened while the build was being swapped asks for code files the old server does not serve yet. Such an error is a chunk failure, so the page says the system is updating and reloads by itself a few times instead of leaving «حدث خطأ غير متوقع» on screen.
+ * The common cause is a deploy: a page opened while the build was being swapped asks for code files the old server does not serve yet. Such an error is a chunk failure, so the page says the system is updating and reloads by itself a few times instead of leaving an 'unexpected error' message on screen.
  * Every error is reported to /api/client-errors (as the /system guard does), so it shows in the server log.
  */
 import { useEffect, useState } from 'react';

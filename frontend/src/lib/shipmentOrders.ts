@@ -11,7 +11,7 @@ export interface OrderRoute { fromCity: string; toCity: string; price: number | 
 export interface OrderCustomer {
   _id: string;
   name: string;
-  /** «وقف طلبات»: requests wait for the sales manager. */
+  /** Order hold: requests wait for the sales manager. */
   ordersHold?: boolean;
   ordersHoldReason?: string;
   phone?: string;

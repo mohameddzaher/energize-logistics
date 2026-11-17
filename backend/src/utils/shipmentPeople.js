@@ -1,6 +1,6 @@
 /**
  * The people behind a load, read from its shipment: the sales rep who brought it, the operations person who sourced
- * the truck and the colleague who helped («بمساعدة»). Workflow rows and the loads board carry only the link
+ * the truck and the colleague who helped. Workflow rows and the loads board carry only the link
  * (`shipmentOrder`), so the names are attached at read time and always match the shipment.
  */
 const ShipmentOrder = require('../models/ShipmentOrder');

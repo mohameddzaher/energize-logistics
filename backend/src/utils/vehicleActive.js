@@ -1,5 +1,5 @@
 /**
- * A vehicle whose service ended («إنهاء خدمة المركبة») is archived, not deleted: it keeps every field and its history but no longer belongs to us.
+ * A vehicle whose service ended is archived, not deleted: it keeps every field and its history but no longer belongs to us.
  * The filter lives here, installed as query middleware on VehicleMaster, so every list, count, dashboard, alert, picker and populate skips archived vehicles without each caller remembering.
  * Opt in with `.setOptions({ withArchived: true })` (or `.option(...)` on aggregate), or by naming `archived` in the filter.
  */

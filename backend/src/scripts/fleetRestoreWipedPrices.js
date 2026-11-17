@@ -1,5 +1,5 @@
 /**
- * Restore fleet «إيجار السيارة» (price) wiped on 2026-11-10, when the workflow purchase (still 0) was read back into
+ * Restore fleet vehicle rent (price) wiped on 2026-11-10, when the workflow purchase (still 0) was read back into
  * the fleet. Input: a JSON map { loadId: { price } } built from the 2026-11-09/10 03:00 backups.
  * Only loads whose price is still 0 are touched; their linked workflow row gets purchaseValue = price when it has none.
  * Selling prices are not changed. Dry run by default; --apply writes a JSON backup first.

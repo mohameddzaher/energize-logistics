@@ -20,7 +20,7 @@ export const QUICK_KEYS: { key: string; ar: string; en: string }[] = [
   { key: 'branchName', ar: 'المدينة', en: 'City' },
   { key: 'workStatusText', ar: 'حالة العمل', en: 'Work status' },
   { key: 'project', ar: 'المشروع', en: 'Project' },
-  // A yes/no service on the rider (not a project); values نعم / لا.
+  // A yes/no service on the rider (not a project); values yes / no in Arabic.
   { key: 'mediaGo', ar: 'خدمة Media Go', en: 'Media Go service' },
   { key: 'nationality', ar: 'الجنسية', en: 'Nationality' },
   // Company owner request.

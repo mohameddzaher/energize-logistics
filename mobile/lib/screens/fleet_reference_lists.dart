@@ -8,7 +8,7 @@ import 'reference_data.dart';
 /// Section dropdown lists, counterpart of `<ReferenceDataManager module="fleet" alsoType="jp_task_fleet" embedded />` in the fleet settings on the web: rent, payment and load types and the ready follow-up notes; each list opens so its values can be added, edited and disabled from here.
 class FleetReferenceLists extends StatefulWidget {
   final String module;
-  /// Lists from another module shown here too; several separated by commas (the shared «مدن الشحن» list).
+  /// Lists from another module shown here too; several separated by commas (the shared shipping-cities list).
   final String? alsoType;
   const FleetReferenceLists({super.key, this.module = 'fleet', this.alsoType = 'jp_task_fleet'});
   @override

@@ -32,7 +32,7 @@ const rowsOf = (wb, sheet) => XLSX.utils.sheet_to_json(wb.Sheets[sheet || wb.She
 
 const forms = [];
 
-// Layout A (one sheet, employee blocks): م | الموظف | المسمى الوظيفي | المؤشر | المستهدف المقترح | [مصدر القياس] | الوزن
+// Layout A (one sheet, employee blocks): No. | employee | job title | indicator | proposed target | [measure source] | weight (Arabic headers in the file).
 function layoutA(file, sheet, section) {
   const rows = rowsOf(book(file), sheet);
   const hi = rows.findIndex((r) => r.includes('المؤشر'));
@@ -103,7 +103,7 @@ function layoutD(file, section) {
   }
 }
 
-// Layout E (finance): الوظيفة | # | المؤشر | الوزن; a 'إجمالي <job> / <name>' row closes a job.
+// Layout E (finance): job | # | indicator | weight; a 'total <job> / <name>' row closes a job (Arabic in the source).
 function layoutE(file, section) {
   const rows = rowsOf(book(file));
   let cur = null;
@@ -147,7 +147,7 @@ const ROLES_BY_JOB = [
   [/^المدير المالي التنفيذي$/, ['cfo']],
   [/^رئيس الحسابات$/, ['accounting_manager']],
 ];
-// Stated in the workbook header (الطبقة الأولى); other workbooks name no tier.
+// Stated in the workbook header (first tier, in Arabic); other workbooks name no tier.
 const TIER_BY_FILE = { 'HR_Team_KPIs_-_Oct_2026.xlsx': 1, [SALES]: 1 };
 // Display name of a merged form when its members carry different titles.
 const NAME_OVERRIDES = {

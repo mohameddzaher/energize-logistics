@@ -15,7 +15,7 @@ export interface LTEmployee extends PersonDocs {
   hireDate?: string | null;
   cityAr?: string;
   projectAr?: string;
-  /** «خدمة Media Go» yes/no (a service on the rider, not a project); synced with the HR file. */
+  /** Media Go service flag, yes/no (a service on the rider, not a project); synced with the HR file. */
   mediaGo?: boolean;
   jobTitleAr?: string;
   staffKind?: 'rep' | 'driver' | 'admin' | 'unknown';

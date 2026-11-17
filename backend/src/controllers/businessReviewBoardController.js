@@ -164,7 +164,7 @@ exports.getBoard = async (req, res) => {
 };
 
 /**
- * One task as the meeting cards and «البنود المسندة إليّ» both show it, so the two screens read and act on the same thing.
+ * One task as the meeting cards and the 'assigned to me' list both show it, so the two screens read and act on the same thing.
  * Returns a mapper bound to the related rows it needs (team parts, follow-ups, parent titles, co-owners).
  */
 async function taskViewer(actions, meetingId = null) {

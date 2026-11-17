@@ -1,5 +1,5 @@
 /**
- * Store issue requests (طلب صرف): both stores (light and heavy transport) issue stock only through these.
+ * Store issue requests: both stores (light and heavy transport) issue stock only through these.
  * A request is the stock-out itself: saving it writes one outgoing movement per line, linked to the vehicle and the request number.
  * Stock is taken with conditional decrements (`quantity >= wanted`), so two requests racing for the last pieces cannot drive a balance below zero; a failure part-way is compensated before answering.
  * Posted requests are never edited. Cancelling reverses every movement on the record, like a movement reversal.

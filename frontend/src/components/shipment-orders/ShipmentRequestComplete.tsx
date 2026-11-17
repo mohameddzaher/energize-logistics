@@ -1,9 +1,9 @@
 'use client';
 /**
- * Completing a sales request, truck by truck. `PlaceModal`: the vendors team picks «مورد» or «فريلانسر», the carrier,
+ * Completing a sales request, truck by truck. `PlaceModal`: the vendors team picks vendor or freelancer, the carrier,
  * one of its trucks (or a new plate) and a registered driver (a new one needs his iqama). `FleetPlaceModal`: the fleet
  * picks one of our trucks and its drivers with the load inputs; the server makes the transport order (supplier
- * «تنشيط») and its linked fleet load. `SourcingModal`: «تحصيل السيارات» records. The pickup/start/arrival times are
+ * is our own company) and its linked fleet load. `SourcingModal`: truck-sourcing records. The pickup/start/arrival times are
  * entered here, not by sales.
  */
 import { useState, useEffect, useCallback, useMemo } from 'react';
@@ -90,7 +90,7 @@ function RequestSummary({ req, ar }: { req: ShipmentRequest; ar: boolean }) {
   );
 }
 
-// ── Vendors: «مورد» or «فريلانسر» ───────────────────────────────────────────
+// Vendors: company or freelancer.
 
 type Kind = 'vendor' | 'freelancer';
 type TruckRow = {
@@ -532,7 +532,7 @@ function FleetTruckEditor({ i, row, vehicles, drivers, helpers, types, taken, mi
   );
 }
 
-// ── «تحصيل السيارات» ────────────────────────────────────────────────────────
+// Trucks sourced.
 
 export function SourcingModal({ req, team, canAdd, canAll, canFleet = false, onClose, onChanged }: { req: ShipmentRequest; team: 'vendors' | 'fleet'; canAdd: boolean; canAll: boolean; canFleet?: boolean; onClose: () => void; onChanged: (r: ShipmentRequest) => void }) {
   const { lang } = useLanguage();
@@ -541,7 +541,7 @@ export function SourcingModal({ req, team, canAdd, canAll, canFleet = false, onC
   const { notify, confirm } = useDialog();
   const { user } = useAuth();
   const me = String(user?._id || '');
-  // «بمساعدة» may be anyone in sales, operations (vendors and follow-up included), the data team or the fleet.
+  // The helper may be anyone in sales, operations (vendors and follow-up included), the data team or the fleet.
   const members = useOptions('/api/shipment-requests/team-members?team=helpers');
   const [count, setCount] = useState('1');
   const [helper, setHelper] = useState('');

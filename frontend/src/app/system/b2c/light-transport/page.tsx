@@ -473,7 +473,7 @@ function LightTransportEmployeesInner() {
         {/* Status list is built from all rows, not from the reps aggregate: the aggregate is now reps-only, so a status held only by an administrative row would drop out and be unfilterable. */}
         <MultiFilter ar={ar} value={f.status || ''} onChange={(v) => setF((p) => ({ ...p, status: v }))} label={t('كل الحالات', 'All statuses')}
           list={[...new Set(rows.map((r) => String(r.workStatusShown || '')).filter(Boolean))].sort((a, b) => a.localeCompare(b, 'ar'))} />
-        {/* «خدمة Media Go»: a service on the rider (yes/no), filtered on the server. */}
+        {/* Media Go: a service on the rider (yes/no), filtered on the server. */}
         <select value={f.mediaGo || ''} onChange={(e) => setF((p) => ({ ...p, mediaGo: e.target.value }))} aria-label={t('خدمة Media Go', 'Media Go')}
           className={`px-3 py-2 rounded-lg border text-sm ${f.mediaGo ? 'bg-[#f37121]/5 border-[#f37121]/50 font-semibold text-slate-900' : 'bg-white border-slate-200 text-slate-800'}`}>
           <option value="">{t('خدمة Media Go: الكل', 'Media Go: all')}</option>

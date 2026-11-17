@@ -42,7 +42,7 @@ const announceOrderChange = (id) => {
   cache.clear('so:analytics:');
   emit('shipmentOrders:updated', id ? { id: String(id) } : {});
   if (id) require('../services/shipmentOrderWorkflowLink').mirrorSoon(id);
-  // Carried by our own fleet (supplier «تنشيط»): its fleet load follows (services/fleetOrderLink).
+  // Carried by our own fleet (supplier is our own company): its fleet load follows (services/fleetOrderLink).
   if (id) require('../services/fleetOrderLink').orderToFleetSoon(id);
 };
 
@@ -2519,7 +2519,7 @@ async function dropReplacedPrimary(Model, before, after) {
 }
 
 /**
- * Links a truck or driver to one more supplier (the picker's «ربط بالمورد»). A row with no primary takes this one as primary.
+ * Links a truck or driver to one more supplier (the picker's link-to-supplier action). A row with no primary takes this one as primary.
  * Our own trucks are managed in fleet management and are never a supplier's.
  */
 const linkSupplierTo = (Model, kind) => async (req, res) => {
@@ -2713,7 +2713,7 @@ exports.listFields = async (req, res) => {
       branch.options = await companyBranchOptions();
       branch.locked = true;
     }
-    // «From / To» read the shared city list (reference data «مدن الشحن»), edited there for every section.
+    // «From / To» read the shared city list (reference data: shipping cities), edited there for every section.
     const cities = fields.some((f) => CITY_FIELDS.has(f.key)) ? await cityLookupOptions() : [];
     for (const f of fields) {
       if (!CITY_FIELDS.has(f.key)) continue;

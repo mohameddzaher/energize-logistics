@@ -2,7 +2,7 @@
 /**
  * Heavy-transport store: spare parts.
  * The light-transport store uses the same screen with another scope: one store mechanism (in and out, balance after each movement, reversal by an opposite movement and never by deletion) with different items and balances. See `components/store/StoreScreen`.
- * Issuing happens only through issue requests (طلب صرف), as in the light store; the items screen keeps receipts and closes its out actions.
+ * Issuing happens only through issue requests, as in the light store; the items screen keeps receipts and closes its out actions.
  */
 import { useState } from 'react';
 import { useAuth } from '@/context/AuthContext';

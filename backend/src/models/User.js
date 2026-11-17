@@ -18,9 +18,9 @@ const userSchema = new mongoose.Schema(
     },
     firstName: { type: String, required: true, trim: true },
     lastName: { type: String, required: true, trim: true },
-    // Top management (الإدارة العليا): signs the last stage of leave and opens the top management section. A flag, not a role, so these accounts keep every super admin permission.
+    // Top management: signs the last stage of leave and opens the top management section. A flag, not a role, so these accounts keep every super admin permission.
     isTopManagement: { type: Boolean, default: false, index: true },
-    // Chairman of the board (رئيس مجلس الإدارة): a super admin account that signs the final leave stage, after top management. Only meaningful on role super_admin, so it carries exactly the super admin permissions.
+    // Chairman of the board: a super admin account that signs the final leave stage, after top management. Only meaningful on role super_admin, so it carries exactly the super admin permissions.
     isChairman: { type: Boolean, default: false, index: true },
     // The person whose name and signature fill a leave sheet box once that stage approves, whoever clicked it (the finance manager, the HR manager). One account per box; userController clears the others.
     leaveSheetSigner: { type: String, enum: ['', 'finance', 'hr'], default: '' },

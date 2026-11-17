@@ -58,7 +58,7 @@ function rowOfFleet(f) {
       : str(f.paymentType) === 'cash' ? 'cash' : 'late',
     driverRentalType: str(f.rentType),
     driverCost: num(f.driverExpense),
-    // «إيجار السيارة» is the fleet's own income and the row's purchase price, for every customer; «الإيجار كامل», when written, is the row's selling price. Without it the selling price is left to sales.
+    // Vehicle rent is the fleet's own income and the row's purchase price, for every customer; full rent, when written, is the row's selling price. Without it the selling price is left to sales.
     purchaseValue: num(f.price),
     ...(num(f.fullRent) > 0 ? { sellingValue: num(f.fullRent) } : {}),
   };

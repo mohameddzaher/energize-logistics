@@ -120,7 +120,7 @@ export default function MasterCell({ id, f, raw, st, choices, ar, canEdit, onSav
     );
   }
 
-  // A filled field shows its value even if an old «مطلوب» mark stayed on it (imports wrote values without clearing marks).
+  // A filled field shows its value even if an old 'required' mark stayed on it (imports wrote values without clearing marks).
   const hasValue = raw != null && String(raw).trim() !== '';
   if (st === 'required' && !hasValue) {
     return (

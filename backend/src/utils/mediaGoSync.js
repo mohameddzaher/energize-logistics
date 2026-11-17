@@ -1,5 +1,5 @@
 /**
- * «خدمة Media Go»: a yes/no service on a rider (the box on his vehicle carries Media Go ads); it is not a project.
+ * Media Go service: a yes/no service on a rider (the box on his vehicle carries Media Go ads); it is not a project.
  * The rider's flag lives on the HR file (Employee.mediaGo) and on the B2C register row (LightTransportEmployee.mediaGo):
  * a change on either side is copied to the other at once, from any write path (model hooks call this). Writes use the
  * raw collection so the copy does not re-trigger the hooks. The vehicle has its own flag (VehicleMaster.mediaGo).

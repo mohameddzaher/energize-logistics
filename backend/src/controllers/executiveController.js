@@ -91,7 +91,7 @@ async function build(user) {
       kpis: [
         kpi('أوامر نقل هذا الشهر', 'Sheets this month', sheetsMonth, { trend, href: '/system/operations' }),
         kpi('أوامر نقل الشهر الماضي', 'Sheets last month', sheetsLast),
-        // `pendingInvoices` is the operations page's «سندات لم تصل» card: no payment date yet, not a missing invoice.
+        // `pendingInvoices` is the operations page's 'receipts not arrived' card: no payment date yet, not a missing invoice.
         kpi('سندات لم تصل', 'Pending bonds', wfStats?.pendingInvoices, { tone: 'warn', href: '/system/operations' }),
         money('تحصيلات المحافظ اليوم', 'Wallet collections today', branches.reduce((a, b) => a + (b.totalCollections || 0), 0), { tone: 'good', href: '/system/wallet-dashboard' }),
         money('مشتريات المحافظ اليوم', 'Wallet purchases today', branches.reduce((a, b) => a + (b.totalPurchases || 0), 0), { href: '/system/wallet-dashboard' }),
@@ -155,7 +155,7 @@ async function build(user) {
         kpi('طلبات إجازة معلّقة', 'Pending leaves', hr?.summary?.pendingLeaves, { href: '/system/hr/leaves' }),
         kpi('تراخيص تنتهي', 'Licences expiring', hr?.summary?.licensesExpiringCount, { tone: 'warn', href: '/system/hr/licenses' }),
       ],
-      // Ended staff are excluded; on-leave and suspended staff are still counted, hence not «على رأس العمل».
+      // Ended staff are excluded; on-leave and suspended staff are still counted, hence not labelled 'on duty'.
       chart: { kind: 'bar', ar: 'الموظفون حسب القسم (عدا المنتهية خدمتهم)', data: (hr?.activeByDepartment || hr?.byDepartment || []).slice(0, 10).map((x) => ({ name: x.name, value: x.count })) },
     },
     {

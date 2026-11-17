@@ -321,7 +321,7 @@ export const ALERT_TYPE_LABELS: Record<string, { en: string; ar: string }> = {
 };
 
 // Exceptional-repair vocabulary (ours — Wialon has no unscheduled work).
-// A checklist task may be deferred (مؤجّل) only for at least this many km; the server enforces the same (config/ls2Config MIN_DEFER_KM).
+// A checklist task may be deferred only for at least this many km; the server enforces the same (config/ls2Config MIN_DEFER_KM).
 export const MIN_DEFER_KM = 10000;
 
 // Maintenance record types; periodic records come from a registered service interval.

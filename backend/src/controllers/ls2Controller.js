@@ -854,7 +854,7 @@ exports.registerServiceInterval = async (req, res) => {
     const iv = (v.serviceIntervals || []).find((s) => Number(s.id) === Number(intervalId));
     const intervalName = iv ? iv.name : '';
 
-    // Deferred (مؤجّل) is allowed only for a task judged good for at least MIN_DEFER_KM more; shorter is done now.
+    // Deferred is allowed only for a task judged good for at least MIN_DEFER_KM more; shorter is done now.
     const shortDefer = (Array.isArray(checklist) ? checklist : [])
       .filter((c) => c && c.status === 'deferred' && !(Number(c.deferKm) >= cfg.MIN_DEFER_KM));
     if (shortDefer.length) {

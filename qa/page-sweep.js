@@ -8,7 +8,7 @@
  * For each role: sign in through the real login screen, read the pages its
  * menu shows, and open each one (super_admin: the whole page catalogue). On
  * every page:
- *   • JS errors (pageerror) and the error screen («حدث خطأ في هذه الشاشة»)
+ *   • JS errors (pageerror) and the screen-error fallback
  *   • API answers ≥ 500 behind the page
  *   • every column filter: open it, tick a value — the class of crash that hit
  *     the cash invoices page (a transform calling a helper declared later)

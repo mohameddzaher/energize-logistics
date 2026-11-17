@@ -92,7 +92,7 @@ router.post('/suppliers', authorize(...EDIT), lightStore(store.createSupplier));
 router.put('/suppliers/:id', objectIdParam('id'), authorize(...EDIT), lightStore(store.updateSupplier));
 router.delete('/suppliers/:id', objectIdParam('id'), authorize(...EDIT), lightStore(store.deleteSupplier));
 /**
- * Issuing from this store happens only through an issue request (طلب صرف), so the direct out actions are refused here; receipts stay open.
+ * Issuing from this store happens only through an issue request, so the direct out actions are refused here; receipts stay open.
  * The heavy store keeps its direct issue: the rule lives in this route, not in the shared controller.
  */
 const noDirectIssue = (req, res, next) => (String(req.body?.type || '') === 'out'

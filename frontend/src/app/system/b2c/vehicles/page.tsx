@@ -22,7 +22,7 @@ import { useVehicleLifecycle, RevokeButton } from '@/components/vehicles/Vehicle
 
 interface Row {
   _id: string; serialNumber: string; project: string; city: string; plateNumber: string;
-  /** «خدمة Media Go»: the vehicle's box carries Media Go (yes/no). */
+  /** Media Go: the vehicle's box carries Media Go (yes/no). */
   mediaGo?: boolean;
   driverId: string; driverName: string; authorizedId: string; authorizedName: string; authorizedPhone: string;
   authStart: string; authEnd: string; authNumber: string; durationDays: number | null; daysLeft: number | null;

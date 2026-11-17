@@ -97,7 +97,7 @@ class _HrLeavesScreenState extends State<HrLeavesScreen> {
         ExportCol('Reason', 'Reason', (r) => r['reason'] ?? ''),
       ];
 
-  // Stages are shown to process viewers only (seesLeaveProcess); HR staff filter and read «قيد المراجعة».
+  // Stages are shown to process viewers only (seesLeaveProcess); HR staff filter and read 'under review'.
   bool get _full => seesLeaveProcess(context.read<AuthProvider>().user);
   Map<String, (String, String, Color)> get _statusFilters => _full
       ? leaveStatusMeta

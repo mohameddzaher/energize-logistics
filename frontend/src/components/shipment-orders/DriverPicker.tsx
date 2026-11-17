@@ -28,7 +28,7 @@ export default function DriverPicker({
   onPick: (d: { name: string; phone?: string; driver?: OrderDriver }) => void;
   contextDrivers: OrderDriver[];
   supplierId?: string;
-  /** Named in the «ربط بالمورد؟» question when a driver from outside its register is picked. */
+  /** Named in the link-to-supplier question when a driver from outside its register is picked. */
   supplierName?: string;
   vehicleId?: string;
   ar: boolean;

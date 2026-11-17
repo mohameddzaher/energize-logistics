@@ -178,7 +178,7 @@ exports.listEmployees = async (req, res) => {
     supervisorFilter(filter, q.supervisor);
     supervisorFilter(filter, q.dutySupervisor, 'dutySupervisorUser');
     if (S(q.housing)) filter.housing = S(q.housing) === 'none' ? null : S(q.housing);
-    // «خدمة Media Go»: yes / no.
+    // Media Go service flag: yes / no.
     if (S(q.mediaGo) === 'yes') filter.mediaGo = true;
     else if (S(q.mediaGo) === 'no') filter.mediaGo = { $ne: true };
     // Those with a vehicle and those without; a frequent question.
@@ -772,7 +772,7 @@ exports.getEmployee = async (req, res) => {
 const EDITABLE = ['name', 'nationalityAr', 'phone', 'cityAr', 'projectAr', 'jobTitleAr', 'contractTypeAr',
   // `workStatusAr` is not one of them: work status comes from HR. See `shownStatus`.
   'registerNumber', 'vehicleTypeAr', 'housingRoom', 'notesAr', 'hireDate',
-  // «خدمة Media Go» yes/no, not a project; copied to the HR file by the model hook (utils/mediaGoSync).
+  // Media Go service flag, yes/no, not a project; copied to the HR file by the model hook (utils/mediaGoSync).
   'mediaGo'];
 
 /**

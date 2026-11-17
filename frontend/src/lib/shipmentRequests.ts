@@ -83,7 +83,7 @@ export const APPROVAL_LABEL: Record<ApprovalStatus, { ar: string; en: string; to
 };
 /** Missing approval means approved (requests from before the rule). */
 export const approvalOf = (r: Pick<ShipmentRequest, 'approvalStatus'>): ApprovalStatus => (r.approvalStatus || 'approved');
-/** «تحصيل السيارات» in one line: sourced of asked, and how many are still to find. */
+/** Truck sourcing in one line: sourced of asked, and how many are still to find. */
 export const sourcingLine = (r: Pick<ShipmentRequest, 'sourced' | 'trucks'>, ar: boolean) => {
   const n = r.sourced || 0;
   const left = Math.max(0, (r.trucks || 0) - n);

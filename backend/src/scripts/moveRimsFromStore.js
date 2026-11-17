@@ -21,7 +21,7 @@ const BY = 'نقل الجنوط من المخزن';
 const fold = (s) => foldRimText(String(s || '').replace(/[٠-٩]/g, (d) => '٠١٢٣٤٥٦٧٨٩'.indexOf(d)));
 const TARGET_KEYS = new Set(TARGETS.map(fold));
 
-/** «جنط صيني مستعمل 315» -> { brand: 'صيني', condition: 'used', size: '315' }. */
+/** 'Chinese used rim 315' (Arabic item name) -> { brand: 'Chinese', condition: 'used', size: '315' }. */
 function parseName(name) {
   const words = fold(name).split(' ').filter(Boolean);
   if (words[0] !== 'جنط') return null;

@@ -141,7 +141,7 @@ class _CustomerRegistryProfileScreenState extends State<CustomerRegistryProfileS
 
   Map<String, dynamic> get _hold => Map<String, dynamic>.from(_data?['ordersHold'] ?? const {});
 
-  /// «وقف طلبات»: while on, new shipment requests for this customer wait for the sales manager.
+  /// Order hold: while on, new shipment requests for this customer wait for the sales manager.
   Future<void> _toggleHold() async {
     final on = _hold['on'] != true;
     final reason = TextEditingController();
@@ -221,7 +221,7 @@ class _CustomerRegistryProfileScreenState extends State<CustomerRegistryProfileS
     await _put({key: next});
   }
 
-  /// Several values per preference (e.g. two truck types): a checklist sheet, saved on «حفظ».
+  /// Several values per preference (e.g. two truck types): a checklist sheet, saved on Save.
   Future<void> _pickDefault(Map<String, List<String>> defaults, String key, String label) async {
     final cur = List<String>.from(defaults[key] ?? const []);
     final opts = _optionsOf(key);

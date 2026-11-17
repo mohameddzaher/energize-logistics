@@ -58,7 +58,7 @@ const shipmentOrderCustomerSchema = new mongoose.Schema(
     },
 
     isActive: { type: Boolean, default: true },
-    // «وقف طلبات»: new shipment requests for this customer wait for the sales manager's approval (shipmentRequestsController.needsApproval).
+    // Order hold: new shipment requests for this customer wait for the sales manager's approval (shipmentRequestsController.needsApproval).
     ordersHold: { type: Boolean, default: false },
     ordersHoldReason: { type: String, trim: true, default: '' },
     ordersHoldAt: { type: Date, default: null },

@@ -117,7 +117,7 @@ const hrQuickKeys = [
   ('branchName', 'المدينة', 'City'),
   ('workStatusText', 'حالة العمل', 'Work status'),
   ('project', 'المشروع', 'Project'),
-  // A yes/no service on the rider (not a project); values نعم / لا.
+  // A yes/no service on the rider (not a project); values yes / no in Arabic.
   ('mediaGo', 'خدمة Media Go', 'Media Go service'),
   ('nationality', 'الجنسية', 'Nationality'),
   ('iqamaProfession', 'المهنة في الإقامة', 'Iqama occupation'),

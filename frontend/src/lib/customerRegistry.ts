@@ -111,7 +111,7 @@ export interface ProfilePayload {
   routes: RunRoute[];
   /** Operations manager and system admin only; the server enforces it. */
   canEditTiers?: boolean;
-  /** «وقف طلبات»: new shipment requests wait for the sales manager. */
+  /** Order hold: new shipment requests wait for the sales manager. */
   ordersHold?: { on: boolean; reason: string; at: string | null; by: string };
   canSetOrdersHold?: boolean;
   sheets: { rows: any[]; total: number; page: number; pages: number };

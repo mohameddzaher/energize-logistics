@@ -1,5 +1,5 @@
 /**
- * Fleet loads' workflow rows under the rule «إيجار السيارة» = purchase, «الإيجار كامل» = selling:
+ * Fleet loads' workflow rows under the rule vehicle rent = purchase, full rent = selling:
  * purchaseValue = price; sellingValue = fullRent when written, else cleared only when it is the vehicle rent the fleet wrote there
  * (a selling price someone typed stays). Linked shipment orders get buyPrice/sellPrice the same way.
  * Dry run by default; --apply writes a JSON backup first.

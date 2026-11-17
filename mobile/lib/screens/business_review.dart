@@ -55,7 +55,7 @@ class _BusinessReviewScreenState extends State<BusinessReviewScreen> {
   bool _loading = true;
   String? _error;
 
-  // Open items assigned to me (from /api/nav-badges), shown on the «بنودي» tab like the web sidebar.
+  // Open items assigned to me (from /api/nav-badges), shown on the 'my items' tab like the web sidebar.
   void _onBadges() { if (mounted) setState(() {}); }
 
   @override

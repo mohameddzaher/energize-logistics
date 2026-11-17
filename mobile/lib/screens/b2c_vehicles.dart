@@ -271,7 +271,7 @@ class _VehicleSheetState extends State<_VehicleSheet> {
   late final Map<String, String> _dates = {for (final k in _dateKeys) k: _day(widget.row[k])};
   // The two people are chosen: `_driverTouched` = touched, and `_driver` = the selection (or null = none).
   bool _driverTouched = false;
-  // «خدمة Media Go» on the vehicle (yes/no); sent only when changed.
+  // Media Go flag on the vehicle (yes/no); sent only when changed.
   late bool _mediaGo = widget.row['mediaGo'] == true;
   Map<String, dynamic>? _driver;
   bool _holderTouched = false;

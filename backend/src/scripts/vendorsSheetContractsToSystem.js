@@ -1,7 +1,7 @@
 /**
- * Records on the system the contracts the vendors team's sheet marked as signed: contract status «موقع», or both
- * signature flags (vendor and us). Same fields «تمّ التعاقد رسميًّا» sets, with source `sheet` and no end date; the
- * files are uploaded later (the carrier then shows «بانتظار رفع ملف العقد»).
+ * Records on the system the contracts the vendors team's sheet marked as signed: contract status 'signed', or both
+ * signature flags (vendor and us). Same fields the 'officially contracted' action sets, with source `sheet` and no end date; the
+ * files are uploaded later (the carrier then shows 'awaiting contract file').
  * Idempotent: a carrier already recorded either way (contracted true or false) is never touched.
  * Usage: node src/scripts/vendorsSheetContractsToSystem.js (dry run) | --apply
  */

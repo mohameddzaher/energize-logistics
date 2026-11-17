@@ -69,7 +69,7 @@ const limitText = (v: VReg) => (v.fuelCard?.limitStatus === 'open'
 export const REGISTRY_COLUMNS: VCol[] = [
   { key: 'sectorAr', ar: 'القطاع', en: 'Sector', get: (v) => v.sectorAr, width: 16, base: true },
   { key: 'departmentAr', ar: 'القسم', en: 'Department', get: (v) => v.departmentAr, width: 18, base: true },
-  // «خدمة Media Go»: the vehicle's box carries Media Go (yes/no); off by default, the column filter reads نعم / لا.
+  // Media Go: the vehicle's box carries Media Go (yes/no); off by default, the column filter reads yes / no in Arabic.
   { key: 'mediaGo', ar: 'خدمة Media Go', en: 'Media Go', get: (v) => ((v as any).mediaGo ? 'نعم' : 'لا'), width: 12 },
   { key: 'cityAr', ar: 'المدينة', en: 'City', get: (v) => v.cityAr, width: 12, base: true },
   /**

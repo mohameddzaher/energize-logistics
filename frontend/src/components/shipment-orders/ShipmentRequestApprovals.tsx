@@ -1,6 +1,6 @@
 'use client';
 /**
- * «الاعتمادات»: the sales manager (and the members he delegated) decides sales reps' requests before they reach the
+ * Approvals: the sales manager (and the members he delegated) decides sales reps' requests before they reach the
  * vendors, operations and fleet board — approve, return for edits, or reject, each with its reason in the history.
  * The manager also picks the delegates here (stored on the server, editable by him only).
  */

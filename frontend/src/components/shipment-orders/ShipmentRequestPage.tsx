@@ -1,5 +1,5 @@
 'use client';
-// «طلب شحنة» page body: the asker's requests open first, with a «طلب شحنة جديد» button in the header that opens the form. Rendered by the Shipment Orders and Sales pages alike.
+// Shipment request page body: the asker's requests open first, with a new-request button in the header that opens the form. Rendered by the Shipment Orders and Sales pages alike.
 import { useState, useEffect, useCallback } from 'react';
 import api from '@/lib/api';
 import { useSocket } from '@/hooks/useSocket';

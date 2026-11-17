@@ -19,7 +19,7 @@ import 'shipment_orders_common.dart';
 import 'shipment_orders.dart' show ShipmentOrdersScreen;
 import 'fleet_shipments.dart' show FleetShipmentsScreen;
 
-/// Shipment requests: sales asks («طلب شحنة») and the vendors team places each truck («الطلبات من المبيعات»).
+/// Shipment requests: sales asks (new request) and the vendors team places each truck (sales-requests inbox).
 /// Counterpart of the web pages under shipment-orders, sales and vendors; one API (/api/shipment-requests) and one live event.
 
 const srEvent = 'shipmentRequests:changed';
@@ -100,7 +100,7 @@ const srApproval = <String, (String, String, Color)>{
 };
 String srApprovalOf(Map r) => '${r['approvalStatus'] ?? ''}'.isEmpty ? 'approved' : '${r['approvalStatus']}';
 
-/// «تحصيل السيارات»: trucks the team reported finding (a follow-up aid, not completions).
+/// Truck sourcing: trucks the team reported finding (a follow-up aid, not completions).
 (int, int, int) srSourced(Map r) {
   final trucks = inum(r['trucks']).toInt();
   final sourced = inum(r['sourced'] ?? ((r['sourcing'] as List?) ?? const []).fold<num>(0, (n, e) => n + inum((e as Map)['count']))).toInt();
@@ -113,7 +113,7 @@ String srHm(dynamic v) {
   return d == null ? '' : '${d.hour.toString().padLeft(2, '0')}:${d.minute.toString().padLeft(2, '0')}';
 }
 
-/// Team members for a «بمساعدة» picker: team = vendors | fleet | helpers.
+/// Team members for a helper picker: team = vendors | fleet | helpers.
 Future<List<Map<String, dynamic>>> srTeamMembers(String team) async {
   final d = await Api.instance.get('/api/shipment-requests/team-members?team=$team');
   return List<Map<String, dynamic>>.from(((d['options'] as List?) ?? const []).map((e) => Map<String, dynamic>.from(e)));
@@ -618,7 +618,7 @@ class _ShipmentRequestFormScreenState extends State<ShipmentRequestFormScreen> {
   }
 }
 
-// ── Lists: sales («طلباتي») and vendors («الطلبات من المبيعات») ─────────────
+// Lists: sales (my requests) and vendors (requests from sales).
 
 class ShipmentRequestsScreen extends StatefulWidget {
   /// 'ask' = sales view (own requests, create, approvals), 'place' = vendors inbox, 'fleet' = the fleet's inbox (our trucks).
@@ -1179,7 +1179,7 @@ extension on _ShipmentRequestsScreenState {
     );
   }
 
-  /// «تحصيل السيارات» line: sourced/asked and what is left to find; tapping opens who reported what.
+  /// Truck-sourcing line: sourced/asked and what is left to find; tapping opens who reported what.
   Widget _sourcedLine(Map<String, dynamic> r) {
     final x = srSourced(r);
     if (!_work && x.$1 == 0) return const SizedBox.shrink();
@@ -1971,7 +1971,7 @@ class _PlaceTrucksScreenState extends State<PlaceTrucksScreen> {
 
 // ── Fleet: completing on our own trucks ─────────────────────────────────────
 
-/// Each truck becomes a transport order with supplier «تنشيط» and its linked fleet load; the request already holds
+/// Each truck becomes a transport order with our own company as supplier and its linked fleet load; the request already holds
 /// customer, route and selling price, so only what a fleet load needs is asked.
 class FleetPlaceScreen extends StatefulWidget {
   final Map<String, dynamic> request;
@@ -2256,7 +2256,7 @@ class _FleetPlaceScreenState extends State<FleetPlaceScreen> {
   }
 }
 
-// ── «تحصيل السيارات» sheet ──────────────────────────────────────────────────
+// Trucks-sourced sheet.
 
 /// Who reported finding how many trucks, when and with whose help; members add theirs, authors (and leads) edit or delete.
 Future<void> showSourcingSheet(BuildContext context, Map<String, dynamic> request, {required String team, required bool canAdd, required bool canLead, bool canFleet = false}) =>
@@ -2273,7 +2273,7 @@ class _SourcingSheet extends StatefulWidget {
   final String team;
   final bool canAdd;
   final bool canLead;
-  /// Fleet manager / team leader: corrects the fleet team's entries (recorded as «النقل الثقيل»).
+  /// Fleet manager / team leader: corrects the fleet team's entries (recorded as heavy transport).
   final bool canFleet;
   const _SourcingSheet({required this.request, required this.team, required this.canAdd, required this.canLead, this.canFleet = false});
   @override
@@ -2288,7 +2288,7 @@ class _SourcingSheetState extends State<_SourcingSheet> {
   @override
   void initState() {
     super.initState();
-    // «بمساعدة» lists sales, operations (vendors and follow-up), the data team and the fleet.
+    // The helper picker lists sales, operations (vendors and follow-up), the data team and the fleet.
     if (widget.canAdd) srTeamMembers('helpers').then((v) { if (mounted) setState(() => _members = v); }).catchError((_) {});
   }
 

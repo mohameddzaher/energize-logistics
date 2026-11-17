@@ -822,7 +822,7 @@ class _MaintenanceTabState extends State<_MaintenanceTab> {
         ),
       );
 
-  /// One type's own card: its full history, plus the interval plan for periodic and «سجل جديد» for the others.
+  /// One type's own card: its full history, plus the interval plan for periodic and a new-record button for the others.
   Widget _typeCard(String type, List<Map<String, dynamic>> intervals, List<Map<String, dynamic>> deferrals) {
     final color = maintTypeColor(type);
     final rows = _entries.where((e) => e['type'] == type).toList();

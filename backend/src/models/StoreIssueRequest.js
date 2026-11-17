@@ -1,7 +1,7 @@
 const mongoose = require('mongoose');
 
 /**
- * Store issue request (طلب صرف): the only way stock leaves the light-transport store.
+ * Store issue request: the only way stock leaves the light-transport store.
  * Saving it writes one outgoing Ls2StoreMovement per line, so the movement log, balances and vehicle file read it like any issue.
  * Posted quantities are never edited; a mistake is fixed by cancelling the request, which reverses its movements on the record.
  */

@@ -33,7 +33,7 @@ router.get('/:id/trip-filters', ctrl.tripFilterOptions);
 router.put('/:id', authorize(...EDIT_ROLES), so.updateCustomer);
 // Price tiers by vehicle count. Guarded in the controller: operations manager and system admin only.
 router.put('/:id/route-tiers', ctrl.setRouteTiers);
-// «وقف طلبات». Guarded in the controller: the sales manager and the super-admin tier.
+// Order hold. Guarded in the controller: the sales manager and the super-admin tier.
 router.put('/:id/orders-hold', ctrl.setOrdersHold);
 router.delete('/:id', authorize(...REMOVE_ROLES), so.deleteCustomer);
 

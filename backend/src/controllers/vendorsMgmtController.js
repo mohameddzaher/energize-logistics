@@ -35,7 +35,7 @@ const isoDay = (d) => (d ? new Date(d).toISOString().slice(0, 10) : null);
 // Calendar month and year of a timestamp in company time (the analyses group trips by Riyadh month).
 const riyadh = (d) => new Date(new Date(d).getTime() + 3 * 3600000);
 /**
- * Officially contracted: only the team's mark on the system («تمّ التعاقد رسميًّا» with the signed file, saveContract).
+ * Officially contracted: only the team's mark on the system (the 'officially contracted' action with the signed file, saveContract).
  * The imported contract status and signature flags are a sheet's word and never count.
  */
 const signedOf = (v) => !!v && v.contracted === true;
@@ -1136,7 +1136,7 @@ exports.saveContract = async (req, res) => {
       if (f?.dataUrl && !String(f.title || '').trim()) return res.status(400).json({ message: `اكتب اسمًا لملفّ العقد «${f.fileName || ''}»`, fields: ['contractFiles'] });
     }
     stored = storeFiles(b.files, { kind: 'contract', user: req.user });
-    // A contract recorded without its file still counts; it shows as «بانتظار رفع ملف العقد» until the file is added.
+    // A contract recorded without its file still counts; it shows as 'awaiting contract file' until the file is added.
     doc.contractFiles.push(...stored);
     // A new end date re-arms the expiry notification.
     if (isoDay(doc.contractEndDate) !== before.contractEndDate) doc.contractAlertKey = '';
@@ -1633,7 +1633,7 @@ module.exports.blameOf = blameOf;
 
 /**
  * Heavy-transport freelancers: one person with his own truck. The page lists them with their truck and driver, and
- * «إضافة فريلانسر نقل ثقيل» registers the person, his truck and the driver in one step (no papers, no approval; papers are for companies).
+ * the 'add heavy-transport freelancer' action registers the person, his truck and the driver in one step (no papers, no approval; papers are for companies).
  */
 exports.listFreelancers = async (req, res) => {
   try {

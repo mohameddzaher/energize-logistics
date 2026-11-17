@@ -114,7 +114,7 @@ router.put('/suppliers/:id', oid, ADMIN, store.updateSupplier);
 router.delete('/suppliers/:id', oid, ADMIN, store.deleteSupplier);
 router.put('/store/:id', oid, ADMIN, store.updateItem);
 router.delete('/store/:id', oid, ADMIN, store.deleteItem);
-// Issuing happens only through an issue request (طلب صرف), as in the light store: the direct out actions are refused, receipts stay open.
+// Issuing happens only through an issue request, as in the light store: the direct out actions are refused, receipts stay open.
 const noDirectIssue = (req, res, next) => (String(req.body?.type || '') === 'out'
   ? res.status(400).json({ code: 'ISSUE_VIA_REQUEST', message: 'الصرف من مخزن النقل الثقيل يتمّ عبر «طلب صرف» فقط' })
   : next());

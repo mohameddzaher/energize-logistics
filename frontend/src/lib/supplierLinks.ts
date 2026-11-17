@@ -1,7 +1,7 @@
 /**
  * A carrier truck or driver may work for several suppliers (`supplier` = primary, `suppliers` = all, primary included).
  * Pickers list the chosen supplier's own trucks and drivers first and, when searching, the rest of the register marked
- * «من خارج سجلّ هذا المورد». Picking one of those asks once whether to link it; declining uses it for this order only.
+ * as outside this supplier's register. Picking one of those asks once whether to link it; declining uses it for this order only.
  */
 import api from '@/lib/api';
 
@@ -22,7 +22,7 @@ export const supplierIdsOf = (row: Linkable | null | undefined): string[] => {
 export const isLinkedTo = (row: Linkable | null | undefined, supplierId: string) =>
   !!supplierId && supplierIdsOf(row).includes(String(supplierId));
 
-/** Names of the suppliers a row is linked to, for the «من خارج سجلّ هذا المورد» hint. */
+/** Names of the suppliers a row is linked to, for the outside-this-register hint. */
 export const supplierNamesOf = (row: Linkable | null | undefined): string[] => {
   const out: string[] = [];
   for (const r of [row?.supplier, ...(row?.suppliers || [])]) {

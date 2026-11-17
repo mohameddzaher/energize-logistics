@@ -14,7 +14,7 @@ const logEntry = new mongoose.Schema({
       'sourced', 'sourcing_edited', 'sourcing_deleted', 'approval_requested', 'approved', 'returned', 'declined'],
     required: true,
   },
-  // Which team acted: a fleet member is shown as the team («النقل الثقيل»), while `by` keeps the real account for audit.
+  // Which team acted: a fleet member is shown as the team (heavy transport), while `by` keeps the real account for audit.
   team: { type: String, enum: ['', 'vendors', 'fleet'], default: '' },
   note: { type: String, trim: true, default: '' },
   reason: { type: String, trim: true, default: '' },
@@ -37,7 +37,7 @@ const placedTruck = new mongoose.Schema({
   fleetShipment: { type: mongoose.Schema.Types.ObjectId, ref: 'FleetShipment', default: null },
   sourcingRep: { type: mongoose.Schema.Types.ObjectId, ref: 'User', default: null },
   sourcingRepName: { type: String, default: '' },
-  /** «بمساعدة»: a colleague who helped find this truck; credited in team performance, not as the sourcing person. */
+  /** Helper: a colleague who helped find this truck; credited in team performance, not as the sourcing person. */
   helper: { type: mongoose.Schema.Types.ObjectId, ref: 'User', default: null },
   helperName: { type: String, default: '' },
   at: { type: Date, default: Date.now },
@@ -46,7 +46,7 @@ const placedTruck = new mongoose.Schema({
 }, { _id: false });
 
 /**
- * «تحصيل السيارات»: a team member's note that he found N trucks for this request. A follow-up aid only: the placed
+ * Truck sourcing: a team member's note that he found N trucks for this request. A follow-up aid only: the placed
  * counts (placed[]) stay the real completions into transport orders.
  */
 const sourcingEntry = new mongoose.Schema({

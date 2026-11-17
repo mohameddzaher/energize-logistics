@@ -1,7 +1,7 @@
 /**
  * Ls2MaintenanceRecord — one maintenance visit of a heavy-transport truck, of one of four types:
  * periodic (a Wialon service interval, linked to its Ls2ServiceLog), preventive, roadside or accident.
- * Spare parts are taken from the heavy store through a store issue request (طلب صرف), so the store
+ * Spare parts are taken from the heavy store through a store issue request, so the store
  * balance, its movement log and the vehicle file all read them; the record keeps a priced snapshot.
  * A record is never edited; it is cancelled with a reason, which cancels its issue request and returns the parts.
  */

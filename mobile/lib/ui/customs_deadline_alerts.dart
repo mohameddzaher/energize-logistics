@@ -7,7 +7,7 @@ import '../services/live.dart';
 import 'theme.dart';
 
 /// Demurrage and container-return deadlines (GET /api/customs-clearance/deadline-alerts), same as the web
-/// «التنبيهات» button and the per-transaction banner. The countdown ticks locally from `deadlineAt`.
+/// Alerts button and the per-transaction banner. The countdown ticks locally from `deadlineAt`.
 class _Feed {
   static final _Feed instance = _Feed._();
   _Feed._() {

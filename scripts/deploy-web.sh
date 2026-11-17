@@ -23,7 +23,7 @@ NEXT_PUBLIC_API_URL="${NEXT_PUBLIC_API_URL:-https://api.energize-logistics.com}"
 ok "بُنيت الواجهة"
 
 say "Upload"
-# Order matters. While the old web server runs, it renders from whatever build is on disk but serves only the static files it knew at start, so a page opened between replacing the build and the restart asked for new chunks, got 404 and showed «حدث خطأ غير متوقع» (2026-11-05, during one of many deploys).
+# Order matters. While the old web server runs, it renders from whatever build is on disk but serves only the static files it knew at start, so a page opened between replacing the build and the restart asked for new chunks, got 404 and showed the generic error page.
 # So: new static files, public and manifests first (add-only, harmless to the old server); install packages while the old build is still in place; then swap the build and restart at once, leaving a window of seconds instead of the minute npm took.
 # Old `static` files are kept: names are content hashes, so old tabs keep loading theirs; files older than a week are removed after the restart.
 rsync -az -e "ssh -i $VPS_KEY -o ConnectTimeout=20" \

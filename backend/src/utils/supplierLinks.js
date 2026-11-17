@@ -16,7 +16,7 @@ const linkedTo = (id) => {
   return o ? { $or: [{ supplier: o }, { suppliers: o }] } : { _id: null };
 };
 
-/** Rows not linked to a supplier at all (the «من خارج سجلّ هذا المورد» list). */
+/** Rows not linked to a supplier at all (the 'outside this supplier's register' list). */
 const notLinkedTo = (id) => {
   const o = oid(id);
   return o ? { supplier: { $ne: o }, suppliers: { $ne: o } } : {};

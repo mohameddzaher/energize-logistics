@@ -1,5 +1,5 @@
 'use client';
-// «الطلبات من المبيعات» page body: the working inbox. Rendered by Shipment Orders and Vendors Management (vendors) and by Fleet Management (fleet: completes on our own trucks).
+// Sales-requests inbox page body: the working inbox. Rendered by Shipment Orders and Vendors Management (vendors) and by Fleet Management (fleet: completes on our own trucks).
 import { useLanguage } from '@/context/LanguageContext';
 import { useAuth } from '@/context/AuthContext';
 import { PageHeader } from '@/components/hr/HRKit';

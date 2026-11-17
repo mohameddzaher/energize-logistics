@@ -1,5 +1,5 @@
 'use client';
-// Leave dates: «يوم واحد» picks one day (start = end), «عدة أيام» a start and an end.
+// Leave dates: single-day mode picks one day (start = end), multi-day mode a start and an end.
 import { useState } from 'react';
 import DatePair from '@/components/hr/DatePair';
 

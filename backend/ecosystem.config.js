@@ -1,11 +1,6 @@
-// إعداد pm2 — نسختان في وضع العنقود.
-//
-// كانت نسخةً واحدة في fork_mode، فـ`pm2 restart` يقتلها قبل أن تقوم البديلة
-// ويردّ nginx ٥٠٢ على كل طلبٍ في تلك الثواني. النسختان تتيحان `pm2 reload`
-// المتدرّج: تُستبدَل واحدةٌ بينما الأخرى تخدم، فلا ينقطع شيء.
-//
-// والمهامّ المجدولة محصورةٌ في النسخة الأولى (انظر server.js): النبض لا يحتمل
-// أن يسحب مرّتين ويرفع التنبيه مرّتين.
+// PM2: two instances in cluster mode, so `pm2 reload` replaces one while the other serves (fork mode with one
+// instance made `pm2 restart` drop requests and nginx returned 502). Scheduled jobs run on the first instance only
+// (see server.js): polling and alerts must not run twice.
 module.exports = {
   apps: [{
     name: 'energize-api',
@@ -13,35 +8,14 @@ module.exports = {
     cwd: '/opt/energize/backend',
     instances: 2,
     exec_mode: 'cluster',
-    // `listen` يعني أن pm2 لا يعدّ النسخة جاهزةً حتى تفتح منفذها فعلًا —
-    // فلا يُطفأ القديم قبل أن يصير الجديد قادرًا على الاستقبال.
+    // pm2 counts an instance ready only once it opens its port, so the old one is not stopped before the new one can serve.
     wait_ready: true,
     listen_timeout: 20000,
     kill_timeout: 5000,
-    // ── وحدُّ الذاكرة يُقال لـnode لا لـpm2 وحدَها ────────────────────────────
-    //
-    // كان `max_memory_restart: 900M` مكتوبًا هنا وحدَه، وnode لا يعلم به: يرى
-    // ثمانيةَ جيجا على الجهاز فيضبط حدَّ كومته على ٢٠٩٦ ميجا، ولا يجمع القمامةَ
-    // جمعًا جادًّا إلّا وهو يقترب منها. فتنمو النسخةُ الأولى — وهي التي تحمل
-    // المهامَّ المجدولة كلَّها — من ٦٦ إلى ٩١٣ ميجا في مئةٍ وخمسٍ وستّين ثانية،
-    // فتقتلها pm2 عند ٩٠٠ قبل أن تتاح لها فرصةُ التنظيف، ثمّ تبدأ من جديد.
-    //
-    // ولا يظهر ذلك خطأً في السجلّ: لا استثناءَ ولا انهيار — إقلاعٌ نظيفٌ كلَّ
-    // ثلاث دقائق. وقُرئ ألفًا ومئةً وواحدًا وخمسين إعادةَ تشغيل على النسخة
-    // الأولى مقابل مئةٍ وأربعين على الثانية.
-    //
-    // فيُقال لـnode أن يبقى دون الحدّ فيجمع القمامةَ جادًّا قبل أن يبلغه، ويبقى
-    // الحدُّ الأعلى شبكةَ أمانٍ لتسريبٍ حقيقيّ إن وقع — لا آليةَ تشغيلٍ يوميّة.
-    //
-    // ── والرقمان يتبعان حجمَ الخادم ──────────────────────────────────────────
-    // كانا ٧٦٨ و٩٠٠ حين كان للخادم جيجاان من الذاكرة. وقد صار له ثمانية،
-    // فبقاؤهما يعني سقفًا لا سببَ له: تصديرُ ملفٍّ كبيرٍ أو تجميعةٌ ثقيلة تبلغه
-    // فتُقتَل النسخةُ في منتصف طلبٍ يخدمه موظّف — وهو أسوأُ ما في الأمر: لا خطأَ
-    // يُقرأ، فقط طلبٌ لا يعود.
-    //
-    // نسختان × ٢ جيجا = أربعةٌ من ثمانية، والباقي للنظام ولذاكرة الملفّات.
-    // ويبقى الحدُّ فوق الكومة بهامشٍ يتّسع لما لا تحسبه الكومة (المخازن
-    // المؤقّتة، الاتّصالات) فلا تُقتَل النسخةُ قبل أن تنظّف.
+    // Memory: the heap limit is told to node, not only to pm2. With only max_memory_restart, node sized its heap from
+    // the machine's RAM, collected garbage late and pm2 killed instance 1 (the one with the scheduled jobs) every few
+    // minutes with no error in the log. Two instances x 2 GB = 4 of the server's 8 GB; the restart ceiling sits above
+    // the heap with room for buffers and connections, as a safety net for a real leak, not a daily mechanism.
     node_args: '--max-old-space-size=1536',
     max_memory_restart: '2048M',
     env: { NODE_ENV: 'production' },

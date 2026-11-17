@@ -493,7 +493,7 @@ exports.shipmentFilterValues = async (req, res) => {
 };
 
 /**
- * A load's sale for fleet analytics (owner, 2026-11-12): «إيجار السيارة» when written, else «الإيجار كامل».
+ * A load's sale for fleet analytics : the vehicle rent when written, else the full rent.
  * Fleet analytics read the fleet alone, not the operations workflow.
  */
 const loadSales = (s) => (Number(s && s.price) > 0 ? Number(s.price) : Number(s && s.fullRent) || 0);
@@ -615,7 +615,7 @@ exports.updateShipment = async (req, res) => {
     }
     applyPaymentSubtype(data);
 
-    // «الإيجار كامل» is the workflow's selling price: from these roles a change goes to approval (config/sellingPriceRequests). «إيجار السيارة» is the purchase price and needs none.
+    // Full rent is the workflow's selling price: from these roles a change goes to approval (config/sellingPriceRequests). Vehicle rent is the purchase price and needs none.
     let sellingRequest = null;
     if (data.fullRent !== undefined && require('../config/sellingPriceRequests').sellingByRequest(req.user)) {
       const v = data.fullRent === '' || data.fullRent == null ? 0 : Number(data.fullRent) || 0;

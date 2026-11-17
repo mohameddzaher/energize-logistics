@@ -305,7 +305,7 @@ const customsClearanceSchema = new mongoose.Schema(
       transportToYard: { type: Number, default: 0 },         // Transport from port to yard
       transportYardToCustomer: { type: Number, default: 0 }, // Transport from yard to customer
       labourExpenses: { type: Number, default: 0 },          // Labor costs
-      examFees: { type: Number, default: 0 },                // Customs examination (كشف)
+      examFees: { type: Number, default: 0 },                // Customs examination
       appointmentBooking: { type: Number, default: 0 }, // Appointment booking
       yardFees: { type: Number, default: 0 },           // Yard fees
       demurrage: { type: Number, default: 0 },          // Demurrage

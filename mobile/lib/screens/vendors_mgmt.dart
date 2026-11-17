@@ -13,7 +13,7 @@ import 'insight_kit.dart';
 import 'shipment_orders_common.dart';
 import 'vendors_mgmt_files.dart';
 
-/// Vendors management («إدارة الموردين»), counterpart of /system/vendors-mgmt on the web.
+/// Vendors management, counterpart of /system/vendors-mgmt on the web.
 /// Every activity figure comes from /api/vendors-mgmt, computed from the shipments; the register keeps what the team knows.
 
 const vmEvent = 'vendors:changed';
@@ -217,7 +217,7 @@ Future<String?> _pickMonth(BuildContext context, String cur) async {
   return '${d.year}-${d.month.toString().padLeft(2, '0')}';
 }
 
-// ── تحليل القسم ─────────────────────────────────────────────────────────────
+// Section analysis.
 
 class VendorsOverviewScreen extends StatefulWidget {
   const VendorsOverviewScreen({super.key});
@@ -412,7 +412,7 @@ class _VendorsOverviewScreenState extends State<VendorsOverviewScreen> with _Liv
   }
 }
 
-// ── التحليل التشغيلي اليومي ─────────────────────────────────────────────────
+// Daily operations analysis.
 
 class VendorsDailyScreen extends StatefulWidget {
   const VendorsDailyScreen({super.key});
@@ -633,7 +633,7 @@ class _VendorsDailyScreenState extends State<VendorsDailyScreen> with _LiveLoad 
   }
 }
 
-// ── الموردون ────────────────────────────────────────────────────────────────
+// Vendors list.
 
 class VendorsListScreen extends StatefulWidget {
   /// Optional fixed kind (e.g. 'freelancer' for the freelance drivers page).
@@ -776,7 +776,7 @@ class _VendorsListScreenState extends State<VendorsListScreen> with _LiveLoad {
   }
 }
 
-// ── بطاقة المورّد ───────────────────────────────────────────────────────────
+// Vendor card.
 
 class VendorCardScreen extends StatefulWidget {
   final String? id;
@@ -1135,7 +1135,7 @@ class _VendorEditScreenState extends State<VendorEditScreen> {
       );
 }
 
-// ── التنبيهات ──────────────────────────────────────────────────────────────
+// Alerts.
 
 class VendorsAlertsScreen extends StatefulWidget {
   const VendorsAlertsScreen({super.key});
@@ -1211,7 +1211,7 @@ class _VendorsAlertsScreenState extends State<VendorsAlertsScreen> with _LiveLoa
   }
 }
 
-// ── بحث بالمسار ────────────────────────────────────────────────────────────
+// Route search.
 
 class VendorsRouteSearchScreen extends StatefulWidget {
   const VendorsRouteSearchScreen({super.key});
@@ -1292,7 +1292,7 @@ class _VendorsRouteSearchScreenState extends State<VendorsRouteSearchScreen> {
   }
 }
 
-// ── السيارات ───────────────────────────────────────────────────────────────
+// Trucks.
 
 class VendorsVehiclesScreen extends StatefulWidget {
   const VendorsVehiclesScreen({super.key});

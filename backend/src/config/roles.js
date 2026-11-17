@@ -222,7 +222,7 @@ const roleIn = (roleOrUser, list) => {
  * vendors and shipment follow-up are teams inside Operations, under the operations manager.
  */
 const ORG_PARENT = { 'Vendors Management': 'Operations' };
-// The data team is its own department (إدارة البيانات ودعم القرار) under its manager, though its roles are global in permissions.
+// The data team is its own department (data and decision support) under its manager, though its roles are global in permissions.
 const DATA_DEPT = 'Data & Decision Support';
 const ORG_ROLE = { shipment_orders_followup: 'Operations', data_manager: DATA_DEPT, data_analyst: DATA_DEPT, data_entry: DATA_DEPT };
 const orgSectionOfRole = (role) => {

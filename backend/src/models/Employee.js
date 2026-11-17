@@ -72,7 +72,7 @@ const employeeSchema = new mongoose.Schema(
     transferDeadline: { type: Date, default: null },
     // Sister company is a work status, not a termination: a current employee on our sponsorship working for a sister company, treated as a normal employee in every section. See utils/hrEngagement.
     sisterCompany: { type: Boolean, default: false, index: true },
-    // «خدمة Media Go» (yes/no): the rider's box carries Media Go; he still works his project. Copied both ways with the B2C register (utils/mediaGoSync).
+    // Media Go service flag (yes/no): the rider's box carries Media Go; he still works his project. Copied both ways with the B2C register (utils/mediaGoSync).
     mediaGo: { type: Boolean, default: false, index: true },
     // Last alert window sent (day plus morning/evening); prevents duplicates across the two server workers.
     transferAlertKey: { type: String, default: '' },

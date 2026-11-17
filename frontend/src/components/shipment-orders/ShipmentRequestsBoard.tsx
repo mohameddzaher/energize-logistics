@@ -253,7 +253,7 @@ export default function ShipmentRequestsBoard({ mode }: { mode: BoardMode }) {
       { key: 'createdBy', ar: 'أنشأه', en: 'Created by', read: (r) => r.createdByName || '' },
       { key: 'createdAt', ar: 'تاريخ الطلب', en: 'Requested', read: (r) => day(r.createdAt), date: true },
       { key: 'handler', ar: 'مسؤول الموردين', en: 'Vendors handler', read: (r) => r.handlerName || '' },
-      // The operations people behind the trucks: who sourced them (from «تحصيل السيارات» and the placed trucks) and who helped.
+      // The operations people behind the trucks: who sourced them (from truck-sourcing records and the placed trucks) and who helped.
       { key: 'opsReps', ar: 'مندوب التشغيل (محصِّل السيارات)', en: 'Ops reps (sourced trucks)', read: (r) => [...new Set([...(r.sourcing || []).map((e) => e.byName), ...(r.placed || []).map((p) => p.sourcingRepName || '')].filter(Boolean))].join('، ') },
       { key: 'helpers', ar: 'بمساعدة', en: 'Helped by', read: (r) => [...new Set([...(r.sourcing || []).map((e) => e.helperName || ''), ...(r.placed || []).map((p) => p.helperName || '')].filter(Boolean))].join('، ') },
       { key: 'orders', ar: 'أوامر النقل', en: 'Transport orders', read: (r) => (r.placed || []).map((p) => p.waybillNumber).join('، ') },

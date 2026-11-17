@@ -1026,7 +1026,7 @@ class _EditEmployeeSheetState extends State<EditEmployeeSheet> {
   late final Map<String, TextEditingController> _dt;
   String _gender = '';
   bool _outside = false;
-  // «خدمة Media Go» yes/no, copied to the B2C register by the server.
+  // Media Go service flag, yes/no, copied to the B2C register by the server.
   bool _mediaGo = false;
 
   // Documents: a value, or a status explaining why there is none, like the web form. A new employee's empty documents are marked "required" on the server; one who needs no document picks "not required". Choice fields are lists of used values (/api/hr/master/choices); the bank allows "cash salary".

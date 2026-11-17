@@ -84,7 +84,7 @@ bool canDecideLeave(Map<String, dynamic>? user, Map<String, dynamic> l, {require
   return false;
 }
 
-/// Why a request has no decision buttons. Process viewers ([full]) read who holds it; everyone else reads «قيد المراجعة».
+/// Why a request has no decision buttons. Process viewers ([full]) read who holds it; everyone else reads 'under review'.
 String leaveWaitNote(Map<String, dynamic> l, {bool full = false}) {
   final st = (l['status'] ?? '').toString();
   if (st == 'info_requested') {

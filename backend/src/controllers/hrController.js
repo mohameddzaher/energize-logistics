@@ -370,7 +370,7 @@ exports.updateEmployee = async (req, res) => {
       'qiwaContractNumber', 'gosiNumber', 'absherStatus', 'sponsorName', 'workPermitExpiry',
       // `branch` is the main branch; `branches` are extra branches he actually works on. See models/Employee.
       'jobTitle', 'department', 'staffCategory', 'hireDate', 'actualWorkStartDate', 'workLocation', 'branchName', 'branch', 'branches',
-      // «خدمة Media Go» yes/no (copied to the B2C register by the model hook).
+      // Media Go service flag, yes/no (copied to the B2C register by the model hook).
       'mediaGo',
       'phone', 'email', 'address', 'emergencyContactName', 'emergencyContactPhone',
       'basicSalary', 'allowances', 'directManager', 'notes',
@@ -2064,7 +2064,7 @@ exports.decideLeave = async (req, res) => {
       chain.advance(leave, stage);
     }
     await leave.save();
-    // A named entry, so the log reads «الموافقة على إجازة …» instead of the generic path the safety net writes.
+    // A named entry, so the log reads 'leave approved …' instead of the generic path the safety net writes.
     try {
       const emp = await Employee.findById(leave.employee).select('arabicName firstName lastName employeeNumber').lean();
       const stageAr = chain.STAGE_AR[stage] || stage;

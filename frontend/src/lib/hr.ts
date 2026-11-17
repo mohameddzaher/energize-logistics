@@ -458,7 +458,7 @@ export const leaveStatusStyle = (l: { status: string }, ownView = false, full = 
   if (!LEAVE_PENDING.includes(l.status) || full) return LEAVE_STATUS[l.status];
   return canAct ? LEAVE_AWAITING_YOU : LEAVE_IN_REVIEW;
 };
-/** Status filter options for this reader: process viewers filter by stage, the rest by «قيد المراجعة» (backend status=in_review). */
+/** Status filter options for this reader: process viewers filter by stage, the rest by 'under review' (backend status=in_review). */
 export const leaveStatusOptions = (full: boolean) => (full
   ? Object.entries(LEAVE_STATUS)
   : [['in_review', LEAVE_IN_REVIEW] as const, ...Object.entries(LEAVE_STATUS).filter(([k]) => !LEAVE_PENDING.includes(k))]);

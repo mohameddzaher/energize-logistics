@@ -78,7 +78,7 @@ const shipmentOrderSupplierSchema = new mongoose.Schema(
     financeCode: { type: String, trim: true, default: '' },
     financeClass: { type: String, trim: true, default: '' },
     previousName: { type: String, trim: true, default: '' },
-    /** Follow-up priority for an active carrier not yet on the master (أولوية 1/2/3). */
+    /** Follow-up priority for an active carrier not yet on the master (priority 1/2/3). */
     leadPriority: { type: String, trim: true, default: '' },
     /** The other names this carrier is written under in shipments; their folded keys join shipments to this row. */
     aliases: { type: [String], default: [] },

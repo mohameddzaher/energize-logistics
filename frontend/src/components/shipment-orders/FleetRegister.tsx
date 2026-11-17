@@ -38,8 +38,8 @@ const PAGE = 200;
 type Owner = '' | 'not_ours' | 'supplier' | 'ours' | 'unknown';
 
 /**
- * One register, three screens: Shipment Orders «الموردون والمركبات», and the vendors section's «السيارات» and
- * «السائقون الأفراد». Same endpoints and the same live event, so an edit on one shows on the others at once.
+ * One register, three screens: Shipment Orders' vendors-and-vehicles page, and the vendors section's vehicles and
+ * individual-drivers pages. Same endpoints and the same live event, so an edit on one shows on the others at once.
  */
 export default function FleetRegister({ initialTab = 'suppliers', supplierType, title, subtitle }: {
   initialTab?: 'suppliers' | 'vehicles' | 'drivers';

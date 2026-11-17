@@ -1,5 +1,5 @@
 'use client';
-// Rims (جنوط) tab of the fleet-asset registry: counted stock per brand/size/condition with an immutable movement ledger.
+// Rims tab of the fleet-asset registry: counted stock per brand/size/condition with an immutable movement ledger.
 // Rims carry no serial, so they are quantities, not Ls2TireAsset rows. Mistakes are reversed, never edited (same rule as the store).
 import { useState, useEffect, useCallback, useMemo } from 'react';
 import { Plus, Minus, ArrowLeftRight, Pencil, Trash2, History, X, Undo2, Truck, PackageCheck } from 'lucide-react';

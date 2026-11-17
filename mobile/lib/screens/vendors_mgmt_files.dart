@@ -274,7 +274,7 @@ class _VmRankingState extends State<VmRanking> with _Live {
 
 // ── New company ─────────────────────────────────────────────────────────────
 
-/// «إضافة مورد» for a company: the four required papers (several files each), optional named extras, the owner's
+/// Add vendor for a company: the four required papers (several files each), optional named extras, the owner's
 /// mobile and the operator. A freelance driver is added from the freelancers page instead.
 class VendorNewScreen extends StatefulWidget {
   final String name;
@@ -587,7 +587,7 @@ class _ContractSheetState extends State<_ContractSheet> {
 
 // ── Approvals ───────────────────────────────────────────────────────────────
 
-/// «اعتماد الموردين»: carriers waiting for the operations manager or a delegated member, with their papers.
+/// Vendor approvals: carriers waiting for the operations manager or a delegated member, with their papers.
 class VendorsApprovalsScreen extends StatefulWidget {
   const VendorsApprovalsScreen({super.key});
   @override

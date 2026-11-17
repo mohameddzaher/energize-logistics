@@ -2804,7 +2804,7 @@ async function annotateNameMismatches(checks) {
   const names = (await ShipmentOrderCustomer.find({ isActive: { $ne: false } }).select('name').sort({ name: 1 }).lean())
     .map((c) => String(c.name || '').trim()).filter(Boolean);
   const set = new Set(names);
-  // Spelling-folded match (ة/ه, أ/ا, ى/ي, diacritics, spaces): offered as a suggestion, never chosen by itself.
+  // Spelling-folded match (ta marbuta/ha, alef forms, alef maqsura/ya, diacritics, spaces): offered as a suggestion, never chosen by itself.
   const fold = (x) => String(x || '').replace(/[\u064B-\u0652\u0640]/g, '').replace(/[أإآ]/g, 'ا').replace(/ة/g, 'ه').replace(/ى/g, 'ي').replace(/\s+/g, '').toLowerCase();
   const byFold = new Map();
   for (const n of names) { const k = fold(n); if (!byFold.has(k)) byFold.set(k, n); }

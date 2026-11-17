@@ -13,7 +13,7 @@ import '../ui/theme.dart';
 import '../ui/widgets.dart';
 import 'ls2_store.dart';
 
-/// Store issue requests (طلب صرف) for both stores, as on the web: the list first, the items screen one tap away.
+/// Store issue requests for both stores, as on the web: the list first, the items screen one tap away.
 /// Saving a request is the stock-out; the server refuses any line that would take a balance below zero. Posted requests are not edited; cancelling returns the stock on the record.
 class IssueCfg {
   final String base, itemsBase, titleAr, titleEn, vehiclesKind, section;

@@ -360,7 +360,7 @@ exports.getVehicleAssets = async (req, res) => {
 
 /**
  * Every change of a tire's condition % or grade, oldest first, read from its events: the snapshot taken after each
- * event, the edit notes («الحالة: 70%», «الدرجة: جديد») and the percent recorded on dismount. A row is kept only when
+ * event, the edit notes (condition 70%, grade new) and the percent recorded on dismount. A row is kept only when
  * the percent or grade differs from the one before it.
  */
 async function tireConditionHistory(tires) {

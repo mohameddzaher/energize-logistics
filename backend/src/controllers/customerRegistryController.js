@@ -456,7 +456,7 @@ exports.tripFilterOptions = async (req, res) => {
 const { PRICE_EDITORS: TIER_EDITORS } = require('../utils/customerRoutes');
 exports.canEditTiers = (role) => TIER_EDITORS.includes(role);
 
-/** «وقف طلبات» is the sales manager's call (and the super-admin tier's). */
+/** The order-hold switch is the sales manager's call (and the super-admin tier's). */
 exports.canSetOrdersHold = (u) => !!u && (require('../config/roles').rightsRoleOf(u.role) === 'sales_manager' || require('../config/constants').isTopRole(u.role));
 
 /** PUT /api/customer-registry/:id/orders-hold  { on, reason } */

@@ -552,7 +552,7 @@ export default function CustomerProfile({ id, basePath }: { id: string; basePath
     }
   }, [id, ar, notify, load]);
 
-  // «وقف طلبات»: the sales manager's switch; while on, every new shipment request for this customer waits for his approval.
+  // Order hold: the sales manager's switch; while on, every new shipment request for this customer waits for his approval.
   const setOrdersHold = useCallback(async (on: boolean) => {
     let reason = '';
     if (on) {

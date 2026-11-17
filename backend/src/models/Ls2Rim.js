@@ -1,5 +1,5 @@
 /**
- * Ls2Rim: rims (جنوط) held as counted stock on the tire side of the heavy-transport registry.
+ * Ls2Rim: rims held as counted stock on the tire side of the heavy-transport registry.
  * Rims carry no serial, so unlike Ls2TireAsset one row is one rim TYPE (brand + size + condition) with a quantity.
  * The balance changes only through Ls2RimMovement rows; a recorded movement is never edited, it is reversed.
  */
@@ -31,7 +31,7 @@ rimSchema.index({ key: 1 }, { name: 'one_active_rim_type', unique: true, partial
 const fold = (s) => String(s || '').trim().toLowerCase()
   .replace(/[أإآ]/g, 'ا').replace(/ى/g, 'ي').replace(/ة/g, 'ه').replace(/[ً-ْـ]/g, '').replace(/\s+/g, ' ');
 const CONDITION_AR = { new: '', used: 'مستعمل', scrap: 'سكراب' };
-// Matches the store's own wording: «جنط صيني 385», «جنط صيني مستعمل 315», «جنط صيني سكراب 385».
+// Matches the store's own wording: 'Chinese rim 385', 'Chinese rim used 315', 'Chinese rim scrap 385' (written in Arabic there).
 const rimName = ({ brand, size, condition }) => ['جنط', String(brand || '').trim(), CONDITION_AR[condition] || '', String(size || '').trim()]
   .filter(Boolean).join(' ').replace(/\s+/g, ' ');
 const rimKey = ({ brand, size, condition }) => `${fold(brand)}|${fold(size).replace(/\s+/g, '')}|${condition || 'new'}`;

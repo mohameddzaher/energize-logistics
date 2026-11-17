@@ -1,5 +1,5 @@
 /**
- * Restores «إيجار السيارة» on fleet loads that an empty workflow purchase price zeroed, from a list of [waybillNumber, price]
+ * Restores the vehicle rent on fleet loads that an empty workflow purchase price zeroed, from a list of [waybillNumber, price]
  * (taken from the nightly backup), then re-mirrors each load to its workflow row. Only loads whose price is still 0 are touched.
  * Usage: node src/scripts/fleetRestorePrices.js '<json>' [--apply]
  */

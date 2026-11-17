@@ -1,6 +1,6 @@
 'use client';
 import { lastSeenText } from '@/components/ls2/tireLastSeen';
-// Fleet Assets — سجل السطحات والتيدرات وفردات الكاوتش.
+// Fleet Assets — the register of flatbeds, trailers and tires.
 //
 // The live Wialon mirror knows sensors, not hardware: it cannot tell you WHICH
 // physical tire (by serial) sits at position 9 of truck 8200, or which trailer
@@ -9,7 +9,7 @@ import { lastSeenText } from '@/components/ls2/tireLastSeen';
 // each one is NOW, and (via the history tab) everywhere it has ever been.
 // Moving a tire or a trailer here writes an immutable event; nothing is lost.
 //
-// The "sensors" tab cross-checks what the workshop registered (يوجد / لايوجد)
+// The "sensors" tab cross-checks what the workshop registered (present / absent, in Arabic in the sheet)
 // against what the live Wialon feed actually reports, per vehicle.
 import { useState, useEffect, useCallback, useMemo, Fragment } from 'react';
 import { useSocket } from '@/hooks/useSocket';
@@ -47,10 +47,9 @@ interface SensorRow { plate: string; unitId: number | null; driver: string; regi
 
 // The workshop's 14-position scheme (matches the collected JSON exactly).
 //
-// نسخةٌ ثانيةٌ من الجدول تعيش في backend/src/services/ls2TireSensors.js، لأن
-// الخادم يشتقّ منها عدد مواضع الشاحنة التي لم تُجرَد بعد ليحسب عمود «حساسات
-// الكاوتش». فأيّ تعديلٍ هنا (إضافة موضعٍ أو تغيير قسمه) يجب أن يُنقل هناك،
-// وإلا اختلف ما تعرضه هذه الشاشة عمّا يعدّه العمود.
+// A second copy of this table lives in backend/src/services/ls2TireSensors.js: the server derives from it how many
+// truck positions are not yet counted, for the tire-sensors column. Any change here (a new position or its section)
+// must be copied there, or this screen and that column disagree.
 const POSITION_DEFS: { n: number; label: string; section: string }[] = [
   { n: 1, label: 'اطار 1 يسار', section: 'الرأس' },
   { n: 2, label: 'اطار 2 يمين', section: 'الرأس' },
@@ -92,7 +91,7 @@ const SENSOR_LABELS: Record<string, { en: string; ar: string; cls: string }> = {
   unknown: { en: 'Unknown', ar: 'غير محدد', cls: 'bg-slate-50 text-slate-400' },
 };
 // The tire's lifecycle exactly as the workshop runs it:
-// جديد/مستعمل في المخزن ← مركّبة ← (in ⇒ out) ← في المصنع ← صالحة أو سكراب، أو تالفة.
+// New/used in store → mounted → (in ⇒ out) → at the factory → serviceable or scrap, or damaged.
 const TIRE_STATUS_LABELS: Record<string, { en: string; ar: string; cls: string }> = {
   mounted: { en: 'Mounted', ar: 'مركّبة', cls: 'bg-emerald-100 text-emerald-700' },
   spare: { en: 'In stock', ar: 'في المخزن', cls: 'bg-amber-100 text-amber-700' },
@@ -102,9 +101,8 @@ const TIRE_STATUS_LABELS: Record<string, { en: string; ar: string; cls: string }
   sold: { en: 'Sold', ar: 'مباعة', cls: 'bg-emerald-100 text-emerald-700' },
   retired: { en: 'Retired (legacy)', ar: 'معدومة (قديم)', cls: 'bg-red-50 text-red-500' },
 };
-// درجة الفردة. «مجدد» كانت درجة لوحدها واندمجت في «مستعمل»: المجدَّدة مستعملة
-// فعلًا، والورشة بتحطّها على نفس الرفّ وفي نفس المواضع — الفصل كان بيقسم مخزون
-// واحد على خانتين وبس. و«في المصنع» درجة بتيجي من الحالة، مش اختيار يدوي.
+// Tire grade. Retreaded merged into used: a retreaded tire is used, on the same shelf and positions, so splitting it
+// divided one stock in two. «At the factory» comes from the status, not a manual choice.
 const TIRE_CONDITION_LABELS: Record<string, { en: string; ar: string; cls: string }> = {
   new: { en: 'New', ar: 'جديد', cls: 'bg-emerald-50 text-emerald-700' },
   used: { en: 'Used', ar: 'مستعمل', cls: 'bg-slate-100 text-slate-600' },
@@ -122,7 +120,7 @@ const flatbedOptions = (flatbeds: Flatbed[], ar: boolean) =>
     hint: [f.brand, f.currentTrailerNumber ? `${ar ? 'تيدر' : 'trailer'} ${f.currentTrailerNumber}` : '', f.driver].filter(Boolean).join(' · '),
   }));
 // Occupancy-aware: once a truck is chosen, every position says whether it is
-// FREE (🟢 — ركّب هنا مباشرة) or already carries a tire (🔴 — التركيب هنا = استبدال),
+// FREE (🟢 — mount here directly) or already carries a tire (🔴 — mounting here = replacement),
 // so the workshop picks an empty slot on purpose and knows a busy one means a swap.
 // Matched on plateKey (digits-only) — a flatbed's plate string ("7362") often
 // differs from the tire's stored plate, so a raw string match wrongly reports free.
@@ -186,26 +184,25 @@ export default function Ls2FleetAssetsPage() {
   const [openSensor, setOpenSensor] = useState<Set<string>>(new Set());
   const [busy, setBusy] = useState(false);
 
-  // بطاقات الحالة أعلى تبويب الكاوتشات تعمل كفلاتر — نقرة تحصر الجدول فيها.
+  // Status cards above the tires tab act as filters: a click narrows the table to that state.
   const [tireFilter, setTireFilter] = useState<'' | 'unmounted' | 'store' | TireStateKey>('');
 
-  // ملف أصول عربية واحدة (الكاوتش + التاريخ) — بيتفتح من رقم الكاوتش في الجدول
+  // One truck's asset file (tires + history), opened from the tire number in the table.
   const [sheetPlate, setSheetPlate] = useState<string | null>(null);
-  // بيتزوّد بعد أي عملية أو أي تحديث حي، فالشيت المفتوح يعيد تحميل نفسه بدل
-  // ما يفضل شايف الحالة القديمة بعد ما المستخدم غيّرها من جوّاه.
+  // Bumped after any action or live update, so an open sheet reloads instead of showing the old state.
   const [refreshKey, setRefreshKey] = useState(0);
   // Modals
   const [moveTire, setMoveTire] = useState<TireAsset | null>(null);
-  const [downTire, setDownTire] = useState<TireAsset | null>(null); // إنزال: مخزن/تجديد/تالفة/سكراب + بديل
+  const [downTire, setDownTire] = useState<TireAsset | null>(null); // Take down: store / renewal / damaged / scrap, with a replacement
   const [editTire, setEditTire] = useState<TireAsset | null>(null);
-  const [renewalTire, setRenewalTire] = useState<TireAsset | null>(null); // نتيجة التجديد: صالحة/سكراب
-  const [retireTire, setRetireTire] = useState<TireAsset | null>(null);   // تالفة/سكراب
-  const [statusTire, setStatusTire] = useState<TireAsset | null>(null);   // نقل بين الحالات
+  const [renewalTire, setRenewalTire] = useState<TireAsset | null>(null); // Renewal result: usable or scrap
+  const [retireTire, setRetireTire] = useState<TireAsset | null>(null);   // Damaged or scrap
+  const [statusTire, setStatusTire] = useState<TireAsset | null>(null);   // Move between states
   const [addTire, setAddTire] = useState(false);
   const [moveTrailer, setMoveTrailer] = useState<Trailer | null>(null);
-  // العكس: تُفتَح العربيةُ ويُختار التيدرُ الذي عليها — مَن في الورشة يعرف أيَّ تيدرٍ تحت أيّ رأس.
+  // The reverse: open the truck and pick the trailer under it (the workshop knows which trailer is under which head).
   const [hitchTruck, setHitchTruck] = useState<Flatbed | null>(null);
-  // التيدرُ يُفتح على كاوتشاته: ضغطةٌ على رقمه تعرض فرداته وأمام كلٍّ إجراءاتُها.
+  // A trailer opens on its tires: clicking its number lists its tires, each with its actions.
   const [trailerTires, setTrailerTires] = useState<Trailer | null>(null);
   const [addTrailer, setAddTrailer] = useState(false);
   const [editFlatbed, setEditFlatbed] = useState<Flatbed | null>(null);
@@ -226,23 +223,23 @@ export default function Ls2FleetAssetsPage() {
   }, []);
   useEffect(() => { load(); }, [load]);
   useEffect(() => { if (tab === 'history') loadEvents(); if (tab === 'sensors') loadSensors(); }, [tab, loadEvents, loadSensors]);
-  // أي حركة على الأصول (تركيب/إنزال/تبديل/بيع…) — من هذه الشاشة أو أي مستخدم آخر —
-  // تصل فورًا وتلقائيًا عبر السوكت، فتُحدَّث القوائم والسجل والسينسورات بلا تحديث يدوي.
+  // Any asset movement (mount/dismount/swap/sale…), from here or another user, arrives live over the socket,
+  // so lists, log and sensors refresh with no manual reload.
   useSocket('ls2:updated', useCallback((p: any) => {
     if (p?.vehicles !== undefined) return;   // the telemetry poller's pulse, not an asset change
     load();
-    setRefreshKey((k) => k + 1);   // والشيت المفتوح كمان
+    setRefreshKey((k) => k + 1);   // Also refresh the open sheet
     if (tab === 'history') loadEvents();
     if (tab === 'sensors') loadSensors();
   }, [load, loadEvents, loadSensors, tab]));
-  // لوحةُ كلّ سطحةٍ كما في سجلّ المركبات — تعديلُها هناك يظهر هنا في الحال.
+  // Each flatbed's plate as in the vehicle register; editing it there shows here at once.
   useSocket('vreg:updated', useCallback(() => { load(); }, [load]));
 
   const refreshAll = () => { setLoading(true); load(); if (tab === 'history') loadEvents(); if (tab === 'sensors') loadSensors(); };
 
   // ---- Filters ---------------------------------------------------------------
   // Fold Arabic orthography so a plain-alef query matches a hamza-alef record
-  // (and ة/ه, ى/ي, ؤ/و, ئ/ي) — otherwise Arabic names/types silently miss.
+  // (and teh marbuta/heh, alef maqsura/yeh, hamza seats) — otherwise Arabic names/types silently miss.
   const norm = (s: any) => String(s ?? '')
     .replace(/[أإآ]/g, 'ا').replace(/ى/g, 'ي').replace(/ة/g, 'ه')
     .replace(/ؤ/g, 'و').replace(/ئ/g, 'ي').replace(/ـ/g, '')
@@ -261,7 +258,7 @@ export default function Ls2FleetAssetsPage() {
   const flatbedSearch = useCallback((f: any) => [f.plate, f.registryPlate, f.batch, f.brand, f.currentTrailerNumber, f.numbering, f.driver], []);
   const flatbedF = useChipFilter(flatbeds, FLATBED_CHIPS, flatbedFilter, q, flatbedSearch);
   const fFlatbeds = flatbedF.shown;
-  // التيدرات: السؤال اليومي «مين واقف ومين مركّب» ماكانش ليه فلتر — بحث نصّي وبس.
+  // Trailers: the daily question 'which are parked and which are hitched' had no filter, only text search.
   const [trailerFilter, setTrailerFilter] = useState('');
   const TRAILER_CHIPS: Chip[] = useMemo(() => [
     { key: '', label: ar ? 'الكل' : 'All' },
@@ -272,19 +269,17 @@ export default function Ls2FleetAssetsPage() {
   const trailerSearch = useCallback((x: any) => [x.trailerNumber, x.currentPlate, x.status, x.notes], []);
   const trailerF = useChipFilter(trailers, TRAILER_CHIPS, trailerFilter, q, trailerSearch);
   const fTrailers = trailerF.shown;
-  // الفلترُ والبطاقةُ من تعريفٍ واحد (lib/tireStates): فلا يقول العدّاد رقمًا
-  // وتفتح البطاقةُ غيره. و«غير مركّبة» أوسعُ من «في المخزن»: التالفة والمباعة
-  // غير مركّبتين وليستا في المخزن — خرجتا من العهدة.
+  // Filter and card come from one definition (lib/tireStates), so a count never opens a different list.
+  // 'Not mounted' is wider than 'in store': damaged and sold tires are not mounted and not in store (out of custody).
   const matchesTireFilter = useCallback((ti: TireAsset) => {
     if (!tireFilter) return true;
     if (tireFilter === 'unmounted') return tireState(ti) !== 'mounted';
     if (tireFilter === 'store') return isInStore(ti);
     return tireState(ti) === tireFilter;
   }, [tireFilter]);
-  // ── السيارةُ والمكانُ الآن ──────────────────────────────────────────────
-  // فردةُ التيدر لا تحمل لوحةَ العربية دائمًا: هي على التيدر، والتيدرُ على
-  // العربية. فتُقرأ السيارةُ من سجلّ التيدر حين تغيب اللوحة. والمكانُ يُقال
-  // بكلمات: مركّبة على أيّ جزء، أو في أيّ ركنٍ من المستودع، أو خارج العهدة.
+  // The truck and the place now: a trailer tire does not always carry the truck's plate (it is on the trailer, the
+  // trailer on the truck), so the truck is read from the trailer register when the plate is missing. The place is said
+  // in words: mounted on which part, which corner of the store, or out of custody.
   const trailerByNo = useMemo(() => new Map(trailers.map((x) => [String(x.trailerNumber), x])), [trailers]);
   const unitByKey = useMemo(() => new Map(flatbeds.map((f) => [f.plateKey, f.unitId])), [flatbeds]);
   const vehicleOf = useCallback((ti: TireAsset): { plate: string; unitId: number | null } | null => {
@@ -562,7 +557,7 @@ export default function Ls2FleetAssetsPage() {
                     <td className="px-4 py-3 tabular-nums text-slate-500">{f.numbering ?? '—'}</td>
                     <td className="px-4 py-3 font-medium text-slate-800">
                       {f.plate}
-                      {/* ولوحتُها في سجلّ المركبات — الرقمُ هنا ترقيمُ الورشة */}
+                      {/* Its plate in the vehicle register; the number here is the workshop's numbering. */}
                       {f.registryPlate ? <span className="block text-[10px] text-slate-400 font-normal">{f.registryPlate}</span> : null}
                     </td>
                     <td className="px-4 py-3 text-slate-600">{f.batch || '—'}</td>
@@ -582,8 +577,7 @@ export default function Ls2FleetAssetsPage() {
                       </span>
                     </td>
                     <td className="px-4 py-3 text-slate-600">{f.driver || '—'}</td>
-                    {/* الرقم ده كان مجرد عدد — بقى مدخل. الضغط عليه بيفتح الكاوتش
-                        نفسه ببياناته وتاريخ العربية كله في مكان واحد. */}
+                    {/* The number opens the truck itself: its data and its whole history in one place. */}
                     <td className="px-4 py-3 text-end">
                       <button type="button" onClick={() => setSheetPlate(f.plate)}
                         title={ar ? 'اعرض الكاوتش والتاريخ' : 'Show tires & history'}
@@ -679,14 +673,13 @@ export default function Ls2FleetAssetsPage() {
       {/* ---- Tires ----------------------------------------------------------- */}
       {tab === 'tires' && (
         <div className="space-y-3">
-          {/* بطاقات الحالة = فلاتر: نقرة تحصر الجدول، نقرة ثانية تلغي الفلتر */}
+          {/* Status cards are filters: one click narrows the table, a second click clears it. */}
           <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-6 gap-2">
             {([
               { key: '', label: ar ? 'الكل' : 'All', count: tires.length, cls: 'text-slate-700', dot: 'bg-slate-400' },
               { key: 'mounted', label: ar ? 'مركّبة' : 'Mounted', count: tires.filter((x) => tireState(x) === 'mounted').length, cls: 'text-emerald-700', dot: 'bg-emerald-500' },
               { key: 'unmounted', label: ar ? 'غير مركّبة' : 'Unmounted', count: tires.filter((x) => tireState(x) !== 'mounted').length, cls: 'text-amber-700', dot: 'bg-amber-500' },
-              // «في المخزن» شاملةٌ لِما تحتها: الجديد والمستعمل وتحت التجديد
-              // وفي المصنع والسكراب — كلُّ ما هو عندنا وغيرُ مركَّب.
+              // 'In store' includes everything under it: new, used, under retread, at the factory and scrap — all we hold unmounted.
               { key: 'store', label: ar ? 'في المخزن' : 'In store', count: tires.filter(isInStore).length, cls: 'text-blue-700', dot: 'bg-blue-500' },
               ...TIRE_STATES.filter((st) => st.key !== 'mounted').map((st) => ({
                 key: st.key,
@@ -736,7 +729,7 @@ export default function Ls2FleetAssetsPage() {
                     return (
                       <tr key={ti._id} className="border-b border-slate-100 hover:bg-slate-50">
                         <td className="px-4 py-3 tabular-nums text-slate-500">{ti.tireNumber || '—'}</td>
-                        {/* السريال مدخلُ حياة الفردة: ضغطةٌ تفتح كلَّ ما مرّ بها. */}
+                        {/* The serial opens the tire's whole life: one click shows everything it went through. */}
                         <td className="px-4 py-3">
                           <Link href={`/system/ls2/tires/${ti._id}`}
                             className="font-mono text-xs font-bold text-[#f37121] hover:underline">{ti.serial}</Link>
@@ -791,9 +784,8 @@ export default function Ls2FleetAssetsPage() {
         const storeTires = tires.filter((x) => x.status !== 'mounted' && (!q || [x.serial, x.tireNumber, x.type, x.size].some((f) => norm(f).includes(norm(q)))));
         const groups: { key: string; label: string; cls: string; items: TireAsset[] }[] = [
           { key: 'new', label: ar ? 'جديد' : 'New', cls: 'bg-sky-50 text-sky-700 border-sky-200', items: storeTires.filter((x) => x.status === 'spare' && (x.condition || 'used') === 'new') },
-          // «مستعمل» بقت خانة واحدة تضمّ المجدَّد: أي فردة على الرف مش جديدة.
-          // القراءة بالنفي مقصودة — لو فضلت صفوف قديمة بدرجة قديمة قبل ما
-          // migrateTireConditions يجري، تفضل بتتعدّ هنا بدل ما تختفي من المخزن.
+          // 'Used' is one box that includes retreaded: any shelf tire that is not new. Read by negation on purpose: old rows
+          // with a retired grade (before migrateTireConditions runs) still count here instead of vanishing from the store.
           { key: 'used', label: ar ? 'مستعمل صالح' : 'Used (good)', cls: 'bg-blue-50 text-blue-700 border-blue-200', items: storeTires.filter((x) => x.status === 'spare' && (x.condition || 'used') !== 'new') },
           { key: 'in_repair', label: ar ? 'في المصنع' : 'At the factory', cls: 'bg-violet-50 text-violet-700 border-violet-200', items: storeTires.filter((x) => x.status === 'in_repair') },
           { key: 'scrap', label: ar ? 'سكراب (للبيع)' : 'Scrap (to sell)', cls: 'bg-slate-100 text-slate-600 border-slate-200', items: storeTires.filter((x) => x.status === 'scrap') },
@@ -802,10 +794,7 @@ export default function Ls2FleetAssetsPage() {
         const freeTrailers = trailers.filter((x) => !x.currentPlate);
         return (
           <div className="space-y-4">
-            {/* ── والمستودعُ صار واحدًا بلا شريك ──────────────────────────
-                كان هنا سطرٌ يقول «هذا هو مستودع الورشة نفسه» ورابطٌ إليه.
-                وقد أُزيل قسمُ الورشة — عملُه كلُّه هنا — فلم يبق ما يُحال
-                إليه، ورابطٌ إلى صفحةٍ محذوفةٍ أسوأُ من لا رابط. */}
+            {/* One store, no partner: the workshop section was removed (its work is all here), so the old link to it is gone. */}
             <p className="text-xs text-slate-500">
               {ar
                 ? 'مستودع واحد لكل ما نملك: أي حركة تظهر هنا لحظيًا.'
@@ -841,7 +830,7 @@ export default function Ls2FleetAssetsPage() {
                                 {admin && ti.status === 'in_repair' && (
                                   <button type="button" onClick={() => setRenewalTire(ti)} className="text-[11px] font-medium text-violet-600 hover:underline">{ar ? 'نتيجة التجديد' : 'Result'}</button>
                                 )}
-                                {/* السكراب/التالف: خطوة البيع كخردة — منفصلة عن وضعها سكراب. */}
+                                {/* Scrap/damaged: selling as scrap is a separate step from marking it scrap. */}
                                 {admin && (ti.status === 'scrap' || ti.status === 'damaged') && (
                                   <button type="button" disabled={busy}
                                     onClick={async () => { if (await confirm(ar ? `تسجيل بيع الفردة ${ti.serial} كخردة؟` : `Sell ${ti.serial} as scrap?`)) doRetireTire(ti, 'sold', ''); }}
@@ -1077,11 +1066,11 @@ export default function Ls2FleetAssetsPage() {
   );
 }
 
-// خيار «فردة بديلة من المخزن» — يظهر في مودالي الإنزال والنقل: البديل يُركَّب
-// في الموقع الذي أخلته الفردة، فتكتمل العمليتان (نزول + تركيب) بحركة واحدة.
+// 'Replacement from store' option in the dismount and move modals: the replacement is mounted in the position the
+// tire vacated, so both steps (dismount + mount) happen in one action.
 // The replacement can be a spare from the store, a tire on ANOTHER truck (a
-// swap), OR another tire on the SAME truck — including the الاستبن (spare
-// mounted on the truck): a roadside blowout swaps the burst tire with the truck's
+// swap), OR another tire on the SAME truck — including the spare
+// mounted on the truck: a roadside blowout swaps the burst tire with the truck's
 // own spare. Order: store spares → same-truck → other trucks. Only the tire being
 // worked on itself is excluded.
 const spareOptions = (tires: TireAsset[], source: TireAsset | string, ar: boolean) => {
@@ -1111,16 +1100,14 @@ const spareOptions = (tires: TireAsset[], source: TireAsset | string, ar: boolea
     });
 };
 
-// ---- سلسلةُ البدائل ------------------------------------------------------------
+// Replacement chain: a tire leaving a truck position leaves it empty, and only the spare may stay empty. A replacement
+// from the store ends it; one taken from another truck empties a position there, so a new mandatory line appears,
+// and so on until a tire comes from the store. The server checks the same chain before any move (planReplacementChain).
 //
-// فردةٌ تخرج من موقعٍ على عربية تُخلفه فارغًا، ولا يبقى فارغًا إلّا الاستبن.
-// فإن جاءت البديلةُ من المستودع انتهى الأمر؛ وإن سُحبت من عربيةٍ أخرى فقد أخلت
-// هي موقعًا هناك — فيظهر سطرٌ جديدٌ إلزاميّ لمن يملؤه، وهكذا حتى تأتي فردةٌ من
-// المستودع. والخادمُ يفحص السلسلةَ نفسَها قبل أيّ حركة (planReplacementChain).
 const isSpareSlotT = (t?: Partial<TireAsset> | null) => !!t && (!!t.isSpare || /استبن/.test(t.section || ''));
 const onTruck = (t?: TireAsset | null) => !!t && t.status === 'mounted' && !!t.plateKey;
 
-/** آخرُ موقعٍ ما زال فارغًا في السلسلة، أو `null` حين تكتمل. */
+/** The last still-empty position in the chain, or `null` once complete. */
 const pendingSlotOf = (start: TireAsset, chain: string[], tires: TireAsset[]): TireAsset | null => {
   let pending: TireAsset | null = onTruck(start) && !isSpareSlotT(start) ? start : null;
   for (const id of chain) {
@@ -1196,13 +1183,13 @@ function ReplacementChain({ start, tires, exclude = [], chain, onChange, ar, max
   );
 }
 
-// ---- كاوتشات التيدر ------------------------------------------------------------
+// Trailer tires.
 function TrailerTiresModal({ trailer, tires, ar, busy, admin, actions, placeOf, onClose }: {
   trailer: Trailer; tires: TireAsset[]; ar: boolean; busy: boolean; admin: boolean;
   actions: TireActionHandlers; placeOf: (t: TireAsset) => string; onClose: () => void;
 }) {
-  // فرداتُ التيدر: ما يحمل رقمَه وهو مركَّب، وما رُكِّب في قسم التيدر على
-  // العربية التي تجرّه ولم يُكتب عليه رقمُ تيدر (سجلّاتٌ قديمة).
+  // A trailer's tires: those carrying its number while mounted, and those mounted in the trailer section of the truck
+  // pulling it with no trailer number written (old records).
   const list = tires.filter((ti) => ti.status === 'mounted' && (
     String(ti.trailerNumber || '') === String(trailer.trailerNumber)
     || (!ti.trailerNumber && !!trailer.currentPlateKey && ti.plateKey === trailer.currentPlateKey && /تيدر|تريلة/.test(ti.section || ''))
@@ -1245,7 +1232,7 @@ function TrailerTiresModal({ trailer, tires, ar, busy, admin, actions, placeOf, 
   );
 }
 
-// ---- Dismount: مخزن / تجديد / تالفة / سكراب + بديل اختياري -------------------
+// Dismount: store / retread / damaged / scrap, with an optional replacement.
 function DismountTireModal({ tire, tires, ar, busy, onClose, onSubmit }: {
   tire: TireAsset; tires: TireAsset[]; ar: boolean; busy: boolean;
   onClose: () => void; onSubmit: (body: any) => void;
@@ -1253,14 +1240,14 @@ function DismountTireModal({ tire, tires, ar, busy, onClose, onSubmit }: {
   const [destination, setDestination] = useState<string>('');
   // Starts from the tire's current rating (edited on the tire or set at its last dismount).
   const [percent, setPercent] = useState(tire.conditionPercent != null ? String(tire.conditionPercent) : '');
-  // السلسلة: [البديلة، ثمّ ما يملأ مكانها، ثمّ …] — راجع ReplacementChain.
+  // The chain: [the replacement, then what fills its place, then …] — see ReplacementChain.
   const [chain, setChain] = useState<string[]>([]);
   const replacementId = chain[0] || '';
   const [swap, setSwap] = useState(false);
   const [reason, setReason] = useState('');
   const [date, setDate] = useState('');
   // The spare is the only slot allowed to stay empty: the truck runs without it.
-  // أي موقع تاني لازم يتملي، فالبديل إجباري (أو تبديل متبادل).
+  // Any other position must be filled, so the replacement is mandatory (or a mutual swap).
   const spareSlot = tire.isSpare || /استبن/.test(tire.section || '');
   const needsReplacement = !spareSlot;
   // Is the chosen replacement a tire mounted on ANOTHER truck? Only then can we
@@ -1268,11 +1255,9 @@ function DismountTireModal({ tire, tires, ar, busy, onClose, onSubmit }: {
   // OR backfill the replacement's slot with a third tire (store / another truck).
   const replTire = tires.find((x) => x._id === replacementId);
   const canSwap = replTire?.status === 'mounted' && !!replTire.plateKey;
-  // ── الوجهات ستٌّ لا أربع ───────────────────────────────────────────────
-  // كانت «سليمة إلى المخزن» وجهةً واحدة، فلا يُعرف من السجلّ أنزلت الفردة
-  // جديدةً أم مستعملة — والفرق هو كلُّ الفرق على الرفّ. وكانت «في المصنع»
-  // و«تحت التجديد» شيئًا واحدًا، وهما مختلفان: الأولى خرجت من الشركة،
-  // والثانية عندنا وقد تقرّر تجديدُها. ومَن يُنزل الفردة هو وحده من يعرف.
+  // Six destinations, not four: 'sound to store' did not say whether the tire went back new or used (all the
+  // difference on the shelf), and 'at the factory' and 'under retread' were one though they differ (the first left the
+  // company, the second is ours awaiting retread). Only whoever dismounts knows.
   const DEST_HINTS: Record<string, { ar: string; en: string; accent: string }> = {
     new: { ar: 'لم تُستعمل بعد — ترجع الرفّ جديدة', en: 'unused — back on the shelf as new', accent: 'border-sky-400 bg-sky-50 accent-sky-600' },
     used: { ar: 'صالحة للاستخدام — سجِّل نسبة حالتها للتسكين لاحقًا', en: 'still usable — record its condition % for later placement', accent: 'border-indigo-400 bg-indigo-50 accent-indigo-600' },
@@ -1366,23 +1351,22 @@ function MoveTireModal({ tire, flatbeds, tires, ar, busy, onClose, onSubmit }: {
   const [date, setDate] = useState('');
   // The mandatory OUT: when the slot is occupied, where does the removed tire go?
   const [displacedTo, setDisplacedTo] = useState<string>('');
-  // لو رجعت سليمة للمخزن — كام في المية؟ (تُقرأ لاحقًا عند التسكين)
+  // If it goes back sound to the store, what percent? (read later when shelving)
   const [displacedPercent, setDisplacedPercent] = useState('');
-  // سلسلةُ البدائل للموقع الذي تُخليه هذه الفردة — إلزاميّة كالإنزال تمامًا:
-  // النقلُ من عربية يُخلي موقعًا فيها كما يُخليه الإنزال.
+  // The replacement chain for the position this tire vacates; mandatory exactly like dismount (moving from a truck
+  // empties a position there).
   const [chain, setChain] = useState<string[]>([]);
   const pos = POSITION_DEFS.find((p) => p.n === posN) || POSITION_DEFS[0];
   const tireKey = tire.plateKey || String(tire.plate || '').replace(/[^0-9]/g, '');
-  // نطابق بالـ plateKey (أرقام فقط): لوحة السطحة كثيرًا ما تختلف عن لوحة الفردة المخزّنة.
+  // Matched by plateKey (digits only): the flatbed plate often differs from the stored tire's plate.
   const toKey = flatbeds.find((f) => f.plate === toPlate)?.plateKey || String(toPlate || '').replace(/[^0-9]/g, '') || String(toPlate || '').trim().toUpperCase();
   const occupant = tires.find((x) => x._id !== tire._id && x.status === 'mounted' && x.plateKey === toKey && x.positionNumber === posN);
-  // شاحنة بلا كاوتشات مسجّلة أصلًا — كل المواقع ستظهر فارغة لأن الأصول لم تُدخَل بعد.
+  // A truck with no registered tires at all: every position shows empty because its assets were never entered.
   const truckHasTires = !!toKey && tires.some((x) => x.status === 'mounted' && x.plateKey === toKey);
-  // تُخلي موقعًا؟ مركّبةٌ الآن، وليست تُنقل إلى موقعها نفسه.
+  // Vacates a position? It is mounted now and not moving to its own position.
   const vacates = onTruck(tire) && !(toKey === tireKey && posN === tire.positionNumber);
   const pendingSlot = vacates ? pendingSlotOf(tire, chain, tires) : null;
-  // مصيرُ الفردة المُزاحة هو نفسه وجهاتُ النزول — التعريف واحد، فلا تختلف
-  // خياراتُ شاشةٍ عن شاشة في الشيء نفسه.
+  // The displaced tire's fate uses the same destinations as dismount (one definition), so screens never differ.
   const FATE_HINTS: Record<string, { ar: string; en: string }> = {
     new: { ar: 'لم تُستعمل — ترجع الرفّ جديدة', en: 'unused — back on the shelf as new' },
     used: { ar: 'صالحة للاستخدام، أُزيلت فقط (تدوير مثلًا)', en: 'still good, just swapped out' },
@@ -1419,7 +1403,7 @@ function MoveTireModal({ tire, flatbeds, tires, ar, busy, onClose, onSubmit }: {
               : `⚠ No tires registered for flatbed ${toPlate} yet — every slot shows empty. Verify before mounting.`}
           </p>
         )}
-        {/* الموقع فاضي؟ نطمئن المستخدم إنه تركيب مباشر لا استبدال. */}
+        {/* Empty position? Reassure the user it is a direct mount, not a replacement. */}
         {toPlate && truckHasTires && !occupant && (
           <p className="text-xs text-emerald-700 bg-emerald-50 border border-emerald-200 rounded-lg px-3 py-2 font-medium">
             {ar
@@ -1445,7 +1429,7 @@ function MoveTireModal({ tire, flatbeds, tires, ar, busy, onClose, onSubmit }: {
                 </label>
               ))}
             </div>
-            {/* سليمة للمخزن → نكمّل السايكل: نسجّل نسبة حالتها لأجل التسكين لاحقًا. */}
+            {/* Sound to store: finish the cycle by recording its condition percent for later shelving. */}
             {displacedTo === 'used' && (
               <div className="pt-1">
                 <label className={labelCls}>{ar ? `حالة الفردة ${occupant.serial} عند التخزين (النسبة المئوية)` : `Condition % of ${occupant.serial} on storing`}</label>
@@ -1490,7 +1474,7 @@ function MoveTireModal({ tire, flatbeds, tires, ar, busy, onClose, onSubmit }: {
   );
 }
 
-// ---- Renewal result: the ONLY exit from «في المصنع» --------------------------
+// Renewal result: the only exit from 'at the factory'.
 function RenewalResultModal({ tire, ar, busy, onClose, onSubmit }: {
   tire: TireAsset; ar: boolean; busy: boolean; onClose: () => void; onSubmit: (result: 'renewed' | 'scrap', notes: string, date: string) => void;
 }) {
@@ -1567,16 +1551,15 @@ function RetireTireModal({ tire, ar, busy, onClose, onSubmit }: {
   );
 }
 
-// ---- Change tire status (نقل بين الحالات) -----------------------------------
+// Change tire status (move between states).
 function TireStatusModal({ tire, ar, busy, onClose, onSubmit }: {
   tire: TireAsset; ar: boolean; busy: boolean; onClose: () => void;
   onSubmit: (body: { status: string; conditionPercent?: number | null; reason?: string; date?: string }) => void;
 }) {
   const [date, setDate] = useState('');
-  // القائمة من التعريف الواحد (lib/tireStates): كانت هذه النافذة تعرض قائمةً
-  // ثالثة تخالف نافذتَي النزول والإزاحة — «في المخزن» بلا تفريقٍ بين جديدٍ
-  // ومستعمل، و«معدومة» التي لا وجود لها في شاشةٍ أخرى. فمن أراد نقلَ فردةٍ
-  // إلى «المستعمل» لم يجدها أصلًا.
+  // The list comes from the single definition (lib/tireStates). This dialog used to show a third list that disagreed
+  // with the dismount and displace dialogs ('in store' without new vs used, and a 'destroyed' state no other screen
+  // had), so moving a tire to 'used' was impossible.
   const OPTS = MANUAL_STATES;
   const [status, setStatus] = useState('');
   const [pct, setPct] = useState<string>(tire.conditionPercent != null ? String(tire.conditionPercent) : '');
@@ -1626,8 +1609,8 @@ function TireFormModal({ tire, flatbeds, ar, onClose, onSaved }: {
   const isEdit = !!tire;
   const [serial, setSerial] = useState(tire?.serial || '');
   const [tireNumber, setTireNumber] = useState(tire?.tireNumber || '');
-  // رقمُ الفردة يُولَّد: التالي بعد أكبر رقمٍ مسجَّلٍ في الكاوتش. والخادمُ يعيد
-  // حسابَه عند الحفظ — قد يسبق زميلٌ بفردة.
+  // The tire number is generated: next after the highest registered. The server recomputes it on save, since a
+  // colleague may have added one first.
   useEffect(() => {
     if (isEdit) return;
     api.get<{ tireNumber: string }>('/api/ls2/assets/tires/next-number').then((d) => setTireNumber(d.tireNumber || '')).catch(() => {});
@@ -1736,11 +1719,11 @@ function TireFormModal({ tire, flatbeds, ar, onClose, onSaved }: {
 
 // ---- Move trailer -----------------------------------------------------------
 /**
- * تركيبُ تيدرٍ على عربية — من جهة العربية.
+ * Hitching a trailer to a truck, from the truck's side.
  *
- * الحركةُ نفسُها التي تُفتَح من التيدر (`/trailers/:id/move`): التيدرُ المختار
- * يُنقَل بكاوتشه إلى هذه العربية. وإن كان عليها تيدرٌ فمصيرُه يُسأل عنه كما هناك:
- * يقف وحدَه، أو يأخذ مكانَ المختار على عربيّته (تبديل).
+ * The same move as from the trailer (`/trailers/:id/move`): the chosen trailer moves with its tires to this truck.
+ * If the truck already has a trailer, its fate is asked as there: it stands alone, or takes the chosen one's place
+ * on its truck (swap).
  */
 function HitchTruckModal({ flatbed, trailers, ar, busy, onClose, onSubmit }: {
   flatbed: Flatbed; trailers: Trailer[]; ar: boolean; busy: boolean; onClose: () => void;

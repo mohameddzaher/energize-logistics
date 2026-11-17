@@ -28,7 +28,7 @@ const PLACERS = [...TOP_ROLES, ...DATA_ROLES, ...PV.VENDOR_ROLES, ...SO_TEAM, 's
 const FLEET_TEAM = PV.FLEET_ROLES;
 const FLEET_NAME = 'النقل الثقيل';
 const FLEET_PLACERS = [...TOP_ROLES, ...DATA_ROLES, 'operations_manager', 'operations_team_leader', 'operations_staff', ...FLEET_TEAM];
-/** Who claims and records «تحصيل السيارات». */
+/** Who claims and records truck sourcing. */
 const WORKERS = [...new Set([...PLACERS, ...FLEET_TEAM])];
 const READERS = [...new Set([...ASKERS, ...PLACERS, ...FLEET_TEAM, 'shipment_orders_followup'])];
 /** Anyone who opens the working board may record trucks they sourced; each edits or deletes only their own entries. */
@@ -37,7 +37,7 @@ const SOURCERS = READERS;
 const PRICE_EDITORS = [...TOP_ROLES, ...PV.VENDOR_LEADS, 'operations_manager', 'operations_team_leader', 'data_manager'];
 /** The data team (and top management) correct anyone's sourcing entry. */
 const SOURCING_ALL = [...TOP_ROLES, ...DATA_ROLES];
-/** The fleet records sourcing as one team («النقل الثقيل»), so its manager and team leader correct the team's entries. */
+/** The fleet records sourcing as one team (heavy transport), so its manager and team leader correct the team's entries. */
 const FLEET_SOURCING_LEADS = ['fleet_manager', 'fleet_team_leader'];
 /** Leads complete a request a colleague holds. */
 const LEADS = [...TOP_ROLES, ...PV.VENDOR_LEADS, 'operations_manager', 'operations_team_leader', 'shipment_orders_manager', 'shipment_orders_team_leader', 'fleet_manager', 'fleet_team_leader'];
@@ -45,7 +45,7 @@ const CLAIM_MS = 60 * 60 * 1000;
 
 const { rightsRoleOf } = require('../config/roles');
 const inList = (list, u) => !!u && (list.includes(u.role) || list.includes(rightsRoleOf(u.role)));
-/** A follow-up user switched on for vendors (users page «يعمل على الموردين») works the board like the vendors team. */
+/** A follow-up user switched on for vendors (users page 'works on vendors' switch) works the board like the vendors team. */
 const followupOnVendors = (u) => !!u && u.role === 'shipment_orders_followup'
   && require('../utils/permissions').userSectionOf(u, 'Vendors Management') === 'edit';
 const isAsker = (u) => inList(ASKERS, u);
@@ -78,7 +78,7 @@ async function canApprove(u) {
   if (isSalesManager(u)) return true;
   return PV.isSalesRole(u) && (await approverIds()).includes(String(u._id));
 }
-/** The customer when it is on «وقف طلبات», else null. */
+/** The customer when it is on order hold, else null. */
 async function heldCustomer(id) {
   if (!id || !mongoose.isValidObjectId(String(id))) return null;
   const c = await ShipmentOrderCustomer.findById(id).select('name ordersHold ordersHoldReason').lean();
@@ -306,7 +306,7 @@ exports.list = async (req, res) => {
       // Counted without the branch filter itself, so picking one branch keeps the others' numbers.
       ShipmentRequest.aggregate([{ $match: { ...(() => { const rest = and.filter((x) => x !== branchClause); return rest.length ? { ...base, $and: rest } : base; })(), status: { $in: OPEN } } }, { $group: { _id: '$branch', n: { $sum: 1 } } }]),
     ]);
-    // Every company branch (reference data «الفروع»), in its own order, plus any branch written on a request outside that list.
+    // Every company branch (reference data: branches), in its own order, plus any branch written on a request outside that list.
     const company = await require('./shipmentOrdersController').companyBranchOptions().catch(() => []);
     const openBy = new Map(branches.map((b) => [String(b._id || ''), b.n]));
     const branchList = [...company.map((b) => b.key), ...[...openBy.keys()].filter((k) => k && !company.some((c) => c.key === k))]
@@ -487,7 +487,7 @@ exports.cancel = async (req, res) => {
 
 /**
  * Takes the request for one hour so colleagues see who is working it; after the hour it is released (expireClaims)
- * and must be taken again. Claiming again before the hour ends renews it. A fleet member claims as «النقل الثقيل».
+ * and must be taken again. Claiming again before the hour ends renews it. A fleet member claims as the heavy-transport team.
  */
 exports.claim = async (req, res) => {
   try {
@@ -520,7 +520,7 @@ exports.claim = async (req, res) => {
   } catch (e) { return sendMongooseError(res, e, 'تعذّر الحفظ'); }
 };
 
-// ── «تحصيل السيارات»: who found how many trucks (a follow-up aid; completions stay the real count) ──
+// Truck sourcing: who found how many trucks (a follow-up aid; completions stay the real count).
 
 const TEAM_ROLES = () => {
   const { rolesOfSection } = require('../config/roles');
@@ -529,7 +529,7 @@ const TEAM_ROLES = () => {
     fleet: [...FLEET_TEAM],
   };
 };
-/** People who may be named «بمساعدة»: the sourcing pickers' teams plus the fleet. */
+/** People who may be named as helper: the sourcing pickers' teams plus the fleet. */
 const HELPER_ROLES = () => {
   const { rolesOfSection } = require('../config/roles');
   return [...new Set([...rolesOfSection('Vendors Management'), ...rolesOfSection('Sales'), ...rolesOfSection('Operations'),
@@ -547,7 +547,7 @@ async function teamOptions(roles) {
     .map((u) => ({ value: String(u._id), label: fullName(u), role: u.role, roleAr: LABELS_AR[u.role] || u.role }))
     .sort((a, b) => a.label.localeCompare(b.label, 'ar'));
 }
-/** GET /team-members?team=vendors|fleet|helpers — the «بمساعدة» pickers. */
+/** GET /team-members?team=vendors|fleet|helpers — the helper pickers. */
 exports.teamMembers = async (req, res) => {
   try {
     const team = String(req.query.team || 'vendors');
@@ -555,7 +555,7 @@ exports.teamMembers = async (req, res) => {
     res.json({ options: await teamOptions(roles) });
   } catch (e) { res.status(500).json({ message: 'تعذّر تحميل القائمة' }); }
 };
-/** The «بمساعدة» person, checked against the eligible roles; empty means none. */
+/** The helper, checked against the eligible roles; empty means none. */
 async function resolveHelper(id) {
   if (!id) return { helper: null, helperName: '' };
   const User = require('../models/User');
@@ -817,7 +817,7 @@ exports.place = async (req, res) => {
     if (!locked) return undefined;
     const r = locked;
     const pre = [...typeCheck(trucks, r), ...timeProblems(trucks, r, await requiredTimeFields())];
-    // A picked supplier must be of the kind chosen (company for «مورد», individual for «فريلانسر»).
+    // A picked supplier must be of the kind chosen (company for vendor, individual for freelancer).
     const Supplier = require('../models/ShipmentOrderSupplier');
     for (const [i, t] of trucks.entries()) {
       if (!t.supplierChoice) continue;
@@ -909,7 +909,7 @@ async function linkedLoad(orderId) {
 }
 
 /**
- * The fleet completes trucks on our own vehicles: each truck is a transport order with supplier «تنشيط» AND its linked
+ * The fleet completes trucks on our own vehicles: each truck is a transport order with our own company as supplier AND its linked
  * fleet load (fleetOrderLink), so it shows in shipments, the operations workflow and the fleet's loads, board and
  * analytics alike. The request already holds customer, route and selling price; the fleet adds what a load needs.
  * Body: { trucks: [{ vehicle, driver, secondDriver?, price, driverExpense?, fridayBonus?, rentType?, loadType?,
@@ -965,7 +965,7 @@ exports.fleetPlace = async (req, res) => {
         });
         await ShipmentOrder.updateOne({ _id: order._id }, { $set: {
           shipmentRequest: r._id, requestNumber: r.number, requestedBy: r.createdBy, requestedByName: r.createdByName,
-          // The fleet is credited as a team: «النقل الثقيل» is the sourcing name on the order and in every report.
+          // The fleet is credited as a team: heavy transport is the sourcing name on the order and in every report.
           sourcingRep: req.user._id, sourcingRepName: FLEET_NAME, sourcingHelper: h.helper, sourcingHelperName: h.helperName,
         } });
         const load = await linkedLoad(order._id);
@@ -1043,8 +1043,8 @@ exports.reject = async (req, res) => {
 // ── Team performance: who sourced, recorded, helped and claimed ─────────────
 
 /**
- * GET /team-performance?from&to — per person (the fleet as one «النقل الثقيل»): sourcing credit on transport orders
- * («مسؤول التوريد», orders created in the period, cancelled excluded), «تحصيل السيارات» records, «بمساعدة» helps on
+ * GET /team-performance?from&to — per person (the fleet as one heavy-transport entry): sourcing credit on transport orders
+ * (sourcing owner, orders created in the period, cancelled excluded), truck-sourcing records, helper credits on
  * orders and records, and claims with how many ran out. Each count carries its list for the click-through.
  */
 exports.teamPerformance = async (req, res) => {

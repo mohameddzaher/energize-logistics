@@ -1,5 +1,5 @@
 /**
- * b2cDriversToDeliveryReps: B2C employees whose job category is «سائق» become «مندوب توصيل», one time; afterwards HR edits it.
+ * b2cDriversToDeliveryReps: B2C employees whose job category is driver become delivery rep, one time; afterwards HR edits it.
  * Shows only; --apply writes. Each changed file gets a history entry.
  */
 require('dotenv').config();

@@ -62,7 +62,7 @@ export default function RegisterServiceModal({
   const setRow = (idx: number, patch: Partial<Row>) =>
     setRows((r) => r.map((row, i) => (i === idx ? { ...row, ...patch } : row)));
 
-  // Deferred (مؤجّل) needs at least MIN_DEFER_KM; the server refuses less.
+  // Deferred needs at least MIN_DEFER_KM; the server refuses less.
   const shortDefer = rows.some((r) => r.status === 'deferred' && !(Number(r.deferKm) >= MIN_DEFER_KM));
   const partsError = partsProblem(parts, storeItems, ar);
   const incomplete = shortDefer || !!partsError;

@@ -88,14 +88,14 @@ export default function ClientsPage() {
           will-change: transform;
         }
 
-        /* تحسينات للأجهزة المحمولة */
+        /* Mobile tweaks. */
         @media (max-width: 768px) {
           .clients-carousel {
             animation: scroll 60s linear infinite;
           }
         }
 
-        /* إيقاف التحريك عند التمرير */
+        /* Pause the marquee on hover. */
         .clients-carousel:hover {
           animation-play-state: paused;
         }

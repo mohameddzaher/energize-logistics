@@ -162,7 +162,7 @@ async function resolveSubjects(logs) {
 
 /**
  * One entry as a full sentence: who did what, on which record, and every value that changed.
- * «نورهان فراج عدّل فاتورة INV-1 (المبلغ: من 1,000 إلى 1,150، الحالة: مكتمل)». The table's short summary kept three changes; the log is read to know exactly what happened, so nothing is cut here.
+ * E.g. 'X edited invoice INV-1 (amount: 1,000 -> 1,150, status: complete)', in Arabic. The table's short summary kept three changes; the log is read to know exactly what happened, so nothing is cut here.
  */
 const GENERIC = /^(create|add|update|edit|delete|remove)(_|$)/;
 function sentenceOf({ actor, action, actionLabel: label, entityLabel: ent, subject, kind, rows, bulkCount, lang }) {

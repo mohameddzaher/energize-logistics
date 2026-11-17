@@ -17,7 +17,7 @@ class BrMeetingDepartmentsTab extends StatefulWidget {
   final bool embedded;
   /// Heading of each department's part of the minutes.
   final String? minutesLabel;
-  /// «البنود المسندة إليّ»: the given tasks as a flat list with the same rows and actions as the meeting cards; the parent loads them.
+  /// Assigned-to-me list: the given tasks as a flat list with the same rows and actions as the meeting cards; the parent loads them.
   final List<Map<String, dynamic>>? tasks;
   final bool runner;
   final String? headDept;

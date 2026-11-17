@@ -1,5 +1,5 @@
 /**
- * One-time: requests that waited for the sales manager under the old rule (every rep's request) while their customer is not on «وقف طلبات».
+ * One-time: requests that waited for the sales manager under the old rule (every rep's request) while their customer is not on order hold.
  * Under the new rule they would never have waited, so they are approved and announced to the vendors team.
  * Dry run by default; `--apply` writes. Each released request gets an `approved` log entry naming this release.
  */

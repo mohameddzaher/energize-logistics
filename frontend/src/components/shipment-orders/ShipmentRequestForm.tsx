@@ -1,6 +1,6 @@
 'use client';
 /**
- * «طلب شحنة»: the sales half of creating a shipment. The same configured inputs as the shipment form (section
+ * Shipment request: the sales half of creating a shipment. The same configured inputs as the shipment form (section
  * settings), minus the execution (supplier, truck, driver, purchase price), which the vendors team adds when placing.
  * Used on the Shipment Orders and Sales pages; a request saved on either is the same row everywhere.
  */

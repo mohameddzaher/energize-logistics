@@ -1,5 +1,5 @@
 /**
- * ls2RimsController: rims (جنوط) on the tire side of the fleet-asset registry.
+ * ls2RimsController: rims on the tire side of the fleet-asset registry.
  * Counted stock, not serial assets: one row per brand/size/condition with a balance, and an immutable ledger of
  * movements (in, out, transfer between rim types, edits). Mistakes are reversed with a written reason, never edited,
  * the same rule as the store ledger. Balance changes are atomic ($inc guarded by the balance) so two workers racing

@@ -68,7 +68,7 @@ export default function HRLeavesPage() {
   const ar = lang === 'ar';
   const tx = getHrLeavesTranslations(lang);
   const staff = isHRStaff(user);
-  // Stages are shown to process viewers only (super admin powers, top management, chairman); HR staff see «قيد المراجعة».
+  // Stages are shown to process viewers only (super admin powers, top management, chairman); HR staff see 'under review'.
   const full = seesLeaveProcess(user);
 
   const [allLeaves, setLeaves] = useState<LeaveRequest[]>([]);

@@ -1,6 +1,6 @@
 'use client';
 /**
- * Store issue requests (طلب صرف): the list, the create form and the printable PDF.
+ * Store issue requests: the list, the create form and the printable PDF.
  * In a store that issues only through requests, saving a request is the stock-out; the server writes the movements and refuses any line that would take a balance below zero.
  * Posted requests are not edited. Cancelling returns every line to stock with opposite movements under the canceller's name.
  */

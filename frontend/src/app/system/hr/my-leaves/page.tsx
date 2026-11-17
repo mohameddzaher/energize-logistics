@@ -71,7 +71,7 @@ export default function MyLeavesPage() {
   const { lang, isRTL } = useLanguage();
   const ar = lang === 'ar';
   const tx = getHrMyLeavesTranslations(lang);
-  // The process (stages, who holds a request) is for process viewers only; the employee sees «قيد المراجعة» and the outcome.
+  // The process (stages, who holds a request) is for process viewers only; the employee sees 'under review' and the outcome.
   const full = seesLeaveProcess(user);
 
   const [tab, setTab] = useState('mine');

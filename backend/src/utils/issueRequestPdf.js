@@ -1,5 +1,5 @@
 /**
- * Store issue request (طلب صرف) as a printable PDF on the company letterhead.
+ * Store issue request as a printable PDF on the company letterhead.
  * Rendered with page.pdf (real text) and composited onto the vector letterhead by reportBuilder.stampLetterhead, the same geometry as reports, so a long request flows onto further pages with the letterhead on each.
  */
 const { withPage, getFontCss } = require('./pdfBrowser');

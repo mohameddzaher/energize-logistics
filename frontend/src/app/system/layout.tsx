@@ -838,9 +838,9 @@ function SystemLayoutInner({ children }: { children: React.ReactNode }) {
       }
     }
     if (!best || user.pageAccess[best] !== false) return false;
-    // A record opened from another page follows that page too: a tire's file lives under «الكاوتش» but opens from «السطحات والكاوتشات», so either open page lets it through.
+    // A record opened from another page follows that page too: a tire's file lives under the tires page but opens from the trailers-and-tires page, so either open page lets it through.
     if (pathname !== best) {
-      // An employee's evaluation opens from each section's KPI page, not only from «تقييم مديري الأقسام»; the API scopes it to the caller's team.
+      // An employee's evaluation opens from each section's KPI page, not only from the department-managers evaluation page; the API scopes it to the caller's team.
       const openers = pathname.startsWith('/system/performance/evaluate/')
         ? keys.filter((k) => /^\/system\/[^/]+\/kpis$/.test(k) || k === '/system/performance/requests')
         : DETAIL_OPENED_FROM[best] || [];

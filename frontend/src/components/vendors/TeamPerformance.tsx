@@ -1,7 +1,7 @@
 'use client';
 /**
- * Team performance on sales requests: per person (the fleet as one «النقل الثقيل») the sourcing credit on transport
- * orders, «تحصيل السيارات» records, «بمساعدة» helps and claims with how many ran out. Each number opens its list.
+ * Team performance on sales requests: per person (the fleet as one heavy-transport entry) the sourcing credit on transport
+ * orders, truck-sourcing records, helper credits and claims with how many ran out. Each number opens its list.
  * Own period, live on request and order changes. Data: GET /api/shipment-requests/team-performance.
  */
 import { useState, useEffect, useCallback, useMemo, useRef, Fragment } from 'react';

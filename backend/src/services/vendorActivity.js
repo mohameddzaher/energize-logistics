@@ -2,7 +2,7 @@
  * Vendor activity, read live from the shipments.
  * A shipment names its carrier by reference (newer rows) or only by the name the platform wrote, in many spellings,
  * so every row is resolved to one register row through the folded name and the register's aliases. Our own trucks
- * (owner named تنشيط, or a plate in the LS2 fleet) are "fleet", never a vendor.
+ * (owner is our own company, or a plate in the LS2 fleet) are "fleet", never a vendor.
  */
 const ShipmentOrder = require('../models/ShipmentOrder');
 const ShipmentOrderSupplier = require('../models/ShipmentOrderSupplier');

@@ -2,7 +2,7 @@
  * Contains-search on Atlas Search, shared by the collections whose search was a regex over many fields (operations reports, shipment orders).
  * A regex over N fields scans every report's keys or documents; the search index keeps each field as one folded term, so the contains-match runs on Lucene's term dictionary.
  * Folding mirrors utils/arabicSearch (alef, ta marbuta, ya and waw forms, diacritics, Arabic-Indic digits, case).
- * Name fields keep spaces (without them 'دهام حمد' would contain 'محمد'); code fields drop them, as searchKey does (a plate or container written with or without spaces is one value).
+ * Name fields keep spaces (without them a two-word name could falsely contain another single name); code fields drop them, as searchKey does (a plate or container written with or without spaces is one value).
  * The index follows its collection on its own, so no write path maintains it.
  */
 const FOLD_MAP = {

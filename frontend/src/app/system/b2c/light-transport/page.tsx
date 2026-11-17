@@ -5,7 +5,7 @@
  * The old page here listed only reps from order reports, leaving out supervisors, mechanics and cleaners (11 of 161).
  * The register now covers everyone in light transport: project, branch, supervisor, vehicle, sponsorship registration and housing. The person stays in HR and the vehicle in the vehicle register; see backend/models/LightTransport.
  */
-import { useState, useEffect, useCallback, useMemo, Suspense } from 'react';
+import { useState, useEffect, useCallback, useMemo, useRef, Suspense } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { useAuth } from '@/context/AuthContext';
 import { useLanguage } from '@/context/LanguageContext';
@@ -21,7 +21,7 @@ import ScrollX from '@/components/system/ScrollX';
 import { LEAD, LEAD_CELL } from '@/components/vehicles/stickyLead';
 import ManagersProjects from '@/components/b2c/ManagersProjects';
 import TransferProjectModal from '@/components/b2c/TransferProjectModal';
-import { Truck, Plus, Pencil, RotateCcw, UserMinus, ExternalLink, X, ArrowLeftRight } from 'lucide-react';
+import { Truck, Plus, Pencil, RotateCcw, UserMinus, ExternalLink, X, ArrowLeftRight, ChevronDown } from 'lucide-react';
 import {
   getLTEmployees, updateLTEmployee, createLTEmployee, deactivateLTEmployee, ltFacetedTotals, ltPasses,
   LT_COLUMNS, statusCls, KIND_AR, KIND_EN, canEditLT, canTransferLT, fmtDate,
@@ -70,14 +70,52 @@ function Stat({ label, value, accent, onClick, on }: { label: string; value: any
   );
 }
 
-/** A single-shape select list; values come from the register itself. */
-function Filter({ value, onChange, label, list }: { value: string; onChange: (v: string) => void; label: string; list: string[] }) {
+/** Multi-choice filter: ticks several values; stored comma-joined, which the server and `ltPasses` read as "any of". */
+function MultiFilter({ value, onChange, label, list, ar }: { value: string; onChange: (v: string) => void; label: string; list: string[]; ar: boolean }) {
+  const [open, setOpen] = useState(false);
+  const [q, setQ] = useState('');
+  const box = useRef<HTMLDivElement>(null);
+  const picked = value ? value.split(',').filter(Boolean) : [];
+  useEffect(() => {
+    if (!open) return undefined;
+    const close = (e: MouseEvent) => { if (box.current && !box.current.contains(e.target as Node)) setOpen(false); };
+    document.addEventListener('mousedown', close);
+    return () => document.removeEventListener('mousedown', close);
+  }, [open]);
+  const toggle = (v: string) => {
+    const next = picked.includes(v) ? picked.filter((x) => x !== v) : [...picked, v];
+    onChange(next.join(','));
+  };
+  const items = list.filter((v) => !q || v.includes(q));
+  const shown = picked.length === 0 ? label : picked.length === 1 ? picked[0] : (ar ? `${label.replace(/^كل /, '')}: ${picked.length}` : `${picked.length} selected`);
   return (
-    <select value={value} onChange={(e) => onChange(e.target.value)} aria-label={label}
-      className="px-3 py-2 rounded-lg bg-white border border-slate-200 text-sm text-slate-800">
-      <option value="">{label}</option>
-      {list.map((v) => <option key={v} value={v}>{v}</option>)}
-    </select>
+    <div ref={box} className="relative">
+      <button type="button" onClick={() => setOpen((o) => !o)} aria-label={label}
+        className={`inline-flex items-center gap-1.5 px-3 py-2 rounded-lg border text-sm ${picked.length ? 'bg-[#f37121]/5 border-[#f37121]/50 text-slate-900 font-semibold' : 'bg-white border-slate-200 text-slate-800'}`}>
+        <span className="max-w-[12rem] truncate">{shown}</span>
+        <ChevronDown className={`w-4 h-4 text-slate-400 transition-transform ${open ? 'rotate-180' : ''}`} />
+      </button>
+      {open && (
+        <div className="absolute z-30 mt-1 w-64 rounded-xl border border-slate-200 bg-white p-2 shadow-lg">
+          {list.length > 8 && (
+            <input value={q} onChange={(e) => setQ(e.target.value)} placeholder={ar ? 'ابحث…' : 'Search…'}
+              className="mb-1.5 w-full rounded-lg border border-slate-200 px-2.5 py-1.5 text-[13px] focus:outline-none focus:border-[#f37121]" />
+          )}
+          <div className="max-h-64 overflow-y-auto">
+            {items.map((v) => (
+              <label key={v} className="flex cursor-pointer items-center gap-2 rounded-lg px-2 py-1.5 text-[13px] hover:bg-slate-50">
+                <input type="checkbox" checked={picked.includes(v)} onChange={() => toggle(v)} className="accent-[#f37121]" />
+                <span className="truncate">{v}</span>
+              </label>
+            ))}
+            {!items.length && <p className="px-2 py-2 text-[12px] text-slate-400">{ar ? 'لا نتائج' : 'No match'}</p>}
+          </div>
+          {picked.length > 0 && (
+            <button type="button" onClick={() => onChange('')} className="mt-1.5 w-full rounded-lg bg-slate-100 py-1.5 text-[12.5px] font-semibold text-slate-700 hover:bg-slate-200">{ar ? 'مسح الاختيار' : 'Clear'}</button>
+          )}
+        </div>
+      )}
+    </div>
   );
 }
 
@@ -400,12 +438,12 @@ function LightTransportEmployeesInner() {
           <SearchInput value={q} onChange={setQ}
             placeholder={t('اسم · هوية · لوحة · مشرف · مشروع · سجل…', 'name, ID, plate, supervisor, project, register…')} />
         </div>
-        <Filter value={f.project || ''} onChange={(v) => setF((p) => ({ ...p, project: v }))} label={t('كل المشاريع', 'All projects')} list={options.project} />
-        <Filter value={f.city || ''} onChange={(v) => setF((p) => ({ ...p, city: v }))} label={t('كل الفروع', 'All branches')} list={options.city} />
-        <Filter value={f.jobTitle || ''} onChange={(v) => setF((p) => ({ ...p, jobTitle: v }))} label={t('كل الوظائف', 'All jobs')} list={options.jobTitle} />
-        <Filter value={f.contractType || ''} onChange={(v) => setF((p) => ({ ...p, contractType: v }))} label={t('كل أنواع التعاقد', 'All contracts')} list={options.contractType} />
-        <Filter value={f.register || ''} onChange={(v) => setF((p) => ({ ...p, register: v }))} label={t('كل السجلات', 'All registers')} list={options.register} />
-        <Filter value={f.vehicleType || ''} onChange={(v) => setF((p) => ({ ...p, vehicleType: v }))} label={t('كل أنواع المركبات', 'All vehicle types')} list={options.vehicleType} />
+        <MultiFilter ar={ar} value={f.project || ''} onChange={(v) => setF((p) => ({ ...p, project: v }))} label={t('كل المشاريع', 'All projects')} list={options.project} />
+        <MultiFilter ar={ar} value={f.city || ''} onChange={(v) => setF((p) => ({ ...p, city: v }))} label={t('كل الفروع', 'All branches')} list={options.city} />
+        <MultiFilter ar={ar} value={f.jobTitle || ''} onChange={(v) => setF((p) => ({ ...p, jobTitle: v }))} label={t('كل الوظائف', 'All jobs')} list={options.jobTitle} />
+        <MultiFilter ar={ar} value={f.contractType || ''} onChange={(v) => setF((p) => ({ ...p, contractType: v }))} label={t('كل أنواع التعاقد', 'All contracts')} list={options.contractType} />
+        <MultiFilter ar={ar} value={f.register || ''} onChange={(v) => setF((p) => ({ ...p, register: v }))} label={t('كل السجلات', 'All registers')} list={options.register} />
+        <MultiFilter ar={ar} value={f.vehicleType || ''} onChange={(v) => setF((p) => ({ ...p, vehicleType: v }))} label={t('كل أنواع المركبات', 'All vehicle types')} list={options.vehicleType} />
         {/* Supervisor filter by account, not by name. The supervisor is now a system account, so the filter uses its id and rows do not split over two spellings. A name written in the register with no account yet stays at the end of the list so its row does not vanish from a screen where it was visible. */}
         {/* Inspection supervisor: who stands over the rider in the morning; splits the duty-check screen. */}
         <select value={f.dutySupervisor || ''} onChange={(e) => setF((p) => ({ ...p, dutySupervisor: e.target.value }))}
@@ -432,7 +470,7 @@ function LightTransportEmployeesInner() {
           )}
         </select>
         {/* Status list is built from all rows, not from the reps aggregate: the aggregate is now reps-only, so a status held only by an administrative row would drop out and be unfilterable. */}
-        <Filter value={f.status || ''} onChange={(v) => setF((p) => ({ ...p, status: v }))} label={t('كل الحالات', 'All statuses')}
+        <MultiFilter ar={ar} value={f.status || ''} onChange={(v) => setF((p) => ({ ...p, status: v }))} label={t('كل الحالات', 'All statuses')}
           list={[...new Set(rows.map((r) => String(r.workStatusShown || '')).filter(Boolean))].sort((a, b) => a.localeCompare(b, 'ar'))} />
         <select value={f.housing || ''} onChange={(e) => setF((p) => ({ ...p, housing: e.target.value }))} aria-label={t('السكن', 'Housing')}
           className="px-3 py-2 rounded-lg bg-white border border-slate-200 text-sm text-slate-800">

@@ -459,6 +459,8 @@ if (!DOCS_ONLY) connectDB().then(async () => {
   require('./config/jpLinks').migrateCompanyLinks()
     .then((n) => { if (n) console.log(`[jp] ${n} tasks: company links moved to the customers register`); })
     .catch((e) => console.error('[jp] company links:', e.message));
+  // Approved prices became per customer + route: the old route-only unique index is replaced (small collection).
+  require('./models/VendorsMgmt').VendorApprovedPrice.syncIndexes().catch((e) => console.error('[vendors] price indexes:', e.message));
   await require('./controllers/b2cController').ensureB2CProjectDefaults().catch((e) => console.error('[b2c] project defaults:', e.message));
   // Stored work-status text follows its label (utils/hrEngagement); a renamed termination kind is rewritten on files that hold the old text.
   {

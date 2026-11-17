@@ -29,7 +29,7 @@ const srStatuses = <String, (String, String, Color)>{
   'in_progress': ('قيد الإكمال', 'In progress', T.info),
   'completed': ('مكتمل', 'Completed', T.success),
   'rejected': ('مرفوض', 'Rejected', T.danger),
-  'cancelled': ('مسحوب', 'Withdrawn', T.inkFaint),
+  'cancelled': ('ألغاه المبيعات', 'Cancelled by sales', T.inkFaint),
 };
 /// On the vendors list a pending request is simply new, and a withdrawn one was withdrawn by sales.
 Widget srStatusChip(dynamic s, {bool vendors = false}) {
@@ -80,7 +80,7 @@ const _logLabels = <String, (String, String)>{
   'placed': ('أُنشئ أمر نقل', 'Truck placed'),
   'completed': ('اكتمل', 'Completed'),
   'rejected': ('رُفض', 'Rejected'),
-  'cancelled': ('سُحب', 'Withdrawn'),
+  'cancelled': ('ألغاه المبيعات', 'Cancelled by sales'),
   'expired': ('انتهت ساعة التولّي', 'Claim expired'),
   'sourced': ('سجّل تحصيل سيارات', 'Trucks sourced'),
   'sourcing_edited': ('عُدّل تحصيل السيارات', 'Sourcing edited'),
@@ -879,8 +879,8 @@ class _ShipmentRequestsScreenState extends State<ShipmentRequestsScreen> {
   @override
   Widget build(BuildContext context) {
     final tabs = _work
-        ? [('pending,in_progress', 'المفتوحة', 'Open', inum(_by['pending']) + inum(_by['in_progress'])), ('completed', 'مكتملة', 'Completed', inum(_by['completed'])), ('rejected', 'مرفوضة', 'Rejected', inum(_by['rejected'])), ('cancelled', 'مسحوبة', 'Withdrawn', inum(_by['cancelled'])), ('', 'الكل', 'All', -1)]
-        : [('', 'الكل', 'All', -1), ('pending,in_progress', 'المفتوحة', 'Open', inum(_by['pending']) + inum(_by['in_progress'])), ('rejected', 'مرفوضة', 'Rejected', inum(_by['rejected'])), ('completed', 'مكتملة', 'Completed', inum(_by['completed'])), ('cancelled', 'مسحوبة', 'Withdrawn', inum(_by['cancelled']))];
+        ? [('pending,in_progress', 'المفتوحة', 'Open', inum(_by['pending']) + inum(_by['in_progress'])), ('completed', 'مكتملة', 'Completed', inum(_by['completed'])), ('rejected,cancelled', 'لم تُنفَّذ', 'Not done', inum(_by['rejected']) + inum(_by['cancelled'])), ('', 'الكل', 'All', -1)]
+        : [('', 'الكل', 'All', -1), ('pending,in_progress', 'لدى الموردين', 'With vendors', inum(_by['pending']) + inum(_by['in_progress'])), ('completed', 'مكتملة', 'Completed', inum(_by['completed'])), ('rejected,cancelled', 'لم تُنفَّذ', 'Not done', inum(_by['rejected']) + inum(_by['cancelled']))];
     return AppScaffold(
       title: Text(widget.mode == 'fleet' ? tr('طلبات من المبيعات', 'Requests from sales') : _work ? tr('الطلبات من المبيعات', 'Requests from sales') : tr('طلبات الشحن', 'Shipment requests')),
       actions: [
@@ -1011,7 +1011,7 @@ class _ShipmentRequestsScreenState extends State<ShipmentRequestsScreen> {
                                   _tile(tr('طلبات', 'Requests'), base.length, T.orange, onTap: () => setState(() => _cardF = '')),
                                   _tile(tr('شاحنات مطلوبة', 'Trucks asked'), asked, T.warn, reqs: base.length),
                                   _tile(tr('نُفِّذت (أوامر نقل)', 'Done (orders)'), placed, T.success, reqs: placedReq, on: _cardF == 'placed', onTap: () => pick('placed')),
-                                  _tile(tr('رُفضت أو سُحبت', 'Rejected or withdrawn'), closed, T.danger, reqs: closedReq, on: _cardF == 'closed', onTap: () => pick('closed')),
+                                  _tile(tr('لم تُنفَّذ', 'Not done'), closed, T.danger, reqs: closedReq, on: _cardF == 'closed', onTap: () => pick('closed')),
                                   _tile(tr('لم تُنفَّذ بعد', 'Not done yet'), waiting, T.warn, reqs: waitingReq, on: _cardF == 'waiting', onTap: () => pick('waiting')),
                                 ]),
                                 if (shown.isEmpty)
@@ -1058,6 +1058,42 @@ class _ShipmentRequestsScreenState extends State<ShipmentRequestsScreen> {
         ),
       );
 
+  /// Sets this customer's approved purchase range on the request's route (written to the routes page; all their requests on it follow).
+  Future<void> _editRange(Map<String, dynamic> r) async {
+    final br = r['buyRange'] is Map ? r['buyRange'] as Map : null;
+    final mn = TextEditingController(text: br == null ? '' : '${br['min']}');
+    final mx = TextEditingController(text: br == null ? '' : '${br['max']}');
+    final ok = await showModalBottomSheet<bool>(
+      context: context, isScrollControlled: true, backgroundColor: Colors.white,
+      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(22))),
+      builder: (c) => StatefulBuilder(builder: (c, set) {
+        final a = num.tryParse(mn.text) ?? 0, b = num.tryParse(mx.text) ?? 0;
+        return Padding(
+          padding: EdgeInsets.fromLTRB(18, 18, 18, MediaQuery.of(c).viewInsets.bottom + 18),
+          child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+            Text(tr('سعر الشراء المعتمد', 'Approved purchase price'), style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 16)),
+            const SizedBox(height: 4),
+            Text('${r['customerName'] ?? ''} · ${r['fromCity'] ?? ''} ← ${r['toCity'] ?? ''}', style: const TextStyle(color: T.inkSoft)),
+            const SizedBox(height: 12),
+            Row(children: [
+              Expanded(child: TextField(controller: mn, keyboardType: TextInputType.number, onChanged: (_) => set(() {}), decoration: InputDecoration(labelText: tr('من', 'From'), border: const OutlineInputBorder()))),
+              const SizedBox(width: 10),
+              Expanded(child: TextField(controller: mx, keyboardType: TextInputType.number, onChanged: (_) => set(() {}), decoration: InputDecoration(labelText: tr('إلى', 'To'), border: const OutlineInputBorder()))),
+            ]),
+            if (a > 0 && b > 0 && a > b) Padding(padding: const EdgeInsets.only(top: 6), child: Text(tr('سعر «من» أكبر من «إلى»', '“From” is above “to”'), style: const TextStyle(color: T.danger, fontSize: 12))),
+            const SizedBox(height: 12),
+            FilledButton(onPressed: a > 0 && b > 0 && a <= b ? () => Navigator.pop(c, true) : null, child: Text(tr('حفظ', 'Save'))),
+          ]),
+        );
+      }),
+    );
+    if (ok != true) return;
+    try {
+      await Api.instance.post('/api/vendors-mgmt/requests/${r['_id']}/buy-range', {'min': num.tryParse(mn.text), 'max': num.tryParse(mx.text)});
+      await _load();
+    } catch (e) { if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.toString()))); }
+  }
+
   Widget _card(Map<String, dynamic> r) {
     final placed = (r['placed'] as List?)?.length ?? 0;
     final trucks = inum(r['trucks']);
@@ -1079,7 +1115,16 @@ class _ShipmentRequestsScreenState extends State<ShipmentRequestsScreen> {
           Wrap(spacing: 6, runSpacing: 4, children: [
             Chip2('${tr('الشاحنات', 'Trucks')} $placed/${fmtNum(trucks)}', placed >= trucks ? T.success : T.navy, icon: Icons.local_shipping_outlined),
             if (r['pickupTime'] != null) Chip2(soFmtDate(r['pickupTime']), T.inkFaint, icon: Icons.event),
-            if (r.containsKey('sellPrice') && r['sellPrice'] != null) Chip2('${tr('بيع', 'Sell')} ${soMoney(r['sellPrice'])}', T.success),
+            if (r.containsKey('sellPrice') && r['sellPrice'] != null) Chip2('${tr('بيع', 'Sell')} ${soMoney(r['sellPrice'])}', T.orange),
+            // Approved purchase range for the route (customer's own first), live from the routes page.
+            if (r.containsKey('buyRange'))
+              InkWell(
+                onTap: _can['editRange'] == true ? () => _editRange(r) : null,
+                child: Chip2(r['buyRange'] is Map
+                    ? '${tr('شراء معتمد', 'Approved buy')} ${soMoney(r['buyRange']['min'])} – ${soMoney(r['buyRange']['max'])}${_can['editRange'] == true ? ' ✎' : ''}'
+                    : '${tr('المسار غير مسعَّر', 'Route not priced')}${_can['editRange'] == true ? ' ✎' : ''}',
+                    r['buyRange'] is Map ? T.success : T.warn, icon: Icons.price_check),
+              ),
             if ('${r['handlerName'] ?? ''}'.isNotEmpty) Chip2('${tr('يعمل عليه', 'Handled by')} ${r['handlerName']}${srHm(r['claimedUntil']).isEmpty ? '' : ' ${tr('حتى', 'until')} ${srHm(r['claimedUntil'])}'}', T.violet),
             if (!_work && srApprovalOf(r) != 'approved') Chip2(tr(srApproval[srApprovalOf(r)]!.$1, srApproval[srApprovalOf(r)]!.$2), srApproval[srApprovalOf(r)]!.$3, icon: Icons.verified_outlined),
             if ('${r['createdByName'] ?? ''}'.isNotEmpty && _work) Chip2('${tr('من', 'By')} ${r['createdByName']}', T.inkSoft),
@@ -1139,7 +1184,7 @@ extension on _ShipmentRequestsScreenState {
     if (!_work && x.$1 == 0) return const SizedBox.shrink();
     return InkWell(
       onTap: () async {
-        await showSourcingSheet(context, r, team: widget.mode == 'fleet' ? 'fleet' : 'vendors', canAdd: _work && _can['work'] == true, canLead: _can['lead'] == true);
+        await showSourcingSheet(context, r, team: widget.mode == 'fleet' ? 'fleet' : 'vendors', canAdd: _work && _can['source'] == true, canLead: _can['sourcingAll'] == true);
         _load();
       },
       // Filled pill: green for trucks sourced, red for those still missing; all green once complete.
@@ -1393,7 +1438,7 @@ class _ShipmentRequestDetailScreenState extends State<ShipmentRequestDetailScree
                           for (final e in List<Map>.from(r['sourcing'] ?? const []))
                             Text('${e['byName']}: ${e['count']} · ${soFmtDT(e['at'])}${'${e['helperName'] ?? ''}'.isEmpty ? '' : ' · ${tr('بمساعدة', 'helped by')} ${e['helperName']}'}', style: const TextStyle(fontSize: 12.5)),
                           Align(alignment: AlignmentDirectional.centerStart, child: TextButton.icon(
-                            onPressed: () async { await showSourcingSheet(context, r, team: widget.mode == 'fleet' ? 'fleet' : 'vendors', canAdd: work && open, canLead: _can['lead'] == true); _load(); },
+                            onPressed: () async { await showSourcingSheet(context, r, team: widget.mode == 'fleet' ? 'fleet' : 'vendors', canAdd: work && open && _can['source'] == true, canLead: _can['sourcingAll'] == true); _load(); },
                             icon: const Icon(Icons.travel_explore, size: 18),
                             label: Text(work && open ? tr('تسجيل / تعديل التحصيل', 'Record / edit') : tr('التفاصيل', 'Details')),
                           )),
@@ -2320,7 +2365,7 @@ class _SourcingSheetState extends State<_SourcingSheet> {
               leading: CircleAvatar(radius: 15, backgroundColor: T.navy.withValues(alpha: 0.1), child: Text('${e['count']}', style: const TextStyle(fontWeight: FontWeight.w900, color: T.navy))),
               title: Text('${e['byName'] ?? ''}', style: const TextStyle(fontWeight: FontWeight.w700)),
               subtitle: Text([soFmtDT(e['at']), if ('${e['helperName'] ?? ''}'.isNotEmpty) '${tr('بمساعدة', 'helped by')} ${e['helperName']}', e['note']].where((v) => '${v ?? ''}'.isNotEmpty).join(' · ')),
-              trailing: ('${e['by']}' == _me || widget.canLead) && widget.canAdd
+              trailing: ('${e['by']}' == _me || widget.canLead)
                   ? Row(mainAxisSize: MainAxisSize.min, children: [
                       IconButton(icon: const Icon(Icons.edit_outlined, size: 18), onPressed: _busy ? null : () => _edit(e)),
                       IconButton(icon: const Icon(Icons.delete_outline, size: 18, color: T.danger), onPressed: _busy ? null : () => _call(() => Api.instance.delete('/api/shipment-requests/${_r['_id']}/sourcing/${e['_id']}${widget.team == 'fleet' ? '?team=fleet' : ''}'))),

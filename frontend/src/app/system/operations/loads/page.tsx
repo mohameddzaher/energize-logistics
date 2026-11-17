@@ -134,9 +134,17 @@ export default function OpsBoardPage() {
     { key: 'documentNumber', label: t('رقم المستند', 'Document no.') },
     { key: 'sendingDate', label: t('تاريخ الإرسال', 'Sending date') },
     { key: 'branchDeliveryDate', label: t('تاريخ التسليم للفرع', 'Branch delivery date') },
+    // Read from the load's shipment (server: utils/shipmentPeople); off until picked.
+    { key: 'salesRepName', label: t('مندوب المبيعات', 'Sales rep') },
+    { key: 'sourcingRepName', label: t('مندوب التشغيل (محصِّل السيارة)', 'Ops rep (sourced the truck)') },
+    { key: 'sourcingHelperName', label: t('بمساعدة', 'Helped by') },
+    { key: 'requestNumber', label: t('رقم طلب الشحن', 'Request no.') },
+    { key: 'ownerType', label: t('نوع المالك', 'Owner type') }, { key: 'ownerName', label: t('اسم المالك', 'Owner name') },
+    { key: 'ownerPhone', label: t('جوال المالك', 'Owner phone') }, { key: 'paymentSubtype', label: t('تفصيل نوع الدفع', 'Payment subtype') },
   // eslint-disable-next-line react-hooks/exhaustive-deps
   ], [lang]);
-  const { visible, setVisible } = useVisibleColumns('ops:boardColumns', columns);
+  const EXTRA_KEYS = ['salesRepName', 'sourcingRepName', 'sourcingHelperName', 'requestNumber', 'ownerType', 'ownerName', 'ownerPhone', 'paymentSubtype'];
+  const { visible, setVisible } = useVisibleColumns('ops:boardColumns', columns, { defaults: columns.map((c) => c.key).filter((k) => !EXTRA_KEYS.includes(k)) });
   const shownCols = useMemo(() => columns.filter((c) => visible.includes(c.key)), [columns, visible]);
 
   const statusLabel = (k?: string) => {

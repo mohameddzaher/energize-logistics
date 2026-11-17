@@ -30,7 +30,13 @@ const FLEET_PLACERS = [...TOP_ROLES, ...DATA_ROLES, 'operations_manager', 'opera
 /** Who claims and records «تحصيل السيارات». */
 const WORKERS = [...new Set([...PLACERS, ...FLEET_TEAM])];
 const READERS = [...new Set([...ASKERS, ...PLACERS, ...FLEET_TEAM, 'shipment_orders_followup'])];
-/** Leads edit or delete a colleague's sourcing entry and complete a request a colleague holds. */
+/** Anyone who opens the working board may record trucks they sourced; each edits or deletes only their own entries. */
+const SOURCERS = READERS;
+/** Who sets a request customer's approved purchase range from the board (same as the routes page editors). */
+const PRICE_EDITORS = [...TOP_ROLES, ...PV.VENDOR_LEADS, 'operations_manager', 'operations_team_leader', 'data_manager'];
+/** The data team (and top management) correct anyone's sourcing entry. */
+const SOURCING_ALL = [...TOP_ROLES, ...DATA_ROLES];
+/** Leads complete a request a colleague holds. */
 const LEADS = [...TOP_ROLES, ...PV.VENDOR_LEADS, 'operations_manager', 'operations_team_leader', 'shipment_orders_manager', 'shipment_orders_team_leader', 'fleet_manager', 'fleet_team_leader'];
 const CLAIM_MS = 60 * 60 * 1000;
 
@@ -52,7 +58,7 @@ const teamOf = (req) => {
   return asked === 'fleet' && isFleetPlacer(req.user) ? 'fleet' : 'vendors';
 };
 const shownName = (team, user) => (team === 'fleet' ? FLEET_NAME : fullName(user));
-const canOf = (u) => ({ ask: isAsker(u), place: isPlacer(u), work: isWorker(u), fleet: isFleetPlacer(u), lead: isLead(u) });
+const canOf = (u) => ({ ask: isAsker(u), place: isPlacer(u), work: isWorker(u), fleet: isFleetPlacer(u), lead: isLead(u), source: inList(SOURCERS, u) || followupOnVendors(u), sourcingAll: inList(SOURCING_ALL, u), editRange: inList(PRICE_EDITORS, u) });
 
 // ── Sales-manager approval ─────────────────────────────────────────────────
 /** Approved or from before the rule: what the working board (vendors, operations, fleet) may see. */
@@ -135,6 +141,8 @@ const shape = (user, doc) => {
   o.open = Math.max(0, (o.trucks || 0) - (o.placed || []).length);
   o.sourced = (o.sourcing || []).reduce((n, e) => n + (Number(e.count) || 0), 0);
   if (!PV.requestSellVisible(user)) delete o.sellPrice;
+  // Approved purchase range for the route, looked up live (utils/approvedRanges) for whoever sees purchase prices.
+  if (PV.priceView(user).buy) o.buyRange = require('../utils/approvedRanges').lookup(o.fromCity, o.toCity, o.truckType, o.customer);
   delete o.lockUntil;
   return o;
 };
@@ -248,6 +256,7 @@ const salesPeople = (r) => [...new Set([r.createdBy, r.salesRep].filter(Boolean)
 
 exports.list = async (req, res) => {
   try {
+    await require('../utils/approvedRanges').ensureFresh();
     const { status, q, from, to, branch, customer, handler, mine } = req.query;
     const page = Math.max(1, parseInt(req.query.page, 10) || 1);
     const limit = Math.min(1000, Math.max(1, parseInt(req.query.limit, 10) || 50));
@@ -326,6 +335,7 @@ exports.list = async (req, res) => {
 
 exports.get = async (req, res) => {
   try {
+    await require('../utils/approvedRanges').ensureFresh();
     await expireClaims({ id: req.params.id }).catch(() => {});
     const r = await ShipmentRequest.findOne({ _id: req.params.id, ...((await canApprove(req.user)) ? {} : { ...scopeFor(req.user), ...(await branchScoped(req)) }) }).lean();
     if (!r || (notApproved(r) && !isAsker(req.user))) return res.status(404).json({ message: 'الطلب غير موجود' });
@@ -577,14 +587,14 @@ exports.addSourcing = async (req, res) => {
   }
 };
 
-/** Edits or deletes a sourcing entry: its author or a lead. */
+/** Edits or deletes a sourcing entry: its author, or the data team for anyone's. */
 async function sourcingEntryFor(req, res) {
   const r = await ShipmentRequest.findById(req.params.id);
   if (!r) { res.status(404).json({ message: 'الطلب غير موجود' }); return {}; }
   const e = r.sourcing.id(req.params.entryId);
   if (!e) { res.status(404).json({ message: 'السجلّ غير موجود' }); return {}; }
-  if (String(e.by) !== String(req.user._id) && !isLead(req.user)) {
-    res.status(403).json({ message: 'يعدّل السجلَّ كاتبُه أو قائدُ الفريق' }); return {};
+  if (String(e.by) !== String(req.user._id) && !inList(SOURCING_ALL, req.user)) {
+    res.status(403).json({ message: 'يعدّل التسجيلَ أو يحذفه مَن كتبه فقط' }); return {};
   }
   return { r, e };
 }
@@ -1170,7 +1180,7 @@ module.exports.WORKERS = WORKERS;
 module.exports.FLEET_PLACERS = FLEET_PLACERS;
 /** Strict role guard that also admits a follow-up user switched on for vendors (users page), whom a role list cannot name. */
 module.exports.gate = (kind) => {
-  const strict = require('../middleware/rbac').strict(...(kind === 'PLACERS' ? PLACERS : WORKERS));
+  const strict = require('../middleware/rbac').strict(...(kind === 'PLACERS' ? PLACERS : kind === 'SOURCERS' ? SOURCERS : WORKERS));
   return (req, res, next) => (followupOnVendors(req.user) ? next() : strict(req, res, next));
 };
 module.exports.APPROVED = APPROVED;

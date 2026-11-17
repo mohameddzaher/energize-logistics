@@ -2,7 +2,7 @@
 /**
  * Alerts: what needs the vendors team's action, computed from the shipments and the register, each with a state the
  * whole team shares (new / in progress / done): active carriers missing from the master, active without a signed
- * contract, master carriers that stopped, incomplete files, prices above the approved tier A, and one carrier
+ * contract, master carriers that stopped, incomplete files, prices above the approved ceiling, and one carrier
  * written under several names.
  */
 import { useState, useEffect, useCallback, useRef } from 'react';
@@ -92,7 +92,7 @@ export default function VendorsAlertsPage() {
                   <table className="w-full text-[12.5px]">
                     <thead className="bg-slate-50 text-slate-600"><tr>
                       <th className="px-3 py-2 text-start">#</th><th className="px-3 py-2 text-start">{t('المورّد', 'Carrier')}</th><th className="px-3 py-2 text-start">{t('النوع', 'Kind')}</th>
-                      <th className="px-3 py-2 text-end">{g.type === 'aboveApproved' ? t('رحلات أعلى من A', 'Trips above A') : g.type === 'missingData' ? t('الناقص', 'Missing') : t('رحلات', 'Trips')}</th>
+                      <th className="px-3 py-2 text-end">{g.type === 'aboveApproved' ? t('رحلات أعلى من السقف المعتمد', 'Trips above the approved ceiling') : g.type === 'missingData' ? t('الناقص', 'Missing') : t('رحلات', 'Trips')}</th>
                       <th className="px-3 py-2 text-start">{t('آخر رحلة', 'Last trip')}</th><th className="px-3 py-2 text-start">{t('التفاصيل', 'Detail')}</th><th className="px-3 py-2 text-start">{t('الحالة', 'State')}</th>
                     </tr></thead>
                     <tbody className="divide-y divide-slate-100">

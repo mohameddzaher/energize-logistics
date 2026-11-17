@@ -12,7 +12,7 @@ import { DrillModal, type Drill, type DrillCol } from './VendorDrill';
 import { ResponsiveContainer, ComposedChart, Bar, Line, XAxis, YAxis, Tooltip, CartesianGrid, Legend } from 'recharts';
 
 type Row = Record<string, any>;
-const REQ_STATUS: Record<string, [string, string]> = { pending: ['جديد', 'New'], in_progress: ['قيد التنفيذ', 'In progress'], completed: ['مكتمل', 'Completed'], rejected: ['مرفوض', 'Refused'], cancelled: ['مسحوب', 'Withdrawn'] };
+const REQ_STATUS: Record<string, [string, string]> = { pending: ['جديد', 'New'], in_progress: ['قيد التنفيذ', 'In progress'], completed: ['مكتمل', 'Completed'], rejected: ['مرفوض', 'Refused'], cancelled: ['ألغاه المبيعات', 'Cancelled by sales'] };
 const DIMS: [string, string, string, string][] = [['byBranch', 'branch', 'الفرع', 'Branch'], ['byCustomer', 'customerName', 'العميل', 'Customer'], ['byRoute', 'route', 'المسار', 'Route'], ['byMember', 'member', 'عضو الفريق', 'Team member']];
 
 export default function SalesRealisation({ data, ar, title }: { data: Row | null | undefined; ar: boolean; title?: string }) {

@@ -29,7 +29,7 @@ export const REQUEST_STATUS: Record<RequestStatus, { ar: string; en: string; cls
   in_progress: { ar: 'قيد الإنجاز', en: 'In progress', cls: 'bg-sky-50 text-sky-800 border-sky-200', dot: 'bg-sky-500' },
   completed: { ar: 'مكتمل — أوامر نقل', en: 'Completed', cls: 'bg-emerald-50 text-emerald-800 border-emerald-200', dot: 'bg-emerald-500' },
   rejected: { ar: 'مرفوض', en: 'Rejected', cls: 'bg-red-50 text-red-700 border-red-200', dot: 'bg-red-500' },
-  cancelled: { ar: 'مسحوب', en: 'Withdrawn', cls: 'bg-slate-100 text-slate-600 border-slate-200', dot: 'bg-slate-400' },
+  cancelled: { ar: 'ألغاه المبيعات', en: 'Cancelled by sales', cls: 'bg-slate-100 text-slate-600 border-slate-200', dot: 'bg-slate-400' },
 };
 
 export const LOG_LABEL: Record<string, { ar: string; en: string }> = {
@@ -49,7 +49,7 @@ export const LOG_LABEL: Record<string, { ar: string; en: string }> = {
   placed: { ar: 'أُنشئ أمر نقل', en: 'Transport order created' },
   completed: { ar: 'اكتمل', en: 'Completed' },
   rejected: { ar: 'رُفض', en: 'Rejected' },
-  cancelled: { ar: 'سُحب', en: 'Withdrawn' },
+  cancelled: { ar: 'ألغاه المبيعات', en: 'Cancelled by sales' },
 };
 
 export interface ShipmentRequest {
@@ -63,6 +63,8 @@ export interface ShipmentRequest {
   placed: { order: string; waybillNumber: number; supplierName: string; vehiclePlate: string; driverName: string; at: string; byName: string; truckType?: string; team?: string; helperName?: string; sourcingRepName?: string }[];
   handler?: string | null; handlerName?: string; handledAt?: string | null; claimedUntil?: string | null; handlerTeam?: string;
   sourcing?: SourcingEntry[]; sourced?: number;
+  /** Approved purchase range for the route, live from the routes page; absent for readers who do not see purchase prices, null when the route is not priced. */
+  buyRange?: { min: number; max: number; truckType?: string; customer?: boolean } | null;
   approvalStatus?: ApprovalStatus | null; approvalReason?: string; approvalByName?: string; approvalAt?: string | null;
   truckTypes?: string[]; createdBy?: string;
   rejectReason?: string; rejectNote?: string; rejectedAt?: string | null; rejectedByName?: string; resubmits?: number;
@@ -122,7 +124,7 @@ export function vendorProgress(r: Pick<ShipmentRequest, 'status' | 'trucks' | 'p
     case 'completed': return { label: v ? t(`اكتمل (${n} من ${of})`, `Done (${n} of ${of})`) : t(`أنجزها الموردون (${n} من ${of})`, `Done by vendors (${n} of ${of})`), tone: 'text-emerald-700', pct: 100 };
     case 'in_progress': return { label: t(`جارٍ: أُسندت ${n} من ${of}`, `In progress: ${n} of ${of}`), tone: 'text-sky-700', pct };
     case 'rejected': return { label: n ? t(`رُفض الباقي بعد إسناد ${n} من ${of}`, `Rest rejected after ${n} of ${of}`) : (v ? t('مرفوض', 'Rejected') : t('رفضها الموردون', 'Rejected by vendors')), tone: 'text-red-700', pct };
-    case 'cancelled': return { label: n ? t(`سحب فريق المبيعات الباقي بعد إسناد ${n} من ${of}`, `Sales withdrew the rest after ${n} of ${of}`) : t('سحبه فريق المبيعات', 'Withdrawn by sales'), tone: 'text-slate-500', pct };
+    case 'cancelled': return { label: n ? t(`ألغى فريق المبيعات الباقي بعد إسناد ${n} من ${of}`, `Sales cancelled the rest after ${n} of ${of}`) : t('ألغاه فريق المبيعات', 'Cancelled by sales'), tone: 'text-slate-500', pct };
     default: return r.handlerName
       ? { label: t(`يعمل عليه ${who} — 0 من ${of}`, `With ${who} — 0 of ${of}`), tone: 'text-amber-700', pct: 0 }
       : { label: v ? t(`لم يبدأ بعد — 0 من ${of}`, `Not started — 0 of ${of}`) : t(`لم يبدأ الموردون — 0 من ${of}`, `Not started by vendors — 0 of ${of}`), tone: 'text-amber-700', pct: 0 };
@@ -132,7 +134,7 @@ export function vendorProgress(r: Pick<ShipmentRequest, 'status' | 'trucks' | 'p
 /** Status words as each side reads them: on the vendors page a pending request is simply new. */
 export const statusLabel = (st: RequestStatus, ar: boolean, mode: 'sales' | 'vendors') => {
   if (mode === 'vendors' && st === 'pending') return ar ? 'جديد' : 'New';
-  if (mode === 'vendors' && st === 'cancelled') return ar ? 'سحبه فريق المبيعات' : 'Withdrawn by sales';
+  if (mode === 'vendors' && st === 'cancelled') return ar ? 'ألغاه فريق المبيعات' : 'Cancelled by sales';
   const d = REQUEST_STATUS[st];
   return d ? (ar ? d.ar : d.en) : st;
 };

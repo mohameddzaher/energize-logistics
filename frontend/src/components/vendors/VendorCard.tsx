@@ -206,7 +206,7 @@ export default function VendorCard({ id, name }: { id?: string; name?: string })
             <Panel title={t('مناديب التشغيل المتعاملون', 'Operations reps dealing')}><BarList ar={ar} rows={A.opsReps.map((b: Row) => ({ key: b.name, label: b.name, value: b.trips, hint: fmtPct(b.share) }))} color="#8b5cf6" /></Panel>
             <Panel title={t('أهمّ العملاء', 'Top customers')}><BarList ar={ar} rows={A.customers.map((b: Row) => ({ key: b.name, label: b.name, value: b.trips, hint: fmtPct(b.share) }))} color="#0ea5e9" /></Panel>
           </div>
-          <Panel title={t('المسارات وأسعارها', 'Routes and prices')} subtitle={money ? t('سعر شراء الرحلة مقابل القائمة المعتمدة (A/B/C) · الأحمر = آخر سعرٍ أعلى من الفئة A', 'Trip purchase price vs the approved list · red = last price above tier A') : undefined} pad={false}>
+          <Panel title={t('المسارات وأسعارها', 'Routes and prices')} subtitle={money ? t('سعر شراء الرحلة مقابل السعر المعتمد (من – إلى) · الأحمر = آخر سعرٍ أعلى من السقف المعتمد', 'Trip purchase price vs the approved list · red = last price above tier A') : undefined} pad={false}>
             <DataGrid ar={ar} rows={A.routes} rowKey={(r) => r.route} cols={[
               { key: 'route', label: t('المسار', 'Route'), render: (r) => <span className="font-semibold">{r.route}</span> },
               { key: 'trips', label: t('رحلات', 'Trips'), num: true },
@@ -215,7 +215,7 @@ export default function VendorCard({ id, name }: { id?: string; name?: string })
                 { key: 'avg', label: t('متوسط', 'Avg'), num: true, render: (r: Row) => fmtMoney(r.avg) },
                 { key: 'max', label: t('أعلى', 'Max'), num: true, render: (r: Row) => fmtMoney(r.max) },
                 { key: 'lastPrice', label: t('آخر سعر', 'Last'), num: true, render: (r: Row) => <span className={r.aboveA ? 'text-red-600 font-bold' : ''}>{fmtMoney(r.lastPrice)}</span> },
-                { key: 'approved', label: t('المعتمد A / B / C', 'Approved A/B/C'), num: true, render: (r: Row) => (r.approved ? `${fmtMoney(r.approved.A)} / ${fmtMoney(r.approved.B)} / ${fmtMoney(r.approved.C)}` : <span className="text-slate-400">{t('غير مدرج', 'Not listed')}</span>) },
+                { key: 'approved', label: t('السعر المعتمد (من – إلى)', 'Approved (from – to)'), num: true, render: (r: Row) => (r.approved ? `${fmtMoney(r.approved.min)} – ${fmtMoney(r.approved.max)}` : <span className="text-slate-400">{t('غير مسعَّر', 'Not priced')}</span>) },
               ] : []),
               { key: 'last', label: t('آخر رحلة', 'Last trip'), render: (r) => fmtDay(r.last) },
             ]} />

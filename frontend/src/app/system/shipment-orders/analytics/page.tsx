@@ -199,7 +199,7 @@ function Inner() {
     { key: 'requests', label: t('طلبات', 'Requests'), num: true }, { key: 'trucks', label: t('شاحنات مطلوبة', 'Trucks asked'), num: true },
     { key: 'placed', label: t('حُقّقت', 'Placed'), num: true, render: (r) => <span className="text-emerald-700 font-semibold">{fmtInt(r.placed)}</span> },
     { key: 'rejected', label: t('رُفضت', 'Rejected'), num: true, render: (r) => <span className={r.rejected ? 'text-red-600 font-semibold' : 'text-slate-300'}>{fmtInt(r.rejected)}</span> },
-    { key: 'open', label: t('مفتوحة', 'Open'), num: true }, { key: 'cancelled', label: t('مسحوبة', 'Withdrawn'), num: true },
+    { key: 'open', label: t('مفتوحة', 'Open'), num: true }, { key: 'cancelled', label: t('ألغاها المبيعات', 'Cancelled by sales'), num: true },
     { key: 'fulfilment', label: t('نسبة التحقيق', 'Fulfilment'), num: true, render: (r) => <span className={r.fulfilment >= 80 ? 'text-emerald-700 font-bold' : 'text-amber-700 font-bold'}>{fmtPct(r.fulfilment)}</span> },
     { key: 'reasons', label: t('أسباب الرفض', 'Reasons'), render: (r) => <span className="text-[11.5px] text-slate-600">{(r.reasons || []).map((x: Row) => `${x.reason} (${x.n})`).join('، ') || '—'}</span> },
   ];

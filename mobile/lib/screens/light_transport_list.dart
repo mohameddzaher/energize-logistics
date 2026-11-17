@@ -390,6 +390,23 @@ class _LightTransportListScreenState extends State<LightTransportListScreen> {
               ),
             );
         List<(String, String)> plain(String k) => [for (final x in _opt(k)) (x, x)];
+        // Several choices per filter, stored comma-joined (the server and the local status test read "any of").
+        Widget multi(String k, String ar, String en, List<(String, String)> opts) {
+          final picked = (draft[k] ?? '').split(',').where((x) => x.isNotEmpty).toSet();
+          return Padding(
+            padding: const EdgeInsets.only(bottom: 12),
+            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Text('${tr(ar, en)}${picked.isEmpty ? '' : ' (${picked.length})'}', style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 12.5)),
+              const SizedBox(height: 6),
+              Wrap(spacing: 6, runSpacing: 6, children: [
+                for (final o in opts) if (o.$1.isNotEmpty) FilterChip(
+                  label: Text(o.$2, overflow: TextOverflow.ellipsis), selected: picked.contains(o.$1),
+                  onSelected: (on) => setD(() { on ? picked.add(o.$1) : picked.remove(o.$1); draft[k] = picked.join(','); }),
+                ),
+              ]),
+            ]),
+          );
+        }
         final sup = [for (final s in _supervisors) (_s(s, '_id'), '${_s(s, 'name')} — ${_s(s, 'roleAr')}')];
         Widget date(String k, String ar, String en) => Expanded(
               child: InkWell(
@@ -414,18 +431,18 @@ class _LightTransportListScreenState extends State<LightTransportListScreen> {
                 child: ListView(padding: const EdgeInsets.fromLTRB(16, 0, 16, 8), children: [
                   Text(tr('الفلاتر', 'Filters'), style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 15)),
                   const SizedBox(height: 10),
-                  drop('project', 'المشروع', 'Project', plain('project')),
-                  drop('city', 'الفرع', 'Branch', plain('city')),
-                  drop('jobTitle', 'الوظيفة', 'Job', plain('jobTitle')),
-                  drop('contractType', 'نوع التعاقد', 'Contract', plain('contractType')),
-                  drop('register', 'السجل', 'Register', plain('register')),
-                  drop('vehicleType', 'نوع المركبة', 'Vehicle type', plain('vehicleType')),
+                  multi('project', 'المشروع', 'Project', plain('project')),
+                  multi('city', 'الفرع', 'Branch', plain('city')),
+                  multi('jobTitle', 'الوظيفة', 'Job', plain('jobTitle')),
+                  multi('contractType', 'نوع التعاقد', 'Contract', plain('contractType')),
+                  multi('register', 'السجل', 'Register', plain('register')),
+                  multi('vehicleType', 'نوع المركبة', 'Vehicle type', plain('vehicleType')),
                   drop('dutySupervisor', 'مشرف التفقد', 'Duty supervisor', [('none', tr('— بلا مشرف تفقد —', '— no duty supervisor —')), ...sup]),
                   drop('supervisor', 'المشرف التشغيلي', 'Ops supervisor', [
                     ('none', tr('— بلا مشرف —', '— no supervisor —')), ...sup,
                     for (final n in _opt('supervisorsUnlinked')) (n, '$n ${tr('(بلا حساب)', '(no account)')}'),
                   ]),
-                  drop('status', 'الحالة', 'Status', [for (final x in statuses) (x, x)]),
+                  multi('status', 'الحالة', 'Status', [for (final x in statuses) (x, x)]),
                   drop('housing', 'السكن', 'Housing', [('none', tr('بلا سكن', 'Unhoused')), for (final h in _housing) (_s(h, '_id'), _s(h, 'name'))]),
                   Row(children: [date('hiredFrom', 'التعيين من', 'Hired from'), const SizedBox(width: 10), date('hiredTo', 'التعيين إلى', 'Hired to')]),
                 ]),

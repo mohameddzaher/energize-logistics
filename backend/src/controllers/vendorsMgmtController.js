@@ -889,7 +889,7 @@ function cardFrom(rows, approved) {
       const ap = apprOf(r.from, r.to);
       const avg = r.prices.length ? r2(r.prices.reduce((a, b) => a + b, 0) / r.prices.length) : null;
       return { route: r.route, trips: r.trips, min: r.prices.length ? Math.min(...r.prices) : null, max: r.prices.length ? Math.max(...r.prices) : null, avg, last: isoDay(r.last), lastPrice: r.lastPrice,
-        approved: ap ? { A: ap.priceA, B: ap.priceB, C: ap.priceC } : null, aboveA: !!(ap && ap.priceA && r.lastPrice && r.lastPrice > ap.priceA) };
+        approved: ap ? require('../utils/approvedRanges').rangeOf(ap) : null, aboveA: !!(ap && require('../utils/approvedRanges').rangeOf(ap)?.max && r.lastPrice && r.lastPrice > require('../utils/approvedRanges').rangeOf(ap).max) };
     }),
     lastTrips: rows.slice(0, 25).map((o) => ({ waybillNumber: o.waybillNumber, day: isoDay(o.pickupTime), branch: o.branch, route: `${o.fromCity || ''} → ${o.toCity || ''}`, customer: o.customerName, price: o.buyPrice, status: o.status, rep: o.agentName, name: o.supplierName, plate: o.vehiclePlate, driver: o.driverName })),
   };
@@ -1292,16 +1292,84 @@ exports.deleteFollowUp = async (req, res) => {
 
 // ── Approved prices ─────────────────────────────────────────────────────────
 
+/**
+ * GET /prices — the approved list as ranges, the from/to places of the section settings (the shipment form's lists)
+ * for the pickers, and the places on those lists that no approved route covers yet (shown as a warning).
+ */
 exports.listPrices = async (req, res) => {
-  try { res.json({ prices: await VendorApprovedPrice.find({}).sort({ fromCity: 1, toCity: 1 }).lean() }); }
-  catch (e) { res.status(500).json({ message: 'تعذّر تحميل قائمة الأسعار' }); }
+  try {
+    const { rangeOf } = require('../utils/approvedRanges');
+    const ShipmentOrderField = require('../models/ShipmentOrderField');
+    const fold = require('../models/ShipmentOrderSupplier').foldName;
+    const ShipmentOrderCustomer = require('../models/ShipmentOrderCustomer');
+    const [list, fields, customers] = await Promise.all([
+      VendorApprovedPrice.find({}).sort({ fromCity: 1, toCity: 1, customerName: 1 }).lean(),
+      ShipmentOrderField.find({ key: { $in: ['fromCity', 'toCity'] }, deleted: { $ne: true } }).select('key options').lean(),
+      ShipmentOrderCustomer.find({ isActive: { $ne: false } }).select('name customerCode').sort({ name: 1 }).lean(),
+    ]);
+    const placesOf = (k) => {
+      const f = fields.find((x) => x.key === k);
+      return [...new Set((f?.options || []).filter((o) => o && o.active !== false && !o.deleted).map((o) => String(o.ar || o.key || '').trim()).filter(Boolean))];
+    };
+    const from = placesOf('fromCity'); const to = placesOf('toCity');
+    const live = list.filter((p) => p.isActive !== false);
+    const fromKeys = new Set(live.map((p) => p.fromKey)); const toKeys = new Set(live.map((p) => p.toKey));
+    res.json({
+      prices: list.map((p) => { const r = rangeOf(p); return { ...p, min: r?.min ?? null, max: r?.max ?? null }; }),
+      places: { from, to },
+      customers: customers.map((c) => ({ _id: c._id, name: c.name, code: c.customerCode || '' })),
+      uncovered: { from: from.filter((c) => !fromKeys.has(fold(c))), to: to.filter((c) => !toKeys.has(fold(c))) },
+    });
+  } catch (e) { res.status(500).json({ message: 'تعذّر تحميل قائمة الأسعار' }); }
 };
-const PRICE_FIELDS = ['fromCity', 'toCity', 'truckType', 'priceA', 'priceB', 'priceC', 'notes', 'isActive'];
+const PRICE_FIELDS = ['fromCity', 'toCity', 'truckType', 'customer', 'minPrice', 'maxPrice', 'notes', 'isActive'];
+/**
+ * POST /api/shipment-requests/:id/buy-range — { min, max } from the requests board: sets the approved purchase range for
+ * this request's customer on its route (creates or updates that customer's row), so the routes page and every request of
+ * the same customer on the same route show it at once.
+ */
+exports.setRequestRange = async (req, res) => {
+  try {
+    const ShipmentRequest = require('../models/ShipmentRequest');
+    const r = await ShipmentRequest.findById(req.params.id).select('customer customerName fromCity toCity').lean();
+    if (!r) return res.status(404).json({ message: 'الطلب غير موجود' });
+    if (!r.customer || !r.fromCity || !r.toCity) return res.status(400).json({ message: 'الطلب بلا عميلٍ أو مسار' });
+    const min = Number(req.body?.min); const max = Number(req.body?.max);
+    if (!(min > 0) || !(max > 0)) return res.status(400).json({ message: 'اكتب سعر الشراء من وإلى' });
+    if (min > max) return res.status(400).json({ message: 'سعر «من» أكبر من سعر «إلى»' });
+    const fold = require('../models/ShipmentOrderSupplier').foldName;
+    let doc = await VendorApprovedPrice.findOne({ customer: r.customer, fromKey: fold(r.fromCity), toKey: fold(r.toCity), truckType: '' });
+    const created = !doc;
+    if (!doc) doc = new VendorApprovedPrice({ customer: r.customer, fromCity: r.fromCity, toCity: r.toCity, truckType: '' });
+    Object.assign(doc, { customerName: r.customerName || '', minPrice: min, maxPrice: max, priceA: null, priceB: null, priceC: null, isActive: true, updatedByName: fullName(req.user) });
+    await doc.save();
+    await logAudit({ user: req.user, action: created ? 'create' : 'update', entity: 'VendorApprovedPrice', entityId: doc._id, changes: { from: 'request', customer: r.customerName, route: `${r.fromCity} → ${r.toCity}`, min, max }, ipAddress: req.ip });
+    announce({});
+    pricesChanged();
+    res.json({ price: doc });
+  } catch (e) { return sendMongooseError(res, e, 'تعذّر حفظ السعر'); }
+};
+
+/** A price change reaches every open request and the boards at once. */
+const pricesChanged = () => {
+  require('../utils/approvedRanges').invalidate();
+  try { emitToAll('shipmentRequests:changed', { prices: true }); } catch (_) { /* */ }
+};
 exports.savePrice = async (req, res) => {
   try {
     const data = {};
     for (const k of PRICE_FIELDS) if (req.body[k] !== undefined) data[k] = req.body[k];
-    for (const k of ['priceA', 'priceB', 'priceC']) if (k in data) data[k] = data[k] === '' || data[k] == null ? null : Number(data[k]);
+    for (const k of ['minPrice', 'maxPrice']) if (k in data) data[k] = data[k] === '' || data[k] == null ? null : Number(data[k]);
+    if (!(data.minPrice > 0) || !(data.maxPrice > 0)) return res.status(400).json({ message: 'اكتب سعر الشراء من وإلى' });
+    if (data.minPrice > data.maxPrice) return res.status(400).json({ message: 'سعر «من» أكبر من سعر «إلى»' });
+    // The range replaces the old tiers.
+    Object.assign(data, { priceA: null, priceB: null, priceC: null });
+    if ('customer' in data) {
+      const ShipmentOrderCustomer = require('../models/ShipmentOrderCustomer');
+      const cust = data.customer && mongoose.isValidObjectId(data.customer) ? await ShipmentOrderCustomer.findById(data.customer).select('name').lean() : null;
+      data.customer = cust ? cust._id : null;
+      data.customerName = cust ? cust.name : '';
+    }
     const doc = req.params.pid ? await VendorApprovedPrice.findById(req.params.pid) : new VendorApprovedPrice();
     if (!doc) return res.status(404).json({ message: 'السعر غير موجود' });
     Object.assign(doc, data, { updatedByName: fullName(req.user) });
@@ -1309,9 +1377,10 @@ exports.savePrice = async (req, res) => {
     await doc.save();
     await logAudit({ user: req.user, action: req.params.pid ? 'update' : 'create', entity: 'VendorApprovedPrice', entityId: doc._id, changes: data, ipAddress: req.ip });
     announce({});
+    pricesChanged();
     res.json({ price: doc });
   } catch (e) {
-    if (e.code === 11000) return res.status(409).json({ message: 'هذا المسار مسجَّلٌ في القائمة بالفعل' });
+    if (e.code === 11000) return res.status(409).json({ message: 'هذا المسار (لهذا العميل) مسجَّلٌ في القائمة بالفعل' });
     return sendMongooseError(res, e, 'تعذّر حفظ السعر');
   }
 };
@@ -1321,6 +1390,7 @@ exports.deletePrice = async (req, res) => {
     if (!d) return res.status(404).json({ message: 'السعر غير موجود' });
     await d.deleteOne();
     announce({});
+    pricesChanged();
     res.json({ ok: true });
   } catch (e) { res.status(500).json({ message: 'تعذّر الحذف' }); }
 };
@@ -1366,7 +1436,7 @@ exports.routeSearch = async (req, res) => {
       v.routes.add(`${o.fromCity} → ${o.toCity}`);
     }
     const ap = approved.filter((a) => (!from || arabicSearchRegex(from).test(a.fromCity)) && (!to || arabicSearchRegex(to).test(a.toCity)));
-    const ceiling = ap.length ? Math.min(...ap.map((a) => a.priceA || Infinity)) : null;
+    const ceiling = ap.length ? Math.min(...ap.map((a) => require('../utils/approvedRanges').rangeOf(a)?.max || Infinity)) : null;
     const all = rows.map((o) => Number(o.buyPrice) || 0).filter(Boolean);
     const backMap = {};
     for (const o of back) {
@@ -1381,7 +1451,7 @@ exports.routeSearch = async (req, res) => {
       from, to, year: y, trips: rows.length,
       routes: Object.entries(routes).sort((a, b) => b[1] - a[1]).map(([route, n]) => ({ route, n })),
       price: all.length ? { min: Math.min(...all), max: Math.max(...all), avg: r2(all.reduce((a, b) => a + b, 0) / all.length) } : null,
-      approved: ap.map((a) => ({ fromCity: a.fromCity, toCity: a.toCity, A: a.priceA, B: a.priceB, C: a.priceC })),
+      approved: ap.map((a) => ({ fromCity: a.fromCity, toCity: a.toCity, truckType: a.truckType || '', ...(require('../utils/approvedRanges').rangeOf(a) || {}) })),
       vendors: Object.values(vendors).sort((a, b) => b.trips - a.trips).map((v) => ({
         ...v, routes: [...v.routes], last: isoDay(v.last), avg: v.prices.length ? r2(v.prices.reduce((a, b) => a + b, 0) / v.prices.length) : null,
         min: v.prices.length ? Math.min(...v.prices) : null, max: v.prices.length ? Math.max(...v.prices) : null, prices: undefined,
@@ -1427,7 +1497,8 @@ exports.alerts = async (req, res) => {
       if (!v.last || o.pickupTime > v.last) v.last = o.pickupTime;
       if (o.agentName) v.reps[o.agentName] = (v.reps[o.agentName] || 0) + 1;
       const ap = approved.find((a) => a.fromKey === fold(o.fromCity) && a.toKey === fold(o.toCity));
-      if (ap && ap.priceA && Number(o.buyPrice) > ap.priceA) v.above.push({ waybillNumber: o.waybillNumber, route: `${o.fromCity} → ${o.toCity}`, price: o.buyPrice, A: ap.priceA });
+      const apMax = ap ? require('../utils/approvedRanges').rangeOf(ap)?.max : null;
+      if (apMax && Number(o.buyPrice) > apMax) v.above.push({ waybillNumber: o.waybillNumber, route: `${o.fromCity} → ${o.toCity}`, price: o.buyPrice, A: apMax });
     }
     const vs = Object.values(inWin);
     const topRep = (v) => Object.entries(v.reps).sort((a, b) => b[1] - a[1])[0]?.[0] || '';
@@ -1456,7 +1527,7 @@ exports.alerts = async (req, res) => {
       { type: 'missingData', ar: 'بياناتٌ ناقصة في ملف المورد', action: 'استكمال البيانات',
         items: masters.map((m) => ({ m, miss: missingFile(m) })).filter((x) => x.miss.length >= 3).sort((a, b) => b.miss.length - a.miss.length)
           .map(({ m, miss }) => mk('missingData', String(m._id), { id: String(m._id), name: m.name, kind: 'master', trips: null, last: null, detail: miss.map((f) => FILE_LABELS[f]).join('، '), count: miss.length, owner: m.followOwner })) },
-      { type: 'aboveApproved', ar: 'أسعارٌ أعلى من الفئة A المعتمدة', action: 'مراجعة السعر',
+      { type: 'aboveApproved', ar: 'أسعارٌ أعلى من السقف المعتمد', action: 'مراجعة السعر',
         items: vs.filter((v) => v.above.length).sort((a, b) => b.above.length - a.above.length)
           .map((v) => mk('aboveApproved', v.key, { id: v.id, name: v.name, kind: v.kind, trips: v.above.length, last: isoDay(v.last), detail: v.above.slice(0, 3).map((x) => `${x.route}: ${x.price} مقابل ${x.A}`).join(' · '), rows: v.above.slice(0, 20) })) },
       { type: 'multiName', ar: 'مورّدٌ مسجّلٌ بأكثر من اسمٍ على النظام', action: 'توحيد الاسم على النظام',

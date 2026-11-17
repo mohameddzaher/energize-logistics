@@ -667,7 +667,7 @@ const LIST_FIELDS = [
   'reportNumber', 'reportDate', 'fromLocation', 'toLocation', 'branch',
   'carOwner', 'carNumber', 'ownerType', 'executionStatus', 'applicationStatus',
   // Read only by the page's Excel export.
-  'ownerName', 'ownerPhone', 'carName',
+  'ownerName', 'ownerPhone', 'carName', 'plateNumber', 'product', 'volume', 'region', 'country',
   'paymentMethod', 'username', 'userPhone', 'taxIndicator',
   'purchaseValue', 'sellingValue', 'loadingTime', 'driverRentalType', 'reference',
   'driverName', 'driverPhone', 'truckType', 'truckSize', 'loadType', 'quantity',
@@ -716,6 +716,7 @@ exports.getWorkflows = async (req, res) => {
     const nums = workflows.map((w) => w.reportNumber);
     const [walletPaid, recorders] = await Promise.all([walletPaidMap(nums), walletRecorderMap(nums)]);
     for (const w of workflows) if (walletPaid.has(String(w.reportNumber || '').trim())) w.paidFromWallet = true;
+    await require('../utils/shipmentPeople').attachShipmentPeople(workflows);
 
     // Data owner is read from three sources in order: who wrote the payment date here; else who recorded the purchase in the wallet (who paid then); else the row was transferred from the operations platform and nobody here wrote it, which is stated explicitly rather than an empty cell read as unknown.
     for (const w of workflows) {

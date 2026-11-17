@@ -534,7 +534,7 @@ function FleetTruckEditor({ i, row, vehicles, drivers, helpers, types, taken, mi
 
 // ── «تحصيل السيارات» ────────────────────────────────────────────────────────
 
-export function SourcingModal({ req, team, canLead, onClose, onChanged }: { req: ShipmentRequest; team: 'vendors' | 'fleet'; canLead: boolean; onClose: () => void; onChanged: (r: ShipmentRequest) => void }) {
+export function SourcingModal({ req, team, canAdd, canAll, onClose, onChanged }: { req: ShipmentRequest; team: 'vendors' | 'fleet'; canAdd: boolean; canAll: boolean; onClose: () => void; onChanged: (r: ShipmentRequest) => void }) {
   const { lang } = useLanguage();
   const ar = lang === 'ar';
   const t = (a: string, e: string) => (ar ? a : e);
@@ -557,8 +557,9 @@ export function SourcingModal({ req, team, canLead, onClose, onChanged }: { req:
   };
   const add = () => run(() => api.post(`/api/shipment-requests/${req._id}/sourcing`, { count: Number(count), helper: helper || null, note, team }), t('سُجِّل التحصيل', 'Recorded'))
     .then(() => { setCount('1'); setHelper(''); setNote(''); });
-  const canEdit = (e: SourcingEntry) => String(e.by) === me || canLead;
-  const open = ['pending', 'in_progress', 'completed'].includes(req.status);
+  // Each person edits or deletes only their own entry; the data team corrects anyone's (server enforces the same).
+  const canEdit = (e: SourcingEntry) => String(e.by) === me || canAll;
+  const open = canAdd && ['pending', 'in_progress', 'completed'].includes(req.status);
   return (
     <Modal open onClose={onClose} title={t(`تحصيل السيارات — الطلب رقم ${req.number}`, `Trucks sourced — request ${req.number}`)}>
       <div className="space-y-3">

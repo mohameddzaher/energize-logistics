@@ -54,6 +54,8 @@ router.get('/prices', c.listPrices);
 router.post('/prices', authorize(...LEADS), c.savePrice);
 router.put('/prices/:pid', authorize(...LEADS), c.savePrice);
 router.delete('/prices/:pid', authorize(...LEADS), c.deletePrice);
+// Set a request customer's approved range on its route straight from the requests board.
+router.post('/requests/:id/buy-range', authorize.strict(...LEADS), c.setRequestRange);
 router.get('/settings', c.getSettings);
 router.put('/settings', authorize(...LEADS), c.saveSettings);
 

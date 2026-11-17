@@ -107,6 +107,7 @@ import '../screens/so_insights.dart';
 import '../screens/shipment_requests.dart';
 import '../screens/vendors_mgmt.dart';
 import '../screens/vendors_mgmt_files.dart';
+import '../screens/vendors_prices.dart';
 import '../screens/shipment_orders_chat.dart';
 import '../screens/shipment_orders_fleet.dart';
 import '../screens/shipment_orders_settings.dart';
@@ -739,6 +740,7 @@ List<AppSection> sectionsFor(AuthProvider auth) {
         AppPage('السيارات', 'Trucks', Icons.local_shipping_outlined, (c) => const VendorsVehiclesScreen(), path: '/system/vendors-mgmt/vehicles'),
         AppPage('الفريلانسرز (نقل ثقيل)', 'Freelancers (heavy)', Icons.badge_outlined, (c) => const HeavyFreelancersScreen(), path: '/system/vendors-mgmt/drivers'),
         AppPage('التنبيهات', 'Alerts', Icons.notifications_active_outlined, (c) => const VendorsAlertsScreen(), path: '/system/vendors-mgmt/alerts'),
+        AppPage('المسارات والأسعار المعتمدة', 'Approved routes & prices', Icons.price_check_outlined, (c) => const VendorsPricesScreen(), path: '/system/vendors-mgmt/routes'),
         AppPage('بحث بالمسار', 'Route search', Icons.alt_route_outlined, (c) => const VendorsRouteSearchScreen(), path: '/system/vendors-mgmt/routes'),
         if (const [..._admins, 'vendors_manager', 'vendors_team_leader', 'operations_manager', 'operations_team_leader'].contains(role))
           AppPage('تقييم الأداء', 'KPIs', Icons.leaderboard_outlined, (c) => const TeamBoardScreen(section: 'Vendors Management'), path: '/system/vendors-mgmt/kpis'),

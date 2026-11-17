@@ -54,6 +54,7 @@ exports.list = async (req, res) => {
       WF.pageOfReports(filter, { select: SELECT, skip: (page - 1) * limit, limit, searching: !!String(req.query.search || '').trim() }),
       OperationsWorkflow.aggregate([{ $match: countFilter }, { $group: { _id: '$applicationStatus', n: { $sum: 1 } } }]),
     ]);
+    await require('../utils/shipmentPeople').attachShipmentPeople(rows);
     res.json({
       rows: shape(req.user.role, rows),
       total, page, pages: Math.ceil(total / limit),

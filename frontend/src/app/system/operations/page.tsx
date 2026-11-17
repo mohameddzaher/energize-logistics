@@ -479,6 +479,22 @@ export default function OperationsWorkflowPage() {
   // Purchase value: hidden from sales (the server strips it too).
   const canSeePurchase = (view as any).purchase !== false;
 
+  // Extra read-only columns, off until picked in «الأعمدة»: the people behind the load (from its shipment) and row fields the table did not offer.
+  const extraColumns = useMemo<ChooserColumn[]>(() => {
+    const ar = lang === 'ar';
+    const c = (key: string, a: string, e: string) => ({ key, label: ar ? a : e });
+    return [
+      c('salesRepName', 'مندوب المبيعات', 'Sales rep'), c('sourcingRepName', 'مندوب التشغيل (محصِّل السيارة)', 'Ops rep (sourced the truck)'),
+      c('sourcingHelperName', 'بمساعدة', 'Helped by'), c('requestNumber', 'رقم طلب الشحن', 'Request no.'),
+      c('plateNumber', 'رقم اللوحة', 'Plate'), c('carName', 'اسم الشاحنة', 'Truck name'), c('driverPhone', 'جوال السائق', 'Driver phone'),
+      c('ownerType', 'نوع المالك', 'Owner type'), c('ownerName', 'اسم المالك', 'Owner name'), c('ownerPhone', 'جوال المالك', 'Owner phone'),
+      c('driverRentalType', 'نوع تأجير السائق', 'Driver rental type'), c('loadType', 'نوع الحمولة', 'Load type'), c('quantity', 'الكمية', 'Quantity'),
+      c('loadingTime', 'وقت التحميل', 'Loading time'), c('executionStatus', 'حالة التنفيذ', 'Execution status'),
+      c('paymentMethod', 'طريقة الدفع', 'Payment method'), c('paymentSubtype', 'تفصيل نوع الدفع', 'Payment subtype'),
+      c('taxIndicator', 'خاضع للضريبة', 'Tax indicator'), c('reference', 'المرجع', 'Reference'), c('invoiceNotes', 'ملاحظات الفاتورة', 'Invoice notes'),
+      c('product', 'المنتج', 'Product'), c('volume', 'الحجم', 'Volume'), c('region', 'المنطقة', 'Region'), c('country', 'الدولة', 'Country'),
+    ];
+  }, [lang]);
   // Columns a role may not see never reach the chooser, so it cannot offer them.
   const chooserColumns = useMemo<ChooserColumn[]>(() => {
     const ar = lang === 'ar';
@@ -500,9 +516,12 @@ export default function OperationsWorkflowPage() {
       ...(canViewFinancials ? [{ key: 'netInvoice', label: T.thNetInvoice }, { key: 'tax', label: T.thTax }, { key: 'totalInvoice', label: T.thTotalInvoice }, { key: 'invoiceDate', label: T.thInvoiceDate }] : []),
       { key: 'deliveryDate', label: T.thDeliveryDate },
       ...(canViewFinancials ? [{ key: 'collectedAmount', label: T.thCollectedAmount }, { key: 'collectionDate', label: T.thCollectionDate }] : []),
+      ...extraColumns,
     ];
-  }, [T, lang, canSeeSelling, canSeePurchase, canViewFinancials]);
-  const { visible: visibleCols, setVisible: setVisibleCols, isOn: colOn } = useVisibleColumns('ops:workflowColumns', chooserColumns);
+  }, [T, lang, canSeeSelling, canSeePurchase, canViewFinancials, extraColumns]);
+  // Before any saved choice, the table shows its usual columns; the extras wait to be picked.
+  const defaultColKeys = useMemo(() => { const ex = new Set(extraColumns.map((c) => c.key)); return chooserColumns.map((c) => c.key).filter((k) => !ex.has(k)); }, [chooserColumns, extraColumns]);
+  const { visible: visibleCols, setVisible: setVisibleCols, isOn: colOn } = useVisibleColumns('ops:workflowColumns', chooserColumns, { defaults: defaultColKeys });
 
   // Aggregates over the WHOLE matching dataset (all ~27k rows, not one page).
   const [stats, setStats] = useState<{
@@ -1648,6 +1667,7 @@ export default function OperationsWorkflowPage() {
                 {ColHead('deliveryDate', T.thDeliveryDate, 'text-green-400')}
                 {ColHead('collectedAmount', T.thCollectedAmount, 'text-green-400')}
                 {ColHead('collectionDate', T.thCollectionDate, 'text-green-400')}
+                {extraColumns.filter((c) => colOn(c.key)).map((c) => <th key={c.key} className="px-3 py-3 text-start text-xs font-semibold whitespace-nowrap text-slate-300">{c.label}</th>)}
                 {/* Two columns removed: stage and lock Stage is a state the system computes from the row itself (which cells are filled); it is read in the workflow and decides nothing, since users here follow shipment status and payment date. Lock is an icon showing whether a colleague has the row open; the lock itself remains (it blocks concurrent editing and tells whoever tries), but a whole column in a forty-column table to say nobody is editing is a cost with no return. */}
               </tr>
             </thead>
@@ -1977,6 +1997,9 @@ export default function OperationsWorkflowPage() {
                         {colOn('deliveryDate') && dateCell('deliveryDate', 'text-green-700')}
                         {colOn('collectedAmount') && numCell('collectedAmount', 'text-green-700')}
                         {colOn('collectionDate') && dateCell('collectionDate', 'text-green-700')}
+                        {extraColumns.filter((c) => colOn(c.key)).map((c) => (
+                          <td key={c.key} className="px-3 py-2 whitespace-nowrap text-[13px] text-slate-700">{(wf as any)[c.key] ? String((wf as any)[c.key]) : <span className="text-slate-300">—</span>}</td>
+                        ))}
                       </>);
                     })()}
 

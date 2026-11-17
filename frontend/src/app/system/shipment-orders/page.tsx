@@ -384,7 +384,8 @@ function ShipmentOrdersInner() {
     [ar ? 'الكمية' : 'Quantity', null, 'quantity'],
     [ar ? 'نوع الدفع' : 'Payment', 'paymentSubtype', 'payment'],
     [ar ? 'مندوب المبيعات' : 'Sales rep', 'salesRepName', 'sales'],
-    [ar ? 'مسؤول التوريد' : 'Sourcing', 'sourcingRepName', 'sourcing'],
+    [ar ? 'مندوب التشغيل (محصِّل السيارة)' : 'Ops rep (sourced the truck)', 'sourcingRepName', 'sourcing'],
+    [ar ? 'بمساعدة' : 'Helped by', 'sourcingHelperName', 'helper'],
     [ar ? 'المندوب' : 'Agent', 'agentName', 'agent'],
     [ar ? 'سعر الشراء' : 'Buy', 'buyPrice', 'buy'],
     [ar ? 'سعر البيع' : 'Sell', 'sellPrice', 'sell'],
@@ -436,6 +437,7 @@ function ShipmentOrdersInner() {
     { header: 'Agent', key: 'agentName', width: 16 },
     { header: 'Sales rep', key: 'salesRepName', width: 16 },
     { header: 'Sourcing', key: 'sourcingRepName', width: 16 },
+    { header: 'Helped by', key: 'sourcingHelperName', width: 16 },
     { header: 'Note', key: 'notes', width: 30 },
   ];
   // Pagination is on the server (25 rows): filtering 200 shipments then exporting used to output only the visible page with no warning, so every range is now fetched from the server up to its limit.
@@ -848,6 +850,9 @@ function ShipmentOrdersInner() {
                   )}
                   {on('sourcing') && (
                   <td className="px-4 py-3 text-slate-700 whitespace-nowrap">{(o as any).sourcingRepName || '—'}</td>
+                  )}
+                  {on('helper') && (
+                  <td className="px-4 py-3 text-slate-700 whitespace-nowrap">{(o as any).sourcingHelperName || '—'}</td>
                   )}
                   {on('agent') && (
                   <td className="px-4 py-3 text-slate-700 whitespace-nowrap">{o.agentName || '—'}</td>

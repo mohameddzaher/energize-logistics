@@ -1267,7 +1267,7 @@ class _VendorsRouteSearchScreenState extends State<VendorsRouteSearchScreen> {
           ]),
           if (_list(d['approved']).isNotEmpty)
             SectionCard(title: tr('السعر المعتمد A / B / C', 'Approved price A / B / C'), child: Column(children: [
-              for (final a in _list(d['approved'])) ListTile(dense: true, contentPadding: EdgeInsets.zero, title: Text('${a['fromCity']} ← ${a['toCity']}'), trailing: Text('${a['A'] ?? '—'} / ${a['B'] ?? '—'} / ${a['C'] ?? '—'}', style: const TextStyle(fontWeight: FontWeight.w800))),
+              for (final a in _list(d['approved'])) ListTile(dense: true, contentPadding: EdgeInsets.zero, title: Text('${a['fromCity']} ← ${a['toCity']}'), trailing: Text('${a['min'] ?? '—'} – ${a['max'] ?? '—'}', style: const TextStyle(fontWeight: FontWeight.w800))),
             ]))
           else
             Padding(padding: const EdgeInsets.only(top: 8), child: Text(tr('المسار غير مدرجٍ في قائمة الأسعار المعتمدة', 'Route not in the approved list'), style: const TextStyle(color: T.inkFaint))),

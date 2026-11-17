@@ -13,7 +13,7 @@ import { useDialog } from '@/components/system/DialogProvider';
 import { useSocket } from '@/hooks/useSocket';
 import { useLatestRequest } from '@/hooks/useLatestRequest';
 import api from '@/lib/api';
-import { Spinner, SearchInput, Modal, SearchableSelect, ErrorNotice } from '@/components/hr/HRKit';
+import { Spinner, SearchInput, Modal, SearchableSelect, ErrorNotice, Field, TextInput, PrimaryButton } from '@/components/hr/HRKit';
 import SearchableManagedSelect from '@/components/system/SearchableManagedSelect';
 import ShipmentRequestForm from '@/components/shipment-orders/ShipmentRequestForm';
 import { PlaceModal, FleetPlaceModal, SourcingModal } from '@/components/shipment-orders/ShipmentRequestComplete';
@@ -45,7 +45,8 @@ const defaultOrder = (list: ShipmentRequest[]) => [...list].sort((a, b) => {
   return +new Date(b.createdAt) - +new Date(a.createdAt);
 });
 
-type Tab = 'open' | RequestStatus | 'all';
+// Four tabs only: open (new + in progress), completed, not done (rejected by vendors or withdrawn by sales), all.
+type Tab = 'open' | 'closed' | RequestStatus | 'all';
 
 export type BoardMode = 'sales' | 'vendors' | 'fleet';
 
@@ -70,6 +71,15 @@ export default function ShipmentRequestsBoard({ mode }: { mode: BoardMode }) {
   // Every company branch with its open requests (server: branchList).
   const [branchList, setBranchList] = useState<{ name: string; open: number }[]>([]);
   const [canLead, setCanLead] = useState(false);
+  // Sourcing: who may record (anyone on the working board) and who corrects anyone's entry (data team).
+  const [canSource, setCanSource] = useState(false);
+  const [sourcingAll, setSourcingAll] = useState(false);
+  // The operations manager (and price editors) set this customer's approved range on the route from here; it is written to the routes page.
+  const [canEditRange, setCanEditRange] = useState(false);
+  const [rangeFor, setRangeFor] = useState<ShipmentRequest | null>(null);
+  const [rangeMin, setRangeMin] = useState('');
+  const [rangeMax, setRangeMax] = useState('');
+  const [rangeBusy, setRangeBusy] = useState(false);
   const [sourcingOf, setSourcingOf] = useState<ShipmentRequest | null>(null);
   const [fleetPlacing, setFleetPlacing] = useState<ShipmentRequest | null>(null);
   const [q, setQ] = useState('');
@@ -138,6 +148,7 @@ export default function ShipmentRequestsBoard({ mode }: { mode: BoardMode }) {
     const my = guard.begin();
     const p = new URLSearchParams({ limit: '200' });
     if (tab === 'open') p.set('status', 'pending,in_progress');
+    else if (tab === 'closed') p.set('status', 'rejected,cancelled');
     else if (tab !== 'all') p.set('status', tab);
     if (qd.trim()) p.set('q', qd.trim());
     if (mine) p.set(work ? 'handler' : 'mine', work ? 'me' : '1');
@@ -147,10 +158,10 @@ export default function ShipmentRequestsBoard({ mode }: { mode: BoardMode }) {
     if (to) p.set('to', to);
     p.set('limit', '1000');
     try {
-      const d = await api.get<{ requests: ShipmentRequest[]; byStatus: Record<string, number>; openTrucks: number; branches?: string[]; branchList?: { name: string; open: number }[]; can?: { lead?: boolean } }>(`/api/shipment-requests?${p}`);
+      const d = await api.get<{ requests: ShipmentRequest[]; byStatus: Record<string, number>; openTrucks: number; branches?: string[]; branchList?: { name: string; open: number }[]; can?: { lead?: boolean; source?: boolean; sourcingAll?: boolean; editRange?: boolean } }>(`/api/shipment-requests?${p}`);
       if (!guard.isCurrent(my)) return;
       setRows(d.requests || []); setByStatus(d.byStatus || {}); setOpenTrucks(d.openTrucks || 0); setError('');
-      setBranches(d.branches || []); setBranchList(d.branchList || (d.branches || []).map((name) => ({ name, open: 0 }))); setCanLead(!!d.can?.lead);
+      setBranches(d.branches || []); setBranchList(d.branchList || (d.branches || []).map((name) => ({ name, open: 0 }))); setCanLead(!!d.can?.lead); setCanSource(!!d.can?.source); setSourcingAll(!!d.can?.sourcingAll); setCanEditRange(!!d.can?.editRange);
     } catch (e: any) { if (guard.isCurrent(my)) setError(e?.message || t('تعذّر التحميل', 'Could not load')); }
     if (guard.isCurrent(my)) setLoading(false);
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -178,11 +189,11 @@ export default function ShipmentRequestsBoard({ mode }: { mode: BoardMode }) {
     setBusyId('');
   };
 
-  const counts = { open: (byStatus.pending || 0) + (byStatus.in_progress || 0), ...byStatus } as Record<string, number>;
+  const counts = { open: (byStatus.pending || 0) + (byStatus.in_progress || 0), closed: (byStatus.rejected || 0) + (byStatus.cancelled || 0), ...byStatus } as Record<string, number>;
   const all = Object.values(byStatus).reduce((s, n) => s + n, 0);
   const TABS: [Tab, string, string][] = work
-    ? [['open', 'المفتوحة', 'Open'], ['pending', 'جديدة', 'New'], ['in_progress', 'قيد الإنجاز', 'In progress'], ['rejected', 'مرفوضة', 'Rejected'], ['completed', 'مكتملة', 'Completed'], ['cancelled', 'مسحوبة', 'Withdrawn'], ['all', 'الكلّ', 'All']]
-    : [['all', 'كلّ طلباتي', 'All'], ['open', 'لدى الموردين', 'With vendors'], ['rejected', 'مرفوضة', 'Rejected'], ['completed', 'مكتملة', 'Completed'], ['cancelled', 'مسحوبة', 'Withdrawn']];
+    ? [['open', 'المفتوحة', 'Open'], ['completed', 'مكتملة', 'Completed'], ['closed', 'لم تُنفَّذ', 'Not done'], ['all', 'الكلّ', 'All']]
+    : [['all', 'كلّ طلباتي', 'All'], ['open', 'لدى الموردين', 'With vendors'], ['completed', 'مكتملة', 'Completed'], ['closed', 'لم تُنفَّذ', 'Not done']];
 
   // Top filters (as on the HR pages): each value list is read from the loaded rows.
   const TOP_FILTERS: { key: string; ar: string; en: string; read: (r: ShipmentRequest) => string }[] = [
@@ -225,7 +236,7 @@ export default function ShipmentRequestsBoard({ mode }: { mode: BoardMode }) {
       { key: 'trucks', ar: 'الشاحنات المطلوبة', en: 'Trucks asked', read: (r) => r.trucks, num: true },
       { key: 'placedCount', ar: 'أُسندت', en: 'Placed', read: (r) => (r.placed || []).length, num: true },
       { key: 'openCount', ar: 'متبقّية', en: 'Remaining', read: (r) => (['pending', 'in_progress'].includes(r.status) ? r.open : 0), num: true },
-      { key: 'closedCount', ar: 'مرفوضة/مسحوبة', en: 'Rejected/withdrawn', read: (r) => (['rejected', 'cancelled'].includes(r.status) ? r.open : 0), num: true },
+      { key: 'closedCount', ar: 'لم تُنفَّذ', en: 'Not done', read: (r) => (['rejected', 'cancelled'].includes(r.status) ? r.open : 0), num: true },
       { key: 'customer', ar: 'العميل', en: 'Customer', read: (r) => r.customerName || '' },
       { key: 'fromCity', ar: 'من', en: 'From', read: (r) => r.fromCity || '' },
       { key: 'toCity', ar: 'إلى', en: 'To', read: (r) => r.toCity || '' },
@@ -234,12 +245,16 @@ export default function ShipmentRequestsBoard({ mode }: { mode: BoardMode }) {
       { key: 'truckLength', ar: 'الطول', en: 'Length', read: (r) => r.truckLength || '' },
       { key: 'cargoType', ar: 'نوع الحمولة', en: 'Cargo', read: (r) => r.cargoType || '' },
       { key: 'pickup', ar: 'موعد التحميل', en: 'Pickup', read: (r) => day(r.pickupTime), date: true },
+      ...(work ? [{ key: 'buyRange', ar: 'سعر الشراء المعتمد', en: 'Approved purchase', read: (r: ShipmentRequest) => (r.buyRange ? `${r.buyRange.min} – ${r.buyRange.max}` : '') }] : []),
       ...(showSell ? [{ key: 'sellPrice', ar: 'سعر البيع للشاحنة', en: 'Sell / truck', read: (r: ShipmentRequest) => r.sellPrice ?? '', num: true }] : []),
       { key: 'payment', ar: 'طريقة الدفع', en: 'Payment', read: (r) => (r.paymentSubtype ? ((PAYMENT_SUBTYPES as any)[r.paymentSubtype]?.[ar ? 'ar' : 'en'] || r.paymentSubtype) : '') },
       { key: 'salesRep', ar: 'السيلز', en: 'Sales rep', read: (r) => r.salesRepName || '' },
       { key: 'createdBy', ar: 'أنشأه', en: 'Created by', read: (r) => r.createdByName || '' },
       { key: 'createdAt', ar: 'تاريخ الطلب', en: 'Requested', read: (r) => day(r.createdAt), date: true },
       { key: 'handler', ar: 'مسؤول الموردين', en: 'Vendors handler', read: (r) => r.handlerName || '' },
+      // The operations people behind the trucks: who sourced them (from «تحصيل السيارات» and the placed trucks) and who helped.
+      { key: 'opsReps', ar: 'مندوب التشغيل (محصِّل السيارات)', en: 'Ops reps (sourced trucks)', read: (r) => [...new Set([...(r.sourcing || []).map((e) => e.byName), ...(r.placed || []).map((p) => p.sourcingRepName || '')].filter(Boolean))].join('، ') },
+      { key: 'helpers', ar: 'بمساعدة', en: 'Helped by', read: (r) => [...new Set([...(r.sourcing || []).map((e) => e.helperName || ''), ...(r.placed || []).map((p) => p.helperName || '')].filter(Boolean))].join('، ') },
       { key: 'orders', ar: 'أوامر النقل', en: 'Transport orders', read: (r) => (r.placed || []).map((p) => p.waybillNumber).join('، ') },
       { key: 'supplier', ar: 'المورّدون', en: 'Suppliers', read: (r) => [...new Set((r.placed || []).map((p) => p.supplierName).filter(Boolean))].join('، ') },
       { key: 'plates', ar: 'السيارات', en: 'Trucks', read: (r) => (r.placed || []).map((p) => p.vehiclePlate).filter(Boolean).join('، ') },
@@ -264,7 +279,7 @@ export default function ShipmentRequestsBoard({ mode }: { mode: BoardMode }) {
     return OPEN_REQ.includes(r.status) && rest > 0;
   })), [base, cardF]); // eslint-disable-line react-hooks/exhaustive-deps
   const chooserCols: ChooserColumn[] = useMemo(() => COLS.map((c) => ({ key: c.key, label: ar ? c.ar : c.en, locked: c.key === 'number' })), [COLS, ar]);
-  const DEFAULT_COLS = ['number', 'status', 'progress', 'sourcing', 'trucks', 'placedCount', 'openCount', 'customer', 'fromCity', 'toCity', 'truckType', 'pickup', 'sellPrice', 'salesRep', 'handler', 'orders', 'createdAt'];
+  const DEFAULT_COLS = ['number', 'status', 'progress', 'sourcing', 'trucks', 'placedCount', 'openCount', 'customer', 'fromCity', 'toCity', 'truckType', 'pickup', 'buyRange', 'sellPrice', 'salesRep', 'handler', 'orders', 'createdAt'];
   const { visible, setVisible } = useVisibleColumns(`shipmentRequests:cols:${mode}:v2`, chooserCols, { defaults: DEFAULT_COLS });
   const visCols = COLS.filter((c) => visible.includes(c.key));
   const exportCols = (cols: typeof COLS): ExportColumn[] => cols.map((c) => ({ header: ar ? c.ar : c.en, key: c.key, transform: (_v: any, r: any) => c.read(r), type: c.num ? 'number' : 'text' }));
@@ -298,6 +313,17 @@ export default function ShipmentRequestsBoard({ mode }: { mode: BoardMode }) {
   ];
   // A period filter asks "what happened on these days": the open tab would hide that day's completed requests, so switch to all.
   useEffect(() => { if ((from || to) && tab === 'open') setTab('all'); }, [from, to]); // eslint-disable-line react-hooks/exhaustive-deps
+  const openRange = (r: ShipmentRequest) => { setRangeFor(r); setRangeMin(r.buyRange ? String(r.buyRange.min) : ''); setRangeMax(r.buyRange ? String(r.buyRange.max) : ''); };
+  const saveRange = async () => {
+    if (!rangeFor) return;
+    setRangeBusy(true);
+    try {
+      await api.post(`/api/vendors-mgmt/requests/${rangeFor._id}/buy-range`, { min: Number(rangeMin), max: Number(rangeMax) });
+      notify(t('حُفظ سعر الشراء لهذا العميل على المسار — يظهر في صفحة المسارات وعلى طلباته', 'Saved for this customer on the route'), 'success');
+      setRangeFor(null); load();
+    } catch (e: any) { notify(e?.message || t('تعذّر الحفظ', 'Could not save'), 'error'); }
+    setRangeBusy(false);
+  };
   const resetFilters = () => { setTop({}); cf.clear(); setFrom(''); setTo(''); setCardF(''); };
   // A sales rep's request waiting on the sales manager reads as that, not as a vendors status.
   function statusText(r: ShipmentRequest) {
@@ -333,7 +359,7 @@ export default function ShipmentRequestsBoard({ mode }: { mode: BoardMode }) {
               )}
           </>
         )}
-        {work && canWork && ['pending', 'in_progress', 'completed'].includes(r.status) && (
+        {['pending', 'in_progress', 'completed'].includes(r.status) && (
           <SourcingButton r={r} rtl={isRTL} onClick={() => setSourcingOf(r)}><Truck className="w-3.5 h-3.5" />{t('تحصيل السيارات', 'Sourced')} {r.sourced || 0}/{r.trucks}</SourcingButton>
         )}
         {mode === 'sales' && asker && ['pending', 'in_progress', 'rejected'].includes(r.status) && approvalOf(r) !== 'rejected' && (
@@ -342,9 +368,9 @@ export default function ShipmentRequestsBoard({ mode }: { mode: BoardMode }) {
             {r.status !== 'rejected' && !returned && <Btn onClick={() => setEditing(r)} icon={Pencil}>{t('تعديل', 'Edit')}</Btn>}
             {r.status === 'rejected' && <Btn onClick={() => act(r, 'resubmit', {}, t('أُعيد الإرسال', 'Resent'))} icon={Send} busy={busyId === r._id}>{t('إعادة الإرسال كما هو', 'Resend as is')}</Btn>}
             <Btn danger icon={Trash2} busy={busyId === r._id} onClick={async () => {
-              if (await confirm({ title: t('سحب الطلب', 'Withdraw'), message: r.placed.length ? t('أوامرُ النقل المُنشأة تبقى، ويُسحب الباقي فقط.', 'Created transport orders stay; only the rest is withdrawn.') : t('يُسحب الطلب من فريق الموردين.', 'The request is withdrawn.'), tone: 'danger' as any }))
+              if (await confirm({ title: t('إلغاء الطلب', 'Cancel request'), message: r.placed.length ? t('أوامرُ النقل المُنشأة تبقى، ويُلغى الباقي فقط.', 'Created transport orders stay; only the rest is cancelled.') : t('يُلغى الطلب ويُسحب من فريق الموردين.', 'The request is cancelled.'), tone: 'danger' as any }))
                 act(r, 'cancel', {}, t('سُحب الطلب', 'Withdrawn'));
-            }}>{t('سحب', 'Withdraw')}</Btn>
+            }}>{t('إلغاء', 'Cancel')}</Btn>
           </>
         )}
         <button type="button" onClick={() => setHistory(r)} className={`${compact ? '' : 'ms-auto '}inline-flex items-center gap-1 text-[12px] font-semibold text-slate-500 hover:text-slate-900`}><History className="w-3.5 h-3.5" />{t('السجلّ', 'History')}</button>
@@ -353,7 +379,7 @@ export default function ShipmentRequestsBoard({ mode }: { mode: BoardMode }) {
   };
 
   const activeChips = [
-    ...(cardF ? [{ key: '__card', label: cardF === 'placed' ? t('فيها أوامر نقل', 'With orders') : cardF === 'closed' ? t('مرفوضة أو مسحوبة', 'Rejected or withdrawn') : t('لم تُنفَّذ بعد', 'Not done yet'), clear: () => setCardF('') }] : []),
+    ...(cardF ? [{ key: '__card', label: cardF === 'placed' ? t('فيها أوامر نقل', 'With orders') : cardF === 'closed' ? t('لم تُنفَّذ (رفضها الموردون أو ألغاها المبيعات)', 'Not done (rejected or cancelled)') : t('لم تُنفَّذ بعد', 'Not done yet'), clear: () => setCardF('') }] : []),
     ...(branch ? [{ key: '__branch', label: `${t('الفرع', 'Branch')}: ${branch}`, clear: () => setBranch('') }] : []),
     ...(from || to ? [{ key: '__date', label: from === to ? `${t('يوم', 'Day')} ${from}` : `${from || '…'} → ${to || '…'}`, clear: () => { setFrom(''); setTo(''); } }] : []),
     ...TOP_FILTERS.filter((f) => top[f.key]).map((f) => ({ key: f.key, label: `${ar ? f.ar : f.en}: ${top[f.key]}`, clear: () => setTop((p) => ({ ...p, [f.key]: '' })) })),
@@ -477,7 +503,7 @@ export default function ShipmentRequestsBoard({ mode }: { mode: BoardMode }) {
           ['', t('طلبات', 'Requests'), sum.requests, null, 'text-slate-900'],
           ['', t('شاحنات مطلوبة', 'Trucks asked'), sum.asked, sum.requests, 'text-[#f37121]'],
           ['placed', t('نُفِّذت (أوامر نقل)', 'Done (orders)'), sum.placed, sum.placedReq, 'text-emerald-700'],
-          ['closed', t('رُفضت أو سُحبت', 'Rejected or withdrawn'), sum.closed, sum.closedReq, 'text-red-600'],
+          ['closed', t('لم تُنفَّذ', 'Not done'), sum.closed, sum.closedReq, 'text-red-600'],
           ['waiting', t('لم تُنفَّذ بعد', 'Not done yet'), sum.waiting, sum.waitingReq, 'text-amber-700'],
         ] as const).map(([key, label, value, reqs, cls], i) => {
           const on = key ? cardF === key : (i === 0 && !cardF);
@@ -561,45 +587,83 @@ export default function ShipmentRequestsBoard({ mode }: { mode: BoardMode }) {
             const open = ['pending', 'in_progress'].includes(r.status);
             const pct = r.trucks ? Math.round((r.placed.length / r.trucks) * 100) : 0;
             return (
-              <div key={r._id} className={`rounded-2xl border bg-white shadow-sm overflow-hidden ${r.status === 'rejected' ? 'border-red-200' : 'border-slate-200'}`}>
-                <div className="px-4 py-3 flex flex-wrap items-center gap-2 border-b border-slate-100 bg-slate-50/60">
-                  <span className="font-extrabold tabular-nums text-slate-900">{ar ? 'طلب رقم' : 'Request'} {r.number}</span>
+              <div key={r._id} className={`flex flex-col rounded-2xl border bg-white shadow-sm overflow-hidden ${r.status === 'rejected' ? 'border-red-200' : 'border-slate-200'}`}>
+                {/* Header: number, status and progress; who asked and when. */}
+                <div className="flex flex-wrap items-center gap-2 px-4 py-2.5 border-b border-slate-100 bg-slate-50/70">
+                  <span className="rounded-lg bg-slate-900 px-2 py-0.5 text-[12.5px] font-extrabold tabular-nums text-white">#{r.number}</span>
                   <StatusText dot={st.dot}>{statusText(r)}</StatusText>
                   <span className={`text-[12px] font-semibold ${vendorProgress(r, ar, pmode).tone}`}>{vendorProgress(r, ar, pmode).label}</span>
-                  <SourcingButton r={r} rtl={isRTL} onClick={() => setSourcingOf(r)}>{t('تحصيل السيارات', 'Sourced')} {sourcingLine(r, ar)}</SourcingButton>
-                  {r.resubmits ? <span className="text-[11px] text-slate-500">{t(`أُعيد ${r.resubmits}×`, `resent ${r.resubmits}×`)}</span> : null}
                   <span className="ms-auto text-[11.5px] text-slate-500">{when(r.createdAt)} · {r.createdByName}</span>
                 </div>
-                <div className="p-4 space-y-3">
-                  <div className="flex flex-wrap items-start gap-x-6 gap-y-2">
-                    <div className="min-w-0">
-                      <p className="text-[15px] font-bold text-slate-900 truncate">{r.customerName}</p>
-                      <p className="mt-0.5 flex items-center gap-1.5 text-[13px] text-slate-700"><MapPin className="w-3.5 h-3.5 text-[#f37121]" />{r.fromCity} <span className="text-slate-400">←</span> {r.toCity}{r.branch ? <span className="text-slate-400"> · {r.branch}</span> : null}</p>
+                <div className="flex-1 p-4 space-y-3.5">
+                  {/* Customer and route on the left, the price that matters to this reader on the right. */}
+                  <div className="flex items-start gap-3">
+                    <div className="min-w-0 flex-1">
+                      <p className="text-[15.5px] font-extrabold text-slate-900 leading-snug">{r.customerName}</p>
+                      <div className="mt-1.5 flex flex-wrap items-center gap-1.5 text-[13px]">
+                        <span className="inline-flex items-center gap-1 rounded-lg bg-slate-100 px-2 py-1 font-semibold text-slate-800"><MapPin className="w-3.5 h-3.5 text-[#f37121]" />{r.fromCity}</span>
+                        <span className="text-slate-400">{isRTL ? '←' : '→'}</span>
+                        <span className="inline-flex items-center gap-1 rounded-lg bg-slate-100 px-2 py-1 font-semibold text-slate-800">{r.toCity}</span>
+                        {r.branch ? <span className="text-[12px] text-slate-500">· {r.branch}</span> : null}
+                      </div>
                     </div>
-                    {r.sellPrice != null && <div className="ms-auto text-end"><p className="text-[11px] text-slate-500">{t('سعر البيع للشاحنة', 'Selling per truck')}</p><p className="text-[17px] font-extrabold tabular-nums text-[#f37121]">{money(r.sellPrice)}</p></div>}
-                  </div>
-                  <div className="flex flex-wrap gap-1.5 text-[12px]">
-                    <Chip icon={Truck}>{r.truckType || '—'}{r.truckLength ? ` · ${r.truckLength}` : ''}</Chip>
-                    {r.cargoType && <Chip icon={Package}>{r.cargoType}</Chip>}
-                    <Chip icon={Calendar}>{t('التحميل', 'Pickup')} {day(r.pickupTime)}</Chip>
-                    {r.paymentSubtype && <Chip>{(PAYMENT_SUBTYPES as any)[r.paymentSubtype]?.[ar ? 'ar' : 'en'] || r.paymentSubtype}</Chip>}
-                    {r.salesRepName && <Chip icon={UserIcon}>{t('المبيعات', 'Sales')}: {r.salesRepName}</Chip>}
-                    {r.handlerName && <Chip icon={Hand}>{t('يعمل عليه', 'Handled by')}: {r.handlerName}{r.claimedUntil && OPEN_ST.includes(r.status) ? t(` · حتى ${hhmm(r.claimedUntil)}`, ` · until ${hhmm(r.claimedUntil)}`) : ''}</Chip>}
-                    {(r.blNumber || r.containerNumber) && <Chip>{[r.blNumber, r.containerNumber].filter(Boolean).join(' · ')}</Chip>}
-                  </div>
-                  {r.notes && <p className="text-[12.5px] text-slate-600 bg-slate-50 rounded-lg px-3 py-2">{r.notes}</p>}
-                  <div>
-                    <div className="flex items-center justify-between text-[12px] text-slate-600 mb-1">
-                      <span>{t(`الشاحنات: أُسندت ${r.placed.length} من ${r.trucks}`, `Trucks placed: ${r.placed.length} of ${r.trucks}`)}</span>
-                      {open && <span className="font-semibold text-amber-700">{t(`بقي ${r.open}`, `${r.open} open`)}</span>}
+                    <div className="shrink-0 space-y-1.5 text-end">
+                      {r.buyRange !== undefined && (
+                        <div className={`rounded-xl border px-3 py-1.5 ${r.buyRange ? 'border-emerald-200 bg-emerald-50' : 'border-amber-200 bg-amber-50'}`}>
+                          <p className="text-[10.5px] font-semibold text-slate-500">{t('سعر الشراء المعتمد', 'Approved purchase')}</p>
+                          {r.buyRange
+                            ? <p className="text-[15px] font-extrabold tabular-nums text-emerald-800">{money(r.buyRange.min)} – {money(r.buyRange.max)}</p>
+                            : <p className="text-[12px] font-semibold text-amber-800">{t('المسار غير مسعَّر', 'Route not priced')}</p>}
+                          {r.buyRange?.customer && <p className="text-[10px] text-emerald-700">{t('سعر هذا العميل', 'This customer’s price')}</p>}
+                          {canEditRange && (
+                            <button type="button" onClick={() => openRange(r)} className="mt-0.5 inline-flex items-center gap-1 text-[11px] font-semibold text-slate-600 hover:text-[#f37121]">
+                              <Pencil className="w-3 h-3" />{r.buyRange ? t('تعديل', 'Edit') : t('تسعير', 'Set price')}
+                            </button>
+                          )}
+                        </div>
+                      )}
+                      {r.sellPrice != null && (
+                        <div className="rounded-xl border border-orange-200 bg-orange-50 px-3 py-1.5">
+                          <p className="text-[10.5px] font-semibold text-slate-500">{t('سعر البيع للشاحنة', 'Selling per truck')}</p>
+                          <p className="text-[15px] font-extrabold tabular-nums text-[#c2410c]">{money(r.sellPrice)}</p>
+                        </div>
+                      )}
                     </div>
-                    <div className="h-2 rounded-full bg-slate-100"><div className="h-2 rounded-full bg-emerald-500 transition-all" style={{ width: `${pct}%` }} /></div>
+                  </div>
+                  {/* Facts as a labelled grid instead of loose chips. */}
+                  <dl className="grid grid-cols-2 sm:grid-cols-3 gap-x-4 gap-y-2 rounded-xl border border-slate-100 bg-slate-50/50 p-3 text-[12.5px]">
+                    {([
+                      [t('نوع الشاحنة', 'Truck'), [r.truckType, r.truckLength].filter(Boolean).join(' · ')],
+                      [t('الحمولة', 'Cargo'), r.cargoType],
+                      [t('موعد التحميل', 'Pickup'), day(r.pickupTime)],
+                      [t('الدفع', 'Payment'), r.paymentSubtype ? ((PAYMENT_SUBTYPES as any)[r.paymentSubtype]?.[ar ? 'ar' : 'en'] || r.paymentSubtype) : ''],
+                      [t('المبيعات', 'Sales'), r.salesRepName],
+                      [t('يعمل عليه', 'Handled by'), r.handlerName ? `${r.handlerName}${r.claimedUntil && OPEN_ST.includes(r.status) ? t(` · حتى ${hhmm(r.claimedUntil)}`, ` · until ${hhmm(r.claimedUntil)}`) : ''}` : ''],
+                      ...(r.blNumber || r.containerNumber ? [[t('البوليصة · الحاوية', 'BL · container'), [r.blNumber, r.containerNumber].filter(Boolean).join(' · ')]] : []),
+                    ] as [string, string][]).map(([k, v]) => (
+                      <div key={k} className="min-w-0"><dt className="text-[11px] text-slate-500">{k}</dt><dd className="truncate font-semibold text-slate-800">{v || '—'}</dd></div>
+                    ))}
+                  </dl>
+                  {r.notes && <p className="text-[12.5px] text-slate-700 bg-amber-50/60 border border-amber-100 rounded-lg px-3 py-2">{r.notes}</p>}
+                  {/* Two progress lines: trucks placed as transport orders, and trucks sourced so far. */}
+                  <div className="space-y-2">
+                    <div>
+                      <div className="mb-1 flex items-center justify-between text-[12px] text-slate-600">
+                        <span className="font-semibold">{t(`أوامر النقل: ${r.placed.length} من ${r.trucks}`, `Transport orders: ${r.placed.length} of ${r.trucks}`)}</span>
+                        {open && <span className="font-semibold text-amber-700">{t(`بقي ${r.open}`, `${r.open} open`)}</span>}
+                      </div>
+                      <div className="h-2 rounded-full bg-slate-100"><div className="h-2 rounded-full bg-emerald-500 transition-all" style={{ width: `${pct}%` }} /></div>
+                    </div>
+                    <div className="flex flex-wrap items-center gap-2">
+                      <SourcingButton r={r} rtl={isRTL} onClick={() => setSourcingOf(r)}><Truck className="w-3.5 h-3.5" />{t('تحصيل السيارات', 'Sourced')} {sourcingLine(r, ar)}</SourcingButton>
+                      {r.resubmits ? <span className="text-[11px] text-slate-500">{t(`أُعيد ${r.resubmits}×`, `resent ${r.resubmits}×`)}</span> : null}
+                    </div>
                     {!!r.placed.length && (
-                      <div className="mt-2 flex flex-wrap gap-1.5">
+                      <div className="flex flex-wrap gap-1.5">
                         {r.placed.map((p) => (
                           <Link key={p.order} href={`/system/shipment-orders?q=${p.waybillNumber}`} title={`${p.supplierName} · ${p.vehiclePlate} · ${p.driverName}`}
                             className="inline-flex items-center gap-1 rounded-lg border border-emerald-200 bg-emerald-50 px-2 py-1 text-[11.5px] font-semibold text-emerald-800 hover:bg-emerald-100">
-                            <CheckCircle2 className="w-3.5 h-3.5" />{t('أمر نقل', 'Order')} {p.waybillNumber}<span className="font-normal text-emerald-700/80 max-w-[160px] truncate">· {p.supplierName}</span>
+                            <CheckCircle2 className="w-3.5 h-3.5" />{p.waybillNumber}<span className="font-normal text-emerald-700/80 max-w-[140px] truncate">· {p.supplierName}</span>
                           </Link>
                         ))}
                       </div>
@@ -619,9 +683,9 @@ export default function ShipmentRequestsBoard({ mode }: { mode: BoardMode }) {
                       <p className="text-red-600/80 mt-0.5 text-[11.5px]">{r.rejectedByName} · {when(r.rejectedAt)}</p>
                     </div>
                   )}
-                  <div className="flex flex-wrap items-center gap-1.5 pt-1">
-                    {actions(r)}
-                  </div>
+                </div>
+                <div className="flex flex-wrap items-center gap-1.5 border-t border-slate-100 bg-slate-50/40 px-4 py-2.5">
+                  {actions(r)}
                 </div>
               </div>
             );
@@ -629,9 +693,29 @@ export default function ShipmentRequestsBoard({ mode }: { mode: BoardMode }) {
         </div>
       )}
 
+      {rangeFor && (
+        <Modal open onClose={() => setRangeFor(null)} title={t('سعر الشراء المعتمد', 'Approved purchase price')}
+          footer={<>
+            <button type="button" onClick={() => setRangeFor(null)} className="px-4 py-2 rounded-lg text-sm text-slate-600 hover:text-slate-900">{t('إلغاء', 'Cancel')}</button>
+            <PrimaryButton onClick={saveRange} disabled={rangeBusy || !(Number(rangeMin) > 0) || !(Number(rangeMax) > 0) || Number(rangeMin) > Number(rangeMax)}>{t('حفظ', 'Save')}</PrimaryButton>
+          </>}>
+          <div className="space-y-3">
+            <div className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-[13px]">
+              <p className="font-bold text-slate-900">{rangeFor.customerName}</p>
+              <p className="text-slate-600">{rangeFor.fromCity} {isRTL ? '←' : '→'} {rangeFor.toCity}</p>
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <Field label={t('من', 'From')}><TextInput type="number" min={0} value={rangeMin} onChange={(e) => setRangeMin(e.target.value)} placeholder="2300" /></Field>
+              <Field label={t('إلى', 'To')}><TextInput type="number" min={0} value={rangeMax} onChange={(e) => setRangeMax(e.target.value)} placeholder="2700" /></Field>
+            </div>
+            {Number(rangeMin) > 0 && Number(rangeMax) > 0 && Number(rangeMin) > Number(rangeMax) && <p className="text-[12px] font-semibold text-red-600">{t('سعر «من» أكبر من سعر «إلى»', '“From” is above “to”')}</p>}
+            <p className="text-[11.5px] text-slate-500">{t('يُحفظ لهذا العميل على هذا المسار في صفحة المسارات والأسعار المعتمدة، ويظهر فورًا على كلّ طلباته بنفس المسار — الحالية والقادمة.', 'Saved for this customer on this route in the routes page; shows at once on all their requests on this route.')}</p>
+          </div>
+        </Modal>
+      )}
       {placing && <PlaceModal req={placing} onClose={() => setPlacing(null)} onDone={() => { setPlacing(null); load(); }} />}
       {fleetPlacing && <FleetPlaceModal req={fleetPlacing} onClose={() => setFleetPlacing(null)} onDone={() => { setFleetPlacing(null); load(); }} />}
-      {sourcingOf && <SourcingModal req={sourcingOf} team={fleet ? 'fleet' : 'vendors'} canLead={canLead} onClose={() => setSourcingOf(null)}
+      {sourcingOf && <SourcingModal req={sourcingOf} team={fleet ? 'fleet' : 'vendors'} canAdd={work && canSource} canAll={sourcingAll} onClose={() => setSourcingOf(null)}
         onChanged={(nr) => { setSourcingOf(nr); setRows((p) => p.map((x) => (x._id === nr._id ? nr : x))); }} />}
       {rejecting && <RejectModal req={rejecting} onClose={() => setRejecting(null)} onDone={() => { setRejecting(null); load(); }} />}
       {editing && (

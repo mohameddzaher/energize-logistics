@@ -28,7 +28,13 @@ const approvedPriceSchema = new mongoose.Schema({
   fromKey: { type: String, default: '', index: true },
   toKey: { type: String, default: '', index: true },
   truckType: { type: String, trim: true, default: '' },
-  /** Tier A is the ceiling the team pays a regular carrier; B and C are for preferred and contracted carriers. */
+  /** A price for one customer on this route; empty = the route's price for every customer. A customer's own price wins. */
+  customer: { type: mongoose.Schema.Types.ObjectId, ref: 'ShipmentOrderCustomer', default: null, index: true },
+  customerName: { type: String, trim: true, default: '' },
+  /** The approved purchase price per trip as a range; this is what requests show and alerts measure against (max = ceiling). */
+  minPrice: { type: Number, default: null },
+  maxPrice: { type: Number, default: null },
+  /** Legacy tiers (A ceiling, B, C), read as the range when min/max are empty. */
   priceA: { type: Number, default: null },
   priceB: { type: Number, default: null },
   priceC: { type: Number, default: null },
@@ -36,7 +42,7 @@ const approvedPriceSchema = new mongoose.Schema({
   isActive: { type: Boolean, default: true },
   updatedByName: { type: String, default: '' },
 }, { timestamps: true });
-approvedPriceSchema.index({ fromKey: 1, toKey: 1, truckType: 1 }, { unique: true });
+approvedPriceSchema.index({ customer: 1, fromKey: 1, toKey: 1, truckType: 1 }, { unique: true, name: 'customer_route_type' });
 approvedPriceSchema.pre('save', function keys(next) {
   const fold = require('./ShipmentOrderSupplier').foldName;
   this.fromKey = fold(this.fromCity);

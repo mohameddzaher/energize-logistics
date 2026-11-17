@@ -7,6 +7,7 @@ import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import api from '@/lib/api';
 import { type JpLink, LINK_WORDS, linkHref } from '@/lib/jp';
+import { useSocket } from '@/hooks/useSocket';
 import { SearchableSelect } from '@/components/hr/HRKit';
 import { Ship, Users, Truck, Anchor, X } from 'lucide-react';
 
@@ -61,6 +62,9 @@ export function LinkPicker({ section, kinds, value, onChange, ar }: {
   const [opts, setOpts] = useState<Opt[]>([]);
   const [loading, setLoading] = useState(false);
   const [q, setQ] = useState('');
+  // A customer added, renamed or removed in the register reloads the list at once.
+  const [tick, setTick] = useState(0);
+  useSocket('shipmentOrders:customers', () => setTick((x) => x + 1));
   useEffect(() => {
     if (!kind) return undefined;
     let live = true;
@@ -69,7 +73,7 @@ export function LinkPicker({ section, kinds, value, onChange, ar }: {
       optionsFor(section, kind, q).then((o) => { if (live) setOpts(o); }).catch(() => { if (live) setOpts([]); }).finally(() => { if (live) setLoading(false); });
     }, q ? 250 : 0);
     return () => { live = false; clearTimeout(h); };
-  }, [section, kind, q]);
+  }, [section, kind, q, tick]);
   if (!kinds.length) return null;
   const word = (k: string) => (LINK_WORDS[k] ? (ar ? LINK_WORDS[k].ar : LINK_WORDS[k].en) : k);
   return (

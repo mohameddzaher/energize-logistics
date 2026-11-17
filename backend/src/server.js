@@ -441,6 +441,9 @@ if (!DOCS_ONLY) connectDB().then(async () => {
   // Seed the default editable reference lists (lookups) once (no-op once they exist).
   const { ensureDefaultLookups } = require('./config/lookupTypes');
   await ensureDefaultLookups();
+  require('./config/jpLinks').migrateCompanyLinks()
+    .then((n) => { if (n) console.log(`[jp] ${n} tasks: company links moved to the customers register`); })
+    .catch((e) => console.error('[jp] company links:', e.message));
   await require('./controllers/b2cController').ensureB2CProjectDefaults().catch((e) => console.error('[b2c] project defaults:', e.message));
   // Stored work-status text follows its label (utils/hrEngagement); a renamed termination kind is rewritten on files that hold the old text.
   {

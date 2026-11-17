@@ -23,6 +23,7 @@ import { Spinner, PageHeader, Modal, Field, TextInput, TextArea, Select, Primary
 import {
   CalendarCheck, ListChecks, Plus, Check, Paperclip, Trash2, Pencil, FolderKanban, Clock, ChevronDown,
   Phone, MessageCircle, MapPin, Mail, Users, MoreHorizontal, X, Send, CornerDownLeft, Loader2, MessageSquare, ArrowRight, ArrowLeft,
+  UserRound, Timer, Link2, FileText, Hourglass, ClipboardList,
 } from 'lucide-react';
 
 const ACTION_ICON: Record<string, React.ReactNode> = {
@@ -41,8 +42,8 @@ export const dueBody = (d: Due) => (d.kind === 'date' ? { deadlineKind: 'date', 
 function Chip({ on, onClick, children }: { on: boolean; onClick: () => void; children: React.ReactNode }) {
   return (
     <button type="button" onClick={onClick}
-      className={`px-3 py-1.5 rounded-full text-[12.5px] font-medium border transition-colors whitespace-nowrap ${
-        on ? 'bg-[#f37121] text-white border-[#f37121]' : 'bg-white border-slate-200 text-slate-600 hover:text-slate-900'}`}>
+      className={`px-3 py-1.5 rounded-lg text-[12.5px] font-semibold border transition-all whitespace-nowrap ${
+        on ? 'bg-[#f37121] text-white border-[#f37121] shadow-sm shadow-[#f37121]/25' : 'bg-white border-slate-200 text-slate-600 hover:border-slate-300 hover:text-slate-900'}`}>
       {children}
     </button>
   );
@@ -54,25 +55,31 @@ export function DuePicker({ value, onChange, ar }: { value: Due; onChange: (d: D
   const today = ymd(new Date());
   const tomorrow = ymd(new Date(Date.now() + 86400000));
   const isHours = (h: string) => value.kind === 'hours' && value.hours === h;
+  const customHours = value.kind === 'hours' && !['1', '2', '4', '8'].includes(value.hours) ? value.hours : '';
+  const box = 'h-[34px] px-2.5 rounded-lg bg-white border border-slate-200 text-[12.5px] text-slate-700 focus:outline-none focus:ring-2 focus:ring-[#f37121]/40';
   return (
-    <div className="flex flex-wrap items-center gap-1.5">
+    <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
       <Chip on={value.kind === ''} onClick={() => onChange(NO_DUE)}>{t('بلا موعد', 'No deadline')}</Chip>
-      {['1', '2', '4', '8'].map((h) => (
-        <Chip key={h} on={isHours(h)} onClick={() => onChange({ kind: 'hours', date: '', hours: h })}>
-          {t(h === '1' ? 'خلال ساعة' : h === '2' ? 'خلال ساعتين' : `خلال ${h} ساعات`, `In ${h}h`)}
-        </Chip>
-      ))}
-      <Chip on={value.kind === 'date' && value.date === today} onClick={() => onChange({ kind: 'date', date: today, hours: '' })}>{t('اليوم', 'Today')}</Chip>
-      <Chip on={value.kind === 'date' && value.date === tomorrow} onClick={() => onChange({ kind: 'date', date: tomorrow, hours: '' })}>{t('غدًا', 'Tomorrow')}</Chip>
-      <input type="date" value={value.kind === 'date' ? value.date : ''} min={today}
-        onChange={(e) => onChange(e.target.value ? { kind: 'date', date: e.target.value, hours: '' } : NO_DUE)}
-        className="px-2 py-1.5 rounded-lg bg-white border border-slate-200 text-[12.5px] text-slate-700" aria-label={t('تاريخ الموعد', 'Deadline date')} />
-      <span className="inline-flex items-center gap-1 text-[12.5px] text-slate-500">
-        <input type="number" min={1} max={720} inputMode="numeric" placeholder={t('ساعات', 'hours')}
-          value={value.kind === 'hours' && !['1', '2', '4', '8'].includes(value.hours) ? value.hours : ''}
+      <span className="h-5 w-px bg-slate-200" aria-hidden />
+      <div className="flex flex-wrap items-center gap-1.5">
+        <span className="text-[11.5px] font-semibold text-slate-400">{t('خلال', 'Within')}</span>
+        {['1', '2', '4', '8'].map((h) => (
+          <Chip key={h} on={isHours(h)} onClick={() => onChange({ kind: 'hours', date: '', hours: h })}>
+            {t(h === '1' ? 'ساعة' : h === '2' ? 'ساعتين' : `${h} ساعات`, `${h}h`)}
+          </Chip>
+        ))}
+        <input type="number" min={1} max={720} inputMode="numeric" placeholder={t('ساعات…', 'hours…')} value={customHours}
           onChange={(e) => onChange(e.target.value ? { kind: 'hours', date: '', hours: e.target.value } : NO_DUE)}
-          className="w-20 px-2 py-1.5 rounded-lg bg-white border border-slate-200 text-slate-700" aria-label={t('عدد الساعات', 'Hours')} />
-      </span>
+          className={`w-20 ${box} ${customHours ? 'border-[#f37121] ring-1 ring-[#f37121]/30' : ''}`} aria-label={t('عدد الساعات', 'Hours')} />
+      </div>
+      <span className="h-5 w-px bg-slate-200" aria-hidden />
+      <div className="flex flex-wrap items-center gap-1.5">
+        <Chip on={value.kind === 'date' && value.date === today} onClick={() => onChange({ kind: 'date', date: today, hours: '' })}>{t('اليوم', 'Today')}</Chip>
+        <Chip on={value.kind === 'date' && value.date === tomorrow} onClick={() => onChange({ kind: 'date', date: tomorrow, hours: '' })}>{t('غدًا', 'Tomorrow')}</Chip>
+        <input type="date" value={value.kind === 'date' ? value.date : ''} min={today}
+          onChange={(e) => onChange(e.target.value ? { kind: 'date', date: e.target.value, hours: '' } : NO_DUE)}
+          className={`${box} ${value.kind === 'date' && value.date !== today && value.date !== tomorrow ? 'border-[#f37121] ring-1 ring-[#f37121]/30' : ''}`} aria-label={t('تاريخ الموعد', 'Deadline date')} />
+      </div>
     </div>
   );
 }
@@ -104,25 +111,13 @@ function MoreFields({ d, set, projects, ar, allowFiles, linkKinds = [], section 
     set({ files: [...d.files, ...got].slice(0, 5) });
   };
   return (
-    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+    <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
       {linkKinds.length > 0 && (
-        <Field label={t('تتعلّق بـ (اختياري)', 'Related to (optional)')} span2>
+        <Block icon={<Link2 className="w-4 h-4" />} title={t('تتعلّق بـ', 'Related to')} span2>
           <LinkPicker section={section} kinds={linkKinds} value={d.links} onChange={(links) => set({ links })} ar={ar} />
-        </Field>
+        </Block>
       )}
-      <Field label={t('يوم العمل (اختياري)', 'Work day (optional)')}>
-        <TextInput type="date" value={d.workDate} onChange={(e) => set({ workDate: e.target.value })} />
-      </Field>
-      <Field label={t('الوقت المتوقّع (اختياري)', 'Expected time (optional)')}>
-        <div className="flex items-center gap-2">
-          <TextInput type="number" min={0} value={d.expH} onChange={(e) => set({ expH: e.target.value })} placeholder={t('ساعات', 'hours')} />
-          <TextInput type="number" min={0} max={59} value={d.expM} onChange={(e) => set({ expM: e.target.value })} placeholder={t('دقائق', 'minutes')} />
-        </div>
-      </Field>
-      <Field label={t('تفاصيل (اختياري)', 'Details (optional)')} span2>
-        <TextArea rows={2} value={d.details} onChange={(e) => set({ details: e.target.value })} placeholder={t('ما المطلوب بالتحديد؟', 'What exactly is needed?')} />
-      </Field>
-      <Field label={t('طريقة التواصل (اختياري)', 'Contact method (optional)')}>
+      <Block icon={<Phone className="w-4 h-4" />} title={t('التواصل', 'Contact')}>
         <div className="flex flex-wrap gap-1.5">
           {(Object.keys(ACTION_WORDS) as Exclude<JpAction, ''>[]).map((k) => (
             <Chip key={k} on={d.action === k} onClick={() => set({ action: d.action === k ? '' : k })}>
@@ -130,36 +125,66 @@ function MoreFields({ d, set, projects, ar, allowFiles, linkKinds = [], section 
             </Chip>
           ))}
         </div>
-      </Field>
-      <Field label={t('مع مَن؟ اسمٌ أو رقم (اختياري)', 'With whom? name or number (optional)')}>
-        <TextInput value={d.contact} onChange={(e) => set({ contact: e.target.value })} placeholder={t('مثال: مدير مشتريات شركة… · 05XXXXXXXX', 'e.g. Purchasing manager at… · 05XXXXXXXX')} />
-      </Field>
-      {projects.length > 0 && (
-        <Field label={t('المشروع (اختياري)', 'Project (optional)')}>
-          <Select value={d.project} onChange={(e) => set({ project: e.target.value })}>
-            <option value="">{t('بلا مشروع', 'No project')}</option>
-            {projects.filter((p) => p.status === 'active' || p._id === d.project).map((p) => <option key={p._id} value={p._id}>{p.name}</option>)}
-          </Select>
-        </Field>
-      )}
-      {allowFiles && (
-        <Field label={t('مرفقات (اختياري)', 'Attachments (optional)')}>
-          <label className="inline-flex items-center gap-2 px-3 py-2 rounded-lg bg-white border border-dashed border-slate-300 text-sm text-slate-600 cursor-pointer hover:border-[#f37121]">
-            <Paperclip className="w-4 h-4" />{t('أرفِق ملفًّا', 'Attach a file')}
-            <input type="file" multiple hidden onChange={(e) => { pick(e.target.files); e.target.value = ''; }} />
+        <TextInput value={d.contact} onChange={(e) => set({ contact: e.target.value })}
+          placeholder={t('مع مَن؟ اسمٌ أو رقم — مثال: مدير المشتريات · 05XXXXXXXX', 'With whom? name or number — e.g. purchasing manager · 05XXXXXXXX')} />
+      </Block>
+      <Block icon={<Timer className="w-4 h-4" />} title={t('التوقيت', 'Timing')}>
+        <div className="grid grid-cols-2 gap-2">
+          <label className="space-y-1">
+            <span className="text-[11.5px] font-semibold text-slate-500">{t('يوم العمل', 'Work day')}</span>
+            <TextInput type="date" value={d.workDate} onChange={(e) => set({ workDate: e.target.value })} />
           </label>
-          {d.files.length > 0 && (
-            <ul className="mt-2 space-y-1">
-              {d.files.map((f, i) => (
-                <li key={`${f.fileName}-${i}`} className="flex items-center gap-2 text-[12.5px] text-slate-600">
-                  <Paperclip className="w-3.5 h-3.5 shrink-0" /><span className="truncate">{f.fileName}</span>
-                  <button type="button" onClick={() => set({ files: d.files.filter((_, j) => j !== i) })} className="text-slate-400 hover:text-red-600" aria-label={t('إزالة', 'Remove')}><X className="w-3.5 h-3.5" /></button>
-                </li>
-              ))}
-            </ul>
+          <label className="space-y-1">
+            <span className="text-[11.5px] font-semibold text-slate-500">{t('الوقت المتوقّع', 'Expected time')}</span>
+            <div className="flex items-center gap-1.5">
+              <TextInput type="number" min={0} value={d.expH} onChange={(e) => set({ expH: e.target.value })} placeholder={t('س', 'h')} />
+              <span className="text-slate-400">:</span>
+              <TextInput type="number" min={0} max={59} value={d.expM} onChange={(e) => set({ expM: e.target.value })} placeholder={t('د', 'm')} />
+            </div>
+          </label>
+        </div>
+      </Block>
+      <Block icon={<FileText className="w-4 h-4" />} title={t('التفاصيل', 'Details')} span2={!allowFiles && projects.length === 0}>
+        <TextArea rows={3} value={d.details} onChange={(e) => set({ details: e.target.value })} placeholder={t('ما المطلوب بالتحديد؟', 'What exactly is needed?')} />
+      </Block>
+      {(projects.length > 0 || allowFiles) && (
+        <Block icon={<FolderKanban className="w-4 h-4" />} title={projects.length > 0 ? t('المشروع والمرفقات', 'Project & files') : t('المرفقات', 'Attachments')}>
+          {projects.length > 0 && (
+            <Select value={d.project} onChange={(e) => set({ project: e.target.value })}>
+              <option value="">{t('بلا مشروع', 'No project')}</option>
+              {projects.filter((p) => p.status === 'active' || p._id === d.project).map((p) => <option key={p._id} value={p._id}>{p.name}</option>)}
+            </Select>
           )}
-        </Field>
+          {allowFiles && (
+            <>
+              <label className="flex items-center justify-center gap-2 px-3 py-3 rounded-lg bg-slate-50 border border-dashed border-slate-300 text-[13px] text-slate-600 cursor-pointer hover:border-[#f37121] hover:text-[#f37121] transition-colors">
+                <Paperclip className="w-4 h-4" />{t('اضغط لإرفاق ملف (حتى 5)', 'Click to attach (up to 5)')}
+                <input type="file" multiple hidden onChange={(e) => { pick(e.target.files); e.target.value = ''; }} />
+              </label>
+              {d.files.length > 0 && (
+                <ul className="flex flex-wrap gap-1.5">
+                  {d.files.map((f, i) => (
+                    <li key={`${f.fileName}-${i}`} className="inline-flex max-w-full items-center gap-1.5 rounded-md bg-slate-100 px-2 py-1 text-[12px] text-slate-700">
+                      <Paperclip className="w-3 h-3 shrink-0" /><span className="truncate max-w-[12rem]">{f.fileName}</span>
+                      <button type="button" onClick={() => set({ files: d.files.filter((_, j) => j !== i) })} className="text-slate-400 hover:text-red-600" aria-label={t('إزالة', 'Remove')}><X className="w-3.5 h-3.5" /></button>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </>
+          )}
+        </Block>
       )}
+    </div>
+  );
+}
+
+/** A titled group inside the task form. */
+function Block({ icon, title, span2, children }: { icon: React.ReactNode; title: string; span2?: boolean; children: React.ReactNode }) {
+  return (
+    <div className={`rounded-xl border border-slate-200 bg-white p-3 space-y-2.5 ${span2 ? 'lg:col-span-2' : ''}`}>
+      <p className="flex items-center gap-1.5 text-[12.5px] font-bold text-slate-700"><span className="text-[#f37121]">{icon}</span>{title}</p>
+      {children}
     </div>
   );
 }
@@ -653,40 +678,65 @@ function JpBoardInner({ scope, section }: { scope: JpScope; section?: string }) 
         </div>
       )}
 
-      {/* Add line */}
-      <div className="bg-white border border-slate-200 rounded-2xl p-4 shadow-sm space-y-3">
-        <div className="flex flex-col lg:flex-row gap-2.5">
-          {/* Task from the section list: grouped in the daily log under one name; anything not in it is added from the same field and appears in the list and section settings. The management plan is free text. */}
-          {scope === 'section' && section ? (
-            <div className="flex-1 min-w-0">
-              <ManagedSelect type={`jp_task_${section}`} storeLabel value={draft.title} onChange={(v) => patchDraft({ title: v })}
-                placeholder={me.canManage ? t('اختر المهمّة', 'Choose the task') : t('اختر ما تعمل عليه أو تطلبه', 'Choose what you work on or request')}
-                className="w-full px-4 py-3 rounded-xl bg-slate-50 border border-slate-200 text-[15px] text-slate-900" />
-            </div>
-          ) : (
-            <input ref={titleRef} value={draft.title} onChange={(e) => patchDraft({ title: e.target.value })}
-              onKeyDown={(e) => { if (e.key === 'Enter') add(); }}
-              placeholder={me.canManage ? t('ما المهمّة؟ اكتبها واضغط Enter', 'What is the task? Type and press Enter') : t('ما الطلب؟ اكتبه واضغط Enter', 'What is the request? Type and press Enter')}
-              className="flex-1 px-4 py-3 rounded-xl bg-slate-50 border border-slate-200 text-[15px] text-slate-900 focus:outline-none focus:ring-2 focus:ring-[#f37121]/50" />
-          )}
-          {/* Searchable: a top role picks from every employee, the section's team first (badge for the section). */}
-          <div className="lg:w-72">
-            <SearchableSelect value={draft.assignedTo} onChange={(v) => patchDraft({ assignedTo: v })}
-              placeholder={whoLabel} searchPlaceholder={t('ابحث بالاسم أو الدور…', 'Search name or role…')} searchAfter={0}
-              options={assigneeOptions} />
-          </div>
-          <PrimaryButton onClick={add} disabled={saving}>
-            {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
-            {me.canManage ? t('إسناد', 'Assign') : t('إرسال', 'Send')}
-          </PrimaryButton>
+      {/* Composer: what, who, when; details folded into titled groups; one clear action at the end. */}
+      <div className="bg-white border border-slate-200 rounded-2xl shadow-sm overflow-hidden">
+        <div className="flex items-center gap-2 px-4 py-2.5 border-b border-slate-100 bg-gradient-to-l from-[#f37121]/[0.06] to-transparent">
+          <ClipboardList className="w-4 h-4 text-[#f37121]" />
+          <p className="text-[13.5px] font-bold text-slate-800">{me.canManage ? t('مهمّة جديدة', 'New task') : t('طلب جديد', 'New request')}</p>
+          {current && <span className="ms-auto rounded-full bg-slate-100 px-2.5 py-0.5 text-[11.5px] font-semibold text-slate-600">{t(`في مشروع «${current.name}»`, `In “${current.name}”`)}</span>}
         </div>
-        <DuePicker value={draft.due} onChange={(due) => patchDraft({ due })} ar={ar} />
-        <button type="button" onClick={() => setMore((v) => !v)} className="inline-flex items-center gap-1 text-[12.5px] text-slate-500 hover:text-slate-900">
-          <ChevronDown className={`w-4 h-4 transition-transform ${more ? 'rotate-180' : ''}`} />
-          {more ? t('إخفاء التفاصيل', 'Hide details') : t('تفاصيل أكثر: طريقة التواصل، مشروع، مرفق', 'More: contact method, project, attachment')}
-        </button>
-        {more && <MoreFields d={draft} set={patchDraft} projects={current ? [] : projects} ar={ar} allowFiles linkKinds={me.linkKinds} section={me.section} />}
-        {current && <p className="text-[12px] text-slate-500">{t(`تُضاف إلى مشروع «${current.name}».`, `Added to project “${current.name}”.`)}</p>}
+        <div className="p-4 space-y-4">
+          <div className="grid grid-cols-1 lg:grid-cols-[minmax(0,1fr)_18rem] gap-3">
+            <label className="block space-y-1.5">
+              <span className="flex items-center gap-1.5 text-[12px] font-bold text-slate-500"><ListChecks className="w-3.5 h-3.5" />{t('المهمّة', 'Task')}</span>
+              {/* Task from the section list: grouped in the daily log under one name; anything not in it is added from the same field and appears in the list and section settings. The management plan is free text. */}
+              {scope === 'section' && section ? (
+                <ManagedSelect type={`jp_task_${section}`} storeLabel value={draft.title} onChange={(v) => patchDraft({ title: v })}
+                  placeholder={me.canManage ? t('اختر المهمّة', 'Choose the task') : t('اختر ما تعمل عليه أو تطلبه', 'Choose what you work on or request')}
+                  className="w-full px-4 py-3 rounded-xl bg-slate-50 border border-slate-200 text-[15px] font-semibold text-slate-900" />
+              ) : (
+                <input ref={titleRef} value={draft.title} onChange={(e) => patchDraft({ title: e.target.value })}
+                  onKeyDown={(e) => { if (e.key === 'Enter') add(); }}
+                  placeholder={me.canManage ? t('ما المهمّة؟ اكتبها واضغط Enter', 'What is the task? Type and press Enter') : t('ما الطلب؟ اكتبه واضغط Enter', 'What is the request? Type and press Enter')}
+                  className="w-full px-4 py-3 rounded-xl bg-slate-50 border border-slate-200 text-[15px] font-semibold text-slate-900 focus:outline-none focus:ring-2 focus:ring-[#f37121]/50" />
+              )}
+            </label>
+            {/* Searchable: a top role picks from every employee, the section's team first (badge for the section). */}
+            <label className="block space-y-1.5">
+              <span className="flex items-center gap-1.5 text-[12px] font-bold text-slate-500"><UserRound className="w-3.5 h-3.5" />{me.canManage ? t('المسؤول', 'Assignee') : t('لِمَن', 'For')}</span>
+              <SearchableSelect value={draft.assignedTo} onChange={(v) => patchDraft({ assignedTo: v })}
+                placeholder={whoLabel} searchPlaceholder={t('ابحث بالاسم أو الدور…', 'Search name or role…')} searchAfter={0}
+                options={assigneeOptions} />
+            </label>
+          </div>
+          <div className="space-y-1.5">
+            <span className="flex items-center gap-1.5 text-[12px] font-bold text-slate-500"><Hourglass className="w-3.5 h-3.5" />{t('الموعد النهائي', 'Deadline')}</span>
+            <DuePicker value={draft.due} onChange={(due) => patchDraft({ due })} ar={ar} />
+          </div>
+          {more && (
+            <div className="rounded-xl bg-slate-50/70 border border-slate-100 p-3">
+              <MoreFields d={draft} set={patchDraft} projects={current ? [] : projects} ar={ar} allowFiles linkKinds={me.linkKinds} section={me.section} />
+            </div>
+          )}
+        </div>
+        <div className="flex flex-wrap items-center gap-2 px-4 py-3 border-t border-slate-100 bg-slate-50/60">
+          <button type="button" onClick={() => setMore((v) => !v)}
+            className={`inline-flex items-center gap-1.5 rounded-lg px-3 py-2 text-[12.5px] font-semibold border transition-colors ${more ? 'bg-white border-slate-300 text-slate-800' : 'bg-white border-slate-200 text-slate-600 hover:text-slate-900'}`}>
+            <ChevronDown className={`w-4 h-4 transition-transform ${more ? 'rotate-180' : ''}`} />
+            {more ? t('إخفاء التفاصيل', 'Hide details') : t('إضافة تفاصيل: عميل، تواصل، توقيت، مرفق', 'Add details: customer, contact, timing, file')}
+          </button>
+          {(draft.links.length > 0 || draft.files.length > 0 || draft.action || draft.details) && !more && (
+            <span className="text-[12px] text-slate-500">
+              {[draft.links.length ? t(`${draft.links.length} ربط`, `${draft.links.length} link(s)`) : '', draft.action ? (ar ? ACTION_WORDS[draft.action as Exclude<JpAction, ''>]?.ar : ACTION_WORDS[draft.action as Exclude<JpAction, ''>]?.en) : '', draft.files.length ? t(`${draft.files.length} مرفق`, `${draft.files.length} file(s)`) : '', draft.details ? t('تفاصيل', 'details') : ''].filter(Boolean).join(' · ')}
+            </span>
+          )}
+          <div className="ms-auto">
+            <PrimaryButton onClick={add} disabled={saving}>
+              {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
+              {me.canManage ? t('إسناد المهمّة', 'Assign task') : t('إرسال الطلب', 'Send request')}
+            </PrimaryButton>
+          </div>
+        </div>
       </div>
 
       {/* Project page */}

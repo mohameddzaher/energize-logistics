@@ -76,11 +76,15 @@ const KINDS = {
     search: (q) => ({ $or: [{ name: rx(q) }, { idNumber: rx(q) }] }),
     href: (id) => `/system/b2c/light-transport/${id}`,
   },
+  // The customers register (the customers page in sales, shipment orders and operations): the same rows, read live, so a customer added, renamed or removed there shows here at once.
+  // The key stays `company` so existing task links keep their kind; old CRM-company refs are remapped by migrateCompanyLinks.
   company: {
-    ar: 'شركة', en: 'Company', sections: ['crm', 'sales', 'marketing', 'bd'],
-    model: M('CrmCompany'), select: 'name',
-    label: (d) => d.name, search: (q) => ({ name: rx(q) }),
-    href: (id) => `/system/crm/companies/${id}`,
+    ar: 'عميل', en: 'Customer', sections: ['crm', 'sales', 'marketing', 'bd'],
+    model: M('ShipmentOrderCustomer'), select: 'name customerCode', base: { isActive: { $ne: false } },
+    // The whole register, alphabetical: the picker must list every customer, not the latest fifty.
+    max: 5000, sort: { name: 1 },
+    label: (d) => join(d.name, d.customerCode), search: (q) => ({ $or: [{ name: rx(q) }, { customerCode: rx(q) }] }),
+    href: (id) => `/system/sales/customers/${id}`,
   },
   collParty: {
     ar: 'عميل تحصيل', en: 'Collections party', sections: ['collections', 'accounting'],
@@ -127,11 +131,13 @@ async function labelOf(kind, id) {
 }
 
 /** Search within a kind: the latest fifty (up to 200 for the phone list), or those matching the text. */
-async function searchKind(kind, q, limit = 50) {
+async function searchKind(kind, q, limit) {
   const k = KINDS[kind];
   if (!k) return [];
   const f = { ...(k.base || {}), ...(q && String(q).trim() ? k.search(String(q).trim().slice(0, 60)) : {}) };
-  const rows = await k.model().find(f).select(k.select).sort({ updatedAt: -1, _id: -1 }).limit(Math.min(200, Math.max(1, Number(limit) || 50))).lean();
+  const cap = k.max || 200;
+  const n = k.max ? cap : Math.min(cap, Math.max(1, Number(limit) || 50));
+  const rows = await k.model().find(f).select(k.select).sort(k.sort || { updatedAt: -1, _id: -1 }).limit(n).lean();
   return rows.map((d) => ({ value: String(d._id), label: k.label(d) || '—' }));
 }
 
@@ -140,4 +146,26 @@ const metaFor = (section) => Object.fromEntries(kindsFor(section).map((k) => [k,
   ar: KINDS[k].ar, en: KINDS[k].en, href: KINDS[k].href(':id'),
 }]));
 
-module.exports = { JP_LINK_KINDS: KINDS, kindsFor, labelOf, searchKind, metaFor };
+/** Task links made when `company` meant a CRM company: point them at that company's customer-register row. Idempotent. */
+async function migrateCompanyLinks() {
+  const { JpTask } = require('../models/JpModels');
+  const SOC = M('ShipmentOrderCustomer')();
+  const refs = await JpTask.distinct('links.ref', { 'links.kind': 'company' });
+  if (!refs.length) return 0;
+  const known = new Set((await SOC.find({ _id: { $in: refs } }).select('_id').lean()).map((d) => String(d._id)));
+  const stale = refs.filter((r) => !known.has(String(r)));
+  if (!stale.length) return 0;
+  const map = await SOC.find({ crmCompany: { $in: stale } }).select('_id crmCompany name customerCode').lean();
+  let n = 0;
+  for (const c of map) {
+    const r = await JpTask.updateMany( // eslint-disable-line no-await-in-loop
+      { links: { $elemMatch: { kind: 'company', ref: c.crmCompany } } },
+      { $set: { 'links.$[l].ref': c._id, 'links.$[l].label': join(c.name, c.customerCode) } },
+      { arrayFilters: [{ 'l.kind': 'company', 'l.ref': c.crmCompany }] },
+    );
+    n += r.modifiedCount || 0;
+  }
+  return n;
+}
+
+module.exports = { JP_LINK_KINDS: KINDS, kindsFor, labelOf, searchKind, metaFor, migrateCompanyLinks };

@@ -24,7 +24,7 @@ export const LINK_WORDS: Record<string, { ar: string; en: string }> = {
   vehicle: { ar: 'مركبة', en: 'Vehicle' },
   truck: { ar: 'شاحنة', en: 'Truck' },
   rep: { ar: 'مندوب', en: 'Rider' },
-  company: { ar: 'شركة', en: 'Company' },
+  company: { ar: 'عميل', en: 'Customer' },
   collParty: { ar: 'عميل تحصيل', en: 'Collections party' },
   vendor: { ar: 'مورّد', en: 'Vendor' },
   ticket: { ar: 'تذكرة', en: 'Ticket' },
@@ -36,7 +36,7 @@ const LINK_PATH: Record<string, string> = {
   clearance: '/system/customs/:id', customer: '/system/customs/parties/:id', agent: '/system/customs/parties/:id',
   carrier: '/system/customs/parties/:id', workflow: '/system/operations/:id', shipment: '/system/shipment-orders?open=:id',
   fleetShipment: '/system/fleet/:id', employee: '/system/hr/employees/:id', vehicle: '/system/vehicles/registry/:id',
-  truck: '/system/ls2/:id', rep: '/system/b2c/light-transport/:id', company: '/system/crm/companies/:id',
+  truck: '/system/ls2/:id', rep: '/system/b2c/light-transport/:id', company: '/system/sales/customers/:id',
   collParty: '/system/collections-dept/parties/:id', vendor: '/system/contracts/vendors/:id', ticket: '/system/it/tickets/:id',
   opportunity: '/system/bd/opportunities/:id', campaign: '/system/marketing/campaigns/:id',
 };

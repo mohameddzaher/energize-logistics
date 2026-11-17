@@ -90,7 +90,7 @@ const _linkKinds = {
   'vehicle': ('مركبة', 'Vehicle', Icons.directions_car_outlined),
   'truck': ('شاحنة', 'Truck', Icons.local_shipping_outlined),
   'rep': ('مندوب', 'Rider', Icons.delivery_dining_outlined),
-  'company': ('شركة', 'Company', Icons.business_outlined),
+  'company': ('عميل', 'Customer', Icons.business_outlined),
   'collParty': ('عميل تحصيل', 'Collections party', Icons.account_balance_wallet_outlined),
   'vendor': ('مورّد', 'Vendor', Icons.storefront_outlined),
   'ticket': ('تذكرة', 'Ticket', Icons.confirmation_number_outlined),

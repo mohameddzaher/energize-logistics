@@ -568,7 +568,8 @@
         "/api/shipment-orders/vehicles",
         "/api/shipment-requests",
         "/api/shipment-requests/approvers",
-        "/api/shipment-requests/team-members"
+        "/api/shipment-requests/team-members",
+        "/api/vendors-mgmt/requests"
       ],
       "wildcard": false
     },
@@ -586,7 +587,8 @@
         "/api/shipment-orders/suppliers",
         "/api/shipment-orders/vehicles",
         "/api/shipment-requests",
-        "/api/shipment-requests/team-members"
+        "/api/shipment-requests/team-members",
+        "/api/vendors-mgmt/requests"
       ],
       "wildcard": false
     },
@@ -725,7 +727,8 @@
         "/api/shipment-orders/suppliers",
         "/api/shipment-orders/vehicles",
         "/api/shipment-requests",
-        "/api/shipment-requests/team-members"
+        "/api/shipment-requests/team-members",
+        "/api/vendors-mgmt/requests"
       ],
       "wildcard": false
     },
@@ -882,7 +885,8 @@
         "/api/shipment-orders/suppliers",
         "/api/shipment-orders/vehicles",
         "/api/shipment-requests",
-        "/api/shipment-requests/team-members"
+        "/api/shipment-requests/team-members",
+        "/api/vendors-mgmt/requests"
       ],
       "wildcard": false
     },
@@ -2647,7 +2651,8 @@
         "/api/shipment-orders/vehicles",
         "/api/shipment-requests",
         "/api/shipment-requests/approvers",
-        "/api/shipment-requests/team-members"
+        "/api/shipment-requests/team-members",
+        "/api/vendors-mgmt/requests"
       ],
       "wildcard": false
     },

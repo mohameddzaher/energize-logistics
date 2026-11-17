@@ -16,7 +16,8 @@ export const canAsk = (u: RoleOrUser) => ASK_ROLES.includes(roleOf(u));
 /** Follow-up reads the board (its branches); switched on for vendors on the users page, it works it too. */
 export const isFollowup = (u: RoleOrUser) => roleOf(u) === 'shipment_orders_followup';
 const followupOnVendors = (u: RoleOrUser) => isFollowup(u) && typeof u === 'object' && (u as any)?.permissions?.['Vendors Management'] === 'edit';
-export const canPlace = (u: RoleOrUser) => PLACE_ROLES.includes(roleOf(u)) || followupOnVendors(u);
+// The follow-up team creates the transport orders for its branches, so it works the board like the vendors team.
+export const canPlace = (u: RoleOrUser) => PLACE_ROLES.includes(roleOf(u)) || isFollowup(u) || followupOnVendors(u);
 export const canFleetPlace = (u: RoleOrUser) => FLEET_PLACE_ROLES.includes(roleOf(u));
 /** The fleet is credited as one team on requests. */
 export const FLEET_NAME = 'النقل الثقيل';

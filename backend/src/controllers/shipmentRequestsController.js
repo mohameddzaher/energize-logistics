@@ -22,7 +22,8 @@ const SO_TEAM = ['shipment_orders_manager', 'shipment_orders_team_leader', 'ship
 /** Who writes the sales half (create, amend, resend, withdraw). */
 const ASKERS = [...TOP_ROLES, ...DATA_ROLES, ...PV.SALES_ROLES, ...SO_TEAM];
 /** Who places or rejects (the vendors half). */
-const PLACERS = [...TOP_ROLES, ...DATA_ROLES, ...PV.VENDOR_ROLES, ...SO_TEAM];
+// The follow-up team (operations) creates the transport orders for their branches, so it works the board like the vendors team (owner, 2026-11-17); its list stays scoped to its branches (branchScoped).
+const PLACERS = [...TOP_ROLES, ...DATA_ROLES, ...PV.VENDOR_ROLES, ...SO_TEAM, 'shipment_orders_followup'];
 /** Our own fleet works the same board: claims, records sourced trucks and completes on our trucks (fleet-place). */
 const FLEET_TEAM = PV.FLEET_ROLES;
 const FLEET_NAME = 'النقل الثقيل';

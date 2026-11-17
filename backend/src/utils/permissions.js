@@ -157,6 +157,8 @@ const effectivePages = async (role) => {
   if ([...pv.SALES_ROLES, ...pv.VENDOR_ROLES].includes(role) && !Object.prototype.hasOwnProperty.call(pages, '/system/operations')) out['/system/operations'] = true;
   const board = require('../config/opsBoard');
   if (board.DEFAULT_ROLES.includes(role) && !Object.prototype.hasOwnProperty.call(pages, board.PAGE)) out[board.PAGE] = true;
+  // «الطلبات من المبيعات» is the follow-up team's own work (owner, 2026-11-17): always open for the role; only a per-user choice closes it.
+  if (role === 'shipment_orders_followup') out['/system/shipment-orders/requests'] = true;
   // The two wallet pages are always view-only for the collections section (config/walletViewOnly). They were open unless explicitly closed, but saving the page matrix writes every page into the role, so all operations pages including the wallet were saved as closed for collections staff. They are now always open; writes are rejected at the gate by role.
   const wv = require('../config/walletViewOnly');
   if (wv.isWalletViewOnly(role)) {

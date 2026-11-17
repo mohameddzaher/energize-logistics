@@ -24,11 +24,12 @@ const FLEET_ROLES = ['fleet_manager', 'fleet_team_leader', 'fleet_supervisor'];
  * order's selling price. Every other role follows priceView.
  */
 // Who sees the selling price on sales requests (owner's list): top management and IT, finance (CFO, accounts manager, accountant), the general manager, the sales team and the data team.
-// Nobody in operations, the manager included (owner, 2026-11-17): operations works on the purchase price (approved route range).
+// From operations the manager alone sees it (owner, 2026-11-17); the rest of operations works on the purchase price (approved route range).
 const REQUEST_SELL_ROLES = new Set([
   'super_admin', 'admin', 'it_manager', 'it_team_leader', 'it_specialist', 'business_consultant', 'it_trainee',
   'cfo', 'accounting_manager', 'accounting_team_leader', 'accountant', 'general_manager',
-  ...SALES_ROLES, 'data_manager', 'data_analyst', 'data_entry',
+  // team-leader-exception: the operations team leader does not see the selling price (owner).
+  'operations_manager', ...SALES_ROLES, 'data_manager', 'data_analyst', 'data_entry',
 ]);
 const requestSellVisible = (u) => REQUEST_SELL_ROLES.has(roleOf(u));
 

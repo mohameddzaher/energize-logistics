@@ -1,4 +1,17 @@
 require('dotenv').config();
+
+// Production guard. A remote database (Atlas = production) and the scheduled jobs belong to the production host only (/opt/energize on the VPS).
+// Started anywhere else (a laptop, from backend/ where .env is production) it runs a second set of jobs against live data, unseen; that happened once and ran for 22 hours.
+// Local work uses qa/start-local.sh with a local database. Stand-alone scripts do not load this file and are unaffected.
+{
+  const uri = String(process.env.MONGODB_URI || process.env.MONGO_URI || '');
+  const localDb = /^mongodb:\/\/(127\.0\.0\.1|localhost)(:\d+)?\//.test(uri);
+  const prodHost = __dirname.startsWith('/opt/energize/');
+  if (process.env.API_DOCS_ONLY !== '1' && !localDb && !prodHost) {
+    console.error('[guard] refusing to start: the database is remote (production) and this is not the production host. Use qa/start-local.sh for local work.');
+    process.exit(1);
+  }
+}
 // Before any model compiles, so every schema gets it.
 require('mongoose').plugin(require('./utils/keepDeleted'));
 const express = require('express');
@@ -92,6 +105,8 @@ process.on('unhandledRejection', (reason) => {
 });
 process.on('uncaughtException', (err) => {
   console.error('UncaughtException:', err);
+  // A server that cannot open its port must not live on: it would serve nothing yet keep running the scheduled jobs.
+  if (err && (err.code === 'EADDRINUSE' || err.code === 'EACCES') && err.syscall === 'listen') process.exit(1);
 });
 
 const app = express();

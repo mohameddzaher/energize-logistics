@@ -143,6 +143,9 @@ const SHIPMENT_BRANCH_ROLES = ['data_entry', 'data_analyst', 'shipment_orders_fo
 /** The operations team (workflow, vendors, follow-up) under the operations manager. */
 const OPS_TEAM_ROLES = ['operations_manager', 'operations_team_leader', 'operations_staff'];
 
+/** Same members regardless of order. */
+const sameSet = (a: string[] = [], b: string[] = []) => a.length === b.length && a.every((x) => b.includes(x));
+
 export default function UsersPage() {
   const { notify: notifyMsg } = useDialog();
   const { user: currentUser } = useAuth();
@@ -260,6 +263,17 @@ export default function UsersPage() {
 
   // Real-time updates
   useSocket('user:deleted', fetchUsers);
+  // Branches set on the shipment-orders permissions page show here at once (same field: User.shipmentBranches).
+  useSocket('shipmentOrders:branchAccess', fetchUsers);
+  // An open edit form follows a branch change made elsewhere, unless its branches were already changed here.
+  useEffect(() => {
+    if (!selectedUser) return;
+    const fresh = users.find((u) => u._id === selectedUser._id);
+    if (!fresh || sameSet(fresh.shipmentBranches || [], selectedUser.shipmentBranches || [])) return;
+    setFormData((f) => (sameSet(f.shipmentBranches, selectedUser.shipmentBranches || []) ? { ...f, shipmentBranches: fresh.shipmentBranches || [] } : f));
+    setSelectedUser((cur) => (cur ? { ...cur, shipmentBranches: fresh.shipmentBranches || [] } : cur));
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [users]);
 
   const fetchCustomers = async () => {
     try {
@@ -475,7 +489,8 @@ export default function UsersPage() {
         payload.assignedCustomers = formData.assignedCustomers;
       }
       payload.branch = formData.branch || null;
-      if (SHIPMENT_BRANCH_ROLES.includes(formData.role)) payload.shipmentBranches = formData.shipmentBranches;
+      // Branches are sent only when changed here: the shipment-orders permissions page edits the same field, and resending the copy opened earlier would undo its change.
+      if (SHIPMENT_BRANCH_ROLES.includes(formData.role) && sameSet(formData.shipmentBranches, selectedUser.shipmentBranches || []) === false) payload.shipmentBranches = formData.shipmentBranches;
       if (formData.role === 'b2c_project_lead' || rightsRoleOf(formData.role) === 'b2c_manager') {
         payload.assignedProjects = formData.assignedProjects;
         payload.assignedBranches = formData.assignedBranches;

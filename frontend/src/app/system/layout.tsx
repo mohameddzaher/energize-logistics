@@ -755,6 +755,9 @@ function SystemLayoutInner({ children }: { children: React.ReactNode }) {
   useSocket('hr:request', badgesSoon);
   useSocket('sellingRequests:changed', badgesSoon);
   useSocket('shipmentRequests:changed', badgesSoon);
+  // Business-review items assigned to me: the count follows each new, shared or closed item.
+  useSocket('br:action', badgesSoon);
+  useSocket('br:meeting', badgesSoon);
 
   // Real-time notification updates
   useSocket('notification:new', useCallback(() => {
@@ -922,7 +925,7 @@ function SystemLayoutInner({ children }: { children: React.ReactNode }) {
         {(onClick || sidebarOpen) && <span className="min-w-0 flex-1">{item.label}</span>}
         {navBadges[item.href] ? (
           <span className={`${(onClick || sidebarOpen) ? '' : 'absolute -top-1 -end-1'} inline-flex min-w-[20px] items-center justify-center rounded-full bg-red-500 px-1.5 text-[11px] font-bold leading-5 text-white tabular-nums`}
-            title={lang === 'ar' ? 'طلبات تنتظر الإجراء' : 'Awaiting action'}>
+            title={item.href === '/system/business-review/my-actions' ? (lang === 'ar' ? 'بنود مسندة إليك لم تُنجز' : 'Items assigned to you, open') : (lang === 'ar' ? 'طلبات تنتظر الإجراء' : 'Awaiting action')}>
             {navBadges[item.href] > 99 ? '99+' : navBadges[item.href]}
           </span>
         ) : null}

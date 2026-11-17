@@ -82,6 +82,13 @@ router.get('/', async (req, res) => {
       const n = await ShipmentRequest.countDocuments({ $and: [{ $or: [{ status: 'rejected' }, { approvalStatus: 'returned' }] }, { $or: [{ createdBy: req.user._id }, { salesRep: req.user._id }] }] }).catch(() => 0);
       if (n) { out['/system/sales/shipment-request'] = n; out['/system/shipment-orders/request'] = n; }
     }
+    // Business review: open items assigned to me (not done, not archived).
+    {
+      const { BrAction } = require('../models/BusinessReview');
+      const { OPEN_ACTION_STATUSES, liveCond } = require('../config/businessReview');
+      const n = await BrAction.countDocuments({ assignee: req.user._id, status: { $in: OPEN_ACTION_STATUSES }, ...liveCond() }).catch(() => 0);
+      if (n) out['/system/business-review/my-actions'] = n;
+    }
     res.json(out);
   } catch (e) {
     res.json({});

@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import '../services/api.dart';
 import '../services/lang.dart';
 import '../services/live.dart';
+import '../services/nav_badges.dart';
 import '../ui/app_scaffold.dart';
 import '../ui/export_sheet.dart';
 import '../ui/theme.dart';
@@ -54,11 +55,19 @@ class _BusinessReviewScreenState extends State<BusinessReviewScreen> {
   bool _loading = true;
   String? _error;
 
+  // Open items assigned to me (from /api/nav-badges), shown on the «بنودي» tab like the web sidebar.
+  void _onBadges() { if (mounted) setState(() {}); }
+
   @override
   void initState() {
     super.initState();
     _load();
+    NavBadges.instance.addListener(_onBadges);
+    NavBadges.instance.refresh();
   }
+
+  @override
+  void dispose() { NavBadges.instance.removeListener(_onBadges); super.dispose(); }
 
   Future<void> _load() async {
     try {
@@ -93,7 +102,10 @@ class _BusinessReviewScreenState extends State<BusinessReviewScreen> {
     final tabs = <(String, Widget)>[
       // Meetings and department follow-up are one tab, as on the web (the board was merged into it).
       if (participant) (tr('الاجتماعات ومتابعة الأقسام', 'Meetings & departments'), BrDailyTab(meta: _meta!)),
-      if (participant) (tr('بنودي', 'My actions'), _ActionsTab(meta: _meta!, mine: true)),
+      if (participant) (() {
+        final n = NavBadges.instance.of('/system/business-review/my-actions');
+        return (n > 0 ? '${tr('بنودي', 'My actions')} ($n)' : tr('بنودي', 'My actions'), _ActionsTab(meta: _meta!, mine: true) as Widget);
+      })(),
       if (participant) (tr('الأرشيف', 'Archive'), BrArchiveTab(meta: _meta!)),
       if (runner) (tr('سجل المتابعة', 'Register'), _ActionsTab(meta: _meta!, mine: false)),
       (tr('مهامي', 'My tasks'), _TasksTab(meta: _meta!)),

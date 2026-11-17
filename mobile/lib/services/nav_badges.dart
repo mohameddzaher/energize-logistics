@@ -13,7 +13,7 @@ class NavBadges extends ValueNotifier<Map<String, int>> {
     }
   }
   static final NavBadges instance = NavBadges._();
-  static const _events = ['shipmentRequests:changed', 'sellingRequests:changed', 'customs:updated', 'hr:leave', 'hr:request'];
+  static const _events = ['shipmentRequests:changed', 'sellingRequests:changed', 'customs:updated', 'hr:leave', 'hr:request', 'br:action', 'br:meeting'];
   Timer? _t;
 
   void _soon() {

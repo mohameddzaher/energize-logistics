@@ -99,6 +99,7 @@
         "/api/workflows/form-lists",
         "/api/workflows/import-invoices",
         "/api/workflows/invoice-checks",
+        "/api/workflows/jobs",
         "/api/workflows/permissions",
         "/api/workflows/stats"
       ],

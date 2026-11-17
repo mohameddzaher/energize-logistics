@@ -71,7 +71,9 @@ router.post('/bulk-delete', authorize.strict(...SHIPMENT_DELETE_ROLES), workflow
 // Bulk update. Open to anyone who edits a single row: permission is checked at the field level inside the endpoint, so nobody gains in bulk what they lack singly.
 router.post('/bulk-update', authorize(...allWorkflowRoles), workflowController.bulkUpdate);
 // Upload invoice data from Excel (shipping order to manifest): preview then write. See importInvoices.
-router.post('/import-invoices', authorize(...allWorkflowRoles), workflowController.importInvoices);
+// Big files run after the reply (utils/backgroundJob): the screen polls the job instead of waiting on one request.
+router.post('/import-invoices', authorize(...allWorkflowRoles), require('../utils/backgroundJob').inBackground('import-invoices', workflowController.importInvoices));
+router.get('/jobs/:jobId', authorize(...allWorkflowRoles), require('../utils/backgroundJob').getJob);
 
 // Bulk import (must be before /:id routes)
 router.post(

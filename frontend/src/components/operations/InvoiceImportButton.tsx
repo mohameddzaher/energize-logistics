@@ -43,7 +43,17 @@ export default function InvoiceImportButton({ ar, onDone }: { ar: boolean; onDon
     if (!f) return;
     setBusy(true);
     try {
-      const r = await api.post<Result>('/api/workflows/import-invoices', { dataUrl: f.dataUrl, apply, fileName: f.name });
+      // Run in the background and poll: a big file takes longer than any request may stay open (proxy and browser timeouts).
+      const { jobId } = await api.post<{ jobId: string }>('/api/workflows/import-invoices', { dataUrl: f.dataUrl, apply, fileName: f.name, background: true }, { timeoutMs: 120000 });
+      let r: Result | null = null;
+      for (let i = 0; i < 900 && !r; i += 1) {
+        await new Promise((ok) => setTimeout(ok, 2000));
+        const j = await api.get<{ status: string; result: Result; message: string }>(`/api/workflows/jobs/${jobId}`).catch(() => null);
+        if (!j || j.status === 'running') continue;
+        if (j.status === 'error') throw new Error(j.message || t('تعذّر الرفع', 'Upload failed'));
+        r = j.result;
+      }
+      if (!r) throw new Error(t('استغرقت المعالجة أكثر من 30 دقيقة — أعد المحاولة', 'Processing took over 30 minutes — try again'));
       setRes(r);
       if (apply) { notify(t(`كُتبت بياناتُ ${r.updated} كشفًا`, `${r.updated} reports updated`), 'success'); onDone(); }
     } catch (e: any) { notify(e?.message || t('تعذّر الرفع', 'Upload failed'), 'error'); }
@@ -78,6 +88,7 @@ export default function InvoiceImportButton({ ar, onDone }: { ar: boolean; onDon
               {file ? t('اختيار ملفّ آخر', 'Choose another file') : t('اختر الملفّ', 'Choose the file')}
             </button>
             {file && <p className="w-full text-[12px] text-slate-500">{t('الملفّ الحالي:', 'Current file:')} <b className="text-slate-700">{file.name}</b></p>}
+            {busy && <p className="w-full text-[12px] font-semibold text-amber-700">{t('جارٍ معالجة الملفّ على الخادم… الملفّات الكبيرة تأخذ دقائق، اترك النافذة مفتوحة.', 'Processing on the server… big files take minutes; keep this open.')}</p>}
           </div>
 
           <details className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-[12.5px] text-slate-700">

@@ -518,12 +518,12 @@ List<AppSection> sectionsFor(AuthProvider auth) {
       roles: const [..._admins, 'sales_manager', 'sales_team_leader', 'sales_rep', 'operations_manager', 'operations_team_leader', 'operations_staff'],
       pages: [
         AppPage('اللوحة', 'Dashboard', Icons.dashboard_outlined, (c) => const SalesDashboardScreen(), path: '/system/sales/dashboard'),
+        AppPage('طلب شحنة', 'Shipment request', Icons.post_add_outlined, (c) => const ShipmentRequestsScreen(mode: 'ask'), path: '/system/sales/shipment-request'),
         // Customers: the same register as operations and shipment orders, a third entry point and not a third copy.
         AppPage('العملاء', 'Customers', Icons.people_outline, (c) => ResourceScreen(config: customersCfg), path: '/system/sales/customers'),
         AppPage('مسار البيع', 'Pipeline', Icons.view_kanban_outlined, (c) => const SalesPipelineScreen(), path: '/system/sales/pipeline'),
         AppPage('الأهداف', 'Targets', Icons.track_changes_outlined, (c) => ResourceScreen(config: salesTargetsCfg(canEdit: canSetTargets)), path: '/system/sales/targets'),
         AppPage('الأداء', 'Performance', Icons.leaderboard_outlined, (c) => const SalesPerformanceScreen(), path: '/system/sales/performance'),
-        AppPage('طلب شحنة', 'Shipment request', Icons.post_add_outlined, (c) => const ShipmentRequestsScreen(mode: 'ask'), path: '/system/sales/shipment-request'),
         // Selling-price approvals: the sales manager, top roles and flagged top-management accounts; the server checks again.
         if (canApproveSelling(auth)) AppPage('طلبات تعديل سعر البيع', 'Selling-price requests', Icons.price_check_outlined, (c) => const SellingRequestsScreen(), path: sellingRequestsPath),
         if (jpMember(role, 'sales')) AppPage('خطّة العمل (JP)', 'JP', Icons.event_available_outlined, (c) => const JpScreen(section: 'sales'), path: '/system/sales/jp'),

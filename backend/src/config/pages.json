@@ -1694,6 +1694,12 @@
       "en": "Sales Dashboard"
     },
     {
+      "key": "/system/sales/shipment-request",
+      "section": "Sales",
+      "ar": "طلب شحنة",
+      "en": "Shipment Request"
+    },
+    {
       "key": "/system/sales/customers",
       "section": "Sales",
       "ar": "العملاء",
@@ -1848,12 +1854,6 @@
       "section": "CRM",
       "ar": "تقييم الأداء",
       "en": "KPIs"
-    },
-    {
-      "key": "/system/sales/shipment-request",
-      "section": "Sales",
-      "ar": "طلب شحنة",
-      "en": "Shipment Request"
     },
     {
       "key": "/system/sales/jp",

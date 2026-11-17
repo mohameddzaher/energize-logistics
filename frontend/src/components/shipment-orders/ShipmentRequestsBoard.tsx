@@ -280,6 +280,8 @@ export default function ShipmentRequestsBoard({ mode }: { mode: BoardMode }) {
     ['اليوم', 'Today', rDay(), rDay()], ['أمس', 'Yesterday', rDay(1), rDay(1)],
     ['آخر 7 أيام', 'Last 7 days', rDay(6), rDay()], ['هذا الشهر', 'This month', `${rDay().slice(0, 8)}01`, rDay()],
   ];
+  // A period filter asks "what happened on these days": the open tab would hide that day's completed requests, so switch to all.
+  useEffect(() => { if ((from || to) && tab === 'open') setTab('all'); }, [from, to]); // eslint-disable-line react-hooks/exhaustive-deps
   const resetFilters = () => { setTop({}); cf.clear(); setFrom(''); setTo(''); };
   // A sales rep's request waiting on the sales manager reads as that, not as a vendors status.
   function statusText(r: ShipmentRequest) {

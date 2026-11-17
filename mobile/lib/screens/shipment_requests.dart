@@ -771,11 +771,14 @@ class _ShipmentRequestsScreenState extends State<ShipmentRequestsScreen> {
     ];
   }
 
+  /// A period filter asks what happened on those days; the open tab would hide that day's completed requests.
+  void _periodToAll() { if (_work && _status == 'pending,in_progress' && (_from.isNotEmpty || _to.isNotEmpty)) _status = ''; }
+
   Future<void> _pickDate(bool from, StateSetter setSheet) async {
     final cur = DateTime.tryParse(from ? _from : _to) ?? DateTime.now();
     final d = await showDatePicker(context: context, initialDate: cur, firstDate: DateTime(2020), lastDate: DateTime(2100));
     if (d == null) return;
-    setState(() => from ? _from = ymd(d) : _to = ymd(d));
+    setState(() { from ? _from = ymd(d) : _to = ymd(d); _periodToAll(); });
     setSheet(() {});
     _load();
   }
@@ -953,7 +956,7 @@ class _ShipmentRequestsScreenState extends State<ShipmentRequestsScreen> {
               selected: _from == q.$2 && _to == q.$3,
               onSelected: (_) {
                 final on = _from == q.$2 && _to == q.$3;
-                setState(() { _from = on ? '' : q.$2; _to = on ? '' : q.$3; });
+                setState(() { _from = on ? '' : q.$2; _to = on ? '' : q.$3; _periodToAll(); });
                 _load();
               },
             )),

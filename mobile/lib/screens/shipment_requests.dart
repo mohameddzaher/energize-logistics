@@ -16,6 +16,8 @@ import '../ui/theme.dart';
 import '../ui/widgets.dart';
 import 'insight_kit.dart';
 import 'shipment_orders_common.dart';
+import 'shipment_orders.dart' show ShipmentOrdersScreen;
+import 'fleet_shipments.dart' show FleetShipmentsScreen;
 
 /// Shipment requests: sales asks («طلب شحنة») and the vendors team places each truck («الطلبات من المبيعات»).
 /// Counterpart of the web pages under shipment-orders, sales and vendors; one API (/api/shipment-requests) and one live event.
@@ -651,6 +653,8 @@ class _ShipmentRequestsScreenState extends State<ShipmentRequestsScreen> {
   // Date range goes to the server; the other filters narrow the loaded rows, as on web.
   String _from = '';
   String _to = '';
+  /// Summary-card filter on top of tab and filters: '' | placed | closed | waiting.
+  String _cardF = '';
   final Map<String, String> _flt = {};
   late final String _viewKey = 'shipmentRequests.view.${widget.mode}';
   String _view = 'list';
@@ -892,6 +896,13 @@ class _ShipmentRequestsScreenState extends State<ShipmentRequestsScreen> {
           icon: Badge(isLabelVisible: _filterCount > 0, label: Text('$_filterCount'), child: const Icon(Icons.filter_alt_outlined)),
           onPressed: _openFilters,
         ),
+        // Placed trucks become transport orders: one tap to where they live.
+        if (_work)
+          IconButton(
+            tooltip: widget.mode == 'fleet' ? tr('الحمولات', 'Loads') : tr('صفحة الشحنات', 'Shipments'),
+            icon: const Icon(Icons.inventory_2_outlined),
+            onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (_) => widget.mode == 'fleet' ? const FleetShipmentsScreen() : const ShipmentOrdersScreen())),
+          ),
         ExportButton(fileName: _work ? 'shipment-requests-vendors' : 'shipment-requests', sheetName: tr('طلبات الشحن', 'Requests'), columns: _exportCols, rows: () => _shown),
       ],
       floatingActionButton: widget.mode == 'ask' && _can['ask'] == true
@@ -933,7 +944,7 @@ class _ShipmentRequestsScreenState extends State<ShipmentRequestsScreen> {
             Padding(padding: const EdgeInsetsDirectional.only(end: 5), child: ChoiceChip(
               label: Text(t.$4 < 0 ? tr(t.$2, t.$3) : '${tr(t.$2, t.$3)} (${t.$4})'),
               selected: _status == t.$1,
-              onSelected: (_) { setState(() => _status = t.$1); _load(); },
+              onSelected: (_) { setState(() { _status = t.$1; _cardF = ''; }); _load(); },
             )),
         ])),
         // Branch: used constantly, so it stands outside the filter sheet.
@@ -968,31 +979,43 @@ class _ShipmentRequestsScreenState extends State<ShipmentRequestsScreen> {
                 : RefreshIndicator(
                     onRefresh: _load,
                     child: Builder(builder: (_) {
-                      final shown = _shown;
-                      if (shown.isEmpty) {
+                      final base = _shown;
+                      bool openReq(Map r) => const ['pending', 'in_progress'].contains('${r['status']}');
+                      int restOf(Map r) { final n = inum(r['trucks']) - ((r['placed'] as List?)?.length ?? 0); return n < 0 ? 0 : n.toInt(); }
+                      final shown = _cardF.isEmpty ? base : base.where((r) {
+                        if (_cardF == 'placed') return ((r['placed'] as List?)?.length ?? 0) > 0;
+                        if (_cardF == 'closed') return const ['rejected', 'cancelled'].contains('${r['status']}');
+                        return openReq(r) && restOf(r) > 0;
+                      }).toList();
+                      if (base.isEmpty) {
                         return ListView(children: [Padding(padding: const EdgeInsets.all(40), child: Text(_rows.isEmpty ? tr('لا طلبات هنا', 'No requests here') : tr('لا طلبات تطابق الفلاتر', 'No requests match the filters'), textAlign: TextAlign.center, style: const TextStyle(color: T.inkFaint)))]);
                       }
-                      // Trucks: asked, done by vendors, rejected/withdrawn (closed requests), still waiting (open requests).
+                      // Cards count trucks (tabs count requests), each with its requests; computed before the card filter.
                       num asked = 0, placed = 0, closed = 0, waiting = 0;
-                      for (final r in shown) {
+                      int placedReq = 0, closedReq = 0, waitingReq = 0;
+                      for (final r in base) {
                         final n = inum(r['trucks']);
                         final p = (r['placed'] as List?)?.length ?? 0;
-                        final rest = (n - p) < 0 ? 0 : n - p;
-                        asked += n; placed += p;
-                        if (const ['pending', 'in_progress'].contains('${r['status']}')) { waiting += rest; } else { closed += rest; }
+                        final rest = restOf(r);
+                        asked += n; placed += p; if (p > 0) placedReq++;
+                        if (openReq(r)) { waiting += rest; if (rest > 0) waitingReq++; }
+                        else if (const ['rejected', 'cancelled'].contains('${r['status']}')) { closed += rest; closedReq++; }
                       }
+                      void pick(String k) { setState(() { _cardF = _cardF == k ? '' : k; if (_cardF.isNotEmpty && _work && _status.isNotEmpty) _status = ''; }); if (_cardF.isNotEmpty && _work) _load(); }
                       return ListView.builder(
                         padding: const EdgeInsets.fromLTRB(12, 0, 12, 90),
                         itemCount: shown.length + 1,
                         itemBuilder: (_, i) => i == 0
                             ? Padding(padding: const EdgeInsets.only(bottom: 6), child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
                                 Wrap(spacing: 6, runSpacing: 6, children: [
-                                  _tile(tr('طلبات', 'Requests'), shown.length, T.orange),
-                                  _tile(tr('شاحنات مطلوبة', 'Trucks asked'), asked, T.warn),
-                                  _tile(tr('نُفِّذت (أوامر نقل)', 'Done (orders)'), placed, T.success),
-                                  _tile(tr('رُفضت أو سُحبت', 'Rejected or withdrawn'), closed, T.danger),
-                                  _tile(tr('لم تُنفَّذ بعد', 'Not done yet'), waiting, T.warn),
+                                  _tile(tr('طلبات', 'Requests'), base.length, T.orange, onTap: () => setState(() => _cardF = '')),
+                                  _tile(tr('شاحنات مطلوبة', 'Trucks asked'), asked, T.warn, reqs: base.length),
+                                  _tile(tr('نُفِّذت (أوامر نقل)', 'Done (orders)'), placed, T.success, reqs: placedReq, on: _cardF == 'placed', onTap: () => pick('placed')),
+                                  _tile(tr('رُفضت أو سُحبت', 'Rejected or withdrawn'), closed, T.danger, reqs: closedReq, on: _cardF == 'closed', onTap: () => pick('closed')),
+                                  _tile(tr('لم تُنفَّذ بعد', 'Not done yet'), waiting, T.warn, reqs: waitingReq, on: _cardF == 'waiting', onTap: () => pick('waiting')),
                                 ]),
+                                if (shown.isEmpty)
+                                  Padding(padding: const EdgeInsets.all(24), child: Text(tr('لا طلبات تطابق الفلاتر', 'No requests match the filters'), textAlign: TextAlign.center, style: const TextStyle(color: T.inkFaint))),
                                 if (_filterCount > 0)
                                   Align(alignment: AlignmentDirectional.centerEnd, child: TextButton(onPressed: () { setState(() { _flt.clear(); _from = ''; _to = ''; }); _load(); }, child: Text(tr('مسح الفلاتر ($_filterCount)', 'Clear filters ($_filterCount)')))),
                               ]))
@@ -1020,13 +1043,19 @@ class _ShipmentRequestsScreenState extends State<ShipmentRequestsScreen> {
     ];
   }
 
-  Widget _tile(String label, num value, Color color) => Container(
-        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-        decoration: BoxDecoration(color: color.withValues(alpha: 0.08), borderRadius: BorderRadius.circular(10), border: Border.all(color: color.withValues(alpha: 0.25))),
-        child: Column(crossAxisAlignment: CrossAxisAlignment.start, mainAxisSize: MainAxisSize.min, children: [
-          Text(label, style: const TextStyle(fontSize: 10.5, color: T.inkSoft, fontWeight: FontWeight.w600)),
-          Text(fmtNum(value), style: TextStyle(fontSize: 15, fontWeight: FontWeight.w800, color: color)),
-        ]),
+  /// Summary tile; `reqs` is the number of requests behind a truck count; tapping narrows the list.
+  Widget _tile(String label, num value, Color color, {int? reqs, bool on = false, VoidCallback? onTap}) => InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(10),
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+          decoration: BoxDecoration(color: color.withValues(alpha: on ? 0.2 : 0.08), borderRadius: BorderRadius.circular(10), border: Border.all(color: on ? color : color.withValues(alpha: 0.25), width: on ? 2 : 1)),
+          child: Column(crossAxisAlignment: CrossAxisAlignment.start, mainAxisSize: MainAxisSize.min, children: [
+            Text(label, style: const TextStyle(fontSize: 10.5, color: T.inkSoft, fontWeight: FontWeight.w600)),
+            Text(reqs == null ? fmtNum(value) : '${fmtNum(value)} ${tr('شاحنة', 'trucks')}', style: TextStyle(fontSize: 15, fontWeight: FontWeight.w800, color: color)),
+            if (reqs != null) Text(tr('في $reqs طلب', 'in $reqs requests'), style: const TextStyle(fontSize: 10, color: T.inkSoft)),
+          ]),
+        ),
       );
 
   Widget _card(Map<String, dynamic> r) {

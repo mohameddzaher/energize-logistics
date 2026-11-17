@@ -77,6 +77,8 @@ export default function ShipmentRequestsBoard({ mode }: { mode: BoardMode }) {
   useEffect(() => { const h = setTimeout(() => setQd(q), 300); return () => clearTimeout(h); }, [q]);
   const [mine, setMine] = useState(false);
   // Request date range, filtered on the server; the other top filters narrow the loaded rows.
+  // Summary-card filter, on top of tab and filters: requests with trucks done / closed undone / still waiting.
+  const [cardF, setCardF] = useState<'' | 'placed' | 'closed' | 'waiting'>('');
   const [from, setFrom] = useState('');
   const [to, setTo] = useState('');
   const [top, setTop] = useState<Record<string, string>>({});
@@ -253,7 +255,14 @@ export default function ShipmentRequestsBoard({ mode }: { mode: BoardMode }) {
   }, [ar, showSell, work]);
   const readers = useMemo(() => Object.fromEntries(COLS.map((c) => [c.key, (r: ShipmentRequest) => { const v = c.read(r); return v === null || v === undefined ? '' : String(v); }])), [COLS]);
   const cf = useColumnFilters<ShipmentRequest>(readers, topRows, ar ? 'ar' : 'en');
-  const shown = useMemo(() => defaultOrder(cf.apply(topRows)), [cf, topRows]);
+  const base = useMemo(() => defaultOrder(cf.apply(topRows)), [cf, topRows]);
+  const OPEN_REQ = ['pending', 'in_progress'];
+  const shown = useMemo(() => (!cardF ? base : base.filter((r) => {
+    const rest = Math.max(0, r.trucks - (r.placed || []).length);
+    if (cardF === 'placed') return (r.placed || []).length > 0;
+    if (cardF === 'closed') return ['rejected', 'cancelled'].includes(r.status);
+    return OPEN_REQ.includes(r.status) && rest > 0;
+  })), [base, cardF]); // eslint-disable-line react-hooks/exhaustive-deps
   const chooserCols: ChooserColumn[] = useMemo(() => COLS.map((c) => ({ key: c.key, label: ar ? c.ar : c.en, locked: c.key === 'number' })), [COLS, ar]);
   const DEFAULT_COLS = ['number', 'status', 'progress', 'sourcing', 'trucks', 'placedCount', 'openCount', 'customer', 'fromCity', 'toCity', 'truckType', 'pickup', 'sellPrice', 'salesRep', 'handler', 'orders', 'createdAt'];
   const { visible, setVisible } = useVisibleColumns(`shipmentRequests:cols:${mode}:v2`, chooserCols, { defaults: DEFAULT_COLS });
@@ -269,12 +278,19 @@ export default function ShipmentRequestsBoard({ mode }: { mode: BoardMode }) {
     { key: 'viewAll', label: t('المعروض بعد الفلاتر — كلّ الأعمدة', 'Filtered view — all columns'), sheets: [{ name: t('طلبات الشحن', 'Requests'), rows: shown, columns: exportCols(COLS) }] },
     { key: 'all', label: t('كلّ المُحمَّل بلا فلاتر', 'Everything loaded, no filters'), sheets: [{ name: t('طلبات الشحن', 'Requests'), rows, columns: exportCols(COLS) }] },
   ];
-  const sum = useMemo(() => shown.reduce((a, r) => {
+  // Cards count trucks (the tabs count requests), each with its number of requests; computed before the card filter so they stay put.
+  const sum = useMemo(() => base.reduce((a, r) => {
     const placed = (r.placed || []).length;
     const rest = Math.max(0, r.trucks - placed);
-    const openReq = ['pending', 'in_progress'].includes(r.status);
-    return { requests: a.requests + 1, asked: a.asked + r.trucks, placed: a.placed + placed, closed: a.closed + (openReq ? 0 : rest), waiting: a.waiting + (openReq ? rest : 0) };
-  }, { requests: 0, asked: 0, placed: 0, closed: 0, waiting: 0 }), [shown]);
+    const openReq = OPEN_REQ.includes(r.status);
+    const closedReq = ['rejected', 'cancelled'].includes(r.status);
+    return {
+      requests: a.requests + 1, asked: a.asked + r.trucks,
+      placed: a.placed + placed, placedReq: a.placedReq + (placed ? 1 : 0),
+      closed: a.closed + (closedReq ? rest : 0), closedReq: a.closedReq + (closedReq ? 1 : 0),
+      waiting: a.waiting + (openReq ? rest : 0), waitingReq: a.waitingReq + (openReq && rest ? 1 : 0),
+    };
+  }, { requests: 0, asked: 0, placed: 0, placedReq: 0, closed: 0, closedReq: 0, waiting: 0, waitingReq: 0 }), [base]); // eslint-disable-line react-hooks/exhaustive-deps
   const rDay = (back = 0) => new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Riyadh' }).format(new Date(Date.now() - back * 864e5));
   const QUICK: [string, string, string, string][] = [
     ['اليوم', 'Today', rDay(), rDay()], ['أمس', 'Yesterday', rDay(1), rDay(1)],
@@ -282,7 +298,7 @@ export default function ShipmentRequestsBoard({ mode }: { mode: BoardMode }) {
   ];
   // A period filter asks "what happened on these days": the open tab would hide that day's completed requests, so switch to all.
   useEffect(() => { if ((from || to) && tab === 'open') setTab('all'); }, [from, to]); // eslint-disable-line react-hooks/exhaustive-deps
-  const resetFilters = () => { setTop({}); cf.clear(); setFrom(''); setTo(''); };
+  const resetFilters = () => { setTop({}); cf.clear(); setFrom(''); setTo(''); setCardF(''); };
   // A sales rep's request waiting on the sales manager reads as that, not as a vendors status.
   function statusText(r: ShipmentRequest) {
     const a = approvalOf(r);
@@ -337,6 +353,7 @@ export default function ShipmentRequestsBoard({ mode }: { mode: BoardMode }) {
   };
 
   const activeChips = [
+    ...(cardF ? [{ key: '__card', label: cardF === 'placed' ? t('فيها أوامر نقل', 'With orders') : cardF === 'closed' ? t('مرفوضة أو مسحوبة', 'Rejected or withdrawn') : t('لم تُنفَّذ بعد', 'Not done yet'), clear: () => setCardF('') }] : []),
     ...(branch ? [{ key: '__branch', label: `${t('الفرع', 'Branch')}: ${branch}`, clear: () => setBranch('') }] : []),
     ...(from || to ? [{ key: '__date', label: from === to ? `${t('يوم', 'Day')} ${from}` : `${from || '…'} → ${to || '…'}`, clear: () => { setFrom(''); setTo(''); } }] : []),
     ...TOP_FILTERS.filter((f) => top[f.key]).map((f) => ({ key: f.key, label: `${ar ? f.ar : f.en}: ${top[f.key]}`, clear: () => setTop((p) => ({ ...p, [f.key]: '' })) })),
@@ -350,7 +367,7 @@ export default function ShipmentRequestsBoard({ mode }: { mode: BoardMode }) {
         <div className="flex flex-wrap items-center gap-2 p-3">
           <div className="flex flex-wrap gap-1">
             {TABS.map(([k, a, e]) => (
-              <button key={k} type="button" onClick={() => setTab(k)}
+              <button key={k} type="button" onClick={() => { setTab(k); setCardF(''); }}
                 className={`px-3 py-1.5 rounded-lg text-[12.5px] font-semibold ${tab === k ? 'bg-slate-900 text-white' : 'bg-slate-100 text-slate-700 hover:bg-slate-200'}`}>
                 {ar ? a : e}<span className="ms-1.5 tabular-nums opacity-70">{k === 'all' ? all : (counts[k] || 0)}</span>
               </button>
@@ -454,20 +471,29 @@ export default function ShipmentRequestsBoard({ mode }: { mode: BoardMode }) {
         )}
       </div>
 
-      {/* What the shown requests came to, in trucks: asked, done by vendors, rejected or withdrawn, still waiting. */}
+      {/* What the shown requests came to, in trucks (with the requests behind each). A card narrows the list; clicking it again clears. */}
       <div className="grid grid-cols-2 overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm sm:grid-cols-5 sm:divide-x sm:divide-slate-100 rtl:sm:divide-x-reverse">
         {([
-          [t('طلبات', 'Requests'), sum.requests, 'text-slate-900'],
-          [t('شاحنات مطلوبة', 'Trucks asked'), sum.asked, 'text-[#f37121]'],
-          [t('نُفِّذت (أوامر نقل)', 'Done (orders)'), sum.placed, 'text-emerald-700'],
-          [t('رُفضت أو سُحبت', 'Rejected or withdrawn'), sum.closed, 'text-red-600'],
-          [t('لم تُنفَّذ بعد', 'Not done yet'), sum.waiting, 'text-amber-700'],
-        ] as const).map(([label, value, cls]) => (
-          <div key={label} className="px-4 py-2.5">
-            <p className="text-[11.5px] font-semibold text-slate-500">{label}</p>
-            <p className={`text-xl font-extrabold tabular-nums ${cls}`}>{Number(value).toLocaleString('en-US')}</p>
-          </div>
-        ))}
+          ['', t('طلبات', 'Requests'), sum.requests, null, 'text-slate-900'],
+          ['', t('شاحنات مطلوبة', 'Trucks asked'), sum.asked, sum.requests, 'text-[#f37121]'],
+          ['placed', t('نُفِّذت (أوامر نقل)', 'Done (orders)'), sum.placed, sum.placedReq, 'text-emerald-700'],
+          ['closed', t('رُفضت أو سُحبت', 'Rejected or withdrawn'), sum.closed, sum.closedReq, 'text-red-600'],
+          ['waiting', t('لم تُنفَّذ بعد', 'Not done yet'), sum.waiting, sum.waitingReq, 'text-amber-700'],
+        ] as const).map(([key, label, value, reqs, cls], i) => {
+          const on = key ? cardF === key : (i === 0 && !cardF);
+          return (
+            <button key={label} type="button"
+              onClick={() => { if (key && tab !== 'all') setTab('all'); setCardF(key && cardF !== key ? key : ''); }}
+              className={`px-4 py-2.5 text-start transition ${on && key ? 'bg-slate-900/[0.04] ring-2 ring-inset ring-[#f37121]' : 'hover:bg-slate-50'}`}>
+              <p className="text-[11.5px] font-semibold text-slate-500">{label}</p>
+              <p className={`text-xl font-extrabold tabular-nums ${cls}`}>
+                {Number(value).toLocaleString('en-US')}
+                {i > 0 && <span className="ms-1 text-[11px] font-semibold text-slate-400">{t('شاحنة', 'trucks')}</span>}
+              </p>
+              {reqs != null && <p className="text-[11px] text-slate-500 tabular-nums">{t(`في ${reqs} طلب`, `in ${reqs} requests`)}</p>}
+            </button>
+          );
+        })}
       </div>
 
       {error && <ErrorNotice error={error} onRetry={load} lang={ar ? 'ar' : 'en'} />}

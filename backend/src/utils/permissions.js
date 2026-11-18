@@ -102,6 +102,7 @@ const resolveSections = (role, overrides, custom) => {
  * Whether the page is open because it follows its section (no explicit tick).
  * Exported because the permissions screen used to repeat this rule when shrinking its payload to only what differs from the section. For a section not managed by the matrix (my profile, my leaves, settings, reports hub, executive view) the screen said open to all while the server said closed for created roles, so a tick on such a page matched the baseline, was not sent, and the server read it as closed. The shortcut now lives on the server using this same function, and the screen sends the map as the user sees it.
  */
+const FLEET_WALLET_ROLES = ['fleet_manager', 'fleet_team_leader', 'fleet_supervisor'];
 const pageFollowsSection = (page, sections, custom) => {
   if (!Object.prototype.hasOwnProperty.call(sections || {}, page.section)) {
     // A personal (self-service) section is open to every internal role by default, even a created one. See `PERSONAL_SECTIONS` in config/pages.
@@ -164,6 +165,8 @@ const effectivePages = async (role) => {
   if (wv.isWalletViewOnly(role)) {
     for (const k of wv.WALLET_VIEW_PAGES) out[k] = true;
   }
+  // The fleet team runs the Heavy Trucks branch custody (routes/wallet): the daily wallet page is always open to it, though it sits under Operations, which the team does not hold.
+  if (FLEET_WALLET_ROLES.includes(role)) out['/system/wallet'] = true;
   // The portal is a partner account's only screen: a saved matrix can never close it.
   // (Which tabs show is decided by the partner's services, see portalController.servicesFor.)
   if (role === 'client') {

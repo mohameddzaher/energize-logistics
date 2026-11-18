@@ -18,6 +18,8 @@ const walletRoles = [
   'super_admin', 'admin', 'it_manager', 'it_team_leader', 'it_specialist', 'business_consultant',
   'operations_manager', 'operations_team_leader', 'operations_staff',
   'cfo', 'accounting_manager', 'accounting_team_leader', 'accountant',
+  // The fleet team runs the Heavy Trucks branch custody like the fleet manager (their purchases pay as Heavy Trucks: utils/payingBranch).
+  'fleet_manager', 'fleet_team_leader', 'fleet_supervisor',
 ];
 const walletReadRoles = [...walletRoles, 'moderator', 'collections_manager', 'collections_team_leader', 'collections_staff'];
 const { FINANCE_FULL_ROLES } = require('../config/financeAuthority');

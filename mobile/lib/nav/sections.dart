@@ -359,6 +359,9 @@ List<AppSection> sectionsFor(AuthProvider auth) {
         AppPage('اللوحة', 'Dashboard', Icons.dashboard_outlined, (c) => SectionDashScreen(spec: fleetDashSpec), path: '/system/fleet/dashboard'),
         AppPage('التحليلات', 'Analytics', Icons.insights_outlined, (c) => const FleetAnalyticsScreen(), path: '/system/fleet/dashboard'),
         AppPage('اللوحة الرئيسية', 'Board', Icons.grid_view_rounded, (c) => const FleetBoardScreen(), path: '/system/fleet/board'),
+        // The fleet team runs the Heavy Trucks branch custody (server routes/wallet); it lives under Operations, which they do not see.
+        if (const ['fleet_manager', 'fleet_team_leader', 'fleet_supervisor'].contains(role))
+          AppPage('العهدة اليومية', 'Cash Wallet', Icons.account_balance_wallet_outlined, (c) => const CashWalletScreen(), path: '/system/wallet'),
         // Expected arrivals: tappable cards, as on the web.
         AppPage('المتوقع للوصول', 'Expected arrivals', Icons.schedule_outlined, (c) => const FleetArrivalsScreen(), path: '/system/fleet/arrivals'),
         AppPage('الشحنات والمتابعة', 'Shipments', Icons.inventory_2_outlined, (c) => const FleetShipmentsScreen(), path: '/system/fleet'),

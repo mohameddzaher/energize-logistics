@@ -6,7 +6,7 @@ import MonthPicker from '@/components/system/MonthPicker';
 import { useDialog } from '@/components/system/DialogProvider';
 import { useAuth } from '@/context/AuthContext';
 import { canEditSection } from '@/lib/sections';
-import { canPickWalletBranch, WALLET_START_DATE, WALLET_VIEW_ONLY_ROLES } from '@/lib/wallet';
+import { canPickWalletBranch, WALLET_START_DATE, WALLET_VIEW_ONLY_ROLES, FLEET_WALLET_ROLES, isHeavyBranchName } from '@/lib/wallet';
 import { useSocket } from '@/hooks/useSocket';
 import api from '@/lib/api';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -176,12 +176,14 @@ export default function WalletPage() {
       setBranchList(list);
       if (canSelectBranch) {
         setAllBranches(list);
-        setSelectedBranch((cur) => cur || (list[0]?._id ?? ''));
+        // The fleet team starts on the Heavy Trucks branch, the custody they run.
+        const heavy = FLEET_WALLET_ROLES.includes(String(user?.role || '')) ? list.find((b: any) => isHeavyBranchName(b.name)) : null;
+        setSelectedBranch((cur) => cur || (heavy?._id ?? list[0]?._id ?? ''));
       }
     }).catch((err: any) => {
       if (canSelectBranch) setActionError(err?.message || 'Failed to load branches');
     });
-  }, [canSelectBranch]);
+  }, [canSelectBranch, user?.role]);
 
   // Transaction modal
   const [showTxModal, setShowTxModal] = useState(false);

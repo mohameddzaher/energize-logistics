@@ -273,7 +273,8 @@ function SystemLayoutInner({ children }: { children: React.ReactNode }) {
     { href: '/system/procurement/dashboard', label: L.procurementDashboard, icon: <ShoppingCart className="w-5 h-5" />, roles: ['super_admin', 'it_manager', 'it_team_leader', 'it_specialist', 'business_consultant', 'admin', 'procurement_manager', 'procurement_team_leader', 'procurement_staff'], section: 'Procurement' },
     { href: '/system/vendors', label: L.vendors, icon: <Store className="w-5 h-5" />, roles: ['super_admin', 'it_manager', 'it_team_leader', 'it_specialist', 'business_consultant', 'admin', 'operations_manager', 'operations_team_leader', 'operations_staff', 'procurement_manager', 'procurement_team_leader', 'procurement_staff'], section: 'Procurement' },
     // Custody lists come from one place. They were hand-written here and in the branch selector condition, so adding the accountant on the server left both stale: his endpoints were open but he saw no link.
-    { href: '/system/wallet', label: L.wallet, icon: <Wallet className="w-5 h-5" />, roles: WALLET_ROLES, section: 'Operations' },
+    // pageOpens: the fleet team reaches the wallet by its page without holding Operations (server utils/permissions).
+    { href: '/system/wallet', label: L.wallet, icon: <Wallet className="w-5 h-5" />, roles: WALLET_ROLES, section: 'Operations', pageOpens: true },
     { href: '/system/wallet-dashboard', label: L.walletDashboard, icon: <BarChart3 className="w-5 h-5" />, roles: WALLET_DASHBOARD_ROLES, section: 'Operations' },
     { href: '/system/operations/jp', label: lang === 'ar' ? 'خطّة العمل (JP)' : 'JP', icon: <CalendarCheck className="w-5 h-5" />, roles: [], section: 'Operations', visible: (u) => jpMember(u, 'Operations') },
     { href: '/system/operations/jp-dashboard', label: lang === 'ar' ? 'لوحة JP' : 'JP Dashboard', icon: <BarChart3 className="w-5 h-5" />, roles: [], section: 'Operations', visible: (u) => jpManager(u, 'Operations') },

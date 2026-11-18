@@ -123,7 +123,10 @@ class _CashWalletScreenState extends State<CashWalletScreen> {
       final list = d is Map ? (d['branches'] ?? []) : (d ?? []);
       _branches = List<Map<String, dynamic>>.from((list as List).whereType<Map>().map((m) => Map<String, dynamic>.from(m)));
       if (_canSelectBranch && _branchId.isEmpty && _branches.isNotEmpty) {
-        _branchId = '${_branches.first['_id']}';
+        // The fleet team starts on the Heavy Trucks branch, the custody they run (same as the web).
+        final fleet = const ['fleet_manager', 'fleet_team_leader', 'fleet_supervisor'].contains(_role);
+        final heavy = fleet ? _branches.where((b) => RegExp(r'heavy|fleet|ثقيل|أسطول|اسطول', caseSensitive: false).hasMatch('${b['name'] ?? ''}')).firstOrNull : null;
+        _branchId = '${(heavy ?? _branches.first)['_id']}';
         _loadBranchUsers();
       }
     } catch (_) { /* The list stays empty. */ }

@@ -11,7 +11,13 @@ export const WALLET_ROLES = [
   'operations_manager', 'operations_team_leader', 'operations_staff', 'moderator',
   'cfo', 'accounting_manager', 'accounting_team_leader', 'accountant',
   'collections_manager', 'collections_team_leader', 'collections_staff', 'collections_trainee',
+  // The fleet team: Heavy Trucks branch custody (server routes/wallet walletRoles).
+  'fleet_manager', 'fleet_team_leader', 'fleet_supervisor',
 ];
+
+/** The fleet team's wallet opens on the Heavy Trucks branch; they may still pick another. */
+export const FLEET_WALLET_ROLES = ['fleet_manager', 'fleet_team_leader', 'fleet_supervisor'];
+export const isHeavyBranchName = (name?: string | null) => /heavy|fleet|ثقيل|أسطول|اسطول/i.test(String(name || ''));
 
 /** Who opens its dashboard, the all-branches view (mirror of overviewRoles). */
 export const WALLET_DASHBOARD_ROLES = [

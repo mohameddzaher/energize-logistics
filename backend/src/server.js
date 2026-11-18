@@ -533,6 +533,8 @@ if (!DOCS_ONLY) connectDB().then(async () => {
     // A customer created by a direct write is linked to its parent customer hourly (services/customerHub).
     // Shipment-request claims last one hour; the sweep releases those nobody reads.
     try { require('./controllers/shipmentRequestsController').startClaimSweep(); } catch (e) { console.error('[sr-claims] start:', e.message); }
+    // Requests from before «الموعد الفعلي» get their creation day as the wanted day.
+    require('./controllers/shipmentRequestsController').backfillDueDay().catch((e) => console.error('[sr-due] backfill:', e.message));
     try { require('./services/customerHub').startSweep(); } catch (e) { console.error('[customerHub] start:', e.message); }
     // Exports interrupted by a deploy are resumed, so no request stays in progress forever.
     try { require('./controllers/exportJobsController').resumeInterrupted(); } catch (e) { /* */ }

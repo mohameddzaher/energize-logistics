@@ -17,6 +17,7 @@ import {
 import { findRoute, VENDOR_FORM_KEYS, type ShipmentRequest } from '@/lib/shipmentRequests';
 import { Check, Loader2, MapPin, Package, Clock3, Wallet, Users, Minus, Plus, Send, AlertCircle, UserPlus, Sparkles } from 'lucide-react';
 
+import { riyadhToday, dueDayLabel } from '@/lib/shipmentRequests';
 const labelCls = 'block text-sm font-semibold text-slate-800 mb-1.5';
 const labelMissCls = 'block text-sm font-semibold text-red-600 mb-1.5';
 const inputCls = 'w-full px-3 py-2.5 rounded-lg bg-white border border-slate-200 text-slate-900 text-sm focus:outline-none focus:ring-2 focus:ring-[#f37121]/50';
@@ -46,6 +47,8 @@ export default function ShipmentRequestForm({ editId, onDone }: { editId?: strin
   const [customerId, setCustomerId] = useState('');
   const [salesRep, setSalesRep] = useState('');
   const [trucks, setTrucks] = useState(1);
+  // «الموعد الفعلي»: the day the load is wanted. Today unless sales picks a later day; the working board shows it on that day.
+  const [dueDay, setDueDay] = useState(riyadhToday());
   const [loaded, setLoaded] = useState<ShipmentRequest | null>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -76,6 +79,7 @@ export default function ShipmentRequestForm({ editId, onDone }: { editId?: strin
           setCustomerId(String(q.customer || ''));
           setSalesRep(String(q.salesRep || ''));
           setTrucks(q.trucks || 1);
+          setDueDay((q as any).dueDay || riyadhToday());
         } else if (user?._id && (r.options || []).some((o) => o.value === String(user._id))) {
           setSalesRep(String(user._id));
         }
@@ -165,6 +169,7 @@ export default function ShipmentRequestForm({ editId, onDone }: { editId?: strin
       body.customer = customerId;
       body.salesRep = salesRep || null;
       body.trucks = trucks;
+      body.dueDay = dueDay;
       // Sales may accept several truck types; the vendors team fixes the one actually sent.
       body.truckTypes = form.truckTypes || [];
       let d: { request: ShipmentRequest };
@@ -174,7 +179,7 @@ export default function ShipmentRequestForm({ editId, onDone }: { editId?: strin
       notify(editId
         ? (resubmit ? (waiting ? t(`أُعيد الطلب رقم ${d.request.number} إلى مدير المبيعات للاعتماد`, `Request ${d.request.number} back for approval`) : t(`أُعيد إرسال الطلب رقم ${d.request.number} إلى فريق الموردين`, `Request ${d.request.number} resent`)) : t('حُفظ الطلب', 'Saved'))
         : (waiting ? t(`أُرسل طلب الشحنة رقم ${d.request.number} إلى مدير المبيعات للاعتماد`, `Request ${d.request.number} sent for sales-manager approval`) : t(`أُرسل طلب الشحنة رقم ${d.request.number} إلى فريق الموردين`, `Request ${d.request.number} sent to the vendors team`)), 'success');
-      if (!editId) { setForm({ truckTypes: [] }); setCustomerId(''); setTrucks(1); setShowErrors(false); }
+      if (!editId) { setForm({ truckTypes: [] }); setCustomerId(''); setTrucks(1); setDueDay(riyadhToday()); setShowErrors(false); }
       onDone?.(d.request);
     } catch (e: any) { notify(e?.message || t('تعذّر الحفظ', 'Could not save'), 'error'); }
     setSaving(false);
@@ -365,10 +370,20 @@ export default function ShipmentRequestForm({ editId, onDone }: { editId?: strin
             <label className={labelCls}>{t('عدد الشاحنات بنفس المواصفات', 'Trucks with the same specs')}</label>
             <div className="inline-flex items-center rounded-lg border border-slate-200 bg-white">
               <button type="button" onClick={() => setTrucks((n) => Math.max(Math.max(1, loaded?.placed?.length || 0), n - 1))} className="px-3 py-2.5 text-slate-600 hover:bg-slate-50"><Minus className="w-4 h-4" /></button>
-              <input type="number" min={1} max={25} value={trucks} onChange={(e) => setTrucks(Math.min(25, Math.max(1, Number(e.target.value) || 1)))} className="w-16 text-center py-2 text-sm font-bold tabular-nums focus:outline-none" />
-              <button type="button" onClick={() => setTrucks((n) => Math.min(25, n + 1))} className="px-3 py-2.5 text-slate-600 hover:bg-slate-50"><Plus className="w-4 h-4" /></button>
+              <input type="number" min={1} value={trucks} onChange={(e) => setTrucks(Math.max(1, Math.floor(Number(e.target.value)) || 1))} className="w-16 text-center py-2 text-sm font-bold tabular-nums focus:outline-none" />
+              <button type="button" onClick={() => setTrucks((n) => n + 1)} className="px-3 py-2.5 text-slate-600 hover:bg-slate-50"><Plus className="w-4 h-4" /></button>
             </div>
             <p className="mt-1 text-[11.5px] text-slate-500">{t('كلّ شاحنةٍ تصير أمرَ نقلٍ مستقلًّا عند إكمالها', 'Each truck becomes its own transport order when placed')}</p>
+          </div>
+          <div>
+            <label className={labelCls}>{t('الموعد الفعلي للحمولة', 'Actual load day')}</label>
+            <input type="date" value={dueDay} min={editId && dueDay < riyadhToday() ? dueDay : riyadhToday()}
+              onChange={(e) => setDueDay(e.target.value || riyadhToday())} className={`${inputCls} max-w-[220px]`} />
+            <p className={`mt-1 text-[11.5px] ${dueDay > riyadhToday() ? 'font-semibold text-violet-700' : 'text-slate-500'}`}>
+              {dueDay > riyadhToday()
+                ? t(`يظهر للعمليات يوم ${dueDayLabel(dueDay, 'ar')} فقط، لا اليوم`, `Operations see it on ${dueDayLabel(dueDay, 'en')} only, not today`)
+                : t('اليوم: يُنفَّذ الطلب اليوم. غيّر التاريخ إن كانت الحمولة ليومٍ لاحق.', 'Today: the request is worked today. Change the date for a later day.')}
+            </p>
           </div>
         </>
       ))}

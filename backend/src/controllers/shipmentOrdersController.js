@@ -912,7 +912,6 @@ exports.createOrdersBatch = async (req, res) => {
     if (directCreateBlocked(req, res)) return;
     const trucks = Array.isArray(req.body?.trucks) ? req.body.trucks : [];
     if (!trucks.length) return res.status(400).json({ message: 'لا شاحناتٍ في الطلب' });
-    if (trucks.length > 25) return res.status(400).json({ message: 'الحدُّ الأقصى خمسٌ وعشرون شاحنةً في المرّة' });
 
     // Shared fields: everything in the body except what belongs to the truck and its driver.
     // A B/L and a container belong to one truck, so they are per truck too.

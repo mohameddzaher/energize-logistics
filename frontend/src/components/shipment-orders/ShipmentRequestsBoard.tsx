@@ -18,16 +18,28 @@ import SearchableManagedSelect from '@/components/system/SearchableManagedSelect
 import ShipmentRequestForm from '@/components/shipment-orders/ShipmentRequestForm';
 import { PlaceModal, FleetPlaceModal, SourcingModal } from '@/components/shipment-orders/ShipmentRequestComplete';
 import { PAYMENT_SUBTYPES } from '@/lib/paymentKind';
-import { REQUEST_STATUS, LOG_LABEL, APPROVAL_LABEL, approvalOf, sourcingLine, canAsk, canPlace, canFleetPlace, vendorProgress, statusLabel, type ShipmentRequest, type RequestStatus } from '@/lib/shipmentRequests';
+import { REQUEST_STATUS, LOG_LABEL, APPROVAL_LABEL, approvalOf, sourcingLine, canAsk, canPlace, canFleetPlace, vendorProgress, statusLabel, dueDayLabel, type ShipmentRequest, type RequestStatus } from '@/lib/shipmentRequests';
 import { useColumnFilters } from '@/hooks/useColumnFilters';
 import ColumnChooser, { useVisibleColumns, type ChooserColumn } from '@/components/system/ColumnChooser';
 import ExportMenu, { type ExportColumn } from '@/components/ls2/ExportMenu';
 import {
   Truck, MapPin, Calendar, User as UserIcon, CheckCircle2, XCircle, Send, Pencil, Undo2, Hand, Loader2, Plus, Trash2, Copy, History, Package, AlertCircle, Inbox,
   LayoutGrid, Table2, RotateCcw, SlidersHorizontal, X, Building2, ClipboardCheck,
+  CalendarClock,
 } from 'lucide-react';
 
 const money = (n?: number | null) => (n == null ? '—' : Number(n).toLocaleString('en-US'));
+/** A request planned for a later day than it was written («الموعد الفعلي»). */
+const plannedAhead = (r: ShipmentRequest) => !!r.dueDay && (r.dueLater || r.dueDay !== riyadhDayOf(r.createdAt));
+const riyadhDayOf = (v: string) => new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Riyadh' }).format(new Date(v));
+function DueChip({ r, ar }: { r: ShipmentRequest; ar: boolean }) {
+  return (
+    <span title={ar ? 'الموعد الفعلي للحمولة' : 'Actual load day'}
+      className={`ms-1.5 inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[11.5px] font-bold ${r.dueLater ? 'bg-violet-600 text-white' : 'bg-violet-50 text-violet-700 ring-1 ring-violet-200'}`}>
+      <CalendarClock className="h-3.5 w-3.5" />{ar ? 'الموعد: ' : 'Due: '}{dueDayLabel(r.dueDay || '', ar ? 'ar' : 'en')}
+    </span>
+  );
+}
 const day = (v?: string | null) => (v ? new Date(v).toLocaleDateString('en-GB') : '—');
 const hhmm = (v?: string | null) => (v ? new Date(v).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' }) : '');
 const when = (v?: string | null) => (v ? new Date(v).toLocaleString('en-GB', { hour: '2-digit', minute: '2-digit', day: '2-digit', month: '2-digit' }) : '');
@@ -252,6 +264,7 @@ export default function ShipmentRequestsBoard({ mode }: { mode: BoardMode }) {
       { key: 'salesRep', ar: 'السيلز', en: 'Sales rep', read: (r) => r.salesRepName || '' },
       { key: 'createdBy', ar: 'أنشأه', en: 'Created by', read: (r) => r.createdByName || '' },
       { key: 'createdAt', ar: 'تاريخ الطلب', en: 'Requested', read: (r) => day(r.createdAt), date: true },
+      { key: 'dueDay', ar: 'الموعد الفعلي', en: 'Actual day', read: (r) => (r.dueDay ? `${r.dueDay.slice(8, 10)}/${r.dueDay.slice(5, 7)}/${r.dueDay.slice(0, 4)}` : ''), date: true },
       { key: 'handler', ar: 'مسؤول الموردين', en: 'Vendors handler', read: (r) => r.handlerName || '' },
       // The operations people behind the trucks: who sourced them (from truck-sourcing records and the placed trucks) and who helped.
       { key: 'opsReps', ar: 'مندوب التشغيل (محصِّل السيارات)', en: 'Ops reps (sourced trucks)', read: (r) => [...new Set([...(r.sourcing || []).map((e) => e.byName), ...(r.placed || []).map((p) => p.sourcingRepName || '')].filter(Boolean))].join('، ') },
@@ -280,7 +293,7 @@ export default function ShipmentRequestsBoard({ mode }: { mode: BoardMode }) {
     return OPEN_REQ.includes(r.status) && rest > 0;
   })), [base, cardF]); // eslint-disable-line react-hooks/exhaustive-deps
   const chooserCols: ChooserColumn[] = useMemo(() => COLS.map((c) => ({ key: c.key, label: ar ? c.ar : c.en, locked: c.key === 'number' })), [COLS, ar]);
-  const DEFAULT_COLS = ['number', 'status', 'progress', 'sourcing', 'trucks', 'placedCount', 'openCount', 'customer', 'fromCity', 'toCity', 'truckType', 'pickup', 'buyRange', 'sellPrice', 'salesRep', 'handler', 'orders', 'createdAt'];
+  const DEFAULT_COLS = ['number', 'status', 'progress', 'sourcing', 'trucks', 'placedCount', 'openCount', 'customer', 'fromCity', 'toCity', 'truckType', 'pickup', 'buyRange', 'sellPrice', 'salesRep', 'handler', 'orders', 'createdAt', 'dueDay'];
   const { visible, setVisible } = useVisibleColumns(`shipmentRequests:cols:${mode}:v2`, chooserCols, { defaults: DEFAULT_COLS });
   const visCols = COLS.filter((c) => visible.includes(c.key));
   const exportCols = (cols: typeof COLS): ExportColumn[] => cols.map((c) => ({ header: ar ? c.ar : c.en, key: c.key, transform: (_v: any, r: any) => c.read(r), type: c.num ? 'number' : 'text' }));
@@ -546,7 +559,7 @@ export default function ShipmentRequestsBoard({ mode }: { mode: BoardMode }) {
                 return (
                   <tr key={r._id} className={`border-t border-slate-100 hover:bg-slate-50/60 ${r.status === 'rejected' ? 'bg-red-50/40' : ''}`}>
                     {visCols.map((c) => {
-                      if (c.key === 'number') return <td key={c.key} className="px-3 py-2 font-bold tabular-nums text-slate-900">{r.number}</td>;
+                      if (c.key === 'number') return <td key={c.key} className="px-3 py-2 font-bold tabular-nums text-slate-900">{r.number}{plannedAhead(r) && <DueChip r={r} ar={ar} />}</td>;
                       if (c.key === 'status') return (
                         <td key={c.key} className="px-3 py-2">
                           <StatusText dot={!work && approvalOf(r) !== 'approved' ? 'bg-orange-400' : st.dot}>{statusText(r)}</StatusText>
@@ -592,6 +605,7 @@ export default function ShipmentRequestsBoard({ mode }: { mode: BoardMode }) {
                 {/* Header: number, status and progress; who asked and when. */}
                 <div className="flex flex-wrap items-center gap-2 px-4 py-2.5 border-b border-slate-100 bg-slate-50/70">
                   <span className="rounded-lg bg-slate-900 px-2 py-0.5 text-[12.5px] font-extrabold tabular-nums text-white">#{r.number}</span>
+                  {plannedAhead(r) && <DueChip r={r} ar={ar} />}
                   <StatusText dot={st.dot}>{statusText(r)}</StatusText>
                   <span className={`text-[12px] font-semibold ${vendorProgress(r, ar, pmode).tone}`}>{vendorProgress(r, ar, pmode).label}</span>
                   {/* Sourcing at the top: the first thing the team looks for on a card. */}

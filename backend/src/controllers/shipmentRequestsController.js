@@ -14,7 +14,7 @@ const { TOP_ROLES } = require('../config/constants');
 const { DATA_ROLES } = require('../config/roles');
 const logAudit = require('../utils/auditLogger');
 const { emitToAll } = require('../websocket/socketManager');
-const { startOfDay, endOfDay } = require('../utils/companyDay');
+const { startOfDay, endOfDay, dayKeyOf, todayKey } = require('../utils/companyDay');
 const { sendMongooseError } = require('../utils/mongooseError');
 
 const EVENT = 'shipmentRequests:changed';
@@ -107,7 +107,7 @@ const OPEN = ['pending', 'in_progress'];
 /** The sales half as written on a request: the shipment form's fields that belong to sales. */
 const SALES_FIELDS = ['customer', 'fromCity', 'toCity', 'branch', 'notes', 'blNumber', 'containerNumber',
   'truckType', 'truckTypes', 'cargoType', 'truckLength', 'quantity', 'pickupTime', 'startTime', 'arrivalTime',
-  'sellPrice', 'paymentSubtype', 'paymentMethod', 'customFields'];
+  'sellPrice', 'paymentSubtype', 'paymentMethod', 'customFields', 'dueDay'];
 const TYPE_SEP = ' / ';
 /** Accepted truck types: a list from the multi-choice, or the legacy single value; `truckType` becomes their joined label. */
 function applyTruckTypes(data) {
@@ -137,12 +137,34 @@ const scopeFor = (user) => {
 };
 
 /** The request as this reader receives it: who may see the selling price is config/priceView requestSellVisible. */
+const YMD = /^\d{4}-\d{2}-\d{2}$/;
+/** Requests due today or earlier (rows from before the field are filled with their creation day by backfillDueDay). */
+const DUE_BY_TODAY = () => ({ $or: [{ dueDay: { $lte: todayKey() } }, { dueDay: { $in: ['', null] } }] });
+/** The wanted day: today when not given; never before today. */
+function dueDayOf(v, { creating }) {
+  const day = String(v || '').slice(0, 10);
+  if (!day) return creating ? { day: todayKey() } : { error: 'حدِّد الموعد الفعلي' };
+  if (!YMD.test(day)) return { error: 'الموعد الفعلي غير صالح' };
+  if (day < todayKey()) return { error: 'لا يكون الموعد الفعلي قبل اليوم' };
+  return { day };
+}
+/** One-time fill for requests created before the field: their wanted day is their creation day. */
+async function backfillDueDay() {
+  const tz = process.env.COMPANY_TZ || 'Asia/Riyadh';
+  const r = await ShipmentRequest.updateMany({ $or: [{ dueDay: { $exists: false } }, { dueDay: '' }, { dueDay: null }] },
+    [{ $set: { dueDay: { $dateToString: { format: '%Y-%m-%d', date: '$createdAt', timezone: tz } } } }]);
+  if (r.modifiedCount) console.log(`[shipment-requests] dueDay filled on ${r.modifiedCount}`);
+}
+exports.backfillDueDay = backfillDueDay;
+
 const shape = (user, doc) => {
   if (!doc) return doc;
   const o = typeof doc.toObject === 'function' ? doc.toObject({ virtuals: true }) : { ...doc };
   o.truckTypes = typesOf(o);
   o.open = Math.max(0, (o.trucks || 0) - (o.placed || []).length);
   o.sourced = (o.sourcing || []).reduce((n, e) => n + (Number(e.count) || 0), 0);
+  o.dueDay = o.dueDay || (o.createdAt ? dayKeyOf(o.createdAt) : '');
+  o.dueLater = !!o.dueDay && o.dueDay > todayKey();
   if (!PV.requestSellVisible(user)) delete o.sellPrice;
   // Approved purchase range for the route, looked up live (utils/approvedRanges) for whoever sees purchase prices.
   if (PV.priceView(user).buy) o.buyRange = require('../utils/approvedRanges').lookup(o.fromCity, o.toCity, o.truckType, o.customer);
@@ -199,7 +221,7 @@ async function prepareSalesHalf(req, data, { creating }) {
   applyTruckTypes(data);
   if ('trucks' in req.body) {
     const n = Math.floor(Number(req.body.trucks));
-    if (!Number.isFinite(n) || n < 1 || n > 25) return 'عددُ الشاحنات بين واحدةٍ وخمسٍ وعشرين';
+    if (!Number.isFinite(n) || n < 1) return 'عددُ الشاحنات شاحنةٌ واحدة على الأقل';
     data.trucks = n;
   }
   try { so.applyPaymentSubtype(data); } catch (e) { return e.message; }
@@ -273,11 +295,15 @@ exports.list = async (req, res) => {
     const approval = String(req.query.approval || '');
     if (approval === 'approved') and.push(APPROVED);
     else if (['pending', 'returned', 'rejected'].includes(approval)) and.push({ approvalStatus: approval });
+    // The day filter reads the wanted day («الموعد الفعلي»), not the creation date.
     if (from || to) {
       const r = {};
-      if (from) r.$gte = startOfDay(from);
-      if (to) r.$lte = endOfDay(to);
-      and.push({ createdAt: r });
+      if (from) r.$gte = String(from).slice(0, 10);
+      if (to) r.$lte = String(to).slice(0, 10);
+      and.push({ dueDay: r });
+    } else if (req.query.view === 'work' || !isAsker(req.user)) {
+      // A request for a later day is not on the working board before its day.
+      and.push(DUE_BY_TODAY());
     }
     const branchClause = branch ? { branch } : null;
     if (branchClause) and.push(branchClause);
@@ -358,7 +384,7 @@ exports.get = async (req, res) => {
 /** Open requests waiting for the vendors team: the sidebar badge. */
 exports.pendingCount = async (req, res) => {
   try {
-    const n = await ShipmentRequest.countDocuments({ status: { $in: OPEN }, ...APPROVED, ...(await branchScoped(req)) });
+    const n = await ShipmentRequest.countDocuments({ status: { $in: OPEN }, ...APPROVED, ...DUE_BY_TODAY(), ...(await branchScoped(req)) });
     res.json({ count: n });
   } catch (e) { res.json({ count: 0 }); }
 };
@@ -369,6 +395,9 @@ exports.create = async (req, res) => {
   try {
     const data = pick(req.body, SALES_FIELDS);
     data.trucks = 1;
+    const due = dueDayOf(data.dueDay, { creating: true });
+    if (due.error) return bad(res, due.error, { fields: ['dueDay'] });
+    data.dueDay = due.day;
     const err = await prepareSalesHalf(req, data, { creating: true });
     if (err) return errOut(res, err);
     const who = fullName(req.user);
@@ -400,6 +429,16 @@ exports.update = async (req, res) => {
     if (r.approvalStatus === 'rejected') return bad(res, 'رفض مديرُ المبيعات هذا الطلب — أنشئ طلبًا جديدًا');
     const data = pick(req.body, SALES_FIELDS);
     if ('trucks' in req.body) data.trucks = req.body.trucks;
+    if ('dueDay' in data) {
+      // An unchanged past day is kept as is; a new day cannot be in the past.
+      const cur = r.dueDay || dayKeyOf(r.createdAt);
+      if (String(data.dueDay || '').slice(0, 10) === cur) delete data.dueDay;
+      else {
+        const due = dueDayOf(data.dueDay, { creating: false });
+        if (due.error) return bad(res, due.error, { fields: ['dueDay'] });
+        data.dueDay = due.day;
+      }
+    }
     const err = await prepareSalesHalf(req, data, { creating: false });
     if (err) return errOut(res, err);
     if (data.trucks != null && data.trucks < r.placed.length) return bad(res, `أُنشئ من هذا الطلب ${r.placed.length} أوامرُ نقل — لا يقلّ عددُ الشاحنات عنها`);
@@ -572,7 +611,7 @@ exports.addSourcing = async (req, res) => {
     if (!r || notApproved(r)) return res.status(404).json({ message: 'الطلب غير موجود' });
     if (['cancelled', 'rejected'].includes(r.status)) return bad(res, 'لا يُسجَّل تحصيلٌ على طلبٍ مرفوضٍ أو مسحوب');
     const count = Math.floor(Number(req.body?.count));
-    if (!Number.isFinite(count) || count < 1 || count > 25) return bad(res, 'عددُ السيارات بين 1 و25', { fields: ['count'] });
+    if (!Number.isFinite(count) || count < 1) return bad(res, 'عددُ السيارات سيارةٌ واحدة على الأقل', { fields: ['count'] });
     const team = teamOf(req);
     const who = shownName(team, req.user);
     const h = await resolveHelper(req.body?.helper);
@@ -609,7 +648,7 @@ exports.updateSourcing = async (req, res) => {
     const changes = [];
     if (req.body?.count !== undefined) {
       const count = Math.floor(Number(req.body.count));
-      if (!Number.isFinite(count) || count < 1 || count > 25) return bad(res, 'عددُ السيارات بين 1 و25', { fields: ['count'] });
+      if (!Number.isFinite(count) || count < 1) return bad(res, 'عددُ السيارات سيارةٌ واحدة على الأقل', { fields: ['count'] });
       if (count !== e.count) { changes.push(`${e.count} ← ${count}`); e.count = count; }
     }
     if (req.body?.helper !== undefined) {

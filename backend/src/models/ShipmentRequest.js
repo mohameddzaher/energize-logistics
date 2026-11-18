@@ -50,7 +50,7 @@ const placedTruck = new mongoose.Schema({
  * counts (placed[]) stay the real completions into transport orders.
  */
 const sourcingEntry = new mongoose.Schema({
-  count: { type: Number, required: true, min: 1, max: 25 },
+  count: { type: Number, required: true, min: 1 },
   team: { type: String, enum: ['vendors', 'fleet'], default: 'vendors' },
   by: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
   byName: { type: String, default: '' },
@@ -95,7 +95,12 @@ const shipmentRequestSchema = new mongoose.Schema({
   paymentMethod: { type: String, trim: true, default: '' },
   customFields: { type: mongoose.Schema.Types.Mixed, default: () => ({}) },
   /** How many identical trucks the customer asked for; each placed truck becomes its own transport order. */
-  trucks: { type: Number, default: 1, min: 1, max: 25 },
+  trucks: { type: Number, default: 1, min: 1 },
+  /**
+   * The day the load is wanted (company day, YYYY-MM-DD), today by default. A request for a later day reaches the working board
+   * only on that day, and the board's day filter reads this date, not the creation date.
+   */
+  dueDay: { type: String, trim: true, default: '', index: true },
 
   /**
    * Sales-manager approval: a sales rep's request reaches the working board only once approved. Missing means approved

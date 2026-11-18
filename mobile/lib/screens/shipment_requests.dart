@@ -146,6 +146,32 @@ const _salesKeys = {'fromCity', 'toCity', 'branch', 'notes', 'blNumber', 'contai
 const _timeKeys = {'pickupTime', 'startTime', 'arrivalTime'};
 const _groups = [('pickup_delivery', 'الاستلام والتسليم', 'Pickup & delivery'), ('shipment', 'تفاصيل الشحنة', 'Shipment details'), ('pricing_time', 'الأسعار والتوقيت', 'Prices & timing'), ('payment', 'المدفوعات', 'Payments')];
 
+/// Today in company time (Riyadh, no DST), YYYY-MM-DD: the server's day key for «الموعد الفعلي».
+String _riyadhToday() => DateTime.now().toUtc().add(const Duration(hours: 3)).toIso8601String().substring(0, 10);
+String _riyadhDayOf(dynamic v) {
+  final d = DateTime.tryParse('${v ?? ''}');
+  return d == null ? '' : d.toUtc().add(const Duration(hours: 3)).toIso8601String().substring(0, 10);
+}
+/// «غدًا», a weekday or the date of a wanted day.
+String _dueLabel(String day) {
+  if (day.isEmpty) return '';
+  final today = DateTime.parse(_riyadhToday());
+  final d = DateTime.tryParse(day);
+  if (d == null) return day;
+  final diff = d.difference(today).inDays;
+  if (diff == 0) return tr('اليوم', 'today');
+  if (diff == 1) return tr('غدًا', 'tomorrow');
+  const ar = ['الإثنين', 'الثلاثاء', 'الأربعاء', 'الخميس', 'الجمعة', 'السبت', 'الأحد'];
+  const en = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
+  return '${tr(ar[d.weekday - 1], en[d.weekday - 1])} ${day.substring(8, 10)}/${day.substring(5, 7)}';
+}
+/// Planned for a later day than it was written.
+bool _plannedAhead(Map r) {
+  final due = '${r['dueDay'] ?? ''}';
+  return due.isNotEmpty && (r['dueLater'] == true || due != _riyadhDayOf(r['createdAt']));
+}
+Widget _dueChip(Map r) => Chip2('${tr('الموعد', 'Due')}: ${_dueLabel('${r['dueDay']}')}', r['dueLater'] == true ? const Color(0xFF7C3AED) : const Color(0xFF6D28D9), icon: Icons.event_outlined);
+
 String _dateOnly(dynamic v) {
   final d = DateTime.tryParse('${v ?? ''}')?.toLocal();
   return d == null ? '' : ymd(d);
@@ -240,6 +266,8 @@ class _ShipmentRequestFormScreenState extends State<ShipmentRequestFormScreen> {
   final _ncPhone = TextEditingController();
   String? _salesRep;
   int _trucks = 1;
+  // «الموعد الفعلي»: today unless sales picks a later day; the working board shows it on that day.
+  String _dueDay = _riyadhToday();
   final Map<String, dynamic> _form = {};
   final Map<String, TextEditingController> _ctrls = {};
   final Set<String> _missing = {};
@@ -264,7 +292,8 @@ class _ShipmentRequestFormScreenState extends State<ShipmentRequestFormScreen> {
       }
       (r['customFields'] as Map?)?.forEach((k, v) => _form['$k'] = v);
       _form['truckTypes'] = srTruckTypes(r);
-      _trucks = inum(r['trucks']).toInt().clamp(1, 25);
+      _trucks = inum(r['trucks']).toInt() < 1 ? 1 : inum(r['trucks']).toInt();
+      if ('${r['dueDay'] ?? ''}'.isNotEmpty) _dueDay = '${r['dueDay']}';
       if (r['customer'] != null) _customer = {'_id': r['customer'] is Map ? r['customer']['_id'] : r['customer'], 'name': r['customerName']};
       _salesRep = r['salesRep'] == null ? null : '${r['salesRep'] is Map ? r['salesRep']['_id'] : r['salesRep']}';
     }
@@ -471,7 +500,7 @@ class _ShipmentRequestFormScreenState extends State<ShipmentRequestFormScreen> {
       return;
     }
     setState(() => _saving = true);
-    final body = <String, dynamic>{'customFields': <String, dynamic>{}, 'trucks': _trucks};
+    final body = <String, dynamic>{'customFields': <String, dynamic>{}, 'trucks': _trucks, 'dueDay': _dueDay};
     for (final f in _fields) {
       final k = '${f['key']}';
       if (k == 'truckType') continue;
@@ -576,8 +605,31 @@ class _ShipmentRequestFormScreenState extends State<ShipmentRequestFormScreen> {
                       Expanded(child: Text(tr('عدد الشاحنات بالمواصفات نفسها', 'Trucks with the same specs'), style: const TextStyle(fontWeight: FontWeight.w700))),
                       IconButton(onPressed: _trucks > (placed > 0 ? placed : 1) ? () => setState(() => _trucks--) : null, icon: const Icon(Icons.remove_circle_outline)),
                       Text('$_trucks', style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w900)),
-                      IconButton(onPressed: _trucks < 25 ? () => setState(() => _trucks++) : null, icon: const Icon(Icons.add_circle_outline, color: T.orange)),
+                      IconButton(onPressed: () => setState(() => _trucks++), icon: const Icon(Icons.add_circle_outline, color: T.orange)),
                     ]),
+                    const SizedBox(height: 6),
+                    InkWell(
+                      onTap: () async {
+                        final today = DateTime.parse(_riyadhToday());
+                        final cur = DateTime.tryParse(_dueDay) ?? today;
+                        final first = cur.isBefore(today) ? cur : today;
+                        final d = await showDatePicker(context: context, initialDate: cur, firstDate: first, lastDate: today.add(const Duration(days: 365)));
+                        if (d != null) setState(() => _dueDay = d.toIso8601String().substring(0, 10));
+                      },
+                      child: InputDecorator(
+                        decoration: InputDecoration(labelText: tr('الموعد الفعلي للحمولة', 'Actual load day'), suffixIcon: const Icon(Icons.event_outlined)),
+                        child: Text('${_dueDay.substring(8, 10)}/${_dueDay.substring(5, 7)}/${_dueDay.substring(0, 4)} · ${_dueLabel(_dueDay)}', style: const TextStyle(fontWeight: FontWeight.w700)),
+                      ),
+                    ),
+                    Padding(
+                      padding: const EdgeInsets.only(top: 4),
+                      child: Text(
+                        _dueDay.compareTo(_riyadhToday()) > 0
+                            ? tr('يظهر للعمليات يوم ${_dueLabel(_dueDay)} فقط، لا اليوم', 'Operations see it on ${_dueLabel(_dueDay)} only, not today')
+                            : tr('اليوم: يُنفَّذ الطلب اليوم. غيّر التاريخ إن كانت الحمولة ليومٍ لاحق.', 'Today: worked today. Change the date for a later day.'),
+                        style: TextStyle(fontSize: 11.5, color: _dueDay.compareTo(_riyadhToday()) > 0 ? const Color(0xFF6D28D9) : T.inkFaint, fontWeight: FontWeight.w600),
+                      ),
+                    ),
                   ])),
                   for (final g in _groups)
                     if (_fields.any((f) => f['group'] == g.$1))
@@ -762,6 +814,7 @@ class _ShipmentRequestsScreenState extends State<ShipmentRequestsScreen> {
       ExportCol('السيلز', 'Sales rep', (r) => r['salesRepName']),
       ExportCol('أنشأه', 'Created by', (r) => r['createdByName']),
       ExportCol('تاريخ الطلب', 'Requested', (r) => _dateOnly(r['createdAt'])),
+      ExportCol('الموعد الفعلي', 'Actual day', (r) => '${r['dueDay'] ?? ''}'),
       ExportCol('مسؤول الموردين', 'Vendors handler', (r) => r['handlerName']),
       ExportCol('أوامر النقل', 'Transport orders', (r) => _placedField(r, 'waybillNumber').join('، ')),
       ExportCol('المورّدون', 'Suppliers', (r) => _suppliers(r).join('، ')),
@@ -1108,6 +1161,7 @@ class _ShipmentRequestsScreenState extends State<ShipmentRequestsScreen> {
             Expanded(child: Text('${r['customerName'] ?? '—'}', style: const TextStyle(fontWeight: FontWeight.w800), overflow: TextOverflow.ellipsis)),
             srStatusChip(r['status'], vendors: _work),
           ]),
+          if (_plannedAhead(r)) Padding(padding: const EdgeInsets.only(top: 4), child: Align(alignment: AlignmentDirectional.centerStart, child: _dueChip(r))),
           // Sourcing at the top of the card, as on the web.
           _sourcedLine(r),
           const SizedBox(height: 4),
@@ -1650,7 +1704,7 @@ class _PlaceTrucksScreenState extends State<PlaceTrucksScreen> {
 
   int get _open {
     final r = widget.request;
-    return inum(r['open'] ?? (inum(r['trucks']) - ((r['placed'] as List?)?.length ?? 0))).toInt().clamp(1, 25);
+    return inum(r['open'] ?? (inum(r['trucks']) - ((r['placed'] as List?)?.length ?? 0))).toInt().clamp(1, 1 << 30);
   }
 
   @override
@@ -2011,7 +2065,7 @@ class _FleetPlaceScreenState extends State<FleetPlaceScreen> {
   List<String> get _reqTypes => srTruckTypes(widget.request);
   int get _open {
     final r = widget.request;
-    return inum(r['open'] ?? (inum(r['trucks']) - ((r['placed'] as List?)?.length ?? 0))).toInt().clamp(1, 25);
+    return inum(r['open'] ?? (inum(r['trucks']) - ((r['placed'] as List?)?.length ?? 0))).toInt().clamp(1, 1 << 30);
   }
 
   @override
@@ -2328,8 +2382,8 @@ class _SourcingSheetState extends State<_SourcingSheet> {
     count.dispose();
     note.dispose();
     if (ok != true) return;
-    if (n == null || n < 1 || n > 25) {
-      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(tr('عدد السيارات بين 1 و25', 'Between 1 and 25'))));
+    if (n == null || n < 1) {
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(tr('عدد السيارات سيارةٌ واحدة على الأقل', 'At least one truck'))));
       return;
     }
     await _call(() => e == null

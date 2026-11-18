@@ -6,7 +6,7 @@
 import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react';
 import Link from 'next/link';
 import {
-  Building2, Truck, Ship, Wallet, FileSignature, ClipboardList, KeyRound, LayoutDashboard, Phone, Mail, MapPin, ExternalLink, Route,
+  Building2, Truck, Ship, Wallet, FileSignature, ClipboardList, KeyRound, LayoutDashboard, Phone, Mail, MapPin, ExternalLink, Route, FileText, Loader2,
 } from 'lucide-react';
 import api from '@/lib/api';
 import { useLanguage } from '@/context/LanguageContext';
@@ -16,12 +16,14 @@ import { KpiTile } from '@/components/system/Scorecard';
 import ExportMenu, { type ExportColumn, type ExportSheet } from '@/components/ls2/ExportMenu';
 import ScrollX from '@/components/system/ScrollX';
 import { customsStageText, type Lang } from '@/lib/portal';
+import { openReportPdf } from '@/lib/reports';
+import PortalAccountCard from '@/components/system/PortalAccountCard';
 
 type Row = Record<string, any>;
 interface FileData {
   master: Row; names: string[]; places: { reg: string; ar: string; href: string; id: string }[];
   summary: Row; collections: Row | null; contract: Row | null;
-  orders: Row[]; platform: Row[]; loads: Row[]; customs: Row[]; invoices: Row[]; requests: Row[]; deals: Row[]; activities: Row[]; accounts: Row[];
+  transport: Row[]; loads: Row[]; customs: Row[]; invoices: Row[]; requests: Row[]; deals: Row[]; activities: Row[]; accounts: Row[];
 }
 type Tab = 'overview' | 'shipments' | 'fleet' | 'customs' | 'collections' | 'sales' | 'contract' | 'portal';
 
@@ -63,6 +65,11 @@ export default function CustomerFullFile({ id, reg }: { id: string; reg?: string
   const [d, setD] = useState<FileData | null>(null);
   const [error, setError] = useState('');
   const [tab, setTab] = useState<Tab>('overview');
+  const [source, setSource] = useState('');
+  const [pdfBusy, setPdfBusy] = useState(false);
+  // Period of the printed file; empty = all time.
+  const [pdfFrom, setPdfFrom] = useState('');
+  const [pdfTo, setPdfTo] = useState('');
 
   const load = useCallback(async () => {
     try { setD(await api.get<FileData>(`/api/customer-hub/file/${id}${reg ? `?reg=${reg}` : ''}`)); setError(''); }
@@ -70,30 +77,26 @@ export default function CustomerFullFile({ id, reg }: { id: string; reg?: string
   }, [id, reg]);
   useEffect(() => { load(); }, [load]);
   useSocket('customers:changed', load);
+  // A portal login created from the card below (or elsewhere) refreshes the accounts list.
+  useSocket('partner:account', load);
 
   // Every table of the file, once: the tabs and the Excel export read the same definitions.
   const T = useMemo(() => {
     const L = (a: string, e: string) => (ar ? a : e);
     return {
-      orders: [
-        { key: 'waybillNumber', label: L('رقم البوليصة', 'Waybill'), num: true },
-        { key: 'date', label: L('التاريخ', 'Date'), render: (r: Row) => day(r.pickupTime || r.createdAt), x: (r: Row) => day(r.pickupTime || r.createdAt) },
-        { key: 'route', label: L('المسار', 'Route'), render: (r: Row) => `${r.fromCity || ''} ← ${r.toCity || ''}`, x: (r: Row) => `${r.fromCity || ''} - ${r.toCity || ''}` },
+      transport: [
+        { key: 'number', label: L('الرقم', 'No.'), num: true },
+        { key: 'date', label: L('التاريخ', 'Date'), render: (r: Row) => day(r.date), x: (r: Row) => day(r.date) },
+        { key: 'source', label: L('المصدر', 'Source'), render: (r: Row) => <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[11.5px] font-semibold text-slate-700">{ar ? r.sourceAr : r.sourceEn}</span>, x: (r: Row) => r.sourceAr },
+        { key: 'route', label: L('المسار', 'Route'), render: (r: Row) => `${r.from || ''} ← ${r.to || ''}`, x: (r: Row) => `${r.from || ''} - ${r.to || ''}` },
         { key: 'status', label: L('الحالة', 'Status') },
-        { key: 'supplierName', label: L('المورّد', 'Carrier') },
-        { key: 'sellPrice', label: L('البيع', 'Sell'), num: true, render: (r: Row) => money(r.sellPrice) },
-        { key: 'buyPrice', label: L('الشراء', 'Buy'), num: true, render: (r: Row) => money(r.buyPrice) },
-        { key: 'clearance', label: L('معاملة التخليص', 'Clearance'), render: (r: Row) => r.customsLink?.refNumber || '—', x: (r: Row) => r.customsLink?.refNumber || '' },
-      ],
-      platform: [
-        { key: 'reportNumber', label: L('رقم البيان', 'Manifest'), num: true },
-        { key: 'reportDate', label: L('التاريخ', 'Date'), render: (r: Row) => day(r.reportDate), x: (r: Row) => day(r.reportDate) },
-        { key: 'route', label: L('المسار', 'Route'), render: (r: Row) => `${r.fromLocation || ''} ← ${r.toLocation || ''}`, x: (r: Row) => `${r.fromLocation || ''} - ${r.toLocation || ''}` },
-        { key: 'applicationStatus', label: L('الحالة', 'Status') },
-        { key: 'sellingValue', label: L('البيع', 'Sell'), num: true, render: (r: Row) => money(r.sellingValue) },
-        { key: 'totalInvoice', label: L('الفاتورة', 'Invoice total'), num: true, render: (r: Row) => money(r.totalInvoice) },
+        { key: 'plate', label: L('اللوحة', 'Plate') },
+        { key: 'driver', label: L('السائق', 'Driver') },
+        { key: 'sell', label: L('البيع', 'Sell'), num: true, render: (r: Row) => money(r.sell), x: (r: Row) => r.sell },
+        { key: 'buy', label: L('الشراء', 'Buy'), num: true, render: (r: Row) => money(r.buy), x: (r: Row) => r.buy },
         { key: 'invoiceNumber', label: L('رقم الفاتورة', 'Invoice no.') },
-        { key: 'collectedAmount', label: L('المُحصَّل', 'Collected'), num: true, render: (r: Row) => money(r.collectedAmount) },
+        { key: 'collected', label: L('المُحصَّل', 'Collected'), num: true, render: (r: Row) => money(r.collected), x: (r: Row) => r.collected },
+        { key: 'clearance', label: L('معاملة التخليص', 'Customs file'), render: (r: Row) => r.clearance || '—', x: (r: Row) => r.clearance || '' },
       ],
       loads: [
         { key: 'waybillNumber', label: L('رقم البوليصة', 'Waybill'), num: true },
@@ -141,26 +144,34 @@ export default function CustomerFullFile({ id, reg }: { id: string; reg?: string
     } as Record<string, { key: string; label: string; num?: boolean; render?: (r: Row) => ReactNode; x?: (r: Row) => any }[]>;
   }, [ar, lang]);
 
+  const SRC: Record<string, string> = { platform: t('المنصّة السابقة', 'Former platform'), orders: t('طلبات الشحنات', 'Shipment requests'), fleet: t('الأسطول', 'Fleet'), sheet: t('التشغيل', 'Operations') };
   if (error) return <ErrorNotice error={error} lang={ar ? "ar" : "en"} />;
   if (!d) return <Spinner />;
   const m = d.master; const s = d.summary;
+  // Where the transport orders came from: one list, every order once (the operations sheet holds them all).
+  const sourceLine = Object.entries(s.bySource || {}).map(([k, n]) => `${SRC[k] || k} ${Number(n).toLocaleString('en-US')}`).join(' · ');
+  const pdf = async () => {
+    setPdfBusy(true);
+    try { await openReportPdf('customerFile', `${id}${reg ? `:${reg}` : ''}`, pdfFrom, pdfTo, ar ? 'ar' : 'en'); }
+    finally { setPdfBusy(false); }
+  };
 
   const sheet = (name: string, rows: Row[], key: string): ExportSheet => ({
     name, rows, columns: T[key].map((c): ExportColumn => ({ header: c.label, key: c.key, transform: (_v: any, r: Row) => (c.x ? c.x(r) : r[c.key]), type: c.num ? 'number' : 'text' })),
   });
   const allSheets = [
     { name: t('الملخّص', 'Summary'), rows: [
-      [t('العميل', 'Customer'), m.name], [t('الكود', 'Code'), m.code], [t('أوامر النقل', 'Transport orders'), s.orders], [t('بيانات المنصّة', 'Platform manifests'), s.platform],
+      [t('العميل', 'Customer'), m.name], [t('الكود', 'Code'), m.code], [t('أوامر النقل', 'Transport orders'), s.transport], [t('إيراد النقل', 'Transport revenue'), s.transportSell],
       [t('حمولات الأسطول', 'Fleet loads'), s.loads], [t('معاملات التخليص', 'Clearances'), s.clearances], [t('المفوتَر', 'Invoiced'), s.invoiced], [t('المُحصَّل', 'Collected'), s.collected], [t('المتبقّي', 'Outstanding'), s.outstanding],
     ].map(([k, v]) => ({ k, v })), columns: [{ header: t('البند', 'Item'), key: 'k', width: 30 }, { header: t('القيمة', 'Value'), key: 'v', width: 30 }] as ExportColumn[] },
-    sheet(t('أوامر النقل', 'Orders'), d.orders, 'orders'), sheet(t('بيانات المنصّة', 'Platform'), d.platform, 'platform'),
+    sheet(t('أوامر النقل', 'Transport orders'), d.transport, 'transport'),
     sheet(t('الأسطول', 'Fleet'), d.loads, 'loads'), sheet(t('التخليص', 'Customs'), d.customs, 'customs'),
     sheet(t('الفواتير', 'Invoices'), d.invoices, 'invoices'), sheet(t('طلبات الشحن', 'Requests'), d.requests, 'requests'), sheet(t('الصفقات', 'Deals'), d.deals, 'deals'),
   ];
 
   const TABS: { key: Tab; ar: string; en: string; icon: ReactNode; n?: number }[] = [
     { key: 'overview', ar: 'نظرة عامة', en: 'Overview', icon: <LayoutDashboard className="h-4 w-4" /> },
-    { key: 'shipments', ar: 'الشحنات', en: 'Shipments', icon: <Route className="h-4 w-4" />, n: s.orders + s.platform },
+    { key: 'shipments', ar: 'أوامر النقل', en: 'Transport orders', icon: <Route className="h-4 w-4" />, n: s.transport },
     { key: 'fleet', ar: 'الأسطول', en: 'Fleet', icon: <Truck className="h-4 w-4" />, n: s.loads },
     { key: 'customs', ar: 'التخليص الجمركي', en: 'Customs', icon: <Ship className="h-4 w-4" />, n: s.clearances },
     { key: 'collections', ar: 'التحصيل', en: 'Collections', icon: <Wallet className="h-4 w-4" />, n: s.invoices },
@@ -185,7 +196,19 @@ export default function CustomerFullFile({ id, reg }: { id: string; reg?: string
               {m.archivedAt && <span className="mt-1 inline-block rounded-full bg-red-500/90 px-2 py-0.5 text-[11.5px] font-bold">{t('في أرشيف العملاء', 'In the customers archive')}</span>}
             </div>
           </div>
-          <ExportMenu fileName={`${t('ملف العميل', 'Customer file')} - ${m.name}`} lang={lang} options={[{ key: 'all', label: t('تصدير الملف كاملًا', 'Export the whole file'), sheets: allSheets }]} />
+          <div className="flex flex-wrap items-center gap-2">
+            <div className="flex items-center gap-1 rounded-lg bg-white/10 px-2 py-1 text-[12px] text-slate-200">
+              <span>{t('الفترة', 'Period')}</span>
+              <input type="date" value={pdfFrom} onChange={(e) => setPdfFrom(e.target.value)} className="rounded bg-white px-1.5 py-1 text-[12px] text-slate-900" />
+              <span>←</span>
+              <input type="date" value={pdfTo} onChange={(e) => setPdfTo(e.target.value)} className="rounded bg-white px-1.5 py-1 text-[12px] text-slate-900" />
+            </div>
+            <button type="button" onClick={pdf} disabled={pdfBusy}
+              className="inline-flex items-center gap-1.5 rounded-lg bg-[#f37121] px-3 py-2 text-[13px] font-bold text-white hover:bg-[#e06010] disabled:opacity-60">
+              {pdfBusy ? <Loader2 className="h-4 w-4 animate-spin" /> : <FileText className="h-4 w-4" />}{t('تصدير PDF', 'Export PDF')}
+            </button>
+            <ExportMenu fileName={`${t('ملف العميل', 'Customer file')} - ${m.name}`} lang={lang} options={[{ key: 'all', label: t('تصدير الملف كاملًا', 'Export the whole file'), sheets: allSheets }]} />
+          </div>
         </div>
         <div className="flex flex-wrap gap-x-6 gap-y-1.5 px-5 py-3 text-[13px] text-slate-700">
           {m.phone && <span className="inline-flex items-center gap-1.5"><Phone className="h-4 w-4 text-slate-400" /><span className="tabular-nums" dir="ltr">{m.phone}</span></span>}
@@ -215,8 +238,8 @@ export default function CustomerFullFile({ id, reg }: { id: string; reg?: string
       {tab === 'overview' && (
         <div className="space-y-4">
           <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-            <KpiTile label={t('الشحنات', 'Shipments')} value={(s.orders + s.platform + s.loads).toLocaleString('en-US')} sub={t(`${s.orders} أمر نقل · ${s.platform} بيان منصّة · ${s.loads} حمولة أسطول`, `${s.orders} orders · ${s.platform} manifests · ${s.loads} fleet loads`)} icon={<Route className="h-4 w-4" />} />
-            <KpiTile label={t('إيراد النقل', 'Transport revenue')} value={money(s.ordersSell + s.platformSell + s.loadsIncome)} sub={t('بيع أوامر النقل والمنصّة ودخل الأسطول', 'Orders, platform and fleet')} accent="#0ea5e9" icon={<Truck className="h-4 w-4" />} />
+            <KpiTile label={t('أوامر النقل', 'Transport orders')} value={(s.transport || 0).toLocaleString('en-US')} sub={sourceLine} icon={<Route className="h-4 w-4" />} />
+            <KpiTile label={t('إيراد النقل', 'Transport revenue')} value={money(s.transportSell)} sub={t(`شراء ${money(s.transportBuy)} · مفوتَر ${money(s.transportInvoiced)}`, `buy ${money(s.transportBuy)} · invoiced ${money(s.transportInvoiced)}`)} accent="#0ea5e9" icon={<Truck className="h-4 w-4" />} />
             <KpiTile label={t('التخليص الجمركي', 'Customs')} value={s.clearances} sub={t(`${s.clearancesOpen} مفتوحة · إيراد ${money(s.customsRevenue)} · ربح ${money(s.customsProfit)}`, `${s.clearancesOpen} open · revenue ${money(s.customsRevenue)} · profit ${money(s.customsProfit)}`)} accent="#7c3aed" icon={<Ship className="h-4 w-4" />} />
             <KpiTile label={t('المتبقّي للتحصيل', 'Outstanding')} value={money(s.outstanding)} sub={t(`مفوتَر ${money(s.invoiced)} · مُحصَّل ${money(s.collected)} · ${s.overdue} متأخرة`, `invoiced ${money(s.invoiced)} · collected ${money(s.collected)} · ${s.overdue} overdue`)} accent={s.overdue ? '#dc2626' : '#16a34a'} icon={<Wallet className="h-4 w-4" />} />
           </div>
@@ -247,10 +270,15 @@ export default function CustomerFullFile({ id, reg }: { id: string; reg?: string
 
       {tab === 'shipments' && (
         <div className="space-y-4">
-          <h3 className="text-sm font-bold text-slate-900">{t(`أوامر النقل (${d.orders.length})`, `Transport orders (${d.orders.length})`)}</h3>
-          <Table cols={T.orders} rows={d.orders} empty={t('لا أوامر نقل', 'No transport orders')} />
-          <h3 className="text-sm font-bold text-slate-900">{t(`بيانات المنصّة (${d.platform.length})`, `Platform manifests (${d.platform.length})`)}</h3>
-          <Table cols={T.platform} rows={d.platform} empty={t('لا بيانات', 'No manifests')} />
+          <div className="flex flex-wrap items-center gap-1.5">
+            {[['', t('الكلّ', 'All'), s.transport], ...Object.entries(s.bySource || {}).map(([k, n]) => [k, SRC[k] || k, n])].map(([k, label, n]) => (
+              <button key={String(k)} type="button" onClick={() => setSource(String(k))}
+                className={`rounded-full px-3 py-1 text-[12.5px] font-semibold ${source === k ? 'bg-slate-900 text-white' : 'bg-white text-slate-600 ring-1 ring-slate-200 hover:bg-slate-50'}`}>
+                {label} <span className="tabular-nums opacity-70">{Number(n).toLocaleString('en-US')}</span>
+              </button>
+            ))}
+          </div>
+          <Table cols={T.transport} rows={source ? d.transport.filter((x) => x.source === source) : d.transport} empty={t('لا أوامر نقل', 'No transport orders')} />
         </div>
       )}
       {tab === 'fleet' && <Table cols={T.loads} rows={d.loads} empty={t('لا حمولات أسطول', 'No fleet loads')} />}
@@ -288,12 +316,18 @@ export default function CustomerFullFile({ id, reg }: { id: string; reg?: string
         </div>
       )}
       {tab === 'portal' && (
+        <div className="space-y-3">
+        {/* Create, reset or disable the portal login here; it is the same account every section's customer page shows. */}
+        <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+          <PortalAccountCard source="crm_company" refId={String(m._id)} name={m.name} bare />
+        </div>
         <Table cols={[
           { key: 'email', label: t('البريد', 'Email') },
           { key: 'isActive', label: t('الحالة', 'State'), render: (r) => (r.isActive === false ? t('معطَّل', 'Disabled') : t('مفعَّل', 'Active')) },
           { key: 'lastLogin', label: t('آخر دخول', 'Last login'), render: (r) => day(r.lastLogin) },
           { key: 'createdAt', label: t('أُنشئ', 'Created'), render: (r) => day(r.createdAt) },
-        ]} rows={d.accounts} empty={t('لا حساب بوابة لهذا العميل؛ يُنشأ من صفحة العميل في أيّ قسم أو من صفحة المستخدمين.', 'No portal account; create one from the customer page in any section or from the users page.')} />
+        ]} rows={d.accounts} empty={t('لا حساب بوابة لهذا العميل بعد؛ أنشئه من البطاقة أعلاه.', 'No portal account yet; create it with the card above.')} />
+        </div>
       )}
     </div>
   );

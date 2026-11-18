@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+import 'package:printing/printing.dart';
+import '../ui/portal_account_card.dart';
 import '../services/api.dart';
 import '../services/lang.dart';
 import '../services/live.dart';
@@ -160,19 +162,38 @@ class _CustomerFileScreenState extends State<CustomerFileScreen> {
         ]),
       );
 
+  static String _sourceName(String k) => switch (k) {
+        'platform' => tr('المنصّة السابقة', 'Former platform'),
+        'orders' => tr('طلبات الشحنات', 'Shipment requests'),
+        'fleet' => tr('الأسطول', 'Fleet'),
+        _ => tr('التشغيل', 'Operations'),
+      };
+
+  bool _pdfBusy = false;
+  /// The branded PDF of the whole file, from the reporting engine (subject customerFile), all time.
+  Future<void> _pdf() async {
+    setState(() => _pdfBusy = true);
+    try {
+      final id = '${widget.id}${widget.reg == null ? '' : ':${widget.reg}'}';
+      final bytes = await Api.instance.getBytes('/api/reports/customerFile/${Uri.encodeComponent(id)}?from=&to=&lang=${Lang.instance.ar ? 'ar' : 'en'}&format=pdf');
+      await Printing.layoutPdf(onLayout: (_) async => bytes, name: 'customer-file');
+    } catch (e) {
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e is ApiException ? e.message : tr('تعذّر إصدار الملف', 'Could not generate the file'))));
+    }
+    if (mounted) setState(() => _pdfBusy = false);
+  }
+
   void _export() {
     final m = (_d!['master'] as Map);
     exportExcel(context, fileName: 'customer-file-${m['name']}', sheets: [
-      (tr('أوامر النقل', 'Orders'), [
-        ExportCol('رقم البوليصة', 'Waybill', (r) => r['waybillNumber'] ?? ''), ExportCol('التاريخ', 'Date', (r) => _day(r['pickupTime'] ?? r['createdAt'])),
-        ExportCol('من', 'From', (r) => r['fromCity'] ?? ''), ExportCol('إلى', 'To', (r) => r['toCity'] ?? ''), ExportCol('الحالة', 'Status', (r) => r['status'] ?? ''),
-        ExportCol('البيع', 'Sell', (r) => r['sellPrice'] ?? ''), ExportCol('الشراء', 'Buy', (r) => r['buyPrice'] ?? ''),
-      ], _list('orders')),
-      (tr('بيانات المنصّة', 'Platform'), [
-        ExportCol('رقم البيان', 'Manifest', (r) => r['reportNumber'] ?? ''), ExportCol('التاريخ', 'Date', (r) => _day(r['reportDate'])),
-        ExportCol('من', 'From', (r) => r['fromLocation'] ?? ''), ExportCol('إلى', 'To', (r) => r['toLocation'] ?? ''),
-        ExportCol('البيع', 'Sell', (r) => r['sellingValue'] ?? ''), ExportCol('الفاتورة', 'Invoice', (r) => r['totalInvoice'] ?? ''), ExportCol('المُحصَّل', 'Collected', (r) => r['collectedAmount'] ?? ''),
-      ], _list('platform')),
+      (tr('أوامر النقل', 'Transport orders'), [
+        ExportCol('الرقم', 'No.', (r) => r['number'] ?? ''), ExportCol('التاريخ', 'Date', (r) => _day(r['date'])),
+        ExportCol('المصدر', 'Source', (r) => tr('${r['sourceAr'] ?? ''}', '${r['sourceEn'] ?? ''}')),
+        ExportCol('من', 'From', (r) => r['from'] ?? ''), ExportCol('إلى', 'To', (r) => r['to'] ?? ''), ExportCol('الحالة', 'Status', (r) => r['status'] ?? ''),
+        ExportCol('اللوحة', 'Plate', (r) => r['plate'] ?? ''), ExportCol('البيع', 'Sell', (r) => r['sell'] ?? 0), ExportCol('الشراء', 'Buy', (r) => r['buy'] ?? 0),
+        ExportCol('رقم الفاتورة', 'Invoice no.', (r) => r['invoiceNumber'] ?? ''), ExportCol('المُحصَّل', 'Collected', (r) => r['collected'] ?? 0),
+        ExportCol('معاملة التخليص', 'Customs file', (r) => r['clearance'] ?? ''),
+      ], _list('transport')),
       (tr('الأسطول', 'Fleet'), [
         ExportCol('رقم البوليصة', 'Waybill', (r) => r['waybillNumber'] ?? ''), ExportCol('التاريخ', 'Date', (r) => _day(r['loadDate'] ?? r['createdAt'])),
         ExportCol('من', 'From', (r) => r['fromCity'] ?? ''), ExportCol('إلى', 'To', (r) => r['toCity'] ?? ''), ExportCol('الدخل', 'Income', (r) => r['price'] ?? ''),
@@ -205,7 +226,10 @@ class _CustomerFileScreenState extends State<CustomerFileScreen> {
     final accounts = _list('accounts');
     return AppScaffold(
       title: Text('${m['name']}'),
-      actions: [IconButton(tooltip: tr('تصدير الملف', 'Export file'), icon: const Icon(Icons.file_download_outlined), onPressed: _export)],
+      actions: [
+        IconButton(tooltip: tr('تصدير PDF', 'Export PDF'), icon: _pdfBusy ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2)) : const Icon(Icons.picture_as_pdf_outlined), onPressed: _pdfBusy ? null : _pdf),
+        IconButton(tooltip: tr('تصدير Excel', 'Export Excel'), icon: const Icon(Icons.file_download_outlined), onPressed: _export),
+      ],
       body: RefreshIndicator(
         onRefresh: _load,
         child: ListView(padding: const EdgeInsets.all(14), children: [
@@ -223,13 +247,16 @@ class _CustomerFileScreenState extends State<CustomerFileScreen> {
           GridView.count(
             crossAxisCount: 2, shrinkWrap: true, physics: const NeverScrollableScrollPhysics(), mainAxisSpacing: 8, crossAxisSpacing: 8, childAspectRatio: 1.45,
             children: [
-              _kpi(tr('الشحنات', 'Shipments'), fmtNum(inum(s['orders']) + inum(s['platform']) + inum(s['loads'])),
-                  tr('${s['orders']} أمر · ${s['platform']} بيان · ${s['loads']} حمولة', '${s['orders']} orders · ${s['platform']} manifests · ${s['loads']} loads'), T.navy, Icons.route_outlined),
-              _kpi(tr('إيراد النقل', 'Transport revenue'), _money(inum(s['ordersSell']) + inum(s['platformSell']) + inum(s['loadsIncome'])), '', T.info, Icons.local_shipping_outlined),
+              _kpi(tr('أوامر النقل', 'Transport orders'), fmtNum(s['transport']),
+                  [for (final e in ((s['bySource'] as Map?) ?? const {}).entries) '${_sourceName('${e.key}')} ${e.value}'].join(' · '), T.navy, Icons.route_outlined),
+              _kpi(tr('إيراد النقل', 'Transport revenue'), _money(s['transportSell']), tr('شراء ${_money(s['transportBuy'])}', 'buy ${_money(s['transportBuy'])}'), T.info, Icons.local_shipping_outlined),
               _kpi(tr('التخليص', 'Customs'), '${s['clearances']}', tr('${s['clearancesOpen']} مفتوحة · ربح ${_money(s['customsProfit'])}', '${s['clearancesOpen']} open · profit ${_money(s['customsProfit'])}'), T.violet, Icons.directions_boat_outlined),
               _kpi(tr('المتبقّي للتحصيل', 'Outstanding'), _money(s['outstanding']), tr('${s['overdue']} فاتورة متأخرة', '${s['overdue']} overdue'), inum(s['overdue']) > 0 ? T.danger : T.success, Icons.account_balance_wallet_outlined),
             ],
           ),
+          const SizedBox(height: 10),
+          // Create, reset or disable the customer's portal login here; it is the same account every section shows.
+          PortalAccountCard(source: 'crm_company', refId: '${m['_id']}', name: '${m['name']}'),
           const SizedBox(height: 10),
           AppCard(child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
             Text(tr('بطاقة العميل', 'Customer card'), style: const TextStyle(fontWeight: FontWeight.w800)),
@@ -242,10 +269,9 @@ class _CustomerFileScreenState extends State<CustomerFileScreen> {
             _line(tr('حساب البوابة', 'Portal account'), accounts.isEmpty ? tr('لا يوجد', 'None') : accounts.map((a) => a['email']).join('، ')),
             _line(tr('آخر نشاط', 'Last activity'), _day(s['lastActivity'])),
           ])),
-          _section(tr('أوامر النقل', 'Transport orders'), Icons.route_outlined, _list('orders'),
-              (r) => _line('#${r['waybillNumber'] ?? '—'} · ${_day(r['pickupTime'] ?? r['createdAt'])}', '${r['fromCity'] ?? ''} ← ${r['toCity'] ?? ''}', _money(r['sellPrice']))),
-          _section(tr('بيانات المنصّة', 'Platform manifests'), Icons.receipt_long_outlined, _list('platform'),
-              (r) => _line('#${r['reportNumber'] ?? '—'} · ${_day(r['reportDate'])}', '${r['fromLocation'] ?? ''} ← ${r['toLocation'] ?? ''}', _money(r['sellingValue']))),
+          // One list of transport orders, each once, with where it came from (the old platform, shipment requests or the fleet).
+          _section(tr('أوامر النقل', 'Transport orders'), Icons.route_outlined, _list('transport'),
+              (r) => _line('#${r['number'] ?? '—'} · ${_day(r['date'])}', '${r['from'] ?? ''} ← ${r['to'] ?? ''} · ${tr('${r['sourceAr'] ?? ''}', '${r['sourceEn'] ?? ''}')}', _money(r['sell']))),
           _section(tr('حمولات الأسطول', 'Fleet loads'), Icons.local_shipping_outlined, _list('loads'),
               (r) => _line('#${r['waybillNumber'] ?? '—'} · ${_day(r['loadDate'] ?? r['createdAt'])}', '${r['fromCity'] ?? ''} ← ${r['toCity'] ?? ''}', _money(r['price']))),
           _section(tr('معاملات التخليص', 'Clearances'), Icons.directions_boat_outlined, _list('customs'), (r) {

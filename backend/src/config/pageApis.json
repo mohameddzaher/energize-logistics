@@ -39,7 +39,8 @@
     "/system/customers": {
       "apis": [
         "/api/customer-hub/file",
-        "/api/customer-hub/files"
+        "/api/customer-hub/files",
+        "/api/partners/account"
       ],
       "wildcard": false
     },

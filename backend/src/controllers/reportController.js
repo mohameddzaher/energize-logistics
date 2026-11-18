@@ -38,6 +38,8 @@ const SUBJECT_SECTIONS = {
   shipment: ['Shipment Orders', 'Accounting', 'Collections'],
   carrier: ['Shipment Orders', 'Procurement', 'Accounting'],
   rider: ['B2C', 'HR'],
+  // The complete customer file checks its own roles in the build (services/customerFile.canSeeFullFile).
+  customerFile: null,
 };
 
 const { getOverride } = require('../utils/permissions');

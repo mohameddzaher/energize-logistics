@@ -2544,6 +2544,8 @@ const SUBJECTS = [
   { key: 'shipment', ar: 'شحنة', en: 'Shipment', icon: 'file', options: shipmentOptions, build: buildShipmentReport, searchable: true },
   { key: 'carrier', ar: 'ناقل (مورّد شاحنات)', en: 'Carrier', icon: 'store', options: carrierOptions, build: buildCarrierReport, searchable: true },
   { key: 'rider', ar: 'مندوب نقل خفيف', en: 'Rider', icon: 'user', options: riderOptions, build: buildRiderReport, searchable: true },
+  // The complete customer file (services/customerFile): top management only, checked inside the build. Hidden from the report centre list; printed from the file page.
+  { key: 'customerFile', ar: 'الملف الشامل للعميل', en: 'Complete customer file', icon: 'building', options: (q) => require('./customerFile').reportOptions(q), build: (...a) => require('./customerFile').buildReport(...a), searchable: true, userScoped: true, hidden: true },
 ];
 
 /**
@@ -2579,6 +2581,6 @@ const getSubject = (key) => {
   // Cleaning happens here, not at each caller: reports, the assistant and the phone all build with the same function, so cleaning at one caller would make the paper differ from the screen.
   return { ...sub, build: async (...args) => pruneEmpty(await sub.build(...args)) };
 };
-const subjectMeta = () => SUBJECTS.map((s) => ({ key: s.key, ar: s.ar, en: s.en, icon: s.icon, searchable: s.searchable }));
+const subjectMeta = () => SUBJECTS.filter((s) => !s.hidden).map((s) => ({ key: s.key, ar: s.ar, en: s.en, icon: s.icon, searchable: s.searchable }));
 
 module.exports = { SUBJECTS, SECTION_REPORTS, getSubject, subjectMeta, resolvePeriod, PERIOD_PRESETS, COMPANY };

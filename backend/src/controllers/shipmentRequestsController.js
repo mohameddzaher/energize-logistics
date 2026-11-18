@@ -295,7 +295,7 @@ exports.list = async (req, res) => {
     const approval = String(req.query.approval || '');
     if (approval === 'approved') and.push(APPROVED);
     else if (['pending', 'returned', 'rejected'].includes(approval)) and.push({ approvalStatus: approval });
-    // The day filter reads the wanted day («الموعد الفعلي»), not the creation date.
+    // The day filter reads the wanted day (actual load day), not the creation date.
     if (from || to) {
       const r = {};
       if (from) r.$gte = String(from).slice(0, 10);

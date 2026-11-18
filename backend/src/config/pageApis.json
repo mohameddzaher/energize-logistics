@@ -36,6 +36,13 @@
       ],
       "wildcard": false
     },
+    "/system/customers": {
+      "apis": [
+        "/api/customer-hub/file",
+        "/api/customer-hub/files"
+      ],
+      "wildcard": false
+    },
     "/system/top-management/activity": {
       "apis": [
         "/api/top-management/activity"
@@ -75,6 +82,7 @@
     },
     "/system/operations": {
       "apis": [
+        "/api/customer-hub/file-access",
         "/api/customer-hub/presence",
         "/api/customer-registry",
         "/api/customer-registry/options",
@@ -132,6 +140,7 @@
     },
     "/system/operations/customers": {
       "apis": [
+        "/api/customer-hub/file-access",
         "/api/customer-hub/presence",
         "/api/customer-registry",
         "/api/customer-registry/full",
@@ -200,6 +209,20 @@
         "/api/jp/projects",
         "/api/jp/tasks",
         "/api/lookups/types"
+      ],
+      "wildcard": false
+    },
+    "/system/operations/customers-archive": {
+      "apis": [
+        "/api/customer-archive",
+        "/api/vendor-archive"
+      ],
+      "wildcard": false
+    },
+    "/system/operations/vendors-archive": {
+      "apis": [
+        "/api/customer-archive",
+        "/api/vendor-archive"
       ],
       "wildcard": false
     },
@@ -329,6 +352,7 @@
         "/api/collections-dept/ledger/invoices/filters",
         "/api/collections-dept/ledger/team/assign",
         "/api/collections-dept/parties",
+        "/api/customer-hub/file-access",
         "/api/customer-hub/presence",
         "/api/customs-clearance",
         "/api/customs-clearance/parties",
@@ -349,6 +373,7 @@
         "/api/collections-dept/ledger/invoices/filters",
         "/api/collections-dept/ledger/team/assign",
         "/api/collections-dept/parties",
+        "/api/customer-hub/file-access",
         "/api/customer-hub/presence",
         "/api/customs-clearance",
         "/api/customs-clearance/parties",
@@ -527,6 +552,7 @@
     "/system/shipment-orders": {
       "apis": [
         "/api/auth/me/prefs",
+        "/api/customer-hub/file-access",
         "/api/customer-hub/presence",
         "/api/customer-registry",
         "/api/customer-registry/options",
@@ -604,6 +630,7 @@
     },
     "/system/shipment-orders/customers": {
       "apis": [
+        "/api/customer-hub/file-access",
         "/api/customer-hub/presence",
         "/api/customer-registry",
         "/api/customer-registry/full",
@@ -850,6 +877,7 @@
     "/system/fleet": {
       "apis": [
         "/api/branches",
+        "/api/customer-hub/file-access",
         "/api/customer-hub/presence",
         "/api/customs-clearance",
         "/api/customs-clearance/parties",
@@ -1017,6 +1045,7 @@
     },
     "/system/fleet/customers": {
       "apis": [
+        "/api/customer-hub/file-access",
         "/api/customer-hub/presence",
         "/api/fleet/arrivals",
         "/api/fleet/customers",
@@ -1045,6 +1074,7 @@
     "/system/customs": {
       "apis": [
         "/api/collections-dept/invoices",
+        "/api/customer-hub/file-access",
         "/api/customer-hub/presence",
         "/api/customs-clearance",
         "/api/customs-clearance/:id",
@@ -2559,6 +2589,7 @@
         "/api/crm/deals",
         "/api/crm/options",
         "/api/crm/tasks",
+        "/api/customer-hub/file-access",
         "/api/customer-hub/presence",
         "/api/customs-clearance",
         "/api/customs-clearance/parties",
@@ -2659,6 +2690,7 @@
     },
     "/system/sales/customers": {
       "apis": [
+        "/api/customer-hub/file-access",
         "/api/customer-hub/presence",
         "/api/customer-registry",
         "/api/customer-registry/full",

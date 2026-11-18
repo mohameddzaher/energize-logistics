@@ -41,9 +41,11 @@ export default function CustomerShipments({ ar }: { ar: boolean }) {
   const filtered = useMemo(() => {
     const t = q.trim().toLowerCase();
     return items.filter((x) => (!from || x.date >= from) && (!to || x.date <= to) && (!dest || x.to === dest)
-      && (!t || `${x.number} ${x.from} ${x.to} ${x.driver} ${x.plate} ${x.truck}`.toLowerCase().includes(t)));
+      && (!t || `${x.number} ${x.from} ${x.to} ${x.driver} ${x.plate} ${x.truck} ${x.clearance || ''}`.toLowerCase().includes(t)));
   }, [items, q, from, to, dest]);
   useEffect(() => { setShown(PAGE); }, [q, from, to, dest]);
+  // The customs column appears only for a customer whose shipments carry customs files.
+  const withCustoms = useMemo(() => items.some((x) => x.clearance), [items]);
 
   const columns: ExportColumn[] = [
     { header: tx('Shipment no.', 'رقم الشحنة'), key: 'number', width: 14 },
@@ -54,6 +56,7 @@ export default function CustomerShipments({ ar }: { ar: boolean }) {
     { header: tx('Plate', 'اللوحة'), key: 'plate', width: 14 },
     { header: tx('Driver', 'السائق'), key: 'driver', width: 24 },
     { header: tx('Cargo', 'نوع الحمولة'), key: 'cargo', width: 16 },
+    { header: tx('Customs file', 'معاملة التخليص'), key: 'clearance', width: 18 },
   ];
   const scope = exportScopeLabels(ar);
   const name = tx('My shipments', 'شحناتي');
@@ -90,7 +93,7 @@ export default function CustomerShipments({ ar }: { ar: boolean }) {
         <ScrollX>
           <table className="w-full min-w-[860px] text-sm">
             <thead><tr className="bg-[#0b1f3a] text-[12px] text-white/80">
-              {[tx('Shipment no.', 'رقم الشحنة'), tx('Date', 'التاريخ'), tx('From', 'من'), tx('To', 'إلى'), tx('Truck', 'الشاحنة'), tx('Plate', 'اللوحة'), tx('Driver', 'السائق')].map((h) => (
+              {[tx('Shipment no.', 'رقم الشحنة'), tx('Date', 'التاريخ'), tx('From', 'من'), tx('To', 'إلى'), tx('Truck', 'الشاحنة'), tx('Plate', 'اللوحة'), tx('Driver', 'السائق'), ...(withCustoms ? [tx('Customs file', 'معاملة التخليص')] : [])].map((h) => (
                 <th key={h} className="whitespace-nowrap px-4 py-3 text-start font-semibold">{h}</th>
               ))}
             </tr></thead>
@@ -105,6 +108,7 @@ export default function CustomerShipments({ ar }: { ar: boolean }) {
                   <td className="whitespace-nowrap px-4 py-3 text-slate-600">{s.truck || '—'}</td>
                   <td className="whitespace-nowrap px-4 py-3 text-slate-600">{s.plate || '—'}</td>
                   <td className="whitespace-nowrap px-4 py-3 text-slate-600">{s.driver || '—'}</td>
+                  {withCustoms && <td className="whitespace-nowrap px-4 py-3">{s.clearance ? <span className="rounded-full bg-violet-50 px-2 py-0.5 text-[12px] font-semibold text-violet-700 ring-1 ring-violet-200">{s.clearance}</span> : <span className="text-slate-300">—</span>}</td>}
                 </tr>
               ))}
               {!loading && !filtered.length && <tr><td colSpan={7} className="px-4 py-10 text-center text-slate-400">{tx('No shipments', 'لا توجد شحنات')}</td></tr>}

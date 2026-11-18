@@ -1559,7 +1559,8 @@ exports.listCustomers = async (req, res) => {
     const rows = await customerRows(req);
     // Default hides disabled ones, unless explicitly requested or filtered by status.
     const all = req.query.includeInactive === '1' || req.query.includeInactive === 'true' || !!req.query.state;
-    const base = all ? rows : rows.filter((c) => c.isActive !== false);
+    // Archived customers are in the customers archive, never in this list.
+    const base = (all ? rows : rows.filter((c) => c.isActive !== false)).filter((c) => !c.archivedAt);
     res.json({ customers: applyCustomerFilters(base, req.query), total: base.length });
   } catch (error) {
     console.error('fleet listCustomers error:', error);
@@ -1642,24 +1643,11 @@ exports.updateCustomer = async (req, res) => {
 /** Removal is deactivation, not deletion: its past loads reference it and deleting leaves dangling files. `?purge=1` is a real delete allowed only when it has no loads at all (a customer entered by mistake), so nothing is orphaned. */
 exports.deleteCustomer = async (req, res) => {
   try {
-    const purge = req.query.purge === '1' || req.query.purge === 'true';
-    const customer = await FleetCustomer.findById(req.params.id);
-    if (!customer) return res.status(404).json({ message: 'Customer not found' });
-
-    if (purge) {
-      const n = await FleetShipment.countDocuments({ customer: customer._id });
-      if (n) return res.status(400).json({ message: `لا يُحذف نهائيًّا: له ${n} حمولة. عطِّله بدل ذلك.` });
-      await FleetCustomer.deleteOne({ _id: customer._id });
-      await logAudit({ user: req.user, action: 'delete', entity: 'FleetCustomer', entityId: customer._id, changes: { name: customer.name, purge: true }, ipAddress: req.ip });
-      emit('fleet:customers', {});
-      return res.json({ message: 'Customer deleted' });
-    }
-
-    customer.isActive = false;
-    await customer.save();
-    await logAudit({ user: req.user, action: 'delete', entity: 'FleetCustomer', entityId: customer._id, changes: { name: customer.name }, ipAddress: req.ip });
+    const out = await require('../services/customerArchive').archive('fleet', req.params.id, req.user);
+    if (!out) return res.status(404).json({ message: 'Customer not found' });
+    await logAudit({ user: req.user, action: 'archive', entity: 'FleetCustomer', entityId: req.params.id, changes: out, ipAddress: req.ip });
     emit('fleet:customers', {});
-    res.json({ message: 'Customer removed' });
+    res.json({ archived: true, message: 'نُقل العميل إلى أرشيف العملاء، ويُستعاد منه أو يُحذف نهائيًّا' });
   } catch (error) {
     console.error('fleet deleteCustomer error:', error);
     res.status(500).json({ message: 'Failed to remove the customer' });
@@ -1669,8 +1657,11 @@ exports.deleteCustomer = async (req, res) => {
 /** Reactivate a disabled customer, because deactivation is a decision that gets reviewed. */
 exports.restoreCustomer = async (req, res) => {
   try {
+    const row = await FleetCustomer.findById(req.params.id).lean();
+    if (!row) return res.status(404).json({ message: 'Customer not found' });
+    // An archived customer comes back in every section at once.
+    if (row.archivedAt) await require('../services/customerArchive').restore(row.crmCompany || null, row.crmCompany ? {} : { reg: 'fleet', id: row._id });
     const customer = await FleetCustomer.findByIdAndUpdate(req.params.id, { isActive: true }, { new: true });
-    if (!customer) return res.status(404).json({ message: 'Customer not found' });
     emit('fleet:customers', {});
     res.json({ customer });
   } catch (error) {

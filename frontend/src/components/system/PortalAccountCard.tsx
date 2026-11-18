@@ -7,6 +7,7 @@ import { useAuth } from '@/context/AuthContext';
 import { useLanguage } from '@/context/LanguageContext';
 import { useDialog } from '@/components/system/DialogProvider';
 import api from '@/lib/api';
+import { useSocket } from '@/hooks/useSocket';
 import {
   KeyRound, Mail, ShieldCheck, ShieldOff, Trash2, Eye, EyeOff, Loader2, UserPlus, ExternalLink,
   Copy, Check, Link2, Clock, CalendarPlus, Wand2, X, Building2,
@@ -105,6 +106,8 @@ export default function PortalAccountCard({
     setLoading(false);
   }, [source, refId]);
   useEffect(() => { load(); }, [load]);
+  // An account made from the users page or another section's page for the same customer shows here at once.
+  useSocket('partner:account', load);
 
   const create = async () => {
     if (!form.email.trim() || form.password.length < 8) {

@@ -1,5 +1,6 @@
 'use client';
 // Customs clearance party file (a customer or a shipping agent). How much we worked with them and how much we earned used to mean exporting the whole table and filtering in Excel. Here: their figures, monthly growth, who they work with, and all their transactions in detail.
+import FullFileLink from '@/components/customers/FullFileLink';
 import { useState, useEffect, useCallback } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { useLanguage } from '@/context/LanguageContext';
@@ -116,6 +117,7 @@ export default function CustomsPartyProfile() {
       <PageHeader icon={isAgent ? <Ship className="w-6 h-6 text-[#f37121]" /> : <Users className="w-6 h-6 text-[#f37121]" />}
         title={p.name}
         subtitle={isAgent ? t('وكيل شحن', 'Shipping agent') : p.kind === 'carrier' ? t('ناقل', 'Carrier') : t('عميل تخليص', 'Customs customer')}>
+        {p.kind === 'customer' && <FullFileLink id={String(p._id)} reg="customs" />}
         <button type="button" onClick={() => router.push(isAgent ? '/system/customs/agents' : p.kind === 'carrier' ? '/system/customs/carriers' : '/system/customs/customers')}
           className="flex items-center gap-1.5 px-3 py-2 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 text-sm">
           <ArrowRight className="w-4 h-4" /> {t('رجوع', 'Back')}

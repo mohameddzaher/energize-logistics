@@ -144,6 +144,8 @@ import '../screens/vehicles_suite.dart';
 import '../screens/fleet_driver_expenses.dart';
 
 import '../screens/fleet_assign.dart';
+import '../screens/customer_archive.dart';
+import '../screens/customer_file.dart';
 
 // Super admin and admin see the whole system.
 const _top = ['super_admin', 'admin', 'it_manager', 'it_team_leader', 'it_specialist', 'business_consultant'];
@@ -255,8 +257,11 @@ List<AppSection> sectionsFor(AuthProvider auth) {
   final all = <AppSection>[
     AppSection(
       key: 'Top Management', arTitle: 'الإدارة العليا', enTitle: 'Top Management', icon: Icons.workspace_premium_outlined,
-      roles: const ['super_admin', 'admin', 'it_manager', 'it_team_leader', 'it_specialist', 'business_consultant'],
+      // cfo, moderator and the collections manager reach this section for the complete customer files only.
+      roles: const ['super_admin', 'admin', 'it_manager', 'it_team_leader', 'it_specialist', 'business_consultant', 'cfo', 'moderator', 'collections_manager'],
       pages: [
+        AppPage('ملفات العملاء الشاملة', 'Customer Files', Icons.folder_shared_outlined, (c) => const CustomerFilesScreen(), path: '/system/customers'),
+        if (_top.contains(role) || auth.user?['isTopManagement'] == true || auth.user?['isChairman'] == true) ...[
         AppPage('طلبات الإجازات', 'Leave Requests', Icons.event_available_outlined, (c) => TopLeavesScreen(canDecide: auth.user?['isTopManagement'] == true || _top.contains(role)), path: '/system/top-management'),
         AppPage('طلبات الموظفين', 'Staff Requests', Icons.mark_email_unread_outlined, (c) => const IncomingRequestsScreen(target: 'Top Management', title: ('طلبات الموظفين — الإدارة العليا', 'Staff Requests — Top Management')), path: '/system/top-management/requests'),
         // The chairman's office: every leave and staff request for information; top management's approval is final.
@@ -265,6 +270,7 @@ List<AppSection> sectionsFor(AuthProvider auth) {
           AppPage('اعتمادات رئيس مجلس الإدارة — طلبات الموظفين', 'Chairman’s Approvals — Staff Requests', Icons.mark_email_read_outlined, (c) => const TopRequestsScreen(base: '/api/chairman'), path: '/system/chairman'),
         ],
         AppPage('نشاط الشركة المباشر', 'Live Company Activity', Icons.timeline_outlined, (c) => const TopActivityScreen(), path: '/system/top-management/activity'),
+        ],
       ],
     ),
     AppSection(
@@ -287,6 +293,11 @@ List<AppSection> sectionsFor(AuthProvider auth) {
         // Unifying payment type per customer: with the web roles (layout.tsx); the write is checked in the screen.
         if (const ['super_admin', 'it_manager', 'it_team_leader', 'it_specialist', 'business_consultant', 'admin', 'employee', 'operations_manager', 'operations_team_leader', 'operations_staff', 'moderator', 'cfo', 'accounting_manager', 'accounting_team_leader', 'accountant', 'collections_manager', 'collections_team_leader', 'collections_staff'].contains(role))
           AppPage('أنواع الدفع', 'Payment Types', Icons.payments_outlined, (c) => const OpsPaymentTypesScreen(), path: '/system/operations/payment-types'),
+        // Customers and vendors deleted anywhere (backend services/customerArchive).
+        if (const ['super_admin', 'admin', 'it_manager', 'it_team_leader', 'it_specialist', 'business_consultant', 'cfo', 'moderator', 'operations_manager', 'operations_team_leader', 'vendors_manager', 'vendors_team_leader', 'collections_manager'].contains(role)) ...[
+          AppPage('أرشيف العملاء', 'Customers Archive', Icons.archive_outlined, (c) => const ArchiveScreen(), path: '/system/operations/customers-archive'),
+          AppPage('أرشيف الموردين', 'Vendors Archive', Icons.inventory_2_outlined, (c) => const ArchiveScreen(vendors: true), path: '/system/operations/vendors-archive'),
+        ],
         AppPage('التواصل مع العملاء', 'Customer Communication', Icons.forum_outlined, (c) => const CustomerRequestsScreen(), path: '/system/operations/customer-requests'),
         AppPage('الشكاوى', 'Complaints', Icons.report_outlined, (c) => const SectionWorkScreen(section: 'operations', complaints: true), path: '/system/operations/complaints'),
         AppPage('تقييم الأداء', 'KPIs', Icons.leaderboard_outlined, (c) => const TeamBoardScreen(section: 'Operations'), path: '/system/operations/kpis'),

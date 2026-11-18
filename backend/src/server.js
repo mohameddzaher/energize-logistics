@@ -262,6 +262,9 @@ app.use('/api/ops-board', require('./routes/opsBoard'));
 app.use('/api/operations-private', authenticate, sectionGate('Operations'), require('./routes/operationsPrivate'));
 // Customer requests from the portal, answered by Operations (the customer communication page).
 app.use('/api/customer-requests', authenticate, sectionGate('Operations'), require('./routes/customerRequests'));
+// Customers and vendors deleted anywhere: the archive, owned by Operations (services/customerArchive).
+app.use('/api/customer-archive', authenticate, sectionGate('Operations'), require('./routes/archive').customers);
+app.use('/api/vendor-archive', authenticate, sectionGate('Operations'), require('./routes/archive').vendors);
 app.use('/api/branches', branchRoutes);
 // Two registers written by more than one section: they are stamped with the permission grant and nobody is rejected (see stampSection), so a custom role granted operations edit can save in them, and purchases keep their previous access.
 app.use('/api/vendors', authenticate, sectionGate.stampSection('Operations', 'Procurement'), vendorRoutes);
@@ -533,7 +536,9 @@ if (!DOCS_ONLY) connectDB().then(async () => {
     // A customer created by a direct write is linked to its parent customer hourly (services/customerHub).
     // Shipment-request claims last one hour; the sweep releases those nobody reads.
     try { require('./controllers/shipmentRequestsController').startClaimSweep(); } catch (e) { console.error('[sr-claims] start:', e.message); }
-    // Requests from before «الموعد الفعلي» get their creation day as the wanted day.
+    // Portal accounts get their customer's shared master, so every customers page finds them.
+    require('./controllers/partnerController').backfillPartnerMasters().catch((e) => console.error('[partners] backfill:', e.message));
+    // Requests from before the actual load day get their creation day as the wanted day.
     require('./controllers/shipmentRequestsController').backfillDueDay().catch((e) => console.error('[sr-due] backfill:', e.message));
     try { require('./services/customerHub').startSweep(); } catch (e) { console.error('[customerHub] start:', e.message); }
     // Exports interrupted by a deploy are resumed, so no request stays in progress forever.

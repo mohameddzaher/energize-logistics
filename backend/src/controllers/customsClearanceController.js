@@ -913,7 +913,7 @@ exports.listParties = async (req, res) => {
     // `kind=all`: all parties with their roles, to pick a contract owner from one list.
     const all = req.query.kind === 'all';
     const kind = PARTY_KINDS.includes(req.query.kind) ? req.query.kind : 'customer';
-    const filter = all ? {} : { kind };
+    const filter = all ? { archivedAt: null } : { kind, archivedAt: null };
     if (req.query.active !== 'all') filter.isActive = { $ne: false };
     const q = String(req.query.q || '').trim();
     if (q) {
@@ -1017,6 +1017,12 @@ exports.deleteParty = async (req, res) => {
   try {
     const party = await CustomsParty.findById(req.params.id);
     if (!party) return res.status(404).json({ message: 'غير موجود' });
+    // A customer is one customer across sections: deleting it archives it everywhere (services/customerArchive).
+    if (party.kind === 'customer') {
+      await require('../services/customerArchive').archive('customs', party._id, req.user);
+      cache.clear('customs:');
+      return res.json({ archived: true, message: 'نُقل العميل إلى أرشيف العملاء، ويُستعاد منه أو يُحذف نهائيًّا' });
+    }
     const link = party.kind === 'agent' ? 'agentParty' : 'customerParty';
     const used = await CustomsClearance.countDocuments({ [link]: party._id });
     // A party with history is not deleted: deleting would cut its transactions from their file. It is deactivated, so it leaves lists while its history stays readable.

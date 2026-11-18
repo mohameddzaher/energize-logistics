@@ -5,6 +5,7 @@ import 'package:url_launcher/url_launcher.dart';
 import '../services/api.dart';
 import '../services/lang.dart';
 import '../services/live.dart';
+import 'customer_file.dart' show FullFileButton;
 import '../ui/app_scaffold.dart';
 import '../ui/export_sheet.dart';
 import '../ui/portal_account_card.dart';
@@ -252,6 +253,7 @@ class _CollectionsPartyScreenState extends State<CollectionsPartyScreen> {
     return AppScaffold(
       title: Text(_s(p, 'name')),
       actions: [
+        if (customer) FullFileButton(id: widget.id, reg: 'collections'),
         if (customer && collectionsCanEdit)
           IconButton(
             tooltip: tr('إرسال كشف حساب', 'Email a statement'),

@@ -1,4 +1,5 @@
 'use client';
+import { archiveConfirmText, archivedText } from '@/lib/customerArchive';
 import { useSearchParams } from 'next/navigation';
 /** Contract customers: the other party of every deal. Previously the department had a full vendor register but customers were only rows in department contracts searched by name, so there was no answer to whether a customer's contract is signed and until when. Contract-specific fields are written here; the rest is read from its source on every open (shipments and value from operations statements, credit term and collector from collections, uploaded contracts from department contracts), because a copied number goes stale within a day. */
 import { useState, useEffect, useCallback, useMemo, useRef, Suspense, type ReactNode } from 'react';
@@ -127,9 +128,8 @@ function ContractCustomersInner() {
   };
 
   const remove = async (c: ContractCustomer) => {
-    if (!(await confirm(t(`حذف «${c.name}» من سجل العملاء؟ كشوفُه وعقودُه لا تُمسّ.`,
-      `Delete “${c.name}”? Their reports and contracts are untouched.`)))) return;
-    try { await api.delete(`/api/contracts/customers/${c._id}`); load(); }
+    if (!(await confirm(archiveConfirmText(c.name, ar)))) return;
+    try { await api.delete(`/api/contracts/customers/${c._id}`); notify(archivedText(ar), 'success'); load(); }
     catch (e: any) { notify(e?.message || t('تعذّر الحذف', 'Could not delete'), 'error'); }
   };
 

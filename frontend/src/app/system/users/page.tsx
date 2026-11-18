@@ -265,6 +265,8 @@ export default function UsersPage() {
   useSocket('user:deleted', fetchUsers);
   // Branches set on the shipment-orders permissions page show here at once (same field: User.shipmentBranches).
   useSocket('shipmentOrders:branchAccess', fetchUsers);
+  // A customer login made from a customer page appears here at once.
+  useSocket('partner:account', fetchUsers);
   // An open edit form follows a branch change made elsewhere, unless its branches were already changed here.
   useEffect(() => {
     if (!selectedUser) return;

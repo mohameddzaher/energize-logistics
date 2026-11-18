@@ -783,10 +783,10 @@ exports.updateCustomer = async (req, res) => {
 
 exports.deleteCustomer = async (req, res) => {
   try {
-    const customer = await ContractCustomer.findByIdAndDelete(req.params.id);
-    if (!customer) return res.status(404).json({ message: 'العميل غير موجود' });
+    const out = await require('../services/customerArchive').archive('contracts', req.params.id, req.user);
+    if (!out) return res.status(404).json({ message: 'العميل غير موجود' });
     emit();
-    res.json({ message: 'حُذف العميل' });
+    res.json({ archived: true, message: 'نُقل العميل إلى أرشيف العملاء، ويُستعاد منه أو يُحذف نهائيًّا' });
   } catch (e) {
     sendMongooseError(res, e, e.message);
   }

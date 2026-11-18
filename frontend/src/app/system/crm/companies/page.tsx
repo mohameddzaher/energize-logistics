@@ -1,4 +1,5 @@
 'use client';
+import { archiveConfirmText, archivedText } from '@/lib/customerArchive';
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { useDialog } from '@/components/system/DialogProvider';
 import { useRouter } from 'next/navigation';
@@ -132,8 +133,8 @@ export default function CrmCompaniesPage() {
   };
 
   const remove = async (c: CrmCompany) => {
-    if (!(await confirm(ar ? `حذف ${companyName(c, lang)}؟ سيتم حذف كل جهات الاتصال والصفقات المرتبطة.` : `Delete ${companyName(c, lang)}? This also removes its contacts, deals, tasks and activities.`))) return;
-    try { await api.delete(`/api/crm/companies/${c._id}`); load(); } catch (e: any) { notify(e.message, 'error'); }
+    if (!(await confirm(archiveConfirmText(companyName(c, lang), ar)))) return;
+    try { await api.delete(`/api/crm/companies/${c._id}`); notify(archivedText(ar), 'success'); load(); } catch (e: any) { notify(e.message, 'error'); }
   };
 
   const rate = async (c: CrmCompany, rating: number) => {

@@ -1982,15 +1982,12 @@ exports.updateCustomer = async (req, res) => {
 
 exports.deleteCustomer = async (req, res) => {
   try {
-    // Soft — their orders keep the snapshot name either way, but keeping the
-    // row means the trial's data can be resurrected while it is still a trial.
-    const customer = await ShipmentOrderCustomer.findById(req.params.id);
-    if (!customer) return res.status(404).json({ message: 'Customer not found' });
-    customer.isActive = false;
-    await customer.save();
-    await logAudit({ user: req.user, action: 'delete', entity: 'ShipmentOrderCustomer', entityId: customer._id, changes: { name: customer.name }, ipAddress: req.ip });
+    // Deleting archives the customer in every section (services/customerArchive); only the archive deletes for good.
+    const out = await require('../services/customerArchive').archive('shipment', req.params.id, req.user);
+    if (!out) return res.status(404).json({ message: 'Customer not found' });
+    await logAudit({ user: req.user, action: 'archive', entity: 'ShipmentOrderCustomer', entityId: req.params.id, changes: out, ipAddress: req.ip });
     emit('shipmentOrders:customers', {});
-    res.json({ message: 'Customer removed' });
+    res.json({ archived: true, message: 'نُقل العميل إلى أرشيف العملاء، ويُستعاد منه أو يُحذف نهائيًّا' });
   } catch (error) {
     res.status(500).json({ message: 'Failed to remove the customer' });
   }
@@ -2169,10 +2166,11 @@ exports.updateSupplier = async (req, res) => {
 
 exports.deleteSupplier = async (req, res) => {
   try {
-    const supplier = await ShipmentOrderSupplier.findByIdAndUpdate(req.params.id, { isActive: false }, { new: true });
-    if (!supplier) return res.status(404).json({ message: 'Supplier not found' });
+    // Vendors go to the vendors archive; deleting from there is permanent.
+    const out = await require('../services/customerArchive').archiveVendor(req.params.id, req.user);
+    if (!out) return res.status(404).json({ message: 'Supplier not found' });
     emit('shipmentOrders:fleet', {});
-    res.json({ message: 'Supplier removed' });
+    res.json({ archived: true, message: 'نُقل المورّد إلى أرشيف الموردين' });
   } catch (error) {
     res.status(500).json({ message: 'Failed to remove the supplier' });
   }

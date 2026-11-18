@@ -23,7 +23,7 @@ const SECTIONS = [
   {
     key: 'Operations',
     // Operations workflows section. The workflows API had no owning section, so the permission matrix could neither grant nor deny it; a role line in the route alone guarded it. Adding it was verified not to remove access from anyone: roles with operations denied are not in the route's role list already.
-    apiPrefixes: ['/api/wallet', '/api/workflows', '/api/customer-requests'],
+    apiPrefixes: ['/api/wallet', '/api/workflows', '/api/customer-requests', '/api/customer-archive', '/api/vendor-archive'],
     // Accounting and collections are included: custody is a financial entry that is reviewed and closed, and the section guard runs before the route's role list, so leaving them out returns 403 even when the endpoint is open to them.
     defaultRoles: ['admin', 'it_manager', 'it_team_leader', 'it_specialist', 'employee', 'operations_manager', 'operations_team_leader', 'operations_staff', 'moderator', 'procurement_manager', 'procurement_team_leader', 'procurement_staff', 'cfo', 'accounting_manager', 'accounting_team_leader', 'accountant', 'collections_manager', 'collections_team_leader', 'collections_staff',
       // Vendors manager and team leader: operations rights on the workflow (owner's rule).

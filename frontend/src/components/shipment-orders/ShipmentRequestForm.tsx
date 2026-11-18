@@ -47,7 +47,7 @@ export default function ShipmentRequestForm({ editId, onDone }: { editId?: strin
   const [customerId, setCustomerId] = useState('');
   const [salesRep, setSalesRep] = useState('');
   const [trucks, setTrucks] = useState(1);
-  // «الموعد الفعلي»: the day the load is wanted. Today unless sales picks a later day; the working board shows it on that day.
+  // the actual load day: the day the load is wanted. Today unless sales picks a later day; the working board shows it on that day.
   const [dueDay, setDueDay] = useState(riyadhToday());
   const [loaded, setLoaded] = useState<ShipmentRequest | null>(null);
   const [loading, setLoading] = useState(true);

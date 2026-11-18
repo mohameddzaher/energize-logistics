@@ -1,4 +1,5 @@
 'use client';
+import { archiveConfirmText, archivedText } from '@/lib/customerArchive';
 import { EmailList } from '@/components/collections/SendStatementModal';
 // Collection parties: one page serves customers and suppliers. The structure is the same (name, contact, amount due, a profile that opens) and only the money direction differs. Two identical pages in two files would mean fixing every fault twice and forgetting one.
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
@@ -173,11 +174,12 @@ export default function CollectionsPartiesPage({ kind }: { kind: PartyKind }) {
   };
 
   const remove = async (p: CollectionsParty) => {
-    const ok = await confirm({ message: t(`حذف «${p.name}»؟`, `Delete “${p.name}”?`) });
+    const ok = await confirm({ message: kind === 'customer' ? archiveConfirmText(p.name, ar) : t(`حذف «${p.name}»؟`, `Delete “${p.name}”?`) });
     if (!ok) return;
     try {
-      const r = await api.delete<{ deactivated?: boolean; message?: string }>(`/api/collections-dept/parties/${p._id}`);
-      if (r?.deactivated) notify(r.message || t('عُطِّل', 'Deactivated'));
+      const r = await api.delete<{ deactivated?: boolean; archived?: boolean; message?: string }>(`/api/collections-dept/parties/${p._id}`);
+      if (r?.archived) notify(archivedText(ar), 'success');
+      else if (r?.deactivated) notify(r.message || t('عُطِّل', 'Deactivated'));
       load();
     } catch (e: any) { notify(e?.message || t('تعذّر الحذف', 'Could not delete'), 'error'); }
   };

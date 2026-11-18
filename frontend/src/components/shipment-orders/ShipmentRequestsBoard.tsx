@@ -29,7 +29,7 @@ import {
 } from 'lucide-react';
 
 const money = (n?: number | null) => (n == null ? '—' : Number(n).toLocaleString('en-US'));
-/** A request planned for a later day than it was written («الموعد الفعلي»). */
+/** A request planned for a later day than it was written (actual load day). */
 const plannedAhead = (r: ShipmentRequest) => !!r.dueDay && (r.dueLater || r.dueDay !== riyadhDayOf(r.createdAt));
 const riyadhDayOf = (v: string) => new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Riyadh' }).format(new Date(v));
 function DueChip({ r, ar }: { r: ShipmentRequest; ar: boolean }) {

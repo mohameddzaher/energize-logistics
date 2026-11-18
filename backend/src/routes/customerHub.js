@@ -13,4 +13,20 @@ router.get('/presence/:reg/:id', async (req, res) => {
     res.json(out);
   } catch (e) { res.status(500).json({ message: e.message }); }
 });
+// The complete customer file (services/customerFile): every section's data for one customer, top management only.
+const file = require('../services/customerFile');
+const fullOnly = (req, res, next) => (file.canSeeFullFile(req.user) ? next() : res.status(403).json({ message: 'الملف الشامل للإدارة العليا فقط' }));
+router.get('/files', fullOnly, async (req, res) => {
+  try { res.json({ rows: await file.list(req.query.q) }); } catch (e) { res.status(500).json({ message: e.message }); }
+});
+router.get('/file/:id', fullOnly, async (req, res) => {
+  try {
+    const masterId = await file.masterOf(String(req.query.reg || 'crm'), String(req.params.id));
+    const out = masterId ? await file.build(masterId) : null;
+    if (!out) return res.status(404).json({ message: 'العميل غير موجود' });
+    res.json(out);
+  } catch (e) { console.error('[customer-file]', e); res.status(500).json({ message: e.message }); }
+});
+/** Whether this user may open the complete file (the section pages show the link only then). */
+router.get('/file-access', (req, res) => res.json({ allowed: file.canSeeFullFile(req.user) }));
 module.exports = router;

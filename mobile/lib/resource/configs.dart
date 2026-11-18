@@ -327,7 +327,7 @@ final contractsCustomersCfg = ResourceConfig(
   // Add opens manual entry and suggestions of those who ship with us without a record, like the two web buttons.
   onCreate: openContractsCustomerCreate,
   arTitle: 'العملاء', enTitle: 'Customers', icon: Icons.handshake_outlined,
-  endpoint: '/api/contracts/customers', listKey: 'customers',
+  endpoint: '/api/contracts/customers', listKey: 'customers', archive: ArchiveKind.customer,
   updateMethod: 'PATCH', liveEvent: 'contracts:updated',
   searchFields: const ['name', 'energizeRep', 'contactPerson', 'phone', 'headquarters'],
   titleOf: (r) => _s(r, 'name'),
@@ -432,7 +432,7 @@ String _crmCustomerLabel(Map<String, dynamic> r) => _s(r, 'companyName');
 final crmCompaniesCfg = ResourceConfig(
   onOpen: (c, r) => Navigator.push(c, MaterialPageRoute(builder: (_) => CrmCompanyProfileScreen(companyId: (r['_id'] ?? '').toString(), name: (r['name'] ?? '').toString()))),
   arTitle: 'الشركات', enTitle: 'Companies', icon: Icons.apartment_outlined,
-  endpoint: '/api/crm/companies', listKey: 'companies', liveEvent: 'crm:company',
+  endpoint: '/api/crm/companies', listKey: 'companies', liveEvent: 'crm:company', archive: ArchiveKind.customer,
   searchFields: const ['customerCode', 'name', 'arabicName', 'phone', 'email', 'city', 'industry'],
   titleOf: (r) => _s(r, 'arabicName').isNotEmpty ? _s(r, 'arabicName') : _s(r, 'name'),
   subtitleOf: (r) => [_s(r, 'industry'), _s(r, 'city')].where((x) => x.isNotEmpty).join(' · '),
@@ -1112,7 +1112,7 @@ const customerEditRoles = ['super_admin', 'admin', 'it_manager', 'it_team_leader
 final customerRemoveRoles = customerEditRoles.where((r) => r != 'sales_rep').toList();
 
 ResourceConfig customersRegisterCfg({required bool canEdit, required bool canDelete}) => ResourceConfig(
-  canCreate: canEdit, canEdit: canEdit, canDelete: canDelete,
+  canCreate: canEdit, canEdit: canEdit, canDelete: canDelete, archive: ArchiveKind.customer,
   onOpen: (c, r) => Navigator.push(c, MaterialPageRoute(
       builder: (_) => CustomerRegistryProfileScreen(customerId: (r['_id'] ?? '').toString()))),
   arTitle: 'سجلّ العملاء', enTitle: 'Customer Register', icon: Icons.people_outline,
@@ -1157,7 +1157,7 @@ final shipmentOrdersCustomersCfg = customersRegisterCfg(canEdit: true, canDelete
 final shipmentOrdersSuppliersCfg = ResourceConfig(
   filterField: 'type',
   arTitle: 'موردو الشاحنات', enTitle: 'SO Suppliers', icon: Icons.business_outlined,
-  endpoint: '/api/shipment-orders/suppliers', listKey: 'suppliers', liveEvent: 'shipmentOrders:fleet',
+  endpoint: '/api/shipment-orders/suppliers', listKey: 'suppliers', liveEvent: 'shipmentOrders:fleet', archive: ArchiveKind.vendor,
   searchFields: const ['name', 'phone'],
   serverSearch: true,
   titleOf: (r) => _s(r, 'name'),
@@ -1299,7 +1299,7 @@ ResourceConfig _collectionsPartyCfg({required bool customer}) => ResourceConfig(
       arTitle: customer ? 'عملاء التحصيل' : 'موردو التحصيل',
       enTitle: customer ? 'Collections Customers' : 'Collections Suppliers',
       icon: customer ? Icons.people_outline : Icons.local_shipping_outlined,
-      endpoint: '/api/collections-dept/parties',
+      endpoint: '/api/collections-dept/parties', archive: customer ? ArchiveKind.customer : null,
       listKey: 'parties',
       listQuery: 'kind=${customer ? 'customer' : 'supplier'}',
       updateMethod: 'PUT',
@@ -1794,7 +1794,7 @@ final auditCfg = ResourceConfig(
 ResourceConfig _customsPartyCfg(String kind, String ar, String en, IconData icon) => ResourceConfig(
       arTitle: ar, enTitle: en, icon: icon,
       // deep=1 plus server search: a party is also found by a container or waybill number from its transactions, like the parties page on the website.
-      endpoint: '/api/customs-clearance/parties', listKey: 'parties', listQuery: 'kind=$kind&deep=1',
+      endpoint: '/api/customs-clearance/parties', listKey: 'parties', listQuery: 'kind=$kind&deep=1', archive: kind == 'customer' ? ArchiveKind.customer : null,
       serverSearch: true,
       searchHint: ('ابحث بالاسم أو الجوال أو السجل — أو برقم حاويةٍ أو بوليصةٍ من معاملاته…',
           'Name, phone, CR — or a container / BL number from their deals…'),

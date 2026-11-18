@@ -158,6 +158,7 @@ deptContractSchema.index({ department: 1, status: 1 });
 contractCustomerSchema.add({ crmCompany: { type: mongoose.Schema.Types.ObjectId, ref: 'CrmCompany', default: null, index: true } });
 // Copy of the master's customer code (utils/customerCode).
 contractCustomerSchema.add({ customerCode: require('../utils/customerCode').codeField() });
+require('../utils/archiveFields').addArchive(contractCustomerSchema, { hide: true });
 require('../services/customerHub').attach(contractCustomerSchema, 'contracts');
 module.exports = {
   ContractVendor: mongoose.models.ContractVendor || mongoose.model('ContractVendor', contractVendorSchema),

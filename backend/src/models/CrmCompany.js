@@ -95,6 +95,7 @@ crmCompanySchema.pre('findOneAndUpdate', function keyNameUpd(next) {
   next();
 });
 crmCompanySchema.index({ customerCode: 1 }, { unique: true, partialFilterExpression: { customerCode: { $type: 'string', $gt: '' } } });
+require('../utils/archiveFields').addArchive(crmCompanySchema, { hide: true });
 require('../services/customerHub').attach(crmCompanySchema, 'crm');
 
 module.exports = mongoose.model('CrmCompany', crmCompanySchema);

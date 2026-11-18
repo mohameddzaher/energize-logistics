@@ -198,6 +198,7 @@ fleetShipmentSchema.index({ loadDate: -1 });
 
 const counterSchema = new mongoose.Schema({ _id: String, seq: Number });
 // One customer across all sections: link to the parent CRM company (services/customerHub).
+require('../utils/archiveFields').addArchive(fleetCustomerSchema);
 require('../services/customerHub').attach(fleetCustomerSchema, 'fleet');
 const FleetCounter = mongoose.models.FleetCounter || mongoose.model('FleetCounter', counterSchema);
 

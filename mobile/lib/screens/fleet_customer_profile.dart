@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import '../services/api.dart';
 import '../services/lang.dart';
 import '../services/live.dart';
+import 'customer_file.dart' show FullFileButton;
 import '../ui/app_scaffold.dart';
 import '../ui/contact.dart';
 import '../ui/theme.dart';
@@ -147,6 +148,7 @@ class _FleetCustomerProfileScreenState extends State<FleetCustomerProfileScreen>
       title: Text(c['name']?.toString() ?? tr('ملف العميل', 'Customer')),
       // Export the customer's full trip history, like ExportMenu on the web page.
       actions: [
+        FullFileButton(id: widget.customerId, reg: 'fleet'),
         if (d != null)
           ExportButton(
             fileName: 'customer-${c['name'] ?? ''}',

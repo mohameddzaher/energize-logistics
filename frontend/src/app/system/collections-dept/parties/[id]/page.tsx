@@ -3,6 +3,7 @@
  * Party file, customer or vendor.
  * The question with no screen: 'how much is ours with this customer, and from which statements?' was answered by exporting the whole table and filtering in Excel. Here: his figures, monthly movement, and his statements in detail, including every spelling of his name in the statements.
  */
+import FullFileLink from '@/components/customers/FullFileLink';
 import { useState, useEffect, useCallback } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { useLanguage } from '@/context/LanguageContext';
@@ -249,6 +250,7 @@ export default function PartyProfilePage() {
         title={p.name}
         subtitle={[p.city, p.partyType, p.status].filter(Boolean).join(' · ') || W.title}
       >
+        {kind === 'customer' && <FullFileLink id={String(p._id)} reg="collections" />}
         <button
           type="button"
           onClick={() => router.push(`/system/collections-dept/${kind === 'customer' ? 'customers' : 'suppliers'}`)}

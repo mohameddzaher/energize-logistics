@@ -63,7 +63,11 @@ const userSchema = new mongoose.Schema(
       name: { type: String, trim: true, default: '' },
       nameKey: { type: String, trim: true, default: '', index: true },
       kind: { type: String, enum: ['customer', 'vendor', ''], default: '' },
+      // The customer's CRM master (services/customerHub): every section's customer page finds the account by it, whichever register it was opened from.
+      master: { type: String, trim: true, default: '', index: true },
     },
+    // Disabled because its customer was archived; restoring the customer re-enables it.
+    partnerArchived: { type: Boolean, default: undefined },
     // Remote (work-from-home) section: which pages a remote_employee can open.
     // Subset of REMOTE_PAGES. Ignored for every other role (managers see all).
     remoteAccess: {
@@ -164,5 +168,15 @@ userSchema.methods.toJSON = function () {
   delete obj.refreshTokens;
   return obj;
 };
+
+// A partner login created, changed or removed from any screen (users page or a customer page) refreshes the other.
+const announcePartner = (doc) => {
+  if (!doc || !doc.partner || !doc.partner.source) return;
+  try { require('../websocket/socketManager').emitToAll('partner:account', { source: doc.partner.source, refId: doc.partner.refId, master: doc.partner.master || '' }); } catch (_) { /* */ }
+};
+userSchema.post('save', announcePartner);
+userSchema.post('findOneAndUpdate', announcePartner);
+userSchema.post('findOneAndDelete', announcePartner);
+userSchema.post('deleteOne', { document: true, query: false }, announcePartner);
 
 module.exports = mongoose.model('User', userSchema);

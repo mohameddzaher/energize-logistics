@@ -110,6 +110,47 @@ exports.listPartners = async (req, res) => {
   }
 };
 
+/**
+ * The customer's CRM master (services/customerHub) behind a register row, so one account serves the customer whichever page it is opened from.
+ * Vendors have no master; '' then.
+ */
+async function masterFor(source, refId, name = '') {
+  try {
+    const mongoose = require('mongoose');
+    const hubReg = { fleet_customer: 'fleet', shipment_order_customer: 'shipment', crm_company: 'crm' }[source];
+    if (hubReg === 'crm') return String(refId);
+    if (hubReg && mongoose.isValidObjectId(refId)) {
+      const hub = require('../services/customerHub');
+      const d = await hub.REG[hubReg].model().findById(refId).select('crmCompany name').lean();
+      if (d) return String(d.crmCompany || (await hub.ensureMaster(hubReg, d)) || '');
+    }
+    const CrmCompany = require('../models/CrmCompany');
+    if (source === 'customs_customer') {
+      const CP = require('../models/CustomsParty');
+      const p = await CP.findOne({ kind: 'customer', $or: [{ nameKey: String(refId) }, ...(name ? [{ nameKey: CP.fold(name) }] : [])] }).select('crmCompany').lean();
+      if (p && p.crmCompany) return String(p.crmCompany);
+    }
+    if (source === 'customer' || source === 'customs_customer') {
+      const key = require('../models/CollectionsParty').fold(name);
+      const m = key ? await CrmCompany.findOne({ nameKey: key }).select('_id').lean() : null;
+      if (m) return String(m._id);
+    }
+  } catch (_) { /* */ }
+  return '';
+}
+
+/** Accounts created before `partner.master` existed get it once, so every customer page finds them. */
+async function backfillPartnerMasters() {
+  const rows = await User.find({ accountType: 'customer', $or: [{ 'partner.master': { $exists: false } }, { 'partner.master': '' }] }).select('partner').lean();
+  let n = 0;
+  for (const u of rows) {
+    if (!u.partner || !u.partner.source) continue;
+    const m = await masterFor(u.partner.source, u.partner.refId, u.partner.name);
+    if (m) { await User.updateOne({ _id: u._id }, { $set: { 'partner.master': m } }); n += 1; }
+  }
+  if (n) console.log(`[partners] master linked on ${n} accounts`);
+}
+
 /** Resolve one register row (used by the profile "create login" card). */
 async function resolvePartner(source, refId) {
   const reg = REGISTER_BY_KEY[source];
@@ -137,7 +178,9 @@ exports.getAccount = async (req, res) => {
     if (!source || !refId) return res.status(400).json({ message: 'source and refId are required' });
     const reg = REGISTER_BY_KEY[source];
     if (!reg) return res.status(400).json({ message: 'Unknown register' });
-    const account = await User.findOne({ 'partner.source': source, 'partner.refId': String(refId) })
+    // The same customer may hold its account from another section's page: found through the shared master.
+    const master = reg.kind === 'customer' ? await masterFor(source, String(refId)) : '';
+    const account = await User.findOne({ $or: [{ 'partner.source': source, 'partner.refId': String(refId) }, ...(master ? [{ 'partner.master': master }] : [])] })
       .select('email firstName lastName isActive isLocked lastLogin accountType partner createdAt').lean();
     res.json({
       account: account || null,
@@ -170,7 +213,8 @@ exports.createAccount = async (req, res) => {
     if (await User.findOne({ email: clean })) {
       return res.status(400).json({ message: 'هذا البريد مستخدم بالفعل' });
     }
-    const existing = await User.findOne({ 'partner.source': source, 'partner.refId': String(refId) }).lean();
+    const master = reg.kind === 'customer' ? await masterFor(source, String(refId), name) : '';
+    const existing = await User.findOne({ $or: [{ 'partner.source': source, 'partner.refId': String(refId) }, ...(master ? [{ 'partner.master': master }] : [])] }).lean();
     if (existing) {
       return res.status(400).json({ message: `يوجد حساب بالفعل لهذا ${reg.kind === 'vendor' ? 'المورد' : 'العميل'}: ${existing.email}` });
     }
@@ -189,7 +233,7 @@ exports.createAccount = async (req, res) => {
       role: 'client', // external user — every RBAC rule already knows this role
       accountType: reg.kind,
       partner: {
-        source, refId: String(refId), name, nameKey: nameKey(name), kind: reg.kind,
+        source, refId: String(refId), name, nameKey: nameKey(name), kind: reg.kind, master,
       },
       // The finance register IS the `Customer` collection the legacy portal
       // endpoints read, so keep that pointer in sync when it applies.
@@ -205,7 +249,7 @@ exports.createAccount = async (req, res) => {
       changes: { after: { email: clean, source, refId: String(refId), name, kind: reg.kind } },
       ipAddress: req.ip,
     });
-    try { emitToAll('partner:account', { source, refId: String(refId) }); } catch (e) {}
+    try { emitToAll('partner:account', { source, refId: String(refId), master }); } catch (e) {}
 
     const out = user.toJSON();
     res.status(201).json({ account: out, message: 'تم إنشاء حساب الدخول' });
@@ -306,4 +350,6 @@ exports.listAccounts = async (req, res) => {
 };
 
 module.exports.resolvePartner = resolvePartner;
+module.exports.masterFor = masterFor;
+module.exports.backfillPartnerMasters = backfillPartnerMasters;
 module.exports.ACCOUNT_ADMIN_ROLES = ACCOUNT_ADMIN_ROLES;

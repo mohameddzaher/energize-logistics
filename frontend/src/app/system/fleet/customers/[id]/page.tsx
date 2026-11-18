@@ -1,5 +1,6 @@
 'use client';
 // Customer file: one customer with their full trip history and statistics; edit their type and our rating.
+import FullFileLink from '@/components/customers/FullFileLink';
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
@@ -107,6 +108,7 @@ export default function FleetCustomerProfilePage() {
       <PageHeader icon={<UserRound className="w-5 h-5" />} title={c.name}
         subtitle={c.customerType === 'heavy' ? (ar ? 'عميل نقل ثقيل' : 'Heavy transport customer') : c.customerType === 'branch' ? (ar ? 'عميل فروع' : 'Branch customer') : (ar ? 'عميل' : 'Customer')}>
         <div className="flex items-center gap-2">
+          <FullFileLink id={id} reg="fleet" />
           <ExportMenu fileName={`customer-${c.name}`} lang={ar ? 'ar' : 'en'} variant="primary" label={ar ? 'تصدير' : 'Export'} options={exportOptions} />
           <button type="button" onClick={() => router.push('/system/fleet/customers')} className="flex items-center gap-1.5 px-3 py-2 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 text-sm"><ArrowRight className="w-4 h-4" /> {ar ? 'رجوع' : 'Back'}</button>
         </div>

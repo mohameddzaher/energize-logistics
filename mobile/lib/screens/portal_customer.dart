@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import '../services/api.dart';
 import '../services/lang.dart';
 import '../services/live.dart';
+import 'customs_detail.dart' show customsStageLabel;
 import '../ui/search_field.dart';
 import '../ui/theme.dart';
 import '../ui/widgets.dart';
@@ -47,6 +48,10 @@ class CustomerOverviewTab extends StatelessWidget {
     final thisM = (t['thisMonth'] as num?) ?? 0;
     final lastM = (t['lastMonth'] as num?) ?? 0;
     final delta = lastM > 0 ? ((thisM - lastM) / lastM * 100).round() : null;
+    // Transport, customs clearance or both: each part shows only for a service the customer has (same rule as the web home).
+    final hasTransport = ((t['shipments'] as num?) ?? 0) > 0;
+    final hasCustoms = ((t['customsFiles'] as num?) ?? 0) > 0;
+    final customs = List<Map<String, dynamic>>.from(recent['customs'] ?? []);
 
     return RefreshIndicator(
       onRefresh: onRefresh,
@@ -58,11 +63,21 @@ class CustomerOverviewTab extends StatelessWidget {
             Text(tr('بوابة العملاء · تنشيط للخدمات اللوجستية', 'Customer portal · Energize Logistics'), style: const TextStyle(color: Colors.white60, fontSize: 11.5)),
             const SizedBox(height: 4),
             Text('${overview['name'] ?? ''}', style: const TextStyle(color: Colors.white, fontSize: 20, fontWeight: FontWeight.w900)),
+            const SizedBox(height: 6),
+            Wrap(spacing: 6, children: [
+              if (hasTransport) _service(Icons.local_shipping_outlined, tr('النقل', 'Transport')),
+              if (hasCustoms) _service(Icons.directions_boat_outlined, tr('التخليص الجمركي', 'Customs clearance')),
+            ]),
             const SizedBox(height: 14),
             GridView.count(
               crossAxisCount: 2, shrinkWrap: true, physics: const NeverScrollableScrollPhysics(),
               mainAxisSpacing: 8, crossAxisSpacing: 8, childAspectRatio: 1.9,
-              children: [
+              children: !hasTransport && hasCustoms ? [
+                _hero(tr('معاملات التخليص', 'Customs files'), _n0(t['customsFiles'])),
+                _hero(tr('جارية', 'In progress'), _n0(t['customsOpen'])),
+                _hero(tr('مكتملة', 'Completed'), _n0(t['customsDone'])),
+                _hero(tr('الحاويات والوحدات', 'Containers / units'), _n0(t['containers']), sub: ((t['customsTransport'] as num?) ?? 0) > 0 ? '${_n0(t['customsTransport'])} ${tr('أمر نقل', 'transport orders')}' : null),
+              ] : [
                 _hero(tr('إجمالي الشحنات', 'Total shipments'), _n0(t['shipments'])),
                 _hero(tr('هذا الشهر', 'This month'), _n0(thisM),
                     sub: delta == null ? '${tr('الشهر الماضي', 'Last month')} ${_n0(lastM)}' : '${delta >= 0 ? '+' : ''}$delta% ${tr('عن الشهر الماضي', 'vs last month')}'),
@@ -72,6 +87,13 @@ class CustomerOverviewTab extends StatelessWidget {
             ),
           ]),
         ),
+        if (hasCustoms) ...[
+          const SizedBox(height: 12),
+          Text(tr('معاملات التخليص الجمركي', 'Customs clearance files'), style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 15)),
+          const SizedBox(height: 8),
+          for (final c in customs) Padding(padding: const EdgeInsets.only(bottom: 8), child: _customsCard(c)),
+        ],
+        if (hasTransport) ...[
         const SizedBox(height: 12),
         AppCard(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
           Text(tr('الشحنات شهريًا', 'Shipments per month'), style: const TextStyle(fontWeight: FontWeight.w800)),
@@ -123,8 +145,41 @@ class CustomerOverviewTab extends StatelessWidget {
           const SizedBox(height: 8),
           for (final i in invs) Padding(padding: const EdgeInsets.only(bottom: 8), child: _InvoiceCard(i)),
         ],
+        ],
       ]),
     );
+  }
+
+  Widget _service(IconData icon, String label) => Container(
+        padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 4),
+        decoration: BoxDecoration(color: Colors.white.withValues(alpha: 0.1), borderRadius: BorderRadius.circular(20), border: Border.all(color: Colors.white24)),
+        child: Row(mainAxisSize: MainAxisSize.min, children: [Icon(icon, size: 14, color: Colors.white), const SizedBox(width: 4), Text(label, style: const TextStyle(color: Colors.white, fontSize: 11.5, fontWeight: FontWeight.w700))]),
+      );
+
+  Widget _customsCard(Map<String, dynamic> c) {
+    final pct = ((num.tryParse('${(c['pipeline'] as Map?)?['percent'] ?? ''}') ?? (c['isCompleted'] == true ? 100 : 0)).clamp(0, 100)).toDouble();
+    final done = c['isCompleted'] == true;
+    final transport = ((c['transport'] as List?) ?? const []).length;
+    return AppCard(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+      Row(children: [
+        Expanded(child: Text('${c['refNumber'] ?? c['blNumber'] ?? '—'}', style: const TextStyle(fontWeight: FontWeight.w900, color: T.navy))),
+        Chip2(done ? tr('مكتملة', 'Completed') : tr('جارية', 'In progress'), done ? T.success : T.warn),
+      ]),
+      if ('${c['blNumber'] ?? ''}${c['port'] ?? ''}'.isNotEmpty)
+        Text([if ('${c['blNumber'] ?? ''}'.isNotEmpty) '${tr('بوليصة', 'BL')} ${c['blNumber']}', c['port']].where((x) => '${x ?? ''}'.isNotEmpty).join(' · '), style: const TextStyle(fontSize: 11.5, color: T.inkSoft)),
+      const SizedBox(height: 8),
+      ClipRRect(borderRadius: BorderRadius.circular(4), child: LinearProgressIndicator(value: pct / 100, minHeight: 5, color: T.orange, backgroundColor: T.canvas)),
+      const SizedBox(height: 4),
+      Row(children: [
+        Expanded(child: Text(customsStageLabel('${c['stage'] ?? ''}', '${c['cargoType'] ?? ''}'), style: const TextStyle(fontSize: 11.5, color: T.inkSoft))),
+        Text('${pct.round()}%', style: const TextStyle(fontSize: 11, color: T.inkFaint)),
+      ]),
+      const SizedBox(height: 6),
+      Wrap(spacing: 6, runSpacing: 4, children: [
+        Chip2('${_n0(c['containerCount'] ?? 0)} ${c['cargoType'] == 'vehicles' ? tr('سيّارة', 'vehicles') : tr('حاوية', 'containers')}', T.inkSoft),
+        if (transport > 0) Chip2('$transport ${tr('أمر نقل', 'transport orders')}', T.info, icon: Icons.local_shipping_outlined),
+      ]),
+    ]));
   }
 
   Widget _hero(String label, String value, {String? sub}) => Container(
@@ -159,7 +214,11 @@ class ShipmentCard extends StatelessWidget {
       const SizedBox(height: 6),
       Row(children: [kv(tr('الشاحنة', 'Truck'), '${s['truck'] ?? ''}'), kv(tr('اللوحة', 'Plate'), '${s['plate'] ?? ''}')]),
       const SizedBox(height: 6),
-      Row(children: [kv(tr('السائق', 'Driver'), '${s['driver'] ?? ''}')]),
+      Row(children: [
+        kv(tr('السائق', 'Driver'), '${s['driver'] ?? ''}'),
+        // A shipment that moved one of the customer's customs files carries its reference.
+        if ('${s['clearance'] ?? ''}'.isNotEmpty) kv(tr('معاملة التخليص', 'Customs file'), '${s['clearance']}'),
+      ]),
     ]));
   }
 }

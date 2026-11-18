@@ -1,6 +1,7 @@
 'use client';
 // Clearance parties page: serves customers and shipping agents with the same code.
 // The structure is identical (name, contact, numbers, an openable file); only the party's role differs. Two identical pages in two files would mean fixing every bug twice and forgetting one.
+import { archiveConfirmText, archivedText } from '@/lib/customerArchive';
 import { useState, useEffect, useCallback, useMemo, useRef, type ReactNode } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/context/AuthContext';
@@ -118,11 +119,12 @@ export default function PartiesPage({ kind }: { kind: PartyKind }) {
   };
 
   const remove = async (p: Party) => {
-    const ok = await confirm({ message: t(`حذف «${p.name}»؟`, `Delete “${p.name}”?`) });
+    const ok = await confirm({ message: kind === 'customer' ? archiveConfirmText(p.name, ar) : t(`حذف «${p.name}»؟`, `Delete “${p.name}”?`) });
     if (!ok) return;
     try {
-      const r = await api.delete<{ deactivated?: boolean; message?: string }>(`/api/customs-clearance/parties/${p._id}`);
-      if (r?.deactivated) notify(r.message || t('عُطِّل', 'Deactivated'));
+      const r = await api.delete<{ deactivated?: boolean; archived?: boolean; message?: string }>(`/api/customs-clearance/parties/${p._id}`);
+      if (r?.archived) notify(archivedText(ar), 'success');
+      else if (r?.deactivated) notify(r.message || t('عُطِّل', 'Deactivated'));
       load();
     } catch (e: any) { notify(e?.message || t('تعذّر الحذف', 'Could not delete'), 'error'); }
   };

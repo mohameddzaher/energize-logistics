@@ -94,9 +94,9 @@ async function ensureMaster(reg, doc) {
   const key = foldName(doc.name);
   // The code identifies the customer: a row carrying one joins the master with that code.
   const code = S(R.read(doc).code);
-  let master = code ? await Crm.findOne({ customerCode: code }).select('_id').lean() : null;
+  let master = code ? await Crm.findOne({ customerCode: code }).setOptions({ withArchived: true }).select('_id').lean() : null;
   if (!key && !master) return null;
-  if (!master) master = await Crm.findOne({ nameKey: key }).select('_id').lean();
+  if (!master) master = await Crm.findOne({ nameKey: key }).setOptions({ withArchived: true }).select('_id').lean();
   if (!master) {
     // Another record with the same name is already linked, so its parent is this one's parent.
     for (const other of REG_KEYS.filter((k) => k !== 'crm' && k !== reg)) {
@@ -122,12 +122,12 @@ async function ensureMaster(reg, doc) {
 async function ensureContract(masterId) {
   try {
     const C = REG.contracts.model();
-    if (await C.exists({ crmCompany: masterId })) return false;
+    if (await C.findOne({ crmCompany: masterId }).setOptions({ withArchived: true }).select('_id').lean()) return false;
     const m = await REG.crm.model().findById(masterId).lean();
     if (!m) return false;
     const key = require('../controllers/contractsController').nameKey(m.name);
     if (!key) return false;
-    const hit = await C.findOne({ nameKey: key }).select('_id crmCompany').lean();
+    const hit = await C.findOne({ nameKey: key }).setOptions({ withArchived: true }).select('_id crmCompany').lean();
     // Name matches a contracts row of another parent (two CRM companies with the same name); one row serves both.
     if (hit) { if (!hit.crmCompany) { await C.updateOne({ _id: hit._id }, { $set: { crmCompany: masterId } }); return true; } return false; }
     await C.collection.insertOne({
@@ -144,7 +144,7 @@ async function linkedRows(masterId) {
   const out = [];
   for (const reg of REG_KEYS.filter((k) => k !== 'crm')) {
     const R = REG[reg];
-    const rows = await R.model().find({ ...R.base, crmCompany: masterId }).lean().catch(() => []);
+    const rows = await R.model().find({ ...R.base, crmCompany: masterId }).setOptions({ withArchived: true }).lean().catch(() => []);
     for (const d of rows) out.push({ reg, doc: d });
   }
   return out;
@@ -211,9 +211,20 @@ async function onChange(reg, before, after, origin = '') {
     if (R.base.kind && after.kind !== R.base.kind) return;
     const isNew = !before;
     // New CRM company: no linked records yet, so only announce (and do not echo to the platform).
-    if (isNew && R.master) { await ensureContract(after._id); emitChanged({ master: String(after._id), origin: reg, created: true }); return; }
+    if (isNew && R.master) {
+      await ensureContract(after._id);
+      await ensureEverywhere(after._id).catch((e) => console.error('[customerHub] everywhere:', e.message));
+      emitChanged({ master: String(after._id), origin: reg, created: true });
+      return;
+    }
     const masterId = R.master ? after._id : await ensureMaster(reg, after);
     if (!masterId) return;
+    // A name edited in any register is the customer's name everywhere.
+    if (before && S(before.name) && S(after.name) && S(before.name) !== S(after.name)) {
+      await renameEverywhere(masterId, S(before.name), S(after.name)).catch((e) => console.error('[customerHub] rename:', e.message));
+    }
+    // A CRM lead that becomes a customer joins every section's list.
+    if (R.master && before && before.status !== after.status) await ensureEverywhere(masterId).catch(() => {});
     const Crm = REG.crm.model();
     const master = await Crm.findById(masterId).lean();
     if (!master) return;
@@ -240,6 +251,9 @@ async function onChange(reg, before, after, origin = '') {
         if (Object.keys(set).length) await R.model().updateOne({ _id: after._id }, { $set: set });
       }
       await ensureContract(masterId);
+      if (origin === 'sweep') await require('./customerArchive').followMasterArchive(reg, after._id, masterId).catch(() => {});
+      else await require('./customerArchive').reviveIfArchived(masterId, reg).catch(() => {});
+      await ensureEverywhere(masterId).catch((e) => console.error('[customerHub] everywhere:', e.message));
       emitChanged({ master: String(masterId), origin: reg, created: true });
       return;
     }
@@ -254,7 +268,7 @@ async function onChange(reg, before, after, origin = '') {
 }
 
 /** Attached to each register schema: `save` (create or save) and `findOneAndUpdate` (edit). Reads the pre-edit row when the edit touches the card, and fires distribution after the response (setImmediate) so the screen save is not delayed. */
-const WATCH = [...CARD, 'email', 'crNumber', 'headquarters', 'contacts', 'customerCode'];
+const WATCH = [...CARD, 'email', 'crNumber', 'headquarters', 'contacts', 'customerCode', 'name', 'status'];
 function attach(schema, reg) {
   schema.pre('save', async function rememberBefore() {
     this.$locals.hubNew = this.isNew;
@@ -302,20 +316,122 @@ async function presence(reg, id) {
   return { master: String(masterId), places };
 }
 
+/** Registers that list every customer (the fleet follows the shipment register through utils/customerSync). */
+const LIST_REGS = ['shipment', 'customs', 'collections', 'contracts'];
+const NOT_YET_CUSTOMER = ['lead', 'prospect'];
+const isCustomerMaster = (m) => !!m && !m.archivedAt && !NOT_YET_CUSTOMER.includes(m.status);
+
+/** How each list register finds an unlinked row with this name, and creates one when there is none. */
+const SPREAD = {
+  shipment: {
+    find: async (M, m) => {
+      const key = foldName(m.name);
+      const rows = await M.find({ crmCompany: null }).select('name').lean();
+      return rows.find((r) => foldName(r.name) === key) || null;
+    },
+    create: (M, m, card) => M.create({ name: S(m.name), crmCompany: m._id, customerCode: card.code || '', phone: card.phone || '', email: (card.emails || [])[0] || '', address: card.address || '', city: card.city || '' }),
+  },
+  customs: {
+    find: (M, m) => M.findOne({ kind: 'customer', crmCompany: null, nameKey: M.fold(m.name) }).select('_id').lean(),
+    create: (M, m, card) => M.create({ kind: 'customer', name: S(m.name), crmCompany: m._id, customerCode: card.code || '', phone: card.phone || '', email: (card.emails || [])[0] || '', contactPerson: card.contactPerson || '', taxNumber: card.taxNumber || '', commercialRegister: card.commercialRegister || '', address: card.address || '', city: card.city || '' }),
+  },
+  collections: {
+    find: (M, m) => M.findOne({ kind: 'customer', crmCompany: null, $or: [{ nameKey: foldName(m.name) }, { aliasKeys: foldName(m.name) }] }).select('_id').lean(),
+    create: async (M, m, card) => {
+      const base = { kind: 'customer', name: S(m.name), crmCompany: m._id, emails: card.emails || [], email: (card.emails || [])[0] || '', phone: card.phone || '', contactPerson: card.contactPerson || '', taxNumber: card.taxNumber || '', commercialRegister: card.commercialRegister || '', address: card.address || '', city: card.city || '' };
+      // A code another account already holds stays with that account; this row is created without it.
+      try { return await M.create({ ...base, code: card.code || '' }); } catch (e) { if (e.code !== 11000 || !card.code) throw e; return M.create(base); }
+    },
+  },
+  contracts: { find: async () => null, create: (M, m) => ensureContract(m._id) },
+};
+
+/** Makes sure the customer has a row in every section's list: links an unlinked row with the same name, else creates one. Returns rows linked or created. */
+async function ensureEverywhere(masterId) {
+  const Crm = REG.crm.model();
+  const m = await Crm.findById(masterId).lean();
+  if (!isCustomerMaster(m) || !S(m.name)) return 0;
+  const card = REG.crm.read(m);
+  let n = 0;
+  for (const reg of LIST_REGS) {
+    const R = REG[reg]; const M = R.model();
+    const has = await M.findOne({ ...R.base, crmCompany: m._id }).setOptions({ withArchived: true }).select('_id').lean().catch(() => null);
+    if (has) continue;
+    try {
+      const hit = await SPREAD[reg].find(M, m);
+      if (hit) { await M.updateOne({ _id: hit._id }, { $set: { crmCompany: m._id } }); n += 1; continue; }
+      if (await SPREAD[reg].create(M, m, card)) n += 1;
+    } catch (e) {
+      if (e.code !== 11000) console.error(`[customerHub] spread ${reg} ${m._id}:`, e.message);
+    }
+  }
+  return n;
+}
+
+/** The hourly pass of ensureEverywhere: only customers missing from at least one list are visited. */
+async function ensureAllEverywhere(limit = 2000) {
+  const Crm = REG.crm.model();
+  const masters = await Crm.find({ status: { $nin: NOT_YET_CUSTOMER } }).select('_id').lean();
+  const missing = new Set();
+  for (const reg of LIST_REGS) {
+    const R = REG[reg];
+    const linked = new Set((await R.model().find({ ...R.base, crmCompany: { $ne: null } }).setOptions({ withArchived: true }).select('crmCompany').lean()).map((x) => String(x.crmCompany)));
+    for (const m of masters) if (!linked.has(String(m._id))) missing.add(String(m._id));
+  }
+  let n = 0;
+  for (const id of [...missing].slice(0, limit)) n += await ensureEverywhere(id).catch(() => 0);
+  return n;
+}
+
+// Rename in progress per customer: the writes below fire the register hooks again, and this stops the echo.
+const renaming = new Map();
+
+/** A customer's new name, written in every register and every place that carries it as text (utils/renameOpsCustomer). */
+async function renameEverywhere(masterId, from, to) {
+  if (!masterId || !to || from === to) return;
+  const k = String(masterId);
+  const last = renaming.get(k);
+  if (last && last.to === to && last.until > Date.now()) return;
+  renaming.set(k, { to, until: Date.now() + 60 * 1000 });
+  // Statements, orders, fleet loads, customs transactions, collections party and ledger invoices.
+  await require('../utils/renameOpsCustomer').renameOpsCustomer(from, to).catch((e) => console.error('[customerHub] ops rename:', e.message));
+  const Crm = REG.crm.model();
+  await Crm.updateOne({ _id: masterId }, { $set: { name: to, nameKey: foldName(to) } }).catch(() => {});
+  const keyOf = {
+    customs: (M) => M.fold(to),
+    collections: () => foldName(to),
+    contracts: () => require('../controllers/contractsController').nameKey(to),
+  };
+  for (const { reg, doc } of await linkedRows(masterId)) {
+    if (doc.name === to) continue;
+    const M = REG[reg].model();
+    const set = { name: to };
+    if (keyOf[reg]) set.nameKey = keyOf[reg](M);
+    if (reg === 'shipment') set.nameManual = true;
+    try {
+      await M.updateOne({ _id: doc._id }, { $set: set, ...(reg === 'collections' ? { $addToSet: { aliases: from, aliasKeys: foldName(from) } } : {}) });
+      if (reg === 'shipment') await require('../models/ShipmentOrder').updateMany({ customer: doc._id }, { customerName: to });
+    } catch (e) { console.error(`[customerHub] rename ${reg} ${doc._id}:`, e.message); }
+  }
+  emitChanged({ master: k, origin: 'rename', fields: ['name'] });
+  require('./customerArchive').emitSections();
+}
+
 /** Hourly sweep: rows created by direct writes (updateOne/bulkWrite syncs) bypass model hooks, so they are linked here as if new (onChange with no "before"). */
 async function sweepUnlinked(limit = 500) {
   let n = 0;
   for (const reg of REG_KEYS.filter((k) => k !== 'crm')) {
     const R = REG[reg];
     const rows = await R.model().find({ ...R.base, $or: [{ crmCompany: null }, { crmCompany: { $exists: false } }] }).limit(limit).lean().catch(() => []);
-    for (const d of rows) { if (!S(d.name)) continue; await onChange(reg, null, d); n += 1; }
+    for (const d of rows) { if (!S(d.name)) continue; await onChange(reg, null, d, 'sweep'); n += 1; }
   }
   // Every CRM company also has a contracts row.
   const C = REG.contracts.model();
-  const linked = new Set((await C.find({ crmCompany: { $ne: null } }).select('crmCompany').lean()).map((x) => String(x.crmCompany)));
-  for (const m of await REG.crm.model().find({}).select('_id').lean()) {
+  const linked = new Set((await C.find({ crmCompany: { $ne: null } }).setOptions({ withArchived: true }).select('crmCompany').lean()).map((x) => String(x.crmCompany)));
+  for (const m of await REG.crm.model().find({}).setOptions({ withArchived: true }).select('_id').lean()) {
     if (!linked.has(String(m._id)) && await ensureContract(m._id)) n += 1;
   }
+  n += await ensureAllEverywhere().catch((e) => { console.error('[customerHub] everywhere sweep:', e.message); return 0; });
   if (n) console.log(`[customerHub] sweep linked ${n}`);
   return n;
 }
@@ -337,7 +453,7 @@ async function setMasterCode(masterId, rawCode) {
   const master = await Crm.findById(masterId).lean();
   if (!master) return { ok: false, reason: 'master_missing' };
   if (code) {
-    const other = await Crm.findOne({ customerCode: code, _id: { $ne: master._id } }).select('name').lean();
+    const other = await Crm.findOne({ customerCode: code, _id: { $ne: master._id } }).setOptions({ withArchived: true }).select('name').lean();
     if (other) return { ok: false, reason: 'code_taken', by: other.name };
   }
   const rows = await fanOut(master._id, { ...REG.crm.read(master), code }, ['code']);
@@ -345,4 +461,4 @@ async function setMasterCode(masterId, rawCode) {
   return { ok: true, rows };
 }
 
-module.exports = { setMasterCode, sweepUnlinked, startSweep, CARD, REG, REG_KEYS, attach, onChange, ensureMaster, ensureContract, fanOut, presence, linkedRows, foldName, cardDiff };
+module.exports = { ensureEverywhere, ensureAllEverywhere, renameEverywhere, isCustomerMaster, LIST_REGS, setMasterCode, sweepUnlinked, startSweep, CARD, REG, REG_KEYS, attach, onChange, ensureMaster, ensureContract, fanOut, presence, linkedRows, foldName, cardDiff };

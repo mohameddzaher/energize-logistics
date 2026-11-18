@@ -3,6 +3,7 @@
  * Customers register: one screen rendered in three sections.
  * A single component, not copies, so columns and cards cannot drift between sections; the three pages are thin wrappers. Cards are clickable slices applied to the table and stay highlighted. Money is hidden entirely, not blanked: the server drops `purchaseTotal` for users without money access, and a dashed column would read as "no purchases".
  */
+import { archiveConfirmText, archivedText } from '@/lib/customerArchive';
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
@@ -188,10 +189,8 @@ export default function CustomersRegister({ basePath }: { basePath: string }) {
   const openCreate = () => { setEditing(null); setEditOpen(true); };
 
   const remove = useCallback(async (r: RegistryRow) => {
-    if (!(await confirm(ar
-      ? `إزالة العميل «${r.name}»؟ شحناته السابقة تحتفظ باسمه.`
-      : `Remove “${r.name}”? Their past shipments keep the name.`))) return;
-    try { await api.delete(`/api/customer-registry/${r._id}`); setFullById(null); load(); }
+    if (!(await confirm(archiveConfirmText(r.name, ar)))) return;
+    try { await api.delete(`/api/customer-registry/${r._id}`); setFullById(null); notify(archivedText(ar), 'success'); load(); }
     catch (e: any) { notify(e?.message || 'Request failed', 'error'); }
   }, [ar, confirm, notify, load]);
 

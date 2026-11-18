@@ -156,6 +156,7 @@ collectionsPartySchema.index({ collectionOfficer: 1, kind: 1 });
 
 // One customer across all sections: link to the parent CRM company (services/customerHub)
 collectionsPartySchema.add({ crmCompany: { type: mongoose.Schema.Types.ObjectId, ref: 'CrmCompany', default: null, index: true } });
+require('../utils/archiveFields').addArchive(collectionsPartySchema, { hide: false });
 require('../services/customerHub').attach(collectionsPartySchema, 'collections');
 module.exports = mongoose.models.CollectionsParty
   || mongoose.model('CollectionsParty', collectionsPartySchema);

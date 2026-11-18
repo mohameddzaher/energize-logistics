@@ -45,6 +45,16 @@ class FieldSpec {
   String get label => tr(ar, en);
 }
 
+enum ArchiveKind { customer, vendor }
+
+/// Same wording as the web (lib/customerArchive.ts).
+String archiveConfirmText(ArchiveKind k, String name) => k == ArchiveKind.customer
+    ? tr('حذف «$name»؟ يُنقل العميل إلى «أرشيف العملاء» ويختفي من كلّ الأقسام والقوائم، وتبقى معاملاته كما هي. يُستعاد من الأرشيف، أو يُحذف منه نهائيًّا.',
+        'Delete “$name”? The customer moves to the customers archive and leaves every section and list; its transactions stay. Restore it there, or delete it for good.')
+    : tr('حذف «$name»؟ يُنقل المورّد إلى «أرشيف الموردين»، وتبقى أوامر النقل كما هي. يُستعاد من الأرشيف أو يُحذف منه نهائيًّا.',
+        'Delete “$name”? The vendor moves to the vendors archive; transport orders stay. Restore or delete it for good there.');
+String archivedText(ArchiveKind k) => k == ArchiveKind.customer ? tr('نُقل العميل إلى أرشيف العملاء', 'Moved to the customers archive') : tr('نُقل المورّد إلى أرشيف الموردين', 'Moved to the vendors archive');
+
 class ResourceConfig {
   final String arTitle;
   final String enTitle;
@@ -66,6 +76,8 @@ class ResourceConfig {
   final bool canCreate;
   final bool canEdit;
   final bool canDelete;
+  /// Delete wording when deleting is not final: customers and vendors go to their archive (backend services/customerArchive). Null keeps the plain wording.
+  final ArchiveKind? archive;
   /// When set, tapping a row opens a full detail page instead of the edit sheet; editing is via the pencil icon.
   final void Function(BuildContext, Map<String, dynamic>)? onOpen;
   /// When set, the add button opens a custom form instead of the generic one and returns `true` if saved, so the list reloads. For additions that need more than the generic form holds (files).
@@ -100,7 +112,7 @@ class ResourceConfig {
     this.subtitleOf, this.chipsOf,
     this.canCreate = true, this.canEdit = true, this.canDelete = true,
     this.onOpen, this.onCreate, this.filterField, this.filterOptions, this.sortFields = const [], this.rowActions,
-    this.serverSearch = false, this.editFullKey, this.hijriDates = false, this.searchHint,
+    this.serverSearch = false, this.editFullKey, this.hijriDates = false, this.searchHint, this.archive,
   });
 
   String get title => tr(arTitle, enTitle);
@@ -305,7 +317,9 @@ class _ResourceScreenState extends State<ResourceScreen> {
       context: context,
       builder: (c) => AlertDialog(
         title: Text(tr('تأكيد الحذف', 'Confirm delete')),
-        content: Text(tr('هل تريد حذف «${cfg.titleOf(row)}» نهائيًا؟', 'Delete "${cfg.titleOf(row)}"?')),
+        content: Text(cfg.archive == null
+            ? tr('هل تريد حذف «${cfg.titleOf(row)}» نهائيًا؟', 'Delete "${cfg.titleOf(row)}"?')
+            : archiveConfirmText(cfg.archive!, cfg.titleOf(row))),
         actions: [
           TextButton(onPressed: () => Navigator.pop(c, false), child: Text(tr('إلغاء', 'Cancel'))),
           FilledButton(
@@ -319,6 +333,7 @@ class _ResourceScreenState extends State<ResourceScreen> {
     if (ok != true) return;
     try {
       await Api.instance.delete('${cfg.writePath}/${row['_id']}');
+      if (cfg.archive != null && mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(archivedText(cfg.archive!))));
       _load();
     } catch (e) {
       if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.toString())));

@@ -210,7 +210,8 @@ exports.listParties = async (req, res) => {
     const kind = String(req.query.kind || 'customer');
     if (!isKind(kind)) return res.status(400).json({ message: 'kind must be customer or supplier' });
 
-    const filter = { kind };
+    // Archived customers live in the customers archive, not in this list.
+    const filter = { kind, archivedAt: null };
     if (req.query.active === 'true') filter.isActive = true;
     if (req.query.active === 'false') filter.isActive = false;
     if (req.query.status) filter.status = req.query.status;
@@ -526,6 +527,11 @@ exports.deleteParty = async (req, res) => {
     if (!mongoose.isValidObjectId(req.params.id)) return res.status(400).json({ message: 'معرّف غير صالح' });
     const party = await CollectionsParty.findById(req.params.id);
     if (!party) return res.status(404).json({ message: 'الطرف غير موجود' });
+    if (party.kind === 'customer') {
+      await require('../services/customerArchive').archive('collections', party._id, req.user);
+      await logAudit({ user: req.user._id, action: 'archive_collections_party', entity: 'CollectionsParty', entityId: party._id, changes: { before: { name: party.name } }, ipAddress: req.ip });
+      return res.json({ archived: true, message: 'نُقل العميل إلى أرشيف العملاء، ويُستعاد منه أو يُحذف نهائيًّا' });
+    }
 
     const stats = await statsByKind(party.kind);
     const s = stats.get(party.nameKey || fold(party.name));

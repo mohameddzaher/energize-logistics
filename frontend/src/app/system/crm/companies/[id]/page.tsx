@@ -1,4 +1,5 @@
 'use client';
+import FullFileLink from '@/components/customers/FullFileLink';
 import { useState, useEffect, useCallback } from 'react';
 import { useDialog } from '@/components/system/DialogProvider';
 import { useParams, useRouter } from 'next/navigation';
@@ -158,6 +159,7 @@ export default function CrmCompanyDetailPage() {
               <h1 className="text-2xl font-bold text-slate-900">{companyName(company, lang)}</h1>
               {company.customerCode && <span className="rounded-md bg-[#12325c] px-2 py-0.5 font-mono text-[12px] font-bold text-white" dir="ltr" title={lang === 'ar' ? 'كود العميل' : 'Customer code'}>{company.customerCode}</span>}
               <div className="flex items-center flex-wrap gap-2 mt-1">
+                <FullFileLink id={String(company._id)} reg="crm" />
                 <Badge style={COMPANY_STATUS_STYLE[company.status]} lang={lang} />
                 <span className="text-slate-500 text-sm">{optLabel(opts?.COMPANY_TYPES, company.type, lang)}</span>
                 {company.industry && <span className="text-slate-500 text-sm">· {optLabel(opts?.INDUSTRIES, company.industry, lang)}</span>}

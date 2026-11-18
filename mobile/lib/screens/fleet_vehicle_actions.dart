@@ -3,6 +3,7 @@ import 'package:provider/provider.dart';
 import '../services/api.dart';
 import '../services/auth.dart';
 import '../services/lang.dart';
+import '../resource/resource.dart' show archiveConfirmText, archivedText, ArchiveKind;
 import '../ui/theme.dart';
 import '../ui/search_field.dart';
 
@@ -163,23 +164,20 @@ Future<bool> openFleetVehicleSupervisor(BuildContext context, Map<String, dynami
   }
 }
 
-/// Customer removal as on the web: with no loads it is deleted permanently (?purge=1); with loads it is only disabled, since deleting would leave waybills pointing at a nonexistent customer.
+/// Customer removal as on the web: the customer moves to the customers archive in every section (backend services/customerArchive).
 Future<bool> removeFleetCustomer(BuildContext context, Map<String, dynamic> c) async {
   if (!_canAdmin(context)) { _snack(context, tr('لا تملك صلاحية الإزالة', 'Not allowed')); return false; }
-  final trips = (c['trips'] as num? ?? 0).toInt();
-  final hard = trips == 0;
   final ok = await showDialog<bool>(context: context, builder: (d) => AlertDialog(
-    content: Text(hard
-        ? tr('حذف «${c['name']}» نهائيًّا؟ لا حمولة له.', 'Delete “${c['name']}” permanently? No shipments.')
-        : tr('تعطيل «${c['name']}»؟ حمولاته الـ$trips تبقى كما هي.', 'Disable “${c['name']}”? Their $trips shipments stay.')),
+    content: Text(archiveConfirmText(ArchiveKind.customer, '${c['name'] ?? ''}')),
     actions: [
       TextButton(onPressed: () => Navigator.pop(d, false), child: Text(tr('إلغاء', 'Cancel'))),
-      FilledButton(style: FilledButton.styleFrom(backgroundColor: T.danger), onPressed: () => Navigator.pop(d, true), child: Text(hard ? tr('حذف', 'Delete') : tr('تعطيل', 'Disable'))),
+      FilledButton(style: FilledButton.styleFrom(backgroundColor: T.danger), onPressed: () => Navigator.pop(d, true), child: Text(tr('حذف', 'Delete'))),
     ],
   ));
   if (ok != true || !context.mounted) return false;
   try {
-    await Api.instance.delete('/api/fleet/customers/${c['_id']}${hard ? '?purge=1' : ''}');
+    await Api.instance.delete('/api/fleet/customers/${c['_id']}');
+    if (context.mounted) _snack(context, archivedText(ArchiveKind.customer));
     return true;
   } catch (e) {
     if (context.mounted) _snack(context, e is ApiException ? e.message : e.toString());

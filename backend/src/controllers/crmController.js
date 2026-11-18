@@ -360,18 +360,11 @@ exports.deleteCompany = async (req, res) => {
     if (denyNonAdmin(req, res)) return;
     const { id } = req.params;
     if (badId(id, res)) return;
-    const company = await CrmCompany.findById(id);
-    if (!company) return res.status(404).json({ message: 'Company not found' });
-    // Cascade: remove the company's contacts, activities, tasks and deals.
-    await Promise.all([
-      CrmContact.deleteMany({ company: id }),
-      CrmActivity.deleteMany({ company: id }),
-      CrmTask.deleteMany({ company: id }),
-      CrmDeal.deleteMany({ company: id }),
-    ]);
-    await company.deleteOne();
+    // Archived with its contacts, activities and deals intact; they are removed only when the archive deletes it for good.
+    const out = await require('../services/customerArchive').archive('crm', id, req.user);
+    if (!out) return res.status(404).json({ message: 'Company not found' });
     await emitCrm('crm:company', { id: String(id), deleted: true });
-    res.json({ message: 'Company deleted' });
+    res.json({ archived: true, message: 'نُقل العميل إلى أرشيف العملاء، ويُستعاد منه أو يُحذف نهائيًّا' });
   } catch (error) {
     console.error('deleteCompany error:', error);
     res.status(500).json({ message: 'Failed to delete company' });

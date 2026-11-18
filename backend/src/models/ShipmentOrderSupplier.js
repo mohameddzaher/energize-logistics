@@ -154,5 +154,7 @@ for (const op of ['save', 'findOneAndUpdate', 'updateOne', 'updateMany', 'insert
   shipmentOrderSupplierSchema.post(op, clearRegistry);
 }
 
+require('../utils/archiveFields').addArchive(shipmentOrderSupplierSchema);
+
 module.exports = mongoose.models.ShipmentOrderSupplier
   || mongoose.model('ShipmentOrderSupplier', shipmentOrderSupplierSchema);

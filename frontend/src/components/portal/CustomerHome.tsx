@@ -8,6 +8,8 @@ import { Truck, MapPin, FileText, Ship, ArrowUpRight, TrendingUp, TrendingDown, 
 import { customsStageText } from '@/lib/portal';
 
 export interface PortalShipment {
+  /** Reference of the customs file this shipment carries, when it is tied to one. */
+  clearance?: string;
   id: string; kind: 'platform' | 'orders' | 'heavy'; number: string; date: string;
   from: string; to: string; truck: string; plate: string; driver: string; cargo?: string; waybill?: boolean;
 }
@@ -34,6 +36,9 @@ export default function CustomerHome({ data, ar }: { data: CustomerOverview; ar:
   const router = useRouter();
   const t = data.totals;
   const tx = (en: string, a: string) => (ar ? a : en);
+  // A customer may use transport, customs clearance or both: each part of the page shows only for a service the customer has.
+  const hasTransport = (t.shipments || 0) > 0;
+  const hasCustoms = (t.customsFiles || 0) > 0;
   const delta = t.lastMonth ? Math.round(((t.thisMonth - t.lastMonth) / t.lastMonth) * 100) : null;
   const maxMonth = Math.max(1, ...data.monthly.map((m) => m.count));
   const maxRoute = Math.max(1, ...data.topRoutes.map((r) => r.count));
@@ -47,6 +52,18 @@ export default function CustomerHome({ data, ar }: { data: CustomerOverview; ar:
         <div className="pointer-events-none absolute -end-16 -top-16 h-56 w-56 rounded-full bg-[#f37121]/20 blur-3xl" />
         <p className="text-[12px] font-semibold tracking-wide text-white/60">{tx('Customer portal · Energize Logistics', 'بوابة العملاء · تنشيط للخدمات اللوجستية')}</p>
         <h1 className="mt-1 text-2xl font-bold sm:text-3xl">{data.name}</h1>
+        <div className="mt-2 flex flex-wrap gap-1.5">
+          {hasTransport && <span className="inline-flex items-center gap-1 rounded-full bg-white/10 px-2.5 py-1 text-[12px] font-semibold ring-1 ring-white/20"><Truck className="h-3.5 w-3.5" />{tx('Transport', 'النقل')}</span>}
+          {hasCustoms && <span className="inline-flex items-center gap-1 rounded-full bg-white/10 px-2.5 py-1 text-[12px] font-semibold ring-1 ring-white/20"><Ship className="h-3.5 w-3.5" />{tx('Customs clearance', 'التخليص الجمركي')}</span>}
+        </div>
+        {!hasTransport && hasCustoms ? (
+          <div className="mt-6 grid grid-cols-2 gap-3 lg:grid-cols-4">
+            <HeroStat label={tx('Customs files', 'معاملات التخليص')} value={n0(t.customsFiles)} />
+            <HeroStat label={tx('In progress', 'جارية')} value={n0(t.customsOpen)} />
+            <HeroStat label={tx('Completed', 'مكتملة')} value={n0(t.customsDone)} />
+            <HeroStat label={tx('Containers / units', 'الحاويات والوحدات')} value={n0(t.containers)} sub={t.customsTransport ? tx(`${n0(t.customsTransport)} transport orders`, `${n0(t.customsTransport)} أمر نقل`) : undefined} />
+          </div>
+        ) : (
         <div className="mt-6 grid grid-cols-2 gap-3 lg:grid-cols-4">
           <HeroStat label={tx('Total shipments', 'إجمالي الشحنات')} value={n0(t.shipments)} sub={tx(`${n0(last12)} in the last 12 months`, `${n0(last12)} خلال آخر 12 شهرًا`)} />
           <HeroStat label={tx('This month', 'هذا الشهر')} value={n0(t.thisMonth)}
@@ -59,8 +76,45 @@ export default function CustomerHome({ data, ar }: { data: CustomerOverview; ar:
           <HeroStat label={tx('Destinations', 'الوجهات')} value={n0(t.destinations)} sub={tx(`${n0(t.routes)} routes`, `${n0(t.routes)} مسارًا`)} />
           <HeroStat label={tx('Invoices', 'الفواتير')} value={n0(t.invoices)} />
         </div>
+        )}
       </section>
 
+      {/* Customs files at a glance: where each stands and how many trucks moved it. */}
+      {hasCustoms && (
+        <section className={card}>
+          <div className="flex items-center justify-between border-b border-slate-100 px-5 py-4">
+            <h2 className="flex items-center gap-2 font-bold text-slate-900"><Ship className="h-4 w-4 text-[#f37121]" />{tx('Customs clearance files', 'معاملات التخليص الجمركي')}</h2>
+            <button type="button" onClick={() => router.push('/system/portal/customs')} className="inline-flex items-center gap-1 text-sm font-semibold text-[#f37121] hover:underline">
+              {tx('All files', 'كل المعاملات')} <ArrowUpRight className="h-4 w-4 rtl:-scale-x-100" />
+            </button>
+          </div>
+          <div className="grid gap-3 p-4 sm:grid-cols-2 xl:grid-cols-3">
+            {data.recent.customs.map((c: any) => {
+              const pct = Math.max(0, Math.min(100, Number(c.pipeline?.percent) || (c.isCompleted ? 100 : 0)));
+              return (
+                <button key={c._id} type="button" onClick={() => router.push('/system/portal/customs')} className="rounded-xl border border-slate-200 p-4 text-start transition hover:border-[#f37121]/50 hover:shadow-sm">
+                  <div className="flex items-start justify-between gap-2">
+                    <p className="truncate font-bold text-[#12325c]"><Container className="me-1 inline h-4 w-4 text-slate-400" />{c.refNumber || c.blNumber}</p>
+                    <span className={`shrink-0 rounded-full px-2 py-0.5 text-[11px] font-bold ${c.isCompleted ? 'bg-emerald-50 text-emerald-700' : 'bg-amber-50 text-amber-700'}`}>{c.isCompleted ? tx('Completed', 'مكتملة') : tx('In progress', 'جارية')}</span>
+                  </div>
+                  <p className="mt-1 truncate text-[12px] text-slate-500">{[c.blNumber && `${tx('BL', 'بوليصة')} ${c.blNumber}`, c.port].filter(Boolean).join(' · ') || '—'}</p>
+                  <div className="mt-3 h-1.5 overflow-hidden rounded-full bg-slate-100"><div className="h-full rounded-full bg-[#f37121]" style={{ width: `${pct}%` }} /></div>
+                  <div className="mt-1.5 flex items-center justify-between text-[11.5px]">
+                    <span className="text-slate-600">{customsStageText(c.stage, ar ? 'ar' : 'en')}</span>
+                    <span className="tabular-nums text-slate-400">{pct}%</span>
+                  </div>
+                  <div className="mt-2 flex flex-wrap gap-1.5 text-[11.5px]">
+                    <span className="rounded-full bg-slate-100 px-2 py-0.5 text-slate-600">{n0(c.containerCount || 0)} {c.cargoType === 'vehicles' ? tx('vehicles', 'سيّارة') : tx('containers', 'حاوية')}</span>
+                    {!!(c.transport || []).length && <span className="inline-flex items-center gap-1 rounded-full bg-sky-50 px-2 py-0.5 font-semibold text-sky-700"><Truck className="h-3 w-3" />{n0(c.transport.length)} {tx('transport orders', 'أمر نقل')}</span>}
+                  </div>
+                </button>
+              );
+            })}
+          </div>
+        </section>
+      )}
+
+      {hasTransport && (<>
       {/* Trend + top routes */}
       <section className="grid grid-cols-1 gap-5 lg:grid-cols-3">
         <div className={`${card} p-5 lg:col-span-2`}>
@@ -135,7 +189,10 @@ export default function CustomerHome({ data, ar }: { data: CustomerOverview; ar:
         </div>
       </section>
 
-      {/* Invoices + customs + trucks */}
+      </>)}
+
+      {/* Invoices + trucks: transport services only. */}
+      {hasTransport && (
       <section className="grid grid-cols-1 gap-5 lg:grid-cols-3">
         <div className={`${card} p-5 lg:col-span-2`}>
           <div className="mb-4 flex items-center justify-between">
@@ -162,24 +219,6 @@ export default function CustomerHome({ data, ar }: { data: CustomerOverview; ar:
           )}
         </div>
         <div className="space-y-5">
-          {t.customsFiles > 0 && (
-            <div className={`${card} p-5`}>
-              <h2 className="mb-3 flex items-center gap-2 font-bold text-slate-900"><Ship className="h-4 w-4 text-[#f37121]" />{tx('Customs clearance', 'التخليص الجمركي')}</h2>
-              <div className="mb-3 grid grid-cols-2 gap-3">
-                <MiniStat label={tx('Files', 'معاملات')} value={n0(t.customsFiles)} />
-                <MiniStat label={tx('Containers', 'حاويات')} value={n0(t.containers)} />
-              </div>
-              <ul className="space-y-1.5 text-[13px]">
-                {data.recent.customs.slice(0, 4).map((c: any) => (
-                  <li key={c._id} className="flex items-center justify-between gap-2">
-                    <span className="truncate font-medium text-slate-800"><Container className="me-1 inline h-3.5 w-3.5 text-slate-400" />{c.blNumber || c.refNumber}</span>
-                    <span className="shrink-0 text-slate-500">{customsStageText(c.stage, ar ? 'ar' : 'en')}</span>
-                  </li>
-                ))}
-              </ul>
-              <button type="button" onClick={() => router.push('/system/portal/customs')} className="mt-3 text-sm font-semibold text-[#f37121] hover:underline">{tx('Open', 'فتح')}</button>
-            </div>
-          )}
           <div className={`${card} p-5`}>
             <h2 className="mb-3 flex items-center gap-2 font-bold text-slate-900"><MapPin className="h-4 w-4 text-[#f37121]" />{tx('Truck types used', 'أنواع الشاحنات')}</h2>
             {data.trucks.length === 0 ? <p className="text-sm text-slate-400">—</p> : (
@@ -195,6 +234,7 @@ export default function CustomerHome({ data, ar }: { data: CustomerOverview; ar:
           </div>
         </div>
       </section>
+      )}
     </div>
   );
 }

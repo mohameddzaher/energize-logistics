@@ -678,6 +678,29 @@ class _CustomsTabState extends State<_CustomsTab> {
                 ]),
               );
             }),
+            // Transport orders that moved this file (server customsTransportFor): number, route, truck, driver, containers.
+            const SizedBox(height: 14),
+            Text(tr('أوامر النقل الخاصّة بهذه المعاملة', 'Transport orders for this file'), style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 14)),
+            const SizedBox(height: 8),
+            if (((c['transport'] as List?) ?? const []).isEmpty)
+              Text(tr('لا أوامر نقل بعد.', 'No transport orders yet.'), style: const TextStyle(fontSize: 12.5, color: T.inkFaint)),
+            for (final t in ((c['transport'] as List?) ?? const []))
+              Padding(
+                padding: const EdgeInsets.only(bottom: 8),
+                child: AppCard(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                  Row(children: [
+                    const Icon(Icons.local_shipping_outlined, size: 16, color: T.info),
+                    const SizedBox(width: 6),
+                    Expanded(child: Text('#${(t as Map)['number'] ?? '—'}', style: const TextStyle(fontWeight: FontWeight.w800))),
+                    Text('${t['date'] ?? ''}', style: const TextStyle(fontSize: 11.5, color: T.inkFaint)),
+                  ]),
+                  const SizedBox(height: 4),
+                  Text('${t['from'] ?? ''} ← ${t['to'] ?? ''}', style: const TextStyle(fontSize: 12.5, fontWeight: FontWeight.w600)),
+                  Text([t['truck'], t['plate'], t['driver']].where((x) => '${x ?? ''}'.isNotEmpty).join(' · '), style: const TextStyle(fontSize: 11.5, color: T.inkSoft)),
+                  if (((t['containers'] as List?) ?? const []).isNotEmpty)
+                    Text('${tr('الحاويات', 'Containers')}: ${(t['containers'] as List).join('، ')}', style: const TextStyle(fontSize: 11.5, color: T.inkSoft)),
+                ])),
+              ),
           ]),
         ),
       ),
@@ -700,7 +723,18 @@ class _CustomsTabState extends State<_CustomsTab> {
       ExportCol('قيمة الفاتورة', 'Invoice value', (c) => _money(c['invoiceValue'])),
       ExportCol('الشركة المصدّرة', 'Exporter', (c) => c['exporterCompany']),
       ExportCol('تاريخ الفتح', 'Opened', (c) => _date(c['createdAt'])),
-    ], _rows)]);
+      ExportCol('أوامر النقل', 'Transport orders', (c) => ((c['transport'] as List?) ?? const []).length),
+    ], _rows), (tr('أوامر النقل', 'Transport orders'), [
+      ExportCol('معاملة التخليص', 'Customs file', (t) => t['file']),
+      ExportCol('رقم البوليصة', 'Waybill', (t) => t['number']),
+      ExportCol('التاريخ', 'Date', (t) => t['date']),
+      ExportCol('من', 'From', (t) => t['from']),
+      ExportCol('إلى', 'To', (t) => t['to']),
+      ExportCol('الشاحنة', 'Truck', (t) => t['truck']),
+      ExportCol('اللوحة', 'Plate', (t) => t['plate']),
+      ExportCol('السائق', 'Driver', (t) => t['driver']),
+      ExportCol('الحاويات', 'Containers', (t) => ((t['containers'] as List?) ?? const []).join(', ')),
+    ], [for (final c in _rows) for (final t in ((c['transport'] as List?) ?? const [])) {...Map<String, dynamic>.from(t as Map), 'file': c['refNumber'] ?? c['blNumber'] ?? ''}])]);
   }
 
   @override
@@ -757,6 +791,8 @@ class _CustomsTabState extends State<_CustomsTab> {
                   const SizedBox(height: 6),
                   Text([c['port'], c['exporterCompany']].where((x) => (x ?? '').toString().isNotEmpty).join(' · '),
                       style: const TextStyle(fontSize: 11.5, color: T.inkSoft)),
+                  if (((c['transport'] as List?) ?? const []).isNotEmpty)
+                    Padding(padding: const EdgeInsets.only(top: 6), child: Chip2('${((c['transport'] as List?) ?? const []).length} ${tr('أمر نقل', 'transport orders')}', T.info, icon: Icons.local_shipping_outlined)),
                 ]),
               ),
             ),

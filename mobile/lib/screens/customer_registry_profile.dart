@@ -7,6 +7,7 @@ import '../services/customer_prefs.dart';
 import '../services/lang.dart';
 import '../services/live.dart';
 import '../resource/configs.dart' show customerEditRoles;
+import 'customer_file.dart' show FullFileButton;
 import '../ui/app_scaffold.dart';
 import '../ui/contact.dart';
 import '../ui/theme.dart';
@@ -590,6 +591,7 @@ class _CustomerRegistryProfileScreenState extends State<CustomerRegistryProfileS
 
     return AppScaffold(
       title: Text(c['name']?.toString() ?? tr('ملف العميل', 'Customer')),
+      actions: [FullFileButton(id: widget.customerId, reg: 'shipment')],
       body: _loading
           ? ListView(padding: const EdgeInsets.all(14), children: const [
               Shimmer(height: 110), SizedBox(height: 10), Shimmer(height: 160), SizedBox(height: 10), Shimmer(height: 200),

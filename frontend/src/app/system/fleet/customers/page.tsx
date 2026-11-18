@@ -1,6 +1,7 @@
 'use client';
 // Fleet customers: a register, not a card gallery. Two cards per row suits ten customers, not two hundred and twenty: rows cannot be compared, sorted, or ranked by activity. So it is a table, one row per customer with trips, income and last activity, plus filter and search; clicking a row opens the full file.
 // Row figures are computed by the server with the list, not one query per row.
+import { archiveConfirmText, archivedText } from '@/lib/customerArchive';
 import { useState, useEffect, useCallback, useMemo, useRef, type ReactNode } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/context/AuthContext';
@@ -181,12 +182,8 @@ export default function FleetCustomersPage() {
   };
 
   const remove = async (c: FleetCustomer) => {
-    // A customer without loads is deleted permanently; with loads it is only deactivated, since deleting would leave waybills pointing at a missing customer.
-    const hard = (c.trips || 0) === 0;
-    if (!(await confirm(hard
-      ? t(`حذف «${c.name}» نهائيًّا؟ لا حمولة له.`, `Delete “${c.name}” permanently? No shipments.`)
-      : t(`تعطيل «${c.name}»؟ حمولاته الـ${c.trips} تبقى كما هي.`, `Disable “${c.name}”? Their ${c.trips} shipments stay.`)))) return;
-    try { await api.delete(`/api/fleet/customers/${c._id}${hard ? '?purge=1' : ''}`); load(); }
+    if (!(await confirm(archiveConfirmText(c.name, lang === 'ar')))) return;
+    try { await api.delete(`/api/fleet/customers/${c._id}`); notify(archivedText(lang === 'ar'), 'success'); load(); }
     catch (e: any) { notify(e.message, 'error'); }
   };
 

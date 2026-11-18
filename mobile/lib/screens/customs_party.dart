@@ -6,6 +6,7 @@ import '../services/api.dart';
 import '../services/auth.dart';
 import '../services/lang.dart';
 import '../services/live.dart';
+import 'customer_file.dart' show FullFileButton;
 import '../ui/app_scaffold.dart';
 import '../ui/theme.dart';
 import '../ui/widgets.dart';
@@ -565,6 +566,7 @@ class _CustomsPartyScreenState extends State<CustomsPartyScreen> {
     final details = _partyDetails(p);
     return AppScaffold(
       title: Text(name.isEmpty ? tr('ملفّ الطرف', 'Party profile') : name),
+      actions: [if (kind == 'customer') FullFileButton(id: widget.partyId, reg: 'customs')],
       body: _loading
           ? ListView(padding: const EdgeInsets.all(14), children: const [Shimmer(height: 120), SizedBox(height: 10), Shimmer(height: 160)])
           : _error != null

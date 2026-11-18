@@ -3,6 +3,7 @@
  * Customer profile: everything known about a customer on one screen.
  * Customer data is edited in place. Routes are one table: every route worked or agreed, with its agreed price, tiers and trips, so a route worked with no agreed price (or priced but never worked) stands out. One component opened by the sales, operations and shipment-orders pages (see CustomersRegister).
  */
+import FullFileLink from '@/components/customers/FullFileLink';
 import { useState, useEffect, useCallback, useMemo, type ReactNode, type KeyboardEvent } from 'react';
 import Link from 'next/link';
 import { useLanguage } from '@/context/LanguageContext';
@@ -823,6 +824,7 @@ export default function CustomerProfile({ id, basePath }: { id: string; basePath
                 <Hand className="w-4 h-4" /> {data.ordersHold?.on ? (ar ? 'رفع وقف الطلبات' : 'Release hold') : (ar ? 'وقف الطلبات' : 'Hold orders')}
               </button>
             )}
+            <FullFileLink id={String(c._id)} reg="shipment" />
             <button type="button" onClick={() => setPortalOpen(true)}
               className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg border border-slate-200 bg-white hover:bg-slate-50 text-slate-700 text-sm font-medium">
               <KeyRound className="w-4 h-4" /> {ar ? 'حساب البوابة' : 'Portal login'}

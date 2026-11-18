@@ -4,6 +4,7 @@ import '../services/api.dart';
 import '../services/auth.dart';
 import '../services/lang.dart';
 import '../services/live.dart';
+import 'customer_file.dart' show FullFileButton;
 import '../ui/app_scaffold.dart';
 import '../ui/contact.dart';
 import '../ui/portal_account_card.dart';
@@ -380,6 +381,7 @@ class _CrmCompanyProfileScreenState extends State<CrmCompanyProfileScreen> {
     return AppScaffold(
       title: Text(name),
       actions: [
+        FullFileButton(id: widget.companyId, reg: 'crm'),
         if (canEdit && _d0 != null) IconButton(tooltip: tr('تعديل', 'Edit'), onPressed: _editCompany, icon: const Icon(Icons.edit_outlined)),
       ],
       body: _loading

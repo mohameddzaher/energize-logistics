@@ -58,12 +58,17 @@ async function resolveIdentity(partner) {
   // A single name missed trips written under another spelling in another section. So names are gathered from the parent, every record linked to it, and its collections name variants, matched exactly after folding, not approximately (approximate matching would show a customer another's trips).
   let masterId = null;
   try {
-    if (partner.source === 'crm_company') masterId = partner.refId;
-    else if (partner.source === 'fleet_customer') masterId = (await FleetCustomer.findById(partner.refId).select('crmCompany').lean() || {}).crmCompany || null;
+    if (partner.master) masterId = partner.master;
+    else if (partner.source === 'crm_company') masterId = partner.refId;
+    else if (partner.source === 'customs_customer') {
+      const CP = require('../models/CustomsParty');
+      masterId = (await CP.findOne({ kind: 'customer', $or: [{ nameKey: partner.refId }, { nameKey: CP.fold(partner.name || '') }] }).select('crmCompany').lean() || {}).crmCompany || null;
+    } else if (partner.source === 'fleet_customer') masterId = (await FleetCustomer.findById(partner.refId).select('crmCompany').lean() || {}).crmCompany || null;
     else if (partner.source === 'shipment_order_customer') masterId = (await require('../models/ShipmentOrderCustomer').findById(partner.refId).select('crmCompany').lean() || {}).crmCompany || null;
   } catch (_) { /* */ }
   const names = new Set([name].filter(Boolean));
   const linkedFleet = [];
+  const customsPartyIds = [];
   if (masterId) {
     const hub = require('../services/customerHub');
     const m = await CrmCompany.findById(masterId).select('name').lean();
@@ -72,6 +77,7 @@ async function resolveIdentity(partner) {
       if (doc.name) names.add(doc.name);
       for (const a of doc.aliases || []) if (a) names.add(a);
       if (reg === 'fleet') linkedFleet.push(String(doc._id));
+      if (reg === 'customs') customsPartyIds.push(String(doc._id));
     }
   }
   const allNames = [...names];
@@ -106,6 +112,7 @@ async function resolveIdentity(partner) {
     keys,
     names: allNames,
     masterId: masterId ? String(masterId) : null,
+    customsPartyIds,
     financeIds: finance.map((c) => String(c._id)),
     fleetIds: fleet.map((c) => String(c._id)),
     crmIds: crm.map((c) => String(c._id)),
@@ -145,7 +152,7 @@ async function fleetShipmentsFor(identity) {
 
 async function shipmentOrdersFor(identity) {
   const rows = await ShipmentOrder.find({ customerName: { $nin: [null, ''] } })
-    .select('waybillNumber reference source graduationNumber customerName fromCity toCity addressFrom addressTo truckType cargoType truckLength quantity driverName driverPhone vehicleName agentName pickupTime startTime arrivalTime status branch notes createdAt')
+    .select('waybillNumber reference source graduationNumber customerName fromCity toCity addressFrom addressTo truckType cargoType truckLength quantity driverName driverPhone vehicleName agentName pickupTime startTime arrivalTime status branch notes createdAt customsLink.clearance')
     .sort({ createdAt: -1 })
     .limit(FLEET_LIMIT)
     .lean();
@@ -158,14 +165,14 @@ async function platformTripsFor(identity) {
   if (!names.length) return [];
   const OperationsWorkflow = require('../models/OperationsWorkflow');
   const rows = await OperationsWorkflow.find({ username: { $in: names } })
-    .select('reportNumber reportDate username fromLocation toLocation applicationStatus executionStatus plateNumber carNumber driverName truckType truckSize loadType branch deliveryDate branchDeliveryDate documentNumber createdAt invoiceNumber invoiceDate')
+    .select('reportNumber reportDate username fromLocation toLocation applicationStatus executionStatus plateNumber carNumber driverName truckType truckSize loadType branch deliveryDate branchDeliveryDate documentNumber createdAt invoiceNumber invoiceDate customsLink.clearance')
     .sort({ reportDate: -1, createdAt: -1 }).limit(FLEET_LIMIT).lean();
   return rows.map((r) => ({
     _id: r._id, waybillNumber: r.reportNumber, customerName: r.username, fromCity: r.fromLocation, toCity: r.toLocation,
     status: r.applicationStatus, vehiclePlate: r.plateNumber || r.carNumber, driverName: r.driverName, truckType: r.truckType,
     truckSize: r.truckSize, branch: r.branch, loadDate: r.reportDate, deliveredAt: r.deliveryDate || r.branchDeliveryDate,
     documentNumber: r.documentNumber, createdAt: r.createdAt, loadType: r.loadType, executionStatus: r.executionStatus,
-    invoice: { number: r.invoiceNumber, date: r.invoiceDate },
+    invoice: { number: r.invoiceNumber, date: r.invoiceDate }, customsLink: r.customsLink,
   }));
 }
 
@@ -173,19 +180,21 @@ async function customsFor(identity) {
   const rows = await CustomsClearance.find({
     $or: [
       ...(identity.financeIds.length ? [{ customer: { $in: identity.financeIds } }] : []),
+      ...((identity.customsPartyIds || []).length ? [{ customerParty: { $in: identity.customsPartyIds } }] : []),
       { customerName: { $nin: [null, ''] } },
     ],
   })
-    .select('refNumber branch stage cancelled customerName customer shippingAgent blNumber invoiceNumber invoiceDate port containerCount totalWeight invoiceValue currency exporterCompany countryOfOrigin hsCode declarationNumber declarationDate doNumber exitPermitNumber unloadingAppointment unloadingLocation stageDates stageDone documents agentPapers createdAt updatedAt cargoType isCompleted stagesDone transportRoute pipelineVersion saleInvoiceNumber containers.route containers.stagesDone')
+    .select('customerParty refNumber branch stage cancelled customerName customer shippingAgent blNumber invoiceNumber invoiceDate port containerCount totalWeight invoiceValue currency exporterCompany countryOfOrigin hsCode declarationNumber declarationDate doNumber exitPermitNumber unloadingAppointment unloadingLocation stageDates stageDone documents agentPapers createdAt updatedAt cargoType isCompleted stagesDone transportRoute pipelineVersion saleInvoiceNumber containers.route containers.stagesDone')
     .sort({ createdAt: -1 })
     .limit(FLEET_LIMIT)
     .lean();
   const ids = new Set(identity.financeIds);
+  const parties = new Set(identity.customsPartyIds || []);
   // The customer sees his transaction's stages as they are.
   // The cycle branches (yard or direct to customer, vehicles without return), so the current stage alone does not say what is done or left. Stages are sent computed by the section's own rule (pipelineOf), without the internal close reason or raw fields.
   return rows
-    .filter((r) => (r.customer && ids.has(String(r.customer))) || owns(identity, r.customerName))
-    .map(({ stagesDone, transportRoute, pipelineVersion, saleInvoiceNumber, containers, ...r }) => {
+    .filter((r) => (r.customer && ids.has(String(r.customer))) || (r.customerParty && parties.has(String(r.customerParty))) || owns(identity, r.customerName))
+    .map(({ stagesDone, transportRoute, pipelineVersion, saleInvoiceNumber, containers, customerParty, ...r }) => {
       const p = CustomsClearance.pipelineOf({ ...r, containers, stagesDone, transportRoute, pipelineVersion, saleInvoiceNumber });
       return {
         ...r,
@@ -197,6 +206,42 @@ async function customsFor(identity) {
         },
       };
     });
+}
+
+/**
+ * Transport orders tied to the customer's clearances (customsLink on shipment orders and platform statements).
+ * Returned per clearance, in the same public shape as the shipments list (no prices, no ops fields).
+ */
+async function customsTransportFor(customs) {
+  const ids = customs.map((c) => c._id);
+  if (!ids.length) return { byClearance: new Map(), orders: [], platform: [] };
+  const OperationsWorkflow = require('../models/OperationsWorkflow');
+  const [orders, platform] = await Promise.all([
+    ShipmentOrder.find({ 'customsLink.clearance': { $in: ids } })
+      .select('waybillNumber reference source graduationNumber customerName fromCity toCity addressFrom addressTo truckType cargoType truckLength driverName vehicleName pickupTime status createdAt containerNumber customsLink.clearance customsLink.containers')
+      .limit(FLEET_LIMIT).lean(),
+    OperationsWorkflow.find({ 'customsLink.clearance': { $in: ids } })
+      .select('reportNumber reportDate username fromLocation toLocation applicationStatus executionStatus plateNumber carNumber driverName truckType truckSize loadType createdAt customsLink.clearance customsLink.containers')
+      .limit(FLEET_LIMIT).lean(),
+  ]);
+  const byClearance = new Map();
+  const push = (cid, row) => { const k = String(cid); if (!byClearance.has(k)) byClearance.set(k, []); byClearance.get(k).push(row); };
+  const platformRows = platform.map((r) => ({
+    _id: r._id, waybillNumber: r.reportNumber, customerName: r.username, fromCity: r.fromLocation, toCity: r.toLocation,
+    status: r.applicationStatus, executionStatus: r.executionStatus, vehiclePlate: r.plateNumber || r.carNumber, driverName: r.driverName,
+    truckType: r.truckType, truckSize: r.truckSize, loadDate: r.reportDate, createdAt: r.createdAt, loadType: r.loadType, customsLink: r.customsLink,
+  }));
+  const platformNos = new Set(platformRows.map((r) => String(r.waybillNumber || '')));
+  for (const r of platformRows) {
+    if (isCancelled(r.status) || isCancelled(r.executionStatus)) continue;
+    push(r.customsLink.clearance, { ...publicRow('platform', r), containers: r.customsLink.containers || [] });
+  }
+  for (const r of orders) {
+    if (isCancelled(r.status) || (r.graduationNumber != null && platformNos.has(String(r.graduationNumber)))) continue;
+    push(r.customsLink.clearance, { ...publicRow('orders', r), containers: (r.customsLink.containers || []).length ? r.customsLink.containers : [r.containerNumber].filter(Boolean) });
+  }
+  for (const list of byClearance.values()) list.sort((a, b) => String(a.date).localeCompare(String(b.date)));
+  return { byClearance, orders, platform: platformRows };
 }
 
 async function financeFor(identity) {
@@ -234,14 +279,14 @@ function publicRow(kind, r) {
     return {
       id: String(r._id), kind, number: r.waybillNumber ? String(r.waybillNumber) : '', date: ymd(r.loadDate || r.createdAt),
       from: r.fromCity || '', to: r.toCity || '', truck: [r.truckType, r.truckSize].filter(Boolean).join(' · '),
-      plate: r.vehiclePlate || '', driver: r.driverName || '', cargo: r.loadType || '',
+      plate: r.vehiclePlate || '', driver: r.driverName || '', cargo: r.loadType || '', clearance: r.clearanceRef || '',
     };
   }
   if (kind === 'orders') {
     return {
       id: String(r._id), kind, number: r.reference || (r.waybillNumber != null ? String(r.waybillNumber) : ''), date: ymd(r.pickupTime || r.createdAt),
       from: r.fromCity || r.addressFrom || '', to: r.toCity || r.addressTo || '', truck: [r.truckType, r.truckLength].filter(Boolean).join(' · '),
-      plate: r.vehicleName || '', driver: r.driverName || '', cargo: r.cargoType || '',
+      plate: r.vehicleName || '', driver: r.driverName || '', cargo: r.cargoType || '', clearance: r.clearanceRef || '',
     };
   }
   return {
@@ -301,12 +346,21 @@ async function loadAllFresh(identity) {
     return { fleet: [], orders: [], customs: [], invoices: [], payments: [], vendorLoads: loads };
   }
   // Invoices and payments are not shown to the customer: the portal has no prices.
-  const [fleet, orders, customs, platform] = await Promise.all([
+  const [fleet, orders0, customs0, platform0] = await Promise.all([
     fleetShipmentsFor(identity).catch(() => []),
     shipmentOrdersFor(identity).catch(() => []),
     customsFor(identity).catch(() => []),
     platformTripsFor(identity).catch(() => []),
   ]);
+  // A clearance's transport orders are the customer's shipments even when written under another name (the agent, a short form).
+  const link = await customsTransportFor(customs0).catch(() => ({ byClearance: new Map(), orders: [], platform: [] }));
+  const refOf = new Map(customs0.map((c) => [String(c._id), c.refNumber || c.blNumber || '']));
+  const tag = (r) => (r.customsLink && r.customsLink.clearance ? { ...r, clearanceRef: refOf.get(String(r.customsLink.clearance)) || '' } : r);
+  const haveOrders = new Set(orders0.map((r) => String(r._id)));
+  const havePlatform = new Set(platform0.map((r) => String(r._id)));
+  const orders = [...orders0, ...link.orders.filter((r) => !haveOrders.has(String(r._id)))].map(tag);
+  const platform = [...platform0, ...link.platform.filter((r) => !havePlatform.has(String(r._id)))].map(tag);
+  const customs = customs0.map((c) => ({ ...c, transport: link.byClearance.get(String(c._id)) || [] }));
   return { fleet, orders, customs, platform, invoices: [], payments: [], vendorLoads: [] };
 }
 
@@ -410,11 +464,14 @@ exports.overview = async (req, res) => {
         destinations: new Set(shipments.map((x) => x.to).filter(Boolean)).size,
         customsFiles: activeCustoms.length,
         containers: activeCustoms.reduce((a, c) => a + (Number(c.containerCount) || 0), 0),
+        customsOpen: activeCustoms.filter((c) => !c.isCompleted).length,
+        customsDone: activeCustoms.filter((c) => c.isCompleted).length,
+        customsTransport: activeCustoms.reduce((a, c) => a + ((c.transport || []).length), 0),
         invoices: invoices.length,
       },
       topRoutes: top(shipments, (x) => (x.from || x.to ? `${x.from || '—'} ← ${x.to || '—'}` : ''), 6),
       trucks: top(shipments, (x) => x.truck, 5),
-      recent: { shipments: shipments.slice(0, 8), invoices: invoices.slice(0, 5), customs: activeCustoms.slice(0, 5) },
+      recent: { shipments: shipments.slice(0, 8), invoices: invoices.slice(0, 5), customs: [...activeCustoms.filter((c) => !c.isCompleted), ...activeCustoms.filter((c) => c.isCompleted)].slice(0, 6) },
       monthly: monthlySeries(shipments, (x) => x.date, () => 0),
     });
   } catch (error) {
@@ -587,7 +644,8 @@ exports.customs = async (req, res) => {
     if (!partner) return res.status(403).json({ message: 'هذا الحساب غير مرتبط بعميل أو مورد' });
     const identity = await resolveIdentity(partner);
     if (identity.kind === 'vendor') return res.json({ items: [], total: 0 });
-    const items = await customsFor(identity);
+    // Same lists as the overview, so each file carries its transport orders.
+    const items = (await loadAll(identity)).customs;
     const byStage = {};
     for (const c of items) if (!c.cancelled) byStage[c.stage] = (byStage[c.stage] || 0) + 1;
     res.json({

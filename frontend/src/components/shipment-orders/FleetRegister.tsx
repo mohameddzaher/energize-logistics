@@ -4,6 +4,7 @@
  * Three ownership states, not two: has a supplier, ours, or unknown. Thousands of trucks were imported from order history with no supplier reference, so absence means unknown, not ours (our fleet is 58 trucks).
  * Counts come from the server, not the received array (a capped page would count the cap). Search is server-side too, with whitespace and hamza folding there, otherwise it searches only the loaded rows and reports no results.
  */
+import { vendorArchiveConfirmText } from '@/lib/customerArchive';
 import { useState, useEffect, useCallback } from 'react';
 import Link from 'next/link';
 import { canAccessSection, permsOf } from '@/lib/sections';
@@ -245,8 +246,8 @@ export default function FleetRegister({ initialTab = 'suppliers', supplierType, 
   };
 
   const removeSupplier = async (s: OrderSupplier) => {
-    if (!(await confirm(ar ? `إزالة المورد «${s.name}»؟ سياراته تبقى مسجلة.` : `Remove “${s.name}”? Their vehicles stay.`))) return;
-    try { await api.delete(`/api/shipment-orders/suppliers/${s._id}`); load(); } catch (e: any) { notify(e.message, 'error'); }
+    if (!(await confirm(vendorArchiveConfirmText(s.name, ar)))) return;
+    try { await api.delete(`/api/shipment-orders/suppliers/${s._id}`); notify(ar ? 'نُقل المورّد إلى أرشيف الموردين' : 'Moved to the vendors archive', 'success'); load(); } catch (e: any) { notify(e.message, 'error'); }
   };
   const removeVehicle = async (v: OrderVehicle) => {
     if (!(await confirm(ar ? `إزالة السيارة «${v.plate}»؟ الشحنات السابقة تحتفظ ببياناتها.` : `Remove “${v.plate}”? Past shipments keep their snapshot.`))) return;

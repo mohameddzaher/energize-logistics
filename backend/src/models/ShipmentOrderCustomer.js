@@ -89,6 +89,7 @@ for (const op of ['save', 'findOneAndUpdate', 'updateOne', 'updateMany', 'insert
 shipmentOrderCustomerSchema.add({ crmCompany: { type: mongoose.Schema.Types.ObjectId, ref: 'CrmCompany', default: null, index: true } });
 // Copy of the master's customer code (utils/customerCode).
 shipmentOrderCustomerSchema.add({ customerCode: require('../utils/customerCode').codeField() });
+require('../utils/archiveFields').addArchive(shipmentOrderCustomerSchema, { hide: false });
 require('../services/customerHub').attach(shipmentOrderCustomerSchema, 'shipment');
 // The fleet list is this list (utils/customerSync): every save mirrors the identity onto the customer's fleet row. `$locals.skipFleetMirror` is set by callers that mirror themselves.
 const mirrorToFleet = (doc) => {

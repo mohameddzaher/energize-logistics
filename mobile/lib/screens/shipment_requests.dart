@@ -146,13 +146,13 @@ const _salesKeys = {'fromCity', 'toCity', 'branch', 'notes', 'blNumber', 'contai
 const _timeKeys = {'pickupTime', 'startTime', 'arrivalTime'};
 const _groups = [('pickup_delivery', 'الاستلام والتسليم', 'Pickup & delivery'), ('shipment', 'تفاصيل الشحنة', 'Shipment details'), ('pricing_time', 'الأسعار والتوقيت', 'Prices & timing'), ('payment', 'المدفوعات', 'Payments')];
 
-/// Today in company time (Riyadh, no DST), YYYY-MM-DD: the server's day key for «الموعد الفعلي».
+/// Today in company time (Riyadh, no DST), YYYY-MM-DD: the server's day key for the actual load day.
 String _riyadhToday() => DateTime.now().toUtc().add(const Duration(hours: 3)).toIso8601String().substring(0, 10);
 String _riyadhDayOf(dynamic v) {
   final d = DateTime.tryParse('${v ?? ''}');
   return d == null ? '' : d.toUtc().add(const Duration(hours: 3)).toIso8601String().substring(0, 10);
 }
-/// «غدًا», a weekday or the date of a wanted day.
+/// "tomorrow", a weekday or the date of a wanted day.
 String _dueLabel(String day) {
   if (day.isEmpty) return '';
   final today = DateTime.parse(_riyadhToday());
@@ -266,7 +266,7 @@ class _ShipmentRequestFormScreenState extends State<ShipmentRequestFormScreen> {
   final _ncPhone = TextEditingController();
   String? _salesRep;
   int _trucks = 1;
-  // «الموعد الفعلي»: today unless sales picks a later day; the working board shows it on that day.
+  // the actual load day: today unless sales picks a later day; the working board shows it on that day.
   String _dueDay = _riyadhToday();
   final Map<String, dynamic> _form = {};
   final Map<String, TextEditingController> _ctrls = {};

@@ -54,7 +54,7 @@ export const LOG_LABEL: Record<string, { ar: string; en: string }> = {
 };
 
 export interface ShipmentRequest {
-  /** «الموعد الفعلي»: the day the load is wanted (YYYY-MM-DD); `dueLater` when it is after today. */
+  /** the actual load day: the day the load is wanted (YYYY-MM-DD); `dueLater` when it is after today. */
   dueDay?: string; dueLater?: boolean;
   _id: string; number: number; status: RequestStatus;
   customer?: string; customerName: string; salesRep?: string; salesRepName?: string;
@@ -142,10 +142,10 @@ export const statusLabel = (st: RequestStatus, ar: boolean, mode: 'sales' | 'ven
   return d ? (ar ? d.ar : d.en) : st;
 };
 
-/** Today in company time (Riyadh), YYYY-MM-DD, the same day key the server uses for «الموعد الفعلي». */
+/** Today in company time (Riyadh), YYYY-MM-DD, the same day key the server uses for the actual load day. */
 export const riyadhToday = () => new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Riyadh' }).format(new Date());
 const addDays = (ymd: string, n: number) => { const d = new Date(`${ymd}T12:00:00Z`); d.setUTCDate(d.getUTCDate() + n); return d.toISOString().slice(0, 10); };
-/** «غدًا», a weekday within the week, else the date; Latin digits always. */
+/** "tomorrow", a weekday within the week, else the date; Latin digits always. */
 export function dueDayLabel(day: string, lang: 'ar' | 'en' | string) {
   if (!day) return '';
   const ar = lang === 'ar';

@@ -20,6 +20,12 @@
       "en": "Chairman’s Approvals"
     },
     {
+      "key": "/system/customers",
+      "section": "Top Management",
+      "ar": "ملفات العملاء الشاملة",
+      "en": "Customer Files"
+    },
+    {
       "key": "/system/top-management/activity",
       "section": "Top Management",
       "ar": "نشاط الشركة المباشر",
@@ -120,6 +126,18 @@
       "section": "Operations",
       "ar": "خطّة الإدارة (Management JP)",
       "en": "Management JP"
+    },
+    {
+      "key": "/system/operations/customers-archive",
+      "section": "Operations",
+      "ar": "أرشيف العملاء",
+      "en": "Customers Archive"
+    },
+    {
+      "key": "/system/operations/vendors-archive",
+      "section": "Operations",
+      "ar": "أرشيف الموردين",
+      "en": "Vendors Archive"
     },
     {
       "key": "/system/operations/customer-requests",

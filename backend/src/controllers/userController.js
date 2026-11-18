@@ -135,7 +135,7 @@ async function resolvePartnerInput(partner, accountType) {
     err.status = 400;
     throw err;
   }
-  const { resolvePartner } = require('./partnerController');
+  const { resolvePartner, masterFor } = require('./partnerController');
   const resolved = await resolvePartner(partner.source, String(partner.refId));
   if (!resolved) {
     const err = new Error('لم يتم العثور على هذا العميل/المورد');
@@ -148,8 +148,15 @@ async function resolvePartnerInput(partner, accountType) {
     name: resolved.name,
     nameKey: nameKey(resolved.name),
     kind: reg.kind,
+    // The customer's shared master: its account then shows on every section's customer page.
+    master: reg.kind === 'customer' ? await masterFor(partner.source, String(partner.refId), resolved.name) : '',
   };
 }
+/** Another login already held by this register row or by the same customer through its master. */
+const partnerClash = (partner, exceptId) => User.findOne({
+  $or: [{ 'partner.source': partner.source, 'partner.refId': partner.refId }, ...(partner.master ? [{ 'partner.master': partner.master }] : [])],
+  ...(exceptId ? { _id: { $ne: exceptId } } : {}),
+}).lean();
 
 exports.createUser = async (req, res) => {
   try {
@@ -172,7 +179,7 @@ exports.createUser = async (req, res) => {
       return res.status(e.status || 400).json({ message: e.message });
     }
     if (partner) {
-      const clash = await User.findOne({ 'partner.source': partner.source, 'partner.refId': partner.refId }).lean();
+      const clash = await partnerClash(partner);
       if (clash) return res.status(400).json({ message: `يوجد حساب بالفعل لهذا السجل: ${clash.email}` });
     }
 
@@ -296,9 +303,7 @@ exports.updateUser = async (req, res) => {
         } catch (e) {
           return res.status(e.status || 400).json({ message: e.message });
         }
-        const clash = await User.findOne({
-          'partner.source': partner.source, 'partner.refId': partner.refId, _id: { $ne: user._id },
-        }).lean();
+        const clash = await partnerClash(partner, user._id);
         if (clash) return res.status(400).json({ message: `يوجد حساب بالفعل لهذا السجل: ${clash.email}` });
         user.accountType = nextType;
         user.partner = partner;

@@ -4,7 +4,7 @@
 import { useState, useEffect, useCallback, useMemo } from 'react';
 import api from '@/lib/api';
 import { useLanguage } from '@/context/LanguageContext';
-import { Ship, Container, Search, CheckCircle2, Circle, ChevronDown, ChevronRight } from 'lucide-react';
+import { Ship, Container, Search, CheckCircle2, Circle, ChevronDown, ChevronRight, Truck } from 'lucide-react';
 import { KpiTile } from '@/components/system/Scorecard';
 import { CUSTOMS_STAGES, customsSteps, customsStageText, money, fmtDate, type Lang } from '@/lib/portal';
 import ExportMenu, { exportScopeLabels, type ExportColumn } from '@/components/ls2/ExportMenu';
@@ -29,7 +29,10 @@ interface CustomsFile {
   documents?: Record<string, boolean>;
   stageDates?: Record<string, string>;
   createdAt: string;
+  /** Transport orders tied to this file (server customsTransportFor), in the shipments list's public shape. */
+  transport?: TransportRow[];
 }
+interface TransportRow { id: string; kind: string; number: string; date: string; from: string; to: string; truck: string; plate: string; driver: string; cargo: string; containers?: string[] }
 
 const DOC_LABEL: Record<string, { ar: string; en: string }> = {
   bl: { ar: 'البوليصة', en: 'Bill of lading' },
@@ -87,9 +90,23 @@ export default function PortalCustomsPage() {
   // `/api/portal/customs` returns all of the customer's files at once and the stage filter and search run in the browser; a single export button would otherwise export only the selected stage and call it the whole file.
   const sheetName = tx('My customs files', 'معاملات التخليص');
   const scope = exportScopeLabels(ar);
+  // The transport orders of the files, one row per truck, with the file they belong to.
+  const transportCols: ExportColumn[] = [
+    { header: tx('Customs file', 'معاملة التخليص'), key: 'file', width: 18 },
+    { header: tx('Waybill', 'رقم البوليصة'), key: 'number', width: 14 },
+    { header: tx('Date', 'التاريخ'), key: 'date', width: 12 },
+    { header: tx('From', 'من'), key: 'from', width: 16 },
+    { header: tx('To', 'إلى'), key: 'to', width: 16 },
+    { header: tx('Truck', 'الشاحنة'), key: 'truck', width: 16 },
+    { header: tx('Plate', 'اللوحة'), key: 'plate', width: 14 },
+    { header: tx('Driver', 'السائق'), key: 'driver', width: 20 },
+    { header: tx('Containers', 'الحاويات'), key: 'containers', transform: (v: string[]) => (v || []).join(', '), width: 24 },
+  ];
+  const transportOf = (list: CustomsFile[]) => list.flatMap((c) => (c.transport || []).map((tr) => ({ ...tr, file: c.refNumber || c.blNumber || '' })));
+  const transportName = tx('Transport orders', 'أوامر النقل');
   const exportOptions = [
-    { key: 'shown', label: scope.shown, sheets: [{ name: sheetName, rows: filtered, columns: exportColumns }] },
-    { key: 'all', label: scope.all, sheets: [{ name: sheetName, rows: items, columns: exportColumns }] },
+    { key: 'shown', label: scope.shown, sheets: [{ name: sheetName, rows: filtered, columns: exportColumns }, { name: transportName, rows: transportOf(filtered), columns: transportCols }] },
+    { key: 'all', label: scope.all, sheets: [{ name: sheetName, rows: items, columns: exportColumns }, { name: transportName, rows: transportOf(items), columns: transportCols }] },
   ];
 
   if (loading) {
@@ -157,6 +174,11 @@ export default function PortalCustomsPage() {
                       {c.isCompleted ? tx('Completed', 'مكتملة') : nextStep ? `${tx('Next', 'المرحلة التالية')}: ${ar ? nextStep.ar : nextStep.en}` : customsStageText(c.stage, lang as Lang)}
                     </p>
                     <p className="text-slate-400 text-[11px]">{(c.containerCount || 0)} {c.cargoType === 'vehicles' ? tx('vehicles', 'سيّارة') : tx('containers', 'حاوية')} · {fmtDate(c.createdAt)}</p>
+                    {!!c.transport?.length && (
+                      <p className="mt-1 inline-flex items-center gap-1 rounded-full bg-sky-50 px-2 py-0.5 text-[11px] font-semibold text-sky-700 ring-1 ring-sky-200">
+                        <Truck className="h-3 w-3" />{tx(`${c.transport.length} transport orders`, `${c.transport.length} أمر نقل`)}
+                      </p>
+                    )}
                   </div>
                 </div>
 
@@ -211,6 +233,32 @@ export default function PortalCustomsPage() {
                       </div>
                     </div>
                   )}
+
+                  <div>
+                    <p className="text-slate-700 text-xs font-semibold mb-1.5 flex items-center gap-1.5"><Truck className="h-3.5 w-3.5 text-sky-600" />{tx('Transport orders for this file', 'أوامر النقل الخاصّة بهذه المعاملة')}</p>
+                    {c.transport?.length ? (
+                      <div className="overflow-x-auto rounded-lg border border-slate-200">
+                        <table className="w-full text-[12.5px]">
+                          <thead><tr>
+                            {[tx('Waybill', 'رقم البوليصة'), tx('Date', 'التاريخ'), tx('Route', 'المسار'), tx('Truck', 'الشاحنة'), tx('Plate', 'اللوحة'), tx('Driver', 'السائق'), tx('Containers', 'الحاويات')].map((h) => <th key={h} className="px-2.5 py-2 text-start font-semibold whitespace-nowrap">{h}</th>)}
+                          </tr></thead>
+                          <tbody className="divide-y divide-slate-100">
+                            {c.transport.map((tr) => (
+                              <tr key={tr.id}>
+                                <td className="px-2.5 py-1.5 font-semibold tabular-nums">{tr.number || '—'}</td>
+                                <td className="px-2.5 py-1.5 tabular-nums whitespace-nowrap">{tr.date || '—'}</td>
+                                <td className="px-2.5 py-1.5 whitespace-nowrap">{tr.from} ← {tr.to}</td>
+                                <td className="px-2.5 py-1.5">{tr.truck || '—'}</td>
+                                <td className="px-2.5 py-1.5 tabular-nums">{tr.plate || '—'}</td>
+                                <td className="px-2.5 py-1.5">{tr.driver || '—'}</td>
+                                <td className="px-2.5 py-1.5 tabular-nums">{(tr.containers || []).join('، ') || '—'}</td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    ) : <p className="text-[12px] text-slate-400">{tx('No transport orders yet.', 'لا أوامر نقل بعد.')}</p>}
+                  </div>
 
                   <div>
                     <p className="text-slate-700 text-xs font-semibold mb-1.5">{tx('Clearance pipeline', 'مسار التخليص')}</p>

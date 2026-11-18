@@ -4,7 +4,7 @@
  * An employee is under account M when any of these holds:
  *   1. `Employee.directManager` is M (the HR file's line manager).
  *   2. The employee's login has `User.manager` = M (the relation the leave chain routes on).
- *   3. M holds the manager role of a system section, and the employee belongs to that section:
+ *   3. M leads a system section (its manager, team leader or deputy), and the employee belongs to that section:
  *      his login role is one of the section's roles, or his HR department is owned by the section
  *      (`performanceDepartments.sectionOwners`: by name, or by most of its staff reporting to the section manager).
  * Rule 3 is what reaches reps and drivers: they rarely have a login or a line manager on file, but always a department.
@@ -46,6 +46,8 @@ function managedSection(user) {
   // Leads, not performance heads: the team leader and the accounting manager keep their team here.
   const own = sectionOfRole(role);
   if (own && D.leadRolesOf(own).includes(role)) return own;
+  // A section deputy (b2c_deputy) acts for the manager, so he files leave for the whole section like the manager and the team leader.
+  if (own && /_deputy$/.test(role)) return own;
   return D.sectionLedBy(role);
 }
 

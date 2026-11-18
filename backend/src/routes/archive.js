@@ -9,8 +9,8 @@ const { TOP_ROLES } = require('../config/constants');
 const svc = require('../services/customerArchive');
 const logAudit = require('../utils/auditLogger');
 
-const READ = [...TOP_ROLES, 'cfo', 'moderator', 'operations_manager', 'operations_team_leader', 'vendors_manager', 'vendors_team_leader', 'collections_manager'];
-const PURGE = [...TOP_ROLES, 'cfo', 'moderator', 'operations_manager', 'vendors_manager', 'collections_manager'];
+const READ = [...TOP_ROLES, 'cfo', 'moderator', 'operations_manager', 'operations_team_leader', 'vendors_manager', 'vendors_team_leader', 'collections_manager', 'collections_team_leader'];
+const PURGE = [...TOP_ROLES, 'cfo', 'moderator', 'operations_manager', 'operations_team_leader', 'vendors_manager', 'vendors_team_leader', 'collections_manager', 'collections_team_leader'];
 const send = (res, fn) => fn.then((out) => (out ? res.json(out) : res.status(404).json({ message: 'غير موجود في الأرشيف' })))
   .catch((e) => { console.error('[archive]', e); res.status(500).json({ message: e.message || 'تعذّر التنفيذ' }); });
 const target = (req) => (req.query.reg ? { reg: String(req.query.reg), id: req.params.id } : {});

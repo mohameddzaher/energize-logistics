@@ -6,7 +6,7 @@ const mongoose = require('mongoose');
 const hub = require('./customerHub');
 const { TOP_ROLES } = require('../config/constants');
 
-const FULL_FILE_ROLES = [...TOP_ROLES, 'cfo', 'moderator', 'collections_manager'];
+const FULL_FILE_ROLES = [...TOP_ROLES, 'cfo', 'moderator', 'collections_manager', 'collections_team_leader'];
 const canSeeFullFile = (u) => !!u && FULL_FILE_ROLES.includes(String(u.role || ''));
 
 const W = { withArchived: true };

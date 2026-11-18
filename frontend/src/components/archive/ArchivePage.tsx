@@ -22,7 +22,7 @@ interface Row {
 }
 
 const TOP = ['super_admin', 'admin', 'it_manager', 'it_team_leader', 'it_specialist', 'business_consultant'];
-const PURGE_ROLES = [...TOP, 'cfo', 'moderator', 'operations_manager', 'vendors_manager', 'collections_manager'];
+const PURGE_ROLES = [...TOP, 'cfo', 'moderator', 'operations_manager', 'operations_team_leader', 'vendors_manager', 'vendors_team_leader', 'collections_manager', 'collections_team_leader'];
 const ACTIVITY: Record<string, { ar: string; en: string }> = {
   orders: { ar: 'أوامر نقل', en: 'Transport orders' },
   loads: { ar: 'حمولات الأسطول', en: 'Fleet loads' },

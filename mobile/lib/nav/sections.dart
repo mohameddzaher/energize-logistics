@@ -258,7 +258,7 @@ List<AppSection> sectionsFor(AuthProvider auth) {
     AppSection(
       key: 'Top Management', arTitle: 'الإدارة العليا', enTitle: 'Top Management', icon: Icons.workspace_premium_outlined,
       // cfo, moderator and the collections manager reach this section for the complete customer files only.
-      roles: const ['super_admin', 'admin', 'it_manager', 'it_team_leader', 'it_specialist', 'business_consultant', 'cfo', 'moderator', 'collections_manager'],
+      roles: const ['super_admin', 'admin', 'it_manager', 'it_team_leader', 'it_specialist', 'business_consultant', 'cfo', 'moderator', 'collections_manager', 'collections_team_leader'],
       pages: [
         AppPage('ملفات العملاء الشاملة', 'Customer Files', Icons.folder_shared_outlined, (c) => const CustomerFilesScreen(), path: '/system/customers'),
         if (_top.contains(role) || auth.user?['isTopManagement'] == true || auth.user?['isChairman'] == true) ...[
@@ -294,7 +294,7 @@ List<AppSection> sectionsFor(AuthProvider auth) {
         if (const ['super_admin', 'it_manager', 'it_team_leader', 'it_specialist', 'business_consultant', 'admin', 'employee', 'operations_manager', 'operations_team_leader', 'operations_staff', 'moderator', 'cfo', 'accounting_manager', 'accounting_team_leader', 'accountant', 'collections_manager', 'collections_team_leader', 'collections_staff'].contains(role))
           AppPage('أنواع الدفع', 'Payment Types', Icons.payments_outlined, (c) => const OpsPaymentTypesScreen(), path: '/system/operations/payment-types'),
         // Customers and vendors deleted anywhere (backend services/customerArchive).
-        if (const ['super_admin', 'admin', 'it_manager', 'it_team_leader', 'it_specialist', 'business_consultant', 'cfo', 'moderator', 'operations_manager', 'operations_team_leader', 'vendors_manager', 'vendors_team_leader', 'collections_manager'].contains(role)) ...[
+        if (const ['super_admin', 'admin', 'it_manager', 'it_team_leader', 'it_specialist', 'business_consultant', 'cfo', 'moderator', 'operations_manager', 'operations_team_leader', 'vendors_manager', 'vendors_team_leader', 'collections_manager', 'collections_team_leader'].contains(role)) ...[
           AppPage('أرشيف العملاء', 'Customers Archive', Icons.archive_outlined, (c) => const ArchiveScreen(), path: '/system/operations/customers-archive'),
           AppPage('أرشيف الموردين', 'Vendors Archive', Icons.inventory_2_outlined, (c) => const ArchiveScreen(vendors: true), path: '/system/operations/vendors-archive'),
         ],

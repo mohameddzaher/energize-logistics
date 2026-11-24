@@ -132,7 +132,7 @@ class _Ls2DashboardScreenState extends State<Ls2DashboardScreen> {
     final distance = _m(_d?['distance']);
 
     return AppScaffold(
-      title: Text(tr('لوحة لوكيشن سوليوشن', 'LS2 Dashboard')),
+      title: Text(tr('لوحة الصيانة', 'Maintenance dashboard')),
       actions: [IconButton(tooltip: tr('تصدير Excel', 'Export to Excel'), icon: const Icon(Icons.file_download_outlined), onPressed: _export)],
       body: _loading
           ? ListView(padding: const EdgeInsets.all(14), children: const [Shimmer(height: 100), SizedBox(height: 10), Shimmer(height: 100), SizedBox(height: 10), Shimmer(height: 160)])

@@ -498,7 +498,7 @@ List<AppSection> sectionsFor(AuthProvider auth) {
       ],
     ),
     AppSection(
-      key: 'Location Solutions', arTitle: 'لوكيشن سوليوشن', enTitle: 'Location Solutions', icon: Icons.gps_fixed_outlined,
+      key: 'Location Solutions', arTitle: 'الصيانة', enTitle: 'Maintenance', icon: Icons.gps_fixed_outlined,
       roles: const [..._admins, 'operations_manager', 'operations_team_leader', 'operations_staff', 'moderator', 'location_manager', 'location_team_leader', 'location_staff'],
       pages: [
         AppPage('اللوحة', 'Dashboard', Icons.dashboard_outlined, (c) => const Ls2DashboardScreen()),

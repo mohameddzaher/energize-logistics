@@ -524,7 +524,7 @@ export function ls2Text(lang: Lang) {
   const t = (en: string, a: string) => (ar ? a : en);
   return {
     ar,
-    section: t('Location Solutions', 'لوكيشن سوليوشن'),
+    section: t('Maintenance', 'الصيانة'),
     dashboard: t('Fleet Telemetry Dashboard', 'لوحة تتبّع الأسطول'),
     liveSubtitle: t('Live GPS & sensor telemetry', 'بيانات GPS والحساسات المباشرة'),
     live: t('Live', 'مباشر'),

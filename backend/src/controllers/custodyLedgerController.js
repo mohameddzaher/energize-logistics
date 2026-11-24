@@ -167,7 +167,7 @@ function makeCustodyController(cfg) {
       let car = {};
       if (vehicles) {
         const v = await findVehicle(b.vehicleUnitId);
-        if (v === false) return res.status(400).json({ message: 'السيّارةُ غير موجودة في أسطول لوكيشن سوليوشن', fields: { vehicleUnitId: 'غير معروفة' } });
+        if (v === false) return res.status(400).json({ message: 'السيّارةُ غير موجودة في شاحنات قسم الصيانة', fields: { vehicleUnitId: 'غير معروفة' } });
         car = v || {};
       }
       let attachments = [];
@@ -282,7 +282,7 @@ function makeCustodyController(cfg) {
       }
       if (vehicles && !e.transferId && b.vehicleUnitId !== undefined) {
         const v = await findVehicle(b.vehicleUnitId);
-        if (v === false) return res.status(400).json({ message: 'السيّارةُ غير موجودة في أسطول لوكيشن سوليوشن', fields: { vehicleUnitId: 'غير معروفة' } });
+        if (v === false) return res.status(400).json({ message: 'السيّارةُ غير موجودة في شاحنات قسم الصيانة', fields: { vehicleUnitId: 'غير معروفة' } });
         Object.assign(e, v || NO_VEHICLE);
       }
       const drop = new Set((Array.isArray(b.removeAttachments) ? b.removeAttachments : []).map(String));

@@ -342,32 +342,32 @@ export const SECTION_ROLES: SectionRoles[] = [
     "section": "Location Solutions",
     "manager": {
       "key": "location_manager",
-      "ar": "مدير لوكيشن سوليوشن",
-      "en": "Location Solutions Manager"
+      "ar": "مدير الصيانة",
+      "en": "Maintenance Manager"
     },
     "staff": [
       {
         "key": "location_team_leader",
-        "ar": "قائد فريق لوكيشن سوليوشن",
-        "en": "Location Solutions Team Leader",
+        "ar": "قائد فريق الصيانة",
+        "en": "Maintenance Team Leader",
         "distinct": "له صلاحيّاتُ مدير القسم كاملةً، ولا يجلس في اجتماعات الإدارة، ويقيّمه مديرُ القسم مع فريقه."
       },
       {
         "key": "location_staff",
-        "ar": "موظف لوكيشن سوليوشن",
-        "en": "Location Solutions Team"
+        "ar": "موظف الصيانة",
+        "en": "Maintenance Team"
       }
     ],
     "teamLeader": {
       "key": "location_team_leader",
-      "ar": "قائد فريق لوكيشن سوليوشن",
-      "en": "Location Solutions Team Leader",
+      "ar": "قائد فريق الصيانة",
+      "en": "Maintenance Team Leader",
       "distinct": "له صلاحيّاتُ مدير القسم كاملةً، ولا يجلس في اجتماعات الإدارة، ويقيّمه مديرُ القسم مع فريقه."
     },
     "trainee": {
       "key": "location_trainee",
-      "ar": "متدرّب لوكيشن سوليوشن",
-      "en": "Location Solutions Trainee"
+      "ar": "متدرّب الصيانة",
+      "en": "Maintenance Trainee"
     }
   },
   {

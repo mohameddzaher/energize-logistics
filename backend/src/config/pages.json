@@ -856,8 +856,8 @@
     {
       "key": "/system/ls2/maintenance",
       "section": "Location Solutions",
-      "ar": "الصيانة",
-      "en": "Maintenance"
+      "ar": "صيانة المركبات",
+      "en": "Vehicle maintenance"
     },
     {
       "key": "/system/ls2/maintenance-analytics",

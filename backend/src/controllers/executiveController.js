@@ -123,7 +123,7 @@ async function build(user) {
       chart: { kind: 'bar', ar: 'الشحنات حسب الحالة', data: Object.entries(fleetDash?.byStatus || {}).map(([k, v]) => ({ name: k, value: Number(v) })) },
     },
     {
-      key: 'ls2', ar: 'لوكيشن سوليوشن', en: 'Location Solutions', color: 'blue', href: '/system/ls2',
+      key: 'ls2', ar: 'الصيانة', en: 'Maintenance', color: 'blue', href: '/system/ls2',
       kpis: [
         kpi('متصل من الأسطول', 'Online', ls2?.fleet?.online, { suffix: ls2?.fleet?.total != null ? ` / ${ls2.fleet.total}` : '', href: '/system/ls2/live' }),
         kpi('تتحرك الآن', 'Moving now', ls2?.fleet?.statusCounts?.moving, { tone: 'good', href: '/system/ls2/live' }),

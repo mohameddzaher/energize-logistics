@@ -184,7 +184,8 @@ const SECTION_LABELS_AR = {
   'Fleet Management': 'إدارة الأسطول',
   'Customs': 'التخليص الجمركي',
   'Vehicles': 'المركبات والتفاويض',
-  'Location Solutions': 'لوكيشن سوليوشن',
+  // Shown as Maintenance; the key stays 'Location Solutions' (the GPS vendor the section started from) because grants, roles and routes are stored under it.
+  'Location Solutions': 'الصيانة',
   'Marketing': 'التسويق',
   'Business Development': 'تطوير الأعمال',
   'Software & IT': 'تقنية المعلومات',
@@ -203,8 +204,10 @@ const SECTION_LABELS_AR = {
 };
 
 /** Print-ready name for a section key, in either language. */
+// English names that differ from the key.
+const SECTION_LABELS_EN = { 'Location Solutions': 'Maintenance' };
 const sectionLabel = (key, lang = 'ar') =>
-  (lang === 'en' ? key : (SECTION_LABELS_AR[key] || key));
+  (lang === 'en' ? (SECTION_LABELS_EN[key] || key) : (SECTION_LABELS_AR[key] || key));
 const ACCESS_LEVELS = ['none', 'view', 'edit'];
 
 // Every role that can be assigned to a user (super_admin implicitly has everything, so it is excluded from editing). Derived from config/roles.js; a hand-written list kept missing roles. Scoped roles (Media Go) are outside the matrix; see config/scopedRoles.js.

@@ -18,7 +18,7 @@ const JP_SECTIONS = {
   fleet: { roleSection: 'Fleet Management', path: '/system/fleet', ar: 'إدارة الأسطول', en: 'Fleet Management' },
   customs: { roleSection: 'Customs', path: '/system/customs', ar: 'التخليص الجمركي', en: 'Customs' },
   vehicles: { roleSection: 'Vehicles', path: '/system/vehicles', ar: 'المركبات والتفاويض', en: 'Vehicles' },
-  ls2: { roleSection: 'Location Solutions', path: '/system/ls2', ar: 'النقل الثقيل', en: 'Location Solutions' },
+  ls2: { roleSection: 'Location Solutions', path: '/system/ls2', ar: 'الصيانة', en: 'Maintenance' },
   marketing: { roleSection: 'Marketing', path: '/system/marketing', ar: 'التسويق', en: 'Marketing' },
   bd: { roleSection: 'Business Development', path: '/system/bd', ar: 'تطوير الأعمال', en: 'Business Development' },
   it: { roleSection: 'Software & IT', path: '/system/it', ar: 'تقنية المعلومات', en: 'Software & IT' },

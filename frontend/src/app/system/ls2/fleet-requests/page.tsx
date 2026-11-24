@@ -178,7 +178,7 @@ export default function Ls2FleetRequestsPage() {
                   </div>
                 ) : (
                   <p className="mt-2 text-xs text-amber-700 font-semibold">
-                    {t('بانتظار قرار مدير لوكيشن سوليوشن.', 'Awaiting the Location Solutions manager.')}
+                    {t('بانتظار قرار مدير الصيانة.', 'Awaiting the maintenance manager.')}
                   </p>
                 )
               ) : (

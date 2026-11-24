@@ -228,7 +228,7 @@ class _Ls2FleetRequestsScreenState extends State<Ls2FleetRequestsScreen> {
                               ]),
                             ] else if (st == 'pending') ...[
                               const SizedBox(height: 6),
-                              Text(tr('بانتظار قرار مدير لوكيشن سوليوشن.', 'Awaiting the Location Solutions manager.'),
+                              Text(tr('بانتظار قرار مدير الصيانة.', 'Awaiting the maintenance manager.'),
                                   style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: T.warn)),
                             ] else ...[
                               const SizedBox(height: 6),

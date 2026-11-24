@@ -81,8 +81,8 @@ const SECTION_ROLES = [
     staff: [{ key: 'vehicles_staff', ar: 'موظف المركبات والتفاويض', en: 'Vehicles & Authorizations Officer' }] },
 
   { section: 'Location Solutions',
-    manager: { key: 'location_manager', ar: 'مدير لوكيشن سوليوشن', en: 'Location Solutions Manager' },
-    staff: [{ key: 'location_staff', ar: 'موظف لوكيشن سوليوشن', en: 'Location Solutions Team' }] },
+    manager: { key: 'location_manager', ar: 'مدير الصيانة', en: 'Maintenance Manager' },
+    staff: [{ key: 'location_staff', ar: 'موظف الصيانة', en: 'Maintenance Team' }] },
 
   { section: 'Marketing',
     manager: { key: 'marketing_manager', ar: 'مدير التسويق', en: 'Marketing Manager' },

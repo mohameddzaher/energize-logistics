@@ -574,11 +574,11 @@ class _FleetVehicleAnalyticsScreenState extends State<FleetVehicleAnalyticsScree
         Row(children: [
           const Icon(Icons.build_outlined, size: 16, color: T.inkFaint),
           const SizedBox(width: 6),
-          Expanded(child: Text(tr('الحالة الفنّية — لوكيشن سوليوشن والمخزن', 'Technical state — Location Solutions & store'),
+          Expanded(child: Text(tr('الحالة الفنّية — الصيانة والمخزن', 'Technical state — Maintenance & store'),
               style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 13))),
           if (unitId != null)
             IconButton(
-              tooltip: tr('فتحها في لوكيشن سوليوشن', 'Open in Location Solutions'),
+              tooltip: tr('فتحها في قسم الصيانة', 'Open in Maintenance'),
               icon: const Icon(Icons.open_in_new_rounded, size: 18, color: T.cyan),
               onPressed: () => _open(Ls2VehicleDetailScreen(vehicleId: '$unitId', plate: (ls2?['plate'] ?? widget.plate).toString())),
             ),

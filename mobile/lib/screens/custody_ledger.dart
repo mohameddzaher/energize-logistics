@@ -627,7 +627,7 @@ class _EntrySheetState extends State<_EntrySheet> {
           ),
           if (_withCar) ...[
             const SizedBox(height: 10),
-            Text(tr('السيارة (اختياري) — من سيارات لوكيشن سوليوشن', 'Vehicle (optional) — from the Location Solutions fleet'), style: const TextStyle(fontSize: 12, color: T.inkSoft, fontWeight: FontWeight.w700)),
+            Text(tr('السيارة (اختياري) — من شاحنات قسم الصيانة', 'Vehicle (optional) — from the maintenance fleet'), style: const TextStyle(fontSize: 12, color: T.inkSoft, fontWeight: FontWeight.w700)),
             const SizedBox(height: 6),
             OutlinedButton.icon(
               icon: const Icon(Icons.local_shipping_outlined, size: 18),

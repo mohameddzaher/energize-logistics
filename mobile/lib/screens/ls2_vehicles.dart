@@ -460,7 +460,7 @@ class _Ls2VehiclesScreenState extends State<Ls2VehiclesScreen> {
     final rows = _shown;
 
     return AppScaffold(
-      title: Text(tr('مركبات لوكيشن سوليوشن', 'LS Fleet')),
+      title: Text(tr('مركبات الصيانة', 'Maintenance fleet')),
       actions: [
         IconButton(
           tooltip: tr('البنود المؤجّلة', 'Deferred tasks'),

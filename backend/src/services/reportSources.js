@@ -1577,7 +1577,7 @@ const SECTION_REPORTS = [
     },
   },
   {
-    key: 'ls2', ar: 'لوكيشن سوليوشن', en: 'Location Solutions',
+    key: 'ls2', ar: 'الصيانة', en: 'Maintenance',
     controller: () => require('../controllers/ls2Controller'), handler: 'getDashboard',
   },
   {

@@ -21,7 +21,7 @@ const _moduleLabels = {
   'collections': ('التحصيل', 'Collections'),
   'customs': ('التخليص الجمركي', 'Customs'),
   'jp': ('خطّة العمل (JP)', 'Work plan (JP)'),
-  'ls2': ('لوكيشن سوليوشن', 'Location Solutions'),
+  'ls2': ('الصيانة', 'Maintenance'),
   'operations': ('التشغيل', 'Operations'),
   'shipment_orders': ('طلبات الشحنات', 'Shipment orders'),
 };

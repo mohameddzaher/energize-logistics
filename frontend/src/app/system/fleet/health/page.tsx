@@ -321,7 +321,7 @@ export default function FleetHealthPage() {
 
       {/* Where the numbers come from, stated explicitly: readings come from the truck's device, and alerts are made by the Location Solutions engine, not this screen. Someone seeing an unexpected number knows where to go. */}
       <p className="text-[11.5px] text-slate-400 leading-relaxed">
-        {t('الأرقام من أجهزة التتبّع مباشرةً وتُحدَّث كلَّ نصف دقيقة. والتنبيهاتُ يصنعها محرّكُ التنبيهات في «لوكيشن سوليوشن» — تُقرأ هنا وتُغلَق هناك.',
+        {t('الأرقام من أجهزة التتبّع مباشرةً وتُحدَّث كلَّ نصف دقيقة. والتنبيهاتُ يصنعها محرّكُ التنبيهات في قسم «الصيانة» — تُقرأ هنا وتُغلَق هناك.',
            'Readings come straight from the trackers and refresh every 30 seconds. Alerts are raised by the Location Solutions alert engine — read here, closed there.')}
       </p>
     </div>

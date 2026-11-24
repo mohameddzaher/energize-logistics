@@ -436,7 +436,7 @@ function SystemLayoutInner({ children }: { children: React.ReactNode }) {
     { href: '/system/ls2/driver-performance', label: lang === 'ar' ? 'تقييم السواقين' : 'Driver Performance', icon: <Target className="w-5 h-5" />, roles: LS2_SECTION_ROLES, section: 'Location Solutions' },
     { href: '/system/ls2/tires', label: lang === 'ar' ? 'الكاوتش' : 'Tires', icon: <Activity className="w-5 h-5" />, roles: LS2_SECTION_ROLES, section: 'Location Solutions' },
     { href: '/system/ls2/temperature', label: lang === 'ar' ? 'الحرارة' : 'Temperature', icon: <Thermometer className="w-5 h-5" />, roles: LS2_SECTION_ROLES, section: 'Location Solutions' },
-    { href: '/system/ls2/maintenance', label: lang === 'ar' ? 'الصيانة' : 'Maintenance', icon: <Wrench className="w-5 h-5" />, roles: LS2_SECTION_ROLES, section: 'Location Solutions' },
+    { href: '/system/ls2/maintenance', label: lang === 'ar' ? 'صيانة المركبات' : 'Vehicle maintenance', icon: <Wrench className="w-5 h-5" />, roles: LS2_SECTION_ROLES, section: 'Location Solutions' },
     { href: '/system/ls2/maintenance-analytics', label: lang === 'ar' ? 'تحليلات الصيانة' : 'Maintenance Analytics', icon: <BarChart3 className="w-5 h-5" />, roles: LS2_SECTION_ROLES, section: 'Location Solutions' },
     { href: '/system/ls2/fleet-assets', label: lang === 'ar' ? 'السطحات والكاوتشات' : 'Fleet Assets', icon: <Container className="w-5 h-5" />, roles: LS2_SECTION_ROLES, section: 'Location Solutions' },
     // Custody is money: shown only where the server opens it (custodyPages, middleware/custodyGate), owner roles or a permissions-screen grant.

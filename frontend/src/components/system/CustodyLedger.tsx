@@ -506,7 +506,7 @@ function EntryForm({ cfg, carOptions, account, direction, rules, today, ar, onCl
         ) : null}
 
         {withCar && (
-          <Field label={t('السيارة (اختياري) — من سيارات لوكيشن سوليوشن', 'Vehicle (optional) — from the Location Solutions fleet')}>
+          <Field label={t('السيارة (اختياري) — من شاحنات قسم الصيانة', 'Vehicle (optional) — from the maintenance fleet')}>
             <SearchSelect ar={ar} value={vehicle} onChange={setVehicle} options={carOptions} allLabel={t('بدون سيارة', 'No vehicle')} />
           </Field>
         )}

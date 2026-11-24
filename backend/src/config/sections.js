@@ -176,7 +176,7 @@ const SECTION_KEYS = SECTIONS.map((s) => s.key);
 // output (PDF reports, notifications) isn't the only place in an Arabic system
 // that says "Software & IT".
 const SECTION_LABELS_AR = {
-  'Operations': 'العمليات',
+  'Operations': 'التشغيل',
   'Collections': 'التحصيل',
   'Operations Platform': 'منصة الأوبريشن',
   'Shipment Orders': 'طلبات الشحنات',
@@ -188,7 +188,7 @@ const SECTION_LABELS_AR = {
   'Location Solutions': 'الصيانة',
   'Marketing': 'التسويق',
   'Business Development': 'تطوير الأعمال',
-  'Software & IT': 'تقنية المعلومات',
+  'Software & IT': 'البرمجيات',
   'Administration': 'الشؤون الإدارية',
   'Business Review': 'مراجعة الأعمال',
   'Contracts': 'إدارة العقود',
@@ -199,13 +199,13 @@ const SECTION_LABELS_AR = {
   'Sales': 'المبيعات',
   'Accounting': 'الإدارة المالية',
   'Procurement': 'المشتريات',
-  'Data & Decision Support': 'إدارة البيانات ودعم القرار',
+  'Data & Decision Support': 'إدارة البيانات',
   'Executive': 'الإدارة العليا',
 };
 
 /** Print-ready name for a section key, in either language. */
 // English names that differ from the key.
-const SECTION_LABELS_EN = { 'Location Solutions': 'Maintenance' };
+const SECTION_LABELS_EN = { 'Location Solutions': 'Maintenance', 'Software & IT': 'Software', 'Data & Decision Support': 'Data Management' };
 const sectionLabel = (key, lang = 'ar') =>
   (lang === 'en' ? (SECTION_LABELS_EN[key] || key) : (SECTION_LABELS_AR[key] || key));
 const ACCESS_LEVELS = ['none', 'view', 'edit'];

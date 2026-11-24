@@ -139,7 +139,7 @@ export default function ItDashboardPage() {
     <div className="space-y-6" dir={isRTL ? 'rtl' : 'ltr'}>
       <PageHeader
         icon={<MonitorCog className="w-5 h-5" />}
-        title={ar ? 'البرمجيات وتقنية المعلومات' : 'Software & IT'}
+        title={ar ? 'البرمجيات' : 'Software'}
         subtitle={ar ? 'نظرة عامة على الدعم الفني والأنظمة والعهد' : 'Support, systems and custody at a glance'}
       >
         <div className="flex items-center gap-2">

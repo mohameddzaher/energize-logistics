@@ -21,7 +21,7 @@ const JP_SECTIONS = {
   ls2: { roleSection: 'Location Solutions', path: '/system/ls2', ar: 'الصيانة', en: 'Maintenance' },
   marketing: { roleSection: 'Marketing', path: '/system/marketing', ar: 'التسويق', en: 'Marketing' },
   bd: { roleSection: 'Business Development', path: '/system/bd', ar: 'تطوير الأعمال', en: 'Business Development' },
-  it: { roleSection: 'Software & IT', path: '/system/it', ar: 'تقنية المعلومات', en: 'Software & IT' },
+  it: { roleSection: 'Software & IT', path: '/system/it', ar: 'البرمجيات', en: 'Software' },
   administration: { roleSection: 'Administration', path: '/system/administration', ar: 'الشؤون الإدارية', en: 'Administration' },
   contracts: { roleSection: 'Contracts', path: '/system/contracts', ar: 'إدارة العقود', en: 'Contracts' },
   b2c: { roleSection: 'B2C', path: '/system/b2c', ar: 'قطاع الأفراد', en: 'B2C' },

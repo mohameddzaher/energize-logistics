@@ -24,7 +24,7 @@ const MODULE_LABELS: Record<string, { en: string; ar: string }> = {
   sales: { en: 'Sales', ar: 'المبيعات' },
   accounting: { en: 'Finance Management', ar: 'الإدارة المالية' },
   fleet: { en: 'Fleet', ar: 'إدارة الأسطول' },
-  it: { en: 'IT', ar: 'تقنية المعلومات' },
+  it: { en: 'Software', ar: 'البرمجيات' },
   vehicles: { en: 'Vehicles', ar: 'المركبات' },
   assets: { en: 'Assets', ar: 'العهد والأصول' },
 };

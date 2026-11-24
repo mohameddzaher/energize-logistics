@@ -1627,7 +1627,7 @@ const SECTION_REPORTS = [
     controller: () => require('../controllers/marketingController'), handler: 'getDashboard',
   },
   {
-    key: 'it', ar: 'تقنية المعلومات', en: 'IT',
+    key: 'it', ar: 'البرمجيات', en: 'Software',
     controller: () => require('../controllers/itController'), handler: 'getDashboard',
   },
   {

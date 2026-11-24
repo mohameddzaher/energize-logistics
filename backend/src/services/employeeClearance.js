@@ -88,7 +88,7 @@ async function checkClearance(employeeId) {
   }
   if (emails.length) {
     warnings.push({
-      kind: 'company_email', section: 'تقنية المعلومات', sectionEn: 'IT',
+      kind: 'company_email', section: 'البرمجيات', sectionEn: 'Software',
       ar: `بريد مؤسّسي نشط (${emails.length})`, en: `${emails.length} active company mailbox(es)`,
       items: emails.map((e) => e.address),
       actionAr: 'يُغلق أو يُحوَّل بعد الإنهاء.',

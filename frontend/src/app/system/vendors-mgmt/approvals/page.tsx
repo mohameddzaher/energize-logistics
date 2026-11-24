@@ -51,7 +51,7 @@ export default function VendorApprovalsPage() {
     <div className="space-y-4 pb-10" dir={isRTL ? 'rtl' : 'ltr'}>
       <PageHeader icon={<ClipboardCheck className="w-6 h-6 text-[#f37121]" />} title={t('اعتماد الموردين', 'Carrier approvals')}
         subtitle={d.canApprove ? t('راجِع ملفَّ المورّد ومستنداتِه ثمّ اعتمِده أو أعِده للتعديل أو ارفضه', 'Review the file and papers, then approve, return or reject')
-          : t('الموردون الذين أضفتموهم ينتظرون اعتماد مدير العمليات أو من يفوّضه', 'Carriers you added wait for the operations manager or his delegates')}>
+          : t('الموردون الذين أضفتموهم ينتظرون اعتماد مدير التشغيل أو من يفوّضه', 'Carriers you added wait for the operations manager or his delegates')}>
         <LiveDot ar={ar} busy={busy} />
         {/* Who else may approve: chosen by the operations manager in the section settings. */}
         <Link href="/system/vendors-mgmt/settings?tab=approvals"

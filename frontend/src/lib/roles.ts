@@ -30,8 +30,8 @@ export const GLOBAL_ROLES: RoleDef[] = [
   },
   {
     "key": "data_manager",
-    "ar": "مدير إدارة البيانات ودعم القرار",
-    "en": "Data & Decision Support Manager"
+    "ar": "مدير إدارة البيانات",
+    "en": "Data Management Manager"
   },
   {
     "key": "data_analyst",
@@ -80,31 +80,31 @@ export const SECTION_ROLES: SectionRoles[] = [
     "section": "Operations",
     "manager": {
       "key": "operations_manager",
-      "ar": "مدير العمليات",
+      "ar": "مدير التشغيل",
       "en": "Operations Manager"
     },
     "staff": [
       {
         "key": "operations_team_leader",
-        "ar": "قائد فريق العمليات",
+        "ar": "قائد فريق التشغيل",
         "en": "Operations Team Leader",
-        "distinct": "له صلاحيّاتُ مدير العمليات كاملةً (التشغيل والموردون والمتابعة)، ولا يجلس في اجتماعات الإدارة."
+        "distinct": "له صلاحيّاتُ مدير التشغيل كاملةً (سير العمل والموردون والمتابعة)، ولا يجلس في اجتماعات الإدارة."
       },
       {
         "key": "operations_staff",
-        "ar": "موظف العمليات",
+        "ar": "موظف التشغيل",
         "en": "Operations Team"
       }
     ],
     "teamLeader": {
       "key": "operations_team_leader",
-      "ar": "قائد فريق العمليات",
+      "ar": "قائد فريق التشغيل",
       "en": "Operations Team Leader",
-      "distinct": "له صلاحيّاتُ مدير العمليات كاملةً (التشغيل والموردون والمتابعة)، ولا يجلس في اجتماعات الإدارة."
+      "distinct": "له صلاحيّاتُ مدير التشغيل كاملةً (سير العمل والموردون والمتابعة)، ولا يجلس في اجتماعات الإدارة."
     },
     "trainee": {
       "key": "operations_trainee",
-      "ar": "متدرّب العمليات",
+      "ar": "متدرّب التشغيل",
       "en": "Operations Trainee"
     }
   },
@@ -438,32 +438,32 @@ export const SECTION_ROLES: SectionRoles[] = [
     "section": "Software & IT",
     "manager": {
       "key": "it_manager",
-      "ar": "مدير تقنية المعلومات",
-      "en": "IT Manager"
+      "ar": "مدير البرمجيات",
+      "en": "Software Manager"
     },
     "staff": [
       {
         "key": "it_team_leader",
-        "ar": "قائد فريق تقنية المعلومات",
-        "en": "IT Team Leader",
+        "ar": "قائد فريق البرمجيات",
+        "en": "Software Team Leader",
         "distinct": "له صلاحيّاتُ مدير القسم كاملةً، ولا يجلس في اجتماعات الإدارة، ويقيّمه مديرُ القسم مع فريقه."
       },
       {
         "key": "it_specialist",
-        "ar": "أخصائي تقنية المعلومات",
-        "en": "IT Specialist"
+        "ar": "أخصائي البرمجيات",
+        "en": "Software Specialist"
       }
     ],
     "teamLeader": {
       "key": "it_team_leader",
-      "ar": "قائد فريق تقنية المعلومات",
-      "en": "IT Team Leader",
+      "ar": "قائد فريق البرمجيات",
+      "en": "Software Team Leader",
       "distinct": "له صلاحيّاتُ مدير القسم كاملةً، ولا يجلس في اجتماعات الإدارة، ويقيّمه مديرُ القسم مع فريقه."
     },
     "trainee": {
       "key": "it_trainee",
-      "ar": "متدرّب تقنية المعلومات",
-      "en": "IT Trainee"
+      "ar": "متدرّب البرمجيات",
+      "en": "Software Trainee"
     }
   },
   {

@@ -13,7 +13,7 @@ const GLOBAL_ROLES = [
   // The CFO sits above the department, not in it: sees all company finances and joins management. Key is cfo, not *_manager, since the suffix is for single-department managers. Counted as a manager in business review via EXTRA_MANAGER_ROLES; the finance section comes from sections.defaultRoles.
   { key: 'cfo', ar: 'المدير المالي', en: 'Chief Financial Officer' },
   // Data and decision-support team works across all sections, so it has no section of its own. Default is edit on every section (DATA_ROLES in sections.defaultAccess); a super admin narrows it per section on the permissions page. Not in FULL_ACCESS_ROLES, which bypass the matrix and cannot be narrowed. Its manager ends in _manager on purpose (sits in business review).
-  { key: 'data_manager', ar: 'مدير إدارة البيانات ودعم القرار', en: 'Data & Decision Support Manager' },
+  { key: 'data_manager', ar: 'مدير إدارة البيانات', en: 'Data Management Manager' },
   { key: 'data_analyst', ar: 'محلل بيانات', en: 'Data Analyst' },
   { key: 'data_entry', ar: 'مدخل بيانات', en: 'Data Entry Specialist' },
   // Super-admin powers, narrowed from the permissions page (config/constants CONSULTANT_ROLES).
@@ -31,12 +31,12 @@ const GLOBAL_ROLES = [
 /** Section to its manager and staff roles. `section` must match a key in config/sections.js exactly. */
 const SECTION_ROLES = [
   { section: 'Operations',
-    manager: { key: 'operations_manager', ar: 'مدير العمليات', en: 'Operations Manager' },
+    manager: { key: 'operations_manager', ar: 'مدير التشغيل', en: 'Operations Manager' },
     staff: [
       // Leads the operations team (workflow, vendors, follow-up) with the manager's rights, without the manager's meeting seat; see RIGHTS_OF.
-      { key: 'operations_team_leader', ar: 'قائد فريق العمليات', en: 'Operations Team Leader',
-        distinct: 'له صلاحيّاتُ مدير العمليات كاملةً (التشغيل والموردون والمتابعة)، ولا يجلس في اجتماعات الإدارة.' },
-      { key: 'operations_staff', ar: 'موظف العمليات', en: 'Operations Team' },
+      { key: 'operations_team_leader', ar: 'قائد فريق التشغيل', en: 'Operations Team Leader',
+        distinct: 'له صلاحيّاتُ مدير التشغيل كاملةً (سير العمل والموردون والمتابعة)، ولا يجلس في اجتماعات الإدارة.' },
+      { key: 'operations_staff', ar: 'موظف التشغيل', en: 'Operations Team' },
     ] },
 
   // Collections section: collections used to be spread across a follow-up page and workflow columns with no owner; it now has its own section and roles, covering customers we collect from and vendors we pay.
@@ -93,8 +93,8 @@ const SECTION_ROLES = [
     staff: [{ key: 'bd_specialist', ar: 'أخصائي تطوير الأعمال', en: 'Business Development Specialist' }] },
 
   { section: 'Software & IT',
-    manager: { key: 'it_manager', ar: 'مدير تقنية المعلومات', en: 'IT Manager' },
-    staff: [{ key: 'it_specialist', ar: 'أخصائي تقنية المعلومات', en: 'IT Specialist' }] },
+    manager: { key: 'it_manager', ar: 'مدير البرمجيات', en: 'Software Manager' },
+    staff: [{ key: 'it_specialist', ar: 'أخصائي البرمجيات', en: 'Software Specialist' }] },
 
   { section: 'Administration',
     manager: { key: 'administration_manager', ar: 'مدير الشؤون الإدارية', en: 'Administration Manager' },

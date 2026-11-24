@@ -104,7 +104,7 @@ class _ItDashboardScreenState extends State<ItDashboardScreen> {
   @override
   Widget build(BuildContext context) {
     return AppScaffold(
-      title: Text(tr('البرمجيات وتقنية المعلومات', 'Software & IT')),
+      title: Text(tr('البرمجيات', 'Software')),
       actions: [IconButton(tooltip: tr('تصدير Excel', 'Export Excel'), icon: const Icon(Icons.file_download_outlined), onPressed: _data == null ? null : _export)],
       body: _loading
           ? ListView(padding: const EdgeInsets.all(14), children: const [Shimmer(), SizedBox(height: 10), Shimmer(), SizedBox(height: 10), Shimmer()])

@@ -138,7 +138,7 @@ class _DataSupportHomeScreenState extends State<DataSupportHomeScreen> {
   Widget build(BuildContext context) {
     final secs = List<Map<String, dynamic>>.from(_d?['sections'] ?? []);
     return AppScaffold(
-      title: Text(tr('إدارة البيانات ودعم القرار', 'Data & Decision Support')),
+      title: Text(tr('إدارة البيانات', 'Data Management')),
       body: Column(children: [
         _PeriodChips(value: _preset, onChanged: (v) { setState(() { _preset = v; _loading = true; }); _load(); }),
         Expanded(

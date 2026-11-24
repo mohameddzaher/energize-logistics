@@ -7,5 +7,5 @@ import TeamBoard from '@/components/performance/TeamBoard';
 export default function Page() {
   const { lang } = useLanguage();
   const ar = lang === 'ar';
-  return <TeamBoard section="Data & Decision Support" title={ar ? 'تقييم أداء — إدارة البيانات ودعم القرار' : 'Performance — Data & Decision Support'} />;
+  return <TeamBoard section="Data & Decision Support" title={ar ? 'تقييم أداء — إدارة البيانات' : 'Performance — Data & Decision Support'} />;
 }

@@ -1190,7 +1190,7 @@ exports.listApprovals = async (req, res) => {
 /** POST /vendors/:id/approval { action: approve|reject|return, note } — the approver's decision. */
 exports.decideApproval = async (req, res) => {
   try {
-    if (!(await canApprove(req.user))) return res.status(403).json({ message: 'اعتماد الموردين لمدير العمليات ومن يفوّضهم' });
+    if (!(await canApprove(req.user))) return res.status(403).json({ message: 'اعتماد الموردين لمدير التشغيل ومن يفوّضهم' });
     const action = String(req.body?.action || '');
     const note = String(req.body?.note || '').trim();
     if (!['approve', 'reject', 'return'].includes(action)) return res.status(400).json({ message: 'إجراءٌ غير صالح' });

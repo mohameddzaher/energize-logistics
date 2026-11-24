@@ -146,7 +146,7 @@ export default function DataSupportView({ section }: { section: string }) {
           <div>
             <h1 className="text-2xl font-bold text-slate-900">{ar ? d.ar : d.en}</h1>
             <p className="text-[12px] text-slate-500 flex items-center gap-1.5 flex-wrap">
-              <Link href="/system/data-support" className="hover:text-[#f37121]">{ar ? 'إدارة البيانات ودعم القرار' : 'Data & Decision Support'}</Link>
+              <Link href="/system/data-support" className="hover:text-[#f37121]">{ar ? 'إدارة البيانات' : 'Data Management'}</Link>
               <span>·</span><span dir="ltr">{d.period.from} → {d.period.to}</span>
               <span className="inline-flex items-center gap-1 ms-2 text-emerald-600"><Radio className="w-3 h-3" />{ar ? 'مباشر' : 'Live'}</span>
               {liveAt && <span className="text-slate-400">· {ar ? 'تحدّث' : 'updated'} {new Date(liveAt).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })}</span>}

@@ -110,7 +110,7 @@ function parsePeriod(q) {
 const EMP_FIELDS = 'arabicName firstName lastName jobTitle department employeeNumber photo user directManager isHrRecord employmentStatus';
 // Whoever manages above sections is evaluated by the system admin together with section managers.
 const ABOVE_SECTIONS = ['cfo', 'moderator'];
-const sectionLabelAr = (section) => (section === DATA_DEPT ? 'إدارة البيانات ودعم القرار' : require('../config/sections').sectionLabel(section, 'ar'));
+const sectionLabelAr = (section) => (section === DATA_DEPT ? 'إدارة البيانات' : require('../config/sections').sectionLabel(section, 'ar'));
 const sectionDept = (section) => ({ key: `sec:${section}`, label: sectionLabelAr(section), labelEn: section, known: true, section });
 
 async function loadOrg() {

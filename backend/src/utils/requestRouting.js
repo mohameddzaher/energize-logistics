@@ -16,7 +16,7 @@ const strip = (s, re) => String(s || '').replace(re, '').trim();
 // Where the manager's title does not read as the department's name.
 const LABEL = {
   Accounting: ['الإدارة المالية', 'Finance'], B2C: ['النقل الخفيف', 'Light Transport'], 'Fleet Management': ['إدارة الأسطول', 'Fleet Management'],
-  CRM: ['إدارة علاقات العملاء', 'CRM'], 'Software & IT': ['تقنية المعلومات', 'IT'],
+  CRM: ['إدارة علاقات العملاء', 'CRM'], 'Software & IT': ['البرمجيات', 'Software'],
 };
 /** Every department a request can be sent to, as {key, ar, en}; top management last. */
 const TARGETS = [
@@ -25,7 +25,7 @@ const TARGETS = [
     ar: (LABEL[s.section] || [])[0] || strip(s.manager.ar, /^مدير\s+/),
     en: (LABEL[s.section] || [])[1] || strip(s.manager.en, /\s+Manager$/i),
   })),
-  { key: DATA_DEPT, ar: 'إدارة البيانات ودعم القرار', en: 'Data & Decision Support' },
+  { key: DATA_DEPT, ar: 'إدارة البيانات', en: 'Data Management' },
   { key: TOP_TARGET, ar: 'الإدارة العليا', en: 'Top Management' },
 ];
 const TARGET_KEYS = new Set(TARGETS.map((t) => t.key));

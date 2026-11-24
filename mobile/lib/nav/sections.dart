@@ -274,7 +274,7 @@ List<AppSection> sectionsFor(AuthProvider auth) {
       ],
     ),
     AppSection(
-      key: 'Operations', arTitle: 'العمليات', enTitle: 'Operations', icon: Icons.workspaces_outline,
+      key: 'Operations', arTitle: 'التشغيل', enTitle: 'Operations', icon: Icons.workspaces_outline,
       roles: const [..._admins, 'employee', 'operations_manager', 'operations_team_leader', 'operations_staff', 'moderator'],
       pages: [
         AppPage('التشغيل', 'Operations', Icons.workspaces_outline, (c) => const OpsWorkflowsScreen(), path: '/system/operations'),
@@ -578,7 +578,7 @@ List<AppSection> sectionsFor(AuthProvider auth) {
     ),
     AppSection(
       // Data & Decision Support: one analysis per company section (screens/data_support.dart), then the team's data-entry screens, as on the web.
-      key: 'Data & Decision Support', arTitle: 'إدارة البيانات ودعم القرار', enTitle: 'Data & Decision Support', icon: Icons.insights_outlined,
+      key: 'Data & Decision Support', arTitle: 'إدارة البيانات', enTitle: 'Data Management', icon: Icons.insights_outlined,
       roles: const [..._admins, 'cfo', ..._dataRoles],
       pages: [
         AppPage('لوحة دعم القرار', 'Decision Support Home', Icons.dashboard_outlined, (c) => const DataSupportHomeScreen(), path: '/system/data-support'),
@@ -677,7 +677,7 @@ List<AppSection> sectionsFor(AuthProvider auth) {
       ],
     ),
     AppSection(
-      key: 'Software & IT', arTitle: 'البرمجيات وتقنية المعلومات', enTitle: 'Software & IT', icon: Icons.computer_outlined,
+      key: 'Software & IT', arTitle: 'البرمجيات', enTitle: 'Software', icon: Icons.computer_outlined,
       roles: const [..._admins],
       pages: [
         AppPage('اللوحة', 'Dashboard', Icons.dashboard_outlined, (c) => const ItDashboardScreen(), path: '/system/it'),

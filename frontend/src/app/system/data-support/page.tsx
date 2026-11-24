@@ -64,7 +64,7 @@ export default function DataSupportHome() {
         <div className="flex items-center gap-3">
           <div className="w-10 h-10 rounded-xl bg-[#f37121]/15 flex items-center justify-center text-[#f37121]"><BarChart3 className="w-5 h-5" /></div>
           <div>
-            <h1 className="text-2xl font-bold text-slate-900">{ar ? 'إدارة البيانات ودعم القرار' : 'Data & Decision Support'}</h1>
+            <h1 className="text-2xl font-bold text-slate-900">{ar ? 'إدارة البيانات' : 'Data Management'}</h1>
             <p className="text-[12px] text-slate-500 flex items-center gap-1.5">
               {ar ? 'تحليلٌ لكلّ قسمٍ من بيانات النظام نفسها' : 'An analysis of every section, straight from system data'}
               <span className="inline-flex items-center gap-1 ms-2 text-emerald-600"><Radio className="w-3 h-3" />{ar ? 'مباشر' : 'Live'}</span>

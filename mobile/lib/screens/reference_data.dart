@@ -14,7 +14,7 @@ const _moduleLabels = {
   'sales': ('المبيعات', 'Sales'),
   'accounting': ('الإدارة المالية', 'Finance Management'),
   'fleet': ('إدارة الأسطول', 'Fleet'),
-  'it': ('تقنية المعلومات', 'IT'),
+  'it': ('البرمجيات', 'Software'),
   'vehicles': ('المركبات', 'Vehicles'),
   'assets': ('العهد والأصول', 'Assets'),
   'b2c': ('النقل الخفيف', 'Light transport'),

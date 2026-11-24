@@ -1088,6 +1088,12 @@ exports.updateOrder = async (req, res) => {
     // the form only sends the currently-configured fields, so merge, don't replace.
     if (data.customFields) data.customFields = { ...(order.customFields || {}), ...data.customFields };
 
+    // No amount on an order is negative, whoever writes it (the direct path skipped this check).
+    for (const k of ['sellPrice', 'buyPrice', 'driverRentPrice', 'advanceAmount']) {
+      if (data[k] === undefined || data[k] === null || data[k] === '') continue;
+      const v = Number(data[k]);
+      if (!Number.isFinite(v) || v < 0) return res.status(400).json({ code: 'BAD_AMOUNT', fields: [k], message: 'المبلغ يجب أن يكون رقمًا لا يقلّ عن صفر.' });
+    }
     // Checked before saving so a bad price saves nothing.
     if (requestedSell !== undefined) {
       const v = requestedSell === '' || requestedSell === null ? 0 : Number(requestedSell);

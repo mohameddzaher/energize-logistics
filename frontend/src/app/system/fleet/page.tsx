@@ -1,5 +1,6 @@
 'use client';
 // Loads: the fleet section's main list. Inline status, follow-up recency at a glance, filter by supervisor, and waybill output: one per row (download or print), or tick several, across searches and pages, and download or print them together in one server-rendered file.
+import BulkEditPanel, { type BulkField } from '@/components/system/BulkEditPanel';
 import { useState, useEffect, useCallback, useMemo, Suspense } from 'react';
 import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
@@ -455,6 +456,7 @@ function FleetShipmentsInner() {
       >
         {picked.size > 0 && (
           <>
+            <BulkEditPanel ids={[...picked.keys()]} endpoint="/api/fleet/shipments/bulk-update" fields={FLEET_BULK_FIELDS} ar={ar} onDone={() => { load(); }} />
             <button type="button" onClick={downloadPicked} disabled={bulkBusy}
               className="flex items-center gap-1.5 px-3 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white text-sm font-semibold disabled:opacity-60">
               {bulkBusy ? <Loader2 className="w-4 h-4 animate-spin" /> : <FileDown className="w-4 h-4" />}
@@ -701,6 +703,21 @@ function FleetShipmentsInner() {
     </div>
   );
 }
+
+
+// Bulk «تعديل بيانات»: load data; status keeps its own path.
+const FLEET_BULK_FIELDS: BulkField[] = [
+  { key: 'loadDate', ar: 'تاريخ التحميل', en: 'Load date', type: 'date', group: 'الرحلة' },
+  { key: 'expectedArrival', ar: 'الوصول المتوقّع', en: 'Expected arrival', type: 'datetime', group: 'الرحلة' },
+  { key: 'fromCity', ar: 'من', en: 'From', type: 'text', group: 'الرحلة' },
+  { key: 'toCity', ar: 'إلى', en: 'To', type: 'text', group: 'الرحلة' },
+  { key: 'price', ar: 'السعر', en: 'Price', type: 'number', group: 'المبالغ' },
+  { key: 'driverExpense', ar: 'مصروف السائق', en: 'Driver expense', type: 'number', group: 'المبالغ' },
+  { key: 'driverAdvance', ar: 'سلفة السائق', en: 'Driver advance', type: 'number', group: 'المبالغ' },
+  { key: 'blNumber', ar: 'رقم البوليصة (BL)', en: 'B/L number', type: 'text', group: 'أخرى' },
+  { key: 'containerNumber', ar: 'رقم الحاوية', en: 'Container', type: 'text', group: 'أخرى' },
+  { key: 'notes', ar: 'ملاحظات', en: 'Notes', type: 'textarea', group: 'أخرى' },
+];
 
 export default function FleetShipmentsPage() {
   return <Suspense fallback={<Spinner />}><FleetShipmentsInner /></Suspense>;

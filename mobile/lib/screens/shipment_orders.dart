@@ -9,6 +9,7 @@ import '../ui/app_scaffold.dart';
 import '../ui/search_field.dart';
 import '../ui/contact.dart';
 import '../ui/export_sheet.dart';
+import '../ui/bulk_edit_sheet.dart';
 import '../ui/theme.dart';
 import '../ui/widgets.dart';
 import 'shipment_order_card.dart';
@@ -353,6 +354,31 @@ class _ShipmentOrdersScreenState extends State<ShipmentOrdersScreen> {
     return AppScaffold(
       title: Text(tr('طلبات الشحنات', 'Shipment Orders')),
       actions: [
+        // Bulk «تعديل بيانات» on the selection, as on the web (order data only; status keeps its own path).
+        if (_picked.isNotEmpty && editor)
+          IconButton(
+            tooltip: tr('تعديل بيانات', 'Edit data'),
+            icon: const Icon(Icons.edit_note_rounded),
+            onPressed: () async {
+              final ok = await openBulkEdit(context, ids: _picked.keys.toList(), endpoint: '/api/shipment-orders/orders/bulk-update', fields: const [
+                BulkFieldSpec('driverName', 'اسم السائق', 'Driver name'),
+                BulkFieldSpec('driverPhone', 'جوال السائق', 'Driver phone'),
+                BulkFieldSpec('vehicleName', 'اللوحة / الشاحنة', 'Plate / truck'),
+                BulkFieldSpec('truckType', 'نوع الشاحنة', 'Truck type'),
+                BulkFieldSpec('pickupTime', 'تاريخ التحميل', 'Pickup date', 'date'),
+                BulkFieldSpec('arrivalTime', 'تاريخ الوصول', 'Arrival date', 'date'),
+                BulkFieldSpec('sellPrice', 'سعر البيع', 'Sell price', 'number'),
+                BulkFieldSpec('buyPrice', 'سعر الشراء', 'Buy price', 'number'),
+                BulkFieldSpec('driverRentPrice', 'أجرة السائق', 'Driver rent', 'number'),
+                BulkFieldSpec('advanceAmount', 'العهدة / السلفة', 'Advance', 'number'),
+                BulkFieldSpec('blNumber', 'رقم البوليصة (BL)', 'B/L number'),
+                BulkFieldSpec('containerNumber', 'رقم الحاوية', 'Container'),
+                BulkFieldSpec('cargoType', 'نوع الحمولة', 'Cargo'),
+                BulkFieldSpec('notes', 'ملاحظات', 'Notes', 'textarea'),
+              ]);
+              if (ok && mounted) { setState(() => _picked.clear()); _load(); }
+            },
+          ),
         if (_picked.isNotEmpty)
           TextButton.icon(
             onPressed: _bulkBusy ? null : () async {

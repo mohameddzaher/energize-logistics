@@ -40,6 +40,13 @@ router.get('/shipments/:id/waybill.pdf', fleet.getWaybillPdf); // Waybill PDF, s
 router.post('/shipments/waybills.pdf', fleet.getWaybillsPdf);
 router.get('/shipments/:id', fleet.getShipment); // details + the full event log
 router.put('/shipments/:id', authorize(...EDIT_ROLES), fleet.updateShipment);
+// Bulk edit: the single edit run on each selected load (utils/bulkViaSingle).
+router.post('/shipments/bulk-update', authorize(...EDIT_ROLES), async (req, res) => {
+  const out = await require('../utils/bulkViaSingle').runBulk(req, fleet.updateShipment, {
+    labelOf: async (id) => { const s = await require('../models/FleetModels').FleetShipment.findById(id).select('waybillNumber').lean(); return s && `#${s.waybillNumber}`; },
+  });
+  res.status(out.status).json(out.body);
+});
 router.patch('/shipments/:id/status', authorize(...EDIT_ROLES), fleet.patchStatus);
 router.post('/shipments/:id/followups', authorize(...EDIT_ROLES), fleet.addFollowUp);
 router.delete('/shipments/:id', authorize(...ADMIN_ROLES), fleet.deleteShipment);

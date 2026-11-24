@@ -1,5 +1,6 @@
 'use client';
 // Shipment orders: the trial section's main list. Everything for running the day happens here without opening each order: search by waybill or customer, change status inline, download the waybill PDF per row.
+import BulkEditPanel, { type BulkField } from '@/components/system/BulkEditPanel';
 import { readUploadFiles, type UploadFile } from '@/lib/uploadFiles';
 import { useState, useEffect, useCallback, useRef, Suspense, useMemo } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
@@ -494,6 +495,9 @@ function ShipmentOrdersInner() {
         title={ar ? 'طلبات الشحنات' : 'Shipment Orders'}
         subtitle={<span className="hidden sm:inline">{ar ? 'إنشاء الشحنات ومتابعتها داخل نظامنا — قسم تجريبي مستقل' : 'Create and track shipments natively — standalone trial'}</span>}
       >
+        {picked.size > 0 && (
+          <BulkEditPanel ids={[...picked]} endpoint="/api/shipment-orders/orders/bulk-update" fields={SO_BULK_FIELDS} ar={ar} onDone={() => { load(); }} />
+        )}
         {picked.size > 0 && (
           <button type="button" onClick={downloadPicked} disabled={bulkBusy}
             className="flex items-center gap-1.5 px-3 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white text-sm font-semibold disabled:opacity-60">
@@ -1274,6 +1278,25 @@ function ShipmentOrdersInner() {
     </div>
   );
 }
+
+
+// Bulk «تعديل بيانات»: order data only; status keeps its own path (cancel reason, bond attachment).
+const SO_BULK_FIELDS: BulkField[] = [
+  { key: 'driverName', ar: 'اسم السائق', en: 'Driver name', type: 'text', group: 'السائق والشاحنة' },
+  { key: 'driverPhone', ar: 'جوال السائق', en: 'Driver phone', type: 'text', group: 'السائق والشاحنة' },
+  { key: 'vehicleName', ar: 'اللوحة / الشاحنة', en: 'Plate / truck', type: 'text', group: 'السائق والشاحنة' },
+  { key: 'truckType', ar: 'نوع الشاحنة', en: 'Truck type', type: 'text', group: 'السائق والشاحنة' },
+  { key: 'pickupTime', ar: 'وقت التحميل', en: 'Pickup time', type: 'datetime', group: 'المواعيد' },
+  { key: 'arrivalTime', ar: 'وقت الوصول', en: 'Arrival time', type: 'datetime', group: 'المواعيد' },
+  { key: 'sellPrice', ar: 'سعر البيع', en: 'Sell price', type: 'number', group: 'الأسعار' },
+  { key: 'buyPrice', ar: 'سعر الشراء', en: 'Buy price', type: 'number', group: 'الأسعار' },
+  { key: 'driverRentPrice', ar: 'أجرة السائق', en: 'Driver rent', type: 'number', group: 'الأسعار' },
+  { key: 'advanceAmount', ar: 'العهدة / السلفة', en: 'Advance', type: 'number', group: 'الأسعار' },
+  { key: 'blNumber', ar: 'رقم البوليصة (BL)', en: 'B/L number', type: 'text', group: 'أخرى' },
+  { key: 'containerNumber', ar: 'رقم الحاوية', en: 'Container', type: 'text', group: 'أخرى' },
+  { key: 'cargoType', ar: 'نوع الحمولة', en: 'Cargo', type: 'text', group: 'أخرى' },
+  { key: 'notes', ar: 'ملاحظات', en: 'Notes', type: 'textarea', group: 'أخرى' },
+];
 
 export default function ShipmentOrdersPage() {
   // useSearchParams needs a Suspense boundary in the app router.

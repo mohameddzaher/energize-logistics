@@ -34,6 +34,13 @@ router.post('/orders', authorize(...EDIT_ROLES), so.createOrder);
 router.post('/orders/batch', authorize(...EDIT_ROLES), so.createOrdersBatch);
 router.get('/money-editors', so.moneyEditors);
 router.put('/orders/:id', authorize(...EDIT_ROLES), so.updateOrder);
+// Bulk edit: the single edit run on each selected order (utils/bulkViaSingle).
+router.post('/orders/bulk-update', authorize(...EDIT_ROLES), async (req, res) => {
+  const out = await require('../utils/bulkViaSingle').runBulk(req, so.updateOrder, {
+    labelOf: async (id) => { const o = await require('../models/ShipmentOrder').findById(id).select('reference waybillNumber').lean(); return o && `#${o.reference || o.waybillNumber}`; },
+  });
+  res.status(out.status).json(out.body);
+});
 router.patch('/orders/:id/status', authorize(...EDIT_ROLES), so.patchStatus); // inline from the list
 router.post('/orders/:id/note', authorize(...EDIT_ROLES), so.addNote); // Follow-up note without a status change.
 router.put('/orders/:id/note/:logId', authorize(...EDIT_ROLES), so.editNote); // Its author or the section manager.

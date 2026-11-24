@@ -4,6 +4,7 @@
 // plus its asset movement history ("what was on it, what is on it now").
 // Read-only here — moves are made on /system/ls2/fleet-assets — and it renders
 // nothing at all if the plate has no registry data yet (fleet not imported).
+import TireStatusHistory, { type StatusRow } from '@/components/ls2/TireStatusHistory';
 import { useState, useEffect, useCallback, Fragment } from 'react';
 import Link from 'next/link';
 import { CircleDot, Container, History, ExternalLink, ChevronDown } from 'lucide-react';
@@ -14,7 +15,7 @@ import VehicleAssetSheet from './VehicleAssetSheet';
 import ScrollX from '@/components/system/ScrollX';
 
 interface ConditionChange { date: string; action: string; percent: number | null; grade: 'new' | 'used' | null; prevPercent: number | null; prevGrade: 'new' | 'used' | null; by: string; notes: string }
-interface TireAsset { _id: string; tireNumber: string; serial: string; type: string; sensor: 'yes' | 'no' | 'unknown'; positionNumber: number | null; positionLabel: string; section: string; isSpare?: boolean; condition?: 'new' | 'used'; conditionPercent?: number | null; conditionHistory?: ConditionChange[] }
+interface TireAsset { _id: string; tireNumber: string; serial: string; type: string; sensor: 'yes' | 'no' | 'unknown'; positionNumber: number | null; positionLabel: string; section: string; isSpare?: boolean; condition?: 'new' | 'used'; conditionPercent?: number | null; conditionHistory?: ConditionChange[]; statusHistory?: StatusRow[] }
 interface AssetEvent { _id: string; entityType: string; label: string; action: string; fromPlate: string | null; fromPosition: string; toPlate: string | null; toPosition: string; date: string; reason: string; notes: string; performedByName: string }
 interface Payload { flatbed: { numbering: number | null; batch: string; brand: string; currentTrailerNumber: string | null } | null; trailer: { trailerNumber: string } | null; tires: TireAsset[]; events: AssetEvent[] }
 
@@ -170,6 +171,14 @@ export default function VehicleAssets({ plate, lang }: { plate?: string | null; 
               ))}
             </ul>
           )}
+        </div>
+      )}
+
+      {/* Status history of every tire on this vehicle, one table with the serial on each row. */}
+      {!!data?.tires?.length && (
+        <div className="mt-4">
+          <TireStatusHistory ar={ar} showSerial title={ar ? 'سجلّ حالات الكاوتشات على هذه السيارة' : 'Status history of the tires on this vehicle'}
+            rows={data.tires.flatMap((t) => (t.statusHistory || []).map((r) => ({ ...r, serial: t.serial }))).sort((a, b) => +new Date(b.date) - +new Date(a.date))} />
         </div>
       )}
 

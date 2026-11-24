@@ -42,7 +42,7 @@ import RimsPanel, { type Rim } from '@/components/ls2/RimsPanel';
 interface Flatbed { _id: string; numbering: number | null; plate: string; plateKey: string; batch: string; brand: string; currentTrailerNumber: string | null; notes: string; tireCount: number; unitId: number | null; driver: string; odometerKm: number | null; vehicleMaster?: string | null; registryPlate?: string }
 interface Trailer { _id: string; trailerNumber: string; currentPlate: string | null; currentPlateKey?: string | null; status: string; notes: string }
 interface TireAsset { _id: string; tireNumber: string; serial: string; type: string; size?: string; sensor: 'yes' | 'no' | 'unknown'; condition?: 'new' | 'used'; conditionPercent?: number | null; status: string; plate: string | null; positionNumber: number | null; positionLabel: string; section: string; plateKey?: string | null; isSpare?: boolean; trailerNumber?: string | null; notes: string }
-interface AssetEvent { _id: string; entityType: string; label: string; action: string; fromPlate: string | null; fromPosition: string; toPlate: string | null; toPosition: string; date: string; createdAt?: string; odometerKm: number | null; reason: string; notes: string; performedByName: string; placeBeforeAr?: string; placeBeforeEn?: string; placeAfterAr?: string; placeAfterEn?: string; prevDate?: string | null; daysAtPrev?: number | null }
+interface AssetEvent { _id: string; entityType: string; label: string; action: string; fromPlate: string | null; fromPosition: string; toPlate: string | null; toPosition: string; date: string; createdAt?: string; odometerKm: number | null; reason: string; notes: string; performedByName: string; placeBeforeAr?: string; placeBeforeEn?: string; placeAfterAr?: string; placeAfterEn?: string; prevDate?: string | null; daysAtPrev?: number | null; vehiclePlate?: string; vehicleSideAr?: string; vehicleSideEn?: string; trailerNumber?: string; stateBeforeAr?: string; stateBeforeEn?: string; stateAfterAr?: string; stateAfterEn?: string; percentBefore?: number | null; percentAfter?: number | null }
 interface SensorRow { plate: string; unitId: number | null; driver: string; registeredTotal: number; registeredWithSensor: number; registeredSensorPositions: { positionNumber: number | null; positionLabel: string; section: string; serial: string }[]; liveReporting: number; liveTotal: number; livePositions: { axle: number; position: number }[]; match: boolean | null; hasLive: boolean }
 
 // The workshop's 14-position scheme (matches the collected JSON exactly).
@@ -325,7 +325,7 @@ export default function Ls2FleetAssetsPage() {
     const d = dayOf(e.date || e.createdAt);
     if (hf.from && (!d || d < hf.from)) return false;
     if (hf.to && (!d || d > hf.to)) return false;
-    return !q || [e.label, e.fromPlate, e.toPlate, e.placeBeforeAr, e.placeAfterAr, e.reason, e.action, e.performedByName].some((x) => norm(x).includes(norm(q)));
+    return !q || [e.label, e.fromPlate, e.toPlate, e.vehiclePlate, e.trailerNumber, e.placeBeforeAr, e.placeAfterAr, e.reason, e.action, e.performedByName].some((x) => norm(x).includes(norm(q)));
   }), [events, q, hf]); // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => { setHShown(300); }, [q, hf]);
   const fSensors = useMemo(() => !q ? sensorRows : sensorRows.filter((r) => [r.plate, r.driver].some((x) => norm(x).includes(norm(q)))), [sensorRows, q]);
@@ -375,6 +375,11 @@ export default function Ls2FleetAssetsPage() {
     { header: ar ? 'المقاس' : 'Size', key: 'tireSize', width: 12 },
     { header: ar ? 'السينسور' : 'Sensor', key: 'tireSensor', transform: (v) => (v === 'yes' ? (ar ? 'يوجد' : 'Yes') : v === 'no' ? (ar ? 'لا يوجد' : 'No') : ''), width: 10 },
     { header: ar ? 'الحركة' : 'Action', key: 'action', transform: (v) => (ACTION_LABELS[v] ? (ar ? ACTION_LABELS[v].ar : ACTION_LABELS[v].en) : v), width: 9 },
+    // The vehicle the tire was on during the movement, whether on the head or the trailer, and the trailer it pulled that day.
+    { header: ar ? 'السيارة وقت الحركة' : 'Vehicle at the time', key: 'vehiclePlate', width: 14 },
+    { header: ar ? 'الموضع' : 'Side', key: ar ? 'vehicleSideAr' : 'vehicleSideEn', width: 9 },
+    { header: ar ? 'رقم التيدر' : 'Trailer no.', key: 'trailerNumber', width: 10 },
+    { header: ar ? 'الحالة قبل الحركة' : 'State before', key: ar ? 'stateBeforeAr' : 'stateBeforeEn', width: 14 },
     // Where it was and where it went, from the asset's own history: a mount says whether it came from the store, renewal or another truck.
     { header: ar ? 'مكانها قبل الحركة' : 'Where it was before', key: ar ? 'placeBeforeAr' : 'placeBeforeEn', width: 30 },
     { header: ar ? 'مكانها بعد الحركة' : 'Where it went', key: ar ? 'placeAfterAr' : 'placeAfterEn', width: 30 },
@@ -905,6 +910,7 @@ export default function Ls2FleetAssetsPage() {
                   <th className="text-start font-semibold px-4 py-3">{ar ? 'تاريخ التسجيل' : 'Recorded'}</th>
                   <th className="text-start font-semibold px-4 py-3">{ar ? 'الأصل' : 'Asset'}</th>
                   <th className="text-center font-semibold px-4 py-3">{ar ? 'الحركة' : 'Action'}</th>
+                  <th className="text-start font-semibold px-4 py-3">{ar ? 'السيارة وقتها' : 'Vehicle then'}</th>
                   <th className="text-start font-semibold px-4 py-3">{ar ? 'من' : 'From'}</th>
                   <th className="text-start font-semibold px-4 py-3">{ar ? 'إلى' : 'To'}</th>
                   <th className="text-start font-semibold px-4 py-3">{ar ? 'السبب' : 'Reason'}</th>
@@ -921,6 +927,9 @@ export default function Ls2FleetAssetsPage() {
                       <td className="px-4 py-3 text-xs text-slate-500 whitespace-nowrap">{fmtDateTime(e.createdAt || e.date, lang as Lang)}</td>
                       <td className="px-4 py-3"><span className="text-xs text-slate-400">{ar ? ent.ar : ent.en}</span> <span className="font-mono text-xs font-medium text-slate-800">{e.label}</span></td>
                       <td className="px-4 py-3 text-center"><span className={`px-2 py-0.5 rounded-full text-[11px] font-medium ${act.cls}`}>{ar ? act.ar : act.en}</span></td>
+                      <td className="px-4 py-3 text-xs text-slate-700 whitespace-nowrap">
+                        {e.vehiclePlate ? <>{e.vehiclePlate}{e.vehicleSideAr && <span className="ms-1 rounded bg-slate-100 px-1.5 py-0.5 text-[11px] font-semibold text-slate-600">{ar ? e.vehicleSideAr : e.vehicleSideEn}{e.trailerNumber ? ` ${e.trailerNumber}` : ''}</span>}</> : '—'}
+                      </td>
                       <td className="px-4 py-3 text-xs text-slate-600">{(ar ? e.placeBeforeAr : e.placeBeforeEn) || [e.fromPlate, e.fromPosition].filter(Boolean).join(' · ') || '—'}</td>
                       <td className="px-4 py-3 text-xs text-slate-600">{(ar ? e.placeAfterAr : e.placeAfterEn) || [e.toPlate, e.toPosition].filter(Boolean).join(' · ') || '—'}</td>
                       <td className="px-4 py-3 text-xs text-slate-500 max-w-[260px]">{e.reason || e.notes || '—'}</td>
@@ -928,7 +937,7 @@ export default function Ls2FleetAssetsPage() {
                     </tr>
                   );
                 })}
-                {fEvents.length === 0 && <tr><td colSpan={8} className="text-center text-slate-400 py-10">{ar ? 'لا توجد حركات بعد' : 'No movements yet'}</td></tr>}
+                {fEvents.length === 0 && <tr><td colSpan={9} className="text-center text-slate-400 py-10">{ar ? 'لا توجد حركات بعد' : 'No movements yet'}</td></tr>}
               </tbody>
             </table>
             {fEvents.length > hShown && (

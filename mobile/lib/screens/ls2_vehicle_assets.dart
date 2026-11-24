@@ -297,6 +297,8 @@ class _Ls2VehicleAssetsScreenState extends State<Ls2VehicleAssetsScreen> {
                       t['sensor'] == 'yes' ? T.cyan : T.inkFaint, icon: Icons.sensors),
                 ]),
                 TireConditionHistory(rows: _l(t['conditionHistory'])),
+                // Every change of state or condition % with who, when, why and the vehicle at the time (server: tireStatusHistory).
+                _StatusHistory(rows: _l(t['statusHistory'])),
                 const SizedBox(height: 10),
                 SizedBox(
                   width: double.infinity,
@@ -354,6 +356,14 @@ class _Ls2VehicleAssetsScreenState extends State<Ls2VehicleAssetsScreen> {
                                   '${(e['fromPlate'] ?? '').toString().isNotEmpty && e['action'] != 'mounted' && e['action'] != 'registered' ? ' · ${tr('من', 'from')} ${e['fromPlate']}' : ''}'
                                   '${(e['toPlate'] ?? '').toString().isNotEmpty ? ' → ${e['toPlate']}' : ''}',
                                   style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 12.5)),
+                                // The vehicle it was on at the time: head, trailer (with the trailer it pulled that day) or spare.
+                                if ((e['vehiclePlate'] ?? '').toString().isNotEmpty)
+                                  Text('${tr('السيارة وقتها', 'Vehicle then')}: ${e['vehiclePlate']}${(e['vehicleSideAr'] ?? '').toString().isNotEmpty ? ' · ${tr('${e['vehicleSideAr']}', '${e['vehicleSideEn'] ?? ''}')}' : ''}${(e['trailerNumber'] ?? '').toString().isNotEmpty ? ' ${e['trailerNumber']}' : ''}',
+                                      style: const TextStyle(fontSize: 11.5, color: T.navy, fontWeight: FontWeight.w600)),
+                                // State before and after, when it changed.
+                                if ((e['stateBeforeAr'] ?? '').toString().isNotEmpty && e['stateBeforeAr'] != e['stateAfterAr'])
+                                  Text('${tr('الحالة', 'State')}: ${tr('${e['stateBeforeAr']}', '${e['stateBeforeEn'] ?? ''}')} → ${tr('${e['stateAfterAr'] ?? ''}', '${e['stateAfterEn'] ?? ''}')}${e['percentAfter'] != null ? ' (${e['percentAfter']}%)' : ''}',
+                                      style: const TextStyle(fontSize: 11.5, color: T.orange, fontWeight: FontWeight.w700)),
                                 // Where the tire was and where it went, from its history (store, renewal or another truck).
                                 if ((e['placeBeforeAr'] ?? '').toString().isNotEmpty)
                                   Text('${tr('من', 'From')}: ${tr('${e['placeBeforeAr']}', '${e['placeBeforeEn'] ?? e['placeBeforeAr']}')}  ←  ${tr('إلى', 'To')}: ${tr('${e['placeAfterAr'] ?? ''}', '${e['placeAfterEn'] ?? e['placeAfterAr'] ?? ''}')}',
@@ -424,3 +434,56 @@ class _TireConditionHistoryState extends State<TireConditionHistory> {
     ]);
   }
 }
+
+/// A tire's status history, newest first (server: tireStatusHistory); collapsed until tapped.
+class _StatusHistory extends StatefulWidget {
+  final List<Map<String, dynamic>> rows;
+  const _StatusHistory({required this.rows});
+  @override
+  State<_StatusHistory> createState() => _StatusHistoryState();
+}
+
+class _StatusHistoryState extends State<_StatusHistory> {
+  bool _open = false;
+  String _when(dynamic v) {
+    final d = DateTime.tryParse('${v ?? ''}');
+    if (d == null) return '—';
+    final l = d.toUtc().add(const Duration(hours: 3));
+    String two(int n) => n.toString().padLeft(2, '0');
+    return '${two(l.day)}/${two(l.month)}/${l.year} ${two(l.hour)}:${two(l.minute)}';
+  }
+  String _st(Map r, String a, String e, String p) => [tr('${r[a] ?? ''}', '${r[e] ?? ''}'), if (r[p] != null) '${r[p]}%'].where((x) => x.isNotEmpty).join(' · ');
+
+  @override
+  Widget build(BuildContext context) {
+    if (widget.rows.isEmpty) return const SizedBox.shrink();
+    return Padding(
+      padding: const EdgeInsets.only(top: 8),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        InkWell(
+          onTap: () => setState(() => _open = !_open),
+          child: Row(children: [
+            const Icon(Icons.timeline, size: 16, color: T.orange),
+            const SizedBox(width: 4),
+            Text('${tr('سجلّ حالة الكاوتش', 'Status history')} (${widget.rows.length})', style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 12.5)),
+            Icon(_open ? Icons.expand_less : Icons.expand_more, size: 18),
+          ]),
+        ),
+        if (_open)
+          for (final r in widget.rows)
+            Container(
+              margin: const EdgeInsets.only(top: 6),
+              padding: const EdgeInsets.all(8),
+              decoration: BoxDecoration(color: T.canvas, borderRadius: BorderRadius.circular(8)),
+              child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                Text('${_st(r, 'fromAr', 'fromEn', 'percentFrom').isEmpty ? '—' : _st(r, 'fromAr', 'fromEn', 'percentFrom')}  →  ${_st(r, 'toAr', 'toEn', 'percentTo')}', style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 12.5)),
+                Text([_when(r['date']), r['by'], if ('${r['vehiclePlate'] ?? ''}'.isNotEmpty) '${r['vehiclePlate']} ${tr('${r['vehicleSideAr'] ?? ''}', '${r['vehicleSideEn'] ?? ''}')} ${r['trailerNumber'] ?? ''}'.trim()].where((x) => '${x ?? ''}'.isNotEmpty).join(' · '),
+                    style: const TextStyle(fontSize: 11, color: T.inkFaint)),
+                if ('${r['reason'] ?? ''}'.isNotEmpty) Text('${tr('السبب', 'Reason')}: ${r['reason']}', style: const TextStyle(fontSize: 11.5)),
+              ]),
+            ),
+      ]),
+    );
+  }
+}
+

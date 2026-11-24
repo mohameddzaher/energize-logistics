@@ -79,6 +79,7 @@ router.get('/assets/vehicle/:plate/history', assets.getVehicleHistory);
 router.post('/assets/import', ADMIN, assets.importAssets); // workshop JSON, idempotent
 router.get('/assets/tires/next-number', assets.nextTireNumber);   // Before /assets/tires/:id.
 router.post('/assets/tires', ADMIN, assets.createTire);
+router.get('/assets/tires/:id/status-history', oid, assets.getTireStatusHistory);
 router.patch('/assets/tires/:id', oid, ADMIN, assets.updateTire);
 router.get('/assets/tires/:id/profile', oid, assets.getTireProfile);   // Full life of a tire set.
 router.post('/assets/tires/:id/move', oid, ADMIN, assets.moveTire);

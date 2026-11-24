@@ -351,11 +351,46 @@ exports.getVehicleAssets = async (req, res) => {
       Ls2Trailer.findOne({ currentPlateKey: key }).lean(),
       Ls2AssetEvent.find({ $or: [{ fromPlateKey: key }, { toPlateKey: key }] }).sort({ date: -1 }).limit(100).lean(),
     ]);
-    const history = await tireConditionHistory(tires);
-    res.json({ flatbed, tires: tires.map((t) => ({ ...t, conditionHistory: history.get(String(t._id)) || [] })), trailer, events });
+    const [history, statusHist] = await Promise.all([tireConditionHistory(tires), tireStatusHistory(tires.map((t) => t._id))]);
+    res.json({ flatbed, tires: tires.map((t) => ({ ...t, conditionHistory: history.get(String(t._id)) || [], statusHistory: statusHist.get(String(t._id)) || [] })), trailer, events });
   } catch (e) {
     sendMongooseError(res, e, e.message);
   }
+};
+
+/**
+ * A tire's status history: every event that changed its state or condition %, newest first, with who, when (operation day and
+ * the time it was recorded), from what to what, the reason, and the vehicle (head or trailer, trailer number) at the time.
+ */
+async function tireStatusHistory(tireIds) {
+  const ids = (tireIds || []).map(String);
+  if (!ids.length) return new Map();
+  const raw = await Ls2AssetEvent.find({ entityType: 'tire', refId: { $in: ids } }).sort({ date: 1, createdAt: 1 }).lean();
+  const enriched = await withTireDetails(raw);
+  const out = new Map();
+  for (const e of enriched) {
+    const changed = e.stateBefore !== e.stateAfter || (e.percentBefore ?? null) !== (e.percentAfter ?? null);
+    if (!changed) continue;
+    const k = String(e.refId);
+    if (!out.has(k)) out.set(k, []);
+    out.get(k).push({
+      _id: e._id, date: e.date, recordedAt: e.createdAt, by: e.performedByName || '', action: e.action,
+      fromAr: e.stateBeforeAr || '', fromEn: e.stateBeforeEn || '', toAr: e.stateAfterAr || '', toEn: e.stateAfterEn || '',
+      percentFrom: e.percentBefore ?? null, percentTo: e.percentAfter ?? null,
+      reason: e.reason || '', notes: e.notes || '',
+      vehiclePlate: e.vehiclePlate || '', vehicleSideAr: e.vehicleSideAr || '', vehicleSideEn: e.vehicleSideEn || '', trailerNumber: e.trailerNumber || '',
+    });
+  }
+  for (const list of out.values()) list.reverse();
+  return out;
+}
+
+// GET /assets/tires/:id/status-history — one tire's status history (tireStatusHistory).
+exports.getTireStatusHistory = async (req, res) => {
+  try {
+    const m = await tireStatusHistory([req.params.id]);
+    res.json({ history: m.get(String(req.params.id)) || [] });
+  } catch (e) { sendMongooseError(res, e, e.message); }
 };
 
 /**
@@ -1192,12 +1227,16 @@ async function withTireDetails(events) {
   const [tires, history] = await Promise.all([
     Ls2TireAsset.find({ _id: { $in: ids } }).select('tireNumber type size sensor status condition conditionPercent').lean(),
     Ls2AssetEvent.find({ refId: { $in: allIds } })
-      .select('entityType refId action toPlate toPosition fromPlate fromPosition date createdAt stateAfter notes').sort({ date: 1, createdAt: 1 }).lean(),
+      .select('entityType refId action toPlate toPosition fromPlate fromPosition date createdAt stateAfter percentAfter notes').sort({ date: 1, createdAt: 1 }).lean(),
   ]);
+  const trailerAt = await trailerTimeline(events);
   const byId = new Map(tires.map((t) => [String(t._id), t]));
   // Before-place per event id, walking each asset's history in time order; edits carry the place through.
   const before = new Map();
   const last = new Map();
+  // State and condition % before each event, from the previous event of the same tire.
+  const stateBefore = new Map();
+  const lastState = new Map();
   for (const h of history) {
     const k = String(h.refId);
     const prev = last.get(k);
@@ -1205,6 +1244,10 @@ async function withTireDetails(events) {
     const after = placeAfter(h, byId.get(k));
     if (after) last.set(k, { place: after, date: h.date });
     else if (!prev) last.set(k, null);
+    if (h.entityType === 'tire') {
+      stateBefore.set(String(h._id), lastState.get(k) || null);
+      lastState.set(k, { state: pastState(h, byId.get(k)), percent: pastPercent(h, byId.get(k)) });
+    }
   }
   return events.map((e) => {
     const tire = e.entityType === 'tire' ? byId.get(String(e.refId)) : null;
@@ -1219,11 +1262,60 @@ async function withTireDetails(events) {
     if (e.entityType !== 'tire') return { ...e, ...place };
     const key = pastState(e, tire);
     const st = TIRE_STATES.find((x) => x.key === key);
+    const sb = stateBefore.get(String(e._id));
+    const stB = sb ? TIRE_STATES.find((x) => x.key === sb.state) : null;
+    // The vehicle the tire was on during this movement: where it went when mounted, where it came from when taken off.
+    const plate = e.toPlate || e.fromPlate || '';
+    const plateK = e.toPlate ? e.toPlateKey : e.fromPlateKey;
+    const pos = e.toPlate ? e.toPosition : e.fromPosition;
+    const side = !plate ? '' : /استبن/.test(String(pos || '')) ? 'spare' : TRAILER_POS.test(String(pos || '')) ? 'trailer' : 'head';
     return {
       ...e, ...place, tireNumber: tire?.tireNumber || '', tireType: tire?.type || '', tireSize: tire?.size || '', tireSensor: tire?.sensor || '',
       stateAfter: key, stateAfterAr: st?.ar || '', stateAfterEn: st?.en || '', percentAfter: pastPercent(e, tire),
+      stateBefore: sb ? sb.state : '', stateBeforeAr: stB?.ar || '', stateBeforeEn: stB?.en || '', percentBefore: sb ? sb.percent : null,
+      vehiclePlate: plate, vehicleSide: side,
+      vehicleSideAr: { head: 'الرأس', trailer: 'التيدر', spare: 'الاستبن' }[side] || '', vehicleSideEn: { head: 'Head', trailer: 'Trailer', spare: 'Spare' }[side] || '',
+      trailerNumber: side === 'trailer' ? (trailerAt(plateK, e.date) || '') : '',
     };
   });
+}
+
+// A tire position on the trailer, by its label (the 14-slot scheme puts 7-12 on the trailer).
+const TRAILER_POS = /تيدر|تريل|trailer/i;
+
+/**
+ * Which trailer each flatbed pulled on a given day, from the trailers' own history (hitched, moved, unhitched),
+ * falling back to the trailer on it now for flatbeds with no recorded trailer movement.
+ */
+async function trailerTimeline(events) {
+  const keys = [...new Set(events.flatMap((e) => [e.fromPlateKey, e.toPlateKey]).filter(Boolean))];
+  if (!keys.length) return () => '';
+  const [tEvents, trailers] = await Promise.all([
+    Ls2AssetEvent.find({ entityType: 'trailer', $or: [{ toPlateKey: { $in: keys } }, { fromPlateKey: { $in: keys } }] })
+      .select('label action toPlateKey fromPlateKey date createdAt').sort({ date: 1, createdAt: 1 }).lean(),
+    Ls2Trailer.find({ currentPlateKey: { $in: keys } }).select('trailerNumber currentPlateKey').lean(),
+  ]);
+  const spans = new Map();   // plateKey -> [{ label, from, to }]
+  const push = (k, span) => { if (!spans.has(k)) spans.set(k, []); spans.get(k).push(span); };
+  const open = new Map();    // plateKey -> open span
+  for (const t of tEvents) {
+    if (t.fromPlateKey && open.has(t.fromPlateKey) && open.get(t.fromPlateKey).label === t.label) { open.get(t.fromPlateKey).to = t.date; open.delete(t.fromPlateKey); }
+    if (t.toPlateKey && ['mounted', 'transferred', 'registered'].includes(t.action)) {
+      if (open.has(t.toPlateKey)) { open.get(t.toPlateKey).to = t.date; }
+      const span = { label: t.label, from: t.date, to: null };
+      open.set(t.toPlateKey, span); push(t.toPlateKey, span);
+    }
+  }
+  const now = new Map(trailers.map((t) => [t.currentPlateKey, t.trailerNumber]));
+  return (key, date) => {
+    if (!key) return '';
+    const d = date ? new Date(date) : new Date();
+    const hit = (spans.get(key) || []).filter((s) => new Date(s.from) <= d && (!s.to || new Date(s.to) > d)).pop();
+    if (hit) return hit.label;
+    // No recorded span covers that day: the trailer on it now, when nothing says it changed since.
+    const later = (spans.get(key) || []).some((s) => new Date(s.from) > d);
+    return later ? '' : (now.get(key) || '');
+  };
 }
 
 // GET /assets/events?plate=&entityType=&refId=&limit=
@@ -1574,7 +1666,9 @@ exports.getTireProfile = async (req, res) => {
     // Unit id per plate: the truck page is `/system/ls2/<unitId>`. Links used to open a nonexistent `/system/ls2/vehicles?q=<plate>` page, which showed no data and made the truck look unregistered.
     await vehicleByKey('');
     const unitOf = (key) => (key ? vehicleKeyCache.map.get(key)?.unitId ?? null : null);
+    const statusHistory = (await tireStatusHistory([tire._id])).get(String(tire._id)) || [];
     res.json({
+      statusHistory,
       tire: {
         ...tire,
         unitId: unitOf(tire.plateKey),

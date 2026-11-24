@@ -1,4 +1,5 @@
 'use client';
+import TireStatusHistory, { type StatusRow } from '@/components/ls2/TireStatusHistory';
 import { lastSeenText } from '@/components/ls2/tireLastSeen';
 // The life of a tire, not only its current position. The question this screen answers is not 'where is it now' (a table row) but how long it lived, on what, and how far it ran
 // A two-year-old tire on four trucks is not like one on a single truck; the difference only reads from the summed record. Mounting periods are built from the movement log: each mount opens a period and the first exit after it closes it
@@ -34,6 +35,8 @@ interface WhileOn { kind: 'repair' | 'service'; date: string; plate: string; tit
 interface Profile {
   tire: { _id: string; serial: string; tireNumber: string; type: string; size: string; sensor: string; status: string; condition: string; conditionPercent: number | null; plate: string | null; positionLabel: string; section: string; trailerNumber: string | null; trailerOnPlate: string | null; unitId?: number | null; trailerOnUnitId?: number | null; isSpare: boolean; notes: string; createdAt: string; placeUnknown?: boolean };
   stints: Stint[]; events: Ev[]; whileOn: WhileOn[];
+  /** Every change of state or condition %, with who, when, why and the vehicle at the time (backend tireStatusHistory). */
+  statusHistory?: StatusRow[];
   totals: { stints: number; vehicles: number; km: number; days: number; mountedDays: number; repairs: number; services: number; ageDays: number; preSystem: boolean };
 }
 
@@ -311,6 +314,8 @@ export default function TireProfilePage() {
           </table>
         </ScrollX>
       </div>
+
+      <TireStatusHistory rows={d.statusHistory || []} ar={ar} />
 
       {/* Raw log */}
       <div className="rounded-2xl border border-slate-200 bg-white shadow-sm overflow-hidden">

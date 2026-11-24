@@ -24,7 +24,7 @@ import {
   Camera, Loader2,
   CheckCircle2, Info,
   KeySquare,
-  Archive, FolderSearch,
+  Archive, FolderSearch, Search,
   MonitorPlay, Clapperboard, BadgeDollarSign,
   UserRound, BellRing, Route as RouteIcon,
 } from 'lucide-react';
@@ -46,6 +46,7 @@ import { isDataRole } from '@/lib/dataSupport';
 import { ALL_ROLES, roleIn, rightsRoleOf } from '@/lib/roles';
 import { jpMember, jpManager, jpTop } from '@/lib/jpNav';
 import { PERF_STAFF_ROLES } from '@/lib/performance';
+import NavSearch, { type NavSearchItem } from '@/components/system/NavSearch';
 import { WALLET_ROLES, WALLET_DASHBOARD_ROLES, WALLET_VIEW_ONLY_ROLES } from '@/lib/wallet';
 
 // Section-KPI pages render TeamBoard, which admits PERF_STAFF_ROLES only — a
@@ -140,6 +141,8 @@ function SystemLayoutInner({ children }: { children: React.ReactNode }) {
   const router = useRouter();
   const pathname = usePathname() || '';
   const [sidebarOpen, setSidebarOpen] = useState(true);
+  // Bumped to focus the sidebar search after opening a collapsed sidebar from its search icon.
+  const [searchFocus, setSearchFocus] = useState(0);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [notifications, setNotifications] = useState<any[]>([]);
   const [unreadCount, setUnreadCount] = useState(0);
@@ -892,6 +895,16 @@ function SystemLayoutInner({ children }: { children: React.ReactNode }) {
     return ia - ib;
   });
 
+  // Every page the user can open, with its section's label, for the sidebar search.
+  const searchItems: NavSearchItem[] = filteredNav.map((it) => ({ href: it.href, label: String(it.label || ''), section: String(it.section || ''), sectionLabel: getSectionLabel(String(it.section || 'Other'), lang), icon: it.icon }));
+  const pickFromSearch = (href: string) => {
+    setPendingHref(href);
+    const sec = filteredNav.find((n) => n.href === href)?.section;
+    if (sec && !expandedSections.has(sec)) toggleSection(sec);
+    setMobileMenuOpen(false);
+    router.push(href);
+  };
+
   const handleLogout = async () => {
     await logout();
     router.push('/');
@@ -1010,6 +1023,15 @@ function SystemLayoutInner({ children }: { children: React.ReactNode }) {
           </button>
         </div>
 
+        {/* Search pages and sections; collapsed, the icon opens the sidebar and focuses it. */}
+        {sidebarOpen
+          ? <NavSearch items={searchItems} ar={lang === 'ar'} onPick={pickFromSearch} autoFocusKey={searchFocus} />
+          : (
+            <button type="button" onClick={() => { setSidebarOpen(true); setSearchFocus((n) => n + 1); }} title={lang === 'ar' ? 'بحث' : 'Search'}
+              className="mx-auto mt-2 flex h-9 w-9 items-center justify-center rounded-lg text-slate-400 hover:bg-slate-800 hover:text-white">
+              <Search className="h-5 w-5" />
+            </button>
+          )}
         {/* Nav Items */}
         <nav className="flex-1 overflow-y-auto py-2 px-2 sidebar-scroll">
           {orderedNav.map(([section, items]) => {
@@ -1209,6 +1231,7 @@ function SystemLayoutInner({ children }: { children: React.ReactNode }) {
                   <X className="w-5 h-5" />
                 </button>
               </div>
+              <NavSearch items={searchItems} ar={lang === 'ar'} onPick={pickFromSearch} />
               <nav className="flex-1 overflow-y-auto py-2 px-2 sidebar-scroll">
                 {orderedNav.map(([section, items]) =>
                   renderSection(section, items, () => setMobileMenuOpen(false))

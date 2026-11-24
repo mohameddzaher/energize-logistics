@@ -466,6 +466,15 @@ class _BrActionCardState extends State<BrActionCard> {
     await _run(() => Api.instance.post('/api/business-review/actions/${a['_id']}/delegate', {'assignments': rows}), 'تم التوزيع', 'Delegated');
   }
 
+  /// Top management only: the task leaves the meetings for every owner and waits in the archive.
+  Future<void> _archive() async {
+    final ok = await brConfirm(context, tr('إرسال البند إلى الأرشيف؟', 'Send to archive?'),
+        tr('يخرج من الاجتماعات عند كلّ المشتركين فيه، ويمكن إعادته من صفحة الأرشيف.', 'It leaves the meetings for everyone sharing it and can be restored from the archive.'),
+        ok: tr('إرسال للأرشيف', 'Send to archive'));
+    if (!ok) return;
+    await _run(() => Api.instance.post('/api/business-review/actions/${a['_id']}/archive', {}), 'أُرسل البند إلى الأرشيف', 'Sent to archive');
+  }
+
   Future<void> _delete() async {
     final ok = await brConfirm(context, tr('حذف هذا البند؟', 'Delete this action?'), tr('سيتم حذف التكليفات الفرعية معه.', 'Its delegated tasks are removed too.'),
         ok: tr('حذف', 'Delete'), danger: true);
@@ -568,6 +577,8 @@ class _BrActionCardState extends State<BrActionCard> {
                     icon: const Icon(Icons.delete_outline, size: 16),
                     label: Text(tr('حذف', 'Delete'), style: const TextStyle(fontSize: 12)),
                   ),
+                if (widget.meta['me']?['canArchive'] == true)
+                  OutlinedButton.icon(onPressed: _archive, icon: const Icon(Icons.archive_outlined, size: 16), label: Text(tr('إرسال للأرشيف', 'Send to archive'), style: const TextStyle(fontSize: 12))),
               ]),
           ],
         ]),

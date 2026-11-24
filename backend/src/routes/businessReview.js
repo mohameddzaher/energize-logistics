@@ -30,7 +30,7 @@ router.get('/dashboard', br.getDashboard);
 const board = require('../controllers/businessReviewBoardController');
 router.get('/board', board.getBoard);
 router.get('/daily', board.getDaily);
-// Tasks finished more than a day ago, out of the meetings.
+// Tasks top management sent to the archive by hand, out of the meetings.
 router.get('/archive', board.getArchive);
 router.get('/series', board.listSeries);
 router.post('/series', board.createSeries);
@@ -51,6 +51,9 @@ router.delete('/actions/:actionId', br.deleteAction);
 router.post('/actions/:actionId/delegate', br.delegate);
 router.post('/actions/:actionId/share', br.shareAction);
 router.post('/actions/:actionId/transfer', br.transferAction);
+// Manual archive and its undo; config/businessReview canArchive decides who.
+router.post('/actions/:actionId/archive', br.archiveAction);
+router.post('/actions/:actionId/unarchive', br.unarchiveAction);
 
 // ── Meetings ───────────────────────────────────────────────────────────────
 router.get('/meetings', br.listMeetings);

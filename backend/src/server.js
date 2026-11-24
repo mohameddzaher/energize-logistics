@@ -464,6 +464,10 @@ if (!DOCS_ONLY) connectDB().then(async () => {
     .catch((e) => console.error('[jp] company links:', e.message));
   // Approved prices became per customer + route: the old route-only unique index is replaced (small collection).
   require('./models/VendorsMgmt').VendorApprovedPrice.syncIndexes().catch((e) => console.error('[vendors] price indexes:', e.message));
+  // Business review archive became manual: keep what the old 24h rule had archived, mark the rest live (once).
+  require('./config/businessReview').migrateManualArchive()
+    .then((r) => { if (r.archived || r.live) console.log(`[br] manual archive: ${r.archived} kept archived, ${r.live} live`); })
+    .catch((e) => console.error('[br] manual archive:', e.message));
   // Media Go is a service flag, not a project: anything still filed under it moves to the flag once (utils/mediaGoMigrate).
   require('./utils/mediaGoMigrate').run()
     .then((n) => { if (n) console.log(`[mediaGo] moved ${n} records from project to service`); })

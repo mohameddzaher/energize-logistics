@@ -147,6 +147,7 @@ exports.getMeta = async (req, res) => {
         isSecretary: isSecretary(req.user),
         canRunMeetings: canRunMeetings(req.user),
         isParticipant: isParticipant(req.user),
+        canArchive: require('../config/businessReview').canArchive(req.user),
       },
     });
   } catch (error) {
@@ -239,7 +240,7 @@ exports.getMeeting = async (req, res) => {
     const wasThere = (meeting.attendees || []).some((a) => sameId(a.user, req.user._id));
     if (!canRunMeetings(req.user) && !wasThere) return deny(res, 'You did not attend this meeting');
 
-    // Finished more than a day ago: in the archive, not on the meeting.
+    // Archived by hand: in the archive, not on the meeting.
     let actions = await BrAction.find({ meeting: meeting._id, ...require('../config/businessReview').liveCond() }).sort({ createdAt: 1 }).lean();
     // A department head reads only his department: its tasks and its part of the minutes.
     const hd = await brScope.headDept(req.user);
@@ -769,6 +770,28 @@ exports.updateAction = async (req, res) => {
     return sendMongooseError(res, error, 'تعذّر تحديث البند');
   }
 };
+
+/** Sends a task (every owner's copy when shared) to the archive, or brings it back; only canArchive roles. */
+const setArchived = (archive) => async (req, res) => {
+  try {
+    const { canArchive } = require('../config/businessReview');
+    if (!canArchive(req.user)) return res.status(403).json({ message: 'الإرسال إلى الأرشيف للإدارة العليا فقط' });
+    const action = await BrAction.findById(req.params.actionId).select('_id shareGroup archivedAt').lean();
+    if (!action) return res.status(404).json({ message: 'Action not found' });
+    const match = action.shareGroup ? { shareGroup: action.shareGroup } : { _id: action._id };
+    const set = archive
+      ? { archivedAt: new Date(), archivedBy: req.user._id, archivedByName: fullName(req.user) }
+      : { archivedAt: null, archivedBy: null, archivedByName: '' };
+    const ids = await BrAction.find(match).distinct('_id');
+    await BrAction.updateMany({ _id: { $in: ids } }, { $set: set });
+    for (const id of ids) emit('br:action', { id: String(id), archived: archive });
+    res.json({ message: archive ? 'أُرسل البند إلى الأرشيف' : 'أُعيد البند من الأرشيف', count: ids.length });
+  } catch (error) {
+    res.status(500).json({ message: 'تعذّر تنفيذ الطلب' });
+  }
+};
+exports.archiveAction = setArchived(true);
+exports.unarchiveAction = setArchived(false);
 
 exports.deleteAction = async (req, res) => {
   try {

@@ -1,8 +1,8 @@
 'use client';
-// Business review archive: tasks finished more than a day ago leave the meetings and are kept here with their whole timeline.
+// Business review archive: tasks top management sent here by hand leave the meetings and are kept with their whole timeline; they can be restored.
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
-import { Archive, Users, CheckCircle2, XCircle, Clock, AlarmClock } from 'lucide-react';
+import { Archive, Users, CheckCircle2, XCircle, Clock, AlarmClock, Undo2 } from 'lucide-react';
 import api from '@/lib/api';
 import { useLanguage } from '@/context/LanguageContext';
 import { useSocket } from '@/hooks/useSocket';
@@ -13,7 +13,8 @@ import MonthPicker from '@/components/system/MonthPicker';
 import ColumnChooser, { useVisibleColumns, type ChooserColumn } from '@/components/system/ColumnChooser';
 import ExportMenu, { type ExportColumn } from '@/components/ls2/ExportMenu';
 import ScrollX from '@/components/system/ScrollX';
-import { brMeta, deptLabel, fmtDate, fmtDateTime, vocabLabel, type BrMeta, type Lang } from '@/lib/businessReview';
+import { useDialog } from '@/components/system/DialogProvider';
+import { brMeta, brUnarchiveAction, deptLabel, fmtDate, fmtDateTime, vocabLabel, type BrMeta, type Lang } from '@/lib/businessReview';
 import { StatusPill } from '@/components/system/BusinessReviewKit';
 
 type Row = {
@@ -21,7 +22,7 @@ type Row = {
   assigneeName: string; sharedWith: string[]; delegatedTo: string[]; assignedByName: string; raisedByName: string;
   meeting: string; meetingRef: string; meetingTitle: string; meetingDate: string | null; meetingCadence: string;
   assignedAt: string; startDate: string | null; dueDate: string | null; originalDueDate: string | null;
-  postponeCount: number; postponeReason: string; closedAt: string | null; archivedAt: string | null;
+  postponeCount: number; postponeReason: string; closedAt: string | null; archivedAt: string | null; archivedByName?: string;
   timing: '' | 'ontime' | 'late' | 'nodue'; days: number | null; updatesCount: number;
   lastUpdate: { at: string; byName: string; text: string } | null;
 };
@@ -29,6 +30,7 @@ type Payload = {
   items: Row[];
   totals: { total: number; done: number; cancelled: number; onTime: number; late: number; noDue: number; avgDays: number | null };
   options: { departments: string[]; people: { _id: string; name: string }[]; cadences: string[] };
+  canArchive?: boolean;
 };
 
 const ymd = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
@@ -40,6 +42,8 @@ export default function BusinessReviewArchivePage() {
   const ar = L === 'ar';
   const t = (a: string, e: string) => (ar ? a : e);
   const guard = useLatestRequest();
+  const { confirm, notify } = useDialog();
+  const [busyId, setBusyId] = useState('');
 
   const [meta, setMeta] = useState<BrMeta | null>(null);
   const [data, setData] = useState<Payload | null>(null);
@@ -75,9 +79,18 @@ export default function BusinessReviewArchivePage() {
     } catch (e: any) { if (guard.isCurrent(mine)) setError(e?.message || 'Request failed'); }
   }, [guard, dateBy, from, to, department, assignee, status, cadence, qd]);
   useEffect(() => { load(); }, [load]);
-  // A task closing or reopening anywhere moves it in or out of the archive.
+  // A task sent to or brought back from the archive anywhere.
   useSocket('br:action', useCallback(() => load(), [load]));
 
+  // Brings a task (every owner's copy when shared) back into its meetings.
+  const restore = async (r: Row) => {
+    const ok = await confirm({ title: t('إعادة البند من الأرشيف', 'Restore task'), message: t(`يعود البند «${r.title}» إلى اجتماعاته عند كلّ المشتركين فيه.`, 'The task returns to its meetings for everyone sharing it.'), confirmLabel: t('إعادة', 'Restore') });
+    if (!ok) return;
+    setBusyId(r._id);
+    try { await brUnarchiveAction(r._id); notify(t('أُعيد البند من الأرشيف', 'Restored'), 'success'); await load(); }
+    catch (e: any) { notify(e?.message || t('تعذّر', 'Failed'), 'error'); }
+    setBusyId('');
+  };
   const setPeriod = (f: string, tt: string) => { setMonth(''); setFrom(f); setTo(tt); };
   const today = new Date();
   const quick = [
@@ -111,10 +124,12 @@ export default function BusinessReviewArchivePage() {
     { key: 'timing', label: t('الالتزام بالموعد', 'Timing'), cell: (r) => (r.timing ? <span className={`text-[12px] font-semibold ${r.timing === 'late' ? 'text-red-700' : r.timing === 'ontime' ? 'text-emerald-700' : 'text-slate-500'}`}>{timingLabel(r.timing)}</span> : '—'), exp: { header: t('الالتزام بالموعد', 'Timing'), key: 'timing', transform: (v) => timingLabel(v), width: 14 } },
     { key: 'days', label: t('المدة (يوم)', 'Days'), cell: (r) => (r.days == null ? '—' : r.days), exp: { header: t('المدة (يوم)', 'Days'), key: 'days', type: 'number', width: 10 } },
     { key: 'archivedAt', label: t('دخل الأرشيف', 'Archived at'), cell: (r) => fmtDateTime(r.archivedAt), exp: { header: t('دخل الأرشيف', 'Archived at'), key: 'archivedAt', type: 'date', width: 16 } },
+    { key: 'archivedByName', label: t('أرشفه', 'Archived by'), cell: (r) => r.archivedByName || '—', exp: { header: t('أرشفه', 'Archived by'), key: 'archivedByName', width: 20 } },
     { key: 'lastUpdate', label: t('آخر تحديث', 'Last update'), cell: (r) => (r.lastUpdate?.text ? <span className="block max-w-[22rem] truncate" title={r.lastUpdate.text}>{r.lastUpdate.text}</span> : '—'), exp: { header: t('آخر تحديث', 'Last update'), key: 'lastUpdate', transform: (v) => v?.text || '', width: 40 } },
     { key: 'description', label: t('التفاصيل', 'Details'), cell: (r) => (r.description ? <span className="block max-w-[22rem] truncate" title={r.description}>{r.description}</span> : '—'), exp: { header: t('التفاصيل', 'Details'), key: 'description', width: 40 } },
   ];
-  const chooser = useVisibleColumns('br-archive:columns', COLS, { defaults: ['title', 'department', 'assigneeName', 'sharedWith', 'assignedByName', 'meeting', 'assignedAt', 'dueDate', 'closedAt', 'status', 'timing'] });
+  const chooser = useVisibleColumns('br-archive:columns', COLS, { defaults: ['title', 'department', 'assigneeName', 'sharedWith', 'assignedByName', 'meeting', 'assignedAt', 'dueDate', 'closedAt', 'status', 'timing', 'archivedAt', 'archivedByName'] });
+  const canRestore = !!data?.canArchive;
   const shownCols = COLS.filter((c) => chooser.isOn(c.key));
 
   if (!data && !error) return <Spinner />;
@@ -122,7 +137,7 @@ export default function BusinessReviewArchivePage() {
   return (
     <div className="space-y-4 pb-10" dir={isRTL ? 'rtl' : 'ltr'}>
       <PageHeader icon={<Archive className="w-6 h-6 text-[#f37121]" />} title={t('أرشيف البنود', 'Task archive')}
-        subtitle={t('كلُّ بندٍ تمّ إنجازه (أو أُلغي) ومضى عليه يوم يخرج من الاجتماعات ويُحفظ هنا بتفاصيله كاملة.', 'Every task done (or cancelled) for more than a day leaves the meetings and is kept here in full.')}>
+        subtitle={t('البنود التي أرسلتها الإدارة العليا إلى الأرشيف؛ تخرج من الاجتماعات وتُحفظ هنا بتفاصيلها كاملة، ويمكن إعادتها.', 'Tasks top management sent to the archive; they leave the meetings, are kept here in full and can be restored.')}>
         <div className="flex items-center gap-2">
           <ColumnChooser columns={COLS} visible={chooser.visible} onChange={chooser.setVisible} ar={ar} />
           <ExportMenu fileName="business-review-archive" lang={L}
@@ -198,16 +213,24 @@ export default function BusinessReviewArchivePage() {
         <ScrollX>
           <table className="w-full text-[13px]">
             <thead className="bg-slate-50 text-slate-600">
-              <tr>{shownCols.map((c) => <th key={c.key} className="px-3 py-2.5 text-start font-bold whitespace-nowrap">{c.label}</th>)}</tr>
+              <tr>{shownCols.map((c) => <th key={c.key} className="px-3 py-2.5 text-start font-bold whitespace-nowrap">{c.label}</th>)}{canRestore && <th className="px-3 py-2.5" />}</tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
               {rows.map((r) => (
                 <tr key={r._id} className="hover:bg-slate-50/70 align-top">
                   {shownCols.map((c) => <td key={c.key} className="px-3 py-2.5 whitespace-nowrap text-slate-700">{c.cell(r)}</td>)}
+                  {canRestore && (
+                    <td className="px-3 py-2 whitespace-nowrap">
+                      <button type="button" disabled={busyId === r._id} onClick={() => restore(r)}
+                        className="inline-flex items-center gap-1 rounded-lg border border-emerald-300 bg-white px-2.5 py-1 text-xs font-bold text-emerald-700 hover:bg-emerald-50 disabled:opacity-50">
+                        <Undo2 className="h-3.5 w-3.5" />{t('إعادة', 'Restore')}
+                      </button>
+                    </td>
+                  )}
                 </tr>
               ))}
               {!rows.length && (
-                <tr><td colSpan={shownCols.length} className="px-3 py-10 text-center text-slate-400">{t('لا بنود في الأرشيف بهذه الفلاتر.', 'No archived tasks for these filters.')}</td></tr>
+                <tr><td colSpan={shownCols.length + (canRestore ? 1 : 0)} className="px-3 py-10 text-center text-slate-400">{t('لا بنود في الأرشيف بهذه الفلاتر.', 'No archived tasks for these filters.')}</td></tr>
               )}
             </tbody>
           </table>

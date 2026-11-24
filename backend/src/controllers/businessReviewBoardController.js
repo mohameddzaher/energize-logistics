@@ -11,7 +11,7 @@ require('../models/Employee');
 const { startOfDay, endOfDay, todayKey, dayKeyOf } = require('../utils/companyDay');
 const {
   canRunMeetings, isParticipant, isManagerRole, OPEN_ACTION_STATUSES, CADENCE_KEYS, departments,
-  ARCHIVE_AFTER_MS, archivedCond, liveCond,
+  archivedCond, liveCond, canArchive,
 } = require('../config/businessReview');
 const { sectionOfRole } = require('../config/roles');
 const { sectionsOfUserIds } = require('../utils/userSection');
@@ -221,7 +221,7 @@ exports.getMeetingDepartments = async (req, res) => {
     const meetingIds = meeting.series
       ? (await BrMeeting.find({ series: meeting.series }).select('_id').lean()).map((m) => m._id)
       : [meeting._id];
-    // Finished more than a day ago: in the archive, not on the meeting.
+    // Archived by hand: in the archive, not on the meeting.
     const actions = await BrAction.find({ meeting: { $in: meetingIds }, ...liveCond() })
       .select('-__v').sort({ createdAt: -1 }).limit(3000).lean();
     const ownerSection = await sectionsOfUserIds(actions.map((a) => a.assignee));
@@ -289,7 +289,7 @@ exports.getMeetingDepartments = async (req, res) => {
 };
 
 /**
- * GET /archive — tasks finished more than a day ago, with where they came from and their whole timeline.
+ * GET /archive — tasks top management sent to the archive by hand, with where they came from and their whole timeline.
  * Same scope as the board: the administration sees all; a department head his department; a manager the meetings he attended and his own tasks.
  * Filters: from/to (company days) on `dateBy` (closed | assigned | due), department, assignee, meeting cadence, status, q.
  * `options` lists the departments, people and meetings found in the reader's archive, unfiltered, for the pickers.
@@ -304,8 +304,8 @@ exports.getArchive = async (req, res) => {
       filter.$and = [{ $or: [{ meeting: { $in: attended } }, { assignee: req.user._id }] }];
     }
     let rows = await BrAction.find(filter)
-      .select('shareGroup meeting meetingRef meetingTitle meetingDate title description department assignee assigneeName assigneeRole raisedByName createdByName startDate dueDate expectedDate originalDueDate postponeReason postponeCount priority status completedAt cancelledAt createdAt updatedAt updates')
-      .sort({ completedAt: -1, updatedAt: -1 }).limit(20000).lean();
+      .select('shareGroup meeting meetingRef meetingTitle meetingDate title description department assignee assigneeName assigneeRole raisedByName createdByName startDate dueDate expectedDate originalDueDate postponeReason postponeCount priority status completedAt cancelledAt archivedAt archivedByName createdAt updatedAt updates')
+      .sort({ archivedAt: -1, completedAt: -1 }).limit(20000).lean();
 
     const ownerSection = await sectionsOfUserIds(rows.map((a) => a.assignee));
     const deptOf = (a) => ownerSection.get(String(a.assignee)) || orgSectionOfRole(a.assigneeRole) || a.department || NO_DEPT;
@@ -323,7 +323,8 @@ exports.getArchive = async (req, res) => {
 
     const { from, to } = periodOf({ from: req.query.from, to: req.query.to, period: 'all' });
     const dateBy = ['assigned', 'due'].includes(req.query.dateBy) ? req.query.dateBy : 'closed';
-    const dateOf = (a) => (dateBy === 'assigned' ? a.createdAt : dateBy === 'due' ? a.dueDate : closedAt(a));
+    // A task archived while still open has no closing date; its archive date stands in.
+    const dateOf = (a) => (dateBy === 'assigned' ? a.createdAt : dateBy === 'due' ? a.dueDate : closedAt(a) || a.archivedAt);
     const q = String(req.query.q || '').trim().toLowerCase();
     rows = rows.filter((a) => {
       const d = dateOf(a);
@@ -369,13 +370,13 @@ exports.getArchive = async (req, res) => {
         meetingDate: a.meetingDate || m.scheduledAt || null, meetingCadence: m.cadence || '',
         assignedAt: a.createdAt, startDate: start, dueDate: a.dueDate, originalDueDate: a.originalDueDate,
         postponeCount: a.postponeCount || 0, postponeReason: a.postponeReason || '',
-        closedAt: closed, archivedAt: closed ? new Date(new Date(closed).getTime() + ARCHIVE_AFTER_MS) : null,
+        closedAt: closed, archivedAt: a.archivedAt || null, archivedByName: a.archivedByName || '',
         timing, days,
         updatesCount: (a.updates || []).length,
         lastUpdate: last ? { at: last.at, byName: last.byName, text: last.text } : null,
       };
     });
-    res.json({ items, totals: { ...totals, avgDays: daysN ? Math.round((daysSum / daysN) * 10) / 10 : null }, options, dateBy, runner });
+    res.json({ items, totals: { ...totals, avgDays: daysN ? Math.round((daysSum / daysN) * 10) / 10 : null }, options, dateBy, runner, canArchive: canArchive(req.user) });
   } catch (error) {
     console.error('br archive error:', error);
     res.status(500).json({ message: 'تعذّر تحميل الأرشيف' });

@@ -1741,6 +1741,7 @@
     },
     "/system/business-review/archive": {
       "apis": [
+        "/api/business-review/actions",
         "/api/business-review/archive",
         "/api/business-review/meta"
       ],

@@ -9,7 +9,7 @@ import '../ui/widgets.dart';
 import 'business_review_kit.dart';
 import 'ops_common.dart' show opsPickMonth;
 
-/// Business review archive: tasks finished more than a day ago, out of the meetings. Same API and filters as the web page.
+/// Business review archive: tasks top management sent here by hand, out of the meetings; they can be restored. Same API and filters as the web page.
 class BrArchiveTab extends StatefulWidget {
   final Map<String, dynamic> meta;
   const BrArchiveTab({super.key, required this.meta});
@@ -106,6 +106,8 @@ class _BrArchiveTabState extends State<BrArchiveTab> {
         ExportCol('الحالة', 'Status', (r) => brVocab(widget.meta['actionStatuses'] as List?, '${r['status']}').label),
         ExportCol('الالتزام بالموعد', 'Timing', (r) => _timingLabel('${r['timing'] ?? ''}')),
         ExportCol('المدة (يوم)', 'Days', (r) => r['days']),
+        ExportCol('دخل الأرشيف', 'Archived at', (r) => brDateTime(r['archivedAt'])),
+        ExportCol('أرشفه', 'Archived by', (r) => r['archivedByName'] ?? ''),
         ExportCol('آخر تحديث', 'Last update', (r) => r['lastUpdate'] is Map ? r['lastUpdate']['text'] : ''),
       ];
 
@@ -127,7 +129,7 @@ class _BrArchiveTabState extends State<BrArchiveTab> {
     return RefreshIndicator(
       onRefresh: _load,
       child: ListView(padding: const EdgeInsets.all(12), children: [
-        Text(tr('كلُّ بندٍ تمّ إنجازه (أو أُلغي) ومضى عليه يوم يخرج من الاجتماعات ويُحفظ هنا.', 'Tasks done (or cancelled) for more than a day leave the meetings and are kept here.'),
+        Text(tr('البنود التي أرسلتها الإدارة العليا إلى الأرشيف؛ تخرج من الاجتماعات وتُحفظ هنا، ويمكن إعادتها.', 'Tasks top management sent to the archive; they leave the meetings, are kept here and can be restored.'),
             style: const TextStyle(fontSize: 12, color: T.inkSoft)),
         const SizedBox(height: 10),
         Row(children: [
@@ -171,6 +173,24 @@ class _BrArchiveTabState extends State<BrArchiveTab> {
     );
   }
 
+  String _busy = '';
+
+  /// Brings a task (every owner's copy when shared) back into its meetings.
+  Future<void> _restore(Map r) async {
+    final ok = await brConfirm(context, tr('إعادة البند من الأرشيف', 'Restore task'),
+        tr('يعود البند «${r['title']}» إلى اجتماعاته عند كلّ المشتركين فيه.', 'The task returns to its meetings for everyone sharing it.'), ok: tr('إعادة', 'Restore'));
+    if (!ok) return;
+    setState(() => _busy = '${r['_id']}');
+    try {
+      await Api.instance.post('/api/business-review/actions/${r['_id']}/unarchive', {});
+      if (mounted) brSnack(context, tr('أُعيد البند من الأرشيف', 'Restored'));
+      await _load();
+    } catch (e) {
+      if (mounted) brSnack(context, brErr(e));
+    }
+    if (mounted) setState(() => _busy = '');
+  }
+
   Widget _card(Map<String, dynamic> r) {
     final st = brVocab(widget.meta['actionStatuses'] as List?, '${r['status']}');
     final timing = '${r['timing'] ?? ''}';
@@ -203,9 +223,18 @@ class _BrArchiveTabState extends State<BrArchiveTab> {
           line(tr('الاجتماع', 'Meeting'), [_cadence('${r['meetingCadence'] ?? ''}'), '${r['meetingRef'] ?? ''}', brDate(r['meetingDate'])].where((x) => x.isNotEmpty && x != '—').join(' · ')),
           line(tr('أُسند في', 'Assigned at'), brDateTime(r['assignedAt'])),
           line(tr('موعد التسليم', 'Due'), '${brDate(r['dueDate'])}${(r['postponeCount'] ?? 0) > 0 ? ' (${tr('أُجِّل', 'postponed')} ${r['postponeCount']}×)' : ''}'),
-          line(r['status'] == 'done' ? tr('تم الإنجاز', 'Done at') : tr('أُلغي في', 'Cancelled at'), brDateTime(r['closedAt'])),
+          if (r['closedAt'] != null) line(r['status'] == 'done' ? tr('تم الإنجاز', 'Done at') : tr('أُلغي في', 'Cancelled at'), brDateTime(r['closedAt'])),
+          line(tr('دخل الأرشيف', 'Archived'), [brDateTime(r['archivedAt']), '${r['archivedByName'] ?? ''}'].where((x) => x.isNotEmpty && x != '—').join(' · ')),
           if (r['days'] != null) line(tr('المدة', 'Duration'), '${r['days']} ${tr('يوم', 'days')}'),
           if (r['lastUpdate'] is Map) line(tr('آخر تحديث', 'Last update'), '${r['lastUpdate']['text'] ?? ''}'),
+          if (_data?['canArchive'] == true) ...[
+            const SizedBox(height: 8),
+            OutlinedButton.icon(
+              onPressed: _busy == '${r['_id']}' ? null : () => _restore(r),
+              style: OutlinedButton.styleFrom(foregroundColor: T.success),
+              icon: const Icon(Icons.unarchive_outlined, size: 16), label: Text(tr('إعادة', 'Restore')),
+            ),
+          ],
         ]),
       ),
     );

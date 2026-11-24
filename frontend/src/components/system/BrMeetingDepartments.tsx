@@ -4,7 +4,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import {
   CheckCircle2, PlayCircle, CircleDashed, PauseCircle, AlertTriangle, Ban, ChevronDown, Plus, CornerDownLeft,
-  Loader2, Link2, CalendarDays, User, Layers, Pencil, Users, X, ArrowLeftRight, Trash2, History,
+  Loader2, Link2, CalendarDays, User, Layers, Pencil, Users, X, ArrowLeftRight, Trash2, History, Archive,
 } from 'lucide-react';
 import { useDialog } from '@/components/system/DialogProvider';
 import SearchSelect from '@/components/system/SearchSelect';
@@ -12,7 +12,7 @@ import api from '@/lib/api';
 import { useSocket } from '@/hooks/useSocket';
 import { StatusPill, ProgressForm, Progress, DatesLine, UpdateLog, DelegateForm } from '@/components/system/BusinessReviewKit';
 import {
-  brCreateAction, brUpdateAction, brShareAction, brTransferAction, brDeleteAction, brDelegate, type BrMeta, type Lang, type ProgressReport, tx, deptLabel, fmtDate, isoDay,
+  brCreateAction, brUpdateAction, brShareAction, brTransferAction, brDeleteAction, brArchiveAction, brDelegate, type BrMeta, type Lang, type ProgressReport, tx, deptLabel, fmtDate, isoDay,
 } from '@/lib/businessReview';
 
 type Counts = { total: number; done: number; in_progress: number; open: number; postponed: number; blocked: number; overdue: number; today: number; agenda: number; h48: number; week: number; later: number; nodate: number; onTime: number };
@@ -244,6 +244,18 @@ export function TaskRow({ task, meta, L, meetingId, canEdit, runner = canEdit, c
     catch (e: any) { notify(e?.message || t('Failed', 'تعذّر'), 'error'); }
     setBusy(false);
   };
+  const archive = async () => {
+    const ok = await confirm({
+      confirmLabel: t('Send to archive', 'إرسال للأرشيف'),
+      title: t('Send to archive', 'إرسال البند إلى الأرشيف'),
+      message: t('The task leaves the meetings for everyone sharing it; it can be brought back from the archive.', `يخرج البند «${task.title}» من الاجتماعات عند كلّ المشتركين فيه، ويمكن إعادته من صفحة الأرشيف.`),
+    });
+    if (!ok) return;
+    setBusy(true);
+    try { await brArchiveAction(task._id); notify(t('Sent to archive', 'أُرسل البند إلى الأرشيف'), 'success'); onChanged(); }
+    catch (e: any) { notify(e?.message || t('Failed', 'تعذّر'), 'error'); }
+    setBusy(false);
+  };
   const [ed, setEd] = useState({ title: task.title || '', description: task.description || '', dueDate: task.dueDate ? isoDay(new Date(task.dueDate)) : '', priority: task.priority || 'medium' });
   // Several people can be added in one go; each becomes an owner of the same task.
   const [shareTo, setShareTo] = useState<string[]>([]);
@@ -393,6 +405,14 @@ export function TaskRow({ task, meta, L, meetingId, canEdit, runner = canEdit, c
                 <Trash2 className="w-3.5 h-3.5" />{t('Delete task', 'حذف البند')}
               </button>
               </>)}
+            </div>
+          )}
+          {meta.me.canArchive && (
+            <div className="flex flex-wrap gap-2 pt-1">
+              <button type="button" disabled={busy} onClick={archive}
+                className="inline-flex items-center gap-1.5 border border-slate-400 bg-slate-100 text-slate-800 text-xs font-bold rounded-lg px-3 py-1.5 disabled:opacity-50">
+                <Archive className="w-3.5 h-3.5" />{t('Send to archive', 'إرسال للأرشيف')}
+              </button>
             </div>
           )}
 

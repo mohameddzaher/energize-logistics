@@ -160,11 +160,15 @@ const brActionSchema = new mongoose.Schema({
   progress: { type: Number, default: 0, min: 0, max: 100 },
 
   completedAt: { type: Date, default: null },
-  // When it was cancelled; with completedAt it dates the closing that sends a task to the archive a day later.
+  // When it was cancelled; with completedAt it dates the closing.
   cancelledAt: { type: Date, default: null },
   // Stamped by the daily sweep so lists and dashboards don't recompute it.
   isOverdue: { type: Boolean, default: false, index: true },
   // Set once per breach so the overdue alert is not re-sent every night.
+  // Archive is a decision, not a timer: top management sends a task there by hand (config/businessReview canArchive).
+  archivedAt: { type: Date, default: null, index: true },
+  archivedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User', default: null },
+  archivedByName: { type: String, trim: true, default: '' },
   overdueNotifiedAt: { type: Date, default: null },
   dueSoonNotifiedAt: { type: Date, default: null },
 

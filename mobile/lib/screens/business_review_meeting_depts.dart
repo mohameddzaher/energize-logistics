@@ -267,6 +267,21 @@ class _BrMeetingDepartmentsTabState extends State<BrMeetingDepartmentsTab> {
     }
   }
 
+  /// Top management only: the task leaves the meetings for every owner and waits in the archive, from where it can be restored.
+  Future<void> _archive(Map t) async {
+    final ok = await brConfirm(context, tr('إرسال البند إلى الأرشيف', 'Send to archive'),
+        tr('يخرج البند «${t['title']}» من الاجتماعات عند كلّ المشتركين فيه، ويمكن إعادته من صفحة الأرشيف.', 'It leaves the meetings for everyone sharing it and can be restored from the archive.'),
+        ok: tr('إرسال للأرشيف', 'Send to archive'));
+    if (!ok) return;
+    try {
+      await Api.instance.post('/api/business-review/actions/${t['_id']}/archive', {});
+      if (mounted) brSnack(context, tr('أُرسل البند إلى الأرشيف', 'Sent to archive'));
+      _load();
+    } catch (e) {
+      if (mounted) brSnack(context, brErr(e));
+    }
+  }
+
   Future<void> _update(Map t) async {
     final v = await brProgressSheet(context, widget.meta, '${t['title']}', '${t['status']}', (t['progress'] ?? 0) as num, expectedDate: t['expectedDate']);
     if (v != null) _patch('${t['_id']}', v, tr('تم تحديث البند', 'Updated'));
@@ -591,6 +606,10 @@ class _BrMeetingDepartmentsTabState extends State<BrMeetingDepartmentsTab> {
                   OutlinedButton.icon(onPressed: () => _remove(t), icon: const Icon(Icons.delete_outline, size: 16, color: T.danger), label: Text(tr('حذف البند', 'Delete task'), style: const TextStyle(color: T.danger))),
                   ],
                 ]),
+              ],
+              if (widget.meta['me']?['canArchive'] == true) ...[
+                const SizedBox(height: 6),
+                OutlinedButton.icon(onPressed: () => _archive(t), icon: const Icon(Icons.archive_outlined, size: 16), label: Text(tr('إرسال للأرشيف', 'Send to archive'))),
               ],
               BrUpdateLog(updates: List.from(t['updates'] ?? []).reversed.toList(), meta: widget.meta),
             ]),

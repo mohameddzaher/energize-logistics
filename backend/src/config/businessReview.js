@@ -54,12 +54,12 @@ const ACTION_STATUS_KEYS = ACTION_STATUSES.map((s) => s.key);
 const OPEN_ACTION_STATUSES = ['open', 'in_progress', 'blocked', 'postponed'];
 
 /**
- * Archive: a task finished (done or cancelled) more than a day ago leaves every meeting and lives in the archive page.
- * Computed at read time, so it is exact to the hour with no job, and reopening a task brings it back at once.
- * Rows from before the closing stamps existed fall back to their last update.
+ * Archive: a task leaves every meeting only when top management sends it to the archive by hand (archivedAt).
+ * `legacyArchivedCond` is the old timer rule (finished more than a day ago), used once to mark the tasks it had already archived.
  */
 const ARCHIVE_AFTER_MS = 24 * 60 * 60 * 1000;
-const archivedCond = (now = Date.now()) => {
+const archivedCond = () => ({ archivedAt: { $ne: null } });
+const legacyArchivedCond = (now = Date.now()) => {
   const cut = new Date(now - ARCHIVE_AFTER_MS);
   return { $or: [
     { status: 'done', completedAt: { $lte: cut } },
@@ -69,7 +69,20 @@ const archivedCond = (now = Date.now()) => {
   ] };
 };
 /** Merge into a BrAction filter to keep archived tasks out of a meeting. */
-const liveCond = (now) => ({ $nor: [archivedCond(now)] });
+const liveCond = () => ({ archivedAt: null });
+/**
+ * One-time move from the timer to the manual archive: rows without the field yet that the old rule had archived keep their place,
+ * stamped closed+24h; every other row gets archivedAt null. Idempotent, safe on both workers.
+ */
+const migrateManualArchive = async () => {
+  const { BrAction } = require('../models/BusinessReview');
+  const closedAt = { $ifNull: [{ $cond: [{ $eq: ['$status', 'done'] }, '$completedAt', '$cancelledAt'] }, '$updatedAt'] };
+  const moved = await BrAction.collection.updateMany(
+    { archivedAt: { $exists: false }, ...legacyArchivedCond() },
+    [{ $set: { archivedAt: { $add: [closedAt, ARCHIVE_AFTER_MS] }, archivedByName: '' } }]);
+  const rest = await BrAction.collection.updateMany({ archivedAt: { $exists: false } }, { $set: { archivedAt: null } });
+  return { archived: moved.modifiedCount || 0, live: rest.modifiedCount || 0 };
+};
 
 const PRIORITIES = [
   { key: 'low', ar: 'منخفضة', en: 'Low', color: '#94a3b8' },
@@ -104,6 +117,8 @@ const isManagerRole = (role) => {
   return /_manager$/.test(role); // ← any future *_manager role, for free
 };
 
+/** Sends tasks to the archive and brings them back: the system admins, executive management and the general manager, plus the top-management and chairman accounts. */
+const canArchive = (user) => !!user && (EXECUTIVE_ROLES.includes(user.role) || user.isTopManagement === true || user.isChairman === true);
 const isExecutive = (user) => !!user && EXECUTIVE_ROLES.includes(user.role);
 const isSecretary = (user) => !!user && SECRETARY_ROLES.includes(user.role);
 /** May run the forum: create meetings, write minutes, raise actions. */
@@ -135,7 +150,7 @@ const meta = () => ({
 module.exports = {
   CADENCES, CADENCE_KEYS,
   MEETING_STATUSES, MEETING_STATUS_KEYS, HELD_MEETING_STATUSES, OPEN_MEETING_STATUSES,
-  ACTION_STATUSES, ACTION_STATUS_KEYS, OPEN_ACTION_STATUSES, PROGRESS_OF, ARCHIVE_AFTER_MS, archivedCond, liveCond,
+  ACTION_STATUSES, ACTION_STATUS_KEYS, OPEN_ACTION_STATUSES, PROGRESS_OF, ARCHIVE_AFTER_MS, archivedCond, liveCond, legacyArchivedCond, canArchive, migrateManualArchive,
   PRIORITIES, PRIORITY_KEYS,
   EXECUTIVE_ROLES, SECRETARY_ROLES, EXTRA_MANAGER_ROLES,
   isManagerRole, isExecutive, isSecretary, canRunMeetings, isParticipant,

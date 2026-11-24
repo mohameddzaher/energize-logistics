@@ -13,7 +13,7 @@ import { KpiTile } from '@/components/system/Scorecard';
 import { ActionCard } from '@/components/system/BusinessReviewKit';
 import ExportMenu, { exportScopeLabels, type ExportColumn } from '@/components/ls2/ExportMenu';
 import {
-  brMeta, brAllActions, brUpdateAction, brDelegate, brDeleteAction,
+  brMeta, brAllActions, brUpdateAction, brDelegate, brDeleteAction, brArchiveAction,
   type BrMeta, type BrAction, type Lang,
   vocabLabel, fmtDate, tx, OPEN_STATUSES,
 } from '@/lib/businessReview';
@@ -166,6 +166,10 @@ export default function ActionRegisterPage() {
                 try { await brDeleteAction(a._id); await load(); }
                 catch (e: any) { notify(e?.message || t('Failed', 'فشل'), 'error'); }
               }}
+              onArchive={meta.me.canArchive ? async () => {
+                try { await brArchiveAction(a._id); notify(t('Sent to archive', 'أُرسل البند إلى الأرشيف'), 'success'); await load(); }
+                catch (e: any) { notify(e?.message || t('Failed', 'فشل'), 'error'); }
+              } : undefined}
             />
           ))}
           {!shown.length && (

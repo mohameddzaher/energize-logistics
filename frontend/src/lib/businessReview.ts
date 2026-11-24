@@ -54,6 +54,8 @@ export interface BrMeta {
     _id: string; name: string; role: string;
     isExecutive: boolean; isSecretary: boolean;
     canRunMeetings: boolean; isParticipant: boolean;
+    /** Top management: sends tasks to the archive by hand and brings them back. */
+    canArchive?: boolean;
   };
 }
 
@@ -199,6 +201,9 @@ export const brUpdateAction = (actionId: string, body: any) =>
 export const brShareAction = (actionId: string, assignee: string) =>
   api.post<{ action: BrAction }>(`/api/business-review/actions/${actionId}/share`, { assignee });
 // Deletes the task for every owner sharing it; `onlyThisOwner` removes just this owner's part.
+// The archive is manual: a task leaves the meetings only when top management sends it there (every owner's copy when shared).
+export const brArchiveAction = (actionId: string) => api.post<{ message: string }>(`/api/business-review/actions/${actionId}/archive`, {});
+export const brUnarchiveAction = (actionId: string) => api.post<{ message: string }>(`/api/business-review/actions/${actionId}/unarchive`, {});
 export const brDeleteAction = (actionId: string, onlyThisOwner = false) => api.delete(`/api/business-review/actions/${actionId}${onlyThisOwner ? '?only=1' : ''}`);
 // Moves the task to another owner entirely (unlike share, which adds an owner).
 export const brTransferAction = (actionId: string, assignee: string) =>

@@ -5,8 +5,7 @@ import { useLanguage } from '@/context/LanguageContext';
 import { useDialog } from '@/components/system/DialogProvider';
 import {
   CheckCircle2, Clock, AlertTriangle, ChevronDown, ChevronRight, Users, Send,
-  Loader2, MessageSquare, Trash2, Search,
-} from 'lucide-react';
+  Loader2, MessageSquare, Trash2, Search, Archive } from 'lucide-react';
 import {
   type BrAction, type BrDelegation, type Vocab, type BrPerson, type Lang, type ProgressReport,
   vocabLabel, vocabColor, fmtDate, fmtDateTime, dueLabel, TONE_CLASS, OPEN_STATUSES, tx, isoDay, deptLabel,
@@ -339,7 +338,7 @@ export function DelegateForm({
  * read-only register row.
  */
 export function ActionCard({
-  action, meta, lang, canDelegate, canEdit, people, onUpdate, onDelegate, onDelete, showMeeting,
+  action, meta, lang, canDelegate, canEdit, people, onUpdate, onDelegate, onDelete, onArchive, showMeeting,
 }: {
   action: BrAction;
   meta: { actionStatuses?: Vocab[]; priorities?: Vocab[] };
@@ -350,6 +349,8 @@ export function ActionCard({
   onUpdate?: (v: ProgressReport) => Promise<void>;
   onDelegate?: (rows: any[]) => Promise<void>;
   onDelete?: () => void;
+  /** Top management only: sends the task out of the meetings into the archive. */
+  onArchive?: () => Promise<void>;
   showMeeting?: boolean;
 }) {
   const { lang: _l } = useLanguage();
@@ -445,7 +446,7 @@ export function ActionCard({
         </div>
       )}
 
-      {(onUpdate || (canDelegate && onDelegate) || (canEdit && onDelete)) && mode === '' && (
+      {(onUpdate || (canDelegate && onDelegate) || (canEdit && onDelete) || onArchive) && mode === '' && (
         <div className="mt-3 flex flex-wrap gap-2">
           {onUpdate && (
             <button type="button" onClick={() => setMode('update')}
@@ -471,6 +472,20 @@ export function ActionCard({
               }}
               className="inline-flex items-center gap-1.5 border border-red-200 text-red-600 text-xs rounded-lg px-2.5 py-1.5 hover:bg-red-50">
               <Trash2 className="w-3.5 h-3.5" />{t('Delete', 'حذف')}
+            </button>
+          )}
+          {onArchive && (
+            <button type="button" disabled={busy}
+              onClick={async () => {
+                const ok = await confirm({
+                  title: t('Send to archive?', 'إرسال البند إلى الأرشيف؟'),
+                  message: t('It leaves the meetings for everyone sharing it and can be restored from the archive.', 'يخرج من الاجتماعات عند كلّ المشتركين فيه، ويمكن إعادته من صفحة الأرشيف.'),
+                  confirmLabel: t('Send to archive', 'إرسال للأرشيف'),
+                });
+                if (ok) await run(onArchive);
+              }}
+              className="inline-flex items-center gap-1.5 border border-slate-400 bg-slate-100 text-slate-800 text-xs rounded-lg px-2.5 py-1.5 hover:bg-slate-200 disabled:opacity-50">
+              <Archive className="w-3.5 h-3.5" />{t('Send to archive', 'إرسال للأرشيف')}
             </button>
           )}
         </div>

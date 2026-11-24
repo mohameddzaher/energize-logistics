@@ -18,7 +18,7 @@ import ExportMenu, { type ExportColumn, type ExportSheet } from '@/components/ls
 import { StatusPill, ActionCard, PersonSelect, DueBadge, Progress } from '@/components/system/BusinessReviewKit';
 import {
   brMeta, brMeeting, brSaveMinutes, brCreateAction, brUpdateAction, brDelegate,
-  brDeleteAction, brUpdateMeeting, brDeleteMeeting, brCompleteMeeting, brReopenMeeting,
+  brDeleteAction, brArchiveAction, brUpdateMeeting, brDeleteMeeting, brCompleteMeeting, brReopenMeeting,
   type BrMeta, type BrMeeting, type BrAction, type Lang,
   vocabLabel, vocabColor, fmtDate, fmtDateTime, isoDay, tx, deptLabel,
   attendanceLabel, attendanceColor, ATTENDANCE, OPEN_STATUSES,
@@ -1015,6 +1015,7 @@ function ActionsTab({ meeting, meta, actions, lang, canRaise, onChanged, notify 
           onUpdate={async (v) => { await brUpdateAction(a._id, v); onChanged(); }}
           onDelegate={async (rows) => { await brDelegate(a._id, rows); onChanged(); }}
           onDelete={canRaise ? async () => { await brDeleteAction(a._id); onChanged(); } : undefined}
+          onArchive={meta.me.canArchive ? async () => { await brArchiveAction(a._id); onChanged(); } : undefined}
         />
       ))}
 

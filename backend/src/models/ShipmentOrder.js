@@ -193,4 +193,6 @@ shipmentOrderSchema.pre('save', function (next) {
   next();
 });
 
+// A cancelled order leaves the shipment request it was placed from (services/requestOrderRelease).
+require('../services/requestOrderRelease').attach(shipmentOrderSchema);
 module.exports = mongoose.models.ShipmentOrder || mongoose.model('ShipmentOrder', shipmentOrderSchema);

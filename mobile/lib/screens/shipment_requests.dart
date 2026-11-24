@@ -75,6 +75,8 @@ const _logLabels = <String, (String, String)>{
   'created': ('أُنشئ الطلب', 'Created'),
   'edited': ('عُدّل', 'Edited'),
   'resubmitted': ('أُعيد إرساله', 'Resent'),
+  'reopened': ('أُعيد فتحه بشاحنات إضافية', 'Reopened with more trucks'),
+  'order_cancelled': ('أُلغي أمر نقل منه', 'A transport order was cancelled'),
   'claimed': ('تولّاه', 'Taken'),
   'released': ('تُرك', 'Released'),
   'placed': ('أُنشئ أمر نقل', 'Truck placed'),
@@ -1519,7 +1521,8 @@ class _ShipmentRequestDetailScreenState extends State<ShipmentRequestDetailScree
                         OutlinedButton.icon(onPressed: _busy ? null : () => _decide('return'), icon: const Icon(Icons.undo), label: Text(tr('إعادة للتعديل', 'Return for edits'))),
                         OutlinedButton.icon(onPressed: _busy ? null : () => _decide('decline'), style: OutlinedButton.styleFrom(foregroundColor: T.danger), icon: const Icon(Icons.block), label: Text(tr('رفض', 'Decline'))),
                       ])),
-                    if (ask && appr != 'rejected' && const ['pending', 'in_progress', 'rejected'].contains(st))
+                    // A completed request stays editable: adding trucks reopens it.
+                    if (ask && appr != 'rejected' && const ['pending', 'in_progress', 'rejected', 'completed'].contains(st))
                       Wrap(spacing: 8, runSpacing: 8, children: [
                         FilledButton.icon(
                           onPressed: _busy ? null : () async {
@@ -1531,7 +1534,7 @@ class _ShipmentRequestDetailScreenState extends State<ShipmentRequestDetailScree
                         ),
                         if (st == 'rejected')
                           OutlinedButton.icon(onPressed: _busy ? null : () => _act('resubmit', {}, tr('أُعيد إرسال الطلب', 'Resent')), icon: const Icon(Icons.send), label: Text(tr('إعادة الإرسال كما هو', 'Resend as is'))),
-                        OutlinedButton.icon(onPressed: _busy ? null : _withdraw, style: OutlinedButton.styleFrom(foregroundColor: T.danger), icon: const Icon(Icons.undo), label: Text(tr('سحب الطلب', 'Withdraw'))),
+                        if (st != 'completed') OutlinedButton.icon(onPressed: _busy ? null : _withdraw, style: OutlinedButton.styleFrom(foregroundColor: T.danger), icon: const Icon(Icons.undo), label: Text(tr('سحب الطلب', 'Withdraw'))),
                       ]),
                     if ((place || fleet || work) && open)
                       Wrap(spacing: 8, runSpacing: 8, children: [

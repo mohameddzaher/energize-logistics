@@ -11,7 +11,7 @@ const logEntry = new mongoose.Schema({
   action: {
     type: String,
     enum: ['created', 'edited', 'resubmitted', 'claimed', 'released', 'expired', 'placed', 'completed', 'rejected', 'cancelled',
-      'sourced', 'sourcing_edited', 'sourcing_deleted', 'approval_requested', 'approved', 'returned', 'declined'],
+      'sourced', 'sourcing_edited', 'sourcing_deleted', 'approval_requested', 'approved', 'returned', 'declined', 'reopened', 'order_cancelled'],
     required: true,
   },
   // Which team acted: a fleet member is shown as the team (heavy transport), while `by` keeps the real account for audit.

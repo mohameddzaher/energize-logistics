@@ -540,6 +540,8 @@ if (!DOCS_ONLY) connectDB().then(async () => {
     require('./controllers/partnerController').backfillPartnerMasters().catch((e) => console.error('[partners] backfill:', e.message));
     // Requests from before the actual load day get their creation day as the wanted day.
     require('./controllers/shipmentRequestsController').backfillDueDay().catch((e) => console.error('[sr-due] backfill:', e.message));
+    // Cancelled transport orders that a hook missed leave their shipment request.
+    try { require('./services/requestOrderRelease').startSweep(); } catch (e) { console.error('[request-release] start:', e.message); }
     try { require('./services/customerHub').startSweep(); } catch (e) { console.error('[customerHub] start:', e.message); }
     // Exports interrupted by a deploy are resumed, so no request stays in progress forever.
     try { require('./controllers/exportJobsController').resumeInterrupted(); } catch (e) { /* */ }

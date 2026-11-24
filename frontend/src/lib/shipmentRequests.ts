@@ -37,6 +37,8 @@ export const LOG_LABEL: Record<string, { ar: string; en: string }> = {
   created: { ar: 'أُنشئ الطلب', en: 'Created' },
   edited: { ar: 'عُدِّل', en: 'Edited' },
   resubmitted: { ar: 'أُعيد إرساله', en: 'Resent' },
+  reopened: { ar: 'أُعيد فتحه بشاحنات إضافية', en: 'Reopened with more trucks' },
+  order_cancelled: { ar: 'أُلغي أمر نقل منه', en: 'A transport order was cancelled' },
   claimed: { ar: 'تولّاه', en: 'Taken by' },
   released: { ar: 'تخلّى عنه', en: 'Released' },
   expired: { ar: 'انتهت ساعةُ التولّي', en: 'Claim expired' },

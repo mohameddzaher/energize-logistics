@@ -308,7 +308,8 @@ export default function ShipmentRequestForm({ editId, onDone }: { editId?: strin
 
   const returned = loaded?.approvalStatus === 'returned';
   const rejected = loaded?.status === 'rejected' || returned;
-  const locked = !!loaded && !['pending', 'in_progress', 'rejected'].includes(loaded.status);
+  // A completed request stays editable (sales may add trucks, which reopens it); only a cancelled one is closed.
+  const locked = !!loaded && !['pending', 'in_progress', 'rejected', 'completed'].includes(loaded.status);
 
   return (
     <div className="space-y-4 pb-24" dir={isRTL ? 'rtl' : 'ltr'}>

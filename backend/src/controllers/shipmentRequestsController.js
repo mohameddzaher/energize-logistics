@@ -425,7 +425,8 @@ exports.update = async (req, res) => {
   try {
     const r = await ShipmentRequest.findOne({ _id: req.params.id, ...scopeFor(req.user) });
     if (!r) return res.status(404).json({ message: 'الطلب غير موجود' });
-    if (!['pending', 'in_progress', 'rejected'].includes(r.status)) return bad(res, 'لا يُعدَّل طلبٌ مكتملٌ أو مسحوب — عدِّل أوامرَ النقل نفسَها');
+    // A completed request stays editable: sales may add trucks to it, which reopens it for the rest.
+    if (!['pending', 'in_progress', 'rejected', 'completed'].includes(r.status)) return bad(res, 'لا يُعدَّل طلبٌ مسحوب — عدِّل أوامرَ النقل نفسَها');
     if (r.approvalStatus === 'rejected') return bad(res, 'رفض مديرُ المبيعات هذا الطلب — أنشئ طلبًا جديدًا');
     const data = pick(req.body, SALES_FIELDS);
     if ('trucks' in req.body) data.trucks = req.body.trucks;
@@ -463,6 +464,11 @@ exports.update = async (req, res) => {
       r.status = r.placed.length ? 'in_progress' : 'pending';
       r.resubmits += 1;
       r.log.push({ action: 'resubmitted', by: req.user._id, byName: who, note: String(req.body.note || '').trim() });
+      resent = true;
+    }
+    if (r.status === 'completed' && r.placed.length < r.trucks) {
+      r.status = 'in_progress'; r.closedAt = null;
+      r.log.push({ action: 'reopened', by: req.user._id, byName: who, note: `${r.trucks - r.placed.length} ${r.trucks - r.placed.length === 1 ? 'شاحنة إضافية' : 'شاحنات إضافية'}` });
       resent = true;
     }
     if (r.status === 'in_progress' && r.placed.length >= r.trucks) { r.status = 'completed'; r.closedAt = r.closedAt || new Date(); }

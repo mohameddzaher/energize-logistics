@@ -376,15 +376,15 @@ export default function ShipmentRequestsBoard({ mode }: { mode: BoardMode }) {
         {['pending', 'in_progress', 'completed'].includes(r.status) && (
           <SourcingButton r={r} rtl={isRTL} onClick={() => setSourcingOf(r)}><Truck className="w-3.5 h-3.5" />{t('تحصيل السيارات', 'Sourced')} {r.sourced || 0}/{r.trucks}</SourcingButton>
         )}
-        {mode === 'sales' && asker && ['pending', 'in_progress', 'rejected'].includes(r.status) && approvalOf(r) !== 'rejected' && (
+        {mode === 'sales' && asker && ['pending', 'in_progress', 'rejected', 'completed'].includes(r.status) && approvalOf(r) !== 'rejected' && (
           <>
             {(r.status === 'rejected' || returned) && <Btn primary onClick={() => setEditing(r)} icon={Pencil}>{t('تعديل وإعادة الإرسال', 'Amend and resend')}</Btn>}
             {r.status !== 'rejected' && !returned && <Btn onClick={() => setEditing(r)} icon={Pencil}>{t('تعديل', 'Edit')}</Btn>}
             {r.status === 'rejected' && <Btn onClick={() => act(r, 'resubmit', {}, t('أُعيد الإرسال', 'Resent'))} icon={Send} busy={busyId === r._id}>{t('إعادة الإرسال كما هو', 'Resend as is')}</Btn>}
-            <Btn danger icon={Trash2} busy={busyId === r._id} onClick={async () => {
+            {r.status !== 'completed' && <Btn danger icon={Trash2} busy={busyId === r._id} onClick={async () => {
               if (await confirm({ title: t('إلغاء الطلب', 'Cancel request'), message: r.placed.length ? t('أوامرُ النقل المُنشأة تبقى، ويُلغى الباقي فقط.', 'Created transport orders stay; only the rest is cancelled.') : t('يُلغى الطلب ويُسحب من فريق الموردين.', 'The request is cancelled.'), tone: 'danger' as any }))
                 act(r, 'cancel', {}, t('سُحب الطلب', 'Withdrawn'));
-            }}>{t('إلغاء', 'Cancel')}</Btn>
+            }}>{t('إلغاء', 'Cancel')}</Btn>}
           </>
         )}
         <button type="button" onClick={() => setHistory(r)} className={`${compact ? '' : 'ms-auto '}inline-flex items-center gap-1 text-[12px] font-semibold text-slate-500 hover:text-slate-900`}><History className="w-3.5 h-3.5" />{t('السجلّ', 'History')}</button>

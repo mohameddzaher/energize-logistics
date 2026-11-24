@@ -28,7 +28,7 @@
     "mongoose": "^8.23.0",
     "morgan": "^1.10.1",
     "node-cron": "^3.0.3",
-    "nodemailer": "^6.9.16",
+    "nodemailer": "^10.3.1",
     "pdf-lib": "^1.17.1",
     "pdfkit": "^0.17.2",
     "puppeteer": "^25.4.0",

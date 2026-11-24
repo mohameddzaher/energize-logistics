@@ -56,6 +56,8 @@ export interface BrMeta {
     canRunMeetings: boolean; isParticipant: boolean;
     /** Top management: sends tasks to the archive by hand and brings them back. */
     canArchive?: boolean;
+    /** Under a business-review delegation: the manager this account acts for. */
+    actsFor?: { _id: string; name: string } | null;
   };
 }
 

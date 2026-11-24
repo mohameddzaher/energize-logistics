@@ -904,7 +904,7 @@ class _ActionsTabState extends State<_ActionsTab> {
                 showMeeting: true,
                 onChanged: _load,
                 // My items: update and delegate. Register: update and delegate (owner or manager) and delete.
-                canDelegate: widget.mine || a['assignee'] == meId || runner,
+                canDelegate: widget.mine || a['assignee'] == meId || a['assignee'] == (widget.meta['me']?['actsFor']?['_id'] ?? '__none__').toString() || runner,
                 canDelete: !widget.mine,
               ),
             if (_shownHanded.isNotEmpty) ...[

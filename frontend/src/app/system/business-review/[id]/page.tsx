@@ -1010,7 +1010,7 @@ function ActionsTab({ meeting, meta, actions, lang, canRaise, onChanged, notify 
         <ActionCard
           key={a._id} action={a} meta={meta} lang={lang}
           canEdit={canRaise}
-          canDelegate={a.assignee === meta.me._id || meta.me.canRunMeetings}
+          canDelegate={a.assignee === meta.me._id || a.assignee === meta.me.actsFor?._id || meta.me.canRunMeetings}
           people={meta.people.filter((p: any) => p._id !== meta.me._id)}
           onUpdate={async (v) => { await brUpdateAction(a._id, v); onChanged(); }}
           onDelegate={async (rows) => { await brDelegate(a._id, rows); onChanged(); }}

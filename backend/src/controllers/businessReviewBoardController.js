@@ -45,8 +45,9 @@ exports.getBoard = async (req, res) => {
 
     const scope = {};
     if (!runner) {
-      const attended = await BrMeeting.find({ 'attendees.user': req.user._id }).distinct('_id');
-      scope.$or = [{ meeting: { $in: attended } }, { assignee: req.user._id }];
+      const ids = brScope.brIds(req.user);
+      const attended = await BrMeeting.find({ 'attendees.user': { $in: ids } }).distinct('_id');
+      scope.$or = [{ meeting: { $in: attended } }, { assignee: { $in: ids } }];
     }
     const { from, to } = periodOf(req.query);
     const inPeriod = (d) => d && (!from || d >= from) && (!to || d <= to);
@@ -66,7 +67,7 @@ exports.getBoard = async (req, res) => {
     // A department head sees his department only (and anything assigned to him personally).
     const hd = runner ? null : await brScope.headDept(req.user);
     if (hd) {
-      for (let i = shown.length - 1; i >= 0; i -= 1) if (deptOf(shown[i]) !== hd && String(shown[i].assignee) !== String(req.user._id)) shown.splice(i, 1);
+      for (let i = shown.length - 1; i >= 0; i -= 1) if (deptOf(shown[i]) !== hd && !brScope.isMe(req.user, shown[i].assignee)) shown.splice(i, 1);
     }
     if (req.query.department) {
       for (let i = shown.length - 1; i >= 0; i -= 1) if (deptOf(shown[i]) !== req.query.department) shown.splice(i, 1);
@@ -122,7 +123,7 @@ exports.getBoard = async (req, res) => {
         lastUpdate: last ? { at: last.at, byName: last.byName, text: last.text, statusTo: last.statusTo } : null,
         delegations: delBy.get(String(a._id)) || [],
         sharedWith: shared.get(String(a._id)) || [],
-        mine: String(a.assignee) === String(req.user._id),
+        mine: brScope.isMe(req.user, a.assignee),
       };
       g.items.push(row);
       return row;
@@ -140,7 +141,7 @@ exports.getBoard = async (req, res) => {
     const today = todayKey();
     const todays = await BrMeeting.find({
       seriesDay: today,
-      ...(runner ? {} : { 'attendees.user': req.user._id }),
+      ...(runner ? {} : { 'attendees.user': { $in: brScope.brIds(req.user) } }),
     }).select('refNumber title scheduledAt status series minutes departments').lean();
 
     res.json({
@@ -215,7 +216,7 @@ exports.getMeetingDepartments = async (req, res) => {
     const meeting = await BrMeeting.findById(req.params.id).select('series departments attendees refNumber seriesDay scheduledAt minutes').lean();
     if (!meeting) return res.status(404).json({ message: 'Meeting not found' });
     const runner = canRunMeetings(req.user);
-    const wasThere = (meeting.attendees || []).some((a) => String(a.user) === String(req.user._id));
+    const wasThere = (meeting.attendees || []).some((a) => brScope.isMe(req.user, a.user));
     if (!runner && !wasThere) return res.status(403).json({ message: 'You did not attend this meeting' });
 
     const meetingIds = meeting.series
@@ -300,8 +301,9 @@ exports.getArchive = async (req, res) => {
     if (!runner && !isParticipant(req.user)) return res.status(403).json({ message: 'Not allowed' });
     const filter = { ...archivedCond() };
     if (!runner) {
-      const attended = await BrMeeting.find({ 'attendees.user': req.user._id }).distinct('_id');
-      filter.$and = [{ $or: [{ meeting: { $in: attended } }, { assignee: req.user._id }] }];
+      const ids = brScope.brIds(req.user);
+      const attended = await BrMeeting.find({ 'attendees.user': { $in: ids } }).distinct('_id');
+      filter.$and = [{ $or: [{ meeting: { $in: attended } }, { assignee: { $in: ids } }] }];
     }
     let rows = await BrAction.find(filter)
       .select('shareGroup meeting meetingRef meetingTitle meetingDate title description department assignee assigneeName assigneeRole raisedByName createdByName startDate dueDate expectedDate originalDueDate postponeReason postponeCount priority status completedAt cancelledAt archivedAt archivedByName createdAt updatedAt updates')
@@ -310,7 +312,7 @@ exports.getArchive = async (req, res) => {
     const ownerSection = await sectionsOfUserIds(rows.map((a) => a.assignee));
     const deptOf = (a) => ownerSection.get(String(a.assignee)) || orgSectionOfRole(a.assigneeRole) || a.department || NO_DEPT;
     const hd = runner ? null : await brScope.headDept(req.user);
-    if (hd) rows = rows.filter((a) => deptOf(a) === hd || String(a.assignee) === String(req.user._id));
+    if (hd) rows = rows.filter((a) => deptOf(a) === hd || brScope.isMe(req.user, a.assignee));
 
     const meetings = new Map((await BrMeeting.find({ _id: { $in: [...new Set(rows.map((a) => String(a.meeting)))] } })
       .select('refNumber title cadence scheduledAt seriesDay series').lean()).map((m) => [String(m._id), m]));
@@ -398,7 +400,7 @@ const pickSeries = (body) => {
 exports.listSeries = async (req, res) => {
   try {
     if (!canRunMeetings(req.user) && !isParticipant(req.user)) return res.status(403).json({ message: 'Not allowed' });
-    const q = canRunMeetings(req.user) ? {} : { attendees: req.user._id };
+    const q = canRunMeetings(req.user) ? {} : { attendees: { $in: brScope.brIds(req.user) } };
     const series = await BrSeries.find(q).sort({ active: -1, createdAt: -1 }).lean();
     const today = todayKey();
     const todays = await BrMeeting.find({ series: { $in: series.map((s) => s._id) }, seriesDay: today }).select('series refNumber status').lean();
@@ -485,7 +487,7 @@ exports.getDaily = async (req, res) => {
   try {
     const runner = canRunMeetings(req.user);
     if (!runner && !isParticipant(req.user)) return res.status(403).json({ message: 'Not allowed' });
-    const all = await BrSeries.find(runner ? {} : { attendees: req.user._id }).sort({ active: -1, createdAt: 1 }).lean();
+    const all = await BrSeries.find(runner ? {} : { attendees: { $in: brScope.brIds(req.user) } }).sort({ active: -1, createdAt: 1 }).lean();
     const series = all.find((s) => String(s._id) === String(req.query.series)) || all[0] || null;
     if (!series) return res.json({ series: null, list: [], today: null, days: [], canEdit: runner });
 

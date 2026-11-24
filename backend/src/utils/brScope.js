@@ -38,4 +38,10 @@ async function allInDept(ids, dept) {
   return ids.every((id) => m.get(String(id)) === dept);
 }
 
-module.exports = { headDept, deptResolver, canManageAction, allInDept, NO_DEPT };
+/**
+ * Who the caller counts as in business review: himself, and under a delegation (utils/brDelegate) also the manager he acts for.
+ * Visibility follows both (the manager is the attendee and the assignee); writes still carry the caller's own id and name.
+ */
+const brIds = (user) => [user && user._id, user && user.brActingFor && user.brActingFor._id].filter(Boolean);
+const isMe = (user, id) => !!id && brIds(user).some((x) => String(x) === String(id && id._id ? id._id : id));
+module.exports = { brIds, isMe, headDept, deptResolver, canManageAction, allInDept, NO_DEPT };

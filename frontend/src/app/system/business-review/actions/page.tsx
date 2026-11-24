@@ -152,7 +152,7 @@ export default function ActionRegisterPage() {
           {meta && shown.map((a) => (
             <ActionCard
               key={a._id} action={a} meta={meta} lang={L} showMeeting canEdit
-              canDelegate={a.assignee === meta.me._id || meta.me.canRunMeetings}
+              canDelegate={a.assignee === meta.me._id || a.assignee === meta.me.actsFor?._id || meta.me.canRunMeetings}
               people={meta.people.filter((p) => p._id !== meta.me._id)}
               onUpdate={async (v) => {
                 try { await brUpdateAction(a._id, v); await load(); }

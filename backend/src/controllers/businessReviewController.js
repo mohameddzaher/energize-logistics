@@ -147,6 +147,8 @@ exports.getMeta = async (req, res) => {
         isSecretary: isSecretary(req.user),
         canRunMeetings: canRunMeetings(req.user),
         isParticipant: isParticipant(req.user),
+        // Under a delegation: the manager this account acts for; screens treat his tasks as the caller's own.
+        actsFor: req.user.brActingFor ? { _id: String(req.user.brActingFor._id), name: req.user.brActingFor.name } : null,
         canArchive: require('../config/businessReview').canArchive(req.user),
       },
     });
@@ -160,7 +162,7 @@ exports.getMeta = async (req, res) => {
 
 /** A manager sees the meetings they were in; the board and the secretary see all. */
 const meetingScope = (user) =>
-  (canRunMeetings(user) ? {} : { 'attendees.user': user._id });
+  (canRunMeetings(user) ? {} : { 'attendees.user': { $in: brScope.brIds(user) } });
 
 exports.listMeetings = async (req, res) => {
   try {
@@ -237,7 +239,7 @@ exports.getMeeting = async (req, res) => {
 
     // Minutes are boardroom content: you read them if you ran the meeting or
     // were in it. Nobody else, whatever else their role lets them do.
-    const wasThere = (meeting.attendees || []).some((a) => sameId(a.user, req.user._id));
+    const wasThere = (meeting.attendees || []).some((a) => brScope.isMe(req.user, a.user));
     if (!canRunMeetings(req.user) && !wasThere) return deny(res, 'You did not attend this meeting');
 
     // Archived by hand: in the archive, not on the meeting.
@@ -553,7 +555,7 @@ exports.createAction = async (req, res) => {
     if (!runner && !hd) return deny(res, 'Only the administration or a department head can raise actions');
     const meeting = await BrMeeting.findById(req.params.id).lean();
     if (!meeting) return res.status(404).json({ message: 'Meeting not found' });
-    if (!runner && !(meeting.attendees || []).some((a) => sameId(a.user, req.user._id))) return deny(res, 'You did not attend this meeting');
+    if (!runner && !(meeting.attendees || []).some((a) => brScope.isMe(req.user, a.user))) return deny(res, 'You did not attend this meeting');
 
     // One owner or several (`assignees`): a task handed to two department heads appears under both departments.
     const ids = [...new Set([...(Array.isArray(req.body.assignees) ? req.body.assignees : []), req.body.assignee].filter(Boolean).map(String))];
@@ -711,7 +713,7 @@ exports.updateAction = async (req, res) => {
     const action = await BrAction.findById(req.params.actionId);
     if (!action) return res.status(404).json({ message: 'Action not found' });
 
-    const owner = sameId(action.assignee, req.user._id);
+    const owner = brScope.isMe(req.user, action.assignee);
     // `runner` here means "may change what the task is": the administration, or the head of the task's department.
     const runner = await brScope.canManageAction(req.user, action);
     if (!owner && !runner) return deny(res, 'This action is not yours');
@@ -751,7 +753,7 @@ exports.updateAction = async (req, res) => {
       const label = before === action.status ? 'أضاف ملاحظة على'
         : ({ done: 'أنجز', in_progress: 'بدأ العمل على', blocked: 'تعثّر في', postponed: 'أجّل', open: 'أعاد فتح', cancelled: 'ألغى' }[action.status] || 'حدّث');
       for (const o of others) {
-        if (sameId(o.assignee, req.user._id)) continue;
+        if (brScope.isMe(req.user, o.assignee)) continue;
         await notify(o.assignee, { title: 'تحديث على بند مشترك', message: `${fullName(req.user)} ${label}: ${action.title}`, entity: 'BrAction', entityId: o._id });
       }
     }
@@ -824,7 +826,7 @@ exports.deleteAction = async (req, res) => {
 /** All items assigned to me: the manager's own board. */
 exports.myActions = async (req, res) => {
   try {
-    const filter = { assignee: req.user._id, ...require('../config/businessReview').liveCond() };
+    const filter = { assignee: { $in: brScope.brIds(req.user) }, ...require('../config/businessReview').liveCond() };
     if (req.query.status) filter.status = req.query.status;
     else if (req.query.open === '1') filter.status = { $in: OPEN_ACTION_STATUSES };
 
@@ -926,7 +928,7 @@ exports.delegate = async (req, res) => {
     const action = await BrAction.findById(req.params.actionId);
     if (!action) return res.status(404).json({ message: 'Action not found' });
     // You delegate YOUR action. The secretariat can do it on a manager's behalf.
-    if (!sameId(action.assignee, req.user._id) && !(await brScope.canManageAction(req.user, action))) {
+    if (!brScope.isMe(req.user, action.assignee) && !(await brScope.canManageAction(req.user, action))) {
       return deny(res, 'You can only delegate an action assigned to you');
     }
 
@@ -1023,7 +1025,7 @@ exports.updateAssignment = async (req, res) => {
     if (!a) return res.status(404).json({ message: 'Assignment not found' });
 
     const mine = sameId(a.assignee, req.user._id);
-    const boss = sameId(a.assignedBy, req.user._id) || canRunMeetings(req.user);
+    const boss = brScope.isMe(req.user, a.assignedBy) || canRunMeetings(req.user);
     if (!mine && !boss) return deny(res, 'This task is not yours');
 
     const before = a.status;
@@ -1056,7 +1058,7 @@ exports.deleteAssignment = async (req, res) => {
   try {
     const a = await BrAssignment.findById(req.params.assignmentId);
     if (!a) return res.status(404).json({ message: 'Assignment not found' });
-    if (!sameId(a.assignedBy, req.user._id) && !canRunMeetings(req.user)) return deny(res);
+    if (!brScope.isMe(req.user, a.assignedBy) && !canRunMeetings(req.user)) return deny(res);
     await BrAssignment.findByIdAndDelete(a._id);
     emit('br:assignment', { id: String(a._id), deleted: true });
     res.json({ message: 'تم حذف المهمة' });
@@ -1074,7 +1076,7 @@ exports.getDashboard = async (req, res) => {
     const now = new Date();
 
     const [myActions, myAssignments] = await Promise.all([
-      participant ? BrAction.find({ assignee: req.user._id }).select('status isOverdue dueDate title meetingRef').lean() : [],
+      participant ? BrAction.find({ assignee: { $in: brScope.brIds(req.user) } }).select('status isOverdue dueDate title meetingRef').lean() : [],
       BrAssignment.find({ assignee: req.user._id }).select('status isOverdue dueDate title').lean(),
     ]);
 

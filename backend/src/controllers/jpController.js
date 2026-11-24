@@ -163,6 +163,10 @@ const shape = (t, req, w) => {
       remove: w.canManage || (author && (t.kind === 'request' || mine)),
       attach: mine || author || w.canManage,
       comment: mine || author || w.canManage,
+      // Add owners, move to another person, archive: as in business review, for whoever assigns.
+      share: w.canManage || (author && t.kind === 'task'),
+      transfer: w.canManage || (author && (t.kind === 'request' || mine)),
+      archive: w.canManage,
     },
   };
 };
@@ -172,6 +176,25 @@ const broadcast = (w) => {
   if (w.section === 'customs') { try { require('../utils/ttlCache').clear('customs:dash'); } catch (_) { /* extra */ } }
   try { emitToAll('jp:changed', { scope: w.scope, section: w.section }); } catch (_) { /* extra */ }
 };
+
+/** Fields every owner of a shared task holds alike; assignment, timers and time stay per person. */
+const SHARED_FIELDS = ['title', 'details', 'contact', 'action', 'project', 'deadlineKind', 'deadlineHours', 'deadlineAt',
+  'status', 'doneAt', 'doneBy', 'doneNote', 'postponeCount', 'links', 'workDate', 'expectedMinutes'];
+/** Copies a shared task's common state to its other owners, plus the step just recorded (event, comment or file). */
+async function syncShared(t, push = {}) {
+  if (!t.shareGroup) return;
+  const plain = typeof t.toObject === 'function' ? t.toObject() : t;
+  const upd = { $set: Object.fromEntries(SHARED_FIELDS.map((k) => [k, plain[k] === undefined ? null : plain[k]])) };
+  const p = {};
+  if (push.event) p.events = push.event;
+  if (push.comment) p.comments = push.comment;
+  if (push.attachment) p.attachments = push.attachment;
+  if (Object.keys(p).length) upd.$push = p;
+  if (push.pullFile) upd.$pull = { attachments: { fileUrl: push.pullFile } };
+  await JpTask.updateMany({ shareGroup: t.shareGroup, _id: { $ne: t._id } }, upd);
+}
+const lastOf = (arr) => { const x = arr[arr.length - 1]; return x && typeof x.toObject === 'function' ? x.toObject() : x; };
+const strip = (x) => { const { _id, ...rest } = x || {}; return rest; };
 
 const notify = async (recipient, actor, title, message, id) => {
   if (!recipient || sameId(recipient, actor)) return;
@@ -327,6 +350,8 @@ exports.listTasks = async (req, res) => {
     if (linkRef && mongoose.isValidObjectId(linkRef)) {
       and.push({ links: { $elemMatch: { ref: new mongoose.Types.ObjectId(String(linkRef)), ...(linkKind ? { kind: String(linkKind) } : {}) } } });
     }
+    // Archived tasks leave the plan; the archive view lists only them.
+    and.push(box === 'archive' ? { archivedAt: { $ne: null } } : { archivedAt: null });
     if (box === 'mine') and.push({ assignedTo: req.user._id });
     else if (box === 'sent') and.push({ createdBy: req.user._id, assignedTo: { $ne: req.user._id } });
     if (kind === 'task' || kind === 'request') and.push({ kind });
@@ -348,7 +373,8 @@ exports.listTasks = async (req, res) => {
       || (rank(a) === 2 ? new Date(b.doneAt || 0) - new Date(a.doneAt || 0) : new Date(b.createdAt) - new Date(a.createdAt)));
 
     // Counters cover everything the caller can see, not what remains after filtering.
-    const all = await JpTask.find(visible(req, w)).select('status deadlineAt assignedTo createdBy kind').lean();
+    const all = await JpTask.find({ ...visible(req, w), archivedAt: null }).select('status deadlineAt assignedTo createdBy kind').lean();
+    const archivedCount = await JpTask.countDocuments({ ...visible(req, w), archivedAt: { $ne: null } });
     const t0 = Date.now();
     const counts = { all: all.length, open: 0, overdue: 0, done: 0, mine: 0, sent: 0 };
     for (const t of all) {
@@ -368,17 +394,29 @@ exports.listTasks = async (req, res) => {
         handed.get(key).push({ _id: k._id, name: nameOf(k.assignedTo), state: stateOf(k), doneAt: k.doneAt });
       }
     }
+    // Other owners of each shared task, with where each stands.
+    const groups = [...new Set(rows.filter((t) => t.shareGroup).map((t) => String(t.shareGroup)))];
+    const owners = new Map();
+    if (groups.length) {
+      const sib = await JpTask.find({ shareGroup: { $in: groups } }).select('shareGroup assignedTo assignedEmployee assigneeName status progress').populate('assignedTo', 'firstName lastName').lean();
+      for (const x of sib) {
+        const k = String(x.shareGroup);
+        if (!owners.has(k)) owners.set(k, []);
+        owners.get(k).push({ _id: String(x._id), key: assigneeKey(x), name: assigneeName(x), status: x.status, progress: x.progress });
+      }
+    }
     const mySection = sectionOfRole(req.user.role);
     res.json({
       tasks: rows.map((t) => ({
         ...shape(t, req, w),
+        sharedWith: t.shareGroup ? (owners.get(String(t.shareGroup)) || []).filter((o) => o._id !== String(t._id)) : [],
         ...(w.scope === 'management' ? {
           handedTo: handed.get(String(t._id)) || [],
           // Whoever is assigned and manages a department can hand it down to their team.
           canHandDown: sameId(t.assignedTo, req.user._id) && !!mySection && mySection.managerRoles.includes(req.user.role),
         } : {}),
       })),
-      counts, now: new Date(),
+      counts: { ...counts, archived: archivedCount }, now: new Date(),
       mySection: mySection ? mySection.slug : null,
     });
   } catch (e) { fail(res, e, 'تعذّر تحميل المهامّ'); }
@@ -394,11 +432,15 @@ exports.createTask = async (req, res) => {
     const title = String(req.body.title || '').trim();
     if (!title) throw bad('اكتب ما المطلوب');
     const team = await teamOf(w, { wide: w.top, assign: true });
-    const assignedTo = req.body.assignedTo || (w.top ? null : req.user._id);
+    // One person or several: several owners make one shared task (a row each, kept equal).
+    const picked = [...new Set((Array.isArray(req.body.assignees) && req.body.assignees.length ? req.body.assignees : [req.body.assignedTo || (w.top ? null : req.user._id)])
+      .filter(Boolean).map(String))];
+    const assignedTo = picked[0];
     // Assignment stays inside the team; no assigning to another department's employee from this plan.
-    if (!assignedTo || !(team.some((m) => sameId(m._id, assignedTo)) || sameId(assignedTo, req.user._id))) {
+    if (!picked.length || picked.some((a) => !(team.some((m) => sameId(m._id, a)) || sameId(a, req.user._id)))) {
       throw bad('اختر من يُسنَد إليه من فريق القسم');
     }
+    const shareGroup = picked.length > 1 ? new mongoose.Types.ObjectId() : null;
     let project = null;
     if (req.body.project) {
       const p = mongoose.isValidObjectId(req.body.project)
@@ -419,22 +461,39 @@ exports.createTask = async (req, res) => {
       kind: w.canManage || sameId(assignedTo, req.user._id) ? 'task' : 'request',
       project, title, details: String(req.body.details || '').trim(), action,
       contact: String(req.body.contact || '').trim(),
-      ...assigneeFields(assignedTo, team), createdBy: req.user._id, ...deadline,
+      ...assigneeFields(assignedTo, team), createdBy: req.user._id, ...deadline, shareGroup,
     });
     for (const f of (Array.isArray(req.body.files) ? req.body.files : []).slice(0, 5)) {
       const stored = saveUploadFile(f.dataUrl, 'jp', f.fileName);
       doc.attachments.push({ ...stored, phase: 'brief', uploadedBy: req.user._id, uploadedByName: nameOf(req.user) });
     }
     if (doc.attachments.length) await doc.save();
+    // The other owners: same task, their own row.
+    const created = [doc];
+    for (const a of picked.slice(1)) {
+      const base = doc.toObject();
+      // eslint-disable-next-line no-await-in-loop
+      created.push(await JpTask.create({
+        ...Object.fromEntries(SHARED_FIELDS.map((k) => [k, base[k]])),
+        scope: w.scope, section: w.section, createdBy: req.user._id, shareGroup,
+        kind: w.canManage || sameId(a, req.user._id) ? 'task' : 'request',
+        events: base.events.map(strip), attachments: base.attachments.map(strip),
+        ...assigneeFields(a, team),
+      }));
+    }
 
-    await notify(doc.assignedTo, req.user._id,
-      doc.kind === 'task' ? 'مهمّةٌ جديدةٌ أُسنِدت إليك' : 'طلبٌ جديدٌ من زميل',
-      `${title} — من ${nameOf(req.user)}`, doc._id);
+    for (const d of created) {
+      // eslint-disable-next-line no-await-in-loop
+      await notify(d.assignedTo, req.user._id,
+        d.kind === 'task' ? 'مهمّةٌ جديدةٌ أُسنِدت إليك' : 'طلبٌ جديدٌ من زميل',
+        `${title} — من ${nameOf(req.user)}`, d._id);
+    }
     await logAudit({ user: req.user._id, action: 'create', entity: 'JpTask', entityId: doc._id, changes: { after: { title, kind: doc.kind, section: w.section, assignedTo } }, ipAddress: req.ip }).catch(() => {});
     await require('../services/itTicketJp').fromTask(doc._id, req.user._id);
     broadcast(w);
-    const fresh = await POP(JpTask.findById(doc._id)).lean();
-    res.status(201).json({ task: shape(fresh, req, w) });
+    const fresh = await POP(JpTask.find({ _id: { $in: created.map((d) => d._id) } })).lean();
+    const first = fresh.find((x) => sameId(x._id, doc._id));
+    res.status(201).json({ task: shape(first, req, w), tasks: fresh.map((x) => shape(x, req, w)) });
   } catch (e) { fail(res, e, 'تعذّر إنشاء المهمّة'); }
 };
 
@@ -472,6 +531,17 @@ exports.updateTask = async (req, res) => {
     if (b.assignedTo !== undefined && String(b.assignedTo) !== assigneeKey(t)) {
       const team = await teamOf(w, { wide: w.top, assign: true });
       if (!(team.some((m) => sameId(m._id, b.assignedTo)) || sameId(b.assignedTo, req.user._id))) throw bad('اختر من يُسنَد إليه من فريق القسم');
+      // Moving a shared task to someone who already holds it: the two become one, his row stays.
+      if (t.shareGroup) {
+        const k = String(b.assignedTo);
+        const twin = await JpTask.findOne({ shareGroup: t.shareGroup, _id: { $ne: t._id }, ...(k.startsWith(EMP) ? { assignedEmployee: k.slice(EMP.length) } : { assignedTo: k }) });
+        if (twin) {
+          if (t.timerStartedAt) closeTimer(t, req.user);
+          await t.deleteOne();
+          broadcast(w);
+          return res.json({ task: shape(await POP(JpTask.findById(twin._id)).lean(), req, w), merged: true });
+        }
+      }
       const before = assigneeName(t);
       Object.assign(t, assigneeFields(b.assignedTo, team)); reassigned = true;
       t.events.push({ type: 'reassigned', note: `${before || '—'} ← ${assigneeName(t) || '—'}`, by: req.user._id, byName: nameOf(req.user) });
@@ -481,7 +551,10 @@ exports.updateTask = async (req, res) => {
     Object.assign(t, readPlan(b));
     const links = await readLinks(b, w);
     if (links) t.links = links;
+    // A moved task stops the previous person's timer.
+    if (reassigned && t.timerStartedAt) { closeTimer(t, req.user); t.progress = 'paused'; }
     await t.save();
+    await syncShared(t);
     if (reassigned) await notify(t.assignedTo, req.user._id, 'مهمّةٌ أُسنِدت إليك', `${t.title} — من ${nameOf(req.user)}`, t._id);
     await require('../services/itTicketJp').fromTask(t._id, req.user._id);
     broadcast(w);
@@ -517,6 +590,14 @@ exports.setDone = async (req, res) => {
       t.events.push({ type: 'reopened', note, by: req.user._id, byName: nameOf(req.user) });
     }
     await t.save();
+    if (t.shareGroup) {
+      // A shared task is done for every owner: their running timers stop too.
+      if (done) {
+        const running = await JpTask.find({ shareGroup: t.shareGroup, _id: { $ne: t._id }, timerStartedAt: { $ne: null } });
+        for (const o of running) { closeTimer(o, req.user); o.progress = 'todo'; await o.save(); } // eslint-disable-line no-await-in-loop
+      }
+      await syncShared(t, { event: lastOf(t.events) });
+    }
     if (done) await notify(t.createdBy, req.user._id, 'تمّت مهمّة', `${t.title} — ${nameOf(req.user)}`, t._id);
     await require('../services/itTicketJp').fromTask(t._id, req.user._id);
     await logAudit({ user: req.user._id, action: done ? 'complete' : 'reopen', entity: 'JpTask', entityId: t._id, changes: { after: { title: t.title, status: t.status } }, ipAddress: req.ip }).catch(() => {});
@@ -576,6 +657,7 @@ exports.postpone = async (req, res) => {
     t.postponeCount = (t.postponeCount || 0) + 1;
     t.events.push({ type: 'postponed', note: reason, fromAt, toAt: t.deadlineAt, by: req.user._id, byName: nameOf(req.user) });
     await t.save();
+    await syncShared(t, { event: lastOf(t.events) });
     if (!sameId(t.createdBy, req.user._id)) await notify(t.createdBy, req.user._id, 'أُجِّلت مهمّة', `${t.title} — ${nameOf(req.user)}: ${reason}`, t._id);
     await logAudit({ user: req.user._id, action: 'update', entity: 'JpTask', entityId: t._id, changes: { details: `تأجيل «${t.title}»: ${reason}` }, ipAddress: req.ip }).catch(() => {});
     broadcast(w);
@@ -694,6 +776,7 @@ exports.addAttachment = async (req, res) => {
     // What the assignee uploads is completion proof; what anyone else uploads belongs to the original assignment.
     t.attachments.push({ ...stored, phase: mine && !got.author ? 'done' : 'brief', uploadedBy: req.user._id, uploadedByName: nameOf(req.user) });
     await t.save();
+    await syncShared(t, { attachment: strip(lastOf(t.attachments)) });
     broadcast(w);
     res.status(201).json({ task: shape(await POP(JpTask.findById(t._id)).lean(), req, w) });
   } catch (e) { res.status(400).json({ message: e.message }); }
@@ -708,6 +791,7 @@ exports.addComment = async (req, res) => {
     if (!text) throw bad('اكتب التعليق');
     t.comments.push({ by: req.user._id, byName: nameOf(req.user), text });
     await t.save();
+    await syncShared(t, { comment: strip(lastOf(t.comments)) });
     // The other party is notified: the assignee if someone else commented, the assigner if the assignee did.
     await notify(mine ? t.createdBy : t.assignedTo, req.user._id, 'تعليقٌ على مهمّة', `${t.title} — ${nameOf(req.user)}: ${text.slice(0, 120)}`, t._id);
     broadcast(w);
@@ -723,9 +807,11 @@ exports.removeAttachment = async (req, res) => {
     const a = t.attachments.id(req.params.attId);
     if (!a) return res.status(404).json({ message: 'المرفق غير موجود' });
     if (!(w.canManage || sameId(a.uploadedBy, req.user._id))) return res.status(403).json({ message: 'يحذف المرفقَ من رفعه' });
-    deleteStoredFile(a.fileUrl);
+    const url = a.fileUrl;
+    deleteStoredFile(url);
     a.deleteOne();
     await t.save();
+    await syncShared(t, { pullFile: url });
     broadcast(w);
     res.json({ task: shape(await POP(JpTask.findById(t._id)).lean(), req, w) });
   } catch (e) { fail(res, e, 'تعذّر الحذف'); }
@@ -737,14 +823,79 @@ exports.deleteTask = async (req, res) => {
     const got = await loadTask(req, res); if (!got) return;
     const { t, w, author } = got;
     if (!(w.canManage || (author && t.kind === 'request'))) return res.status(403).json({ message: 'الحذفُ لمن أسند المهمّة' });
-    for (const a of t.attachments) deleteStoredFile(a.fileUrl);
-    await t.deleteOne();
-    await require('../services/itTicketJp').taskDeleted(t);
+    // A shared task is deleted for every owner; `only=1` removes just this owner's part (files stay with the others).
+    const only = String(req.query.only || '') === '1';
+    const rows = t.shareGroup && !only ? await JpTask.find({ shareGroup: t.shareGroup }) : [t];
+    if (!(t.shareGroup && only)) for (const a of t.attachments) deleteStoredFile(a.fileUrl);
+    for (const x of rows) {
+      await x.deleteOne(); // eslint-disable-line no-await-in-loop
+      await require('../services/itTicketJp').taskDeleted(x); // eslint-disable-line no-await-in-loop
+    }
+    // The last owner left alone is an ordinary task again.
+    if (t.shareGroup && only && (await JpTask.countDocuments({ shareGroup: t.shareGroup })) === 1) await JpTask.updateOne({ shareGroup: t.shareGroup }, { $set: { shareGroup: null } });
     await logAudit({ user: req.user._id, action: 'delete', entity: 'JpTask', entityId: t._id, changes: { before: { title: t.title, kind: t.kind, section: t.section } }, ipAddress: req.ip }).catch(() => {});
     broadcast(w);
     res.json({ deleted: true });
   } catch (e) { fail(res, e, 'تعذّر الحذف'); }
 };
+
+/** POST /api/jp/tasks/:id/share — { assignees: [...] } adds owners; each gets the task as it stands, history included. */
+exports.shareTask = async (req, res) => {
+  try {
+    const got = await loadTask(req, res); if (!got) return;
+    const { t, w, author } = got;
+    if (!(w.canManage || (author && t.kind === 'task'))) return res.status(403).json({ message: 'إضافةُ المسؤولين لمن أسند المهمّة' });
+    const team = await teamOf(w, { wide: w.top, assign: true });
+    const wanted = [...new Set((Array.isArray(req.body.assignees) ? req.body.assignees : [req.body.assignee]).filter(Boolean).map(String))];
+    if (!wanted.length) throw bad('اختر من تُضيفه');
+    if (wanted.some((a) => !(team.some((m) => sameId(m._id, a)) || sameId(a, req.user._id)))) throw bad('اختر من يُسنَد إليه من فريق القسم');
+    if (!t.shareGroup) { t.shareGroup = new mongoose.Types.ObjectId(); await t.save(); }
+    const have = new Set((await JpTask.find({ shareGroup: t.shareGroup }).select('assignedTo assignedEmployee').lean()).map(assigneeKey));
+    const base = t.toObject();
+    const added = [];
+    for (const a of wanted) {
+      if (have.has(a)) continue;
+      const fields = assigneeFields(a, team);
+      const ev = { type: 'shared', note: `${nameOf(req.user)} ← ${fields.assigneeName || team.find((m) => sameId(m._id, a))?.name || ''}`, by: req.user._id, byName: nameOf(req.user), at: new Date() };
+      // eslint-disable-next-line no-await-in-loop
+      const d = await JpTask.create({
+        ...Object.fromEntries(SHARED_FIELDS.map((k) => [k, base[k]])),
+        scope: t.scope, section: t.section, createdBy: t.createdBy, shareGroup: t.shareGroup, parentTask: t.parentTask || null,
+        kind: w.canManage || sameId(a, req.user._id) ? 'task' : 'request',
+        events: [...base.events.map(strip), ev], comments: base.comments.map(strip), attachments: base.attachments.map(strip),
+        ...fields,
+      });
+      added.push(d);
+      // eslint-disable-next-line no-await-in-loop
+      await notify(d.assignedTo, req.user._id, 'مهمّةٌ أُسنِدت إليك', `${t.title} — من ${nameOf(req.user)}`, d._id);
+    }
+    if (!added.length) throw bad('المختارون مسؤولون عنها بالفعل');
+    await logAudit({ user: req.user._id, action: 'update', entity: 'JpTask', entityId: t._id, changes: { details: `إسناد «${t.title}» إلى ${added.length} آخرين` }, ipAddress: req.ip }).catch(() => {});
+    broadcast(w);
+    res.json({ task: shape(await POP(JpTask.findById(t._id)).lean(), req, w), added: added.length });
+  } catch (e) { fail(res, e, 'تعذّر الإسناد'); }
+};
+
+/** POST /api/jp/tasks/:id/archive | /unarchive — the section manager sends a task (every owner's copy) to the archive or back. */
+const setArchived = (archive) => async (req, res) => {
+  try {
+    const got = await loadTask(req, res); if (!got) return;
+    const { t, w } = got;
+    if (!w.canManage) return res.status(403).json({ message: 'الأرشفةُ لمدير القسم' });
+    const match = t.shareGroup ? { shareGroup: t.shareGroup } : { _id: t._id };
+    const set = archive ? { archivedAt: new Date(), archivedBy: req.user._id, archivedByName: nameOf(req.user) } : { archivedAt: null, archivedBy: null, archivedByName: '' };
+    if (archive) {
+      // An archived task is set aside: a running timer stops.
+      const running = await JpTask.find({ ...match, timerStartedAt: { $ne: null } });
+      for (const o of running) { closeTimer(o, req.user); o.progress = 'paused'; await o.save(); } // eslint-disable-line no-await-in-loop
+    }
+    const r = await JpTask.updateMany(match, { $set: set });
+    broadcast(w);
+    res.json({ message: archive ? 'أُرسلت المهمّة إلى الأرشيف' : 'أُعيدت المهمّة من الأرشيف', count: r.modifiedCount || 0 });
+  } catch (e) { fail(res, e, 'تعذّر الحفظ'); }
+};
+exports.archiveTask = setArchived(true);
+exports.unarchiveTask = setArchived(false);
 
 // Hand-down - a department manager assigns what was assigned to them to their team
 /** What top management assigns to a department manager can be handed down to an employee. The result is an ordinary department task written by the manager: the employee sees it from the manager like any other and nothing says where it came from. The original stays with the manager before management, who is responsible and completes it when the work is done. */

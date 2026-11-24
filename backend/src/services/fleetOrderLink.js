@@ -84,6 +84,8 @@ async function orderToFleet(orderId) {
     branch: str(o.branch),
     notes: str(o.notes),
   };
+  // Cost centre follows whichever side wrote one; an empty side never clears the other.
+  if (str(o.costCenter)) wanted.costCenter = str(o.costCenter);
   if (FLEET_STATUSES.has(str(o.status))) wanted.status = str(o.status);
   // The order's purchase price is the fleet's selling figure; an empty purchase price leaves what the fleet wrote.
   if (num(o.buyPrice) > 0) wanted.price = num(o.buyPrice);
@@ -134,6 +136,7 @@ async function fleetToOrder(loadId, actor) {
   }
   if (num(load.price) > 0) wanted.buyPrice = num(load.price);
   if (num(load.fullRent) > 0) wanted.sellPrice = num(load.fullRent);
+  if (str(load.costCenter)) wanted.costCenter = str(load.costCenter);
   const set = Object.fromEntries(Object.entries(wanted).filter(([k, v]) => (k === 'customer' ? true : !same(o[k], v))));
   const push = {};
   if (str(load.status) && str(load.status) !== str(o.status)) {

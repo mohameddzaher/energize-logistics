@@ -284,7 +284,8 @@ export function TaskRow({ task, meta, L, meetingId, canEdit, runner = canEdit, c
 
   return (
     <div className={open ? 'bg-orange-50/30' : done ? 'bg-emerald-50' : ''}>
-      <button type="button" onClick={onToggle} className={`w-full text-start px-4 py-2.5 flex flex-wrap items-center gap-x-3 gap-y-1 ${done ? 'border-s-4 border-emerald-500 hover:bg-emerald-100/60' : 'hover:bg-slate-50'}`}>
+      <div className={`flex items-center ${done ? 'border-s-4 border-emerald-500' : ''}`}>
+      <button type="button" onClick={onToggle} className={`flex-1 min-w-0 text-start px-4 py-2.5 flex flex-wrap items-center gap-x-3 gap-y-1 ${done ? 'hover:bg-emerald-100/60' : 'hover:bg-slate-50'}`}>
         <span className={`flex-1 min-w-[12rem] font-semibold inline-flex items-center gap-1.5 ${done ? 'text-emerald-800' : 'text-slate-900'}`}>
           {done && <CheckCircle2 className="w-4 h-4 shrink-0 text-emerald-600" />}{task.title}
         </span>
@@ -302,6 +303,14 @@ export function TaskRow({ task, meta, L, meetingId, canEdit, runner = canEdit, c
         <span className="text-[11px] text-slate-400 tabular-nums w-9 text-end">{task.progress || 0}%</span>
         <ChevronDown className={`w-4 h-4 text-slate-300 transition-transform ${open ? 'rotate-180' : ''}`} />
       </button>
+      {/* Archive straight from the row, without opening the task. */}
+      {meta.me.canArchive && (
+        <button type="button" disabled={busy} onClick={archive} title={t('Send to archive', 'إرسال للأرشيف')}
+          className="me-3 shrink-0 inline-flex items-center gap-1 rounded-lg border border-slate-300 bg-white px-2.5 py-1 text-[12px] font-bold text-slate-700 hover:bg-slate-100 disabled:opacity-50">
+          <Archive className="w-3.5 h-3.5" />{t('Archive', 'أرشفة')}
+        </button>
+      )}
+      </div>
 
       {open && (
         <div className="px-4 pb-4 space-y-2.5">
@@ -405,14 +414,6 @@ export function TaskRow({ task, meta, L, meetingId, canEdit, runner = canEdit, c
                 <Trash2 className="w-3.5 h-3.5" />{t('Delete task', 'حذف البند')}
               </button>
               </>)}
-            </div>
-          )}
-          {meta.me.canArchive && (
-            <div className="flex flex-wrap gap-2 pt-1">
-              <button type="button" disabled={busy} onClick={archive}
-                className="inline-flex items-center gap-1.5 border border-slate-400 bg-slate-100 text-slate-800 text-xs font-bold rounded-lg px-3 py-1.5 disabled:opacity-50">
-                <Archive className="w-3.5 h-3.5" />{t('Send to archive', 'إرسال للأرشيف')}
-              </button>
             </div>
           )}
 

@@ -7,6 +7,7 @@ import '../ui/app_scaffold.dart';
 import '../ui/theme.dart';
 import '../ui/widgets.dart';
 import '../ui/search_field.dart';
+import '../ui/lookup_field.dart';
 
 /// Create a load, the same flow the web form runs: pick the customer (or add a new one inline), pick the vehicle from a live-availability list (carrying its drivers with it), route, dates, notes, POST /api/fleet/shipments.
 /// With `editId` it is the same edit screen as the web (`/system/fleet/new?id=`): filled from GET /api/fleet/shipments/:id and saved with PUT.
@@ -65,6 +66,8 @@ class _FleetNewShipmentScreenState extends State<FleetNewShipmentScreen> {
   Map<String, dynamic>? _paymentTypeItem;          // One of the four workflow payment types.
   Map<String, dynamic>? _loadTypeItem;
   String _customerType = '';                       // heavy / branch
+  // Cost centre from the so_cost_center list, stored as its label.
+  final _costCenter = TextEditingController();
   String? _branch;
   bool _fridayBonus = false;
   List<Map<String, dynamic>> _paymentTypes = [], _loadTypes = [], _branches = [];
@@ -158,6 +161,7 @@ class _FleetNewShipmentScreenState extends State<FleetNewShipmentScreen> {
     _container.dispose();
     _vehicleRent.dispose();
     _fullRent.dispose();
+    _costCenter.dispose();
     _driverExpense.dispose();
     super.dispose();
   }
@@ -232,6 +236,7 @@ class _FleetNewShipmentScreenState extends State<FleetNewShipmentScreen> {
     _vehicleRent.text = _numText(o['price']);
     _fullRent.text = _numText(o['fullRent']);
     _customerType = (o['customerType'] ?? '').toString();
+    _costCenter.text = (o['costCenter'] ?? '').toString();
     // The displayed expense already includes the Friday bonus; the server adds or removes it when the flag flips.
     _driverExpense.text = _numText(o['driverExpense']);
     _fridayBonus = o['fridayBonus'] == true;
@@ -496,6 +501,7 @@ class _FleetNewShipmentScreenState extends State<FleetNewShipmentScreen> {
         if (edit || n(_vehicleRent) != null) 'price': n(_vehicleRent) ?? 0,
         if (edit || n(_fullRent) != null) 'fullRent': n(_fullRent) ?? 0,
         if (edit || _customerType.isNotEmpty) 'customerType': _customerType,
+        if (edit || _costCenter.text.trim().isNotEmpty) 'costCenter': _costCenter.text.trim(),
         // On edit: the expense as displayed (bonus included) and the flag as is; the server adds or removes the bonus if the flag flips.
         if (edit || n(_driverExpense) != null) 'driverExpense': n(_driverExpense) ?? 0,
         if (edit || _fridayBonus) 'fridayBonus': _fridayBonus,
@@ -721,6 +727,9 @@ class _FleetNewShipmentScreenState extends State<FleetNewShipmentScreen> {
                   const SizedBox(width: 10),
                   Expanded(child: TextField(controller: _fullRent, keyboardType: const TextInputType.numberWithOptions(decimal: true), onChanged: (_) => setState(() {}), decoration: InputDecoration(labelText: tr('الإيجار كامل (اختياري)', 'Full rent (optional)')))),
                 ]),
+                const SizedBox(height: 10),
+                LookupField(type: 'so_cost_center', controller: _costCenter, label: tr('مركز التكلفة', 'Cost centre'),
+                    hint: tr('اختر مركز التكلفة…', 'Pick the cost centre…'), onChanged: () => setState(() {})),
                 if (_branchShare > 0) Padding(
                   padding: const EdgeInsets.only(top: 6),
                   child: Text(tr('حصة قسم الفروع من الفرق: $_branchShare', 'Branch dept share of difference: $_branchShare'),

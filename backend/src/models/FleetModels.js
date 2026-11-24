@@ -141,6 +141,8 @@ const fleetShipmentSchema = new mongoose.Schema({
   price: { type: Number, default: 0, index: true },
   // Full rent (optional): the amount the driver collects from the customer, usually with forward rental. The difference (fullRent - price) is the branches section's share (3PL scenario). Zero means none.
   fullRent: { type: Number, default: 0 },
+  // Cost centre from the shared list (lookup so_cost_center); a label for exports and filters, synced with a linked order.
+  costCenter: { type: String, trim: true, default: '' },
   // Customer kind for this load (snapshot): heavy transport or branch, for reports even if the customer changes later.
   customerType: { type: String, enum: ['heavy', 'branch', ''], default: '', index: true },
   driverExpense: { type: Number, default: 0 },              // Driver expense (formerly the driver advance).

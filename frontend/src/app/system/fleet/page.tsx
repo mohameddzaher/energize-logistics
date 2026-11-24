@@ -81,6 +81,7 @@ const SHIPMENT_COLUMNS = [
   { header: 'Load type', key: 'loadType', width: 16 },
   { header: 'Vehicle rent', key: 'price', width: 14 },
   { header: 'Full rent', key: 'fullRent', width: 14 },
+  { header: 'مركز التكلفة', key: 'costCenter', width: 30 },
   { header: 'Driver expense', key: 'driverExpense', width: 14 },
   { header: 'Payment', key: 'paymentSubtype', transform: (v: any, r: any) => PAYMENT_SUBTYPE_EN[v] || r?.paymentType || '', width: 14 },
   { header: 'Load date', key: 'loadDate', transform: (v: any) => fmtD(v), width: 14 },
@@ -361,6 +362,7 @@ function FleetShipmentsInner() {
     { key: 'loadType', label: ar ? 'نوع الحمولة' : 'Load type', filter: true },
     { key: 'blNumber', label: ar ? 'رقم البوليصة' : 'B/L No.', filter: true },
     { key: 'containerNumber', label: ar ? 'رقم الحاوية' : 'Container No.', filter: true },
+    { key: 'costCenter', label: ar ? 'مركز التكلفة' : 'Cost centre', filter: true },
     { key: 'loadDate', label: ar ? 'تاريخ التحميل' : 'Load date', filter: true },
     { key: 'expectedArrival', label: ar ? 'الوصول المتوقع' : 'Expected arrival', filter: true },
     { key: 'lastContactAt', label: ar ? 'آخر تواصل' : 'Last contact' },
@@ -404,6 +406,7 @@ function FleetShipmentsInner() {
       case 'driverPhone': return x.driverPhone ? <span dir="ltr" className="text-xs text-slate-700">{x.driverPhone}</span> : dash;
       case 'price': return <span className="text-xs font-semibold text-emerald-700 whitespace-nowrap">{money(s.price)}</span>;
       case 'fullRent': case 'driverExpense': return <span className="text-xs text-slate-700 whitespace-nowrap">{money(x[key])}</span>;
+      case 'costCenter': return x.costCenter ? <span className="text-xs text-slate-700 whitespace-nowrap">{x.costCenter}</span> : dash;
       case 'driverExpensePaid': case 'fridayBonus': return <span className="text-xs text-slate-700">{yesNo(!!x[key])}</span>;
       case 'paymentSubtype': return x.paymentSubtype ? <span className="text-xs font-semibold text-slate-700 whitespace-nowrap">{paymentKindLabel(x.paymentSubtype, ar)}</span> : dash;
       case 'customerType': return s.customerType === 'heavy'
@@ -716,6 +719,7 @@ const FLEET_BULK_FIELDS: BulkField[] = [
   { key: 'driverAdvance', ar: 'سلفة السائق', en: 'Driver advance', type: 'number', group: 'المبالغ' },
   { key: 'blNumber', ar: 'رقم البوليصة (BL)', en: 'B/L number', type: 'text', group: 'أخرى' },
   { key: 'containerNumber', ar: 'رقم الحاوية', en: 'Container', type: 'text', group: 'أخرى' },
+  { key: 'costCenter', ar: 'مركز التكلفة', en: 'Cost centre', type: 'lookup', lookup: 'so_cost_center', group: 'أخرى' },
   { key: 'notes', ar: 'ملاحظات', en: 'Notes', type: 'textarea', group: 'أخرى' },
 ];
 

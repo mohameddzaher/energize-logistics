@@ -102,7 +102,7 @@ const jpTaskSchema = new mongoose.Schema({
    */
   events: [{
     _id: false,
-    type: { type: String, enum: ['created', 'started', 'paused', 'postponed', 'done', 'reopened', 'reassigned'], required: true },
+    type: { type: String, enum: ['created', 'started', 'paused', 'postponed', 'done', 'reopened', 'reassigned', 'shared'], required: true },
     note: { type: String, trim: true, default: '', maxlength: 2000 },
     fromAt: { type: Date, default: null },
     toAt: { type: Date, default: null },
@@ -122,6 +122,12 @@ const jpTaskSchema = new mongoose.Schema({
 
   // A task handed down from senior management: the department manager assigns what he was given to one of his staff, which creates a normal department task in his own name, and this link ties it to its origin. It is never exposed to the employee, who sees only a task from his manager; the link is for the manager and management to see its progress.
   parentTask: { type: mongoose.Schema.Types.ObjectId, ref: 'JpTask', default: null, index: true },
+  // One task for several people: a row per owner sharing this id; text, deadline, completion, comments and files stay equal across them (jpController syncShared), timers stay per person.
+  shareGroup: { type: mongoose.Schema.Types.ObjectId, default: null, index: true },
+  // Manual archive: the section manager sends a finished or dropped task out of the plan; it stays readable in the archive view and counts on the dashboard.
+  archivedAt: { type: Date, default: null, index: true },
+  archivedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User', default: null },
+  archivedByName: { type: String, trim: true, default: '' },
 }, { timestamps: true });
 jpTaskSchema.index({ scope: 1, section: 1, status: 1, deadlineAt: 1 });
 jpTaskSchema.index({ assignedTo: 1, status: 1 });

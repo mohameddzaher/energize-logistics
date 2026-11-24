@@ -86,6 +86,7 @@ function CreateFleetShipmentInner() {
               blNumber: o.blNumber || '', containerNumber: o.containerNumber || '',
               price: o.price ?? '', fullRent: o.fullRent ?? '', customerType: o.customerType || '',
               driverExpense: o.driverExpense ?? '', fridayBonus: !!o.fridayBonus, branch: o.branch || '',
+              costCenter: o.costCenter || '',
             });
             const cid = typeof o.customer === 'object' ? o.customer?._id || '' : (o.customer || '');
             loadedCustomer.current = cid;
@@ -228,6 +229,7 @@ function CreateFleetShipmentInner() {
         driverExpense: form.driverExpense === '' || form.driverExpense == null ? 0 : Number(form.driverExpense),
         fridayBonus: !!form.fridayBonus,
         branch: form.branch || '',
+        costCenter: form.costCenter || '',
       };
       if (customerId) payload.customer = customerId;
       else payload.newCustomer = { name: newCustomer.name.trim(), phone: newCustomer.phone.trim() };
@@ -511,6 +513,11 @@ function CreateFleetShipmentInner() {
               if (fr > 0 && diff < 0) return <p className="text-[11px] text-red-600 mt-1">{ar ? 'الإيجار كامل أقل من إيجار السيارة — تحقّق.' : 'Full rent is below the vehicle rent — check.'}</p>;
               return <p className="text-[11px] text-slate-500 mt-1">{ar ? 'يستلمه السائق من العميل — عادةً مع «قدام». الفرق لقسم الفروع.' : 'Collected by the driver — usually with “forward”. The gap goes to branches.'}</p>;
             })()}
+          </div>
+          <div>
+            <label className={labelCls}>{ar ? 'مركز التكلفة' : 'Cost centre'}</label>
+            <SearchableManagedSelect type="so_cost_center" storeLabel value={form.costCenter || ''} onChange={(v) => set('costCenter', v)}
+              placeholder={ar ? 'اختر مركز التكلفة…' : 'Pick the cost centre…'} />
           </div>
           <div>
             <label className={labelCls}>{ar ? 'نوع العميل' : 'Customer type'}</label>

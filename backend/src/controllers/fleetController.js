@@ -88,7 +88,7 @@ const SHIPMENT_EDITABLE = [
   'loadDate', 'fromCity', 'toCity', 'status', 'expectedArrival', 'notes',
   // Load/waybill fields:
   'rentType', 'paymentType', 'paymentSubtype', 'loadType', 'blNumber', 'containerNumber', 'price', 'fullRent', 'customerType',
-  'driverExpense', 'driverAdvance', 'fridayBonus', 'branch',
+  'driverExpense', 'driverAdvance', 'fridayBonus', 'branch', 'costCenter',
 ];
 
 /** Load form choices shared with shipment orders: the four payment types and the From/To cities. */
@@ -321,7 +321,7 @@ const LOAD_FILTER_FIELDS = {
   waybillNumber: 'num', customerName: 'text', fromCity: 'text', toCity: 'text', branch: 'text',
   vehiclePlate: 'text', trailerType: 'text', vehicleBrand: 'text', vehicleColor: 'text',
   driverName: 'text', secondDriverName: 'text', driverNationality: 'text',
-  paymentSubtype: 'text', customerType: 'text', loadType: 'text', status: 'text', supervisorName: 'text', blNumber: 'text', containerNumber: 'text',
+  paymentSubtype: 'text', customerType: 'text', loadType: 'text', status: 'text', supervisorName: 'text', blNumber: 'text', containerNumber: 'text', costCenter: 'text',
   price: 'num', fullRent: 'num', driverExpense: 'num', fridayBonus: 'bool', driverExpensePaid: 'bool',
   loadDate: 'day', expectedArrival: 'day', createdAt: 'day',
 };

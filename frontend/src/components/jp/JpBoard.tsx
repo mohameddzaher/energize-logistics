@@ -24,6 +24,7 @@ import {
   CalendarCheck, ListChecks, Plus, Check, Paperclip, Trash2, Pencil, FolderKanban, Clock, ChevronDown,
   Phone, MessageCircle, MapPin, Mail, Users, MoreHorizontal, X, Send, CornerDownLeft, Loader2, MessageSquare, ArrowRight, ArrowLeft,
   UserRound, Timer, Link2, FileText, Hourglass, ClipboardList,
+  Archive, Undo2, ArrowLeftRight, UserPlus, History, CheckCircle2, PauseCircle, PlayCircle, AlertTriangle, CircleDashed,
 } from 'lucide-react';
 
 const ACTION_ICON: Record<string, React.ReactNode> = {
@@ -90,9 +91,11 @@ interface Draft {
   workDate: string; expH: string; expM: string;
   files: { dataUrl: string; fileName: string }[];
   links: JpLink[];
+  /** More owners beside `assignedTo`: one task shared by several people. */
+  extra: string[];
 }
 const blankDraft = (assignedTo = '', project = '', links: JpLink[] = []): Draft => ({
-  title: '', assignedTo, due: NO_DUE, details: '', action: '', contact: '', project, files: [], links, workDate: '', expH: '', expM: '',
+  title: '', assignedTo, due: NO_DUE, details: '', action: '', contact: '', project, files: [], links, workDate: '', expH: '', expM: '', extra: [],
 });
 /** Expected time from its two inputs in minutes; '' if nothing is written. */
 const expectedOf = (d: Draft): number | '' => {
@@ -189,117 +192,130 @@ function Block({ icon, title, span2, children }: { icon: React.ReactNode; title:
   );
 }
 
-function TaskCard({ task, now, ar, busy, onDone, onReopen, onEdit, onDelete, onAttach, onRemoveFile, onHandDown, onComment, meId, onTrack, onAdjust, onPostpone }: {
+/** Where an open task stands, as one word and colour (BR-style pill). */
+const stageOf = (task: JpTask): { key: string; ar: string; en: string; cls: string } => {
+  if (task.status === 'done') return { key: 'done', ar: 'تمّت', en: 'Done', cls: 'bg-emerald-100 text-emerald-800' };
+  if (task.state === 'overdue') return { key: 'overdue', ar: 'متأخّرة', en: 'Late', cls: 'bg-red-100 text-red-700' };
+  if (task.progress === 'doing') return { key: 'doing', ar: 'قيد التنفيذ', en: 'In progress', cls: 'bg-sky-100 text-sky-800' };
+  if (task.progress === 'paused') return { key: 'paused', ar: 'متوقّفة', en: 'Paused', cls: 'bg-amber-100 text-amber-800' };
+  return { key: 'todo', ar: 'لم تبدأ', en: 'Not started', cls: 'bg-slate-100 text-slate-700' };
+};
+const EVENT_WORDS: Record<string, [string, string]> = {
+  created: ['أُسنِدت', 'Assigned'], started: ['بدأ العمل', 'Started'], paused: ['أوقف مؤقّتًا', 'Paused'], postponed: ['أُجِّلت', 'Postponed'],
+  done: ['تمّت', 'Done'], reopened: ['أُعيد فتحها', 'Reopened'], reassigned: ['نُقلت', 'Moved'], shared: ['أُضيف مسؤول', 'Owner added'],
+};
+
+type CardActions = {
   onPostpone: (t: JpTask) => void;
-  task: JpTask; now: number; ar: boolean; busy: boolean; meId: string;
   onTrack: (t: JpTask, action: 'start' | 'pause') => void; onAdjust: (t: JpTask) => void;
   onComment: (t: JpTask, text: string) => Promise<boolean>;
   onDone: (t: JpTask) => void; onReopen: (t: JpTask) => void; onEdit: (t: JpTask) => void; onDelete: (t: JpTask) => void;
   onAttach: (t: JpTask, f: File) => void; onRemoveFile: (t: JpTask, id: string) => void; onHandDown: (t: JpTask) => void;
+  onShare: (t: JpTask) => void; onTransfer: (t: JpTask) => void; onRemoveOwner: (t: JpTask) => void;
+  onArchive: (t: JpTask, back: boolean) => void;
+};
+
+function TaskCard({ task, now, ar, busy, meId, showAssignee, ...on }: CardActions & {
+  task: JpTask; now: number; ar: boolean; busy: boolean; meId: string; showAssignee?: boolean;
 }) {
   const t = (a: string, e: string) => (ar ? a : e);
   const dl = deadlineLine(task, now, ar);
   const done = task.status === 'done';
+  const archived = !!task.archivedAt;
   const href = contactHref(task.action, task.contact);
   const mine = jpId(task.assignedTo) === meId;
-  // Comments stay collapsed until requested; what is typed belongs to this card only.
-  const [showComments, setShowComments] = useState(false);
+  const stage = stageOf(task);
+  // Collapsed by default: the list reads as one line per task; the full task opens in place.
+  const [open, setOpen] = useState(false);
+  const [history, setHistory] = useState(false);
   const [text, setText] = useState('');
   const [sending, setSending] = useState(false);
   const comments = task.comments || [];
+  const others = task.sharedWith || [];
   const send = async () => {
     if (!text.trim() || sending) return;
     setSending(true);
-    if (await onComment(task, text.trim())) setText('');
+    if (await on.onComment(task, text.trim())) setText('');
     setSending(false);
   };
+  const btn = 'inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-[12.5px] font-bold border disabled:opacity-50';
   return (
-    <li className={`bg-white border rounded-2xl p-4 shadow-sm transition-colors ${
-      task.state === 'overdue' ? 'border-red-200' : done ? 'border-slate-200 opacity-80' : 'border-slate-200'}`}>
-      <div className="flex items-start gap-3">
-        {/* One-click completion, only for those allowed. */}
-        <button type="button" disabled={!task.can.complete || busy}
-          onClick={() => (done ? onReopen(task) : onDone(task))}
+    <li className={`bg-white border rounded-xl shadow-sm transition-colors ${task.state === 'overdue' && !done ? 'border-red-200' : 'border-slate-200'} ${open ? 'ring-1 ring-[#f37121]/30' : ''}`}>
+      <div className="flex items-center gap-3 px-3.5 py-2.5">
+        <button type="button" disabled={!task.can.complete || busy || archived}
+          onClick={() => (done ? on.onReopen(task) : on.onDone(task))}
           title={done ? t('إرجاعها مفتوحة', 'Reopen') : t('تمّت', 'Mark done')}
-          className={`mt-0.5 w-7 h-7 shrink-0 rounded-full border-2 flex items-center justify-center transition-colors ${
+          className={`w-6 h-6 shrink-0 rounded-full border-2 flex items-center justify-center transition-colors ${
             done ? 'bg-emerald-500 border-emerald-500 text-white' : 'border-slate-300 text-transparent hover:border-emerald-500 hover:text-emerald-500'} ${
-            !task.can.complete ? 'opacity-40 cursor-not-allowed' : ''}`}>
-          {busy ? <Loader2 className="w-4 h-4 animate-spin text-slate-400" /> : <Check className="w-4 h-4" />}
+            !task.can.complete || archived ? 'opacity-40 cursor-not-allowed' : ''}`}>
+          {busy ? <Loader2 className="w-3.5 h-3.5 animate-spin text-slate-400" /> : <Check className="w-3.5 h-3.5" />}
         </button>
+        <button type="button" onClick={() => setOpen((v) => !v)} className="min-w-0 flex-1 text-start">
+          <div className="flex flex-wrap items-center gap-2">
+            <span className={`text-[14px] font-bold leading-snug ${done ? 'text-slate-500 line-through' : 'text-slate-900'}`}>{task.title}</span>
+            <span className={`rounded-full px-2 py-0.5 text-[11px] font-bold ${stage.cls}`}>{ar ? stage.ar : stage.en}</span>
+            {task.kind === 'request' && <span className="rounded-full bg-sky-50 px-2 py-0.5 text-[11px] font-semibold text-sky-700">{t('طلب', 'Request')}</span>}
+            {task.timerStartedAt && <span className="h-2 w-2 animate-pulse rounded-full bg-emerald-500" title={t('المؤقّت يعمل', 'Timer running')} />}
+          </div>
+          <div className="mt-0.5 flex flex-wrap items-center gap-x-3 gap-y-0.5 text-[12px] text-slate-500">
+            <span className={`inline-flex items-center gap-1 ${TONE_CLASS[dl.tone]}`}><Clock className="w-3 h-3" />{dl.text}</span>
+            <span>{showAssignee ? t(`المسؤول: ${task.assignedToName}`, `Owner: ${task.assignedToName}`) : t(`من ${task.createdByName}`, `From ${task.createdByName}`)}</span>
+            {others.length > 0 && <span className="inline-flex items-center gap-1 text-sky-700"><Users className="w-3 h-3" />{t('بمشاركة', 'With')} {others.map((o) => o.name).join('، ')}</span>}
+            {task.project && <span className="inline-flex items-center gap-1"><FolderKanban className="w-3 h-3" />{task.project.name}</span>}
+            {comments.length > 0 && <span className="inline-flex items-center gap-1"><MessageSquare className="w-3 h-3" />{comments.length}</span>}
+            {archived && <span className="inline-flex items-center gap-1 text-slate-600"><Archive className="w-3 h-3" />{t('في الأرشيف', 'Archived')}{task.archivedByName ? ` · ${task.archivedByName}` : ''}</span>}
+          </div>
+        </button>
+        {/* Archive from the row itself, without opening the task. */}
+        {task.can.archive && (
+          <button type="button" disabled={busy} onClick={() => on.onArchive(task, archived)}
+            title={archived ? t('إعادة من الأرشيف', 'Restore') : t('إرسال للأرشيف', 'Send to archive')}
+            className={`hidden sm:inline-flex shrink-0 items-center gap-1 rounded-lg border px-2.5 py-1 text-[12px] font-bold disabled:opacity-50 ${archived ? 'border-emerald-300 text-emerald-700 hover:bg-emerald-50' : 'border-slate-300 text-slate-600 hover:bg-slate-100'}`}>
+            {archived ? <Undo2 className="w-3.5 h-3.5" /> : <Archive className="w-3.5 h-3.5" />}{archived ? t('إعادة', 'Restore') : t('أرشفة', 'Archive')}
+          </button>
+        )}
+        <ChevronDown className={`w-4 h-4 shrink-0 text-slate-400 transition-transform ${open ? 'rotate-180' : ''}`} />
+      </div>
 
-        <div className="flex-1 min-w-0">
-          <div className="flex items-start justify-between gap-2">
-            <p className={`text-[14.5px] font-semibold leading-snug ${done ? 'text-slate-500 line-through' : 'text-slate-900'}`}>{task.title}</p>
-            <div className="flex items-center gap-1 shrink-0">
-              {task.canHandDown && !done && (
-                <button type="button" onClick={() => onHandDown(task)} title={t('إسنادها إلى موظّفٍ في قسمي', 'Assign to someone on my team')}
-                  className="p-1.5 rounded-lg text-slate-400 hover:text-[#f37121] hover:bg-orange-50"><CornerDownLeft className="w-4 h-4" /></button>
-              )}
-              {task.can.edit && (
-                <button type="button" onClick={() => onEdit(task)} title={t('تعديل', 'Edit')} className="p-1.5 rounded-lg text-slate-400 hover:text-slate-900 hover:bg-slate-100"><Pencil className="w-4 h-4" /></button>
-              )}
-              {task.can.remove && (
-                <button type="button" onClick={() => onDelete(task)} title={t('حذف', 'Delete')} className="p-1.5 rounded-lg text-slate-400 hover:text-red-600 hover:bg-red-50"><Trash2 className="w-4 h-4" /></button>
-              )}
-            </div>
+      {open && (
+        <div className="space-y-3 border-t border-slate-100 px-4 pb-4 pt-3">
+          {task.details && <p className="text-[13px] text-slate-700 whitespace-pre-wrap">{task.details}</p>}
+          <div className="grid grid-cols-1 gap-1 text-[12.5px] text-slate-600 sm:grid-cols-2">
+            <p><span className="font-semibold text-slate-500">{t('المسؤول', 'Owner')}:</span> {task.assignedToName}{others.length ? ` + ${others.map((o) => `${o.name}${o.status === 'done' ? ' ✓' : ''}`).join('، ')}` : ''}</p>
+            <p><span className="font-semibold text-slate-500">{t('أسندها', 'Assigned by')}:</span> {task.createdByName}</p>
+            {task.fromManagement && <p className="text-violet-700 font-semibold">{t('من خطّة الإدارة', 'From management plan')}</p>}
+            {task.workDate && <p><span className="font-semibold text-slate-500">{t('يوم العمل', 'Work day')}:</span> <bdi>{new Date(task.workDate).toLocaleDateString('en-GB')}</bdi></p>}
           </div>
 
-          {task.details && <p className="mt-1 text-[13px] text-slate-600 whitespace-pre-wrap">{task.details}</p>}
-
-          <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1.5 text-[12px]">
-            <span className={`inline-flex items-center gap-1 ${TONE_CLASS[dl.tone]}`}><Clock className="w-3.5 h-3.5" />{dl.text}</span>
-            <span className={`px-2 py-0.5 rounded-full font-medium ${task.kind === 'task' ? 'bg-slate-900 text-white' : 'bg-sky-50 text-sky-700'}`}>
-              {task.kind === 'task' ? t('مهمّة', 'Task') : t('طلب', 'Request')}
-            </span>
-            <span className="text-slate-500">
-              {mine ? t(`من ${task.createdByName}`, `From ${task.createdByName}`) : t(`إلى ${task.assignedToName}`, `To ${task.assignedToName}`)}
-            </span>
-            {task.project && <span className="inline-flex items-center gap-1 text-slate-500"><FolderKanban className="w-3.5 h-3.5" />{task.project.name}</span>}
-            {task.fromManagement && <span className="px-2 py-0.5 rounded-full bg-violet-50 text-violet-700 font-medium">{t('من خطّة الإدارة', 'From management plan')}</span>}
-          </div>
-
-          {/* Time: expected and actual, and a timer for the person working on it. */}
-          {(task.can.track || task.expectedMinutes != null || (task.spentNow || 0) > 0 || task.workDate) && (
-            <div className="mt-2 flex flex-wrap items-center gap-2 text-[12px]">
-              {task.workDate && <span className="text-slate-500">{t('يوم العمل', 'Work day')}: <bdi>{new Date(task.workDate).toLocaleDateString('en-GB')}</bdi></span>}
+          {/* Time and the person's own steps: timer, postpone, done. */}
+          {!archived && (task.can.track || task.expectedMinutes != null || (task.spentNow || 0) > 0) && (
+            <div className="flex flex-wrap items-center gap-2 text-[12px]">
               {(() => {
                 const spent = task.timerStartedAt ? (task.spentMinutes || 0) + (now - new Date(task.timerStartedAt).getTime()) / 60000 : (task.spentNow ?? task.spentMinutes ?? 0);
                 const over = task.expectedMinutes != null && spent > task.expectedMinutes;
                 return (
                   <span className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 font-semibold ${task.timerStartedAt ? 'bg-emerald-50 text-emerald-700' : over ? 'bg-red-50 text-red-700' : 'bg-slate-100 text-slate-700'}`}>
                     <Clock className="w-3.5 h-3.5" />{fmtMinutes(spent, ar)}{task.expectedMinutes != null ? ` / ${fmtMinutes(task.expectedMinutes, ar)}` : ''}
-                    {task.timerStartedAt && <span className="ms-1 h-1.5 w-1.5 animate-pulse rounded-full bg-emerald-500" />}
                   </span>
                 );
               })()}
-              {task.can.track && !done && (task.timerStartedAt
-                ? <button type="button" disabled={busy} onClick={() => onTrack(task, 'pause')} className="rounded-lg border border-slate-200 px-2.5 py-1 font-semibold text-slate-700 hover:bg-slate-50">{t('إيقاف مؤقّت', 'Pause')}</button>
-                : <button type="button" disabled={busy} onClick={() => onTrack(task, 'start')} className="rounded-lg bg-emerald-600 px-2.5 py-1 font-semibold text-white hover:bg-emerald-700">{task.progress === 'paused' ? t('استئناف', 'Resume') : t('بدأتُ العمل', 'Start')}</button>)}
-              {task.can.postpone && !done && (
-                <button type="button" disabled={busy} onClick={() => onPostpone(task)} className="rounded-lg border border-amber-300 bg-amber-50 px-2.5 py-1 font-semibold text-amber-800 hover:bg-amber-100">{t('تأجيل', 'Postpone')}</button>
-              )}
-              {task.can.complete && !done && (
-                <button type="button" disabled={busy} onClick={() => onDone(task)} className="rounded-lg bg-[#f37121] px-2.5 py-1 font-semibold text-white hover:bg-[#e0651a]">{t('تمّ الإنجاز', 'Done')}</button>
-              )}
               {task.can.adjust && (
-                <button type="button" onClick={() => onAdjust(task)} className="text-[11.5px] text-slate-400 underline-offset-2 hover:text-slate-700 hover:underline">{t('تصحيح الوقت', 'Adjust time')}</button>
+                <button type="button" onClick={() => on.onAdjust(task)} className="text-[11.5px] text-slate-400 underline-offset-2 hover:text-slate-700 hover:underline">{t('تصحيح الوقت', 'Adjust time')}</button>
               )}
             </div>
           )}
 
-          {!!task.links?.length && <div className="mt-2"><LinkChips links={task.links} ar={ar} /></div>}
-
+          {!!task.links?.length && <LinkChips links={task.links} ar={ar} />}
           {(task.action || task.contact) && (
-            <div className="mt-2 inline-flex flex-wrap items-center gap-2 px-2.5 py-1.5 rounded-lg bg-slate-50 border border-slate-200 text-[12.5px] text-slate-700">
+            <div className="inline-flex flex-wrap items-center gap-2 px-2.5 py-1.5 rounded-lg bg-slate-50 border border-slate-200 text-[12.5px] text-slate-700">
               {task.action && <span className="inline-flex items-center gap-1 font-semibold">{ACTION_ICON[task.action]}{ar ? ACTION_WORDS[task.action as Exclude<JpAction, ''>].ar : ACTION_WORDS[task.action as Exclude<JpAction, ''>].en}</span>}
               {task.contact && (href
                 ? <a href={href} target="_blank" rel="noreferrer" className="text-[#f37121] font-semibold hover:underline"><bdi>{task.contact}</bdi></a>
                 : <span><bdi>{task.contact}</bdi></span>)}
             </div>
           )}
-
           {!!task.handedTo?.length && (
-            <p className="mt-2 text-[12px] text-slate-500">
+            <p className="text-[12px] text-slate-500">
               {t('أُسنِدت في القسم إلى: ', 'Assigned within the section to: ')}
               {task.handedTo.map((h, i) => (
                 <span key={h._id} className={h.state === 'done' ? 'text-emerald-700 font-semibold' : h.state === 'overdue' ? 'text-red-600 font-semibold' : 'text-slate-700 font-semibold'}>
@@ -308,77 +324,94 @@ function TaskCard({ task, now, ar, busy, onDone, onReopen, onEdit, onDelete, onA
               ))}
             </p>
           )}
-
-          {done && task.doneNote && <p className="mt-2 text-[12.5px] text-emerald-800 bg-emerald-50 border border-emerald-100 rounded-lg px-2.5 py-1.5 whitespace-pre-wrap">{task.doneNote}</p>}
-          {(() => {
-            // The latest step after assignment (postponed, paused, reopened…) with its note, so the reason is read on the card.
-            const last = [...(task.events || [])].reverse().find((e) => e.type !== 'created' && e.type !== 'done');
-            if (!last || (done && last.type !== 'reopened') || !last.note) return null;
-            const w: Record<string, [string, string]> = { started: ['بدأ العمل', 'Started'], paused: ['أوقف مؤقّتًا', 'Paused'], postponed: ['أُجِّلت', 'Postponed'], reopened: ['أُعيد فتحها', 'Reopened'], reassigned: ['نُقلت', 'Reassigned'] };
-            return (
-              <p className={`mt-2 text-[12.5px] rounded-lg px-2.5 py-1.5 whitespace-pre-wrap border ${last.type === 'postponed' ? 'bg-amber-50 border-amber-100 text-amber-900' : 'bg-slate-50 border-slate-100 text-slate-700'}`}>
-                <span className="font-bold">{ar ? w[last.type]?.[0] : w[last.type]?.[1]}{task.postponeCount && last.type === 'postponed' ? ` (${task.postponeCount}×)` : ''}: </span>{last.note}
-                <span className="text-[11px] opacity-70"> — {last.byName}</span>
-              </p>
-            );
-          })()}
+          {done && task.doneNote && <p className="text-[12.5px] text-emerald-800 bg-emerald-50 border border-emerald-100 rounded-lg px-2.5 py-1.5 whitespace-pre-wrap">{task.doneNote}</p>}
 
           {(task.attachments.length > 0 || task.can.attach) && (
-            <div className="mt-2 flex flex-wrap items-center gap-1.5">
+            <div className="flex flex-wrap items-center gap-1.5">
               {task.attachments.map((a) => (
                 <span key={a._id} className={`inline-flex items-center gap-1 ps-2 pe-1 py-1 rounded-lg border text-[12px] ${a.phase === 'done' ? 'bg-emerald-50 border-emerald-200 text-emerald-800' : 'bg-white border-slate-200 text-slate-700'}`}>
                   <Paperclip className="w-3 h-3" />
                   <a href={a.fileUrl} target="_blank" rel="noreferrer" className="max-w-[160px] truncate hover:underline">{a.fileName || t('ملف', 'File')}</a>
                   {(task.can.edit || a.uploadedBy === meId) && (
-                    <button type="button" onClick={() => onRemoveFile(task, a._id)} className="text-slate-400 hover:text-red-600" aria-label={t('حذف المرفق', 'Remove file')}><X className="w-3 h-3" /></button>
+                    <button type="button" onClick={() => on.onRemoveFile(task, a._id)} className="text-slate-400 hover:text-red-600" aria-label={t('حذف المرفق', 'Remove file')}><X className="w-3 h-3" /></button>
                   )}
                 </span>
               ))}
-              {task.can.attach && (
+              {task.can.attach && !archived && (
                 <label className="inline-flex items-center gap-1 px-2 py-1 rounded-lg border border-dashed border-slate-300 text-[12px] text-slate-500 cursor-pointer hover:border-[#f37121] hover:text-[#f37121]">
                   <Paperclip className="w-3 h-3" />{t('إرفاق', 'Attach')}
-                  <input type="file" hidden onChange={(e) => { const f = e.target.files?.[0]; if (f) onAttach(task, f); e.target.value = ''; }} />
+                  <input type="file" hidden onChange={(e) => { const f = e.target.files?.[0]; if (f) on.onAttach(task, f); e.target.value = ''; }} />
                 </label>
               )}
             </div>
           )}
 
-          {(comments.length > 0 || task.can.comment) && (
-            <div className="mt-2">
-              <button type="button" onClick={() => setShowComments((v) => !v)}
-                className="inline-flex items-center gap-1 text-[12px] text-slate-500 hover:text-slate-900">
-                <MessageSquare className="w-3.5 h-3.5" />
-                {comments.length ? t(`التعليقات (${comments.length})`, `Comments (${comments.length})`) : t('أضف تعليقًا', 'Add a comment')}
+          {/* Actions, as in business review: progress first, then assignment, then archive and delete. */}
+          <div className="flex flex-wrap gap-2 pt-1">
+            {archived ? (
+              task.can.archive && <button type="button" disabled={busy} onClick={() => on.onArchive(task, true)} className={`${btn} border-emerald-300 bg-white text-emerald-700`}><Undo2 className="w-3.5 h-3.5" />{t('إعادة من الأرشيف', 'Restore')}</button>
+            ) : (<>
+              {task.can.complete && !done && <button type="button" disabled={busy} onClick={() => on.onDone(task)} className={`${btn} border-emerald-600 bg-emerald-600 text-white`}><CheckCircle2 className="w-3.5 h-3.5" />{t('تمّ الإنجاز', 'Mark done')}</button>}
+              {task.can.track && !done && (task.timerStartedAt
+                ? <button type="button" disabled={busy} onClick={() => on.onTrack(task, 'pause')} className={`${btn} border-slate-300 bg-white text-slate-700`}><PauseCircle className="w-3.5 h-3.5" />{t('إيقاف مؤقّت', 'Pause')}</button>
+                : <button type="button" disabled={busy} onClick={() => on.onTrack(task, 'start')} className={`${btn} border-sky-600 bg-sky-600 text-white`}><PlayCircle className="w-3.5 h-3.5" />{task.progress === 'paused' ? t('استئناف', 'Resume') : t('بدء العمل', 'Start')}</button>)}
+              {task.can.postpone && !done && <button type="button" disabled={busy} onClick={() => on.onPostpone(task)} className={`${btn} border-amber-500 bg-amber-500 text-white`}><Hourglass className="w-3.5 h-3.5" />{t('تأجيل', 'Postpone')}</button>}
+              {done && task.can.complete && <button type="button" disabled={busy} onClick={() => on.onReopen(task)} className={`${btn} border-slate-300 bg-white text-slate-700`}><Undo2 className="w-3.5 h-3.5" />{t('إعادة فتح', 'Reopen')}</button>}
+              {task.can.edit && <button type="button" onClick={() => on.onEdit(task)} className={`${btn} border-slate-300 bg-white text-slate-700`}><Pencil className="w-3.5 h-3.5" />{t('تعديل', 'Edit')}</button>}
+              {task.can.share && <button type="button" onClick={() => on.onShare(task)} className={`${btn} border-sky-300 bg-white text-sky-700`}><UserPlus className="w-3.5 h-3.5" />{t('إسنادها لمسؤولٍ آخر أيضًا', 'Also assign to…')}</button>}
+              {task.can.transfer && <button type="button" onClick={() => on.onTransfer(task)} className={`${btn} border-indigo-300 bg-white text-indigo-700`}><ArrowLeftRight className="w-3.5 h-3.5" />{t('نقلها لمسؤولٍ آخر', 'Move to…')}</button>}
+              {task.canHandDown && !done && <button type="button" onClick={() => on.onHandDown(task)} className={`${btn} border-[#f37121]/40 bg-white text-[#f37121]`}><CornerDownLeft className="w-3.5 h-3.5" />{t('إسنادها إلى موظّفٍ في قسمي', 'Assign to my team')}</button>}
+              {task.can.archive && <button type="button" disabled={busy} onClick={() => on.onArchive(task, false)} className={`${btn} border-slate-400 bg-slate-100 text-slate-800`}><Archive className="w-3.5 h-3.5" />{t('إرسال للأرشيف', 'Send to archive')}</button>}
+              {task.can.remove && others.length > 0 && <button type="button" onClick={() => on.onRemoveOwner(task)} className={`${btn} border-red-200 bg-white text-red-600`}><X className="w-3.5 h-3.5" />{t('إزالة هذا المسؤول', 'Remove this owner')}</button>}
+              {task.can.remove && <button type="button" onClick={() => on.onDelete(task)} className={`${btn} border-red-300 bg-white text-red-700`}><Trash2 className="w-3.5 h-3.5" />{t('حذف', 'Delete')}</button>}
+            </>)}
+          </div>
+
+          {/* Comments and the full story of the task. */}
+          <div className="rounded-xl border border-slate-200 bg-slate-50 p-3 space-y-2">
+            <p className="flex items-center gap-1.5 text-[12.5px] font-bold text-slate-700"><MessageSquare className="w-3.5 h-3.5" />{t('التعليقات', 'Comments')}{comments.length ? ` (${comments.length})` : ''}</p>
+            {comments.map((c) => (
+              <div key={c._id} className="text-[12.5px]">
+                <span className="font-semibold text-slate-800">{c.byName}</span>
+                <span className="mx-1.5 text-[11px] text-slate-400">{new Date(c.at).toLocaleString(ar ? 'ar-EG-u-nu-latn' : 'en-GB', { day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit' })}</span>
+                <p className="text-slate-700 whitespace-pre-wrap">{c.text}</p>
+              </div>
+            ))}
+            {task.can.comment && !archived && (
+              <div className="flex gap-2">
+                <input value={text} onChange={(e) => setText(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter') send(); }}
+                  placeholder={t('اكتب تعليقًا…', 'Write a comment…')}
+                  className="flex-1 px-3 py-2 rounded-lg bg-white border border-slate-200 text-[13px] focus:outline-none focus:ring-2 focus:ring-[#f37121]/50" />
+                <button type="button" onClick={send} disabled={sending || !text.trim()}
+                  className="px-3 py-2 rounded-lg bg-slate-900 text-white text-[12.5px] font-semibold disabled:opacity-40">{t('إرسال', 'Send')}</button>
+              </div>
+            )}
+          </div>
+          {!!task.events?.length && (
+            <div>
+              <button type="button" onClick={() => setHistory((v) => !v)} className="inline-flex items-center gap-1 text-[12px] font-semibold text-slate-500 hover:text-slate-900">
+                <History className="w-3.5 h-3.5" />{history ? t('إخفاء سجلّ المهمّة', 'Hide history') : t(`سجلّ المهمّة (${task.events.length})`, `History (${task.events.length})`)}
               </button>
-              {showComments && (
-                <div className="mt-2 space-y-2 rounded-xl bg-slate-50 border border-slate-200 p-3">
-                  {comments.map((c) => (
-                    <div key={c._id} className="text-[12.5px]">
-                      <span className="font-semibold text-slate-800">{c.byName}</span>
-                      <span className="mx-1.5 text-[11px] text-slate-400">{new Date(c.at).toLocaleString(ar ? 'ar-EG-u-nu-latn' : 'en-GB', { day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit' })}</span>
-                      <p className="text-slate-700 whitespace-pre-wrap">{c.text}</p>
-                    </div>
+              {history && (
+                <ol className="mt-2 space-y-1.5 border-s-2 border-slate-200 ps-3">
+                  {[...task.events].reverse().map((e, i) => (
+                    <li key={i} className="text-[12px] text-slate-600">
+                      <span className="font-bold text-slate-800">{ar ? EVENT_WORDS[e.type]?.[0] || e.type : EVENT_WORDS[e.type]?.[1] || e.type}</span>
+                      <span className="mx-1 text-slate-400">· {e.byName} · {new Date(e.at).toLocaleString(ar ? 'ar-EG-u-nu-latn' : 'en-GB', { day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit' })}</span>
+                      {e.note && <p className="text-slate-700 whitespace-pre-wrap">{e.note}</p>}
+                    </li>
                   ))}
-                  {task.can.comment && (
-                    <div className="flex gap-2">
-                      <input value={text} onChange={(e) => setText(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter') send(); }}
-                        placeholder={t('اكتب تعليقًا…', 'Write a comment…')}
-                        className="flex-1 px-3 py-2 rounded-lg bg-white border border-slate-200 text-[13px] focus:outline-none focus:ring-2 focus:ring-[#f37121]/50" />
-                      <button type="button" onClick={send} disabled={sending || !text.trim()}
-                        className="px-3 py-2 rounded-lg bg-slate-900 text-white text-[12.5px] font-semibold disabled:opacity-40">{t('إرسال', 'Send')}</button>
-                    </div>
-                  )}
-                </div>
+                </ol>
               )}
             </div>
           )}
         </div>
-      </div>
+      )}
     </li>
   );
 }
 
-type Box = 'mine' | 'sent' | 'all';
+type Box = 'mine' | 'sent' | 'all' | 'archive';
 type Status = '' | 'open' | 'overdue' | 'done';
 
 function JpBoardInner({ scope, section }: { scope: JpScope; section?: string }) {
@@ -403,7 +436,7 @@ function JpBoardInner({ scope, section }: { scope: JpScope; section?: string }) 
   const [denied, setDenied] = useState('');
   const [linkLabel, setLinkLabel] = useState('');
   const [tasks, setTasks] = useState<JpTask[]>([]);
-  const [counts, setCounts] = useState({ all: 0, open: 0, overdue: 0, done: 0, mine: 0, sent: 0 });
+  const [counts, setCounts] = useState({ all: 0, open: 0, overdue: 0, done: 0, mine: 0, sent: 0, archived: 0 });
   const [projects, setProjects] = useState<JpProject[]>([]);
   const [box, setBox] = useState<Box>('mine');
   const [status, setStatus] = useState<Status>('open');
@@ -413,6 +446,15 @@ function JpBoardInner({ scope, section }: { scope: JpScope; section?: string }) 
   const [now, setNow] = useState(() => Date.now());
 
   const [draft, setDraft] = useState<Draft>(blankDraft());
+  // The new-task form opens on demand, so the plan itself is the first thing on the page.
+  const [composeOpen, setComposeOpen] = useState(false);
+  // Business-review style steps: add owners, move to another person.
+  const [sharing, setSharing] = useState<JpTask | null>(null);
+  const [shareTo, setShareTo] = useState<string[]>([]);
+  const [moving, setMoving] = useState<JpTask | null>(null);
+  const [moveTo, setMoveTo] = useState('');
+  // Person cards on the team view: which are folded.
+  const [folded, setFolded] = useState<Record<string, boolean>>({});
   const [titlesOpen, setTitlesOpen] = useState(false);
   const [more, setMore] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -475,7 +517,8 @@ function JpBoardInner({ scope, section }: { scope: JpScope; section?: string }) 
       // Inside a project all its tasks visible to the asker are shown, not one bucket.
       p.set('box', project ? 'all' : box);
       if (linkKind && linkRef) { p.set('linkKind', linkKind); p.set('linkRef', linkRef); }
-      if (status) p.set('status', status);
+      // The archive lists everything archived, whatever its state.
+      if (status && box !== 'archive') p.set('status', status);
       if (project) p.set('project', project);
       if (assignee) p.set('assignee', assignee);
       const [a, b] = await Promise.all([
@@ -511,14 +554,16 @@ function JpBoardInner({ scope, section }: { scope: JpScope; section?: string }) 
     setSaving(true);
     try {
       await api.post('/api/jp/tasks', {
-        scope, section, title: draft.title, assignedTo: draft.assignedTo, details: draft.details,
+        scope, section, title: draft.title, assignedTo: draft.assignedTo,
+        assignees: [draft.assignedTo, ...draft.extra.filter((x) => x && x !== draft.assignedTo)], details: draft.details,
         action: draft.action, contact: draft.contact, project: draft.project || project || undefined,
         files: draft.files, links: draft.links.map((l) => ({ kind: l.kind, ref: l.ref })), ...dueBody(draft.due),
         workDate: draft.workDate || undefined, expectedMinutes: expectedOf(draft) === '' ? undefined : expectedOf(draft),
       });
       // Assignee and project are kept so five tasks for one person need one pick; a task linked from a transaction page stays linked.
       setDraft((d) => ({ ...blankDraft(d.assignedTo, d.project, linkRef ? d.links : []), due: d.due }));
-      titleRef.current?.focus();
+      setComposeOpen(false);
+      notify(t('أُسنِدت المهمّة', 'Task assigned'), 'success');
       load();
     } catch (e) { say(e); } finally { setSaving(false); }
   };
@@ -547,7 +592,7 @@ function JpBoardInner({ scope, section }: { scope: JpScope; section?: string }) 
     setEditing(task);
     setEditDraft({
       title: task.title, assignedTo: jpId(task.assignedTo), details: task.details || '', action: task.action,
-      contact: task.contact || '', project: task.project?._id || '', files: [], links: task.links || [],
+      contact: task.contact || '', project: task.project?._id || '', files: [], links: task.links || [], extra: [],
       workDate: task.workDate ? ymd(new Date(task.workDate)) : '',
       expH: task.expectedMinutes != null ? String(Math.floor(task.expectedMinutes / 60)) : '',
       expM: task.expectedMinutes != null ? String(task.expectedMinutes % 60) : '',
@@ -581,7 +626,8 @@ function JpBoardInner({ scope, section }: { scope: JpScope; section?: string }) 
   };
   const reopen = (task: JpTask) => { setStep({ task, kind: 'reopen' }); setStepNote(''); };
   const remove = async (task: JpTask) => {
-    if (!(await confirm({ message: t(`حذفُ «${task.title}»؟`, `Delete “${task.title}”?`), confirmLabel: t('حذف', 'Delete') }))) return;
+    const shared = (task.sharedWith || []).length > 0;
+    if (!(await confirm({ message: shared ? t(`حذفُ «${task.title}» عند كلّ المشتركين فيها؟`, `Delete “${task.title}” for everyone sharing it?`) : t(`حذفُ «${task.title}»؟`, `Delete “${task.title}”?`), confirmLabel: t('حذف', 'Delete'), tone: 'danger' }))) return;
     try { await api.delete(`/api/jp/tasks/${task._id}`); load(); } catch (e) { say(e); }
   };
   const attach = async (task: JpTask, file: File) => {
@@ -593,6 +639,40 @@ function JpBoardInner({ scope, section }: { scope: JpScope; section?: string }) 
   };
   const removeFile = async (task: JpTask, id: string) => {
     try { await api.delete(`/api/jp/tasks/${task._id}/attachments/${id}`); load(); } catch (e) { say(e); }
+  };
+  const doShare = async () => {
+    if (!sharing || !shareTo.length) return;
+    setSaving(true);
+    try {
+      await api.post(`/api/jp/tasks/${sharing._id}/share`, { assignees: shareTo });
+      notify(shareTo.length > 1 ? t(`أُسندت إلى ${shareTo.length} أشخاص أيضًا`, `Also assigned to ${shareTo.length}`) : t('أُسندت إليه أيضًا', 'Also assigned'), 'success');
+      setSharing(null); setShareTo([]); load();
+    } catch (e) { say(e); } finally { setSaving(false); }
+  };
+  const doMove = async () => {
+    if (!moving || !moveTo) return;
+    setSaving(true);
+    try {
+      const r = await api.patch<{ merged?: boolean }>(`/api/jp/tasks/${moving._id}`, { assignedTo: moveTo });
+      notify(r.merged ? t('نُقلت؛ وكانت مشتركةً معه فأصبحت مهمّةً واحدةً عنده', 'Moved; he already shared it, so it is one task now') : t('نُقلت إلى المسؤول الجديد', 'Moved'), 'success');
+      setMoving(null); setMoveTo(''); load();
+    } catch (e) { say(e); } finally { setSaving(false); }
+  };
+  const removeOwner = async (task: JpTask) => {
+    if (!(await confirm({ message: t(`يُزال ${task.assignedToName} من «${task.title}» ويبقى عند باقي المشتركين.`, `${task.assignedToName} is removed; the others keep it.`), confirmLabel: t('إزالة', 'Remove') }))) return;
+    try { await api.delete(`/api/jp/tasks/${task._id}?only=1`); load(); } catch (e) { say(e); }
+  };
+  const archive = async (task: JpTask, back: boolean) => {
+    if (!back && !(await confirm({
+      title: t('إرسال المهمّة إلى الأرشيف', 'Send to archive'), confirmLabel: t('إرسال للأرشيف', 'Send to archive'),
+      message: t(`تخرج «${task.title}» من الخطّة عند كلّ المشتركين فيها، ويمكن إعادتها من «الأرشيف».`, 'It leaves the plan for everyone sharing it; it can be restored from the archive.'),
+    }))) return;
+    setBusyId(task._id);
+    try {
+      await api.post(`/api/jp/tasks/${task._id}/${back ? 'unarchive' : 'archive'}`, {});
+      notify(back ? t('أُعيدت من الأرشيف', 'Restored') : t('أُرسلت إلى الأرشيف', 'Sent to archive'), 'success');
+      load();
+    } catch (e) { say(e); } finally { setBusyId(''); }
   };
 
   const saveProject = async () => {
@@ -677,6 +757,7 @@ function JpBoardInner({ scope, section }: { scope: JpScope; section?: string }) 
           : me.canManage ? t('أسنِد المهامَّ إلى فريقك وتابِعها من مكانٍ واحد', 'Assign work to your team and follow it in one place')
             : t('ما أُسنِد إليك، وما تطلبه من نفسك أو من زملائك', 'What is assigned to you, and what you ask of yourself or colleagues')}
       >
+        <PrimaryButton onClick={() => setComposeOpen(true)}><Plus className="w-4 h-4" />{me.canManage ? t('مهمّة جديدة', 'New task') : t('طلب جديد', 'New request')}</PrimaryButton>
         {/* The section's task list is also managed here, since many sections have no settings page. */}
         {me.canManage && !management && (
           <button type="button" onClick={() => setTitlesOpen(true)}
@@ -706,13 +787,10 @@ function JpBoardInner({ scope, section }: { scope: JpScope; section?: string }) 
         </div>
       )}
 
-      {/* Composer: what, who, when; details folded into titled groups; one clear action at the end. */}
-      <div className="bg-white border border-slate-200 rounded-2xl shadow-sm overflow-hidden">
-        <div className="flex items-center gap-2 px-4 py-2.5 border-b border-slate-100 bg-gradient-to-l from-[#f37121]/[0.06] to-transparent">
-          <ClipboardList className="w-4 h-4 text-[#f37121]" />
-          <p className="text-[13.5px] font-bold text-slate-800">{me.canManage ? t('مهمّة جديدة', 'New task') : t('طلب جديد', 'New request')}</p>
-          {current && <span className="ms-auto rounded-full bg-slate-100 px-2.5 py-0.5 text-[11.5px] font-semibold text-slate-600">{t(`في مشروع «${current.name}»`, `In “${current.name}”`)}</span>}
-        </div>
+      {/* New task: what, who (one or several), when; details folded; one clear action. */}
+      <Modal open={composeOpen} onClose={() => setComposeOpen(false)} wide
+        title={me.canManage ? t('مهمّة جديدة', 'New task') : t('طلب جديد', 'New request')}>
+        <div className="-mx-1">
         <div className="p-4 space-y-4">
           <div className="grid grid-cols-1 lg:grid-cols-[minmax(0,1fr)_18rem] gap-3">
             <label className="block space-y-1.5">
@@ -735,6 +813,24 @@ function JpBoardInner({ scope, section }: { scope: JpScope; section?: string }) 
               <SearchableSelect value={draft.assignedTo} onChange={(v) => patchDraft({ assignedTo: v })}
                 placeholder={whoLabel} searchPlaceholder={t('ابحث بالاسم أو الدور…', 'Search name or role…')} searchAfter={0}
                 options={assigneeOptions} />
+              {/* More owners: one task shared by several people, as in business review. */}
+              {me.canManage && !!draft.assignedTo && (
+                <div className="space-y-1.5 pt-1">
+                  <SearchableSelect value="" onChange={(v) => v && v !== draft.assignedTo && patchDraft({ extra: draft.extra.includes(v) ? draft.extra : [...draft.extra, v] })}
+                    placeholder={t('+ إضافة مسؤولٍ آخر', '+ Add another owner')} searchPlaceholder={t('ابحث بالاسم أو الدور…', 'Search name or role…')} searchAfter={0}
+                    options={assigneeOptions.filter((o) => o.value !== draft.assignedTo && !draft.extra.includes(o.value))} />
+                  {draft.extra.length > 0 && (
+                    <div className="flex flex-wrap gap-1.5">
+                      {draft.extra.map((id) => (
+                        <span key={id} className="inline-flex items-center gap-1 rounded-full bg-sky-50 border border-sky-200 px-2.5 py-1 text-[12px] font-semibold text-sky-800">
+                          {assigneeOptions.find((o) => o.value === id)?.label || id}
+                          <button type="button" onClick={() => patchDraft({ extra: draft.extra.filter((x) => x !== id) })} className="text-sky-500 hover:text-red-600" aria-label="remove"><X className="w-3 h-3" /></button>
+                        </span>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
             </label>
           </div>
           <div className="space-y-1.5">
@@ -747,7 +843,7 @@ function JpBoardInner({ scope, section }: { scope: JpScope; section?: string }) 
             </div>
           )}
         </div>
-        <div className="flex flex-wrap items-center gap-2 px-4 py-3 border-t border-slate-100 bg-slate-50/60">
+        <div className="flex flex-wrap items-center gap-2 px-4 py-3 border-t border-slate-100 bg-slate-50/60 rounded-b-xl">
           <button type="button" onClick={() => setMore((v) => !v)}
             className={`inline-flex items-center gap-1.5 rounded-lg px-3 py-2 text-[12.5px] font-semibold border transition-colors ${more ? 'bg-white border-slate-300 text-slate-800' : 'bg-white border-slate-200 text-slate-600 hover:text-slate-900'}`}>
             <ChevronDown className={`w-4 h-4 transition-transform ${more ? 'rotate-180' : ''}`} />
@@ -765,7 +861,8 @@ function JpBoardInner({ scope, section }: { scope: JpScope; section?: string }) 
             </PrimaryButton>
           </div>
         </div>
-      </div>
+        </div>
+      </Modal>
 
       {/* Project page */}
       {current && (
@@ -857,44 +954,138 @@ function JpBoardInner({ scope, section }: { scope: JpScope; section?: string }) 
         </div>
       )}
 
-      {/* Filters */}
+      {/* Which list, then where things stand: the counters are the filter. */}
       <div className="flex flex-wrap items-center gap-2">
-        {!current && boxes.map((b) => (
-          <Chip key={b.key} on={box === b.key} onClick={() => setBox(b.key)}>
-            {b.label}{b.n ? <span className="ms-1.5 tabular-nums opacity-80">{b.n}</span> : null}
-          </Chip>
-        ))}
-        {!current && <span className="w-px h-5 bg-slate-200 mx-1" />}
-        <Chip on={status === 'open'} onClick={() => setStatus('open')}>{t('القائمة', 'Open')}</Chip>
-        <Chip on={status === 'overdue'} onClick={() => setStatus('overdue')}>{t('المتأخّرة', 'Late')}</Chip>
-        <Chip on={status === 'done'} onClick={() => setStatus('done')}>{t('التي تمّت', 'Done')}</Chip>
-        <Chip on={status === ''} onClick={() => setStatus('')}>{t('الكلّ', 'All')}</Chip>
-        {me.canManage && (box === 'all' || !!current) && (
-          <div className="ms-auto w-56">
+        {!current && (
+          <div className="inline-flex rounded-xl border border-slate-200 bg-white p-1 shadow-sm">
+            {[...boxes, ...(me.canManage ? [{ key: 'archive' as Box, label: t('الأرشيف', 'Archive'), n: counts.archived }] : [])].map((b) => (
+              <button key={b.key} type="button" onClick={() => setBox(b.key)}
+                className={`inline-flex items-center gap-1.5 rounded-lg px-3.5 py-1.5 text-[13px] font-bold ${box === b.key ? 'bg-slate-900 text-white' : 'text-slate-600 hover:bg-slate-100'}`}>
+                {b.key === 'archive' && <Archive className="w-3.5 h-3.5" />}{b.label}
+                {b.n ? <span className={`rounded-full px-1.5 text-[11px] tabular-nums ${box === b.key ? 'bg-white/20' : 'bg-slate-100 text-slate-600'}`}>{b.n}</span> : null}
+              </button>
+            ))}
+          </div>
+        )}
+        {me.canManage && (box === 'all' || box === 'archive' || !!current) && (
+          <div className="ms-auto w-60">
             <SearchableSelect value={assignee} onChange={setAssignee} searchAfter={0}
               searchPlaceholder={t('ابحث بالاسم…', 'Search name…')}
               options={[{ value: '', label: management ? t('كلُّ المديرين', 'All managers') : t('كلُّ الموظّفين', 'Everyone') }, ...assigneeOptions]} />
           </div>
         )}
       </div>
+      {box !== 'archive' && (
+        <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+          {([
+            ['open', t('قائمة', 'Open'), counts.open, 'text-sky-700', CircleDashed],
+            ['overdue', t('متأخّرة', 'Late'), counts.overdue, 'text-red-600', AlertTriangle],
+            ['done', t('تمّت', 'Done'), counts.done, 'text-emerald-700', CheckCircle2],
+            ['', t('الكلّ', 'All'), counts.all, 'text-slate-900', ListChecks],
+          ] as const).map(([key, label, n, tone, Icon]) => (
+            <button key={key || 'all'} type="button" onClick={() => setStatus(key as Status)}
+              className={`flex items-center gap-3 rounded-xl border bg-white px-4 py-3 text-start shadow-sm transition-colors ${status === key ? 'border-[#f37121] ring-1 ring-[#f37121]/40' : 'border-slate-200 hover:border-slate-300'}`}>
+              <Icon className={`w-5 h-5 shrink-0 ${tone}`} />
+              <span className="min-w-0">
+                <span className={`block text-xl font-extrabold tabular-nums leading-none ${tone}`}>{n}</span>
+                <span className="mt-1 block text-[12px] font-semibold text-slate-500">{label}</span>
+              </span>
+            </button>
+          ))}
+        </div>
+      )}
 
-      {/* Tasks */}
+      {/* Tasks: the team view groups them per person, each a card with its counts (as the business review department cards). */}
       {loading ? <Spinner /> : tasks.length === 0 ? (
         <div className="py-16 text-center bg-white border border-dashed border-slate-200 rounded-2xl">
           <CalendarCheck className="w-8 h-8 mx-auto text-slate-300" />
-          <p className="mt-2 text-sm text-slate-500">{status === 'open' ? t('لا مهامَّ قائمة هنا', 'Nothing open here') : t('لا شيء يطابق هذا الاختيار', 'Nothing matches')}</p>
+          <p className="mt-2 text-sm text-slate-500">{box === 'archive' ? t('الأرشيف فارغ', 'The archive is empty') : status === 'open' ? t('لا مهامَّ قائمة هنا', 'Nothing open here') : t('لا شيء يطابق هذا الاختيار', 'Nothing matches')}</p>
+          {box !== 'archive' && <button type="button" onClick={() => setComposeOpen(true)} className="mt-3 inline-flex items-center gap-1.5 text-sm font-bold text-[#f37121] hover:underline"><Plus className="w-4 h-4" />{me.canManage ? t('مهمّة جديدة', 'New task') : t('طلب جديد', 'New request')}</button>}
         </div>
-      ) : (
-        <ul className="space-y-2.5">
-          {tasks.map((task) => (
-            <TaskCard key={task._id} task={task} now={now} ar={ar} busy={busyId === task._id} meId={me.me}
-              onDone={(x) => { setDoneFor(x); setDoneNote(''); setDoneFile(null); }} onReopen={reopen}
-              onTrack={track} onPostpone={(x) => { setStep({ task: x, kind: 'postpone' }); setStepNote(''); setStepDue({ kind: 'date', date: ymd(new Date(Date.now() + 86400000)), hours: '' }); }} onAdjust={(x) => { setAdjusting(x); setAdj({ minutes: '', day: ymd(new Date()), note: '' }); }}
-              onEdit={startEdit} onDelete={remove} onAttach={attach} onRemoveFile={removeFile}
-              onHandDown={(x) => openHand({ task: x })} onComment={comment} />
+      ) : (() => {
+        const card = (task: JpTask, showAssignee = false) => (
+          <TaskCard key={task._id} task={task} now={now} ar={ar} busy={busyId === task._id} meId={me.me} showAssignee={showAssignee}
+            onDone={(x) => { setDoneFor(x); setDoneNote(''); setDoneFile(null); }} onReopen={reopen}
+            onTrack={track} onPostpone={(x) => { setStep({ task: x, kind: 'postpone' }); setStepNote(''); setStepDue({ kind: 'date', date: ymd(new Date(Date.now() + 86400000)), hours: '' }); }} onAdjust={(x) => { setAdjusting(x); setAdj({ minutes: '', day: ymd(new Date()), note: '' }); }}
+            onEdit={startEdit} onDelete={remove} onAttach={attach} onRemoveFile={removeFile}
+            onHandDown={(x) => openHand({ task: x })} onComment={comment}
+            onShare={(x) => { setSharing(x); setShareTo([]); }} onTransfer={(x) => { setMoving(x); setMoveTo(''); }}
+            onRemoveOwner={removeOwner} onArchive={archive} />
+        );
+        const grouped = me.canManage && box === 'all' && !current && !assignee;
+        if (!grouped) return <ul className="space-y-2">{tasks.map((x) => card(x, box !== 'mine'))}</ul>;
+        const groups = [...tasks.reduce((m, x) => { const k = x.assignedToName || '—'; if (!m.has(k)) m.set(k, []); m.get(k)!.push(x); return m; }, new Map<string, JpTask[]>())]
+          .sort((a, b) => b[1].filter((x) => x.state === 'overdue').length - a[1].filter((x) => x.state === 'overdue').length || b[1].length - a[1].length);
+        return (
+          <div className="grid grid-cols-1 gap-3 xl:grid-cols-2">
+            {groups.map(([name, list]) => {
+              const late = list.filter((x) => x.state === 'overdue' && x.status !== 'done').length;
+              const doing = list.filter((x) => x.status !== 'done' && x.progress === 'doing').length;
+              const todo = list.filter((x) => x.status !== 'done' && x.state !== 'overdue' && x.progress !== 'doing').length;
+              const fin = list.filter((x) => x.status === 'done').length;
+              const pct = list.length ? Math.round((fin / list.length) * 100) : 0;
+              const isFolded = folded[name] ?? false;
+              return (
+                <section key={name} className="self-start rounded-2xl border border-slate-200 bg-white shadow-sm overflow-hidden">
+                  <button type="button" onClick={() => setFolded((f) => ({ ...f, [name]: !isFolded }))}
+                    className="flex w-full items-center gap-3 border-b border-slate-100 bg-slate-50/70 px-4 py-3 text-start">
+                    <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-[#f37121]/15 text-[14px] font-extrabold text-[#f37121]">{name.trim().charAt(0) || '؟'}</span>
+                    <span className="min-w-0 flex-1">
+                      <span className="block truncate text-[14.5px] font-extrabold text-slate-900">{name}</span>
+                      <span className="mt-1 flex flex-wrap gap-1.5 text-[11px] font-bold">
+                        {late > 0 && <span className="rounded-full bg-red-600 px-2 py-0.5 text-white">{t(`${late} متأخّرة`, `${late} late`)}</span>}
+                        {doing > 0 && <span className="rounded-full bg-sky-600 px-2 py-0.5 text-white">{t(`${doing} قيد التنفيذ`, `${doing} in progress`)}</span>}
+                        {todo > 0 && <span className="rounded-full bg-slate-700 px-2 py-0.5 text-white">{t(`${todo} لم تبدأ`, `${todo} not started`)}</span>}
+                        {fin > 0 && <span className="rounded-full bg-emerald-600 px-2 py-0.5 text-white">{t(`${fin} تمّت`, `${fin} done`)}</span>}
+                      </span>
+                    </span>
+                    <span className="hidden sm:block w-24 text-end">
+                      <span className="block text-[12px] font-bold tabular-nums text-slate-700">{pct}%</span>
+                      <span className="mt-1 block h-1.5 overflow-hidden rounded-full bg-slate-200"><span className="block h-full rounded-full bg-emerald-500" style={{ width: `${pct}%` }} /></span>
+                    </span>
+                    <ChevronDown className={`w-4 h-4 shrink-0 text-slate-400 transition-transform ${isFolded ? '' : 'rotate-180'}`} />
+                  </button>
+                  {!isFolded && <ul className="space-y-2 p-3">{list.map((x) => card(x))}</ul>}
+                </section>
+              );
+            })}
+          </div>
+        );
+      })()}
+
+      {/* Also assign to: several people at once, each gets the task as it stands. */}
+      <Modal open={!!sharing} onClose={() => setSharing(null)} title={t('إسناد المهمّة لمسؤولٍ آخر أيضًا', 'Also assign to…')}
+        footer={<>
+          <button type="button" onClick={() => setSharing(null)} className="px-4 py-2 rounded-lg text-sm text-slate-600 hover:text-slate-900">{t('إلغاء', 'Cancel')}</button>
+          <PrimaryButton onClick={doShare} disabled={saving || !shareTo.length}><UserPlus className="w-4 h-4" />{t('إسناد', 'Assign')}</PrimaryButton>
+        </>}>
+        <p className="text-[14px] font-semibold text-slate-900">{sharing?.title}</p>
+        <p className="text-[12.5px] text-slate-500">{t('مهمّةٌ واحدة لعدّة أشخاص: نصُّها وموعدُها وإنجازُها وتعليقاتُها واحدةٌ عند الجميع، ولكلٍّ مؤقّتُه.', 'One task for several people: text, deadline, completion and comments are shared; each has his own timer.')}</p>
+        <SearchableSelect value="" onChange={(v) => v && setShareTo((a) => (a.includes(v) ? a : [...a, v]))} searchAfter={0}
+          placeholder={t('اختر — يمكن أكثر من شخص', 'Pick — several allowed')} searchPlaceholder={t('ابحث بالاسم أو الدور…', 'Search name or role…')}
+          options={assigneeOptions.filter((o) => o.value !== jpId(sharing?.assignedTo || '') && !(sharing?.sharedWith || []).some((x) => x.key === o.value) && !shareTo.includes(o.value))} />
+        <div className="flex flex-wrap gap-1.5">
+          {shareTo.map((id) => (
+            <span key={id} className="inline-flex items-center gap-1 rounded-full bg-sky-50 border border-sky-200 px-2.5 py-1 text-[12px] font-semibold text-sky-800">
+              {assigneeOptions.find((o) => o.value === id)?.label || id}
+              <button type="button" onClick={() => setShareTo((a) => a.filter((x) => x !== id))} className="text-sky-500 hover:text-red-600" aria-label="remove"><X className="w-3 h-3" /></button>
+            </span>
           ))}
-        </ul>
-      )}
+        </div>
+      </Modal>
+
+      {/* Move to: the task leaves this person for another; if he already shares it, the two become one. */}
+      <Modal open={!!moving} onClose={() => setMoving(null)} title={t('نقل المهمّة لمسؤولٍ آخر', 'Move task to…')}
+        footer={<>
+          <button type="button" onClick={() => setMoving(null)} className="px-4 py-2 rounded-lg text-sm text-slate-600 hover:text-slate-900">{t('إلغاء', 'Cancel')}</button>
+          <PrimaryButton onClick={doMove} disabled={saving || !moveTo}><ArrowLeftRight className="w-4 h-4" />{t('نقل', 'Move')}</PrimaryButton>
+        </>}>
+        <p className="text-[14px] font-semibold text-slate-900">{moving?.title}</p>
+        <p className="text-[12.5px] text-slate-500">{t(`من ${moving?.assignedToName || ''} إلى:`, `From ${moving?.assignedToName || ''} to:`)}</p>
+        <SearchableSelect value={moveTo} onChange={setMoveTo} searchAfter={0}
+          placeholder={t('اختر المسؤول الجديد', 'Pick the new owner')} searchPlaceholder={t('ابحث بالاسم أو الدور…', 'Search name or role…')}
+          options={assigneeOptions.filter((o) => o.value !== jpId(moving?.assignedTo || ''))} />
+      </Modal>
 
       {/* Other steps, each with its note: start, pause, reopen (optional), postpone (reason and new deadline required). */}
       <Modal open={!!step} onClose={() => setStep(null)}

@@ -42,6 +42,7 @@ const _filterFields = [
   ('loadType', 'نوع الحمولة', 'Load type'), ('loadDate', 'تاريخ التحميل', 'Load date'), ('trailerType', 'نوع السيارة', 'Truck type'),
   ('driverExpensePaid', 'صُرف المصروف', 'Expense paid'), ('fridayBonus', 'بدل الجمعة', 'Friday bonus'),
   ('blNumber', 'رقم البوليصة', 'B/L No.'), ('containerNumber', 'رقم الحاوية', 'Container No.'),
+  ('costCenter', 'مركز التكلفة', 'Cost centre'),
 ];
 /// Optional fields on a load card; each person hides what they do not need (saved on the account).
 const _cardFields = [
@@ -51,6 +52,7 @@ const _cardFields = [
   ('supervisorName', 'المشرف', 'Supervisor'), ('loadDate', 'تاريخ التحميل', 'Load date'), ('expectedArrival', 'الوصول المتوقع', 'Expected arrival'),
   ('trailerType', 'نوع السيارة', 'Truck type'), ('lastContactAt', 'آخر تواصل', 'Last contact'), ('notes', 'ملاحظات', 'Notes'),
   ('blNumber', 'رقم البوليصة', 'B/L No.'), ('containerNumber', 'رقم الحاوية', 'Container No.'),
+  ('costCenter', 'مركز التكلفة', 'Cost centre'),
 ];
 const _payAr = {'deferred_cash': 'آجل - كاش', 'deferred_invoice': 'آجل - فاتورة', 'cash_3pl': 'نقدي - 3PL', 'cash_ht': 'نقدي - HT'};
 const _payEn = {'deferred_cash': 'Deferred – cash', 'deferred_invoice': 'Deferred – invoice', 'cash_3pl': 'Cash – 3PL', 'cash_ht': 'Cash – HT'};
@@ -470,6 +472,8 @@ class _FleetShipmentsScreenState extends State<FleetShipmentsScreen> {
                                             Chip2('${tr('البوليصة', 'B/L')} ${s['blNumber']}', T.navy, icon: Icons.description_outlined),
                                           if (_on('containerNumber') && (s['containerNumber'] ?? '').toString().isNotEmpty)
                                             Chip2('${tr('الحاوية', 'Container')} ${s['containerNumber']}', T.navy, icon: Icons.inventory_2_outlined),
+                                          if (_on('costCenter') && (s['costCenter'] ?? '').toString().isNotEmpty)
+                                            Chip2('${tr('مركز التكلفة', 'Cost centre')}: ${s['costCenter']}', T.inkSoft, icon: Icons.account_tree_outlined),
                                           if (_on('notes') && (s['notes'] ?? '').toString().isNotEmpty)
                                             Chip2(s['notes'].toString(), T.inkFaint, icon: Icons.notes_outlined),
                                           if ((s['driverPhone'] ?? '').toString().isNotEmpty)

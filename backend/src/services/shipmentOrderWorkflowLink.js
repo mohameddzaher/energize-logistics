@@ -45,6 +45,7 @@ function rowOfFleet(f) {
     carOwner: FLEET_OWNER,
     ownerName: FLEET_OWNER,
     ...vendorColumns(FLEET_OWNER, 'company'),
+    costCenter: str(f.costCenter),
     carNumber: str(f.vehiclePlate),
     plateNumber: str(f.vehiclePlate),
     carName: str(f.vehiclePlate),

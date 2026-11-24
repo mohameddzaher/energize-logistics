@@ -364,6 +364,8 @@ class _FleetShipmentDetailsScreenState extends State<FleetShipmentDetailsScreen>
                                 Chip2(tr('عميل فروع', 'Branch'), T.info, icon: Icons.store_outlined),
                               if (_lkLabel('fleet_load_type', (s['loadType'] ?? '').toString()).isNotEmpty)
                                 Chip2(_lkLabel('fleet_load_type', (s['loadType'] ?? '').toString()), T.inkSoft, icon: Icons.category_outlined),
+                              if ((s['costCenter'] ?? '').toString().isNotEmpty)
+                                Chip2('${tr('مركز التكلفة', 'Cost centre')}: ${s['costCenter']}', T.inkSoft, icon: Icons.account_tree_outlined),
                               if ((s['blNumber'] ?? '').toString().isNotEmpty)
                                 Chip2('${tr('البوليصة', 'B/L')} ${s['blNumber']}', T.navy, icon: Icons.description_outlined),
                               if ((s['containerNumber'] ?? '').toString().isNotEmpty)

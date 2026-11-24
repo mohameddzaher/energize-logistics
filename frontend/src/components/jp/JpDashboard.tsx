@@ -17,6 +17,7 @@ import JpDaily from '@/components/jp/JpDaily';
 import ExportMenu from '@/components/ls2/ExportMenu';
 import {
   BarChart3, Clock, FolderKanban, Users, UserX, ListChecks, X, Paperclip, MessageSquare, Tags, Link2, ChevronDown, CalendarClock,
+  AlertTriangle, CheckCircle2, CircleDashed, Hourglass, SlidersHorizontal, Timer,
 } from 'lucide-react';
 
 interface Row {
@@ -37,7 +38,27 @@ const EVENT_WORDS: Record<string, { ar: string; en: string; cls: string }> = {
   done: { ar: 'تمّ الإنجاز', en: 'Done', cls: 'bg-emerald-600' },
   reopened: { ar: 'أُعيد فتحها', en: 'Reopened', cls: 'bg-violet-500' },
   reassigned: { ar: 'نُقلت إلى آخر', en: 'Reassigned', cls: 'bg-indigo-500' },
+  shared: { ar: 'أُضيف مسؤول', en: 'Owner added', cls: 'bg-sky-600' },
 };
+
+/** A percentage as a ring: the two rates read at a glance instead of as a dash in a table cell. */
+function Ring({ value, label, hint, color }: { value: number | null; label: string; hint?: string; color: string }) {
+  const v = value == null ? 0 : Math.max(0, Math.min(100, value));
+  const r = 30; const c = 2 * Math.PI * r;
+  return (
+    <div className="flex items-center gap-3">
+      <svg width="76" height="76" viewBox="0 0 76 76" className="shrink-0 -rotate-90">
+        <circle cx="38" cy="38" r={r} fill="none" stroke="#e2e8f0" strokeWidth="8" />
+        <circle cx="38" cy="38" r={r} fill="none" stroke={color} strokeWidth="8" strokeLinecap="round" strokeDasharray={`${(v / 100) * c} ${c}`} />
+      </svg>
+      <div className="min-w-0">
+        <p className="text-[24px] font-extrabold leading-none tabular-nums text-slate-900">{value == null ? '0%' : `${value}%`}</p>
+        <p className="mt-1 text-[12.5px] font-bold text-slate-600">{label}</p>
+        {hint && <p className="text-[11.5px] text-slate-400">{hint}</p>}
+      </div>
+    </div>
+  );
+}
 interface Member {
   _id: string; name: string; roleAr: string; roleEn: string; former?: boolean;
   assigned: number; open: number; done: number; overdue: number; onTime: number; late: number; requestsMade: number;
@@ -119,6 +140,7 @@ export default function JpDashboard({ scope, section }: { scope: JpScope; sectio
   const [link, setLink] = useState('');
   const [status, setStatus] = useState<StatusKey>('');
   const [search, setSearch] = useState('');
+  const [moreFilters, setMoreFilters] = useState(false);
   // Task rows open into their full story; the list grows by 200 on request.
   const [openRow, setOpenRow] = useState('');
   const [limit, setLimit] = useState(200);
@@ -183,140 +205,157 @@ export default function JpDashboard({ scope, section }: { scope: JpScope; sectio
         </span>
       </PageHeader>
 
-      {/* 1. Filters: one bar, including the section's own task types and linked records. */}
-      <div className="bg-white border border-slate-200 rounded-2xl px-4 py-3 shadow-sm flex flex-wrap items-center gap-2">
-        <DateRangeFilter from={from} to={to} onFrom={setFrom} onTo={setTo} ar={ar} />
-        <select value={assignee} onChange={(e) => setAssignee(e.target.value)} className={selectCls} aria-label={person}>
-          <option value="">{management ? t('كلُّ المديرين', 'All managers') : t('كلُّ الموظّفين', 'All employees')}</option>
-          {data.team.map((m) => <option key={m._id} value={m._id}>{m.name}</option>)}
-        </select>
-        {!!(data.titleOptions || []).length && (
-          <select value={title} onChange={(e) => setTitle(e.target.value)} className={selectCls} aria-label={t('نوع المهمّة', 'Task type')}>
-            <option value="">{t('كلُّ أنواع المهامّ', 'All task types')}</option>
-            {data.titleOptions!.map((x) => <option key={x} value={x}>{x}</option>)}
+      {/* 1. Filters: the three asked daily in front, the rest behind «more filters». */}
+      <div className="bg-white border border-slate-200 rounded-2xl px-4 py-3 shadow-sm space-y-2">
+        <div className="flex flex-wrap items-center gap-2">
+          <DateRangeFilter from={from} to={to} onFrom={setFrom} onTo={setTo} ar={ar} />
+          <select value={assignee} onChange={(e) => setAssignee(e.target.value)} className={selectCls} aria-label={person}>
+            <option value="">{management ? t('كلُّ المديرين', 'All managers') : t('كلُّ الموظّفين', 'All employees')}</option>
+            {data.team.map((m) => <option key={m._id} value={m._id}>{m.name}</option>)}
           </select>
-        )}
-        {!!(data.linkOptions || []).length && (
-          <select value={link} onChange={(e) => setLink(e.target.value)} className={selectCls} aria-label={t('مرتبطة بـ', 'Linked to')}>
-            <option value="">{t('مرتبطة بأيّ شيء', 'Linked to anything')}</option>
-            {data.linkOptions!.map((x) => <option key={x.kind} value={x.kind}>{t(`مرتبطة بـ ${x.ar}`, `Linked to ${x.en}`)} ({x.count})</option>)}
-            <option value="none">{t('بلا ارتباط', 'Not linked')}</option>
-          </select>
-        )}
-        {data.projectOptions.length > 0 && (
-          <select value={project} onChange={(e) => setProject(e.target.value)} className={selectCls} aria-label={t('المشروع', 'Project')}>
-            <option value="">{t('كلُّ المشروعات', 'All projects')}</option>
-            {data.projectOptions.map((p) => <option key={p._id} value={p._id}>{p.name}</option>)}
-            <option value="none">{t('بلا مشروع', 'No project')}</option>
-          </select>
-        )}
-        <select value={kind} onChange={(e) => setKind(e.target.value)} className={selectCls} aria-label={t('النوع', 'Kind')}>
-          <option value="">{t('مهامّ وطلبات', 'Tasks and requests')}</option>
-          <option value="task">{t('مهامّ فقط', 'Tasks only')}</option>
-          <option value="request">{t('طلبات فقط', 'Requests only')}</option>
-        </select>
-        <select value={action} onChange={(e) => setAction(e.target.value)} className={selectCls} aria-label={t('طريقة التواصل', 'Contact method')}>
-          <option value="">{t('كلُّ طرق التواصل', 'Any contact method')}</option>
-          {(Object.keys(ACTION_WORDS) as (keyof typeof ACTION_WORDS)[]).map((k) => <option key={k} value={k}>{ar ? ACTION_WORDS[k].ar : ACTION_WORDS[k].en}</option>)}
-          <option value="none">{t('بلا تواصل', 'No contact')}</option>
-        </select>
-        {(active > 0 || status || search) && (
-          <button type="button" onClick={clear} className="inline-flex items-center gap-1 px-2 py-2 text-[13px] font-semibold text-slate-500 hover:text-red-600">
-            <X className="w-4 h-4" />{t('مسح الفلاتر', 'Clear')}
+          {!!(data.titleOptions || []).length && (
+            <select value={title} onChange={(e) => setTitle(e.target.value)} className={selectCls} aria-label={t('نوع المهمّة', 'Task type')}>
+              <option value="">{t('كلُّ أنواع المهامّ', 'All task types')}</option>
+              {data.titleOptions!.map((x) => <option key={x} value={x}>{x}</option>)}
+            </select>
+          )}
+          <button type="button" onClick={() => setMoreFilters((v) => !v)}
+            className={`inline-flex h-9 items-center gap-1.5 rounded-lg border px-3 text-[13px] font-semibold ${moreFilters || [project, kind, action, link].some(Boolean) ? 'border-[#f37121] text-[#f37121]' : 'border-slate-200 text-slate-600 hover:text-slate-900'}`}>
+            <SlidersHorizontal className="w-4 h-4" />{t('فلاتر أخرى', 'More filters')}
+            {[project, kind, action, link].filter(Boolean).length > 0 && <span className="rounded-full bg-[#f37121] px-1.5 text-[11px] text-white">{[project, kind, action, link].filter(Boolean).length}</span>}
           </button>
+          {(active > 0 || status || search) && (
+            <button type="button" onClick={clear} className="inline-flex items-center gap-1 px-2 py-2 text-[13px] font-semibold text-slate-500 hover:text-red-600">
+              <X className="w-4 h-4" />{t('مسح الفلاتر', 'Clear')}
+            </button>
+          )}
+        </div>
+        {moreFilters && (
+          <div className="flex flex-wrap items-center gap-2 border-t border-slate-100 pt-2">
+            {!!(data.linkOptions || []).length && (
+              <select value={link} onChange={(e) => setLink(e.target.value)} className={selectCls} aria-label={t('مرتبطة بـ', 'Linked to')}>
+                <option value="">{t('مرتبطة بأيّ شيء', 'Linked to anything')}</option>
+                {data.linkOptions!.map((x) => <option key={x.kind} value={x.kind}>{t(`مرتبطة بـ ${x.ar}`, `Linked to ${x.en}`)} ({x.count})</option>)}
+                <option value="none">{t('بلا ارتباط', 'Not linked')}</option>
+              </select>
+            )}
+            {data.projectOptions.length > 0 && (
+              <select value={project} onChange={(e) => setProject(e.target.value)} className={selectCls} aria-label={t('المشروع', 'Project')}>
+                <option value="">{t('كلُّ المشروعات', 'All projects')}</option>
+                {data.projectOptions.map((p) => <option key={p._id} value={p._id}>{p.name}</option>)}
+                <option value="none">{t('بلا مشروع', 'No project')}</option>
+              </select>
+            )}
+            <select value={kind} onChange={(e) => setKind(e.target.value)} className={selectCls} aria-label={t('النوع', 'Kind')}>
+              <option value="">{t('مهامّ وطلبات', 'Tasks and requests')}</option>
+              <option value="task">{t('مهامّ فقط', 'Tasks only')}</option>
+              <option value="request">{t('طلبات فقط', 'Requests only')}</option>
+            </select>
+            <select value={action} onChange={(e) => setAction(e.target.value)} className={selectCls} aria-label={t('طريقة التواصل', 'Contact method')}>
+              <option value="">{t('كلُّ طرق التواصل', 'Any contact method')}</option>
+              {(Object.keys(ACTION_WORDS) as (keyof typeof ACTION_WORDS)[]).map((k) => <option key={k} value={k}>{ar ? ACTION_WORDS[k].ar : ACTION_WORDS[k].en}</option>)}
+              <option value="none">{t('بلا تواصل', 'No contact')}</option>
+            </select>
+          </div>
         )}
       </div>
 
-      {/* 2. Numbers: one strip; the status cells filter the task list. */}
-      <div className="grid grid-cols-2 overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm sm:grid-cols-4 xl:grid-cols-8 divide-y divide-slate-100 sm:divide-y-0 sm:divide-x rtl:sm:divide-x-reverse">
-        <Stat label={t('الإجمالي', 'Total')} value={String(T.total)} hint={t(`${T.tasks} مهمّة · ${T.requests} طلب`, `${T.tasks} tasks · ${T.requests} requests`)} on={status === ''} onClick={() => setStatus('')} />
-        <Stat label={t('قائمة', 'Open')} value={String(T.open - T.overdue)} tone="text-sky-700" hint={t(`${T.noDeadline} بلا موعد`, `${T.noDeadline} no deadline`)} on={status === 'open'} onClick={() => pick('open')} />
-        <Stat label={t('متأخّرة', 'Late')} value={String(T.overdue)} tone={T.overdue ? 'text-red-600' : 'text-slate-900'} hint={t('فات موعدها', 'Past deadline')} on={status === 'overdue'} onClick={() => pick('overdue')} />
-        <Stat label={t('خلال 24 ساعة', 'Due in 24h')} value={String(T.dueSoon)} tone={T.dueSoon ? 'text-amber-600' : 'text-slate-900'} hint={t('موعدها قريب', 'Deadline near')} on={status === 'soon'} onClick={() => pick('soon')} />
-        <Stat label={t('تمّت', 'Done')} value={String(T.done)} tone="text-emerald-700" hint={t(`${T.onTime} في موعدها · ${T.late} بعده`, `${T.onTime} on time · ${T.late} late`)} on={status === 'done'} onClick={() => pick('done')} />
-        <Stat label={t('أُجِّلت', 'Postponed')} value={String(T.postponed || 0)} tone={T.postponed ? 'text-amber-700' : 'text-slate-900'} hint={t('بسببٍ مكتوب', 'with a reason')} on={status === 'postponed'} onClick={() => pick('postponed')} />
-        <Stat label={t('نسبة الإتمام', 'Completion')} value={pctText(T.completionRate)} />
-        <Stat label={t('في موعدها', 'On time')} value={pctText(T.onTimeRate)} hint={t('من التي لها موعد', 'of those with a deadline')} />
-        <Stat label={t('الوقت المسجّل', 'Time logged')} value={data.totals2?.minutes ? fmtMinutes(data.totals2.minutes, ar) : '—'} hint={t('بالمؤقّت', 'by timer')} />
-      </div>
-
-      {/* 3. Team */}
-      <div className="grid grid-cols-1 xl:grid-cols-3 gap-4">
-        <Panel className="xl:col-span-2" title={management ? t('المديرون', 'Managers') : t('الفريق', 'Team')} icon={<Users className="w-4 h-4" />}
-          right={<span className="text-[11px] text-slate-400">{t('اضغط اسمًا لتصفية اللوحة به', 'Click a name to filter by it')}</span>}>
-          <div className="overflow-x-auto -mx-5 -my-5">
-            <table className="w-full text-[13px]">
-              <thead>
-                <tr className="bg-slate-900 text-slate-200 text-[11.5px] [&>th]:py-2.5 [&>th]:px-3">
-                  <th className="text-start font-medium pb-2">{person}</th>
-                  <th className="text-center font-medium pb-2">{t('أُسنِد', 'Assigned')}</th>
-                  <th className="text-center font-medium pb-2">{t('قائمة', 'Open')}</th>
-                  <th className="text-center font-medium pb-2">{t('متأخّرة', 'Late')}</th>
-                  <th className="text-center font-medium pb-2">{t('تمّت', 'Done')}</th>
-                  <th className="text-start font-medium pb-2 w-40">{t('الإتمام', 'Completion')}</th>
-                  <th className="text-center font-medium pb-2">{t('في موعدها', 'On time')}</th>
-                  <th className="text-center font-medium pb-2">{t('متوسّط الإنجاز', 'Avg. time')}</th>
-                  <th className="text-center font-medium pb-2">{t('طلباتٌ كتبها', 'Requests made')}</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-100">
-                {data.members.map((m) => (
-                  <tr key={m._id} className={`hover:bg-slate-50 ${assignee === m._id ? 'bg-orange-50/50' : ''}`}>
-                    <td className="py-2.5 px-3">
-                      <button type="button" disabled={m.former} onClick={() => setAssignee(assignee === m._id ? '' : m._id)} className="text-start">
-                        <span className="block font-semibold text-slate-900 hover:text-[#f37121]">{m.name}{m.former && <span className="ms-1 text-[11px] text-slate-400">{t('(خارج الفريق)', '(left team)')}</span>}</span>
-                        <span className="block text-[11.5px] text-slate-500">{ar ? m.roleAr : m.roleEn}</span>
-                      </button>
-                    </td>
-                    <td className="text-center tabular-nums">{m.assigned}</td>
-                    <td className="text-center tabular-nums font-semibold">{m.open}</td>
-                    <td className="text-center"><span className={`inline-block min-w-[26px] px-1.5 py-0.5 rounded-full tabular-nums text-[12px] ${m.overdue ? 'bg-red-50 text-red-700 font-bold' : 'text-slate-300'}`}>{m.overdue}</span></td>
-                    <td className="text-center tabular-nums text-emerald-700">{m.done}</td>
-                    <td>
-                      <div className="flex items-center gap-2">
-                        <div className="flex-1 h-2 rounded-full bg-slate-100 overflow-hidden"><div className="h-full rounded-full bg-emerald-500" style={{ width: `${m.completionRate || 0}%` }} /></div>
-                        <span className="w-10 text-[11.5px] tabular-nums text-slate-500 text-end">{pctText(m.completionRate)}</span>
-                      </div>
-                    </td>
-                    <td className="text-center tabular-nums">{pctText(m.onTimeRate)}</td>
-                    <td className="text-center tabular-nums">{m.avgHours == null ? '—' : spanWords(m.avgHours * 3600000, ar)}</td>
-                    <td className="text-center tabular-nums">{m.requestsMade}</td>
-                  </tr>
-                ))}
-                {!data.members.length && <tr><td colSpan={9} className="py-6 text-center text-slate-400">{t('لا أحد في الفريق بعد', 'No one on the team yet')}</td></tr>}
-              </tbody>
-            </table>
+      {/* 2. Overview: the two rates as rings, the four states as large cards (each filters the list below), then the smaller figures. */}
+      <div className="grid grid-cols-1 gap-3 xl:grid-cols-[minmax(0,22rem)_minmax(0,1fr)]">
+        <div className="flex flex-col justify-center gap-4 rounded-2xl border border-slate-200 bg-white p-5 shadow-sm sm:flex-row xl:flex-col">
+          <Ring value={T.completionRate} label={t('نسبة الإتمام', 'Completion')} hint={t(`${T.done} من ${T.total}`, `${T.done} of ${T.total}`)} color="#10b981" />
+          <Ring value={T.onTimeRate} label={t('في موعدها', 'On time')} hint={t(`${T.onTime} في الموعد · ${T.late} بعده`, `${T.onTime} on time · ${T.late} late`)} color="#f37121" />
+        </div>
+        <div className="space-y-3">
+          <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+            {([
+              ['open', t('قائمة', 'Open'), T.open - T.overdue, t(`${T.noDeadline} بلا موعد`, `${T.noDeadline} no deadline`), CircleDashed, 'bg-sky-50 text-sky-700 border-sky-200'],
+              ['overdue', t('متأخّرة', 'Late'), T.overdue, t('فات موعدها', 'Past deadline'), AlertTriangle, 'bg-red-50 text-red-700 border-red-200'],
+              ['soon', t('خلال 24 ساعة', 'Due in 24h'), T.dueSoon, t('موعدها قريب', 'Deadline near'), Hourglass, 'bg-amber-50 text-amber-700 border-amber-200'],
+              ['done', t('تمّت', 'Done'), T.done, t(`${T.onTime} في موعدها`, `${T.onTime} on time`), CheckCircle2, 'bg-emerald-50 text-emerald-700 border-emerald-200'],
+            ] as const).map(([k, label, n, hint, Icon, cls]) => (
+              <button key={k} type="button" onClick={() => pick(k as StatusKey)}
+                className={`rounded-2xl border p-4 text-start shadow-sm transition-all ${cls} ${status === k ? 'ring-2 ring-offset-1 ring-[#f37121]' : 'hover:shadow-md'}`}>
+                <span className="flex items-center justify-between">
+                  <span className="text-[13px] font-bold">{label}</span>
+                  <Icon className="w-5 h-5 opacity-80" />
+                </span>
+                <span className="mt-2 block text-[32px] font-extrabold leading-none tabular-nums">{n}</span>
+                <span className="mt-1.5 block truncate text-[11.5px] opacity-80">{hint}</span>
+              </button>
+            ))}
           </div>
-        </Panel>
-
-        <div className="space-y-4">
-          <Panel title={t('بلا مهامَّ قائمة', 'Nothing open')} icon={<UserX className="w-4 h-4" />}
-            right={<span className="text-[11px] text-slate-400 tabular-nums">{data.idle.length}</span>}>
-            {data.idle.length ? (
-              <ul className="flex flex-wrap gap-1.5">
-                {data.idle.map((m) => <li key={m._id} className="px-2.5 py-1 rounded-full bg-slate-100 text-[12.5px] text-slate-700">{m.name}</li>)}
-              </ul>
-            ) : <p className="text-sm text-slate-400">{t('الكلُّ عليه عمل', 'Everyone has work')}</p>}
-          </Panel>
-          <Panel title={t('بطريقة التواصل', 'By contact method')} icon={<Clock className="w-4 h-4" />}>
-            <ul className="space-y-2.5">
-              {data.byAction.map((a) => {
-                const w = ACTION_WORDS[a.action as keyof typeof ACTION_WORDS];
-                return (
-                  <li key={a.action}>
-                    <div className="flex items-center justify-between text-[13px]">
-                      <span className="text-slate-700">{w ? (ar ? w.ar : w.en) : t('بلا تواصل', 'No contact')}</span>
-                      <span className="tabular-nums text-slate-900 font-semibold">{a.total}<span className="ms-1.5 text-[11.5px] font-normal text-emerald-700">{t(`${a.done} تمّت`, `${a.done} done`)}</span></span>
-                    </div>
-                    <div className="mt-1 h-1.5 rounded-full bg-slate-100 overflow-hidden"><div className="h-full rounded-full bg-[#f37121]/70" style={{ width: `${T.total ? (a.total / T.total) * 100 : 0}%` }} /></div>
-                  </li>
-                );
-              })}
-              {!data.byAction.length && <li className="text-sm text-slate-400">{t('لا شيء بعد', 'Nothing yet')}</li>}
-            </ul>
-          </Panel>
+          <div className="flex flex-wrap gap-2">
+            {([
+              ['', t('الإجمالي', 'Total'), String(T.total), ListChecks, t(`${T.tasks} مهمّة · ${T.requests} طلب`, `${T.tasks} tasks · ${T.requests} requests`)],
+              ['postponed', t('أُجِّلت', 'Postponed'), String(T.postponed || 0), CalendarClock, t('بسببٍ مكتوب', 'with a reason')],
+              ['', t('الوقت المسجّل', 'Time logged'), data.totals2?.minutes ? fmtMinutes(data.totals2.minutes, ar) : t('لا وقت بعد', 'none yet'), Timer, t('بالمؤقّت', 'by timer')],
+            ] as const).map(([k, label, v, Icon, hint], i) => (
+              <button key={i} type="button" onClick={() => (k ? pick(k as StatusKey) : label === t('الإجمالي', 'Total') ? setStatus('') : undefined)}
+                className={`inline-flex items-center gap-2.5 rounded-xl border bg-white px-3.5 py-2 text-start shadow-sm ${status === k && k ? 'border-[#f37121]' : 'border-slate-200'}`}>
+                <Icon className="w-4 h-4 text-[#f37121]" />
+                <span className="text-[12.5px] font-semibold text-slate-500">{label}</span>
+                <span className="text-[15px] font-extrabold tabular-nums text-slate-900">{v}</span>
+                <span className="hidden text-[11px] text-slate-400 md:inline">{hint}</span>
+              </button>
+            ))}
+          </div>
         </div>
       </div>
+
+      {/* 3. Team: one card per person; a card filters the whole board to him. */}
+      <Panel title={management ? t('المديرون', 'Managers') : t('الفريق', 'Team')} icon={<Users className="w-4 h-4" />}
+        right={<span className="text-[11px] text-slate-400">{t('اضغط بطاقةً لتصفية اللوحة بها', 'Click a card to filter by it')}</span>}>
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 2xl:grid-cols-3">
+          {data.members.map((m) => {
+            const total = Math.max(1, m.assigned);
+            const onOpen = Math.max(0, m.open - m.overdue);
+            return (
+              <button key={m._id} type="button" disabled={m.former} onClick={() => setAssignee(assignee === m._id ? '' : m._id)}
+                className={`rounded-xl border p-3.5 text-start transition-all ${assignee === m._id ? 'border-[#f37121] bg-orange-50/40 ring-1 ring-[#f37121]/40' : 'border-slate-200 hover:border-slate-300 hover:shadow-sm'} ${m.former ? 'opacity-60' : ''}`}>
+                <span className="flex items-center gap-3">
+                  <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-slate-900 text-[15px] font-extrabold text-white">{m.name.trim().charAt(0)}</span>
+                  <span className="min-w-0 flex-1">
+                    <span className="block truncate text-[14px] font-extrabold text-slate-900">{m.name}{m.former && <span className="ms-1 text-[11px] font-normal text-slate-400">{t('(خارج الفريق)', '(left team)')}</span>}</span>
+                    <span className="block truncate text-[11.5px] text-slate-500">{ar ? m.roleAr : m.roleEn}</span>
+                  </span>
+                  <span className="text-end">
+                    <span className="block text-[18px] font-extrabold tabular-nums text-slate-900">{m.completionRate == null ? '0%' : `${m.completionRate}%`}</span>
+                    <span className="block text-[10.5px] text-slate-400">{t('إتمام', 'done')}</span>
+                  </span>
+                </span>
+                <span className="mt-3 flex h-2 overflow-hidden rounded-full bg-slate-100">
+                  <span className="bg-emerald-500" style={{ width: `${(m.done / total) * 100}%` }} />
+                  <span className="bg-sky-500" style={{ width: `${(onOpen / total) * 100}%` }} />
+                  <span className="bg-red-500" style={{ width: `${(m.overdue / total) * 100}%` }} />
+                </span>
+                <span className="mt-2.5 grid grid-cols-4 gap-1 text-center">
+                  {([
+                    [t('أُسنِد', 'Assigned'), m.assigned, 'text-slate-900'],
+                    [t('قائمة', 'Open'), onOpen, 'text-sky-700'],
+                    [t('متأخّرة', 'Late'), m.overdue, m.overdue ? 'text-red-600' : 'text-slate-400'],
+                    [t('تمّت', 'Done'), m.done, 'text-emerald-700'],
+                  ] as const).map(([l, v, c]) => (
+                    <span key={l}><span className={`block text-[15px] font-extrabold tabular-nums ${c}`}>{v}</span><span className="block text-[10.5px] text-slate-500">{l}</span></span>
+                  ))}
+                </span>
+                <span className="mt-2 flex flex-wrap gap-x-3 gap-y-0.5 border-t border-slate-100 pt-2 text-[11.5px] text-slate-500">
+                  <span>{t('في موعدها', 'On time')}: <b className="text-slate-800">{m.onTimeRate == null ? t('لا مواعيد', 'no deadlines') : `${m.onTimeRate}%`}</b></span>
+                  {m.avgHours != null && <span>{t('متوسّط الإنجاز', 'Avg.')}: <b className="text-slate-800">{spanWords(m.avgHours * 3600000, ar)}</b></span>}
+                  {m.requestsMade > 0 && <span>{t('طلباتٌ كتبها', 'Requests')}: <b className="text-slate-800">{m.requestsMade}</b></span>}
+                </span>
+              </button>
+            );
+          })}
+          {!data.members.length && <p className="py-6 text-center text-sm text-slate-400">{t('لا أحد في الفريق بعد', 'No one on the team yet')}</p>}
+        </div>
+        {data.idle.length > 0 && (
+          <div className="mt-4 flex flex-wrap items-center gap-1.5 border-t border-slate-100 pt-3">
+            <span className="me-1 inline-flex items-center gap-1 text-[12px] font-bold text-slate-500"><UserX className="w-3.5 h-3.5" />{t('بلا مهامَّ قائمة', 'Nothing open')}:</span>
+            {data.idle.map((m) => <span key={m._id} className="rounded-full bg-slate-100 px-2.5 py-1 text-[12px] text-slate-700">{m.name}</span>)}
+          </div>
+        )}
+      </Panel>
 
       {/* 4. By task type: the section's own work, how much of each and how long it took. */}
       <Panel title={t('حسب نوع المهمّة', 'By task type')} icon={<Tags className="w-4 h-4" />}
@@ -366,6 +405,24 @@ export default function JpDashboard({ scope, section }: { scope: JpScope; sectio
 
       {/* 6. Projects and daily trend */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+        {data.byAction.some((a) => a.action) && (
+          <Panel title={t('بطريقة التواصل', 'By contact method')} icon={<Clock className="w-4 h-4" />}>
+            <ul className="space-y-2.5">
+              {data.byAction.map((a) => {
+                const w = ACTION_WORDS[a.action as keyof typeof ACTION_WORDS];
+                return (
+                  <li key={a.action}>
+                    <div className="flex items-center justify-between text-[13px]">
+                      <span className="text-slate-700">{w ? (ar ? w.ar : w.en) : t('بلا تواصل', 'No contact')}</span>
+                      <span className="tabular-nums text-slate-900 font-semibold">{a.total}<span className="ms-1.5 text-[11.5px] font-normal text-emerald-700">{t(`${a.done} تمّت`, `${a.done} done`)}</span></span>
+                    </div>
+                    <div className="mt-1 h-1.5 rounded-full bg-slate-100 overflow-hidden"><div className="h-full rounded-full bg-[#f37121]/70" style={{ width: `${T.total ? (a.total / T.total) * 100 : 0}%` }} /></div>
+                  </li>
+                );
+              })}
+            </ul>
+          </Panel>
+        )}
         <Panel title={t('المشروعات', 'Projects')} icon={<FolderKanban className="w-4 h-4" />}>
           {data.projects.length ? (
             <ul className="space-y-3">
@@ -392,12 +449,12 @@ export default function JpDashboard({ scope, section }: { scope: JpScope; sectio
 
         <Panel title={t('آخر 14 يومًا', 'Last 14 days')} icon={<BarChart3 className="w-4 h-4" />}
           right={<span className="text-[11px] text-slate-400"><span className="inline-block w-2 h-2 rounded-sm bg-slate-300 me-1" />{t('أُسنِدت', 'assigned')}<span className="inline-block w-2 h-2 rounded-sm bg-emerald-500 ms-3 me-1" />{t('تمّت', 'done')}</span>}>
-          <div className="flex items-end gap-1.5 h-40">
+          <div className="flex items-end gap-1.5 h-48 border-b border-slate-200 pb-1">
             {data.daily.map((d) => (
               <div key={d.day} className="flex-1 flex flex-col items-center gap-1" title={`${d.day} — ${t('أُسنِدت', 'assigned')} ${d.created} · ${t('تمّت', 'done')} ${d.done}`}>
-                <div className="w-full flex items-end justify-center gap-0.5 h-32">
-                  <div className="w-1/2 rounded-t bg-slate-300" style={{ height: `${(d.created / dayMax) * 100}%` }} />
-                  <div className="w-1/2 rounded-t bg-emerald-500" style={{ height: `${(d.done / dayMax) * 100}%` }} />
+                <div className="w-full flex items-end justify-center gap-0.5 h-40">
+                  <div className="w-1/2 rounded-t-md bg-slate-300" style={{ height: `${Math.max(d.created ? 4 : 0, (d.created / dayMax) * 100)}%` }} />
+                  <div className="w-1/2 rounded-t-md bg-emerald-500" style={{ height: `${Math.max(d.done ? 4 : 0, (d.done / dayMax) * 100)}%` }} />
                 </div>
                 <span className="text-[10px] text-slate-400 tabular-nums">{d.day.slice(8)}</span>
               </div>

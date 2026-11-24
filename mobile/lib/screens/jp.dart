@@ -129,6 +129,15 @@ String _ymd(DateTime d) => '${d.year}-${_two(d.month)}-${_two(d.day)}';
   return (tr('تُسلَّم قبل $when — بقي ${_span(left)}', 'Due by $when — ${_span(left)} left'), left.inHours < 2 ? T.warn : T.inkSoft);
 }
 
+/// Where a task stands, as one word and colour.
+(String, String, Color) jpStage(Map<String, dynamic> t) {
+  if (t['status'] == 'done') return ('تمّت', 'Done', T.success);
+  if (t['state'] == 'overdue') return ('متأخّرة', 'Late', T.danger);
+  if (t['progress'] == 'doing') return ('قيد التنفيذ', 'In progress', T.info);
+  if (t['progress'] == 'paused') return ('متوقّفة', 'Paused', T.warn);
+  return ('لم تبدأ', 'Not started', T.inkSoft);
+}
+
 String _qs(String scope, String? section) => 'scope=$scope${scope == 'section' ? '&section=$section' : ''}';
 String _id(dynamic v) => v is Map ? (v['_id'] ?? '').toString() : (v ?? '').toString();
 
@@ -167,6 +176,8 @@ class _JpScreenState extends State<JpScreen> {
   bool _loading = true;
   String? _error;
   Timer? _tick;
+  // Cards collapsed by default; these hold which are open, whose history shows, and which person groups are folded.
+  final Set<String> _openIds = {}, _historyIds = {}, _folded = {};
   late final void Function() _onLive;
 
   String get _q => _qs(widget.scope, widget.section);
@@ -204,7 +215,8 @@ class _JpScreenState extends State<JpScreen> {
   Future<void> _load() async {
     if (_me == null) return;
     try {
-      final f = '&box=$_box${_status.isEmpty ? '' : '&status=$_status'}${_project.isEmpty ? '' : '&project=$_project'}';
+      // The archive lists everything archived whatever its state, so no status filter there.
+      final f = '&box=$_box${_status.isEmpty || _box == 'archive' ? '' : '&status=$_status'}${_project.isEmpty ? '' : '&project=$_project'}';
       final res = await Future.wait([Api.instance.get('/api/jp/tasks?$_q$f'), Api.instance.get('/api/jp/projects?$_q')]);
       if (!mounted) return;
       setState(() {
@@ -337,15 +349,114 @@ class _JpScreenState extends State<JpScreen> {
   }
 
   Future<void> _delete(Map<String, dynamic> t) async {
+    final shared = List.from(t['sharedWith'] ?? const []).isNotEmpty;
     final ok = await showDialog<bool>(context: context, builder: (c) => AlertDialog(
       title: Text(tr('تأكيد الحذف', 'Confirm delete')),
-      content: Text((t['title'] ?? '').toString()),
+      content: Text(shared
+          ? tr('حذفُ «${t['title']}» عند كلّ المشتركين فيها؟', 'Delete “${t['title']}” for everyone sharing it?')
+          : tr('حذفُ «${t['title']}»؟', 'Delete “${t['title']}”?')),
       actions: [
         TextButton(onPressed: () => Navigator.pop(c, false), child: Text(tr('إلغاء', 'Cancel'))),
         FilledButton(style: FilledButton.styleFrom(backgroundColor: T.danger), onPressed: () => Navigator.pop(c, true), child: Text(tr('حذف', 'Delete'))),
       ],
     ));
     if (ok == true) await _run(() => Api.instance.delete('/api/jp/tasks/${t['_id']}'));
+  }
+
+  List<Map<String, dynamic>> get _people => List<Map<String, dynamic>>.from(_me?['team'] ?? const []);
+
+  /// Adds owners to the task: one shared task, a row per owner kept equal by the server.
+  Future<void> _share(Map<String, dynamic> t) async {
+    final taken = <String>{_id(t['assignedTo']), for (final x in List.from(t['sharedWith'] ?? const [])) '${(x as Map)['key'] ?? x['_id']}'};
+    final picked = <String>[];
+    String nameOf(String id) => '${_people.firstWhere((m) => '${m['_id']}' == id, orElse: () => {'name': id})['name']}';
+    final ok = await showModalBottomSheet<bool>(
+      context: context, isScrollControlled: true, backgroundColor: Colors.white,
+      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(22))),
+      builder: (c) => StatefulBuilder(builder: (c, set) => Padding(
+        padding: EdgeInsets.fromLTRB(18, 18, 18, MediaQuery.of(c).viewInsets.bottom + 18),
+        child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+          Text(tr('إسناد المهمّة لمسؤولٍ آخر أيضًا', 'Also assign to…'), style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 16)),
+          const SizedBox(height: 4),
+          Text((t['title'] ?? '').toString(), style: const TextStyle(color: T.inkSoft)),
+          const SizedBox(height: 6),
+          Text(tr('مهمّةٌ واحدة لعدّة أشخاص: نصُّها وموعدُها وإنجازُها وتعليقاتُها واحدةٌ عند الجميع، ولكلٍّ مؤقّتُه.', 'One task for several people: text, deadline, completion and comments are shared; each has his own timer.'),
+              style: const TextStyle(fontSize: 12, color: T.inkFaint)),
+          const SizedBox(height: 10),
+          Wrap(spacing: 6, runSpacing: 6, children: [
+            for (final id in picked) InputChip(label: Text(nameOf(id), style: const TextStyle(fontSize: 12)), onDeleted: () => set(() => picked.remove(id))),
+            ActionChip(
+              avatar: const Icon(Icons.person_add_alt, size: 16),
+              label: Text(tr('اختر — يمكن أكثر من شخص', 'Pick — several allowed'), style: const TextStyle(fontSize: 12)),
+              onPressed: () async {
+                final id = await jpPickPerson(c, _people.where((m) => !taken.contains('${m['_id']}') && !picked.contains('${m['_id']}')).toList());
+                if (id != null && id.isNotEmpty) set(() => picked.add(id));
+              },
+            ),
+          ]),
+          const SizedBox(height: 12),
+          FilledButton.icon(
+            style: FilledButton.styleFrom(backgroundColor: T.navy),
+            onPressed: picked.isEmpty ? null : () => Navigator.pop(c, true),
+            icon: const Icon(Icons.group_add_outlined), label: Text(tr('إسناد', 'Assign')),
+          ),
+        ]),
+      )),
+    );
+    if (ok != true || picked.isEmpty) return;
+    try {
+      await Api.instance.post('/api/jp/tasks/${t['_id']}/share', {'assignees': picked});
+      _say(picked.length > 1 ? tr('أُسندت إلى ${picked.length} أشخاص أيضًا', 'Also assigned to ${picked.length}') : tr('أُسندت إليه أيضًا', 'Also assigned'));
+      await _load();
+    } catch (e) { _say(e); }
+  }
+
+  /// Moves the task to another person; if he already shares it the server merges the two rows.
+  Future<void> _transfer(Map<String, dynamic> t) async {
+    final cur = _id(t['assignedTo']);
+    final to = await jpPickPerson(context, _people.where((m) => '${m['_id']}' != cur).toList(),
+        title: tr('نقل «${t['title']}» من ${t['assignedToName'] ?? ''} إلى:', 'Move “${t['title']}” from ${t['assignedToName'] ?? ''} to:'));
+    if (to == null || to.isEmpty) return;
+    try {
+      final r = await Api.instance.patch('/api/jp/tasks/${t['_id']}', {'assignedTo': to});
+      _say(r is Map && r['merged'] == true
+          ? tr('نُقلت؛ وكانت مشتركةً معه فأصبحت مهمّةً واحدةً عنده', 'Moved; he already shared it, so it is one task now')
+          : tr('نُقلت إلى المسؤول الجديد', 'Moved'));
+      await _load();
+    } catch (e) { _say(e); }
+  }
+
+  /// Removes only this owner's row; the other owners keep the task.
+  Future<void> _removeOwner(Map<String, dynamic> t) async {
+    final ok = await showDialog<bool>(context: context, builder: (c) => AlertDialog(
+      title: Text(tr('إزالة هذا المسؤول', 'Remove this owner')),
+      content: Text(tr('يُزال ${t['assignedToName'] ?? ''} من «${t['title']}» ويبقى عند باقي المشتركين.', '${t['assignedToName'] ?? ''} is removed; the others keep it.')),
+      actions: [
+        TextButton(onPressed: () => Navigator.pop(c, false), child: Text(tr('إلغاء', 'Cancel'))),
+        FilledButton(style: FilledButton.styleFrom(backgroundColor: T.danger), onPressed: () => Navigator.pop(c, true), child: Text(tr('إزالة', 'Remove'))),
+      ],
+    ));
+    if (ok == true) await _run(() => Api.instance.delete('/api/jp/tasks/${t['_id']}?only=1'));
+  }
+
+  /// Archive (with confirmation) or restore; applies to the whole shared group.
+  Future<void> _archive(Map<String, dynamic> t, {bool back = false}) async {
+    if (!back) {
+      final ok = await showDialog<bool>(context: context, builder: (c) => AlertDialog(
+        title: Text(tr('إرسال المهمّة إلى الأرشيف', 'Send to archive')),
+        content: Text(tr('تخرج «${t['title']}» من الخطّة عند كلّ المشتركين فيها، ويمكن إعادتها من «الأرشيف».', 'It leaves the plan for everyone sharing it; it can be restored from the archive.')),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(c, false), child: Text(tr('إلغاء', 'Cancel'))),
+          FilledButton(onPressed: () => Navigator.pop(c, true), child: Text(tr('إرسال للأرشيف', 'Send to archive'))),
+        ],
+      ));
+      if (ok != true) return;
+    }
+    try {
+      await Api.instance.post('/api/jp/tasks/${t['_id']}/${back ? 'unarchive' : 'archive'}', {});
+      _say(back ? tr('أُعيدت من الأرشيف', 'Restored') : tr('أُرسلت إلى الأرشيف', 'Sent to archive'));
+      await _load();
+    } catch (e) { _say(e); }
   }
 
   /// The section manager hands what he was assigned down to an employee under him; the employee sees it as from his manager.
@@ -497,13 +608,23 @@ class _JpScreenState extends State<JpScreen> {
                 _chip(tr('المُسنَدة إليّ', 'To me'), _box == 'mine', () => _set(() => _box = 'mine'), n: (_counts['mine'] as num?)?.toInt()),
                 _chip(tr('ما أسندتُه', 'By me'), _box == 'sent', () => _set(() => _box = 'sent'), n: (_counts['sent'] as num?)?.toInt()),
                 if (_canManage) _chip(_management ? tr('كلُّ المديرين', 'All managers') : tr('كلُّ الفريق', 'Whole team'), _box == 'all', () => _set(() => _box = 'all')),
+                if (_canManage) _chip(tr('الأرشيف', 'Archive'), _box == 'archive', () => _set(() => _box = 'archive'), color: T.inkSoft, n: (_counts['archived'] as num?)?.toInt()),
               ])),
-              SizedBox(height: 46, child: ListView(scrollDirection: Axis.horizontal, padding: const EdgeInsets.fromLTRB(14, 6, 14, 2), children: [
-                _chip(tr('القائمة', 'Open'), _status == 'open', () => _set(() => _status = 'open'), color: T.info),
-                _chip(tr('المتأخّرة', 'Late'), _status == 'overdue', () => _set(() => _status = 'overdue'), color: T.danger, n: (_counts['overdue'] as num?)?.toInt()),
-                _chip(tr('التي تمّت', 'Done'), _status == 'done', () => _set(() => _status = 'done'), color: T.success),
-                _chip(tr('الكلّ', 'All'), _status.isEmpty, () => _set(() => _status = ''), color: T.inkSoft),
-              ])),
+              // The counters are the status filter; the archive has none.
+              if (_box != 'archive') Padding(
+                padding: const EdgeInsets.fromLTRB(14, 8, 14, 2),
+                child: Row(children: [
+                  for (final x in [
+                    ('open', tr('قائمة', 'Open'), _counts['open'], T.info, Icons.radio_button_unchecked),
+                    ('overdue', tr('متأخّرة', 'Late'), _counts['overdue'], T.danger, Icons.warning_amber_rounded),
+                    ('done', tr('تمّت', 'Done'), _counts['done'], T.success, Icons.check_circle_outline),
+                    ('', tr('الكلّ', 'All'), _counts['all'], T.ink, Icons.list_alt),
+                  ]) Expanded(child: Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 3),
+                    child: _tile(x.$2, ((x.$3 ?? 0) as num).toInt(), x.$4, x.$5, _status == x.$1, () => _set(() => _status = x.$1)),
+                  )),
+                ]),
+              ),
               if (_projects.isNotEmpty) SizedBox(height: 46, child: ListView(scrollDirection: Axis.horizontal, padding: const EdgeInsets.fromLTRB(14, 6, 14, 2), children: [
                 // Tap opens the project; long press offers edit, close and delete (or assign).
                 for (final p in _projects) Opacity(
@@ -517,132 +638,322 @@ class _JpScreenState extends State<JpScreen> {
               Expanded(child: _loading
                   ? ListView(padding: const EdgeInsets.all(14), children: const [Shimmer(), SizedBox(height: 10), Shimmer(), SizedBox(height: 10), Shimmer()])
                   : RefreshIndicator(onRefresh: _load, child: _tasks.isEmpty
-                      ? ListView(children: [SizedBox(height: 320, child: EmptyState(icon: Icons.event_available_outlined, title: tr('لا شيء هنا', 'Nothing here')))])
-                      : ListView.separated(
-                          padding: const EdgeInsets.fromLTRB(14, 8, 14, 96), itemCount: _tasks.length,
-                          separatorBuilder: (_, __) => const SizedBox(height: 8),
-                          itemBuilder: (c, i) => _card(_tasks[i]),
-                        ))),
+                      ? ListView(children: [SizedBox(height: 320, child: EmptyState(icon: Icons.event_available_outlined,
+                          title: _box == 'archive' ? tr('الأرشيف فارغ', 'The archive is empty') : tr('لا شيء هنا', 'Nothing here')))])
+                      : ListView(padding: const EdgeInsets.fromLTRB(14, 8, 14, 96), children: _list()))),
             ]),
     );
   }
 
+  /// Status counter as a tappable tile.
+  Widget _tile(String label, int n, Color c, IconData icon, bool on, VoidCallback tap) => InkWell(
+    onTap: tap,
+    borderRadius: BorderRadius.circular(12),
+    child: Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
+      decoration: BoxDecoration(
+        color: Colors.white, borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: on ? T.orange : T.line, width: on ? 2 : 1),
+      ),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Row(children: [
+          Icon(icon, size: 16, color: c),
+          const Spacer(),
+          Text('$n', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w900, color: c)),
+        ]),
+        const SizedBox(height: 2),
+        Text(label, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 11.5, fontWeight: FontWeight.w700, color: T.inkSoft)),
+      ]),
+    ),
+  );
+
+  /// Plain list, or on the manager's team view one collapsible card per person with counts.
+  List<Widget> _list() {
+    Widget gap(Widget w) => Padding(padding: const EdgeInsets.only(bottom: 8), child: w);
+    final grouped = _canManage && _box == 'all' && _project.isEmpty;
+    if (!grouped) return [for (final t in _tasks) gap(_card(t))];
+    final groups = <String, List<Map<String, dynamic>>>{};
+    for (final t in _tasks) { groups.putIfAbsent('${t['assignedToName'] ?? '—'}', () => []).add(t); }
+    int late(List<Map<String, dynamic>> l) => l.where((x) => x['state'] == 'overdue' && x['status'] != 'done').length;
+    final order = groups.entries.toList()..sort((a, b) => late(b.value) != late(a.value) ? late(b.value) - late(a.value) : b.value.length - a.value.length);
+    return [
+      for (final g in order) () {
+        final list = g.value;
+        final lt = late(list);
+        final doing = list.where((x) => x['status'] != 'done' && x['progress'] == 'doing').length;
+        final todo = list.where((x) => x['status'] != 'done' && x['state'] != 'overdue' && x['progress'] != 'doing').length;
+        final fin = list.where((x) => x['status'] == 'done').length;
+        final pct = list.isEmpty ? 0 : (fin * 100 / list.length).round();
+        final folded = _folded.contains(g.key);
+        return gap(Container(
+          decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(14), border: Border.all(color: lt > 0 ? T.danger.withValues(alpha: 0.5) : T.line)),
+          clipBehavior: Clip.antiAlias,
+          child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+            InkWell(
+              onTap: () => setState(() => folded ? _folded.remove(g.key) : _folded.add(g.key)),
+              child: Container(
+                color: const Color(0xFFF8FAFC),
+                padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
+                child: Row(children: [
+                  CircleAvatar(radius: 17, backgroundColor: T.orange.withValues(alpha: 0.15),
+                      child: Text(g.key.trim().isEmpty ? '?' : g.key.trim().substring(0, 1), style: const TextStyle(color: T.orange, fontWeight: FontWeight.w900))),
+                  const SizedBox(width: 10),
+                  Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                    Text(g.key, style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 14.5), overflow: TextOverflow.ellipsis),
+                    const SizedBox(height: 4),
+                    Wrap(spacing: 4, runSpacing: 4, children: [
+                      if (lt > 0) _solid(tr('$lt متأخّرة', '$lt late'), T.danger),
+                      if (doing > 0) _solid(tr('$doing قيد التنفيذ', '$doing in progress'), T.info),
+                      if (todo > 0) _solid(tr('$todo لم تبدأ', '$todo not started'), T.inkSoft),
+                      if (fin > 0) _solid(tr('$fin تمّت', '$fin done'), T.success),
+                    ]),
+                  ])),
+                  const SizedBox(width: 8),
+                  SizedBox(width: 54, child: Column(crossAxisAlignment: CrossAxisAlignment.end, children: [
+                    Text('$pct%', style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 13)),
+                    const SizedBox(height: 4),
+                    ClipRRect(borderRadius: BorderRadius.circular(4), child: LinearProgressIndicator(value: pct / 100, minHeight: 5, backgroundColor: T.line, color: T.success)),
+                  ])),
+                  Icon(folded ? Icons.expand_more : Icons.expand_less, color: T.inkFaint),
+                ]),
+              ),
+            ),
+            if (!folded) Padding(
+              padding: const EdgeInsets.fromLTRB(8, 8, 8, 0),
+              child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [for (final t in list) gap(_card(t))]),
+            ),
+          ]),
+        ));
+      }(),
+    ];
+  }
+
+  Widget _solid(String s, Color c) => Container(
+    padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
+    decoration: BoxDecoration(color: c, borderRadius: BorderRadius.circular(20)),
+    child: Text(s, style: const TextStyle(color: Colors.white, fontSize: 10.5, fontWeight: FontWeight.w800)),
+  );
+
   Widget _card(Map<String, dynamic> t) {
     final can = Map<String, dynamic>.from(t['can'] ?? {});
+    final id = '${t['_id']}';
     final done = t['status'] == 'done';
+    final archived = t['archivedAt'] != null;
+    final open = _openIds.contains(id);
     final dl = jpDeadline(t);
     final mine = _id(t['assignedTo']) == (_me?['me'] ?? '').toString();
     final act = _actions[t['action']];
     final contact = (t['contact'] ?? '').toString();
     final files = List<Map<String, dynamic>>.from(t['attachments'] ?? []);
     final handed = List<Map<String, dynamic>>.from(t['handedTo'] ?? []);
+    final others = List<Map<String, dynamic>>.from((t['sharedWith'] ?? const []).map((e) => Map<String, dynamic>.from(e)));
+    final comments = List<Map<String, dynamic>>.from(t['comments'] ?? []);
+    final events = List<Map<String, dynamic>>.from((t['events'] ?? const []).map((e) => Map<String, dynamic>.from(e)));
+    final stage = jpStage(t);
     final links = List.from(_me?['linkKinds'] ?? const []).isEmpty
         ? const <Map<String, dynamic>>[]
         : List<Map<String, dynamic>>.from((t['links'] ?? const []).map((e) => Map<String, dynamic>.from(e)));
+    const small = TextStyle(fontSize: 12);
+    Widget btn(String label, IconData icon, Color c, VoidCallback onTap, {bool filled = false}) => filled
+        ? FilledButton.icon(style: FilledButton.styleFrom(backgroundColor: c, visualDensity: VisualDensity.compact), onPressed: onTap, icon: Icon(icon, size: 16), label: Text(label, style: small))
+        : OutlinedButton.icon(style: OutlinedButton.styleFrom(foregroundColor: c, visualDensity: VisualDensity.compact, side: BorderSide(color: c.withValues(alpha: 0.45))), onPressed: onTap, icon: Icon(icon, size: 16), label: Text(label, style: small));
+    Widget fact(String k, String v, {Color? color}) => Padding(
+      padding: const EdgeInsets.only(bottom: 3),
+      child: Text.rich(TextSpan(children: [
+        TextSpan(text: '$k: ', style: const TextStyle(fontSize: 12.5, color: T.inkSoft)),
+        TextSpan(text: v, style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.w700, color: color ?? T.ink)),
+      ])),
+    );
+
     return AppCard(
-      topAccent: t['state'] == 'overdue' ? T.danger : done ? T.success : null,
-      child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        IconButton(
-          padding: EdgeInsets.zero, constraints: const BoxConstraints(minWidth: 36, minHeight: 36),
-          icon: Icon(done ? Icons.check_circle : Icons.radio_button_unchecked, color: done ? T.success : T.inkFaint, size: 28),
-          onPressed: can['complete'] != true ? null : () => done
-              ? _step(t, 'reopen')
-              : _complete(t),
-        ),
-        const SizedBox(width: 6),
-        Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          Text((t['title'] ?? '').toString(), style: TextStyle(fontWeight: FontWeight.w800, fontSize: 14.5, decoration: done ? TextDecoration.lineThrough : null, color: done ? T.inkSoft : T.ink)),
-          if ((t['details'] ?? '').toString().isNotEmpty) Padding(padding: const EdgeInsets.only(top: 3), child: Text(t['details'].toString(), style: const TextStyle(fontSize: 12.5, color: T.inkSoft))),
-          const SizedBox(height: 6),
-          Row(children: [Icon(Icons.schedule, size: 14, color: dl.$2), const SizedBox(width: 4), Expanded(child: Text(dl.$1, style: TextStyle(fontSize: 12, color: dl.$2, fontWeight: FontWeight.w700)))]),
-          const SizedBox(height: 6),
-          Wrap(spacing: 6, runSpacing: 6, children: [
-            Chip2(t['kind'] == 'task' ? tr('مهمّة', 'Task') : tr('طلب', 'Request'), t['kind'] == 'task' ? T.navy : T.cyan),
-            Chip2(mine ? tr('من ${t['createdByName']}', 'From ${t['createdByName']}') : tr('إلى ${t['assignedToName']}', 'To ${t['assignedToName']}'), T.inkSoft, icon: Icons.person_outline),
-            if (t['project'] is Map) Chip2((t['project']['name'] ?? '').toString(), T.orange, icon: Icons.folder_outlined),
-            if (t['fromManagement'] == true) Chip2(tr('من خطّة الإدارة', 'From management'), T.violet),
-            if (act != null) Chip2(tr(act.$1, act.$2), T.info, icon: act.$3),
-          ]),
-          // Time: expected and actual, and a timer for whoever works on it.
-          if (can['track'] == true || t['expectedMinutes'] != null || ((t['spentNow'] ?? 0) as num) > 0)
-            Padding(padding: const EdgeInsets.only(top: 6), child: Wrap(spacing: 6, runSpacing: 6, crossAxisAlignment: WrapCrossAlignment.center, children: [
-              Chip2('${_fmtMin(t['spentNow'])}${t['expectedMinutes'] != null ? ' / ${_fmtMin(t['expectedMinutes'])}' : ''}',
-                  t['timerStartedAt'] != null ? T.success : (t['expectedMinutes'] != null && ((t['spentNow'] ?? 0) as num) > (t['expectedMinutes'] as num)) ? T.danger : T.inkSoft,
-                  icon: t['timerStartedAt'] != null ? Icons.timer : Icons.timer_outlined),
-              if (can['track'] == true && !done)
-                t['timerStartedAt'] != null
-                    ? OutlinedButton(onPressed: () => _step(t, 'pause'), child: Text(tr('إيقاف مؤقّت', 'Pause'), style: const TextStyle(fontSize: 12)))
-                    : FilledButton(onPressed: () => _step(t, 'start'), child: Text(t['progress'] == 'paused' ? tr('استئناف', 'Resume') : tr('بدأتُ العمل', 'Start'), style: const TextStyle(fontSize: 12))),
-              if (can['adjust'] == true)
-                TextButton(onPressed: () => _adjust(t), child: Text(tr('تصحيح الوقت', 'Adjust time'), style: const TextStyle(fontSize: 11.5))),
-            ])),
-          if (links.isNotEmpty) Padding(padding: const EdgeInsets.only(top: 6), child: Wrap(spacing: 6, runSpacing: 6, children: [
-            for (final l in links) () {
-              final k = _linkKinds[l['kind']];
-              final label = (l['label'] ?? '').toString();
-              final chip = Chip2('${k == null ? '' : '${tr(k.$1, k.$2)}: '}$label', T.navy, icon: k?.$3);
-              // The transaction chip opens the transaction itself.
-              return l['kind'] != 'clearance' ? chip : InkWell(
-                onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => CustomsDetailScreen(clearanceId: _id(l['ref']), ref: label.split(' · ').first))),
-                child: chip,
-              );
-            }(),
-          ])),
-          if (contact.isNotEmpty) Padding(padding: const EdgeInsets.only(top: 6), child: InkWell(
-            onTap: () {
-              final digits = contact.replaceAll(RegExp(r'[^\d+]'), '');
-              if (digits.replaceAll('+', '').length < 8) return;
-              var n = digits.replaceAll('+', '');
-              if (n.startsWith('05')) n = '966${n.substring(1)}';
-              launchUrl(Uri.parse(t['action'] == 'whatsapp' ? 'https://wa.me/$n' : 'tel:$digits'), mode: LaunchMode.externalApplication);
-            },
-            child: Text(contact, textDirection: TextDirection.ltr, style: const TextStyle(fontSize: 13, color: T.orange, fontWeight: FontWeight.w700)),
-          )),
-          if (handed.isNotEmpty) Padding(padding: const EdgeInsets.only(top: 6), child: Text(
-            '${tr('أُسنِدت في القسم إلى', 'Assigned in section to')}: ${handed.map((h) => '${h['name']} (${h['state'] == 'done' ? tr('تمّت', 'done') : h['state'] == 'overdue' ? tr('متأخّرة', 'late') : tr('قائمة', 'open')})').join('، ')}',
-            style: const TextStyle(fontSize: 12, color: T.inkSoft))),
-          if (done && (t['doneNote'] ?? '').toString().isNotEmpty) Padding(padding: const EdgeInsets.only(top: 6), child: Text(t['doneNote'].toString(), style: const TextStyle(fontSize: 12.5, color: T.success))),
-          // Latest step after assignment with its note (why it was postponed, paused or reopened).
-          () {
-            final evs = List<Map>.from(t['events'] ?? const []).reversed.where((e) => e['type'] != 'created' && e['type'] != 'done').toList();
-            if (evs.isEmpty || '${evs.first['note'] ?? ''}'.isEmpty || (done && evs.first['type'] != 'reopened')) return const SizedBox.shrink();
-            final e = evs.first;
-            const w = {'started': ('بدأ العمل', 'Started'), 'paused': ('أوقف مؤقّتًا', 'Paused'), 'postponed': ('أُجِّلت', 'Postponed'), 'reopened': ('أُعيد فتحها', 'Reopened'), 'reassigned': ('نُقلت', 'Reassigned')};
-            final lbl = w[e['type']];
-            return Padding(padding: const EdgeInsets.only(top: 6), child: Text(
-              '${lbl == null ? '' : tr(lbl.$1, lbl.$2)}${e['type'] == 'postponed' && (t['postponeCount'] ?? 0) > 0 ? ' (${t['postponeCount']}×)' : ''}: ${e['note']} — ${e['byName'] ?? ''}',
-              style: TextStyle(fontSize: 12.5, color: e['type'] == 'postponed' ? T.warn : T.inkSoft, fontWeight: FontWeight.w600)));
-          }(),
-          if (!done && (can['postpone'] == true || can['complete'] == true))
-            Padding(padding: const EdgeInsets.only(top: 6), child: Wrap(spacing: 6, children: [
-              if (can['postpone'] == true) OutlinedButton.icon(onPressed: () => _step(t, 'postpone'), icon: const Icon(Icons.event_repeat, size: 16), label: Text(tr('تأجيل', 'Postpone'), style: const TextStyle(fontSize: 12))),
-              if (can['complete'] == true) FilledButton.icon(style: FilledButton.styleFrom(backgroundColor: T.orange), onPressed: () => _complete(t), icon: const Icon(Icons.check, size: 16), label: Text(tr('تمّ الإنجاز', 'Done'), style: const TextStyle(fontSize: 12))),
-            ])),
-          if (files.isNotEmpty) Padding(padding: const EdgeInsets.only(top: 6), child: Wrap(spacing: 6, runSpacing: 6, children: [
-            for (final a in files) Row(mainAxisSize: MainAxisSize.min, children: [
-              InkWell(
-                onTap: () => launchUrl(Uri.parse('${AppConfig.apiBase}${a['fileUrl']}'), mode: LaunchMode.externalApplication),
-                child: Chip2((a['fileName'] ?? tr('ملف', 'File')).toString(), a['phase'] == 'done' ? T.success : T.inkSoft, icon: Icons.attach_file),
-              ),
-              if (can['edit'] == true || _id(a['uploadedBy']) == (_me?['me'] ?? '').toString())
-                InkWell(onTap: () => _removeFile(t, a), child: const Padding(padding: EdgeInsets.all(3), child: Icon(Icons.close, size: 15, color: T.inkFaint))),
-            ]),
-          ])),
-          Row(mainAxisAlignment: MainAxisAlignment.end, children: [
-            if (can['comment'] == true || List.from(t['comments'] ?? []).isNotEmpty) TextButton.icon(
-              onPressed: () => _comments(t),
-              icon: const Icon(Icons.mode_comment_outlined, size: 18, color: T.inkSoft),
-              label: Text('${List.from(t['comments'] ?? []).length}', style: const TextStyle(color: T.inkSoft)),
+      padding: EdgeInsets.zero,
+      topAccent: t['state'] == 'overdue' && !done ? T.danger : done ? T.success : null,
+      child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+        // Collapsed row: title, state, deadline, owner; the rest opens in place.
+        Padding(
+          padding: const EdgeInsets.fromLTRB(6, 8, 8, 8),
+          child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            IconButton(
+              padding: EdgeInsets.zero, constraints: const BoxConstraints(minWidth: 36, minHeight: 36),
+              icon: Icon(done ? Icons.check_circle : Icons.radio_button_unchecked, color: done ? T.success : T.inkFaint, size: 26),
+              onPressed: can['complete'] != true || archived ? null : () => done ? _step(t, 'reopen') : _complete(t),
             ),
-            if (can['attach'] == true) IconButton(tooltip: tr('إرفاق', 'Attach'), icon: const Icon(Icons.attach_file, size: 20, color: T.inkSoft), onPressed: () async {
-              final p = await pickFileAsDataUrl(); if (p == null) return;
-              await _run(() => Api.instance.post('/api/jp/tasks/${t['_id']}/attachments', {'dataUrl': p.dataUrl, 'fileName': p.fileName}));
-            }),
-            if (t['canHandDown'] == true && !done) IconButton(tooltip: tr('إسنادها إلى موظّفٍ في قسمي', 'Assign to my team'), icon: const Icon(Icons.subdirectory_arrow_left, size: 20, color: T.orange), onPressed: () => _handDown(task: t)),
-            if (can['edit'] == true) IconButton(tooltip: tr('تعديل', 'Edit'), icon: const Icon(Icons.edit_outlined, size: 20, color: T.inkSoft), onPressed: () => _openForm(task: t)),
-            if (can['remove'] == true) IconButton(tooltip: tr('حذف', 'Delete'), icon: const Icon(Icons.delete_outline, size: 20, color: T.danger), onPressed: () => _delete(t)),
+            const SizedBox(width: 4),
+            Expanded(child: InkWell(
+              onTap: () => setState(() => open ? _openIds.remove(id) : _openIds.add(id)),
+              child: Padding(
+                padding: const EdgeInsets.only(top: 6),
+                child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                  Wrap(spacing: 6, runSpacing: 4, crossAxisAlignment: WrapCrossAlignment.center, children: [
+                    Text((t['title'] ?? '').toString(), style: TextStyle(fontWeight: FontWeight.w800, fontSize: 14.5, decoration: done ? TextDecoration.lineThrough : null, color: done ? T.inkSoft : T.ink)),
+                    Chip2(tr(stage.$1, stage.$2), stage.$3),
+                    if (t['kind'] == 'request') Chip2(tr('طلب', 'Request'), T.cyan),
+                    if (t['timerStartedAt'] != null) Container(width: 8, height: 8, decoration: const BoxDecoration(color: T.success, shape: BoxShape.circle)),
+                  ]),
+                  const SizedBox(height: 4),
+                  Row(children: [Icon(Icons.schedule, size: 13, color: dl.$2), const SizedBox(width: 4), Expanded(child: Text(dl.$1, style: TextStyle(fontSize: 12, color: dl.$2, fontWeight: FontWeight.w700)))]),
+                  const SizedBox(height: 2),
+                  Text(
+                    [
+                      mine ? tr('من ${t['createdByName'] ?? ''}', 'From ${t['createdByName'] ?? ''}') : tr('المسؤول: ${t['assignedToName'] ?? ''}', 'Owner: ${t['assignedToName'] ?? ''}'),
+                      if (t['project'] is Map) '${t['project']['name'] ?? ''}',
+                      if (comments.isNotEmpty) tr('${comments.length} تعليق', '${comments.length} comments'),
+                    ].join(' · '),
+                    style: const TextStyle(fontSize: 12, color: T.inkSoft),
+                  ),
+                  if (others.isNotEmpty) Text('${tr('بمشاركة', 'With')} ${others.map((o) => o['name']).join('، ')}', style: const TextStyle(fontSize: 12, color: T.info, fontWeight: FontWeight.w700)),
+                  if (archived) Text('${tr('في الأرشيف', 'Archived')}${'${t['archivedByName'] ?? ''}'.isNotEmpty ? ' · ${t['archivedByName']}' : ''}', style: const TextStyle(fontSize: 12, color: T.inkSoft, fontWeight: FontWeight.w700)),
+                ]),
+              ),
+            )),
+            // Archive from the row itself, without opening the task.
+            if (can['archive'] == true) Padding(
+              padding: const EdgeInsetsDirectional.only(start: 4, top: 4),
+              child: OutlinedButton.icon(
+                style: OutlinedButton.styleFrom(
+                  visualDensity: VisualDensity.compact, tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                  padding: const EdgeInsets.symmetric(horizontal: 8), minimumSize: const Size(0, 30),
+                  foregroundColor: archived ? T.success : T.inkSoft,
+                ),
+                onPressed: () => _archive(t, back: archived),
+                icon: Icon(archived ? Icons.unarchive_outlined : Icons.archive_outlined, size: 15),
+                label: Text(archived ? tr('إعادة', 'Restore') : tr('أرشفة', 'Archive'), style: const TextStyle(fontSize: 12)),
+              ),
+            ),
+            InkWell(
+              onTap: () => setState(() => open ? _openIds.remove(id) : _openIds.add(id)),
+              child: Padding(padding: const EdgeInsets.all(6), child: Icon(open ? Icons.expand_less : Icons.expand_more, color: T.inkFaint)),
+            ),
           ]),
-        ])),
+        ),
+        if (open) ...[
+          const Divider(height: 1, color: T.line),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(14, 10, 14, 12),
+            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              if ((t['details'] ?? '').toString().isNotEmpty) Padding(padding: const EdgeInsets.only(bottom: 6), child: Text(t['details'].toString(), style: const TextStyle(fontSize: 13))),
+              fact(tr('المسؤول', 'Owner'), '${t['assignedToName'] ?? ''}${others.isNotEmpty ? ' + ${others.map((o) => '${o['name']}${o['status'] == 'done' ? ' ✓' : ''}').join('، ')}' : ''}'),
+              fact(tr('أسندها', 'Assigned by'), '${t['createdByName'] ?? ''}'),
+              if (t['workDate'] != null) fact(tr('يوم العمل', 'Work day'), _ymd(DateTime.parse('${t['workDate']}').toLocal())),
+              Padding(padding: const EdgeInsets.only(top: 4), child: Wrap(spacing: 6, runSpacing: 6, children: [
+                Chip2(t['kind'] == 'task' ? tr('مهمّة', 'Task') : tr('طلب', 'Request'), t['kind'] == 'task' ? T.navy : T.cyan),
+                if (t['project'] is Map) Chip2((t['project']['name'] ?? '').toString(), T.orange, icon: Icons.folder_outlined),
+                if (t['fromManagement'] == true) Chip2(tr('من خطّة الإدارة', 'From management'), T.violet),
+                if (act != null) Chip2(tr(act.$1, act.$2), T.info, icon: act.$3),
+              ])),
+              // Time: expected and actual, and a timer for whoever works on it.
+              if (!archived && (can['track'] == true || t['expectedMinutes'] != null || ((t['spentNow'] ?? 0) as num) > 0))
+                Padding(padding: const EdgeInsets.only(top: 6), child: Wrap(spacing: 6, runSpacing: 6, crossAxisAlignment: WrapCrossAlignment.center, children: [
+                  Chip2('${_fmtMin(t['spentNow'])}${t['expectedMinutes'] != null ? ' / ${_fmtMin(t['expectedMinutes'])}' : ''}',
+                      t['timerStartedAt'] != null ? T.success : (t['expectedMinutes'] != null && ((t['spentNow'] ?? 0) as num) > (t['expectedMinutes'] as num)) ? T.danger : T.inkSoft,
+                      icon: t['timerStartedAt'] != null ? Icons.timer : Icons.timer_outlined),
+                  if (can['adjust'] == true)
+                    TextButton(onPressed: () => _adjust(t), child: Text(tr('تصحيح الوقت', 'Adjust time'), style: const TextStyle(fontSize: 11.5))),
+                ])),
+              if (links.isNotEmpty) Padding(padding: const EdgeInsets.only(top: 6), child: Wrap(spacing: 6, runSpacing: 6, children: [
+                for (final l in links) () {
+                  final k = _linkKinds[l['kind']];
+                  final label = (l['label'] ?? '').toString();
+                  final chip = Chip2('${k == null ? '' : '${tr(k.$1, k.$2)}: '}$label', T.navy, icon: k?.$3);
+                  // The transaction chip opens the transaction itself.
+                  return l['kind'] != 'clearance' ? chip : InkWell(
+                    onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => CustomsDetailScreen(clearanceId: _id(l['ref']), ref: label.split(' · ').first))),
+                    child: chip,
+                  );
+                }(),
+              ])),
+              if (contact.isNotEmpty) Padding(padding: const EdgeInsets.only(top: 6), child: InkWell(
+                onTap: () {
+                  final digits = contact.replaceAll(RegExp(r'[^\d+]'), '');
+                  if (digits.replaceAll('+', '').length < 8) return;
+                  var n = digits.replaceAll('+', '');
+                  if (n.startsWith('05')) n = '966${n.substring(1)}';
+                  launchUrl(Uri.parse(t['action'] == 'whatsapp' ? 'https://wa.me/$n' : 'tel:$digits'), mode: LaunchMode.externalApplication);
+                },
+                child: Text(contact, textDirection: TextDirection.ltr, style: const TextStyle(fontSize: 13, color: T.orange, fontWeight: FontWeight.w700)),
+              )),
+              if (handed.isNotEmpty) Padding(padding: const EdgeInsets.only(top: 6), child: Text(
+                '${tr('أُسنِدت في القسم إلى', 'Assigned in section to')}: ${handed.map((h) => '${h['name']} (${h['state'] == 'done' ? tr('تمّت', 'done') : h['state'] == 'overdue' ? tr('متأخّرة', 'late') : tr('قائمة', 'open')})').join('، ')}',
+                style: const TextStyle(fontSize: 12, color: T.inkSoft))),
+              if (done && (t['doneNote'] ?? '').toString().isNotEmpty) Padding(padding: const EdgeInsets.only(top: 6), child: Text(t['doneNote'].toString(), style: const TextStyle(fontSize: 12.5, color: T.success))),
+              if (files.isNotEmpty || (can['attach'] == true && !archived)) Padding(padding: const EdgeInsets.only(top: 6), child: Wrap(spacing: 6, runSpacing: 6, crossAxisAlignment: WrapCrossAlignment.center, children: [
+                for (final a in files) Row(mainAxisSize: MainAxisSize.min, children: [
+                  InkWell(
+                    onTap: () => launchUrl(Uri.parse('${AppConfig.apiBase}${a['fileUrl']}'), mode: LaunchMode.externalApplication),
+                    child: Chip2((a['fileName'] ?? tr('ملف', 'File')).toString(), a['phase'] == 'done' ? T.success : T.inkSoft, icon: Icons.attach_file),
+                  ),
+                  if (can['edit'] == true || _id(a['uploadedBy']) == (_me?['me'] ?? '').toString())
+                    InkWell(onTap: () => _removeFile(t, a), child: const Padding(padding: EdgeInsets.all(3), child: Icon(Icons.close, size: 15, color: T.inkFaint))),
+                ]),
+                if (can['attach'] == true && !archived) TextButton.icon(
+                  onPressed: () async {
+                    final p = await pickFileAsDataUrl(); if (p == null) return;
+                    await _run(() => Api.instance.post('/api/jp/tasks/${t['_id']}/attachments', {'dataUrl': p.dataUrl, 'fileName': p.fileName}));
+                  },
+                  icon: const Icon(Icons.attach_file, size: 16), label: Text(tr('إرفاق', 'Attach'), style: small),
+                ),
+              ])),
+              // Actions in business-review order: progress, then assignment, then archive and delete.
+              const SizedBox(height: 10),
+              Wrap(spacing: 6, runSpacing: 6, children: archived
+                  ? [if (can['archive'] == true) btn(tr('إعادة من الأرشيف', 'Restore'), Icons.unarchive_outlined, T.success, () => _archive(t, back: true))]
+                  : [
+                      if (can['complete'] == true && !done) btn(tr('تمّ الإنجاز', 'Mark done'), Icons.check_circle_outline, T.success, () => _complete(t), filled: true),
+                      if (can['track'] == true && !done) t['timerStartedAt'] != null
+                          ? btn(tr('إيقاف مؤقّت', 'Pause'), Icons.pause_circle_outline, T.inkSoft, () => _step(t, 'pause'))
+                          : btn(t['progress'] == 'paused' ? tr('استئناف', 'Resume') : tr('بدء العمل', 'Start'), Icons.play_circle_outline, T.info, () => _step(t, 'start'), filled: true),
+                      if (can['postpone'] == true && !done) btn(tr('تأجيل', 'Postpone'), Icons.hourglass_bottom, T.warn, () => _step(t, 'postpone'), filled: true),
+                      if (done && can['complete'] == true) btn(tr('إعادة فتح', 'Reopen'), Icons.undo, T.inkSoft, () => _step(t, 'reopen')),
+                      if (can['edit'] == true) btn(tr('تعديل', 'Edit'), Icons.edit_outlined, T.inkSoft, () => _openForm(task: t)),
+                      if (can['share'] == true) btn(tr('إسنادها لمسؤولٍ آخر أيضًا', 'Also assign to…'), Icons.group_add_outlined, T.info, () => _share(t)),
+                      if (can['transfer'] == true) btn(tr('نقلها لمسؤولٍ آخر', 'Move to…'), Icons.swap_horiz, T.violet, () => _transfer(t)),
+                      if (t['canHandDown'] == true && !done) btn(tr('إسنادها إلى موظّفٍ في قسمي', 'Assign to my team'), Icons.subdirectory_arrow_left, T.orange, () => _handDown(task: t)),
+                      if (can['archive'] == true) btn(tr('إرسال للأرشيف', 'Send to archive'), Icons.archive_outlined, T.ink, () => _archive(t)),
+                      if (can['remove'] == true && others.isNotEmpty) btn(tr('إزالة هذا المسؤول', 'Remove this owner'), Icons.person_remove_outlined, T.danger, () => _removeOwner(t)),
+                      if (can['remove'] == true) btn(tr('حذف', 'Delete'), Icons.delete_outline, T.danger, () => _delete(t)),
+                    ]),
+              // Comments and the full story of the task.
+              const SizedBox(height: 10),
+              Container(
+                width: double.infinity,
+                padding: const EdgeInsets.all(10),
+                decoration: BoxDecoration(color: const Color(0xFFF8FAFC), borderRadius: BorderRadius.circular(10), border: Border.all(color: T.line)),
+                child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                  Row(children: [
+                    Expanded(child: Text('${tr('التعليقات', 'Comments')}${comments.isNotEmpty ? ' (${comments.length})' : ''}', style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 12.5))),
+                    if (can['comment'] == true && !archived) TextButton.icon(
+                      style: TextButton.styleFrom(visualDensity: VisualDensity.compact),
+                      onPressed: () => _comments(t), icon: const Icon(Icons.mode_comment_outlined, size: 16), label: Text(tr('اكتب تعليقًا', 'Comment'), style: small),
+                    ),
+                  ]),
+                  if (comments.isEmpty) Text(tr('لا تعليقات بعد', 'No comments yet'), style: const TextStyle(fontSize: 12, color: T.inkFaint)),
+                  for (final m in comments) Padding(
+                    padding: const EdgeInsets.only(top: 4),
+                    child: Text.rich(TextSpan(children: [
+                      TextSpan(text: '${m['byName'] ?? ''} · ${_jpDT(m['at'])}\n', style: const TextStyle(fontSize: 11.5, fontWeight: FontWeight.w700, color: T.inkSoft)),
+                      TextSpan(text: '${m['text'] ?? ''}', style: const TextStyle(fontSize: 12.5)),
+                    ])),
+                  ),
+                ]),
+              ),
+              if (events.isNotEmpty) ...[
+                TextButton.icon(
+                  style: TextButton.styleFrom(visualDensity: VisualDensity.compact, padding: EdgeInsets.zero),
+                  onPressed: () => setState(() => _historyIds.contains(id) ? _historyIds.remove(id) : _historyIds.add(id)),
+                  icon: const Icon(Icons.history, size: 16),
+                  label: Text(_historyIds.contains(id) ? tr('إخفاء سجلّ المهمّة', 'Hide history') : tr('سجلّ المهمّة (${events.length})', 'History (${events.length})'), style: small),
+                ),
+                if (_historyIds.contains(id)) for (final e in events.reversed) Padding(
+                  padding: const EdgeInsetsDirectional.only(start: 8, bottom: 6),
+                  child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                    Text('${_jpEventWord(e['type'])} · ${e['byName'] ?? ''} · ${_jpDT(e['at'])}', style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w700)),
+                    if ('${e['note'] ?? ''}'.isNotEmpty) Text('${e['note']}', style: TextStyle(fontSize: 12.5, color: e['type'] == 'postponed' ? T.warn : T.ink)),
+                  ]),
+                ),
+              ],
+            ]),
+          ),
+        ],
       ]),
     );
   }
@@ -674,6 +985,8 @@ class _JpFormState extends State<_JpForm> {
   String _assignee = '', _action = '', _project = '', _dueKind = '', _dueDate = '';
   bool _more = false, _saving = false, _dueTouched = false;
   PickedFile? _file;
+  // More owners beside the main one: one task shared by several people.
+  final List<String> _extra = [];
   // Task links: {kind, ref, label}; the name is for display and the server captures its own.
   final List<Map<String, dynamic>> _links = [];
 
@@ -743,6 +1056,7 @@ class _JpFormState extends State<_JpForm> {
       } else {
         await Api.instance.post('/api/jp/tasks', {
           ...body, 'scope': widget.scope, if (widget.section != null) 'section': widget.section,
+          'assignees': [_assignee, ..._extra.where((x) => x != _assignee)],
           if (_file != null) 'files': [{'dataUrl': _file!.dataUrl, 'fileName': _file!.fileName}],
         });
       }
@@ -799,8 +1113,25 @@ class _JpFormState extends State<_JpForm> {
             for (final m in team) {...m, if (m['_id'] == meId) 'name': '${m['name']} (${tr('أنا', 'me')})'},
             if (_assignee.isNotEmpty && _assignee != meId && !team.any((m) => m['_id'] == _assignee)) {'_id': _assignee, 'name': (widget.task?['assignedToName'] ?? '').toString()},
           ],
-          onChanged: (v) => setState(() => _assignee = v),
+          onChanged: (v) => setState(() { _assignee = v; _extra.remove(v); }),
         ),
+        if (_canManage && !_editing && _assignee.isNotEmpty) ...[
+          const SizedBox(height: 6),
+          Wrap(spacing: 6, runSpacing: 6, children: [
+            for (final id in _extra) InputChip(
+              label: Text('${team.firstWhere((m) => '${m['_id']}' == id, orElse: () => {'name': id})['name']}', style: const TextStyle(fontSize: 12)),
+              onDeleted: () => setState(() => _extra.remove(id)),
+            ),
+            ActionChip(
+              avatar: const Icon(Icons.person_add_alt, size: 16),
+              label: Text(tr('إضافة مسؤولٍ آخر', 'Add another owner'), style: const TextStyle(fontSize: 12)),
+              onPressed: () async {
+                final id = await jpPickPerson(context, team.where((m) => '${m['_id']}' != _assignee && !_extra.contains('${m['_id']}')).toList(), title: tr('إضافة مسؤولٍ آخر', 'Add another owner'));
+                if (id != null && id.isNotEmpty) setState(() => _extra.add(id));
+              },
+            ),
+          ]),
+        ],
         const SizedBox(height: 12),
         Text(tr('الموعد (اختياري)', 'Deadline (optional)'), style: const TextStyle(fontSize: 12, color: T.inkSoft)),
         const SizedBox(height: 6),
@@ -1134,6 +1465,94 @@ class _JpDashScreenState extends State<JpDashScreen> {
     );
   });
 
+  /// A rate as a ring with its label and a short line under it.
+  Widget _ring(dynamic v, String label, String hint, Color c) => Column(children: [
+    SizedBox(width: 84, height: 84, child: Stack(alignment: Alignment.center, children: [
+      SizedBox.expand(child: CircularProgressIndicator(value: v == null ? 0 : ((v as num) / 100).clamp(0, 1).toDouble(), strokeWidth: 9, backgroundColor: T.line, color: c)),
+      Text(_pct(v), style: const TextStyle(fontSize: 19, fontWeight: FontWeight.w900)),
+    ])),
+    const SizedBox(height: 8),
+    Text(label, style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 13)),
+    Text(hint, textAlign: TextAlign.center, style: const TextStyle(fontSize: 11, color: T.inkSoft)),
+  ]);
+
+  /// One of the four state cards: tinted background, large number.
+  Widget _state(String label, num n, String hint, Color c, IconData icon) => Container(
+    padding: const EdgeInsets.all(12),
+    decoration: BoxDecoration(color: c.withValues(alpha: 0.08), borderRadius: BorderRadius.circular(14), border: Border.all(color: c.withValues(alpha: 0.35))),
+    child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+      Row(children: [
+        Expanded(child: Text(label, style: TextStyle(fontWeight: FontWeight.w800, fontSize: 13, color: c))),
+        Icon(icon, size: 18, color: c),
+      ]),
+      const Spacer(),
+      Text('$n', style: TextStyle(fontSize: 26, fontWeight: FontWeight.w900, color: c, height: 1)),
+      const SizedBox(height: 3),
+      Text(hint, maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(fontSize: 11, color: c.withValues(alpha: 0.85))),
+    ]),
+  );
+
+  /// Team member card: completion %, stacked bar (done / open / late) and the four numbers.
+  Widget _member(Map<String, dynamic> m) {
+    final assigned = ((m['assigned'] ?? 0) as num).toInt();
+    final total = assigned < 1 ? 1 : assigned;
+    final late = ((m['overdue'] ?? 0) as num).toInt();
+    final done = ((m['done'] ?? 0) as num).toInt();
+    final open = (((m['open'] ?? 0) as num).toInt() - late).clamp(0, 1 << 30);
+    final on = _assignee == '${m['_id']}';
+    final name = (m['name'] ?? '').toString();
+    Widget seg(int n, Color c) => n <= 0 ? const SizedBox.shrink() : Expanded(flex: n, child: Container(color: c));
+    Widget num4(String l, int v, Color c) => Expanded(child: Column(children: [
+      Text('$v', style: TextStyle(fontSize: 15, fontWeight: FontWeight.w900, color: c)),
+      Text(l, style: const TextStyle(fontSize: 10.5, color: T.inkSoft)),
+    ]));
+    return InkWell(
+      onTap: m['former'] == true ? null : () { setState(() => _assignee = on ? '' : '${m['_id']}'); _load(); },
+      borderRadius: BorderRadius.circular(14),
+      child: Opacity(
+        opacity: m['former'] == true ? 0.6 : 1,
+        child: AppCard(
+          padding: const EdgeInsets.all(12),
+          topAccent: on ? T.orange : null,
+          child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+            Row(children: [
+              CircleAvatar(radius: 19, backgroundColor: T.ink, child: Text(name.trim().isEmpty ? '?' : name.trim().substring(0, 1), style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w900))),
+              const SizedBox(width: 10),
+              Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                Text('$name${m['former'] == true ? ' ${tr('(خارج الفريق)', '(left team)')}' : ''}', style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 14), overflow: TextOverflow.ellipsis),
+                Text(tr((m['roleAr'] ?? '').toString(), (m['roleEn'] ?? '').toString()), style: const TextStyle(fontSize: 11.5, color: T.inkSoft), overflow: TextOverflow.ellipsis),
+              ])),
+              Column(crossAxisAlignment: CrossAxisAlignment.end, children: [
+                Text(m['completionRate'] == null ? '0%' : '${m['completionRate']}%', style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w900)),
+                Text(tr('إتمام', 'done'), style: const TextStyle(fontSize: 10.5, color: T.inkFaint)),
+              ]),
+            ]),
+            const SizedBox(height: 10),
+            ClipRRect(borderRadius: BorderRadius.circular(6), child: Container(
+              height: 8, color: T.line,
+              child: Row(children: [seg(done, T.success), seg(open, T.info), seg(late, T.danger), seg(total - done - open - late, T.line)]),
+            )),
+            const SizedBox(height: 8),
+            Row(children: [
+              num4(tr('أُسنِد', 'Assigned'), assigned, T.ink),
+              num4(tr('قائمة', 'Open'), open, T.info),
+              num4(tr('متأخّرة', 'Late'), late, late > 0 ? T.danger : T.inkFaint),
+              num4(tr('تمّت', 'Done'), done, T.success),
+            ]),
+            const Divider(height: 16, color: T.line),
+            Text(
+              [
+                '${tr('في موعدها', 'On time')}: ${m['onTimeRate'] == null ? tr('لا مواعيد', 'no deadlines') : '${m['onTimeRate']}%'}',
+                if (((m['requestsMade'] ?? 0) as num) > 0) '${tr('طلباتٌ كتبها', 'Requests')}: ${m['requestsMade']}',
+              ].join(' · '),
+              style: const TextStyle(fontSize: 11.5, color: T.inkSoft),
+            ),
+          ]),
+        ),
+      ),
+    );
+  }
+
   Widget _head(String s) => Padding(padding: const EdgeInsets.fromLTRB(2, 18, 2, 8), child: Text(s, style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 14.5)));
   String _pct(dynamic v) => v == null ? '—' : '$v%';
 
@@ -1205,14 +1624,24 @@ class _JpDashScreenState extends State<JpDashScreen> {
                     const SizedBox(height: 8),
                     _filters(d, management),
                     const SizedBox(height: 10),
+                    // The two rates first, then the four states as coloured cards, then the smaller figures.
+                    AppCard(padding: const EdgeInsets.symmetric(vertical: 14, horizontal: 8), child: Row(children: [
+                      Expanded(child: _ring(t['completionRate'], tr('نسبة الإتمام', 'Completion'), tr('${t['done'] ?? 0} من ${t['total'] ?? 0}', '${t['done'] ?? 0} of ${t['total'] ?? 0}'), T.success)),
+                      Expanded(child: _ring(t['onTimeRate'], tr('في موعدها', 'On time'), tr('${t['onTime'] ?? 0} في الموعد · ${t['late'] ?? 0} بعده', '${t['onTime'] ?? 0} on time · ${t['late'] ?? 0} late'), T.orange)),
+                    ])),
+                    GridView.count(
+                      crossAxisCount: 2, shrinkWrap: true, physics: const NeverScrollableScrollPhysics(),
+                      mainAxisSpacing: 8, crossAxisSpacing: 8, childAspectRatio: 1.9,
+                      children: [
+                        _state(tr('قائمة', 'Open'), ((t['open'] ?? 0) as num) - ((t['overdue'] ?? 0) as num), tr('${t['noDeadline'] ?? 0} بلا موعد', '${t['noDeadline'] ?? 0} no deadline'), T.info, Icons.radio_button_unchecked),
+                        _state(tr('متأخّرة', 'Late'), (t['overdue'] ?? 0) as num, tr('فات موعدها', 'Past deadline'), T.danger, Icons.warning_amber_rounded),
+                        _state(tr('خلال 24 ساعة', 'Due in 24h'), (t['dueSoon'] ?? 0) as num, tr('موعدها قريب', 'Deadline near'), T.warn, Icons.hourglass_bottom),
+                        _state(tr('تمّت', 'Done'), (t['done'] ?? 0) as num, tr('${t['onTime'] ?? 0} في موعدها', '${t['onTime'] ?? 0} on time'), T.success, Icons.check_circle_outline),
+                      ],
+                    ),
+                    const SizedBox(height: 8),
                     _strip([
                       _cell(tr('الإجمالي', 'Total'), '${t['total'] ?? 0}', T.ink, hint: tr('${t['tasks'] ?? 0} مهمّة · ${t['requests'] ?? 0} طلب', '${t['tasks'] ?? 0} tasks · ${t['requests'] ?? 0} requests')),
-                      _cell(tr('قائمة', 'Open'), '${((t['open'] ?? 0) as num) - ((t['overdue'] ?? 0) as num)}', T.info),
-                      _cell(tr('متأخّرة', 'Late'), '${t['overdue'] ?? 0}', (t['overdue'] ?? 0) > 0 ? T.danger : T.ink),
-                      _cell(tr('خلال 24 ساعة', 'Due in 24h'), '${t['dueSoon'] ?? 0}', (t['dueSoon'] ?? 0) > 0 ? T.warn : T.ink),
-                      _cell(tr('تمّت', 'Done'), '${t['done'] ?? 0}', T.success, hint: tr('${t['onTime'] ?? 0} في موعدها · ${t['late'] ?? 0} بعده', '${t['onTime'] ?? 0} on time · ${t['late'] ?? 0} late')),
-                      _cell(tr('نسبة الإتمام', 'Completion'), _pct(t['completionRate']), T.ink),
-                      _cell(tr('في موعدها', 'On time'), _pct(t['onTimeRate']), T.ink),
                       _cell(tr('الوقت المسجّل', 'Time logged'), ((t2['minutes'] ?? 0) as num) > 0 ? _fmtMin(t2['minutes']) : '—', T.ink),
                     ]),
                     if (byTitle.isNotEmpty) ...[
@@ -1255,18 +1684,8 @@ class _JpDashScreenState extends State<JpDashScreen> {
                     const SizedBox(height: 12),
                     _dailyCard(),
                     _head(management ? tr('المديرون', 'Managers') : tr('الفريق', 'Team')),
-                    for (final m in members) AppCard(padding: const EdgeInsets.all(12), child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                      Row(children: [
-                        Expanded(child: Text((m['name'] ?? '').toString(), style: const TextStyle(fontWeight: FontWeight.w800))),
-                        if ((m['overdue'] ?? 0) > 0) Chip2(tr('${m['overdue']} متأخّرة', '${m['overdue']} late'), T.danger),
-                      ]),
-                      Text(tr((m['roleAr'] ?? '').toString(), (m['roleEn'] ?? '').toString()), style: const TextStyle(fontSize: 11.5, color: T.inkSoft)),
-                      const SizedBox(height: 6),
-                      ClipRRect(borderRadius: BorderRadius.circular(6), child: LinearProgressIndicator(value: ((m['completionRate'] ?? 0) as num) / 100, minHeight: 6, backgroundColor: T.line, color: T.success)),
-                      const SizedBox(height: 6),
-                      Text(tr('أُسنِد ${m['assigned']} · قائمة ${m['open']} · تمّت ${m['done']} · في موعدها ${_pct(m['onTimeRate'])} · طلباتٌ كتبها ${m['requestsMade']}',
-                          'Assigned ${m['assigned']} · open ${m['open']} · done ${m['done']} · on time ${_pct(m['onTimeRate'])} · requests ${m['requestsMade']}'), style: const TextStyle(fontSize: 12, color: T.inkSoft)),
-                    ])),
+                    // One card per person; a tap filters the whole dashboard to him.
+                    for (final m in members) Padding(padding: const EdgeInsets.only(bottom: 8), child: _member(m)),
                     if (idle.isNotEmpty) ...[
                       _head(tr('بلا مهامَّ قائمة', 'Nothing open')),
                       Wrap(spacing: 6, runSpacing: 6, children: [for (final m in idle) Chip2((m['name'] ?? '').toString(), T.inkSoft)]),
@@ -1486,6 +1905,55 @@ class _LinkSearchState extends State<_LinkSearch> {
 }
 
 
+/// Searchable person list (name or role), the section's team first; returns the picked id or null.
+Future<String?> jpPickPerson(BuildContext context, List<Map<String, dynamic>> people, {String selected = '', String? title}) async {
+  String role(Map<String, dynamic> m) => tr('${m['roleAr'] ?? ''}', '${m['roleEn'] ?? ''}');
+  final ctl = TextEditingController();
+  final picked = await showModalBottomSheet<String>(
+    context: context,
+    isScrollControlled: true,
+    builder: (c) => StatefulBuilder(builder: (c, setSt) {
+      final q = ctl.text.trim().toLowerCase();
+      final list = people.where((m) => q.isEmpty || '${m['name']} ${m['nameAr'] ?? ''} ${m['search'] ?? ''} ${role(m)}'.toLowerCase().contains(q) || soundsLike('${m['name']} ${m['search'] ?? ''}', q)).toList()
+        ..sort((a, b) => (b['inSection'] == false ? 0 : 1) - (a['inSection'] == false ? 0 : 1));
+      return Padding(
+        padding: EdgeInsets.only(bottom: MediaQuery.of(c).viewInsets.bottom),
+        child: SizedBox(
+          height: MediaQuery.of(c).size.height * 0.75,
+          child: Column(children: [
+            if (title != null) Padding(
+              padding: const EdgeInsets.fromLTRB(16, 14, 16, 0),
+              child: Align(alignment: AlignmentDirectional.centerStart, child: Text(title, style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 14))),
+            ),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(14, 14, 14, 6),
+              child: TextField(controller: ctl, autofocus: true, onChanged: (_) => setSt(() {}),
+                  decoration: InputDecoration(prefixIcon: const Icon(Icons.search), hintText: tr('ابحث بالاسم أو الدور…', 'Search name or role…'), border: const OutlineInputBorder(), isDense: true)),
+            ),
+            Expanded(child: ListView.builder(
+              itemCount: list.length,
+              itemBuilder: (_, i) {
+                final m = list[i];
+                final id = '${m['_id'] ?? ''}';
+                return ListTile(
+                  dense: true,
+                  selected: id == selected,
+                  title: Text('${m['name'] ?? ''}', style: const TextStyle(fontWeight: FontWeight.w700)),
+                  subtitle: role(m).isEmpty ? null : Text(role(m)),
+                  trailing: m['inSection'] == false ? Chip2(tr('خارج القسم', 'Other'), T.info) : null,
+                  onTap: () => Navigator.pop(c, id),
+                );
+              },
+            )),
+          ]),
+        ),
+      );
+    }),
+  );
+  ctl.dispose();
+  return picked;
+}
+
 /// A person field that opens a searchable list (name or role); the section's team first.
 class JpPersonField extends StatelessWidget {
   final String label;
@@ -1494,48 +1962,8 @@ class JpPersonField extends StatelessWidget {
   final ValueChanged<String> onChanged;
   const JpPersonField({super.key, required this.label, required this.value, required this.people, required this.onChanged});
 
-  String _role(Map<String, dynamic> m) => tr('${m['roleAr'] ?? ''}', '${m['roleEn'] ?? ''}');
-
   Future<void> _open(BuildContext context) async {
-    final ctl = TextEditingController();
-    final picked = await showModalBottomSheet<String>(
-      context: context,
-      isScrollControlled: true,
-      builder: (c) => StatefulBuilder(builder: (c, setSt) {
-        final q = ctl.text.trim().toLowerCase();
-        final list = people.where((m) => q.isEmpty || '${m['name']} ${m['nameAr'] ?? ''} ${m['search'] ?? ''} ${_role(m)}'.toLowerCase().contains(q) || soundsLike('${m['name']} ${m['search'] ?? ''}', q)).toList()
-          ..sort((a, b) => (b['inSection'] == false ? 0 : 1) - (a['inSection'] == false ? 0 : 1));
-        return Padding(
-          padding: EdgeInsets.only(bottom: MediaQuery.of(c).viewInsets.bottom),
-          child: SizedBox(
-            height: MediaQuery.of(c).size.height * 0.75,
-            child: Column(children: [
-              Padding(
-                padding: const EdgeInsets.fromLTRB(14, 14, 14, 6),
-                child: TextField(controller: ctl, autofocus: true, onChanged: (_) => setSt(() {}),
-                    decoration: InputDecoration(prefixIcon: const Icon(Icons.search), hintText: tr('ابحث بالاسم أو الدور…', 'Search name or role…'), border: const OutlineInputBorder(), isDense: true)),
-              ),
-              Expanded(child: ListView.builder(
-                itemCount: list.length,
-                itemBuilder: (_, i) {
-                  final m = list[i];
-                  final id = '${m['_id'] ?? ''}';
-                  return ListTile(
-                    dense: true,
-                    selected: id == value,
-                    title: Text('${m['name'] ?? ''}', style: const TextStyle(fontWeight: FontWeight.w700)),
-                    subtitle: _role(m).isEmpty ? null : Text(_role(m)),
-                    trailing: m['inSection'] == false ? Chip2(tr('خارج القسم', 'Other'), T.info) : null,
-                    onTap: () => Navigator.pop(c, id),
-                  );
-                },
-              )),
-            ]),
-          ),
-        );
-      }),
-    );
-    ctl.dispose();
+    final picked = await jpPickPerson(context, people, selected: value);
     if (picked != null) onChanged(picked);
   }
 
@@ -1604,6 +2032,7 @@ Future<(String, String)?> askJpStep(BuildContext context, Map<String, dynamic> t
 const _jpEvents = {
   'created': ('أُسنِدت', 'Assigned'), 'started': ('بدأ العمل', 'Started'), 'paused': ('أوقف مؤقّتًا', 'Paused'),
   'postponed': ('أُجِّلت', 'Postponed'), 'done': ('تمّ الإنجاز', 'Done'), 'reopened': ('أُعيد فتحها', 'Reopened'), 'reassigned': ('نُقلت', 'Reassigned'),
+  'shared': ('أُضيف مسؤول', 'Owner added'),
 };
 String _jpEventWord(dynamic type) { final w = _jpEvents['$type']; return w == null ? '$type' : tr(w.$1, w.$2); }
 String _jpDT(dynamic v) {

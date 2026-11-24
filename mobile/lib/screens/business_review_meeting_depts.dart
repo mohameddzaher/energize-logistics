@@ -544,6 +544,20 @@ class _BrMeetingDepartmentsTabState extends State<BrMeetingDepartmentsTab> {
               Row(children: [
                 if (done) const Padding(padding: EdgeInsetsDirectional.only(end: 6), child: Icon(Icons.check_circle, size: 18, color: T.success)),
                 Expanded(child: Text('${t['title']}', style: TextStyle(fontWeight: FontWeight.w800, color: done ? const Color(0xFF065F46) : T.ink))),
+                // A separate tap target, so archiving never toggles the row.
+                if (widget.meta['me']?['canArchive'] == true)
+                  Padding(
+                    padding: const EdgeInsetsDirectional.only(start: 6),
+                    child: OutlinedButton.icon(
+                      style: OutlinedButton.styleFrom(
+                        visualDensity: VisualDensity.compact, tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                        padding: const EdgeInsets.symmetric(horizontal: 8), minimumSize: const Size(0, 30),
+                      ),
+                      onPressed: () => _archive(t),
+                      icon: const Icon(Icons.archive_outlined, size: 15),
+                      label: Text(tr('أرشفة', 'Archive'), style: const TextStyle(fontSize: 12)),
+                    ),
+                  ),
               ]),
               const SizedBox(height: 4),
               Wrap(spacing: 6, runSpacing: 4, crossAxisAlignment: WrapCrossAlignment.center, children: [
@@ -606,10 +620,6 @@ class _BrMeetingDepartmentsTabState extends State<BrMeetingDepartmentsTab> {
                   OutlinedButton.icon(onPressed: () => _remove(t), icon: const Icon(Icons.delete_outline, size: 16, color: T.danger), label: Text(tr('حذف البند', 'Delete task'), style: const TextStyle(color: T.danger))),
                   ],
                 ]),
-              ],
-              if (widget.meta['me']?['canArchive'] == true) ...[
-                const SizedBox(height: 6),
-                OutlinedButton.icon(onPressed: () => _archive(t), icon: const Icon(Icons.archive_outlined, size: 16), label: Text(tr('إرسال للأرشيف', 'Send to archive'))),
               ],
               BrUpdateLog(updates: List.from(t['updates'] ?? []).reversed.toList(), meta: widget.meta),
             ]),

@@ -52,7 +52,13 @@ export interface JpTask {
   doneAt?: string | null; doneNote?: string; createdAt: string;
   attachments: JpAttachment[];
   comments?: JpComment[];
-  can: { complete: boolean; edit: boolean; remove: boolean; attach: boolean; comment?: boolean; track?: boolean; adjust?: boolean; postpone?: boolean };
+  can: { complete: boolean; edit: boolean; remove: boolean; attach: boolean; comment?: boolean; track?: boolean; adjust?: boolean; postpone?: boolean; share?: boolean; transfer?: boolean; archive?: boolean };
+  /** One task for several people: the other owners and where each stands. */
+  shareGroup?: string | null;
+  sharedWith?: { _id: string; key: string; name: string; status: string; progress?: string }[];
+  /** Manual archive (section manager). */
+  archivedAt?: string | null;
+  archivedByName?: string;
   /** The task's story: each step with its note (backend models/JpModels events). */
   events?: { type: string; note: string; fromAt?: string | null; toAt?: string | null; byName: string; at: string }[];
   postponeCount?: number;

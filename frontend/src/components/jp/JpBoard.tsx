@@ -240,41 +240,42 @@ function TaskCard({ task, now, ar, busy, meId, showAssignee, ...on }: CardAction
   };
   const btn = 'inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-[12.5px] font-bold border disabled:opacity-50';
   return (
-    <li className={`bg-white border rounded-xl shadow-sm transition-colors ${task.state === 'overdue' && !done ? 'border-red-200' : 'border-slate-200'} ${open ? 'ring-1 ring-[#f37121]/30' : ''}`}>
-      <div className="flex items-center gap-3 px-3.5 py-2.5">
+    <li className={`bg-white transition-colors ${open ? 'bg-orange-50/30' : done ? 'bg-emerald-50/40' : ''} ${task.state === 'overdue' && !done ? 'shadow-[inset_3px_0_0_#ef4444] rtl:shadow-[inset_-3px_0_0_#ef4444]' : ''}`}>
+      <div className={`flex items-center gap-2 ${done ? 'border-s-4 border-emerald-500' : ''}`}>
         <button type="button" disabled={!task.can.complete || busy || archived}
           onClick={() => (done ? on.onReopen(task) : on.onDone(task))}
           title={done ? t('إرجاعها مفتوحة', 'Reopen') : t('تمّت', 'Mark done')}
-          className={`w-6 h-6 shrink-0 rounded-full border-2 flex items-center justify-center transition-colors ${
+          className={`ms-3 w-5 h-5 shrink-0 rounded-full border-2 flex items-center justify-center transition-colors ${
             done ? 'bg-emerald-500 border-emerald-500 text-white' : 'border-slate-300 text-transparent hover:border-emerald-500 hover:text-emerald-500'} ${
             !task.can.complete || archived ? 'opacity-40 cursor-not-allowed' : ''}`}>
-          {busy ? <Loader2 className="w-3.5 h-3.5 animate-spin text-slate-400" /> : <Check className="w-3.5 h-3.5" />}
+          {busy ? <Loader2 className="w-3 h-3 animate-spin text-slate-400" /> : <Check className="w-3 h-3" />}
         </button>
-        <button type="button" onClick={() => setOpen((v) => !v)} className="min-w-0 flex-1 text-start">
-          <div className="flex flex-wrap items-center gap-2">
-            <span className={`text-[14px] font-bold leading-snug ${done ? 'text-slate-500 line-through' : 'text-slate-900'}`}>{task.title}</span>
-            <span className={`rounded-full px-2 py-0.5 text-[11px] font-bold ${stage.cls}`}>{ar ? stage.ar : stage.en}</span>
-            {task.kind === 'request' && <span className="rounded-full bg-sky-50 px-2 py-0.5 text-[11px] font-semibold text-sky-700">{t('طلب', 'Request')}</span>}
-            {task.timerStartedAt && <span className="h-2 w-2 animate-pulse rounded-full bg-emerald-500" title={t('المؤقّت يعمل', 'Timer running')} />}
-          </div>
-          <div className="mt-0.5 flex flex-wrap items-center gap-x-3 gap-y-0.5 text-[12px] text-slate-500">
-            <span className={`inline-flex items-center gap-1 ${TONE_CLASS[dl.tone]}`}><Clock className="w-3 h-3" />{dl.text}</span>
-            <span>{showAssignee ? t(`المسؤول: ${task.assignedToName}`, `Owner: ${task.assignedToName}`) : t(`من ${task.createdByName}`, `From ${task.createdByName}`)}</span>
-            {others.length > 0 && <span className="inline-flex items-center gap-1 text-sky-700"><Users className="w-3 h-3" />{t('بمشاركة', 'With')} {others.map((o) => o.name).join('، ')}</span>}
-            {task.project && <span className="inline-flex items-center gap-1"><FolderKanban className="w-3 h-3" />{task.project.name}</span>}
-            {comments.length > 0 && <span className="inline-flex items-center gap-1"><MessageSquare className="w-3 h-3" />{comments.length}</span>}
-            {archived && <span className="inline-flex items-center gap-1 text-slate-600"><Archive className="w-3 h-3" />{t('في الأرشيف', 'Archived')}{task.archivedByName ? ` · ${task.archivedByName}` : ''}</span>}
-          </div>
+        {/* One line, as a business review task row: title first, then owner, date, state. */}
+        <button type="button" onClick={() => setOpen((v) => !v)}
+          className={`min-w-0 flex-1 text-start py-2.5 pe-2 flex flex-wrap items-center gap-x-3 gap-y-1 ${done ? 'hover:bg-emerald-50/60' : 'hover:bg-slate-50'}`}>
+          <span className={`flex-1 min-w-[12rem] text-[13.5px] font-semibold ${done ? 'text-emerald-800' : 'text-slate-900'}`}>
+            {task.title}
+            {task.kind === 'request' && <span className="ms-2 rounded bg-sky-50 px-1.5 py-0.5 text-[11px] font-medium text-sky-700">{t('طلب', 'Request')}</span>}
+            {task.timerStartedAt && <span className="ms-2 inline-block h-2 w-2 animate-pulse rounded-full bg-emerald-500 align-middle" title={t('المؤقّت يعمل', 'Timer running')} />}
+          </span>
+          <span className="inline-flex items-center gap-1 text-[12px] text-slate-600"><UserRound className="w-3.5 h-3.5 text-slate-400" />{showAssignee ? task.assignedToName : t(`من ${task.createdByName}`, `From ${task.createdByName}`)}</span>
+          {others.length > 0 && <span className="inline-flex items-center gap-1 rounded border border-sky-200 bg-sky-50 px-1.5 py-0.5 text-[11.5px] text-sky-800"><Users className="w-3.5 h-3.5" />{t('بمشاركة', 'With')} {others.map((o) => o.name).join('، ')}</span>}
+          <span className={`inline-flex items-center gap-1 text-[12px] ${TONE_CLASS[dl.tone]}`}><Clock className="w-3.5 h-3.5" />{dl.text}</span>
+          {comments.length > 0 && <span className="inline-flex items-center gap-1 text-[12px] text-slate-500"><MessageSquare className="w-3.5 h-3.5" />{comments.length}</span>}
+          {archived && <span className="inline-flex items-center gap-1 text-[12px] text-slate-600"><Archive className="w-3.5 h-3.5" />{task.archivedByName || t('في الأرشيف', 'Archived')}</span>}
+          <span className={`rounded-full px-2 py-0.5 text-[11px] font-semibold ${stage.cls}`}>{ar ? stage.ar : stage.en}</span>
         </button>
         {/* Archive from the row itself, without opening the task. */}
         {task.can.archive && (
           <button type="button" disabled={busy} onClick={() => on.onArchive(task, archived)}
             title={archived ? t('إعادة من الأرشيف', 'Restore') : t('إرسال للأرشيف', 'Send to archive')}
-            className={`hidden sm:inline-flex shrink-0 items-center gap-1 rounded-lg border px-2.5 py-1 text-[12px] font-bold disabled:opacity-50 ${archived ? 'border-emerald-300 text-emerald-700 hover:bg-emerald-50' : 'border-slate-300 text-slate-600 hover:bg-slate-100'}`}>
+            className={`shrink-0 inline-flex items-center gap-1 rounded-lg border bg-white px-2.5 py-1 text-[12px] font-semibold disabled:opacity-50 ${archived ? 'border-emerald-300 text-emerald-700 hover:bg-emerald-50' : 'border-slate-300 text-slate-700 hover:bg-slate-100'}`}>
             {archived ? <Undo2 className="w-3.5 h-3.5" /> : <Archive className="w-3.5 h-3.5" />}{archived ? t('إعادة', 'Restore') : t('أرشفة', 'Archive')}
           </button>
         )}
-        <ChevronDown className={`w-4 h-4 shrink-0 text-slate-400 transition-transform ${open ? 'rotate-180' : ''}`} />
+        <button type="button" onClick={() => setOpen((v) => !v)} className="me-3 shrink-0 text-slate-300 hover:text-slate-500" aria-label={t('تفاصيل', 'Details')}>
+          <ChevronDown className={`w-4 h-4 transition-transform ${open ? 'rotate-180' : ''}`} />
+        </button>
       </div>
 
       {open && (
@@ -1013,11 +1014,11 @@ function JpBoardInner({ scope, section }: { scope: JpScope; section?: string }) 
             onRemoveOwner={removeOwner} onArchive={archive} />
         );
         const grouped = me.canManage && box === 'all' && !current && !assignee;
-        if (!grouped) return <ul className="space-y-2">{tasks.map((x) => card(x, box !== 'mine'))}</ul>;
+        if (!grouped) return <ul className="divide-y divide-slate-100 overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">{tasks.map((x) => card(x, box !== 'mine'))}</ul>;
         const groups = [...tasks.reduce((m, x) => { const k = x.assignedToName || '—'; if (!m.has(k)) m.set(k, []); m.get(k)!.push(x); return m; }, new Map<string, JpTask[]>())]
           .sort((a, b) => b[1].filter((x) => x.state === 'overdue').length - a[1].filter((x) => x.state === 'overdue').length || b[1].length - a[1].length);
         return (
-          <div className="grid grid-cols-1 gap-3 xl:grid-cols-2">
+          <div className="space-y-3">
             {groups.map(([name, list]) => {
               const late = list.filter((x) => x.state === 'overdue' && x.status !== 'done').length;
               const doing = list.filter((x) => x.status !== 'done' && x.progress === 'doing').length;
@@ -1026,12 +1027,12 @@ function JpBoardInner({ scope, section }: { scope: JpScope; section?: string }) 
               const pct = list.length ? Math.round((fin / list.length) * 100) : 0;
               const isFolded = folded[name] ?? false;
               return (
-                <section key={name} className="self-start rounded-2xl border border-slate-200 bg-white shadow-sm overflow-hidden">
+                <section key={name} className="rounded-2xl border border-slate-200 bg-white shadow-sm overflow-hidden">
                   <button type="button" onClick={() => setFolded((f) => ({ ...f, [name]: !isFolded }))}
                     className="flex w-full items-center gap-3 border-b border-slate-100 bg-slate-50/70 px-4 py-3 text-start">
-                    <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-[#f37121]/15 text-[14px] font-extrabold text-[#f37121]">{name.trim().charAt(0) || '؟'}</span>
+                    <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-[#f37121]/15 text-[14px] font-bold uppercase text-[#f37121]">{name.trim().charAt(0) || '؟'}</span>
                     <span className="min-w-0 flex-1">
-                      <span className="block truncate text-[14.5px] font-extrabold text-slate-900">{name}</span>
+                      <span className="block truncate text-[14.5px] font-bold text-slate-900">{name}</span>
                       <span className="mt-1 flex flex-wrap gap-1.5 text-[11px] font-bold">
                         {late > 0 && <span className="rounded-full bg-red-600 px-2 py-0.5 text-white">{t(`${late} متأخّرة`, `${late} late`)}</span>}
                         {doing > 0 && <span className="rounded-full bg-sky-600 px-2 py-0.5 text-white">{t(`${doing} قيد التنفيذ`, `${doing} in progress`)}</span>}
@@ -1039,13 +1040,13 @@ function JpBoardInner({ scope, section }: { scope: JpScope; section?: string }) 
                         {fin > 0 && <span className="rounded-full bg-emerald-600 px-2 py-0.5 text-white">{t(`${fin} تمّت`, `${fin} done`)}</span>}
                       </span>
                     </span>
-                    <span className="hidden sm:block w-24 text-end">
-                      <span className="block text-[12px] font-bold tabular-nums text-slate-700">{pct}%</span>
+                    <span className="hidden sm:block w-40 text-end">
+                      <span className="block text-[12px] font-semibold tabular-nums text-slate-700">{t(`الإنجاز ${pct}%`, `${pct}% done`)}</span>
                       <span className="mt-1 block h-1.5 overflow-hidden rounded-full bg-slate-200"><span className="block h-full rounded-full bg-emerald-500" style={{ width: `${pct}%` }} /></span>
                     </span>
                     <ChevronDown className={`w-4 h-4 shrink-0 text-slate-400 transition-transform ${isFolded ? '' : 'rotate-180'}`} />
                   </button>
-                  {!isFolded && <ul className="space-y-2 p-3">{list.map((x) => card(x))}</ul>}
+                  {!isFolded && <ul className="divide-y divide-slate-100">{list.map((x) => card(x))}</ul>}
                 </section>
               );
             })}

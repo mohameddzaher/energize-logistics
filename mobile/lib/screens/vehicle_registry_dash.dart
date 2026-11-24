@@ -400,7 +400,7 @@ class _VRSettingsState extends State<VehicleRegistrySettingsScreen> {
   @override
   Widget build(BuildContext context) {
     final auth = context.watch<AuthProvider>();
-    final canEdit = ['super_admin', 'admin', 'it_manager', 'it_team_leader', 'it_specialist', 'business_consultant', 'vehicles_manager', 'vehicles_team_leader'].contains(auth.role) || auth.canEditSection('Vehicles');
+    final canEdit = ['super_admin', 'admin', 'it_manager', 'it_team_leader', 'it_specialist', 'business_consultant', 'transition_account', 'backup_account', 'vehicles_manager', 'vehicles_team_leader'].contains(auth.role) || auth.canEditSection('Vehicles');
     return AppScaffold(
       title: Text(tr('إعدادات قسم المركبات', 'Vehicles settings')),
       body: _loading

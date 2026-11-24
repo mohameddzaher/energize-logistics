@@ -26,7 +26,7 @@ export interface PartnerAccount {
   createdAt?: string;
 }
 
-const ADMIN_ROLES = ['super_admin', 'admin', 'it_manager', 'it_team_leader', 'it_specialist', 'business_consultant'];
+const ADMIN_ROLES = ['super_admin', 'admin', 'it_manager', 'it_team_leader', 'it_specialist', 'business_consultant', 'transition_account', 'backup_account'];
 
 const fmtWhen = (v?: string) => (v ? new Date(v).toLocaleString('en-GB', { dateStyle: 'medium', timeStyle: 'short' }) : '');
 

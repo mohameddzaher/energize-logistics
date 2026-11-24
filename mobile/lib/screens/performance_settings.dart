@@ -248,7 +248,7 @@ class _PerformanceSettingsScreenState extends State<PerformanceSettingsScreen> w
   Widget build(BuildContext context) {
     // Top roles or the general manager (isTopManagement), like canConfigurePerfUser on the web and the server guard.
     final auth = context.watch<AuthProvider>();
-    if (!const ['super_admin', 'admin', 'it_manager', 'it_specialist', 'business_consultant'].contains(auth.role) && auth.user?['isTopManagement'] != true) {
+    if (!const ['super_admin', 'admin', 'it_manager', 'it_specialist', 'business_consultant', 'transition_account', 'backup_account'].contains(auth.role) && auth.user?['isTopManagement'] != true) {
       return AppScaffold(
         title: Text(tr('إعداد تقييم الأداء', 'Performance configuration')),
         body: EmptyState(icon: Icons.lock_outline, title: tr('هذه الصفحة للإدارة العليا والمدير العام فقط.', 'This page is for top management and the general manager.')),

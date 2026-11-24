@@ -19,7 +19,7 @@ class VendorsPricesScreen extends StatefulWidget {
 
 /// Same editors as the server (routes/vendorsMgmt LEADS).
 const _priceEditors = {
-  'super_admin', 'admin', 'it_manager', 'it_team_leader', 'it_specialist', 'business_consultant',
+  'super_admin', 'admin', 'it_manager', 'it_team_leader', 'it_specialist', 'business_consultant', 'transition_account', 'backup_account',
   'vendors_manager', 'vendors_team_leader', 'operations_manager', 'operations_team_leader', 'data_manager',
 };
 

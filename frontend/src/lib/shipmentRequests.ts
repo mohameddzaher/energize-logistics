@@ -4,7 +4,7 @@ import { roleOf, type RoleOrUser } from './sections';
 
 export const SALES_ROLES = ['sales_manager', 'sales_team_leader', 'sales_rep', 'sales_trainee'];
 export const VENDOR_ROLES = ['vendors_manager', 'vendors_team_leader', 'vendors_staff', 'vendors_trainee'];
-const TOP = ['super_admin', 'admin', 'it_manager', 'it_team_leader', 'it_specialist', 'business_consultant'];
+const TOP = ['super_admin', 'admin', 'it_manager', 'it_team_leader', 'it_specialist', 'business_consultant', 'transition_account', 'backup_account'];
 const DATA = ['data_manager', 'data_analyst', 'data_entry'];
 const SO_TEAM = ['shipment_orders_manager', 'shipment_orders_team_leader', 'shipment_orders_staff', 'operations_manager', 'operations_team_leader', 'operations_staff'];
 export const ASK_ROLES = [...TOP, ...DATA, ...SALES_ROLES, ...SO_TEAM];

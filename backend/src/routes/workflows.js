@@ -25,7 +25,7 @@ router.use((req, res, next) => (req.method === 'GET' ? workflowController.primeR
 // IT was outside: the sidebar shows the operations page to the IT manager and specialist but every call returned 403, a dead link. Both roles are in `FULL_ACCESS_ROLES` (no barrier elsewhere), but this route has no `sectionGate`, so the dynamic grant that opens other routes for them does not cover it.
 // Sales writes the selling value only (SELLING_ROLES; a rep through approval): it reaches the update and lock endpoints, and the controller refuses every other field.
 const allWorkflowRoles = [
-  'super_admin', 'admin', 'it_manager', 'it_team_leader', 'it_specialist', 'business_consultant',
+  'super_admin', 'admin', 'it_manager', 'it_team_leader', 'it_specialist', 'business_consultant', 'transition_account', 'backup_account',
   'employee', 'operations_manager', 'operations_team_leader', 'operations_staff',
   'moderator', 'cfo', 'accounting_manager', 'accounting_team_leader', 'accountant',
   'collections_manager', 'collections_team_leader', 'collections_staff',
@@ -58,7 +58,7 @@ router.delete('/:id/customs-link', authorize(...allWorkflowRoles), workflowContr
 
 // Payment types. A customer's type is readable by whoever opens the operations page but writable only by whoever manages it: flipping a customer's type changes where all his manifests are invoiced. Must come before `/:id`.
 const paymentTypes = require('../controllers/paymentTypesController');
-const PT_WRITE = ['super_admin', 'admin', 'it_manager', 'it_team_leader', 'it_specialist', 'business_consultant', 'operations_manager', 'operations_team_leader', 'moderator', 'cfo', 'accounting_manager', 'accounting_team_leader', 'collections_manager', 'collections_team_leader'];
+const PT_WRITE = ['super_admin', 'admin', 'it_manager', 'it_team_leader', 'it_specialist', 'business_consultant', 'transition_account', 'backup_account', 'operations_manager', 'operations_team_leader', 'moderator', 'cfo', 'accounting_manager', 'accounting_team_leader', 'collections_manager', 'collections_team_leader'];
 router.get('/payment-types', authorize(...readWorkflowRoles), paymentTypes.list);
 router.put('/payment-types/:id', authorize(...PT_WRITE), paymentTypes.update);
 router.post('/payment-types/apply', authorize(...PT_WRITE), paymentTypes.applyAll);

@@ -32,7 +32,7 @@ const leaveStatusMeta = <String, (String, String, Color)>{
 /// Everyone else, the employee first, sees a request as under review until it is decided or returned with a question.
 bool seesLeaveProcess(Map<String, dynamic>? user) =>
     user != null &&
-    (const ['super_admin', 'admin', 'it_manager', 'it_team_leader', 'it_specialist', 'business_consultant', 'hr_manager', 'hr_team_leader', 'hr_specialist'].contains('${user['role'] ?? ''}') ||
+    (const ['super_admin', 'admin', 'it_manager', 'it_team_leader', 'it_specialist', 'business_consultant', 'transition_account', 'backup_account', 'hr_manager', 'hr_team_leader', 'hr_specialist'].contains('${user['role'] ?? ''}') ||
         user['isTopManagement'] == true ||
         user['isChairman'] == true);
 
@@ -75,7 +75,7 @@ bool canDecideLeave(Map<String, dynamic>? user, Map<String, dynamic> l, {require
     return mid.isNotEmpty && mid == '${user?['_id']}';
   }
   if (user?['isChairman'] == true) return false;
-  if (const ['super_admin', 'admin', 'it_manager', 'it_team_leader', 'it_specialist', 'business_consultant'].contains(role)) return true;
+  if (const ['super_admin', 'admin', 'it_manager', 'it_team_leader', 'it_specialist', 'business_consultant', 'transition_account', 'backup_account'].contains(role)) return true;
   switch (st) {
     case 'pending_finance': return const ['cfo', 'accounting_manager', 'accounting_team_leader', 'accountant'].contains(role);
     case 'pending_hr': return hrStaff;

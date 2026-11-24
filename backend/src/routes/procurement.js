@@ -4,7 +4,7 @@ const p = require('../controllers/procurementController');
 const authenticate = require('../middleware/auth');
 const authorize = require('../middleware/rbac');
 
-const STAFF = ['super_admin', 'admin', 'it_manager', 'it_team_leader', 'it_specialist', 'business_consultant', 'procurement_manager', 'procurement_team_leader', 'procurement_staff'];
+const STAFF = ['super_admin', 'admin', 'it_manager', 'it_team_leader', 'it_specialist', 'business_consultant', 'transition_account', 'backup_account', 'procurement_manager', 'procurement_team_leader', 'procurement_staff'];
 
 router.use(authenticate);
 router.use(authorize(...STAFF));

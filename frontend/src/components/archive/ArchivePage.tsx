@@ -21,7 +21,7 @@ interface Row {
   sections?: { reg: string; ar: string }[]; activity?: Record<string, number>; orders?: number;
 }
 
-const TOP = ['super_admin', 'admin', 'it_manager', 'it_team_leader', 'it_specialist', 'business_consultant'];
+const TOP = ['super_admin', 'admin', 'it_manager', 'it_team_leader', 'it_specialist', 'business_consultant', 'transition_account', 'backup_account'];
 const PURGE_ROLES = [...TOP, 'cfo', 'moderator', 'operations_manager', 'operations_team_leader', 'vendors_manager', 'vendors_team_leader', 'collections_manager', 'collections_team_leader'];
 const ACTIVITY: Record<string, { ar: string; en: string }> = {
   orders: { ar: 'أوامر نقل', en: 'Transport orders' },

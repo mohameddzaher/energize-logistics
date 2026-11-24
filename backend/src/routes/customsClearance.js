@@ -12,7 +12,7 @@ const authorize = require('../middleware/rbac');
 // section (QA sweep 2026-10-27) — see middleware/sectionGate requireSectionAccess.
 const customsOnly = require('../middleware/sectionGate').requireSectionAccess('Customs');
 
-const EDIT_ROLES = ['super_admin', 'admin', 'it_manager', 'it_team_leader', 'it_specialist', 'business_consultant', 'operations_manager', 'operations_team_leader', 'customs_manager', 'customs_team_leader', 'customs_officer'];
+const EDIT_ROLES = ['super_admin', 'admin', 'it_manager', 'it_team_leader', 'it_specialist', 'business_consultant', 'transition_account', 'backup_account', 'operations_manager', 'operations_team_leader', 'customs_manager', 'customs_team_leader', 'customs_officer'];
 
 router.use(authenticate);
 
@@ -36,7 +36,7 @@ router.put('/parties/:id/attachments/:attId', authorize(...EDIT_ROLES), ctrl.upd
 router.delete('/parties/:id/attachments/:attId', authorize(...EDIT_ROLES), ctrl.deletePartyAttachment);
 // Contracts, also before `/:id`.
 // Group endpoints before `/:id`.
-const FINANCE_ROLES = ['super_admin', 'admin', 'it_manager', 'it_team_leader', 'it_specialist', 'business_consultant', 'cfo', 'accounting_manager', 'accounting_team_leader', 'accountant'];
+const FINANCE_ROLES = ['super_admin', 'admin', 'it_manager', 'it_team_leader', 'it_specialist', 'business_consultant', 'transition_account', 'backup_account', 'cfo', 'accounting_manager', 'accounting_team_leader', 'accountant'];
 
 router.get('/settings', ctrl.getSettings);
 // Customer follow-up email from the customs mailbox; the template is edited by the section heads.

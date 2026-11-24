@@ -20,7 +20,7 @@ class OpsPaymentTypesScreen extends StatefulWidget {
   State<OpsPaymentTypesScreen> createState() => _OpsPaymentTypesScreenState();
 }
 
-const _writeRoles = ['super_admin', 'admin', 'it_manager', 'it_team_leader', 'it_specialist', 'business_consultant', 'operations_manager', 'operations_team_leader', 'moderator', 'cfo', 'accounting_manager', 'accounting_team_leader', 'collections_manager', 'collections_team_leader'];
+const _writeRoles = ['super_admin', 'admin', 'it_manager', 'it_team_leader', 'it_specialist', 'business_consultant', 'transition_account', 'backup_account', 'operations_manager', 'operations_team_leader', 'moderator', 'cfo', 'accounting_manager', 'accounting_team_leader', 'collections_manager', 'collections_team_leader'];
 
 String _fold(String v) => v
     .replaceAll(RegExp('[أإآٱ]'), 'ا').replaceAll('ة', 'ه').replaceAll(RegExp('[ىئي]'), 'ي')

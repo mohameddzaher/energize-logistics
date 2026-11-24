@@ -50,6 +50,8 @@ const roleLabels = {
   'it_manager': ('مدير تقنية المعلومات', 'IT Manager'),
   'it_specialist': ('أخصائي تقنية معلومات', 'IT Specialist'),
   'business_consultant': ('مستشار أعمال', 'Business Consultant'),
+  'transition_account': ('حساب انتقالي', 'Transition Account'),
+  'backup_account': ('حساب احتياطي', 'Backup Account'),
   'marketing_manager': ('مدير التسويق', 'Marketing Manager'),
   'marketing_specialist': ('أخصائي تسويق', 'Marketing Specialist'),
   'bd_manager': ('مدير تطوير الأعمال', 'BD Manager'),
@@ -661,8 +663,8 @@ class _PermissionsScreenState extends State<PermissionsScreen> {
   Widget build(BuildContext context) {
     final me = context.watch<AuthProvider>().role;
     // role-only like the web: whoever sets the matrix is not granted access through it, and creating types is for the system admin.
-    final isSuper = const ['super_admin', 'admin', 'it_manager', 'it_team_leader', 'it_specialist', 'business_consultant'].contains(me);
-    final canMakeRoles = const ['super_admin', 'admin', 'it_manager', 'it_team_leader', 'it_specialist', 'business_consultant'].contains(me);
+    final isSuper = const ['super_admin', 'admin', 'it_manager', 'it_team_leader', 'it_specialist', 'business_consultant', 'transition_account', 'backup_account'].contains(me);
+    final canMakeRoles = const ['super_admin', 'admin', 'it_manager', 'it_team_leader', 'it_specialist', 'business_consultant', 'transition_account', 'backup_account'].contains(me);
     final catalog = _catalog;
     final managed = _managed;
     final unmanaged = <String>{for (final p in catalog) if (!managed.contains(p['section'])) p['section'].toString()}.toList();
@@ -1054,7 +1056,7 @@ class _UserFormScreenState extends State<_UserFormScreen> {
   );
 
   Future<void> _pickRole() async {
-    final keys = roleKeys().where((r) => r != 'super_admin' || const ['super_admin', 'admin', 'it_manager', 'it_team_leader', 'it_specialist', 'business_consultant'].contains(_role)).toList();
+    final keys = roleKeys().where((r) => r != 'super_admin' || const ['super_admin', 'admin', 'it_manager', 'it_team_leader', 'it_specialist', 'business_consultant', 'transition_account', 'backup_account'].contains(_role)).toList();
     final picked = await _search(
       title: tr('ابحث باسم الدور…', 'Search a role…'),
       fetch: (q) async => [for (final k in keys) if (q.isEmpty || _fold('$k ${roleLabel(k)}').contains(_fold(q))) {'_id': k}],

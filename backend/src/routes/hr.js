@@ -10,7 +10,7 @@ const hrm = require('../controllers/hrMasterController');
 const authenticate = require('../middleware/auth');
 const authorize = require('../middleware/rbac');
 
-const STAFF = ['super_admin', 'admin', 'it_manager', 'it_team_leader', 'it_specialist', 'business_consultant', 'hr_manager', 'hr_team_leader', 'hr_specialist'];
+const STAFF = ['super_admin', 'admin', 'it_manager', 'it_team_leader', 'it_specialist', 'business_consultant', 'transition_account', 'backup_account', 'hr_manager', 'hr_team_leader', 'hr_specialist'];
 
 router.use(authenticate);
 

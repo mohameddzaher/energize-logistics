@@ -19,7 +19,7 @@ class FleetVehicleLogsScreen extends StatefulWidget {
 }
 
 const _editRoles = {
-  'super_admin', 'admin', 'it_manager', 'it_team_leader', 'it_specialist', 'business_consultant',
+  'super_admin', 'admin', 'it_manager', 'it_team_leader', 'it_specialist', 'business_consultant', 'transition_account', 'backup_account',
   'operations_manager', 'operations_team_leader', 'operations_staff', 'moderator',
   'fleet_manager', 'fleet_team_leader', 'fleet_supervisor',
 };

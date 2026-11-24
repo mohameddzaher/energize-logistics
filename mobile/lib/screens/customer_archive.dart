@@ -19,7 +19,7 @@ class ArchiveScreen extends StatefulWidget {
   State<ArchiveScreen> createState() => _ArchiveScreenState();
 }
 
-const _purgeRoles = ['super_admin', 'admin', 'it_manager', 'it_team_leader', 'it_specialist', 'business_consultant', 'cfo', 'moderator', 'operations_manager', 'operations_team_leader', 'vendors_manager', 'vendors_team_leader', 'collections_manager', 'collections_team_leader'];
+const _purgeRoles = ['super_admin', 'admin', 'it_manager', 'it_team_leader', 'it_specialist', 'business_consultant', 'transition_account', 'backup_account', 'cfo', 'moderator', 'operations_manager', 'operations_team_leader', 'vendors_manager', 'vendors_team_leader', 'collections_manager', 'collections_team_leader'];
 const _activity = {
   'orders': ('أوامر نقل', 'transport orders'),
   'loads': ('حمولات أسطول', 'fleet loads'),

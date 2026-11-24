@@ -8,7 +8,7 @@ const FINANCE_ROLES = ['cfo', 'accounting_manager', 'accounting_team_leader', 'a
 export default function FinanceLeavesPage() {
   const { user } = useAuth();
   // role-only: the finance stage follows backend utils/leaveChain FINANCE_ROLES.
-  const canDecide = FINANCE_ROLES.includes(user?.role || '') || ['super_admin', 'admin', 'it_manager', 'it_team_leader', 'it_specialist', 'business_consultant'].includes(user?.role || '');
+  const canDecide = FINANCE_ROLES.includes(user?.role || '') || ['super_admin', 'admin', 'it_manager', 'it_team_leader', 'it_specialist', 'business_consultant', 'transition_account', 'backup_account'].includes(user?.role || '');
   return (
     <LeaveDesk base="/api/finance-desk" stage="finance" canDecide={canDecide}
       title={{ ar: 'طلبات الإجازات — الإدارة المالية', en: 'Leave Requests — Finance' }}

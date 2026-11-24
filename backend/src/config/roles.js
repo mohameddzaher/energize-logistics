@@ -18,6 +18,9 @@ const GLOBAL_ROLES = [
   { key: 'data_entry', ar: 'مدخل بيانات', en: 'Data Entry Specialist' },
   // Super-admin powers, narrowed from the permissions page (config/constants CONSULTANT_ROLES).
   { key: 'business_consultant', ar: 'مستشار أعمال', en: 'Business Consultant' },
+  // Super-admin powers inside only the sections opened for them on the permissions page (default: none). Used while an employee moves between sections and needs the old and the new one at once.
+  { key: 'transition_account', ar: 'حساب انتقالي', en: 'Transition Account' },
+  { key: 'backup_account', ar: 'حساب احتياطي', en: 'Backup Account' },
   { key: 'employee', ar: 'موظف', en: 'Employee' },
   // External partner (customer or vendor): gets the portal, not company sections.
   { key: 'client', ar: 'شريك خارجي', en: 'External Partner' },

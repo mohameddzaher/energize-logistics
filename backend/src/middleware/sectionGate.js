@@ -58,6 +58,10 @@ const sectionGate = (sectionKey) => {
         // No saved override, so use the section's default access. This is what makes "section manager and staff have their section" (config/roles.js) work on the API and not only decorate the sidebar; without it a new role would open the section in the menu and get 403 from every endpoint inside.
         const fallback = liftFinance(req.user.role, defaultAccess(req.user.role, sectionKey));
         // Only widens, never narrows: if the default is 'none' we do not reject here and leave the old authorize lists to decide as before, so nobody loses access they had.
+        // Transition and backup accounts pass every role list (top powers), so the gate is their only limit: a section not opened for them is closed.
+        if (fallback === 'none' && require('../config/constants').OPEN_BY_GRANT_ROLES.includes(req.user.role)) {
+          return res.status(403).json({ message: 'No access to this section', code: 'SECTION_FORBIDDEN' });
+        }
         if (fallback === 'none') return next();
         access = fallback;
       }

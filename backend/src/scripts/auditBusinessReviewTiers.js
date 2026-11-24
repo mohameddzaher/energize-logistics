@@ -50,7 +50,7 @@ async function login(e) {
   return (r.headers.getSetCookie?.() || []).map((c) => c.split(';')[0]).join('; ');
 }
 // Mirrors the frontend nav rule (lib/businessReview.ts).
-const isRunner = (r) => ['super_admin','admin','it_manager','it_specialist', 'business_consultant','moderator','administration_staff'].includes(r);
+const isRunner = (r) => ['super_admin','admin','it_manager','it_specialist', 'business_consultant', 'transition_account', 'backup_account','moderator','administration_staff'].includes(r);
 const isParticipant = (r) => isRunner(r) || ['b2c_manager','operations_staff','moderator'].includes(r) || /_manager$/.test(r);
 const navFor = (role) => [
   isParticipant(role) && 'اجتماعات المراجعة',

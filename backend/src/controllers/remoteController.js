@@ -13,7 +13,7 @@ const { emitToUser, emitToAll } = require('../websocket/socketManager');
 const { grantedBySection } = require('../utils/sectionAccess');
 
 // ── Helpers ───────────────────────────────────────────────────────────────
-const STAFF_ROLES = ['super_admin', 'admin', 'it_manager', 'it_team_leader', 'it_specialist', 'business_consultant', 'remote_manager', 'remote_team_leader'];
+const STAFF_ROLES = ['super_admin', 'admin', 'it_manager', 'it_team_leader', 'it_specialist', 'business_consultant', 'transition_account', 'backup_account', 'remote_manager', 'remote_team_leader'];
 const isStaff = (user) => STAFF_ROLES.includes(user.role);
 // A role the super_admin granted this section to counts as staff too —
 // otherwise the grant passes the route gate but the handler still rejects it.
@@ -70,7 +70,7 @@ const buildScopedFilter = async (req, dateField = 'date') => {
 
 // Notify an employee's reviewers (their manager + all full admins).
 const reviewersFor = async (employeeUserId, managerId) => {
-  const admins = await User.find({ role: { $in: ['super_admin', 'admin', 'it_manager', 'it_team_leader', 'it_specialist', 'business_consultant'] }, isActive: true }).select('_id').lean();
+  const admins = await User.find({ role: { $in: ['super_admin', 'admin', 'it_manager', 'it_team_leader', 'it_specialist', 'business_consultant', 'transition_account', 'backup_account'] }, isActive: true }).select('_id').lean();
   const ids = admins.map((a) => String(a._id));
   if (managerId) ids.push(String(managerId));
   return [...new Set(ids)].filter((id) => id !== String(employeeUserId));

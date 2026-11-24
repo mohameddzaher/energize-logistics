@@ -114,7 +114,7 @@ export default function DriverCardsPage() {
   const t = (a: string, e: string) => (ar ? a : e);
   const { notify, confirm } = useDialog();
 
-  const canEdit = ['super_admin', 'admin', 'it_manager', 'it_team_leader', 'it_specialist', 'business_consultant', 'vehicles_manager', 'vehicles_team_leader', 'hr_manager', 'hr_team_leader'].includes((user as any)?.role || '')
+  const canEdit = ['super_admin', 'admin', 'it_manager', 'it_team_leader', 'it_specialist', 'business_consultant', 'transition_account', 'backup_account', 'vehicles_manager', 'vehicles_team_leader', 'hr_manager', 'hr_team_leader'].includes((user as any)?.role || '')
     || canEditSection((user as any)?.permissions, 'Vehicles');
 
   const [cards, setCards] = useState<Card[]>([]);

@@ -111,6 +111,8 @@ const _executive = HomeInsight('النظرة التنفيذية', 'Executive sna
 const _roleInsight = <String, HomeInsight>{
   'super_admin': _executive,
   'business_consultant': _executive,
+  'transition_account': _executive,
+  'backup_account': _executive,
   'cfo': _finance,
   'accounting_manager': _finance,
   'accountant': _finance,

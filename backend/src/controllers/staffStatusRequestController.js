@@ -19,7 +19,7 @@ const emit = () => { try { emitToAll('staff-requests:changed', {}); } catch (e) 
 
 const HR_ROLES = ['hr_manager', 'hr_team_leader', 'hr_specialist'];
 const isHr = (u) => HR_ROLES.includes(u?.role)
-  || ['super_admin', 'admin', 'it_manager', 'it_team_leader', 'it_specialist', 'business_consultant'].includes(u?.role)
+  || ['super_admin', 'admin', 'it_manager', 'it_team_leader', 'it_specialist', 'business_consultant', 'transition_account', 'backup_account'].includes(u?.role)
   || ['view', 'edit'].includes(u?.permissions?.HR);
 
 /** Next human-readable request number. */

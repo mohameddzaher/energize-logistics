@@ -49,6 +49,16 @@ export const GLOBAL_ROLES: RoleDef[] = [
     "en": "Business Consultant"
   },
   {
+    "key": "transition_account",
+    "ar": "حساب انتقالي",
+    "en": "Transition Account"
+  },
+  {
+    "key": "backup_account",
+    "ar": "حساب احتياطي",
+    "en": "Backup Account"
+  },
+  {
     "key": "employee",
     "ar": "موظف",
     "en": "Employee"

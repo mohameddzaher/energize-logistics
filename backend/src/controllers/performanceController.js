@@ -23,9 +23,9 @@ const sectionOfRole = (role) => D.perfSectionOfRole(role);
 // Who may SEE everything (read-only oversight).
 // it_specialist removed (owner, 2026-10-27): every employee's grade and bonus is
 // for the top roles and the IT manager only.
-const FULL_ACCESS = ['super_admin', 'admin', 'it_manager', 'it_specialist', 'business_consultant'];
+const FULL_ACCESS = ['super_admin', 'admin', 'it_manager', 'it_specialist', 'business_consultant', 'transition_account', 'backup_account'];
 // Override a locked evaluation and decide edit requests: top roles only.
-const CONFIG_ROLES = ['super_admin', 'admin', 'it_manager', 'it_specialist', 'business_consultant'];
+const CONFIG_ROLES = ['super_admin', 'admin', 'it_manager', 'it_specialist', 'business_consultant', 'transition_account', 'backup_account'];
 
 const isFull = (role) => FULL_ACCESS.includes(role);
 // Every form, the bands and the bonus tiers: top roles and the general manager.

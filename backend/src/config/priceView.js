@@ -24,7 +24,7 @@ const FLEET_ROLES = ['fleet_manager', 'fleet_team_leader', 'fleet_supervisor'];
  * and the fleet, work on the purchase price (approved route range). Every other role follows priceView.
  */
 const REQUEST_SELL_ROLES = new Set([
-  'super_admin', 'admin', 'it_manager', 'it_team_leader', 'it_specialist', 'business_consultant', 'it_trainee',
+  'super_admin', 'admin', 'it_manager', 'it_team_leader', 'it_specialist', 'business_consultant', 'transition_account', 'backup_account', 'it_trainee',
   'cfo', 'accounting_manager', 'accounting_team_leader', 'accountant', 'general_manager',
   // team-leader-exception: the operations team leader does not see the selling price.
   'operations_manager', ...SALES_ROLES, 'data_manager', 'data_analyst', 'data_entry',

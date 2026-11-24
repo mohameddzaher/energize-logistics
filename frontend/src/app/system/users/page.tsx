@@ -308,7 +308,7 @@ export default function UsersPage() {
   const fetchBranches = async () => {
     try {
       // role-only: same editors as the permissions page.
-      if (['super_admin', 'admin', 'it_manager', 'it_team_leader', 'it_specialist', 'business_consultant', 'operations_manager', 'operations_team_leader'].includes(currentUser?.role || '')) {
+      if (['super_admin', 'admin', 'it_manager', 'it_team_leader', 'it_specialist', 'business_consultant', 'transition_account', 'backup_account', 'operations_manager', 'operations_team_leader'].includes(currentUser?.role || '')) {
         api.get<any>('/api/shipment-orders/branch-access').then((d) => setShipBranches(d.branches || [])).catch(() => {});
       }
       const data = await api.get<any>('/api/branches?active=true');

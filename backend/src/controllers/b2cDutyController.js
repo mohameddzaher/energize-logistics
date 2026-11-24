@@ -23,7 +23,7 @@ const { SUPERVISOR_ROLES } = require('../utils/b2cSupervisors');
  * A project manager reads their section's log.
  * Previously only the system admin and sector manager read the whole log, so a project manager saw only their own records and their reps' records, and missed checks done by another supervisor on their project. The check is a reviewable work trace, not a secret inside the department. Writing stays guarded (a supervisor records; review belongs to its owners).
  */
-const FULL_VIEW_ROLES = ['super_admin', 'admin', 'it_manager', 'it_team_leader', 'it_specialist', 'business_consultant',
+const FULL_VIEW_ROLES = ['super_admin', 'admin', 'it_manager', 'it_team_leader', 'it_specialist', 'business_consultant', 'transition_account', 'backup_account',
   'b2c_manager', 'b2c_team_leader', 'b2c_deputy', 'b2c_project_lead',
   // Finance roles see the whole section like the system admin, not one supervisor's reps.
   ...require('../config/financeAuthority').FINANCE_FULL_ROLES];

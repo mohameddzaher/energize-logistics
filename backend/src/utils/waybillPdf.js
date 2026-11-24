@@ -214,6 +214,8 @@ function rowFromShipment(s) {
     driverName, customerName: s.customerName || '', branch: s.branch || '',
     blNumber: s.blNumber || '', containerNumber: s.containerNumber || '',
     toLocation: s.toCity || '', fromLocation: s.fromCity || '', date, dispatchNumber: String(s.waybillNumber || ''),
+    // The load's note prints on its transport order, as a shipment order's does.
+    notes: s.notes || '',
   };
 }
 

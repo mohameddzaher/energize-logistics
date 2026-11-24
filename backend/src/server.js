@@ -468,6 +468,10 @@ if (!DOCS_ONLY) connectDB().then(async () => {
   require('./utils/vendorColumns').backfill()
     .then((r) => { if (r.orders || r.rows) console.log(`[vendor-cols] backfill: ${r.orders} orders, ${r.rows} workflow rows`); })
     .catch((e) => console.error('[vendor-cols] backfill:', e.message));
+  // Background jobs this worker was running when it stopped are reported as stopped.
+  require('./utils/backgroundJob').failOrphans()
+    .then((n) => { if (n) console.log(`[jobs] ${n} interrupted job(s) marked stopped`); })
+    .catch((e) => console.error('[jobs] orphans:', e.message));
   // Business review archive became manual: keep what the old 24h rule had archived, mark the rest live (once).
   require('./config/businessReview').migrateManualArchive()
     .then((r) => { if (r.archived || r.live) console.log(`[br] manual archive: ${r.archived} kept archived, ${r.live} live`); })

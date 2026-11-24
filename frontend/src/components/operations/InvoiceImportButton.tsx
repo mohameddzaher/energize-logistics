@@ -56,6 +56,8 @@ export default function InvoiceImportButton({ ar, onDone }: { ar: boolean; onDon
   const input = useRef<HTMLInputElement>(null);
   const [open, setOpen] = useState(false);
   const [busy, setBusy] = useState(false);
+  // How far the server got on a long apply: rows written so far.
+  const [prog, setProg] = useState<{ phase: string; done: number; total: number } | null>(null);
   const [file, setFile] = useState<{ name: string; dataUrl: string } | null>(null);
   const [res, setRes] = useState<Result | null>(null);
   // Chosen customer per report (customers-page name); empty means leave the transport order's customer as it is.
@@ -67,11 +69,13 @@ export default function InvoiceImportButton({ ar, onDone }: { ar: boolean; onDon
     try {
       // Run in the background and poll: a big file takes longer than any request may stay open (proxy and browser timeouts).
       const customerChanges = apply ? Object.entries(custPick).filter(([, v]) => v).map(([reportNumber, customerName]) => ({ reportNumber, customerName })) : undefined;
+      setProg(null);
       const { jobId } = await api.post<{ jobId: string }>('/api/workflows/import-invoices', { dataUrl: customersOnly ? '' : f.dataUrl, apply, fileName: f.name, background: true, customerChanges, customersOnly }, { timeoutMs: 120000 });
       let r: Result | null = null;
       for (let i = 0; i < 900 && !r; i += 1) {
         await new Promise((ok) => setTimeout(ok, 2000));
-        const j = await api.get<{ status: string; result: Result; message: string }>(`/api/workflows/jobs/${jobId}`).catch(() => null);
+        const j = await api.get<{ status: string; result: Result; message: string; progress?: { phase: string; done: number; total: number } | null }>(`/api/workflows/jobs/${jobId}`).catch(() => null);
+        if (j?.progress) setProg(j.progress);
         if (!j || j.status === 'running') continue;
         if (j.status === 'error') throw new Error(j.message || t('تعذّر الرفع', 'Upload failed'));
         r = j.result;
@@ -123,7 +127,20 @@ export default function InvoiceImportButton({ ar, onDone }: { ar: boolean; onDon
               {file ? t('اختيار ملفّ آخر', 'Choose another file') : t('اختر الملفّ', 'Choose the file')}
             </button>
             {file && <p className="w-full text-[12px] text-slate-500">{t('الملفّ الحالي:', 'Current file:')} <b className="text-slate-700">{file.name}</b></p>}
-            {busy && <p className="w-full text-[12px] font-semibold text-amber-700">{t('جارٍ معالجة الملفّ على الخادم… الملفّات الكبيرة تأخذ دقائق، اترك النافذة مفتوحة.', 'Processing on the server… big files take minutes; keep this open.')}</p>}
+            {busy && (
+              <div className="w-full space-y-1.5">
+                <p className="text-[12px] font-semibold text-amber-700">
+                  {prog?.phase === 'write'
+                    ? t(`جارٍ الكتابة في سير العمل: ${prog.done.toLocaleString('en-US')} من ${prog.total.toLocaleString('en-US')} كشفًا…`, `Writing: ${prog.done} of ${prog.total}…`)
+                    : prog?.phase === 'ledger'
+                      ? t('كُتبت الكشوف — جارٍ تحديث الفواتير في التحصيل…', 'Rows written — updating invoices in collections…')
+                      : t('جارٍ معالجة الملفّ على الخادم… الملفّات الكبيرة تأخذ دقائق، اترك النافذة مفتوحة.', 'Processing on the server… big files take minutes; keep this open.')}
+                </p>
+                {prog?.phase === 'write' && prog.total > 0 && (
+                  <div className="h-2 overflow-hidden rounded-full bg-amber-100"><div className="h-full rounded-full bg-amber-500 transition-all" style={{ width: `${Math.round((prog.done / prog.total) * 100)}%` }} /></div>
+                )}
+              </div>
+            )}
           </div>
 
           <details className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-[12.5px] text-slate-700">

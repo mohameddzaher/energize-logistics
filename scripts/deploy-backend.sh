@@ -285,6 +285,16 @@ if ! "${SSH[@]}" "cd $APP_DIR && $NPM_ENV npm install --omit=dev >/tmp/npm-deplo
   exit 1
 fi
 good "dependencies installed"
+# A reload kills whatever a worker is running in the background (a big invoice upload stopped halfway that way).
+# Wait for running jobs to finish, up to 20 minutes; FORCE=1 skips the wait.
+if [ "${FORCE:-0}" != "1" ]; then
+  for i in $(seq 1 80); do
+    running=$("${SSH[@]}" "cd $APP_DIR && node -e \"require('dotenv').config({quiet:true});const m=require('mongoose');m.connect(process.env.MONGODB_URI||process.env.MONGO_URI).then(async()=>{const n=await m.connection.db.collection('backgroundjobs').countDocuments({status:'running',createdAt:{\\\$gt:new Date(Date.now()-3600e3)}});console.log(n);await m.disconnect();}).catch(()=>{console.log(0);process.exit(0)})\" 2>/dev/null | tail -1")
+    [ "${running:-0}" = "0" ] && break
+    [ "$i" = "1" ] && echo "  waiting: $running background job(s) still running on the server (an upload or export)…"
+    sleep 15
+  done
+fi
 # `reload`, not `restart`: the app runs as two cluster instances, so one is replaced while the other serves. `restart` killed both and nginx returned 502 in those seconds (ninety of ninety requests succeeded during a live reload). Reload is done from the config file: `pm2 reload <name>` restarts the code but does not re-read the config, so a change in `ecosystem.config.js`, such as the node heap limit, would never arrive. From the file both arrive.
 "${SSH[@]}" "cd $APP_DIR && pm2 reload ecosystem.config.js --update-env >/dev/null 2>&1 || pm2 reload $PM2_NAME >/dev/null"
 good "$PM2_NAME restarted"

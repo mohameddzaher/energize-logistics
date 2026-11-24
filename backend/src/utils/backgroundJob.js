@@ -4,6 +4,7 @@
  * BackgroundJob the client polls (GET .../jobs/:id). Without the flag the handler runs as before.
  */
 const BackgroundJob = require('../models/BackgroundJob');
+const INSTANCE = String(process.env.NODE_APP_INSTANCE ?? '0');
 
 function recorder() {
   const out = { code: 200, body: undefined };
@@ -20,8 +21,10 @@ function recorder() {
 
 const inBackground = (kind, handler) => async (req, res, next) => {
   if (req.body?.background !== true) return handler(req, res, next);
-  const job = await BackgroundJob.create({ kind, user: req.user._id });
+  const job = await BackgroundJob.create({ kind, user: req.user._id, instance: INSTANCE });
   res.status(202).json({ jobId: String(job._id) });
+  // The handler may report how far it got.
+  req.bgProgress = (progress) => BackgroundJob.updateOne({ _id: job._id }, { $set: { progress } }).catch(() => {});
   setImmediate(async () => {
     const { res: fake, out } = recorder();
     try {
@@ -43,8 +46,17 @@ async function getJob(req, res) {
   try {
     const job = await BackgroundJob.findOne({ _id: req.params.jobId, user: req.user._id }).lean();
     if (!job) return res.status(404).json({ message: 'المهمّة غير موجودة' });
-    return res.json({ status: job.status, httpStatus: job.httpStatus, result: job.result, message: job.message });
+    return res.json({ status: job.status, httpStatus: job.httpStatus, result: job.result, message: job.message, progress: job.progress || null });
   } catch (e) { return res.status(400).json({ message: 'معرّف غير صالح' }); }
 }
 
-module.exports = { inBackground, getJob };
+/** At boot: jobs this worker was running died with the previous process; say so instead of leaving the screen waiting. */
+async function failOrphans() {
+  const r = await BackgroundJob.updateMany(
+    { status: 'running', instance: INSTANCE },
+    { $set: { status: 'error', httpStatus: 500, finishedAt: new Date(), message: 'توقّفت المعالجة بسبب إعادة تشغيل الخادم — ما كُتب قبل التوقّف محفوظ، أعد المحاولة لإكمال الباقي' } },
+  );
+  return r.modifiedCount || 0;
+}
+
+module.exports = { inBackground, getJob, failOrphans };

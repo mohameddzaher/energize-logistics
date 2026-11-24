@@ -349,15 +349,30 @@ async function syncOpsInvoices(rawNumbers) {
   const numbers = [...new Set((rawNumbers || []).map((n) => String(n || '').trim())
     .filter((n) => n && !NO_INVOICE_RX.test(n)))];
   let touched = 0;
+  // Reports and ledger entries of all the numbers are read in a few queries, not two per number (an upload touches thousands).
+  const reportsOf = new Map();
+  const entryOf = new Map();
+  for (let i = 0; i < numbers.length; i += 2000) {
+    const chunk = numbers.slice(i, i + 2000);
+    // eslint-disable-next-line no-await-in-loop
+    const [rs, es] = await Promise.all([
+      OperationsWorkflow.find({
+        invoiceNumber: { $in: chunk },
+        executionStatus: { $nin: ['ملغي', 'ملغى', 'ملغاة', 'cancelled', 'canceled', 'Cancelled'] },
+      }).select('reportNumber username invoiceNumber invoiceDate netInvoice tax totalInvoice paymentType').lean(),
+      CollectionInvoice.find({ invoiceNumber: { $in: chunk }, kind: 'tax' }).sort({ _id: 1 }),
+    ]);
+    for (const w of rs) { const k = String(w.invoiceNumber || '').trim(); if (!reportsOf.has(k)) reportsOf.set(k, []); reportsOf.get(k).push(w); }
+    for (const e of es) { const k = String(e.invoiceNumber || '').trim(); if (!entryOf.has(k)) entryOf.set(k, e); }
+  }
+  // One customer lookup per name for the whole run.
+  const partyOf = new Map();
   for (const no of numbers) {
     try {
-      const reports = await OperationsWorkflow.find({
-        invoiceNumber: no,
-        executionStatus: { $nin: ['ملغي', 'ملغى', 'ملغاة', 'cancelled', 'canceled', 'Cancelled'] },
-      }).select('reportNumber username invoiceNumber invoiceDate netInvoice tax totalInvoice paymentType').lean();
+      const reports = reportsOf.get(no) || [];
       const taxReports = reports.filter((w) => w.paymentType !== 'cash' && hasTaxInvoice(w));
       // Tax only: a cash shipment number is a different sequence that may equal an invoice number.
-      const existing = await CollectionInvoice.findOne({ invoiceNumber: no, kind: 'tax' });
+      const existing = entryOf.get(no) || null;
 
       if (!taxReports.length) {
         if (existing && existing.sheetCode === 'workflow' && !existing.collectionDate && !existing.deliveryDate
@@ -370,10 +385,15 @@ async function syncOpsInvoices(rawNumbers) {
 
       const first = taxReports[0];
       let party = null;
-      try {
-        const { ensureCollectionsParty } = require('../utils/ensureCollectionsParty');
-        party = await ensureCollectionsParty(first.username, { paymentType: 'tax', source: 'operations_workflow' });
-      } catch (_) { /* */ }
+      const pk = String(first.username || '').trim();
+      if (partyOf.has(pk)) party = partyOf.get(pk);
+      else {
+        try {
+          const { ensureCollectionsParty } = require('../utils/ensureCollectionsParty');
+          party = await ensureCollectionsParty(first.username, { paymentType: 'tax', source: 'operations_workflow' });
+        } catch (_) { /* */ }
+        partyOf.set(pk, party);
+      }
       const sum = (k) => Math.round(taxReports.reduce((a, w) => a + (Number(w[k]) || 0), 0) * 100) / 100;
       const dates = taxReports.map((w) => w.invoiceDate).filter(Boolean).map((d) => new Date(d).getTime());
 
@@ -416,6 +436,14 @@ async function syncOpsInvoices(rawNumbers) {
         $set.reportNumbers = taxReports.map((w) => String(w.reportNumber || '')).filter(Boolean);
         if (dates.length) $set.invoiceDate = new Date(Math.min(...dates));
       }
+      // Only what actually differs is written: re-uploading the same sheet used to rewrite every entry.
+      const differs = (k) => {
+        const a = $set[k]; const b = existing[k];
+        if (a instanceof Date || b instanceof Date) return new Date(a || 0).getTime() !== new Date(b || 0).getTime();
+        if (Array.isArray(a)) return JSON.stringify(a) !== JSON.stringify((b || []).map(String));
+        return String(a ?? '') !== String(b ?? '');
+      };
+      for (const k of Object.keys($set)) if (!differs(k)) delete $set[k];
       if (Object.keys($set).length) {
         await CollectionInvoice.updateOne({ _id: existing._id }, { $set });
         touched += 1;
@@ -2972,6 +3000,18 @@ exports.importInvoices = async (req, res) => {
     const found = new Map(reports.map((r) => [String(r.reportNumber).trim(), r]));
 
     const notFound = []; const skipped = []; const unchanged = []; const plan = [];
+    // Customer attributes read once for the whole file, not one query per row (25,000 rows took minutes).
+    const partyTypes = new Map();
+    {
+      const CollectionsParty = require('../models/CollectionsParty');
+      const names = [...new Set(reports.map((r) => CollectionsParty.fold(r.username || '')).filter(Boolean))];
+      for (let i = 0; i < names.length; i += 5000) {
+        // eslint-disable-next-line no-await-in-loop
+        for (const p of await CollectionsParty.find({ kind: 'customer', nameKey: { $in: names.slice(i, i + 5000) } }).select('nameKey paymentType').lean()) {
+          if (!partyTypes.has(p.nameKey)) partyTypes.set(p.nameKey, p.paymentType);
+        }
+      }
+    }
     for (const [rep, item] of byReport) {
       const r = found.get(rep);
       if (!r) { notFound.push(rep); continue; }
@@ -2985,7 +3025,7 @@ exports.importInvoices = async (req, res) => {
       const own = filterFieldsByRole(rowPatch, req.user.role, allowed);
       const refused = own.__rejected || [];
       if (!Object.keys(own).length) { skipped.push({ reportNumber: rep, reason: `صلاحيّتك لا تسمح بـ: ${refused.join('، ')}` }); continue; }
-      await fillPaymentTypeFromCustomer(own, r);
+      await fillPaymentTypeFromCustomer(own, r, partyTypes);
       stampInvoiceDate(own, r);
       const billed = applyBillingRules(own, r);
       if (billed.blocked.includes('invoiceNumber')) { skipped.push({ reportNumber: rep, reason: 'نوعٌ نقديٌّ في الملفّ مع رقم فاتورة — الرقمُ وحدَه يجعله «آجل - فاتورة»' }); continue; }
@@ -3014,12 +3054,18 @@ exports.importInvoices = async (req, res) => {
       return res.json({ preview: true, ...summary, checks, customerNames });
     }
 
-    // Writing
+    // Writing, a thousand rows per round trip; each batch is final, so a run cut short keeps what it wrote and a re-run finishes the rest.
     let updated = 0;
-    for (const p of plan) {
-      const r = await OperationsWorkflow.updateOne({ _id: p._id }, { $set: { ...p.patch, lastModifiedBy: req.user._id } });
+    const progress = typeof req.bgProgress === 'function' ? req.bgProgress : () => {};
+    for (let i = 0; i < plan.length; i += 1000) {
+      const batch = plan.slice(i, i + 1000);
+      // eslint-disable-next-line no-await-in-loop
+      const r = await OperationsWorkflow.bulkWrite(batch.map((p) => ({ updateOne: { filter: { _id: p._id }, update: { $set: { ...p.patch, lastModifiedBy: req.user._id } } } })), { ordered: false });
       updated += r.modifiedCount || 0;
+      // eslint-disable-next-line no-await-in-loop
+      await progress({ phase: 'write', done: Math.min(i + 1000, plan.length), total: plan.length });
     }
+    await progress({ phase: 'ledger', done: plan.length, total: plan.length });
     // All sheet rows are stored, including those with no report (which its card is built on).
     const uploadAt = new Date();
     const savedLines = await invChecks.persistLines(lines, {

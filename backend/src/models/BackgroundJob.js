@@ -13,6 +13,10 @@ const backgroundJobSchema = new mongoose.Schema({
   result: { type: mongoose.Schema.Types.Mixed, default: null },
   message: { type: String, default: '' },
   finishedAt: { type: Date, default: null },
+  // Which PM2 worker runs it: a worker that restarts marks its unfinished jobs as stopped instead of leaving them running forever.
+  instance: { type: String, default: '' },
+  // How far a long job got, for the screen that polls it ({ phase, done, total }).
+  progress: { type: mongoose.Schema.Types.Mixed, default: null },
   createdAt: { type: Date, default: Date.now, expires: 24 * 60 * 60 },
 });
 

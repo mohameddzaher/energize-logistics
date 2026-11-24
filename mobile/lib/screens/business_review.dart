@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
+import '../services/auth.dart';
 import '../services/api.dart';
 import '../services/lang.dart';
 import '../services/live.dart';
@@ -115,6 +117,11 @@ class _BusinessReviewScreenState extends State<BusinessReviewScreen> {
       length: tabs.length,
       child: AppScaffold(
         title: Text(tr('مراجعة الأعمال', 'Business Review')),
+        // A section manager hands business review to members of his team (not a delegate, not the meeting runners).
+        actions: [
+          if (participant && !runner && context.read<AuthProvider>().user?['brActsFor'] == null)
+            IconButton(tooltip: tr('تفويض الفريق', 'Delegate to team'), icon: const Icon(Icons.how_to_reg_outlined), onPressed: () => _openDelegates(context)),
+        ],
         appBarBottom: tabs.length > 1
             ? TabBar(isScrollable: true, tabAlignment: TabAlignment.start, labelColor: Colors.white, unselectedLabelColor: Colors.white70, indicatorColor: T.orange, indicatorWeight: 3, tabs: tabs.map((t) => Tab(text: t.$1)).toList())
             : null,
@@ -1113,3 +1120,76 @@ class _WorkCard extends StatelessWidget {
     );
   }
 }
+
+/// The section manager's delegation sheet (backend controllers/brDelegationController): a delegate sees the section's items and works them under his own name.
+Future<void> _openDelegates(BuildContext context) async {
+  await showModalBottomSheet(
+    context: context,
+    isScrollControlled: true,
+    builder: (ctx) => const _DelegatesSheet(),
+  );
+}
+
+class _DelegatesSheet extends StatefulWidget {
+  const _DelegatesSheet();
+  @override
+  State<_DelegatesSheet> createState() => _DelegatesSheetState();
+}
+
+class _DelegatesSheetState extends State<_DelegatesSheet> {
+  List<Map<String, dynamic>>? _rows;
+  String _section = '';
+  String _busy = '';
+
+  @override
+  void initState() { super.initState(); _load(); }
+
+  Future<void> _load() async {
+    try {
+      final d = await Api.instance.get('/api/business-review/delegates') as Map;
+      if (mounted) setState(() { _rows = [for (final x in (d['members'] as List? ?? const [])) Map<String, dynamic>.from(x as Map)]; _section = '${d['section'] ?? ''}'; });
+    } catch (e) {
+      if (mounted) { setState(() => _rows = []); ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e is ApiException ? e.message : e.toString()))); }
+    }
+  }
+
+  Future<void> _toggle(Map<String, dynamic> m) async {
+    setState(() => _busy = '${m['_id']}');
+    final on = m['delegated'] != true;
+    try {
+      await Api.instance.put('/api/business-review/delegates/${m['_id']}', {'on': on});
+      if (mounted) setState(() => m['delegated'] = on);
+    } catch (e) {
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e is ApiException ? e.message : e.toString())));
+    }
+    if (mounted) setState(() => _busy = '');
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final rows = _rows;
+    return SafeArea(
+      child: SizedBox(
+        height: MediaQuery.of(context).size.height * 0.75,
+        child: ListView(padding: const EdgeInsets.all(16), children: [
+          Text(tr('تفويض مراجعة الأعمال', 'Business review delegation'), style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w900)),
+          const SizedBox(height: 4),
+          Text('${tr('مَن تفوّضه يرى بنود قسمك ويعمل عليها كما تعمل أنت، وتُسجَّل أفعاله باسمه.', 'A delegate sees your section’s items and works them as you do, under their own name.')}${_section.isEmpty ? '' : ' ${tr('القسم', 'Section')}: $_section'}',
+              style: const TextStyle(fontSize: 12, color: T.inkFaint)),
+          const SizedBox(height: 10),
+          if (rows == null) const Center(child: Padding(padding: EdgeInsets.all(24), child: CircularProgressIndicator())),
+          if (rows != null && rows.isEmpty) Padding(padding: const EdgeInsets.all(20), child: Text(tr('لا أعضاء في قسمك.', 'No members in your section.'), textAlign: TextAlign.center)),
+          for (final m in rows ?? const <Map<String, dynamic>>[])
+            SwitchListTile(
+              value: m['delegated'] == true,
+              onChanged: _busy == '${m['_id']}' ? null : (_) => _toggle(m),
+              title: Text('${m['name']}', style: const TextStyle(fontWeight: FontWeight.w700)),
+              subtitle: m['actsForOther'] == true ? Text(tr('مفوَّض من مديرٍ آخر', 'Delegated by another manager'), style: const TextStyle(color: T.warn, fontSize: 11.5)) : null,
+              activeThumbColor: T.orange,
+            ),
+        ]),
+      ),
+    );
+  }
+}
+

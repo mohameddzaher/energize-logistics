@@ -66,6 +66,8 @@ const userSchema = new mongoose.Schema(
       // The customer's CRM master (services/customerHub): every section's customer page finds the account by it, whichever register it was opened from.
       master: { type: String, trim: true, default: '', index: true },
     },
+    // Business review delegation: the section manager this account acts for there (utils/brDelegate). Set and revoked by that manager.
+    brActsFor: { type: mongoose.Schema.Types.ObjectId, ref: 'User', default: null },
     // Disabled because its customer was archived; restoring the customer re-enables it.
     partnerArchived: { type: Boolean, default: undefined },
     // Remote (work-from-home) section: which pages a remote_employee can open.

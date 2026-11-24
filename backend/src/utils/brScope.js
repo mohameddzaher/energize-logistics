@@ -12,6 +12,8 @@ const NO_DEPT = 'Unassigned';
 /** The department a head manages, or null for runners and non-heads. */
 async function headDept(user) {
   if (!user || canRunMeetings(user) || !isManagerRole(user.role)) return null;
+  // A delegate (utils/brDelegate) works in his manager's section.
+  if (user.brActingFor) return (await sectionsOfUserIds([user.brActingFor._id])).get(String(user.brActingFor._id)) || orgSectionOfRole(user.role) || null;
   return (await sectionsOfUserIds([user._id])).get(String(user._id)) || orgSectionOfRole(user.role) || null;
 }
 

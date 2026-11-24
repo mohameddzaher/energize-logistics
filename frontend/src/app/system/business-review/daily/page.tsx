@@ -13,6 +13,7 @@ import {
 import { Spinner, PageHeader } from '@/components/hr/HRKit';
 
 import BrSeriesModal, { WEEKDAYS } from '@/components/system/BrSeriesModal';
+import BrDelegatesButton from '@/components/system/BrDelegatesButton';
 import BrMeetingDepartments from '@/components/system/BrMeetingDepartments';
 import { brMeta, brSeriesDay, type BrMeta, type Lang, tx, fmtDate } from '@/lib/businessReview';
 
@@ -74,6 +75,7 @@ export default function DailyMeetingPage() {
           ? `${s.title} · ${s.time} · ${WEEKDAYS.filter(([k]) => s.weekdays.includes(Number(k))).map(([, en, ar]) => t(en, ar)).join('، ')} · ${s.departments.length} ${t('departments', 'أقسام')} · ${s.attendees.length} ${t('attendees', 'مدعو')}`
           : t('No daily meeting is scheduled yet.', 'لم يُجدول اجتماع يومي بعد.')}>
         <div className="flex items-center gap-2 flex-wrap">
+          <BrDelegatesButton ar={lang === 'ar'} />
           {d?.canEdit && meta && s && (
             <button type="button" onClick={() => setEdit('settings')}
               className="inline-flex items-center gap-1.5 border border-slate-200 bg-white text-slate-700 text-sm font-medium rounded-lg px-3.5 py-2">

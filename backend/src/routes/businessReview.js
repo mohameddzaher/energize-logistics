@@ -17,6 +17,11 @@ const authenticate = require('../middleware/auth');
 router.use(authenticate);
 // An outside partner has the portal and nothing here.
 router.use((req, res, next) => (req.user.role === 'client' ? res.status(403).json({ message: 'Not allowed' }) : next()));
+// Delegation is read here, before the meta and board routes, so a delegate sees exactly what his manager sees.
+const delegation = require('../controllers/brDelegationController');
+router.get('/delegates', delegation.list);
+router.put('/delegates/:userId', delegation.set);
+router.use(require('../utils/brDelegate').applyDelegation);
 
 router.get('/meta', br.getMeta);
 router.get('/dashboard', br.getDashboard);

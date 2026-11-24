@@ -128,9 +128,12 @@ const getOrCreateWallet = async (branchId, date) => {
  * Uses $set on empty fields only, so manual corrections in the operations workflow are not overwritten.
  */
 /**
- * What a purchase on this report should cost, read for the wallet's branch. Heavy transport pays the
- * truck rent: the full rent when the load has one, else the rent (the load's selling price). Every
- * other branch pays the report's purchase price.
+ * What a purchase on this report should cost, read for the wallet's branch. Heavy transport pays the truck rent:
+ * «الإيجار كامل» when the load has one, else «إيجار السيارة». That rent is the fleet's selling price and the workflow's
+ * purchase price; the workflow's selling price is the company's sale to the customer and never the rent.
+ * The load is found by the workflow row's own link, or through the transport order when the load was made from a
+ * shipment order with supplier تنشيط (that load has no workflow row of its own; services/fleetOrderLink).
+ * Every other branch pays the report's purchase price.
  */
 async function purchaseBasis(workflow, branchId) {
   const Branch = require('../models/Branch');
@@ -138,12 +141,14 @@ async function purchaseBasis(workflow, branchId) {
   if (!b || !require('../utils/payingBranch').isHeavy(b.name)) {
     return { heavy: false, expected: Number(workflow.purchaseValue) || 0, selling: Number(workflow.sellingValue) || 0 };
   }
-  let rent = Number(workflow.sellingValue) || 0;
-  if (workflow.fleetShipment) {
-    const { FleetShipment } = require('../models/FleetModels');
-    const f = await FleetShipment.findById(workflow.fleetShipment).select('price fullRent').lean();
-    if (f) rent = Number(f.fullRent) > 0 ? Number(f.fullRent) : (Number(f.price) || rent);
-  }
+  const { FleetShipment } = require('../models/FleetModels');
+  let load = null;
+  if (workflow.fleetShipment) load = await FleetShipment.findById(workflow.fleetShipment).select('price fullRent').lean();
+  if (!load && workflow.shipmentOrder) load = await FleetShipment.findOne({ shipmentOrder: workflow.shipmentOrder }).select('price fullRent').lean();
+  let rent = 0;
+  if (load) rent = Number(load.fullRent) > 0 ? Number(load.fullRent) : (Number(load.price) || 0);
+  // No fleet load found: the workflow's purchase is the rent; its selling price only when no purchase was written.
+  if (!rent) rent = Number(workflow.purchaseValue) || Number(workflow.sellingValue) || 0;
   return { heavy: true, expected: rent, selling: rent };
 }
 

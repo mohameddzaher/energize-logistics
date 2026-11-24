@@ -966,8 +966,20 @@ exports.myAssignments = async (req, res) => {
     if (req.query.status) filter.status = req.query.status;
     else if (req.query.open === '1') filter.status = { $in: OPEN_ACTION_STATUSES };
     const items = await BrAssignment.find(filter).sort({ dueDate: 1, createdAt: -1 }).limit(500).lean();
+    // The whole task handed down, not only the manager's note: the employee works from the same task the manager holds.
+    // Meeting minutes stay out (no meeting id); the task's own fields and history come with it.
+    const parentIds = [...new Set(items.map((a) => String(a.action)).filter(Boolean))];
+    const parents = parentIds.length
+      ? await BrAction.find({ _id: { $in: parentIds } })
+        .select('title description department assigneeName raisedByName meetingRef meetingTitle meetingDate startDate dueDate expectedDate priority status progress completedAt updates createdAt')
+        .lean()
+      : [];
+    const parentOf = new Map(parents.map((p) => [String(p._id), {
+      ...p, meeting: undefined,
+      updates: (p.updates || []).slice(-30).map((u) => ({ byName: u.byName, text: u.text, statusFrom: u.statusFrom, statusTo: u.statusTo, progress: u.progress, at: u.at })),
+    }]));
     res.json({
-      assignments: items,
+      assignments: items.map((a) => ({ ...a, task: parentOf.get(String(a.action)) || null })),
       summary: {
         total: items.length,
         open: items.filter((a) => OPEN_ACTION_STATUSES.includes(a.status)).length,

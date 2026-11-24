@@ -1027,6 +1027,32 @@ class _WorkCard extends StatelessWidget {
 
   bool get _overdue => row['isOverdue'] == true && _open.contains(row['status']);
 
+  Widget _fullTask(Map<String, dynamic> t, String note) {
+    final st = _vocab(meta['actionStatuses'] as List?, t['status']?.toString());
+    final parts = <String>[
+      if ('${t['assigneeName'] ?? ''}'.isNotEmpty) '${tr('صاحب المهمة', 'Owner')}: ${t['assigneeName']}',
+      if ('${t['meetingTitle'] ?? ''}'.isNotEmpty) '${tr('الاجتماع', 'Meeting')}: ${t['meetingTitle']}',
+      if (t['dueDate'] != null) '${tr('التسليم', 'Due')}: ${_date(t['dueDate'])}',
+      if (t['progress'] != null) '${tr('إنجاز المهمة', 'Task progress')}: ${t['progress']}%',
+    ];
+    return Container(
+      margin: const EdgeInsets.only(top: 10),
+      padding: const EdgeInsets.all(10),
+      decoration: BoxDecoration(color: T.orange.withValues(alpha: 0.06), borderRadius: BorderRadius.circular(12), border: Border.all(color: T.orange.withValues(alpha: 0.3))),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Row(children: [
+          Chip2(tr('المهمة كاملة', 'Full task'), T.orange),
+          const SizedBox(width: 6),
+          Expanded(child: Text('${t['title'] ?? ''}', style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 13))),
+          if (t['status'] != null) Chip2(st.label, st.color),
+        ]),
+        if ('${t['description'] ?? ''}'.isNotEmpty) Padding(padding: const EdgeInsets.only(top: 6), child: Text('${t['description']}', style: const TextStyle(fontSize: 12.5, height: 1.45))),
+        if (note.isNotEmpty) Padding(padding: const EdgeInsets.only(top: 6), child: Text('${tr('ملاحظة مديرك', 'Your manager’s note')}: $note', style: const TextStyle(fontSize: 12, color: T.inkSoft, fontWeight: FontWeight.w600))),
+        if (parts.isNotEmpty) Padding(padding: const EdgeInsets.only(top: 6), child: Text(parts.join(' · '), style: const TextStyle(fontSize: 11.5, color: T.inkFaint))),
+      ]),
+    );
+  }
+
   Future<void> _report(BuildContext context) async {
     final v = await brProgressSheet(context, meta, row['title'].toString(), row['status']?.toString() ?? 'open', (row['progress'] ?? 0) as num, expectedDate: row['expectedDate']);
     if (v == null) return;
@@ -1079,6 +1105,8 @@ class _WorkCard extends StatelessWidget {
               if (delegations.isNotEmpty)
                 Chip2('${delegations.length} ${tr('تكليف فرعي', 'delegated')}', T.violet, icon: Icons.groups_outlined),
             ]),
+            // The whole task handed down by the manager (my-tasks only), shown as it stands, without meeting minutes.
+            if (!isAction && row['task'] is Map) _fullTask(Map<String, dynamic>.from(row['task'] as Map), '${row['instructions'] ?? ''}'),
           ]),
         ),
       ),

@@ -125,6 +125,13 @@ export interface BrDelegation {
   progress: number; isOverdue?: boolean; completedAt?: string | null;
   department?: string;
   updates?: BrUpdate[];
+  /** The whole task handed down (my-tasks only), without meeting minutes. */
+  task?: {
+    title: string; description?: string; department?: string; assigneeName?: string; raisedByName?: string;
+    meetingRef?: string; meetingTitle?: string; meetingDate?: string | null;
+    startDate?: string | null; dueDate?: string | null; expectedDate?: string | null;
+    priority?: string; status?: string; progress?: number; updates?: BrUpdate[];
+  } | null;
 }
 
 export interface BrAction {

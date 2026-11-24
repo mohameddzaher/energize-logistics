@@ -38,6 +38,8 @@ export default function MyTasksPage() {
   useEffect(() => { load(); }, [load]);
   useSocket('br:assignment', load);
   useSocket('br:updated', load);
+  // The whole task is shown with each assignment, so a change to the parent task refreshes the list too.
+  useSocket('br:action', load);
 
   const shown = useMemo(() => {
     if (filter === 'all') return tasks;

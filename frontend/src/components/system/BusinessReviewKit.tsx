@@ -491,6 +491,41 @@ export function ActionCard({
 }
 
 /** One delegated task — the employee's view of their own work. */
+function FullTask({ task, meta, lang, note }: { task: NonNullable<BrDelegation['task']>; meta: { actionStatuses?: Vocab[]; priorities?: Vocab[] }; lang: Lang; note?: string }) {
+  const t = (en: string, ar: string) => tx(lang, en, ar);
+  const [log, setLog] = useState(false);
+  const d = (v?: string | null) => (v ? new Date(v).toLocaleDateString('en-GB') : '');
+  return (
+    <div className="mt-3 rounded-xl border border-orange-200 bg-orange-50/50 p-3">
+      <div className="flex flex-wrap items-center gap-2">
+        <span className="rounded-md bg-[#f37121] px-2 py-0.5 text-[11px] font-bold text-white">{t('Full task', 'المهمة كاملة')}</span>
+        <p className="text-sm font-bold text-slate-900">{task.title}</p>
+        {task.status && <StatusPill statuses={meta.actionStatuses} value={task.status} lang={lang} />}
+        {task.priority && <PriorityPill priorities={meta.priorities} value={task.priority} lang={lang} />}
+      </div>
+      {task.description && <p className="mt-2 whitespace-pre-wrap text-[13px] leading-relaxed text-slate-800">{task.description}</p>}
+      {note && <p className="mt-2 rounded-lg bg-white px-2.5 py-2 text-[12.5px] text-slate-700 ring-1 ring-orange-100"><b className="text-slate-900">{t('Your manager’s note: ', 'ملاحظة مديرك: ')}</b>{note}</p>}
+      <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-[12px] text-slate-600">
+        {task.assigneeName && <span>{t('Owner', 'صاحب المهمة')}: <b className="text-slate-800">{task.assigneeName}</b></span>}
+        {task.raisedByName && <span>{t('Raised by', 'طرحها')}: <b className="text-slate-800">{task.raisedByName}</b></span>}
+        {task.meetingTitle && <span>{t('Meeting', 'الاجتماع')}: <b className="text-slate-800">{task.meetingTitle}</b>{task.meetingDate ? ` · ${d(task.meetingDate)}` : ''}</span>}
+        {task.startDate && <span>{t('Start', 'البداية')}: <b className="text-slate-800 tabular-nums">{d(task.startDate)}</b></span>}
+        {task.dueDate && <span>{t('Due', 'التسليم')}: <b className="text-slate-800 tabular-nums">{d(task.dueDate)}</b></span>}
+        {task.expectedDate && <span>{t('Expected', 'المتوقَّع')}: <b className="text-slate-800 tabular-nums">{d(task.expectedDate)}</b></span>}
+        {typeof task.progress === 'number' && <span>{t('Task progress', 'إنجاز المهمة')}: <b className="text-slate-800 tabular-nums">{task.progress}%</b></span>}
+      </div>
+      {!!task.updates?.length && (
+        <>
+          <button type="button" onClick={() => setLog((v) => !v)} className="mt-2 text-[12px] font-semibold text-[#c2410c] hover:underline">
+            {log ? t('Hide the task history', 'إخفاء سجلّ المهمة') : t(`Task history (${task.updates.length})`, `سجلّ المهمة (${task.updates.length})`)}
+          </button>
+          {log && <UpdateLog updates={task.updates} statuses={meta.actionStatuses} lang={lang} />}
+        </>
+      )}
+    </div>
+  );
+}
+
 export function TaskCard({
   task, meta, lang, onUpdate, showAssignee,
 }: {
@@ -538,6 +573,9 @@ export function TaskCard({
       </div>
 
       <div className="mt-2"><Progress value={task.progress} color={color} /></div>
+
+      {/* The whole task the manager handed down, shown to the employee as it stands (no meeting minutes). */}
+      {task.task && !showAssignee && <FullTask task={task.task} meta={meta} lang={lang} note={task.instructions} />}
 
       {open && (
         <div className="mt-3 border-t border-slate-100 pt-3">

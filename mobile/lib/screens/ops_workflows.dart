@@ -41,6 +41,8 @@ const _barFields = [
   ('driverName', 'السائق', 'Driver', false),
   ('carNumber', 'رقم السيارة', 'Vehicle', false),
   ('carOwner', 'مالك السيارة', 'Car owner', false),
+  ('vendorLabel', 'المورد', 'Supplier', false),
+  ('costCenter', 'مركز التكلفة', 'Cost centre', false),
   ('truckType', 'نوع الشاحنة', 'Truck type', false),
   ('payingBranch', 'الفرع المسدِّد', 'Paying branch', false),
   ('invoiceState', 'رقم الفاتورة', 'Invoice number', false),
@@ -53,6 +55,7 @@ const _colFields = [
   ('reportNumber', 'رقم أمر النقل', 'Report #', false),
   ('reportDate', 'تاريخ أمر النقل', 'Report date', false),
   ('userPhone', 'هاتف العميل', 'Customer phone', false),
+  ('vendorName', 'اسم المورد', 'Supplier name', false),
   ('purchaseValue', 'قيمة الشراء', 'Purchase value', false),
   ('sellingValue', 'قيمة البيع', 'Selling value', false),
   ('truckSize', 'حجم الشاحنة', 'Truck size', false),
@@ -84,6 +87,7 @@ const _moneyExportKeys = {'netInvoice', 'tax', 'totalInvoice', 'invoiceDate', 'i
 const _exportCols = [
   ('reportNumber', 'رقم الطلب', 'Report #'), ('reportDate', 'تاريخ الطلب', 'Report date'), ('fromLocation', 'من', 'From'),
   ('toLocation', 'إلى', 'To'), ('branch', 'الفرع', 'Branch'), ('carOwner', 'مالك السيارة', 'Car owner'),
+  ('vendorLabel', 'المورد', 'Supplier'), ('vendorName', 'اسم المورد', 'Supplier name'), ('costCenter', 'مركز التكلفة', 'Cost centre'),
   ('carNumber', 'رقم السيارة', 'Car #'), ('applicationStatus', 'حالة الشحنة', 'Status'), ('username', 'العميل', 'Customer'),
   ('userPhone', 'هاتف العميل', 'Customer phone'), ('purchaseValue', 'قيمة الشراء', 'Purchase value'), ('sellingValue', 'قيمة البيع', 'Selling value'),
   ('driverName', 'السائق', 'Driver'), ('truckType', 'نوع الشاحنة', 'Truck type'), ('truckSize', 'حجم الشاحنة', 'Truck size'),
@@ -1185,6 +1189,22 @@ class _OpsWorkflowsScreenState extends State<OpsWorkflowsScreen> {
                   Text('${w['fromLocation'] ?? '—'} ← ${w['toLocation'] ?? '—'} · ${opsDate(w['reportDate'])}', style: const TextStyle(fontSize: 12.5, fontWeight: FontWeight.w600)),
                   Text([w['username'], w['carOwner'], w['carNumber'], w['branch']].where((x) => (x ?? '').toString().isNotEmpty).join(' · '),
                       maxLines: 2, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 11.5, color: T.inkSoft)),
+                  // Supplier columns and cost centre are written from the shipment; read-only here.
+                  if ('${w['vendorLabel'] ?? ''}'.isNotEmpty || '${w['vendorName'] ?? ''}'.isNotEmpty || '${w['costCenter'] ?? ''}'.isNotEmpty)
+                    Text.rich(
+                      TextSpan(style: const TextStyle(fontSize: 11.5, color: T.inkSoft), children: [
+                        if ('${w['vendorLabel'] ?? ''}'.isNotEmpty) ...[
+                          TextSpan(text: '${tr('المورد', 'Supplier')}: '),
+                          TextSpan(
+                            text: w['vendorKind'] == 'freelancer' ? tr('فريلانسر', 'Freelancer') : '${w['vendorLabel']}',
+                            style: w['vendorKind'] == 'freelancer' ? const TextStyle(color: T.violet, fontWeight: FontWeight.w700) : const TextStyle(color: T.ink),
+                          ),
+                        ],
+                        if ('${w['vendorName'] ?? ''}'.isNotEmpty) TextSpan(text: '  ·  ${tr('اسم المورد', 'Supplier name')}: ${w['vendorName']}'),
+                        if ('${w['costCenter'] ?? ''}'.isNotEmpty) TextSpan(text: '  ·  ${tr('مركز التكلفة', 'Cost centre')}: ${w['costCenter']}'),
+                      ]),
+                      maxLines: 2, overflow: TextOverflow.ellipsis,
+                    ),
                   const SizedBox(height: 6),
                   Wrap(spacing: 6, runSpacing: 4, crossAxisAlignment: WrapCrossAlignment.center, children: [
                     if ((w['applicationStatus'] ?? '').toString().isNotEmpty)

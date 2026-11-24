@@ -1062,6 +1062,10 @@ exports.updateVendor = async (req, res) => {
     for (const k of Object.keys(data)) before[k] = doc[k];
     Object.assign(doc, data);
     await doc.save();
+    // A new kind or name reaches the workflow's supplier columns.
+    if (('type' in data && before.type !== data.type) || ('name' in data && before.name !== data.name)) {
+      await require('../utils/vendorColumns').refreshSupplier(doc._id, before.name).catch((e) => console.error('vendor columns:', e.message));
+    }
     await logAudit({ user: req.user, action: 'update', entity: 'ShipmentOrderSupplier', entityId: doc._id, changes: { before, after: data }, ipAddress: req.ip });
     announce({ id: String(doc._id) });
     res.json({ vendor: doc });

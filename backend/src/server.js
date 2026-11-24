@@ -464,6 +464,10 @@ if (!DOCS_ONLY) connectDB().then(async () => {
     .catch((e) => console.error('[jp] company links:', e.message));
   // Approved prices became per customer + route: the old route-only unique index is replaced (small collection).
   require('./models/VendorsMgmt').VendorApprovedPrice.syncIndexes().catch((e) => console.error('[vendors] price indexes:', e.message));
+  // Supplier columns (vendorLabel/vendorName) and the order's supplier kind for rows written before they existed (once).
+  require('./utils/vendorColumns').backfill()
+    .then((r) => { if (r.orders || r.rows) console.log(`[vendor-cols] backfill: ${r.orders} orders, ${r.rows} workflow rows`); })
+    .catch((e) => console.error('[vendor-cols] backfill:', e.message));
   // Business review archive became manual: keep what the old 24h rule had archived, mark the rest live (once).
   require('./config/businessReview').migrateManualArchive()
     .then((r) => { if (r.archived || r.live) console.log(`[br] manual archive: ${r.archived} kept archived, ${r.live} live`); })

@@ -14,6 +14,12 @@ const operationsWorkflowSchema = new mongoose.Schema(
     toLocation: { type: String, trim: true },                // To
     branch: { type: String, trim: true },                    // Branch
     carOwner: { type: String, trim: true },                  // Vehicle owner
+    // Supplier columns, system-written (utils/vendorColumns): vendorLabel is the company name or the freelancer label, vendorName the company or person.
+    vendorKind: { type: String, trim: true },
+    vendorLabel: { type: String, trim: true },
+    vendorName: { type: String, trim: true },
+    // The shipment's cost centre, mirrored from the order.
+    costCenter: { type: String, trim: true },
     carNumber: { type: String, trim: true },                 // Vehicle number
     ownerType: { type: String, trim: true },                 // Owner type
     executionStatus: { type: String, trim: true },           // Execution status

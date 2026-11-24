@@ -13,6 +13,7 @@ const cache = require('../utils/ttlCache');
 const { emitToAll } = require('../websocket/socketManager');
 const { derivePaymentTypeFor, isSubtype, subtypeFamily, subtypeAfterAuto } = require('../utils/paymentType');
 const { termsOfSubtype } = require('../utils/shipmentOrderPayment');
+const { columnsOf: vendorColumns } = require('../utils/vendorColumns');
 
 const TICK_MS = 15000;
 // One shipment is one record, so these three alone delete it, from either screen.
@@ -43,6 +44,7 @@ function rowOfFleet(f) {
     username: str(f.customerName),
     carOwner: FLEET_OWNER,
     ownerName: FLEET_OWNER,
+    ...vendorColumns(FLEET_OWNER, 'company'),
     carNumber: str(f.vehiclePlate),
     plateNumber: str(f.vehiclePlate),
     carName: str(f.vehiclePlate),
@@ -82,6 +84,8 @@ function rowOf(o) {
     username: str(o.customerName),
     carOwner: str(o.supplierName),
     ownerName: str(o.supplierName),
+    ...vendorColumns(o.supplierName, o.supplierType),
+    costCenter: str(o.costCenter),
     carNumber: str(o.vehiclePlate),
     plateNumber: str(o.vehiclePlate),
     carName: str(o.vehicleName),
@@ -328,6 +332,9 @@ async function mirrorPlatformOrder(orderOrId, keys = []) {
   if (!wf) return null;
   const row = rowOf(o);
   const wanted = Object.fromEntries(keys.flatMap((k) => ORDER_TO_ROW[k] || []).map((c) => [c, row[c]]));
+  // Derived columns, written only from the order side (never mapped back).
+  if (keys.some((k) => ['supplierName', 'supplierType', 'supplier'].includes(k))) Object.assign(wanted, vendorColumns(o.supplierName, o.supplierType));
+  if (keys.includes('costCenter')) wanted.costCenter = row.costCenter;
   // Payment type is chosen by hand on the shipment; the workflow takes it with its family.
   if (keys.includes('paymentSubtype') && isSubtype(o.paymentSubtype)) {
     Object.assign(wanted, { paymentSubtype: o.paymentSubtype, paymentType: subtypeFamily(o.paymentSubtype), paymentTypeSource: 'manual' });

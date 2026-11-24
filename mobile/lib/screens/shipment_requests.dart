@@ -1690,9 +1690,11 @@ class _Truck {
   final drIqama = TextEditingController();
   final buy = TextEditingController();
   final advance = TextEditingController();
+  // Cost centre label from the so_cost_center list.
+  final costCenter = TextEditingController();
   List<Map<String, dynamic>> vehicles = [];
   List<Map<String, dynamic>> drivers = [];
-  void dispose() { for (final c in [flName, flPhone, plate, drName, drPhone, drIqama, buy, advance]) { c.dispose(); } }
+  void dispose() { for (final c in [flName, flPhone, plate, drName, drPhone, drIqama, buy, advance, costCenter]) { c.dispose(); } }
 }
 
 class _PlaceTrucksScreenState extends State<PlaceTrucksScreen> {
@@ -1749,7 +1751,7 @@ class _PlaceTrucksScreenState extends State<PlaceTrucksScreen> {
     // A second truck usually goes to the same supplier at the same price.
     if (_trucks.isNotEmpty) {
       final last = _trucks.last;
-      t.kind = last.kind; t.supplier = last.supplier; t.buy.text = last.buy.text; t.sourcingRep = _trucks.first.sourcingRep;
+      t.kind = last.kind; t.supplier = last.supplier; t.buy.text = last.buy.text; t.costCenter.text = last.costCenter.text; t.sourcingRep = _trucks.first.sourcingRep;
       t.vehicles = last.vehicles; t.drivers = last.drivers;
     } else if (_reps.any((o) => '${o['value']}' == _me)) { t.sourcingRep = _me; }
     setState(() => _trucks.add(t));
@@ -1888,6 +1890,7 @@ class _PlaceTrucksScreenState extends State<PlaceTrucksScreen> {
               if ((t.helper ?? '').isNotEmpty) 'helper': t.helper,
               'buyPrice': num.tryParse(t.buy.text.trim()),
               if (t.advance.text.trim().isNotEmpty) 'advanceAmount': num.tryParse(t.advance.text.trim()),
+              'costCenter': t.costCenter.text.trim(),
               ..._times.body(),
             },
         ],
@@ -1996,6 +1999,8 @@ class _PlaceTrucksScreenState extends State<PlaceTrucksScreen> {
           const SizedBox(width: 8),
           Expanded(child: TextField(controller: t.advance, keyboardType: TextInputType.number, decoration: InputDecoration(labelText: tr('السلفة', 'Advance')))),
         ]),
+        const SizedBox(height: 6),
+        LookupField(type: 'so_cost_center', controller: t.costCenter, label: tr('مركز التكلفة', 'Cost centre'), hint: tr('اختر مركز التكلفة…', 'Pick the cost centre…')),
       ])),
     );
   }
@@ -2050,7 +2055,9 @@ class _FleetTruck {
   final price = TextEditingController();
   final expense = TextEditingController();
   final notes = TextEditingController();
-  void dispose() { for (final c in [price, expense, notes]) { c.dispose(); } }
+  // Cost centre label from the so_cost_center list.
+  final costCenter = TextEditingController();
+  void dispose() { for (final c in [price, expense, notes, costCenter]) { c.dispose(); } }
 }
 
 class _FleetPlaceScreenState extends State<FleetPlaceScreen> {
@@ -2103,7 +2110,7 @@ class _FleetPlaceScreenState extends State<FleetPlaceScreen> {
     if (_trucks.length >= _open) return;
     final t = _FleetTruck();
     if (_reqTypes.length == 1) t.truckType = _reqTypes.first;
-    if (_trucks.isNotEmpty) { t.price.text = _trucks.last.price.text; t.rentType = _trucks.last.rentType; t.loadType = _trucks.last.loadType; }
+    if (_trucks.isNotEmpty) { t.price.text = _trucks.last.price.text; t.rentType = _trucks.last.rentType; t.loadType = _trucks.last.loadType; t.costCenter.text = _trucks.last.costCenter.text; }
     setState(() => _trucks.add(t));
   }
 
@@ -2187,6 +2194,7 @@ class _FleetPlaceScreenState extends State<FleetPlaceScreen> {
               if (t.expected.isNotEmpty) 'expectedArrival': '${t.expected}T12:00:00',
               if (t.notes.text.trim().isNotEmpty) 'notes': t.notes.text.trim(),
               if ((t.helper ?? '').isNotEmpty) 'helper': t.helper,
+              'costCenter': t.costCenter.text.trim(),
               ..._times.body(),
             },
         ],
@@ -2279,6 +2287,8 @@ class _FleetPlaceScreenState extends State<FleetPlaceScreen> {
         ]),
         const SizedBox(height: 6),
         TextField(controller: t.notes, decoration: InputDecoration(labelText: tr('ملاحظة الحمولة', 'Load note'))),
+        const SizedBox(height: 6),
+        LookupField(type: 'so_cost_center', controller: t.costCenter, label: tr('مركز التكلفة', 'Cost centre'), hint: tr('اختر مركز التكلفة…', 'Pick the cost centre…')),
       ])),
     );
   }

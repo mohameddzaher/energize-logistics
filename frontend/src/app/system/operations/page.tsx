@@ -70,6 +70,11 @@ interface Workflow {
   toLocation: string;
   branch: string;
   carOwner: string;
+  /** System-written: the vendor's name or the freelancer label, the company or person, and the shipment's cost centre. */
+  vendorKind?: string;
+  vendorLabel?: string;
+  vendorName?: string;
+  costCenter?: string;
   carNumber: string;
   ownerType: string;
   executionStatus: string;
@@ -165,8 +170,11 @@ const EXPORT_COLUMNS = [
   { header: 'من', key: 'fromLocation', width: 14 },
   { header: 'إلى', key: 'toLocation', width: 14 },
   { header: 'الفرع', key: 'branch', width: 14 },
+  { header: 'المورد', key: 'vendorLabel', width: 22 },
+  { header: 'اسم المورد', key: 'vendorName', width: 22 },
   { header: 'مالك السيارة', key: 'carOwner', width: 22 },
   { header: 'جوال المالك', key: 'ownerPhone', width: 14 },
+  { header: 'مركز التكلفة', key: 'costCenter', width: 28 },
   { header: 'رقم السيارة', key: 'carNumber', width: 14 },
   { header: 'اسم السيارة', key: 'carName', width: 16 },
   { header: 'حالة الشحنة', key: 'applicationStatus', width: 16 },
@@ -216,7 +224,9 @@ const BAR_FIELDS: (FilterBarField & { money?: boolean })[] = [
   { key: 'applicationStatus', ar: 'حالة الشحنة', en: 'Status' },
   { key: 'driverName', ar: 'السائق', en: 'Driver' },
   { key: 'carNumber', ar: 'رقم السيارة', en: 'Vehicle' },
+  { key: 'vendorLabel', ar: 'المورد', en: 'Supplier' },
   { key: 'carOwner', ar: 'مالك السيارة', en: 'Car owner' },
+  { key: 'costCenter', ar: 'مركز التكلفة', en: 'Cost centre' },
   { key: 'truckType', ar: 'نوع الشاحنة', en: 'Truck type' },
   { key: 'payingBranch', ar: 'الفرع المسدِّد', en: 'Paying branch' },
   { key: 'invoiceState', ar: 'رقم الفاتورة', en: 'Invoice number' },
@@ -501,7 +511,10 @@ export default function OperationsWorkflowPage() {
     return [
       { key: 'reportNumber', label: T.thReportNumber, locked: true },
       { key: 'reportDate', label: T.thReportDate }, { key: 'fromLocation', label: T.thFrom }, { key: 'toLocation', label: T.thTo },
-      { key: 'branch', label: T.thBranch }, { key: 'carOwner', label: T.thCarOwner }, { key: 'carNumber', label: T.thCarNumber },
+      { key: 'branch', label: T.thBranch },
+      { key: 'vendorLabel', label: ar ? 'المورد' : 'Supplier' }, { key: 'vendorName', label: ar ? 'اسم المورد' : 'Supplier name' },
+      { key: 'carOwner', label: T.thCarOwner }, { key: 'carNumber', label: T.thCarNumber },
+      { key: 'costCenter', label: ar ? 'مركز التكلفة' : 'Cost centre' },
       { key: 'applicationStatus', label: T.thApplication }, { key: 'username', label: T.thUsername }, { key: 'userPhone', label: T.thUserPhone },
       ...(canSeePurchase ? [{ key: 'purchaseValue', label: T.thPurchaseValue }] : []),
       ...(canSeeSelling ? [{ key: 'sellingValue', label: T.thSellingValue }] : []),
@@ -1624,8 +1637,11 @@ export default function OperationsWorkflowPage() {
                 {ColHead('fromLocation', T.thFrom)}
                 {ColHead('toLocation', T.thTo)}
                 {ColHead('branch', T.thBranch)}
+                {ColHead('vendorLabel', lang === 'ar' ? 'المورد' : 'Supplier')}
+                {ColHead('vendorName', lang === 'ar' ? 'اسم المورد' : 'Supplier name')}
                 {ColHead('carOwner', T.thCarOwner)}
                 {ColHead('carNumber', T.thCarNumber)}
+                {ColHead('costCenter', lang === 'ar' ? 'مركز التكلفة' : 'Cost centre')}
                 {/* Ownership type, execution status, payment method and the tax / non-tax flag were removed: they come from the platform and are not used here; the replacements are payment kind and shipment status. */}
                 {ColHead('applicationStatus', T.thApplication)}
                 {ColHead('username', T.thUsername)}
@@ -1763,6 +1779,13 @@ export default function OperationsWorkflowPage() {
                           </td>
                         );
                       };
+                      // Supplier columns and cost centre follow the shipment; they are changed there, never typed here.
+                      const roCell = (field: keyof Workflow, color = 'text-slate-700') => (
+                        <td className={`px-3 py-2.5 text-sm whitespace-nowrap ${color}`} onClick={(e) => e.stopPropagation()}
+                          title={lang === 'ar' ? 'يُكتب من الشحنة ويتحدّث معها' : 'Written from the shipment'}>
+                          {(wf as any)[field] || '-'}
+                        </td>
+                      );
                       // Like textCell but translates the value for display (edits the raw value).
                       const transCell = (field: keyof Workflow, tr: (v: string) => string, color = 'text-slate-700') => {
                         const isSystemPulled = systemPulledFields.has(field as string) && wf.reportNumber;
@@ -1926,8 +1949,11 @@ export default function OperationsWorkflowPage() {
                         {colOn('fromLocation') && textCell('fromLocation')}
                         {colOn('toLocation') && textCell('toLocation')}
                         {colOn('branch') && lookupCell('branch', 'workflow_paying_branch')}
+                        {colOn('vendorLabel') && roCell('vendorLabel', wf.vendorKind === 'freelancer' ? 'text-violet-700 font-semibold' : 'text-slate-900')}
+                        {colOn('vendorName') && roCell('vendorName', 'text-slate-900')}
                         {colOn('carOwner') && textCell('carOwner', 'text-slate-900')}
                         {colOn('carNumber') && textCell('carNumber')}
+                        {colOn('costCenter') && roCell('costCenter')}
                         {colOn('applicationStatus') && statusCell()}
                         {!colOn('username') ? null : isEditing && owns('username') ? (
                           <td className="px-3 py-2.5 text-sm min-w-[14rem]" onClick={(e) => e.stopPropagation()}>

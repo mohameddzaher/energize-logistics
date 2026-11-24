@@ -535,7 +535,7 @@ const isLocked = (workflow, userId) => {
 
 /** Columns allowed for filtering. A deliberate whitelist: the column name goes straight into the $group key and the $in condition, so accepting any name from the browser would expose values of fields the table does not show, including money fields hidden from most roles. */
 const FILTERABLE_COLUMNS = new Set([
-  'reportNumber', 'reportDate', 'fromLocation', 'toLocation', 'branch', 'carOwner',
+  'reportNumber', 'reportDate', 'fromLocation', 'toLocation', 'branch', 'carOwner', 'vendorLabel', 'vendorName', 'costCenter',
   'carNumber', 'ownerType', 'executionStatus', 'applicationStatus', 'paymentMethod',
   'username', 'userPhone', 'taxIndicator', 'purchaseValue', 'sellingValue',
   'driverName', 'truckType', 'truckSize', 'representativeName', 'operationsReview',
@@ -666,6 +666,7 @@ const bustFilterCache = () => { try { cache.clear('wf:'); } catch (e) {} };
 const LIST_FIELDS = [
   'reportNumber', 'reportDate', 'fromLocation', 'toLocation', 'branch',
   'carOwner', 'carNumber', 'ownerType', 'executionStatus', 'applicationStatus',
+  'vendorKind', 'vendorLabel', 'vendorName', 'costCenter',
   // Read only by the page's Excel export.
   'ownerName', 'ownerPhone', 'carName', 'plateNumber', 'product', 'volume', 'region', 'country',
   'paymentMethod', 'username', 'userPhone', 'taxIndicator',
@@ -914,7 +915,7 @@ function buildWorkflowFilter(queryIn, skipField, allowMoney = true, allowSelling
     const PHONE_FIELDS = ['driverPhone', 'userPhone', 'ownerPhone'];
     // Notes are outside quick search on purpose: free text lets a passing word pull in unrelated reports. They have their own column filter.
     const NAME_FIELDS = [
-      'username', 'carOwner', 'driverName', 'branch', 'payingBranch',
+      'username', 'carOwner', 'vendorName', 'costCenter', 'driverName', 'branch', 'payingBranch',
       'fromLocation', 'toLocation', 'finalReportDestination',
       'truckType', 'truckSize', 'agentName', 'representativeName',
       'ownerName', 'carName', 'product',
@@ -2402,8 +2403,11 @@ async function buildWorkflowWorkbook(filter, money, selling = true, purchase = t
       ['من', (w) => w.fromLocation || ''],
       ['إلى', (w) => w.toLocation || ''],
       ['الفرع', (w) => w.branch || ''],
+      ['المورد', (w) => w.vendorLabel || ''],
+      ['اسم المورد', (w) => w.vendorName || ''],
       ['مالك السيارة', (w) => w.carOwner || w.ownerName || ''],
       ['جوال المالك', (w) => w.ownerPhone || ''],
+      ['مركز التكلفة', (w) => w.costCenter || ''],
       ['رقم السيارة', (w) => w.carNumber || ''],
       ['اسم السيارة', (w) => w.carName || ''],
       ['نوع الملكية', (w) => w.ownerType || ''],
@@ -2454,7 +2458,7 @@ async function buildWorkflowWorkbook(filter, money, selling = true, purchase = t
 
     // Fields with no column are not read: the query used to fetch the whole document including long free-text notes that never enter the file.
     const FIELDS = [
-      'reportNumber', 'reportDate', 'fromLocation', 'toLocation', 'branch', 'carOwner',
+      'reportNumber', 'reportDate', 'fromLocation', 'toLocation', 'branch', 'carOwner', 'vendorLabel', 'vendorName', 'costCenter',
       'carNumber', 'ownerType', 'executionStatus', 'applicationStatus', 'paymentMethod',
       'username', 'userPhone', 'purchaseValue', 'sellingValue', 'driverName', 'truckType',
       'truckSize', 'representativeName', 'operationsReview', 'paymentDate', 'payingBranch',

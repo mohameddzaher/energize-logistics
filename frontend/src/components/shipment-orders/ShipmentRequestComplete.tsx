@@ -99,11 +99,13 @@ type TruckRow = {
   vehicleId: string; newPlate: string;
   driverId: string; driverName: string; ndName: string; ndPhone: string; ndIqama: string;
   buyPrice: string; advanceAmount: string;
+  /** Cost centre label from the section's list (so_cost_center). */
+  costCenter: string;
 };
 const blankTruck = (r: ShipmentRequest, rep = ''): TruckRow => ({
   kind: 'vendor', truckType: typesOfReq(r).length === 1 ? typesOfReq(r)[0] : '', sourcingRep: rep, helper: '',
   supplierId: '', supplierName: '', newFreelancer: false, flName: '', flPhone: '',
-  vehicleId: '', newPlate: '', driverId: '', driverName: '', ndName: '', ndPhone: '', ndIqama: '', buyPrice: '', advanceAmount: '',
+  vehicleId: '', newPlate: '', driverId: '', driverName: '', ndName: '', ndPhone: '', ndIqama: '', buyPrice: '', advanceAmount: '', costCenter: '',
 });
 const IQAMA_RE = /^[12]\d{9}$/;
 
@@ -152,6 +154,7 @@ export function PlaceModal({ req, onClose, onDone }: { req: ShipmentRequest; onC
             : { driverId: r.driverId }),
           truckType: r.truckType || undefined, sourcingRep: r.sourcingRep || null, helper: r.helper || null,
           buyPrice: Number(r.buyPrice), advanceAmount: r.advanceAmount === '' ? null : Number(r.advanceAmount),
+          costCenter: r.costCenter,
           ...times.payload,
         })),
       });
@@ -179,7 +182,7 @@ export function PlaceModal({ req, onClose, onDone }: { req: ShipmentRequest; onC
         ))}
         <div className="flex flex-wrap gap-2">
           {rows.length < req.open && <button type="button" onClick={() => setRows((p) => [...p, blankTruck(req, defRep)])} className="inline-flex items-center gap-1 px-3 py-2 rounded-lg border border-dashed border-slate-300 text-[12.5px] font-semibold text-slate-700 hover:border-[#f37121] hover:text-[#f37121]"><Plus className="w-4 h-4" />{t('شاحنةٌ أخرى', 'Another truck')}</button>}
-          {rows.length < req.open && rows[0].supplierId && <button type="button" onClick={() => setRows((p) => [...p, { ...blankTruck(req, p[0].sourcingRep), kind: p[0].kind, supplierId: p[0].supplierId, supplierName: p[0].supplierName, buyPrice: p[0].buyPrice }])} className="inline-flex items-center gap-1 px-3 py-2 rounded-lg border border-dashed border-slate-300 text-[12.5px] font-semibold text-slate-700 hover:border-[#f37121] hover:text-[#f37121]"><Copy className="w-4 h-4" />{t('شاحنةٌ أخرى من نفس المورّد', 'Another from the same supplier')}</button>}
+          {rows.length < req.open && rows[0].supplierId && <button type="button" onClick={() => setRows((p) => [...p, { ...blankTruck(req, p[0].sourcingRep), kind: p[0].kind, supplierId: p[0].supplierId, supplierName: p[0].supplierName, buyPrice: p[0].buyPrice, costCenter: p[0].costCenter }])} className="inline-flex items-center gap-1 px-3 py-2 rounded-lg border border-dashed border-slate-300 text-[12.5px] font-semibold text-slate-700 hover:border-[#f37121] hover:text-[#f37121]"><Copy className="w-4 h-4" />{t('شاحنةٌ أخرى من نفس المورّد', 'Another from the same supplier')}</button>}
         </div>
       </div>
     </Modal>
@@ -356,6 +359,10 @@ function TruckEditor({ i, row, reps, helpers, types, miss, onChange, onRemove, a
           <label className={labelCls}>{t('السلفة', 'Advance')}</label>
           <input type="number" min={0} value={row.advanceAmount} onChange={(e) => onChange({ advanceAmount: e.target.value })} className={inputCls} />
         </div>
+        <div className="sm:col-span-2">
+          <label className={labelCls}>{t('مركز التكلفة', 'Cost centre')}</label>
+          <SearchableManagedSelect type="so_cost_center" storeLabel value={row.costCenter} onChange={(v) => onChange({ costCenter: v })} placeholder={t('اختر مركز التكلفة…', 'Pick the cost centre…')} />
+        </div>
       </div>
     </div>
   );
@@ -363,8 +370,8 @@ function TruckEditor({ i, row, reps, helpers, types, miss, onChange, onRemove, a
 
 // ── Fleet: our own trucks ───────────────────────────────────────────────────
 
-type FleetRow = { vehicle: string; driver: string; secondDriver: string; price: string; driverExpense: string; fridayBonus: boolean; rentType: string; loadType: string; expectedArrival: string; notes: string; helper: string; truckType: string };
-const blankFleet = (r: ShipmentRequest): FleetRow => ({ vehicle: '', driver: '', secondDriver: '', price: '', driverExpense: '', fridayBonus: false, rentType: '', loadType: '', expectedArrival: '', notes: '', helper: '', truckType: typesOfReq(r).length === 1 ? typesOfReq(r)[0] : '' });
+type FleetRow = { vehicle: string; driver: string; secondDriver: string; price: string; driverExpense: string; fridayBonus: boolean; rentType: string; loadType: string; expectedArrival: string; notes: string; helper: string; truckType: string; costCenter: string };
+const blankFleet = (r: ShipmentRequest): FleetRow => ({ vehicle: '', driver: '', secondDriver: '', price: '', driverExpense: '', fridayBonus: false, rentType: '', loadType: '', expectedArrival: '', notes: '', helper: '', truckType: typesOfReq(r).length === 1 ? typesOfReq(r)[0] : '', costCenter: '' });
 
 export function FleetPlaceModal({ req, onClose, onDone }: { req: ShipmentRequest; onClose: () => void; onDone: () => void }) {
   const { lang } = useLanguage();
@@ -397,7 +404,7 @@ export function FleetPlaceModal({ req, onClose, onDone }: { req: ShipmentRequest
           vehicle: r.vehicle, driver: r.driver, secondDriver: r.secondDriver || null, price: Number(r.price),
           driverExpense: r.driverExpense === '' ? 0 : Number(r.driverExpense), fridayBonus: r.fridayBonus,
           rentType: r.rentType, loadType: r.loadType, expectedArrival: r.expectedArrival ? new Date(r.expectedArrival).toISOString() : null,
-          notes: r.notes, helper: r.helper || null, truckType: r.truckType || undefined, ...times.payload,
+          notes: r.notes, helper: r.helper || null, truckType: r.truckType || undefined, costCenter: r.costCenter, ...times.payload,
         })),
       });
       notify(t(`أُنشئت أوامر النقل وحمولات الأسطول: ${(d.waybills || []).join('، ')}${d.failed?.length ? ` · تعذّرت ${d.failed.length}: ${d.failed[0].message}` : ''}`, `Orders and fleet loads: ${(d.waybills || []).join(', ')}`), d.failed?.length ? 'error' : 'success');
@@ -499,6 +506,10 @@ function FleetTruckEditor({ i, row, vehicles, drivers, helpers, types, taken, mi
         <div>
           <label className={labelCls}>{t('مصروف السائق (السلفة)', 'Driver expense (advance)')}</label>
           <input type="number" min={0} value={row.driverExpense} onChange={(e) => onChange({ driverExpense: e.target.value })} className={inputCls} placeholder="0" />
+        </div>
+        <div>
+          <label className={labelCls}>{t('مركز التكلفة', 'Cost centre')}</label>
+          <SearchableManagedSelect type="so_cost_center" storeLabel value={row.costCenter} onChange={(v) => onChange({ costCenter: v })} placeholder={t('اختر مركز التكلفة…', 'Pick the cost centre…')} />
         </div>
         <div className="flex items-end">
           <button type="button" onClick={() => onChange({ fridayBonus: !row.fridayBonus })}

@@ -150,8 +150,7 @@ ${getFontCss()}
       <div class="title-accent"></div>
     </div>
     <div class="meta-row">
-      <!-- العميلُ أوّلُ ما يُقرأ: الورقةُ تُسلَّم بيدٍ ولم تكن تقول لمن الحمولة،
-           فيُسأل عنها السائقُ أو يُراجَع السجلُّ بالرقم. -->
+      <!-- Customer first: the sheet is handed over and must say whose load it is. -->
       <div class="meta-box customer"><span class="lbl-ar">العميل</span><span class="lbl-en">Customer</span><span class="val">${valOrBlank(row.customerName)}</span></div>
       <div class="meta-box"><span class="lbl-ar">الفرع</span><span class="lbl-en">Branch</span><span class="val">${valOrBlank(row.branch)}</span></div>
       <div class="meta-box"><span class="lbl-ar">التاريخ</span><span class="lbl-en">Date</span><span class="val">${valOrBlank(row.date)}</span></div>
@@ -162,7 +161,8 @@ ${getFontCss()}
       <div class="row"><span class="ar-label">العنوان من</span><span class="value">${valOrBlank(row.fromLocation)}</span><span class="en-label">From</span></div>
       <div class="row"><span class="ar-label">إلى</span><span class="value">${valOrBlank(row.toLocation)}</span><span class="en-label">To</span></div>
       <div class="row"><span class="ar-label">نوع السيارة</span><span class="value">${valOrBlank(row.carType)}</span><span class="en-label">Vehicle Type</span></div>
-      ${row.supplierName ? `<div class="row"><span class="ar-label">المورد</span><span class="value">${esc(row.supplierName)}</span><span class="en-label">Supplier</span></div>` : ''}
+      ${row.supplierLabel ? `<div class="row"><span class="ar-label">المورد</span><span class="value">${esc(row.supplierLabel)}</span><span class="en-label">Supplier</span></div>` : ''}
+      ${row.supplierName ? `<div class="row"><span class="ar-label">اسم المورد</span><span class="value">${esc(row.supplierName)}</span><span class="en-label">Supplier Name</span></div>` : ''}
       ${row.ownerName ? `<div class="row"><span class="ar-label">مالك الشاحنة</span><span class="value">${esc(row.ownerName)}</span><span class="en-label">Truck Owner</span></div>` : ''}
       ${row.blNumber ? `<div class="row"><span class="ar-label">رقم البوليصة</span><span class="value">${esc(row.blNumber)}</span><span class="en-label">B/L No.</span></div>` : ''}
       ${row.containerNumber ? `<div class="row"><span class="ar-label">رقم الحاوية</span><span class="value">${esc(row.containerNumber)}</span><span class="en-label">Container No.</span></div>` : ''}
@@ -335,6 +335,9 @@ function rowFromOrder(o, opts = {}) {
     toLocation: o.toCity || '', fromLocation: o.fromCity || '',
     date: `${dt.getDate()}/${dt.getMonth() + 1}/${dt.getFullYear()}`,
     dispatchNumber: String(o.reference || o.waybillNumber || ''),
+    // Same two supplier columns as the workflow (utils/vendorColumns).
+    supplierLabel: require('./vendorColumns').columnsOf(o.supplierName, o.supplierType).vendorLabel,
+    supplierName: o.supplierName || '',
   };
 }
 

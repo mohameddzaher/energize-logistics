@@ -435,6 +435,16 @@ const REGISTRY = [
       { key: 'duplicate', nameEn: 'Duplicate request', nameAr: 'طلبٌ مكرّر', order: 7 },
     ],
   },
+  // Cost centre picked when a shipment is created or a request completed; a plain label for exports and filters, linked to nothing.
+  {
+    type: 'so_cost_center',
+    module: 'shipment_orders',
+    nameEn: 'Cost centres',
+    nameAr: 'مراكز التكلفة',
+    roles: [...SO_ROLES, 'vendors_manager', 'vendors_team_leader', 'vendors_staff', 'fleet_manager', 'fleet_team_leader'],
+    storeLabel: true,
+    seed: require('./costCenterDefaults').map((name, i) => ({ key: `cc_${i + 1}`, nameEn: name, nameAr: name, order: i + 1 })),
+  },
   {
     type: 'so_branch',
     module: 'shipment_orders',

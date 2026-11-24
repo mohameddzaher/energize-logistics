@@ -65,7 +65,7 @@ const fmtDate = (v?: string | null) => {
 // The row is no longer built here. `toSheetRow` converted the order into a waybill row for the browser to draw; drawing is now on the server from the order itself (utils/waybillPdf, rowFromOrder), so a conversion here would be a second copy of the rule that ages alone: notes, sale price and the declaration were added there and never reached this one.
 
 // Example file name: waybill-501-customer-22-7-2026
-const DEFAULT_COLS = ['reference', 'customerName', 'pickup', 'fromCity', 'toCity', 'branch', 'driverName', 'contact', 'status', 'owner', 'truck', 'plate', 'cargo', 'payment', 'sales', 'buy', 'sell', 'notes', 'followup', 'actions'];
+const DEFAULT_COLS = ['reference', 'customerName', 'pickup', 'fromCity', 'toCity', 'branch', 'driverName', 'contact', 'status', 'vendor', 'vendorName', 'owner', 'truck', 'plate', 'cargo', 'payment', 'sales', 'buy', 'sell', 'notes', 'followup', 'actions'];
 const dayOf = (d: unknown) => (d ? new Intl.DateTimeFormat('en-GB', { timeZone: 'Asia/Riyadh' }).format(new Date(String(d))) : '—');
 
 const waybillFileName = (o: ShipmentOrder) => {
@@ -377,7 +377,10 @@ function ShipmentOrdersInner() {
     [ar ? 'السائق' : 'Driver', 'driverName', 'driverName'],
     [ar ? 'تواصل' : 'Contact', null, 'contact'],
     [ar ? 'الحالة' : 'Status', 'status', 'status'],
+    [ar ? 'المورد' : 'Supplier', null, 'vendor'],
+    [ar ? 'اسم المورد' : 'Supplier name', 'supplierName', 'vendorName'],
     [ar ? 'مالك السيارة' : 'Truck owner', 'supplierName', 'owner'],
+    [ar ? 'مركز التكلفة' : 'Cost centre', 'costCenter', 'costCenter'],
     [ar ? 'نوع الشاحنة' : 'Truck type', 'truckType', 'truck'],
     [ar ? 'رقم الشاحنة' : 'Truck no.', 'plate', 'plate'],
     [ar ? 'طول الشاحنة' : 'Truck length', 'truckLength', 'length'],
@@ -418,7 +421,9 @@ function ShipmentOrdersInner() {
   const exportColumns: ExportColumn[] = [
     { header: 'Reference', key: 'reference', width: 12, transform: (v: any, r: any) => v || r?.waybillNumber || '' },
     { header: 'Customer', key: 'customerName', width: 26 },
-    { header: 'Supplier', key: 'supplierName', width: 26 },
+    { header: 'المورد', key: 'supplierName', width: 26, transform: (v: any, r: any) => (r?.supplierType === 'freelancer' ? 'فريلانسر' : v || '') },
+    { header: 'اسم المورد', key: 'supplierName', width: 26 },
+    { header: 'مركز التكلفة', key: 'costCenter', width: 30 },
     { header: 'From', key: 'fromCity', width: 14 },
     { header: 'To', key: 'toCity', width: 14 },
     { header: 'Truck', key: 'truckType', width: 12 },
@@ -607,7 +612,7 @@ function ShipmentOrdersInner() {
         <div className="w-full flex flex-wrap gap-2">
           {([
             [ar ? 'الفرع' : 'Branch', 'branch'], [ar ? 'من' : 'From', 'fromCity'], [ar ? 'إلى' : 'To', 'toCity'],
-            [ar ? 'العميل' : 'Customer', 'customerName'], [ar ? 'المورد' : 'Supplier', 'supplierName'],
+            [ar ? 'العميل' : 'Customer', 'customerName'], [ar ? 'المورد' : 'Supplier', 'supplierName'], [ar ? 'مركز التكلفة' : 'Cost centre', 'costCenter'],
             [ar ? 'السائق' : 'Driver', 'driverName'], [ar ? 'اللوحة' : 'Plate', 'plate'],
             [ar ? 'نوع الشاحنة' : 'Truck type', 'truckType'], [ar ? 'نوع الحمولة' : 'Cargo', 'cargoType'],
             [ar ? 'نوع الدفع' : 'Payment', 'paymentSubtype'], [ar ? 'مندوب المبيعات' : 'Sales rep', 'salesRepName'],
@@ -825,11 +830,22 @@ function ShipmentOrdersInner() {
                     )}
                   </td>
                   )}
+                  {on('vendor') && (
+                  <td className={`px-4 py-3 whitespace-nowrap ${(o as any).supplierType === 'freelancer' ? 'font-semibold text-violet-700' : 'text-slate-700'}`}>
+                    {(o as any).supplierType === 'freelancer' ? (ar ? 'فريلانسر' : 'Freelancer') : ((o as any).supplierName || '—')}
+                  </td>
+                  )}
+                  {on('vendorName') && (
+                  <td className="px-4 py-3 text-slate-700 max-w-[220px] truncate" title={(o as any).supplierName || ''}>{(o as any).supplierName || '—'}</td>
+                  )}
                   {on('owner') && (
                   <td className="px-4 py-3 text-slate-700 max-w-[220px] truncate" title={(o as any).supplierName || ''}>
                     {(o as any).supplierName || '—'}
                     {ownerKindLabel((o as any).ownerKind, ar) && <span className="ms-1.5 text-[11px] font-semibold text-slate-500">({ownerKindLabel((o as any).ownerKind, ar)})</span>}
                   </td>
+                  )}
+                  {on('costCenter') && (
+                  <td className="px-4 py-3 text-slate-700 whitespace-nowrap">{(o as any).costCenter || '—'}</td>
                   )}
                   {on('truck') && (
                   <td className="px-4 py-3 text-slate-700 whitespace-nowrap">{o.truckType || '—'}</td>
@@ -1280,7 +1296,7 @@ function ShipmentOrdersInner() {
 }
 
 
-// Bulk «تعديل بيانات»: order data only; status keeps its own path (cancel reason, bond attachment).
+// Bulk data edit: order data only; status keeps its own path (cancel reason, bond attachment).
 const SO_BULK_FIELDS: BulkField[] = [
   { key: 'driverName', ar: 'اسم السائق', en: 'Driver name', type: 'text', group: 'السائق والشاحنة' },
   { key: 'driverPhone', ar: 'جوال السائق', en: 'Driver phone', type: 'text', group: 'السائق والشاحنة' },

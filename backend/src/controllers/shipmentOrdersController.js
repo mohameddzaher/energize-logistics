@@ -88,7 +88,7 @@ const moneyByRequest = (user) => {
 const SALES_OWNED = ['fromCity', 'toCity', 'addressFrom', 'addressTo', 'branch', 'notes', 'blNumber', 'containerNumber',
   'truckType', 'cargoType', 'truckLength', 'quantity', 'pickupTime', 'startTime', 'arrivalTime',
   'paymentSubtype', 'paymentMethod', 'driverRentType', 'customFields', 'sellPrice'];
-const VENDOR_OWNED = ['vehicle', 'vehicleName', 'driverName', 'driverPhone', 'buyPrice', 'advanceAmount', 'driverRentPrice', 'supplier'];
+const VENDOR_OWNED = ['vehicle', 'vehicleName', 'driverName', 'driverPhone', 'buyPrice', 'advanceAmount', 'driverRentPrice', 'supplier', 'costCenter'];
 const ownedFields = (user) => (PV.isSalesRole(user) ? SALES_OWNED : PV.isVendorRole(user) ? VENDOR_OWNED : null);
 exports.SALES_OWNED = SALES_OWNED;
 exports.VENDOR_OWNED = VENDOR_OWNED;
@@ -104,6 +104,7 @@ const ORDER_EDITABLE = [
   'status', 'notes', 'customFields',
   // Waybill, container (linked to customs) and advance.
   'blNumber', 'containerNumber', 'advanceAmount',
+  'costCenter',
 ];
 
 /**
@@ -234,8 +235,9 @@ async function applyVehicleSnapshot(data, req) {
 /** The supplier's name beside its id: the workflow's owner column and the transport order read the name, and it used to stay empty. */
 async function applySupplierName(data) {
   if (!data.supplier) return;
-  const sup = await ShipmentOrderSupplier.findById(data.supplier).select('name').lean();
+  const sup = await ShipmentOrderSupplier.findById(data.supplier).select('name type').lean();
   if (sup?.name) data.supplierName = sup.name;
+  if (sup) data.supplierType = sup.type === 'freelancer' ? 'freelancer' : 'company';
 }
 
 /**
@@ -287,8 +289,9 @@ exports.getWaybillsPdf = async (req, res) => {
     const drvByName = new Map(drvRows.map((d) => [d.name.trim(), d]));
     // Supplier agreed with and the truck's owner, by id, so a renamed supplier prints its current name.
     const supIds = [...new Set([...orders.map((o) => o.supplier), ...vehRows.map((v) => v.supplier)].filter(Boolean).map(String))];
-    const supName = new Map((supIds.length ? await ShipmentOrderSupplier.find({ _id: { $in: supIds } }).select('name').lean() : [])
-      .map((s) => [String(s._id), s.name || '']));
+    const supRows = supIds.length ? await ShipmentOrderSupplier.find({ _id: { $in: supIds } }).select('name type').lean() : [];
+    const supName = new Map(supRows.map((s) => [String(s._id), s.name || '']));
+    const supType = new Map(supRows.map((s) => [String(s._id), s.type || 'company']));
     // The representative printed on the order is whoever created the shipment.
     const creators = new Map((await require('../models/User').find({ _id: { $in: orders.map((o) => o.createdBy).filter(Boolean) } })
       .select('firstName lastName').lean()).map((u) => [String(u._id), `${u.firstName || ''} ${u.lastName || ''}`.trim()]));
@@ -301,6 +304,7 @@ exports.getWaybillsPdf = async (req, res) => {
       const v = own || vehByPlate.get(plateKeyOf(o.vehiclePlate));
       const twin = vehByPlate.get(plateKeyOf(own?.plate || o.vehiclePlate));
       row.supplierName = (o.supplier && supName.get(String(o.supplier))) || o.supplierName || '';
+      row.supplierLabel = require('../utils/vendorColumns').columnsOf(row.supplierName, (o.supplier && supType.get(String(o.supplier))) || o.supplierType).vendorLabel;
       const owner = v?.supplier ? supName.get(String(v.supplier)) || '' : '';
       if (owner && owner !== row.supplierName) row.ownerName = owner;
       if (v) {
@@ -339,6 +343,7 @@ const ORDER_COLUMNS = {
   truckType: 'truckType',
   branch: 'branch',
   supplierName: 'supplierName',
+  costCenter: 'costCenter',
   plate: 'vehiclePlate',
   truckLength: 'truckLength',
   containerNumber: 'containerNumber',
@@ -2089,7 +2094,9 @@ exports.listSuppliers = async (req, res) => {
     const { q } = req.query;
     const filter = { isActive: { $ne: false }, mergedInto: null };
     // Companies or freelance drivers only (the vendors section lists the two apart).
-    if (['company', 'freelancer'].includes(String(req.query.type || ''))) filter.type = req.query.type;
+    // Rows from before the field read as companies.
+    if (req.query.type === 'freelancer') filter.type = 'freelancer';
+    else if (req.query.type === 'company') filter.type = { $ne: 'freelancer' };
     if (req.query.inMaster === '1') filter.inMaster = true;
     // Completion pickers offer approved carriers only (missing status = approved).
     if (req.query.approved === '1') filter.approvalStatus = { $in: [null, 'approved'] };
@@ -2152,7 +2159,7 @@ exports.createSupplier = async (req, res) => {
 
 exports.updateSupplier = async (req, res) => {
   try {
-    const before = await ShipmentOrderSupplier.findById(req.params.id).select('name').lean();
+    const before = await ShipmentOrderSupplier.findById(req.params.id).select('name type').lean();
     const supplier = await ShipmentOrderSupplier.findByIdAndUpdate(req.params.id, pick(req.body, SUPPLIER_EDITABLE), { new: true });
     if (!supplier) return res.status(404).json({ message: 'Supplier not found' });
     if (before.name !== supplier.name) {
@@ -2162,6 +2169,9 @@ exports.updateSupplier = async (req, res) => {
       await Workflow.updateMany({ carOwner: before.name }, { carOwner: supplier.name });
       await Workflow.updateMany({ ownerName: before.name }, { ownerName: supplier.name });
       require('../services/shipmentOrderWorkflowLink').announceRename();
+    }
+    if (before.name !== supplier.name || (before.type || 'company') !== (supplier.type || 'company')) {
+      await require('../utils/vendorColumns').refreshSupplier(supplier._id, before.name).catch((e) => console.error('vendor columns:', e.message));
     }
     emit('shipmentOrders:fleet', {});
     res.json({ supplier });
@@ -2242,6 +2252,8 @@ exports.mergeSupplier = async (req, res) => {
     if (String(from.name).trim() !== String(keep.name).trim()) {
       await ShipmentOrder.updateMany({ supplierName: from.name }, { $set: { supplierName: keep.name } });
     }
+    // Shipments now on the survivor take its kind and name in the workflow's supplier columns.
+    await require('../utils/vendorColumns').refreshSupplier(keep._id, from.name).catch((e) => console.error('vendor columns:', e.message));
     from.isActive = false;
     from.mergedInto = keep._id;
     // Its platform id moved to the survivor's `externalIds` and is cleared here so import does not match it.

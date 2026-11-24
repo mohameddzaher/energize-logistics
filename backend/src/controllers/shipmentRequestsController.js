@@ -896,6 +896,7 @@ exports.place = async (req, res) => {
           buyPrice: Number(t.buyPrice),
           advanceAmount: numOrNull(t.advanceAmount),
           waybillDetails: t.waybillDetails,
+          costCenter: String(t.costCenter || '').trim(),
         };
         const order = await so.createOneOrder(req, body);
         await ShipmentOrder.updateOne({ _id: order._id }, { $set: {
@@ -1007,6 +1008,7 @@ exports.fleetPlace = async (req, res) => {
           newVehicle: { plate: veh.plate, name: '', supplierId: null, newSupplier: null },
           driverName: drv.name, driverPhone: String(drv.phone || ''),
           buyPrice: Number(t.price), advanceAmount: null,
+          costCenter: String(t.costCenter || '').trim(),
         });
         await ShipmentOrder.updateOne({ _id: order._id }, { $set: {
           shipmentRequest: r._id, requestNumber: r.number, requestedBy: r.createdBy, requestedByName: r.createdByName,

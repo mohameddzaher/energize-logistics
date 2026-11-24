@@ -23,6 +23,7 @@ import { useOrderStatuses } from '@/hooks/useOrderStatuses';
 import { useLatestRequest } from '@/hooks/useLatestRequest';
 import { useSocket } from '@/hooks/useSocket';
 import DriverPicker, { realVal } from '@/components/shipment-orders/DriverPicker';
+import SearchableManagedSelect from '@/components/system/SearchableManagedSelect';
 import { isLinkedTo, outsideHint, offerSupplierLink } from '@/lib/supplierLinks';
 import { canAccessSection, permsOf } from '@/lib/sections';
 
@@ -125,6 +126,11 @@ function CreateShipmentInner() {
 
   // Supplier first, then its truck. Choosing from all suppliers' trucks gave hundreds of plates in one list, then asked about the owner in a panel with two buttons and two text boxes. The real order is supplier first, then which of its trucks; the second question is limited to the first answer.
   const [supplierId, setSupplierId] = useState('');
+  // Vendor (company) or freelancer is chosen first, as in the request completion form; the list then holds only that kind.
+  const [supKind, setSupKind] = useState<'company' | 'freelancer'>('company');
+  const supKindRef = useRef<'company' | 'freelancer'>('company');
+  // Cost centre from the section's list (so_cost_center): a label for exports and filters.
+  const [costCenter, setCostCenter] = useState('');
   const [vehicleId, setVehicleId] = useState('');
   // A plate we have not seen: typed here and registered on the chosen supplier at save.
   const [newPlate, setNewPlate] = useState('');
@@ -138,7 +144,7 @@ function CreateShipmentInner() {
         const [f, c, sp] = await Promise.all([
           api.get<{ fields: FormField[] }>('/api/shipment-orders/fields'),
           api.get<{ customers: OrderCustomer[] }>('/api/shipment-orders/customers?picker=1'),
-          api.get<{ suppliers: OrderSupplier[]; total: number }>('/api/shipment-orders/suppliers?limit=60&fresh=1'),
+          api.get<{ suppliers: OrderSupplier[]; total: number }>('/api/shipment-orders/suppliers?limit=60&fresh=1&type=company'),
         ]);
         setFields(f.fields || []);
         setCustomers(c.customers || []);
@@ -162,6 +168,9 @@ function CreateShipmentInner() {
             setSourcingRep(o.sourcingRep ? String(typeof o.sourcingRep === 'object' ? o.sourcingRep._id : o.sourcingRep) : '');
             setVehicleId(typeof o.vehicle === 'object' ? o.vehicle?._id : (o.vehicle || ''));
             setSupplierId(typeof o.supplier === 'object' ? (o.supplier?._id || '') : (o.supplier || ''));
+            const kind = ((typeof o.supplier === 'object' && o.supplier?.type) || o.supplierType) === 'freelancer' ? 'freelancer' : 'company';
+            supKindRef.current = kind; setSupKind(kind);
+            setCostCenter(o.costCenter || '');
             // The order's own driver details: they are what its waybill prints, so the edit shows them rather than the register's.
             savedDriver.current = { name: String(o.driverName || '').trim(), nat: o.driverNationality || '', iqama: o.driverIqama || '' };
             if (o.driverNationality || o.driverIqama) setDetails((dd) => ({ ...dd, driverNationality: o.driverNationality || '', driverIqama: o.driverIqama || '' }));
@@ -198,7 +207,7 @@ function CreateShipmentInner() {
     setSupBusy(true);
     try {
       const d = await api.get<{ suppliers: OrderSupplier[]; total: number }>(
-        `/api/shipment-orders/suppliers?limit=60&fresh=1${q ? `&q=${encodeURIComponent(q)}` : ''}`);
+        `/api/shipment-orders/suppliers?limit=60&fresh=1&type=${supKindRef.current}${q ? `&q=${encodeURIComponent(q)}` : ''}`);
       if (!supGuard.isCurrent(mine)) return;
       setSuppliers(d.suppliers || []);
       setSupTotal(d.total || 0);
@@ -429,7 +438,7 @@ function CreateShipmentInner() {
       }
 
       setAddingSupplier(false);
-      setNewSupplier({ name: '', phone: '', type: 'company' });
+      setNewSupplier({ name: '', phone: '', type: supKindRef.current });
       setNewDriver({ name: '', phone: '', residenceNumber: '' });
       notify(ar
         ? `سُجِّل المورد «${d.supplier.name}»${savedDriver ? ` وسائقُه «${savedDriver.name}»` : ''} — تجدهما في صفحة المورّدين`
@@ -493,6 +502,7 @@ function CreateShipmentInner() {
 
       // The chosen supplier is sent even when the truck is registered. Thousands of registered trucks have an unknown owner and the person booking the load knows it, so the server records it when none is stored and it is not asked again next shipment.
       if (supplierId) payload.supplierChoice = supplierId;
+      payload.costCenter = costCenter;
       // Operational sales: who brought the load.
       payload.salesRep = salesRep || null;
       if (!lockTruck) payload.sourcingRep = sourcingRep || null;
@@ -914,13 +924,28 @@ function CreateShipmentInner() {
           {/* Supplier below it in the same shape: same question and button, a list searched on the server and a new-supplier button that registers on the suppliers page immediately, without waiting for the shipment save, along with its driver if known. Choosing it here filters its trucks in the next card. */}
           {/* The supplier of a saved order is fixed for the team, and it is the vendors team's half. */}
           <fieldset disabled={lockSupplier} className={`pt-3 border-t border-slate-200/70 space-y-3 ${lockSupplier ? 'opacity-70' : ''}`}>
-            <label className={labelCls}>{ar ? 'المورّد' : 'Supplier'}{lockSupplier && <span className="ms-1.5 inline-flex items-center gap-1 text-[11px] font-normal text-slate-400"><Lock className="w-3 h-3" />{ar ? 'مقفول بعد الحفظ' : 'locked after save'}</span>}</label>
+            <label className={labelCls}>{supKind === 'freelancer' ? (ar ? 'الفريلانسر' : 'Freelancer') : (ar ? 'المورّد' : 'Supplier')}{lockSupplier && <span className="ms-1.5 inline-flex items-center gap-1 text-[11px] font-normal text-slate-400"><Lock className="w-3 h-3" />{ar ? 'مقفول بعد الحفظ' : 'locked after save'}</span>}</label>
+            <div className="inline-flex rounded-lg border border-slate-200 bg-white p-0.5">
+              {([['company', 'مورد', 'Vendor'], ['freelancer', 'فريلانسر', 'Freelancer']] as const).map(([k, a, e]) => (
+                <button key={k} type="button"
+                  onClick={() => {
+                    if (k === supKind) return;
+                    supKindRef.current = k; setSupKind(k);
+                    setSupplierId(''); setVehicleId(''); setNewPlate('');
+                    setNewSupplier((v) => ({ ...v, type: k }));
+                    searchSuppliers('');
+                  }}
+                  className={`rounded-md px-4 py-1.5 text-[13px] font-semibold ${supKind === k ? 'bg-[#f37121] text-white' : 'text-slate-600 hover:bg-slate-100'}`}>
+                  {ar ? a : e}
+                </button>
+              ))}
+            </div>
             {!addingSupplier ? (
               <div className="flex flex-col sm:flex-row gap-3">
                 <div className="flex-1">
                   <SearchableSelect value={supplierId} onChange={(x) => { setSupplierId(x); setVehicleId(''); setNewPlate(''); }} searchAfter={0}
                     onSearch={searchSuppliers} loading={supBusy}
-                    placeholder={ar ? 'اختر المورّد — اكتب للبحث…' : 'Pick the supplier — type to search…'}
+                    placeholder={supKind === 'freelancer' ? (ar ? 'اختر الفريلانسر — اكتب للبحث…' : 'Pick the freelancer — type to search…') : (ar ? 'اختر المورّد — اكتب للبحث…' : 'Pick the supplier — type to search…')}
                     searchPlaceholder={ar ? 'اكتب اسم المورّد أو جوّاله أو سجلَّه…' : 'Name, phone or CR…'}
                     emptyLabel={ar ? 'لا نتائج — سجّله كمورّد جديد' : 'No matches — register them as new'}
                     footer={supTotal > suppliers.length
@@ -931,26 +956,19 @@ function CreateShipmentInner() {
                       hint: [sp.type === 'freelancer' ? (ar ? 'سائق فرد' : 'Freelancer') : (ar ? 'شركة' : 'Company'), sp.phone].filter(Boolean).join(' · '),
                     }))} />
                 </div>
-                <button type="button" onClick={() => { setAddingSupplier(true); setSupplierId(''); setVehicleId(''); }}
+                <button type="button" onClick={() => { setAddingSupplier(true); setSupplierId(''); setVehicleId(''); setNewSupplier((v) => ({ ...v, type: supKind })); }}
                   className="shrink-0 flex items-center gap-1.5 px-3 py-2.5 rounded-lg bg-[#f37121]/10 text-[#f37121] hover:bg-[#f37121]/20 text-sm font-semibold">
-                  <UserPlus className="w-4 h-4" /> {ar ? 'مورّد جديد' : 'New supplier'}
+                  <UserPlus className="w-4 h-4" /> {supKind === 'freelancer' ? (ar ? 'فريلانسر جديد' : 'New freelancer') : (ar ? 'مورّد جديد' : 'New supplier')}
                 </button>
               </div>
             ) : (
               <div className="rounded-xl border border-[#f37121]/30 bg-[#f37121]/[0.04] p-4 space-y-3">
                 <div className="flex flex-col sm:flex-row gap-2">
                   <input value={newSupplier.name} onChange={(e) => setNewSupplier((v) => ({ ...v, name: e.target.value }))}
-                    placeholder={ar ? 'اسم المورّد *' : 'Supplier name *'} className={inputCls + ' flex-1'} />
+                    placeholder={newSupplier.type === 'freelancer' ? (ar ? 'اسم الفريلانسر *' : 'Freelancer name *') : (ar ? 'اسم المورّد *' : 'Supplier name *')} className={inputCls + ' flex-1'} />
                   <div className="sm:w-56">
                     <PhoneSA value={newSupplier.phone} onChange={(v) => setNewSupplier((x) => ({ ...x, phone: v }))} />
                   </div>
-                  {([['company', ar ? 'شركة' : 'Company'], ['freelancer', ar ? 'سائق فرد' : 'Freelancer']] as const).map(([k, label]) => (
-                    <button key={k} type="button" onClick={() => setNewSupplier((v) => ({ ...v, type: k }))}
-                      className={`px-4 py-2 rounded-full border text-sm font-semibold shrink-0 ${newSupplier.type === k
-                        ? 'border-[#f37121] bg-[#f37121] text-white' : 'border-slate-300 bg-white text-slate-600'}`}>
-                      {label}
-                    </button>
-                  ))}
                 </div>
                 {/* His driver goes with him: supplier, its trucks and its drivers are one linked register. */}
                 <div className="flex flex-col sm:flex-row gap-2 pt-2 border-t border-[#f37121]/20">
@@ -970,7 +988,7 @@ function CreateShipmentInner() {
                     {supplierBusy ? <Loader2 className="w-4 h-4 animate-spin" /> : <Check className="w-4 h-4" />}
                     {ar ? 'حفظ المورّد' : 'Save supplier'}
                   </PrimaryButton>
-                  <button type="button" onClick={() => { setAddingSupplier(false); setNewSupplier({ name: '', phone: '', type: 'company' }); }}
+                  <button type="button" onClick={() => { setAddingSupplier(false); setNewSupplier({ name: '', phone: '', type: supKind }); }}
                     className="p-2.5 text-slate-400 hover:text-slate-700" aria-label="close"><X className="w-4 h-4" /></button>
                   <p className="text-xs text-slate-500">
                     {ar ? 'يُسجَّل هو وسائقُه في صفحة المورّدين فورًا، ويظهران عند زملائك في اللحظة نفسِها.'
@@ -980,6 +998,11 @@ function CreateShipmentInner() {
               </div>
             )}
           </fieldset>
+          <div className="pt-3 border-t border-slate-200/70">
+            <label className={labelCls}>{ar ? 'مركز التكلفة' : 'Cost centre'}</label>
+            <SearchableManagedSelect type="so_cost_center" storeLabel value={costCenter} onChange={setCostCenter}
+              placeholder={ar ? 'اختر مركز التكلفة…' : 'Pick the cost centre…'} />
+          </div>
         </div>
       ), { id: SEC.customer, missing: missingKeys.has('customer') ? 1 : 0, filled: !!customer || !!supplierId })}
 

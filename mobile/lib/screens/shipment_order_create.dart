@@ -8,6 +8,7 @@ import '../services/lang.dart';
 import '../services/live.dart';
 import '../ui/app_scaffold.dart';
 import '../ui/contact.dart';
+import '../ui/lookup_field.dart';
 import '../ui/search_field.dart';
 import '../ui/theme.dart';
 import '../ui/widgets.dart';
@@ -59,6 +60,11 @@ class _ShipmentOrderCreateScreenState extends State<ShipmentOrderCreateScreen> {
   List<Map<String, dynamic>> _sourcingReps = const [];
   // Supplier first, then its truck. As on the web: the supplier is known first and then which of its trucks, so the list is limited to its own instead of hundreds of plates together.
   Map<String, dynamic>? _supplier;
+  // Vendor (company) or freelancer is chosen first; the supplier list then holds only that kind.
+  String _supKind = 'company';
+  bool get _isFreelancer => _supKind == 'freelancer';
+  // Cost centre from the so_cost_center list, stored as its label.
+  final _costCenter = TextEditingController();
   Map<String, dynamic>? _vehicle;
   bool _savingSupplier = false;
   bool _newCustomer = false;
@@ -148,6 +154,7 @@ class _ShipmentOrderCreateScreenState extends State<ShipmentOrderCreateScreen> {
     for (final e in const ['shipmentOrders:customers', 'customers:changed', 'shipmentOrders:fleet']) {
       Live.instance.off(e, _onRegisters);
     }
+    _costCenter.dispose();
     super.dispose();
   }
 
@@ -155,7 +162,7 @@ class _ShipmentOrderCreateScreenState extends State<ShipmentOrderCreateScreen> {
     try {
       final r = await Future.wait([
         Api.instance.get('/api/shipment-orders/customers?picker=1'),
-        Api.instance.get('/api/shipment-orders/suppliers?limit=60&fresh=1'),
+        Api.instance.get('/api/shipment-orders/suppliers?limit=60&fresh=1&type=$_supKind'),
       ]);
       if (!mounted) return;
       setState(() {
@@ -332,7 +339,7 @@ class _ShipmentOrderCreateScreenState extends State<ShipmentOrderCreateScreen> {
         Api.instance.get('/api/shipment-orders/customers?picker=1').catchError((_) => <String, dynamic>{}),
         // The two lists are not both loaded. The registry holds 13 thousand trucks and 3 thousand suppliers; everything used to be requested, hit the server cap (1000), and was searched among what arrived, so someone who picked a supplier whose trucks were not in the thousand saw an empty list. Search now happens on the server, and a supplier's trucks are requested by its id.
         Api.instance.get('/api/shipment-orders/vehicles?limit=80&ownership=supplier').catchError((_) => <String, dynamic>{}),
-        Api.instance.get('/api/shipment-orders/suppliers?limit=60&fresh=1').catchError((_) => <String, dynamic>{}),
+        Api.instance.get('/api/shipment-orders/suppliers?limit=60&fresh=1&type=${_editKind()}').catchError((_) => <String, dynamic>{}),
       ]);
       if (!mounted) return;
       setState(() {
@@ -368,6 +375,8 @@ class _ShipmentOrderCreateScreenState extends State<ShipmentOrderCreateScreen> {
             _vehicle = Map<String, dynamic>.from(o['vehicle']);
             if (!_vehicles.any((x) => x['_id'] == _vehicle!['_id'])) _vehicles = [_vehicle!, ..._vehicles];
           }
+          _supKind = _editKind();
+          _costCenter.text = '${o['costCenter'] ?? ''}';
           if (o['supplier'] is Map) {
             _supplier = Map<String, dynamic>.from(o['supplier']);
             if (!_suppliers.any((x) => x['_id'] == _supplier!['_id'])) _suppliers = [_supplier!, ..._suppliers];
@@ -379,6 +388,34 @@ class _ShipmentOrderCreateScreenState extends State<ShipmentOrderCreateScreen> {
     } catch (e) {
       if (mounted) setState(() { _loading = false; _error = e.toString(); });
     }
+  }
+
+  /// Kind of the edited order's supplier (populated map or the order's own copy); company when creating.
+  String _editKind() {
+    final o = widget.order;
+    if (o == null) return _supKind;
+    final sup = o['supplier'];
+    final t = (sup is Map ? sup['type'] : null) ?? o['supplierType'];
+    return t == 'freelancer' ? 'freelancer' : 'company';
+  }
+
+  /// Switching the kind clears the chosen supplier and truck, then reloads the list of that kind.
+  Future<void> _setSupKind(String k) async {
+    if (k == _supKind) return;
+    setState(() {
+      _supKind = k;
+      _supplier = null;
+      _vehicle = null;
+      _newVehicle = false;
+      _nvPlate.clear();
+      _nvName.clear();
+      _suppliers = [];
+    });
+    try {
+      final d = await Api.instance.get('/api/shipment-orders/suppliers?limit=60&fresh=1&type=$k');
+      if (mounted && _supKind == k) setState(() => _suppliers = List<Map<String, dynamic>>.from(d['suppliers'] ?? []));
+    } catch (_) {}
+    _loadDrivers();
   }
 
   String _fold(String s) => s.replaceAll(RegExp('[أإآ]'), 'ا').replaceAll('ى', 'ي').replaceAll('ة', 'ه').toLowerCase();
@@ -432,6 +469,8 @@ class _ShipmentOrderCreateScreenState extends State<ShipmentOrderCreateScreen> {
       if (sup is Map && _supplier == null) {
         // The supplier arrives with the truck named (`populate`), so it is not searched in a page it may not be in; it used to be searched there and stayed empty though the supplier was known.
         _supplier = Map<String, dynamic>.from(sup);
+        // The toggle follows the kind of the supplier the truck brought.
+        if (sup['type'] != null) _supKind = sup['type'] == 'freelancer' ? 'freelancer' : 'company';
         if (!_suppliers.any((x) => x['_id'] == _supplier!['_id'])) _suppliers = [_supplier!, ..._suppliers];
       } else if (sup != null && _supplier == null) {
         for (final sp in _suppliers) {
@@ -538,9 +577,9 @@ class _ShipmentOrderCreateScreenState extends State<ShipmentOrderCreateScreen> {
   /// The two questions are in the same order as the card above (supplier, then its truck); the driver is filled from the registered truck and stays correctable.
   Future<void> _addExtraTruck() async {
     final sup = await _pickRemote(
-      tr('الموردين', 'suppliers'),
+      _isFreelancer ? tr('الفريلانسر', 'freelancers') : tr('الموردين', 'suppliers'),
       (q) async {
-        final d = await Api.instance.get('/api/shipment-orders/suppliers?limit=60&fresh=1${q.isEmpty ? '' : '&q=${Uri.encodeQueryComponent(q)}'}');
+        final d = await Api.instance.get('/api/shipment-orders/suppliers?limit=60&fresh=1&type=$_supKind${q.isEmpty ? '' : '&q=${Uri.encodeQueryComponent(q)}'}');
         return List<Map<String, dynamic>>.from(d['suppliers'] ?? []);
       },
       (x) => (x['name'] ?? '').toString(),
@@ -663,27 +702,18 @@ class _ShipmentOrderCreateScreenState extends State<ShipmentOrderCreateScreen> {
     final dNameC = TextEditingController();
     final dPhoneC = TextEditingController();
     final dIqamaC = TextEditingController();
-    var type = 'company';
+    // The kind comes from the vendor/freelancer toggle above the picker.
+    final type = _supKind;
+    final fl = type == 'freelancer';
     final ok = await showDialog<bool>(
       context: context,
       builder: (c) => StatefulBuilder(builder: (c, setS) => AlertDialog(
-        title: Text(tr('مورّد جديد', 'New supplier')),
+        title: Text(fl ? tr('فريلانسر جديد', 'New freelancer') : tr('مورّد جديد', 'New supplier')),
         content: Column(mainAxisSize: MainAxisSize.min, children: [
-          TextField(controller: nameC, autofocus: true, decoration: InputDecoration(labelText: tr('الاسم *', 'Name *'))),
+          TextField(controller: nameC, autofocus: true,
+              decoration: InputDecoration(labelText: fl ? tr('اسم الفريلانسر *', 'Freelancer name *') : tr('اسم المورّد *', 'Supplier name *'))),
           const SizedBox(height: 8),
           PhoneSA(controller: phoneC, label: tr('الجوال', 'Phone')),
-          const SizedBox(height: 10),
-          Row(children: [
-            for (final t in const [('company', 'شركة', 'Company'), ('freelancer', 'سائق فرد', 'Freelancer')])
-              Padding(
-                padding: const EdgeInsets.only(left: 6),
-                child: ChoiceChip(
-                  selected: type == t.$1,
-                  onSelected: (_) => setS(() => type = t.$1),
-                  label: Text(tr(t.$2, t.$3)),
-                ),
-              ),
-          ]),
           const Divider(height: 20),
           Align(alignment: AlignmentDirectional.centerStart, child: Text(tr('سائقُه (اختياري)', 'Its driver (optional)'), style: const TextStyle(fontSize: 12.5, fontWeight: FontWeight.w700))),
           TextField(controller: dNameC, decoration: InputDecoration(labelText: tr('اسم السائق', 'Driver name'))),
@@ -792,6 +822,7 @@ class _ShipmentOrderCreateScreenState extends State<ShipmentOrderCreateScreen> {
     }
     // The chosen supplier is sent even if the truck is registered: thousands of trucks have an unknown owner, and whoever books the load knows it, so the server writes it to the registry once.
     if (_supplier != null && !_supplierLocked) payload['supplierChoice'] = _supplier!['_id'];
+    if (!_notOwned('costCenter')) payload['costCenter'] = _costCenter.text.trim();
     if (_vehicle != null) payload['vehicle'] = _vehicle!['_id'];
     if (_newVehicle && _nvPlate.text.trim().isNotEmpty) {
       payload['newVehicle'] = {
@@ -1157,6 +1188,16 @@ class _ShipmentOrderCreateScreenState extends State<ShipmentOrderCreateScreen> {
                               style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w700)),
                         ),
                         const SizedBox(height: 8),
+                        // Vendor or freelancer first, as in the request completion form.
+                        SegmentedButton<String>(
+                          segments: [
+                            ButtonSegment(value: 'company', label: Text(tr('مورد', 'Vendor')), icon: const Icon(Icons.business_outlined)),
+                            ButtonSegment(value: 'freelancer', label: Text(tr('فريلانسر', 'Freelancer')), icon: const Icon(Icons.person_outline)),
+                          ],
+                          selected: {_supKind},
+                          onSelectionChanged: _supplierLocked || _notOwned('vehicle') ? null : (v) => _setSupKind(v.first),
+                        ),
+                        const SizedBox(height: 8),
                         // Supplier below it, as on the web. The two parties of the deal are in one card: who it is hauled for and who it is hauled from. The supplier used to sit in the truck card, so it read as a description of the truck rather than a party to the contract.
                         Row(children: [
                           Expanded(
@@ -1164,10 +1205,10 @@ class _ShipmentOrderCreateScreenState extends State<ShipmentOrderCreateScreen> {
                               style: OutlinedButton.styleFrom(alignment: AlignmentDirectional.centerStart, minimumSize: const Size(double.infinity, 46)),
                               onPressed: _supplierLocked || _notOwned('vehicle') ? null : () async {
                                 final sp = await _pickRemote(
-                                  tr('الموردين', 'suppliers'),
+                                  _isFreelancer ? tr('الفريلانسر', 'freelancers') : tr('الموردين', 'suppliers'),
                                   (q) async {
                                     final d = await Api.instance.get(
-                                        '/api/shipment-orders/suppliers?limit=60&fresh=1${q.isEmpty ? '' : '&q=${Uri.encodeQueryComponent(q)}'}');
+                                        '/api/shipment-orders/suppliers?limit=60&fresh=1&type=$_supKind${q.isEmpty ? '' : '&q=${Uri.encodeQueryComponent(q)}'}');
                                     return List<Map<String, dynamic>>.from(d['suppliers'] ?? []);
                                   },
                                   (x) => (x['name'] ?? '').toString(),
@@ -1179,18 +1220,24 @@ class _ShipmentOrderCreateScreenState extends State<ShipmentOrderCreateScreen> {
                                 if (sp != null) { setState(() { _supplier = sp; _vehicle = null; }); _loadDrivers(); }
                               },
                               icon: const Icon(Icons.storefront_outlined, size: 17),
-                              label: Text(_supplier == null ? tr('اختر المورّد…', 'Choose supplier…') : (_supplier!['name'] ?? '').toString(),
+                              label: Text(_supplier == null ? (_isFreelancer ? tr('اختر الفريلانسر…', 'Choose freelancer…') : tr('اختر المورّد…', 'Choose supplier…')) : (_supplier!['name'] ?? '').toString(),
                                   style: const TextStyle(fontSize: 13.5, fontWeight: FontWeight.w700), overflow: TextOverflow.ellipsis),
                             ),
                           ),
                           IconButton(
-                            tooltip: tr('مورّد جديد', 'New supplier'),
+                            tooltip: _isFreelancer ? tr('فريلانسر جديد', 'New freelancer') : tr('مورّد جديد', 'New supplier'),
                             onPressed: _savingSupplier || _supplierLocked || _notOwned('vehicle') ? null : _addSupplier,
                             icon: _savingSupplier
                                 ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2))
                                 : const Icon(Icons.add_circle_outline, color: T.orange),
                           ),
                         ]),
+                        const SizedBox(height: 8),
+                        IgnorePointer(
+                          ignoring: _notOwned('costCenter'),
+                          child: LookupField(type: 'so_cost_center', controller: _costCenter, label: tr('مركز التكلفة', 'Cost centre'),
+                              hint: tr('اختر مركز التكلفة…', 'Pick the cost centre…'), onChanged: () => setState(() {})),
+                        ),
                       ]),
                     ),
                   ),

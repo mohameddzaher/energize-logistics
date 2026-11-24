@@ -51,6 +51,10 @@ const shipmentOrderSchema = new mongoose.Schema(
     // The field was missing from the schema, so every supplier name written to it was silently dropped (mongoose ignores unknown fields), leaving tens of thousands of shipments without a supplier and analytics reporting zero suppliers.
     // A snapshot, not just a reference: the waybill is read a year later and the platform's supplier may not be in our registry; the name stays even if the row is missing.
     supplierName: { type: String, trim: true, default: '', index: true },
+    // The register's kind of that supplier, copied with its name (applySupplierName); the workflow shows a freelancer label instead of a person's name.
+    supplierType: { type: String, enum: ['', 'company', 'freelancer'], default: '' },
+    // Cost centre from the section's list (lookup so_cost_center); a label for exports and filters, linked to nothing.
+    costCenter: { type: String, trim: true, default: '', index: true },
 
     // Rep: whoever created the order, stamped from their account, never typed by hand.
     agentName: { type: String, trim: true, default: '' },

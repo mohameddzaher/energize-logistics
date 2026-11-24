@@ -49,6 +49,7 @@ const _colFields = [
   ('buyPrice', 'سعر الشراء', 'Buy price'),
   ('sellPrice', 'سعر البيع', 'Sell price'),
   ('supplierName', 'المورّد', 'Supplier'),
+  ('costCenter', 'مركز التكلفة', 'Cost centre'),
   ('branch', 'الفرع', 'Branch'),
   ('plate', 'اللوحة', 'Plate'),
   ('cargoType', 'نوع الحمولة', 'Cargo'),
@@ -58,6 +59,9 @@ const _colFields = [
   ('agentName', 'المندوب', 'Agent'),
   ('notes', 'ملاحظة أمر النقل', 'Transport order note'),
 ];
+
+/// Vendor column: the word for a freelancer, otherwise the company name.
+String _vendorLabel(Map r) => r['supplierType'] == 'freelancer' ? 'فريلانسر' : '${r['supplierName'] ?? ''}';
 
 class _ShipmentOrdersScreenState extends State<ShipmentOrdersScreen> {
   // '' = pickup date; 'activity' = created or moved in the period.
@@ -220,7 +224,9 @@ class _ShipmentOrdersScreenState extends State<ShipmentOrdersScreen> {
   List<ExportCol> get _exportCols => [
         ExportCol('المرجع', 'Reference', (r) => soRef(r)),
         ExportCol('العميل', 'Customer', (r) => r['customerName']),
-        ExportCol('المورّد', 'Supplier', (r) => r['supplierName']),
+        ExportCol('المورد', 'Supplier', (r) => _vendorLabel(r)),
+        ExportCol('اسم المورد', 'Supplier name', (r) => r['supplierName']),
+        ExportCol('مركز التكلفة', 'Cost centre', (r) => r['costCenter']),
         ExportCol('من', 'From', (r) => r['fromCity']),
         ExportCol('إلى', 'To', (r) => r['toCity']),
         ExportCol('الشاحنة', 'Truck', (r) => r['truckType']),
@@ -703,6 +709,16 @@ class _ShipmentOrdersScreenState extends State<ShipmentOrdersScreen> {
             if ('${r['supplierName'] ?? ''}'.isNotEmpty)
               Chip2('${r['ownerKind'] == 'freelancer' ? tr('سائق فرد', 'Freelancer') : r['ownerKind'] == 'ours' ? tr('أسطولنا', 'Our fleet') : tr('شركة', 'Company')}: ${r['supplierName']}', T.navy),
           ]),
+          if (_vendorLabel(r).isNotEmpty || '${r['costCenter'] ?? ''}'.isNotEmpty)
+            Padding(
+              padding: const EdgeInsets.only(top: 4),
+              child: Wrap(spacing: 6, runSpacing: 4, children: [
+                if (_vendorLabel(r).isNotEmpty)
+                  Chip2('${tr('المورد', 'Supplier')}: ${r['supplierType'] == 'freelancer' ? tr('فريلانسر', 'Freelancer') : _vendorLabel(r)}', r['supplierType'] == 'freelancer' ? T.violet : T.inkSoft),
+                if ('${r['supplierName'] ?? ''}'.isNotEmpty) Chip2('${tr('اسم المورد', 'Supplier name')}: ${r['supplierName']}', T.inkSoft),
+                if ('${r['costCenter'] ?? ''}'.isNotEmpty) Chip2('${tr('مركز التكلفة', 'Cost centre')}: ${r['costCenter']}', T.inkSoft),
+              ]),
+            ),
           if ('${r['notes'] ?? ''}'.trim().isNotEmpty)
             Padding(padding: const EdgeInsets.only(top: 4), child: Text('${tr('ملاحظة أمر النقل', 'Transport order note')}: ${r['notes']}', maxLines: 2, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 12, color: T.inkSoft))),
           // Opens all notes: read, add, edit and delete.

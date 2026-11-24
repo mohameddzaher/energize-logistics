@@ -80,10 +80,8 @@ export default function NavSearch({ items, ar, onPick, autoFocusKey }: {
           placeholder={ar ? 'ابحث عن صفحة أو قسم…' : 'Search pages or sections…'}
           className="w-full bg-transparent py-2 text-[13px] text-white placeholder:text-slate-500 focus:outline-none"
         />
-        {q ? (
+        {q && (
           <button type="button" onClick={() => { setQ(''); input.current?.focus(); }} className="text-slate-400 hover:text-white" title={ar ? 'مسح' : 'Clear'}><X className="h-3.5 w-3.5" /></button>
-        ) : (
-          <kbd className="hidden xl:inline rounded border border-slate-600 px-1 text-[10px] font-semibold text-slate-400" dir="ltr">Ctrl K</kbd>
         )}
       </div>
       {open && q.trim() && (

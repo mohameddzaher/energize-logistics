@@ -68,6 +68,8 @@ class _Ls2StoreScreenState extends State<Ls2StoreScreen> {
   String _from = '';
   String _to = '';
   String _supplierF = '';
+  // Balances as of the end of a chosen day (YYYY-MM-DD), computed on the server; empty = now.
+  String _asOf = '';
   List<Map<String, dynamic>> _suppliers = [];
   // A wider request is slower, so it arrives after the narrower one and overwrites it; only the last request is accepted.
   int _seq = 0;
@@ -133,6 +135,7 @@ class _Ls2StoreScreenState extends State<Ls2StoreScreen> {
       if (_from.isNotEmpty) 'from=$_from',
       if (_to.isNotEmpty) 'to=$_to',
       if (_supplierF.isNotEmpty) 'supplier=$_supplierF',
+      if (_asOf.isNotEmpty) 'asOf=$_asOf',
     ].join('&');
     try {
       final res = await Future.wait([
@@ -147,6 +150,28 @@ class _Ls2StoreScreenState extends State<Ls2StoreScreen> {
         _loading = false; _error = null;
       });
     } catch (e) { if (mounted && seq == _seq) setState(() { _loading = false; _error = e.toString(); }); }
+  }
+
+  /// Card figures: the dashboard now, or the chosen day's totals from the listed balances.
+  dynamic _card(String k) {
+    if (_asOf.isEmpty) return _totals[k];
+    num sum(String f) => _items.fold<num>(0, (a, i) => a + (num.tryParse('${i[f] ?? 0}') ?? 0));
+    switch (k) {
+      case 'items': return _items.length;
+      case 'totalValue': return sum('value');
+      case 'lowStock': return _items.where((i) => i['status'] == 'low').length;
+      case 'outOfStock': return _items.where((i) => i['status'] == 'out').length;
+    }
+    return null;
+  }
+
+  Future<void> _pickAsOf() async {
+    final now = _riyadhNow();
+    final cur = DateTime.tryParse(_asOf) ?? now;
+    final d = await showDatePicker(context: context, initialDate: cur, firstDate: DateTime(2024), lastDate: now);
+    if (d == null || !mounted) return;
+    setState(() => _asOf = _ymd(d));
+    _load();
   }
 
   String _sLabel(String s) { final m = _statusMeta[s]; return m == null ? s : tr(m.$1, m.$2); }
@@ -189,13 +214,13 @@ class _Ls2StoreScreenState extends State<Ls2StoreScreen> {
                   Padding(
                     padding: const EdgeInsets.fromLTRB(12, 12, 12, 4),
                     child: Row(children: [
-                      Expanded(child: _tile(tr('الأصناف', 'Items'), '${_totals['items'] ?? _items.length}', T.orange)),
+                      Expanded(child: _tile(tr('الأصناف', 'Items'), '${_card('items') ?? _items.length}', T.orange)),
                       const SizedBox(width: 6),
-                      if (!_isLightStore(widget.base)) Expanded(child: _tile(tr('القيمة', 'Value'), _money(_totals['totalValue']), T.success)),
+                      if (!_isLightStore(widget.base)) Expanded(child: _tile(tr('القيمة', 'Value'), _money(_card('totalValue')), T.success)),
                       const SizedBox(width: 6),
-                      Expanded(child: _tileTap(tr('منخفض', 'Low'), '${_totals['lowStock'] ?? 0}', T.warn, 'low')),
+                      Expanded(child: _tileTap(tr('منخفض', 'Low'), '${_card('lowStock') ?? 0}', T.warn, 'low')),
                       const SizedBox(width: 6),
-                      Expanded(child: _tileTap(tr('نافد', 'Out'), '${_totals['outOfStock'] ?? 0}', T.danger, 'out')),
+                      Expanded(child: _tileTap(tr('نافد', 'Out'), '${_card('outOfStock') ?? 0}', T.danger, 'out')),
                     ]),
                   ),
                   Padding(
@@ -229,6 +254,9 @@ class _Ls2StoreScreenState extends State<Ls2StoreScreen> {
                   SizedBox(
                     height: 38,
                     child: ListView(scrollDirection: Axis.horizontal, padding: const EdgeInsets.symmetric(horizontal: 12), children: [
+                      // Balance on a day: the store as it stood at the end of that day, from the movement log.
+                      _fchip(_asOf.isEmpty ? tr('الرصيد في يوم', 'Balance on a day') : '${tr('الرصيد في', 'Balance on')} ${_dmy(_asOf)}', _asOf.isNotEmpty, _pickAsOf),
+                      if (_asOf.isNotEmpty) IconButton(visualDensity: VisualDensity.compact, icon: const Icon(Icons.close, size: 16), tooltip: tr('الأرصدة الحالية', 'Current balances'), onPressed: () { setState(() => _asOf = ''); _load(); }),
                       _fchip(
                         _supplierF.isEmpty ? tr('كل الموردين', 'All suppliers') : _supplierLabel(_suppliers, _supplierF),
                         _supplierF.isNotEmpty,
@@ -293,7 +321,10 @@ class _Ls2StoreScreenState extends State<Ls2StoreScreen> {
                                       const SizedBox(height: 8),
                                       // Quantity times unit price equals total.
                                       Wrap(spacing: 14, runSpacing: 4, children: [
-                                        _kv(tr('العدد', 'Qty'), '${it['quantity']} ${it['unit'] ?? ''}', T.ink),
+                                        _kv(_asOf.isEmpty ? tr('العدد', 'Qty') : '${tr('الرصيد في', 'Balance on')} ${_dmy(_asOf)}', '${it['quantity']} ${it['unit'] ?? ''}', T.ink),
+                                        if (_asOf.isNotEmpty && (num.tryParse('${it['inDay'] ?? 0}') ?? 0) > 0) _kv(tr('وارد اليوم', 'In that day'), '+${it['inDay']}', T.success),
+                                        if (_asOf.isNotEmpty && (num.tryParse('${it['outDay'] ?? 0}') ?? 0) > 0) _kv(tr('صادر اليوم', 'Out that day'), '−${it['outDay']}', T.orange),
+                                        if (_asOf.isNotEmpty && it['quantityNow'] != null && '${it['quantityNow']}' != '${it['quantity']}') _kv(tr('الآن', 'Now'), '${it['quantityNow']}', T.inkSoft),
                                         if (!_isLightStore(widget.base)) _kv(tr('سعر القطعة', 'Unit price'), _money(it['unitPrice']), T.inkSoft),
                                         _kv(tr('الإجمالي', 'Total'), _money(it['value']), T.success),
                                       ]),
@@ -383,7 +414,9 @@ class _Ls2StoreScreenState extends State<Ls2StoreScreen> {
     ExportCol('التصنيف', 'Category', (r) => r['categoryAr'] ?? r['category'] ?? ''),
     ExportCol('تاريخ الشراء', 'Purchase date', (r) => (r['purchaseDate'] ?? '').toString().isEmpty ? '' : _dmy(r['purchaseDate'])),
     ExportCol('المورد', 'Supplier', (r) => r['supplierName'] ?? ''),
-    ExportCol('العدد', 'Qty', (r) => r['quantity']),
+    ExportCol(_asOf.isEmpty ? 'العدد' : 'الرصيد في ${_dmy(_asOf)}', _asOf.isEmpty ? 'Qty' : 'Balance on ${_dmy(_asOf)}', (r) => r['quantity']),
+    if (_asOf.isNotEmpty) ExportCol('وارد ${_dmy(_asOf)}', 'In ${_dmy(_asOf)}', (r) => r['inDay']),
+    if (_asOf.isNotEmpty) ExportCol('صادر ${_dmy(_asOf)}', 'Out ${_dmy(_asOf)}', (r) => r['outDay']),
     ExportCol('الوحدة', 'Unit', (r) => r['unit'] ?? ''),
     ExportCol('الحد الأدنى', 'Min qty', (r) => r['minQuantity']),
     if (!_isLightStore(widget.base)) ExportCol('سعر القطعة الواحدة', 'Unit price', (r) => r['unitPrice']),
@@ -425,13 +458,24 @@ class _Ls2StoreScreenState extends State<Ls2StoreScreen> {
       try {
         final d = await Api.instance.get('${widget.base}/movements?limit=3000');
         if (!mounted) return;
-        await exportExcel(context, fileName: 'store-movements', sheets: [(tr('الحركات', 'Movements'), _moveCols, List<Map<String, dynamic>>.from(d['movements'] ?? []))]);
+        final mv = List<Map<String, dynamic>>.from(d['movements'] ?? []);
+        await exportExcel(context, fileName: 'store-movements', sheets: [(tr('الحركات', 'Movements'), _moveCols, _withTotal(mv, const ['quantity', 'total'], 'itemName'))]);
       } catch (e) { _toast(e.toString()); }
       return;
     }
     final rows = pick == 'shown' ? shown : _items;
     if (rows.isEmpty) { _toast(tr('لا صفوف للتصدير', 'Nothing to export')); return; }
-    await exportExcel(context, fileName: 'store', sheets: [(name, _itemCols, rows)]);
+    await exportExcel(context, fileName: _asOf.isEmpty ? 'store' : 'store-$_asOf', sheets: [(name, _itemCols, _withTotal(rows, const ['quantity', 'value', 'inDay', 'outDay'], 'name'))]);
+  }
+
+  /// A totals row closing an exported list.
+  List<Map<String, dynamic>> _withTotal(List<Map<String, dynamic>> rows, List<String> keys, String labelKey) {
+    final total = <String, dynamic>{labelKey: '${tr('الإجمالي', 'Total')} (${rows.length})'};
+    for (final k in keys) {
+      final v = rows.fold<num>(0, (a, x) => a + (num.tryParse('${x[k] ?? 0}') ?? 0));
+      total[k] = (v * 100).round() / 100;
+    }
+    return [...rows, total];
   }
 
   Widget _kv(String label, String value, Color color) => Row(mainAxisSize: MainAxisSize.min, children: [

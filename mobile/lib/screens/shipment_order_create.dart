@@ -779,6 +779,11 @@ class _ShipmentOrderCreateScreenState extends State<ShipmentOrderCreateScreen> {
 
   Future<void> _save() async {
     if (_saving) return;
+    // Required on a new shipment; older shipments saved without one can still be edited.
+    if (!_editing && _costCenter.text.trim().isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(tr('اختر مركز التكلفة.', 'Pick the cost centre.'))));
+      return;
+    }
     _missing.clear();
     for (final f in _fields) {
       final k = (f['key'] ?? '').toString();
@@ -1235,7 +1240,7 @@ class _ShipmentOrderCreateScreenState extends State<ShipmentOrderCreateScreen> {
                         const SizedBox(height: 8),
                         IgnorePointer(
                           ignoring: _notOwned('costCenter'),
-                          child: LookupField(type: 'so_cost_center', controller: _costCenter, label: tr('مركز التكلفة', 'Cost centre'),
+                          child: LookupField(type: 'so_cost_center', controller: _costCenter, label: _editing ? tr('مركز التكلفة', 'Cost centre') : tr('مركز التكلفة *', 'Cost centre *'),
                               hint: tr('اختر مركز التكلفة…', 'Pick the cost centre…'), onChanged: () => setState(() {})),
                         ),
                       ]),

@@ -469,6 +469,8 @@ function CreateShipmentInner() {
   }, [fields, form, customerId, newCustomer.name, moneyEdit, editId]);
 
   const save = async () => {
+    // Required on a new shipment (owner's rule); older shipments saved without one can still be edited.
+    if (!editId && !costCenter.trim()) { notify(ar ? 'اختر مركز التكلفة.' : 'Pick the cost centre.', 'error'); return; }
     if (!vehicleId && newPlate.trim() && !supplierId) {
       notify(ar ? 'اختر المورد صاحب اللوحة الجديدة.' : 'Pick the new plate’s supplier.', 'error');
       return;
@@ -999,7 +1001,7 @@ function CreateShipmentInner() {
             )}
           </fieldset>
           <div className="pt-3 border-t border-slate-200/70">
-            <label className={labelCls}>{ar ? 'مركز التكلفة' : 'Cost centre'}</label>
+            <label className={labelCls}>{ar ? 'مركز التكلفة' : 'Cost centre'}{!editId && <span className="text-red-600"> *</span>}</label>
             <SearchableManagedSelect type="so_cost_center" storeLabel value={costCenter} onChange={setCostCenter}
               placeholder={ar ? 'اختر مركز التكلفة…' : 'Pick the cost centre…'} />
           </div>

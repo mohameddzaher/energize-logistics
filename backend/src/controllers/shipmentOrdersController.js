@@ -883,11 +883,10 @@ exports.salesReps = async (req, res) => {
 };
 
 /**
- * Every shipment starts as a sales «shipment request» completed by vendors / operations / fleet (owner's rule, 2026-11-25).
- * The full create form is switched off for everyone, not deleted: set DIRECT_CREATE to true to bring it back.
- * Request completion and fleet loads create orders through createOneOrder, not through this route, so they are unaffected.
+ * Sales and the vendors team always go through a «shipment request»; everyone else may also use the full create form.
+ * DIRECT_CREATE switches that form off for everyone (it was off for a few hours on 2026-11-25, owner asked it back).
  */
-const DIRECT_CREATE = false;
+const DIRECT_CREATE = true;
 const canDirectCreate = (user) => DIRECT_CREATE && !PV.isSalesRole(user) && !PV.isVendorRole(user);
 const directCreateBlocked = (req, res) => {
   if (canDirectCreate(req.user)) return false;
@@ -903,6 +902,7 @@ const directCreateBlocked = (req, res) => {
 exports.createOrder = async (req, res) => {
   try {
     if (directCreateBlocked(req, res)) return;
+    if (!String(req.body?.costCenter || '').trim()) return res.status(400).json({ message: 'اختر مركز التكلفة', code: 'COST_CENTER_REQUIRED', fields: ['costCenter'] });
     const order = await createOneOrder(req, req.body);
     res.status(201).json({ order });
   } catch (error) {
@@ -923,6 +923,7 @@ exports.createOrdersBatch = async (req, res) => {
     if (directCreateBlocked(req, res)) return;
     const trucks = Array.isArray(req.body?.trucks) ? req.body.trucks : [];
     if (!trucks.length) return res.status(400).json({ message: 'لا شاحناتٍ في الطلب' });
+    if (!String(req.body?.costCenter || '').trim()) return res.status(400).json({ message: 'اختر مركز التكلفة', code: 'COST_CENTER_REQUIRED', fields: ['costCenter'] });
 
     // Shared fields: everything in the body except what belongs to the truck and its driver.
     // A B/L and a container belong to one truck, so they are per truck too.

@@ -1731,6 +1731,7 @@
     "/system/business-review/daily": {
       "apis": [
         "/api/business-review/actions",
+        "/api/business-review/actions/order",
         "/api/business-review/daily",
         "/api/business-review/delegates",
         "/api/business-review/meetings",
@@ -1750,6 +1751,7 @@
     "/system/business-review/my-actions": {
       "apis": [
         "/api/business-review/actions",
+        "/api/business-review/actions/order",
         "/api/business-review/assignments",
         "/api/business-review/meetings",
         "/api/business-review/meta",

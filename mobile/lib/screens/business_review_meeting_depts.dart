@@ -428,6 +428,20 @@ class _BrMeetingDepartmentsTabState extends State<BrMeetingDepartmentsTab> {
     return RefreshIndicator(onRefresh: _load, child: ListView(padding: const EdgeInsets.all(12), children: children));
   }
 
+  /// `to` is already adjusted for the removed item (onReorderItem). Shows the new order at once, then saves the card's full id list; a failure reloads the server's order.
+  Future<void> _reorder(Map<String, dynamic> c, int from, int to) async {
+    final tasks = List<Map<String, dynamic>>.from(c['tasks'] ?? []);
+    if (from == to || from < 0 || from >= tasks.length) return;
+    tasks.insert(to, tasks.removeAt(from));
+    setState(() => c['tasks'] = tasks);
+    try {
+      await Api.instance.put('/api/business-review/actions/order', {'ids': [for (final t in tasks) '${t['_id']}']});
+    } catch (e) {
+      if (mounted) brSnack(context, '${tr('تعذّر حفظ الترتيب', 'Could not save the order')}: ${brErr(e)}');
+      _load();
+    }
+  }
+
   Widget _card(Map<String, dynamic> c, bool canEdit) {
     final key = '${c['key']}';
     final counts = Map<String, dynamic>.from(c['counts'] ?? {});
@@ -513,7 +527,39 @@ class _BrMeetingDepartmentsTabState extends State<BrMeetingDepartmentsTab> {
         if (open) ...[
           const Divider(height: 1),
           if (shown.isEmpty) Padding(padding: const EdgeInsets.all(16), child: Center(child: Text(tr('لا توجد بنود هنا.', 'No tasks here.'), style: const TextStyle(color: T.inkFaint)))),
-          for (final t in shown) _task(t, key, canEdit),
+          // A filtered view would drop the task among hidden ones, so reordering needs the full list.
+          if (canEdit && f.isEmpty && tasks.length > 1) ...[
+            Padding(
+              padding: const EdgeInsets.fromLTRB(12, 8, 12, 0),
+              child: Row(children: [
+                const Icon(Icons.drag_indicator, size: 14, color: T.inkFaint),
+                const SizedBox(width: 4),
+                Text(tr('اسحب البند من المقبض لتغيير ترتيبه', 'Drag a task by its handle to reorder'), style: const TextStyle(fontSize: 11.5, color: T.inkFaint)),
+              ]),
+            ),
+            ReorderableListView.builder(
+              shrinkWrap: true,
+              physics: const NeverScrollableScrollPhysics(),
+              buildDefaultDragHandles: false,
+              itemCount: tasks.length,
+              onReorderItem: (from, to) => _reorder(c, from, to),
+              itemBuilder: (_, i) => Row(
+                key: ValueKey('${tasks[i]['_id']}'),
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  ReorderableDragStartListener(
+                    index: i,
+                    child: const Padding(
+                      padding: EdgeInsetsDirectional.fromSTEB(6, 10, 0, 10),
+                      child: Icon(Icons.drag_indicator, size: 20, color: T.inkFaint),
+                    ),
+                  ),
+                  Expanded(child: _task(tasks[i], key, canEdit)),
+                ],
+              ),
+            ),
+          ] else
+            for (final t in shown) _task(t, key, canEdit),
           if (canEdit)
             Padding(
               padding: const EdgeInsets.all(8),

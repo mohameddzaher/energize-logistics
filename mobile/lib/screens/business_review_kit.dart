@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import 'package:url_launcher/url_launcher.dart';
+import '../config.dart';
 import '../nav/sections.dart';
 import '../services/api.dart';
 import '../services/auth.dart';
@@ -7,6 +9,7 @@ import '../services/lang.dart';
 import '../ui/theme.dart';
 import '../ui/widgets.dart';
 import '../ui/search_field.dart';
+import '../ui/file_upload.dart';
 
 /// Business review: tools shared by the list and the meeting page (BusinessReviewKit on the web).
 
@@ -164,6 +167,7 @@ Future<Map<String, dynamic>?> brProgressSheet(BuildContext context, Map<String, 
   var expected = exp0;
   var newDue = '';
   String? err;
+  final files = <PickedFile>[];
   Future<String?> pick(BuildContext c, String current) async {
     final now = DateTime.now();
     final d = await showDatePicker(context: c, initialDate: DateTime.tryParse(current) ?? now,
@@ -218,6 +222,31 @@ Future<Map<String, dynamic>?> brProgressSheet(BuildContext context, Map<String, 
             const SizedBox(height: 8),
             TextField(controller: note, maxLines: 2, decoration: InputDecoration(
                 labelText: st == 'postponed' ? tr('سبب التأجيل (اختياري)', 'Reason for postponing (optional)') : tr('ملاحظة (اختياري)', 'Note (optional)'))),
+            const SizedBox(height: 8),
+            Wrap(spacing: 6, runSpacing: 6, crossAxisAlignment: WrapCrossAlignment.center, children: [
+              OutlinedButton.icon(
+                onPressed: files.length >= 10 ? null : () async {
+                  final picked = await pickFilesAsDataUrls();
+                  if (picked.isEmpty) return;
+                  // Same 15 MB per-file cap the server enforces.
+                  final big = picked.where((f) => f.sizeBytes > 15 * 1024 * 1024).firstOrNull;
+                  if (big != null) {
+                    if (c.mounted) ScaffoldMessenger.of(c).showSnackBar(SnackBar(content: Text(tr('الملف «${big.fileName}» أكبر من 15 ميجا.', '${big.fileName} is larger than 15 MB.'))));
+                    return;
+                  }
+                  setS(() { files.addAll(picked); if (files.length > 10) files.removeRange(10, files.length); });
+                },
+                icon: const Icon(Icons.attach_file, size: 16),
+                label: Text(tr('إرفاق ملفات', 'Attach files'), style: const TextStyle(fontSize: 12)),
+              ),
+              for (var i = 0; i < files.length; i++)
+                InputChip(
+                  label: ConstrainedBox(constraints: const BoxConstraints(maxWidth: 150), child: Text(files[i].fileName, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 11.5))),
+                  onDeleted: () => setS(() => files.removeAt(i)),
+                  visualDensity: VisualDensity.compact,
+                ),
+              if (files.isNotEmpty) Text(tr('${files.length} من 10', '${files.length} of 10'), style: const TextStyle(fontSize: 11, color: T.inkFaint)),
+            ]),
             if (err != null) Padding(padding: const EdgeInsets.only(top: 6), child: Text(err!, style: const TextStyle(color: T.danger, fontSize: 12))),
             const SizedBox(height: 14),
             SizedBox(
@@ -232,6 +261,7 @@ Future<Map<String, dynamic>?> brProgressSheet(BuildContext context, Map<String, 
                     'status': st, 'progress': pr.round(), 'note': note.text,
                     if (expected != exp0) 'expectedDate': expected,
                     if (st == 'postponed' && newDue.isNotEmpty) ...{'newDueDate': newDue, 'postponeReason': note.text.trim()},
+                    if (files.isNotEmpty) 'files': [for (final f in files) {'dataUrl': f.dataUrl, 'fileName': f.fileName}],
                   });
                 },
                 child: Text(tr('حفظ التحديث', 'Save update')),
@@ -379,6 +409,13 @@ Future<List<Map<String, dynamic>>?> brDelegateSheet(BuildContext context, Map<St
   );
 }
 
+/// Server paths are relative to the API base.
+void _brOpenFile(dynamic fileUrl) {
+  final u = (fileUrl ?? '').toString();
+  if (u.isEmpty) return;
+  launchUrl(Uri.parse(u.startsWith('http') ? u : '${AppConfig.apiBase}$u'), mode: LaunchMode.externalApplication);
+}
+
 /// Item update log; UpdateLog on the web (last eight).
 class BrUpdateLog extends StatelessWidget {
   final List updates;
@@ -396,12 +433,34 @@ class BrUpdateLog extends StatelessWidget {
             const Icon(Icons.chat_bubble_outline, size: 12, color: T.inkFaint),
             const SizedBox(width: 5),
             Expanded(
-              child: Text.rich(TextSpan(children: [
+              child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Text.rich(TextSpan(children: [
                 TextSpan(text: '${u['byName'] ?? ''}', style: const TextStyle(fontWeight: FontWeight.w700)),
                 if (u['statusTo'] != null)
                   TextSpan(text: ' · ${brVocab(meta['actionStatuses'] as List?, u['statusFrom']?.toString()).label} → ${brVocab(meta['actionStatuses'] as List?, u['statusTo']?.toString()).label}', style: const TextStyle(color: T.inkFaint)),
                 if ((u['text'] ?? '').toString().isNotEmpty) TextSpan(text: '\n${u['text']}'),
               ]), style: const TextStyle(fontSize: 11)),
+              if ((u['files'] as List? ?? const []).isNotEmpty)
+                Padding(
+                  padding: const EdgeInsets.only(top: 3),
+                  child: Wrap(spacing: 4, runSpacing: 4, children: [
+                    for (final f in List<Map>.from(u['files'] as List))
+                      InkWell(
+                        onTap: () => _brOpenFile(f['fileUrl']),
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                          decoration: BoxDecoration(border: Border.all(color: T.line), borderRadius: BorderRadius.circular(4)),
+                          child: Row(mainAxisSize: MainAxisSize.min, children: [
+                            const Icon(Icons.attach_file, size: 11, color: T.orange),
+                            const SizedBox(width: 3),
+                            ConstrainedBox(constraints: const BoxConstraints(maxWidth: 160),
+                                child: Text('${f['fileName'] ?? tr('ملف', 'File')}', overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 11, color: T.orange))),
+                          ]),
+                        ),
+                      ),
+                  ]),
+                ),
+              ]),
             ),
             Text(brDateTime(u['at']), style: const TextStyle(fontSize: 10, color: T.inkFaint)),
           ]),

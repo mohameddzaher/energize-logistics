@@ -38,7 +38,7 @@ export default function ShipmentRequestForm({ editId, onDone }: { editId?: strin
   const { lang, isRTL } = useLanguage();
   const ar = lang === 'ar';
   const t = (a: string, e: string) => (ar ? a : e);
-  const { notify } = useDialog();
+  const { notify, confirm } = useDialog();
 
   const [fields, setFields] = useState<FormField[]>([]);
   const [customers, setCustomers] = useState<OrderCustomer[]>([]);
@@ -154,6 +154,13 @@ export default function ShipmentRequestForm({ editId, onDone }: { editId?: strin
 
   const submit = async (resubmit = false) => {
     if (missing.size) { setShowErrors(true); notify(t('أكمِل الحقول المحدّدة باللون الأحمر', 'Fill the fields marked in red'), 'error'); return; }
+    // A truck type the customer never asks for is usually a slip of the finger (a tanker sent for a flatbed customer): say so before sending.
+    const usual = prefList(customer?.defaults?.truckType);
+    const odd = (form.truckTypes || []).filter((x: string) => usual.length && !usual.includes(x));
+    if (!editId && odd.length && !(await confirm({
+      title: t('تأكيد نوع الشاحنة', 'Confirm the truck type'), confirmLabel: t('نعم، أرسل الطلب', 'Yes, send'),
+      message: t(`المعتاد لهذا العميل «${usual.join('، ')}»، واخترتَ «${odd.join('، ')}». هل هذا مقصود؟`, `This customer usually takes “${usual.join(', ')}”; you picked “${odd.join(', ')}”. Is that intended?`),
+    }))) return;
     setSaving(true);
     try {
       const body: Record<string, any> = { customFields: {} };

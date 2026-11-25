@@ -478,6 +478,11 @@ class _FleetNewShipmentScreenState extends State<FleetNewShipmentScreen> {
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(tr('اختر السيارة.', 'Pick the vehicle.'))));
       return;
     }
+    // Required on create only; older loads may be edited without one.
+    if (!_isEdit && _costCenter.text.trim().isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(tr('اختر مركز التكلفة.', 'Pick the cost centre.'))));
+      return;
+    }
     setState(() => _busy = true);
     final edit = _isEdit;
     num? n(TextEditingController c) => c.text.trim().isEmpty ? null : (num.tryParse(c.text.trim()) ?? 0);
@@ -728,7 +733,7 @@ class _FleetNewShipmentScreenState extends State<FleetNewShipmentScreen> {
                   Expanded(child: TextField(controller: _fullRent, keyboardType: const TextInputType.numberWithOptions(decimal: true), onChanged: (_) => setState(() {}), decoration: InputDecoration(labelText: tr('الإيجار كامل (اختياري)', 'Full rent (optional)')))),
                 ]),
                 const SizedBox(height: 10),
-                LookupField(type: 'so_cost_center', controller: _costCenter, label: tr('مركز التكلفة', 'Cost centre'),
+                LookupField(type: 'so_cost_center', controller: _costCenter, label: _isEdit ? tr('مركز التكلفة', 'Cost centre') : tr('مركز التكلفة *', 'Cost centre *'),
                     hint: tr('اختر مركز التكلفة…', 'Pick the cost centre…'), onChanged: () => setState(() {})),
                 if (_branchShare > 0) Padding(
                   padding: const EdgeInsets.only(top: 6),

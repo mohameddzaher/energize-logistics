@@ -28,6 +28,8 @@ class LookupField extends StatefulWidget {
   final VoidCallback? onChanged;
   /// List owned by another section: a typed value is accepted in the field but not added to its list.
   final bool noAdd;
+  /// Marks the field red, e.g. a required value left empty on submit.
+  final String? errorText;
   const LookupField({
     super.key,
     required this.type,
@@ -37,6 +39,7 @@ class LookupField extends StatefulWidget {
     this.fallback = const [],
     this.onChanged,
     this.noAdd = false,
+    this.errorText,
   });
 
   @override
@@ -87,6 +90,7 @@ class _LookupFieldState extends State<LookupField> {
       decoration: InputDecoration(
         labelText: widget.label,
         hintText: widget.hint,
+        errorText: widget.errorText,
         suffixIcon: const Icon(Icons.arrow_drop_down),
       ),
     );

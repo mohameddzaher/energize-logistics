@@ -521,14 +521,10 @@ function ShipmentOrdersInner() {
             <Plus className="w-4 h-4" /> {ar ? 'طلب شحنة' : 'Shipment request'}
           </PrimaryButton>
         )}
-        {editor && isVendorUser(user) && (
+        {/* Shipments are no longer created here: they start as a sales request and are completed from the requests page (backend DIRECT_CREATE). */}
+        {editor && !isSalesUser(user) && (
           <PrimaryButton onClick={() => router.push('/system/shipment-orders/requests')}>
             <Plus className="w-4 h-4" /> {ar ? 'الطلبات من المبيعات' : 'Requests from sales'}
-          </PrimaryButton>
-        )}
-        {editor && !isSalesUser(user) && !isVendorUser(user) && (
-          <PrimaryButton onClick={() => router.push('/system/shipment-orders/new')}>
-            <Plus className="w-4 h-4" /> {ar ? 'إنشاء شحنة' : 'Create shipment'}
           </PrimaryButton>
         )}
       </PageHeader>

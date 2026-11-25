@@ -882,14 +882,20 @@ exports.salesReps = async (req, res) => {
   catch (e) { res.status(500).json({ message: 'تعذّر تحميل القائمة' }); }
 };
 
-/** Sales and the vendors team create through a shipment request, never directly: each sees only its side of the price. */
+/**
+ * Every shipment starts as a sales «shipment request» completed by vendors / operations / fleet (owner's rule, 2026-11-25).
+ * The full create form is switched off for everyone, not deleted: set DIRECT_CREATE to true to bring it back.
+ * Request completion and fleet loads create orders through createOneOrder, not through this route, so they are unaffected.
+ */
+const DIRECT_CREATE = false;
+const canDirectCreate = (user) => DIRECT_CREATE && !PV.isSalesRole(user) && !PV.isVendorRole(user);
 const directCreateBlocked = (req, res) => {
-  if (!PV.isSalesRole(req.user) && !PV.isVendorRole(req.user)) return false;
+  if (canDirectCreate(req.user)) return false;
   res.status(403).json({
     code: 'USE_SHIPMENT_REQUEST',
-    message: PV.isSalesRole(req.user)
-      ? 'فريقُ المبيعات يُنشئ «طلبَ شحنة»، ويُكمله فريقُ الموردين إلى أمر نقل.'
-      : 'فريقُ الموردين يُكمل الشحنات من «الطلبات الواردة من المبيعات».',
+    message: PV.isVendorRole(req.user)
+      ? 'فريقُ الموردين يُكمل الشحنات من «الطلبات الواردة من المبيعات».'
+      : 'تُنشأ الشحنة من «طلب شحنة» يكتبه فريقُ المبيعات، ثمّ يُكمله فريقُ الموردين أو العمليات أو الأسطول إلى أمر نقل.',
   });
   return true;
 };
@@ -979,7 +985,7 @@ exports.moneyEditors = (req, res) => res.json({
   priceView: PV.priceView(req.user),
   owned: ownedFields(req.user),
   supplierLocked: !canEditMoney(req.user) && !PV.isVendorRole(req.user),
-  directCreate: !PV.isSalesRole(req.user) && !PV.isVendorRole(req.user),
+  directCreate: canDirectCreate(req.user),
   fields: MONEY_FIELDS,
   roles: MONEY_EDIT_ROLES,
   canEdit: canEditMoney(req.user),

@@ -210,6 +210,8 @@ function CreateFleetShipmentInner() {
     if (!vehicleId) { notify(ar ? 'اختر السيارة.' : 'Pick the vehicle.', 'error'); return; }
     // The rent is required: fleet sales are counted from it.
     if (!(Number(form.price) > 0)) { notify(ar ? 'إيجار السيارة مطلوب — اكتب قيمة أكبر من صفر.' : 'Vehicle rent is required.', 'error'); return; }
+    // Required on a new load; an older load saved without one can still be edited.
+    if (!editId && !String(form.costCenter || '').trim()) { notify(ar ? 'اختر مركز التكلفة.' : 'Pick the cost centre.', 'error'); return; }
     setSaving(true);
     try {
       const payload: Record<string, any> = {
@@ -515,7 +517,7 @@ function CreateFleetShipmentInner() {
             })()}
           </div>
           <div>
-            <label className={labelCls}>{ar ? 'مركز التكلفة' : 'Cost centre'}</label>
+            <label className={labelCls}>{ar ? 'مركز التكلفة' : 'Cost centre'}{!editId && <span className="text-red-600"> *</span>}</label>
             <SearchableManagedSelect type="so_cost_center" storeLabel value={form.costCenter || ''} onChange={(v) => set('costCenter', v)}
               placeholder={ar ? 'اختر مركز التكلفة…' : 'Pick the cost centre…'} />
           </div>

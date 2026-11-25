@@ -855,6 +855,7 @@ exports.place = async (req, res) => {
       const dp = driverProblem(t);
       if (dp) problems.push(`الشاحنة ${n}: ${dp}`);
       if (!(Number(t.buyPrice) > 0)) problems.push(`الشاحنة ${n}: سعرُ الشراء مطلوب`);
+      if (!String(t.costCenter || '').trim()) problems.push(`الشاحنة ${n}: اختر مركز التكلفة`);
     });
     if (problems.length) return bad(res, problems.join(' · '), { problems });
 
@@ -975,6 +976,7 @@ exports.fleetPlace = async (req, res) => {
       if (!isId(t.driver)) problems.push(`الشاحنة ${n}: اختر السائق`);
       if (t.secondDriver && String(t.secondDriver) === String(t.driver)) problems.push(`الشاحنة ${n}: السائق الثاني هو الأول نفسه`);
       if (!(Number(t.price) > 0)) problems.push(`الشاحنة ${n}: إيجار السيارة مطلوب`);
+      if (!String(t.costCenter || '').trim()) problems.push(`الشاحنة ${n}: اختر مركز التكلفة`);
     });
     const plates = trucks.map((t) => String(t.vehicle || '')).filter(Boolean);
     if (new Set(plates).size !== plates.length) problems.push('السيارة نفسها مختارةٌ لأكثر من شاحنة');

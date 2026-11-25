@@ -134,12 +134,13 @@ export function PlaceModal({ req, onClose, onDone }: { req: ShipmentRequest; onC
     const freshDriver = r.newFreelancer || (!r.driverId && r.ndName.trim());
     if (freshDriver ? (!r.ndName.trim() || !IQAMA_RE.test(r.ndIqama.trim())) : !r.driverId) out.push('driver');
     if (!(Number(r.buyPrice) > 0)) out.push('buy');
+    if (!r.costCenter) out.push('cost');
     return out;
   });
   const submit = async () => {
     setTried(true);
     if (problems.some((p) => p.length) || times.missing.length) {
-      notify(t('أكمِل الحقول المحدّدة بالأحمر — والسائقُ الجديد يحتاج رقمَ إقامته', 'Fill the fields in red — a new driver needs his iqama'), 'error');
+      notify(t('أكمِل الحقول المحدّدة بالأحمر (ومنها مركز التكلفة) — والسائقُ الجديد يحتاج رقمَ إقامته', 'Fill the fields in red (cost centre included) — a new driver needs his iqama'), 'error');
       return;
     }
     setSaving(true);
@@ -360,8 +361,10 @@ function TruckEditor({ i, row, reps, helpers, types, miss, onChange, onRemove, a
           <input type="number" min={0} value={row.advanceAmount} onChange={(e) => onChange({ advanceAmount: e.target.value })} className={inputCls} />
         </div>
         <div className="sm:col-span-2">
-          <label className={labelCls}>{t('مركز التكلفة', 'Cost centre')}</label>
-          <SearchableManagedSelect type="so_cost_center" storeLabel value={row.costCenter} onChange={(v) => onChange({ costCenter: v })} placeholder={t('اختر مركز التكلفة…', 'Pick the cost centre…')} />
+          {lab('cost', 'مركز التكلفة', 'Cost centre', true)}
+          <div className={bad('cost') ? 'rounded-lg ring-2 ring-red-300' : ''}>
+            <SearchableManagedSelect type="so_cost_center" storeLabel value={row.costCenter} onChange={(v) => onChange({ costCenter: v })} placeholder={t('اختر مركز التكلفة…', 'Pick the cost centre…')} />
+          </div>
         </div>
       </div>
     </div>
@@ -393,10 +396,10 @@ export function FleetPlaceModal({ req, onClose, onDone }: { req: ShipmentRequest
   }, []);
   const setRow = (i: number, patch: Partial<FleetRow>) => setRows((p) => p.map((r, j) => (j === i ? { ...r, ...patch } : r)));
   const reqTypes = typesOfReq(req);
-  const problems = rows.map((r) => [reqTypes.length > 1 && !r.truckType && 'type', !r.vehicle && 'vehicle', !r.driver && 'driver', !(Number(r.price) > 0) && 'price'].filter(Boolean) as string[]);
+  const problems = rows.map((r) => [reqTypes.length > 1 && !r.truckType && 'type', !r.vehicle && 'vehicle', !r.driver && 'driver', !(Number(r.price) > 0) && 'price', !r.costCenter && 'cost'].filter(Boolean) as string[]);
   const submit = async () => {
     setTried(true);
-    if (problems.some((p) => p.length) || times.missing.length) { notify(t('أكمِل السيارة والسائق وإيجار السيارة والأوقات المطلوبة', 'Fill truck, driver, rent and required times'), 'error'); return; }
+    if (problems.some((p) => p.length) || times.missing.length) { notify(t('أكمِل السيارة والسائق وإيجار السيارة ومركز التكلفة والأوقات المطلوبة', 'Fill truck, driver, rent, cost centre and required times'), 'error'); return; }
     setSaving(true);
     try {
       const d = await api.post<{ waybills: number[]; failed: { message: string }[] }>(`/api/shipment-requests/${req._id}/fleet-place`, {
@@ -508,8 +511,10 @@ function FleetTruckEditor({ i, row, vehicles, drivers, helpers, types, taken, mi
           <input type="number" min={0} value={row.driverExpense} onChange={(e) => onChange({ driverExpense: e.target.value })} className={inputCls} placeholder="0" />
         </div>
         <div>
-          <label className={labelCls}>{t('مركز التكلفة', 'Cost centre')}</label>
-          <SearchableManagedSelect type="so_cost_center" storeLabel value={row.costCenter} onChange={(v) => onChange({ costCenter: v })} placeholder={t('اختر مركز التكلفة…', 'Pick the cost centre…')} />
+          {lab('cost', 'مركز التكلفة', 'Cost centre', true)}
+          <div className={bad('cost') ? 'rounded-lg ring-2 ring-red-300' : ''}>
+            <SearchableManagedSelect type="so_cost_center" storeLabel value={row.costCenter} onChange={(v) => onChange({ costCenter: v })} placeholder={t('اختر مركز التكلفة…', 'Pick the cost centre…')} />
+          </div>
         </div>
         <div className="flex items-end">
           <button type="button" onClick={() => onChange({ fridayBonus: !row.fridayBonus })}

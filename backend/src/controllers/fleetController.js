@@ -504,6 +504,8 @@ exports.createShipment = async (req, res) => {
   try {
     const data = pick(req.body, SHIPMENT_EDITABLE);
     if (!(Number(data.price) > 0)) return res.status(400).json(PRICE_REQUIRED);
+    // Every new load names its cost centre (owner's rule); loads born from a shipment order take the order's.
+    if (!String(data.costCenter || '').trim()) return res.status(400).json({ message: 'اختر مركز التكلفة', code: 'COST_CENTER_REQUIRED', fields: { costCenter: 'مطلوب' } });
 
     if (!data.customer && req.body.newCustomer && String(req.body.newCustomer.name || '').trim()) {
       const nm = String(req.body.newCustomer.name).trim();

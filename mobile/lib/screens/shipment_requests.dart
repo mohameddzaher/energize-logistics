@@ -501,6 +501,23 @@ class _ShipmentRequestFormScreenState extends State<ShipmentRequestFormScreen> {
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(tr('أكمِل الحقول المحدّدة بالأحمر', 'Fill the highlighted fields'))));
       return;
     }
+    // A truck type the customer never takes is usually a slip; confirm before sending a new request.
+    if (!_editing && _customer != null) {
+      final usual = prefList(((_customer!['defaults'] as Map?) ?? const {})['truckType']);
+      final odd = _types.where((x) => usual.isNotEmpty && !usual.contains(x)).toList();
+      if (odd.isNotEmpty) {
+        final ok = await showDialog<bool>(context: context, builder: (d) => AlertDialog(
+          title: Text(tr('تأكيد نوع الشاحنة', 'Confirm the truck type')),
+          content: Text(tr('المعتاد لهذا العميل «${usual.join('، ')}»، واخترتَ «${odd.join('، ')}». هل هذا مقصود؟',
+              'This customer usually takes "${usual.join(', ')}"; you picked "${odd.join(', ')}". Is that intended?')),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(d, false), child: Text(tr('إلغاء', 'Cancel'))),
+            FilledButton(onPressed: () => Navigator.pop(d, true), child: Text(tr('نعم، أرسل الطلب', 'Yes, send'))),
+          ],
+        ));
+        if (ok != true || !mounted) return;
+      }
+    }
     setState(() => _saving = true);
     final body = <String, dynamic>{'customFields': <String, dynamic>{}, 'trucks': _trucks, 'dueDay': _dueDay};
     for (final f in _fields) {
@@ -1700,6 +1717,8 @@ class _Truck {
 class _PlaceTrucksScreenState extends State<PlaceTrucksScreen> {
   final List<_Truck> _trucks = [];
   bool _saving = false;
+  /// Set on the first submit so empty required fields turn red.
+  bool _tried = false;
   List<Map<String, dynamic>> _reps = const [];
   List<Map<String, dynamic>> _helpers = const [];
   String _me = '';
@@ -1865,12 +1884,14 @@ class _PlaceTrucksScreenState extends State<PlaceTrucksScreen> {
         out.add(tr('الشاحنة $n: اختر السائق أو سجّل سائقًا جديدًا', 'Truck $n: driver'));
       }
       if (!((num.tryParse(t.buy.text.trim()) ?? 0) > 0)) out.add(tr('الشاحنة $n: سعر الشراء مطلوب', 'Truck $n: buying price required'));
+      if (t.costCenter.text.trim().isEmpty) out.add(tr('الشاحنة $n: اختر مركز التكلفة', 'Truck $n: pick the cost centre'));
     }
     return out;
   }
 
   Future<void> _save() async {
     final problems = _problems();
+    if (!_tried) setState(() => _tried = true);
     if (problems.isNotEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(problems.join('\n'))));
       return;
@@ -2000,7 +2021,9 @@ class _PlaceTrucksScreenState extends State<PlaceTrucksScreen> {
           Expanded(child: TextField(controller: t.advance, keyboardType: TextInputType.number, decoration: InputDecoration(labelText: tr('السلفة', 'Advance')))),
         ]),
         const SizedBox(height: 6),
-        LookupField(type: 'so_cost_center', controller: t.costCenter, label: tr('مركز التكلفة', 'Cost centre'), hint: tr('اختر مركز التكلفة…', 'Pick the cost centre…')),
+        LookupField(type: 'so_cost_center', controller: t.costCenter, label: tr('مركز التكلفة *', 'Cost centre *'), hint: tr('اختر مركز التكلفة…', 'Pick the cost centre…'),
+            onChanged: () => setState(() {}),
+            errorText: _tried && t.costCenter.text.trim().isEmpty ? tr('مركز التكلفة مطلوب', 'Cost centre is required') : null),
       ])),
     );
   }
@@ -2069,6 +2092,8 @@ class _FleetPlaceScreenState extends State<FleetPlaceScreen> {
   List<Map<String, dynamic>> _helpers = [];
   bool _loading = true;
   bool _saving = false;
+  /// Set on the first submit so empty required fields turn red.
+  bool _tried = false;
   String? _error;
   late final _Times _times = _Times(widget.request);
 
@@ -2174,7 +2199,9 @@ class _FleetPlaceScreenState extends State<FleetPlaceScreen> {
       if (t.vehicle == null) problems.add(tr('الشاحنة $n: اختر السيارة', 'Truck $n: truck'));
       if (t.driver == null) problems.add(tr('الشاحنة $n: اختر السائق', 'Truck $n: driver'));
       if (!((num.tryParse(t.price.text.trim()) ?? 0) > 0)) problems.add(tr('الشاحنة $n: إيجار السيارة مطلوب', 'Truck $n: vehicle rent required'));
+      if (t.costCenter.text.trim().isEmpty) problems.add(tr('الشاحنة $n: اختر مركز التكلفة', 'Truck $n: pick the cost centre'));
     }
+    if (!_tried) setState(() => _tried = true);
     if (problems.isNotEmpty) { ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(problems.join('\n')))); return; }
     setState(() => _saving = true);
     try {
@@ -2288,7 +2315,9 @@ class _FleetPlaceScreenState extends State<FleetPlaceScreen> {
         const SizedBox(height: 6),
         TextField(controller: t.notes, decoration: InputDecoration(labelText: tr('ملاحظة الحمولة', 'Load note'))),
         const SizedBox(height: 6),
-        LookupField(type: 'so_cost_center', controller: t.costCenter, label: tr('مركز التكلفة', 'Cost centre'), hint: tr('اختر مركز التكلفة…', 'Pick the cost centre…')),
+        LookupField(type: 'so_cost_center', controller: t.costCenter, label: tr('مركز التكلفة *', 'Cost centre *'), hint: tr('اختر مركز التكلفة…', 'Pick the cost centre…'),
+            onChanged: () => setState(() {}),
+            errorText: _tried && t.costCenter.text.trim().isEmpty ? tr('مركز التكلفة مطلوب', 'Cost centre is required') : null),
       ])),
     );
   }

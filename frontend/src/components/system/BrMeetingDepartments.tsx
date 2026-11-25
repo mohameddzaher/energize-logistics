@@ -340,6 +340,12 @@ export function TaskRow({ task, meta, L, meetingId, canEdit, runner = canEdit, c
             <Users className="w-3.5 h-3.5" />{t('With', 'بمشاركة')} {task.sharedWith.map((x: any) => x.assigneeName).join('، ')}
           </span>
         )}
+        {/* A shared task is done only when every owner finished his part. */}
+        {!!task.sharedWith?.length && task.status !== 'done' && (() => {
+          const total = task.sharedWith.length + 1;
+          const fin = task.sharedWith.filter((x: any) => x.partDone).length + (task.partDone ? 1 : 0);
+          return fin > 0 ? <span className="text-[11.5px] px-1.5 py-0.5 rounded bg-emerald-50 border border-emerald-200 text-emerald-800 font-bold">{t(`Done by ${fin} of ${total}`, `تمّ عند ${fin} من ${total}`)}</span> : null;
+        })()}
         <span className={`text-[12px] inline-flex items-center gap-1 ${task.overdue ? 'text-red-700 font-bold' : 'text-slate-500'}`}>
           <CalendarDays className="w-3.5 h-3.5" />{fmtDate(task.dueDate)}
         </span>
@@ -367,10 +373,11 @@ export function TaskRow({ task, meta, L, meetingId, canEdit, runner = canEdit, c
                 <Users className="w-3.5 h-3.5 text-sky-600" />{t('Worked together with', 'بمشاركة')}:
                 {task.sharedWith.map((x: any) => (
                   <span key={x._id} className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-sky-50 border border-sky-200 text-sky-800">
-                    <b>{x.assigneeName}</b>{x.department ? ` · ${deptLabel(x.department, L)}` : ''}
+                    <b>{x.assigneeName}</b>{x.department ? ` · ${deptLabel(x.department, L)}` : ''}{x.partDone ? <span className="text-emerald-700"> ✓ {t('finished his part', 'أتمّ جزءه')}</span> : ''}
                   </span>
                 ))}
-                <span className="text-[11.5px] text-slate-500">{t('— any edit by one shows for the other.', '— أيُّ تعديلٍ من أحدهما يظهر عند الآخر.')}</span>
+                {task.partDone && <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-emerald-50 border border-emerald-200 text-emerald-800"><b>{task.assigneeName}</b> ✓ {t('finished his part', 'أتمّ جزءه')}</span>}
+                <span className="text-[11.5px] text-slate-500">{t('— the task is done when every owner finishes his part.', '— يُعدّ البند منجزًا حين يُتمّ كلُّ المشتركين أجزاءهم.')}</span>
               </p>
             )}
             {task.raisedByName && <p>{t('Requested by', 'بطلب من')}: <b className="text-slate-800">{task.raisedByName}</b></p>}

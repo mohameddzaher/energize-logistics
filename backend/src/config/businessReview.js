@@ -117,8 +117,15 @@ const isManagerRole = (role) => {
   return /_manager$/.test(role); // ← any future *_manager role, for free
 };
 
-/** Sends tasks to the archive and brings them back: the system admins, executive management and the general manager, plus the top-management and chairman accounts. */
-const canArchive = (user) => !!user && (EXECUTIVE_ROLES.includes(user.role) || user.isTopManagement === true || user.isChairman === true);
+/**
+ * The owner's list: the system admins (and their transition/backup clones), the general manager, the chairman, the whole
+ * software team and the administration secretariat. They archive tasks, and a shared task they mark done is done for every owner.
+ */
+const FINALIZE_ROLES = ['super_admin', 'admin', 'transition_account', 'backup_account', 'moderator',
+  'it_manager', 'it_team_leader', 'it_specialist', 'it_trainee',
+  'administration_manager', 'administration_team_leader', 'administration_staff'];
+const canArchive = (user) => !!user && (FINALIZE_ROLES.includes(user.ownRole || user.role) || user.isChairman === true);
+const canFinalize = canArchive;
 const isExecutive = (user) => !!user && EXECUTIVE_ROLES.includes(user.role);
 const isSecretary = (user) => !!user && SECRETARY_ROLES.includes(user.role);
 /** May run the forum: create meetings, write minutes, raise actions. */
@@ -150,7 +157,7 @@ const meta = () => ({
 module.exports = {
   CADENCES, CADENCE_KEYS,
   MEETING_STATUSES, MEETING_STATUS_KEYS, HELD_MEETING_STATUSES, OPEN_MEETING_STATUSES,
-  ACTION_STATUSES, ACTION_STATUS_KEYS, OPEN_ACTION_STATUSES, PROGRESS_OF, ARCHIVE_AFTER_MS, archivedCond, liveCond, legacyArchivedCond, canArchive, migrateManualArchive,
+  ACTION_STATUSES, ACTION_STATUS_KEYS, OPEN_ACTION_STATUSES, PROGRESS_OF, ARCHIVE_AFTER_MS, archivedCond, liveCond, legacyArchivedCond, canArchive, canFinalize, FINALIZE_ROLES, migrateManualArchive,
   PRIORITIES, PRIORITY_KEYS,
   EXECUTIVE_ROLES, SECRETARY_ROLES, EXTRA_MANAGER_ROLES,
   isManagerRole, isExecutive, isSecretary, canRunMeetings, isParticipant,

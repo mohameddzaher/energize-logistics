@@ -629,7 +629,10 @@ class _BrMeetingDepartmentsTabState extends State<BrMeetingDepartmentsTab> {
               _line(tr('المسؤول', 'Owner'), '${t['assigneeName']}'),
               if (List.from(t['sharedWith'] ?? []).isNotEmpty)
                 _line(tr('بمشاركة', 'Worked together with'), '${List<Map>.from(t['sharedWith']).map((x) =>
-                    '${x['assigneeName']} (${brDept(context, '${x['department'] ?? ''}')})').join('، ')} — ${tr('أيُّ تعديلٍ من أحدهما يظهر عند الآخر', 'any edit by one shows for the other')}', color: T.info),
+                    '${x['assigneeName']} (${brDept(context, '${x['department'] ?? ''}')})${x['partDone'] == true ? ' ✓' : ''}').join('، ')} — ${tr('يُعدّ البند منجزًا حين يُتمّ كلُّ المشتركين أجزاءهم', 'done when every owner finishes his part')}', color: T.info),
+              // A shared task is done only when every owner finished his part.
+              if (List.from(t['sharedWith'] ?? []).isNotEmpty && t['status'] != 'done')
+                _line(tr('تمّ عند', 'Done by'), '${List<Map>.from(t['sharedWith']).where((x) => x['partDone'] == true).length + (t['partDone'] == true ? 1 : 0)} ${tr('من', 'of')} ${List.from(t['sharedWith']).length + 1}', color: T.success),
               if ('${t['raisedByName'] ?? ''}'.isNotEmpty) _line(tr('بطلب من', 'Requested by'), '${t['raisedByName']}'),
               _line(tr('أُسند في', 'Raised in'), '${t['meetingRef']} · ${brDate(t['meetingDate'] ?? t['createdAt'])}${t['fromThisMeeting'] == true ? ' (${tr('هذا الاجتماع', 'this meeting')})' : ''}'),
               _line(tr('التسليم', 'Due'), brDate(t['dueDate']), color: overdue ? T.danger : null),

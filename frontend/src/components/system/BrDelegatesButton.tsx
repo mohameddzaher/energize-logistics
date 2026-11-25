@@ -18,13 +18,14 @@ export default function BrDelegatesButton({ ar }: { ar: boolean }) {
   const [open, setOpen] = useState(false);
   const [rows, setRows] = useState<Member[] | null>(null);
   const [section, setSection] = useState('');
+  const [sectionName, setSectionName] = useState<{ ar: string; en: string }>({ ar: '', en: '' });
   const [busy, setBusy] = useState('');
   const t = (a: string, e: string) => (ar ? a : e);
   // A delegate does not hand the section on; only its manager does.
   const allowed = !!user && isBrParticipant(user.role) && !(user as any).brActsFor;
 
   const load = useCallback(async () => {
-    try { const d = await api.get<{ section: string; members: Member[] }>('/api/business-review/delegates'); setRows(d.members || []); setSection(d.section || ''); }
+    try { const d = await api.get<{ section: string; sectionAr?: string; sectionEn?: string; members: Member[] }>('/api/business-review/delegates'); setRows(d.members || []); setSection(d.section || ''); setSectionName({ ar: d.sectionAr || d.section || '', en: d.sectionEn || d.section || '' }); }
     catch (e: any) { notify(e?.message || t('تعذّر التحميل', 'Could not load'), 'error'); setRows([]); }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -56,7 +57,7 @@ export default function BrDelegatesButton({ ar }: { ar: boolean }) {
           </div>
           <p className="mb-3 text-[11.5px] text-slate-500">
             {t('مَن تفوّضه يرى بنود قسمك ويعمل عليها كما تعمل أنت، وتُسجَّل أفعاله باسمه.', 'A delegate sees your section’s items and works them as you do; actions are logged under their name.')}
-            {section && <> {t('القسم', 'Section')}: <b>{section}</b></>}
+            {section && <> {t('القسم', 'Section')}: <b>{t(sectionName.ar, sectionName.en)}</b></>}
           </p>
           {rows === null ? <div className="flex justify-center py-6"><Loader2 className="h-5 w-5 animate-spin text-slate-400" /></div> : !rows.length ? (
             <p className="py-4 text-center text-[12.5px] text-slate-500">{t('لا أعضاء في قسمك.', 'No members in your section.')}</p>

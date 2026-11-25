@@ -190,7 +190,7 @@ async function taskViewer(actions, meetingId = null) {
     return ms < 0 ? 'late' : ms <= 2 * DAY ? 'h48' : ms <= 7 * DAY ? 'week' : 'later';
   };
   return (a) => ({
-    _id: a._id, title: a.title, description: a.description, status: a.status, progress: a.progress, priority: a.priority,
+    _id: a._id, title: a.title, description: a.description, status: a.status, progress: a.progress, priority: a.priority, partDone: !!a.partDone,
     assignee: a.assignee, assigneeName: a.assigneeName, raisedByName: a.raisedByName, createdByName: a.createdByName,
     startDate: a.startDate, dueDate: a.dueDate, expectedDate: a.expectedDate, originalDueDate: a.originalDueDate,
     postponeReason: a.postponeReason, postponeCount: a.postponeCount, completedAt: a.completedAt, createdAt: a.createdAt,

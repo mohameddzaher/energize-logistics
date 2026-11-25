@@ -169,6 +169,9 @@ const brActionSchema = new mongoose.Schema({
   archivedAt: { type: Date, default: null, index: true },
   archivedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User', default: null },
   archivedByName: { type: String, trim: true, default: '' },
+  // A shared task's own part: this owner finished his share. The task itself is done only when every owner's part is.
+  partDone: { type: Boolean, default: false },
+  partDoneAt: { type: Date, default: null },
   // Hand-set place in its department card (dragged on the daily meeting); null = automatic order.
   sortOrder: { type: Number, default: null },
   overdueNotifiedAt: { type: Date, default: null },

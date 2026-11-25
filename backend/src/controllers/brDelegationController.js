@@ -36,7 +36,8 @@ exports.list = async (req, res) => {
       .filter((u) => secs.get(String(u._id)) === section && !isManagerRole(u.role))
       .map((u) => ({ _id: String(u._id), name: name(u), role: u.role, email: u.email || '', delegated: String(u.brActsFor || '') === String(mgr._id), actsForOther: !!u.brActsFor && String(u.brActsFor) !== String(mgr._id) }))
       .sort((a, b) => Number(b.delegated) - Number(a.delegated) || a.name.localeCompare(b.name, 'ar'));
-    res.json({ section, manager: { _id: String(mgr._id), name: name(mgr) }, members });
+    const { sectionLabel } = require('../config/sections');
+    res.json({ section, sectionAr: sectionLabel(section, 'ar'), sectionEn: sectionLabel(section, 'en'), manager: { _id: String(mgr._id), name: name(mgr) }, members });
   } catch (e) { console.error('[br-delegates]', e); res.status(500).json({ message: 'تعذّر التحميل' }); }
 };
 

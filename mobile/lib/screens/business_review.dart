@@ -1147,7 +1147,7 @@ class _DelegatesSheetState extends State<_DelegatesSheet> {
   Future<void> _load() async {
     try {
       final d = await Api.instance.get('/api/business-review/delegates') as Map;
-      if (mounted) setState(() { _rows = [for (final x in (d['members'] as List? ?? const [])) Map<String, dynamic>.from(x as Map)]; _section = '${d['section'] ?? ''}'; });
+      if (mounted) setState(() { _rows = [for (final x in (d['members'] as List? ?? const [])) Map<String, dynamic>.from(x as Map)]; _section = tr('${d['sectionAr'] ?? d['section'] ?? ''}', '${d['sectionEn'] ?? d['section'] ?? ''}'); });
     } catch (e) {
       if (mounted) { setState(() => _rows = []); ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e is ApiException ? e.message : e.toString()))); }
     }

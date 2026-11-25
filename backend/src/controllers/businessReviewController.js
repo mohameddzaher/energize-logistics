@@ -686,7 +686,7 @@ async function syncShared(action, newUpdates = []) {
 async function siblingsOf(actions) {
   const groups = [...new Set(actions.map((a) => a.shareGroup && String(a.shareGroup)).filter(Boolean))];
   if (!groups.length) return new Map();
-  const rows = await BrAction.find({ shareGroup: { $in: groups } }).select('shareGroup assignee assigneeName department status progress expectedDate dueDate updates').lean();
+  const rows = await BrAction.find({ shareGroup: { $in: groups } }).select('shareGroup assignee assigneeName department status progress expectedDate dueDate updates partDone').lean();
   const by = new Map();
   for (const a of actions) {
     if (!a.shareGroup) continue;
@@ -694,7 +694,7 @@ async function siblingsOf(actions) {
       .map((r) => {
         const last = (r.updates || [])[r.updates.length - 1] || null;
         return {
-          _id: r._id, assignee: r.assignee, assigneeName: r.assigneeName, department: r.department, status: r.status, progress: r.progress,
+          _id: r._id, assignee: r.assignee, assigneeName: r.assigneeName, department: r.department, status: r.status, progress: r.progress, partDone: !!r.partDone,
           expectedDate: r.expectedDate, dueDate: r.dueDate,
           lastUpdate: last ? { text: last.text, statusTo: last.statusTo, byName: last.byName, at: last.at } : null,
         };
@@ -739,18 +739,46 @@ exports.updateAction = async (req, res) => {
     // The owner reports progress, expected date and postponement; the board reads it live.
     const bad = applyProgress(action, req.body);
     if (bad) return res.status(400).json({ message: bad, code: 'POSTPONE_NEEDS_DATE_REASON' });
+    // A shared task is done only when every owner finished his part; an owner marking done closes his part only.
+    // The finalize list (config/businessReview canFinalize) closes it for everyone at once.
+    let partNote = '';
+    if (action.shareGroup) {
+      const { canFinalize } = require('../config/businessReview');
+      const siblings = await BrAction.find({ shareGroup: action.shareGroup, _id: { $ne: action._id } }).select('_id partDone').lean();
+      if (action.status === 'done' && before !== 'done') {
+        if (canFinalize(req.user)) {
+          action.partDone = true; action.partDoneAt = new Date();
+          await BrAction.updateMany({ shareGroup: action.shareGroup, _id: { $ne: action._id } }, { $set: { partDone: true, partDoneAt: new Date() } });
+        } else {
+          action.partDone = true; action.partDoneAt = new Date();
+          const total = siblings.length + 1;
+          const doneN = siblings.filter((x) => x.partDone).length + 1;
+          if (doneN < total) {
+            // Not done yet for the task: it stays in progress, with the share finished so far.
+            action.status = 'in_progress';
+            action.completedAt = null;
+            action.progress = Math.round((doneN / total) * 100);
+            partNote = `أتمّ ${fullName(req.user)} جزءه — تمّ عند ${doneN} من ${total}`;
+          }
+        }
+      } else if (before === 'done' && action.status !== 'done') {
+        // Reopened: nobody's part counts as finished any more.
+        action.partDone = false; action.partDoneAt = null;
+        await BrAction.updateMany({ shareGroup: action.shareGroup, _id: { $ne: action._id } }, { $set: { partDone: false, partDoneAt: null } });
+      }
+    }
     const logged = action.updates.length;
-    logUpdate(action, req.user, req.body, before);
+    logUpdate(action, req.user, partNote ? { ...req.body, note: [String(req.body.note || '').trim(), partNote].filter(Boolean).join(' · ') } : req.body, before);
     await action.save();
     // A shared task is one task worked by several owners: any owner's edit (status, dates, note) shows for all of them.
     await syncShared(action, action.updates.slice(logged));
     emit('br:action', { id: String(action._id) });
 
     // Co-owners of a shared task hear when one owner's part changes state.
-    const noted = !!String(req.body.note || '').trim();
+    const noted = !!String(req.body.note || '').trim() || !!partNote;
     if (action.shareGroup && (before !== action.status || noted)) {
       const others = await BrAction.find({ shareGroup: action.shareGroup, _id: { $ne: action._id } }).select('assignee').lean();
-      const label = before === action.status ? 'أضاف ملاحظة على'
+      const label = partNote ? 'أتمّ جزءه من' : before === action.status ? 'أضاف ملاحظة على'
         : ({ done: 'أنجز', in_progress: 'بدأ العمل على', blocked: 'تعثّر في', postponed: 'أجّل', open: 'أعاد فتح', cancelled: 'ألغى' }[action.status] || 'حدّث');
       for (const o of others) {
         if (brScope.isMe(req.user, o.assignee)) continue;

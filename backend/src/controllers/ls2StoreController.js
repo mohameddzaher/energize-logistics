@@ -93,8 +93,36 @@ exports.listItems = async (req, res) => {
       const rx = new RegExp(req.query.q.trim().replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i');
       filter.$or = [{ name: rx }, { supplierItemName: rx }, { code: rx }, { category: rx }, { compatibleModels: rx }, { supplierName: rx }];
     }
-    const items = (await Ls2StoreItem.find(filter).sort({ name: 1 }).limit(3000).lean())
-      .map((it) => ({ ...it, categoryAr: catAr(it.category), status: statusOf(it), value: Math.round((Number(it.quantity) || 0) * (Number(it.unitPrice) || 0) * 100) / 100 }));
+    let raw = await Ls2StoreItem.find(filter).sort({ name: 1 }).limit(3000).lean();
+    // Balance as of a day (end of that day, Riyadh): today's balance with every later movement undone.
+    // Movements are never edited; a reversal is its own opposite movement with its own date, so the arithmetic stays exact.
+    const asOf = dayOf(req.query.asOf);
+    const dayMoves = new Map();
+    if (asOf) {
+      const end = new Date(`${asOf}T23:59:59.999+03:00`);
+      const start = new Date(`${asOf}T00:00:00.000+03:00`);
+      const ids = raw.map((it) => it._id);
+      const moves = ids.length ? await Ls2StoreMovement.find({
+        item: { $in: ids },
+        $or: [{ date: { $gte: asOf } }, { date: { $in: ['', null] }, createdAt: { $gte: start } }],
+      }).select('item type quantity date createdAt').lean() : [];
+      const after = new Map();
+      for (const m of moves) {
+        const day = m.date || new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Riyadh' }).format(new Date(m.createdAt));
+        const k = String(m.item); const q = Number(m.quantity) || 0;
+        if (day > asOf) after.set(k, (after.get(k) || 0) + (m.type === 'in' ? q : -q));
+        else if (day === asOf) {
+          const d = dayMoves.get(k) || { inDay: 0, outDay: 0 };
+          if (m.type === 'in') d.inDay += q; else d.outDay += q;
+          dayMoves.set(k, d);
+        }
+      }
+      raw = raw.map((it) => ({ ...it, quantityNow: it.quantity, quantity: Math.round(((Number(it.quantity) || 0) - (after.get(String(it._id)) || 0)) * 1000) / 1000 }))
+        // An item entered after that day with nothing on it then did not exist yet; one entered later with an earlier purchase date did.
+        .filter((it) => !it.createdAt || new Date(it.createdAt) <= end || it.quantity !== 0 || dayMoves.has(String(it._id)));
+    }
+    const items = raw
+      .map((it) => ({ ...it, ...(asOf ? { asOf, inDay: 0, outDay: 0, ...(dayMoves.get(String(it._id)) || {}) } : {}), categoryAr: catAr(it.category), status: statusOf(it), value: Math.round((Number(it.quantity) || 0) * (Number(it.unitPrice) || 0) * 100) / 100 }));
     if (req.query.status) {
       const body = { items: items.filter((i) => i.status === req.query.status) };
       cache.set(cacheKey, body, 15000);

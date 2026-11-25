@@ -61,7 +61,7 @@ function SupplierSelect({ suppliers, value, onChange, ar }: { suppliers: Supplie
 }
 const supplierBody = (v: string) => (/^[0-9a-f]{24}$/i.test(v) ? { supplier: v } : { supplier: '', supplierName: v });
 
-type Item = { _id: string; supplier?: string | null; supplierName?: string; supplierItemName?: string; purchaseDate?: string; createdAt?: string; code?: string; name: string; category?: string; categoryAr?: string; groupAr?: string; quantity: number; unit: string; unitPrice: number; minQuantity?: number; compatibleModels?: string[]; notes?: string; status: 'ok' | 'low' | 'out'; value: number };
+type Item = { _id: string; supplier?: string | null; supplierName?: string; supplierItemName?: string; purchaseDate?: string; createdAt?: string; code?: string; name: string; category?: string; categoryAr?: string; groupAr?: string; quantity: number; unit: string; unitPrice: number; minQuantity?: number; compatibleModels?: string[]; notes?: string; status: 'ok' | 'low' | 'out'; value: number; asOf?: string; inDay?: number; outDay?: number; quantityNow?: number };
 type Cat = { key: string; ar: string; count: number };
 type Movement = {
   _id: string; item: string; itemName: string; type: 'in' | 'out'; quantity: number;
@@ -155,6 +155,8 @@ export default function StoreScreen({ scope }: { scope: StoreScope }) {
   // Purchase day (day / month / range) and supplier are filtered on the server.
   const [period, setPeriod] = useState<{ from: string; to: string }>({ from: '', to: '' });
   const [supplierF, setSupplierF] = useState('');
+  // Balances as of the end of a chosen day (computed on the server from the movement log); empty = now.
+  const [asOf, setAsOf] = useState('');
   const [suppliers, setSuppliers] = useState<Supplier[]>([]);
   const supBase = scope.suppliersBase;
   const loadSuppliers = useCallback(() => {
@@ -175,6 +177,7 @@ export default function StoreScreen({ scope }: { scope: StoreScope }) {
     if (period.from) qs.set('from', period.from);
     if (period.to) qs.set('to', period.to);
     if (supplierF) qs.set('supplier', supplierF);
+    if (asOf) qs.set('asOf', asOf);
     try {
       const [d, dash] = await Promise.all([
         api.get<{ items: Item[] }>(`${scope.base}${qs.toString() ? `?${qs}` : ''}`),
@@ -184,7 +187,7 @@ export default function StoreScreen({ scope }: { scope: StoreScope }) {
       setItems(d.items || []); setTotals(dash.totals); setCats((dash as any).byCategory || []);
     } catch (e: any) { if (itemsReq.isCurrent(token)) notify(e?.message || 'Failed', 'error'); } finally { setLoading(false); }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [q, period.from, period.to, supplierF, notify]);
+  }, [q, period.from, period.to, supplierF, asOf, notify]);
 
   useEffect(() => { const t = setTimeout(load, 200); return () => clearTimeout(t); }, [load]);
   useSocket('ls2:store', useCallback(() => load(), [load]));
@@ -220,8 +223,16 @@ export default function StoreScreen({ scope }: { scope: StoreScope }) {
     && (!priceMin || (i.unitPrice || 0) >= Number(priceMin))
     && (!priceMax || (i.unitPrice || 0) <= Number(priceMax))
   ), [items, statusF, catF, priceMin, priceMax]);
-  const anyFilter = statusF || catF || priceMin || priceMax || q || period.from || period.to || supplierF;
-  const resetFilters = () => { setStatusF(''); setCatF(''); setPriceMin(''); setPriceMax(''); setQ(''); setPeriod({ from: '', to: '' }); setSupplierF(''); };
+  const anyFilter = statusF || catF || priceMin || priceMax || q || period.from || period.to || supplierF || asOf;
+  const resetFilters = () => { setStatusF(''); setCatF(''); setPriceMin(''); setPriceMax(''); setQ(''); setPeriod({ from: '', to: '' }); setSupplierF(''); setAsOf(''); };
+  // Cards: the store now from the dashboard, or the chosen day's figures from the listed balances.
+  const cards = asOf ? {
+    items: items.length,
+    totalUnits: items.reduce((a, i) => a + (Number(i.quantity) || 0), 0),
+    totalValue: items.reduce((a, i) => a + (Number(i.value) || 0), 0),
+    lowStock: items.filter((i) => i.status === 'low').length,
+    outOfStock: items.filter((i) => i.status === 'out').length,
+  } : totals;
 
   const del = async (it: Item) => {
     if (!(await confirm(ar ? `حذف الصنف «${it.name}»؟` : `Delete "${it.name}"?`))) return;
@@ -266,7 +277,30 @@ export default function StoreScreen({ scope }: { scope: StoreScope }) {
   ];
   // Price columns are dropped where the store keeps no prices.
   const PRICE_KEYS = new Set(['unitPrice', 'value', 'total']);
-  const itemColsShown = noPrices ? itemCols.filter((c) => !PRICE_KEYS.has(c.key)) : itemCols;
+  const itemColsBase = noPrices ? itemCols.filter((c) => !PRICE_KEYS.has(c.key)) : itemCols;
+  // As of a day: the quantity column is that day's balance, and the day's in/out follow it.
+  const itemColsShown: ExportColumn[] = asOf
+    ? itemColsBase.flatMap((c) => (c.key === 'quantity'
+      ? [{ ...c, header: ar ? `الرصيد في ${dmy(asOf)}` : `Balance on ${dmy(asOf)}` },
+        { header: ar ? `وارد ${dmy(asOf)}` : `In ${dmy(asOf)}`, key: 'inDay', width: 12 },
+        { header: ar ? `صادر ${dmy(asOf)}` : `Out ${dmy(asOf)}`, key: 'outDay', width: 12 }]
+      : [c]))
+    : itemColsBase;
+  // A totals row closes every exported list.
+  const withTotal = (rows: any[], keys: string[], labelKey: string) => {
+    const total: Record<string, any> = { [labelKey]: ar ? `الإجمالي (${rows.length})` : `Total (${rows.length})` };
+    for (const k of keys) total[k] = Math.round(rows.reduce((a, x) => a + (Number(x[k]) || 0), 0) * 100) / 100;
+    return [...rows, total];
+  };
+  // What the file was cut by, printed above the table.
+  const filterTitle = [
+    asOf ? (ar ? `الأرصدة في ${dmy(asOf)}` : `Balances on ${dmy(asOf)}`) : (ar ? `الأرصدة الحالية — ${dmy(new Date().toISOString())}` : `Current balances — ${dmy(new Date().toISOString())}`),
+    statusF ? (ar ? STATUS[statusF]?.ar : STATUS[statusF]?.en) : '',
+    catF ? (ar ? `التصنيف: ${catF}` : `Category: ${catF}`) : '',
+    supplierF ? (ar ? `المورد: ${suppliers.find((x) => x._id === supplierF)?.name || ''}` : `Supplier: ${suppliers.find((x) => x._id === supplierF)?.name || ''}`) : '',
+    period.from || period.to ? (ar ? `تاريخ الشراء ${dmy(period.from)} — ${dmy(period.to)}` : `Purchased ${dmy(period.from)} — ${dmy(period.to)}`) : '',
+    q ? (ar ? `بحث: ${q}` : `Search: ${q}`) : '',
+  ].filter(Boolean).join(' · ');
   const movementColsShown = noPrices ? movementCols.filter((c) => !PRICE_KEYS.has(c.key)) : movementCols;
 
   if (!scope.canSee(user)) return <div className="text-slate-500 p-8">{ar ? 'غير مصرّح' : 'Not authorized'}</div>;
@@ -281,9 +315,9 @@ export default function StoreScreen({ scope }: { scope: StoreScope }) {
           <ExportMenu
             fileName={scope.fileName} lang={lang as Lang}
             options={[
-              { key: 'shown', label: ar ? 'المعروض حاليًا (بعد الفلتر)' : 'Current view (filtered)', sheets: [{ name: ar ? 'المخزن' : 'Store', rows: shown, columns: itemColsShown }] },
-              { key: 'all', label: ar ? 'كل الأصناف' : 'All items', sheets: [{ name: ar ? 'المخزن' : 'Store', rows: items, columns: itemColsShown }] },
-              { key: 'movements', label: ar ? 'سجل الحركات' : 'Movements log', sheets: [{ name: ar ? 'الحركات' : 'Movements', rows: movements, columns: movementColsShown }], disabled: !movements.length },
+              { key: 'shown', label: ar ? 'المعروض حاليًا (بعد الفلتر)' : 'Current view (filtered)', sheets: [{ name: ar ? 'المخزن' : 'Store', title: filterTitle, rows: withTotal(shown, ['quantity', 'value', 'inDay', 'outDay'], 'name'), columns: itemColsShown }] },
+              { key: 'all', label: ar ? 'كل الأصناف' : 'All items', sheets: [{ name: ar ? 'المخزن' : 'Store', title: asOf ? (ar ? `الأرصدة في ${dmy(asOf)}` : `Balances on ${dmy(asOf)}`) : undefined, rows: withTotal(items, ['quantity', 'value', 'inDay', 'outDay'], 'name'), columns: itemColsShown }] },
+              { key: 'movements', label: ar ? 'سجل الحركات (بعد الفلتر)' : 'Movements log (filtered)', sheets: [{ name: ar ? 'الحركات' : 'Movements', title: [logF.from || logF.to ? `${dmy(logF.from)} — ${dmy(logF.to)}` : '', logF.type ? (logF.type === 'in' ? (ar ? 'وارد' : 'In') : (ar ? 'صادر' : 'Out')) : '', logF.q].filter(Boolean).join(' · ') || undefined, rows: withTotal(movements, ['quantity', 'total'], 'itemName'), columns: movementColsShown }], disabled: !movements.length },
             ]}
           />
           {canAdd && <button onClick={() => setAddNew(true)} className="flex items-center gap-1.5 px-3 py-2 rounded-lg bg-[#f37121] hover:bg-[#e5651a] text-white text-sm"><Plus className="w-4 h-4" /> {ar ? 'صنف جديد' : 'Add item'}</button>}
@@ -293,11 +327,11 @@ export default function StoreScreen({ scope }: { scope: StoreScope }) {
 
       {/* Cards, filterable */}
       <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-5 gap-3">
-        <button onClick={() => setStatusF('')} className="text-start"><StatCard label={ar ? 'عدد الأصناف' : 'Items'} value={totals?.items ?? items.length} accent="text-[#f37121]" /></button>
-        <StatCard label={ar ? 'إجمالي القطع' : 'Total units'} value={money(totals?.totalUnits)} />
-        {!noPrices && <StatCard label={ar ? 'قيمة المخزون (ر.س)' : 'Stock value'} value={money(totals?.totalValue)} accent="text-emerald-600" />}
-        <button onClick={() => setStatusF(statusF === 'low' ? '' : 'low')} className="text-start"><StatCard label={ar ? 'منخفض' : 'Low stock'} value={totals?.lowStock ?? 0} accent="text-amber-600" /></button>
-        <button onClick={() => setStatusF(statusF === 'out' ? '' : 'out')} className="text-start"><StatCard label={ar ? 'نافد' : 'Out of stock'} value={totals?.outOfStock ?? 0} accent="text-red-600" /></button>
+        <button onClick={() => setStatusF('')} className="text-start"><StatCard label={ar ? 'عدد الأصناف' : 'Items'} value={cards?.items ?? items.length} accent="text-[#f37121]" /></button>
+        <StatCard label={ar ? 'إجمالي القطع' : 'Total units'} value={money(cards?.totalUnits)} />
+        {!noPrices && <StatCard label={ar ? 'قيمة المخزون (ر.س)' : 'Stock value'} value={money(cards?.totalValue)} accent="text-emerald-600" />}
+        <button onClick={() => setStatusF(statusF === 'low' ? '' : 'low')} className="text-start"><StatCard label={ar ? 'منخفض' : 'Low stock'} value={cards?.lowStock ?? 0} accent="text-amber-600" /></button>
+        <button onClick={() => setStatusF(statusF === 'out' ? '' : 'out')} className="text-start"><StatCard label={ar ? 'نافد' : 'Out of stock'} value={cards?.outOfStock ?? 0} accent="text-red-600" /></button>
       </div>
 
       <div className="rounded-2xl border border-slate-200 bg-white p-3 shadow-sm space-y-2.5">
@@ -325,6 +359,12 @@ export default function StoreScreen({ scope }: { scope: StoreScope }) {
             <option value="">{ar ? 'كل الموردين' : 'All suppliers'}</option>
             {suppliers.map((x) => <option key={x._id} value={x._id}>{x.name}</option>)}
           </select>
+          <label className={`flex items-center gap-1.5 rounded-lg border px-2 py-1 text-xs font-semibold ${asOf ? 'border-[#f37121] bg-orange-50 text-[#c2410c]' : 'border-slate-200 text-slate-600'}`}
+            title={ar ? 'أرصدة المخزن كما كانت في نهاية هذا اليوم، محسوبةً من سجل الحركات' : 'Stock as it stood at the end of that day, from the movement log'}>
+            {ar ? 'الرصيد في يوم' : 'Balance on'}
+            <input type="date" value={asOf} max={new Date().toISOString().slice(0, 10)} onChange={(e) => setAsOf(e.target.value)} className="bg-transparent text-sm text-slate-800 focus:outline-none" />
+            {asOf && <button type="button" onClick={() => setAsOf('')} className="text-slate-400 hover:text-red-600" aria-label="clear"><X className="w-3 h-3" /></button>}
+          </label>
           <span className="flex items-center gap-1.5 text-xs text-slate-500">{ar ? 'تاريخ الشراء' : 'Purchase date'}
             <PeriodFilter ar={ar} from={period.from} to={period.to} onChange={(a, b) => setPeriod({ from: a, to: b })} />
           </span>
@@ -355,7 +395,7 @@ export default function StoreScreen({ scope }: { scope: StoreScope }) {
                       })} />
                   </th>
                 )}
-                {[ar ? 'الصنف' : 'Item', ar ? 'التصنيف' : 'Category', ar ? 'تاريخ الشراء' : 'Purchased', ar ? 'المورد' : 'Supplier', ar ? 'العدد' : 'Qty', ...(noPrices ? [] : [ar ? 'سعر القطعة' : 'Unit price', ar ? 'الإجمالي' : 'Total']), ar ? 'الحالة' : 'Status', ar ? 'حركة' : 'Move', ''].map((h) => <th key={h} className="px-3 py-2.5 text-start font-semibold whitespace-nowrap">{h}</th>)}
+                {[ar ? 'الصنف' : 'Item', ar ? 'التصنيف' : 'Category', ar ? 'تاريخ الشراء' : 'Purchased', ar ? 'المورد' : 'Supplier', asOf ? (ar ? `الرصيد في ${dmy(asOf)}` : `Balance on ${dmy(asOf)}`) : (ar ? 'العدد' : 'Qty'), ...(asOf ? [ar ? 'وارد اليوم' : 'In that day', ar ? 'صادر اليوم' : 'Out that day'] : []), ...(noPrices ? [] : [ar ? 'سعر القطعة' : 'Unit price', ar ? 'الإجمالي' : 'Total']), ar ? 'الحالة' : 'Status', ar ? 'حركة' : 'Move', ''].map((h) => <th key={h} className="px-3 py-2.5 text-start font-semibold whitespace-nowrap">{h}</th>)}
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
@@ -376,7 +416,10 @@ export default function StoreScreen({ scope }: { scope: StoreScope }) {
                   <td className="px-3 py-2 text-slate-500 whitespace-nowrap">{it.categoryAr || it.category || '—'}</td>
                   <td className="px-3 py-2 text-slate-500 whitespace-nowrap">{it.purchaseDate ? dmy(it.purchaseDate) : '—'}</td>
                   <td className="px-3 py-2 text-slate-600 whitespace-nowrap">{it.supplierName || '—'}</td>
-                  <td className="px-3 py-2 font-bold text-slate-800">{it.quantity} <span className="text-[10px] font-normal text-slate-400">{it.unit}</span></td>
+                  <td className="px-3 py-2 font-bold text-slate-800">{it.quantity} <span className="text-[10px] font-normal text-slate-400">{it.unit}</span>
+                    {asOf && it.quantityNow != null && it.quantityNow !== it.quantity && <span className="block text-[10.5px] font-normal text-slate-400">{ar ? `الآن ${it.quantityNow}` : `now ${it.quantityNow}`}</span>}</td>
+                  {asOf && <td className="px-3 py-2 text-emerald-700 font-semibold tabular-nums">{it.inDay ? `+${it.inDay}` : '—'}</td>}
+                  {asOf && <td className="px-3 py-2 text-[#f37121] font-semibold tabular-nums">{it.outDay ? `−${it.outDay}` : '—'}</td>}
                   {!noPrices && <td className="px-3 py-2 text-slate-600 whitespace-nowrap">{money(it.unitPrice)}</td>}
                   {!noPrices && <td className="px-3 py-2 text-emerald-700 font-semibold whitespace-nowrap">{money(it.value)}</td>}
                   <td className="px-3 py-2"><span className={`px-2 py-0.5 rounded-full text-xs font-semibold ${STATUS[it.status].cls}`}>{ar ? STATUS[it.status].ar : STATUS[it.status].en}</span></td>
@@ -398,7 +441,7 @@ export default function StoreScreen({ scope }: { scope: StoreScope }) {
                   </td>
                 </tr>
               ))}
-              {shown.length === 0 && <tr><td colSpan={11} className="px-3 py-10 text-center text-slate-400">{ar ? 'لا توجد أصناف مطابقة' : 'No items'}</td></tr>}
+              {shown.length === 0 && <tr><td colSpan={13} className="px-3 py-10 text-center text-slate-400">{ar ? 'لا توجد أصناف مطابقة' : 'No items'}</td></tr>}
             </tbody>
           </table>
         </ScrollX>

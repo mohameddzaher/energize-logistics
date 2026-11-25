@@ -250,8 +250,11 @@ exports.getMeetingDepartments = async (req, res) => {
     const hd = runner ? null : await brScope.headDept(req.user);
     const keys = hd ? [hd] : [...new Set([...(meeting.departments || []), ...actions.map(deptOf)])];
     const cards = keys.map((key) => {
+      // A hand-set order wins; tasks never placed by hand follow it in the automatic order.
+      const placed = (a) => (a.sortOrder == null ? 1 : 0);
       const list = actions.filter((a) => deptOf(a) === key)
-        .sort((x, y) => rank(x) - rank(y) || new Date(x.dueDate || 8.64e15) - new Date(y.dueDate || 8.64e15));
+        .sort((x, y) => placed(x) - placed(y) || (x.sortOrder ?? 0) - (y.sortOrder ?? 0)
+          || rank(x) - rank(y) || new Date(x.dueDate || 8.64e15) - new Date(y.dueDate || 8.64e15));
       const n = (f) => list.filter(f).length;
       return {
         key,

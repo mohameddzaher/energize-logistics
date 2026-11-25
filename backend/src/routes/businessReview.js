@@ -46,6 +46,8 @@ router.delete('/assignments/:assignmentId', br.deleteAssignment);
 
 // ── The follow-up register (board + secretariat) ───────────────────────────
 router.get('/actions', br.allActions);
+// Literal path before /actions/:actionId.
+router.put('/actions/order', br.reorderActions);
 router.patch('/actions/:actionId', br.updateAction);
 router.delete('/actions/:actionId', br.deleteAction);
 router.post('/actions/:actionId/delegate', br.delegate);

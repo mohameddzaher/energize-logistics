@@ -4,7 +4,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import {
   CheckCircle2, PlayCircle, CircleDashed, PauseCircle, AlertTriangle, Ban, ChevronDown, Plus, CornerDownLeft,
-  Loader2, Link2, CalendarDays, User, Layers, Pencil, Users, X, ArrowLeftRight, Trash2, History, Archive,
+  Loader2, Link2, CalendarDays, User, Layers, Pencil, Users, X, ArrowLeftRight, Trash2, History, Archive, GripVertical,
 } from 'lucide-react';
 import { useDialog } from '@/components/system/DialogProvider';
 import SearchSelect from '@/components/system/SearchSelect';
@@ -76,6 +76,24 @@ export default function BrMeetingDepartments({ meetingId, meta, L, notify, initi
   const [openTask, setOpenTask] = useState('');
   const seq = useRef(0);
 
+  // Drag to reorder a department's tasks: the dragged task and the row it hovers.
+  const [drag, setDrag] = useState<{ dept: string; id: string } | null>(null);
+  const [over, setOver] = useState('');
+  const dropOn = async (dept: string, targetId: string) => {
+    const from = drag; setDrag(null); setOver('');
+    if (!from || from.dept !== dept || from.id === targetId || !d) return;
+    const card = d.departments.find((x) => x.key === dept);
+    if (!card) return;
+    const ids = card.tasks.map((x: Task) => x._id);
+    const next = ids.filter((x: string) => x !== from.id);
+    const at = targetId ? next.indexOf(targetId) : next.length;
+    next.splice(at < 0 ? next.length : at, 0, from.id);
+    // Shown at once; the server keeps it for everyone.
+    const byId = new Map(card.tasks.map((x: Task) => [x._id, x]));
+    setD({ ...d, departments: d.departments.map((x) => (x.key === dept ? { ...x, tasks: next.map((id: string) => byId.get(id)) } : x)) });
+    try { await api.put('/api/business-review/actions/order', { ids: next }); }
+    catch (e: any) { notify(e?.message || t('Failed', 'تعذّر حفظ الترتيب'), 'error'); load(); }
+  };
   const load = useCallback(async () => {
     const mine = ++seq.current;
     try {
@@ -185,12 +203,39 @@ export default function BrMeetingDepartments({ meetingId, meta, L, notify, initi
               {open && (
                 <div className="border-t border-slate-100">
                   {!shown.length && <p className="px-4 py-6 text-center text-sm text-slate-400">{t('No tasks here.', 'لا توجد بنود هنا.')}</p>}
+                  {/* Drag by the grip to reorder; only on the full list (a filtered view would place a task among hidden ones). */}
+                  {d.canEdit && !f && shown.length > 1 && (
+                    <p className="flex items-center gap-1 px-4 pt-2 text-[11.5px] text-slate-400"><GripVertical className="w-3.5 h-3.5" />{t('Drag a task by its handle to reorder', 'اسحب البند من المقبض لتغيير ترتيبه')}</p>
+                  )}
                   <div className="divide-y divide-slate-100">
-                    {shown.map((task) => (
-                      <TaskRow key={task._id} task={task} meta={meta} L={L} meetingId={meetingId} canEdit={d.canEdit} onlyDept={d.headDept || ''} dept={c.key}
-                        open={openTask === task._id} onToggle={() => setOpenTask(openTask === task._id ? '' : task._id)}
-                        onChanged={load} notify={notify} />
-                    ))}
+                    {shown.map((task) => {
+                      const canDrag = d.canEdit && !f && shown.length > 1;
+                      return (
+                        <div key={task._id}
+                          onDragOver={canDrag && drag?.dept === c.key ? (e) => { e.preventDefault(); if (over !== task._id) setOver(task._id); } : undefined}
+                          onDrop={canDrag ? (e) => { e.preventDefault(); dropOn(c.key, task._id); } : undefined}
+                          className={`flex items-stretch ${drag?.id === task._id ? 'opacity-40' : ''} ${over === task._id && drag && drag.id !== task._id ? 'shadow-[inset_0_2px_0_#f37121]' : ''}`}>
+                          {canDrag && (
+                            <span draggable onDragStart={(e) => { setDrag({ dept: c.key, id: task._id }); e.dataTransfer.effectAllowed = 'move'; }}
+                              onDragEnd={() => { setDrag(null); setOver(''); }}
+                              title={t('Drag to reorder', 'اسحب لتغيير الترتيب')}
+                              className="flex shrink-0 cursor-grab items-center ps-2 text-slate-300 hover:text-slate-600 active:cursor-grabbing">
+                              <GripVertical className="w-4 h-4" />
+                            </span>
+                          )}
+                          <div className="min-w-0 flex-1">
+                            <TaskRow task={task} meta={meta} L={L} meetingId={meetingId} canEdit={d.canEdit} onlyDept={d.headDept || ''} dept={c.key}
+                              open={openTask === task._id} onToggle={() => setOpenTask(openTask === task._id ? '' : task._id)}
+                              onChanged={load} notify={notify} />
+                          </div>
+                        </div>
+                      );
+                    })}
+                    {/* Drop below the last task. */}
+                    {d.canEdit && !f && drag?.dept === c.key && (
+                      <div onDragOver={(e) => { e.preventDefault(); setOver('__end'); }} onDrop={(e) => { e.preventDefault(); dropOn(c.key, ''); }}
+                        className={`h-8 text-center text-[11.5px] leading-8 ${over === '__end' ? 'bg-orange-50 text-[#f37121]' : 'text-slate-300'}`}>{t('Drop here to move to the end', 'أفلِت هنا لنقله إلى الآخر')}</div>
+                    )}
                   </div>
                   {d.canEdit && <NewTask meta={meta} L={L} meetingId={meetingId} dept={c.key} onlyDept={d.headDept || ''} onDone={load} notify={notify} />}
                 </div>

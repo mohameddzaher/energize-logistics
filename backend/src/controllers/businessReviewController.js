@@ -793,6 +793,25 @@ const setArchived = (archive) => async (req, res) => {
   }
 };
 exports.archiveAction = setArchived(true);
+
+/** PUT /actions/order — { ids: [...] } in the order wanted for one department card; whoever manages every task listed. */
+exports.reorderActions = async (req, res) => {
+  try {
+    const ids = [...new Set((Array.isArray(req.body?.ids) ? req.body.ids : []).map(String))].filter((x) => mongoose.isValidObjectId(x)).slice(0, 1000);
+    if (!ids.length) return res.status(400).json({ message: 'لا مهامَّ للترتيب' });
+    const rows = await BrAction.find({ _id: { $in: ids } }).select('_id assignee assigneeRole department').lean();
+    if (rows.length !== ids.length) return res.status(404).json({ message: 'بعضُ المهامّ غير موجود' });
+    for (const a of rows) {
+      // eslint-disable-next-line no-await-in-loop
+      if (!(await brScope.canManageAction(req.user, a))) return deny(res, 'ترتيبُ مهامّ القسم لمن يديره');
+    }
+    await BrAction.bulkWrite(ids.map((id, i) => ({ updateOne: { filter: { _id: id }, update: { $set: { sortOrder: i } } } })), { ordered: false });
+    emit('br:action', { reordered: true });
+    res.json({ ok: true, count: ids.length });
+  } catch (error) {
+    res.status(500).json({ message: 'تعذّر حفظ الترتيب' });
+  }
+};
 exports.unarchiveAction = setArchived(false);
 
 exports.deleteAction = async (req, res) => {

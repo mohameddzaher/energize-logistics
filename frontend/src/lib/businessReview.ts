@@ -158,6 +158,8 @@ export interface BrAction {
 export interface ProgressReport {
   status: string; progress: number; note: string;
   expectedDate?: string; newDueDate?: string; postponeReason?: string;
+  /** Files sent with the update (base64 data URLs). */
+  files?: { dataUrl: string; fileName: string }[];
 }
 
 // ── Client ──────────────────────────────────────────────────────────────────

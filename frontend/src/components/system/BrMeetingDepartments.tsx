@@ -2,6 +2,7 @@
 // A meeting's departments as cards: each department's tasks with counts by state; a task opens in place with its full
 // detail, and the administration marks it done, postpones it, updates it, or raises a follow-up or a new task here.
 import { useState, useEffect, useCallback, useRef } from 'react';
+import { Reorder, useDragControls } from 'framer-motion';
 import {
   CheckCircle2, PlayCircle, CircleDashed, PauseCircle, AlertTriangle, Ban, ChevronDown, Plus, CornerDownLeft,
   Loader2, Link2, CalendarDays, User, Layers, Pencil, Users, X, ArrowLeftRight, Trash2, History, Archive, GripVertical,
@@ -76,22 +77,21 @@ export default function BrMeetingDepartments({ meetingId, meta, L, notify, initi
   const [openTask, setOpenTask] = useState('');
   const seq = useRef(0);
 
-  // Drag to reorder a department's tasks: the dragged task and the row it hovers.
-  const [drag, setDrag] = useState<{ dept: string; id: string } | null>(null);
-  const [over, setOver] = useState('');
-  const dropOn = async (dept: string, targetId: string) => {
-    const from = drag; setDrag(null); setOver('');
-    if (!from || from.dept !== dept || from.id === targetId || !d) return;
-    const card = d.departments.find((x) => x.key === dept);
+  // Reorder by dragging: the list follows the pointer live; the new order is saved when the task is let go.
+  const dRef = useRef<typeof d>(null);
+  useEffect(() => { dRef.current = d; }, [d]);
+  const moveLocal = (dept: string, ids: string[]) => setD((cur) => {
+    if (!cur) return cur;
+    return { ...cur, departments: cur.departments.map((x) => {
+      if (x.key !== dept) return x;
+      const byId = new Map(x.tasks.map((tk: Task) => [tk._id, tk]));
+      return { ...x, tasks: ids.map((id) => byId.get(id)).filter(Boolean) };
+    }) };
+  });
+  const saveOrder = async (dept: string) => {
+    const card = dRef.current?.departments.find((x) => x.key === dept);
     if (!card) return;
-    const ids = card.tasks.map((x: Task) => x._id);
-    const next = ids.filter((x: string) => x !== from.id);
-    const at = targetId ? next.indexOf(targetId) : next.length;
-    next.splice(at < 0 ? next.length : at, 0, from.id);
-    // Shown at once; the server keeps it for everyone.
-    const byId = new Map(card.tasks.map((x: Task) => [x._id, x]));
-    setD({ ...d, departments: d.departments.map((x) => (x.key === dept ? { ...x, tasks: next.map((id: string) => byId.get(id)) } : x)) });
-    try { await api.put('/api/business-review/actions/order', { ids: next }); }
+    try { await api.put('/api/business-review/actions/order', { ids: card.tasks.map((x: Task) => x._id) }); }
     catch (e: any) { notify(e?.message || t('Failed', 'تعذّر حفظ الترتيب'), 'error'); load(); }
   };
   const load = useCallback(async () => {
@@ -207,36 +207,25 @@ export default function BrMeetingDepartments({ meetingId, meta, L, notify, initi
                   {d.canEdit && !f && shown.length > 1 && (
                     <p className="flex items-center gap-1 px-4 pt-2 text-[11.5px] text-slate-400"><GripVertical className="w-3.5 h-3.5" />{t('Drag a task by its handle to reorder', 'اسحب البند من المقبض لتغيير ترتيبه')}</p>
                   )}
-                  <div className="divide-y divide-slate-100">
-                    {shown.map((task) => {
-                      const canDrag = d.canEdit && !f && shown.length > 1;
-                      return (
-                        <div key={task._id}
-                          onDragOver={canDrag && drag?.dept === c.key ? (e) => { e.preventDefault(); if (over !== task._id) setOver(task._id); } : undefined}
-                          onDrop={canDrag ? (e) => { e.preventDefault(); dropOn(c.key, task._id); } : undefined}
-                          className={`flex items-stretch ${drag?.id === task._id ? 'opacity-40' : ''} ${over === task._id && drag && drag.id !== task._id ? 'shadow-[inset_0_2px_0_#f37121]' : ''}`}>
-                          {canDrag && (
-                            <span draggable onDragStart={(e) => { setDrag({ dept: c.key, id: task._id }); e.dataTransfer.effectAllowed = 'move'; }}
-                              onDragEnd={() => { setDrag(null); setOver(''); }}
-                              title={t('Drag to reorder', 'اسحب لتغيير الترتيب')}
-                              className="flex shrink-0 cursor-grab items-center ps-2 text-slate-300 hover:text-slate-600 active:cursor-grabbing">
-                              <GripVertical className="w-4 h-4" />
-                            </span>
-                          )}
-                          <div className="min-w-0 flex-1">
-                            <TaskRow task={task} meta={meta} L={L} meetingId={meetingId} canEdit={d.canEdit} onlyDept={d.headDept || ''} dept={c.key}
-                              open={openTask === task._id} onToggle={() => setOpenTask(openTask === task._id ? '' : task._id)}
-                              onChanged={load} notify={notify} />
-                          </div>
-                        </div>
-                      );
-                    })}
-                    {/* Drop below the last task. */}
-                    {d.canEdit && !f && drag?.dept === c.key && (
-                      <div onDragOver={(e) => { e.preventDefault(); setOver('__end'); }} onDrop={(e) => { e.preventDefault(); dropOn(c.key, ''); }}
-                        className={`h-8 text-center text-[11.5px] leading-8 ${over === '__end' ? 'bg-orange-50 text-[#f37121]' : 'text-slate-300'}`}>{t('Drop here to move to the end', 'أفلِت هنا لنقله إلى الآخر')}</div>
-                    )}
-                  </div>
+                  {(() => {
+                    const row = (task: Task) => (
+                      <TaskRow task={task} meta={meta} L={L} meetingId={meetingId} canEdit={d.canEdit} onlyDept={d.headDept || ''} dept={c.key}
+                        open={openTask === task._id} onToggle={() => setOpenTask(openTask === task._id ? '' : task._id)}
+                        onChanged={load} notify={notify} />
+                    );
+                    if (!(d.canEdit && !f && shown.length > 1)) {
+                      return <div className="divide-y divide-slate-100">{shown.map((task) => <div key={task._id}>{row(task)}</div>)}</div>;
+                    }
+                    return (
+                      <Reorder.Group as="div" axis="y" values={shown.map((x) => x._id)} onReorder={(ids) => moveLocal(c.key, ids as string[])} className="divide-y divide-slate-100">
+                        {shown.map((task) => (
+                          <SortRow key={task._id} id={task._id} onDone={() => saveOrder(c.key)} hint={t('Drag to reorder', 'اسحب لتغيير الترتيب')}>
+                            {row(task)}
+                          </SortRow>
+                        ))}
+                      </Reorder.Group>
+                    );
+                  })()}
                   {d.canEdit && <NewTask meta={meta} L={L} meetingId={meetingId} dept={c.key} onlyDept={d.headDept || ''} onDone={load} notify={notify} />}
                 </div>
               )}
@@ -253,6 +242,23 @@ export default function BrMeetingDepartments({ meetingId, meta, L, notify, initi
  * One task row with its actions; shared by the meeting cards and the 'assigned to me' list.
  * `runner` (meeting runners) adds edit/share/move/delete/follow-up; an owner keeps done/postpone/update and can hand parts to the team.
  */
+/** One draggable task: only the grip starts a drag, so clicks and buttons in the row work as before. */
+function SortRow({ id, children, onDone, hint }: { id: string; children: React.ReactNode; onDone: () => void; hint: string }) {
+  const controls = useDragControls();
+  return (
+    <Reorder.Item as="div" value={id} dragListener={false} dragControls={controls} onDragEnd={onDone}
+      className="relative flex items-stretch bg-white"
+      transition={{ type: 'spring', stiffness: 500, damping: 40 }}
+      whileDrag={{ scale: 1.015, zIndex: 30, boxShadow: '0 14px 30px rgba(15,23,42,0.18)', borderRadius: 12 }}>
+      <span onPointerDown={(e) => { e.preventDefault(); controls.start(e); }} title={hint}
+        className="flex shrink-0 cursor-grab touch-none select-none items-center ps-2 text-slate-300 hover:text-slate-600 active:cursor-grabbing">
+        <GripVertical className="w-4 h-4" />
+      </span>
+      <div className="min-w-0 flex-1">{children}</div>
+    </Reorder.Item>
+  );
+}
+
 export function TaskRow({ task, meta, L, meetingId, canEdit, runner = canEdit, canDelegate = false, onlyDept = '', dept, open, onToggle, onChanged, notify }: {
   task: Task; meta: BrMeta; L: Lang; meetingId: string; canEdit: boolean; runner?: boolean; canDelegate?: boolean;
   /** A department head works inside his department: share/move/assign lists show its people only. */

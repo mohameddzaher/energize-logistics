@@ -17,6 +17,8 @@ const updateSchema = new mongoose.Schema({
   statusFrom: { type: String, default: '' },
   statusTo: { type: String, default: '' },
   progress: { type: Number, default: null, min: 0, max: 100 },
+  // Files sent with the update (photos, PDFs, sheets), stored under uploads/br.
+  files: [{ _id: false, fileUrl: String, fileName: String, mimeType: String, size: Number }],
   at: { type: Date, default: Date.now },
 }, { _id: true });
 

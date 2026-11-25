@@ -4,8 +4,8 @@ import { useState, useEffect, useRef } from 'react';
 import { useLanguage } from '@/context/LanguageContext';
 import { useDialog } from '@/components/system/DialogProvider';
 import {
-  CheckCircle2, Clock, AlertTriangle, ChevronDown, ChevronRight, Users, Send,
-  Loader2, MessageSquare, Trash2, Search, Archive } from 'lucide-react';
+  CheckCircle2, Clock, AlertTriangle, ChevronDown, ChevronRight, Users, Send, Loader2, MessageSquare, Trash2, Search, Archive, Paperclip, X,
+} from 'lucide-react';
 import {
   type BrAction, type BrDelegation, type Vocab, type BrPerson, type Lang, type ProgressReport,
   vocabLabel, vocabColor, fmtDate, fmtDateTime, dueLabel, TONE_CLASS, OPEN_STATUSES, tx, isoDay, deptLabel,
@@ -136,6 +136,17 @@ export function ProgressForm({
   const [expected, setExpected] = useState(expectedDate ? isoDay(new Date(expectedDate)) : '');
   const [newDue, setNewDue] = useState('');
   const [err, setErr] = useState('');
+  // Several files at once (photos, PDF, sheets), read in the browser and sent with the update.
+  const [files, setFiles] = useState<{ dataUrl: string; fileName: string; size: number }[]>([]);
+  const addFiles = async (list: FileList | null) => {
+    const picked = Array.from(list || []);
+    const big = picked.find((f) => f.size > 15 * 1024 * 1024);
+    if (big) { setErr(t(`${big.name} is larger than 15 MB.`, `الملف «${big.name}» أكبر من 15 ميجا.`)); return; }
+    const read = await Promise.all(picked.map((f) => new Promise<{ dataUrl: string; fileName: string; size: number }>((ok, no) => {
+      const r = new FileReader(); r.onload = () => ok({ dataUrl: String(r.result), fileName: f.name, size: f.size }); r.onerror = no; r.readAsDataURL(f);
+    })));
+    setFiles((p) => [...p, ...read].slice(0, 10));
+  };
   const t = (en: string, ar: string) => tx(lang, en, ar);
   const postponing = s === 'postponed';
   const submit = () => {
@@ -146,6 +157,7 @@ export function ProgressForm({
     setErr('');
     onSubmit({
       status: s, progress: p, note,
+      ...(files.length ? { files: files.map(({ dataUrl, fileName }) => ({ dataUrl, fileName })) } : {}),
       ...(expected !== (expectedDate ? isoDay(new Date(expectedDate)) : '') ? { expectedDate: expected } : {}),
       ...(s === 'postponed' && newDue ? { newDueDate: newDue, postponeReason: note.trim() } : {}),
     });
@@ -188,6 +200,19 @@ export function ProgressForm({
           ? t('Reason for postponing (optional)', 'سبب التأجيل (اختياري)')
           : t('What happened? (optional)', 'ما الذي تم؟ (اختياري)')}
         className={`w-full px-2.5 py-1.5 rounded-lg border text-sm text-slate-800 ${postponing ? 'border-amber-300' : 'border-slate-200'}`} />
+      <div className="flex flex-wrap items-center gap-1.5">
+        <label className="inline-flex cursor-pointer items-center gap-1.5 rounded-lg border border-dashed border-slate-300 bg-white px-2.5 py-1.5 text-xs font-semibold text-slate-600 hover:border-[#f37121] hover:text-[#f37121]">
+          <Paperclip className="w-3.5 h-3.5" />{t('Attach files', 'إرفاق ملفات')}
+          <input type="file" multiple hidden accept="image/*,.pdf,.doc,.docx,.xls,.xlsx" onChange={(e) => { addFiles(e.target.files); e.target.value = ''; }} />
+        </label>
+        {files.map((f, i) => (
+          <span key={i} className="inline-flex items-center gap-1 rounded-lg border border-slate-200 bg-white ps-2 pe-1 py-1 text-[11.5px] text-slate-700">
+            <span className="max-w-[140px] truncate">{f.fileName}</span>
+            <button type="button" onClick={() => setFiles((p) => p.filter((_, j) => j !== i))} className="text-slate-400 hover:text-red-600" aria-label="remove"><X className="w-3 h-3" /></button>
+          </span>
+        ))}
+        {files.length > 0 && <span className="text-[11px] text-slate-400">{t(`${files.length} of 10`, `${files.length} من 10`)}</span>}
+      </div>
       {err && <p className="text-xs text-red-600">{err}</p>}
       <div className="flex gap-2">
         <button type="button" disabled={busy} onClick={submit}
@@ -245,6 +270,15 @@ export function UpdateLog({ updates, statuses, lang }: { updates?: any[]; status
             )}
             {u.progress != null && <span className="text-slate-400">{' · '}{u.progress}%</span>}
             {u.text && <p className="text-slate-600 mt-0.5">{u.text}</p>}
+            {!!u.files?.length && (
+              <div className="mt-1 flex flex-wrap gap-1">
+                {u.files.map((f: any, j: number) => (
+                  <a key={j} href={f.fileUrl} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 rounded border border-slate-200 bg-white px-1.5 py-0.5 text-[11px] text-[#c2410c] hover:underline">
+                    <Paperclip className="w-3 h-3" /><span className="max-w-[160px] truncate">{f.fileName || 'ملف'}</span>
+                  </a>
+                ))}
+              </div>
+            )}
           </div>
           <span className="text-slate-400 whitespace-nowrap">{fmtDateTime(u.at)}</span>
         </div>

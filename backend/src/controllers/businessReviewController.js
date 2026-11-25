@@ -60,20 +60,33 @@ function applyProgress(item, body) {
 }
 
 /** The update log line; a postponement names its new date. */
+/** Files sent with an update: up to ten, saved now so a bad one fails the request before anything is written. */
+function readUpdateFiles(body) {
+  const list = Array.isArray(body && body.files) ? body.files.filter((f) => f && f.dataUrl) : [];
+  if (list.length > 10) { const e = new Error('عشرةُ ملفّاتٍ على الأكثر في التحديث الواحد'); e.status = 400; throw e; }
+  const { saveUploadFile } = require('../utils/fileStore');
+  return list.map((f) => {
+    try { return saveUploadFile(f.dataUrl, 'br', f.fileName); }
+    catch (e) { const err = new Error(`«${f.fileName || 'ملف'}»: ${e.message}`); err.status = 400; throw err; }
+  });
+}
+
 function logUpdate(item, user, body, before) {
   let note = (body.note || '').trim();
+  const files = Array.isArray(body._files) ? body._files : [];
   if (body.status === 'postponed' && item.dueDate) {
     const to = new Date(item.dueDate).toLocaleDateString('en-GB');
     note = `أُجِّل إلى ${to}${item.postponeReason ? ` — ${item.postponeReason}` : ''}`;
   } else if (body.expectedDate !== undefined && item.expectedDate && !note) {
     note = `الإنجاز المتوقَّع: ${new Date(item.expectedDate).toLocaleDateString('en-GB')}`;
   }
-  if (note || before !== item.status) {
+  if (note || before !== item.status || files.length) {
     item.updates.push({
       by: user._id, byName: fullName(user), text: note,
       statusFrom: before !== item.status ? before : '',
       statusTo: before !== item.status ? item.status : '',
       progress: body.progress !== undefined ? item.progress : null,
+      files,
       at: new Date(),
     });
   }
@@ -768,7 +781,9 @@ exports.updateAction = async (req, res) => {
       }
     }
     const logged = action.updates.length;
-    logUpdate(action, req.user, partNote ? { ...req.body, note: [String(req.body.note || '').trim(), partNote].filter(Boolean).join(' · ') } : req.body, before);
+    let files;
+    try { files = readUpdateFiles(req.body); } catch (e) { return res.status(e.status || 400).json({ message: e.message }); }
+    logUpdate(action, req.user, { ...req.body, _files: files, ...(partNote ? { note: [String(req.body.note || '').trim(), partNote].filter(Boolean).join(' · ') } : {}) }, before);
     await action.save();
     // A shared task is one task worked by several owners: any owner's edit (status, dates, note) shows for all of them.
     await syncShared(action, action.updates.slice(logged));
@@ -1083,7 +1098,9 @@ exports.updateAssignment = async (req, res) => {
     const bad = applyProgress(a, req.body);
     if (bad) return res.status(400).json({ message: bad, code: 'POSTPONE_NEEDS_DATE_REASON' });
     const partLogged = a.updates.length;
-    logUpdate(a, req.user, req.body, before);
+    let files;
+    try { files = readUpdateFiles(req.body); } catch (e) { return res.status(e.status || 400).json({ message: e.message }); }
+    logUpdate(a, req.user, { ...req.body, _files: files }, before);
     await a.save();
     emit('br:assignment', { id: String(a._id) });
     // The team's work reaches the main task: its progress and state follow the parts, with one short line in its log.

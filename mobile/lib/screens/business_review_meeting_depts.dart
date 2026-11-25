@@ -642,10 +642,21 @@ class _BrMeetingDepartmentsTabState extends State<BrMeetingDepartmentsTab> {
               if (List.from(t['delegations'] ?? []).isNotEmpty) ...[
                 const SizedBox(height: 4),
                 Text(tr('موزّع على الفريق', 'Handed to the team'), style: const TextStyle(fontSize: 12.5, fontWeight: FontWeight.w900)),
-                for (final x in List<Map<String, dynamic>>.from(t['delegations']))
+                for (final x in List<Map<String, dynamic>>.from(t['delegations'])) ...[
                   Text('• ${x['assigneeName']} — ${x['title']} · ${brVocab(widget.meta['actionStatuses'] as List?, '${x['status']}').label} ${x['progress'] ?? 0}%',
                       style: const TextStyle(fontSize: 12.5, color: Color(0xFF334155))),
+                  // The department manager reads every note the team wrote on its part; the main meeting sees state and % only.
+                  if (_headDept.isNotEmpty && List.from(x['updates'] ?? []).isNotEmpty)
+                    Theme(data: Theme.of(context).copyWith(dividerColor: Colors.transparent), child: ExpansionTile(
+                      tilePadding: const EdgeInsetsDirectional.only(start: 12), dense: true,
+                      title: Text(tr('سجلّ الجزء (${List.from(x['updates']).length})', 'Part history (${List.from(x['updates']).length})'), style: const TextStyle(fontSize: 11.5, color: T.inkSoft)),
+                      children: [BrUpdateLog(updates: List.from(x['updates']), meta: widget.meta)],
+                    )),
+                ],
               ],
+              // The latest word on the task; the full story is folded for the main meeting.
+              if (List.from(t['updates'] ?? []).isNotEmpty)
+                _line(tr('آخر تحديث', 'Latest update'), '${(t['updates'] as List).first['text'] ?? ''} — ${(t['updates'] as List).first['byName'] ?? ''}'),
               if (t['followUpOf'] != null) _line(tr('متابعة لـ', 'Follow-up of'), '${t['followUpOf']['title']}', color: T.violet),
               if (List.from(t['followUps'] ?? []).isNotEmpty)
                 _line(tr('بنود متابعة', 'Follow-ups'), List.from(t['followUps']).map((x) => '${x['title']} (${brVocab(widget.meta['actionStatuses'] as List?, '${x['status']}').label})').join('، '), color: T.violet),
@@ -670,7 +681,14 @@ class _BrMeetingDepartmentsTabState extends State<BrMeetingDepartmentsTab> {
                   ],
                 ]),
               ],
-              BrUpdateLog(updates: List.from(t['updates'] ?? []).reversed.toList(), meta: widget.meta),
+              if (_headDept.isNotEmpty)
+                BrUpdateLog(updates: List.from(t['updates'] ?? []).reversed.toList(), meta: widget.meta)
+              else if (List.from(t['updates'] ?? []).isNotEmpty)
+                Theme(data: Theme.of(context).copyWith(dividerColor: Colors.transparent), child: ExpansionTile(
+                  tilePadding: EdgeInsets.zero, dense: true,
+                  title: Text(tr('عرض كل التحديثات (${List.from(t['updates']).length})', 'Show every update (${List.from(t['updates']).length})'), style: const TextStyle(fontSize: 12, color: T.inkSoft)),
+                  children: [BrUpdateLog(updates: List.from(t['updates'] ?? []).reversed.toList(), meta: widget.meta)],
+                )),
             ]),
           ),
         const Divider(height: 1),

@@ -1082,9 +1082,12 @@ exports.updateAssignment = async (req, res) => {
     }
     const bad = applyProgress(a, req.body);
     if (bad) return res.status(400).json({ message: bad, code: 'POSTPONE_NEEDS_DATE_REASON' });
+    const partLogged = a.updates.length;
     logUpdate(a, req.user, req.body, before);
     await a.save();
     emit('br:assignment', { id: String(a._id) });
+    // The team's work reaches the main task: its progress and state follow the parts, with one short line in its log.
+    if (a.updates.length > partLogged) await rollUpParts(a.action, a, req.user).catch((e) => console.error('br roll-up:', e.message));
 
     // The manager who handed it out hears when it comes back.
     if (mine && before !== a.status) {
@@ -1100,6 +1103,33 @@ exports.updateAssignment = async (req, res) => {
     return sendMongooseError(res, error, 'تعذّر تحديث المهمة');
   }
 };
+
+const STATUS_AR = { open: 'لم يبدأ', in_progress: 'قيد التنفيذ', blocked: 'متعثّر', postponed: 'مؤجَّل', done: 'تمّ', cancelled: 'ملغى' };
+/**
+ * A part handed to the team changed: the main task (the manager's) follows it. Progress is the parts' average, an
+ * unstarted task starts when a part does, and all parts finished is said in its log; the manager still closes it.
+ * The log gets one short line (who, state, %); the team's notes stay on the part, read by the department manager.
+ */
+async function rollUpParts(actionId, part, user) {
+  const action = await BrAction.findById(actionId);
+  if (!action || action.status === 'done' || action.status === 'cancelled') return;
+  const parts = await BrAssignment.find({ action: action._id }).select('status progress').lean();
+  if (!parts.length) return;
+  const pct = (p) => (p.status === 'done' ? 100 : Math.max(0, Math.min(100, Number(p.progress) || 0)));
+  const before = action.status;
+  action.progress = Math.round(parts.reduce((s, p) => s + pct(p), 0) / parts.length);
+  if (action.status === 'open' && parts.some((p) => p.status !== 'open')) action.status = 'in_progress';
+  const allDone = parts.every((p) => p.status === 'done');
+  const line = `${fullName(user)}: ${STATUS_AR[part.status] || part.status} ${pct(part)}%${allDone ? ' — أنجز الفريق جميع الأجزاء، بانتظار إقفال المسؤول' : ''}`;
+  action.updates.push({
+    by: user._id, byName: fullName(user), text: line,
+    statusFrom: before !== action.status ? before : '', statusTo: before !== action.status ? action.status : '',
+    progress: action.progress, at: new Date(),
+  });
+  await action.save();
+  await syncShared(action, action.updates.slice(-1));
+  emit('br:action', { id: String(action._id) });
+}
 
 exports.deleteAssignment = async (req, res) => {
   try {

@@ -171,13 +171,14 @@ exports.getBoard = async (req, res) => {
 async function taskViewer(actions, meetingId = null) {
   const ids = actions.map((a) => a._id);
   const [dels, kids, parents, shared] = await Promise.all([
-    ids.length ? BrAssignment.find({ action: { $in: ids } }).select('action assigneeName title status progress dueDate isOverdue').lean() : [],
+    // Each part with its own story: the department manager reads it; the main meeting shows only the latest.
+    ids.length ? BrAssignment.find({ action: { $in: ids } }).select('action assigneeName title status progress dueDate isOverdue updates').lean() : [],
     ids.length ? BrAction.find({ followUpOf: { $in: ids } }).select('followUpOf title status').lean() : [],
     BrAction.find({ _id: { $in: actions.map((a) => a.followUpOf).filter(Boolean) } }).select('title').lean(),
     require('./businessReviewController').siblingsOf(actions),
   ]);
   const group = (rows, key) => { const m = new Map(); for (const x of rows) { const k = String(x[key]); if (!m.has(k)) m.set(k, []); m.get(k).push(x); } return m; };
-  const delsOf = group(dels, 'action');
+  const delsOf = group(dels.map(({ updates, ...x }) => ({ ...x, updates: (updates || []).slice(-20).reverse() })), 'action');
   const followUps = group(kids.map((k) => ({ _id: k._id, title: k.title, status: k.status, followUpOf: k.followUpOf })), 'followUpOf');
   const titleOf = new Map(parents.map((x) => [String(x._id), x.title]));
   const now = Date.now();

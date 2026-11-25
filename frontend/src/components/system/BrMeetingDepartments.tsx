@@ -388,16 +388,32 @@ export function TaskRow({ task, meta, L, meetingId, canEdit, runner = canEdit, c
           </div>
           <DatesLine item={task} lang={L} />
           <div className="max-w-md"><Progress value={task.progress || 0} /></div>
+          {/* The latest word on the task; the full story is folded below (the main meeting reads the newest, not every note). */}
+          {!!task.updates?.length && (
+            <p className="rounded-lg border border-slate-200 bg-slate-50 px-2.5 py-1.5 text-[12.5px] text-slate-700">
+              <b>{t('Latest update', 'آخر تحديث')}:</b> {task.updates[0].text || (task.updates[0].statusTo ? t(`status → ${task.updates[0].statusTo}`, `الحالة ← ${(meta.actionStatuses || []).find((s: any) => s.key === task.updates[0].statusTo)?.ar || task.updates[0].statusTo}`) : '')}
+              <span className="text-slate-500"> — {task.updates[0].byName} · {fmtDate(task.updates[0].at)}</span>
+            </p>
+          )}
           {!!task.delegations?.length && (
             <div className="rounded-lg border border-slate-200 bg-white p-2.5">
               <p className="text-[12px] font-bold text-slate-700 mb-1">{t('Handed to the team', 'موزّع على الفريق')}</p>
               {task.delegations.map((x: any) => (
-                <div key={x._id} className="flex flex-wrap items-center gap-2 text-[12.5px] py-0.5">
-                  <User className="w-3.5 h-3.5 text-slate-400" /><b className="text-slate-800">{x.assigneeName}</b>
-                  <span className="text-slate-600 flex-1 min-w-0 truncate">{x.title}</span>
-                  <span className="text-slate-500">{fmtDate(x.dueDate)}</span>
-                  <StatusPill statuses={meta.actionStatuses} value={x.status} lang={L} />
-                  <span className="text-slate-500 tabular-nums">{x.progress || 0}%</span>
+                <div key={x._id} className="py-0.5">
+                  <div className="flex flex-wrap items-center gap-2 text-[12.5px]">
+                    <User className="w-3.5 h-3.5 text-slate-400" /><b className="text-slate-800">{x.assigneeName}</b>
+                    <span className="text-slate-600 flex-1 min-w-0 truncate">{x.title}</span>
+                    <span className="text-slate-500">{fmtDate(x.dueDate)}</span>
+                    <StatusPill statuses={meta.actionStatuses} value={x.status} lang={L} />
+                    <span className="text-slate-500 tabular-nums">{x.progress || 0}%</span>
+                  </div>
+                  {/* The department manager reads every note the team wrote on its part; the main meeting sees state and % only. */}
+                  {!!onlyDept && !!x.updates?.length && (
+                    <details className="group ms-5 mt-1">
+                      <summary className="cursor-pointer list-none text-[11.5px] font-semibold text-slate-500 hover:text-slate-800">{t(`Part history (${x.updates.length})`, `سجلّ الجزء (${x.updates.length})`)}</summary>
+                      <div className="mt-1"><UpdateLog updates={x.updates} statuses={meta.actionStatuses} lang={L} /></div>
+                    </details>
+                  )}
                 </div>
               ))}
             </div>
@@ -626,7 +642,7 @@ export function TaskRow({ task, meta, L, meetingId, canEdit, runner = canEdit, c
           {!!task.updates?.length && (
             <details className="group rounded-lg border border-slate-200 bg-white">
               <summary className="cursor-pointer select-none list-none px-3 py-2 text-[12.5px] font-bold text-slate-700 inline-flex items-center gap-1.5 w-full">
-                <History className="w-3.5 h-3.5 text-slate-400" />{t('History', 'سجلّ التحديثات')} ({task.updates.length})
+                <History className="w-3.5 h-3.5 text-slate-400" />{onlyDept ? t('History', 'سجلّ التحديثات') : t('Show every update', 'عرض كل التحديثات')} ({task.updates.length})
                 <ChevronDown className="w-3.5 h-3.5 text-slate-400 ms-auto transition-transform group-open:rotate-180" />
               </summary>
               <div className="px-3 pb-2"><UpdateLog updates={(task.updates || []).slice().reverse()} statuses={meta.actionStatuses} lang={L} /></div>

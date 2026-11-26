@@ -486,20 +486,7 @@ class _ShipmentRequestFormScreenState extends State<ShipmentRequestFormScreen> {
     );
   }
 
-  Future<bool> _askType(List<String> usual, List<String> odd) async {
-    final ok = await showDialog<bool>(context: context, builder: (d) => AlertDialog(
-      title: Text(tr('تأكيد نوع الشاحنة', 'Confirm the truck type')),
-      content: Text(tr('المعتاد لهذا العميل «${usual.join('، ')}»، واخترتَ «${odd.join('، ')}». هل هذا مقصود؟',
-          'This customer usually takes "${usual.join(', ')}"; you picked "${odd.join(', ')}". Is that intended?')),
-      actions: [
-        TextButton(onPressed: () => Navigator.pop(d, false), child: Text(tr('إلغاء', 'Cancel'))),
-        FilledButton(onPressed: () => Navigator.pop(d, true), child: Text(tr('نعم، النوع صحيح', 'Yes, it is right'))),
-      ],
-    ));
-    return ok == true && mounted;
-  }
-
-  Future<void> _save({bool resubmit = false, bool confirmedType = false}) async {
+  Future<void> _save({bool resubmit = false}) async {
     if (_saving) return;
     _missing.clear();
     for (final f in _fields) {
@@ -513,16 +500,6 @@ class _ShipmentRequestFormScreenState extends State<ShipmentRequestFormScreen> {
       setState(() {});
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(tr('أكمِل الحقول المحدّدة بالأحمر', 'Fill the highlighted fields'))));
       return;
-    }
-    // A truck type the customer never takes is usually a slip; confirm before sending a new request.
-    var typeOk = confirmedType;
-    if (!typeOk && !_editing && _customer != null) {
-      final usual = prefList(((_customer!['defaults'] as Map?) ?? const {})['truckType']);
-      final odd = _types.where((x) => usual.isNotEmpty && !usual.contains(x)).toList();
-      if (odd.isNotEmpty) {
-        if (!await _askType(usual, odd)) return;
-        typeOk = true;
-      }
     }
     setState(() => _saving = true);
     final body = <String, dynamic>{'customFields': <String, dynamic>{}, 'trucks': _trucks, 'dueDay': _dueDay};
@@ -542,8 +519,6 @@ class _ShipmentRequestFormScreenState extends State<ShipmentRequestFormScreen> {
     if (_newCustomer && _ncName.text.trim().isNotEmpty) body['newCustomer'] = {'name': _ncName.text.trim(), 'phone': _ncPhone.text.trim()};
     if (_salesRep != null) body['salesRep'] = _salesRep;
     if (resubmit) body['resubmit'] = true;
-    // The server refuses an unusual type unless confirmed (TRUCK_TYPE_CONFIRM).
-    if (typeOk) body['confirmTruckType'] = true;
     try {
       if (_editing) {
         await Api.instance.put('/api/shipment-requests/${widget.request!['_id']}', body);
@@ -560,12 +535,6 @@ class _ShipmentRequestFormScreenState extends State<ShipmentRequestFormScreen> {
     } catch (e) {
       if (!mounted) return;
       setState(() => _saving = false);
-      if (e is ApiException && e.data['code'] == 'TRUCK_TYPE_CONFIRM' && !typeOk) {
-        final usual = [for (final x in (e.data['usual'] as List?) ?? const []) '$x'];
-        final odd = [for (final x in (e.data['odd'] as List?) ?? const []) '$x'];
-        if (await _askType(usual, odd)) await _save(resubmit: resubmit, confirmedType: true);
-        return;
-      }
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.toString())));
     }
   }

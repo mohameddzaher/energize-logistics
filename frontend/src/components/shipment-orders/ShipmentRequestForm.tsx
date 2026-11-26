@@ -38,7 +38,7 @@ export default function ShipmentRequestForm({ editId, onDone }: { editId?: strin
   const { lang, isRTL } = useLanguage();
   const ar = lang === 'ar';
   const t = (a: string, e: string) => (ar ? a : e);
-  const { notify, confirm } = useDialog();
+  const { notify } = useDialog();
 
   const [fields, setFields] = useState<FormField[]>([]);
   const [customers, setCustomers] = useState<OrderCustomer[]>([]);
@@ -152,17 +152,8 @@ export default function ShipmentRequestForm({ editId, onDone }: { editId?: strin
     } catch (e: any) { notify(e?.message || t('تعذّرت الإضافة', 'Could not add'), 'error'); }
   };
 
-  const submit = async (resubmit = false, confirmedType = false) => {
+  const submit = async (resubmit = false) => {
     if (missing.size) { setShowErrors(true); notify(t('أكمِل الحقول المحدّدة باللون الأحمر', 'Fill the fields marked in red'), 'error'); return; }
-    // A truck type the customer never asks for is usually a slip of the finger (a tanker sent for a flatbed customer): say so before sending.
-    const usual = prefList(customer?.defaults?.truckType);
-    const odd = (form.truckTypes || []).filter((x: string) => usual.length && !usual.includes(x));
-    const askType = (u: string[], o: string[]) => confirm({
-      title: t('تأكيد نوع الشاحنة', 'Confirm the truck type'), confirmLabel: t('نعم، النوع صحيح', 'Yes, it is right'),
-      message: t(`المعتاد لهذا العميل «${u.join('، ')}»، واخترتَ «${o.join('، ')}». هل هذا مقصود؟`, `This customer usually takes “${u.join(', ')}”; you picked “${o.join(', ')}”. Is that intended?`),
-    });
-    let typeOk = confirmedType;
-    if (!typeOk && !editId && odd.length) { if (!(await askType(usual, odd))) return; typeOk = true; }
     setSaving(true);
     try {
       const body: Record<string, any> = { customFields: {} };
@@ -181,8 +172,6 @@ export default function ShipmentRequestForm({ editId, onDone }: { editId?: strin
       body.dueDay = dueDay;
       // Sales may accept several truck types; the vendors team fixes the one actually sent.
       body.truckTypes = form.truckTypes || [];
-      // The server refuses an unusual type unless confirmed (TRUCK_TYPE_CONFIRM), so the dialog is not the only guard.
-      if (typeOk) body.confirmTruckType = true;
       let d: { request: ShipmentRequest };
       if (editId) d = await api.put(`/api/shipment-requests/${editId}`, { ...body, resubmit });
       else d = await api.post('/api/shipment-requests', body);
@@ -192,14 +181,7 @@ export default function ShipmentRequestForm({ editId, onDone }: { editId?: strin
         : (waiting ? t(`أُرسل طلب الشحنة رقم ${d.request.number} إلى مدير المبيعات للاعتماد`, `Request ${d.request.number} sent for sales-manager approval`) : t(`أُرسل طلب الشحنة رقم ${d.request.number} إلى فريق الموردين`, `Request ${d.request.number} sent to the vendors team`)), 'success');
       if (!editId) { setForm({ truckTypes: [] }); setCustomerId(''); setTrucks(1); setDueDay(riyadhToday()); setShowErrors(false); }
       onDone?.(d.request);
-    } catch (e: any) {
-      if (e?.code === 'TRUCK_TYPE_CONFIRM' && !typeOk) {
-        setSaving(false);
-        if (await askType(e.data?.usual || [], e.data?.odd || [])) await submit(resubmit, true);
-        return;
-      }
-      notify(e?.message || t('تعذّر الحفظ', 'Could not save'), 'error');
-    }
+    } catch (e: any) { notify(e?.message || t('تعذّر الحفظ', 'Could not save'), 'error'); }
     setSaving(false);
   };
 

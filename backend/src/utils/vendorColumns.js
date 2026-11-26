@@ -54,8 +54,8 @@ async function refreshSupplier(supplierId, oldName = '') {
 }
 
 /**
- * One-time fill for rows written before the columns existed (`vendorName` absent): orders take their register kind, workflow rows
- * linked to an order follow it, the rest read their supplier from carOwner. Idempotent and safe on both workers.
+ * Boot fill and repair: orders take their register kind (also repairing drift), workflow rows linked to an order follow it, and rows
+ * written before the columns existed read their supplier from carOwner. Idempotent and safe on both workers.
  */
 async function backfill() {
   const Supplier = require('../models/ShipmentOrderSupplier');
@@ -68,6 +68,28 @@ async function backfill() {
   orders += (await ShipmentOrder.collection.updateMany({ supplierType: { $exists: false }, supplier: { $in: free } }, { $set: { supplierType: 'freelancer' } })).modifiedCount || 0;
   orders += (await ShipmentOrder.collection.updateMany({ supplierType: { $exists: false }, supplier: { $ne: null } }, { $set: { supplierType: 'company' } })).modifiedCount || 0;
   await ShipmentOrder.collection.updateMany({ supplierType: { $exists: false } }, { $set: { supplierType: '' } });
+
+  // Drift repair: an order's kind follows its register supplier (by id, else by exact name), and its workflow rows follow the order.
+  // Orders imported with a name only, or written before a supplier was retyped, showed a freelancer as a company and broke the supplier filter.
+  const fix = async (filter, type) => {
+    const ids = await ShipmentOrder.find(filter).distinct('_id');
+    if (!ids.length) return;
+    await ShipmentOrder.collection.updateMany({ _id: { $in: ids } }, { $set: { supplierType: type } });
+    orders += ids.length;
+    const label = type === 'freelancer' ? { vendorKind: 'freelancer', vendorLabel: FREELANCER_LABEL } : { vendorKind: 'vendor', vendorLabel: '$vendorName' };
+    const r = await Workflow.collection.updateMany({ shipmentOrder: { $in: ids }, vendorName: { $nin: ['', null] } }, [{ $set: label }]);
+    rows += r.modifiedCount || 0;
+  };
+  await fix({ supplier: { $in: free }, supplierType: { $ne: 'freelancer' } }, 'freelancer');
+  await fix({ supplier: { $ne: null, $nin: free }, supplierType: 'freelancer' }, 'company');
+  const textOnly = await ShipmentOrder.find({ supplier: null, supplierType: '', supplierName: { $nin: ['', null] } }).distinct('supplierName');
+  if (textOnly.length) {
+    const kinds = await typeByName(textOnly);
+    const freeNames = [...kinds].filter(([, t]) => t === 'freelancer').map(([n]) => n);
+    const coNames = [...kinds].filter(([, t]) => t !== 'freelancer').map(([n]) => n);
+    if (freeNames.length) await fix({ supplier: null, supplierType: '', supplierName: { $in: freeNames } }, 'freelancer');
+    if (coNames.length) await fix({ supplier: null, supplierType: '', supplierName: { $in: coNames } }, 'company');
+  }
 
   const todo = await Workflow.collection.find({ vendorName: { $exists: false } }, { projection: { shipmentOrder: 1, carOwner: 1 } }).toArray();
   if (!todo.length) return { orders, rows };

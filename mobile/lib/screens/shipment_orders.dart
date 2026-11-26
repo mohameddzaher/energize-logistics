@@ -48,7 +48,9 @@ const _colFields = [
   ('pickupDay', 'يوم الاستلام', 'Pickup day'),
   ('buyPrice', 'سعر الشراء', 'Buy price'),
   ('sellPrice', 'سعر البيع', 'Sell price'),
-  ('supplierName', 'المورّد', 'Supplier'),
+  // «Supplier» is the company or one «فريلانسر» bucket; «Supplier name» is the person or company itself.
+  ('vendorLabel', 'المورّد', 'Supplier'),
+  ('supplierName', 'اسم المورّد', 'Supplier name'),
   ('costCenter', 'مركز التكلفة', 'Cost centre'),
   ('branch', 'الفرع', 'Branch'),
   ('plate', 'اللوحة', 'Plate'),

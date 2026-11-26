@@ -343,6 +343,8 @@ const ORDER_COLUMNS = {
   truckType: 'truckType',
   branch: 'branch',
   supplierName: 'supplierName',
+  // The «supplier» column: the company's name, or one FREELANCER_LABEL bucket for every individual (utils/vendorColumns).
+  vendorLabel: 'supplierName',
   costCenter: 'costCenter',
   plate: 'vehiclePlate',
   truckLength: 'truckLength',
@@ -365,7 +367,7 @@ const ORDER_COLUMNS = {
   sellPrice: 'sellPrice',
 };
 // Non-text columns: a date groups by its Riyadh day, a number by its value.
-const COLUMN_KIND = { pickupDay: 'day', buyPrice: 'number', sellPrice: 'number' };
+const COLUMN_KIND = { pickupDay: 'day', buyPrice: 'number', sellPrice: 'number', vendorLabel: 'vendor' };
 const RIYADH = 'Asia/Riyadh';
 
 /** `col.<key>=a,b` becomes `{ field: { $in: [...] } }`. An empty value is requested with `__blank__`. */
@@ -382,6 +384,16 @@ const columnFilters = (query, skipKey = null) => {
     const list = vals.filter((v) => normKey(v) !== '');
     if (!list.length) continue;
     const kind = COLUMN_KIND[key];
+    if (kind === 'vendor') {
+      const { FREELANCER_LABEL } = require('../utils/vendorColumns');
+      const or = [];
+      if (list.includes(FREELANCER_LABEL)) or.push({ supplierType: 'freelancer' });
+      const names = list.filter((v) => v !== FREELANCER_LABEL).map((v) => (v === '__blank__' ? '' : v));
+      const c = names.length ? textIn('supplierName', names) : null;
+      if (c) or.push({ supplierType: { $ne: 'freelancer' }, supplierName: c.supplierName });
+      if (or.length) out.$and = [...(out.$and || []), { $or: or }];
+      continue;
+    }
     if (kind) {
       const blank = list.includes('__blank__');
       const or = [];
@@ -674,7 +686,9 @@ exports.orderFilterOptions = async (req, res) => {
     const kind = COLUMN_KIND[key];
     const groupKey = kind === 'day'
       ? { $ifNull: [{ $dateToString: { format: '%Y-%m-%d', date: `$${field}`, timezone: RIYADH } }, ''] }
-      : { $ifNull: [`$${field}`, ''] };
+      : kind === 'vendor'
+        ? { $cond: [{ $eq: ['$supplierType', 'freelancer'] }, require('../utils/vendorColumns').FREELANCER_LABEL, { $ifNull: ['$supplierName', ''] }] }
+        : { $ifNull: [`$${field}`, ''] };
     const pipeline = [
       { $match: base },
       { $group: { _id: groupKey, count: { $sum: 1 } } },

@@ -84,6 +84,8 @@ const shipmentRequestSchema = new mongoose.Schema({
   truckType: { type: String, trim: true, default: '' },
   /** Truck types sales accepts for this load (any of them will do); the vendors team fixes the actual one per truck. `truckType` mirrors them joined for display and search. */
   truckTypes: { type: [String], default: [] },
+  // The asker confirmed a type outside the customer's agreed ones (prepareSalesHalf).
+  truckTypeConfirmed: { type: Boolean, default: false },
   cargoType: { type: String, trim: true, default: '' },
   truckLength: { type: String, trim: true, default: '' },
   quantity: { type: Number, default: null },

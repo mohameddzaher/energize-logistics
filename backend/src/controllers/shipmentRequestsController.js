@@ -214,7 +214,7 @@ exports.startClaimSweep = () => {
 const numOrNull = (v) => (v === '' || v === null || v === undefined ? null : Number(v));
 
 /** Cleans and checks the sales half; returns an error message or null. */
-async function prepareSalesHalf(req, data, { creating }) {
+async function prepareSalesHalf(req, data, { creating, current = null }) {
   for (const k of DATE_KEYS) if (k in data) data[k] = data[k] ? new Date(data[k]) : null;
   if ('quantity' in data) data.quantity = numOrNull(data.quantity);
   if ('sellPrice' in data) data.sellPrice = numOrNull(data.sellPrice);
@@ -234,6 +234,24 @@ async function prepareSalesHalf(req, data, { creating }) {
     if (!c) return 'العميلُ غير موجود';
     data.customerName = c.name;
   }
+  // A truck type outside the customer's agreed ones is a typo until the asker confirms it (a tanker booked for a flatbed customer
+  // reached the road). Enforced here, not only by the form's dialog, so no client skips it.
+  const custId = data.customer || current?.customer;
+  if (custId && ('truckTypes' in data || 'customer' in data) && !req.body.confirmTruckType) {
+    const picked = data.truckTypes || current?.truckTypes || [];
+    const c = await ShipmentOrderCustomer.findById(custId).select('defaults.truckType').lean();
+    const usual = (c?.defaults?.truckType || []).map((x) => String(x).trim()).filter(Boolean);
+    const odd = picked.filter((x) => !usual.includes(x));
+    // An edit that keeps the same types is not asked again.
+    const same = current && [...picked].sort().join('|') === [...(current.truckTypes || [])].sort().join('|') && String(custId) === String(current.customer);
+    if (usual.length && odd.length && !same) {
+      return {
+        message: `العميل يعمل عادةً بـ«${usual.join('، ')}» واخترتَ «${odd.join('، ')}» — أكِّد النوع أو صحِّحه`,
+        fields: ['truckType'], code: 'TRUCK_TYPE_CONFIRM', usual, odd,
+      };
+    }
+  }
+  if (req.body.confirmTruckType) data.truckTypeConfirmed = true;
   // The operational sales person: chosen, or the sales member asking.
   const body = { ...req.body };
   if (body.salesRep === undefined && creating && PV.isSalesRole(req.user)) body.salesRep = String(req.user._id);
@@ -260,7 +278,7 @@ async function prepareSalesHalf(req, data, { creating }) {
   return null;
 }
 
-const errOut = (res, e) => (typeof e === 'string' ? bad(res, e) : bad(res, e.message, { fields: e.fields }));
+const errOut = (res, e) => (typeof e === 'string' ? bad(res, e) : bad(res, e.message, { fields: e.fields, ...(e.code ? { code: e.code, usual: e.usual, odd: e.odd } : {}) }));
 
 async function notifyUser(userId, title, message, id) {
   if (!userId) return;
@@ -440,7 +458,7 @@ exports.update = async (req, res) => {
         data.dueDay = due.day;
       }
     }
-    const err = await prepareSalesHalf(req, data, { creating: false });
+    const err = await prepareSalesHalf(req, data, { creating: false, current: r });
     if (err) return errOut(res, err);
     if (data.trucks != null && data.trucks < r.placed.length) return bad(res, `أُنشئ من هذا الطلب ${r.placed.length} أوامرُ نقل — لا يقلّ عددُ الشاحنات عنها`);
     // Once a truck is placed, its customer is fixed with it.
@@ -715,6 +733,30 @@ function typeCheck(trucks, r) {
   });
   return out;
 }
+/**
+ * A picked carrier truck whose register type is one of the form's truck types decides the order's type: the order says what
+ * actually went. A known type the request did not ask for is refused, so a flatbed never leaves as a «tanker» order.
+ * Free-text register types outside the form's list are ignored (too noisy to block on).
+ */
+async function vehicleTypeCheck(trucks, r) {
+  const ids = trucks.map((t) => t.vehicle).filter((v) => /^[0-9a-f]{24}$/i.test(String(v || '')));
+  if (!ids.length) return [];
+  const fold = (v) => String(v || '').replace(/[أإآ]/g, 'ا').replace(/ة/g, 'ه').replace(/ى/g, 'ي').replace(/\s+/g, ' ').trim();
+  const field = await ShipmentOrderField.findOne({ key: 'truckType' }).select('options').lean();
+  const known = new Map((field?.options || []).flatMap((o) => [[fold(o.key), o.key], [fold(o.ar), o.key]]).filter(([k]) => k));
+  const vehs = new Map((await require('../models/ShipmentOrderVehicle').find({ _id: { $in: ids } }).select('plate truckType').lean()).map((v) => [String(v._id), v]));
+  const accepted = typesOf(r);
+  const out = [];
+  trucks.forEach((t, i) => {
+    const v = t.vehicle && vehs.get(String(t.vehicle));
+    const type = v && known.get(fold(v.truckType));
+    if (!type) return;
+    if (accepted.length && !accepted.includes(type)) {
+      out.push(`الشاحنة ${i + 1}: السيارة ${v.plate || ''} مسجَّلةٌ «${type}» والطلب «${accepted.join('، ')}» — اطلب من المبيعات تصحيح نوع الشاحنة في الطلب أو اختر سيارةً أخرى`);
+    } else t.truckType = type;
+  });
+  return out;
+}
 const sharedOf = (r) => ({
   customer: r.customer, fromCity: r.fromCity, toCity: r.toCity, branch: r.branch, notes: r.notes,
   truckType: r.truckType, cargoType: r.cargoType, truckLength: r.truckLength, quantity: r.quantity,
@@ -873,7 +915,7 @@ exports.place = async (req, res) => {
     locked = await lockForCompletion(req, res, 'vendors');
     if (!locked) return undefined;
     const r = locked;
-    const pre = [...typeCheck(trucks, r), ...timeProblems(trucks, r, await requiredTimeFields())];
+    const pre = [...typeCheck(trucks, r), ...await vehicleTypeCheck(trucks, r), ...timeProblems(trucks, r, await requiredTimeFields())];
     // A picked supplier must be of the kind chosen (company for vendor, individual for freelancer).
     const Supplier = require('../models/ShipmentOrderSupplier');
     for (const [i, t] of trucks.entries()) {

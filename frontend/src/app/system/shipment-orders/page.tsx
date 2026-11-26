@@ -377,7 +377,7 @@ function ShipmentOrdersInner() {
     [ar ? 'السائق' : 'Driver', 'driverName', 'driverName'],
     [ar ? 'تواصل' : 'Contact', null, 'contact'],
     [ar ? 'الحالة' : 'Status', 'status', 'status'],
-    [ar ? 'المورد' : 'Supplier', null, 'vendor'],
+    [ar ? 'المورد' : 'Supplier', 'vendorLabel', 'vendor'],
     [ar ? 'اسم المورد' : 'Supplier name', 'supplierName', 'vendorName'],
     [ar ? 'مالك السيارة' : 'Truck owner', 'supplierName', 'owner'],
     [ar ? 'مركز التكلفة' : 'Cost centre', 'costCenter', 'costCenter'],
@@ -612,7 +612,7 @@ function ShipmentOrdersInner() {
         <div className="w-full flex flex-wrap gap-2">
           {([
             [ar ? 'الفرع' : 'Branch', 'branch'], [ar ? 'من' : 'From', 'fromCity'], [ar ? 'إلى' : 'To', 'toCity'],
-            [ar ? 'العميل' : 'Customer', 'customerName'], [ar ? 'المورد' : 'Supplier', 'supplierName'], [ar ? 'مركز التكلفة' : 'Cost centre', 'costCenter'],
+            [ar ? 'العميل' : 'Customer', 'customerName'], [ar ? 'المورد' : 'Supplier', 'vendorLabel'], [ar ? 'اسم المورد' : 'Supplier name', 'supplierName'], [ar ? 'مركز التكلفة' : 'Cost centre', 'costCenter'],
             [ar ? 'السائق' : 'Driver', 'driverName'], [ar ? 'اللوحة' : 'Plate', 'plate'],
             [ar ? 'نوع الشاحنة' : 'Truck type', 'truckType'], [ar ? 'نوع الحمولة' : 'Cargo', 'cargoType'],
             [ar ? 'نوع الدفع' : 'Payment', 'paymentSubtype'], [ar ? 'مندوب المبيعات' : 'Sales rep', 'salesRepName'],

@@ -1159,7 +1159,9 @@
         "/api/vehicle-registry/people",
         "/api/vehicle-registry/person-lookup",
         "/api/vehicle-registry/renew-bulk",
-        "/api/vehicle-registry/renew-shared"
+        "/api/vehicle-registry/renew-shared",
+        "/api/vehicles/tracking",
+        "/api/vehicles/tracking/by-vehicle"
       ],
       "wildcard": false
     },
@@ -2169,6 +2171,12 @@
     "/system/b2c/light-transport/custody": {
       "apis": [
         "/api/light-transport/custody"
+      ],
+      "wildcard": false
+    },
+    "/system/b2c/tracking": {
+      "apis": [
+        "/api/b2c/tracking"
       ],
       "wildcard": false
     },

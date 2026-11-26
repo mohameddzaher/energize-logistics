@@ -78,4 +78,11 @@ router.get('/day-details', authorize(...READ), b2cController.getDayDetails);
 
 // Google Sheets sync and Excel upload were removed. They wrote orders, identified the rep by sheet name and merged similar ones. A backup of the sheets is in backups/b2c-sheets-2026-10-19 on the server.
 
+// Live GPS of the Express units (Media Go / light transport): map, route and its analysis, fleet distance. Read-only.
+const tracking = require('../controllers/trackingController');
+router.get('/tracking/units', authorize(...READ), tracking.units);
+router.get('/tracking/units/:imei/history', authorize(...READ), tracking.history);
+router.get('/tracking/summary', authorize(...READ), tracking.summary);
+router.get('/tracking/by-vehicle/:vehicleId', authorize(...READ), tracking.byVehicle);
+
 module.exports = router;

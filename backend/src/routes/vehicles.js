@@ -44,6 +44,13 @@ router.delete('/authorizations/:authId', vehicle.deleteAuthorization);
 router.put('/accidents/:accId', vehicle.updateAccident);
 router.delete('/accidents/:accId', vehicle.deleteAccident);
 
+// Live GPS of the Express units (Media Go / light transport): map, route and its analysis, fleet distance. Read-only.
+const tracking = require('../controllers/trackingController');
+router.get('/tracking/units', tracking.units);
+router.get('/tracking/units/:imei/history', tracking.history);
+router.get('/tracking/summary', tracking.summary);
+router.get('/tracking/by-vehicle/:vehicleId', tracking.byVehicle);
+
 // ── Vehicles CRUD ─────────────────────────────────────────────────────────────
 router.get('/', vehicle.listVehicles);
 router.post('/', vehicle.createVehicle);

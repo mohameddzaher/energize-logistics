@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'b2c_tracking.dart';
 import '../services/api.dart';
 import '../ui/filter_sheet.dart';
 import '../services/lang.dart';
@@ -397,6 +398,8 @@ class _VehicleRegistryDetailScreenState extends State<VehicleRegistryDetailScree
   final _note = TextEditingController();
   bool _noteTouched = false, _savingNote = false;
   late final void Function() _onLive;
+  /// Express GPS unit tracking this vehicle, if any: opens its live position and route.
+  Map<String, dynamic>? _unit;
 
   @override
   void initState() {
@@ -404,6 +407,9 @@ class _VehicleRegistryDetailScreenState extends State<VehicleRegistryDetailScree
     _load();
     _onLive = () => _load();
     Live.instance.on('vreg:updated', _onLive);
+    Api.instance.get('/api/vehicles/tracking/by-vehicle/${widget.id}').then((d) {
+      if (mounted && d['unit'] is Map) setState(() => _unit = Map<String, dynamic>.from(d['unit']));
+    }).catchError((_) {});
   }
 
   @override
@@ -536,6 +542,12 @@ class _VehicleRegistryDetailScreenState extends State<VehicleRegistryDetailScree
     return AppScaffold(
       title: Text(widget.plate),
       actions: [
+        if (_unit != null)
+          IconButton(
+            tooltip: tr('التتبّع المباشر وخط السير', 'Live tracking & route'),
+            icon: const Icon(Icons.navigation_outlined, color: T.success),
+            onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (_) => B2cRouteScreen(imei: '${_unit!['imei']}', plate: '${_unit!['plate']}', base: '/api/vehicles/tracking'))),
+          ),
         if (v != null) ...[
           ReportButton(subject: 'vehicle', id: (v['plateNumber'] ?? widget.plate).toString(), label: tr('تقرير PDF شامل', 'Full PDF report'), compact: true),
           ExportButton(

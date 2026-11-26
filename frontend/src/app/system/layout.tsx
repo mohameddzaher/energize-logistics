@@ -27,6 +27,7 @@ import {
   Archive, FolderSearch, Search,
   MonitorPlay, Clapperboard, BadgeDollarSign,
   UserRound, BellRing, Route as RouteIcon,
+  Navigation,
 } from 'lucide-react';
 import api from '@/lib/api';
 import { downloadExportJob } from '@/lib/backgroundExport';
@@ -541,6 +542,8 @@ function SystemLayoutInner({ children }: { children: React.ReactNode }) {
     { href: '/system/b2c/projects', label: L.b2cProjects, icon: <Target className="w-5 h-5" />, roles: ['super_admin', 'it_manager', 'it_team_leader', 'it_specialist', 'business_consultant', 'transition_account', 'backup_account', 'admin', 'b2c_manager', 'b2c_team_leader', 'b2c_deputy', 'b2c_project_lead'], section: 'B2C' },
     // Department custody: cash, purchase card and workshop, with each one's in, out and balance.
     { href: '/system/b2c/light-transport/custody', label: lang === 'ar' ? 'عهدة النقل الخفيف' : 'Light Transport Custody', icon: <Wallet className="w-5 h-5" />, roles: ['super_admin', 'admin', 'it_manager', 'it_team_leader', 'it_specialist', 'business_consultant', 'transition_account', 'backup_account', 'b2c_manager', 'b2c_team_leader', 'b2c_deputy', 'vehicles_manager', 'vehicles_team_leader', 'cfo', 'accounting_manager', 'accounting_team_leader', 'accountant'], section: 'B2C', visible: (u: any) => (Array.isArray(u?.custodyPages) ? u.custodyPages.includes('/system/b2c/light-transport/custody') : true) },
+    // Live GPS of the Express units (Media Go / light transport): map, route and distance analysis.
+    { href: '/system/b2c/tracking', label: lang === 'ar' ? 'متابعة مركبات Media Go' : 'Media Go Tracking', icon: <Navigation className="w-5 h-5" />, roles: ['super_admin', 'admin', 'it_manager', 'it_team_leader', 'it_specialist', 'business_consultant', 'transition_account', 'backup_account', 'b2c_manager', 'b2c_team_leader', 'b2c_deputy', 'b2c_project_lead'], section: 'B2C' },
     // Department project vehicles from the vehicle register itself: actual driver and authorization.
     { href: '/system/b2c/vehicles', label: lang === 'ar' ? 'مركبات النقل الخفيف' : 'Light Transport Vehicles', icon: <Truck className="w-5 h-5" />, roles: ['super_admin', 'admin', 'it_manager', 'it_team_leader', 'it_specialist', 'business_consultant', 'transition_account', 'backup_account', 'b2c_manager', 'b2c_team_leader', 'b2c_deputy', 'cfo', 'accounting_manager', 'accounting_team_leader', 'accountant'], section: 'B2C' },
     // The department reports field observations to HR: a rep may return to work today and HR hear days later, leaving him 'ended' in the system with no operating order. The reps' operations supervisor sees it first, so this screen is theirs.

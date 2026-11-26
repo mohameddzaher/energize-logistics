@@ -23,6 +23,7 @@ import {
   AlertTriangle, History, Building2, ChevronLeft, ExternalLink, RefreshCcw, Archive,
 } from 'lucide-react';
 import ScrollX from '@/components/system/ScrollX';
+import VehicleLiveTracking from '@/components/tracking/VehicleLiveTracking';
 import { useVehicleLifecycle, RevokeButton, EndServiceButton, RestoreButton } from '@/components/vehicles/VehicleLifecycle';
 
 /** Family colour when it has no document with a status (identity and ownership). */
@@ -368,6 +369,8 @@ export default function VehicleRegistryDetail() {
           </div>
         </div>
       )}
+
+      <VehicleLiveTracking vehicleId={id} ar={ar} />
 
       <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-3.5">
         <Section isRTL={isRTL} title={t('الهوية والتصنيف', 'Identity & classification')} icon={<Car className="w-4 h-4" />} accent={NEUTRAL}>

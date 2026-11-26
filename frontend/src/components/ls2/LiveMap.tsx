@@ -11,7 +11,7 @@ const CSS = 'https://unpkg.com/leaflet@1.9.4/dist/leaflet.css';
 const JS = 'https://unpkg.com/leaflet@1.9.4/dist/leaflet.js';
 
 // Load Leaflet's script + stylesheet exactly once, shared across all instances.
-function loadLeaflet(): Promise<any> {
+export function loadLeaflet(): Promise<any> {
   if (typeof window === 'undefined') return Promise.reject();
   if (window.L) return Promise.resolve(window.L);
   if (window.__leafletLoading) return window.__leafletLoading;

@@ -34,7 +34,7 @@ DEAD=http://127.0.0.1:9
   UPL_BASE_URL=$DEAD UPL_API_KEY=qa UPL_ADMIN_EMAIL=qa@local.test UPL_ADMIN_PASSWORD=qa UPL_WEBHOOK_SECRET=qa \
   LS2_BASE_URL=$DEAD/wialon/ajax.html LS2_TOKEN=qa LS2_POLL_ENABLED=false \
   KEEPALIVE_ENABLED=false KEEPALIVE_URL=$DEAD FRONTEND_URL=http://127.0.0.1:3055 RENDER_EXTERNAL_URL=$DEAD \
-  COLLECTIONS_MAILBOX=qa@local.test COLLECTIONS_MANAGER_EMAIL=qa@local.test \
+  COLLECTIONS_MAILBOX=qa@local.test COLLECTIONS_MANAGER_EMAIL=qa@local.test EXPRESS_TRACK_KEY="${EXPRESS_TRACK_KEY:-}" \
   node "$ROOT/backend/src/server.js" > "$QA/out/backend.log" 2>&1 ) &
 disown
 for i in $(seq 1 60); do curl -s -o /dev/null 127.0.0.1:5055/api/health && break; sleep 1; done

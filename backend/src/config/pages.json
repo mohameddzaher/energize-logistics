@@ -1340,6 +1340,12 @@
       "en": "Light Transport Custody"
     },
     {
+      "key": "/system/b2c/tracking",
+      "section": "B2C",
+      "ar": "متابعة مركبات Media Go",
+      "en": "Media Go Tracking"
+    },
+    {
       "key": "/system/b2c/vehicles",
       "section": "B2C",
       "ar": "مركبات النقل الخفيف",

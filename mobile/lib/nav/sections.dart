@@ -146,6 +146,7 @@ import '../screens/fleet_driver_expenses.dart';
 import '../screens/fleet_assign.dart';
 import '../screens/customer_archive.dart';
 import '../screens/customer_file.dart';
+import '../screens/b2c_tracking.dart';
 
 // Super admin and admin see the whole system.
 const _top = ['super_admin', 'admin', 'it_manager', 'it_team_leader', 'it_specialist', 'business_consultant', 'transition_account', 'backup_account'];
@@ -188,6 +189,7 @@ const _dataRoles = ['data_manager', 'data_analyst', 'data_entry'];
 
 /// Light transport custody, vehicles and staff adding: for the sector manager, deputy, system admin and finance, by role alone and not by section grant, like the server guard (authorize.strict in routes/lightTransport) and the website menu entries.
 const _ltOwners = ['super_admin', 'admin', 'it_manager', 'it_team_leader', 'it_specialist', 'business_consultant', 'transition_account', 'backup_account', 'b2c_manager', 'b2c_team_leader', 'b2c_deputy', 'cfo', 'accounting_manager', 'accounting_team_leader', 'accountant'];
+const _b2cTrackers = ['super_admin', 'admin', 'it_manager', 'it_team_leader', 'it_specialist', 'business_consultant', 'transition_account', 'backup_account', 'b2c_manager', 'b2c_team_leader', 'b2c_deputy', 'b2c_project_lead'];
 const _b2cSupervisors = ['b2c_rep_supervisor', 'b2c_inspection_supervisor'];
 // Sales and the vendors team see only their half of a shipment (server: config/priceView).
 const _salesRoles = ['sales_manager', 'sales_team_leader', 'sales_rep', 'sales_trainee'];
@@ -813,6 +815,8 @@ List<AppSection> sectionsFor(AuthProvider auth) {
             path: '/system/b2c/light-transport/store'),
         // Department custody: cash, purchases card and workshop; replaced project custody.
         if (custodyOpens(auth, '/system/b2c/light-transport/custody', _ltOwners.contains(role) || rightsRoleOf(role) == 'vehicles_manager')) AppPage('عهدة النقل الخفيف', 'Light Transport Custody', Icons.account_balance_wallet_outlined, (c) => const LtCustodyScreen(), path: '/system/b2c/light-transport/custody'),
+        // Live GPS of the Express units (Media Go / light transport): map, route and distances.
+        if (_b2cTrackers.contains(role)) AppPage('متابعة مركبات Media Go', 'Media Go Tracking', Icons.navigation_outlined, (c) => const B2cTrackingScreen(), path: '/system/b2c/tracking'),
         // Department project vehicles: a window on the vehicles register itself, the actual driver and the authorization.
         if (_ltOwners.contains(role)) AppPage('مركبات النقل الخفيف', 'Light Transport Vehicles', Icons.local_shipping_outlined, (c) => const B2cVehiclesScreen(), path: '/system/b2c/vehicles'),
         // The department reports to HR what it saw in the field: the sending side.

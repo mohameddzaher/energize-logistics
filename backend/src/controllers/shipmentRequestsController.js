@@ -796,6 +796,17 @@ async function resolvePlacedDriver(req, t, supplierId) {
   if (t.driverId) {
     const d = await Driver.findById(t.driverId).lean();
     if (!d) fail('السائق غير موجود');
+    // A registered driver without an iqama takes the one typed beside him; HR-linked drivers read it from their file.
+    if (!String(d.residenceNumber || '').trim() && !d.employee) {
+      const iq = cleanIqama(t.driverIqama);
+      if (!iq) fail(`رقمُ إقامة السائق «${d.name}» غير مسجَّل — اكتبه بجوار اسمه`);
+      if (!IQAMA_RE.test(iq)) fail('رقمُ الإقامة/الهوية عشرةُ أرقامٍ يبدأ بـ 1 أو 2');
+      const other = await Driver.findOne({ _id: { $ne: d._id }, residenceNumber: iq, isActive: { $ne: false } }).select('name').lean();
+      if (other) fail(`رقمُ الإقامة ${iq} مسجَّلٌ للسائق «${other.name}» — اختره هو`);
+      await Driver.updateOne({ _id: d._id }, { $set: { residenceNumber: iq } });
+      await so.syncDriverEmployee(d._id).catch(() => {});
+      return Driver.findById(d._id).lean();
+    }
     return d;
   }
   if (t.newDriver && String(t.newDriver.name || '').trim()) {
@@ -838,7 +849,7 @@ async function resolveFreelancer(req, nf) {
 /**
  * The vendors team completes trucks: each becomes a transport order on the normal serial, through the same creation as
  * the shipment form. Body: { trucks: [{ kind: 'vendor'|'freelancer', supplierChoice | newFreelancer{name,phone},
- * vehicle | newVehicle{plate}, driverId | newDriver{name,phone,residenceNumber}, sourcingRep, helper, buyPrice,
+ * vehicle | newVehicle{plate}, driverId (+ driverIqama when he has none) | newDriver{name,phone,residenceNumber}, sourcingRep, helper, buyPrice,
  * advanceAmount, truckType, pickupTime, startTime, arrivalTime }] }
  */
 exports.place = async (req, res) => {
@@ -904,6 +915,8 @@ exports.place = async (req, res) => {
           shipmentRequest: r._id, requestNumber: r.number, requestedBy: r.createdBy, requestedByName: r.createdByName,
           sourcingHelper: h.helper, sourcingHelperName: h.helperName,
         } });
+        // The transport order prints the driver's iqama from his register row unless one was typed for this shipment.
+        if (driver.residenceNumber) await ShipmentOrder.updateOne({ _id: order._id, driverIqama: { $in: ['', null] } }, { $set: { driverIqama: driver.residenceNumber } });
         // The driver's register row learns the truck he drove when it had none.
         if (order.vehicle && !driver.vehicle) await require('../models/ShipmentOrderDriver').updateOne({ _id: driver._id, vehicle: null }, { $set: { vehicle: order.vehicle } });
         created.push(order);

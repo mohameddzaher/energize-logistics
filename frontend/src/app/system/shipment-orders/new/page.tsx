@@ -1074,7 +1074,7 @@ function CreateShipmentInner() {
             </div>
           </div>
 
-          <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-1 2xl:grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-3 xl:grid-cols-1 2xl:grid-cols-3 gap-4">
             <div>
               <label className={labelCls}>{ar ? 'السائق' : 'Driver'}</label>
               {/* Combo box: registered drivers are suggestions, not a restriction (`allowCustom`), so someone not in the register is typed and work continues. Typing searches all drivers on the server by name, mobile and residency; choosing a registered one fills his mobile and says whether his operating card is expired. */}
@@ -1084,7 +1084,17 @@ function CreateShipmentInner() {
                   if (d.driver) setDrivers((p) => (p.some((x) => x._id === d.driver!._id) ? p : [d.driver!, ...p]));
                   set('driverName', d.name);
                   if (d.phone) set('driverPhone', d.phone);
+                  if ((d.driver as any)?.residenceNumber) setDetails((x) => ({ ...x, driverIqama: String((d.driver as any).residenceNumber), driverNationality: (d.driver as any).nationality || x.driverNationality }));
                 }} />
+            </div>
+            <div>
+              {/* The driver's iqama beside him: filled from his register row, and a typed one is saved to it (saveWaybillDetails). */}
+              <label className={labelCls}>{ar ? 'رقم إقامة السائق' : 'Driver iqama no.'}</label>
+              <input value={details.driverIqama} onChange={(e) => setDetails((d) => ({ ...d, driverIqama: e.target.value }))} dir="ltr" inputMode="numeric" className={inputCls}
+                placeholder={ar ? 'عشرة أرقام يبدأ بـ 1 أو 2' : '10 digits, starts with 1 or 2'} />
+              {details.driverIqama.trim() && !/^[12]\d{9}$/.test(details.driverIqama.replace(/[٠-٩]/g, (c) => String('٠١٢٣٤٥٦٧٨٩'.indexOf(c))).replace(/\s+/g, '')) && (
+                <p className="mt-1 text-[11.5px] text-red-600">{ar ? 'رقم الإقامة عشرة أرقام يبدأ بـ 1 أو 2' : '10 digits starting with 1 or 2'}</p>
+              )}
             </div>
             <div>
               <label className={labelCls}>{ar ? 'جوال السائق' : 'Driver phone'}</label>
@@ -1103,11 +1113,10 @@ function CreateShipmentInner() {
 
       <fieldset disabled={lockTruck} className={`bg-white border border-slate-200 rounded-xl p-5 ${lockTruck ? 'opacity-70' : ''}`}>
         <p className="font-bold text-slate-900 mb-1">{ar ? 'بيانات أمر النقل' : 'Transport order details'}</p>
-        <p className="text-xs text-slate-500 mb-3">{ar ? 'تُملأ من السائق والشاحنة المختارين، وما تعدّله هنا يُحفظ في سجلّهما ويظهر في أمر النقل.' : 'Filled from the chosen driver and truck. Edits save to their records and print on the waybill.'}</p>
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+        <p className="text-xs text-slate-500 mb-3">{ar ? 'تُملأ من السائق والشاحنة المختارين، وما تعدّله هنا يُحفظ في سجلّهما ويظهر في أمر النقل. رقم إقامة السائق بجوار اسمه في الأعلى.' : 'Filled from the chosen driver and truck. Edits save to their records and print on the waybill. The driver iqama sits beside his name above.'}</p>
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
           {([
             ['driverNationality', ar ? 'جنسية السائق' : 'Driver nationality'],
-            ['driverIqama', ar ? 'رقم إقامة السائق' : 'Driver iqama no.'],
             ['vehicleBrand', ar ? 'ماركة الشاحنة' : 'Truck brand'],
             ['vehicleColor', ar ? 'لون الشاحنة' : 'Truck colour'],
           ] as const).map(([k, label]) => (

@@ -1676,6 +1676,12 @@ Widget _pickBtn(String text, IconData icon, VoidCallback? onTap, {bool miss = fa
     );
 
 final _iqamaRe = RegExp(r'^[12]\d{9}$');
+/// Registered iqama of a picked driver, 'hr' when his HR file holds it, or empty.
+String _regIqama(Map<String, dynamic> d) {
+  final r = '${d['residenceNumber'] ?? ''}'.trim();
+  if (r.isNotEmpty && r != '0') return r;
+  return d['employee'] != null ? 'hr' : '';
+}
 String _digits(String v) => v.replaceAllMapped(RegExp('[٠-٩]'), (m) => '${'٠١٢٣٤٥٦٧٨٩'.indexOf(m[0]!)}').replaceAll(RegExp(r'\s'), '');
 
 // ── Vendors: completing the trucks ──────────────────────────────────────────
@@ -1705,13 +1711,15 @@ class _Truck {
   final drName = TextEditingController();
   final drPhone = TextEditingController();
   final drIqama = TextEditingController();
+  // Iqama typed for a picked driver whose register row has none; saved to his row.
+  final pickedIqama = TextEditingController();
   final buy = TextEditingController();
   final advance = TextEditingController();
   // Cost centre label from the so_cost_center list.
   final costCenter = TextEditingController();
   List<Map<String, dynamic>> vehicles = [];
   List<Map<String, dynamic>> drivers = [];
-  void dispose() { for (final c in [flName, flPhone, plate, drName, drPhone, drIqama, buy, advance, costCenter]) { c.dispose(); } }
+  void dispose() { for (final c in [flName, flPhone, plate, drName, drPhone, drIqama, pickedIqama, buy, advance, costCenter]) { c.dispose(); } }
 }
 
 class _PlaceTrucksScreenState extends State<PlaceTrucksScreen> {
@@ -1861,7 +1869,7 @@ class _PlaceTrucksScreenState extends State<PlaceTrucksScreen> {
       sub: (x) => [if (sid.isNotEmpty && !isLinkedTo(x, sid)) outsideHint(x), x['phone'], x['residenceNumber']].where((e) => '${e ?? ''}'.isNotEmpty && '$e' != '0').join(' · '),
     );
     if (v == null || !mounted) return;
-    setState(() { t.driver = v; t.newDriver = false; });
+    setState(() { t.driver = v; t.newDriver = false; t.pickedIqama.clear(); });
     if (sid.isNotEmpty && !isLinkedTo(v, sid)) {
       final linked = await offerSupplierLink(context, vehicle: false, id: '${v['_id']}', label: '${v['name'] ?? ''}', supplierId: sid, supplierName: '${t.supplier?['name'] ?? ''}');
       if (linked && mounted) setState(() => t.drivers = [v, ...t.drivers]);
@@ -1882,6 +1890,8 @@ class _PlaceTrucksScreenState extends State<PlaceTrucksScreen> {
         if (!_iqamaRe.hasMatch(_digits(t.drIqama.text))) out.add(tr('الشاحنة $n: رقم الإقامة/الهوية عشرة أرقام يبدأ بـ 1 أو 2', 'Truck $n: iqama is 10 digits starting with 1 or 2'));
       } else if (t.driver == null) {
         out.add(tr('الشاحنة $n: اختر السائق أو سجّل سائقًا جديدًا', 'Truck $n: driver'));
+      } else if (_regIqama(t.driver!).isEmpty && !_iqamaRe.hasMatch(_digits(t.pickedIqama.text))) {
+        out.add(tr('الشاحنة $n: اكتب رقم إقامة السائق (عشرة أرقام يبدأ بـ 1 أو 2)', 'Truck $n: driver iqama (10 digits starting with 1 or 2)'));
       }
       if (!((num.tryParse(t.buy.text.trim()) ?? 0) > 0)) out.add(tr('الشاحنة $n: سعر الشراء مطلوب', 'Truck $n: buying price required'));
       if (t.costCenter.text.trim().isEmpty) out.add(tr('الشاحنة $n: اختر مركز التكلفة', 'Truck $n: pick the cost centre'));
@@ -1907,6 +1917,7 @@ class _PlaceTrucksScreenState extends State<PlaceTrucksScreen> {
               if (t.newFreelancer) 'newFreelancer': {'name': t.flName.text.trim(), 'phone': t.flPhone.text.trim()} else 'supplierChoice': t.supplier!['_id'],
               if (t.vehicle != null) 'vehicle': t.vehicle!['_id'] else 'newVehicle': {'plate': t.plate.text.trim()},
               if (t.newDriver) 'newDriver': {'name': t.drName.text.trim(), 'phone': t.drPhone.text.trim(), 'residenceNumber': _digits(t.drIqama.text)} else 'driverId': t.driver!['_id'],
+              if (!t.newDriver && _regIqama(t.driver!).isEmpty) 'driverIqama': _digits(t.pickedIqama.text),
               'sourcingRep': (t.sourcingRep ?? '').isEmpty ? null : t.sourcingRep,
               if ((t.helper ?? '').isNotEmpty) 'helper': t.helper,
               'buyPrice': num.tryParse(t.buy.text.trim()),
@@ -2001,10 +2012,23 @@ class _PlaceTrucksScreenState extends State<PlaceTrucksScreen> {
         if (t.vehicle != null) Align(alignment: AlignmentDirectional.centerStart, child: TextButton(onPressed: () => setState(() => t.vehicle = null), child: Text(tr('لوحة جديدة بدلًا منها', 'Use a new plate instead')))),
         const SizedBox(height: 6),
         // Driver: registered, or new with his iqama (required).
-        if (!t.newDriver)
+        if (!t.newDriver) ...[
           _pickBtn(t.driver == null ? tr('اختر السائق… *', 'Choose driver… *') : '${t.driver!['name']}${'${t.driver!['phone'] ?? ''}'.isEmpty ? '' : ' · ${t.driver!['phone']}'}',
-              Icons.badge_outlined, () => _pickDriver(t))
-        else ...[
+              Icons.badge_outlined, () => _pickDriver(t)),
+          // His iqama beside him: shown when registered, typed and saved to his row when missing.
+          if (t.driver != null)
+            _regIqama(t.driver!).isNotEmpty
+                ? Padding(padding: const EdgeInsets.only(top: 4), child: Text('${tr('رقم الإقامة', 'Iqama')}: ${_regIqama(t.driver!) == 'hr' ? tr('من ملف الموارد البشرية', 'from the HR file') : _regIqama(t.driver!)}',
+                    style: const TextStyle(fontSize: 12, color: T.inkSoft, fontWeight: FontWeight.w700)))
+                : Padding(padding: const EdgeInsets.only(top: 6), child: TextField(
+                    controller: t.pickedIqama, keyboardType: TextInputType.number, textDirection: TextDirection.ltr,
+                    onChanged: (_) => setState(() {}),
+                    decoration: InputDecoration(
+                      labelText: tr('رقم إقامة السائق *', 'Driver iqama *'),
+                      helperText: tr('غير مسجَّل على السائق — يُحفظ في سجلّه', 'Not on his record yet — saved to it'),
+                      errorText: _tried && !_iqamaRe.hasMatch(_digits(t.pickedIqama.text)) ? tr('عشرة أرقام يبدأ بـ 1 أو 2', '10 digits starting with 1 or 2') : null,
+                    ))),
+        ] else ...[
           TextField(controller: t.drName, decoration: InputDecoration(labelText: tr('اسم السائق الجديد *', 'New driver name *'))),
           const SizedBox(height: 6),
           TextField(controller: t.drPhone, keyboardType: TextInputType.phone, decoration: InputDecoration(labelText: tr('جوال السائق', 'Driver phone'))),

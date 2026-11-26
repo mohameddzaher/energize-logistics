@@ -98,6 +98,8 @@ type TruckRow = {
   supplierId: string; supplierName: string; newFreelancer: boolean; flName: string; flPhone: string;
   vehicleId: string; newPlate: string;
   driverId: string; driverName: string; ndName: string; ndPhone: string; ndIqama: string;
+  /** Picked driver's iqama: `regIqama` as registered (or 'hr' when his HR file holds it), `dIqama` typed when he has none. */
+  regIqama: string; dIqama: string;
   buyPrice: string; advanceAmount: string;
   /** Cost centre label from the section's list (so_cost_center). */
   costCenter: string;
@@ -105,9 +107,12 @@ type TruckRow = {
 const blankTruck = (r: ShipmentRequest, rep = ''): TruckRow => ({
   kind: 'vendor', truckType: typesOfReq(r).length === 1 ? typesOfReq(r)[0] : '', sourcingRep: rep, helper: '',
   supplierId: '', supplierName: '', newFreelancer: false, flName: '', flPhone: '',
-  vehicleId: '', newPlate: '', driverId: '', driverName: '', ndName: '', ndPhone: '', ndIqama: '', buyPrice: '', advanceAmount: '', costCenter: '',
+  vehicleId: '', newPlate: '', driverId: '', driverName: '', ndName: '', ndPhone: '', ndIqama: '', regIqama: '', dIqama: '', buyPrice: '', advanceAmount: '', costCenter: '',
 });
 const IQAMA_RE = /^[12]\d{9}$/;
+/** Iqama fields for a picked register driver. */
+const iqOf = (d: any) => ({ regIqama: String(d?.residenceNumber || '').trim() || (d?.employee ? 'hr' : ''), dIqama: '' });
+const normIq = (v: string) => v.replace(/[٠-٩]/g, (d) => String('٠١٢٣٤٥٦٧٨٩'.indexOf(d))).replace(/\s+/g, '');
 
 export function PlaceModal({ req, onClose, onDone }: { req: ShipmentRequest; onClose: () => void; onDone: () => void }) {
   const { lang } = useLanguage();
@@ -132,7 +137,7 @@ export function PlaceModal({ req, onClose, onDone }: { req: ShipmentRequest; onC
     if (r.newFreelancer ? !r.flName.trim() : !r.supplierId) out.push('supplier');
     if (!r.vehicleId && !r.newPlate.trim()) out.push('vehicle');
     const freshDriver = r.newFreelancer || (!r.driverId && r.ndName.trim());
-    if (freshDriver ? (!r.ndName.trim() || !IQAMA_RE.test(r.ndIqama.trim())) : !r.driverId) out.push('driver');
+    if (freshDriver ? (!r.ndName.trim() || !IQAMA_RE.test(normIq(r.ndIqama))) : (!r.driverId || (!r.regIqama && !IQAMA_RE.test(normIq(r.dIqama))))) out.push('driver');
     if (!(Number(r.buyPrice) > 0)) out.push('buy');
     if (!r.costCenter) out.push('cost');
     return out;
@@ -140,7 +145,7 @@ export function PlaceModal({ req, onClose, onDone }: { req: ShipmentRequest; onC
   const submit = async () => {
     setTried(true);
     if (problems.some((p) => p.length) || times.missing.length) {
-      notify(t('أكمِل الحقول المحدّدة بالأحمر (ومنها مركز التكلفة) — والسائقُ الجديد يحتاج رقمَ إقامته', 'Fill the fields in red (cost centre included) — a new driver needs his iqama'), 'error');
+      notify(t('أكمِل الحقول المحدّدة بالأحمر (ومنها مركز التكلفة) — والسائق يحتاج رقمَ إقامته', 'Fill the fields in red (cost centre included) — the driver needs his iqama'), 'error');
       return;
     }
     setSaving(true);
@@ -152,7 +157,7 @@ export function PlaceModal({ req, onClose, onDone }: { req: ShipmentRequest; onC
           ...(r.vehicleId ? { vehicle: r.vehicleId } : { newVehicle: { plate: r.newPlate.trim() } }),
           ...(r.newFreelancer || (!r.driverId && r.ndName.trim())
             ? { newDriver: { name: r.ndName.trim(), phone: r.ndPhone.trim(), residenceNumber: r.ndIqama.trim() } }
-            : { driverId: r.driverId }),
+            : { driverId: r.driverId, ...(!r.regIqama ? { driverIqama: normIq(r.dIqama) } : {}) }),
           truckType: r.truckType || undefined, sourcingRep: r.sourcingRep || null, helper: r.helper || null,
           buyPrice: Number(r.buyPrice), advanceAmount: r.advanceAmount === '' ? null : Number(r.advanceAmount),
           costCenter: r.costCenter,
@@ -244,7 +249,7 @@ function TruckEditor({ i, row, reps, helpers, types, miss, onChange, onRemove, a
       if (!live) return;
       setVehs(v.vehicles || []); setDrivers(d.drivers || []);
       if (kind === 'freelancer' && !row.vehicleId && (v.vehicles || []).length === 1) onChange({ vehicleId: v.vehicles[0]._id });
-      if (kind === 'freelancer' && !row.driverId && (d.drivers || []).length === 1) onChange({ driverId: (d.drivers[0] as any)._id, driverName: d.drivers[0].name });
+      if (kind === 'freelancer' && !row.driverId && (d.drivers || []).length === 1) onChange({ driverId: (d.drivers[0] as any)._id, driverName: d.drivers[0].name, ...iqOf(d.drivers[0]) });
     });
     return () => { live = false; };
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -252,7 +257,7 @@ function TruckEditor({ i, row, reps, helpers, types, miss, onChange, onRemove, a
   const bad = (k: string) => miss.includes(k);
   const supOpts = sups.map((s) => ({ value: s._id, label: s.name, hint: s.phone || '' }));
   if (row.supplierId && !supOpts.some((o) => o.value === row.supplierId)) supOpts.unshift({ value: row.supplierId, label: row.supplierName || row.supplierId, hint: '' });
-  const setKind = (k: Kind) => onChange({ kind: k, supplierId: '', supplierName: '', newFreelancer: false, vehicleId: '', newPlate: '', driverId: '', driverName: '', ndName: '', ndPhone: '', ndIqama: '' });
+  const setKind = (k: Kind) => onChange({ kind: k, supplierId: '', supplierName: '', newFreelancer: false, vehicleId: '', newPlate: '', driverId: '', driverName: '', ndName: '', ndPhone: '', ndIqama: '', regIqama: '', dIqama: '' });
   const ring = (k: string) => (bad(k) ? 'rounded-lg ring-2 ring-red-400/60' : '');
   const lab = (k: string, a: string, e: string, req = true) => <label className={`${labelCls} ${bad(k) ? '!text-red-600' : ''}`}>{t(a, e)}{req && ' *'}</label>;
   const freshDriverForm = row.newFreelancer || (!row.driverId && !!row.ndName);
@@ -306,7 +311,7 @@ function TruckEditor({ i, row, reps, helpers, types, miss, onChange, onRemove, a
             <>
               <div className={ring('supplier')}>
                 <SearchableSelect value={row.supplierId} searchAfter={0} onSearch={searchSup} loading={supBusy}
-                  onChange={(v) => onChange({ supplierId: v, supplierName: sups.find((s) => s._id === v)?.name || '', vehicleId: '', driverId: '', driverName: '' })}
+                  onChange={(v) => onChange({ supplierId: v, supplierName: sups.find((s) => s._id === v)?.name || '', vehicleId: '', driverId: '', driverName: '', regIqama: '', dIqama: '' })}
                   placeholder={kind === 'freelancer' ? t('ابحث عن الفريلانسر', 'Search the freelancer') : t('ابحث عن المورّد المعتمَد', 'Search an approved vendor')} options={supOpts} />
               </div>
               {kind === 'freelancer' && (
@@ -347,8 +352,19 @@ function TruckEditor({ i, row, reps, helpers, types, miss, onChange, onRemove, a
               <div className={ring('driver')}>
                 <DriverPicker value={row.driverName} ar={ar} contextDrivers={drivers} supplierId={row.supplierId} supplierName={row.supplierName} vehicleId={row.vehicleId} requireIqama registeredOnly
                   placeholder={t('من سائقي المورّد المسجَّلين', "From the carrier's registered drivers")}
-                  onPick={(d) => onChange({ driverName: d.name, driverId: (d.driver as any)?._id || '' })} />
+                  onPick={(d) => onChange({ driverName: d.name, driverId: (d.driver as any)?._id || '', ...iqOf(d.driver) })} />
               </div>
+              {row.driverId && (
+                row.regIqama ? (
+                  <p className="mt-1 text-[11.5px] text-slate-500">{t('رقم الإقامة', 'Iqama')}: <b dir="ltr">{row.regIqama === 'hr' ? t('من ملف الموارد البشرية', 'from the HR file') : row.regIqama}</b></p>
+                ) : (
+                  <div className="mt-1.5">
+                    <input value={row.dIqama} onChange={(e) => onChange({ dIqama: e.target.value })} placeholder={t('رقم إقامة السائق *', 'Driver iqama *')} dir="ltr" inputMode="numeric"
+                      className={`${inputCls} ${bad('driver') && !IQAMA_RE.test(normIq(row.dIqama)) ? 'border-red-400 bg-red-50' : ''}`} />
+                    <p className="mt-0.5 text-[11px] text-slate-500">{t('غير مسجَّل على السائق — يُحفظ في سجلّه: عشرةُ أرقامٍ يبدأ بـ 1 أو 2.', 'Not on his record yet — saved to it: 10 digits starting with 1 or 2.')}</p>
+                  </div>
+                )
+              )}
             </>
           )}
         </div>

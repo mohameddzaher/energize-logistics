@@ -26,6 +26,9 @@ const _systemKeys = {
   'advanceAmount', 'blNumber', 'containerNumber',
 };
 
+/// Iqama as typed with Arabic digits and spaces normalised, for the format check.
+String _iqDigits(String v) => v.replaceAllMapped(RegExp('[٠-٩]'), (m) => '${'٠١٢٣٤٥٦٧٨٩'.indexOf(m[0]!)}').replaceAll(RegExp(r'\s'), '');
+
 const _fixedKeys = {'customer', 'waybillNumber', 'status', 'agentName', 'vehicleName', 'driverName', 'driverPhone'};
 
 const _groups = [
@@ -1364,6 +1367,20 @@ class _ShipmentOrderCreateScreenState extends State<ShipmentOrderCreateScreen> {
                           // Call/WhatsApp directly on the driver's number.
                           ContactButtons(phone: (_form['driverPhone'] ?? _ctrls['driverPhone']?.text ?? '').toString(), compact: true),
                         ]),
+                        const SizedBox(height: 8),
+                        // The driver's iqama beside him: filled from his register row; a typed one is saved to it with the order.
+                        TextField(
+                          controller: _ctrl('driverIqama'),
+                          textDirection: TextDirection.ltr,
+                          keyboardType: TextInputType.number,
+                          onChanged: (v) => setState(() => _form['driverIqama'] = v.trim()),
+                          decoration: InputDecoration(
+                            labelText: tr('رقم إقامة السائق', 'Driver iqama no.'),
+                            hintText: tr('عشرة أرقام يبدأ بـ 1 أو 2', '10 digits, starts with 1 or 2'),
+                            errorText: '${_form['driverIqama'] ?? ''}'.isNotEmpty && !RegExp(r'^[12]\d{9}$').hasMatch(_iqDigits('${_form['driverIqama']}'))
+                                ? tr('رقم الإقامة عشرة أرقام يبدأ بـ 1 أو 2', '10 digits starting with 1 or 2') : null,
+                          ),
+                        ),
                       ]),
                     ),
                   ),
@@ -1398,7 +1415,7 @@ class _ShipmentOrderCreateScreenState extends State<ShipmentOrderCreateScreen> {
                                 onChanged: (v) => _form['containerNumber'] = v.trim(),
                                 decoration: InputDecoration(labelText: tr('رقم الحاوية (اختياري)', 'Container number (optional)')),
                               ),
-                              for (final d in [('driverNationality', 'جنسية السائق', 'Driver nationality'), ('driverIqama', 'رقم إقامة السائق', 'Driver iqama no.'), ('vehicleBrand', 'ماركة الشاحنة', 'Truck brand'), ('vehicleColor', 'لون الشاحنة', 'Truck colour')]) ...[
+                              for (final d in [('driverNationality', 'جنسية السائق', 'Driver nationality'), ('vehicleBrand', 'ماركة الشاحنة', 'Truck brand'), ('vehicleColor', 'لون الشاحنة', 'Truck colour')]) ...[
                                 const SizedBox(height: 10),
                                 TextField(
                                   controller: _ctrl(d.$1),

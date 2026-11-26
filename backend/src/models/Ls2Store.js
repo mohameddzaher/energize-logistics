@@ -5,7 +5,7 @@ const mongoose = require('mongoose');
 const storeItemSchema = new mongoose.Schema({
   /**
    * Two stores, not one: heavy and light transport have different items and their balances must not be summed.
-   * A field on the item rather than a second model, so the movement rules (in/out, reversal not edit, balance after each movement, shortage threshold) stay in one place.
+   * A field on the item rather than a second model, so the movement rules (in/out, edit or reversal, balance after each movement, shortage threshold) stay in one place.
    */
   warehouse: { type: String, enum: ['heavy', 'light'], default: 'heavy', index: true },
   code: { type: String, default: '', trim: true, index: true },
@@ -56,8 +56,21 @@ const storeMovementSchema = new mongoose.Schema({
   performedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
   performedByName: { type: String, default: '' },
 
-  // Reversal
-  // A recorded movement is never edited or deleted (finance decision). Mistakes are fixed by an opposite movement linked to the original; both stay visible with who and when. No API path changes a recorded movement's quantity or type.
+  // Edits: quantity, price, day, supplier, vehicle and note may be corrected (PUT /store/movements/:id); type and item never change.
+  // Each edit keeps its before/after, author and reason here, so the log shows the correction instead of hiding it.
+  edits: [{
+    _id: false,
+    at: { type: Date, default: Date.now },
+    by: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
+    byName: { type: String, default: '' },
+    reason: { type: String, default: '' },
+    before: { type: mongoose.Schema.Types.Mixed, default: {} },
+    after: { type: mongoose.Schema.Types.Mixed, default: {} },
+  }],
+  editedAt: { type: Date, default: null },
+  editedByName: { type: String, default: '' },
+
+  // Reversal: an opposite movement linked to the original; both stay visible with who and when.
   reversed: { type: Boolean, default: false, index: true },   // Reversed
   reversedAt: { type: Date, default: null },
   reversedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },

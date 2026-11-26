@@ -135,8 +135,9 @@ router.post('/store/issue-requests/:id/cancel', oid, ADMIN, heavyStore(issue.can
 router.post('/store/bulk-out', ADMIN, (req, res) => res.status(400).json({ code: 'ISSUE_VIA_REQUEST', message: 'الصرف من مخزن النقل الثقيل يتمّ عبر «طلب صرف» فقط' }));
 router.post('/store/bulk-movement', ADMIN, noDirectIssue, store.addBulkMovement);
 router.post('/store/:id/movement', oid, ADMIN, noDirectIssue, store.addMovement);
-// Reversing a movement writes an opposite movement; it does not delete or edit a row. There is deliberately no PUT/PATCH on movements: a recorded movement is not edited (finance decision).
+// Reversing writes an opposite movement; editing corrects a movement in place and keeps its before/after history.
 router.post('/store/movements/:movementId/reverse', ADMIN, store.reverseMovement);
+router.put('/store/movements/:movementId', ADMIN, store.editMovement);
 router.post('/assets/trailers', ADMIN, assets.createTrailer);
 router.post('/assets/trailers/:id/move', oid, ADMIN, assets.moveTrailer);
 router.post('/assets/flatbeds', ADMIN, assets.createFlatbed);

@@ -72,7 +72,7 @@ router.post('/authorization/move', authorize(...EDIT), o.moveAuthorization);
 
 /**
  * Light-transport store.
- * The store mechanics live once in `ls2StoreController`: in/out entries, movements reversed rather than edited, balance after each movement, and a low-stock threshold. This section has its own store of items (engine head, gasket, bikes), so the same controller is called with `warehouse=light` instead of copying a second store that would drift.
+ * The store mechanics live once in `ls2StoreController`: in/out entries, movement edit and reversal, balance after each movement, and a low-stock threshold. This section has its own store of items (engine head, gasket, bikes), so the same controller is called with `warehouse=light` instead of copying a second store that would drift.
  * The scope is enforced here, not left to the UI: the page calls the light-transport store route, so it cannot read or write the heavy-transport store even by mistake.
  */
 const store = require('../controllers/ls2StoreController');
@@ -99,7 +99,8 @@ const noDirectIssue = (req, res, next) => (String(req.body?.type || '') === 'out
   ? res.status(400).json({ code: 'ISSUE_VIA_REQUEST', message: 'الصرف من مخزن النقل الخفيف يتمّ عبر «طلب صرف» فقط' })
   : next());
 router.post('/store/bulk-movement', authorize(...EDIT), noDirectIssue, lightStore(store.addBulkMovement));
-router.post('/store/movements/:movementId/reverse', authorize(...EDIT), lightStore(store.reverseMovement));
+router.post('/store/movements/:movementId/reverse', objectIdParam('movementId'), authorize(...EDIT), lightStore(store.reverseMovement));
+router.put('/store/movements/:movementId', objectIdParam('movementId'), authorize(...EDIT), lightStore(store.editMovement));
 router.post('/store/:id/movement', objectIdParam('id'), authorize(...EDIT), noDirectIssue, lightStore(store.addMovement));
 
 // Issue requests: saving one is the stock-out; cancelling reverses it on the record. Same writers as the store.

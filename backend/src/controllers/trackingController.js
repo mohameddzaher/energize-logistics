@@ -87,7 +87,24 @@ exports.summary = async (req, res) => {
     if (!(from < to) || to - from > 62.5 * 24 * 3600000) return res.status(400).json({ message: 'الفترة غير صحيحة (أقصى 62 يومًا)' });
     const end = to > new Date() ? new Date() : to;
     const list = await linkedUnits();
-    const km = await ex.fleetDistance(list.map((u) => u.imei), from, end);
+    const imeis = list.map((u) => u.imei);
+    // Closed days come from the stored copies (one query); only today, and units missing a stored day, ask the provider.
+    const days = ex.daysBetween(ex.riyadhDay(from), ex.riyadhDay(end));
+    const closed = days.filter((d) => d < today);
+    const stored = await ex.storedKm(imeis, closed);
+    const complete = imeis.filter((m) => closed.every((d) => stored.get(m)?.has(d)));
+    const partial = imeis.filter((m) => !complete.includes(m));
+    const todayStart = new Date(`${today}T00:00:00+03:00`);
+    const [todayKm, fullKm] = await Promise.all([
+      days.includes(today) && complete.length ? ex.fleetDistance(complete, todayStart > from ? todayStart : from, end) : new Map(),
+      partial.length ? ex.fleetDistance(partial, from, end) : new Map(),
+    ]);
+    const km = new Map();
+    for (const m of complete) {
+      const t = todayKm.get(m);
+      km.set(m, Math.round((closed.reduce((x, d) => x + (stored.get(m)?.get(d) || 0), 0) + (t || 0)) * 10) / 10);
+    }
+    for (const m of partial) km.set(m, fullKm.get(m));
     const rows = list.map((u) => ({
       imei: u.imei, name: u.name, plate: u.plate, mediaGo: u.mediaGo, state: u.state, at: u.at,
       vehicleId: u.vehicle?._id || null, city: u.vehicle?.city || u.rider?.city || '', rider: u.rider?.name || '', project: u.rider?.project || '',

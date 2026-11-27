@@ -240,7 +240,7 @@ export default function TrackingScreen({ base, ar, only }: { base: string; ar: b
     if (tab !== 'history' || !hUnit || hDays > 31) return;
     const n = ++seq.current;
     setRouteBusy(true); setPlay(null); setPlaying(false);
-    api.get<{ points: RoutePoint[]; stats: Stats }>(`${base}/units/${hUnit}/history?from=${from}&to=${to}&speedLimit=${limit}`)
+    api.get<{ points: RoutePoint[]; stats: Stats }>(`${base}/units/${hUnit}/history?from=${from}&to=${to}&speedLimit=${limit}`, { timeoutMs: 120000 })
       .then((d) => { if (n === seq.current) setRoute(d); })
       .catch((e) => { if (n === seq.current) { setRoute(null); setErr(e?.message || 'Failed'); } })
       .finally(() => { if (n === seq.current) setRouteBusy(false); });
@@ -310,7 +310,7 @@ export default function TrackingScreen({ base, ar, only }: { base: string; ar: b
     if (tab !== 'fleet' || only || sDays > 62) return undefined;
     let dead = false;
     setSumBusy(true);
-    api.get<{ rows: SumRow[] }>(`${base}/summary?from=${sFrom}&to=${sTo}`).then((d) => { if (!dead) setSum(d); }).catch((e) => { if (!dead) setErr(e?.message || 'Failed'); }).finally(() => { if (!dead) setSumBusy(false); });
+    api.get<{ rows: SumRow[] }>(`${base}/summary?from=${sFrom}&to=${sTo}`, { timeoutMs: 120000 }).then((d) => { if (!dead) setSum(d); }).catch((e) => { if (!dead) setErr(e?.message || 'Failed'); }).finally(() => { if (!dead) setSumBusy(false); });
     return () => { dead = true; };
   }, [tab, sFrom, sTo, base, only, sDays]);
   const cfFleet = useColumnFilters<SumRow>();
@@ -423,7 +423,7 @@ export default function TrackingScreen({ base, ar, only }: { base: string; ar: b
           <div className="space-y-2">
             <div className="relative">
               <TrackMap ar={ar} units={[]} route={route?.points || null} stops={st?.stops || []} speeding={st?.speeding || []} speedLimit={limit} playIndex={play} focus={hFocus} height={only ? 420 : 520} />
-              {routeBusy && <div className="absolute inset-0 bg-white/60 flex items-center justify-center rounded-xl z-[500]"><span className="flex items-center gap-2 text-sm font-semibold text-slate-700 bg-white px-3 py-2 rounded-lg shadow"><RefreshCw className="w-4 h-4 animate-spin" />{t('جارٍ تحميل خط السير…', 'Loading route…')}</span></div>}
+              {routeBusy && <div className="absolute inset-0 bg-white/60 flex items-center justify-center rounded-xl z-[500]"><span className="flex items-center gap-2 text-sm font-semibold text-slate-700 bg-white px-3 py-2 rounded-lg shadow"><RefreshCw className="w-4 h-4 animate-spin" />{t('جارٍ تحميل خط السير…', 'Loading route…')}{hDays > 3 ? <span className="text-[11px] font-normal text-slate-500">{t('أوّل فتح لفترة طويلة يجلبها من المزوّد ثم تُحفظ، وبعدها تفتح فورًا', 'The first open of a long period fetches it once; it then opens instantly')}</span> : null}</span></div>}
             </div>
             {route && route.points.length > 1 && (
               <div className="flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2">

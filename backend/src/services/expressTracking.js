@@ -107,7 +107,7 @@ const snapshotList = async () => { const objs = await objects(); return objs.map
 /** Every unit with its last position: the live poller's snapshot when fresh, else one sweep (stale-while-refresh, 30 s). */
 async function units() {
   if (Date.now() - snapshotAt < 30000 && snapshot.size) return snapshotList();
-  return cache.wrapStale('express:units', 30000, 15 * 60000, async () => {
+  return cache.wrapStale('express:units', 30000, 2 * 3600000, async () => {
     snapshot = await sweep(await objects(), snapshot);
     snapshotAt = Date.now();
     return snapshotList();
@@ -167,19 +167,128 @@ async function rawHistory(imei, from, to) {
   });
 }
 
-/** Points over any span, fetched in one-day windows (4 at a time) so a month neither times out nor refetches closed days. */
-async function history(imei, from, to) {
+/** Points of an arbitrary span straight from the provider, in one-day windows (short spans such as the live trail). */
+async function rawSpan(imei, from, to) {
   const DAY = 24 * 3600000;
   const windows = [];
   for (let a = from.getTime(); a < to.getTime(); a += DAY) windows.push([new Date(a), new Date(Math.min(a + DAY, to.getTime()))]);
   const out = [];
-  for (let i = 0; i < windows.length; i += 4) {
+  for (let i = 0; i < windows.length; i += 6) {
     // eslint-disable-next-line no-await-in-loop
-    const parts = await Promise.all(windows.slice(i, i + 4).map(([a, b]) => rawHistory(imei, a, b)));
+    const parts = await Promise.all(windows.slice(i, i + 6).map(([a, b]) => rawHistory(imei, a, b)));
     parts.forEach((p) => out.push(...p));
+  }
+  return out;
+}
+
+const dayStart = (day) => new Date(`${day}T00:00:00+03:00`);
+const dayEnd = (day) => new Date(`${day}T23:59:59.999+03:00`);
+const daysBetween = (fromDay, toDay) => {
+  const out = [];
+  for (let d = dayStart(fromDay); riyadhDay(d) <= toDay; d = new Date(d.getTime() + 24 * 3600000)) out.push(riyadhDay(d));
+  return out;
+};
+const r5 = (n) => Math.round(n * 1e5) / 1e5;
+
+/**
+ * Stored copy of a closed day: every moving point is kept (thinning moving points shortened routes ~0.5%), a standing unit keeps
+ * one point a minute; coordinates to ~1 m. Kilometres are measured on the full set.
+ */
+async function storeDay(imei, day, points) {
+  const ExpressDay = require('../models/ExpressDay');
+  let km = 0;
+  for (let i = 1; i < points.length; i += 1) {
+    const seg = haversineKm(points[i - 1], points[i]); const dt = points[i].t - points[i - 1].t;
+    if (dt > 0 && seg / (dt / 3600000) < 250) km += seg;
+  }
+  const pts = [];
+  let last = -Infinity;
+  for (const p of points) {
+    if (p.speed > 3 || p.t - last >= 60000) { pts.push([p.t, r5(p.lat), r5(p.lng), Math.round(p.speed), p.ign == null ? -1 : (p.ign ? 1 : 0)]); last = p.t; }
+  }
+  await ExpressDay.updateOne({ imei, day }, { $setOnInsert: { imei, day, pts, km: Math.round(km * 10) / 10, createdAt: new Date() } }, { upsert: true }).catch(() => {});
+  return { pts, km };
+}
+const fromStored = (pts) => pts.map(([t, lat, lng, speed, ign]) => ({ t, lat, lng, speed, angle: null, ign: ign === -1 ? null : ign === 1 }));
+
+/** A closed day's points: stored copy, else fetched once from the provider and stored. */
+async function closedDays(imei, days) {
+  const ExpressDay = require('../models/ExpressDay');
+  const have = new Map((await ExpressDay.find({ imei, day: { $in: days } }).lean()).map((d) => [d.day, d]));
+  const missing = days.filter((d) => !have.has(d));
+  for (let i = 0; i < missing.length; i += 8) {
+    // eslint-disable-next-line no-await-in-loop
+    await Promise.all(missing.slice(i, i + 8).map(async (day) => {
+      const raw = await rawHistory(imei, dayStart(day), dayEnd(day));
+      const st = await storeDay(imei, day, raw);
+      have.set(day, { day, pts: st.pts, km: st.km, raw });
+    }));
+  }
+  return days.map((d) => have.get(d)).filter(Boolean);
+}
+
+/**
+ * Points over any span. Whole Riyadh days are read from the stored copies (a month is one database read once stored), today
+ * comes live from the provider, and anything shorter than a day (the live trail) goes straight to the provider.
+ */
+async function history(imei, from, to) {
+  const aligned = riyadhDay(new Date(from.getTime() - 1)) !== riyadhDay(from) && to.getTime() - from.getTime() >= 23 * 3600000;
+  let out;
+  if (!aligned) out = await rawSpan(imei, from, to);
+  else {
+    const today = riyadhDay(new Date());
+    const days = daysBetween(riyadhDay(from), riyadhDay(new Date(Math.min(to.getTime(), Date.now()))));
+    const closed = days.filter((d) => d < today);
+    out = [];
+    for (const d of await closedDays(imei, closed)) out.push(...(d.raw || fromStored(d.pts)));
+    if (days.includes(today)) out.push(...await rawHistory(imei, dayStart(today), new Date(Math.min(to.getTime(), Date.now()))));
   }
   out.sort((a, b) => a.t - b.t);
   return out.filter((p, i) => i === 0 || p.t !== out[i - 1].t);
+}
+
+/** Kilometres of closed days from the stored copies: Map day→km, only for the days stored. */
+async function storedKm(imeis, days) {
+  const ExpressDay = require('../models/ExpressDay');
+  const rows = await ExpressDay.find({ imei: { $in: imeis }, day: { $in: days } }).select('imei day km').lean();
+  const out = new Map();
+  for (const r of rows) { if (!out.has(r.imei)) out.set(r.imei, new Map()); out.get(r.imei).set(r.day, r.km); }
+  return out;
+}
+
+/**
+ * Fills stored days for every unit: yesterday first, then back to 31 days, at most `budget` provider calls per run so the
+ * provider never sees a burst. Run every 30 min on one process (a month for all units within a few hours); stored days are skipped.
+ */
+async function fillDays(budget = 800) {
+  if (!configured()) return 0;
+  const ExpressDay = require('../models/ExpressDay');
+  const objs = await objects();
+  const today = riyadhDay(new Date());
+  const days = daysBetween(riyadhDay(new Date(Date.now() - 31 * 24 * 3600000)), riyadhDay(new Date(Date.now() - 24 * 3600000))).reverse();
+  let used = 0;
+  for (const day of days) {
+    if (used >= budget || day >= today) break;
+    // eslint-disable-next-line no-await-in-loop
+    const have = new Set(await ExpressDay.find({ day }).distinct('imei'));
+    const todo = objs.map((o) => String(o.imei)).filter((m) => !have.has(m)).slice(0, budget - used);
+    for (let i = 0; i < todo.length; i += 6) {
+      // eslint-disable-next-line no-await-in-loop
+      await Promise.all(todo.slice(i, i + 6).map(async (imei) => {
+        try { await storeDay(imei, day, await rawHistory(imei, dayStart(day), dayEnd(day))); } catch (_) { /* retried next run */ }
+      }));
+    }
+    used += todo.length;
+  }
+  return used;
+}
+let fillStarted = false;
+function startDayFill() {
+  if (fillStarted || !configured()) return;
+  fillStarted = true;
+  const run = () => fillDays().then((n) => { if (n) console.log(`[express-days] stored ${n} unit-days`); }).catch((e) => console.error('[express-days]', e.message));
+  setTimeout(run, 60000).unref?.();
+  setInterval(run, 30 * 60000).unref?.();
 }
 
 const R = 6371;
@@ -280,4 +389,4 @@ async function fleetDistance(imeis, from, to) {
   return out;
 }
 
-module.exports = { configured, units, startLive, lastLocation, history, analyse, thin, fleetDistance, plateOfName, riyadhDay, LIVE_MIN, OFFLINE_MIN };
+module.exports = { configured, units, startLive, startDayFill, storedKm, daysBetween, lastLocation, history, analyse, thin, fleetDistance, plateOfName, riyadhDay, LIVE_MIN, OFFLINE_MIN };

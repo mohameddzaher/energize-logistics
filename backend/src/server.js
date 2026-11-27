@@ -515,6 +515,10 @@ if (!DOCS_ONLY) connectDB().then(async () => {
   if (runsJobs || process.env.QA_BACKEND === '1') {
     try { require('./services/expressTracking').startLive(); } catch (e) { console.error('[express-live] start:', e.message); }
   }
+  // Stored days for every Express unit (yesterday first, then back to 31 days), hourly within a call budget; one process only.
+  if (runsJobs) {
+    try { require('./services/expressTracking').startDayFill(); } catch (e) { console.error('[express-days] start:', e.message); }
+  }
   if (runsJobs) {
     startWalletAutoCloseJob();
     startOpsPoll();

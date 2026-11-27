@@ -510,6 +510,11 @@ if (!DOCS_ONLY) connectDB().then(async () => {
   // NODE_APP_INSTANCE is set by pm2 in cluster mode; when absent (manual run or fork_mode) there is one instance and the jobs run as before.
   const instance = process.env.NODE_APP_INSTANCE;
   const runsJobs = instance === undefined || instance === '0';
+  // Express GPS (Media Go): polls only while someone has the tracking page open and pushes position changes; one process only,
+  // plus the local QA backend (instance 1, no other jobs) so the live map can be tested there.
+  if (runsJobs || process.env.QA_BACKEND === '1') {
+    try { require('./services/expressTracking').startLive(); } catch (e) { console.error('[express-live] start:', e.message); }
+  }
   if (runsJobs) {
     startWalletAutoCloseJob();
     startOpsPoll();
@@ -528,6 +533,7 @@ if (!DOCS_ONLY) connectDB().then(async () => {
     try { require('./services/b2cOrderSheetSync').startB2cOrderSheetSync(); } catch (e) { console.error('[b2c-sheets] start:', e.message); }
     startLs2Poll();
     startLs2TripWarm();
+
     startBusinessReviewSweep();
     // Pending sponsorship transfer: alert HR twice a day until the employee leaves the system.
     startHrTransferAlerts();

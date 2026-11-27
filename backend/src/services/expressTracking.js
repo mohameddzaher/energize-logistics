@@ -60,47 +60,98 @@ function stateOf(at, speed, ignition) {
   return ignition ? 'idling' : 'stopped';
 }
 
+/** A unit row from a register object and a position record (OBJECT_GET_LOCATIONS / OBJECT_LAST_LOCATION share the shape). */
+function shapeUnit(o, l = {}) {
+  const at = parseUtc(l.dt_tracker);
+  const speed = num(l.speed) || 0;
+  const io = decodeParams(l.params);
+  return {
+    imei: String(o.imei), name: String(o.name || l.name || '').trim(), plate: plateOfName(o.name || l.name),
+    mediaGo: isMediaGo(o.name || l.name), active: String(o.active) === 'true',
+    lat: num(l.lat), lng: num(l.lng), speed, angle: num(l.angle), altitude: num(l.altitude),
+    at: at ? at.toISOString() : null, serverAt: l.dt_server ? parseUtc(l.dt_server).toISOString() : null,
+    state: stateOf(at, speed, io.ignition), io,
+  };
+}
+
+const objects = () => cache.wrap('express:objects', 10 * 60000, async () => {
+  const list = await call('USER_GET_OBJECTS');
+  return Array.isArray(list) ? list : [];
+});
+
+/** One unit's last position (~0.5 s at the provider, against ~20 s for the all-units call). */
+async function lastLocation(imei) {
+  const r = await call('OBJECT_LAST_LOCATION', { iemi: imei });
+  return (r && r[imei]) || null;
+}
+
 /**
- * Every unit with its last position. The provider takes about 20 s to answer OBJECT_GET_LOCATIONS, so the last answer is served at
- * once and refreshed in the background (fresh 25 s, kept 15 min), and while anyone watched in the last 5 min a 30 s timer keeps it
- * warm, so viewers never wait on the provider after the first load.
+ * Refreshes the given units 16 at a time and returns the new rows (a full sweep of 163 takes a few seconds).
+ * `prev` keeps a unit whose call failed, so one timeout never blanks a vehicle on the map.
  */
-let lastDemand = 0;
-let warmTimer = null;
-function keepWarm() {
-  lastDemand = Date.now();
-  if (warmTimer) return;
-  warmTimer = setInterval(() => {
-    if (Date.now() - lastDemand > 5 * 60000) { clearInterval(warmTimer); warmTimer = null; return; }
-    loadUnits().catch(() => {});
-  }, 30000);
-  if (warmTimer.unref) warmTimer.unref();
+async function sweep(list, prev = new Map()) {
+  const out = new Map(prev);
+  for (let i = 0; i < list.length; i += 16) {
+    // eslint-disable-next-line no-await-in-loop
+    await Promise.all(list.slice(i, i + 16).map(async (o) => {
+      try { const l = await lastLocation(String(o.imei)); if (l) out.set(String(o.imei), shapeUnit(o, l)); } catch (_) { /* keep the previous row */ }
+    }));
+  }
+  return out;
 }
+
+let snapshot = new Map();
+let snapshotAt = 0;
+const snapshotList = async () => { const objs = await objects(); return objs.map((o) => snapshot.get(String(o.imei)) || shapeUnit(o)); };
+
+/** Every unit with its last position: the live poller's snapshot when fresh, else one sweep (stale-while-refresh, 30 s). */
 async function units() {
-  keepWarm();
-  return loadUnits();
-}
-async function loadUnits() {
-  return cache.wrapStale('express:units', 25000, 15 * 60000, async () => {
-    const [objects, locs] = await Promise.all([
-      cache.wrap('express:objects', 10 * 60000, () => call('USER_GET_OBJECTS')),
-      call('OBJECT_GET_LOCATIONS'),
-    ]);
-    const list = Array.isArray(objects) ? objects : [];
-    return list.map((o) => {
-      const l = (locs && locs[o.imei]) || {};
-      const at = parseUtc(l.dt_tracker);
-      const speed = num(l.speed) || 0;
-      const io = decodeParams(l.params);
-      return {
-        imei: String(o.imei), name: String(o.name || l.name || '').trim(), plate: plateOfName(o.name || l.name),
-        mediaGo: isMediaGo(o.name || l.name), active: String(o.active) === 'true',
-        lat: num(l.lat), lng: num(l.lng), speed, angle: num(l.angle), altitude: num(l.altitude),
-        at: at ? at.toISOString() : null, serverAt: l.dt_server ? parseUtc(l.dt_server).toISOString() : null,
-        state: stateOf(at, speed, io.ignition), io,
-      };
-    });
+  if (Date.now() - snapshotAt < 30000 && snapshot.size) return snapshotList();
+  return cache.wrapStale('express:units', 30000, 15 * 60000, async () => {
+    snapshot = await sweep(await objects(), snapshot);
+    snapshotAt = Date.now();
+    return snapshotList();
   });
+}
+
+/**
+ * Live loop, one process only (pm2 instance 0): while anyone has the tracking page open (socket room `tracking`, counted across
+ * workers through the adapter) it refreshes moving units every 10 s, the rest every 40 s and silent ones every 5 min, and pushes
+ * only the changed rows to the room. Nobody watching costs nothing.
+ */
+const ROOM = 'tracking';
+let liveStarted = false;
+function startLive() {
+  if (liveStarted || !configured()) return;
+  liveStarted = true;
+  let tick = 0;
+  const loop = async () => {
+    try {
+      const io = require('../websocket/socketManager').getIO();
+      const viewers = io ? (await io.in(ROOM).fetchSockets().catch(() => [])).length : 0;
+      if (viewers) {
+        tick += 1;
+        const objs = await objects();
+        const due = objs.filter((o) => {
+          const u = snapshot.get(String(o.imei));
+          if (!u || tick === 1) return true;
+          if (u.state === 'offline') return tick % 30 === 0;
+          if (u.state === 'moving' || u.state === 'idling') return true;
+          return tick % 4 === 0;
+        });
+        const before = snapshot;
+        const next = await sweep(due, snapshot);
+        const changed = due.map((o) => next.get(String(o.imei))).filter((u) => {
+          const p = u && before.get(u.imei);
+          return u && (!p || p.at !== u.at || p.state !== u.state || p.lat !== u.lat || p.lng !== u.lng);
+        });
+        snapshot = next; snapshotAt = Date.now();
+        if (changed.length) io.to(ROOM).emit('tracking:positions', { units: changed, at: new Date().toISOString() });
+      } else tick = 0;
+    } catch (e) { /* the next tick retries */ }
+    setTimeout(loop, 10000).unref?.();
+  };
+  setTimeout(loop, 5000).unref?.();
 }
 
 /** One unit's raw points for [from, to); a closed window (ended over 10 min ago) is kept 6 h, an open one 30 s. */
@@ -229,4 +280,4 @@ async function fleetDistance(imeis, from, to) {
   return out;
 }
 
-module.exports = { configured, units, history, analyse, thin, fleetDistance, plateOfName, riyadhDay, LIVE_MIN, OFFLINE_MIN };
+module.exports = { configured, units, startLive, lastLocation, history, analyse, thin, fleetDistance, plateOfName, riyadhDay, LIVE_MIN, OFFLINE_MIN };

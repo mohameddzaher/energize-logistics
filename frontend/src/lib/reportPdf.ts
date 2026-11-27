@@ -36,7 +36,9 @@ export type Block =
   | { kind: 'stats'; items: { label: string; value: string; accent?: boolean }[] }
   | { kind: 'table'; head: string[]; rows: (string | { t: string; color?: string })[][]; align?: ('start' | 'end' | 'center')[] }
   | { kind: 'note'; text: string }
-  | { kind: 'spacer'; h?: number };
+  | { kind: 'spacer'; h?: number }
+  /** A drawing built by the caller (route sketch, chart); the markup is ours, never user text. */
+  | { kind: 'svg'; svg: string; caption?: string };
 
 const esc = (s: any) => String(s ?? '').replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' } as any)[c]);
 
@@ -78,6 +80,8 @@ function blockHtml(b: Block, rtl: boolean): string {
       return `<div style="font-size:11px;color:${MUTED};margin-bottom:6px;text-align:${startAlign}">${esc(b.text)}</div>`;
     case 'spacer':
       return `<div style="height:${b.h ?? 10}px"></div>`;
+    case 'svg':
+      return `<div style="margin-bottom:8px;text-align:center">${b.svg}${b.caption ? `<div style="font-size:10px;color:${MUTED};margin-top:3px">${esc(b.caption)}</div>` : ''}</div>`;
   }
 }
 

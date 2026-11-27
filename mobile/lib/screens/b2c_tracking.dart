@@ -5,6 +5,8 @@ import 'package:latlong2/latlong.dart';
 import 'package:url_launcher/url_launcher.dart';
 import '../services/api.dart';
 import '../services/lang.dart';
+import '../services/live.dart';
+import '../ui/export_sheet.dart';
 import '../ui/app_scaffold.dart';
 import '../ui/search_field.dart';
 import '../ui/theme.dart';
@@ -51,15 +53,43 @@ class _B2cTrackingScreenState extends State<B2cTrackingScreen> {
   bool _fitted = false;
   int _tab = 0;
 
+  String _liveAt = '';
+
   @override
   void initState() {
     super.initState();
     _load();
-    _timer = Timer.periodic(const Duration(seconds: 30), (_) => _load());
+    // Live: the server pushes changed positions to the `tracking` room; a slow reload keeps rider/vehicle links current.
+    _join();
+    Live.instance.on('tracking:rejoin', _join);
+    Live.instance.onData('tracking:positions', _onPositions);
+    _timer = Timer.periodic(const Duration(seconds: 120), (_) => _load());
+  }
+
+  void _join() => Live.instance.emit('join:tracking');
+
+  void _onPositions(dynamic d) {
+    if (!mounted || d is! Map) return;
+    final by = {for (final u in (d['units'] as List? ?? const [])) if (u is Map) '${u['imei']}': Map<String, dynamic>.from(u)};
+    if (by.isEmpty) return;
+    setState(() {
+      _units = [for (final u in _units) by.containsKey('${u['imei']}') ? {...u, ...by['${u['imei']}']!, 'vehicle': u['vehicle'], 'rider': u['rider']} : u];
+      _liveAt = '${d['at'] ?? ''}';
+    });
+    final sel = _units.where((u) => '${u['imei']}' == _selected).firstOrNull;
+    if (sel != null && by.containsKey(_selected) && sel['lat'] != null) {
+      try { _map.move(LatLng(_n(sel['lat']).toDouble(), _n(sel['lng']).toDouble()), _map.camera.zoom); } catch (_) {}
+    }
   }
 
   @override
-  void dispose() { _timer?.cancel(); super.dispose(); }
+  void dispose() {
+    _timer?.cancel();
+    Live.instance.emit('leave:tracking');
+    Live.instance.off('tracking:rejoin', _join);
+    Live.instance.offData('tracking:positions', _onPositions);
+    super.dispose();
+  }
 
   Future<void> _load() async {
     try {
@@ -198,7 +228,11 @@ class _B2cTrackingScreenState extends State<B2cTrackingScreen> {
   Widget build(BuildContext context) {
     return AppScaffold(
       title: Text(tr('متابعة مركبات Media Go', 'Media Go Tracking')),
-      actions: [IconButton(icon: const Icon(Icons.refresh), onPressed: _load)],
+      actions: [
+        if (_liveAt.isNotEmpty)
+          Center(child: Padding(padding: const EdgeInsetsDirectional.only(end: 4), child: Text('● ${tr('لايف', 'Live')} ${_local(_liveAt, date: false)}', style: const TextStyle(fontSize: 11.5, color: T.success, fontWeight: FontWeight.w800)))),
+        IconButton(icon: const Icon(Icons.refresh), onPressed: _load),
+      ],
       body: Column(children: [
         SizedBox(
           height: 46,
@@ -266,6 +300,26 @@ class _Period extends StatelessWidget {
       child: ListView(scrollDirection: Axis.horizontal, padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4), children: [
         for (final o in opts)
           Padding(padding: const EdgeInsetsDirectional.only(end: 6), child: ChoiceChip(label: Text(o.$1), selected: from == o.$2 && to == o.$3, onSelected: (_) => onChange(o.$2, o.$3))),
+        Padding(padding: const EdgeInsetsDirectional.only(end: 6), child: ActionChip(
+          avatar: const Icon(Icons.today, size: 16),
+          label: Text(tr('يوم محدّد', 'A day')),
+          onPressed: () async {
+            final d = await showDatePicker(context: context, initialDate: DateTime.parse(to), firstDate: DateTime(2024), lastDate: DateTime.now());
+            if (d != null) onChange(_ymd(d), _ymd(d));
+          },
+        )),
+        Padding(padding: const EdgeInsetsDirectional.only(end: 6), child: ActionChip(
+          avatar: const Icon(Icons.calendar_month, size: 16),
+          label: Text(tr('شهر محدّد', 'A month')),
+          onPressed: () async {
+            final d = await showDatePicker(context: context, initialDate: DateTime.parse(from), firstDate: DateTime(2024), lastDate: DateTime.now(),
+                helpText: tr('اختر أي يوم في الشهر', 'Pick any day in the month'), initialDatePickerMode: DatePickerMode.year);
+            if (d == null) return;
+            final end = DateTime(d.year, d.month + 1, 0);
+            final today = DateTime.now();
+            onChange(_ymd(DateTime(d.year, d.month, 1)), _ymd(end.isAfter(today) ? today : end));
+          },
+        )),
         ActionChip(
           avatar: const Icon(Icons.date_range, size: 16),
           label: Text(from == to ? from : '$from → $to'),
@@ -322,6 +376,15 @@ class _FleetDistancesState extends State<_FleetDistances> {
       if (_loading) const Expanded(child: Center(child: CircularProgressIndicator()))
       else if (_error != null) Expanded(child: ErrorRetry(message: _error!, onRetry: _load))
       else Expanded(child: ListView(padding: const EdgeInsets.all(10), children: [
+        Align(alignment: AlignmentDirectional.centerEnd, child: ExportButton(
+          fileName: 'tracking-distance-$_from-$_to', sheetName: 'Distances',
+          columns: [
+            ExportCol('اللوحة', 'Plate', (r) => r['plate']), ExportCol('Media Go', 'Media Go', (r) => r['mediaGo'] == true ? 'نعم' : ''),
+            ExportCol('الراكب', 'Rider', (r) => r['rider']), ExportCol('المشروع', 'Project', (r) => r['project']),
+            ExportCol('المدينة', 'City', (r) => r['city']), ExportCol('كم', 'km', (r) => r['km']), ExportCol('الحالة', 'State', (r) => _stateLabel('${r['state']}')),
+          ],
+          rows: () => rows,
+        )),
         Row(children: [
           Expanded(child: _Stat(tr('إجمالي الكيلومترات', 'Total km'), total.toStringAsFixed(1), T.orange)),
           const SizedBox(width: 6),
@@ -429,6 +492,17 @@ class _B2cRouteScreenState extends State<B2cRouteScreen> {
     final playIdx = _pts.isEmpty ? null : _play.round().clamp(0, _pts.length - 1);
     return AppScaffold(
       title: Text('${tr('خط سير', 'Route')} ${widget.plate}'),
+      actions: [
+        if (st != null)
+          ExportButton(
+            fileName: 'route-${widget.plate}-$_from-$_to', sheetName: 'Days',
+            columns: [
+              ExportCol('اليوم', 'Day', (r) => r['day']), ExportCol('كم', 'km', (r) => r['km']), ExportCol('وقت الحركة', 'Moving', (r) => _hm(_n(r['movingMin']))),
+              ExportCol('أعلى سرعة', 'Max speed', (r) => r['maxSpeed']), ExportCol('أول حركة', 'First move', (r) => _local(r['firstMove'], date: false)), ExportCol('آخر حركة', 'Last move', (r) => _local(r['lastMove'], date: false)),
+            ],
+            rows: () => days,
+          ),
+      ],
       body: Column(children: [
         _Period(from: _from, to: _to, onChange: (f, t) {
           final days = DateTime.parse(t).difference(DateTime.parse(f)).inDays;
@@ -486,7 +560,7 @@ class _B2cRouteScreenState extends State<B2cRouteScreen> {
               Row(children: [
                 Expanded(child: _Stat(tr('التوقّفات (5 د+)', 'Stops'), '${st['stopsCount']} · ${_hm(_n(st['stoppedMinutes']))}', T.info)),
                 const SizedBox(width: 6),
-                Expanded(child: _Stat(tr('أعلى / متوسط سرعة', 'Max / avg'), '${st['maxSpeed']} / ${st['avgMovingSpeed']}', T.ink)),
+                Expanded(child: _Stat(tr('أعلى سرعة · المتوسط', 'Max · avg'), '${st['maxSpeed']} · ${st['avgMovingSpeed']}', T.ink)),
               ]),
               const SizedBox(height: 6),
               Row(children: [

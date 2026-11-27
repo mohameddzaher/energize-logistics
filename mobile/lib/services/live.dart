@@ -81,6 +81,9 @@ class Live {
     _handlers[event]?.remove(handler);
   }
 
+  /// Sends an event to the server (room joins such as `join:tracking`).
+  void emit(String event, [dynamic data]) => _socket?.emit(event, data);
+
   void onData(String event, void Function(dynamic) handler) {
     _dataHandlers.putIfAbsent(event, () => []).add(handler);
   }

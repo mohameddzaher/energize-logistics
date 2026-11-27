@@ -107,6 +107,14 @@ const initializeSocket = (server) => {
       socket.join('workflows');
     });
 
+    // Tracking page viewers: the Express live poller runs only while this room has members (services/expressTracking.startLive).
+    socket.on('join:tracking', () => {
+      const r = String(socket.userRole || '');
+      const C = require('../config/constants');
+      if (C.isTopRole(r) || ['transition_account', 'backup_account'].includes(r) || /^(b2c_|vehicles_)/.test(r)) socket.join('tracking');
+    });
+    socket.on('leave:tracking', () => { socket.leave('tracking'); });
+
     socket.on('disconnect', () => {
       console.log(`User disconnected: ${socket.userId}`);
       // Auto-unlock any workflows locked by this user

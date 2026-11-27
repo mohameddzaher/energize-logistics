@@ -6,7 +6,8 @@ VPS_HOST="${VPS_HOST:-root@152.239.127.46}"
 VPS_KEY="${VPS_KEY:-$HOME/.ssh/energize_vps}"
 REMOTE="/opt/energize/web"
 PORT="${WEB_PORT:-3000}"
-SSH=(ssh -i "$VPS_KEY" -o ConnectTimeout=20 "$VPS_HOST")
+# Keepalive: a session that died under load used to hang the deploy for hours; it is now cut after a minute of silence.
+SSH=(ssh -i "$VPS_KEY" -o ConnectTimeout=20 -o ServerAliveInterval=10 -o ServerAliveCountMax=6 "$VPS_HOST")
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 
 say() { printf '\n\033[1m%s\033[0m\n' "$1"; }
@@ -26,11 +27,11 @@ say "Upload"
 # Order matters. While the old web server runs, it renders from whatever build is on disk but serves only the static files it knew at start, so a page opened between replacing the build and the restart asked for new chunks, got 404 and showed the generic error page.
 # So: new static files, public and manifests first (add-only, harmless to the old server); install packages while the old build is still in place; then swap the build and restart at once, leaving a window of seconds instead of the minute npm took.
 # Old `static` files are kept: names are content hashes, so old tabs keep loading theirs; files older than a week are removed after the restart.
-rsync -az -e "ssh -i $VPS_KEY -o ConnectTimeout=20" \
+rsync -az -e "ssh -i $VPS_KEY -o ConnectTimeout=20 -o ServerAliveInterval=10 -o ServerAliveCountMax=6" \
   "$HERE/frontend/.next/static/" "$VPS_HOST:$REMOTE/.next/static/"
-rsync -az --delete -e "ssh -i $VPS_KEY -o ConnectTimeout=20" \
+rsync -az --delete -e "ssh -i $VPS_KEY -o ConnectTimeout=20 -o ServerAliveInterval=10 -o ServerAliveCountMax=6" \
   "$HERE/frontend/public/" "$VPS_HOST:$REMOTE/public/"
-rsync -az -e "ssh -i $VPS_KEY -o ConnectTimeout=20" \
+rsync -az -e "ssh -i $VPS_KEY -o ConnectTimeout=20 -o ServerAliveInterval=10 -o ServerAliveCountMax=6" \
   "$HERE/frontend/package.json" "$HERE/frontend/package-lock.json" "$HERE/frontend/next.config.ts" \
   "$VPS_HOST:$REMOTE/"
 
@@ -47,7 +48,7 @@ ENVFILE
 REMOTE_SCRIPT
 
 say "Swap & run"
-rsync -az --delete -e "ssh -i $VPS_KEY -o ConnectTimeout=20" \
+rsync -az --delete -e "ssh -i $VPS_KEY -o ConnectTimeout=20 -o ServerAliveInterval=10 -o ServerAliveCountMax=6" \
   --exclude 'cache' --exclude 'static' \
   "$HERE/frontend/.next/" "$VPS_HOST:$REMOTE/.next/"
 ok "رُفعت إلى $REMOTE"

@@ -32,7 +32,8 @@ KEEP_RELEASES=5
 NPM_ENV="PUPPETEER_SKIP_DOWNLOAD=true PUPPETEER_SKIP_CHROMIUM_DOWNLOAD=true"
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-SSH=(ssh -i "$VPS_KEY" -o ConnectTimeout=15 "$VPS_HOST")
+# Keepalive: a session that died under load used to hang the deploy for hours; it is now cut after a minute of silence.
+SSH=(ssh -i "$VPS_KEY" -o ConnectTimeout=15 -o ServerAliveInterval=10 -o ServerAliveCountMax=6 "$VPS_HOST")
 
 c_ok=$'\e[32m'; c_bad=$'\e[31m'; c_dim=$'\e[2m'; c_off=$'\e[0m'
 say()  { printf '\n\e[1m%s\e[0m\n' "$*"; }
@@ -281,7 +282,7 @@ good "saved"
 say "Shipping"
 # --exclude .env and --exclude uploads are NOT optional: --delete would take the
 # server's environment file and every uploaded HR/contract document with it.
-rsync -az --delete -e "ssh -i $VPS_KEY -o ConnectTimeout=15" \
+rsync -az --delete -e "ssh -i $VPS_KEY -o ConnectTimeout=15 -o ServerAliveInterval=10 -o ServerAliveCountMax=6" \
   --exclude node_modules --exclude .git --exclude .env --exclude uploads --exclude backups --exclude '*.log' \
   backend/ "$VPS_HOST:$APP_DIR/"
 good "files in place"

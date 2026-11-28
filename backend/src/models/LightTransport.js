@@ -222,6 +222,8 @@ for (const op of ['updateOne', 'updateMany', 'findOneAndUpdate']) {
   });
 }
 employeeSchema.statics.syncRider = syncRider;
+// The rider shown on a tracked vehicle comes from this register (utils/trackingLinks).
+require('../utils/trackingLinks').attach(employeeSchema, ['vehicle', 'name', 'phone', 'projectAr', 'cityAr']);
 require('../utils/mediaGoSync').attach(employeeSchema, {
   idsOf: (docs) => docs.map((d) => d.employee).filter(Boolean),
   push: (ids, v) => require('../utils/mediaGoSync').fromRegister(ids, v),

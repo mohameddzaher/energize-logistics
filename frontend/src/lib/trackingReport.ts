@@ -62,17 +62,19 @@ export type RouteStats = {
   days: { day: string; km: number; movingMin: number; maxSpeed: number; firstMove: string | null; lastMove: string | null; points: number }[];
 };
 
-export async function routeReportPdf({ ar, unit, from, to, stats, points, days, stops, speeding }: {
+export async function routeReportPdf({ ar, unit, from, to, stats, points, days, stops, speeding, details }: {
   ar: boolean; unit: { plate: string; mediaGo?: boolean; rider?: { name?: string; project?: string; phone?: string } | null; vehicle?: { city?: string; brand?: string } | null };
   from: string; to: string; stats: RouteStats; points: [number, number, number, number][];
   /** Rows as filtered on screen (column filters); the report prints what the user sees. */
   days: RouteStats['days']; stops: RouteStats['stops']; speeding: RouteStats['speeding'];
+  /** Full vehicle / device / rider details as shown on screen; replaces the short header when given. */
+  details?: [string, string][];
 }) {
   const t = (a: string, e: string) => (ar ? a : e);
   const period = from === to ? from : `${from} → ${to}`;
   const blocks: Block[] = [
     { kind: 'title', text: t('تقرير خط سير المركبة', 'Vehicle Route Report'), sub: `${unit.plate}${unit.mediaGo ? ' · MEDIA GO' : ''} · ${period}` },
-    { kind: 'kv', items: [
+    { kind: 'kv', items: details?.length ? [...details, [t('الفترة', 'Period'), period], [t('أول / آخر إشارة', 'First / last fix'), `${fmt(stats.first)} — ${fmt(stats.last)}`]] : [
       [t('اللوحة', 'Plate'), unit.plate],
       [t('الراكب', 'Rider'), [unit.rider?.name, unit.rider?.phone].filter(Boolean).join(' · ') || '—'],
       [t('المشروع / المدينة', 'Project / city'), [unit.rider?.project, unit.vehicle?.city].filter(Boolean).join(' · ') || '—'],

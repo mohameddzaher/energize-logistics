@@ -25,8 +25,8 @@ import TrackMap, { STATE_COLOR, type UnitState, type RoutePoint } from './TrackM
 export type Unit = {
   imei: string; name: string; plate: string; mediaGo: boolean; lat: number | null; lng: number | null; speed: number; angle: number | null;
   at: string | null; state: UnitState; io: { ignition?: boolean; externalVoltage?: number; batteryVoltage?: number; satellites?: number; odometerKm?: number };
-  vehicle: { _id: string; plateNumber: string; city: string; brand: string; color: string; serviceStatus: string } | null;
-  rider: { _id?: string; name: string; phone?: string; project?: string; city?: string } | null;
+  vehicle: { _id: string; plateNumber: string; city: string; department?: string; brand: string; color: string; serviceStatus: string } | null;
+  rider: { _id?: string; name: string; phone?: string; project?: string; city?: string; idNumber?: string; workStatus?: string } | null;
 };
 type Stats = RouteStats;
 type DayRow = Stats['days'][number];
@@ -53,6 +53,37 @@ const ago = (iso: string | null, ar: boolean) => {
   if (m < 60) return ar ? `منذ ${m} د` : `${m} min ago`;
   if (m < 1440) return ar ? `منذ ${Math.floor(m / 60)} س` : `${Math.floor(m / 60)} h ago`;
   return dt(iso);
+};
+/** Every field known about a unit: vehicle (register), rider (B2C register) and device (last fix). One list for the card, Excel and PDF. */
+const detailRows = (u: Unit, ar: boolean): [string, string][] => {
+  const t = (a: string, e: string) => (ar ? a : e);
+  const v = u.vehicle; const r = u.rider; const io = u.io || {};
+  const rows: [string, string | number | null | undefined][] = [
+    [t('اللوحة', 'Plate'), u.plate],
+    [t('الماركة والطراز', 'Make / model'), v?.brand],
+    [t('اللون', 'Color'), v?.color],
+    [t('المدينة', 'City'), v?.city || r?.city],
+    [t('القسم', 'Department'), v?.department],
+    [t('حالة الخدمة', 'Service status'), v?.serviceStatus],
+    ['Media Go', u.mediaGo ? t('نعم', 'Yes') : t('لا', 'No')],
+    [t('الراكب', 'Rider'), r?.name],
+    [t('جوال الراكب', 'Rider phone'), r?.phone],
+    [t('رقم هوية الراكب', 'Rider ID'), r?.idNumber],
+    [t('المشروع', 'Project'), r?.project],
+    [t('حالة الراكب', 'Rider status'), r?.workStatus],
+    [t('اسم الجهاز', 'Device name'), u.name],
+    [t('رقم الجهاز (IMEI)', 'Device IMEI'), u.imei],
+    [t('الحالة الآن', 'State now'), STATE_AR[u.state][ar ? 0 : 1]],
+    [t('آخر إشارة', 'Last fix'), dt(u.at)],
+    [t('السرعة الآن', 'Speed now'), `${Math.round(u.speed || 0)} ${t('كم/س', 'km/h')}`],
+    [t('المحرّك', 'Ignition'), io.ignition == null ? '' : io.ignition ? t('يعمل', 'On') : t('مطفأ', 'Off')],
+    [t('جهد المركبة', 'Vehicle voltage'), io.externalVoltage != null ? `${io.externalVoltage} V` : ''],
+    [t('جهد بطارية الجهاز', 'Device battery'), io.batteryVoltage != null ? `${io.batteryVoltage} V` : ''],
+    [t('الأقمار الصناعية', 'Satellites'), io.satellites],
+    [t('عدّاد الكيلومترات', 'Odometer'), io.odometerKm != null ? `${n1(io.odometerKm)} ${t('كم', 'km')}` : ''],
+    [t('الموقع الأخير', 'Last position'), u.lat != null ? `${u.lat.toFixed(5)}, ${(u.lng as number).toFixed(5)}` : ''],
+  ];
+  return rows.filter(([, x]) => x !== undefined && x !== null && String(x) !== '').map(([k, x]) => [k, String(x)]);
 };
 const fold = (s: string) => s.replace(/[أإآ]/g, 'ا').replace(/ة/g, 'ه').replace(/ى/g, 'ي').replace(/\s+/g, '').toLowerCase();
 const lastDay = (ym: string) => { const [y, m] = ym.split('-').map(Number); return `${ym}-${String(new Date(y, m, 0).getDate()).padStart(2, '0')}`; };
@@ -109,6 +140,32 @@ function Card({ icon, label, value, sub, tone = '#0f172a' }: { icon: React.React
   );
 }
 
+/** A full-width titled block. */
+function Section({ title, tools, children }: { title: React.ReactNode; tools?: React.ReactNode; children: React.ReactNode }) {
+  return (
+    <div className="rounded-xl border border-slate-200 bg-white overflow-hidden">
+      <div className="flex flex-wrap items-center justify-between gap-2 px-3 py-2 border-b border-slate-100 bg-slate-50">
+        <span className="text-sm font-bold text-slate-800">{title}</span>
+        {tools ? <div className="flex flex-wrap items-center gap-2">{tools}</div> : null}
+      </div>
+      <div className="p-3">{children}</div>
+    </div>
+  );
+}
+
+function DetailGrid({ rows }: { rows: [string, string][] }) {
+  return (
+    <dl className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-x-4 gap-y-2">
+      {rows.map(([k, v]) => (
+        <div key={k} className="min-w-0 border-b border-slate-100 pb-1">
+          <dt className="text-[11px] font-semibold text-slate-500">{k}</dt>
+          <dd className="text-sm font-bold text-slate-800 break-words" dir="auto">{v}</dd>
+        </div>
+      ))}
+    </dl>
+  );
+}
+
 /** A table with Excel-style funnels per column (values from the rows themselves). */
 function FilterTable<T>({ ar, title, rows, cols, cf, onRow, empty, tools }: {
   ar: boolean; title: React.ReactNode; rows: T[]; cf: ReturnType<typeof useColumnFilters<T>>; cols: Col<T>[];
@@ -152,9 +209,10 @@ export default function TrackingScreen({ base, ar, only }: { base: string; ar: b
   const [loading, setLoading] = useState(!only);
   const [err, setErr] = useState('');
   const [liveAt, setLiveAt] = useState<string>('');
+  // Bumped when the register links change, so the distances tab refetches too.
+  const [linksAt, setLinksAt] = useState(0);
   const [q, setQ] = useState('');
   const [states, setStates] = useState<Set<UnitState>>(new Set());
-  const [mediaGoOnly, setMediaGoOnly] = useState(false);
   const [selected, setSelected] = useState<string | null>(only?.imei || null);
   const [follow, setFollow] = useState(!!only);
   const [tab, setTab] = useState<'live' | 'history' | 'fleet'>(only ? 'history' : 'live');
@@ -183,8 +241,11 @@ export default function TrackingScreen({ base, ar, only }: { base: string; ar: b
       setLiveAt(d.at);
     };
     s.on('tracking:positions', onPos);
+    // A vehicle flagged / unflagged Media Go, or a rider / device link changed: reload the list at once.
+    const onLinks = () => { loadUnits(); setLinksAt(Date.now()); };
+    s.on('tracking:links', onLinks);
     const id = setInterval(() => { if (!document.hidden) loadUnits(); }, 120000);
-    return () => { clearInterval(id); s.off('tracking:positions', onPos); s.off('connect', join); s.emit('leave:tracking'); };
+    return () => { clearInterval(id); s.off('tracking:positions', onPos); s.off('tracking:links', onLinks); s.off('connect', join); s.emit('leave:tracking'); };
   }, [loadUnits]);
 
   // Deep link: ?imei= or ?q= from the vehicles list or profile.
@@ -202,10 +263,10 @@ export default function TrackingScreen({ base, ar, only }: { base: string; ar: b
   }, [units]);
   const shown = useMemo(() => {
     const k = fold(q.trim());
-    return units.filter((u) => (!states.size || states.has(u.state)) && (!mediaGoOnly || u.mediaGo)
+    return units.filter((u) => (!states.size || states.has(u.state))
       && (!k || fold(`${u.name} ${u.plate} ${u.rider?.name || ''} ${u.rider?.project || ''} ${u.vehicle?.city || ''} ${u.imei}`).includes(k)))
       .sort((a, b) => ORDER.indexOf(a.state) - ORDER.indexOf(b.state) || a.plate.localeCompare(b.plate));
-  }, [units, q, states, mediaGoOnly]);
+  }, [units, q, states]);
   const sel = units.find((u) => u.imei === selected) || null;
   const mapUnits = useMemo(() => shown.map((u) => ({ imei: u.imei, plate: u.plate, lat: u.lat, lng: u.lng, angle: u.angle, speed: u.speed, state: u.state, label: u.rider?.name || '' })), [shown]);
 
@@ -282,19 +343,36 @@ export default function TrackingScreen({ base, ar, only }: { base: string; ar: b
   const daysShown = st ? cfDays.apply(st.days, Object.fromEntries(dayCols.map((c) => [c.key, c.get]))) : [];
   const stopsShown = cfStops.apply(stopRows, Object.fromEntries(stopCols.map((c) => [c.key, c.get])));
   const speedShown = st ? cfSpeed.apply(st.speeding, Object.fromEntries(speedCols.map((c) => [c.key, c.get]))) : [];
+  const kvCols: ExportColumn[] = [{ header: t('البيان', 'Item'), key: 'k' }, { header: t('القيمة', 'Value'), key: 'v' }];
   const xDays: ExportColumn[] = [{ header: t('اليوم', 'Day'), key: 'day' }, { header: t('كم', 'km'), key: 'km', type: 'number' }, { header: t('وقت الحركة', 'Moving'), key: 'moving' }, { header: t('أعلى سرعة', 'Max speed'), key: 'maxSpeed', type: 'number' }, { header: t('أول حركة', 'First move'), key: 'first' }, { header: t('آخر حركة', 'Last move'), key: 'last' }];
   const xStops: ExportColumn[] = [{ header: '#', key: 'n' }, { header: t('من', 'From'), key: 'from' }, { header: t('إلى', 'To'), key: 'to' }, { header: t('الدقائق', 'Minutes'), key: 'minutes', type: 'number' }, { header: t('الموقع', 'Location'), key: 'map' }];
   const xSpeed: ExportColumn[] = [{ header: t('الوقت', 'Time'), key: 'at' }, { header: t('السرعة', 'Speed'), key: 'maxSpeed', type: 'number' }, { header: t('ثوانٍ', 'Seconds'), key: 'seconds', type: 'number' }, { header: t('الموقع', 'Location'), key: 'map' }];
+  const daysSheet = (days: DayRow[]) => ({ name: t('الأيام', 'Days'), rows: days.map((d) => ({ ...d, moving: hm(d.movingMin), first: tm(d.firstMove), last: tm(d.lastMove) })), columns: xDays });
+  const stopsSheet = (stops: StopRow[]) => ({ name: t('التوقفات', 'Stops'), rows: stops.map((s) => ({ n: `P${s.n}`, from: dt(s.from), to: dt(s.to), minutes: s.minutes, map: `https://www.google.com/maps?q=${s.lat},${s.lng}` })), columns: xStops });
+  const speedSheet = (sp: SpeedRow[]) => ({ name: t('تجاوز السرعة', 'Speeding'), rows: sp.map((s) => ({ at: dt(s.at), maxSpeed: s.maxSpeed, seconds: s.seconds, map: `https://www.google.com/maps?q=${s.lat},${s.lng}` })), columns: xSpeed });
+  const statRows = (x: Stats): [string, string][] => [
+    [t('الفترة', 'Period'), from === to ? from : `${from} → ${to}`],
+    [t('المسافة', 'Distance'), `${n1(x.km)} ${t('كم', 'km')}`],
+    [t('متوسط اليوم', 'Per day'), x.days.length ? `${n1(x.km / x.days.length)} ${t('كم', 'km')}` : '—'],
+    [t('وقت الحركة', 'Moving time'), hm(x.movingMinutes)],
+    [t('تشغيل بدون حركة', 'Idling'), hm(x.idleMinutes)],
+    [t('التوقّفات (5 د+)', 'Stops (5 min+)'), String(x.stopsCount)],
+    [t('مجموع التوقّف', 'Stopped time'), hm(x.stoppedMinutes)],
+    [t('أعلى سرعة', 'Max speed'), `${x.maxSpeed} ${t('كم/س', 'km/h')}`],
+    [t('متوسط سرعة الحركة', 'Avg moving speed'), `${x.avgMovingSpeed} ${t('كم/س', 'km/h')}`],
+    [`${t('تجاوزات السرعة فوق', 'Speeding over')} ${x.speedLimit}`, String(x.speedingCount)],
+    [t('أيّام بحركة', 'Days moving'), `${x.days.filter((d) => d.km >= 1).length} ${t('من', 'of')} ${x.days.length}`],
+    [t('أول / آخر إشارة', 'First / last fix'), `${dt(x.first)} — ${dt(x.last)}`],
+  ];
+  const summarySheet = (u: Unit | null, x: Stats) => ({ name: t('الملخّص', 'Summary'), rows: [...(u ? detailRows(u, ar) : []), ...statRows(x)].map(([k, v]) => ({ k, v })), columns: kvCols });
   const routeSheets = (days: DayRow[], stops: StopRow[], sp: SpeedRow[]) => [
-    { name: t('الأيام', 'Days'), rows: days.map((d) => ({ ...d, moving: hm(d.movingMin), first: tm(d.firstMove), last: tm(d.lastMove) })), columns: xDays },
-    { name: t('التوقفات', 'Stops'), rows: stops.map((s) => ({ n: `P${s.n}`, from: dt(s.from), to: dt(s.to), minutes: s.minutes, map: `https://www.google.com/maps?q=${s.lat},${s.lng}` })), columns: xStops },
-    { name: t('تجاوز السرعة', 'Speeding'), rows: sp.map((s) => ({ at: dt(s.at), maxSpeed: s.maxSpeed, seconds: s.seconds, map: `https://www.google.com/maps?q=${s.lat},${s.lng}` })), columns: xSpeed },
+    ...(st ? [summarySheet(hu, st)] : []), daysSheet(days), stopsSheet(stops), speedSheet(sp),
   ];
   const [pdfBusy, setPdfBusy] = useState(false);
   const routePdf = async () => {
     if (!route || !st || !hu) return;
     setPdfBusy(true);
-    try { await routeReportPdf({ ar, unit: hu, from, to, stats: st, points: route.points, days: daysShown, stops: stopsShown, speeding: speedShown }); } catch (e: any) { notify(e?.message || 'PDF failed', 'error'); }
+    try { await routeReportPdf({ ar, unit: hu, from, to, stats: st, points: route.points, days: daysShown, stops: stopsShown, speeding: speedShown, details: detailRows(hu, ar) }); } catch (e: any) { notify(e?.message || 'PDF failed', 'error'); }
     setPdfBusy(false);
   };
   const openHistory = (imei: string, f?: string, tt?: string) => { setHUnit(imei); if (f) setFrom(f); if (tt) setTo(tt); setTab('history'); };
@@ -312,7 +390,7 @@ export default function TrackingScreen({ base, ar, only }: { base: string; ar: b
     setSumBusy(true);
     api.get<{ rows: SumRow[] }>(`${base}/summary?from=${sFrom}&to=${sTo}`, { timeoutMs: 120000 }).then((d) => { if (!dead) setSum(d); }).catch((e) => { if (!dead) setErr(e?.message || 'Failed'); }).finally(() => { if (!dead) setSumBusy(false); });
     return () => { dead = true; };
-  }, [tab, sFrom, sTo, base, only, sDays]);
+  }, [tab, sFrom, sTo, base, only, sDays, linksAt]);
   const cfFleet = useColumnFilters<SumRow>();
   const fleetCols: Col<SumRow>[] = [
     { key: 'plate', label: t('اللوحة', 'Plate'), get: (r) => r.plate, show: (r) => <b>{r.plate}{r.mediaGo && <span className="ms-1 rounded bg-violet-100 text-violet-700 text-[9px] font-bold px-1">MG</span>}</b> },
@@ -326,11 +404,20 @@ export default function TrackingScreen({ base, ar, only }: { base: string; ar: b
   ];
   const fleetBase = useMemo(() => {
     const k = fold(sq.trim());
-    return (sum?.rows || []).filter((r) => (!mediaGoOnly || r.mediaGo) && (!k || fold(`${r.name} ${r.plate} ${r.rider} ${r.project} ${r.city}`).includes(k)));
-  }, [sum, sq, mediaGoOnly]);
+    return (sum?.rows || []).filter((r) => (!k || fold(`${r.name} ${r.plate} ${r.rider} ${r.project} ${r.city}`).includes(k)));
+  }, [sum, sq]);
   const fleetShown = cfFleet.apply(fleetBase, Object.fromEntries(fleetCols.map((c) => [c.key, c.get])));
   const xFleet: ExportColumn[] = [{ header: t('اللوحة', 'Plate'), key: 'plate' }, { header: 'Media Go', key: 'mg' }, { header: t('الراكب', 'Rider'), key: 'rider' }, { header: t('المشروع', 'Project'), key: 'project' }, { header: t('المدينة', 'City'), key: 'city' }, { header: t('كم', 'km'), key: 'km', type: 'number' }, { header: t('الحالة الآن', 'State now'), key: 'state' }];
-  const fleetSheet = (rows: SumRow[]) => [{ name: t('المسافات', 'Distances'), rows: rows.map((r) => ({ ...r, mg: r.mediaGo ? 'نعم' : '', state: STATE_AR[r.state][ar ? 0 : 1] })), columns: xFleet }];
+  const fleetSheet = (rows: SumRow[]) => {
+    const moved = rows.filter((r) => (r.km || 0) >= 1); const total = rows.reduce((a, r) => a + (r.km || 0), 0);
+    return [
+      { name: t('الملخّص', 'Summary'), rows: [
+        [t('الفترة', 'Period'), sFrom === sTo ? sFrom : `${sFrom} → ${sTo}`], [t('عدد المركبات', 'Vehicles'), rows.length], [t('إجمالي الكيلومترات', 'Total km'), n1(total)],
+        [t('مركبات تحرّكت', 'Moved'), moved.length], [t('لم تتحرّك', 'Did not move'), rows.length - moved.length], [t('متوسط كم للمتحرّكة', 'Avg km (moved)'), moved.length ? n1(total / moved.length) : 0],
+      ].map(([k, v]) => ({ k, v })), columns: kvCols },
+      { name: t('المسافات', 'Distances'), rows: rows.map((r) => ({ ...r, mg: r.mediaGo ? 'نعم' : '', state: STATE_AR[r.state][ar ? 0 : 1] })), columns: xFleet },
+    ];
+  };
   const fleetPdf = async () => {
     setPdfBusy(true);
     try { await fleetReportPdf({ ar, from: sFrom, to: sTo, rows: fleetShown.map((r) => ({ ...r, stateLabel: STATE_AR[r.state][ar ? 0 : 1] })) }); } catch (e: any) { notify(e?.message || 'PDF failed', 'error'); }
@@ -344,6 +431,14 @@ export default function TrackingScreen({ base, ar, only }: { base: string; ar: b
       className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg bg-slate-900 hover:bg-slate-800 text-white text-xs font-semibold disabled:opacity-50">
       {pdfBusy ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : <FileDown className="w-3.5 h-3.5" />}{t('تقرير PDF', 'PDF report')}
     </button>
+  );
+
+  /** One table on its own: the rows as filtered, or all of them. */
+  const tableExport = (fileName: string, shownSheet: any, allSheet: any) => (
+    <ExportMenu lang={ar ? 'ar' : 'en'} fileName={fileName} options={[
+      { key: 'shown', label: scope.shown, sheets: [shownSheet] },
+      { key: 'all', label: scope.all, sheets: [allSheet] },
+    ]} />
   );
 
   const unitCard = sel && (
@@ -370,6 +465,12 @@ export default function TrackingScreen({ base, ar, only }: { base: string; ar: b
         {sel.lat != null && <a href={`https://www.google.com/maps?q=${sel.lat},${sel.lng}`} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-semibold bg-slate-100 text-slate-700"><MapPin className="w-3.5 h-3.5" />Google Maps</a>}
         {!only && sel.vehicle && <Link href={`/system/vehicles/registry/${sel.vehicle._id}`} className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-semibold bg-slate-100 text-slate-700">{t('ملف المركبة', 'Vehicle file')}</Link>}
       </div>
+      <details className="rounded-lg border border-slate-100 bg-slate-50 px-2 py-1.5">
+        <summary className="cursor-pointer text-xs font-bold text-slate-700">{t('التفاصيل الكاملة', 'Full details')}</summary>
+        <dl className="mt-2 grid grid-cols-2 gap-x-3 gap-y-1.5">
+          {detailRows(sel, ar).map(([k, v]) => (<div key={k} className="min-w-0"><dt className="text-[10px] text-slate-500">{k}</dt><dd className="text-xs font-semibold text-slate-800 break-words" dir="auto">{v}</dd></div>))}
+        </dl>
+      </details>
       {follow && !only && <div className="text-[11px] text-slate-400">{t('الخط المتقطّع البرتقالي = آخر نصف ساعة', 'Dashed orange line = last half hour')}</div>}
     </div>
   );
@@ -419,55 +520,58 @@ export default function TrackingScreen({ base, ar, only }: { base: string; ar: b
         {!hUnit && <div className="text-sm text-slate-500">{t('اختر مركبة لعرض سجل حركتها', 'Pick a vehicle to see its movement history')}</div>}
       </div>
       {hUnit && (
-        <div className="grid grid-cols-1 xl:grid-cols-[minmax(0,1fr)_380px] gap-3">
-          <div className="space-y-2">
-            <div className="relative">
-              <TrackMap ar={ar} units={[]} route={route?.points || null} stops={st?.stops || []} speeding={st?.speeding || []} speedLimit={limit} playIndex={play} focus={hFocus} height={only ? 420 : 520} />
-              {routeBusy && <div className="absolute inset-0 bg-white/60 flex items-center justify-center rounded-xl z-[500]"><span className="flex items-center gap-2 text-sm font-semibold text-slate-700 bg-white px-3 py-2 rounded-lg shadow"><RefreshCw className="w-4 h-4 animate-spin" />{t('جارٍ تحميل خط السير…', 'Loading route…')}{hDays > 3 ? <span className="text-[11px] font-normal text-slate-500">{t('أوّل فتح لفترة طويلة يجلبها من المزوّد ثم تُحفظ، وبعدها تفتح فورًا', 'The first open of a long period fetches it once; it then opens instantly')}</span> : null}</span></div>}
-            </div>
-            {route && route.points.length > 1 && (
-              <div className="flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2">
-                <button type="button" onClick={() => { if (play == null || play >= route.points.length - 1) setPlay(0); setPlaying((p) => !p); }} className="p-1.5 rounded-lg bg-slate-900 text-white">{playing ? <Pause className="w-4 h-4" /> : <Play className="w-4 h-4" />}</button>
-                <input type="range" min={0} max={route.points.length - 1} value={play ?? 0} onChange={(e) => { setPlaying(false); setPlay(Number(e.target.value)); }} className="flex-1 accent-[#f37121]" />
-                <span className="text-[11px] tabular-nums text-slate-600 w-40 text-end" dir="ltr">{playPoint ? `${dt(new Date(playPoint[0]).toISOString())} · ${Math.round(playPoint[3])} km/h` : t('تشغيل المسار', 'Replay')}</span>
-              </div>
-            )}
-            {route && !routeBusy && route.points.length < 2 && <div className="text-sm text-slate-500 px-1">{t('لا حركة مسجّلة في هذه الفترة', 'No movement recorded in this period')}</div>}
-            <div className="flex flex-wrap gap-3 text-[11px] text-slate-500 px-1">
-              <span className="flex items-center gap-1"><span className="w-4 h-1 rounded bg-[#16a34a]" />{t('سير عادي', 'Normal')}</span>
-              <span className="flex items-center gap-1"><span className="w-4 h-1 rounded bg-[#f97316]" />{t('قرب حدّ السرعة', 'Near limit')}</span>
-              <span className="flex items-center gap-1"><span className="w-4 h-1 rounded bg-[#dc2626]" />{t('تجاوز السرعة', 'Over limit')}</span>
-              <span className="flex items-center gap-1"><span className="rounded bg-slate-800 text-white px-1 text-[9px] font-bold">P1</span>{t('توقّف 5 د+', 'Stop 5 min+')}</span>
-            </div>
+        <div className="space-y-2">
+          {/* Own stacking context: Leaflet panes (z 400+) and the loading veil never cover the vehicle picker above. */}
+          <div className="relative isolate z-0">
+            <TrackMap ar={ar} units={[]} route={route?.points || null} stops={st?.stops || []} speeding={st?.speeding || []} speedLimit={limit} playIndex={play} focus={hFocus} height={only ? 420 : 520} />
+            {routeBusy && <div className="absolute inset-0 bg-white/60 flex items-center justify-center rounded-xl z-[1000]"><span className="flex items-center gap-2 text-sm font-semibold text-slate-700 bg-white px-3 py-2 rounded-lg shadow"><RefreshCw className="w-4 h-4 animate-spin" />{t('جارٍ تحميل خط السير…', 'Loading route…')}{hDays > 3 ? <span className="text-[11px] font-normal text-slate-500">{t('أوّل فتح لفترة طويلة يجلبها من المزوّد ثم تُحفظ، وبعدها تفتح فورًا', 'The first open of a long period fetches it once; it then opens instantly')}</span> : null}</span></div>}
           </div>
-          {st ? (
-            <div className="space-y-2">
-              <div className="grid grid-cols-2 gap-2">
-                <Card icon={<RouteIcon className="w-3.5 h-3.5" />} label={t('المسافة', 'Distance')} value={`${n1(st.km)} ${t('كم', 'km')}`} sub={st.days.length > 1 ? `${t('متوسط اليوم', 'per day')} ${n1(st.km / st.days.length)}` : undefined} tone="#f37121" />
-                <Card icon={<Navigation className="w-3.5 h-3.5" />} label={t('وقت الحركة', 'Moving')} value={hm(st.movingMinutes)} sub={`${t('تشغيل بدون حركة', 'idling')} ${hm(st.idleMinutes)}`} tone="#16a34a" />
-                <Card icon={<ParkingCircle className="w-3.5 h-3.5" />} label={t('التوقّفات (5 د+)', 'Stops (5 min+)')} value={st.stopsCount} sub={`${t('مجموعها', 'total')} ${hm(st.stoppedMinutes)}`} tone="#2563eb" />
-                <Card icon={<Gauge className="w-3.5 h-3.5" />} label={t('أعلى سرعة', 'Max speed')} value={`${st.maxSpeed} ${t('كم/س', 'km/h')}`} sub={`${t('متوسط سرعة الحركة', 'avg moving')} ${st.avgMovingSpeed} ${t('كم/س', 'km/h')}`} />
-                <Card icon={<AlertTriangle className="w-3.5 h-3.5" />} label={`${t('تجاوز', 'Over')} ${st.speedLimit} ${t('كم/س', 'km/h')}`} value={st.speedingCount} sub={t('مرّة', 'times')} tone={st.speedingCount ? '#dc2626' : '#0f172a'} />
-                <Card icon={<Clock className="w-3.5 h-3.5" />} label={t('أيّام بحركة', 'Days moving')} value={`${st.days.filter((d) => d.km >= 1).length} ${t('من', 'of')} ${st.days.length}`} sub={`${dt(st.first)} — ${dt(st.last)}`} />
-              </div>
-              <div className="flex flex-wrap gap-2">
-                {pdfBtn(routePdf, !hu)}
-                <ExportMenu lang={ar ? 'ar' : 'en'} fileName={`route-${hu?.plate || hUnit}-${from}-${to}`} options={[
-                  { key: 'shown', label: scope.shown, sheets: routeSheets(daysShown, stopsShown, speedShown) },
-                  { key: 'all', label: scope.all, sheets: routeSheets(st.days, stopRows, st.speeding) },
-                ]} />
-              </div>
-              <div className="text-[11px] text-slate-400">{t('التقرير والتصدير «المعروض» يتبعان فلاتر الجداول تحت', 'The PDF and the “shown” export follow the table filters below')}</div>
+          {route && route.points.length > 1 && (
+            <div className="flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2">
+              <button type="button" onClick={() => { if (play == null || play >= route.points.length - 1) setPlay(0); setPlaying((p) => !p); }} className="p-1.5 rounded-lg bg-slate-900 text-white">{playing ? <Pause className="w-4 h-4" /> : <Play className="w-4 h-4" />}</button>
+              <input type="range" min={0} max={route.points.length - 1} value={play ?? 0} onChange={(e) => { setPlaying(false); setPlay(Number(e.target.value)); }} className="flex-1 accent-[#f37121]" />
+              <span className="text-[11px] tabular-nums text-slate-600 w-40 text-end" dir="ltr">{playPoint ? `${dt(new Date(playPoint[0]).toISOString())} · ${Math.round(playPoint[3])} km/h` : t('تشغيل المسار', 'Replay')}</span>
             </div>
-          ) : <div />}
+          )}
+          {route && !routeBusy && route.points.length < 2 && <div className="text-sm text-slate-500 px-1">{t('لا حركة مسجّلة في هذه الفترة', 'No movement recorded in this period')}</div>}
+          <div className="flex flex-wrap gap-3 text-[11px] text-slate-500 px-1">
+            <span className="flex items-center gap-1"><span className="w-4 h-1 rounded bg-[#16a34a]" />{t('سير عادي', 'Normal')}</span>
+            <span className="flex items-center gap-1"><span className="w-4 h-1 rounded bg-[#f97316]" />{t('قرب حدّ السرعة', 'Near limit')}</span>
+            <span className="flex items-center gap-1"><span className="w-4 h-1 rounded bg-[#dc2626]" />{t('تجاوز السرعة', 'Over limit')}</span>
+            <span className="flex items-center gap-1"><span className="rounded bg-slate-800 text-white px-1 text-[9px] font-bold">P1</span>{t('توقّف 5 د+', 'Stop 5 min+')}</span>
+          </div>
         </div>
       )}
       {st && (
         <>
+          {/* Each block takes the full width, one under another, with its own title. */}
+          <Section title={t('ملخّص الفترة', 'Period summary')} tools={<>
+            {pdfBtn(routePdf, !hu)}
+            <ExportMenu lang={ar ? 'ar' : 'en'} fileName={`route-${hu?.plate || hUnit}-${from}-${to}`} label={t('تصدير الصفحة كاملة', 'Export whole page')} options={[
+              { key: 'shown', label: scope.shown, sheets: routeSheets(daysShown, stopsShown, speedShown) },
+              { key: 'all', label: scope.all, sheets: routeSheets(st.days, stopRows, st.speeding) },
+            ]} />
+          </>}>
+            <div className="grid grid-cols-2 sm:grid-cols-3 xl:grid-cols-6 gap-2">
+              <Card icon={<RouteIcon className="w-3.5 h-3.5" />} label={t('المسافة', 'Distance')} value={`${n1(st.km)} ${t('كم', 'km')}`} sub={st.days.length > 1 ? `${t('متوسط اليوم', 'per day')} ${n1(st.km / st.days.length)}` : undefined} tone="#f37121" />
+              <Card icon={<Navigation className="w-3.5 h-3.5" />} label={t('وقت الحركة', 'Moving')} value={hm(st.movingMinutes)} sub={`${t('تشغيل بدون حركة', 'idling')} ${hm(st.idleMinutes)}`} tone="#16a34a" />
+              <Card icon={<ParkingCircle className="w-3.5 h-3.5" />} label={t('التوقّفات (5 د+)', 'Stops (5 min+)')} value={st.stopsCount} sub={`${t('مجموعها', 'total')} ${hm(st.stoppedMinutes)}`} tone="#2563eb" />
+              <Card icon={<Gauge className="w-3.5 h-3.5" />} label={t('أعلى سرعة', 'Max speed')} value={`${st.maxSpeed} ${t('كم/س', 'km/h')}`} sub={`${t('متوسط سرعة الحركة', 'avg moving')} ${st.avgMovingSpeed} ${t('كم/س', 'km/h')}`} />
+              <Card icon={<AlertTriangle className="w-3.5 h-3.5" />} label={`${t('تجاوز', 'Over')} ${st.speedLimit} ${t('كم/س', 'km/h')}`} value={st.speedingCount} sub={t('مرّة', 'times')} tone={st.speedingCount ? '#dc2626' : '#0f172a'} />
+              <Card icon={<Clock className="w-3.5 h-3.5" />} label={t('أيّام بحركة', 'Days moving')} value={`${st.days.filter((d) => d.km >= 1).length} ${t('من', 'of')} ${st.days.length}`} sub={`${dt(st.first)} — ${dt(st.last)}`} />
+            </div>
+            <div className="text-[11px] text-slate-400 mt-2">{t('التقرير والتصدير «المعروض» يتبعان فلاتر الجداول تحت', 'The PDF and the “shown” export follow the table filters below')}</div>
+          </Section>
+          {hu && (
+            <Section title={t('بيانات المركبة والراكب والجهاز', 'Vehicle, rider and device')} tools={
+              <ExportMenu lang={ar ? 'ar' : 'en'} fileName={`vehicle-${hu.plate}`} options={[{ key: 'all', label: scope.all, sheets: [{ name: t('البيانات', 'Details'), rows: detailRows(hu, ar).map(([k, v]) => ({ k, v })), columns: kvCols }] }]} />
+            }>
+              <DetailGrid rows={detailRows(hu, ar)} />
+            </Section>
+          )}
           {st.days.length > 1 && (
-            <div className="rounded-xl border border-slate-200 bg-white p-3">
-              <div className="text-xs font-bold text-slate-700 mb-2">{t('الكيلومترات يوميًا — اضغط على يوم في الجدول لفتحه', 'Kilometres per day — click a day in the table to open it')}</div>
-              <div style={{ height: 200 }}>
+            <Section title={t('الكيلومترات يوميًا — اضغط على يوم في الجدول لفتحه', 'Kilometres per day — click a day in the table to open it')}>
+              <div style={{ height: 220 }}>
                 <ResponsiveContainer width="100%" height="100%">
                   <BarChart data={st.days}>
                     <CartesianGrid strokeDasharray="3 3" vertical={false} /><XAxis dataKey="day" tickFormatter={(d) => String(d).slice(5)} fontSize={10} /><YAxis fontSize={10} width={34} />
@@ -475,13 +579,14 @@ export default function TrackingScreen({ base, ar, only }: { base: string; ar: b
                   </BarChart>
                 </ResponsiveContainer>
               </div>
-            </div>
+            </Section>
           )}
-          <div className="grid grid-cols-1 2xl:grid-cols-3 gap-3">
-            <FilterTable ar={ar} title={t('الأيام', 'Days')} rows={st.days} cols={dayCols} cf={cfDays} empty={t('لا أيام', 'No days')} onRow={(d) => { setFrom(d.day); setTo(d.day); }} />
-            <FilterTable ar={ar} title={t('التوقّفات', 'Stops')} rows={stopRows} cols={stopCols} cf={cfStops} empty={t('لا توقّفات 5 دقائق فأكثر', 'No stops of 5 min+')} onRow={(s) => setHFocus({ lat: s.lat, lng: s.lng, zoom: 17 })} />
-            <FilterTable ar={ar} title={t('تجاوزات السرعة', 'Speeding')} rows={st.speeding} cols={speedCols} cf={cfSpeed} empty={t('لا تجاوزات', 'No speeding')} onRow={(s) => setHFocus({ lat: s.lat, lng: s.lng, zoom: 16 })} />
-          </div>
+          <FilterTable ar={ar} title={t('الأيام', 'Days')} rows={st.days} cols={dayCols} cf={cfDays} empty={t('لا أيام', 'No days')} onRow={(d) => { setFrom(d.day); setTo(d.day); }}
+            tools={tableExport(`days-${hu?.plate || hUnit}-${from}-${to}`, daysSheet(daysShown), daysSheet(st.days))} />
+          <FilterTable ar={ar} title={t('التوقّفات', 'Stops')} rows={stopRows} cols={stopCols} cf={cfStops} empty={t('لا توقّفات 5 دقائق فأكثر', 'No stops of 5 min+')} onRow={(s) => setHFocus({ lat: s.lat, lng: s.lng, zoom: 17 })}
+            tools={tableExport(`stops-${hu?.plate || hUnit}-${from}-${to}`, stopsSheet(stopsShown), stopsSheet(stopRows))} />
+          <FilterTable ar={ar} title={t('تجاوزات السرعة', 'Speeding')} rows={st.speeding} cols={speedCols} cf={cfSpeed} empty={t('لا تجاوزات', 'No speeding')} onRow={(s) => setHFocus({ lat: s.lat, lng: s.lng, zoom: 16 })}
+            tools={tableExport(`speeding-${hu?.plate || hUnit}-${from}-${to}`, speedSheet(speedShown), speedSheet(st.speeding))} />
         </>
       )}
     </div>
@@ -558,7 +663,7 @@ export default function TrackingScreen({ base, ar, only }: { base: string; ar: b
             <button key={k} type="button" onClick={() => setTab(k)} className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md text-sm font-semibold ${tab === k ? 'bg-slate-900 text-white' : 'text-slate-600'}`}>{ic}{l}</button>
           ))}
         </div>
-        <label className="inline-flex items-center gap-1.5 text-sm text-slate-700"><input type="checkbox" checked={mediaGoOnly} onChange={(e) => setMediaGoOnly(e.target.checked)} className="accent-violet-600" />{t('Media Go فقط', 'Media Go only')} ({counts.mediaGo ?? 0})</label>
+        <span className="inline-flex items-center gap-1.5 rounded-lg bg-violet-50 text-violet-700 text-xs font-semibold px-2.5 py-1.5">{t('مركبات Media Go المعلَّمة في سجلّ مركبات النقل الخفيف فقط', 'Only vehicles flagged Media Go in the light-transport register')}</span>
         {tab === 'live' && (
           <span className="ms-auto inline-flex items-center gap-1.5 text-[11px] text-emerald-700 font-semibold">
             <span className="relative flex w-2 h-2"><span className="absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75 animate-ping" /><span className="relative inline-flex rounded-full w-2 h-2 bg-emerald-500" /></span>

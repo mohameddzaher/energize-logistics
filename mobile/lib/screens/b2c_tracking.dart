@@ -31,6 +31,73 @@ String _local(String? iso, {bool date = true}) {
 }
 String _hm(num min) => '${min ~/ 60}:${(min % 60).round().toString().padLeft(2, '0')}';
 num _n(dynamic v) => v is num ? v : (num.tryParse('$v') ?? 0);
+/// Every field known about a unit: vehicle (register), rider (B2C register) and device (last fix); same list as the web page.
+List<(String, String)> _details(Map u) {
+  final v = (u['vehicle'] as Map?) ?? const {};
+  final r = (u['rider'] as Map?) ?? const {};
+  final io = (u['io'] as Map?) ?? const {};
+  final rows = <(String, Object?)>[
+    (tr('اللوحة', 'Plate'), u['plate']),
+    (tr('الماركة والطراز', 'Make / model'), v['brand']),
+    (tr('اللون', 'Color'), v['color']),
+    (tr('المدينة', 'City'), '${v['city'] ?? ''}'.isNotEmpty ? v['city'] : r['city']),
+    (tr('القسم', 'Department'), v['department']),
+    (tr('حالة الخدمة', 'Service status'), v['serviceStatus']),
+    ('Media Go', u['mediaGo'] == true ? tr('نعم', 'Yes') : tr('لا', 'No')),
+    (tr('الراكب', 'Rider'), r['name']),
+    (tr('جوال الراكب', 'Rider phone'), r['phone']),
+    (tr('رقم هوية الراكب', 'Rider ID'), r['idNumber']),
+    (tr('المشروع', 'Project'), r['project']),
+    (tr('حالة الراكب', 'Rider status'), r['workStatus']),
+    (tr('اسم الجهاز', 'Device name'), u['name']),
+    (tr('رقم الجهاز (IMEI)', 'Device IMEI'), u['imei']),
+    (tr('الحالة الآن', 'State now'), _stateLabel('${u['state']}')),
+    (tr('آخر إشارة', 'Last fix'), _local(u['at'] as String?)),
+    (tr('السرعة الآن', 'Speed now'), '${_n(u['speed']).round()} ${tr('كم/س', 'km/h')}'),
+    (tr('المحرّك', 'Ignition'), io['ignition'] == null ? null : io['ignition'] == true ? tr('يعمل', 'On') : tr('مطفأ', 'Off')),
+    (tr('جهد المركبة', 'Vehicle voltage'), io['externalVoltage'] == null ? null : '${io['externalVoltage']} V'),
+    (tr('جهد بطارية الجهاز', 'Device battery'), io['batteryVoltage'] == null ? null : '${io['batteryVoltage']} V'),
+    (tr('الأقمار الصناعية', 'Satellites'), io['satellites']),
+    (tr('عدّاد الكيلومترات', 'Odometer'), io['odometerKm'] == null ? null : '${_n(io['odometerKm']).toStringAsFixed(1)} ${tr('كم', 'km')}'),
+    (tr('الموقع الأخير', 'Last position'), u['lat'] == null ? null : '${_n(u['lat']).toStringAsFixed(5)}, ${_n(u['lng']).toStringAsFixed(5)}'),
+  ];
+  return [for (final x in rows) if ('${x.$2 ?? ''}'.isNotEmpty) (x.$1, '${x.$2}')];
+}
+
+Widget _detailGrid(List<(String, String)> rows) => Wrap(spacing: 12, runSpacing: 8, children: [
+      for (final x in rows)
+        SizedBox(width: 150, child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Text(x.$1, style: const TextStyle(fontSize: 10.5, color: T.inkSoft, fontWeight: FontWeight.w600)),
+          Text(x.$2, style: const TextStyle(fontSize: 12.5, fontWeight: FontWeight.w800)),
+        ])),
+    ]);
+
+const _kvCols = [ExportCol('البيان', 'Item', _k), ExportCol('القيمة', 'Value', _v)];
+dynamic _k(Map<String, dynamic> r) => r['k'];
+dynamic _v(Map<String, dynamic> r) => r['v'];
+List<Map<String, dynamic>> _kv(List<(String, String)> rows) => [for (final x in rows) {'k': x.$1, 'v': x.$2}];
+
+/// A full-width titled block with optional tools (exports) in its header.
+class _Section extends StatelessWidget {
+  final String title;
+  final Widget child;
+  final List<Widget> tools;
+  final Color? color;
+  const _Section(this.title, this.child, {this.tools = const [], this.color});
+  @override
+  Widget build(BuildContext context) => Padding(
+        padding: const EdgeInsets.only(bottom: 10),
+        child: AppCard(
+          padding: const EdgeInsets.fromLTRB(12, 6, 6, 12),
+          child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+            Row(children: [Expanded(child: Text(title, style: TextStyle(fontWeight: FontWeight.w900, color: color))), ...tools]),
+            const Divider(height: 10),
+            Padding(padding: const EdgeInsetsDirectional.only(end: 6), child: child),
+          ]),
+        ),
+      );
+}
+
 Color _speedColor(num s, num limit) => s > limit ? T.danger : s > limit * 0.75 ? const Color(0xFFF97316) : s > 3 ? const Color(0xFF16A34A) : T.inkFaint;
 
 class B2cTrackingScreen extends StatefulWidget {
@@ -47,7 +114,6 @@ class _B2cTrackingScreenState extends State<B2cTrackingScreen> {
   String? _error;
   String _q = '';
   final Set<String> _filter = {};
-  bool _mediaGoOnly = false;
   String? _selected;
   Timer? _timer;
   bool _fitted = false;
@@ -63,10 +129,14 @@ class _B2cTrackingScreenState extends State<B2cTrackingScreen> {
     _join();
     Live.instance.on('tracking:rejoin', _join);
     Live.instance.onData('tracking:positions', _onPositions);
+    // A vehicle flagged / unflagged Media Go or a rider / device link changed: reload the list and the distances at once.
+    Live.instance.on('tracking:links', _onLinks);
     _timer = Timer.periodic(const Duration(seconds: 120), (_) => _load());
   }
 
   void _join() => Live.instance.emit('join:tracking');
+  int _linksAt = 0;
+  void _onLinks() { _load(); if (mounted) setState(() => _linksAt = DateTime.now().millisecondsSinceEpoch); }
 
   void _onPositions(dynamic d) {
     if (!mounted || d is! Map) return;
@@ -88,6 +158,7 @@ class _B2cTrackingScreenState extends State<B2cTrackingScreen> {
     Live.instance.emit('leave:tracking');
     Live.instance.off('tracking:rejoin', _join);
     Live.instance.offData('tracking:positions', _onPositions);
+    Live.instance.off('tracking:links', _onLinks);
     super.dispose();
   }
 
@@ -118,7 +189,6 @@ class _B2cTrackingScreenState extends State<B2cTrackingScreen> {
     final order = ['moving', 'idling', 'stopped', 'late', 'offline'];
     final l = _units.where((u) {
       if (_filter.isNotEmpty && !_filter.contains(u['state'])) return false;
-      if (_mediaGoOnly && u['mediaGo'] != true) return false;
       if (k.isEmpty) return true;
       final r = (u['rider'] as Map?) ?? const {};
       final v = (u['vehicle'] as Map?) ?? const {};
@@ -167,6 +237,11 @@ class _B2cTrackingScreenState extends State<B2cTrackingScreen> {
         ]),
         if ('${r['phone'] ?? ''}'.isNotEmpty)
           TextButton.icon(onPressed: () => launchUrl(Uri.parse('tel:${r['phone']}')), icon: const Icon(Icons.call, size: 16), label: Text('${r['phone']}')),
+        ExpansionTile(
+          dense: true, tilePadding: EdgeInsets.zero, childrenPadding: const EdgeInsets.only(bottom: 6),
+          title: Text(tr('التفاصيل الكاملة', 'Full details'), style: const TextStyle(fontSize: 12.5, fontWeight: FontWeight.w800)),
+          children: [ConstrainedBox(constraints: const BoxConstraints(maxHeight: 220), child: SingleChildScrollView(child: _detailGrid(_details(u))))],
+        ),
       ]),
     );
   }
@@ -244,7 +319,6 @@ class _B2cTrackingScreenState extends State<B2cTrackingScreen> {
                 avatar: CircleAvatar(radius: 5, backgroundColor: _stateColor[s.$1]),
                 label: Text('${tr(s.$2, s.$3)} ${_counts[s.$1] ?? ''}'), selected: _filter.contains(s.$1),
                 onSelected: (on) => setState(() => on ? _filter.add(s.$1) : _filter.remove(s.$1)))),
-            FilterChip(label: Text('Media Go ${_counts['mediaGo'] ?? ''}'), selected: _mediaGoOnly, onSelected: (v) => setState(() => _mediaGoOnly = v)),
           ]),
         ),
         Padding(
@@ -271,7 +345,7 @@ class _B2cTrackingScreenState extends State<B2cTrackingScreen> {
                 ]))
               : _error != null && _units.isEmpty
                   ? ErrorRetry(message: _error!, onRetry: _load)
-                  : _tab == 0 ? _mapView() : _tab == 1 ? _listView() : _FleetDistances(mediaGoOnly: _mediaGoOnly, q: _q),
+                  : _tab == 0 ? _mapView() : _tab == 1 ? _listView() : _FleetDistances(key: ValueKey(_linksAt), q: _q),
         ),
       ]),
     );
@@ -334,10 +408,14 @@ class _Period extends StatelessWidget {
   }
 }
 
+final _distCols = [
+  ExportCol('اللوحة', 'Plate', (r) => r['plate']), ExportCol('الراكب', 'Rider', (r) => r['rider']), ExportCol('المشروع', 'Project', (r) => r['project']),
+  ExportCol('المدينة', 'City', (r) => r['city']), ExportCol('كم', 'km', (r) => r['km']), ExportCol('الحالة', 'State', (r) => _stateLabel('${r['state']}')),
+];
+
 class _FleetDistances extends StatefulWidget {
-  final bool mediaGoOnly;
   final String q;
-  const _FleetDistances({required this.mediaGoOnly, required this.q});
+  const _FleetDistances({super.key, required this.q});
   @override
   State<_FleetDistances> createState() => _FleetDistancesState();
 }
@@ -368,7 +446,7 @@ class _FleetDistancesState extends State<_FleetDistances> {
   @override
   Widget build(BuildContext context) {
     final k = widget.q.trim().toLowerCase();
-    final rows = _rows.where((r) => (!widget.mediaGoOnly || r['mediaGo'] == true) && (k.isEmpty || '${r['plate']} ${r['rider']} ${r['project']} ${r['city']}'.toLowerCase().contains(k))).toList();
+    final rows = _rows.where((r) => (k.isEmpty || '${r['plate']} ${r['rider']} ${r['project']} ${r['city']}'.toLowerCase().contains(k))).toList();
     final total = rows.fold<num>(0, (a, r) => a + _n(r['km']));
     final moved = rows.where((r) => _n(r['km']) >= 1).length;
     return Column(children: [
@@ -376,14 +454,16 @@ class _FleetDistancesState extends State<_FleetDistances> {
       if (_loading) const Expanded(child: Center(child: CircularProgressIndicator()))
       else if (_error != null) Expanded(child: ErrorRetry(message: _error!, onRetry: _load))
       else Expanded(child: ListView(padding: const EdgeInsets.all(10), children: [
-        Align(alignment: AlignmentDirectional.centerEnd, child: ExportButton(
-          fileName: 'tracking-distance-$_from-$_to', sheetName: 'Distances',
-          columns: [
-            ExportCol('اللوحة', 'Plate', (r) => r['plate']), ExportCol('Media Go', 'Media Go', (r) => r['mediaGo'] == true ? 'نعم' : ''),
-            ExportCol('الراكب', 'Rider', (r) => r['rider']), ExportCol('المشروع', 'Project', (r) => r['project']),
-            ExportCol('المدينة', 'City', (r) => r['city']), ExportCol('كم', 'km', (r) => r['km']), ExportCol('الحالة', 'State', (r) => _stateLabel('${r['state']}')),
-          ],
-          rows: () => rows,
+        Align(alignment: AlignmentDirectional.centerEnd, child: TextButton.icon(
+          icon: const Icon(Icons.file_download_outlined, size: 18), label: Text(tr('تصدير الصفحة كاملة', 'Export whole page')),
+          onPressed: () => exportExcel(context, fileName: 'tracking-distance-$_from-$_to', sheets: [
+            (tr('الملخّص', 'Summary'), _kvCols, _kv([
+              (tr('الفترة', 'Period'), _from == _to ? _from : '$_from → $_to'), (tr('عدد المركبات', 'Vehicles'), '${rows.length}'),
+              (tr('إجمالي الكيلومترات', 'Total km'), total.toStringAsFixed(1)), (tr('تحرّكت', 'Moved'), '$moved'), (tr('لم تتحرّك', 'Did not move'), '${rows.length - moved}'),
+              (tr('متوسط كم للمتحرّكة', 'Avg km (moved)'), moved > 0 ? (total / moved).toStringAsFixed(1) : '0'),
+            ])),
+            (tr('المسافات', 'Distances'), _distCols, rows),
+          ]),
         )),
         Row(children: [
           Expanded(child: _Stat(tr('إجمالي الكيلومترات', 'Total km'), total.toStringAsFixed(1), T.orange)),
@@ -442,6 +522,7 @@ class _B2cRouteScreenState extends State<B2cRouteScreen> {
   late String _to = widget.to ?? _from;
   List<List<num>> _pts = [];
   Map<String, dynamic>? _st;
+  Map<String, dynamic>? _unit;
   bool _loading = true;
   String? _error;
   double _play = 0;
@@ -457,7 +538,7 @@ class _B2cRouteScreenState extends State<B2cRouteScreen> {
       final d = await Api.instance.get('${widget.base}/units/${widget.imei}/history?from=$_from&to=$_to');
       if (!mounted || s != _seq) return;
       final pts = [for (final p in (d['points'] as List? ?? const [])) [for (final x in (p as List)) _n(x)]];
-      setState(() { _pts = pts; _st = Map<String, dynamic>.from(d['stats'] ?? {}); _loading = false; _play = 0; });
+      setState(() { _pts = pts; _st = Map<String, dynamic>.from(d['stats'] ?? {}); _unit = d['unit'] is Map ? Map<String, dynamic>.from(d['unit']) : null; _loading = false; _play = 0; });
       if (pts.length > 1) {
         WidgetsBinding.instance.addPostFrameCallback((_) {
           try { _map.fitCamera(CameraFit.bounds(bounds: LatLngBounds.fromPoints([for (final p in pts) LatLng(p[1].toDouble(), p[2].toDouble())]), padding: const EdgeInsets.all(30))); } catch (_) {}
@@ -494,13 +575,15 @@ class _B2cRouteScreenState extends State<B2cRouteScreen> {
       title: Text('${tr('خط سير', 'Route')} ${widget.plate}'),
       actions: [
         if (st != null)
-          ExportButton(
-            fileName: 'route-${widget.plate}-$_from-$_to', sheetName: 'Days',
-            columns: [
-              ExportCol('اليوم', 'Day', (r) => r['day']), ExportCol('كم', 'km', (r) => r['km']), ExportCol('وقت الحركة', 'Moving', (r) => _hm(_n(r['movingMin']))),
-              ExportCol('أعلى سرعة', 'Max speed', (r) => r['maxSpeed']), ExportCol('أول حركة', 'First move', (r) => _local(r['firstMove'], date: false)), ExportCol('آخر حركة', 'Last move', (r) => _local(r['lastMove'], date: false)),
-            ],
-            rows: () => days,
+          IconButton(
+            tooltip: tr('تصدير الصفحة كاملة', 'Export whole page'),
+            icon: const Icon(Icons.file_download_outlined),
+            onPressed: () => exportExcel(context, fileName: 'route-${widget.plate}-$_from-$_to', sheets: [
+              (tr('الملخّص', 'Summary'), _kvCols, _kv([...(_unit == null ? <(String, String)>[] : _details(_unit!)), ..._statRows(st)])),
+              (tr('الأيام', 'Days'), _dayCols, days),
+              (tr('التوقفات', 'Stops'), _stopCols, _stopRows(stops)),
+              (tr('تجاوز السرعة', 'Speeding'), _speedCols, speeding),
+            ]),
           ),
       ],
       body: Column(children: [
@@ -549,30 +632,31 @@ class _B2cRouteScreenState extends State<B2cRouteScreen> {
             ),
           if (st != null) Padding(
             padding: const EdgeInsets.all(10),
+            // Each block takes the full width, one under another, with its own title and export.
             child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
               if (_pts.length < 2) Padding(padding: const EdgeInsets.only(bottom: 8), child: Text(tr('لا حركة مسجّلة في هذه الفترة', 'No movement in this period'), style: const TextStyle(color: T.inkSoft))),
-              Row(children: [
-                Expanded(child: _Stat(tr('المسافة', 'Distance'), '${_n(st['km']).toStringAsFixed(1)} ${tr('كم', 'km')}', T.orange)),
-                const SizedBox(width: 6),
-                Expanded(child: _Stat(tr('وقت الحركة', 'Moving'), _hm(_n(st['movingMinutes'])), T.success)),
+              _Section(tr('ملخّص الفترة', 'Period summary'), Column(children: [
+                for (final x in [
+                  (tr('المسافة', 'Distance'), '${_n(st['km']).toStringAsFixed(1)} ${tr('كم', 'km')}', T.orange),
+                  (tr('وقت الحركة', 'Moving'), _hm(_n(st['movingMinutes'])), T.success),
+                  (tr('تشغيل بدون حركة', 'Idling'), _hm(_n(st['idleMinutes'])), T.warn),
+                  (tr('التوقّفات (5 د+)', 'Stops (5 min+)'), '${st['stopsCount']} · ${_hm(_n(st['stoppedMinutes']))}', T.info),
+                  (tr('أعلى سرعة · متوسط الحركة', 'Max · avg moving'), '${st['maxSpeed']} · ${st['avgMovingSpeed']} ${tr('كم/س', 'km/h')}', T.ink),
+                  ('${tr('تجاوز', 'Over')} $limit ${tr('كم/س', 'km/h')}', '${st['speedingCount']}', _n(st['speedingCount']) > 0 ? T.danger : T.ink),
+                  (tr('أيّام بحركة', 'Days moving'), '${days.where((d) => _n(d['km']) >= 1).length} ${tr('من', 'of')} ${days.length}', T.ink),
+                ])
+                  Padding(padding: const EdgeInsets.only(bottom: 6), child: _Stat(x.$1, x.$2, x.$3)),
+              ]), tools: [
+                IconButton(visualDensity: VisualDensity.compact, tooltip: tr('تصدير Excel', 'Export to Excel'), icon: const Icon(Icons.file_download_outlined, size: 20),
+                    onPressed: () => exportExcel(context, fileName: 'route-summary-${widget.plate}-$_from-$_to', sheets: [(tr('الملخّص', 'Summary'), _kvCols, _kv(_statRows(st)))])),
               ]),
-              const SizedBox(height: 6),
-              Row(children: [
-                Expanded(child: _Stat(tr('التوقّفات (5 د+)', 'Stops'), '${st['stopsCount']} · ${_hm(_n(st['stoppedMinutes']))}', T.info)),
-                const SizedBox(width: 6),
-                Expanded(child: _Stat(tr('أعلى سرعة · المتوسط', 'Max · avg'), '${st['maxSpeed']} · ${st['avgMovingSpeed']}', T.ink)),
-              ]),
-              const SizedBox(height: 6),
-              Row(children: [
-                Expanded(child: _Stat('${tr('تجاوز', 'Over')} $limit ${tr('كم/س', 'km/h')}', '${st['speedingCount']}', _n(st['speedingCount']) > 0 ? T.danger : T.ink)),
-                const SizedBox(width: 6),
-                Expanded(child: _Stat(tr('تشغيل بدون حركة', 'Idling'), _hm(_n(st['idleMinutes'])), T.warn)),
-              ]),
-              if (days.length > 1) ...[
-                const SizedBox(height: 12),
-                Text(tr('الكيلومترات يوميًا', 'Kilometres per day'), style: const TextStyle(fontWeight: FontWeight.w800)),
-                const SizedBox(height: 6),
-                Builder(builder: (_) {
+              if (_unit != null)
+                _Section(tr('بيانات المركبة والراكب والجهاز', 'Vehicle, rider and device'), _detailGrid(_details(_unit!)), tools: [
+                  IconButton(visualDensity: VisualDensity.compact, tooltip: tr('تصدير Excel', 'Export to Excel'), icon: const Icon(Icons.file_download_outlined, size: 20),
+                      onPressed: () => exportExcel(context, fileName: 'vehicle-${widget.plate}', sheets: [(tr('البيانات', 'Details'), _kvCols, _kv(_details(_unit!)))])),
+                ]),
+              if (days.isNotEmpty)
+                _Section(tr('الأيام — اضغط يومًا لفتحه', 'Days — tap one to open it'), Builder(builder: (_) {
                   final mx = days.fold<num>(1, (a, d) => _n(d['km']) > a ? _n(d['km']) : a);
                   return Column(children: [
                     for (final d in days)
@@ -588,34 +672,63 @@ class _B2cRouteScreenState extends State<B2cRouteScreen> {
                         ),
                       ),
                   ]);
-                }),
-              ],
-              if (stops.isNotEmpty) ...[
-                const SizedBox(height: 12),
-                Text('${tr('التوقّفات', 'Stops')} (${st['stopsCount']})', style: const TextStyle(fontWeight: FontWeight.w800)),
-                for (var i = 0; i < stops.length; i++)
-                  ListTile(
-                    dense: true, contentPadding: EdgeInsets.zero,
-                    title: Text('P${i + 1} · ${_local(stops[i]['from'])} – ${_local(stops[i]['to'], date: false)}'),
-                    trailing: Text(_hm(_n(stops[i]['minutes'])), style: const TextStyle(fontWeight: FontWeight.w800, color: T.info)),
-                    onTap: () => _map.move(LatLng(_n(stops[i]['lat']).toDouble(), _n(stops[i]['lng']).toDouble()), 17),
-                  ),
-              ],
-              if (speeding.isNotEmpty) ...[
-                const SizedBox(height: 12),
-                Text('${tr('تجاوزات السرعة', 'Speeding')} (${st['speedingCount']})', style: const TextStyle(fontWeight: FontWeight.w800, color: T.danger)),
-                for (final s in speeding)
-                  ListTile(
-                    dense: true, contentPadding: EdgeInsets.zero,
-                    title: Text('${_local(s['at'])} · ${s['seconds']} ${tr('ث', 's')}'),
-                    trailing: Text('${s['maxSpeed']} ${tr('كم/س', 'km/h')}', style: const TextStyle(fontWeight: FontWeight.w800, color: T.danger)),
-                    onTap: () => _map.move(LatLng(_n(s['lat']).toDouble(), _n(s['lng']).toDouble()), 16),
-                  ),
-              ],
+                }), tools: [ExportButton(fileName: 'days-${widget.plate}-$_from-$_to', sheetName: tr('الأيام', 'Days'), columns: _dayCols, rows: () => days)]),
+              _Section('${tr('التوقّفات', 'Stops')} (${st['stopsCount']})', stops.isEmpty
+                  ? Text(tr('لا توقّفات 5 دقائق فأكثر', 'No stops of 5 min+'), style: const TextStyle(color: T.inkSoft))
+                  : Column(children: [
+                      for (var i = 0; i < stops.length; i++)
+                        ListTile(
+                          dense: true, contentPadding: EdgeInsets.zero,
+                          title: Text('P${i + 1} · ${_local(stops[i]['from'])} – ${_local(stops[i]['to'], date: false)}'),
+                          trailing: Text(_hm(_n(stops[i]['minutes'])), style: const TextStyle(fontWeight: FontWeight.w800, color: T.info)),
+                          onTap: () => _map.move(LatLng(_n(stops[i]['lat']).toDouble(), _n(stops[i]['lng']).toDouble()), 17),
+                        ),
+                    ]), tools: [ExportButton(fileName: 'stops-${widget.plate}-$_from-$_to', sheetName: tr('التوقفات', 'Stops'), columns: _stopCols, rows: () => _stopRows(stops))]),
+              _Section('${tr('تجاوزات السرعة', 'Speeding')} (${st['speedingCount']})', speeding.isEmpty
+                  ? Text(tr('لا تجاوزات', 'No speeding'), style: const TextStyle(color: T.inkSoft))
+                  : Column(children: [
+                      for (final s in speeding)
+                        ListTile(
+                          dense: true, contentPadding: EdgeInsets.zero,
+                          title: Text('${_local(s['at'])} · ${s['seconds']} ${tr('ث', 's')}'),
+                          trailing: Text('${s['maxSpeed']} ${tr('كم/س', 'km/h')}', style: const TextStyle(fontWeight: FontWeight.w800, color: T.danger)),
+                          onTap: () => _map.move(LatLng(_n(s['lat']).toDouble(), _n(s['lng']).toDouble()), 16),
+                        ),
+                    ]), color: T.danger, tools: [ExportButton(fileName: 'speeding-${widget.plate}-$_from-$_to', sheetName: tr('تجاوز السرعة', 'Speeding'), columns: _speedCols, rows: () => speeding)]),
             ]),
           ),
         ])),
       ]),
     );
   }
+}
+
+final _dayCols = [
+  ExportCol('اليوم', 'Day', (r) => r['day']), ExportCol('كم', 'km', (r) => r['km']), ExportCol('وقت الحركة', 'Moving', (r) => _hm(_n(r['movingMin']))),
+  ExportCol('أعلى سرعة', 'Max speed', (r) => r['maxSpeed']), ExportCol('أول حركة', 'First move', (r) => _local(r['firstMove'] as String?, date: false)), ExportCol('آخر حركة', 'Last move', (r) => _local(r['lastMove'] as String?, date: false)),
+];
+final _stopCols = [
+  ExportCol('#', '#', (r) => r['n']), ExportCol('من', 'From', (r) => _local(r['from'] as String?)), ExportCol('إلى', 'To', (r) => _local(r['to'] as String?)),
+  ExportCol('الدقائق', 'Minutes', (r) => r['minutes']), ExportCol('الموقع', 'Location', (r) => 'https://www.google.com/maps?q=${r['lat']},${r['lng']}'),
+];
+final _speedCols = [
+  ExportCol('الوقت', 'Time', (r) => _local(r['at'] as String?)), ExportCol('السرعة', 'Speed', (r) => r['maxSpeed']), ExportCol('ثوانٍ', 'Seconds', (r) => r['seconds']),
+  ExportCol('الموقع', 'Location', (r) => 'https://www.google.com/maps?q=${r['lat']},${r['lng']}'),
+];
+List<Map<String, dynamic>> _stopRows(List<Map<String, dynamic>> stops) => [for (var i = 0; i < stops.length; i++) {...stops[i], 'n': 'P${i + 1}'}];
+List<(String, String)> _statRows(Map<String, dynamic> st) {
+  final days = List<Map>.from(st['days'] ?? const []);
+  return [
+    (tr('المسافة', 'Distance'), '${_n(st['km']).toStringAsFixed(1)} ${tr('كم', 'km')}'),
+    (tr('متوسط اليوم', 'Per day'), days.isEmpty ? '—' : '${(_n(st['km']) / days.length).toStringAsFixed(1)} ${tr('كم', 'km')}'),
+    (tr('وقت الحركة', 'Moving time'), _hm(_n(st['movingMinutes']))),
+    (tr('تشغيل بدون حركة', 'Idling'), _hm(_n(st['idleMinutes']))),
+    (tr('التوقّفات (5 د+)', 'Stops (5 min+)'), '${st['stopsCount']}'),
+    (tr('مجموع التوقّف', 'Stopped time'), _hm(_n(st['stoppedMinutes']))),
+    (tr('أعلى سرعة', 'Max speed'), '${st['maxSpeed']} ${tr('كم/س', 'km/h')}'),
+    (tr('متوسط سرعة الحركة', 'Avg moving speed'), '${st['avgMovingSpeed']} ${tr('كم/س', 'km/h')}'),
+    ('${tr('تجاوزات السرعة فوق', 'Speeding over')} ${st['speedLimit']}', '${st['speedingCount']}'),
+    (tr('أيّام بحركة', 'Days moving'), '${days.where((d) => _n(d['km']) >= 1).length} ${tr('من', 'of')} ${days.length}'),
+    (tr('أول / آخر إشارة', 'First / last fix'), '${_local(st['first'] as String?)} — ${_local(st['last'] as String?)}'),
+  ];
 }

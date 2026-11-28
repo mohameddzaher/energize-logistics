@@ -33,23 +33,29 @@ async function links() {
   });
 }
 
-async function linkedUnits() {
+/** The B2C mount is the Media Go page: only vehicles flagged Media Go in the register. The vehicles mount sees every unit. */
+const mediaGoScope = (req) => /\/b2c(\/|$)/.test(String(req.baseUrl || ''));
+
+async function linkedUnits(req) {
   const [list, l] = await Promise.all([ex.units(), links()]);
-  return list.map((u) => {
+  const all = list.map((u) => {
     const v = l.byImei.get(u.imei) || l.byPlate.get(canonicalPlateKey(u.plate)) || null;
     const r = v ? l.riderOf.get(String(v._id)) : null;
     return {
       ...u,
+      // Media Go is the register's flag (light-transport vehicles / vehicle registry), never the provider's unit name.
+      mediaGo: !!v?.mediaGo,
       vehicle: v ? { _id: String(v._id), plateNumber: v.plateNumber, city: v.cityAr || '', department: v.departmentAr || '', brand: [v.brandAr, v.modelAr].filter(Boolean).join(' '), color: v.colorAr || '', serviceStatus: v.serviceStatusAr || '', mediaGo: !!v.mediaGo } : null,
-      rider: r ? { _id: String(r._id), name: r.name, phone: r.phone || '', project: r.projectAr || '', city: r.cityAr || '' } : (v?.actualDriver?.name ? { name: v.actualDriver.name } : null),
+      rider: r ? { _id: String(r._id), name: r.name, phone: r.phone || '', project: r.projectAr || '', city: r.cityAr || '', idNumber: r.idNumber || '', workStatus: r.workStatusAr || '' } : (v?.actualDriver?.name ? { name: v.actualDriver.name } : null),
     };
   });
+  return req && mediaGoScope(req) ? all.filter((u) => u.mediaGo) : all;
 }
 
 /** GET /tracking/units — every unit with its last position, state and links, plus state counts. */
 exports.units = async (req, res) => {
   try {
-    const list = await linkedUnits();
+    const list = await linkedUnits(req);
     const counts = { total: list.length, moving: 0, idling: 0, stopped: 0, late: 0, offline: 0, mediaGo: 0, linked: 0 };
     list.forEach((u) => { counts[u.state] += 1; if (u.mediaGo) counts.mediaGo += 1; if (u.vehicle) counts.linked += 1; });
     res.json({ units: list, counts, liveMinutes: ex.LIVE_MIN, at: new Date().toISOString() });
@@ -66,8 +72,8 @@ exports.history = async (req, res) => {
     if (!(from < to)) return res.status(400).json({ message: 'الفترة غير صحيحة' });
     if (to - from > 31.5 * 24 * 3600000) return res.status(400).json({ message: 'أقصى فترة 31 يومًا' });
     const end = to > new Date() ? new Date() : to;
-    const unit = (await linkedUnits()).find((u) => u.imei === imei);
-    if (!unit) return res.status(404).json({ message: 'الجهاز غير موجود لدى مزوّد التتبّع' });
+    const unit = (await linkedUnits(req)).find((u) => u.imei === imei);
+    if (!unit) return res.status(404).json({ message: mediaGoScope(req) ? 'هذه المركبة ليست من مركبات Media Go' : 'الجهاز غير موجود لدى مزوّد التتبّع' });
     const pts = await ex.history(imei, from, end);
     const speedLimit = Math.min(200, Math.max(20, Number(req.query.speedLimit) || 80));
     res.json({
@@ -86,7 +92,7 @@ exports.summary = async (req, res) => {
     const to = endOf(String(req.query.to || req.query.from || today));
     if (!(from < to) || to - from > 62.5 * 24 * 3600000) return res.status(400).json({ message: 'الفترة غير صحيحة (أقصى 62 يومًا)' });
     const end = to > new Date() ? new Date() : to;
-    const list = await linkedUnits();
+    const list = await linkedUnits(req);
     const imeis = list.map((u) => u.imei);
     // Closed days come from the stored copies (one query); only today, and units missing a stored day, ask the provider.
     const days = ex.daysBetween(ex.riyadhDay(from), ex.riyadhDay(end));
@@ -125,7 +131,7 @@ exports.byVehicle = async (req, res) => {
   try {
     if (!mongoose.isValidObjectId(String(req.params.vehicleId))) return res.status(400).json({ message: 'معرّف غير صالح' });
     if (!ex.configured()) return res.json({ unit: null, configured: false });
-    const unit = (await linkedUnits()).find((u) => u.vehicle && u.vehicle._id === String(req.params.vehicleId)) || null;
+    const unit = (await linkedUnits(req)).find((u) => u.vehicle && u.vehicle._id === String(req.params.vehicleId)) || null;
     res.json({ unit, configured: true });
   } catch (e) { fail(res, e, 'تعذّر جلب موقع المركبة'); }
 };

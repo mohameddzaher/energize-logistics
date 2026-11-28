@@ -161,5 +161,6 @@ export default function TrackMap({ units = [], selected, onSelect, follow, trail
 
   useEffect(() => { if (focus && map.current) map.current.setView([focus.lat, focus.lng], focus.zoom || 16); }, [focus]);
 
-  return <div ref={box} className="w-full rounded-xl overflow-hidden border border-slate-200 bg-slate-100" style={{ height }} />;
+  // isolate: Leaflet panes (z 400+) stay inside the map and never cover dropdowns or menus outside it.
+  return <div ref={box} className="relative isolate z-0 w-full rounded-xl overflow-hidden border border-slate-200 bg-slate-100" style={{ height }} />;
 }

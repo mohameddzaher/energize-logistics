@@ -455,6 +455,9 @@ for (const op of ['findOneAndUpdate', 'updateOne', 'updateMany']) {
   });
 }
 
+// Tracking screens read these fields; a change refreshes them at once (utils/trackingLinks).
+require('../utils/trackingLinks').attach(vehicleMasterSchema, ['mediaGo', 'plateNumber', 'gps', 'archived', 'cityAr', 'departmentAr', 'brandAr', 'modelAr', 'colorAr', 'actualDriver', 'serviceStatusAr']);
+
 module.exports = {
   VehicleMaster: mongoose.models.VehicleMaster || mongoose.model('VehicleMaster', vehicleMasterSchema),
   VehicleRegistryConfig: mongoose.models.VehicleRegistryConfig || mongoose.model('VehicleRegistryConfig', vehicleRegistryConfigSchema),

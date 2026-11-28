@@ -277,7 +277,7 @@ export default function ShipmentRequestsBoard({ mode }: { mode: BoardMode }) {
       { key: 'branch', ar: 'الفرع', en: 'Branch', read: (r) => r.branch || '' },
       { key: 'blNumber', ar: 'رقم البوليصة', en: 'BL', read: (r) => r.blNumber || '' },
       { key: 'containerNumber', ar: 'رقم الحاوية', en: 'Container', read: (r) => r.containerNumber || '' },
-      { key: 'notes', ar: 'ملاحظات', en: 'Notes', read: (r) => r.notes || '' },
+      { key: 'notes', ar: 'التفاصيل', en: 'Details', read: (r) => r.notes || '' },
     ];
     return c;
   // eslint-disable-next-line react-hooks/exhaustive-deps

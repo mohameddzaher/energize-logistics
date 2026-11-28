@@ -639,7 +639,7 @@ class _ShipmentRequestFormScreenState extends State<ShipmentRequestFormScreen> {
                         for (final f in _fields.where((f) => f['group'] == g.$1)) Padding(padding: const EdgeInsets.only(top: 8), child: _field(f)),
                         if (g.$1 == 'pickup_delivery') ...[
                           const SizedBox(height: 8),
-                          _plainText('notes', tr('ملاحظة الرحلة', 'Trip note')),
+                          _plainText('notes', tr('التفاصيل', 'Details')),
                           const SizedBox(height: 8),
                           _plainText('blNumber', tr('رقم البوليصة (اختياري)', 'B/L number (optional)')),
                           const SizedBox(height: 8),
@@ -825,7 +825,7 @@ class _ShipmentRequestsScreenState extends State<ShipmentRequestsScreen> {
       ExportCol('الفرع', 'Branch', (r) => r['branch']),
       ExportCol('رقم البوليصة', 'BL', (r) => r['blNumber']),
       ExportCol('رقم الحاوية', 'Container', (r) => r['containerNumber']),
-      ExportCol('ملاحظات', 'Notes', (r) => r['notes']),
+      ExportCol('التفاصيل', 'Details', (r) => r['notes']),
     ];
   }
 
@@ -1460,7 +1460,7 @@ class _ShipmentRequestDetailScreenState extends State<ShipmentRequestDetailScree
                       _kv(tr('نوع الدفع', 'Payment'), '${r['paymentSubtype'] ?? ''}'.isEmpty ? '' : soPaymentKindLabel(r['paymentSubtype'])),
                       _kv(tr('مندوب المبيعات', 'Operational sales'), r['salesRepName']),
                       _kv(tr('طلبه', 'Requested by'), r['createdByName']),
-                      _kv(tr('ملاحظة الرحلة', 'Trip note'), r['notes']),
+                      _kv(tr('التفاصيل', 'Details'), r['notes']),
                       _kv(tr('رقم البوليصة', 'B/L'), r['blNumber']),
                       _kv(tr('رقم الحاوية', 'Container'), r['containerNumber']),
                       _kv(tr('يعمل عليه', 'Handled by'), '${r['handlerName'] ?? ''}'.isEmpty ? '' : '${r['handlerName']}${srHm(r['claimedUntil']).isEmpty ? '' : ' · ${tr('حتى', 'until')} ${srHm(r['claimedUntil'])}'}'),
@@ -1665,6 +1665,25 @@ String _regIqama(Map<String, dynamic> d) {
   return d['employee'] != null ? 'hr' : '';
 }
 String _digits(String v) => v.replaceAllMapped(RegExp('[٠-٩]'), (m) => '${'٠١٢٣٤٥٦٧٨٩'.indexOf(m[0]!)}').replaceAll(RegExp(r'\s'), '');
+/// Saudi mobile in any spelling → 05XXXXXXXX, '' when it is not one (the server applies the same rule, services/driverPhone).
+String _saMobile(String v) {
+  final m = RegExp(r'^(?:\+?966|00966|0)?(5\d{8})$').firstMatch(_digits(v).replaceAll(RegExp(r'[\-().]'), ''));
+  return m == null ? '' : '0${m.group(1)}';
+}
+bool _phoneBad(String v) => v.trim().isNotEmpty && _saMobile(v).isEmpty;
+
+/// «التفاصيل»: the request's note printed on the transport order; edited at completion it changes on the request and its orders.
+Widget _detailsCard(TextEditingController c) => Padding(
+      padding: const EdgeInsets.only(bottom: 10),
+      child: AppCard(child: TextField(
+        controller: c, minLines: 2, maxLines: 5, maxLength: 2000,
+        decoration: InputDecoration(
+          labelText: tr('التفاصيل', 'Details'),
+          helperText: tr('تُطبع في أمر النقل، وتُطبع آخرُ صيغةٍ مكتوبة عند التحميل.', 'Printed on the transport order; the latest text prints.'),
+          helperMaxLines: 2,
+        ),
+      )),
+    );
 
 // ── Vendors: completing the trucks ──────────────────────────────────────────
 
@@ -1695,13 +1714,28 @@ class _Truck {
   final drIqama = TextEditingController();
   // Iqama typed for a picked driver whose register row has none; saved to his row.
   final pickedIqama = TextEditingController();
+  // Picked driver's mobile, editable; a change is saved to his register row (HR-linked drivers read it from their file).
+  final pickedPhone = TextEditingController();
+  String regPhone = '';
+  String phoneFor = '';
   final buy = TextEditingController();
   final advance = TextEditingController();
   // Cost centre label from the so_cost_center list.
   final costCenter = TextEditingController();
   List<Map<String, dynamic>> vehicles = [];
   List<Map<String, dynamic>> drivers = [];
-  void dispose() { for (final c in [flName, flPhone, plate, drName, drPhone, drIqama, pickedIqama, buy, advance, costCenter]) { c.dispose(); } }
+  void dispose() { for (final c in [flName, flPhone, plate, drName, drPhone, drIqama, pickedIqama, pickedPhone, buy, advance, costCenter]) { c.dispose(); } }
+  /// Loads the picked driver's mobile into the field once per driver.
+  void syncPhone() {
+    final id = '${driver?['_id'] ?? ''}';
+    if (id == phoneFor) return;
+    phoneFor = id;
+    final p = '${driver?['phone'] ?? ''}'.trim();
+    regPhone = _saMobile(p).isEmpty ? (p == '0' ? '' : p) : _saMobile(p);
+    pickedPhone.text = regPhone;
+  }
+  bool get hrDriver => driver?['employee'] != null;
+  String get phoneOut => _saMobile(pickedPhone.text).isEmpty ? pickedPhone.text.trim() : _saMobile(pickedPhone.text);
 }
 
 class _PlaceTrucksScreenState extends State<PlaceTrucksScreen> {
@@ -1713,6 +1747,7 @@ class _PlaceTrucksScreenState extends State<PlaceTrucksScreen> {
   List<Map<String, dynamic>> _helpers = const [];
   String _me = '';
   late final _Times _times = _Times(widget.request);
+  late final _details = TextEditingController(text: '${widget.request['notes'] ?? ''}');
 
   List<String> get _reqTypes => srTruckTypes(widget.request);
 
@@ -1751,7 +1786,7 @@ class _PlaceTrucksScreenState extends State<PlaceTrucksScreen> {
   }
 
   @override
-  void dispose() { for (final t in _trucks) { t.dispose(); } super.dispose(); }
+  void dispose() { for (final t in _trucks) { t.dispose(); } _details.dispose(); super.dispose(); }
 
   void _add() {
     if (_trucks.length >= _open) return;
@@ -1870,11 +1905,13 @@ class _PlaceTrucksScreenState extends State<PlaceTrucksScreen> {
       if (t.newDriver) {
         if (t.drName.text.trim().isEmpty) out.add(tr('الشاحنة $n: اسم السائق الجديد', 'Truck $n: new driver name'));
         if (!_iqamaRe.hasMatch(_digits(t.drIqama.text))) out.add(tr('الشاحنة $n: رقم الإقامة/الهوية عشرة أرقام يبدأ بـ 1 أو 2', 'Truck $n: iqama is 10 digits starting with 1 or 2'));
+        if (_phoneBad(t.drPhone.text)) out.add(tr('الشاحنة $n: جوال السائق رقمٌ سعوديٌّ يبدأ بـ 05', 'Truck $n: driver mobile must be a Saudi number'));
       } else if (t.driver == null) {
         out.add(tr('الشاحنة $n: اختر السائق أو سجّل سائقًا جديدًا', 'Truck $n: driver'));
       } else if (_regIqama(t.driver!).isEmpty && !_iqamaRe.hasMatch(_digits(t.pickedIqama.text))) {
         out.add(tr('الشاحنة $n: اكتب رقم إقامة السائق (عشرة أرقام يبدأ بـ 1 أو 2)', 'Truck $n: driver iqama (10 digits starting with 1 or 2)'));
       }
+      if (!t.newDriver && t.driver != null && !t.hrDriver && _phoneBad(t.pickedPhone.text)) out.add(tr('الشاحنة $n: جوال السائق رقمٌ سعوديٌّ يبدأ بـ 05', 'Truck $n: driver mobile must be a Saudi number'));
       if (!((num.tryParse(t.buy.text.trim()) ?? 0) > 0)) out.add(tr('الشاحنة $n: سعر الشراء مطلوب', 'Truck $n: buying price required'));
       if (t.costCenter.text.trim().isEmpty) out.add(tr('الشاحنة $n: اختر مركز التكلفة', 'Truck $n: pick the cost centre'));
     }
@@ -1898,8 +1935,10 @@ class _PlaceTrucksScreenState extends State<PlaceTrucksScreen> {
               if (t.truckType.isNotEmpty) 'truckType': t.truckType,
               if (t.newFreelancer) 'newFreelancer': {'name': t.flName.text.trim(), 'phone': t.flPhone.text.trim()} else 'supplierChoice': t.supplier!['_id'],
               if (t.vehicle != null) 'vehicle': t.vehicle!['_id'] else 'newVehicle': {'plate': t.plate.text.trim()},
-              if (t.newDriver) 'newDriver': {'name': t.drName.text.trim(), 'phone': t.drPhone.text.trim(), 'residenceNumber': _digits(t.drIqama.text)} else 'driverId': t.driver!['_id'],
+              if (t.newDriver) 'newDriver': {'name': t.drName.text.trim(), 'phone': _saMobile(t.drPhone.text).isEmpty ? t.drPhone.text.trim() : _saMobile(t.drPhone.text), 'residenceNumber': _digits(t.drIqama.text)} else 'driverId': t.driver!['_id'],
               if (!t.newDriver && _regIqama(t.driver!).isEmpty) 'driverIqama': _digits(t.pickedIqama.text),
+              // A corrected mobile is saved to the driver himself and reaches every screen that shows it.
+              if (!t.newDriver && !t.hrDriver && t.phoneOut != t.regPhone) 'driverPhone': t.phoneOut,
               'sourcingRep': (t.sourcingRep ?? '').isEmpty ? null : t.sourcingRep,
               if ((t.helper ?? '').isNotEmpty) 'helper': t.helper,
               'buyPrice': num.tryParse(t.buy.text.trim()),
@@ -1908,6 +1947,7 @@ class _PlaceTrucksScreenState extends State<PlaceTrucksScreen> {
               ..._times.body(),
             },
         ],
+        'notes': _details.text.trim(),
       });
       final failed = (d['failed'] as List?) ?? const [];
       if (mounted) {
@@ -1997,12 +2037,40 @@ class _PlaceTrucksScreenState extends State<PlaceTrucksScreen> {
         if (!t.newDriver) ...[
           _pickBtn(t.driver == null ? tr('اختر السائق… *', 'Choose driver… *') : '${t.driver!['name']}${'${t.driver!['phone'] ?? ''}'.isEmpty ? '' : ' · ${t.driver!['phone']}'}',
               Icons.badge_outlined, () => _pickDriver(t)),
-          // His iqama beside him: shown when registered, typed and saved to his row when missing.
-          if (t.driver != null)
-            _regIqama(t.driver!).isNotEmpty
-                ? Padding(padding: const EdgeInsets.only(top: 4), child: Text('${tr('رقم الإقامة', 'Iqama')}: ${_regIqama(t.driver!) == 'hr' ? tr('من ملف الموارد البشرية', 'from the HR file') : _regIqama(t.driver!)}',
-                    style: const TextStyle(fontSize: 12, color: T.inkSoft, fontWeight: FontWeight.w700)))
-                : Padding(padding: const EdgeInsets.only(top: 6), child: TextField(
+          // The picked driver's card: iqama and mobile, both saved to his register row when written here.
+          if (t.driver != null) ...[
+            Builder(builder: (_) { t.syncPhone(); return const SizedBox.shrink(); }),
+            Container(
+              margin: const EdgeInsets.only(top: 6),
+              padding: const EdgeInsets.all(10),
+              decoration: BoxDecoration(color: T.info.withValues(alpha: 0.07), border: Border.all(color: T.info.withValues(alpha: 0.35)), borderRadius: BorderRadius.circular(12)),
+              child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+                Row(children: [
+                  const Icon(Icons.badge_outlined, size: 18, color: T.info),
+                  const SizedBox(width: 6),
+                  Expanded(child: Text('${t.driver!['name']}', style: const TextStyle(fontWeight: FontWeight.w900))),
+                ]),
+                if (_regIqama(t.driver!).isNotEmpty)
+                  Padding(padding: const EdgeInsets.only(top: 6), child: Text('${tr('رقم الإقامة / الهوية', 'Iqama / ID')}: ${_regIqama(t.driver!) == 'hr' ? tr('من ملف الموارد البشرية', 'from the HR file') : _regIqama(t.driver!)}',
+                      textDirection: TextDirection.rtl, style: const TextStyle(fontSize: 13.5, fontWeight: FontWeight.w800))),
+                const SizedBox(height: 8),
+                if (t.hrDriver)
+                  Text('${tr('جوال السائق', 'Driver mobile')}: ${t.regPhone.isEmpty ? '—' : t.regPhone} · ${tr('من ملف الموارد البشرية', 'from the HR file')}', style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w700))
+                else
+                  TextField(
+                    controller: t.pickedPhone, keyboardType: TextInputType.phone, textDirection: TextDirection.ltr,
+                    onChanged: (_) => setState(() {}),
+                    decoration: InputDecoration(
+                      labelText: tr('جوال السائق', 'Driver mobile'), hintText: '05XXXXXXXX', isDense: true,
+                      helperText: t.phoneOut != t.regPhone ? tr('سيُحدَّث في سجلّ السائق وفي شحناته الجارية فورًا', 'Saved to his record and live shipments') : tr('يمكن تعديله؛ يُحفظ في سجلّ السائق', 'Editable; saved to his record'),
+                      errorText: _phoneBad(t.pickedPhone.text) && (_tried || t.pickedPhone.text.length >= 10) ? tr('رقمٌ سعوديٌّ من عشرة أرقام يبدأ بـ 05', 'Saudi mobile, 10 digits starting 05') : null,
+                    ),
+                  ),
+              ]),
+            ),
+          ],
+          if (t.driver != null && _regIqama(t.driver!).isEmpty)
+            Padding(padding: const EdgeInsets.only(top: 6), child: TextField(
                     controller: t.pickedIqama, keyboardType: TextInputType.number, textDirection: TextDirection.ltr,
                     onChanged: (_) => setState(() {}),
                     decoration: InputDecoration(
@@ -2046,6 +2114,7 @@ class _PlaceTrucksScreenState extends State<PlaceTrucksScreen> {
           Text(tr('بقي $_open ${_open == 1 ? 'شاحنة' : 'شاحنات'} — كلّ شاحنة تصير أمرَ نقلٍ بالرقم التسلسلي.', '$_open truck(s) left — each becomes a transport order.'), style: const TextStyle(fontSize: 12, color: T.inkFaint)),
         ])),
         const SizedBox(height: 10),
+        _detailsCard(_details),
         _timesCard(context, _times, setState),
         for (var i = 0; i < _trucks.length; i++) _truckCard(i),
         if (_trucks.length < _open)
@@ -2102,6 +2171,7 @@ class _FleetPlaceScreenState extends State<FleetPlaceScreen> {
   bool _tried = false;
   String? _error;
   late final _Times _times = _Times(widget.request);
+  late final _details = TextEditingController(text: '${widget.request['notes'] ?? ''}');
 
   List<String> get _reqTypes => srTruckTypes(widget.request);
   int get _open {
@@ -2112,7 +2182,7 @@ class _FleetPlaceScreenState extends State<FleetPlaceScreen> {
   @override
   void initState() { super.initState(); _add(); _load(); }
   @override
-  void dispose() { for (final t in _trucks) { t.dispose(); } super.dispose(); }
+  void dispose() { for (final t in _trucks) { t.dispose(); } _details.dispose(); super.dispose(); }
 
   Future<void> _load() async {
     try {
@@ -2231,6 +2301,7 @@ class _FleetPlaceScreenState extends State<FleetPlaceScreen> {
               ..._times.body(),
             },
         ],
+        'notes': _details.text.trim(),
       });
       final failed = (d['failed'] as List?) ?? const [];
       if (mounted) {
@@ -2344,6 +2415,7 @@ class _FleetPlaceScreenState extends State<FleetPlaceScreen> {
                     Text(tr('كلّ شاحنة تصير أمرَ نقلٍ بمورّد «تنشيط» وحمولةً في إدارة الأسطول مرتبطتين.', 'Each truck becomes a transport order with supplier «تنشيط» and a linked fleet load.'), style: const TextStyle(fontSize: 12, color: T.inkFaint)),
                   ])),
                   const SizedBox(height: 10),
+                  _detailsCard(_details),
                   _timesCard(context, _times, setState),
                   for (var i = 0; i < _trucks.length; i++) _card(i),
                   if (_trucks.length < _open)

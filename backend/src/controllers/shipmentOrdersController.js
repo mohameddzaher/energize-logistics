@@ -322,6 +322,8 @@ exports.getWaybillsPdf = async (req, res) => {
       return row;
     }));
     res.setHeader('Content-Type', 'application/pdf');
+    // Built from the order at download time; never served from a cache, so the newest details print.
+    res.setHeader('Cache-Control', 'no-store');
     res.setHeader('Content-Disposition', `attachment; filename="waybills-${orders.length}.pdf"`);
     res.send(pdf);
   } catch (error) {
@@ -1126,9 +1128,17 @@ exports.updateOrder = async (req, res) => {
       if (!Number.isFinite(v) || v < 0) return res.status(400).json({ code: 'BAD_SELLING_VALUE', fields: ['sellPrice'], message: 'سعر البيع يجب أن يكون رقمًا لا يقلّ عن صفر.' });
     }
 
+    const notesBefore = String(order.notes || '').trim();
     Object.assign(order, data);
     await order.save();
     await saveWaybillDetails(order, req.body.waybillDetails);
+    // The details printed on the transport order are one value with its sales request: an edit here shows there too.
+    if (order.shipmentRequest && data.notes !== undefined && String(order.notes || '').trim() !== notesBefore) {
+      await require('../models/ShipmentRequest').updateOne({ _id: order.shipmentRequest }, {
+        $set: { notes: String(order.notes || '').trim() },
+        $push: { log: { action: 'edited', by: req.user._id, byName: `${req.user.firstName || ''} ${req.user.lastName || ''}`.trim(), note: `تعديل التفاصيل من أمر النقل ${order.waybillNumber || ''}`.trim() } },
+      }).catch(() => {});
+    }
     let sellingRequest = null;
     if (requestedSell !== undefined) {
       const r = await require('../services/sellingPriceRequests')
@@ -2531,8 +2541,16 @@ exports.createDriver = async (req, res) => {
 
 exports.updateDriver = async (req, res) => {
   try {
-    const before = await ShipmentOrderDriver.findById(req.params.id).select('supplier').lean();
-    const updated = await ShipmentOrderDriver.findByIdAndUpdate(req.params.id, pick(req.body, DRIVER_EDITABLE), { new: true });
+    const before = await ShipmentOrderDriver.findById(req.params.id).select('supplier phone').lean();
+    if (!before) return res.status(404).json({ message: 'Driver not found' });
+    const patch = pick(req.body, DRIVER_EDITABLE);
+    // The mobile goes through services/driverPhone: validated, the old one kept, and his live shipments moved to it.
+    if (patch.phone !== undefined) {
+      try { await require('../services/driverPhone').setDriverPhone(req.params.id, patch.phone, req.user); }
+      catch (e) { if (e.status) return res.status(e.status).json({ message: e.message, fields: ['phone'] }); throw e; }
+      delete patch.phone;
+    }
+    const updated = await ShipmentOrderDriver.findByIdAndUpdate(req.params.id, patch, { new: true });
     if (!updated) return res.status(404).json({ message: 'Driver not found' });
     await dropReplacedPrimary(ShipmentOrderDriver, before, updated);
     await syncDriverEmployee(updated._id);

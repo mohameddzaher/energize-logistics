@@ -100,6 +100,8 @@ type TruckRow = {
   driverId: string; driverName: string; ndName: string; ndPhone: string; ndIqama: string;
   /** Picked driver's iqama: `regIqama` as registered (or 'hr' when his HR file holds it), `dIqama` typed when he has none. */
   regIqama: string; dIqama: string;
+  /** Picked driver's mobile: `regPhone` as registered, `dPhone` as shown and editable (a change updates his register row). HR-linked drivers read it from their file. */
+  regPhone: string; dPhone: string; hrDriver: boolean;
   buyPrice: string; advanceAmount: string;
   /** Cost centre label from the section's list (so_cost_center). */
   costCenter: string;
@@ -107,12 +109,34 @@ type TruckRow = {
 const blankTruck = (r: ShipmentRequest, rep = ''): TruckRow => ({
   kind: 'vendor', truckType: typesOfReq(r).length === 1 ? typesOfReq(r)[0] : '', sourcingRep: rep, helper: '',
   supplierId: '', supplierName: '', newFreelancer: false, flName: '', flPhone: '',
-  vehicleId: '', newPlate: '', driverId: '', driverName: '', ndName: '', ndPhone: '', ndIqama: '', regIqama: '', dIqama: '', buyPrice: '', advanceAmount: '', costCenter: '',
+  vehicleId: '', newPlate: '', driverId: '', driverName: '', ndName: '', ndPhone: '', ndIqama: '', regIqama: '', dIqama: '', regPhone: '', dPhone: '', hrDriver: false, buyPrice: '', advanceAmount: '', costCenter: '',
 });
 const IQAMA_RE = /^[12]\d{9}$/;
 /** Iqama fields for a picked register driver. */
-const iqOf = (d: any) => ({ regIqama: String(d?.residenceNumber || '').trim() || (d?.employee ? 'hr' : ''), dIqama: '' });
+const iqOf = (d: any) => {
+  const phone = normPhone(String(d?.phone || '')) || String(d?.phone || '').trim();
+  return { regIqama: String(d?.residenceNumber || '').trim() || (d?.employee ? 'hr' : ''), dIqama: '', regPhone: phone, dPhone: phone, hrDriver: !!d?.employee };
+};
 const normIq = (v: string) => v.replace(/[٠-٩]/g, (d) => String('٠١٢٣٤٥٦٧٨٩'.indexOf(d))).replace(/\s+/g, '');
+/** Saudi mobile in any spelling → 05XXXXXXXX ('' when it is not one); the server applies the same rule (services/driverPhone). */
+const normPhone = (v: string) => {
+  const m = v.replace(/[٠-٩]/g, (d) => String('٠١٢٣٤٥٦٧٨٩'.indexOf(d))).replace(/[\s\-().]/g, '').match(/^(?:\+?966|00966|0)?(5\d{8})$/);
+  return m ? `0${m[1]}` : '';
+};
+const phoneBad = (v: string) => !!v.trim() && !normPhone(v);
+
+/** «التفاصيل» printed on the transport order; one value with the request and its orders. */
+function DetailsBox({ value, onChange, ar }: { value: string; onChange: (v: string) => void; ar: boolean }) {
+  const t = (a: string, e: string) => (ar ? a : e);
+  return (
+    <div className="rounded-2xl border border-slate-200 p-3">
+      <label className={labelCls}>{t('التفاصيل', 'Details')}</label>
+      <textarea value={value} onChange={(e) => onChange(e.target.value)} rows={3} maxLength={2000}
+        placeholder={t('تُطبع في أمر النقل. تعديلها هنا يظهر في الطلب وفي أوامر النقل، وتُطبع آخرُ صيغةٍ مكتوبة عند التحميل.', 'Printed on the transport order; an edit here shows on the request and its orders, and the latest text prints.')}
+        className={inputCls} />
+    </div>
+  );
+}
 
 export function PlaceModal({ req, onClose, onDone }: { req: ShipmentRequest; onClose: () => void; onDone: () => void }) {
   const { lang } = useLanguage();
@@ -125,6 +149,8 @@ export function PlaceModal({ req, onClose, onDone }: { req: ShipmentRequest; onC
   const helpers = useOptions('/api/shipment-requests/team-members?team=helpers');
   const defRep = reps.some((o) => o.value === me) ? me : '';
   const [rows, setRows] = useState<TruckRow[]>([blankTruck(req)]);
+  // «التفاصيل»: the request's note, printed on the transport order; edited here, it changes on the request and its orders.
+  const [details, setDetails] = useState(String((req as any).notes || ''));
   useEffect(() => { if (defRep) setRows((p) => p.map((r) => (r.sourcingRep ? r : { ...r, sourcingRep: defRep }))); }, [defRep]);
   const times = useTimes(req);
   const [saving, setSaving] = useState(false);
@@ -138,6 +164,7 @@ export function PlaceModal({ req, onClose, onDone }: { req: ShipmentRequest; onC
     if (!r.vehicleId && !r.newPlate.trim()) out.push('vehicle');
     const freshDriver = r.newFreelancer || (!r.driverId && r.ndName.trim());
     if (freshDriver ? (!r.ndName.trim() || !IQAMA_RE.test(normIq(r.ndIqama))) : (!r.driverId || (!r.regIqama && !IQAMA_RE.test(normIq(r.dIqama))))) out.push('driver');
+    if (freshDriver ? phoneBad(r.ndPhone) : (!!r.driverId && !r.hrDriver && phoneBad(r.dPhone))) out.push('phone');
     if (!(Number(r.buyPrice) > 0)) out.push('buy');
     if (!r.costCenter) out.push('cost');
     return out;
@@ -145,7 +172,7 @@ export function PlaceModal({ req, onClose, onDone }: { req: ShipmentRequest; onC
   const submit = async () => {
     setTried(true);
     if (problems.some((p) => p.length) || times.missing.length) {
-      notify(t('أكمِل الحقول المحدّدة بالأحمر (ومنها مركز التكلفة) — والسائق يحتاج رقمَ إقامته', 'Fill the fields in red (cost centre included) — the driver needs his iqama'), 'error');
+      notify(t('أكمِل الحقول المحدّدة بالأحمر (ومنها مركز التكلفة) — والسائق يحتاج رقمَ إقامته، وجوالُه رقمٌ سعوديٌّ يبدأ بـ 05', 'Fill the fields in red (cost centre included) — the driver needs his iqama and a Saudi mobile'), 'error');
       return;
     }
     setSaving(true);
@@ -156,13 +183,18 @@ export function PlaceModal({ req, onClose, onDone }: { req: ShipmentRequest; onC
           ...(r.newFreelancer ? { newFreelancer: { name: r.flName.trim(), phone: r.flPhone.trim() } } : { supplierChoice: r.supplierId }),
           ...(r.vehicleId ? { vehicle: r.vehicleId } : { newVehicle: { plate: r.newPlate.trim() } }),
           ...(r.newFreelancer || (!r.driverId && r.ndName.trim())
-            ? { newDriver: { name: r.ndName.trim(), phone: r.ndPhone.trim(), residenceNumber: r.ndIqama.trim() } }
-            : { driverId: r.driverId, ...(!r.regIqama ? { driverIqama: normIq(r.dIqama) } : {}) }),
+            ? { newDriver: { name: r.ndName.trim(), phone: normPhone(r.ndPhone) || r.ndPhone.trim(), residenceNumber: r.ndIqama.trim() } }
+            : {
+              driverId: r.driverId, ...(!r.regIqama ? { driverIqama: normIq(r.dIqama) } : {}),
+              // A corrected mobile is saved to the driver himself and reaches every screen that shows it.
+              ...(!r.hrDriver && (normPhone(r.dPhone) || r.dPhone.trim()) !== r.regPhone ? { driverPhone: normPhone(r.dPhone) || r.dPhone.trim() } : {}),
+            }),
           truckType: r.truckType || undefined, sourcingRep: r.sourcingRep || null, helper: r.helper || null,
           buyPrice: Number(r.buyPrice), advanceAmount: r.advanceAmount === '' ? null : Number(r.advanceAmount),
           costCenter: r.costCenter,
           ...times.payload,
         })),
+        notes: details,
       });
       notify(t(`أُنشئت أوامر النقل: ${(d.waybills || []).join('، ')}${d.failed?.length ? ` · تعذّرت ${d.failed.length}: ${d.failed[0].message}` : ''}`, `Transport orders: ${(d.waybills || []).join(', ')}`), d.failed?.length ? 'error' : 'success');
       onDone();
@@ -181,6 +213,7 @@ export function PlaceModal({ req, onClose, onDone }: { req: ShipmentRequest; onC
       )}>
       <div className="space-y-3">
         <RequestSummary req={req} ar={ar} />
+        <DetailsBox value={details} onChange={setDetails} ar={ar} />
         <TimesBlock t={times} ar={ar} tried={tried} />
         {rows.map((r, i) => (
           <TruckEditor key={i} i={i} row={r} reps={reps} helpers={helpers} types={reqTypes} miss={tried ? problems[i] : []} onChange={(p) => setRow(i, p)}
@@ -341,7 +374,7 @@ function TruckEditor({ i, row, reps, helpers, types, miss, onChange, onRemove, a
           {freshDriverForm ? (
             <div className="space-y-1.5 rounded-xl border border-[#f37121]/30 bg-[#f37121]/[0.04] p-2.5">
               <input value={row.ndName} onChange={(e) => onChange({ ndName: e.target.value })} placeholder={t('اسم السائق *', 'Driver name *')} className={inputCls} />
-              <input value={row.ndPhone} onChange={(e) => onChange({ ndPhone: e.target.value })} placeholder={t('جوال السائق', 'Driver phone')} dir="ltr" className={inputCls} />
+              <input value={row.ndPhone} onChange={(e) => onChange({ ndPhone: e.target.value })} placeholder={t('جوال السائق (05XXXXXXXX)', 'Driver mobile (05XXXXXXXX)')} dir="ltr" inputMode="tel" className={`${inputCls} ${bad('phone') ? 'border-red-400 bg-red-50' : ''}`} />
               <input value={row.ndIqama} onChange={(e) => onChange({ ndIqama: e.target.value })} placeholder={t('رقم الإقامة / الهوية *', 'Iqama / ID *')} dir="ltr"
                 className={`${inputCls} ${bad('driver') && !IQAMA_RE.test(row.ndIqama.trim()) ? 'border-red-400 bg-red-50' : ''}`} />
               <p className="text-[11px] text-slate-500">{t('رقمُ الإقامة مطلوبٌ للسائق الجديد: عشرةُ أرقامٍ يبدأ بـ 1 أو 2.', 'Iqama required: 10 digits starting with 1 or 2.')}</p>
@@ -355,15 +388,43 @@ function TruckEditor({ i, row, reps, helpers, types, miss, onChange, onRemove, a
                   onPick={(d) => onChange({ driverName: d.name, driverId: (d.driver as any)?._id || '', ...iqOf(d.driver) })} />
               </div>
               {row.driverId && (
-                row.regIqama ? (
-                  <p className="mt-1 text-[11.5px] text-slate-500">{t('رقم الإقامة', 'Iqama')}: <b dir="ltr">{row.regIqama === 'hr' ? t('من ملف الموارد البشرية', 'from the HR file') : row.regIqama}</b></p>
-                ) : (
-                  <div className="mt-1.5">
-                    <input value={row.dIqama} onChange={(e) => onChange({ dIqama: e.target.value })} placeholder={t('رقم إقامة السائق *', 'Driver iqama *')} dir="ltr" inputMode="numeric"
-                      className={`${inputCls} ${bad('driver') && !IQAMA_RE.test(normIq(row.dIqama)) ? 'border-red-400 bg-red-50' : ''}`} />
-                    <p className="mt-0.5 text-[11px] text-slate-500">{t('غير مسجَّل على السائق — يُحفظ في سجلّه: عشرةُ أرقامٍ يبدأ بـ 1 أو 2.', 'Not on his record yet — saved to it: 10 digits starting with 1 or 2.')}</p>
+                // The picked driver's identity card: iqama and mobile, both saved to his register row when written here.
+                <div className="mt-2 rounded-xl border border-sky-200 bg-sky-50/60 p-2.5 space-y-2">
+                  <div className="flex items-center gap-2">
+                    <span className="inline-flex h-7 w-7 items-center justify-center rounded-full bg-sky-600 text-white"><UserIcon className="h-4 w-4" /></span>
+                    <b className="text-[13px] text-slate-900 truncate">{row.driverName}</b>
                   </div>
-                )
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                    <div>
+                      <span className="block text-[11px] font-semibold text-slate-500">{t('رقم الإقامة / الهوية', 'Iqama / ID')}</span>
+                      {row.regIqama ? (
+                        <span className="mt-0.5 block rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-[13.5px] font-bold tabular-nums text-slate-900" dir="ltr">
+                          {row.regIqama === 'hr' ? t('من ملف الموارد البشرية', 'from the HR file') : row.regIqama}
+                        </span>
+                      ) : (
+                        <>
+                          <input value={row.dIqama} onChange={(e) => onChange({ dIqama: e.target.value })} placeholder={t('رقم إقامة السائق *', 'Driver iqama *')} dir="ltr" inputMode="numeric"
+                            className={`${inputCls} mt-0.5 ${bad('driver') && !IQAMA_RE.test(normIq(row.dIqama)) ? 'border-red-400 bg-red-50' : ''}`} />
+                          <span className="mt-0.5 block text-[11px] text-slate-500">{t('غير مسجَّل على السائق — يُحفظ في سجلّه: عشرةُ أرقامٍ يبدأ بـ 1 أو 2.', 'Not on his record yet — saved to it: 10 digits starting with 1 or 2.')}</span>
+                        </>
+                      )}
+                    </div>
+                    <div>
+                      <span className={`block text-[11px] font-semibold ${bad('phone') ? 'text-red-600' : 'text-slate-500'}`}>{t('جوال السائق', 'Driver mobile')}</span>
+                      {row.hrDriver ? (
+                        <span className="mt-0.5 block rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-[13.5px] font-bold tabular-nums text-slate-900" dir="ltr">{row.regPhone || '—'}</span>
+                      ) : (
+                        <input value={row.dPhone} onChange={(e) => onChange({ dPhone: e.target.value })} placeholder="05XXXXXXXX" dir="ltr" inputMode="tel"
+                          className={`${inputCls} mt-0.5 font-bold tabular-nums ${phoneBad(row.dPhone) && (bad('phone') || row.dPhone.length >= 10) ? 'border-red-400 bg-red-50' : (normPhone(row.dPhone) || row.dPhone.trim()) !== row.regPhone ? 'border-amber-400 bg-amber-50' : ''}`} />
+                      )}
+                      <span className="mt-0.5 block text-[11px] text-slate-500">
+                        {row.hrDriver ? t('من ملف الموارد البشرية، ويُعدَّل هناك.', 'From the HR file; edited there.')
+                          : (normPhone(row.dPhone) || row.dPhone.trim()) !== row.regPhone ? t('سيُحدَّث الرقم في سجلّ السائق وفي شحناته الجارية فورًا.', 'Saved to his record and his live shipments at once.')
+                            : t('يمكن تعديله؛ يُحفظ في سجلّ السائق ويظهر في كل الصفحات.', 'Editable; saved to his record and shown everywhere.')}
+                      </span>
+                    </div>
+                  </div>
+                </div>
               )}
             </>
           )}
@@ -401,6 +462,7 @@ export function FleetPlaceModal({ req, onClose, onDone }: { req: ShipmentRequest
   const [drivers, setDrivers] = useState<FleetDriver[]>([]);
   const helpers = useOptions('/api/shipment-requests/team-members?team=helpers');
   const [rows, setRows] = useState<FleetRow[]>([blankFleet(req)]);
+  const [details, setDetails] = useState(String((req as any).notes || ''));
   const times = useTimes(req);
   const [saving, setSaving] = useState(false);
   const [tried, setTried] = useState(false);
@@ -425,6 +487,7 @@ export function FleetPlaceModal({ req, onClose, onDone }: { req: ShipmentRequest
           rentType: r.rentType, loadType: r.loadType, expectedArrival: r.expectedArrival ? new Date(r.expectedArrival).toISOString() : null,
           notes: r.notes, helper: r.helper || null, truckType: r.truckType || undefined, costCenter: r.costCenter, ...times.payload,
         })),
+        notes: details,
       });
       notify(t(`أُنشئت أوامر النقل وحمولات الأسطول: ${(d.waybills || []).join('، ')}${d.failed?.length ? ` · تعذّرت ${d.failed.length}: ${d.failed[0].message}` : ''}`, `Orders and fleet loads: ${(d.waybills || []).join(', ')}`), d.failed?.length ? 'error' : 'success');
       onDone();
@@ -443,6 +506,7 @@ export function FleetPlaceModal({ req, onClose, onDone }: { req: ShipmentRequest
       )}>
       <div className="space-y-3">
         <RequestSummary req={req} ar={ar} />
+        <DetailsBox value={details} onChange={setDetails} ar={ar} />
         <p className="text-[12px] text-slate-500">{t('يُنشأ أمرُ نقلٍ بمورّد «تنشيط» وحمولةٌ مرتبطةٌ في إدارة الأسطول؛ العميل والمسار وسعر البيع من الطلب.', 'A transport order with supplier «تنشيط» and its linked fleet load are created; customer, route and selling price come from the request.')}</p>
         <TimesBlock t={times} ar={ar} tried={tried} />
         {rows.map((r, i) => (

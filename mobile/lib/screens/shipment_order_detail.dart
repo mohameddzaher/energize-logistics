@@ -141,7 +141,7 @@ class _ShipmentOrderDetailScreenState extends State<ShipmentOrderDetailScreen> {
             (tr('موعد التحميل', 'Pickup time'), soFmtDT(d['pickupTime'])),
             (tr('وقت الانطلاق', 'Start time'), soFmtDT(d['startTime'])),
             (tr('وقت الوصول', 'Arrival time'), soFmtDT(d['arrivalTime'])),
-            (tr('ملاحظة الرحلة', 'Trip note'), d['notes']),
+            (tr('التفاصيل (أمر النقل)', 'Details (transport order)'), d['notes']),
           ]),
           if ('${d['blNumber'] ?? ''}${d['containerNumber'] ?? ''}'.trim().isNotEmpty || d['customsLink']?['clearance'] != null)
             _group(tr('التخليص الجمركي', 'Customs'), [

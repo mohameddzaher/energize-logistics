@@ -1142,7 +1142,7 @@ function CreateShipmentInner() {
                 {/* Trip note beside its cities, where it is written. It is printed on the transport order when present, shown as a table column and filterable. */}
                 {g === 'pickup_delivery' && (
                   <div className="col-span-full">
-                    <label className={labelCls}>{ar ? 'ملاحظة الرحلة' : 'Trip note'}</label>
+                    <label className={labelCls}>{ar ? 'التفاصيل' : 'Details'}</label>
                     <input value={form.notes || ''} onChange={(e) => set('notes', e.target.value)} disabled={notOwned('notes')}
                       placeholder={ar ? 'تظهر في أمر النقل (أمر النقل) إن كُتبت' : 'Printed on the waybill when written'}
                       className={`${inputCls} disabled:bg-slate-50 disabled:cursor-not-allowed`} />

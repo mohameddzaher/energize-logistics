@@ -1058,7 +1058,7 @@ function ShipmentOrdersInner() {
                   <Row k={ar ? 'موعد التحميل' : 'Pickup time'} v={fmtDT(d.pickupTime, lang as Lang)} />
                   <Row k={ar ? 'وقت الانطلاق' : 'Start time'} v={fmtDT(d.startTime, lang as Lang)} />
                   <Row k={ar ? 'وقت الوصول' : 'Arrival time'} v={fmtDT(d.arrivalTime, lang as Lang)} />
-                  <Row k={ar ? 'ملاحظة الرحلة' : 'Trip note'} v={d.notes} />
+                  <Row k={ar ? 'التفاصيل (أمر النقل)' : 'Details (transport order)'} v={d.notes} />
                 </Group>
 
                 <Group title={ar ? 'الحمولة والمركبة' : 'Load & vehicle'}>

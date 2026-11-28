@@ -400,7 +400,7 @@ export default function ShipmentRequestForm({ editId, onDone }: { editId?: strin
                 {g === 'pickup_delivery' && (
                   <>
                     {!notesConfigured && (
-                      <div className="col-span-full"><label className={labelCls}>{t('ملاحظة الرحلة', 'Trip note')}</label>
+                      <div className="col-span-full"><label className={labelCls}>{t('التفاصيل', 'Details')}</label>
                         <textarea rows={2} value={form.notes || ''} onChange={(e) => set('notes', e.target.value)} className={inputCls} placeholder={t('تُطبع على أمر النقل', 'Printed on the transport order')} /></div>
                     )}
                     <div><label className={labelCls}>{t('رقم البوليصة (اختياري)', 'B/L number (optional)')}</label><input value={form.blNumber || ''} onChange={(e) => set('blNumber', e.target.value)} className={inputCls} /></div>

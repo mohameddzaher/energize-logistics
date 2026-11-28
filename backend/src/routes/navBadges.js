@@ -65,11 +65,12 @@ router.get('/', async (req, res) => {
       const n = await require('../models/SellingPriceChangeRequest').countDocuments({ status: 'pending' }).catch(() => 0);
       if (n) out[spr.PAGE] = n;
     }
-    // Sales requests waiting for the vendors team (open ones), and rejected requests back with the sales member who asked.
+    // Sales requests waiting for the vendors team: today's open ones only (by «الموعد الفعلي»), so the number does not pile up with older days; rejected requests go back to the sales member who asked.
     const SR = require('../controllers/shipmentRequestsController');
     const ShipmentRequest = require('../models/ShipmentRequest');
     if (SR.WORKERS.includes(role) || SR.FLEET_PLACERS.includes(role)) {
-      const n = await ShipmentRequest.countDocuments({ status: { $in: ['pending', 'in_progress'] }, ...SR.APPROVED }).catch(() => 0);
+      const today = require('../utils/companyDay').todayKey();
+      const n = await ShipmentRequest.countDocuments({ status: { $in: ['pending', 'in_progress'] }, ...SR.APPROVED, dueDay: today }).catch(() => 0);
       if (n) { out['/system/vendors-mgmt/requests'] = n; out['/system/shipment-orders/requests'] = n; out['/system/fleet/requests'] = n; }
     }
     // Sales requests waiting for the sales manager (or a delegated member).

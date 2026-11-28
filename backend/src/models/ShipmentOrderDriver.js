@@ -10,6 +10,8 @@ const shipmentOrderDriverSchema = new mongoose.Schema(
   {
     name: { type: String, required: true, trim: true },
     phone: { type: String, trim: true, default: '' },
+    // Earlier numbers, newest last (services/driverPhone keeps the last 20).
+    phoneHistory: [{ _id: false, phone: String, changedAt: Date, byName: String }],
     email: { type: String, trim: true, default: '' },
     nationality: { type: String, trim: true, default: '' },
     /** Residence number; identifies the person when names are similar. */

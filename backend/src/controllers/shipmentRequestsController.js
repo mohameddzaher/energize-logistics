@@ -381,10 +381,11 @@ exports.get = async (req, res) => {
   }
 };
 
-/** Open requests waiting for the vendors team: the sidebar badge. */
+/** Open requests due today waiting for the vendors team: the sidebar badge. */
 exports.pendingCount = async (req, res) => {
   try {
-    const n = await ShipmentRequest.countDocuments({ status: { $in: OPEN }, ...APPROVED, ...DUE_BY_TODAY(), ...(await branchScoped(req)) });
+    // Today's requests only: older open ones stay on the board but no longer pile up in the badge.
+    const n = await ShipmentRequest.countDocuments({ status: { $in: OPEN }, ...APPROVED, dueDay: todayKey(), ...(await branchScoped(req)) });
     res.json({ count: n });
   } catch (e) { res.json({ count: 0 }); }
 };
@@ -734,6 +735,26 @@ function typeCheck(trucks, r) {
   });
   return out;
 }
+/**
+ * «التفاصيل» written in the completion form is the request's note: the transport orders print it (notes), and the request
+ * and its orders hold one value, so a change here reaches the orders already placed and the next waybill download.
+ */
+async function applyDetails(req, r) {
+  if (req.body?.notes === undefined) return;
+  const v = String(req.body.notes ?? '').trim().slice(0, 2000);
+  if (v === String(r.notes || '').trim()) return;
+  r.notes = v;
+  r.log.push({ action: 'edited', by: req.user._id, byName: fullName(req.user), note: 'تعديل التفاصيل عند الإكمال' });
+  const ids = (r.placed || []).map((p) => p.order).filter(Boolean);
+  if (ids.length) {
+    await ShipmentOrder.updateMany({ _id: { $in: ids } }, { $set: { notes: v } });
+    for (const id of ids) {
+      so.announceOrderChange(id);
+      require('../services/shipmentOrderWorkflowLink').mirrorPlatformSoon(id, ['notes']);
+    }
+  }
+}
+
 const sharedOf = (r) => ({
   customer: r.customer, fromCity: r.fromCity, toCity: r.toCity, branch: r.branch, notes: r.notes,
   truckType: r.truckType, cargoType: r.cargoType, truckLength: r.truckLength, quantity: r.quantity,
@@ -795,6 +816,9 @@ const IQAMA_RE = /^[12]\d{9}$/;
 const cleanIqama = (v) => require('../utils/arabicSearch').westernDigits(String(v || '')).replace(/\s+/g, '');
 /** Checks a truck's driver before anything is created: a registered driver, or a new one with his iqama number. */
 function driverProblem(t) {
+  // A mobile written for the driver must be a Saudi number (services/driverPhone normalises it).
+  const phone = t.driverId ? t.driverPhone : t.newDriver && t.newDriver.phone;
+  if (phone !== undefined && String(phone || '').trim() && require('../services/driverPhone').normalizeSaMobile(phone) === null) return 'رقم جوال السائق غير صحيح: رقمٌ سعوديٌّ من عشرة أرقام يبدأ بـ 05';
   if (t.driverId) return /^[0-9a-f]{24}$/i.test(String(t.driverId)) ? '' : 'السائق غير صالح';
   if (t.newDriver && String(t.newDriver.name || '').trim()) {
     const iq = cleanIqama(t.newDriver.residenceNumber);
@@ -813,8 +837,14 @@ async function resolvePlacedDriver(req, t, supplierId) {
   const Driver = require('../models/ShipmentOrderDriver');
   const fail = (m) => { const e = new Error(m); e.status = 400; throw e; };
   if (t.driverId) {
-    const d = await Driver.findById(t.driverId).lean();
+    let d = await Driver.findById(t.driverId).lean();
     if (!d) fail('السائق غير موجود');
+    // A mobile corrected in the completion form updates his register row and the shipments he is driving (services/driverPhone).
+    if (t.driverPhone !== undefined && !d.employee) {
+      const dp = require('../services/driverPhone');
+      const r = await dp.setDriverPhone(d._id, t.driverPhone, req.user);
+      if (r.changed) { dp.announce(d._id); d = r.driver; }
+    }
     // A registered driver without an iqama takes the one typed beside him; HR-linked drivers read it from their file.
     if (!String(d.residenceNumber || '').trim() && !d.employee) {
       const iq = cleanIqama(t.driverIqama);
@@ -837,7 +867,7 @@ async function resolvePlacedDriver(req, t, supplierId) {
       return known;
     }
     const created = await Driver.create({
-      name: String(t.newDriver.name).trim(), phone: String(t.newDriver.phone || '').trim(), residenceNumber: iq,
+      name: String(t.newDriver.name).trim(), phone: require('../services/driverPhone').normalizeSaMobile(t.newDriver.phone) || String(t.newDriver.phone || '').trim(), residenceNumber: iq,
       supplier: supplierId || null, createdBy: req.user._id,
     });
     await so.syncDriverEmployee(created._id).catch(() => {});
@@ -906,6 +936,7 @@ exports.place = async (req, res) => {
     const open = r.trucks - r.placed.length;
     if (trucks.length > open) pre.push(`بقي في الطلب ${open} ${open === 1 ? 'شاحنة' : 'شاحنات'} فقط`);
     if (pre.length) { await unlock(r._id); return bad(res, pre.join(' · '), { problems: pre }); }
+    await applyDetails(req, r);
 
     const who = fullName(req.user);
     const created = [];
@@ -1023,6 +1054,7 @@ exports.fleetPlace = async (req, res) => {
     const open = r.trucks - r.placed.length;
     if (trucks.length > open) pre.push(`بقي في الطلب ${open} ${open === 1 ? 'شاحنة' : 'شاحنات'} فقط`);
     if (pre.length) { await unlock(r._id); return bad(res, pre.join(' · '), { problems: pre }); }
+    await applyDetails(req, r);
 
     const fleetCtl = require('./fleetController');
     const link = require('../services/fleetOrderLink');

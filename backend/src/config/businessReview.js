@@ -95,7 +95,8 @@ const PRIORITY_KEYS = PRIORITIES.map((p) => p.key);
 // ── Tiers ───────────────────────────────────────────────────────────────────
 // The board: sees every meeting, every action, every delegation.
 // Team leaders are left out even where FULL_ACCESS_ROLES names one (IT): they hold rights, not a board seat.
-const EXECUTIVE_ROLES = [...new Set([...FULL_ACCESS_ROLES, 'admin', 'moderator'])].filter((r) => !require('./roles').isTeamLeader(r));
+// The business consultant sits with the board (super-admin powers, narrowed only by the permissions matrix).
+const EXECUTIVE_ROLES = [...new Set([...FULL_ACCESS_ROLES, 'admin', 'moderator', 'business_consultant'])].filter((r) => !require('./roles').isTeamLeader(r));
 
 // The secretariat: runs the meetings, writes the minutes, records the actions.
 // asmaa@energize.com sits here via the `administrator` role.
@@ -124,6 +125,9 @@ const isManagerRole = (role) => {
 const FINALIZE_ROLES = ['super_admin', 'admin', 'transition_account', 'backup_account', 'moderator',
   'it_manager', 'it_team_leader', 'it_specialist', 'it_trainee',
   'administration_manager', 'administration_team_leader', 'administration_staff'];
+// The activity log (every update on every task): the top roles and the software team; others only when the page is ticked for them.
+const ACTIVITY_PAGE = '/system/business-review/activity';
+const ACTIVITY_ROLES = ['super_admin', 'admin', 'business_consultant', 'it_manager', 'it_team_leader', 'it_specialist', 'it_trainee'];
 const canArchive = (user) => !!user && (FINALIZE_ROLES.includes(user.ownRole || user.role) || user.isChairman === true);
 const canFinalize = canArchive;
 const isExecutive = (user) => !!user && EXECUTIVE_ROLES.includes(user.role);
@@ -158,7 +162,7 @@ module.exports = {
   CADENCES, CADENCE_KEYS,
   MEETING_STATUSES, MEETING_STATUS_KEYS, HELD_MEETING_STATUSES, OPEN_MEETING_STATUSES,
   ACTION_STATUSES, ACTION_STATUS_KEYS, OPEN_ACTION_STATUSES, PROGRESS_OF, ARCHIVE_AFTER_MS, archivedCond, liveCond, legacyArchivedCond, canArchive, canFinalize, FINALIZE_ROLES, migrateManualArchive,
-  PRIORITIES, PRIORITY_KEYS,
+  PRIORITIES, PRIORITY_KEYS, ACTIVITY_PAGE, ACTIVITY_ROLES,
   EXECUTIVE_ROLES, SECRETARY_ROLES, EXTRA_MANAGER_ROLES,
   isManagerRole, isExecutive, isSecretary, canRunMeetings, isParticipant,
   departments, meta,

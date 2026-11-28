@@ -200,12 +200,12 @@ const SECTION_LABELS_AR = {
   'Accounting': 'الإدارة المالية',
   'Procurement': 'المشتريات',
   'Data & Decision Support': 'إدارة البيانات',
-  'Executive': 'الإدارة العليا',
+  'Executive': 'الإدارة',
 };
 
 /** Print-ready name for a section key, in either language. */
 // English names that differ from the key.
-const SECTION_LABELS_EN = { 'Location Solutions': 'Maintenance', 'Software & IT': 'Software', 'Data & Decision Support': 'Data Management' };
+const SECTION_LABELS_EN = { 'Executive': 'Management', 'Location Solutions': 'Maintenance', 'Software & IT': 'Software', 'Data & Decision Support': 'Data Management' };
 const sectionLabel = (key, lang = 'ar') =>
   (lang === 'en' ? (SECTION_LABELS_EN[key] || key) : (SECTION_LABELS_AR[key] || key));
 const ACCESS_LEVELS = ['none', 'view', 'edit'];
@@ -225,7 +225,8 @@ const defaultAccess = (role, sectionKey) => {
   // Data team: all sections by default; the saved matrix narrows it (see config/roles).
   if (require('./roles').DATA_ROLES.includes(role)) return 'edit';
   // Transition and backup accounts: nothing until the permissions page opens a section for them.
-  if (require('./constants').OPEN_BY_GRANT_ROLES.includes(role)) return 'none';
+  // Business review is the exception: it is everyone's own work (delegations reach these shared accounts there).
+  if (require('./constants').OPEN_BY_GRANT_ROLES.includes(role)) return getSection(sectionKey)?.defaultAllRoles ? 'edit' : 'none';
   if (require('./constants').CONSULTANT_ROLES.includes(role)) return 'edit';
   // A scoped role has no section; its single screen is in config/scopedRoles.js.
   if (require('./scopedRoles').isScopedRole(role)) return 'none';

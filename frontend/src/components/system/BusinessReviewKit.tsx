@@ -123,14 +123,16 @@ export function Progress({ value, color = '#f37121' }: { value: number; color?: 
 
 /** The small "report progress" form used by both actions and delegated tasks: status, progress, expected finish, and a postponement with its new date and reason. */
 export function ProgressForm({
-  status, progress, statuses, lang, busy, onSubmit, onCancel, expectedDate,
+  status, progress, statuses, lang, busy, onSubmit, onCancel, expectedDate, preset,
 }: {
   status: string; progress: number; statuses?: Vocab[]; lang: Lang; busy?: boolean;
+  /** Status chosen when the form opens (e.g. «تم الإنجاز» opens it on done). */
+  preset?: string;
   onSubmit: (v: ProgressReport) => void;
   onCancel: () => void;
   expectedDate?: string | null;
 }) {
-  const [s, setS] = useState(status);
+  const [s, setS] = useState(preset || status);
   const [p, setP] = useState(progress);
   const [note, setNote] = useState('');
   const [expected, setExpected] = useState(expectedDate ? isoDay(new Date(expectedDate)) : '');
@@ -152,6 +154,11 @@ export function ProgressForm({
   const submit = () => {
     if (s === 'postponed' && status !== 'postponed' && !newDue) {
       setErr(t('Pick the new date for the postponement.', 'حدّد الموعد الجديد للتأجيل.'));
+      return;
+    }
+    // Changing the status needs its details (the server refuses it otherwise).
+    if (s !== status && !note.trim()) {
+      setErr(t('Write the details of this update: a status change needs an explanation.', 'اكتب تفاصيل التحديث؛ تغيير الحالة يحتاج إلى شرحٍ لما تمّ.'));
       return;
     }
     setErr('');
@@ -195,11 +202,16 @@ export function ProgressForm({
           </label>
         )}
       </div>
-      <textarea value={note} onChange={(e) => setNote(e.target.value)} rows={2}
-        placeholder={s === 'postponed'
-          ? t('Reason for postponing (optional)', 'سبب التأجيل (اختياري)')
-          : t('What happened? (optional)', 'ما الذي تم؟ (اختياري)')}
-        className={`w-full px-2.5 py-1.5 rounded-lg border text-sm text-slate-800 ${postponing ? 'border-amber-300' : 'border-slate-200'}`} />
+      <label className="block">
+        <span className={`text-[11px] font-semibold ${s !== status ? 'text-red-700' : 'text-slate-500'}`}>
+          {s !== status ? t('Update details *', 'تفاصيل التحديث *') : t('Update details', 'تفاصيل التحديث')}
+        </span>
+        <textarea value={note} onChange={(e) => { setNote(e.target.value); if (err) setErr(''); }} rows={3}
+          placeholder={s === 'postponed'
+            ? t('Why is it postponed? (required)', 'لماذا أُجِّل البند؟ (مطلوب)')
+            : t('What exactly was done? (required when the status changes)', 'ما الذي تمّ بالتحديد؟ (مطلوب عند تغيير الحالة)')}
+          className={`w-full mt-1 px-2.5 py-1.5 rounded-lg border text-sm text-slate-800 ${s !== status && !note.trim() ? 'border-red-300' : postponing ? 'border-amber-300' : 'border-slate-200'}`} />
+      </label>
       <div className="flex flex-wrap items-center gap-1.5">
         <label className="inline-flex cursor-pointer items-center gap-1.5 rounded-lg border border-dashed border-slate-300 bg-white px-2.5 py-1.5 text-xs font-semibold text-slate-600 hover:border-[#f37121] hover:text-[#f37121]">
           <Paperclip className="w-3.5 h-3.5" />{t('Attach files', 'إرفاق ملفات')}

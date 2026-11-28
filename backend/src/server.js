@@ -476,6 +476,11 @@ if (!DOCS_ONLY) connectDB().then(async () => {
   require('./config/businessReview').migrateManualArchive()
     .then((r) => { if (r.archived || r.live) console.log(`[br] manual archive: ${r.archived} kept archived, ${r.live} live`); })
     .catch((e) => console.error('[br] manual archive:', e.message));
+  // Business review delegation became a list (one account may act for several managers); single ids and nulls are rewritten once.
+  // $expr on the field's own type: a plain { $type } filter also matches arrays of ids and would wrap them again on every boot.
+  require('./models/User').collection.updateMany({ $expr: { $eq: [{ $type: '$brActsFor' }, 'objectId'] } }, [{ $set: { brActsFor: ['$brActsFor'] } }])
+    .then(() => require('./models/User').collection.updateMany({ brActsFor: null }, { $set: { brActsFor: [] } }))
+    .catch((e) => console.error('[br] delegation list:', e.message));
   // Media Go is a service flag, not a project: anything still filed under it moves to the flag once (utils/mediaGoMigrate).
   require('./utils/mediaGoMigrate').run()
     .then((n) => { if (n) console.log(`[mediaGo] moved ${n} records from project to service`); })

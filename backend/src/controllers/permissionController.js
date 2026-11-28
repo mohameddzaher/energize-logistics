@@ -96,7 +96,7 @@ exports.updateRolePermissions = async (req, res) => {
       const after = resolveSections(role, $set.sections || (await getOverrides(role)), custom);
       for (const [key, on] of Object.entries(req.body.pages)) {
         if (!isPage(key)) continue;
-        if (req.body.pagesAll === true && !!on === pageFollowsSection(getPage(key), after, custom)) continue;
+        if (req.body.pagesAll === true && !!on === pageFollowsSection(getPage(key), after, custom, role)) continue;
         pages[key] = !!on;
       }
       $set.pages = pages;

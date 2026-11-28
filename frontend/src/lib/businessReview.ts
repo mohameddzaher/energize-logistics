@@ -10,7 +10,16 @@ export type Lang = 'ar' | 'en';
 // the same reason it is a rule there: a role added tomorrow that ends in
 // `_manager` is a meeting participant today, with no edit here. The server is
 // still the authority — this only decides which sidebar links are worth showing.
-const BR_EXECUTIVE_ROLES = ['super_admin', 'admin', 'it_manager', 'it_specialist', 'business_consultant', 'transition_account', 'backup_account', 'moderator'];
+// Transition and backup accounts are not the board here: they reach departments only through delegations.
+const BR_EXECUTIVE_ROLES = ['super_admin', 'admin', 'it_manager', 'it_specialist', 'business_consultant', 'moderator'];
+
+/** Activity log page: the top roles and the software team, or anyone given the page on the permissions screen (the server decides). */
+export const BR_ACTIVITY_PAGE = '/system/business-review/activity';
+const BR_ACTIVITY_ROLES = ['super_admin', 'admin', 'business_consultant', 'it_manager', 'it_team_leader', 'it_specialist', 'it_trainee'];
+export const canSeeBrActivity = (u: any) => !!u && (BR_ACTIVITY_ROLES.includes(u.role) || (Array.isArray(u.pagesGranted) && u.pagesGranted.includes(BR_ACTIVITY_PAGE)));
+
+/** The account acts for at least one section manager in business review (utils/brDelegate on the server). */
+export const actsForSomeone = (u: any) => !!(u && (u.brActsFor?._id || (Array.isArray(u.brActsForAll) && u.brActsForAll.length)));
 const BR_SECRETARY_ROLES = ['administration_manager', 'administration_team_leader', 'administration_staff'];
 // Mirror of EXTRA_MANAGER_ROLES on the server (config/businessReview), kept identical. This list once treated operations_staff as a manager; the server fixed it while the screen kept the old rule, so staff saw a meeting entry the server rejected. The CFO role is a manager without the _manager suffix.
 const BR_EXTRA_MANAGER_ROLES = ['moderator', 'cfo'];
@@ -58,6 +67,7 @@ export interface BrMeta {
     canArchive?: boolean;
     /** Under a business-review delegation: the manager this account acts for. */
     actsFor?: { _id: string; name: string } | null;
+    actsForAll?: { _id: string; name: string }[];
   };
 }
 

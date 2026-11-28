@@ -411,13 +411,13 @@ class _AdminUsersScreenState extends State<AdminUsersScreen> {
 // Counterpart of /system/permissions on the web, in two layers: the section (none/view/edit) decides read and write, and the page (open/closed) decides where inside what the section grants. Also the login page per role and the created user types (create/delete). Saving is one PUT of the whole map `{sections, pages, pagesAll:true, homePage}`; without `pages` the phone saved sections and left pages unchanged.
 const _sectionAr = {
   'Main': 'الرئيسية', 'Operations': 'التشغيل', 'Collections': 'التحصيل', 'Operations Platform': 'منصة الأوبريشن (B2B)',
-  'B2C': 'B2C', 'Workshop': 'الورشة', 'Admin': 'الإدارة', 'Tools': 'الأدوات', 'Portal': 'البوابة', 'Remote': 'العمل عن بُعد',
+  'B2C': 'B2C', 'Workshop': 'الورشة', 'Admin': 'إدارة النظام', 'Tools': 'الأدوات', 'Portal': 'البوابة', 'Remote': 'العمل عن بُعد',
   'HR': 'الموارد البشرية', 'Self Service': 'الخدمة الذاتية', 'CRM': 'إدارة العلاقات', 'Sales': 'المبيعات',
   'Accounting': 'الإدارة المالية', 'Procurement': 'المشتريات', 'Customs': 'التخليص الجمركي', 'Vehicles': 'المركبات',
   'Location Solutions': 'الصيانة', 'Performance': 'تقييم الأداء', 'Marketing': 'التسويق',
   'Business Development': 'تطوير الأعمال', 'Software & IT': 'البرمجيات', 'Shipment Orders': 'طلبات الشحنات',
   'Fleet Management': 'إدارة الأسطول', 'Administration': 'الشؤون الإدارية', 'Contracts': 'إدارة العقود',
-  'Business Review': 'مراجعة الأعمال', 'Executive': 'الإدارة العليا',
+  'Business Review': 'مراجعة الأعمال', 'Executive': 'الإدارة',
 };
 String sectionLabel(String s) => tr(_sectionAr[s] ?? s, s);
 

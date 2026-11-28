@@ -1052,6 +1052,12 @@
       "en": "Meetings & departments"
     },
     {
+      "key": "/system/business-review/activity",
+      "section": "Business Review",
+      "ar": "سجل التحديثات",
+      "en": "Activity log"
+    },
+    {
       "key": "/system/business-review/archive",
       "section": "Business Review",
       "ar": "الأرشيف",

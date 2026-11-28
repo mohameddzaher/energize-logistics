@@ -24,6 +24,8 @@ router.put('/delegates/:userId', delegation.set);
 router.use(require('../utils/brDelegate').applyDelegation);
 
 router.get('/meta', br.getMeta);
+// Every update made on tasks, for the top roles and the software team (or a page grant).
+router.get('/activity', require('../controllers/brActivityController').list);
 router.get('/dashboard', br.getDashboard);
 
 // Department board and recurring meetings (the daily meeting).

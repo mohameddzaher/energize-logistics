@@ -1,7 +1,7 @@
 'use client';
 /**
- * A section manager lets members of his team act for him in business review (backend utils/brDelegate):
- * they see the section's tasks and act on them as he would, under their own names. Shown to section managers only.
+ * A section manager lets others act for him in business review (backend utils/brDelegate): his team, the shared
+ * transition/backup accounts and the data manager. They see the section's tasks and act on them under their own names.
  */
 import { useCallback, useEffect, useState } from 'react';
 import { UserCheck, Loader2, X } from 'lucide-react';
@@ -10,7 +10,7 @@ import { useAuth } from '@/context/AuthContext';
 import { useDialog } from '@/components/system/DialogProvider';
 import { isBrParticipant } from '@/lib/businessReview';
 
-interface Member { _id: string; name: string; role: string; delegated: boolean; actsForOther: boolean }
+interface Member { _id: string; name: string; role: string; roleAr?: string; shared?: boolean; delegated: boolean; actsForOther: boolean; alsoFor?: string[] }
 
 export default function BrDelegatesButton({ ar }: { ar: boolean }) {
   const { user } = useAuth();
@@ -21,8 +21,8 @@ export default function BrDelegatesButton({ ar }: { ar: boolean }) {
   const [sectionName, setSectionName] = useState<{ ar: string; en: string }>({ ar: '', en: '' });
   const [busy, setBusy] = useState('');
   const t = (a: string, e: string) => (ar ? a : e);
-  // A delegate does not hand the section on; only its manager does.
-  const allowed = !!user && isBrParticipant(user.role) && !(user as any).brActsFor;
+  // Only a manager hands his section on (his own role, not one borrowed through a delegation).
+  const allowed = !!user && isBrParticipant(user.role);
 
   const load = useCallback(async () => {
     try { const d = await api.get<{ section: string; sectionAr?: string; sectionEn?: string; members: Member[] }>('/api/business-review/delegates'); setRows(d.members || []); setSection(d.section || ''); setSectionName({ ar: d.sectionAr || d.section || '', en: d.sectionEn || d.section || '' }); }
@@ -56,18 +56,19 @@ export default function BrDelegatesButton({ ar }: { ar: boolean }) {
             <button type="button" onClick={() => setOpen(false)} className="text-slate-400 hover:text-slate-700" title={t('إغلاق', 'Close')}><X className="h-4 w-4" /></button>
           </div>
           <p className="mb-3 text-[11.5px] text-slate-500">
-            {t('مَن تفوّضه يرى بنود قسمك ويعمل عليها كما تعمل أنت، وتُسجَّل أفعاله باسمه.', 'A delegate sees your section’s items and works them as you do; actions are logged under their name.')}
+            {t('مَن تفوّضه يرى بنود قسمك ويعمل عليها كما تعمل أنت، وتُسجَّل أفعاله باسمه. تظهر هنا مع فريقك الحساباتُ المشتركة (الانتقالي والاحتياطي ومدير إدارة البيانات).', 'A delegate sees your section’s items and works them as you do; actions are logged under their name. Shared accounts (transition, backup, data manager) appear here with your team.')}
             {section && <> {t('القسم', 'Section')}: <b>{t(sectionName.ar, sectionName.en)}</b></>}
           </p>
           {rows === null ? <div className="flex justify-center py-6"><Loader2 className="h-5 w-5 animate-spin text-slate-400" /></div> : !rows.length ? (
-            <p className="py-4 text-center text-[12.5px] text-slate-500">{t('لا أعضاء في قسمك.', 'No members in your section.')}</p>
+            <p className="py-4 text-center text-[12.5px] text-slate-500">{t('لا يوجد من يمكن تفويضه.', 'Nobody to delegate to.')}</p>
           ) : (
             <ul className="max-h-[50vh] space-y-1 overflow-y-auto">
               {rows.map((m) => (
                 <li key={m._id} className="flex items-center gap-2 rounded-lg px-2 py-1.5 hover:bg-slate-50">
                   <span className="min-w-0 flex-1">
                     <span className="block truncate text-[13px] font-semibold text-slate-900">{m.name}</span>
-                    {m.actsForOther && <span className="block text-[11px] text-amber-600">{t('مفوَّض من مديرٍ آخر', 'Delegated by another manager')}</span>}
+                    {m.shared && <span className="block text-[11px] text-sky-700">{m.roleAr || m.role} · {t('حساب مشترك بين الأقسام', 'Shared across sections')}</span>}
+                    {!!m.alsoFor?.length && <span className="block text-[11px] text-amber-600">{t(`مفوَّض أيضًا من: ${m.alsoFor.join('، ')}`, `Also delegated by: ${m.alsoFor.join(', ')}`)}</span>}
                   </span>
                   <button type="button" disabled={busy === m._id} onClick={() => toggle(m)}
                     className={`relative h-6 w-11 shrink-0 rounded-full transition ${m.delegated ? 'bg-[#f37121]' : 'bg-slate-300'} disabled:opacity-50`}

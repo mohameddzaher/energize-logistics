@@ -62,7 +62,9 @@ export default function BrMeetingDepartments({ meetingId, meta, L, notify, initi
   minutesLabel?: string;
 }) {
   const t = (en: string, ar: string) => tx(L, en, ar);
-  const [d, setD] = useState<{ departments: Card[]; scope: string; canEdit: boolean; headDept?: string | null } | null>(null);
+  const [d, setD] = useState<{ departments: Card[]; scope: string; canEdit: boolean; headDept?: string | null; headDepts?: string[] } | null>(null);
+  // The head's departments as one value ('|'-joined): a delegate may work in several.
+  const heads = (d?.headDepts?.length ? d.headDepts : d?.headDept ? [d.headDept] : []).join('|');
   const [openDept, setOpenDept] = useState(initialDept);
   useEffect(() => { if (initialDept) setOpenDept(initialDept); }, [initialDept]);
   // A department head has one card (his own): open it straight away.
@@ -75,6 +77,17 @@ export default function BrMeetingDepartments({ meetingId, meta, L, notify, initi
   }, [openDept]);
   const [filter, setFilter] = useState<Record<string, string>>({});
   const [openTask, setOpenTask] = useState('');
+  // A link that names a task (?task=, e.g. from the activity log) opens its department and the task, once the cards load.
+  const wantTask = useRef(typeof window !== 'undefined' ? new URLSearchParams(window.location.search).get('task') || '' : '');
+  useEffect(() => {
+    const id = wantTask.current;
+    if (!id || !d) return;
+    const card = d.departments.find((c: any) => (c.tasks || []).some((x: any) => x._id === id));
+    if (!card) return;
+    wantTask.current = '';
+    setOpenDept(card.key); setOpenTask(id);
+    setTimeout(() => document.getElementById(`br-task-${id}`)?.scrollIntoView({ behavior: 'smooth', block: 'center' }), 400);
+  }, [d]);
   const seq = useRef(0);
 
   // Reorder by dragging: the list follows the pointer live; the new order is saved when the task is let go.
@@ -209,9 +222,9 @@ export default function BrMeetingDepartments({ meetingId, meta, L, notify, initi
                   )}
                   {(() => {
                     const row = (task: Task) => (
-                      <TaskRow task={task} meta={meta} L={L} meetingId={meetingId} canEdit={d.canEdit} onlyDept={d.headDept || ''} dept={c.key}
+                      <div id={`br-task-${task._id}`}><TaskRow task={task} meta={meta} L={L} meetingId={meetingId} canEdit={d.canEdit} onlyDept={heads} dept={c.key}
                         open={openTask === task._id} onToggle={() => setOpenTask(openTask === task._id ? '' : task._id)}
-                        onChanged={load} notify={notify} />
+                        onChanged={load} notify={notify} /></div>
                     );
                     if (!(d.canEdit && !f && shown.length > 1)) {
                       return <div className="divide-y divide-slate-100">{shown.map((task) => <div key={task._id}>{row(task)}</div>)}</div>;
@@ -226,7 +239,7 @@ export default function BrMeetingDepartments({ meetingId, meta, L, notify, initi
                       </Reorder.Group>
                     );
                   })()}
-                  {d.canEdit && <NewTask meta={meta} L={L} meetingId={meetingId} dept={c.key} onlyDept={d.headDept || ''} onDone={load} notify={notify} />}
+                  {d.canEdit && <NewTask meta={meta} L={L} meetingId={meetingId} dept={c.key} onlyDept={heads} onDone={load} notify={notify} />}
                 </div>
               )}
             </section>
@@ -310,7 +323,7 @@ export function TaskRow({ task, meta, L, meetingId, canEdit, runner = canEdit, c
   const [ed, setEd] = useState({ title: task.title || '', description: task.description || '', dueDate: task.dueDate ? isoDay(new Date(task.dueDate)) : '', priority: task.priority || 'medium' });
   // Several people can be added in one go; each becomes an owner of the same task.
   const [shareTo, setShareTo] = useState<string[]>([]);
-  const people = [...meta.participants].filter((p) => !onlyDept || p.section === onlyDept).sort((a, b) => String(a.section || '').localeCompare(String(b.section || '')));
+  const people = [...meta.participants].filter((p) => !onlyDept || onlyDept.split('|').includes(String(p.section || ''))).sort((a, b) => String(a.section || '').localeCompare(String(b.section || '')));
   const share = async () => {
     if (!shareTo.length) return;
     setBusy(true);
@@ -324,6 +337,8 @@ export function TaskRow({ task, meta, L, meetingId, canEdit, runner = canEdit, c
   const [busy, setBusy] = useState(false);
   const [newDue, setNewDue] = useState('');
   const [reason, setReason] = useState('');
+  // «تم الإنجاز» opens the update form on done, so its details are written like any other change.
+  const [preset, setPreset] = useState('');
 
   const send = async (body: any, ok: string) => {
     setBusy(true);
@@ -439,7 +454,7 @@ export function TaskRow({ task, meta, L, meetingId, canEdit, runner = canEdit, c
           {canEdit && (
             <div className="flex flex-wrap gap-2 pt-1">
               {!done && (
-                <button type="button" disabled={busy} onClick={() => send({ status: 'done', progress: 100 }, t('Marked done', 'سُجّل البند منجزًا'))}
+                <button type="button" disabled={busy} onClick={() => { setPreset('done'); setMode('update'); }}
                   className="inline-flex items-center gap-1.5 bg-emerald-600 text-white text-xs font-bold rounded-lg px-3 py-1.5 disabled:opacity-50">
                   <CheckCircle2 className="w-3.5 h-3.5" />{t('Mark done', 'تم الإنجاز')}
                 </button>
@@ -450,7 +465,7 @@ export function TaskRow({ task, meta, L, meetingId, canEdit, runner = canEdit, c
                   <PauseCircle className="w-3.5 h-3.5" />{t('Postpone', 'تأجيل')}
                 </button>
               )}
-              <button type="button" onClick={() => setMode('update')}
+              <button type="button" onClick={() => { setPreset(''); setMode('update'); }}
                 className="inline-flex items-center gap-1.5 border border-slate-300 bg-white text-slate-700 text-xs font-bold rounded-lg px-3 py-1.5">
                 <PlayCircle className="w-3.5 h-3.5" />{t('Update status', 'تحديث الحالة')}
               </button>
@@ -527,11 +542,11 @@ export function TaskRow({ task, meta, L, meetingId, canEdit, runner = canEdit, c
                       <label className="block"><span className={lbl}>{t('Current due date', 'الموعد الحالي')}</span>
                         <p className="px-3 py-2 rounded-lg bg-slate-50 border border-slate-200 text-sm text-slate-700">{fmtDate(task.dueDate)}</p></label>
                     </div>
-                    <label className="block"><span className={lbl}>{t('Reason (optional)', 'سبب التأجيل (اختياري)')}</span>
+                    <label className="block"><span className={lbl}>{t('Reason *', 'سبب التأجيل *')}</span>
                       <textarea rows={2} value={reason} onChange={(e) => setReason(e.target.value)} className={inp} /></label>
                   </div>
                 ),
-                footer: primary(t('Save postponement', 'تسجيل التأجيل'), () => send({ status: 'postponed', newDueDate: newDue, postponeReason: reason.trim() }, t('Postponed', 'تم تأجيل البند')), !newDue, 'bg-amber-500 hover:bg-amber-600'),
+                footer: primary(t('Save postponement', 'تسجيل التأجيل'), () => send({ status: 'postponed', newDueDate: newDue, postponeReason: reason.trim() }, t('Postponed', 'تم تأجيل البند')), !newDue || !reason.trim(), 'bg-amber-500 hover:bg-amber-600'),
               },
               edit: {
                 icon: Pencil, title: t('Edit task', 'تعديل البند'), tone: 'bg-[#f37121]',
@@ -604,7 +619,7 @@ export function TaskRow({ task, meta, L, meetingId, canEdit, runner = canEdit, c
               },
               update: {
                 icon: PlayCircle, title: t('Update status', 'تحديث الحالة'), tone: 'bg-emerald-600',
-                body: <ProgressForm status={task.status} progress={task.progress || 0} statuses={meta.actionStatuses} lang={L} busy={busy}
+                body: <ProgressForm status={task.status} preset={preset || undefined} progress={task.progress || 0} statuses={meta.actionStatuses} lang={L} busy={busy}
                   expectedDate={task.expectedDate} onCancel={close} onSubmit={(v: ProgressReport) => send(v, t('Updated', 'تم تحديث البند'))} />,
               },
               followup: {
@@ -667,7 +682,7 @@ function NewTask({ meta, L, meetingId, dept, onlyDept = '', followUpOf, inline, 
 }) {
   const t = (en: string, ar: string) => tx(L, en, ar);
   // The department's heads first, then everyone else who can own a task.
-  const people = [...meta.participants].filter((p) => !onlyDept || p.section === onlyDept).sort((a, b) => Number(b.section === dept) - Number(a.section === dept));
+  const people = [...meta.participants].filter((p) => !onlyDept || onlyDept.split('|').includes(String(p.section || ''))).sort((a, b) => Number(b.section === dept) - Number(a.section === dept));
   // The department head: the CFO for finance, else the section's manager.
   const head = people.find((p) => p.section === dept && p.role === 'cfo')
     || people.find((p) => p.section === dept && /_manager$/.test(p.role)) || people.find((p) => p.section === dept);

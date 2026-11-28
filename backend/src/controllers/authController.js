@@ -378,12 +378,12 @@ exports.getMe = async (req, res) => {
     const approvesLeaves = user ? await require('../utils/leaveTeam').approvesLeaves(user).catch(() => false) : false;
     const custodyPages = user ? await require('../middleware/custodyGate').custodyPagesFor(user.role).catch(() => []) : [];
     // Business review delegation: the manager this account acts for there, so the sidebar shows the section's pages (utils/brDelegate).
-    let brActsFor = null;
-    if (user && user.brActsFor) {
-      const m = await User.findById(user.brActsFor).select('firstName lastName role isActive').lean();
-      if (m && m.isActive !== false && require('../config/businessReview').isManagerRole(m.role)) brActsFor = { _id: String(m._id), name: `${m.firstName || ''} ${m.lastName || ''}`.trim(), role: m.role };
+    let brActsFor = null; let brActsForAll = [];
+    if (user) {
+      brActsForAll = (await require('../utils/brDelegate').managersOf(user)).map((m) => ({ _id: String(m._id), name: m.name, role: m.role }));
+      brActsFor = brActsForAll[0] || null;
     }
-    const out = user ? { ...user.toObject({ flattenMaps: true }), brActsFor, permissions, pageAccess, pagesGranted, custodyPages, homePage, superAdminPowers, approvesLeaves, ...(roleLabel ? { roleLabel } : {}) } : user;
+    const out = user ? { ...user.toObject({ flattenMaps: true }), brActsFor, brActsForAll, permissions, pageAccess, pagesGranted, custodyPages, homePage, superAdminPowers, approvesLeaves, ...(roleLabel ? { roleLabel } : {}) } : user;
 
     res.json({ user: out });
   } catch (error) {

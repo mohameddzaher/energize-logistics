@@ -65,9 +65,9 @@ exports.getBoard = async (req, res) => {
     const ownerSection = await sectionsOfUserIds(shown.map((a) => a.assignee));
     const deptOf = (a) => ownerSection.get(String(a.assignee)) || orgSectionOfRole(a.assigneeRole) || a.department || NO_DEPT;
     // A department head sees his department only (and anything assigned to him personally).
-    const hd = runner ? null : await brScope.headDept(req.user);
+    const hd = runner ? null : await brScope.headDepts(req.user);
     if (hd) {
-      for (let i = shown.length - 1; i >= 0; i -= 1) if (deptOf(shown[i]) !== hd && !brScope.isMe(req.user, shown[i].assignee)) shown.splice(i, 1);
+      for (let i = shown.length - 1; i >= 0; i -= 1) if (!(hd || []).includes(deptOf(shown[i])) && !brScope.isMe(req.user, shown[i].assignee)) shown.splice(i, 1);
     }
     if (req.query.department) {
       for (let i = shown.length - 1; i >= 0; i -= 1) if (deptOf(shown[i]) !== req.query.department) shown.splice(i, 1);
@@ -248,8 +248,8 @@ exports.getMeetingDepartments = async (req, res) => {
     };
     const rank = (a) => (overdue(a) ? 0 : a.status === 'blocked' ? 1 : a.status === 'in_progress' ? 2 : a.status === 'open' ? 3 : a.status === 'postponed' ? 4 : 5);
     // A department head gets his own department's card only, and manages it.
-    const hd = runner ? null : await brScope.headDept(req.user);
-    const keys = hd ? [hd] : [...new Set([...(meeting.departments || []), ...actions.map(deptOf)])];
+    const hd = runner ? null : await brScope.headDepts(req.user);
+    const keys = hd ? [...hd] : [...new Set([...(meeting.departments || []), ...actions.map(deptOf)])];
     const cards = keys.map((key) => {
       // A hand-set order wins; tasks never placed by hand follow it in the automatic order.
       const placed = (a) => (a.sortOrder == null ? 1 : 0);
@@ -286,7 +286,7 @@ exports.getMeetingDepartments = async (req, res) => {
     });
     // Departments with something to discuss first; quiet ones keep the meeting's order after them.
     cards.sort((x, y) => (y.counts.overdue - x.counts.overdue) || ((y.counts.total - y.counts.done) - (x.counts.total - x.counts.done)));
-    res.json({ departments: cards, scope: meeting.series ? 'series' : 'meeting', canEdit: runner || !!hd, runner, headDept: hd || null });
+    res.json({ departments: cards, scope: meeting.series ? 'series' : 'meeting', canEdit: runner || !!hd, runner, headDept: (hd && hd[0]) || null, headDepts: hd || [] });
   } catch (error) {
     console.error('br meeting departments error:', error);
     res.status(500).json({ message: 'تعذّر تحميل أقسام الاجتماع' });
@@ -315,8 +315,8 @@ exports.getArchive = async (req, res) => {
 
     const ownerSection = await sectionsOfUserIds(rows.map((a) => a.assignee));
     const deptOf = (a) => ownerSection.get(String(a.assignee)) || orgSectionOfRole(a.assigneeRole) || a.department || NO_DEPT;
-    const hd = runner ? null : await brScope.headDept(req.user);
-    if (hd) rows = rows.filter((a) => deptOf(a) === hd || brScope.isMe(req.user, a.assignee));
+    const hd = runner ? null : await brScope.headDepts(req.user);
+    if (hd) rows = rows.filter((a) => (hd || []).includes(deptOf(a)) || brScope.isMe(req.user, a.assignee));
 
     const meetings = new Map((await BrMeeting.find({ _id: { $in: [...new Set(rows.map((a) => String(a.meeting)))] } })
       .select('refNumber title cadence scheduledAt seriesDay series').lean()).map((m) => [String(m._id), m]));
@@ -501,11 +501,11 @@ exports.getDaily = async (req, res) => {
     let acts = ids.length ? await BrAction.find({ meeting: { $in: ids }, ...liveCond() })
       .select('meeting department assignee assigneeName assigneeRole status title dueDate progress').lean() : [];
     // A department head's day view: his department's tasks and minutes only.
-    const hd = runner ? null : await brScope.headDept(req.user);
+    const hd = runner ? null : await brScope.headDepts(req.user);
     if (hd) {
       const deptOf = await brScope.deptResolver(acts);
-      acts = acts.filter((a) => deptOf(a) === hd);
-      for (const m of meetings) m.minutes = (m.minutes || []).filter((x) => x.department === hd);
+      acts = acts.filter((a) => (hd || []).includes(deptOf(a)));
+      for (const m of meetings) m.minutes = (m.minutes || []).filter((x) => (hd || []).includes(x.department));
     }
     const byMeeting = new Map();
     for (const a of acts) { const k = String(a.meeting); if (!byMeeting.has(k)) byMeeting.set(k, []); byMeeting.get(k).push(a); }
@@ -534,7 +534,7 @@ exports.getDaily = async (req, res) => {
     let todayDetail = null;
     if (todayMeeting) {
       const list = byMeeting.get(String(todayMeeting._id)) || [];
-      const depts = hd ? [hd] : [...new Set([...(todayMeeting.departments || []), ...list.map(deptOfAction)])];
+      const depts = hd ? [...hd] : [...new Set([...(todayMeeting.departments || []), ...list.map(deptOfAction)])];
       todayDetail = {
         ...summary(todayMeeting),
         title: todayMeeting.title,
@@ -558,7 +558,7 @@ exports.getDaily = async (req, res) => {
       scheduledToday: (series.weekdays || []).includes(brSeries.weekdayOf(today)),
       days: meetings.filter((m) => m.seriesDay !== today).map(summary),
       canEdit: runner,
-      headDept: hd || null,
+      headDept: (hd && hd[0]) || null, headDepts: hd || [],
     });
   } catch (error) {
     console.error('br daily error:', error);

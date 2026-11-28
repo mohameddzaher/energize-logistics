@@ -258,14 +258,14 @@ List<AppSection> sectionsFor(AuthProvider auth) {
 
   final all = <AppSection>[
     AppSection(
-      key: 'Top Management', arTitle: 'الإدارة العليا', enTitle: 'Top Management', icon: Icons.workspace_premium_outlined,
+      key: 'Top Management', arTitle: 'الإدارة', enTitle: 'Management', icon: Icons.workspace_premium_outlined,
       // cfo, moderator and the collections manager reach this section for the complete customer files only.
       roles: const ['super_admin', 'admin', 'it_manager', 'it_team_leader', 'it_specialist', 'business_consultant', 'transition_account', 'backup_account', 'cfo', 'moderator', 'collections_manager', 'collections_team_leader'],
       pages: [
         AppPage('ملفات العملاء الشاملة', 'Customer Files', Icons.folder_shared_outlined, (c) => const CustomerFilesScreen(), path: '/system/customers'),
         if (_top.contains(role) || auth.user?['isTopManagement'] == true || auth.user?['isChairman'] == true) ...[
         AppPage('طلبات الإجازات', 'Leave Requests', Icons.event_available_outlined, (c) => TopLeavesScreen(canDecide: auth.user?['isTopManagement'] == true || _top.contains(role)), path: '/system/top-management'),
-        AppPage('طلبات الموظفين', 'Staff Requests', Icons.mark_email_unread_outlined, (c) => const IncomingRequestsScreen(target: 'Top Management', title: ('طلبات الموظفين — الإدارة العليا', 'Staff Requests — Top Management')), path: '/system/top-management/requests'),
+        AppPage('طلبات الموظفين', 'Staff Requests', Icons.mark_email_unread_outlined, (c) => const IncomingRequestsScreen(target: 'Top Management', title: ('طلبات الموظفين — الإدارة', 'Staff Requests — Management')), path: '/system/top-management/requests'),
         // The chairman's office: every leave and staff request for information; top management's approval is final.
         if (auth.user?['isChairman'] == true || _top.contains(role)) ...[
           AppPage('اعتمادات رئيس مجلس الإدارة — الإجازات', 'Chairman’s Approvals — Leaves', Icons.verified_outlined, (c) => const TopLeavesScreen(base: '/api/chairman', stage: 'executive', canDecide: false, title: ('رئاسة مجلس الإدارة — الإجازات', 'Chairman’s Office — Leaves')), path: '/system/chairman'),
@@ -863,7 +863,7 @@ List<AppSection> sectionsFor(AuthProvider auth) {
       ],
     ),
     AppSection(
-      key: 'AdminTools', arTitle: 'الإدارة', enTitle: 'Admin', icon: Icons.admin_panel_settings_outlined,
+      key: 'AdminTools', arTitle: 'إدارة النظام', enTitle: 'System Admin', icon: Icons.admin_panel_settings_outlined,
       // As on the web: the IT specialist sees users, permissions, the audit log and documentation.
       roles: const ['super_admin', 'admin', 'it_manager', 'it_team_leader', 'it_specialist', 'business_consultant', 'transition_account', 'backup_account'], managed: false,
       pages: [

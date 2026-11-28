@@ -39,7 +39,7 @@ export default function MyActionsPage() {
       if (m) setMeta(m);
       setActions(r.tasks || []);
       setRunner(!!r.canRunMeetings || !!r.headDept);
-      setHeadDept(r.headDept || '');
+      setHeadDept(((r as any).headDepts?.length ? (r as any).headDepts : r.headDept ? [r.headDept] : []).join('|'));
       const mine = (h as any)?.assignments || [];
       setHanded(mine);
       const hs = (h as any)?.summary || { total: 0, open: 0, overdue: 0, done: 0 };

@@ -159,8 +159,9 @@ Future<Map<String, dynamic>?> brPickPerson(BuildContext context, List<Map<String
 }
 
 /// Update status, progress, expected finish and postponement (new date + reason); ProgressForm on the web.
-Future<Map<String, dynamic>?> brProgressSheet(BuildContext context, Map<String, dynamic> meta, String title, String status, num progress, {dynamic expectedDate}) {
-  var st = status;
+Future<Map<String, dynamic>?> brProgressSheet(BuildContext context, Map<String, dynamic> meta, String title, String status, num progress, {dynamic expectedDate, String? preset}) {
+  // `preset` opens the sheet on a status (e.g. «تم الإنجاز» opens it on done).
+  var st = preset ?? status;
   var pr = progress.toDouble();
   final note = TextEditingController();
   final exp0 = expectedDate == null ? '' : (DateTime.tryParse(expectedDate.toString()) == null ? '' : brIsoDay(DateTime.parse(expectedDate.toString()).toLocal()));
@@ -220,8 +221,12 @@ Future<Map<String, dynamic>?> brProgressSheet(BuildContext context, Map<String, 
               ),
             ],
             const SizedBox(height: 8),
-            TextField(controller: note, maxLines: 2, decoration: InputDecoration(
-                labelText: st == 'postponed' ? tr('سبب التأجيل (اختياري)', 'Reason for postponing (optional)') : tr('ملاحظة (اختياري)', 'Note (optional)'))),
+            // A status change must say what was done; the server refuses it otherwise.
+            TextField(controller: note, maxLines: 3, onChanged: (_) { if (err != null) setS(() => err = null); }, decoration: InputDecoration(
+                labelText: st != status
+                    ? (st == 'postponed' ? tr('سبب التأجيل *', 'Reason for postponing *') : tr('تفاصيل التحديث *', 'Update details *'))
+                    : tr('تفاصيل التحديث', 'Update details'),
+                hintText: tr('ما الذي تمّ بالتحديد؟', 'What exactly was done?'))),
             const SizedBox(height: 8),
             Wrap(spacing: 6, runSpacing: 6, crossAxisAlignment: WrapCrossAlignment.center, children: [
               OutlinedButton.icon(
@@ -255,6 +260,10 @@ Future<Map<String, dynamic>?> brProgressSheet(BuildContext context, Map<String, 
                 onPressed: () {
                   if (st == 'postponed' && status != 'postponed' && newDue.isEmpty) {
                     setS(() => err = tr('حدّد الموعد الجديد للتأجيل.', 'Pick the new date for the postponement.'));
+                    return;
+                  }
+                  if (st != status && note.text.trim().isEmpty) {
+                    setS(() => err = tr('اكتب تفاصيل التحديث؛ تغيير الحالة يحتاج إلى شرحٍ لما تمّ.', 'Write the details: a status change needs an explanation.'));
                     return;
                   }
                   Navigator.pop(c, {

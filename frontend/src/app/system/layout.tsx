@@ -35,7 +35,7 @@ import { notificationHref, notificationTone, sinceLabel } from '@/lib/notificati
 import { useSocket } from '@/hooks/useSocket';
 import { homeRouteForRole, landingFor } from '@/lib/roleRoutes';
 import { OPS_SECTION_ROLES as OPS_ROLES } from '@/lib/ops';
-import { isBrParticipant, isBrRunner } from '@/lib/businessReview';
+import { isBrParticipant, isBrRunner, actsForSomeone, canSeeBrActivity } from '@/lib/businessReview';
 import { SO_EDIT_ROLES as SO_ROLES } from '@/lib/shipmentOrders';
 import { canAsk as canAskShipment, canPlace as canPlaceShipment, isSalesUser, isVendorUser, isFollowup as isFollowupUser } from '@/lib/shipmentRequests';
 import { VENDOR_NAV_ROLES } from '@/lib/vendors';
@@ -480,9 +480,10 @@ function SystemLayoutInner({ children }: { children: React.ReactNode }) {
     // Administration (secretariat).
     // Contracts.
     // Business review meetings: the managers/board forum. `my-tasks` is listed for EVERY role because ordinary employees receive delegated work there; the other three pages check their own tier server-side.
-    { href: '/system/business-review/daily', label: lang === 'ar' ? 'الاجتماعات ومتابعة الأقسام' : 'Meetings & departments', icon: <CalendarCheck className="w-5 h-5" />, roles: [], section: 'Business Review', visible: (u) => isBrParticipant(u.role) || !!(u as any).brActsFor },
-    { href: '/system/business-review/archive', label: lang === 'ar' ? 'الأرشيف' : 'Archive', icon: <Archive className="w-5 h-5" />, roles: [], section: 'Business Review', visible: (u) => isBrParticipant(u.role) || !!(u as any).brActsFor },
-    { href: '/system/business-review/my-actions', label: lang === 'ar' ? 'البنود المسندة إليّ' : 'My Actions', icon: <ClipboardList className="w-5 h-5" />, roles: [], section: 'Business Review', visible: (u) => isBrParticipant(u.role) || !!(u as any).brActsFor },
+    { href: '/system/business-review/daily', label: lang === 'ar' ? 'الاجتماعات ومتابعة الأقسام' : 'Meetings & departments', icon: <CalendarCheck className="w-5 h-5" />, roles: [], section: 'Business Review', visible: (u) => isBrParticipant(u.role) || actsForSomeone(u) },
+    { href: '/system/business-review/activity', label: lang === 'ar' ? 'سجل التحديثات' : 'Activity log', icon: <Activity className="w-5 h-5" />, roles: [], section: 'Business Review', visible: (u) => canSeeBrActivity(u) },
+    { href: '/system/business-review/archive', label: lang === 'ar' ? 'الأرشيف' : 'Archive', icon: <Archive className="w-5 h-5" />, roles: [], section: 'Business Review', visible: (u) => isBrParticipant(u.role) || actsForSomeone(u) },
+    { href: '/system/business-review/my-actions', label: lang === 'ar' ? 'البنود المسندة إليّ' : 'My Actions', icon: <ClipboardList className="w-5 h-5" />, roles: [], section: 'Business Review', visible: (u) => isBrParticipant(u.role) || actsForSomeone(u) },
     { href: '/system/business-review/actions', label: lang === 'ar' ? 'سجل المتابعة' : 'Action Register', icon: <ListTodo className="w-5 h-5" />, roles: [], section: 'Business Review', visible: (u) => isBrRunner(u.role) },
     // Everyone — an ordinary employee's ONLY link into this section.
     { href: '/system/business-review/my-tasks', label: lang === 'ar' ? 'مهامي من الاجتماعات' : 'My Meeting Tasks', icon: <ListTodo className="w-5 h-5" />, roles: [], section: 'Business Review' },

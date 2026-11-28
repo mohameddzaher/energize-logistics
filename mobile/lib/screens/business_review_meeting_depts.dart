@@ -21,8 +21,11 @@ class BrMeetingDepartmentsTab extends StatefulWidget {
   final List<Map<String, dynamic>>? tasks;
   final bool runner;
   final String? headDept;
+  /// Opens this department and task on arrival (from the activity log).
+  final String? initialDept;
+  final String? initialTask;
   final VoidCallback? onChanged;
-  const BrMeetingDepartmentsTab({super.key, required this.meetingId, required this.meta, this.embedded = false, this.minutesLabel, this.tasks, this.runner = false, this.headDept, this.onChanged});
+  const BrMeetingDepartmentsTab({super.key, required this.meetingId, required this.meta, this.embedded = false, this.minutesLabel, this.tasks, this.runner = false, this.headDept, this.onChanged, this.initialDept, this.initialTask});
   @override
   State<BrMeetingDepartmentsTab> createState() => _BrMeetingDepartmentsTabState();
 }
@@ -63,7 +66,7 @@ final _quickDates = <(String, String, String Function())>[
 class _BrMeetingDepartmentsTabState extends State<BrMeetingDepartmentsTab> {
   Map<String, dynamic>? _d;
   String? _error;
-  String _openDept = '';
+  late String _openDept = widget.initialDept ?? '';
   /// A department head works inside his department only (set by the server); his card opens by itself.
   String get _headDept => '${_d?['headDept'] ?? widget.headDept ?? ''}';
   List<Map<String, dynamic>> _participants() => List<Map<String, dynamic>>.from(widget.meta['participants'] ?? [])
@@ -74,7 +77,7 @@ class _BrMeetingDepartmentsTabState extends State<BrMeetingDepartmentsTab> {
         if (c != null) Scrollable.ensureVisible(c, duration: const Duration(milliseconds: 350), curve: Curves.easeOutCubic);
       });
   final Map<String, String> _filter = {};
-  String _openTask = '';
+  late String _openTask = widget.initialTask ?? '';
   Timer? _tick;
 
   void _soon([dynamic _]) { _tick?.cancel(); _tick = Timer(const Duration(milliseconds: 400), _load); }
@@ -152,10 +155,10 @@ class _BrMeetingDepartmentsTabState extends State<BrMeetingDepartmentsTab> {
             label: Text(newDue.isEmpty ? tr('الموعد الجديد *', 'New date *') : newDue),
           ),
           const SizedBox(height: 8),
-          TextField(controller: reason, decoration: InputDecoration(labelText: tr('سبب التأجيل (اختياري)', 'Reason (optional)'))),
+          TextField(controller: reason, maxLines: 2, decoration: InputDecoration(labelText: tr('سبب التأجيل *', 'Reason *'))),
           const SizedBox(height: 12),
           SizedBox(width: double.infinity, child: FilledButton(
-            onPressed: () { if (newDue.isNotEmpty) Navigator.pop(c, true); },
+            onPressed: () { if (newDue.isNotEmpty && reason.text.trim().isNotEmpty) Navigator.pop(c, true); },
             child: Text(tr('تسجيل التأجيل', 'Save postponement')),
           )),
         ]),
@@ -282,8 +285,8 @@ class _BrMeetingDepartmentsTabState extends State<BrMeetingDepartmentsTab> {
     }
   }
 
-  Future<void> _update(Map t) async {
-    final v = await brProgressSheet(context, widget.meta, '${t['title']}', '${t['status']}', (t['progress'] ?? 0) as num, expectedDate: t['expectedDate']);
+  Future<void> _update(Map t, {String? preset}) async {
+    final v = await brProgressSheet(context, widget.meta, '${t['title']}', '${t['status']}', (t['progress'] ?? 0) as num, expectedDate: t['expectedDate'], preset: preset);
     if (v != null) _patch('${t['_id']}', v, tr('تم تحديث البند', 'Updated'));
   }
 
@@ -664,7 +667,7 @@ class _BrMeetingDepartmentsTabState extends State<BrMeetingDepartmentsTab> {
                 const SizedBox(height: 8),
                 Wrap(spacing: 6, runSpacing: 6, children: [
                   if (!done) FilledButton.icon(style: FilledButton.styleFrom(backgroundColor: T.success),
-                      onPressed: () => _patch('${t['_id']}', {'status': 'done', 'progress': 100}, tr('سُجّل البند منجزًا', 'Marked done')),
+                      onPressed: () => _update(t, preset: 'done'),
                       icon: const Icon(Icons.check, size: 16), label: Text(tr('تم الإنجاز', 'Mark done'))),
                   if (!done) FilledButton.icon(style: FilledButton.styleFrom(backgroundColor: T.warn),
                       onPressed: () => _postpone(t), icon: const Icon(Icons.pause, size: 16), label: Text(tr('تأجيل', 'Postpone'))),

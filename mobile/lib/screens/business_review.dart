@@ -11,6 +11,7 @@ import '../ui/theme.dart';
 import '../ui/widgets.dart';
 import '../ui/search_field.dart';
 import 'business_review_archive.dart';
+import 'business_review_activity.dart';
 import 'business_review_board.dart';
 import 'business_review_kit.dart';
 import 'business_review_meeting_depts.dart';
@@ -109,6 +110,7 @@ class _BusinessReviewScreenState extends State<BusinessReviewScreen> {
         return (n > 0 ? '${tr('بنودي', 'My actions')} ($n)' : tr('بنودي', 'My actions'), _ActionsTab(meta: _meta!, mine: true) as Widget);
       })(),
       if (participant) (tr('الأرشيف', 'Archive'), BrArchiveTab(meta: _meta!)),
+      if (_meta!['me']?['canSeeActivity'] == true) (tr('سجل التحديثات', 'Activity log'), BrActivityTab(meta: _meta!)),
       if (runner) (tr('سجل المتابعة', 'Register'), _ActionsTab(meta: _meta!, mine: false)),
       (tr('مهامي', 'My tasks'), _TasksTab(meta: _meta!)),
     ];
@@ -119,7 +121,8 @@ class _BusinessReviewScreenState extends State<BusinessReviewScreen> {
         title: Text(tr('مراجعة الأعمال', 'Business Review')),
         // A section manager hands business review to members of his team (not a delegate, not the meeting runners).
         actions: [
-          if (participant && !runner && context.read<AuthProvider>().user?['brActsFor'] == null)
+          // Only a manager in his own right hands his section on (a delegate borrows the role inside business review only).
+          if (participant && !runner && ('${context.read<AuthProvider>().user?['role'] ?? ''}'.endsWith('_manager') || context.read<AuthProvider>().user?['role'] == 'cfo'))
             IconButton(tooltip: tr('تفويض الفريق', 'Delegate to team'), icon: const Icon(Icons.how_to_reg_outlined), onPressed: () => _openDelegates(context)),
         ],
         appBarBottom: tabs.length > 1
@@ -904,7 +907,7 @@ class _ActionsTabState extends State<_ActionsTab> {
                 showMeeting: true,
                 onChanged: _load,
                 // My items: update and delegate. Register: update and delegate (owner or manager) and delete.
-                canDelegate: widget.mine || a['assignee'] == meId || a['assignee'] == (widget.meta['me']?['actsFor']?['_id'] ?? '__none__').toString() || runner,
+                canDelegate: widget.mine || a['assignee'] == meId || List.from(widget.meta['me']?['actsForAll'] ?? const []).any((x) => '${x['_id']}' == '${a['assignee']}') || runner,
                 canDelete: !widget.mine,
               ),
             if (_shownHanded.isNotEmpty) ...[
@@ -1174,17 +1177,22 @@ class _DelegatesSheetState extends State<_DelegatesSheet> {
         child: ListView(padding: const EdgeInsets.all(16), children: [
           Text(tr('تفويض مراجعة الأعمال', 'Business review delegation'), style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w900)),
           const SizedBox(height: 4),
-          Text('${tr('مَن تفوّضه يرى بنود قسمك ويعمل عليها كما تعمل أنت، وتُسجَّل أفعاله باسمه.', 'A delegate sees your section’s items and works them as you do, under their own name.')}${_section.isEmpty ? '' : ' ${tr('القسم', 'Section')}: $_section'}',
+          Text('${tr('مَن تفوّضه يرى بنود قسمك ويعمل عليها كما تعمل أنت، وتُسجَّل أفعاله باسمه. تظهر هنا مع فريقك الحساباتُ المشتركة (الانتقالي والاحتياطي ومدير إدارة البيانات).', 'A delegate sees your section’s items and works them as you do, under their own name. Shared accounts (transition, backup, data manager) appear here with your team.')}${_section.isEmpty ? '' : ' ${tr('القسم', 'Section')}: $_section'}',
               style: const TextStyle(fontSize: 12, color: T.inkFaint)),
           const SizedBox(height: 10),
           if (rows == null) const Center(child: Padding(padding: EdgeInsets.all(24), child: CircularProgressIndicator())),
-          if (rows != null && rows.isEmpty) Padding(padding: const EdgeInsets.all(20), child: Text(tr('لا أعضاء في قسمك.', 'No members in your section.'), textAlign: TextAlign.center)),
+          if (rows != null && rows.isEmpty) Padding(padding: const EdgeInsets.all(20), child: Text(tr('لا يوجد من يمكن تفويضه.', 'Nobody to delegate to.'), textAlign: TextAlign.center)),
           for (final m in rows ?? const <Map<String, dynamic>>[])
             SwitchListTile(
               value: m['delegated'] == true,
               onChanged: _busy == '${m['_id']}' ? null : (_) => _toggle(m),
               title: Text('${m['name']}', style: const TextStyle(fontWeight: FontWeight.w700)),
-              subtitle: m['actsForOther'] == true ? Text(tr('مفوَّض من مديرٍ آخر', 'Delegated by another manager'), style: const TextStyle(color: T.warn, fontSize: 11.5)) : null,
+              subtitle: (m['shared'] == true || List.from(m['alsoFor'] ?? const []).isNotEmpty)
+                  ? Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                      if (m['shared'] == true) Text('${m['roleAr'] ?? m['role'] ?? ''} · ${tr('حساب مشترك بين الأقسام', 'Shared across sections')}', style: const TextStyle(color: T.info, fontSize: 11.5)),
+                      if (List.from(m['alsoFor'] ?? const []).isNotEmpty) Text('${tr('مفوَّض أيضًا من', 'Also delegated by')}: ${List.from(m['alsoFor']).join('، ')}', style: const TextStyle(color: T.warn, fontSize: 11.5)),
+                    ])
+                  : null,
               activeThumbColor: T.orange,
             ),
         ]),

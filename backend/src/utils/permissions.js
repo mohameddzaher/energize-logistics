@@ -103,7 +103,14 @@ const resolveSections = (role, overrides, custom) => {
  * Exported because the permissions screen used to repeat this rule when shrinking its payload to only what differs from the section. For a section not managed by the matrix (my profile, my leaves, settings, reports hub, executive view) the screen said open to all while the server said closed for created roles, so a tick on such a page matched the baseline, was not sent, and the server read it as closed. The shortcut now lives on the server using this same function, and the screen sends the map as the user sees it.
  */
 const FLEET_WALLET_ROLES = ['fleet_manager', 'fleet_team_leader', 'fleet_supervisor'];
-const pageFollowsSection = (page, sections, custom) => {
+// Pages narrower than their section: closed by default except for these roles, so the permissions screen shows them closed and a tick opens them.
+const roleLimitedPages = () => {
+  const br = require('../config/businessReview');
+  return { [br.ACTIVITY_PAGE]: br.ACTIVITY_ROLES };
+};
+const pageFollowsSection = (page, sections, custom, role) => {
+  const limited = roleLimitedPages()[page.key];
+  if (limited && role && !limited.includes(role)) return false;
   if (!Object.prototype.hasOwnProperty.call(sections || {}, page.section)) {
     // A personal (self-service) section is open to every internal role by default, even a created one. See `PERSONAL_SECTIONS` in config/pages.
     if (PERSONAL_SECTIONS.has(page.section)) return true;
@@ -150,7 +157,7 @@ const effectivePages = async (role) => {
   for (const p of PAGES) {
     if (Object.prototype.hasOwnProperty.call(pages, p.key)) { out[p.key] = pages[p.key]; continue; }
     // Pages the matrix is silent on follow their section (rule in `pageFollowsSection`). A section not managed by the matrix (home, tools, admin, self-service, portal) stays guarded by the older role lists, except a created role: no list knows it, so only what is ticked opens for it.
-    out[p.key] = pageFollowsSection(p, sections, custom);
+    out[p.key] = pageFollowsSection(p, sections, custom, role);
   }
   // The loads board opens by its page, not its section: its default roles include sales, who have no Operations section. A saved choice still wins.
   // The operations workflow opens by its page for sales and the vendors team, who have no Operations section: they read it with their side of the price only (config/priceView). A saved choice still wins.
@@ -252,7 +259,7 @@ const effectivePagesForUser = async (user) => {
     const own = mapGet(user.accessPages, p.key);
     if (typeof own === 'boolean') { out[p.key] = own; continue; }
     // A section opened or closed for this user moves its pages, unless the role ticked the page itself.
-    if (userSectionOf(user, p.section) && !Object.prototype.hasOwnProperty.call(rolePages, p.key)) out[p.key] = pageFollowsSection(p, sections, custom);
+    if (userSectionOf(user, p.section) && !Object.prototype.hasOwnProperty.call(rolePages, p.key)) out[p.key] = pageFollowsSection(p, sections, custom, user.role);
   }
   return out;
 };

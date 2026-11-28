@@ -1742,6 +1742,12 @@
       ],
       "wildcard": false
     },
+    "/system/business-review/activity": {
+      "apis": [
+        "/api/business-review/activity"
+      ],
+      "wildcard": false
+    },
     "/system/business-review/archive": {
       "apis": [
         "/api/business-review/actions",

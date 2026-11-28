@@ -72,7 +72,7 @@ type Movement = {
   canReverse?: boolean; isReversal?: boolean;
   supplier?: string | null;
   /** Edits keep their before/after; the server decides which movements are editable. */
-  canEditMovement?: boolean; editedByName?: string; edits?: { at: string; byName?: string; reason?: string; before: Record<string, any>; after: Record<string, any> }[];
+  editedByName?: string; edits?: { at: string; byName?: string; reason?: string; before: Record<string, any>; after: Record<string, any> }[];
   /** Issue request that wrote this movement; undone only by cancelling the request. */
   issueRequestNo?: string;
 };
@@ -501,7 +501,6 @@ function MovementsLog({ movements, ar, canEdit, onChanged, base, f, setF, suppli
   setF: (fn: (p: any) => any) => void; suppliers: Supplier[];
 }) {
   const [undoing, setUndoing] = useState<Movement | null>(null);
-  const [editing, setEditing] = useState<Movement | null>(null);
   // Excel-style column filters, applied last, after the server filters.
   const cf = useColumnFilters<Movement>();
   const getters: Record<string, (m: Movement) => any> = {
@@ -593,13 +592,6 @@ function MovementsLog({ movements, ar, canEdit, onChanged, base, f, setF, suppli
                 <td className="px-3 py-1.5 text-slate-600">{m.balanceAfter}</td>
                 <td className="px-3 py-1.5 text-slate-400 text-xs whitespace-nowrap">{m.performedByName || '—'}</td>
                 <td className="px-3 py-1.5 whitespace-nowrap">
-                  {canEdit && m.canEditMovement && (
-                    <button type="button" onClick={() => setEditing(m)}
-                      title={ar ? 'تعديل الحركة' : 'Edit'}
-                      className="me-1 px-2 py-1 rounded-md bg-sky-50 hover:bg-sky-100 text-sky-700 text-[11px] font-semibold inline-flex items-center gap-1">
-                      <Edit className="w-3.5 h-3.5" />{ar ? 'تعديل' : 'Edit'}
-                    </button>
-                  )}
                   {canEdit && m.canReverse && (
                     <button type="button" onClick={() => setUndoing(m)}
                       title={ar ? 'التراجع عن الحركة' : 'Reverse'}
@@ -615,89 +607,6 @@ function MovementsLog({ movements, ar, canEdit, onChanged, base, f, setF, suppli
         </table>
       </ScrollX>
       {undoing && <ReverseModal m={undoing} ar={ar} base={base} onClose={() => setUndoing(null)} onDone={() => { setUndoing(null); onChanged(); }} />}
-      {editing && <EditMovementModal m={editing} ar={ar} base={base} plates={plates} suppliers={suppliers} onClose={() => setEditing(null)} onDone={() => { setEditing(null); onChanged(); }} />}
-    </div>
-  );
-}
-
-/** Correct a recorded movement. Type and item stay; the server shifts the balances and keeps the before/after with the reason. */
-function EditMovementModal({ m, ar, base, plates, suppliers, onClose, onDone }: { m: Movement; ar: boolean; base: string; plates: PlateRow[]; suppliers: Supplier[]; onClose: () => void; onDone: () => void }) {
-  const { notify } = useDialog();
-  const { noPrices } = useStoreFlags();
-  const isIn = m.type === 'in';
-  const [qty, setQty] = useState(String(m.quantity));
-  const [price, setPrice] = useState(m.unitPrice != null ? String(m.unitPrice) : '');
-  const [date, setDate] = useState(String(m.date || '').slice(0, 10));
-  const [supplier, setSupplier] = useState(String(m.supplier || ''));
-  const [plate, setPlate] = useState(m.vehiclePlate || '');
-  const [note, setNote] = useState(m.reason || '');
-  const [issueReason, setIssueReason] = useState(m.issueReason || '');
-  const [why, setWhy] = useState('');
-  const [busy, setBusy] = useState(false);
-  const delta = (Number(qty) || 0) - m.quantity;
-  const submit = async () => {
-    if (!(Number(qty) > 0)) { notify(ar ? 'أدخل كمية صحيحة' : 'Enter a quantity', 'error'); return; }
-    if (why.trim().length < 3) { notify(ar ? 'اكتب سبب التعديل' : 'A reason is required', 'error'); return; }
-    const body: Record<string, any> = { reason: why.trim() };
-    if (Number(qty) !== m.quantity) body.quantity = Number(qty);
-    if (date && date !== String(m.date || '').slice(0, 10)) body.date = date;
-    if (plate !== (m.vehiclePlate || '')) body.vehiclePlate = plate;
-    if (note !== (m.reason || '')) body.note = note;
-    if (isIn && !noPrices && price !== '' && Number(price) !== Number(m.unitPrice)) body.unitPrice = Number(price);
-    if (isIn && supplier !== String(m.supplier || '')) Object.assign(body, supplier ? supplierBody(supplier) : { supplier: '', supplierName: '' });
-    if (!isIn && issueReason && issueReason !== (m.issueReason || '')) body.issueReason = issueReason;
-    if (Object.keys(body).length === 1) { notify(ar ? 'لم يتغيّر شيء' : 'Nothing changed', 'error'); return; }
-    setBusy(true);
-    try { await api.put(`${base}/movements/${m._id}`, body); notify(ar ? 'تم تعديل الحركة' : 'Movement updated', 'success'); onDone(); }
-    catch (e: any) { notify(e?.message || 'Failed', 'error'); } finally { setBusy(false); }
-  };
-  const inp = 'w-full px-3 py-2 rounded-lg border border-slate-200 text-sm';
-  return (
-    <div className="fixed inset-0 z-50 bg-black/40 flex items-center justify-center p-4" onClick={onClose}>
-      <div className="bg-white rounded-2xl w-full max-w-md p-5 max-h-[92vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
-        <div className="flex items-center justify-between mb-1">
-          <h3 className="font-bold text-lg text-sky-700">{ar ? 'تعديل الحركة' : 'Edit movement'}</h3>
-          <button onClick={onClose}><X className="w-5 h-5 text-slate-400" /></button>
-        </div>
-        <p className="text-sm text-slate-500 mb-4">{m.itemName} · <b>{isIn ? (ar ? 'وارد' : 'In') : (ar ? 'صادر' : 'Out')}</b>{m.performedByName ? ` · ${m.performedByName}` : ''}</p>
-        <div className="space-y-3">
-          <div>
-            <label className={formLabel}>{ar ? 'الكمية' : 'Quantity'} *</label>
-            <input type="number" min={0} step="any" inputMode="decimal" value={qty} onChange={(e) => setQty(e.target.value)} className={inp} autoFocus />
-            {delta !== 0 && Number(qty) > 0 && (
-              <p className="mt-1 text-[11.5px] text-slate-500">{ar ? 'الرصيد سيتغيّر بمقدار' : 'Balance changes by'} <b dir="ltr">{(isIn ? delta : -delta) > 0 ? '+' : ''}{Math.round((isIn ? delta : -delta) * 1000) / 1000}</b> {m.unit}</p>
-            )}
-          </div>
-          {isIn && !noPrices && (
-            <div><label className={formLabel}>{ar ? 'سعر القطعة الواحدة (ر.س)' : 'Unit price (SAR)'}</label><input type="number" min={0} step="0.01" value={price} onChange={(e) => setPrice(e.target.value)} className={inp} /></div>
-          )}
-          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-            {isIn && (
-              <div><label className={formLabel}>{ar ? 'المورد' : 'Supplier'}</label><SupplierSelect suppliers={suppliers} value={supplier} onChange={setSupplier} ar={ar} /></div>
-            )}
-            <div><label className={formLabel}>{isIn ? (ar ? 'تاريخ الشراء' : 'Purchase date') : (ar ? 'تاريخ الحركة' : 'Date')}</label><input type="date" value={date} max={todayYmd()} onChange={(e) => setDate(e.target.value)} className={inp} /></div>
-          </div>
-          <PlatePicker plates={plates} value={plate} onChange={setPlate} ar={ar}
-            label={isIn ? (ar ? 'واردة من مركبة (اختياري)' : 'In from vehicle (optional)') : (ar ? 'صادرة على مركبة' : 'Out to vehicle')} />
-          {!isIn && <IssueReasonPicker value={issueReason} onChange={setIssueReason} ar={ar} />}
-          <div><label className={formLabel}>{ar ? 'ملاحظة' : 'Note'}</label><input value={note} onChange={(e) => setNote(e.target.value)} className={inp} /></div>
-          <div>
-            <label className={formLabel}>{ar ? 'سبب التعديل' : 'Reason for the edit'} *</label>
-            <textarea value={why} onChange={(e) => setWhy(e.target.value)} rows={2} placeholder={ar ? 'مثال: الكمية الفعلية في الفاتورة 8 وليست 10' : 'e.g. the invoice shows 8, not 10'} className={inp} />
-          </div>
-        </div>
-        {m.edits?.length ? (
-          <div className="mt-3 rounded-lg bg-slate-50 px-3 py-2 text-[11px] text-slate-500 space-y-1">
-            <div className="font-semibold text-slate-600">{ar ? 'تعديلات سابقة' : 'Earlier edits'}</div>
-            {m.edits.map((e, i) => (
-              <div key={i}>{new Date(e.at).toLocaleString('en-GB')} · {e.byName} · {Object.keys(e.after).map((k) => `${k}: ${e.before[k] ?? '—'} → ${e.after[k] ?? '—'}`).join('، ')}{e.reason ? ` · ${e.reason}` : ''}</div>
-            ))}
-          </div>
-        ) : null}
-        <button onClick={submit} disabled={busy || why.trim().length < 3} className="w-full mt-4 py-2.5 rounded-lg bg-sky-600 hover:bg-sky-700 text-white text-sm font-semibold disabled:opacity-50">
-          {busy ? (ar ? 'جارٍ الحفظ…' : 'Saving…') : (ar ? 'حفظ التعديل' : 'Save')}
-        </button>
-      </div>
     </div>
   );
 }

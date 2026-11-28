@@ -137,7 +137,6 @@ router.post('/store/bulk-movement', ADMIN, noDirectIssue, store.addBulkMovement)
 router.post('/store/:id/movement', oid, ADMIN, noDirectIssue, store.addMovement);
 // Reversing writes an opposite movement; editing corrects a movement in place and keeps its before/after history.
 router.post('/store/movements/:movementId/reverse', ADMIN, store.reverseMovement);
-router.put('/store/movements/:movementId', ADMIN, store.editMovement);
 router.post('/assets/trailers', ADMIN, assets.createTrailer);
 router.post('/assets/trailers/:id/move', oid, ADMIN, assets.moveTrailer);
 router.post('/assets/flatbeds', ADMIN, assets.createFlatbed);

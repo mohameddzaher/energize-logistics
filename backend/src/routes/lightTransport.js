@@ -100,7 +100,6 @@ const noDirectIssue = (req, res, next) => (String(req.body?.type || '') === 'out
   : next());
 router.post('/store/bulk-movement', authorize(...EDIT), noDirectIssue, lightStore(store.addBulkMovement));
 router.post('/store/movements/:movementId/reverse', objectIdParam('movementId'), authorize(...EDIT), lightStore(store.reverseMovement));
-router.put('/store/movements/:movementId', objectIdParam('movementId'), authorize(...EDIT), lightStore(store.editMovement));
 router.post('/store/:id/movement', objectIdParam('id'), authorize(...EDIT), noDirectIssue, lightStore(store.addMovement));
 
 // Issue requests: saving one is the stock-out; cancelling reverses it on the record. Same writers as the store.

@@ -538,24 +538,6 @@ class _Ls2StoreScreenState extends State<Ls2StoreScreen> {
     _loadSuppliers();
   }
 
-  // Correct a recorded movement (quantity, price, day, supplier, vehicle, note). The server shifts the balances and keeps the before/after with the reason.
-  Future<bool> _edit(Map<String, dynamic> m) async {
-    final body = await showDialog<Map<String, dynamic>>(
-      context: context,
-      builder: (_) => _EditMovementDialog(m: m, suppliers: _suppliers, light: _isLightStore(widget.base)),
-    );
-    if (body == null) return false;
-    try {
-      await Api.instance.put('${widget.base}/movements/${m['_id']}', body);
-      _toast(tr('تم تعديل الحركة', 'Movement updated'));
-      _load();
-      return true;
-    } catch (e) {
-      _toast(e is ApiException ? e.message : e.toString());
-      return false;
-    }
-  }
-
   // Undo a movement: an opposite movement with a written reason; both stay in the log.
   Future<bool> _reverse(Map<String, dynamic> m) async {
     final reason = TextEditingController();
@@ -611,7 +593,7 @@ class _Ls2StoreScreenState extends State<Ls2StoreScreen> {
     await showModalBottomSheet(
       context: context, isScrollControlled: true, backgroundColor: Colors.white,
       shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
-      builder: (_) => _LogSheet(base: widget.base, suppliers: _suppliers, canEdit: canEdit, reverse: _reverse, edit: _edit),
+      builder: (_) => _LogSheet(base: widget.base, suppliers: _suppliers, canEdit: canEdit, reverse: _reverse),
     );
   }
 }
@@ -1740,8 +1722,7 @@ class _LogSheet extends StatefulWidget {
   final List<Map<String, dynamic>> suppliers;
   final bool canEdit;
   final Future<bool> Function(Map<String, dynamic>) reverse;
-  final Future<bool> Function(Map<String, dynamic>) edit;
-  const _LogSheet({required this.base, required this.suppliers, required this.canEdit, required this.reverse, required this.edit});
+  const _LogSheet({required this.base, required this.suppliers, required this.canEdit, required this.reverse});
 
   @override
   State<_LogSheet> createState() => _LogSheetState();
@@ -1839,14 +1820,8 @@ class _LogSheetState extends State<_LogSheet> {
           Text('${tr('مُعدَّلة', 'edited')} (${(m['edits'] as List).length})${(m['editedByName'] ?? '').toString().isEmpty ? '' : ' · ${m['editedByName']}'}',
               style: const TextStyle(fontSize: 10.5, color: T.info, fontWeight: FontWeight.w700)),
       ]),
-      trailing: widget.canEdit && (m['canReverse'] == true || m['canEditMovement'] == true)
+      trailing: widget.canEdit && m['canReverse'] == true
           ? Row(mainAxisSize: MainAxisSize.min, children: [
-              if (m['canEditMovement'] == true)
-                IconButton(
-                  tooltip: tr('تعديل', 'Edit'), visualDensity: VisualDensity.compact,
-                  icon: const Icon(Icons.edit_outlined, size: 18, color: T.info),
-                  onPressed: () async { final done = await widget.edit(m); if (done && mounted) _run(); },
-                ),
               if (m['canReverse'] == true)
                 IconButton(
                   tooltip: tr('تراجع', 'Undo'), visualDensity: VisualDensity.compact,
@@ -2000,112 +1975,3 @@ class _UnknownPlatesSheetState extends State<_UnknownPlatesSheet> {
 }
 
 
-/// Edit form for one movement; returns only the changed fields plus the required reason, or null when cancelled.
-class _EditMovementDialog extends StatefulWidget {
-  final Map<String, dynamic> m;
-  final List<Map<String, dynamic>> suppliers;
-  final bool light;
-  const _EditMovementDialog({required this.m, required this.suppliers, required this.light});
-  @override
-  State<_EditMovementDialog> createState() => _EditMovementDialogState();
-}
-
-class _EditMovementDialogState extends State<_EditMovementDialog> {
-  late final _qty = TextEditingController(text: '${widget.m['quantity'] ?? ''}');
-  late final _price = TextEditingController(text: widget.m['unitPrice'] == null ? '' : '${widget.m['unitPrice']}');
-  late final _plate = TextEditingController(text: (widget.m['vehiclePlate'] ?? '').toString());
-  late final _note = TextEditingController(text: (widget.m['reason'] ?? '').toString());
-  final _why = TextEditingController();
-  late String _date = (widget.m['date'] ?? '').toString().length >= 10 ? widget.m['date'].toString().substring(0, 10) : '';
-  late String _supplier = (widget.m['supplier'] ?? '').toString();
-  late String _issueReason = (widget.m['issueReason'] ?? '').toString();
-
-  bool get _isIn => widget.m['type'] == 'in';
-
-  @override
-  void dispose() { _qty.dispose(); _price.dispose(); _plate.dispose(); _note.dispose(); _why.dispose(); super.dispose(); }
-
-  Map<String, dynamic> _changes() {
-    final m = widget.m;
-    final b = <String, dynamic>{};
-    final q = num.tryParse(_qty.text.trim());
-    if (q != null && q != m['quantity']) b['quantity'] = q;
-    final origDate = (m['date'] ?? '').toString().length >= 10 ? m['date'].toString().substring(0, 10) : '';
-    if (_date.isNotEmpty && _date != origDate) b['date'] = _date;
-    if (_plate.text.trim() != (m['vehiclePlate'] ?? '').toString()) b['vehiclePlate'] = _plate.text.trim();
-    if (_note.text.trim() != (m['reason'] ?? '').toString()) b['note'] = _note.text.trim();
-    if (_isIn && !widget.light) {
-      final p = num.tryParse(_price.text.trim());
-      if (p != null && p != m['unitPrice']) b['unitPrice'] = p;
-    }
-    if (_isIn && _supplier != (m['supplier'] ?? '').toString()) b['supplier'] = _supplier;
-    if (!_isIn && _issueReason.isNotEmpty && _issueReason != (m['issueReason'] ?? '').toString()) b['issueReason'] = _issueReason;
-    return b;
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final m = widget.m;
-    final changes = _changes();
-    final q = num.tryParse(_qty.text.trim());
-    final valid = q != null && q > 0 && _why.text.trim().length >= 3 && changes.isNotEmpty;
-    final ids = widget.suppliers.map((x) => (x['_id'] ?? '').toString()).toSet();
-    return AlertDialog(
-      title: Text(tr('تعديل الحركة', 'Edit movement'), style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 16)),
-      content: SingleChildScrollView(child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
-        Text('${m['itemName']} · ${_isIn ? tr('وارد', 'In') : tr('صادر', 'Out')}', style: const TextStyle(fontSize: 12.5, color: T.inkSoft)),
-        const SizedBox(height: 8),
-        TextField(controller: _qty, keyboardType: const TextInputType.numberWithOptions(decimal: true), onChanged: (_) => setState(() {}),
-            decoration: InputDecoration(labelText: tr('الكمية *', 'Quantity *'))),
-        if (_isIn && !widget.light)
-          TextField(controller: _price, keyboardType: const TextInputType.numberWithOptions(decimal: true), onChanged: (_) => setState(() {}),
-              decoration: InputDecoration(labelText: tr('سعر القطعة الواحدة (ر.س)', 'Unit price (SAR)'))),
-        if (_isIn)
-          DropdownButtonFormField<String>(
-            initialValue: _supplier.isEmpty || !ids.contains(_supplier) ? '' : _supplier,
-            isExpanded: true,
-            decoration: InputDecoration(labelText: tr('المورد', 'Supplier')),
-            items: [
-              DropdownMenuItem(value: '', child: Text(tr('بدون مورد', 'No supplier'))),
-              ...widget.suppliers.map((x) => DropdownMenuItem(value: (x['_id'] ?? '').toString(), child: Text((x['name'] ?? '').toString(), overflow: TextOverflow.ellipsis))),
-            ],
-            onChanged: (v) => setState(() => _supplier = v ?? ''),
-          ),
-        const SizedBox(height: 6),
-        InkWell(
-          onTap: () async {
-            final now = DateTime.now();
-            final cur = DateTime.tryParse(_date) ?? now;
-            final d = await showDatePicker(context: context, initialDate: cur.isAfter(now) ? now : cur, firstDate: DateTime(2023), lastDate: now);
-            if (d != null) setState(() => _date = '${d.year}-${d.month.toString().padLeft(2, '0')}-${d.day.toString().padLeft(2, '0')}');
-          },
-          child: InputDecorator(
-            decoration: InputDecoration(labelText: _isIn ? tr('تاريخ الشراء', 'Purchase date') : tr('تاريخ الحركة', 'Date')),
-            child: Text(_date.isEmpty ? '—' : _dmy(_date)),
-          ),
-        ),
-        TextField(controller: _plate, onChanged: (_) => setState(() {}),
-            decoration: InputDecoration(labelText: _isIn ? tr('واردة من مركبة (اختياري)', 'In from vehicle (optional)') : tr('صادرة على مركبة', 'Out to vehicle'))),
-        if (!_isIn)
-          DropdownButtonFormField<String>(
-            initialValue: storeIssueReasons.any((r) => r.$1 == _issueReason) ? _issueReason : null,
-            isExpanded: true,
-            decoration: InputDecoration(labelText: tr('سبب الصرف', 'Issue reason')),
-            items: storeIssueReasons.map((r) => DropdownMenuItem(value: r.$1, child: Text(tr(r.$2, r.$3)))).toList(),
-            onChanged: (v) => setState(() => _issueReason = v ?? ''),
-          ),
-        TextField(controller: _note, onChanged: (_) => setState(() {}), decoration: InputDecoration(labelText: tr('ملاحظة', 'Note'))),
-        const SizedBox(height: 8),
-        TextField(controller: _why, maxLines: 2, onChanged: (_) => setState(() {}),
-            decoration: InputDecoration(labelText: tr('سبب التعديل *', 'Reason for the edit *'), hintText: tr('مثال: الكمية في الفاتورة 8 وليست 10', 'e.g. the invoice shows 8'))),
-      ])),
-      actions: [
-        TextButton(onPressed: () => Navigator.pop(context), child: Text(tr('إلغاء', 'Cancel'))),
-        FilledButton(
-          onPressed: valid ? () => Navigator.pop(context, {...changes, 'reason': _why.text.trim()}) : null,
-          child: Text(tr('حفظ التعديل', 'Save')),
-        ),
-      ],
-    );
-  }
-}

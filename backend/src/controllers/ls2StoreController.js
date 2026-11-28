@@ -417,7 +417,7 @@ exports.addBulkMovement = async (req, res) => {
 exports.addBulkOut = (req, res) => exports.addBulkMovement({ ...req, body: { ...req.body, type: 'out' } }, res);
 
 // Reversing a movement: an opposite movement of the same quantity, linked to the original (reversalOf), with a mandatory reason and the actor's name.
-// The original stays in the log struck through, so an auditor sees the error and the fix. A wrong quantity or price can instead be edited in place (editMovement), which keeps its own history.
+// The original stays in the log struck through, so an auditor sees the error and the fix. The log itself is never edited: it records what happened.
 
 /** Effect of a movement on balance: a receipt adds, an issue subtracts. */
 const effectOf = (type, qty) => (type === 'in' ? +qty : -qty);
@@ -501,97 +501,6 @@ async function refreshLastSupply(item) {
   if (last.date) item.purchaseDate = last.date;
 }
 
-/**
- * PUT /store/movements/:movementId — correct a recorded movement: quantity, unit price, day, supplier, vehicle, note.
- * A quantity change moves the item balance and every later balanceAfter by the same difference; it is refused if any of them would go below zero.
- */
-exports.editMovement = async (req, res) => {
-  try {
-    const mv = await Ls2StoreMovement.findById(req.params.movementId);
-    if (!mv) return res.status(404).json({ message: 'الحركة غير موجودة' });
-    if (whOf(req) !== (mv.warehouse === 'light' ? 'light' : 'heavy')) return res.status(404).json({ message: 'الحركة غير موجودة' });
-    const blocked = editGuard(mv);
-    if (blocked) return res.status(400).json({ message: blocked });
-    const item = await Ls2StoreItem.findById(mv.item);
-    if (!item) return res.status(404).json({ message: 'الصنف غير موجود' });
-
-    const b = req.body || {};
-    const before = {}; const after = {};
-    const set = (k, v) => { if (String(mv[k] ?? '') !== String(v ?? '')) { before[k] = mv[k] ?? ''; after[k] = v; mv[k] = v; } };
-
-    if (b.quantity !== undefined) {
-      const q = Math.abs(qtyOf(b.quantity) || 0);
-      if (!(q > 0)) return res.status(400).json({ message: 'أدخل كمية صحيحة' });
-      if (q !== mv.quantity) { before.quantity = mv.quantity; after.quantity = q; }
-    }
-    if (mv.type === 'in' && b.unitPrice !== undefined && item.warehouse !== 'light') {
-      const p = Number(b.unitPrice);
-      if (!(p > 0)) return res.status(400).json({ message: 'اكتب سعر القطعة الواحدة', code: 'PRICE_REQUIRED' });
-      set('unitPrice', p);
-    }
-    if (b.date !== undefined) {
-      const d = dayOf(b.date);
-      if (!d) return res.status(400).json({ message: 'التاريخ غير صحيح' });
-      if (d > todayKey()) return res.status(400).json({ message: 'لا يمكن أن يكون تاريخ الحركة في المستقبل' });
-      set('date', d);
-    }
-    if (mv.type === 'in' && (b.supplier !== undefined || b.supplierName !== undefined)) {
-      const sup = await resolveSupplier(req, b.supplier, b.supplierName);
-      set('supplier', sup ? sup.supplier : null);
-      set('supplierName', sup ? sup.supplierName : '');
-    }
-    if (b.vehiclePlate !== undefined) {
-      const plate = String(b.vehiclePlate || '').trim();
-      if (plate !== (mv.vehiclePlate || '')) {
-        set('vehiclePlate', plate);
-        mv.vehicleMaster = await resolveLs2Plate(plate, { heavy: (item.warehouse || 'heavy') === 'heavy' }).catch(() => null);
-      }
-    }
-    if (b.note !== undefined) set('reason', String(b.note || '').trim());
-    if (mv.type === 'out' && b.issueReason !== undefined) {
-      const ir = issueReasonOf(b);
-      if (!ISSUE_REASON_KEYS.includes(ir)) return res.status(400).json(ISSUE_REASON_ERROR);
-      set('issueReason', ir);
-    }
-
-    if (!Object.keys(after).length) return res.status(400).json({ message: 'لم يتغيّر شيء' });
-    const why = String(b.reason || '').trim();
-    // The edit reason is kept with the before/after so the correction can be explained later.
-    if (why.length < 3) return res.status(400).json({ message: 'اكتب سبب التعديل — يُسجَّل في السجل باسمك' });
-
-    const delta = after.quantity !== undefined ? r3(effectOf(mv.type, after.quantity) - effectOf(mv.type, before.quantity)) : 0;
-    if (delta) {
-      const later = await Ls2StoreMovement.find({ item: item._id, createdAt: { $gt: mv.createdAt } }).select('balanceAfter').lean();
-      const lowest = Math.min(item.quantity, mv.balanceAfter, ...later.map((m) => m.balanceAfter));
-      if (r3(lowest + delta) < 0) {
-        return res.status(400).json({
-          message: `لا يمكن هذا التعديل: الرصيد كان سيصبح أقل من صفر (أقل رصيد بعد هذه الحركة ${lowest} ${item.unit}). سجّل وارد أو عدّل حركة الصادر أولًا.`,
-        });
-      }
-      mv.quantity = after.quantity;
-      mv.balanceAfter = r3(mv.balanceAfter + delta);
-      if (later.length) await Ls2StoreMovement.updateMany({ item: item._id, createdAt: { $gt: mv.createdAt } }, { $inc: { balanceAfter: delta } });
-      item.quantity = r3(item.quantity + delta);
-    }
-
-    const who = actor(req);
-    mv.edits.push({ at: new Date(), by: who.performedBy, byName: who.performedByName, reason: why, before, after });
-    mv.editedAt = new Date();
-    mv.editedByName = who.performedByName;
-    // Older rows may carry values a later enum no longer lists; only the edited paths are validated.
-    await mv.save({ validateModifiedOnly: true });
-    if (mv.type === 'in') await refreshLastSupply(item);
-    await item.save();
-
-    logAudit({
-      user: req.user, action: 'edit_store_movement', entity: 'Ls2StoreMovement', entityId: mv._id,
-      changes: { before, after: { ...after, item: item.name, reason: why } }, ipAddress: req.ip,
-    }).catch(() => {});
-    emit();
-    res.json({ item, movement: mv });
-  } catch (e) { console.error('ls2 store edit movement', e); res.status(500).json({ message: 'تعذّر تعديل الحركة' }); }
-};
-
 // Movement log.
 exports.listMovements = async (req, res) => {
   try {
@@ -644,7 +553,6 @@ exports.listMovements = async (req, res) => {
       movements: movements.map((m) => ({
         ...m,
         canReverse: !m.reversed && !m.reversalOf && !m.issueRequest,
-        canEditMovement: !m.reversed && !m.reversalOf && !m.issueRequest,
         isReversal: !!m.reversalOf,
         // A small snapshot of the original movement when it is on the same page.
         originalRef: m.reversalOf
